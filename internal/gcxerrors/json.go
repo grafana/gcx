@@ -45,6 +45,19 @@ func (e DetailedError) agentSuggestions() []string {
 	return sug
 }
 
+// resolvedDetails returns Details if non-empty, otherwise falls back to
+// Parent.Error() so that wrapped errors surfaced via fallbackDetailedError
+// still carry context in the JSON output.
+func (e DetailedError) resolvedDetails() string {
+	if e.Details != "" {
+		return e.Details
+	}
+	if e.Parent != nil {
+		return e.Parent.Error()
+	}
+	return ""
+}
+
 // errorJSON is the JSON representation of a DetailedError.
 // Optional fields use pointers so they are omitted when empty.
 type errorJSON struct {
@@ -74,7 +87,7 @@ func (e DetailedError) WriteJSON(w io.Writer, exitCode int) error {
 		Error: errorJSON{
 			Summary:     e.Summary,
 			ExitCode:    exitCode,
-			Details:     stripBoxChars(e.Details),
+			Details:     stripBoxChars(e.resolvedDetails()),
 			Suggestions: e.agentSuggestions(),
 			DocsLink:    e.DocsLink,
 		},
@@ -104,7 +117,7 @@ func (e DetailedError) WriteJSONWithItems(w io.Writer, exitCode int, items any) 
 		Error: errorJSON{
 			Summary:     e.Summary,
 			ExitCode:    exitCode,
-			Details:     stripBoxChars(e.Details),
+			Details:     stripBoxChars(e.resolvedDetails()),
 			Suggestions: e.agentSuggestions(),
 			DocsLink:    e.DocsLink,
 		},

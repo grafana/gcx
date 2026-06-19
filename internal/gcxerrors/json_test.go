@@ -3,6 +3,7 @@ package gcxerrors_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -98,6 +99,37 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 					"details":     "could not reach the server",
 					"suggestions": []any{"check network", "verify credentials", gcxerrors.DocsFetchSuggestion("https://example.com/docs/push")},
 					"docsLink":    "https://example.com/docs/push",
+				},
+			},
+		},
+		{
+			name: "parent folded into details when details is empty",
+			err: gcxerrors.DetailedError{
+				Summary: "Search failed",
+				Parent:  errors.New("response body exceeds 50 MB limit; try narrowing your query or adding filters"),
+			},
+			exitCode: 1,
+			wantJSON: map[string]any{
+				"error": map[string]any{
+					"summary":  "Search failed",
+					"exitCode": float64(1),
+					"details":  "response body exceeds 50 MB limit; try narrowing your query or adding filters",
+				},
+			},
+		},
+		{
+			name: "parent NOT folded when details is already set",
+			err: gcxerrors.DetailedError{
+				Summary: "Search failed",
+				Details: "explicit details here",
+				Parent:  errors.New("this should not appear in details"),
+			},
+			exitCode: 1,
+			wantJSON: map[string]any{
+				"error": map[string]any{
+					"summary":  "Search failed",
+					"exitCode": float64(1),
+					"details":  "explicit details here",
 				},
 			},
 		},
