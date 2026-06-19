@@ -2,10 +2,35 @@ package config
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
+
+// lazyStore defers opening the keychain backend until the first Get/Set/Delete.
+// resolveSentinelsForContext only calls Get for fields that actually hold a
+// sentinel, and migratePlaintextSecrets only calls Set when plaintext secrets
+// are present, so a config whose current context has no keychain-backed secrets
+// never probes the OS keychain at all. Once opened, the backend is reused.
+type lazyStore struct {
+	once    sync.Once
+	open    func() credentials.Store
+	backend credentials.Store
+}
+
+func newLazyStore(open func() credentials.Store) *lazyStore {
+	return &lazyStore{open: open}
+}
+
+func (l *lazyStore) resolve() credentials.Store {
+	l.once.Do(func() { l.backend = l.open() })
+	return l.backend
+}
+
+func (l *lazyStore) Get(key string) (string, error) { return l.resolve().Get(key) }
+func (l *lazyStore) Set(key, value string) error    { return l.resolve().Set(key, value) }
+func (l *lazyStore) Delete(key string) error        { return l.resolve().Delete(key) }
 
 // keychainBacked tracks which (context, field) pairs were stored in the
 // keychain at load time. The map lives on Config as an unexported field; it is

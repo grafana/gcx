@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,11 +33,23 @@ import (
 //nolint:gochecknoglobals // test injection seam for the keychain backend.
 var keychainStoreFn = defaultKeychainStore
 
+// openStoreOnce memoizes the OS-keychain probe (credentials.Open) for the
+// lifetime of the process. Open probes the backend with a syscall (a
+// /usr/bin/security subprocess on macOS); without memoization every Load — and
+// every layer of a layered load — repaid that probe.
+//
+//nolint:gochecknoglobals // process-wide memoization of the keychain probe.
+var (
+	openStoreOnce sync.Once
+	openedStore   credentials.Store
+)
+
 func defaultKeychainStore() credentials.Store {
 	if testing.Testing() {
 		return testingNoopStore{}
 	}
-	return credentials.Open()
+	openStoreOnce.Do(func() { openedStore = credentials.Open() })
+	return openedStore
 }
 
 type testingNoopStore struct{}
@@ -359,7 +372,10 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 	}
 
 	log := logging.FromContext(ctx)
-	store := keychainStoreFn()
+	// Defer opening the keychain until a sentinel actually needs resolving or a
+	// plaintext secret needs migrating; configs with no keychain-backed secrets
+	// then never probe the OS keychain.
+	store := newLazyStore(keychainStoreFn)
 	config.keychainStore = store
 
 	// Only resolve sentinels for the current context eagerly. Other contexts
