@@ -360,7 +360,15 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 
 	log := logging.FromContext(ctx)
 	store := keychainStoreFn()
-	config.keychainFields, config.keychainPreserve = resolveSentinels(&config, store, log)
+	config.keychainStore = store
+
+	// Only resolve sentinels for the current context eagerly. Other contexts
+	// are resolved on demand via Config.ResolveContext to avoid redundant
+	// keychain lookups (each ~15ms on macOS).
+	if cur := config.Contexts[config.CurrentContext]; cur != nil {
+		config.keychainFields, config.keychainPreserve = resolveSentinelsForContext(config.CurrentContext, cur, store)
+	}
+
 	if migrated := migratePlaintextSecrets(&config, store, log); migrated > 0 {
 		log.Info("migrated plaintext credentials into OS keychain",
 			"count", migrated,
@@ -503,13 +511,11 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 	}
 	switch len(layered.Sources) {
 	case 0:
-		src := StandardLocation()
-		cfg, err := Load(ctx, src)
-		return cfg, src, err
+		// LoadLayered auto-created a single config file; reuse it.
+		return layered, StandardLocation(), nil
 	case 1:
-		src := ExplicitConfigFile(layered.Sources[0].Path)
-		cfg, err := Load(ctx, src)
-		return cfg, src, err
+		// Single source - LoadLayered already loaded exactly this file.
+		return layered, ExplicitConfigFile(layered.Sources[0].Path), nil
 	default:
 		return Config{}, nil, errors.New("multiple config files loaded; specify which to update with --file (system, user, local)")
 	}
