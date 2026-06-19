@@ -26,6 +26,18 @@ var (
 	stackIDCache   = map[string]int64{}
 )
 
+// StackID returns the Grafana Cloud stack ID encoded in the resolved namespace
+// (e.g. "stacks-12345" -> 12345), or 0 when the namespace is not a cloud stack
+// namespace (on-prem org namespaces, or an unresolved/empty namespace). It lets
+// callers recover the discovered stack ID without a second /bootdata round-trip.
+func (n *NamespacedRESTConfig) StackID() int64 {
+	info, err := authlib.ParseNamespace(n.Namespace)
+	if err != nil {
+		return 0
+	}
+	return info.StackID
+}
+
 // resolveNamespace returns the Kubernetes namespace for a Grafana context.
 // A configured StackID is authoritative and resolves locally with no network
 // call. Otherwise the cloud stack ID is discovered via /bootdata (memoized per

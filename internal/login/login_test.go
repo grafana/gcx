@@ -3,7 +3,10 @@ package login_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1300,4 +1303,47 @@ func TestRun_CloudTokenHintGuidance(t *testing.T) {
 	assert.Contains(t, hint, "fleet-management:read", "hint must name the Fleet scope")
 	assert.Contains(t, hint, "stacks:write", "hint must name the stack-management scope")
 	assert.Contains(t, strings.ToLower(hint), "skip", "hint must retain the skip affordance")
+}
+
+// TestRun_PersistsDiscoveredStackID verifies that the cloud stack ID discovered
+// while building the REST config (via /bootdata) is written to the saved
+// context, so later commands skip the discovery round-trip.
+func TestRun_PersistsDiscoveredStackID(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bootdata" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"settings": map[string]any{"namespace": "stacks-777"},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	src := configSource(dir)
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       srv.URL,
+			Target:       login.TargetCloud,
+			GrafanaToken: "glsa_test", // token auth keeps Server == srv.URL (no OAuth override)
+			Yes:          true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: src,
+			ValidateFn:   noopValidate,
+		},
+	}
+
+	result, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+
+	cfg, err := config.Load(context.Background(), src)
+	require.NoError(t, err)
+	ctx := cfg.Contexts[result.ContextName]
+	require.NotNil(t, ctx)
+	require.NotNil(t, ctx.Grafana)
+	assert.Equal(t, int64(777), ctx.Grafana.StackID, "discovered stack id must be persisted to the saved context")
 }

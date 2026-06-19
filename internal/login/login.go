@@ -297,6 +297,14 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 		return Result{}, fmt.Errorf("TLS configuration: %w", err)
 	}
 
+	// Persist the cloud stack ID discovered while building the REST config so
+	// subsequent commands resolve the namespace locally and skip the /bootdata
+	// round-trip. On-prem (org) namespaces yield 0 and are left unset. Done
+	// before validation so it also applies on the --force save-anyway path.
+	if sid := restCfg.StackID(); sid != 0 {
+		tempCtx.Grafana.StackID = sid
+	}
+
 	var grafanaVersion string
 	if !opts.ForceSave {
 		validateFn := opts.ValidateFn
@@ -608,6 +616,12 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context, ex
 	g.OAuthTokenExpiresAt = src.OAuthTokenExpiresAt
 	g.OAuthRefreshExpiresAt = src.OAuthRefreshExpiresAt
 	g.ProxyEndpoint = src.ProxyEndpoint
+
+	// Carry the freshly discovered cloud stack ID through re-auth so re-logins
+	// keep it current. Left untouched when discovery yielded nothing (0).
+	if src.StackID != 0 {
+		g.StackID = src.StackID
+	}
 
 	if explicitOrgID != 0 {
 		g.OrgID = int64(explicitOrgID)

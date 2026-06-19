@@ -122,6 +122,25 @@ func TestNewNamespacedRESTConfig_ConfiguredStackIDSkipsBootdata(t *testing.T) {
 	}
 }
 
+func TestNamespacedRESTConfig_StackID(t *testing.T) {
+	cases := []struct {
+		namespace string
+		want      int64
+	}{
+		{"stacks-12345", 12345},
+		{"org-5", 0},   // on-prem org namespace: not a stack
+		{"default", 0}, // org-1
+		{"", 0},        // unresolved
+		{"garbage", 0},
+	}
+	for _, tc := range cases {
+		rc := config.NamespacedRESTConfig{Namespace: tc.namespace}
+		if got := rc.StackID(); got != tc.want {
+			t.Errorf("StackID() for namespace %q = %d, want %d", tc.namespace, got, tc.want)
+		}
+	}
+}
+
 func TestNewNamespacedRESTConfig_DiscoversAndCachesStackID(t *testing.T) {
 	var hits int
 	bootdataServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
