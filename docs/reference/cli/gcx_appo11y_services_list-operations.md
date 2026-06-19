@@ -43,6 +43,7 @@ gcx appo11y services list-operations <service> [--namespace ns] [flags]
 ```
   -d, --datasource string     Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
   -h, --help                  help for list-operations
+      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --kind string           Span kinds to include. One of: inbound (server+consumer), server, consumer, all, or a comma-separated list of SPAN_KIND_* literals (default "inbound")
       --limit int             Limit the number of operations returned (0 = unlimited; applied after sorting by time-share desc) (default 15)

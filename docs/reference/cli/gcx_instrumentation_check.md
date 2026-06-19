@@ -31,6 +31,7 @@ gcx instrumentation check [components] [flags]
       --debug                          Print additional diagnostic output from the checker.
   -h, --help                           help for check
       --instrumentation-file string    Path to the JS instrumentation file. Required when --language=js and --manual-instrumentation.
+      --jq string                      jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                    Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --language string                Application language. Required for sdk, beyla, alloy, grafana-cloud. Possible values: dotnet, go, java, js, python, ruby, php
       --manual-instrumentation         Application is using manual instrumentation (JS only).
