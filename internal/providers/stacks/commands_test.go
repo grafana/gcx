@@ -35,7 +35,7 @@ func runCmd(t *testing.T, child *cobra.Command, args []string, stdin string) (st
 }
 
 // parseDryRunOutput splits dry-run output into the header line and the JSON
-// body payload. Returns the header (e.g. "Dry run: POST /api/instances") and
+// body payload. Returns the header (e.g. "Dry run: POST /api/v1/stacks") and
 // the decoded JSON as a map.
 func parseDryRunOutput(t *testing.T, out string) (string, map[string]any) {
 	t.Helper()
@@ -90,14 +90,14 @@ func TestCreateCommand_NameAndSlugRequired(t *testing.T) {
 
 func TestCreateCommand_DryRun(t *testing.T) {
 	out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-		"create", "--name", "My Stack", "--slug", "mystack", "--region", "us",
+		"create", "--name", "My Stack", "--slug", "mystack", "--org", "myorg", "--region", "us",
 		"--dry-run", "-o", "table",
 	}, "")
 
 	require.NoError(t, err)
 
 	header, body := parseDryRunOutput(t, out)
-	assert.Equal(t, "Dry run: POST /api/instances", header)
+	assert.Equal(t, "Dry run: POST /api/v1/stacks", header)
 	assert.Equal(t, "My Stack", body["name"])
 	assert.Equal(t, "mystack", body["slug"])
 	assert.Equal(t, "us", body["region"])
@@ -105,7 +105,7 @@ func TestCreateCommand_DryRun(t *testing.T) {
 
 func TestCreateCommand_DryRun_WithLabels(t *testing.T) {
 	out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-		"create", "--name", "My Stack", "--slug", "mystack",
+		"create", "--name", "My Stack", "--slug", "mystack", "--org", "myorg",
 		"--labels", "env=prod", "--labels", "team=platform",
 		"--dry-run", "-o", "table",
 	}, "")
@@ -121,7 +121,7 @@ func TestCreateCommand_DryRun_WithLabels(t *testing.T) {
 
 func TestCreateCommand_DryRun_DeleteProtectionFlag(t *testing.T) {
 	out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-		"create", "--name", "My Stack", "--slug", "mystack",
+		"create", "--name", "My Stack", "--slug", "mystack", "--org", "myorg",
 		"--delete-protection",
 		"--dry-run", "-o", "table",
 	}, "")
@@ -134,7 +134,7 @@ func TestCreateCommand_DryRun_DeleteProtectionFlag(t *testing.T) {
 
 func TestCreateCommand_DryRun_InvalidLabels(t *testing.T) {
 	_, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-		"create", "--name", "My Stack", "--slug", "mystack",
+		"create", "--name", "My Stack", "--slug", "mystack", "--org", "myorg",
 		"--labels", "noequalssign",
 		"--dry-run", "-o", "table",
 	}, "")
@@ -147,7 +147,7 @@ func TestCreateCommand_DryRun_DoesNotCallAPI(t *testing.T) {
 	// Dry-run should return before reaching the config loader. If it tried
 	// to load config, it would error because there's no config context set up.
 	_, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-		"create", "--name", "X", "--slug", "x", "--dry-run", "-o", "table",
+		"create", "--name", "X", "--slug", "x", "--org", "myorg", "--dry-run", "-o", "table",
 	}, "")
 	require.NoError(t, err)
 }
@@ -185,7 +185,7 @@ func TestUpdateCommand_DryRun(t *testing.T) {
 	require.NoError(t, err)
 
 	header, body := parseDryRunOutput(t, out)
-	assert.Equal(t, "Dry run: POST /api/instances/mystack", header)
+	assert.Equal(t, "Dry run: POST /api/v1/stacks/mystack", header)
 	assert.Equal(t, "New Name", body["name"])
 }
 
@@ -231,7 +231,7 @@ func TestDeleteCommand_DryRun(t *testing.T) {
 
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	require.Len(t, lines, 3, "dry-run delete should produce 3 lines (header, blank, summary)")
-	assert.Equal(t, "Dry run: DELETE /api/instances/mystack", lines[0])
+	assert.Equal(t, "Dry run: DELETE /api/v1/stacks/mystack", lines[0])
 	assert.Empty(t, lines[1])
 	assert.Equal(t, `Stack "mystack" would be permanently deleted. No changes were made.`, lines[2])
 }

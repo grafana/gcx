@@ -15,7 +15,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-const instancesPath = "/api/instances"
+const stacksPath = "/api/v1/stacks"
 
 // ---------------------------------------------------------------------------
 // list
@@ -58,7 +58,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			stacks, err := cfg.Client.ListStacks(ctx, opts.Org)
+			stacks, err := cfg.Client.ListStacksV1(ctx, opts.Org)
 			if err != nil {
 				return fmt.Errorf("failed to list stacks: %w", err)
 			}
@@ -107,7 +107,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			stack, err := cfg.Client.GetStack(ctx, args[0])
+			stack, err := cfg.Client.GetStackV1(ctx, args[0])
 			if err != nil {
 				return fmt.Errorf("failed to get stack: %w", err)
 			}
@@ -127,6 +127,7 @@ type createOpts struct {
 	IO               cmdio.Options
 	Name             string
 	Slug             string
+	Org              string
 	Region           string
 	Description      string
 	Labels           []string
@@ -141,6 +142,7 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Name, "name", "", "Stack name (required)")
 	flags.StringVar(&o.Slug, "slug", "", "Stack slug / subdomain (required)")
+	flags.StringVar(&o.Org, "org", "", "Organisation slug (required)")
 	flags.StringVar(&o.Region, "region", "", "Region slug (e.g. us, eu). Use 'gcx stacks regions' to list.")
 	flags.StringVar(&o.Description, "description", "", "Short description")
 	flags.StringSliceVar(&o.Labels, "labels", nil, "Labels in key=value format (may be repeated)")
@@ -165,9 +167,6 @@ user before executing. Prefer --dry-run first.`,
 			agent.AnnotationLLMHint:       "This command creates a new Grafana Cloud stack, which provisions infrastructure and may incur costs. Always confirm the stack name, slug, and region with the user before executing. Prefer --dry-run first.",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if opts.Name == "" || opts.Slug == "" {
-				return errors.New("--name and --slug are required")
-			}
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
@@ -180,6 +179,7 @@ user before executing. Prefer --dry-run first.`,
 			req := cloud.CreateStackRequest{
 				Name:        opts.Name,
 				Slug:        opts.Slug,
+				Org:         opts.Org,
 				Region:      opts.Region,
 				Description: opts.Description,
 				Labels:      labels,
@@ -191,7 +191,7 @@ user before executing. Prefer --dry-run first.`,
 			}
 
 			if opts.DryRun {
-				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, instancesPath, req)
+				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, stacksPath, req)
 				return nil
 			}
 
@@ -201,7 +201,7 @@ user before executing. Prefer --dry-run first.`,
 				return err
 			}
 
-			stack, err := cfg.Client.CreateStack(ctx, req)
+			stack, err := cfg.Client.CreateStackV1(ctx, req)
 			if err != nil {
 				return fmt.Errorf("failed to create stack: %w", err)
 			}
@@ -212,6 +212,7 @@ user before executing. Prefer --dry-run first.`,
 	opts.setup(cmd.Flags())
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("slug")
+	_ = cmd.MarkFlagRequired("org")
 	return cmd
 }
 
@@ -289,7 +290,7 @@ changes with the user and prefer --dry-run first.`,
 			slug := args[0]
 
 			if opts.DryRun {
-				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, instancesPath+"/"+slug, req)
+				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, stacksPath+"/"+slug, req)
 				return nil
 			}
 
@@ -299,7 +300,7 @@ changes with the user and prefer --dry-run first.`,
 				return err
 			}
 
-			stack, err := cfg.Client.UpdateStack(ctx, slug, req)
+			stack, err := cfg.Client.UpdateStackV1(ctx, slug, req)
 			if err != nil {
 				return fmt.Errorf("failed to update stack: %w", err)
 			}
@@ -346,7 +347,7 @@ IRREVERSIBLE. Always confirm with the user by name before executing. Prefer
 			slug := args[0]
 
 			if opts.DryRun {
-				fmt.Fprintf(cmd.OutOrStdout(), "Dry run: DELETE %s/%s\n", instancesPath, slug)
+				fmt.Fprintf(cmd.OutOrStdout(), "Dry run: DELETE %s/%s\n", stacksPath, slug)
 				fmt.Fprintf(cmd.OutOrStdout(), "\nStack %q would be permanently deleted. No changes were made.\n", slug)
 				return nil
 			}
@@ -361,7 +362,7 @@ IRREVERSIBLE. Always confirm with the user by name before executing. Prefer
 				return err
 			}
 
-			if err := cfg.Client.DeleteStack(ctx, slug); err != nil {
+			if err := cfg.Client.DeleteStackV1(ctx, slug); err != nil {
 				return fmt.Errorf("failed to delete stack: %w", err)
 			}
 
@@ -438,7 +439,7 @@ func newRegionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			regions, err := cfg.Client.ListRegions(ctx)
+			regions, err := cfg.Client.ListRegionsV1(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to list regions: %w", err)
 			}

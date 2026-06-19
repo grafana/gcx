@@ -11,43 +11,41 @@ import (
 )
 
 func TestStackTableCodec_Encode_Slice(t *testing.T) {
-	out, err := stacks.ExportEncodeStackTable([]cloud.StackInfo{
-		{Slug: "prod", Name: "Production", Status: "active", RegionSlug: "us", URL: "https://prod.grafana.net"},
-		{Slug: "dev", Name: "Development", Status: "active", RegionSlug: "eu", URL: "https://dev.grafana.net"},
+	out, err := stacks.ExportEncodeStackTable([]cloud.StackV1{
+		{Slug: "prod", Name: "Production", Region: "us", URL: "https://prod.grafana.net"},
+		{Slug: "dev", Name: "Development", Region: "eu", URL: "https://dev.grafana.net"},
 	}, false)
 
 	require.NoError(t, err)
 	assert.Contains(t, out, "SLUG")
 	assert.Contains(t, out, "NAME")
-	assert.Contains(t, out, "STATUS")
 	assert.Contains(t, out, "REGION")
 	assert.Contains(t, out, "URL")
 	assert.Contains(t, out, "prod")
 	assert.Contains(t, out, "dev")
-	assert.NotContains(t, out, "PLAN", "narrow table should not include PLAN column")
+	assert.NotContains(t, out, "DELETE-PROTECTION", "narrow table should not include DELETE-PROTECTION column")
 }
 
 func TestStackTableCodec_Encode_Wide(t *testing.T) {
-	out, err := stacks.ExportEncodeStackTable([]cloud.StackInfo{
+	out, err := stacks.ExportEncodeStackTable([]cloud.StackV1{
 		{
-			Slug: "prod", Name: "Production", Status: "active", RegionSlug: "us",
-			URL: "https://prod.grafana.net", PlanName: "Pro", DeleteProtection: true,
-			CreatedAt: "2024-01-15T10:30:00Z",
+			ID: 42, Slug: "prod", Name: "Production", Region: "us",
+			URL: "https://prod.grafana.net", OrgSlug: "myorg", DeleteProtection: true,
 		},
 	}, true)
 
 	require.NoError(t, err)
-	assert.Contains(t, out, "PLAN")
+	assert.Contains(t, out, "ORG")
 	assert.Contains(t, out, "DELETE-PROTECTION")
-	assert.Contains(t, out, "CREATED")
-	assert.Contains(t, out, "Pro")
+	assert.Contains(t, out, "ID")
+	assert.Contains(t, out, "myorg")
 	assert.Contains(t, out, "true")
-	assert.Contains(t, out, "2024-01-15", "CreatedAt should be truncated to date")
+	assert.Contains(t, out, "42")
 }
 
 func TestStackTableCodec_Encode_SingleStack(t *testing.T) {
-	out, err := stacks.ExportEncodeStackTableSingle(cloud.StackInfo{
-		Slug: "mystack", Name: "My Stack", Status: "active", RegionSlug: "us",
+	out, err := stacks.ExportEncodeStackTableSingle(cloud.StackV1{
+		Slug: "mystack", Name: "My Stack", Region: "us",
 		URL: "https://mystack.grafana.net",
 	})
 
@@ -64,14 +62,16 @@ func TestStackTableCodec_Encode_InvalidType(t *testing.T) {
 }
 
 func TestRegionTableCodec_Encode(t *testing.T) {
-	out, err := stacks.ExportEncodeRegionTable([]cloud.Region{
-		{Slug: "us", Name: "US Central", Description: "United States", Provider: "gcp", Status: "active"},
-		{Slug: "eu", Name: "Belgium", Description: "Europe", Provider: "gcp", Status: "active"},
+	usDesc, euDesc := "United States", "Europe"
+	out, err := stacks.ExportEncodeRegionTable([]cloud.RegionV1{
+		{Slug: "us", Name: "US Central", Description: &usDesc, Provider: "gcp", Visibility: "public"},
+		{Slug: "eu", Name: "Belgium", Description: &euDesc, Provider: "gcp", Visibility: "public"},
 	})
 
 	require.NoError(t, err)
 	assert.Contains(t, out, "SLUG")
 	assert.Contains(t, out, "PROVIDER")
+	assert.Contains(t, out, "VISIBILITY")
 	assert.Contains(t, out, "us")
 	assert.Contains(t, out, "eu")
 	assert.Contains(t, out, "gcp")

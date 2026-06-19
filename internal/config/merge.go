@@ -166,6 +166,9 @@ func mergeCloudConfig(base, over *CloudConfig) CloudConfig {
 	if over.Token != "" {
 		result.Token = over.Token
 	}
+	if over.TokenExpiresAt != "" {
+		result.TokenExpiresAt = over.TokenExpiresAt
+	}
 	if over.Stack != "" {
 		result.Stack = over.Stack
 	}

@@ -91,6 +91,10 @@ type CloudConfig struct {
 	// Token is a Grafana Cloud API token used to authenticate against GCOM.
 	Token string `datapolicy:"secret" env:"GRAFANA_CLOUD_TOKEN" json:"token,omitempty" yaml:"token,omitempty"`
 
+	// TokenExpiresAt is the token expiration time in RFC3339 format.
+	// Only set for OAuth tokens obtained via `gcx cloud login`.
+	TokenExpiresAt string `json:"token-expires-at,omitempty" yaml:"token-expires-at,omitempty"`
+
 	// Stack is the Grafana Cloud stack slug (e.g. "mystack").
 	// Optional: if not set, the slug may be derived from Grafana.Server.
 	Stack string `env:"GRAFANA_CLOUD_STACK" json:"stack,omitempty" yaml:"stack,omitempty"`
