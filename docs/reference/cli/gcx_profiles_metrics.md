@@ -52,7 +52,7 @@ gcx profiles metrics [EXPR] [flags]
   -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)
       --since string          Duration before --to (or now if omitted); mutually exclusive with --from
-      --step string           Query step (e.g., '15s', '1m')
+      --step string           Query step (e.g., '15s', '1m'); defaults to the Pyroscope datasource minStep (or 15s) when omitted
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
       --top                   Aggregate into a ranked leaderboard (equivalent to profilecli query top)
 ```

@@ -1,4 +1,4 @@
-package pyroscope
+package pyroscope //nolint:testpackage // white-box test of unexported resolveMetricsStepSeconds
 
 import (
 	"context"
@@ -24,7 +24,7 @@ func TestResolveMetricsStepSeconds(t *testing.T) {
 		step, gotStart, gotEnd, err := resolveMetricsStepSeconds(context.Background(), restCfg, "pyro-1", false, start, end, 0)
 
 		require.NoError(t, err)
-		assert.Equal(t, 60.0, step)
+		assert.InDelta(t, 60.0, step, 1e-9)
 		assert.Equal(t, start, gotStart)
 		assert.Equal(t, end, gotEnd)
 		assert.Equal(t, 1, *calls)
@@ -36,7 +36,7 @@ func TestResolveMetricsStepSeconds(t *testing.T) {
 		step, gotStart, gotEnd, err := resolveMetricsStepSeconds(context.Background(), restCfg, "pyro-1", false, start, end, 15*time.Second)
 
 		require.NoError(t, err)
-		assert.Equal(t, 15.0, step)
+		assert.InDelta(t, 15.0, step, 1e-9)
 		assert.Equal(t, start, gotStart)
 		assert.Equal(t, end, gotEnd)
 		assert.Equal(t, 0, *calls)
@@ -48,7 +48,7 @@ func TestResolveMetricsStepSeconds(t *testing.T) {
 		step, gotStart, gotEnd, err := resolveMetricsStepSeconds(context.Background(), restCfg, "pyro-1", true, start, end, 0)
 
 		require.NoError(t, err)
-		assert.Equal(t, 7200.0, step)
+		assert.InDelta(t, 7200.0, step, 1e-9)
 		assert.Equal(t, start, gotStart)
 		assert.Equal(t, end, gotEnd)
 		assert.Equal(t, 0, *calls)

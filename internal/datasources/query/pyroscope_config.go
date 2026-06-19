@@ -41,8 +41,8 @@ func GetPyroscopeConfig(ctx context.Context, cfg config.NamespacedRESTConfig, ui
 		return PyroscopeConfig{MinStep: defaultPyroscopeMinStep}, nil
 	}
 
-	parsed, err := ParseDuration(minStep)
-	if err != nil || parsed <= 0 {
+	parsed, parseErr := ParseDuration(minStep)
+	if parseErr != nil || parsed <= 0 {
 		logging.FromContext(ctx).Warn(
 			"invalid Pyroscope datasource minStep; using default",
 			slog.String("datasource_uid", uid),
