@@ -364,7 +364,7 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 
 	// Only resolve sentinels for the current context eagerly. Other contexts
 	// are resolved on demand via Config.ResolveContext to avoid redundant
-	// keychain lookups (each ~15ms on macOS).
+	// keychain lookups.
 	if cur := config.Contexts[config.CurrentContext]; cur != nil {
 		config.keychainFields, config.keychainPreserve = resolveSentinelsForContext(config.CurrentContext, cur, store)
 	}
