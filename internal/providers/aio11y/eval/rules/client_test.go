@@ -134,14 +134,15 @@ func TestClient_Create_ConversationRule(t *testing.T) {
 		// otherwise the backend rejects conversation rules. This is the bug
 		// being guarded: gcx previously dropped the field entirely.
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Contains(t, string(body), `"min_idle_seconds":10`)
 
 		var def eval.RuleDefinition
-		require.NoError(t, json.Unmarshal(body, &def))
+		assert.NoError(t, json.Unmarshal(body, &def))
 		assert.Equal(t, "conversation", def.Selector)
-		require.NotNil(t, def.MinIdleSeconds)
-		assert.Equal(t, 10, *def.MinIdleSeconds)
+		if assert.NotNil(t, def.MinIdleSeconds) {
+			assert.Equal(t, 10, *def.MinIdleSeconds)
+		}
 
 		w.WriteHeader(http.StatusCreated)
 		writeJSON(w, def)
