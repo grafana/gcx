@@ -397,6 +397,35 @@ func TestLoadForWrite_singleSource_autoDetects(t *testing.T) {
 	require.Equal(t, "dev", cfg.CurrentContext)
 }
 
+func TestLoadDiagnostics_NoConfigReturnsNil(t *testing.T) {
+	isolatedLoaderEnv(t)
+	assert.Nil(t, config.LoadDiagnostics(t.Context()))
+}
+
+func TestLoadDiagnostics_ReadsEnabledFlag(t *testing.T) {
+	userDir, _ := isolatedLoaderEnv(t)
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
+		"diagnostics:\n  agent-invocation-log: true\n  log-dir: /user/logs\ncurrent-context: dev\ncontexts:\n  dev: {}\n")
+
+	d := config.LoadDiagnostics(t.Context())
+	require.NotNil(t, d)
+	assert.True(t, d.AgentInvocationLog)
+	assert.Equal(t, "/user/logs", d.LogDir)
+}
+
+func TestLoadDiagnostics_LayersLocalOverUser(t *testing.T) {
+	userDir, workDir := isolatedLoaderEnv(t)
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
+		"diagnostics:\n  agent-invocation-log: true\n  log-dir: /user/logs\n")
+	writeLoaderConfig(t, filepath.Join(workDir, ".gcx.yaml"),
+		"diagnostics:\n  log-dir: /local/logs\n")
+
+	d := config.LoadDiagnostics(t.Context())
+	require.NotNil(t, d)
+	assert.True(t, d.AgentInvocationLog, "feature stays enabled from the user layer")
+	assert.Equal(t, "/local/logs", d.LogDir, "local layer overrides log-dir")
+}
+
 func TestLoadForWrite_multipleSources_errors(t *testing.T) {
 	userDir, workDir := isolatedLoaderEnv(t)
 	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
