@@ -91,8 +91,10 @@ func TestNewNamespacedRESTConfig_NilTLSLeavesDefaults(t *testing.T) {
 	}
 }
 
-func TestNewNamespacedRESTConfig_UsesBootdataStack(t *testing.T) {
+func TestNewNamespacedRESTConfig_ConfiguredStackIDSkipsBootdata(t *testing.T) {
+	var hits int
 	bootdataServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"settings": map[string]any{
 				"namespace": "stacks-98765",
@@ -110,12 +112,43 @@ func TestNewNamespacedRESTConfig_UsesBootdataStack(t *testing.T) {
 
 	restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
 
-	if got, want := restCfg.Namespace, authlib.CloudNamespaceFormatter(98765); got != want {
+	// A configured StackID is authoritative: no /bootdata round-trip is made and
+	// the namespace reflects the configured stack, not the server's response.
+	if hits != 0 {
+		t.Fatalf("expected no bootdata requests, got %d", hits)
+	}
+	if got, want := restCfg.Namespace, authlib.CloudNamespaceFormatter(12345); got != want {
 		t.Fatalf("expected namespace %s, got %s", want, got)
 	}
+}
 
-	if ctx.Grafana.StackID != 12345 {
-		t.Fatalf("expected original stack ID to remain unchanged, got %d", ctx.Grafana.StackID)
+func TestNewNamespacedRESTConfig_DiscoversAndCachesStackID(t *testing.T) {
+	var hits int
+	bootdataServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"settings": map[string]any{
+				"namespace": "stacks-77777",
+			},
+		})
+	}))
+	defer bootdataServer.Close()
+
+	// No StackID/OrgID configured: the stack ID is discovered via /bootdata.
+	ctx := config.Context{
+		Grafana: &config.GrafanaConfig{Server: bootdataServer.URL},
+	}
+
+	for i := range 2 {
+		restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
+		if got, want := restCfg.Namespace, authlib.CloudNamespaceFormatter(77777); got != want {
+			t.Fatalf("call %d: expected namespace %s, got %s", i, want, got)
+		}
+	}
+
+	// The second build reuses the cached discovery instead of hitting the server.
+	if hits != 1 {
+		t.Fatalf("expected exactly 1 bootdata request (cached thereafter), got %d", hits)
 	}
 }
 
