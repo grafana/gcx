@@ -150,7 +150,12 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				groupBy = []string{"service_name"}
 			}
 
-			stepSeconds, start, end, err := resolveMetricsStepSeconds(ctx, cfg, datasourceUID, opts.Top, start, end, step)
+			// --top mode queries the full range to get one bucket per series.
+			if opts.Top && (start.IsZero() || end.IsZero()) {
+				start, end = pyroscope.DefaultTimeRange(start, end)
+			}
+
+			stepSeconds, err := resolveMetricsStepSeconds(ctx, cfg, datasourceUID, opts.Top, start, end, step)
 			if err != nil {
 				return err
 			}
@@ -194,26 +199,21 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 	return cmd
 }
 
-func resolveMetricsStepSeconds(ctx context.Context, cfg internalconfig.NamespacedRESTConfig, datasourceUID string, top bool, start, end time.Time, step time.Duration) (float64, time.Time, time.Time, error) {
-	// --top mode: set step to full range to get one bucket per series.
-	if top {
-		if start.IsZero() || end.IsZero() {
-			s, e := pyroscope.DefaultTimeRange(start, end)
-			start, end = s, e
+func resolveMetricsStepSeconds(ctx context.Context, cfg internalconfig.NamespacedRESTConfig, datasourceUID string, top bool, start, end time.Time, step time.Duration) (float64, error) {
+	switch {
+	case top:
+		// One bucket per series across the (already-defaulted) full range.
+		return end.Sub(start).Seconds(), nil
+	case step > 0:
+		// Explicit --step wins over the datasource minStep.
+		return step.Seconds(), nil
+	default:
+		minStep, err := dsquery.GetPyroscopeMinStep(ctx, cfg, datasourceUID)
+		if err != nil {
+			return 0, err
 		}
-		return end.Sub(start).Seconds(), start, end, nil
+		return minStep.Seconds(), nil
 	}
-
-	// Explicit --step wins over the datasource minStep.
-	if step > 0 {
-		return step.Seconds(), start, end, nil
-	}
-
-	pyroscopeCfg, err := dsquery.GetPyroscopeConfig(ctx, cfg, datasourceUID)
-	if err != nil {
-		return 0, start, end, err
-	}
-	return pyroscopeCfg.MinStep.Seconds(), start, end, nil
 }
 
 // pyroscopeSeriesTableCodec renders SelectSeriesResponse or TopSeriesResponse as a table.

@@ -15,7 +15,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-func TestGetPyroscopeConfig(t *testing.T) {
+func TestGetPyroscopeMinStep(t *testing.T) {
 	tests := []struct {
 		name     string
 		jsonData map[string]any
@@ -52,9 +52,9 @@ func TestGetPyroscopeConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			restCfg := pyroscopeDatasourceRESTConfig(t, tt.jsonData)
 
-			cfg, err := dsquery.GetPyroscopeConfig(context.Background(), restCfg, "pyro-1")
+			minStep, err := dsquery.GetPyroscopeMinStep(context.Background(), restCfg, "pyro-1")
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, cfg.MinStep)
+			assert.Equal(t, tt.want, minStep)
 		})
 	}
 }
