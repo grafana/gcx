@@ -1,9 +1,9 @@
-## gcx stacks regions
+## gcx cloud stacks regions
 
 List available regions for stack creation.
 
 ```
-gcx stacks regions [flags]
+gcx cloud stacks regions [flags]
 ```
 
 ### Options
@@ -28,5 +28,5 @@ gcx stacks regions [flags]
 
 ### SEE ALSO
 
-* [gcx stacks](gcx_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
+* [gcx cloud stacks](gcx_cloud_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
 

@@ -1,4 +1,4 @@
-## gcx stacks delete
+## gcx cloud stacks delete
 
 Delete a Grafana Cloud stack.
 
@@ -6,13 +6,12 @@ Delete a Grafana Cloud stack.
 
 Delete a Grafana Cloud stack.
 
-This command permanently deletes a Grafana Cloud stack and ALL its data
-(dashboards, alerts, datasources, metrics, logs, traces). This action is
-IRREVERSIBLE. Always confirm with the user by name before executing. Prefer
---dry-run first. Never run this command without explicit user confirmation.
+This permanently deletes a stack and all its data (dashboards, alerts,
+datasources, metrics, logs, traces). This cannot be undone.
+Use --dry-run to preview the operation first.
 
 ```
-gcx stacks delete <stack-slug> [flags]
+gcx cloud stacks delete <stack-slug> [flags]
 ```
 
 ### Options
@@ -37,5 +36,5 @@ gcx stacks delete <stack-slug> [flags]
 
 ### SEE ALSO
 
-* [gcx stacks](gcx_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
+* [gcx cloud stacks](gcx_cloud_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
 
