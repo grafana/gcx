@@ -30,10 +30,6 @@ type Options struct {
 	JSONFields    []string
 	JSONDiscovery bool
 
-	// JQExpression is the raw --jq flag value, retained for diagnostics.
-	// The compiled query lives in jqQuery and is populated by Validate().
-	JQExpression string
-
 	// IsPiped reports whether stdout is not connected to a terminal.
 	// Populated from terminal.IsPiped() during BindFlags.
 	IsPiped bool
@@ -189,13 +185,11 @@ func (opts *Options) applyJQFlag() error {
 		return fmt.Errorf("--jq requires JSON output, but -o %s was specified", outputFlag.Value.String())
 	}
 
-	expr := jqFlag.Value.String()
-	query, err := gojq.Parse(expr)
+	query, err := gojq.Parse(jqFlag.Value.String())
 	if err != nil {
 		return fmt.Errorf("invalid --jq expression: %w", err)
 	}
 
-	opts.JQExpression = expr
 	opts.jqQuery = query
 	opts.OutputFormat = "json"
 	return nil

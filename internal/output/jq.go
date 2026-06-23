@@ -17,14 +17,15 @@ import (
 // a caller using --jq wants the transformed results in-stream, not a "spilled
 // to /tmp" summary.
 type JQCodec struct {
-	query *gojq.Query
+	query   *gojq.Query
+	decoder *format.JSONCodec
 }
 
 // NewJQCodec returns a JQCodec that runs the given compiled query.
 // Callers should obtain the query via gojq.Parse so syntax errors surface
 // during flag validation, not encoding.
 func NewJQCodec(query *gojq.Query) *JQCodec {
-	return &JQCodec{query: query}
+	return &JQCodec{query: query, decoder: format.NewJSONCodec()}
 }
 
 func (c *JQCodec) Format() format.Format {
@@ -56,7 +57,7 @@ func (c *JQCodec) Encode(dst io.Writer, value any) error {
 }
 
 func (c *JQCodec) Decode(src io.Reader, value any) error {
-	return format.NewJSONCodec().Decode(src, value)
+	return c.decoder.Decode(src, value)
 }
 
 // toJQInput converts an arbitrary Go value into the generic JSON primitives
