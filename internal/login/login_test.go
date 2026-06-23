@@ -1347,3 +1347,86 @@ func TestRun_PersistsDiscoveredStackID(t *testing.T) {
 	require.NotNil(t, ctx.Grafana)
 	assert.Equal(t, int64(777), ctx.Grafana.StackID, "discovered stack id must be persisted to the saved context")
 }
+
+// TestRun_OAuthSuccess_AnnouncesSignInBeforeCloudTokenPrompt verifies that after
+// the interactive OAuth flow completes, Run writes a clear success line to the
+// progress Writer (wrapping up the OAuth step) and frames the upcoming optional
+// Cloud API token prompt — rather than jumping straight into the prompt.
+func TestRun_OAuthSuccess_AnnouncesSignInBeforeCloudTokenPrompt(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "0")
+	agent.ResetForTesting()
+
+	var buf bytes.Buffer
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:   "https://mystack.grafana.net",
+			Target:   login.TargetCloud,
+			UseOAuth: true,
+			Writer:   &buf,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(t.TempDir()),
+			NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+				return &stubAuthFlow{result: &auth.Result{
+					Token:            "gat_test",
+					Email:            "you@example.com",
+					APIEndpoint:      "https://mystack.grafana.net/api",
+					InstanceEndpoint: "https://mystack.grafana.net",
+				}}
+			},
+			ValidateFn: noopValidate,
+		},
+		RetryState: login.RetryState{StagedContext: &config.Context{}},
+	}
+
+	// First call: OAuth runs, then step 5 returns ErrNeedInput for the optional
+	// Cloud token (interactive Cloud target, no token, not --yes/agent mode).
+	_, err := login.Run(context.Background(), &opts)
+	var needInput *login.ErrNeedInput
+	require.ErrorAs(t, err, &needInput)
+	require.Equal(t, []string{"cloud-token"}, needInput.Fields)
+
+	out := buf.String()
+	assert.Contains(t, out, "Signed in to https://mystack.grafana.net as you@example.com",
+		"OAuth completion must be acknowledged with identity and endpoint")
+	assert.Contains(t, out, "Grafana Cloud API token",
+		"the optional next step must be framed before the prompt appears")
+}
+
+// TestRun_OAuthSuccess_AnnouncesSignInWithoutEmail verifies the success line
+// degrades gracefully when the OAuth result carries no email.
+func TestRun_OAuthSuccess_AnnouncesSignInWithoutEmail(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "0")
+	agent.ResetForTesting()
+
+	var buf bytes.Buffer
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:   "https://grafana.example.com",
+			Target:   login.TargetOnPrem,
+			UseOAuth: true,
+			Writer:   &buf,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(t.TempDir()),
+			NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+				return &stubAuthFlow{result: &auth.Result{
+					Token:            "gat_test",
+					APIEndpoint:      "https://grafana.example.com/api",
+					InstanceEndpoint: "https://grafana.example.com",
+				}}
+			},
+			ValidateFn: noopValidate,
+		},
+		RetryState: login.RetryState{StagedContext: &config.Context{}},
+	}
+
+	// On-prem OAuth: no cloud-token prompt, login completes.
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+
+	out := buf.String()
+	assert.Contains(t, out, "Signed in to https://grafana.example.com",
+		"OAuth completion must be acknowledged even without an email")
+	assert.NotContains(t, out, " as ", "no 'as <email>' clause when email is absent")
+}
