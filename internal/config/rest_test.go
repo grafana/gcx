@@ -343,9 +343,13 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 		t.Fatal("expected WrapTransport to be set for OAuth proxy mode")
 	}
 	rt := restCfg.WrapTransport(http.DefaultTransport)
-	retryRT, ok := rt.(*retry.Transport)
+	callerRT, ok := rt.(*httputils.CallerIDTransport)
 	if !ok {
-		t.Fatalf("expected outermost transport to be *retry.Transport, got %T", rt)
+		t.Fatalf("expected outermost transport to be *httputils.CallerIDTransport, got %T", rt)
+	}
+	retryRT, ok := callerRT.Base.(*retry.Transport)
+	if !ok {
+		t.Fatalf("expected CallerIDTransport.Base to be *retry.Transport, got %T", callerRT.Base)
 	}
 	if _, ok := retryRT.Base.(*httputils.LoggingRoundTripper); !ok {
 		t.Fatalf("expected retry.Transport.Base to be *httputils.LoggingRoundTripper, got %T", retryRT.Base)

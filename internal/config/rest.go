@@ -270,7 +270,11 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		if payloadLogging {
 			rt = &httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
 		}
-		return &retry.Transport{Base: rt}
+		rt = &retry.Transport{Base: rt}
+		// Outermost layer: stamp the caller-id header so every datasource query
+		// (unified query API and legacy proxy alike) is attributable upstream,
+		// and so it's visible to the logging transports above.
+		return &httputils.CallerIDTransport{Base: rt}
 	}
 
 	return NamespacedRESTConfig{
