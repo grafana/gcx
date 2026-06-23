@@ -520,16 +520,31 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 	}
 
 	if fileType != "" {
-		layered, err := LoadLayered(ctx, "")
+		// Selecting a layer by --file only needs the discovered source paths, not
+		// a full layered load+merge (which would parse every layer and resolve its
+		// keychain sentinels just to discard all but one). Honor the explicit-file
+		// env bypass exactly as LoadLayered does: when set, layering is bypassed
+		// and there is no named layer to select.
+		if os.Getenv(ConfigFileEnvVar) != "" {
+			return Config{}, nil, fmt.Errorf("no %s config file found", fileType)
+		}
+		sources, err := DiscoverSources()
 		if err != nil {
 			return Config{}, nil, err
 		}
-		for _, s := range layered.Sources {
+		for _, s := range sources {
 			if s.Type == fileType {
 				src := ExplicitConfigFile(s.Path)
 				cfg, err := Load(ctx, src)
 				return cfg, src, err
 			}
+		}
+		// Fresh system (no config files yet): preserve LoadLayered's auto-create.
+		// LoadLayered only ever created the user layer, so --file user creates and
+		// returns it; other layer types have nothing to auto-create and still error.
+		if fileType == "user" && len(sources) == 0 {
+			cfg, err := Load(ctx, StandardLocation())
+			return cfg, StandardLocation(), err
 		}
 		return Config{}, nil, fmt.Errorf("no %s config file found", fileType)
 	}
@@ -565,6 +580,64 @@ func loadExplicit(ctx context.Context, path string, overrides ...Override) (Conf
 	}
 	cfg.Sources = []ConfigSource{{Path: path, Type: "explicit", ModTime: modTime}}
 	return cfg, nil
+}
+
+// LoadDiagnostics reads only the diagnostics settings from the layered config,
+// skipping context parsing and keychain resolution entirely. It runs on every
+// command invocation to configure agent logging, so unlike LoadLayered it never
+// builds the full Config, never probes the OS keychain, and never auto-creates a
+// config file. Returns nil when diagnostics are not configured in any layer.
+func LoadDiagnostics(ctx context.Context) *DiagnosticsConfig {
+	var result *DiagnosticsConfig
+	for _, path := range diagnosticsSourcePaths(ctx) {
+		d, err := readDiagnostics(path)
+		if err != nil || d == nil {
+			continue
+		}
+		if result == nil {
+			result = d
+			continue
+		}
+		merged := mergeDiagnosticsConfig(result, d)
+		result = &merged
+	}
+	return result
+}
+
+// diagnosticsSourcePaths returns config file paths in low→high precedence order,
+// honoring the GCX_CONFIG explicit-file bypass exactly as LoadLayered does.
+func diagnosticsSourcePaths(ctx context.Context) []string {
+	if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
+		return []string{envPath}
+	}
+	sources, err := DiscoverSources()
+	if err != nil {
+		logging.FromContext(ctx).Debug("diagnostics: source discovery failed", "error", err.Error())
+		return nil
+	}
+	paths := make([]string, 0, len(sources))
+	for _, s := range sources {
+		paths = append(paths, s.Path)
+	}
+	return paths
+}
+
+// readDiagnostics decodes a config file and returns only its diagnostics block.
+// It parses into the full Config (the codec rejects unknown fields, so a partial
+// struct will not do) but deliberately skips keychain resolution, plaintext
+// migration, and the config auto-creation that Load performs. Missing or
+// malformed files yield (nil, err).
+func readDiagnostics(path string) (*DiagnosticsConfig, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cfg Config
+	codec := &format.YAMLCodec{BytesAsBase64: true}
+	if err := codec.Decode(bytes.NewBuffer(contents), &cfg); err != nil {
+		return nil, err
+	}
+	return cfg.Diagnostics, nil
 }
 
 func annotateErrorWithSource(filename string, contents []byte, err error) error {
