@@ -461,6 +461,10 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		grafanaCfg.ProxyEndpoint = result.APIEndpoint
 		grafanaCfg.AuthMethod = "oauth"
 		method = "oauth"
+		// Wrap up the OAuth step with a clear success line before any
+		// subsequent prompts (e.g. the optional Cloud API token). This runs
+		// once: retries hit the StagedContext cache above and skip OAuth.
+		announceOAuthLogin(w, result)
 
 	default:
 		return "", nil, &ErrNeedInput{Fields: []string{"grafana-auth"}}
@@ -513,11 +517,46 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) 
 		return nil, nil //nolint:nilnil // nil CloudConfig means "Cloud auth skipped"; valid non-error state.
 	}
 
+	// About to prompt for the optional Cloud API token: frame it as a distinct,
+	// skippable step so it doesn't read as a continuation of OAuth.
+	announceCloudTokenStep(opts.Writer)
 	return nil, &ErrNeedInput{
 		Fields:   []string{"cloud-token"},
 		Optional: true,
 		Hint:     cloudTokenHint(opts.Server),
 	}
+}
+
+// announceOAuthLogin surfaces a clear success message once the interactive OAuth
+// PKCE flow completes, before any subsequent prompts. It writes to w (the
+// caller-supplied progress writer); a nil writer discards, keeping
+// internal/login free of process streams (NC-001).
+func announceOAuthLogin(w io.Writer, result *auth.Result) {
+	if w == nil {
+		w = io.Discard
+	}
+	endpoint := result.InstanceEndpoint
+	if endpoint == "" {
+		endpoint = result.APIEndpoint
+	}
+	switch {
+	case endpoint != "" && result.Email != "":
+		fmt.Fprintf(w, "\n✔ Signed in to %s as %s\n", endpoint, result.Email)
+	case endpoint != "":
+		fmt.Fprintf(w, "\n✔ Signed in to %s\n", endpoint)
+	default:
+		fmt.Fprintln(w, "\n✔ Signed in")
+	}
+}
+
+// announceCloudTokenStep frames the upcoming optional Cloud API token prompt as
+// a separate, skippable step. It writes to w (the caller-supplied progress
+// writer); a nil writer discards (NC-001).
+func announceCloudTokenStep(w io.Writer) {
+	if w == nil {
+		w = io.Discard
+	}
+	fmt.Fprintln(w, "\nOptional: add a Grafana Cloud API token to enable Cloud management features.")
 }
 
 // warnCloudTokenUnvalidated surfaces a non-fatal advisory when a Cloud Access
