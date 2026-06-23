@@ -387,6 +387,31 @@ func TestLoadForWrite_fileType_notFound_errors(t *testing.T) {
 	require.Contains(t, err.Error(), "no local config file found")
 }
 
+func TestLoadForWrite_fileType_user_freshSystem_autoCreates(t *testing.T) {
+	isolatedLoaderEnv(t)
+
+	// Fresh system: no config files exist anywhere. --file user must auto-create
+	// the user config (preserving the pre-perf LoadLayered behavior) rather than
+	// erroring with "no user config file found".
+	_, src, err := config.LoadForWrite(t.Context(), "", "user")
+	require.NoError(t, err)
+	require.NotNil(t, src)
+
+	filename, err := src()
+	require.NoError(t, err)
+	require.FileExists(t, filename)
+}
+
+func TestLoadForWrite_fileType_nonUser_freshSystem_errors(t *testing.T) {
+	isolatedLoaderEnv(t)
+
+	// Auto-create only ever applied to the user layer, so on a fresh system a
+	// non-user --file target still errors instead of conjuring a file.
+	_, _, err := config.LoadForWrite(t.Context(), "", "local")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no local config file found")
+}
+
 func TestLoadForWrite_singleSource_autoDetects(t *testing.T) {
 	userDir, _ := isolatedLoaderEnv(t)
 	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),

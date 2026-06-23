@@ -523,6 +523,13 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 				return cfg, src, err
 			}
 		}
+		// Fresh system (no config files yet): preserve LoadLayered's auto-create.
+		// LoadLayered only ever created the user layer, so --file user creates and
+		// returns it; other layer types have nothing to auto-create and still error.
+		if fileType == "user" && len(sources) == 0 {
+			cfg, err := Load(ctx, StandardLocation())
+			return cfg, StandardLocation(), err
+		}
 		return Config{}, nil, fmt.Errorf("no %s config file found", fileType)
 	}
 
