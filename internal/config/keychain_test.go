@@ -102,6 +102,55 @@ func writeYAML(t *testing.T, contents string) string {
 	return path
 }
 
+func TestLoad_NoSecretsDoesNotOpenKeychain(t *testing.T) {
+	var opens int
+	store := newFakeStore()
+	restore := config.SetKeychainStoreFnForTest(func() credentials.Store {
+		opens++
+		return store
+	})
+	t.Cleanup(restore)
+
+	path := writeYAML(t, `
+contexts:
+  default:
+    grafana:
+      server: https://example.invalid
+current-context: default
+`)
+
+	_, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, opens, "keychain must not be opened when there are no secrets to resolve or migrate")
+}
+
+func TestLoad_SentinelOpensKeychain(t *testing.T) {
+	var opens int
+	store := newFakeStore()
+	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldGrafanaToken), "resolved-token"))
+	restore := config.SetKeychainStoreFnForTest(func() credentials.Store {
+		opens++
+		return store
+	})
+	t.Cleanup(restore)
+
+	path := writeYAML(t, `
+contexts:
+  default:
+    grafana:
+      server: https://example.invalid
+      token: keychain:gcx:default:grafana-token
+current-context: default
+`)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+
+	assert.GreaterOrEqual(t, opens, 1, "keychain must be opened to resolve a sentinel")
+	assert.Equal(t, "resolved-token", cfg.Contexts["default"].Grafana.APIToken)
+}
+
 func TestLoad_MigratesPlaintextSecretsIntoKeychain(t *testing.T) {
 	store := withFakeStore(t)
 	path := writeYAML(t, `
