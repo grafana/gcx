@@ -21,12 +21,19 @@ func (p *StacksProvider) ShortDesc() string {
 	return "Manage Grafana Cloud stacks (list, create, update, delete)"
 }
 
-func (p *StacksProvider) Commands() []*cobra.Command {
+// Commands returns nil because the stacks command tree is wired via
+// cmd/gcx/cloud (as "gcx cloud stacks"). The provider is still registered
+// so it appears in "gcx providers list".
+func (p *StacksProvider) Commands() []*cobra.Command { return nil }
+
+// NewCommand returns the "stacks" cobra command with all subcommands registered.
+// Called by cmd/gcx/cloud to mount stacks under the cloud command group.
+func NewCommand() *cobra.Command {
 	loader := &providers.ConfigLoader{}
 
 	stacksCmd := &cobra.Command{
 		Use:   "stacks",
-		Short: p.ShortDesc(),
+		Short: "Manage Grafana Cloud stacks (list, create, update, delete)",
 	}
 
 	loader.BindFlags(stacksCmd.PersistentFlags())
@@ -40,7 +47,7 @@ func (p *StacksProvider) Commands() []*cobra.Command {
 		newRegionsCommand(loader),
 	)
 
-	return []*cobra.Command{stacksCmd}
+	return stacksCmd
 }
 
 func (p *StacksProvider) Validate(_ map[string]string) error { return nil }

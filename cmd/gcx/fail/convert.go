@@ -1332,8 +1332,8 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 				Details: msg,
 				Parent:  err,
 				Suggestions: []string{
-					"Disable delete protection first: gcx stacks update <slug> --no-delete-protection",
-					"Then retry: gcx stacks delete <slug>",
+					"Disable delete protection first: gcx cloud stacks update <slug> --no-delete-protection",
+					"Then retry: gcx cloud stacks delete <slug>",
 				},
 			}, true
 		}
@@ -1343,7 +1343,7 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Parent:  err,
 			Suggestions: []string{
 				"Choose a different slug with --slug",
-				"List existing stacks: gcx stacks list --org <org-slug>",
+				"List existing stacks: gcx cloud stacks list --org <org-slug>",
 			},
 		}, true
 	case http.StatusForbidden:

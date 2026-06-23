@@ -35,4 +35,28 @@ evaluator_ids:
 	require.NoError(t, err)
 	assert.Equal(t, "my-rule", def.RuleID)
 	assert.True(t, def.Enabled)
+	// Generation-level rules carry no min_idle_seconds.
+	assert.Nil(t, def.MinIdleSeconds)
+}
+
+func Test_readRuleFile_ConversationRuleMinIdleSeconds(t *testing.T) {
+	content := `rule_id: online.conversation.report_compiler.response_quality
+enabled: true
+selector: conversation
+min_idle_seconds: 10
+match:
+  agent_name:
+    - Report Compiler
+sample_rate: 1.0
+evaluator_ids:
+  - custom.response_quality.v1
+`
+	path := filepath.Join(t.TempDir(), "conversation-rule.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	def, err := rules.ReadRuleFile(path, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "conversation", def.Selector)
+	require.NotNil(t, def.MinIdleSeconds)
+	assert.Equal(t, 10, *def.MinIdleSeconds)
 }

@@ -15,6 +15,10 @@ func NewTestListCommand() *cobra.Command { return newListCommand(&providers.Conf
 // NewTestGetCommand creates a get command for external tests.
 func NewTestGetCommand() *cobra.Command { return newGetCommand(&providers.ConfigLoader{}) }
 
+func NewTestGetCommandWithLoader(loader *providers.ConfigLoader) *cobra.Command {
+	return newGetCommand(loader)
+}
+
 // NewTestCreateCommand creates a create command for external tests.
 func NewTestCreateCommand() *cobra.Command { return newCreateCommand(&providers.ConfigLoader{}) }
 

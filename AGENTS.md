@@ -75,6 +75,7 @@ cmd/gcx/
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
   assistant/    Assistant commands (AI-powered investigations)
+  cloud/        Cloud platform command group (mounts gcx cloud stacks)
   api/          Raw API passthrough
   linter/       Linting (mounted under dev lint)
   commands/     Commands catalog (agent metadata)

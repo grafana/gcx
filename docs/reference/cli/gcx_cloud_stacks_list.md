@@ -1,16 +1,17 @@
-## gcx stacks get
+## gcx cloud stacks list
 
-Get details of a single stack.
+List stacks in an organisation.
 
 ```
-gcx stacks get <stack-slug> [flags]
+gcx cloud stacks list [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --org string      Organisation slug (required)
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
@@ -28,5 +29,5 @@ gcx stacks get <stack-slug> [flags]
 
 ### SEE ALSO
 
-* [gcx stacks](gcx_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
+* [gcx cloud stacks](gcx_cloud_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
 

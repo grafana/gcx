@@ -51,11 +51,15 @@ type RuleDefinition struct {
 	// User-provided fields (spec)
 	RuleID        string         `json:"rule_id"`
 	Enabled       bool           `json:"enabled"`
-	Selector      string         `json:"selector"` // user_visible_turn, all_assistant_generations, etc.
+	Selector      string         `json:"selector"` // user_visible_turn, all_assistant_generations, conversation, etc.
 	Match         map[string]any `json:"match,omitempty"`
 	SampleRate    float64        `json:"sample_rate"`
 	EvaluatorIDs  []string       `json:"evaluator_ids"`
 	AlertRuleUIDs []string       `json:"alert_rule_uids,omitempty"`
+	// MinIdleSeconds is required by the backend when Selector is "conversation":
+	// it is the idle period after which a conversation is considered complete and
+	// eligible for evaluation. A pointer so it is omitted for non-conversation rules.
+	MinIdleSeconds *int `json:"min_idle_seconds,omitempty"`
 
 	// Server-generated fields (stripped on push)
 	TenantID  string     `json:"tenant_id,omitempty"`
