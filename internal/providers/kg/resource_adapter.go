@@ -152,6 +152,7 @@ func RuleExample() json.RawMessage {
 // RESTConfigLoader can load a NamespacedRESTConfig from the active context.
 type RESTConfigLoader interface {
 	LoadGrafanaConfig(ctx context.Context) (internalconfig.NamespacedRESTConfig, error)
+	LoadProviderConfig(ctx context.Context, providerName string) (map[string]string, string, error)
 }
 
 // NewAdapterFactory returns a lazy adapter.Factory for KG rules.

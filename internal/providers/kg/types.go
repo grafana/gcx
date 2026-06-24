@@ -448,3 +448,57 @@ func (m ModelRules) GetResourceName() string { return m.Name }
 
 // SetResourceName sets the model rules configuration name.
 func (m *ModelRules) SetResourceName(name string) { m.Name = name }
+
+// ---------------------------------------------------------------------------
+// KG Write API types (custom, API-origin entities and relationships)
+// ---------------------------------------------------------------------------
+
+// EntityWriteRequest is the body for POST .../entities (upsert).
+// TTLSeconds: >0 expiry now+ttl, 0 expire-immediately, negative never-expire.
+// It is a pointer so the file (-f) path can distinguish an absent ttlSeconds
+// (defaulted to never-expire, matching the flag default) from an explicit 0
+// (expire immediately); it is always non-nil by the time the request is sent.
+type EntityWriteRequest struct {
+	Domain     string            `json:"domain"     yaml:"domain"`
+	Type       string            `json:"type"       yaml:"type"`
+	Name       string            `json:"name"       yaml:"name"`
+	Scope      map[string]string `json:"scope,omitempty"      yaml:"scope,omitempty"`
+	Properties map[string]string `json:"properties,omitempty" yaml:"properties,omitempty"`
+	TTLSeconds *int64            `json:"ttlSeconds" yaml:"ttlSeconds"`
+}
+
+// EntityWriteResponse is returned by entity upsert.
+type EntityWriteResponse struct {
+	Domain     string            `json:"domain"`
+	Type       string            `json:"type"`
+	Name       string            `json:"name"`
+	Scope      map[string]string `json:"scope,omitempty"`
+	Properties map[string]any    `json:"properties,omitempty"`
+}
+
+// EntityRef identifies an entity by (domain, type, name, scope).
+type EntityRef struct {
+	Domain string            `json:"domain"         yaml:"domain"`
+	Type   string            `json:"type"           yaml:"type"`
+	Name   string            `json:"name"           yaml:"name"`
+	Scope  map[string]string `json:"scope,omitempty" yaml:"scope,omitempty"`
+}
+
+// RelationshipWriteRequest is the body for POST .../relationships (upsert).
+type RelationshipWriteRequest struct {
+	Domain     string            `json:"domain"              yaml:"domain"`
+	Type       string            `json:"type"                yaml:"type"`
+	From       EntityRef         `json:"from"                yaml:"from"`
+	To         EntityRef         `json:"to"                  yaml:"to"`
+	Properties map[string]string `json:"properties,omitempty" yaml:"properties,omitempty"`
+	TTLSeconds *int64            `json:"ttlSeconds"          yaml:"ttlSeconds"`
+}
+
+// RelationshipWriteResponse is returned by relationship upsert.
+type RelationshipWriteResponse struct {
+	Domain     string         `json:"domain"`
+	Type       string         `json:"type"`
+	From       EntityRef      `json:"from"`
+	To         EntityRef      `json:"to"`
+	Properties map[string]any `json:"properties,omitempty"`
+}
