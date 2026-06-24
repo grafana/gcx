@@ -15,7 +15,7 @@ gcx irm oncall compliance-rules evaluate [flags]
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --oncall-token string   TEST-ONLY: OnCall API token for direct transport. Defaults to $ONCALL_TOKEN.
       --oncall-url string     TEST-ONLY: OnCall engine base URL (e.g. http://host:8084); bypasses the plugin proxy. Defaults to $ONCALL_URL.
-  -o, --output string         Output format. One of: agents, json, text, yaml (default "text")
+  -o, --output string         Output format. One of: agents, json, table, text, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

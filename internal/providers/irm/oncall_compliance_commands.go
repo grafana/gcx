@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
@@ -307,7 +308,12 @@ func newComplianceEvaluateCmd(loader OnCallConfigLoader) *cobra.Command {
 			return opts.IO.Encode(cmd.OutOrStdout(), enrichEvaluation(report, users))
 		},
 	}
-	registerComplianceCodecs(&opts.IO, cmd.Flags(), &complianceEvaluationTextCodec{})
+	// evaluate defaults to a table; text/yaml/json remain available via -o.
+	opts.IO.RegisterCustomCodec("table", &evaluationTableCodec{})
+	opts.IO.RegisterCustomCodec("text", &complianceEvaluationTextCodec{})
+	opts.IO.RegisterCustomCodec("yaml", format.NewOrderedYAMLCodec())
+	opts.IO.DefaultFormat("table")
+	opts.IO.BindFlags(cmd.Flags())
 	opts.transport.bind(cmd.Flags())
 	return cmd
 }
@@ -488,11 +494,19 @@ type evalUser struct {
 
 // label renders "name (user_id)", preferring email, then username, then just the ID.
 func (u evalUser) label() string {
+	if n := u.name(); n != u.UserID {
+		return fmt.Sprintf("%s (%s)", n, u.UserID)
+	}
+	return u.UserID
+}
+
+// name returns the best display name: email, then username, then the ID.
+func (u evalUser) name() string {
 	switch {
 	case u.Email != "":
-		return fmt.Sprintf("%s (%s)", u.Email, u.UserID)
+		return u.Email
 	case u.Username != "":
-		return fmt.Sprintf("%s (%s)", u.Username, u.UserID)
+		return u.Username
 	default:
 		return u.UserID
 	}
@@ -517,6 +531,31 @@ func enrichEvaluation(e *ComplianceEvaluation, users map[string]publicUser) eval
 		view.NonCompliant = append(view.NonCompliant, mk(nc.UserID, nc.Violations))
 	}
 	return view
+}
+
+// evaluationTableCodec renders an evaluationView as a STATUS/USER/PROBLEMS table,
+// non-compliant users first. It is the default format for `evaluate`.
+type evaluationTableCodec struct{ noDecodeCodec }
+
+func (c *evaluationTableCodec) Format() format.Format { return format.Format("table") }
+
+func (c *evaluationTableCodec) Encode(w io.Writer, v any) error {
+	e, ok := v.(evaluationView)
+	if !ok {
+		return fmt.Errorf("table codec: unsupported value type %T (expected evaluationView)", v)
+	}
+	t := style.NewTable("STATUS", "USER", "PROBLEMS")
+	for _, u := range e.NonCompliant {
+		problems := make([]string, len(u.Violations))
+		for i, viol := range u.Violations {
+			problems[i] = friendlyViolation(viol)
+		}
+		t.Row("non-compliant", u.name(), strings.Join(problems, "; "))
+	}
+	for _, u := range e.Compliant {
+		t.Row("compliant", u.name(), "-")
+	}
+	return t.Render(w)
 }
 
 // complianceEvaluationTextCodec renders an evaluationView report.
