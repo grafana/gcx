@@ -197,16 +197,38 @@ func TestJSONFlag_Parsing(t *testing.T) {
 }
 
 func TestEncode_AgentModeHint(t *testing.T) {
-	// The agent-mode hint banner has been removed (C.3c). No mode should emit it.
+	// The agent-mode hint nudges agents toward --json field selection and
+	// --jq transformation, steering them away from external Python pipelines.
+	// It is emitted to stderr (not stdout) and suppressed when --json or --jq
+	// is already in use, or outside agent mode.
 	tests := []struct {
 		name      string
 		agentMode bool
 		jsonField string // if set, pass --json flag
+		jqExpr    string // if set, pass --jq flag
 		wantHint  bool
 	}{
 		{
-			name:      "agent mode without --json: no hint",
+			name:      "agent mode without --json or --jq: emits hint",
 			agentMode: true,
+			wantHint:  true,
+		},
+		{
+			name:      "agent mode + --json field selection: hint still fires (nudges toward --jq)",
+			agentMode: true,
+			jsonField: "name",
+			wantHint:  true,
+		},
+		{
+			name:      "agent mode + --json list (discovery): hint suppressed",
+			agentMode: true,
+			jsonField: "list",
+			wantHint:  false,
+		},
+		{
+			name:      "agent mode + --jq: hint suppressed",
+			agentMode: true,
+			jqExpr:    ".name",
 			wantHint:  false,
 		},
 		{
@@ -221,12 +243,16 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			agent.SetFlag(tc.agentMode)
 			t.Cleanup(func() { agent.SetFlag(false) })
 
-			opts := &cmdio.Options{}
+			var errBuf bytes.Buffer
+			opts := &cmdio.Options{ErrWriter: &errBuf}
 			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 			opts.BindFlags(flags)
 
 			if tc.jsonField != "" {
 				require.NoError(t, flags.Set("json", tc.jsonField))
+			}
+			if tc.jqExpr != "" {
+				require.NoError(t, flags.Set("jq", tc.jqExpr))
 			}
 
 			require.NoError(t, opts.Validate())
@@ -234,8 +260,16 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			var buf bytes.Buffer
 			require.NoError(t, opts.Encode(&buf, map[string]any{"name": "test"}))
 
-			// Encode writes to stdout (buf), not stderr. No hint should be emitted anywhere.
-			assert.NotContains(t, buf.String(), "--json list")
+			// Hint never lands on stdout.
+			assert.NotContains(t, buf.String(), "hint:")
+
+			if tc.wantHint {
+				assert.Contains(t, errBuf.String(), "--json list")
+				assert.Contains(t, errBuf.String(), "--jq")
+				assert.Contains(t, errBuf.String(), "no external parsing needed")
+			} else {
+				assert.Empty(t, errBuf.String())
+			}
 		})
 	}
 }

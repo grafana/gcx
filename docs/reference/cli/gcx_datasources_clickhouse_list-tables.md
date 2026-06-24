@@ -32,6 +32,7 @@ gcx datasources clickhouse list-tables [flags]
       --database string     Filter tables to this database
   -d, --datasource string   Datasource UID (required unless datasources.clickhouse is configured)
   -h, --help                help for list-tables
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
 ```

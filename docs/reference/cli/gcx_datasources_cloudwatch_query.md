@@ -50,6 +50,7 @@ gcx datasources cloudwatch query [flags]
       --dimensions stringToString   Dimension key=value pairs (repeatable, e.g. --dimensions InstanceId=i-abc) (default [])
       --from string                 Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                        help for query
+      --jq string                   jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                 Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --metric string               CloudWatch metric name, e.g. CPUUtilization (required)
       --namespace string            CloudWatch namespace, e.g. AWS/EC2 (required)

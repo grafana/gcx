@@ -3,10 +3,15 @@ package stacks_test
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/cloud"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/stacks"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -278,24 +283,63 @@ func TestGetCommand_RequiresArg(t *testing.T) {
 	assert.Contains(t, err.Error(), "accepts 1 arg")
 }
 
+func TestGetCommand_DefaultFormat_YAML(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+
+	want := cloud.StackInfo{
+		ID:   42,
+		Slug: "mystack",
+		Name: "My Stack",
+		URL:  "https://mystack.grafana.net",
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(want); err != nil {
+			t.Errorf("mock server: encode: %v", err)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	cfgPath := testutils.CreateTempFile(t, `
+contexts:
+  default:
+    cloud:
+      token: "test-token"
+      api-url: "`+srv.URL+`"
+current-context: default
+`)
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgPath)
+
+	out, err := runCmd(t, stacks.NewTestGetCommandWithLoader(loader), []string{"get", "mystack"}, "")
+	require.NoError(t, err)
+
+	// Default format for a singular get should be YAML, not a table.
+	assert.Contains(t, out, "slug: mystack")
+	assert.NotContains(t, out, "SLUG", "table header should not appear in default yaml output")
+}
+
 // ---------------------------------------------------------------------------
 // provider registration
 // ---------------------------------------------------------------------------
 
-func TestStacksProvider_Commands(t *testing.T) {
+func TestStacksProvider_Commands_ReturnsNil(t *testing.T) {
 	p := &stacks.StacksProvider{}
 
 	assert.Equal(t, "stacks", p.Name())
 	assert.NotEmpty(t, p.ShortDesc())
+	assert.Nil(t, p.Commands(), "Commands() should return nil — stacks is wired via cmd/gcx/cloud")
+}
 
-	cmds := p.Commands()
-	require.Len(t, cmds, 1, "should return one top-level 'stacks' command")
+func TestNewCommand(t *testing.T) {
+	cmd := stacks.NewCommand()
 
-	stacksCmd := cmds[0]
-	assert.Equal(t, "stacks", stacksCmd.Use)
+	assert.Equal(t, "stacks", cmd.Use)
 
-	subNames := make([]string, 0, len(stacksCmd.Commands()))
-	for _, sub := range stacksCmd.Commands() {
+	subNames := make([]string, 0, len(cmd.Commands()))
+	for _, sub := range cmd.Commands() {
 		subNames = append(subNames, sub.Name())
 	}
 	assert.ElementsMatch(t, []string{"list", "get", "create", "update", "delete", "regions"}, subNames)

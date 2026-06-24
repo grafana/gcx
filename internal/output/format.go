@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/terminal"
+	"github.com/itchyny/gojq"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -28,6 +29,10 @@ type Options struct {
 	OutputFormat  string
 	JSONFields    []string
 	JSONDiscovery bool
+
+	// JQExpression is the raw --jq flag value, retained for diagnostics.
+	// The compiled query lives in jqQuery and is populated by Validate().
+	JQExpression string
 
 	// IsPiped reports whether stdout is not connected to a terminal.
 	// Populated from terminal.IsPiped() during BindFlags.
@@ -44,6 +49,7 @@ type Options struct {
 	defaultFormat       string
 	flags               *pflag.FlagSet
 	jsonFieldValidator  func(fields []string) error // optional; invoked before field extraction when --json is used
+	jqQuery             *gojq.Query                 // compiled --jq query; nil when flag not set
 	jsonFieldsHintShown bool
 }
 
@@ -90,6 +96,7 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.OutputFormat, "output", "o", defaultFormat, "Output format. One of: "+strings.Join(opts.allowedCodecs(), ", "))
 	flags.String("json", "", "Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields")
+	flags.String("jq", "", "jq expression to apply to JSON output. Mutually exclusive with --json.")
 
 	opts.flags = flags
 }
@@ -100,7 +107,10 @@ func (opts *Options) Validate() error {
 		return fmt.Errorf("unknown output format '%s'. Valid formats are: %s", opts.OutputFormat, strings.Join(opts.allowedCodecs(), ", "))
 	}
 
-	return opts.applyJSONFlag()
+	if err := opts.applyJSONFlag(); err != nil {
+		return err
+	}
+	return opts.applyJQFlag()
 }
 
 // applyJSONFlag processes the --json flag value. When -o/--output is explicitly
@@ -148,6 +158,49 @@ func (opts *Options) applyJSONFlag() error {
 	return nil
 }
 
+// applyJQFlag processes the --jq flag. The flag is mutually exclusive with
+// --json (both field selection and discovery): jq strictly supersedes those
+// mechanisms, so combining them adds confusion without value. Also, the two
+// resources/* commands that bypass Options.Encode() and construct
+// FieldSelectCodec directly (get.go, schemas.go) only fire when JSONFields or
+// JSONDiscovery is set — mutual exclusion preserves correctness there.
+//
+// When -o is unset, --jq auto-flips OutputFormat to "json" (mirrors --json).
+// An explicit non-JSON -o is rejected because jq operates on JSON input.
+// The expression is parsed eagerly so syntax errors surface during validation,
+// not encoding.
+func (opts *Options) applyJQFlag() error {
+	if opts.flags == nil {
+		return nil
+	}
+
+	jqFlag := opts.flags.Lookup("jq")
+	if jqFlag == nil || !jqFlag.Changed {
+		return nil
+	}
+
+	jsonFlag := opts.flags.Lookup("json")
+	if jsonFlag != nil && jsonFlag.Changed {
+		return errors.New("--jq and --json cannot be used together; use jq selectors instead of --json field selection")
+	}
+
+	outputFlag := opts.flags.Lookup("output")
+	if outputFlag != nil && outputFlag.Changed && outputFlag.Value.String() != "json" {
+		return fmt.Errorf("--jq requires JSON output, but -o %s was specified", outputFlag.Value.String())
+	}
+
+	expr := jqFlag.Value.String()
+	query, err := gojq.Parse(expr)
+	if err != nil {
+		return fmt.Errorf("invalid --jq expression: %w", err)
+	}
+
+	opts.JQExpression = expr
+	opts.jqQuery = query
+	opts.OutputFormat = "json"
+	return nil
+}
+
 // Codec returns the codec for the configured output format.
 // We have to return an interface here.
 func (opts *Options) Codec() (format.Codec, error) { //nolint:ireturn
@@ -167,30 +220,38 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	// Nudge toward --json field selection whenever the resolved codec is
-	// JSON-like (json or agents format) and the caller has not already
-	// requested field selection/discovery. Emitted once per invocation to
-	// stderr (never pollutes stdout). TTY: plain "hint:" line. Agent mode:
-	// JSONL {"class":"hint",...} — routed through emitHint/EmitHint so the
-	// hints framework handles codec & agent-mode compliance (FR-104).
+	// In agent mode, nudge toward --json field selection / --jq transformation
+	// whenever the resolved codec is JSON-like (json or agents format). The
+	// hint still fires when --json field1,field2 is in use — the caller may
+	// not realize --jq exists for transformation (group_by, filter, count).
+	// Suppressed when --jq is already in use (caller already has the more
+	// powerful tool) or when --json list is requested (discovery output is
+	// not a transformation target). Emitted once per invocation to stderr
+	// (never pollutes stdout) as JSONL {"class":"hint",...} via emitHint
+	// (FR-104). Suppressed outside agent mode to avoid noise on TTYs.
 	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
-	if !opts.jsonFieldsHintShown && isJSONLike && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
+	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && !opts.JSONDiscovery && opts.jqQuery == nil {
 		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter
 		if w == nil {
 			w = os.Stderr
 		}
 		emitHint(w,
-			"use --json list to discover fields, --json field1,field2 to select — no external parsing needed",
+			"use --json list / --json field1,field2 for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed",
 			"",
 		)
 	}
 
-	// Intercept JSON field discovery and field selection when the resolved
-	// codec is JSON-like. Commands that already check JSONFields/JSONDiscovery
-	// before calling Encode() will never reach here (they return early), so
-	// there is no double-application risk.
+	// Intercept JSON field discovery, field selection, and jq transformation
+	// when the resolved codec is JSON-like. Commands that already check
+	// JSONFields/JSONDiscovery before calling Encode() will never reach here
+	// (they return early), so there is no double-application risk. --jq is
+	// mutually exclusive with --json (enforced in applyJQFlag), so the order
+	// of the branches below does not matter for correctness.
 	if isJSONLike {
+		if opts.jqQuery != nil {
+			return NewJQCodec(opts.jqQuery).Encode(dst, value)
+		}
 		if opts.JSONDiscovery {
 			return opts.encodeDiscovery(dst, value)
 		}

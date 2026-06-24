@@ -48,7 +48,7 @@ func TestStructuredMissingFieldsError(t *testing.T) {
 			err:            &internallogin.ErrNeedInput{Fields: []string{"grafana-auth"}},
 			wantSummary:    "Login requires additional input",
 			wantDetailSubs: []string{"grafana-auth"},
-			wantSuggestSub: []string{"--token", "GRAFANA_TOKEN"},
+			wantSuggestSub: []string{"--oauth", "--token", "GRAFANA_TOKEN"},
 		},
 		{
 			name:           "missing_cloud_token",
@@ -161,6 +161,66 @@ func TestResolveNonInteractiveTokens(t *testing.T) {
 	}
 }
 
+// TestDefaultOAuthFromContext verifies that a non-interactive re-auth of an
+// existing OAuth context defaults to OAuth, while interactive logins, explicit
+// flags, stored tokens, and non-OAuth contexts are left untouched (issue #854).
+func TestDefaultOAuthFromContext(t *testing.T) {
+	t.Parallel()
+
+	oauthCtx := &config.Context{Grafana: &config.GrafanaConfig{AuthMethod: "oauth"}}
+	tokenCtx := &config.Context{Grafana: &config.GrafanaConfig{AuthMethod: "token"}}
+
+	tests := []struct {
+		name         string
+		useOAuth     bool
+		grafanaToken string
+		sourceCtx    *config.Context
+		interactive  bool
+		want         bool
+	}{
+		{
+			name:      "non_interactive_oauth_context_defaults_oauth",
+			sourceCtx: oauthCtx,
+			want:      true,
+		},
+		{
+			name:        "interactive_oauth_context_unchanged",
+			sourceCtx:   oauthCtx,
+			interactive: true,
+			want:        false,
+		},
+		{
+			name:      "token_context_not_defaulted",
+			sourceCtx: tokenCtx,
+			want:      false,
+		},
+		{
+			name:         "stored_token_wins_over_oauth_default",
+			grafanaToken: "glsa_env",
+			sourceCtx:    oauthCtx,
+			want:         false,
+		},
+		{
+			name:      "explicit_oauth_flag_preserved",
+			useOAuth:  true,
+			sourceCtx: tokenCtx,
+			want:      true,
+		},
+		{
+			name: "nil_source_context",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := defaultOAuthFromContext(tt.useOAuth, tt.grafanaToken, tt.sourceCtx, tt.interactive)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 // TestStructuredClarificationError verifies that structuredClarificationError
 // returns the right DetailedError variant for each Field ("allow-override",
 // "save-unvalidated", ambiguous target).
@@ -239,6 +299,8 @@ func TestLoginOptsValidate(t *testing.T) {
 		name          string
 		args          []string
 		contextFlag   string
+		oauthFlag     bool
+		tokenFlag     string
 		wantErr       bool
 		wantErrSubstr string
 	}{
@@ -267,6 +329,26 @@ func TestLoginOptsValidate(t *testing.T) {
 			contextFlag: "",
 			wantErr:     false,
 		},
+		{
+			name:          "conflict_oauth_and_token",
+			args:          []string{},
+			oauthFlag:     true,
+			tokenFlag:     "glsa_xxx",
+			wantErr:       true,
+			wantErrSubstr: "conflicting authentication methods",
+		},
+		{
+			name:      "oauth_alone",
+			args:      []string{},
+			oauthFlag: true,
+			wantErr:   false,
+		},
+		{
+			name:      "token_alone",
+			args:      []string{},
+			tokenFlag: "glsa_xxx",
+			wantErr:   false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -275,6 +357,8 @@ func TestLoginOptsValidate(t *testing.T) {
 
 			opts := &loginOpts{
 				Config: configcmd.Options{Context: tt.contextFlag},
+				OAuth:  tt.oauthFlag,
+				Token:  tt.tokenFlag,
 			}
 			// Bind flags into a throwaway FlagSet so IO.Validate() has a
 			// populated flag set to inspect (otherwise --json handling is
@@ -290,6 +374,43 @@ func TestLoginOptsValidate(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+		})
+	}
+}
+
+// TestOAuthFlagParses confirms setup() registers the --oauth flag and that it
+// parses into loginOpts.OAuth, which runLogin maps to login.Inputs.UseOAuth so
+// OAuth is reachable non-interactively (issue #854).
+func TestOAuthFlagParses(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		args      []string
+		wantOAuth bool
+	}{
+		{
+			name:      "oauth_flag_set",
+			args:      []string{"--server", "https://example.grafana.net", "--oauth"},
+			wantOAuth: true,
+		},
+		{
+			name:      "oauth_flag_absent",
+			args:      []string{"--server", "https://example.grafana.net"},
+			wantOAuth: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := &loginOpts{}
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			opts.setup(flags)
+
+			require.NoError(t, flags.Parse(tt.args))
+			assert.Equal(t, tt.wantOAuth, opts.OAuth)
 		})
 	}
 }
@@ -331,7 +452,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Stack:       mystack
 `,
 			wantStderrSubs: []string{
-				"Next: gcx config check",
+				"Verify access anytime with: gcx config check",
 			},
 		},
 		{
@@ -351,8 +472,9 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Stack:       stack
 `,
 			wantStderrSubs: []string{
-				"Next: gcx config check",
-				"Note: Cloud API commands require a Cloud Access Policy (CAP) token.",
+				"Verify access anytime with: gcx config check",
+				"authenticated for the Grafana API",
+				"requires a Cloud Access Policy (CAP) token.",
 				"grafana.com/docs/grafana-cloud/security-and-account-management",
 				"gcx login --context stack --cloud-token",
 			},
@@ -373,7 +495,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Grafana Cloud: no
 `,
 			wantStderrSubs: []string{
-				"Next: gcx config check",
+				"Verify access anytime with: gcx config check",
 			},
 		},
 		{
@@ -390,7 +512,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Grafana Cloud: no
 `,
 			wantStderrSubs: []string{
-				"Next: gcx config check",
+				"Verify access anytime with: gcx config check",
 			},
 		},
 	}

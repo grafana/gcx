@@ -14,6 +14,7 @@ gcx assistant investigations tools <id> [flags]
 
 ```
   -h, --help            help for tools
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string     Filter to tool calls with this name (e.g. search_skills, prometheus_query_handler)
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")

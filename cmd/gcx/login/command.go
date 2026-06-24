@@ -45,6 +45,7 @@ type loginOpts struct {
 	Token               string
 	CloudToken          string
 	CloudAPIURL         string
+	OAuth               bool
 	Cloud               bool
 	Yes                 bool
 	AllowServerOverride bool
@@ -65,6 +66,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Token, "token", "", "Grafana service account token")
 	flags.StringVar(&opts.CloudToken, "cloud-token", "", "Grafana Cloud API token (enables Cloud management features)")
 	flags.StringVar(&opts.CloudAPIURL, "cloud-api-url", "", "Override Grafana Cloud API URL")
+	flags.BoolVar(&opts.OAuth, "oauth", false, "Authenticate via browser-based OAuth (recommended for Grafana Cloud). Works non-interactively and in agent mode: opens a browser for the user to approve.")
 	flags.BoolVar(&opts.Cloud, "cloud", false, "Force Grafana Cloud target (skip auto-detection)")
 	flags.BoolVar(&opts.Yes, "yes", false, "Non-interactive: skip optional prompts and use defaults")
 	flags.BoolVar(&opts.AllowServerOverride, "allow-server-override", false, "Allow re-pointing an existing context at a different server URL")
@@ -86,6 +88,15 @@ func (opts *loginOpts) Validate(args []string) error {
 			),
 			Suggestions: []string{
 				"Drop --context and use the positional form: gcx login " + args[0],
+			},
+		}
+	}
+	if opts.OAuth && opts.Token != "" {
+		return gcxerrors.DetailedError{
+			Summary: "conflicting authentication methods",
+			Details: "--oauth and --token are mutually exclusive. OAuth authenticates via browser; --token uses a service account token.",
+			Suggestions: []string{
+				"Use --oauth for browser-based login, or --token <token> for a service account token",
 			},
 		}
 	}
@@ -119,7 +130,9 @@ Pass CONTEXT_NAME to target a specific context:
 Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
-Token sources (for non-interactive use):
+Auth sources (for non-interactive use):
+  --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a
+                 browser for the user to approve; works in agent mode.
   --token        Grafana service-account token (created inside the Grafana
                  instance). See:
                  ` + docs.ServiceAccounts + `
@@ -129,6 +142,7 @@ Token sources (for non-interactive use):
 		Example: `  gcx login
   gcx login prod
   gcx login prod --server https://prod.grafana.net
+  gcx login prod --server https://prod.grafana.net --oauth
   gcx login --yes prod --token glsa_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -179,6 +193,12 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	// auth-method switching — so we leave their flags untouched.
 	flags.Token, flags.CloudToken = resolveNonInteractiveTokens(flags.Token, flags.CloudToken, sourceCtx, isInteractive)
 
+	// Re-auth default: a non-interactive `gcx login <ctx>` on a context that
+	// previously authenticated via OAuth defaults to OAuth instead of failing
+	// for missing grafana-auth. Runs after token resolution so a stored token
+	// still takes precedence.
+	flags.OAuth = defaultOAuthFromContext(flags.OAuth, flags.Token, sourceCtx, isInteractive)
+
 	// Carry existing TLS settings into the login flow so that mTLS keeps
 	// working on re-auth without requiring the user to re-specify certs.
 	var existingTLS *config.TLS
@@ -205,6 +225,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			GrafanaToken:      flags.Token,
 			CloudToken:        flags.CloudToken,
 			CloudAPIURL:       flags.CloudAPIURL,
+			UseOAuth:          flags.OAuth,
 			OAuthCallbackPort: flags.OAuthCallbackPort,
 			Yes:               flags.Yes,
 			OrgID:             flags.OrgID,
@@ -543,7 +564,9 @@ func structuredMissingFieldsError(e *login.ErrNeedInput) error {
 		case "server":
 			suggestions = append(suggestions, "Pass --server <url> or set GRAFANA_SERVER")
 		case "grafana-auth":
-			suggestions = append(suggestions, "Pass --token <token> (or set the GRAFANA_TOKEN env var) for a service account token, or configure TLS client certs for mTLS auth (GRAFANA_TLS_CERT_FILE / GRAFANA_TLS_KEY_FILE env vars, or gcx config set contexts.<ctx>.grafana.tls.cert-file ...)")
+			suggestions = append(suggestions,
+				"Pass --oauth to authenticate via browser (recommended for Grafana Cloud; opens a browser for the user to approve, works in agent mode)",
+				"Pass --token <token> (or set the GRAFANA_TOKEN env var) for a service account token, or configure TLS client certs for mTLS auth (GRAFANA_TLS_CERT_FILE / GRAFANA_TLS_KEY_FILE env vars, or gcx config set contexts.<ctx>.grafana.tls.cert-file ...)")
 		case "cloud-token":
 			suggestions = append(suggestions, "Pass --cloud-token <token> (or set the GRAFANA_CLOUD_TOKEN env var) to enable Cloud features, or --yes to skip")
 		default:
@@ -635,6 +658,21 @@ func resolveNonInteractiveTokens(grafanaToken, cloudToken string, sourceCtx *con
 	return grafanaToken, cloudToken
 }
 
+// defaultOAuthFromContext decides whether to default to OAuth when re-authing
+// an existing context that previously used OAuth. Like resolveNonInteractiveTokens,
+// it only applies to non-interactive logins: a bare `gcx login <oauth-ctx>` in
+// agent mode / CI would otherwise fail with a "missing grafana-auth" error, since
+// OAuth credentials aren't reusable as a token. Interactive logins keep their
+// auth-method menu (where OAuth is already the default for Cloud), and an
+// explicit --oauth/--token always wins.
+func defaultOAuthFromContext(useOAuth bool, grafanaToken string, sourceCtx *config.Context, interactive bool) bool {
+	if useOAuth || interactive || grafanaToken != "" ||
+		sourceCtx == nil || sourceCtx.Grafana == nil {
+		return useOAuth
+	}
+	return sourceCtx.Grafana.AuthMethod == "oauth"
+}
+
 // printModeHeader writes a one- or two-line status banner so the user
 // can see what the upcoming login will do before any prompts appear.
 // It routes to stderr so that `-o json`/`-o yaml` leave stdout clean for
@@ -705,13 +743,15 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 	ew := cmd.ErrOrStderr()
 	if ioOpts.OutputFormat == "text" {
 		fmt.Fprintln(ew)
-		fmt.Fprintln(ew, "Next: gcx config check")
+		fmt.Fprintln(ew, "Verify access anytime with: gcx config check")
 	}
 	if result.IsCloud && !result.HasCloudToken {
 		fmt.Fprintln(ew)
-		fmt.Fprintln(ew, "Note: Cloud API commands require a Cloud Access Policy (CAP) token.")
+		fmt.Fprintln(ew, "You're authenticated for the Grafana API (dashboards, datasources, queries, alerts, folders).")
+		fmt.Fprintln(ew, "Grafana Cloud product management (SLOs, Synthetic Monitoring, Fleet, k6, IRM, Adaptive telemetry)")
+		fmt.Fprintln(ew, "additionally requires a Cloud Access Policy (CAP) token.")
 		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
-		fmt.Fprintf(ew, "Run 'gcx login --context %s --cloud-token <token>' to add one.\n", result.ContextName)
+		fmt.Fprintf(ew, "Add one with: gcx login --context %s --cloud-token <token>\n", result.ContextName)
 	}
 	return nil
 }

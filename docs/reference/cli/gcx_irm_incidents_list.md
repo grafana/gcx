@@ -22,6 +22,7 @@ gcx irm incidents list [flags]
 ```
       --from string       Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)
   -h, --help              help for list
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --labels strings    Filter by label text or key:value, e.g. squad:mimir (may be repeated)
       --limit int         Maximum number of incidents to return (default 50)

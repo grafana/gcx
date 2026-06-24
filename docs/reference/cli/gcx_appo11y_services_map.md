@@ -56,6 +56,7 @@ gcx appo11y services map <service> [--namespace ns] [flags]
 ```
   -d, --datasource string   Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
   -h, --help                help for map
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -n, --namespace string    Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)
   -o, --output string       Output format. One of: agents, dot, json, mermaid, table, wide, yaml (default "table")

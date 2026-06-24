@@ -11,6 +11,7 @@ gcx irm oncall alert-groups get <id> [flags]
 ```
   -h, --help            help for get
       --include-raw     Include the unprocessed Alertmanager-shape payload under status.raw (hidden by default; the curated status.{target,links,...} blocks are the promoted view of the same data)
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```

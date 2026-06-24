@@ -25,6 +25,7 @@ gcx irm oncall alert-groups list [flags]
   -h, --help                   help for list
       --include-child-groups   Include child groups (drops the is_root filter while keeping the status default)
       --integration strings    Filter by integration PK (repeatable, comma-separated)
+      --jq string              jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int              Maximum number of alert groups to return (0 for all, capped by an internal safety limit) (default 50)
       --max-age string         Exclude groups older than this duration (e.g. 1h, 24h, 7d)

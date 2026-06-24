@@ -35,6 +35,7 @@ gcx datasources pyroscope exemplars profile [EXPR] [flags]
       --expr string             Label selector (alternative to positional argument)
       --from string             Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                    help for profile
+      --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-label-columns int   Max label columns in table output (0 hides label columns) (default 3)
   -o, --output string           Output format. One of: agents, json, table, yaml (default "table")

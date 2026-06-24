@@ -36,6 +36,7 @@ gcx kg entities list [flags]
       --from string            Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                   help for list
       --insight stringArray    Filter to entities with an active insight: 'any' (has any insight) or key=value (key=~value for substring; name only); valid keys: name, severity (critical|warning|info); repeatable — multiple predicates must match the same assertion
+      --jq string              jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int              Maximum number of items to return (0 for all; the backend may still page results — use --page to paginate) (default 50)
       --namespace string       Namespace scope (run 'gcx kg meta scopes' to see valid values)
