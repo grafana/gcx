@@ -28,6 +28,7 @@ gcx assistant conversation list [flags]
       --archived-only      Show only archived conversations
   -h, --help               help for list
       --include-archived   Include archived conversations
+      --jq string          jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int          Maximum number of conversations to return (default 15)
       --offset int         Number of conversations to skip (for pagination)

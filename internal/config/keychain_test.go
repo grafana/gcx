@@ -102,6 +102,55 @@ func writeYAML(t *testing.T, contents string) string {
 	return path
 }
 
+func TestLoad_NoSecretsDoesNotOpenKeychain(t *testing.T) {
+	var opens int
+	store := newFakeStore()
+	restore := config.SetKeychainStoreFnForTest(func() credentials.Store {
+		opens++
+		return store
+	})
+	t.Cleanup(restore)
+
+	path := writeYAML(t, `
+contexts:
+  default:
+    grafana:
+      server: https://example.invalid
+current-context: default
+`)
+
+	_, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, opens, "keychain must not be opened when there are no secrets to resolve or migrate")
+}
+
+func TestLoad_SentinelOpensKeychain(t *testing.T) {
+	var opens int
+	store := newFakeStore()
+	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldGrafanaToken), "resolved-token"))
+	restore := config.SetKeychainStoreFnForTest(func() credentials.Store {
+		opens++
+		return store
+	})
+	t.Cleanup(restore)
+
+	path := writeYAML(t, `
+contexts:
+  default:
+    grafana:
+      server: https://example.invalid
+      token: keychain:gcx:default:grafana-token
+current-context: default
+`)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+
+	assert.GreaterOrEqual(t, opens, 1, "keychain must be opened to resolve a sentinel")
+	assert.Equal(t, "resolved-token", cfg.Contexts["default"].Grafana.APIToken)
+}
+
 func TestLoad_MigratesPlaintextSecretsIntoKeychain(t *testing.T) {
 	store := withFakeStore(t)
 	path := writeYAML(t, `
@@ -383,6 +432,132 @@ func TestWrite_NewPlaintextSecretIsWrittenThrough(t *testing.T) {
 	got, err := store.Get(credentials.AccountKey("default", credentials.FieldGrafanaToken))
 	require.NoError(t, err)
 	assert.Equal(t, "plain-new-token", got)
+}
+
+func TestLoad_LazyResolvesOnlyCurrentContext(t *testing.T) {
+	store := withFakeStore(t)
+	require.NoError(t, store.Set(credentials.AccountKey("prod", credentials.FieldOAuthToken), "gat_prod"))
+	require.NoError(t, store.Set(credentials.AccountKey("staging", credentials.FieldOAuthToken), "gat_staging"))
+
+	path := writeYAML(t, `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.invalid
+      oauth-token: keychain:gcx:prod:oauth-token
+  staging:
+    grafana:
+      server: https://staging.invalid
+      oauth-token: keychain:gcx:staging:oauth-token
+current-context: prod
+`)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+
+	assert.Equal(t, "gat_prod", cfg.Contexts["prod"].Grafana.OAuthToken,
+		"current context must be resolved eagerly during Load")
+	assert.Equal(t, "keychain:gcx:staging:oauth-token", cfg.Contexts["staging"].Grafana.OAuthToken,
+		"non-current context must keep its raw sentinel until resolved on demand")
+
+	cfg.ResolveContext("staging")
+	assert.Equal(t, "gat_staging", cfg.Contexts["staging"].Grafana.OAuthToken,
+		"ResolveContext must resolve sentinels for the named context")
+}
+
+func TestLoad_OverrideSwitchingContextResolvesSentinels(t *testing.T) {
+	store := withFakeStore(t)
+	require.NoError(t, store.Set(credentials.AccountKey("staging", credentials.FieldOAuthToken), "gat_staging"))
+
+	path := writeYAML(t, `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.invalid
+  staging:
+    grafana:
+      server: https://staging.invalid
+      oauth-token: keychain:gcx:staging:oauth-token
+current-context: prod
+`)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path), func(c *config.Config) error {
+		c.CurrentContext = "staging"
+		return nil
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "gat_staging", cfg.Contexts["staging"].Grafana.OAuthToken,
+		"a context selected via override (e.g. --context) must have its sentinels resolved")
+}
+
+func TestResolveContext_NoOps(t *testing.T) {
+	// A config built directly (never Loaded) has no keychain store: ResolveContext
+	// must be a no-op and must not panic.
+	direct := config.Config{
+		Contexts: map[string]*config.Context{
+			"default": {Grafana: &config.GrafanaConfig{OAuthToken: "keychain:gcx:default:oauth-token"}},
+		},
+	}
+	direct.ResolveContext("default")
+	assert.Equal(t, "keychain:gcx:default:oauth-token", direct.Contexts["default"].Grafana.OAuthToken,
+		"ResolveContext with no keychain store must leave the sentinel untouched")
+
+	store := withFakeStore(t)
+	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldOAuthToken), "gat_resolved"))
+	path := writeYAML(t, `
+contexts:
+  default:
+    grafana:
+      server: https://example.invalid
+      oauth-token: keychain:gcx:default:oauth-token
+current-context: default
+`)
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+
+	// Unknown context name: no-op, no panic.
+	cfg.ResolveContext("does-not-exist")
+
+	// Already-resolved current context: idempotent.
+	cfg.ResolveContext("default")
+	assert.Equal(t, "gat_resolved", cfg.Contexts["default"].Grafana.OAuthToken)
+}
+
+func TestLoadLayered_OverrideResolvesSentinelsForSelectedContext(t *testing.T) {
+	store := withFakeStore(t)
+	require.NoError(t, store.Set(credentials.AccountKey("staging", credentials.FieldOAuthToken), "gat_staging"))
+
+	userDir, workDir := isolatedLoaderEnv(t)
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"), `
+current-context: prod
+contexts:
+  prod:
+    grafana:
+      server: https://prod.invalid
+  staging:
+    grafana:
+      server: https://staging.invalid
+      oauth-token: keychain:gcx:staging:oauth-token
+`)
+	// A local layer makes len(sources) >= 2, exercising the multi-source merge path
+	// where each layer only resolves its own current-context.
+	writeLoaderConfig(t, filepath.Join(workDir, config.LocalConfigFileName), `
+contexts:
+  prod:
+    grafana:
+      server: https://prod-local.invalid
+`)
+
+	cfg, err := config.LoadLayered(t.Context(), "", func(c *config.Config) error {
+		c.CurrentContext = "staging"
+		return nil
+	})
+	require.NoError(t, err)
+	require.Len(t, cfg.Sources, 2, "test must exercise the multi-source merge path")
+
+	assert.Equal(t, "gat_staging", cfg.Contexts["staging"].Grafana.OAuthToken,
+		"--context selecting a context that was current in no layer must still resolve its sentinels")
 }
 
 func TestLoad_MalformedSentinelClearsField(t *testing.T) {

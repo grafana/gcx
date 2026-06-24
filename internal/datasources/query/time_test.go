@@ -111,6 +111,21 @@ func TestParseDuration(t *testing.T) {
 			expected: 90 * time.Minute,
 		},
 		{
+			name:     "7d",
+			input:    "7d",
+			expected: 7 * 24 * time.Hour,
+		},
+		{
+			name:     "2w",
+			input:    "2w",
+			expected: 2 * 7 * 24 * time.Hour,
+		},
+		{
+			name:     "1y",
+			input:    "1y",
+			expected: 365 * 24 * time.Hour,
+		},
+		{
 			name:    "invalid",
 			input:   "invalid",
 			wantErr: true,

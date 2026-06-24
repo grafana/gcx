@@ -3,6 +3,7 @@ package rules_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -121,6 +122,43 @@ func TestClient_Create(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "new-rule", created.RuleID)
 	assert.True(t, created.Enabled)
+}
+
+func TestClient_Create_ConversationRule(t *testing.T) {
+	idle := 10
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Contains(t, r.URL.Path, "/eval/rules")
+
+		// The body the backend actually receives must carry min_idle_seconds,
+		// otherwise the backend rejects conversation rules. This is the bug
+		// being guarded: gcx previously dropped the field entirely.
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		assert.Contains(t, string(body), `"min_idle_seconds":10`)
+
+		var def eval.RuleDefinition
+		assert.NoError(t, json.Unmarshal(body, &def))
+		assert.Equal(t, "conversation", def.Selector)
+		if assert.NotNil(t, def.MinIdleSeconds) {
+			assert.Equal(t, 10, *def.MinIdleSeconds)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, def)
+	}))
+
+	created, err := client.Create(context.Background(), &eval.RuleDefinition{
+		RuleID:         "online.conversation.report_compiler.response_quality",
+		Enabled:        true,
+		Selector:       "conversation",
+		MinIdleSeconds: &idle,
+		SampleRate:     1.0,
+		EvaluatorIDs:   []string{"custom.response_quality.v1"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created.MinIdleSeconds)
+	assert.Equal(t, 10, *created.MinIdleSeconds)
 }
 
 func TestClient_Update(t *testing.T) {

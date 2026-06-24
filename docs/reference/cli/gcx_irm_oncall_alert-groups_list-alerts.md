@@ -12,6 +12,7 @@ gcx irm oncall alert-groups list-alerts <alert-group-id> [flags]
   -h, --help            help for list-alerts
       --history         Opt out of collapse: emit every stored Alert as its own row with status.occurrences=1 (default behaviour collapses re-fires by alert label set)
       --include-raw     Include the unprocessed Alertmanager-shape payload under status.raw on each alert (hidden by default; status.{dimensions,links,...} are the promoted view of the same data)
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int       Cap on number of alerts retrieved (0 = no cap) (default 100)
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")

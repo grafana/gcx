@@ -75,6 +75,7 @@ cmd/gcx/
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
   assistant/    Assistant commands (AI-powered investigations)
+  cloud/        Cloud platform command group (mounts gcx cloud stacks)
   api/          Raw API passthrough
   linter/       Linting (mounted under dev lint)
   commands/     Commands catalog (agent metadata)
@@ -123,6 +124,7 @@ internal/
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
 │   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
 ├── deeplink/    Deep link URL template registry and browser opener
+├── docs/        Canonical Grafana documentation URL registry (markdown links surfaced via DetailedError.DocsLink and agent llm_hints)
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
 │   ├── clickhouse/  ClickHouse datasource commands (query, list-tables, describe-table, explore)

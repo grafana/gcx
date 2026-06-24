@@ -26,6 +26,7 @@ gcx kg diagnose labels [flags]
 ```
   -d, --datasource string   Prometheus datasource UID (auto-discovered if omitted)
   -h, --help                help for labels
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
 ```

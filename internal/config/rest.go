@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/retry"
@@ -256,20 +255,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	}
 
 	// Namespace
-	var namespace string
-
-	discoveredStackID, err := DiscoverStackID(ctx, *cfg.Grafana)
-
-	if err == nil {
-		// even if cfg.Grafana.OrgID was set - we ignore it, discoveredStackID takes precedent
-		namespace = authlib.CloudNamespaceFormatter(discoveredStackID)
-	} else {
-		if cfg.Grafana.OrgID != 0 {
-			namespace = authlib.OrgNamespaceFormatter(cfg.Grafana.OrgID)
-		} else {
-			namespace = authlib.CloudNamespaceFormatter(cfg.Grafana.StackID)
-		}
-	}
+	namespace := resolveNamespace(ctx, *cfg.Grafana)
 
 	// Wrap transport with debug logging so `-vvv` shows every HTTP request.
 	// When --insecure-log-http-payload is set, also add full request/response body dumps.

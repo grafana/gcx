@@ -16,6 +16,7 @@ gcx assistant investigations list [flags]
       --from string      Lower bound on creation time, RFC3339 (v2 only)
   -h, --help             help for list
       --include-legacy   Include legacy (pre-v2) investigations (v2 only) (default true)
+      --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --label string     Filter by label, key:value format (v2 only)
       --limit int        Maximum number of investigations to return (default 50)

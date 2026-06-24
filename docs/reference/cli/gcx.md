@@ -28,6 +28,7 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx api](gcx_api.md)	 - Make direct HTTP requests to the Grafana API
 * [gcx appo11y](gcx_appo11y.md)	 - Manage Grafana App Observability settings
 * [gcx assistant](gcx_assistant.md)	 - Interact with Grafana Assistant
+* [gcx cloud](gcx_cloud.md)	 - Manage your Grafana Cloud resources
 * [gcx commands](gcx_commands.md)	 - List all commands with rich metadata for agent consumption
 * [gcx completion](gcx_completion.md)	 - Generate the autocompletion script for the specified shell
 * [gcx config](gcx_config.md)	 - View or manipulate configuration settings
@@ -49,7 +50,6 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx resources](gcx_resources.md)	 - Manipulate Grafana resources
 * [gcx setup](gcx_setup.md)	 - Onboard and configure Grafana Cloud products.
 * [gcx slo](gcx_slo.md)	 - Manage Grafana SLO definitions and reports
-* [gcx stacks](gcx_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
 * [gcx synthetic-monitoring](gcx_synthetic-monitoring.md)	 - Manage Grafana Synthetic Monitoring checks and probes
 * [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces
 * [gcx version](gcx_version.md)	 - Print version information.

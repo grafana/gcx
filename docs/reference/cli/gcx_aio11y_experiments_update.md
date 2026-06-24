@@ -12,6 +12,7 @@ gcx aio11y experiments update <run-id> [flags]
   -h, --help                 help for update
   -o, --output string        Output format. One of: agents, json, yaml (default "json")
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --name string          New experiment name
       --description string   New experiment description; pass an empty string to clear
       --tag strings          Experiment tag (repeatable or comma-separated; replaces all tags)

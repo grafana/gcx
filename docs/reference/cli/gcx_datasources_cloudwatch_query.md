@@ -50,6 +50,7 @@ gcx datasources cloudwatch query [flags]
       --dimensions stringToString   Dimension key=value pairs (repeatable, e.g. --dimensions InstanceId=i-abc) (default [])
       --from string                 Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                        help for query
+      --jq string                   jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                 Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --metric string               CloudWatch metric name, e.g. CPUUtilization (required)
       --namespace string            CloudWatch namespace, e.g. AWS/EC2 (required)
@@ -58,7 +59,7 @@ gcx datasources cloudwatch query [flags]
       --period string               Period in seconds (e.g. 60, 300) or "auto" to let CloudWatch pick a period that fits the time range (default "auto")
       --region string               AWS region, e.g. us-east-1 (required)
       --share-link                  Print the Grafana Explore URL for the executed query to stderr
-      --since string                Duration before --to (or now if omitted); mutually exclusive with --from
+      --since string                Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --statistic string            Statistic: Average, Sum, Maximum, Minimum, SampleCount, or a percentile/trimmed-mean (e.g. p95, p99, tm99) (default "Average")
       --to string                   End time (RFC3339, Unix timestamp, or relative like 'now')
 ```

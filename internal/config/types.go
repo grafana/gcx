@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/grafana/gcx/internal/credentials"
 )
 
 const (
@@ -48,6 +50,11 @@ type Config struct {
 	// round-trip the original sentinel back to disk so a transient outage never
 	// destroys the reference. Not part of the on-disk schema.
 	keychainPreserve keychainBacked `json:"-" yaml:"-"`
+
+	// keychainStore holds the keychain backend so that sentinel resolution can
+	// be deferred for non-current contexts. Populated once by Load; nil when
+	// the keychain is not in use.
+	keychainStore credentials.Store `json:"-" yaml:"-"`
 }
 
 // DiagnosticsConfig controls optional local diagnostic features.
@@ -70,6 +77,36 @@ func (config *Config) HasContext(name string) bool {
 // If the current context is not set, it returns an error.
 func (config *Config) GetCurrentContext() *Context {
 	return config.Contexts[config.CurrentContext]
+}
+
+// ResolveContext resolves keychain sentinels for a named context that was not
+// resolved during Load (i.e. a non-current context). This is a no-op when the
+// context has already been resolved or when no keychain store is available.
+func (config *Config) ResolveContext(name string) {
+	if config.keychainStore == nil {
+		return
+	}
+	ctx := config.Contexts[name]
+	if ctx == nil {
+		return
+	}
+	backed, preserve := resolveSentinelsForContext(name, ctx, config.keychainStore)
+	if len(backed) > 0 && config.keychainFields == nil {
+		config.keychainFields = keychainBacked{}
+	}
+	for ctxName, fields := range backed {
+		for field := range fields {
+			config.keychainFields.mark(ctxName, field)
+		}
+	}
+	if len(preserve) > 0 && config.keychainPreserve == nil {
+		config.keychainPreserve = keychainBacked{}
+	}
+	for ctxName, fields := range preserve {
+		for field := range fields {
+			config.keychainPreserve.mark(ctxName, field)
+		}
+	}
 }
 
 // SetContext adds a new context to the Grafana config.

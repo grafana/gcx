@@ -2,10 +2,35 @@ package config
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
+
+// lazyStore defers opening the keychain backend until the first Get/Set/Delete.
+// resolveSentinelsForContext only calls Get for fields that actually hold a
+// sentinel, and migratePlaintextSecrets only calls Set when plaintext secrets
+// are present, so a config whose current context has no keychain-backed secrets
+// never probes the OS keychain at all. Once opened, the backend is reused.
+type lazyStore struct {
+	once    sync.Once
+	open    func() credentials.Store
+	backend credentials.Store
+}
+
+func newLazyStore(open func() credentials.Store) *lazyStore {
+	return &lazyStore{open: open}
+}
+
+func (l *lazyStore) resolve() credentials.Store {
+	l.once.Do(func() { l.backend = l.open() })
+	return l.backend
+}
+
+func (l *lazyStore) Get(key string) (string, error) { return l.resolve().Get(key) }
+func (l *lazyStore) Set(key, value string) error    { return l.resolve().Set(key, value) }
+func (l *lazyStore) Delete(key string) error        { return l.resolve().Delete(key) }
 
 // keychainBacked tracks which (context, field) pairs were stored in the
 // keychain at load time. The map lives on Config as an unexported field; it is
@@ -103,61 +128,39 @@ func providerFieldRef(ctx *Context, provider, key string) (secretRef, bool) {
 	}, true
 }
 
-// resolveSentinels walks every context and replaces keychain sentinels with
-// their plaintext values from the store. It returns two maps: backed lists the
-// (context, field) pairs that resolved successfully (so Write can re-substitute
-// sentinels), and preserve lists pairs whose lookup failed because the keychain
-// was unavailable. In both failure cases the in-memory value is cleared so the
-// command surfaces a missing credential rather than sending a sentinel string
-// as one. The distinction matters on Write: a malformed or genuinely-absent
-// reference is dropped, but an unresolvable-because-unavailable one is
-// round-tripped back to disk verbatim so a transient outage never destroys it.
-func resolveSentinels(cfg *Config, store credentials.Store, log logging.Logger) (keychainBacked, keychainBacked) {
+// resolveSentinelsForContext replaces keychain sentinels with their plaintext
+// values from the store for a single context. It returns two maps: backed lists
+// the (context, field) pairs that resolved successfully, and preserve lists
+// pairs whose lookup failed because the keychain was unavailable. In both
+// failure cases the in-memory value is cleared so the command surfaces a
+// missing credential rather than sending a sentinel string as one.
+func resolveSentinelsForContext(ctxName string, ctx *Context, store credentials.Store) (keychainBacked, keychainBacked) {
 	backed, preserve := keychainBacked{}, keychainBacked{}
-	for ctxName, ctx := range cfg.Contexts {
-		if ctx == nil {
+	for _, field := range credentials.AllFields {
+		ref, ok := fieldRef(ctx, field)
+		if !ok {
 			continue
 		}
-		for _, field := range credentials.AllFields {
-			ref, ok := fieldRef(ctx, field)
-			if !ok {
-				continue
-			}
-			cur := ref.get()
-			if !credentials.IsSentinel(cur) {
-				continue
-			}
-			parsedCtx, parsedField, ok := credentials.ParseSentinel(cur)
-			if !ok || parsedCtx != ctxName || parsedField != field {
-				log.Warn("ignoring malformed keychain sentinel",
-					"context", ctxName,
-					"field", string(field),
-					"value", cur)
-				ref.set("")
-				continue
-			}
-			value, err := store.Get(credentials.AccountKey(ctxName, field))
-			if err != nil {
-				ref.set("")
-				if errors.Is(err, credentials.ErrNotFound) {
-					// The entry is genuinely gone; drop the dangling reference.
-					log.Warn("keychain entry not found; dropping dangling reference",
-						"context", ctxName,
-						"field", string(field))
-					continue
-				}
-				// Keychain unavailable or another transient error: keep the
-				// on-disk sentinel intact by preserving it for Write.
-				log.Warn("could not resolve keychain entry; leaving reference in place",
-					"context", ctxName,
-					"field", string(field),
-					"error", err.Error())
-				preserve.mark(ctxName, field)
-				continue
-			}
-			ref.set(value)
-			backed.mark(ctxName, field)
+		cur := ref.get()
+		if !credentials.IsSentinel(cur) {
+			continue
 		}
+		parsedCtx, parsedField, ok := credentials.ParseSentinel(cur)
+		if !ok || parsedCtx != ctxName || parsedField != field {
+			ref.set("")
+			continue
+		}
+		value, err := store.Get(credentials.AccountKey(ctxName, field))
+		if err != nil {
+			ref.set("")
+			if errors.Is(err, credentials.ErrNotFound) {
+				continue
+			}
+			preserve.mark(ctxName, field)
+			continue
+		}
+		ref.set(value)
+		backed.mark(ctxName, field)
 	}
 	return backed, preserve
 }

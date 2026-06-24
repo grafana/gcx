@@ -58,9 +58,10 @@ gcx appo11y services get <service> [--namespace ns] [flags]
 ```
   -d, --datasource string     Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
   -h, --help                  help for get
+      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --kind string           Span kinds to include: inbound (server+consumer), server, consumer, all, or a comma list of SPAN_KIND_* literals (default "inbound")
-      --metrics-mode string   Span-metrics family: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket) (default "auto")
+      --kind string           Span kinds to include. One of: inbound (server+consumer), server, consumer, all, or a comma-separated list of SPAN_KIND_* literals (default "inbound")
+      --metrics-mode string   Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket) (default "auto")
   -n, --namespace string      Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)
   -o, --output string         Output format. One of: agents, json, table, wide, yaml (default "table")
       --since string          Rate/quantile window applied to span metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax (default "5m")

@@ -3,6 +3,7 @@ package gcxerrors_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -76,7 +77,7 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 				"error": map[string]any{
 					"summary":     "invalid configuration",
 					"exitCode":    float64(2),
-					"suggestions": []any{"check your kubeconfig", "verify the server URL"},
+					"suggestions": []any{"check your kubeconfig", "verify the server URL", gcxerrors.DocsFetchSuggestion("https://example.com/docs")},
 					"docsLink":    "https://example.com/docs",
 				},
 			},
@@ -96,8 +97,39 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 					"summary":     "push failed",
 					"exitCode":    float64(4),
 					"details":     "could not reach the server",
-					"suggestions": []any{"check network", "verify credentials"},
+					"suggestions": []any{"check network", "verify credentials", gcxerrors.DocsFetchSuggestion("https://example.com/docs/push")},
 					"docsLink":    "https://example.com/docs/push",
+				},
+			},
+		},
+		{
+			name: "parent folded into details when details is empty",
+			err: gcxerrors.DetailedError{
+				Summary: "Search failed",
+				Parent:  errors.New("response body exceeds 50 MB limit; try narrowing your query or adding filters"),
+			},
+			exitCode: 1,
+			wantJSON: map[string]any{
+				"error": map[string]any{
+					"summary":  "Search failed",
+					"exitCode": float64(1),
+					"details":  "response body exceeds 50 MB limit; try narrowing your query or adding filters",
+				},
+			},
+		},
+		{
+			name: "parent NOT folded when details is already set",
+			err: gcxerrors.DetailedError{
+				Summary: "Search failed",
+				Details: "explicit details here",
+				Parent:  errors.New("this should not appear in details"),
+			},
+			exitCode: 1,
+			wantJSON: map[string]any{
+				"error": map[string]any{
+					"summary":  "Search failed",
+					"exitCode": float64(1),
+					"details":  "explicit details here",
 				},
 			},
 		},
@@ -119,6 +151,77 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 			assertJSONEqual(t, tt.wantJSON, got)
 		})
 	}
+}
+
+// TestDetailedError_WriteJSON_DocsFetchSuggestion verifies that when DocsLink
+// is set, an imperative docs-fetch suggestion (containing the URL inline) is
+// appended to suggestions — so agents are actually prompted to follow the link
+// rather than treating the bare docsLink field as an inert artifact.
+func TestDetailedError_WriteJSON_DocsFetchSuggestion(t *testing.T) {
+	t.Run("appended when DocsLink set and no prior suggestions", func(t *testing.T) {
+		err := gcxerrors.DetailedError{
+			Summary:  "Invalid PromQL query",
+			DocsLink: "https://grafana.com/docs/grafana/latest/datasources/prometheus/query-editor.md",
+		}
+
+		var buf bytes.Buffer
+		if writeErr := err.WriteJSON(&buf, 1); writeErr != nil {
+			t.Fatalf("WriteJSON() returned unexpected error: %v", writeErr)
+		}
+
+		var got map[string]any
+		if jsonErr := json.Unmarshal(buf.Bytes(), &got); jsonErr != nil {
+			t.Fatalf("invalid JSON: %v", jsonErr)
+		}
+		errObj, ok := got["error"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected 'error' object, got %T", got["error"])
+		}
+		suggestions, ok := errObj["suggestions"].([]any)
+		if !ok || len(suggestions) != 1 {
+			t.Fatalf("expected exactly one suggestion, got %v", errObj["suggestions"])
+		}
+		want := gcxerrors.DocsFetchSuggestion(err.DocsLink)
+		first, ok := suggestions[0].(string)
+		if !ok {
+			t.Fatalf("suggestion is not a string: %T", suggestions[0])
+		}
+		if first != want {
+			t.Errorf("suggestion = %q, want %q", first, want)
+		}
+		// The URL must be self-contained in the suggestion (duplicated from docsLink).
+		if !strings.Contains(first, err.DocsLink) {
+			t.Errorf("suggestion must contain the URL inline: %q", first)
+		}
+	})
+
+	t.Run("not appended when DocsLink empty", func(t *testing.T) {
+		err := gcxerrors.DetailedError{
+			Summary:     "something went wrong",
+			Suggestions: []string{"try again"},
+		}
+
+		var buf bytes.Buffer
+		if writeErr := err.WriteJSON(&buf, 1); writeErr != nil {
+			t.Fatalf("WriteJSON() returned unexpected error: %v", writeErr)
+		}
+
+		var got map[string]any
+		if jsonErr := json.Unmarshal(buf.Bytes(), &got); jsonErr != nil {
+			t.Fatalf("invalid JSON: %v", jsonErr)
+		}
+		errObj, ok := got["error"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected 'error' object, got %T", got["error"])
+		}
+		suggestions, ok := errObj["suggestions"].([]any)
+		if !ok {
+			t.Fatalf("expected suggestions array, got %T", errObj["suggestions"])
+		}
+		if len(suggestions) != 1 || suggestions[0] != "try again" {
+			t.Errorf("expected only the original suggestion, got %v", suggestions)
+		}
+	})
 }
 
 func TestDetailedError_WriteJSON_NoExtraFields(t *testing.T) {

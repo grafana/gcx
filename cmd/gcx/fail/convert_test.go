@@ -9,9 +9,11 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/fleet"
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/grafana"
@@ -134,6 +136,7 @@ func TestErrorToDetailedError_VersionIncompatible(t *testing.T) {
 	require.NotNil(t, got)
 	require.NotNil(t, got.ExitCode, "ExitCode should be set for version incompatibility")
 	assert.Equal(t, gcxerrors.ExitVersionIncompatible, *got.ExitCode)
+	assert.Equal(t, docs.GrafanaInstallation, got.DocsLink)
 }
 
 func TestErrorToDetailedError_QueryParseError(t *testing.T) {
@@ -153,6 +156,7 @@ func TestErrorToDetailedError_QueryParseError(t *testing.T) {
 	require.Len(t, got.Suggestions, 2)
 	assert.Equal(t, `Try a quoted selector value, e.g. gcx logs query '{namespace="prod"}'`, got.Suggestions[0])
 	assert.Equal(t, "Run 'gcx logs query --help' for usage and examples", got.Suggestions[1])
+	assert.Equal(t, docs.LogQL, got.DocsLink, "parse errors should point at the query-language docs")
 	assert.Nil(t, got.ExitCode)
 }
 
@@ -167,6 +171,35 @@ func TestErrorToDetailedError_QueryAuthFailure(t *testing.T) {
 		"Review your Grafana credentials: gcx config view",
 		"Re-authenticate if needed: gcx login",
 	}, got.Suggestions)
+	assert.Equal(t, docs.ServiceAccounts, got.DocsLink, "auth failures should point at the service-account docs")
+}
+
+func TestErrorToDetailedError_SessionExpiredDocsLink(t *testing.T) {
+	got := fail.ErrorToDetailedError(fmt.Errorf("token refresh failed: %w", auth.ErrRefreshTokenExpired))
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Session expired", got.Summary)
+	assert.Equal(t, docs.ServiceAccounts, got.DocsLink)
+}
+
+// TestErrorToDetailedError_DocsLinksAreMarkdown asserts that every DocsLink
+// populated by the converters is a Markdown (.md) URL, so agents never receive
+// an HTML doc link from an error.
+func TestErrorToDetailedError_DocsLinksAreMarkdown(t *testing.T) {
+	cases := []error{
+		fmt.Errorf("token refresh failed: %w", auth.ErrRefreshTokenExpired),
+		&grafana.VersionIncompatibleError{Version: semver.MustParse("11.5.0")},
+		queryerror.New("prometheus", "query", 401, "unauthorized", ""),
+		queryerror.New("tempo", "search query", 400, "parse error: unexpected token", "downstream"),
+	}
+	for _, err := range cases {
+		got := fail.ErrorToDetailedError(err)
+		require.NotNil(t, got)
+		if got.DocsLink != "" {
+			assert.True(t, strings.HasSuffix(got.DocsLink, ".md"),
+				"DocsLink %q must end in .md", got.DocsLink)
+		}
+	}
 }
 
 func TestErrorToDetailedError_DatasourceNotFound(t *testing.T) {

@@ -92,6 +92,18 @@ func TestSharedOptsValidate(t *testing.T) {
 			},
 		},
 		{
+			name: "since accepts calendar durations like 7d",
+			setup: func(opts *dsquery.SharedOpts) {
+				opts.Since = "7d"
+			},
+			assert: func(t *testing.T, opts *dsquery.SharedOpts) {
+				t.Helper()
+				require.NotEmpty(t, opts.From)
+				require.NotEmpty(t, opts.To)
+				assertRange(t, opts.From, opts.To, 7*24*time.Hour)
+			},
+		},
+		{
 			name: "time flag is valid (instant at specific time)",
 			setup: func(opts *dsquery.SharedOpts) {
 				opts.Time = "2026-01-01T12:00:00Z"

@@ -1,4 +1,4 @@
-## gcx stacks create
+## gcx cloud stacks create
 
 Create a new Grafana Cloud stack.
 
@@ -6,12 +6,12 @@ Create a new Grafana Cloud stack.
 
 Create a new Grafana Cloud stack.
 
-This command creates a new Grafana Cloud stack, which provisions infrastructure
-and may incur costs. Always confirm the stack name, slug, and region with the
-user before executing. Prefer --dry-run first.
+This provisions new infrastructure and may incur costs. The stack name, slug,
+and region cannot be changed after creation - double-check before running.
+Use --dry-run to preview the request first.
 
 ```
-gcx stacks create [flags]
+gcx cloud stacks create [flags]
 ```
 
 ### Options
@@ -21,11 +21,12 @@ gcx stacks create [flags]
       --description string   Short description
       --dry-run              Preview the request without executing it
   -h, --help                 help for create
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --labels strings       Labels in key=value format (may be repeated)
       --name string          Stack name (required)
   -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
-      --region string        Region slug (e.g. us, eu). Use 'gcx stacks regions' to list.
+      --region string        Region slug (e.g. us, eu). Use 'gcx cloud stacks regions' to list.
       --slug string          Stack slug / subdomain (required)
       --url string           Custom domain URL
 ```
@@ -44,5 +45,5 @@ gcx stacks create [flags]
 
 ### SEE ALSO
 
-* [gcx stacks](gcx_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
+* [gcx cloud stacks](gcx_cloud_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
 

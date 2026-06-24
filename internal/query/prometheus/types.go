@@ -96,12 +96,20 @@ type DataFrameData struct {
 	Values [][]any `json:"values,omitempty"`
 }
 
-// convertGrafanaResponse converts a Grafana query response to the Prometheus-style format.
-func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
+// convertGrafanaResponse converts a Grafana query response to the Prometheus-style
+// format. The result type reflects the request intent, not the shape of the data
+// that came back: a range query is always a matrix (matching the Prometheus
+// query_range contract, even when empty), an instant query a vector. Deriving it
+// from the data would make an empty range indistinguishable from an empty instant.
+func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse, isRange bool) *QueryResponse {
+	resultType := "vector"
+	if isRange {
+		resultType = "matrix"
+	}
 	result := &QueryResponse{
 		Status: "success",
 		Data: ResultData{
-			ResultType: "vector",
+			ResultType: resultType,
 			Result:     []Sample{},
 		},
 	}
@@ -146,9 +154,10 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 			Metric: labels,
 		}
 
-		// Check if this is a range query (multiple values) or instant query (single value)
-		if len(timeValues) > 1 {
-			result.Data.ResultType = "matrix"
+		// Shape the sample by request intent, not point count: a range sample
+		// always uses Values (even a single point), so a one-point range is not
+		// mistyped as an instant value.
+		if isRange {
 			sample.Values = make([][]any, len(timeValues))
 			for i := range timeValues {
 				// Convert milliseconds to seconds for Prometheus compatibility

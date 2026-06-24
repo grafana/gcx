@@ -15,6 +15,7 @@ gcx assistant investigations chat <id> [flags]
 ```
   -h, --help             help for chat
       --include-hidden   Include hidden system messages
+      --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")
       --role string      Filter messages by role (user|assistant|tool)

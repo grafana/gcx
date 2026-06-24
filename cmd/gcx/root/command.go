@@ -14,6 +14,7 @@ import (
 	agentcmd "github.com/grafana/gcx/cmd/gcx/agent"
 	"github.com/grafana/gcx/cmd/gcx/api"
 	assistantcmd "github.com/grafana/gcx/cmd/gcx/assistant"
+	cloudcmd "github.com/grafana/gcx/cmd/gcx/cloud"
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
@@ -247,6 +248,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(agentcmd.Command())
 	rootCmd.AddCommand(api.Command())
 	rootCmd.AddCommand(assistantcmd.Command())
+	rootCmd.AddCommand(cloudcmd.Command())
 	rootCmd.AddCommand(logincmd.Command())
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(dev.Command())

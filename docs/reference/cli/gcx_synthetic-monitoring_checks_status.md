@@ -42,6 +42,7 @@ gcx synthetic-monitoring checks status [ID] [flags]
       --datasource-uid string   UID of the Prometheus datasource to query
   -h, --help                    help for status
       --job string              Filter by job name glob pattern (e.g. --job 'shopk8s-*')
+      --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --label stringArray       Filter by label key=value (repeatable, e.g. --label env=prod)
   -o, --output string           Output format. One of: agents, graph, json, table, wide, yaml (default "table")

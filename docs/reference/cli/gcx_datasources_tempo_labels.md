@@ -46,6 +46,7 @@ gcx datasources tempo labels [flags]
 ```
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
   -h, --help                help for labels
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -l, --label string        Get values for this label (omit to list all labels)
       --llm                 Request LLM-friendly label values format (requires --label)

@@ -58,6 +58,7 @@ gcx datasources pyroscope query [EXPR] [flags]
       --expr string                   Query expression (alternative to positional argument)
       --from string                   Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                          help for query
+      --jq string                     jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-nodes int                 Maximum nodes in flame graph (default 0/unlimited for pprof output, 50000 for all other formats)
   -o, --output string                 Output format. One of: agents, graph, json, pprof, table, wide, yaml (default "table")
@@ -65,7 +66,7 @@ gcx datasources pyroscope query [EXPR] [flags]
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
       --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)
-      --since string                  Duration before --to (or now if omitted); mutually exclusive with --from
+      --since string                  Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)
       --step string                   Query step (e.g., '15s', '1m')
       --to string                     End time (RFC3339, Unix timestamp, or relative like 'now')

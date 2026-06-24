@@ -170,14 +170,15 @@ func collectSubCmds(cmd *cobra.Command) map[string]bool {
 }
 
 // loadDiagnosticsConfig reads diagnostics settings from the layered gcx config.
-// Any error (missing file, parse failure) returns a disabled config so the
-// caller is never affected by a config read failure.
+// It runs on every invocation, so it uses LoadDiagnostics, which reads only the
+// diagnostics block — no context parsing, no keychain probe, no config auto-
+// creation. A missing or malformed config simply yields a disabled config.
 func loadDiagnosticsConfig() agentlog.Config {
-	cfg, err := internalconfig.LoadLayered(context.Background(), "")
-	if err != nil || cfg.Diagnostics == nil || !cfg.Diagnostics.AgentInvocationLog {
+	d := internalconfig.LoadDiagnostics(context.Background())
+	if d == nil || !d.AgentInvocationLog {
 		return agentlog.Config{}
 	}
-	return agentlog.Config{Enabled: true, LogDir: cfg.Diagnostics.LogDir}
+	return agentlog.Config{Enabled: true, LogDir: d.LogDir}
 }
 
 func truncate(s string, n int) string {

@@ -1,17 +1,25 @@
-## gcx stacks regions
+## gcx cloud stacks delete
 
-List available regions for stack creation.
+Delete a Grafana Cloud stack.
+
+### Synopsis
+
+Delete a Grafana Cloud stack.
+
+This permanently deletes a stack and all its data (dashboards, alerts,
+datasources, metrics, logs, traces). This cannot be undone.
+Use --dry-run to preview the operation first.
 
 ```
-gcx stacks regions [flags]
+gcx cloud stacks delete <stack-slug> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for regions
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+      --dry-run   Preview the operation without executing it
+      --force     Skip confirmation prompt
+  -h, --help      help for delete
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +36,5 @@ gcx stacks regions [flags]
 
 ### SEE ALSO
 
-* [gcx stacks](gcx_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
+* [gcx cloud stacks](gcx_cloud_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
 

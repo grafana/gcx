@@ -81,6 +81,7 @@ gcx/
 │   │       ├── probes/       # Probe listing
 │   │       └── smcfg/        # SM config loader interfaces
 │   ├── deeplink/             # Deep link URL template registry and browser opener
+│   ├── docs/                 # Canonical Grafana documentation URL registry (markdown links surfaced via DetailedError.DocsLink and agent llm_hints)
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
 │   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)

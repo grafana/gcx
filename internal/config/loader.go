@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,11 +33,23 @@ import (
 //nolint:gochecknoglobals // test injection seam for the keychain backend.
 var keychainStoreFn = defaultKeychainStore
 
+// openStoreOnce memoizes the OS-keychain probe (credentials.Open) for the
+// lifetime of the process. Open probes the backend with a syscall (a
+// /usr/bin/security subprocess on macOS); without memoization every Load — and
+// every layer of a layered load — repaid that probe.
+//
+//nolint:gochecknoglobals // process-wide memoization of the keychain probe.
+var (
+	openStoreOnce sync.Once
+	openedStore   credentials.Store
+)
+
 func defaultKeychainStore() credentials.Store {
 	if testing.Testing() {
 		return testingNoopStore{}
 	}
-	return credentials.Open()
+	openStoreOnce.Do(func() { openedStore = credentials.Open() })
+	return openedStore
 }
 
 type testingNoopStore struct{}
@@ -359,8 +372,19 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 	}
 
 	log := logging.FromContext(ctx)
-	store := keychainStoreFn()
-	config.keychainFields, config.keychainPreserve = resolveSentinels(&config, store, log)
+	// Defer opening the keychain until a sentinel actually needs resolving or a
+	// plaintext secret needs migrating; configs with no keychain-backed secrets
+	// then never probe the OS keychain.
+	store := newLazyStore(keychainStoreFn)
+	config.keychainStore = store
+
+	// Only resolve sentinels for the current context eagerly. Other contexts
+	// are resolved on demand via Config.ResolveContext to avoid redundant
+	// keychain lookups.
+	if cur := config.Contexts[config.CurrentContext]; cur != nil {
+		config.keychainFields, config.keychainPreserve = resolveSentinelsForContext(config.CurrentContext, cur, store)
+	}
+
 	if migrated := migratePlaintextSecrets(&config, store, log); migrated > 0 {
 		log.Info("migrated plaintext credentials into OS keychain",
 			"count", migrated,
@@ -372,10 +396,17 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 		}
 	}
 
+	initialContext := config.CurrentContext
 	for _, override := range overrides {
 		if err := override(&config); err != nil {
 			return config, annotateErrorWithSource(filename, contents, err)
 		}
+	}
+
+	// If an override (e.g. --context flag) switched the current context,
+	// resolve that context's keychain sentinels too.
+	if config.CurrentContext != initialContext {
+		config.ResolveContext(config.CurrentContext)
 	}
 
 	return config, nil
@@ -465,6 +496,12 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 		}
 	}
 
+	// Each layer's Load only resolved its own current-context, so the effective
+	// context after merge and overrides (e.g. a --context selecting a context
+	// that was current in no layer) may still hold raw keychain sentinels.
+	// Idempotent for already-resolved fields.
+	merged.ResolveContext(merged.CurrentContext)
+
 	return merged, nil
 }
 
@@ -483,16 +520,31 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 	}
 
 	if fileType != "" {
-		layered, err := LoadLayered(ctx, "")
+		// Selecting a layer by --file only needs the discovered source paths, not
+		// a full layered load+merge (which would parse every layer and resolve its
+		// keychain sentinels just to discard all but one). Honor the explicit-file
+		// env bypass exactly as LoadLayered does: when set, layering is bypassed
+		// and there is no named layer to select.
+		if os.Getenv(ConfigFileEnvVar) != "" {
+			return Config{}, nil, fmt.Errorf("no %s config file found", fileType)
+		}
+		sources, err := DiscoverSources()
 		if err != nil {
 			return Config{}, nil, err
 		}
-		for _, s := range layered.Sources {
+		for _, s := range sources {
 			if s.Type == fileType {
 				src := ExplicitConfigFile(s.Path)
 				cfg, err := Load(ctx, src)
 				return cfg, src, err
 			}
+		}
+		// Fresh system (no config files yet): preserve LoadLayered's auto-create.
+		// LoadLayered only ever created the user layer, so --file user creates and
+		// returns it; other layer types have nothing to auto-create and still error.
+		if fileType == "user" && len(sources) == 0 {
+			cfg, err := Load(ctx, StandardLocation())
+			return cfg, StandardLocation(), err
 		}
 		return Config{}, nil, fmt.Errorf("no %s config file found", fileType)
 	}
@@ -503,13 +555,13 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 	}
 	switch len(layered.Sources) {
 	case 0:
-		src := StandardLocation()
-		cfg, err := Load(ctx, src)
-		return cfg, src, err
+		// Defensive: LoadLayered auto-created a config file and re-ran discovery,
+		// so it normally returns exactly one source (case 1). This only hits if
+		// that re-discovery failed to find the just-created file; reuse it anyway.
+		return layered, StandardLocation(), nil
 	case 1:
-		src := ExplicitConfigFile(layered.Sources[0].Path)
-		cfg, err := Load(ctx, src)
-		return cfg, src, err
+		// Single source - LoadLayered already loaded exactly this file.
+		return layered, ExplicitConfigFile(layered.Sources[0].Path), nil
 	default:
 		return Config{}, nil, errors.New("multiple config files loaded; specify which to update with --file (system, user, local)")
 	}
@@ -528,6 +580,64 @@ func loadExplicit(ctx context.Context, path string, overrides ...Override) (Conf
 	}
 	cfg.Sources = []ConfigSource{{Path: path, Type: "explicit", ModTime: modTime}}
 	return cfg, nil
+}
+
+// LoadDiagnostics reads only the diagnostics settings from the layered config,
+// skipping context parsing and keychain resolution entirely. It runs on every
+// command invocation to configure agent logging, so unlike LoadLayered it never
+// builds the full Config, never probes the OS keychain, and never auto-creates a
+// config file. Returns nil when diagnostics are not configured in any layer.
+func LoadDiagnostics(ctx context.Context) *DiagnosticsConfig {
+	var result *DiagnosticsConfig
+	for _, path := range diagnosticsSourcePaths(ctx) {
+		d, err := readDiagnostics(path)
+		if err != nil || d == nil {
+			continue
+		}
+		if result == nil {
+			result = d
+			continue
+		}
+		merged := mergeDiagnosticsConfig(result, d)
+		result = &merged
+	}
+	return result
+}
+
+// diagnosticsSourcePaths returns config file paths in low→high precedence order,
+// honoring the GCX_CONFIG explicit-file bypass exactly as LoadLayered does.
+func diagnosticsSourcePaths(ctx context.Context) []string {
+	if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
+		return []string{envPath}
+	}
+	sources, err := DiscoverSources()
+	if err != nil {
+		logging.FromContext(ctx).Debug("diagnostics: source discovery failed", "error", err.Error())
+		return nil
+	}
+	paths := make([]string, 0, len(sources))
+	for _, s := range sources {
+		paths = append(paths, s.Path)
+	}
+	return paths
+}
+
+// readDiagnostics decodes a config file and returns only its diagnostics block.
+// It parses into the full Config (the codec rejects unknown fields, so a partial
+// struct will not do) but deliberately skips keychain resolution, plaintext
+// migration, and the config auto-creation that Load performs. Missing or
+// malformed files yield (nil, err).
+func readDiagnostics(path string) (*DiagnosticsConfig, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cfg Config
+	codec := &format.YAMLCodec{BytesAsBase64: true}
+	if err := codec.Decode(bytes.NewBuffer(contents), &cfg); err != nil {
+		return nil, err
+	}
+	return cfg.Diagnostics, nil
 }
 
 func annotateErrorWithSource(filename string, contents []byte, err error) error {

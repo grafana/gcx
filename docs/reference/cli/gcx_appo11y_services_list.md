@@ -49,6 +49,7 @@ gcx appo11y services list [flags]
       --filter stringArray            Restrict to services matching a label matcher, e.g. --filter k8s_namespace_name=prod (repeatable; applies to target_info only)
   -h, --help                          help for list
       --instrumentation string        Which services to list: all, instrumented (target_info only), or uninstrumented (service-graph minus target_info) (default "all")
+      --jq string                     jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --language string               Restrict to a single telemetry_sdk_language (e.g. go, java, nodejs)
       --limit int                     Limit the number of services returned (0 = unlimited; applied after sorting) (default 50)
