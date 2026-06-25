@@ -167,3 +167,11 @@ func NewRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 func BuildRelationshipWriteRequest(domain, relType, from string, fromScope map[string]string, to string, toScope, property map[string]string, ttl string) (RelationshipWriteRequest, error) {
 	return buildRelationshipWriteRequest(domain, relType, from, fromScope, to, toScope, property, ttl)
 }
+
+// DiscoverEntityScope wraps the unexported discoverEntityScope for testing.
+// It builds a throwaway cobra command to satisfy the context/stderr deps.
+func DiscoverEntityScope(client *Client, entityType, name, domain string, startMs, endMs int64) (map[string]string, error) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	return discoverEntityScope(cmd, client, entityType, name, domain, startMs, endMs)
+}

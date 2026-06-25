@@ -557,6 +557,48 @@ func TestClient_LookupEntity_SendsDomain(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// When a domain filter is set and the domain-honoring LookupEntity finds no
+// match, discoverEntityScope must NOT fall back to the domain-blind search
+// (which could surface an entity from another domain) — it returns "not found"
+// instead. Asserted by failing the test if the search endpoint is ever called.
+func TestDiscoverEntityScope_DomainSet_NoSearchFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/v1/search") {
+			t.Errorf("search fallback must not run when --domain is set; got request to %s", r.URL.Path)
+		}
+		// entity lookup: no match in the requested domain.
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	scope, err := kg.DiscoverEntityScope(client, "Service", "checkout", "myapp", 0, 0)
+	require.NoError(t, err)
+	assert.Nil(t, scope)
+}
+
+// Without a domain filter, discoverEntityScope still falls back to a name-exact
+// search and returns the single match's scope.
+func TestDiscoverEntityScope_NoDomain_SearchFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/v1/search") {
+			writeJSON(w, map[string]any{"data": map[string]any{
+				"entities": []kg.SearchResult{{Type: "Service", Name: "checkout", Scope: map[string]string{"env": "prod"}}},
+				"lastPage": true,
+			}})
+			return
+		}
+		// entity lookup: no direct match, force the search fallback.
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	scope, err := kg.DiscoverEntityScope(client, "Service", "checkout", "", 0, 0)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"env": "prod"}, scope)
+}
+
 func TestClient_ListModelRuleNames(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)

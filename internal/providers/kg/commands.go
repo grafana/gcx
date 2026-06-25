@@ -1571,6 +1571,15 @@ func discoverEntityScope(cmd *cobra.Command, client *Client, entityType, name, d
 	if lookup != nil {
 		return lookup.Scope, nil
 	}
+	// Only LookupEntity honors the domain filter. The searchByTypes fallback
+	// below has no domain filter (the Search API's ScopeCriteria is label
+	// values only, and SearchResult carries no domain), so widening to it
+	// when --domain is set could surface an entity from another domain —
+	// contradicting the flag. Stop here and let the caller produce the
+	// not-found response, keeping discovery scoped to the requested domain.
+	if domain != "" {
+		return nil, nil //nolint:nilnil // deliberate: no match within the requested domain is not an error
+	}
 	results, err := searchByTypes(cmd.Context(), cmd, client, []string{entityType}, false, false, nil, startMs, endMs, 0, []PropertyMatcher{{Name: "name", Op: "=", Value: name}})
 	if err != nil {
 		return nil, err
