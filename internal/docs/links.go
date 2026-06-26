@@ -106,6 +106,36 @@ const (
 	CloudAPI = "https://grafana.com/docs/grafana-cloud/developer-resources/api-reference/cloud-api.md"
 )
 
+// NamedLink pairs a registry constant's name with its documentation URL.
+// The name is the stable identifier surfaced to agents (e.g. via
+// `gcx docs links`) so they can reference a canonical doc without guessing.
+type NamedLink struct {
+	Name string
+	URL  string
+}
+
+// AllNamed returns every documentation link in the registry paired with its
+// name, in a stable order. This is the single source of truth for the link
+// set; All derives from it.
+func AllNamed() []NamedLink {
+	return []NamedLink{
+		{Name: "ServiceAccounts", URL: ServiceAccounts},
+		{Name: "AccessPolicies", URL: AccessPolicies},
+		{Name: "GrafanaInstallation", URL: GrafanaInstallation},
+		{Name: "PromQL", URL: PromQL},
+		{Name: "LogQL", URL: LogQL},
+		{Name: "TraceQL", URL: TraceQL},
+		{Name: "PyroscopeQueries", URL: PyroscopeQueries},
+		{Name: "DashboardJSONModel", URL: DashboardJSONModel},
+		{Name: "SyntheticMonitoring", URL: SyntheticMonitoring},
+		{Name: "FleetManagement", URL: FleetManagement},
+		{Name: "KubernetesMonitoring", URL: KubernetesMonitoring},
+		{Name: "AdaptiveMetrics", URL: AdaptiveMetrics},
+		{Name: "AdaptiveLogs", URL: AdaptiveLogs},
+		{Name: "AdaptiveTraces", URL: AdaptiveTraces},
+	}
+}
+
 // All returns every documentation URL in the registry. Used by the
 // link-validity test to assert the entire set is well-formed Markdown.
 func All() []string {

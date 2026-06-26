@@ -26,9 +26,10 @@ func stripBoxChars(s string) string {
 // JSON output when a DocsLink is set. A bare "docsLink" field does not
 // reliably prompt an agent to act on it; suggestions is the field agents
 // treat as actionable, so the URL is intentionally duplicated here as a
-// self-contained, fetchable instruction.
+// self-contained, fetchable instruction. It points at `gcx docs get`, which
+// fetches the page as bounded, cleaned markdown in-CLI (no browser needed).
 func DocsFetchSuggestion(url string) string {
-	return "If the cause isn't clear from the details, fetch the documentation at " + url + " for guidance before retrying."
+	return "If the cause isn't clear from the details, read the documentation with 'gcx docs get " + url + "' for guidance before retrying."
 }
 
 // agentSuggestions returns the suggestions for agent JSON output: the
