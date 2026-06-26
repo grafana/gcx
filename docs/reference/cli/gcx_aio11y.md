@@ -31,6 +31,7 @@ Manage Grafana AI Observability resources
 * [gcx aio11y generations](gcx_aio11y_generations.md)	 - Inspect individual LLM generations.
 * [gcx aio11y guards](gcx_aio11y_guards.md)	 - Manage synchronous policy guards (hook rules) that evaluate generations on the request path.
 * [gcx aio11y judge](gcx_aio11y_judge.md)	 - List LLM providers and models available for LLM-judge evaluators.
+* [gcx aio11y login](gcx_aio11y_login.md)	 - Provision sigil credentials for coding-agent plugins from the current context.
 * [gcx aio11y rules](gcx_aio11y_rules.md)	 - Manage rules that route generations to evaluators.
 * [gcx aio11y saved-conversations](gcx_aio11y_saved-conversations.md)	 - Bookmark live conversations as fixed inputs for evaluation runs.
 * [gcx aio11y scores](gcx_aio11y_scores.md)	 - View evaluation scores for generations.

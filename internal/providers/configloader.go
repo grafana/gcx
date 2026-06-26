@@ -313,6 +313,41 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 	}, nil
 }
 
+// LoadCloudConnections loads Grafana Cloud configuration like LoadCloudConfig
+// and additionally fetches the stack's connectivity information (OTLP gateway,
+// etc.) from the GCOM connections endpoint. It also returns the authenticated
+// GCOM client so callers can perform follow-up operations (e.g. minting an
+// access-policy token in `aio11y login`). It is used by commands that need the
+// OTLP endpoint to derive downstream configuration.
+func (l *ConfigLoader) LoadCloudConnections(ctx context.Context) (CloudRESTConfig, cloud.Connections, *cloud.GCOMClient, error) {
+	base, err := l.loadCloudBase(ctx)
+	if err != nil {
+		return CloudRESTConfig{}, cloud.Connections{}, nil, err
+	}
+
+	slug := base.curCtx.ResolveStackSlug()
+	if slug == "" {
+		return CloudRESTConfig{}, cloud.Connections{}, nil, errors.New("cloud stack is not configured: set cloud.stack in config or GRAFANA_CLOUD_STACK env var")
+	}
+
+	stack, err := base.client.GetStack(ctx, slug)
+	if err != nil {
+		return CloudRESTConfig{}, cloud.Connections{}, nil, fmt.Errorf("failed to get stack info for %q: %w", slug, err)
+	}
+
+	conns, err := base.client.GetConnections(ctx, slug)
+	if err != nil {
+		return CloudRESTConfig{}, cloud.Connections{}, nil, fmt.Errorf("failed to get stack connections for %q: %w", slug, err)
+	}
+
+	return CloudRESTConfig{
+		Token:           base.token,
+		Stack:           stack,
+		Namespace:       "default",
+		ProviderConfigs: base.curCtx.Providers,
+	}, conns, base.client, nil
+}
+
 // configSource returns the config.Source to use for write-back operations.
 // Mirrors the resolution logic in config.LoadLayered.
 func (l *ConfigLoader) configSource() config.Source {

@@ -72,6 +72,34 @@ type StackInfo struct {
 	// Alertmanager
 	AMInstanceID  int    `json:"amInstanceId"`
 	AMInstanceURL string `json:"amInstanceUrl"`
+
+	// AI Observability (Sigil) — regional API endpoint for the stack
+	// (e.g. https://sigil-prod-eu-west-2.grafana.net). Used as SIGIL_ENDPOINT.
+	RegionSigilURL string `json:"regionSigilUrl,omitempty"`
+}
+
+// Connections holds an instance's connectivity information as returned by the
+// GCOM GET /api/instances/{id}/connections endpoint. Only the fields gcx
+// consumes are modelled; the upstream payload carries more.
+type Connections struct {
+	// OtlpHTTPURL is the OTLP HTTP gateway endpoint for the stack
+	// (e.g. https://otlp-gateway-prod-eu-west-2.grafana.net/otlp).
+	OtlpHTTPURL string `json:"otlpHttpUrl"`
+
+	// InfluxURL is the InfluxDB write endpoint, when provisioned.
+	InfluxURL string `json:"influxUrl"`
+
+	// OncallAPIURL is the Grafana OnCall API endpoint, when provisioned.
+	OncallAPIURL string `json:"oncallApiUrl"`
+
+	// AppPlatform carries the app platform (Grafana API server) connection
+	// details, when provisioned.
+	AppPlatform *AppPlatform `json:"appPlatform,omitempty"`
+}
+
+// AppPlatform holds the app platform connection details nested in Connections.
+type AppPlatform struct {
+	URL string `json:"url"`
 }
 
 // Region describes a Grafana Cloud stack region as returned by the GCOM API.
@@ -199,6 +227,47 @@ func (c *GCOMClient) GetStack(ctx context.Context, slug string) (StackInfo, erro
 	}
 
 	return info, nil
+}
+
+// GetConnections calls GET /api/instances/{slug}/connections on the GCOM API
+// and returns the instance's connectivity information (OTLP gateway, InfluxDB,
+// OnCall, app platform). It returns an error if the response status is not 200.
+func (c *GCOMClient) GetConnections(ctx context.Context, slug string) (Connections, error) {
+	endpoint, err := c.buildURL(instancesPath + url.PathEscape(slug) + "/connections")
+	if err != nil {
+		return Connections{}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return Connections{}, fmt.Errorf("gcom client: create request: %w", err)
+	}
+	c.setHeaders(req)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return Connections{}, fmt.Errorf("gcom client: do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return Connections{}, fmt.Errorf("gcom client: read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return Connections{}, &GCOMHTTPError{
+			Status: resp.StatusCode,
+			Body:   strings.TrimSpace(string(body)),
+		}
+	}
+
+	var conns Connections
+	if err := json.Unmarshal(body, &conns); err != nil {
+		return Connections{}, fmt.Errorf("gcom client: decode response: %w", err)
+	}
+
+	return conns, nil
 }
 
 // ListStacks calls GET /api/orgs/{orgSlug}/instances on the GCOM API and

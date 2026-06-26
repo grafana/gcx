@@ -34,6 +34,7 @@ func TestGCOMClient_GetStack_Success(t *testing.T) {
 		AgentManagementInstanceURL: "https://fleet-management-prod-1.grafana.net",
 		AMInstanceID:               6001,
 		AMInstanceURL:              "https://alertmanager-prod-1.grafana.net",
+		RegionSigilURL:             "https://sigil-prod-us-central.grafana.net",
 	}
 
 	var capturedAuth string
@@ -78,6 +79,64 @@ func TestGCOMClient_GetStack_Success(t *testing.T) {
 	}
 	if got.HMInstancePromURL != want.HMInstancePromURL {
 		t.Errorf("HMInstancePromURL: got %q, want %q", got.HMInstancePromURL, want.HMInstancePromURL)
+	}
+	if got.RegionSigilURL != want.RegionSigilURL {
+		t.Errorf("RegionSigilURL: got %q, want %q", got.RegionSigilURL, want.RegionSigilURL)
+	}
+}
+
+func TestGCOMClient_GetConnections_Success(t *testing.T) {
+	var capturedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"otlpHttpUrl":  "https://otlp-gateway-prod-eu-west-2.grafana.net/otlp",
+			"influxUrl":    "https://influx-prod-eu-west-2.grafana.net",
+			"oncallApiUrl": "https://oncall-prod-eu-west-2.grafana.net",
+			"appPlatform":  map[string]any{"url": "https://mystack.grafana.net/apis"},
+		})
+	}))
+	defer srv.Close()
+
+	client, err := cloud.NewGCOMClient(srv.URL, "test-token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	got, err := client.GetConnections(context.Background(), "mystack")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capturedPath != "/api/instances/mystack/connections" {
+		t.Errorf("path: got %q, want /api/instances/mystack/connections", capturedPath)
+	}
+	if got.OtlpHTTPURL != "https://otlp-gateway-prod-eu-west-2.grafana.net/otlp" {
+		t.Errorf("OtlpHTTPURL: got %q", got.OtlpHTTPURL)
+	}
+	if got.AppPlatform == nil || got.AppPlatform.URL != "https://mystack.grafana.net/apis" {
+		t.Errorf("AppPlatform: got %+v", got.AppPlatform)
+	}
+}
+
+func TestGCOMClient_GetConnections_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"forbidden"}`))
+	}))
+	defer srv.Close()
+
+	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	_, err = client.GetConnections(context.Background(), "mystack")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var httpErr *cloud.GCOMHTTPError
+	if !errors.As(err, &httpErr) || httpErr.Status != http.StatusForbidden {
+		t.Errorf("expected 403 GCOMHTTPError, got %v", err)
 	}
 }
 
