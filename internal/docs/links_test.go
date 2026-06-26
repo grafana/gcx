@@ -46,3 +46,23 @@ func TestAllContainsCloudAPI(t *testing.T) {
 		t.Errorf("docs.CloudAPI (%q) is missing from docs.All()", docs.CloudAPI)
 	}
 }
+
+// TestAllNamedIsSubsetOfAll asserts every agent-facing named link is part of
+// the full validity set, and that names are unique and non-empty.
+func TestAllNamedIsSubsetOfAll(t *testing.T) {
+	all := docs.All()
+
+	seenNames := map[string]bool{}
+	for i, l := range docs.AllNamed() {
+		if l.Name == "" {
+			t.Errorf("entry %d has empty name (url %q)", i, l.URL)
+		}
+		if !slices.Contains(all, l.URL) {
+			t.Errorf("AllNamed entry %q (%q) is missing from All()", l.Name, l.URL)
+		}
+		if seenNames[l.Name] {
+			t.Errorf("duplicate name in registry: %q", l.Name)
+		}
+		seenNames[l.Name] = true
+	}
+}
