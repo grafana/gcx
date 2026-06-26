@@ -1,40 +1,45 @@
 package probes
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 
-	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	querysynth "github.com/grafana/gcx/internal/query/synth"
 )
 
+// SM API paths, relative to the SM API v1 root. They are forwarded verbatim by
+// the datasource-proxy `sm` route and prefixed with /api/v1 on the direct path.
 const (
-	probeListPath      = "/probe/list"
-	probeAddPath       = "/probe/add"
-	probeUpdatePath    = "/probe/update"
-	probeDeletePathFmt = "/probe/delete/%d"
+	probeListPath      = "probe/list"
+	probeAddPath       = "probe/add"
+	probeUpdatePath    = "probe/update"
+	probeDeletePathFmt = "probe/delete/%d"
 )
 
-// Client is an HTTP client for the Synthetic Monitoring probes API.
+// Client is a typed client for the Synthetic Monitoring probes API. It owns
+// request shapes and response decoding; the dual-mode SM transport (datasource
+// proxy primary, direct SM API fallback) lives in internal/query/synth.
 type Client struct {
-	baseURL    string
-	token      string
-	httpClient *http.Client
+	t *querysynth.Transport
 }
 
-// NewClient creates a new SM probes client.
-// baseURL is the SM service root (e.g. "https://synthetic-monitoring-api.grafana.net").
-func NewClient(ctx context.Context, baseURL, token string) *Client {
-	return &Client{
-		baseURL:    strings.TrimRight(baseURL, "/") + "/api/v1",
-		token:      token,
-		httpClient: httputils.NewDefaultClient(ctx),
+// NewClient creates a probes client over the dual-mode SM transport.
+//
+// When datasourceUID is non-empty, requests go through the Grafana datasource
+// proxy built from restCfg (carrying the caller's Grafana credential). On a
+// proxy 403 — or when datasourceUID is empty — requests fall back to the direct
+// SM API, with credentials resolved lazily via fallback.LoadSMConfig. A nil
+// fallback disables the direct path.
+func NewClient(restCfg config.NamespacedRESTConfig, datasourceUID string, fallback querysynth.FallbackLoader) (*Client, error) {
+	t, err := querysynth.NewTransport(restCfg, datasourceUID, fallback)
+	if err != nil {
+		return nil, err
 	}
+	return &Client{t: t}, nil
 }
 
 // CreateResponse is the API response from creating a probe, containing the
@@ -51,18 +56,17 @@ type updateResponse struct {
 
 // List returns all probes visible to the authenticated tenant.
 func (c *Client) List(ctx context.Context) ([]Probe, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, probeListPath, nil)
+	status, body, err := c.t.Do(ctx, http.MethodGet, probeListPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("listing probes: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, smcfg.HandleErrorResponse(resp)
+	if status != http.StatusOK {
+		return nil, smcfg.HandleErrorBody(status, body)
 	}
 
 	var probeList []Probe
-	if err := json.NewDecoder(resp.Body).Decode(&probeList); err != nil {
+	if err := json.Unmarshal(body, &probeList); err != nil {
 		return nil, fmt.Errorf("decoding probe list: %w", err)
 	}
 
@@ -76,23 +80,22 @@ func (c *Client) List(ctx context.Context) ([]Probe, error) {
 // Create creates a new private probe. The probe is sent as flat JSON.
 // The response contains the created probe and its authentication token.
 func (c *Client) Create(ctx context.Context, probe Probe) (*CreateResponse, error) {
-	body, err := json.Marshal(probe)
+	reqBody, err := json.Marshal(probe)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling probe: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, probeAddPath, bytes.NewReader(body))
+	status, body, err := c.t.Do(ctx, http.MethodPost, probeAddPath, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("creating probe: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, smcfg.HandleErrorResponse(resp)
+	if status != http.StatusOK {
+		return nil, smcfg.HandleErrorBody(status, body)
 	}
 
 	var created CreateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+	if err := json.Unmarshal(body, &created); err != nil {
 		return nil, fmt.Errorf("decoding created probe: %w", err)
 	}
 
@@ -132,23 +135,22 @@ func (c *Client) ResetToken(ctx context.Context, probe Probe) (*Probe, error) {
 
 	m["resetToken"] = true
 
-	body, err := json.Marshal(m)
+	reqBody, err := json.Marshal(m)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling update request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, probeUpdatePath, bytes.NewReader(body))
+	status, body, err := c.t.Do(ctx, http.MethodPost, probeUpdatePath, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("resetting probe token %d: %w", probe.ID, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, smcfg.HandleErrorResponse(resp)
+	if status != http.StatusOK {
+		return nil, smcfg.HandleErrorBody(status, body)
 	}
 
 	var updated updateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
+	if err := json.Unmarshal(body, &updated); err != nil {
 		return nil, fmt.Errorf("decoding updated probe: %w", err)
 	}
 
@@ -157,34 +159,14 @@ func (c *Client) ResetToken(ctx context.Context, probe Probe) (*Probe, error) {
 
 // Delete deletes a probe by ID.
 func (c *Client) Delete(ctx context.Context, id int64) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(probeDeletePathFmt, id), nil)
+	status, body, err := c.t.Do(ctx, http.MethodDelete, fmt.Sprintf(probeDeletePathFmt, id), nil)
 	if err != nil {
 		return fmt.Errorf("deleting probe %d: %w", id, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return smcfg.HandleErrorResponse(resp)
+	if status != http.StatusOK && status != http.StatusNoContent {
+		return smcfg.HandleErrorBody(status, body)
 	}
 
 	return nil
-}
-
-func (c *Client) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("executing request: %w", err)
-	}
-
-	return resp, nil
 }

@@ -149,11 +149,14 @@ func newCreateCommand(loader smcfg.Loader) *cobra.Command {
 			ctx := cmd.Context()
 			w := cmd.OutOrStdout()
 
-			baseURL, token, _, err := loader.LoadSMConfig(ctx)
+			restCfg, uid, _, err := loader.LoadSMProxyConfig(ctx)
 			if err != nil {
 				return err
 			}
-			client := NewClient(ctx, baseURL, token)
+			client, err := NewClient(restCfg, uid, loader)
+			if err != nil {
+				return err
+			}
 
 			var labels []ProbeLabel
 			for _, l := range opts.Labels {
@@ -277,11 +280,14 @@ func newTokenResetCommand(loader smcfg.Loader) *cobra.Command {
 				return fmt.Errorf("invalid probe ID %q: %w", args[0], err)
 			}
 
-			baseURL, token, _, err := loader.LoadSMConfig(ctx)
+			restCfg, uid, _, err := loader.LoadSMProxyConfig(ctx)
 			if err != nil {
 				return err
 			}
-			client := NewClient(ctx, baseURL, token)
+			client, err := NewClient(restCfg, uid, loader)
+			if err != nil {
+				return err
+			}
 
 			probe, err := client.Get(ctx, id)
 			if err != nil {

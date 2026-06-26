@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/checks"
@@ -211,6 +212,41 @@ func (l *configLoader) LoadSMConfig(ctx context.Context) (string, string, string
 	}
 
 	return smURL, smToken, namespace, nil
+}
+
+// LoadSMProxyConfig resolves the Grafana REST config and the SM datasource UID
+// for the datasource-proxy transport (the primary path used by the typed
+// clients).
+//
+// It returns an empty UID — not an error — when the proxy is unavailable (no
+// Grafana server configured, or no SM datasource resolvable), so the typed
+// clients degrade to the direct SM API via LoadSMConfig. An error is returned
+// only when the base config itself cannot be loaded.
+func (l *configLoader) LoadSMProxyConfig(ctx context.Context) (config.NamespacedRESTConfig, string, string, error) {
+	_, namespace, err := l.LoadProviderConfig(ctx, "synth")
+	if err != nil {
+		return config.NamespacedRESTConfig{}, "", "", err
+	}
+
+	restCfg, err := l.LoadGrafanaConfig(ctx)
+	if err != nil {
+		slog.DebugContext(ctx, "SM datasource proxy unavailable, will use direct SM API", "error", err)
+		return config.NamespacedRESTConfig{}, "", namespace, nil
+	}
+
+	cfg, err := l.LoadFullConfig(ctx)
+	if err != nil {
+		slog.DebugContext(ctx, "could not load config for SM datasource resolution, will use direct SM API", "error", err)
+		return restCfg, "", namespace, nil
+	}
+
+	uid, err := dsquery.ResolveAndSaveDatasource(ctx, l, "", cfg.GetCurrentContext(), restCfg, "synthetic-monitoring")
+	if err != nil {
+		slog.DebugContext(ctx, "could not resolve SM datasource UID, will use direct SM API", "error", err)
+		return restCfg, "", namespace, nil
+	}
+
+	return restCfg, uid, namespace, nil
 }
 
 // tryDiscoverSMURL attempts to auto-discover the SM URL from Grafana plugin settings

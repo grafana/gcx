@@ -160,6 +160,8 @@ func NormalizeKind(pluginID string) string {
 		return "clickhouse"
 	case "yesoreyeram-infinity-datasource":
 		return "infinity"
+	case "synthetic-monitoring-datasource":
+		return "synthetic-monitoring"
 	default:
 		if isPromFlavor(pluginID) {
 			return "prometheus"

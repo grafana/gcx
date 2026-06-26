@@ -61,13 +61,19 @@ func (cr *checkResource) SetResourceName(name string) {
 // NewTypedCRUD creates a TypedCRUD for SM checks.
 // It loads config via the provided Loader and returns both CRUD and config.
 func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[checkResource], string, error) {
-	baseURL, token, namespace, err := loader.LoadSMConfig(ctx)
+	restCfg, uid, namespace, err := loader.LoadSMProxyConfig(ctx)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load SM config for checks: %w", err)
 	}
 
-	checksClient := NewClient(ctx, baseURL, token)
-	probesClient := probes.NewClient(ctx, baseURL, token)
+	checksClient, err := NewClient(restCfg, uid, loader)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create SM checks client: %w", err)
+	}
+	probesClient, err := probes.NewClient(restCfg, uid, loader)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create SM probes client: %w", err)
+	}
 
 	crud := &adapter.TypedCRUD[checkResource]{
 		ListFn: func(ctx context.Context, limit int64) ([]checkResource, error) {
@@ -310,12 +316,16 @@ func invertIDMap(idMap map[string]int64) map[int64]string {
 //   - idMap: probe name → numeric ID (for resolving probe names to IDs on push/create)
 //   - onlineMap: probe name → online status (for offline probe warnings)
 func FetchProbeInfo(ctx context.Context, loader smcfg.Loader) (map[string]int64, map[string]bool, error) {
-	baseURL, token, _, err := loader.LoadSMConfig(ctx)
+	restCfg, uid, _, err := loader.LoadSMProxyConfig(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("loading SM config for probe fetch: %w", err)
 	}
 
-	probeList, err := probes.NewClient(ctx, baseURL, token).List(ctx)
+	probesClient, err := probes.NewClient(restCfg, uid, loader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating SM probes client: %w", err)
+	}
+	probeList, err := probesClient.List(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("fetching probe list: %w", err)
 	}

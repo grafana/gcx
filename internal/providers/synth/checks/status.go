@@ -142,13 +142,20 @@ Requires a Prometheus datasource containing SM metrics.`,
 				return err
 			}
 
-			// Load SM config — needed by all parallel branches below.
-			baseURL, token, _, err := loader.LoadSMConfig(ctx)
+			// Load SM proxy config — needed by the check/probe branches below.
+			smRestCfg, smDSUID, _, err := loader.LoadSMProxyConfig(ctx)
 			if err != nil {
 				return err
 			}
 
-			smClient := NewClient(ctx, baseURL, token)
+			smClient, err := NewClient(smRestCfg, smDSUID, loader)
+			if err != nil {
+				return err
+			}
+			smProbesClient, err := probes.NewClient(smRestCfg, smDSUID, loader)
+			if err != nil {
+				return err
+			}
 
 			// Parse optional check ID arg before launching goroutines.
 			var filterID int64
@@ -185,7 +192,7 @@ Requires a Prometheus datasource containing SM metrics.`,
 			})
 
 			initG.Go(func() error {
-				probeList, err := probes.NewClient(initCtx, baseURL, token).List(initCtx)
+				probeList, err := smProbesClient.List(initCtx)
 				if err == nil {
 					probeNameMap = buildProbeNameMap(probeList)
 				}
@@ -352,13 +359,16 @@ Requires a Prometheus datasource containing SM metrics.`,
 				return fmt.Errorf("invalid check ID %q: must be a number", args[0])
 			}
 
-			// Load SM config and get the check.
-			baseURL, token, _, err := loader.LoadSMConfig(ctx)
+			// Load SM proxy config and get the check.
+			smRestCfg, smDSUID, _, err := loader.LoadSMProxyConfig(ctx)
 			if err != nil {
 				return err
 			}
 
-			client := NewClient(ctx, baseURL, token)
+			client, err := NewClient(smRestCfg, smDSUID, loader)
+			if err != nil {
+				return err
+			}
 
 			c, err := client.Get(ctx, id)
 			if err != nil {

@@ -159,13 +159,24 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   credentials independently — this ensures consistent env var precedence,
   secret handling, and auth behavior across all providers.
 - **`httputils.NewDefaultClient(ctx)` for external APIs.** Provider clients
-  calling APIs outside the Grafana server (k6 Cloud, OnCall, Synth, Fleet —
+  calling APIs outside the Grafana server (k6 Cloud, OnCall, Fleet —
   any domain other than `cfg.Host`) must use `httputils.NewDefaultClient(ctx)`,
   never `rest.HTTPClientFor()`. The k8s transport round-tripper injects the
   Grafana bearer token on every outgoing request, which conflicts with the
   product's own auth mechanism. `NewDefaultClient(ctx)` returns an `*http.Client`
   with `LoggingRoundTripper` and no auth injection — providers set their own
   auth headers per request.
+- **Synth is dual-mode (carve-out).** Synthetic Monitoring reaches its API two
+  ways: (1) primary — Grafana's datasource proxy at `cfg.Host`
+  (`/api/datasources/proxy/uid/<sm-uid>/sm/…`) via `rest.HTTPClientFor()` in
+  `internal/query/synth`, carrying the caller's Grafana credential (the SM token
+  is injected server-side by the plugin's `sm` proxy route, so the client never
+  handles it); (2) fallback — the direct SM API (external domain) via
+  `httputils.NewDefaultClient(ctx)` + an SM token, taken only on a proxy 403 or
+  when no SM datasource UID resolves. Both usages are consistent with the rule
+  above (proxy = `cfg.Host`; direct = external domain). The dual path preserves
+  token-based access for CI/headless environments while letting OAuth/SAT callers
+  drop the SM token. See ADR-020.
 - **All HTTP clients via `httputils`.** Production code must create HTTP clients
   through `httputils.NewDefaultClient(ctx)` or `httputils.NewClient(ClientOpts{...})`.
   Bare `http.DefaultClient`, standalone `&http.Client{}`, and custom transports

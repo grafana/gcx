@@ -1,63 +1,66 @@
 package checks
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 
-	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	querysynth "github.com/grafana/gcx/internal/query/synth"
 )
 
 // ErrNotFound is returned when a requested check does not exist (HTTP 404).
 var ErrNotFound = errors.New("check not found")
 
+// SM API paths, relative to the SM API v1 root. They are forwarded verbatim by
+// the datasource-proxy `sm` route and prefixed with /api/v1 on the direct path.
 const (
-	checkListPath      = "/check/list"
-	checkAddPath       = "/check/add"
-	checkUpdatePath    = "/check/update"
-	checkByIDPathFmt   = "/check/%d"
-	checkDeletePathFmt = "/check/delete/%d"
-	tenantPath         = "/tenant"
-	probeListPath      = "/probe/list"
+	checkListPath      = "check/list"
+	checkAddPath       = "check/add"
+	checkUpdatePath    = "check/update"
+	checkByIDPathFmt   = "check/%d"
+	checkDeletePathFmt = "check/delete/%d"
+	tenantPath         = "tenant"
+	probeListPath      = "probe/list"
 )
 
-// Client is an HTTP client for the Synthetic Monitoring checks API.
+// Client is a typed client for the Synthetic Monitoring checks API. It owns
+// request shapes and response decoding; the dual-mode SM transport (datasource
+// proxy primary, direct SM API fallback) lives in internal/query/synth.
 type Client struct {
-	baseURL    string
-	token      string
-	httpClient *http.Client
+	t *querysynth.Transport
 }
 
-// NewClient creates a new SM checks client.
-// baseURL is the SM service root (e.g. "https://synthetic-monitoring-api.grafana.net").
-func NewClient(ctx context.Context, baseURL, token string) *Client {
-	return &Client{
-		baseURL:    strings.TrimRight(baseURL, "/") + "/api/v1",
-		token:      token,
-		httpClient: httputils.NewDefaultClient(ctx),
+// NewClient creates a checks client over the dual-mode SM transport.
+//
+// When datasourceUID is non-empty, requests go through the Grafana datasource
+// proxy built from restCfg (carrying the caller's Grafana credential). On a
+// proxy 403 — or when datasourceUID is empty — requests fall back to the direct
+// SM API, with credentials resolved lazily via fallback.LoadSMConfig. A nil
+// fallback disables the direct path.
+func NewClient(restCfg config.NamespacedRESTConfig, datasourceUID string, fallback querysynth.FallbackLoader) (*Client, error) {
+	t, err := querysynth.NewTransport(restCfg, datasourceUID, fallback)
+	if err != nil {
+		return nil, err
 	}
+	return &Client{t: t}, nil
 }
 
 // List returns all checks for the authenticated tenant.
 func (c *Client) List(ctx context.Context) ([]Check, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, checkListPath, nil)
+	status, body, err := c.t.Do(ctx, http.MethodGet, checkListPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("listing checks: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, smcfg.HandleErrorResponse(resp)
+	if status != http.StatusOK {
+		return nil, smcfg.HandleErrorBody(status, body)
 	}
 
 	var checks []Check
-	if err := json.NewDecoder(resp.Body).Decode(&checks); err != nil {
+	if err := json.Unmarshal(body, &checks); err != nil {
 		return nil, fmt.Errorf("decoding check list: %w", err)
 	}
 
@@ -70,22 +73,21 @@ func (c *Client) List(ctx context.Context) ([]Check, error) {
 
 // Get returns a single check by ID.
 func (c *Client) Get(ctx context.Context, id int64) (*Check, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf(checkByIDPathFmt, id), nil)
+	status, body, err := c.t.Do(ctx, http.MethodGet, fmt.Sprintf(checkByIDPathFmt, id), nil)
 	if err != nil {
 		return nil, fmt.Errorf("getting check %d: %w", id, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNotFound {
+	if status == http.StatusNotFound {
 		return nil, ErrNotFound
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, smcfg.HandleErrorResponse(resp)
+	if status != http.StatusOK {
+		return nil, smcfg.HandleErrorBody(status, body)
 	}
 
 	var check Check
-	if err := json.NewDecoder(resp.Body).Decode(&check); err != nil {
+	if err := json.Unmarshal(body, &check); err != nil {
 		return nil, fmt.Errorf("decoding check: %w", err)
 	}
 
@@ -94,23 +96,22 @@ func (c *Client) Get(ctx context.Context, id int64) (*Check, error) {
 
 // Create creates a new check. The Check must not have ID or TenantID set.
 func (c *Client) Create(ctx context.Context, check Check) (*Check, error) {
-	body, err := json.Marshal(check)
+	reqBody, err := json.Marshal(check)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling check: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, checkAddPath, bytes.NewReader(body))
+	status, body, err := c.t.Do(ctx, http.MethodPost, checkAddPath, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("creating check: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, smcfg.HandleErrorResponse(resp)
+	if status != http.StatusOK && status != http.StatusCreated {
+		return nil, smcfg.HandleErrorBody(status, body)
 	}
 
 	var created Check
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+	if err := json.Unmarshal(body, &created); err != nil {
 		return nil, fmt.Errorf("decoding created check: %w", err)
 	}
 
@@ -119,23 +120,22 @@ func (c *Client) Create(ctx context.Context, check Check) (*Check, error) {
 
 // Update updates an existing check. The Check must have ID and TenantID set.
 func (c *Client) Update(ctx context.Context, check Check) (*Check, error) {
-	body, err := json.Marshal(check)
+	reqBody, err := json.Marshal(check)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling check: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, checkUpdatePath, bytes.NewReader(body))
+	status, body, err := c.t.Do(ctx, http.MethodPost, checkUpdatePath, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("updating check %d: %w", check.ID, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, smcfg.HandleErrorResponse(resp)
+	if status != http.StatusOK {
+		return nil, smcfg.HandleErrorBody(status, body)
 	}
 
 	var updated Check
-	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
+	if err := json.Unmarshal(body, &updated); err != nil {
 		return nil, fmt.Errorf("decoding updated check: %w", err)
 	}
 
@@ -144,14 +144,13 @@ func (c *Client) Update(ctx context.Context, check Check) (*Check, error) {
 
 // Delete deletes a check by ID.
 func (c *Client) Delete(ctx context.Context, id int64) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(checkDeletePathFmt, id), nil)
+	status, body, err := c.t.Do(ctx, http.MethodDelete, fmt.Sprintf(checkDeletePathFmt, id), nil)
 	if err != nil {
 		return fmt.Errorf("deleting check %d: %w", id, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return smcfg.HandleErrorResponse(resp)
+	if status != http.StatusOK && status != http.StatusNoContent {
+		return smcfg.HandleErrorBody(status, body)
 	}
 
 	return nil
@@ -159,18 +158,17 @@ func (c *Client) Delete(ctx context.Context, id int64) error {
 
 // GetTenant returns the SM tenant info (used to obtain tenantId for push).
 func (c *Client) GetTenant(ctx context.Context) (*Tenant, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, tenantPath, nil)
+	status, body, err := c.t.Do(ctx, http.MethodGet, tenantPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("getting tenant: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, smcfg.HandleErrorResponse(resp)
+	if status != http.StatusOK {
+		return nil, smcfg.HandleErrorBody(status, body)
 	}
 
 	var tenant Tenant
-	if err := json.NewDecoder(resp.Body).Decode(&tenant); err != nil {
+	if err := json.Unmarshal(body, &tenant); err != nil {
 		return nil, fmt.Errorf("decoding tenant: %w", err)
 	}
 
@@ -179,21 +177,20 @@ func (c *Client) GetTenant(ctx context.Context) (*Tenant, error) {
 
 // ListProbes returns a minimal list of probes for name/ID resolution.
 func (c *Client) ListProbes(ctx context.Context) ([]ProbeRef, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, probeListPath, nil)
+	status, body, err := c.t.Do(ctx, http.MethodGet, probeListPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("listing probes: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, smcfg.HandleErrorResponse(resp)
+	if status != http.StatusOK {
+		return nil, smcfg.HandleErrorBody(status, body)
 	}
 
 	var raw []struct {
 		ID   int64  `json:"id"`
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("decoding probe list: %w", err)
 	}
 
@@ -203,23 +200,4 @@ func (c *Client) ListProbes(ctx context.Context) ([]ProbeRef, error) {
 	}
 
 	return probes, nil
-}
-
-func (c *Client) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("executing request: %w", err)
-	}
-
-	return resp, nil
 }

@@ -7,10 +7,29 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
+
+const testDSUID = "sm-ds-uid"
+
+// proxyPath is the datasource-proxy path the dual-mode client builds for a given
+// logical SM API path (e.g. "probe/list").
+func proxyPath(smPath string) string {
+	return "/api/datasources/proxy/uid/" + testDSUID + "/sm/" + smPath
+}
+
+// proxyClient returns a proxy-only client (no direct fallback) pointed at srv.
+func proxyClient(t *testing.T, srv *httptest.Server) *probes.Client {
+	t.Helper()
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}}
+	client, err := probes.NewClient(cfg, testDSUID, nil)
+	require.NoError(t, err)
+	return client
+}
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -35,9 +54,8 @@ func TestClient_Create(t *testing.T) {
 			probe: probes.Probe{Name: "my-probe", Latitude: 45.0, Longitude: -122.0, Region: "US"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Equal(t, "/api/v1/probe/add", r.URL.Path)
+				assert.Equal(t, proxyPath("probe/add"), r.URL.Path)
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
 
 				// Verify the body is flat JSON (not wrapped in {"probe":...})
 				var body probes.Probe
@@ -60,8 +78,7 @@ func TestClient_Create(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(context.Background(), srv.URL, "test-token")
-			got, err := client.Create(context.Background(), tc.probe)
+			got, err := proxyClient(t, srv).Create(context.Background(), tc.probe)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -80,8 +97,7 @@ func TestClient_Create_Error(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := probes.NewClient(context.Background(), srv.URL, "test-token")
-	_, err := client.Create(context.Background(), probes.Probe{Name: "bad"})
+	_, err := proxyClient(t, srv).Create(context.Background(), probes.Probe{Name: "bad"})
 	require.Error(t, err)
 }
 
@@ -124,8 +140,7 @@ func TestClient_Get(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(context.Background(), srv.URL, "test-token")
-			got, err := client.Get(context.Background(), tc.id)
+			got, err := proxyClient(t, srv).Get(context.Background(), tc.id)
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.errMsg)
@@ -150,7 +165,7 @@ func TestClient_ResetToken(t *testing.T) {
 			probe: probes.Probe{ID: 42, Name: "my-probe", Region: "US"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Equal(t, "/api/v1/probe/update", r.URL.Path)
+				assert.Equal(t, proxyPath("probe/update"), r.URL.Path)
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
 				// Verify the body is flat JSON with resetToken at top level
@@ -181,8 +196,7 @@ func TestClient_ResetToken(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(context.Background(), srv.URL, "test-token")
-			got, err := client.ResetToken(context.Background(), tc.probe)
+			got, err := proxyClient(t, srv).ResetToken(context.Background(), tc.probe)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -206,8 +220,7 @@ func TestClient_Delete(t *testing.T) {
 			id:   42,
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodDelete, r.Method)
-				assert.Equal(t, "/api/v1/probe/delete/42", r.URL.Path)
-				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+				assert.Equal(t, proxyPath("probe/delete/42"), r.URL.Path)
 				writeJSON(w, map[string]string{"msg": "ok"})
 			},
 		},
@@ -225,8 +238,7 @@ func TestClient_Delete(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(context.Background(), srv.URL, "test-token")
-			err := client.Delete(context.Background(), tc.id)
+			err := proxyClient(t, srv).Delete(context.Background(), tc.id)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -242,8 +254,7 @@ func TestClient_Delete_Error(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := probes.NewClient(context.Background(), srv.URL, "test-token")
-	err := client.Delete(context.Background(), 999)
+	err := proxyClient(t, srv).Delete(context.Background(), 999)
 	require.Error(t, err)
 }
 
@@ -258,8 +269,7 @@ func TestClient_List(t *testing.T) {
 			name: "success with items",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Equal(t, "/api/v1/probe/list", r.URL.Path)
-				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+				assert.Equal(t, proxyPath("probe/list"), r.URL.Path)
 				writeJSON(w, []probes.Probe{
 					{ID: 1, Name: "Oregon", Region: "US"},
 					{ID: 2, Name: "Paris", Region: "EU"},
@@ -305,8 +315,7 @@ func TestClient_List(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(context.Background(), srv.URL, "test-token")
-			got, err := client.List(context.Background())
+			got, err := proxyClient(t, srv).List(context.Background())
 			if tc.wantErr {
 				require.Error(t, err)
 				return

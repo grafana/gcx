@@ -139,7 +139,8 @@ internal/
 │   ├── influxdb/    InfluxDB HTTP query client
 │   ├── infinity/    Infinity HTTP query client
 │   ├── loki/        Loki HTTP query client
-│   └── clickhouse/  ClickHouse HTTP query client
+│   ├── clickhouse/  ClickHouse HTTP query client
+│   └── synth/       Synthetic Monitoring transport via Grafana datasource proxy (SM token injected server-side) with direct SM-API fallback
 ├── signals/     Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 ├── queryerror/  Typed API error for datasource query failures (APIError type, New/FromBody constructors, IsParseError helper)
 ├── assistant/   Assistant client (A2A streaming, prompt, state management)

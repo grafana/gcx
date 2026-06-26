@@ -556,11 +556,15 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 // "previous status" is evaluated against the old threshold, not the new spec's.
 // Falls back to fallback if the fetch fails for any reason.
 func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64, fallback string) string {
-	baseURL, token, _, err := loader.LoadSMConfig(ctx)
+	restCfg, uid, _, err := loader.LoadSMProxyConfig(ctx)
 	if err != nil {
 		return fallback
 	}
-	existing, err := NewClient(ctx, baseURL, token).Get(ctx, checkID)
+	client, err := NewClient(restCfg, uid, loader)
+	if err != nil {
+		return fallback
+	}
+	existing, err := client.Get(ctx, checkID)
 	if err != nil {
 		return fallback
 	}

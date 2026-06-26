@@ -547,3 +547,23 @@ current-context: default
 	require.NotNil(t, cfg)
 	assert.Equal(t, "default", cfg.CurrentContext)
 }
+
+// TestConfigLoader_LoadSMProxyConfig_NoGrafanaServerDegrades verifies the
+// degradation contract: with no Grafana server configured the datasource proxy
+// is unavailable, so LoadSMProxyConfig returns an empty UID (NOT an error) so
+// the typed clients fall back to the direct SM API.
+func TestConfigLoader_LoadSMProxyConfig_NoGrafanaServerDegrades(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default: {}
+current-context: default
+`)
+
+	l := newTestLoader(t, cfgFile)
+
+	restCfg, uid, namespace, err := l.LoadSMProxyConfig(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, uid, "no Grafana server must yield an empty UID so the client falls back to direct")
+	assert.Equal(t, "default", namespace)
+	assert.Empty(t, restCfg.Host)
+}
