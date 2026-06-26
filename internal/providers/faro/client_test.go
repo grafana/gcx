@@ -473,6 +473,161 @@ func TestClient_DeleteSourcemaps(t *testing.T) {
 	}
 }
 
+func TestListRecordings(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/sessions/sess-abc/recordings", r.URL.Path)
+		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
+		assert.Equal(t, "10", r.URL.Query().Get("limit"))
+
+		writeJSON(w, faro.SessionRecordingsListResponse{
+			SessionID: "sess-abc",
+			Items: []faro.RecordingListItem{
+				{ID: "rec-1", Status: "complete"},
+				{ID: "rec-2", Status: "in_progress"},
+			},
+			Page: faro.SessionPage{
+				HasNext:    false,
+				Limit:      10,
+				TotalItems: 2,
+			},
+		})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	resp, err := c.ListRecordings(t.Context(), "app-42", "sess-abc", 10)
+
+	require.NoError(t, err)
+	assert.Equal(t, "sess-abc", resp.SessionID)
+	assert.Len(t, resp.Items, 2)
+	assert.Equal(t, "rec-1", resp.Items[0].ID)
+	assert.Equal(t, "rec-2", resp.Items[1].ID)
+}
+
+func TestListRecordingsAutoPagination(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
+		assert.Equal(t, "50", r.URL.Query().Get("limit"))
+
+		switch pageParam := r.URL.Query().Get("page"); pageParam {
+		case "":
+			writeJSON(w, faro.SessionRecordingsListResponse{
+				SessionID: "sess-abc",
+				Items: []faro.RecordingListItem{
+					{ID: "rec-1", Status: "complete"},
+				},
+				Page: faro.SessionPage{
+					HasNext:    true,
+					Next:       "cursor-page2",
+					Limit:      50,
+					TotalItems: 3,
+				},
+			})
+		case "cursor-page2":
+			writeJSON(w, faro.SessionRecordingsListResponse{
+				SessionID: "sess-abc",
+				Items: []faro.RecordingListItem{
+					{ID: "rec-2", Status: "complete"},
+					{ID: "rec-3", Status: "complete"},
+				},
+				Page: faro.SessionPage{
+					HasNext:    false,
+					Limit:      50,
+					TotalItems: 3,
+				},
+			})
+		default:
+			http.Error(w, "unexpected page param: "+pageParam, http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	resp, err := c.ListRecordings(t.Context(), "app-42", "sess-abc", 0)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, callCount)
+	assert.Len(t, resp.Items, 3)
+	assert.Equal(t, "rec-1", resp.Items[0].ID)
+	assert.Equal(t, "rec-2", resp.Items[1].ID)
+	assert.Equal(t, "rec-3", resp.Items[2].ID)
+}
+
+func TestGetManifest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/sessions/sess-abc/recordings/rec-1/manifest", r.URL.Path)
+		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
+
+		writeJSON(w, faro.RecordingManifestResponse{
+			ID:        "rec-1",
+			SessionID: "sess-abc",
+			Status:    "complete",
+			Segments: []faro.ManifestSegment{
+				{ID: 0, StartOffsetMs: 0, EndOffsetMs: 5000},
+				{ID: 1, StartOffsetMs: 5000, EndOffsetMs: 10000, RequiresSegmentID: new(int64)},
+			},
+			InactivityPeriods: []faro.InactivityPeriod{
+				{StartOffsetMs: 2000, EndOffsetMs: 3000},
+			},
+		})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	resp, err := c.GetManifest(t.Context(), "app-42", "sess-abc", "rec-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, "rec-1", resp.ID)
+	assert.Equal(t, "sess-abc", resp.SessionID)
+	assert.Equal(t, "complete", resp.Status)
+
+	require.Len(t, resp.Segments, 2)
+	assert.Equal(t, int64(0), resp.Segments[0].ID)
+	assert.Nil(t, resp.Segments[0].RequiresSegmentID)
+	assert.Equal(t, int64(1), resp.Segments[1].ID)
+	require.NotNil(t, resp.Segments[1].RequiresSegmentID)
+	assert.Equal(t, int64(0), *resp.Segments[1].RequiresSegmentID)
+
+	require.Len(t, resp.InactivityPeriods, 1)
+	assert.Equal(t, int64(2000), resp.InactivityPeriods[0].StartOffsetMs)
+	assert.Equal(t, int64(3000), resp.InactivityPeriods[0].EndOffsetMs)
+}
+
+func TestGetSegment(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/sessions/sess-abc/recordings/rec-1/segments/seg-0", r.URL.Path)
+		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
+
+		writeJSON(w, faro.RecordingSegmentResponse{
+			ID:          "seg-0",
+			RecordingID: "rec-1",
+			Events: []faro.RRWebEvent{
+				{Type: 4, Timestamp: 1700000000000, Data: json.RawMessage(`{"source":0}`)},
+				{Type: 3, Timestamp: 1700000001000, Data: json.RawMessage(`{"source":1}`)},
+			},
+		})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	resp, err := c.GetSegment(t.Context(), "app-42", "sess-abc", "rec-1", "seg-0")
+
+	require.NoError(t, err)
+	assert.Equal(t, "seg-0", resp.ID)
+	assert.Equal(t, "rec-1", resp.RecordingID)
+
+	require.Len(t, resp.Events, 2)
+	assert.Equal(t, 4, resp.Events[0].Type)
+	assert.Equal(t, int64(1700000000000), resp.Events[0].Timestamp)
+	assert.Equal(t, 3, resp.Events[1].Type)
+	assert.JSONEq(t, `{"source":0}`, string(resp.Events[0].Data))
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(v); err != nil {

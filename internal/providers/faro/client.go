@@ -21,6 +21,11 @@ const (
 	appByIDPathFmt         = basePath + "/%s"
 	sourcemapsPathFmt      = basePath + "/%s/sourcemaps"
 	sourcemapsBatchPathFmt = basePath + "/%s/sourcemaps/batch/%s"
+
+	sessionsBasePath         = "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/sessions"
+	recordingsPathFmt        = sessionsBasePath + "/%s/recordings"
+	recordingManifestPathFmt = sessionsBasePath + "/%s/recordings/%s/manifest"
+	recordingSegmentPathFmt  = sessionsBasePath + "/%s/recordings/%s/segments/%s"
 )
 
 // SourcemapBundle represents a sourcemap bundle from the Faro API.
@@ -297,6 +302,118 @@ func (c *Client) DeleteSourcemaps(ctx context.Context, appID string, bundleIDs [
 	}
 
 	return nil
+}
+
+// ListRecordings retrieves recordings for a session.
+// If limit is 0, all pages are fetched via auto-pagination (page size 50).
+// If limit > 0, only a single page of that size is returned.
+func (c *Client) ListRecordings(ctx context.Context, appID, sessionID string, limit int) (*SessionRecordingsListResponse, error) {
+	log := logging.FromContext(ctx)
+	log.Debug("Listing recordings", "app_id", appID, "session_id", sessionID)
+
+	autoPaginate := limit == 0
+	if limit == 0 {
+		limit = 50
+	}
+
+	var allItems []RecordingListItem
+	var lastResp SessionRecordingsListResponse
+	nextPage := ""
+
+	for {
+		path := fmt.Sprintf(recordingsPathFmt, url.PathEscape(sessionID))
+
+		q := url.Values{}
+		q.Set("app_id", appID)
+		q.Set("limit", strconv.Itoa(limit))
+		if nextPage != "" {
+			q.Set("page", nextPage)
+		}
+		path += "?" + q.Encode()
+
+		log.Debug("Fetching recordings page", "app_id", appID, "session_id", sessionID, "path", path)
+		body, statusCode, err := c.doRequest(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, fmt.Errorf("faro: list recordings for session %s: %w", sessionID, err)
+		}
+
+		if statusCode >= 400 {
+			return nil, fmt.Errorf("faro: list recordings for session %s: status %d, body: %s", sessionID, statusCode, string(body))
+		}
+
+		var page SessionRecordingsListResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, fmt.Errorf("faro: decode recordings page: %w", err)
+		}
+
+		allItems = append(allItems, page.Items...)
+		lastResp = page
+
+		if !autoPaginate || !page.Page.HasNext {
+			break
+		}
+		nextPage = page.Page.Next
+	}
+
+	lastResp.Items = allItems
+	log.Debug("Listed recordings", "app_id", appID, "session_id", sessionID, "count", len(allItems))
+	return &lastResp, nil
+}
+
+// GetManifest retrieves the manifest for a recording.
+func (c *Client) GetManifest(ctx context.Context, appID, sessionID, recordingID string) (*RecordingManifestResponse, error) {
+	path := fmt.Sprintf(recordingManifestPathFmt, url.PathEscape(sessionID), url.PathEscape(recordingID))
+
+	q := url.Values{}
+	q.Set("app_id", appID)
+	path += "?" + q.Encode()
+
+	log := logging.FromContext(ctx)
+	log.Debug("Getting recording manifest", "app_id", appID, "session_id", sessionID, "recording_id", recordingID, "path", path)
+	body, statusCode, err := c.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("faro: get manifest for recording %s: %w", recordingID, err)
+	}
+
+	if statusCode >= 400 {
+		return nil, fmt.Errorf("faro: get manifest for recording %s: status %d, body: %s", recordingID, statusCode, string(body))
+	}
+
+	var manifest RecordingManifestResponse
+	if err := json.Unmarshal(body, &manifest); err != nil {
+		return nil, fmt.Errorf("faro: decode manifest: %w", err)
+	}
+
+	log.Debug("Got recording manifest", "recording_id", recordingID, "segments", len(manifest.Segments))
+	return &manifest, nil
+}
+
+// GetSegment retrieves a single segment's events.
+func (c *Client) GetSegment(ctx context.Context, appID, sessionID, recordingID, segmentID string) (*RecordingSegmentResponse, error) {
+	path := fmt.Sprintf(recordingSegmentPathFmt, url.PathEscape(sessionID), url.PathEscape(recordingID), url.PathEscape(segmentID))
+
+	q := url.Values{}
+	q.Set("app_id", appID)
+	path += "?" + q.Encode()
+
+	log := logging.FromContext(ctx)
+	log.Debug("Getting recording segment", "app_id", appID, "session_id", sessionID, "recording_id", recordingID, "segment_id", segmentID, "path", path)
+	body, statusCode, err := c.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("faro: get segment %s for recording %s: %w", segmentID, recordingID, err)
+	}
+
+	if statusCode >= 400 {
+		return nil, fmt.Errorf("faro: get segment %s for recording %s: status %d, body: %s", segmentID, recordingID, statusCode, string(body))
+	}
+
+	var segment RecordingSegmentResponse
+	if err := json.Unmarshal(body, &segment); err != nil {
+		return nil, fmt.Errorf("faro: decode segment: %w", err)
+	}
+
+	log.Debug("Got recording segment", "segment_id", segmentID, "events", len(segment.Events))
+	return &segment, nil
 }
 
 // doRequest builds and executes an HTTP request, returning the response body, status code, and error.

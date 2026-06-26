@@ -207,7 +207,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx frontend apps delete":           {Cost: "small"},
 	"gcx frontend apps get":              {Cost: "small"},
 	"gcx frontend apps list":             {Cost: "small"},
+	"gcx frontend apps list-sessions":    {Cost: "medium", Hint: "<app-name> [--since 24h] [-d <loki-uid>] -o json"},
 	"gcx frontend apps remove-sourcemap": {Cost: "small"},
+	"gcx frontend apps show-segment":     {Cost: "small", Hint: "<app-name> <session-id> <segment-id> [--save events.json] [--raw]"},
+	"gcx frontend apps show-session":     {Cost: "small", Hint: "<app-name> <session-id> [--limit N] -o json"},
 	"gcx frontend apps show-sourcemaps":  {Cost: "small"},
 	"gcx frontend apps update":           {Cost: "small"},
 
