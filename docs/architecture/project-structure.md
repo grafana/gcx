@@ -269,8 +269,6 @@ v* tag push
 └── release           → goreleaser release --clean  (builds + GitHub Release)
 ```
 
-GitHub Pages docs are **not** deployed automatically on release. Use `publish-docs.yaml` (manual `workflow_dispatch`) to publish docs.
-
 GoReleaser builds with `CGO_ENABLED=0` for all three platforms (linux, darwin,
 windows) and creates:
 - `tar.gz` archives for Linux/macOS (uname-compatible naming)
@@ -461,7 +459,6 @@ mkdocs-nav-weight==0.3.0
 ```
 
 These are installed via `uv pip install -r requirements.txt` during `mise run deps`.
-The site is deployed to GitHub Pages manually via the `publish-docs.yaml` workflow (`workflow_dispatch`).
 
 ---
 
@@ -500,8 +497,7 @@ mise run test-env-clean       # stop + delete volumes
 ```bash
 git tag v1.2.3 && git push --tags
 # → release.yaml triggers goreleaser, publishes GitHub Release
-# → publish-homebrew-formula.yml triggers automatically (push:tags), opens tap PR
-# → GitHub Pages docs: trigger publish-docs.yaml manually via workflow_dispatch
+# → publish-homebrew-formula.yml opens tap PR automatically
 ```
 
 ### Add a New Dependency

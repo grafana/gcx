@@ -451,7 +451,7 @@ on PATH and `mise run` invokes them with the correct versions.
 Three GitHub Actions workflows:
 - **ci.yaml**: PR/push gate -- lint, tests, doc drift check (parallel jobs)
 - **release.yaml**: Tag-triggered -- goreleaser cross-platform builds + GitHub Release
-- **publish-docs.yaml**: Manual doc deployment (GitHub Pages deploy is not automatic on release)
+- **publish-docs.yaml**: Manual GitHub Pages deployment
 
 ### Code Generation
 
