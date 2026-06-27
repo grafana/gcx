@@ -1,11 +1,14 @@
 name: Publish Homebrew Formula
 
-# Triggers automatically when GoReleaser publishes a GitHub Release,
-# or manually via workflow_dispatch for re-runs / backfills.
+# Triggers automatically when a version tag is pushed (independent of
+# GoReleaser completing), or manually via workflow_dispatch for re-runs /
+# backfills. Using push:tags rather than release:published because GoReleaser
+# runs with GITHUB_TOKEN, and GitHub does not propagate workflow-triggering
+# events created by GITHUB_TOKEN to other workflows.
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -17,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: publish-homebrew-formula-${{ github.event.release.tag_name || inputs.tag }}
+  group: publish-homebrew-formula-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -29,7 +32,7 @@ jobs:
       id-token: write          # required by create-github-app-token broker OIDC exchange
 
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      TAG: ${{ inputs.tag || github.ref_name }}
       GH_REPO: ${{ github.repository }}
 
     steps:
@@ -64,9 +67,9 @@ jobs:
 
       - name: Checkout gcx (for template)
         if: steps.tag.outputs.skip != 'true'
-        # On release events, github.ref is the tag — checkout gets the
-        # template at that ref. On workflow_dispatch, github.ref is the
-        # dispatch branch (typically main), which also has the template.
+        # On push:tags, github.ref is the tag — checkout gets the template at
+        # that ref. On workflow_dispatch, github.ref is the dispatch branch
+        # (typically main), which also has the template.
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
