@@ -124,6 +124,19 @@ jobs:
         with:
           github_app: ${{ vars.PUBLISHER_APP_NAME }}
 
+      - name: Get App bot identity
+        if: steps.tag.outputs.skip != 'true'
+        id: app-identity
+        env:
+          APP_SLUG: ${{ vars.PUBLISHER_APP_NAME }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          APP_ID="$(gh api "/apps/${APP_SLUG}" --jq .id)"
+          echo "app-id=${APP_ID}" >> "${GITHUB_OUTPUT}"
+          echo "name=${APP_SLUG}[bot]" >> "${GITHUB_OUTPUT}"
+          echo "email=${APP_ID}+${APP_SLUG}[bot]@users.noreply.github.com" >> "${GITHUB_OUTPUT}"
+
       - name: Open tap pull request
         if: steps.tag.outputs.skip != 'true'
         env:
@@ -131,6 +144,10 @@ jobs:
           RB_PATH: ${{ steps.render.outputs.rb_path }}
           BRANCH: ${{ steps.tag.outputs.branch }}
           VERSION: ${{ steps.tag.outputs.version }}
+          GIT_AUTHOR_NAME: ${{ steps.app-identity.outputs.name }}
+          GIT_AUTHOR_EMAIL: ${{ steps.app-identity.outputs.email }}
+          GIT_COMMITTER_NAME: ${{ steps.app-identity.outputs.name }}
+          GIT_COMMITTER_EMAIL: ${{ steps.app-identity.outputs.email }}
         run: |
           set -euo pipefail
           gh auth setup-git
@@ -138,9 +155,6 @@ jobs:
           TAP_DIR="$(mktemp -d)"
           gh repo clone grafana/homebrew-grafana "${TAP_DIR}" -- --depth 1
           cd "${TAP_DIR}"
-
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git checkout -B "${BRANCH}"
 
