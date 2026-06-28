@@ -199,7 +199,11 @@ func (p *Pusher) pushSingleResource(
 	nkCache *naturalKeyCache,
 ) error {
 	name := res.Name()
-	gvk := res.GroupVersionKind()
+	// Collapse alternate API groups onto their canonical, statically-registered
+	// GVK so a manifest (or fetched object) carrying a per-plugin group — e.g.
+	// prometheus.datasource.grafana.app/v0alpha1 — routes to the right adapter.
+	// A no-op when no normalizer matches.
+	gvk := resources.NormalizeGVK(res.GroupVersionKind())
 
 	logger := logging.FromContext(ctx).With(
 		"gvk", gvk,

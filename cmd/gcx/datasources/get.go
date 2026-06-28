@@ -1,11 +1,17 @@
 package datasources
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"strconv"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/internal/agent"
 	dsclient "github.com/grafana/gcx/internal/datasources"
+	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -15,7 +21,8 @@ type getOpts struct {
 }
 
 func (opts *getOpts) setup(flags *pflag.FlagSet) {
-	opts.IO.DefaultFormat("yaml")
+	opts.IO.RegisterCustomCodec("text", &datasourceDetailCodec{})
+	opts.IO.DefaultFormat("text")
 	opts.IO.BindFlags(flags)
 }
 
@@ -30,14 +37,21 @@ func getCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get UID",
 		Short: "Get details of a specific datasource",
-		Long:  "Get detailed information about a specific datasource by its UID.",
-		Args:  cobra.ExactArgs(1),
+		Long: `Get a datasource by its UID.
+
+The default text output shows a human-readable detail view. -o yaml/json emits
+an apply-ready manifest that can be edited and re-applied via update -f -.`,
+		Args: cobra.ExactArgs(1),
+		Annotations: map[string]string{
+			agent.AnnotationTokenCost: "small",
+			agent.AnnotationLLMHint:   "<uid> -o yaml",
+		},
 		Example: `
-	# Get datasource details
+	# Human-readable detail
 	gcx datasources get my-prometheus
 
-	# Output as JSON
-	gcx datasources get my-prometheus -o json`,
+	# Apply-ready manifest (round-trips into update -f -)
+	gcx datasources get my-prometheus -o yaml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -51,31 +65,25 @@ func getCmd() *cobra.Command {
 				return err
 			}
 
-			dsClient, err := dsclient.NewClient(restCfg)
+			transport, err := dsclient.NewTransport(restCfg)
 			if err != nil {
 				return err
 			}
 
-			ds, err := dsClient.GetByUID(ctx, uid)
+			ds, err := transport.GetByUID(ctx, uid)
 			if err != nil {
 				return fmt.Errorf("failed to get datasource: %w", err)
 			}
 
-			info := &datasourceDetail{
-				UID:       ds.UID,
-				Name:      ds.Name,
-				Type:      ds.Type,
-				URL:       ds.URL,
-				Access:    ds.Access,
-				Default:   ds.IsDefault,
-				ReadOnly:  ds.ReadOnly,
-				Database:  ds.Database,
-				BasicAuth: ds.BasicAuth,
-				WithCreds: ds.WithCredentials,
-				JSONData:  ds.JSONData,
+			// Human detail view.
+			if opts.IO.OutputFormat == "text" {
+				return opts.IO.Encode(cmd.OutOrStdout(), detailFromDatasource(ds))
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), info)
+			// Machine formats emit the apply-ready manifest.
+			manifest := dsclient.ManifestFromDatasource(ds)
+			manifest.Sanitize()
+			return opts.IO.Encode(cmd.OutOrStdout(), manifest)
 		},
 	}
 
@@ -96,4 +104,50 @@ type datasourceDetail struct {
 	BasicAuth bool   `json:"basicAuth" yaml:"basicAuth"`
 	WithCreds bool   `json:"withCredentials" yaml:"withCredentials"`
 	JSONData  any    `json:"jsonData,omitempty" yaml:"jsonData,omitempty"`
+}
+
+func detailFromDatasource(ds *dsclient.Datasource) *datasourceDetail {
+	return &datasourceDetail{
+		UID:       ds.UID,
+		Name:      ds.Name,
+		Type:      ds.Type,
+		URL:       ds.URL,
+		Access:    ds.Access,
+		Default:   ds.IsDefault,
+		ReadOnly:  ds.ReadOnly,
+		Database:  ds.Database,
+		BasicAuth: ds.BasicAuth,
+		WithCreds: ds.WithCredentials,
+		JSONData:  ds.JSONData,
+	}
+}
+
+// datasourceDetailCodec renders a datasourceDetail as a human-readable table.
+type datasourceDetailCodec struct{}
+
+func (c *datasourceDetailCodec) Format() format.Format { return "text" }
+
+func (c *datasourceDetailCodec) Encode(w io.Writer, data any) error {
+	d, ok := data.(*datasourceDetail)
+	if !ok {
+		return errors.New("invalid data type for text codec")
+	}
+	t := style.NewTable("FIELD", "VALUE")
+	t.Row("UID", d.UID)
+	t.Row("Name", d.Name)
+	t.Row("Type", d.Type)
+	t.Row("URL", d.URL)
+	t.Row("Access", d.Access)
+	t.Row("Default", strconv.FormatBool(d.Default))
+	t.Row("ReadOnly", strconv.FormatBool(d.ReadOnly))
+	if d.Database != "" {
+		t.Row("Database", d.Database)
+	}
+	t.Row("BasicAuth", strconv.FormatBool(d.BasicAuth))
+	t.Row("WithCredentials", strconv.FormatBool(d.WithCreds))
+	return t.Render(w)
+}
+
+func (c *datasourceDetailCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
 }

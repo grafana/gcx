@@ -1,27 +1,27 @@
-## gcx datasources get
+## gcx datasources schemas list
 
-Get details of a specific datasource
+List datasource plugin types installed on the Grafana instance
 
 ### Synopsis
 
-Get a datasource by its UID.
+List the datasource plugin types installed on the Grafana instance.
 
-The default text output shows a human-readable detail view. -o yaml/json emits
-an apply-ready manifest that can be edited and re-applied via update -f -.
+The TYPE column is the plugin id — pass it to 'schemas get --type', and use it
+as spec.type when authoring a datasource manifest.
 
 ```
-gcx datasources get UID [flags]
+gcx datasources schemas list [flags]
 ```
 
 ### Examples
 
 ```
 
-	# Human-readable detail
-	gcx datasources get my-prometheus
+	# List available datasource plugin types
+	gcx datasources schemas list
 
-	# Apply-ready manifest (round-trips into update -f -)
-	gcx datasources get my-prometheus -o yaml
+	# As JSON
+	gcx datasources schemas list -o json
 ```
 
 ### Options
@@ -29,10 +29,10 @@ gcx datasources get UID [flags]
 ```
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
-  -h, --help             help for get
+  -h, --help             help for list
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
+  -o, --output string    Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -47,5 +47,5 @@ gcx datasources get UID [flags]
 
 ### SEE ALSO
 
-* [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx datasources schemas](gcx_datasources_schemas.md)	 - Inspect datasource plugin schemas
 

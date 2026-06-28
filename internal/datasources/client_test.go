@@ -42,6 +42,47 @@ func TestList_ReturnsTypedAPIError(t *testing.T) {
 	assert.Equal(t, "access denied", apiErr.Message)
 }
 
+func TestListPluginTypes(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/plugins", r.URL.Path)
+		assert.Equal(t, "datasource", r.URL.Query().Get("type"))
+		w.WriteHeader(http.StatusOK)
+		// Returned out of order, with extra fields the client ignores.
+		_, _ = w.Write([]byte(`[
+			{"id":"prometheus","name":"Prometheus","category":"tsdb","enabled":true},
+			{"id":"cloudwatch","name":"CloudWatch","category":"cloud"},
+			{"id":"alertmanager","name":"Alertmanager","category":""}
+		]`))
+	}))
+
+	types, err := client.ListPluginTypes(context.Background())
+	require.NoError(t, err)
+	require.Len(t, types, 3)
+
+	// Sorted by plugin id.
+	assert.Equal(t, []datasources.PluginType{
+		{ID: "alertmanager", Name: "Alertmanager", Category: ""},
+		{ID: "cloudwatch", Name: "CloudWatch", Category: "cloud"},
+		{ID: "prometheus", Name: "Prometheus", Category: "tsdb"},
+	}, types)
+}
+
+func TestListPluginTypes_ReturnsTypedAPIError(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"access denied"}`))
+	}))
+
+	_, err := client.ListPluginTypes(context.Background())
+	require.Error(t, err)
+
+	var apiErr *datasources.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, "list datasource plugin types", apiErr.Operation)
+	assert.Equal(t, http.StatusForbidden, apiErr.StatusCode)
+}
+
 func TestGetByUID_ReturnsTypedNotFoundError(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)

@@ -28,8 +28,8 @@ func GetInfluxDBConfig(ctx context.Context, cfg config.NamespacedRESTConfig, uid
 		return InfluxDBConfig{Mode: "InfluxQL"}, fmt.Errorf("failed to get datasource %q: %w", uid, err)
 	}
 
-	jsonData, ok := ds.JSONData.(map[string]any)
-	if !ok || jsonData == nil {
+	jsonData := ds.JSONData
+	if jsonData == nil {
 		return InfluxDBConfig{Mode: "InfluxQL"}, nil
 	}
 

@@ -2,7 +2,9 @@ package datasources
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -36,6 +38,17 @@ func (e *APIError) Error() string {
 
 func (e *APIError) HTTPStatusCode() int {
 	return e.StatusCode
+}
+
+// NotFound reports whether the error represents an HTTP 404.
+func (e *APIError) NotFound() bool {
+	return e.StatusCode == http.StatusNotFound
+}
+
+// IsNotFound reports whether err is a datasource not-found (HTTP 404) error.
+func IsNotFound(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.NotFound()
 }
 
 func (e *APIError) APIServiceName() string {

@@ -1,27 +1,32 @@
-## gcx datasources get
+## gcx datasources delete
 
-Get details of a specific datasource
+Delete one or more datasources
 
 ### Synopsis
 
-Get a datasource by its UID.
+Delete one or more datasources by UID.
 
-The default text output shows a human-readable detail view. -o yaml/json emits
-an apply-ready manifest that can be edited and re-applied via update -f -.
+Deletion prompts for confirmation unless --force/--yes, GCX_AUTO_APPROVE, or
+agent mode is in effect.
+
+Exit codes: 0 (all deleted), 4 (some deletions failed).
 
 ```
-gcx datasources get UID [flags]
+gcx datasources delete UID... [flags]
 ```
 
 ### Examples
 
 ```
 
-	# Human-readable detail
-	gcx datasources get my-prometheus
+	# Delete one datasource (prompts to confirm)
+	gcx datasources delete sentry-dev
 
-	# Apply-ready manifest (round-trips into update -f -)
-	gcx datasources get my-prometheus -o yaml
+	# Delete several without prompting
+	gcx datasources delete sentry-dev sentry-staging --yes
+
+	# Preview only
+	gcx datasources delete sentry-dev --dry-run
 ```
 
 ### Options
@@ -29,10 +34,13 @@ gcx datasources get UID [flags]
 ```
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
-  -h, --help             help for get
+      --dry-run          Report what would be deleted without deleting
+      --force            Skip the confirmation prompt
+  -h, --help             help for delete
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
+  -y, --yes              Skip the confirmation prompt
 ```
 
 ### Options inherited from parent commands
