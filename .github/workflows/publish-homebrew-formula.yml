@@ -124,19 +124,6 @@ jobs:
         with:
           github_app: ${{ vars.PUBLISHER_APP_NAME }}
 
-      - name: Get App bot identity
-        if: steps.tag.outputs.skip != 'true'
-        id: app-identity
-        env:
-          APP_SLUG: ${{ vars.PUBLISHER_APP_NAME }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          set -euo pipefail
-          APP_ID="$(gh api "/apps/${APP_SLUG}" --jq .id)"
-          echo "app-id=${APP_ID}" >> "${GITHUB_OUTPUT}"
-          echo "name=${APP_SLUG}[bot]" >> "${GITHUB_OUTPUT}"
-          echo "email=${APP_ID}+${APP_SLUG}[bot]@users.noreply.github.com" >> "${GITHUB_OUTPUT}"
-
       - name: Open tap pull request
         if: steps.tag.outputs.skip != 'true'
         env:
@@ -144,40 +131,54 @@ jobs:
           RB_PATH: ${{ steps.render.outputs.rb_path }}
           BRANCH: ${{ steps.tag.outputs.branch }}
           VERSION: ${{ steps.tag.outputs.version }}
-          GIT_AUTHOR_NAME: ${{ steps.app-identity.outputs.name }}
-          GIT_AUTHOR_EMAIL: ${{ steps.app-identity.outputs.email }}
-          GIT_COMMITTER_NAME: ${{ steps.app-identity.outputs.name }}
-          GIT_COMMITTER_EMAIL: ${{ steps.app-identity.outputs.email }}
+          TAP_REPO: grafana/homebrew-grafana
         run: |
           set -euo pipefail
-          gh auth setup-git
 
-          TAP_DIR="$(mktemp -d)"
-          gh repo clone grafana/homebrew-grafana "${TAP_DIR}" -- --depth 1
-          cd "${TAP_DIR}"
+          DEFAULT_BRANCH="$(gh api "repos/${TAP_REPO}" --jq .default_branch)"
+          BASE_SHA="$(gh api "repos/${TAP_REPO}/git/ref/heads/${DEFAULT_BRANCH}" --jq .object.sha)"
 
-          git checkout -B "${BRANCH}"
-
-          # Flat-layout tap: gcx.rb goes at the root, next to alloy.rb /
-          # grafana.rb — NOT under Casks/.
-          cp "${RB_PATH}" gcx.rb
-          git add gcx.rb
-
-          # Idempotency guard: byte-identical input → no staged diff → exit 0.
-          if git diff --cached --quiet; then
-            echo "No changes in gcx.rb for gcx ${VERSION}; exiting without opening a PR."
+          # Idempotency: if gcx.rb already matches on the default branch, the
+          # formula for this version is already published — nothing to do.
+          NEW_HASH="$(sha256sum "${RB_PATH}" | awk '{print $1}')"
+          CURRENT_HASH="$(gh api "repos/${TAP_REPO}/contents/gcx.rb?ref=${DEFAULT_BRANCH}" --jq '.content' 2>/dev/null \
+            | base64 -d 2>/dev/null | sha256sum | awk '{print $1}' || true)"
+          if [[ "${NEW_HASH}" == "${CURRENT_HASH}" ]]; then
+            echo "gcx.rb on ${DEFAULT_BRANCH} already matches gcx ${VERSION}; nothing to do."
             exit 0
           fi
 
-          git commit -m "gcx ${VERSION}"
-          # Force-push so re-running on the same tag overwrites any prior
-          # attempt on this branch.
-          git push --force origin "${BRANCH}"
+          # Create (or reset to the default-branch tip) the release branch.
+          if gh api "repos/${TAP_REPO}/git/ref/heads/${BRANCH}" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/${TAP_REPO}/git/refs/heads/${BRANCH}" \
+              -f sha="${BASE_SHA}" -F force=true >/dev/null
+          else
+            gh api -X POST "repos/${TAP_REPO}/git/refs" \
+              -f ref="refs/heads/${BRANCH}" -f sha="${BASE_SHA}" >/dev/null
+          fi
 
-          DEFAULT_BRANCH="$(gh repo view grafana/homebrew-grafana --json defaultBranchRef --jq '.defaultBranchRef.name')"
+          # Current gcx.rb blob SHA on the branch (required to update an
+          # existing file via the Contents API).
+          FILE_SHA="$(gh api "repos/${TAP_REPO}/contents/gcx.rb?ref=${BRANCH}" --jq '.sha' 2>/dev/null || true)"
+
+          # Commit via the Contents API rather than a local `git commit` +
+          # `git push`. Commits created through the API are signed with
+          # GitHub's web-flow key and so count as "verified", satisfying the
+          # tap's required-signature rule — a plain push from the runner is
+          # unsigned and gets rejected (GH013).
+          # Flat-layout tap: gcx.rb lives at the repo root, next to alloy.rb /
+          # grafana.rb — NOT under Casks/.
+          PUT_ARGS=(-X PUT "repos/${TAP_REPO}/contents/gcx.rb"
+            -f message="gcx ${VERSION}"
+            -f content="$(base64 -w0 "${RB_PATH}")"
+            -f branch="${BRANCH}")
+          if [[ -n "${FILE_SHA}" ]]; then
+            PUT_ARGS+=(-f sha="${FILE_SHA}")
+          fi
+          gh api "${PUT_ARGS[@]}" >/dev/null
 
           EXISTING_PR="$(gh pr list \
-              --repo grafana/homebrew-grafana \
+              --repo "${TAP_REPO}" \
               --head "${BRANCH}" \
               --state all \
               --json number \
@@ -189,7 +190,7 @@ jobs:
           fi
 
           gh pr create \
-            --repo grafana/homebrew-grafana \
+            --repo "${TAP_REPO}" \
             --base "${DEFAULT_BRANCH}" \
             --head "${BRANCH}" \
             --title "gcx ${VERSION}" \
