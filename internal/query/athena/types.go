@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/grafana/gcx/internal/query/dataframe"
 )
 
 const (
@@ -39,35 +41,23 @@ type StringList struct {
 	Header string   `json:"-"`
 }
 
-// GrafanaQueryResponse is the top-level wire format from Grafana's query API.
-type GrafanaQueryResponse struct {
-	Results map[string]GrafanaResult `json:"results"`
-}
+// GrafanaQueryResponse is the top-level Grafana datasource query response.
+type GrafanaQueryResponse = dataframe.Response
 
-type GrafanaResult struct {
-	Frames      []DataFrame `json:"frames"`
-	Error       string      `json:"error,omitempty"`
-	ErrorSource string      `json:"errorSource,omitempty"`
-	Status      int         `json:"status,omitempty"`
-}
+// GrafanaResult represents a single Grafana datasource query result.
+type GrafanaResult = dataframe.Result
 
-type DataFrame struct {
-	Schema DataFrameSchema `json:"schema"`
-	Data   DataFrameData   `json:"data"`
-}
+// DataFrame represents a Grafana data frame.
+type DataFrame = dataframe.Frame
 
-type DataFrameSchema struct {
-	Fields []DataFrameField `json:"fields"`
-}
+// DataFrameSchema describes the structure of a Grafana data frame.
+type DataFrameSchema = dataframe.Schema
 
-type DataFrameField struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
+// DataFrameField describes a field in a Grafana data frame.
+type DataFrameField = dataframe.Field
 
-type DataFrameData struct {
-	Values [][]any `json:"values"`
-}
+// DataFrameData contains column-oriented Grafana data frame values.
+type DataFrameData = dataframe.Data
 
 var (
 	limitClauseRe = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\s*$`)
