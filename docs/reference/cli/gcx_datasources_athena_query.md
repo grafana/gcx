@@ -45,6 +45,7 @@ gcx datasources athena query [EXPR] [flags]
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Max rows to return (0 disables enforcement) (default 100)
       --open                Open the executed query in Grafana Explore
@@ -52,7 +53,7 @@ gcx datasources athena query [EXPR] [flags]
       --region string       AWS region override
       --result-reuse        Enable Athena query result reuse (engine v3)
       --share-link          Print the Grafana Explore URL for the executed query to stderr
-      --since string        Duration before --to (or now if omitted); mutually exclusive with --from
+      --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
       --ttl-minutes int     Cache TTL in minutes for result reuse; 0 disables (default 60)
@@ -61,13 +62,13 @@ gcx datasources athena query [EXPR] [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
-      --config string      Path to the configuration file to use
-      --context string     Name of the context to use (overrides current-context in config)
-      --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
-      --no-color           Disable color output
-      --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)
-  -v, --verbose count      Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string               Path to the configuration file to use
+      --context string              Name of the context to use (overrides current-context in config)
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --no-color                    Disable color output
+      --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
 ```
 
 ### SEE ALSO
