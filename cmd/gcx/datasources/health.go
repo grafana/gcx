@@ -43,6 +43,13 @@ type healthRow struct {
 	Message string `json:"message" yaml:"message"`
 }
 
+// healthResult is the single shape passed to every codec for `datasources
+// health`. JSON/YAML serialize the envelope; the table codec extracts .Results
+// to render rows (Pattern 13: format-agnostic data).
+type healthResult struct {
+	Results []*healthRow `json:"results" yaml:"results"`
+}
+
 func healthCmd() *cobra.Command {
 	configOpts := &cmdconfig.Options{}
 	opts := &healthOpts{}
@@ -118,7 +125,7 @@ Exit codes distinguish resource failure from command failure:
 				rows = append(rows, row)
 			}
 
-			if err := outputHealth(cmd, opts, rows); err != nil {
+			if err := opts.IO.Encode(cmd.OutOrStdout(), &healthResult{Results: rows}); err != nil {
 				return err
 			}
 
@@ -174,24 +181,17 @@ func isHealthy(status string) bool {
 	}
 }
 
-func outputHealth(cmd *cobra.Command, opts *healthOpts, rows []*healthRow) error {
-	if opts.IO.OutputFormat == "table" {
-		return opts.IO.Encode(cmd.OutOrStdout(), rows)
-	}
-	return opts.IO.Encode(cmd.OutOrStdout(), map[string]any{"results": rows})
-}
-
 type healthTableCodec struct{}
 
 func (c *healthTableCodec) Format() format.Format { return "table" }
 
 func (c *healthTableCodec) Encode(w io.Writer, data any) error {
-	rows, ok := data.([]*healthRow)
+	result, ok := data.(*healthResult)
 	if !ok {
 		return errors.New("invalid data type for table codec")
 	}
 	t := style.NewTable("UID", "NAME", "TYPE", "STATUS", "MESSAGE")
-	for _, r := range rows {
+	for _, r := range result.Results {
 		t.Row(r.UID, r.Name, r.Type, r.Status, r.Message)
 	}
 	return t.Render(w)

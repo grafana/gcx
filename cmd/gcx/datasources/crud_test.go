@@ -184,6 +184,49 @@ func TestDeleteBatchPartialFailure(t *testing.T) {
 	assert.Contains(t, stdout, "failed")
 }
 
+// TestGetTextOutput exercises the default `datasources get` text format,
+// which now renders the human detail view from the same DataSourceManifest
+// shape used by -o yaml/json (Pattern 13: format-agnostic data acquisition,
+// codec controls display only).
+func TestGetTextOutput(t *testing.T) {
+	store := map[string]map[string]any{}
+	calls := &crudCalls{}
+	server := newCRUDServer(t, store, calls)
+	defer server.Close()
+	cfg := newConfigFileForServer(t, server.URL)
+
+	// Create the datasource via the manifest path so the server-side store is
+	// populated identically to the round-trip test.
+	_, err := executeWithStdin(t, mockManifest,
+		[]string{"datasources", "create", "--config", cfg, "-f", "-", "-o", "yaml"})
+	require.NoError(t, err)
+	require.Equal(t, 1, calls.create)
+
+	// Default -o text uses the manifest-backed table codec; assert the human
+	// detail view renders the expected FIELD/VALUE rows and never leaks secrets.
+	out, err := executeDatasourceCommand(t,
+		[]string{"datasources", "get", "--config", cfg, "gcx-test"})
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "FIELD")
+	assert.Contains(t, out, "VALUE")
+	assert.Contains(t, out, "UID")
+	assert.Contains(t, out, "gcx-test")
+	assert.Contains(t, out, "Name")
+	assert.Contains(t, out, "gcx test")
+	assert.Contains(t, out, "Type")
+	assert.Contains(t, out, "grafana-mock-datasource")
+	assert.Contains(t, out, "URL")
+	assert.Contains(t, out, "https://example.test/")
+	assert.Contains(t, out, "Access")
+	assert.Contains(t, out, "proxy")
+	assert.Contains(t, out, "BasicAuth")
+	assert.Contains(t, out, "WithCredentials")
+
+	// Secret value must never appear in any format.
+	assert.NotContains(t, out, "super-secret")
+}
+
 func TestHealthHealthy(t *testing.T) {
 	store := map[string]map[string]any{
 		"ok": {"uid": "ok", "name": "ok", "type": "grafana-mock-datasource"},

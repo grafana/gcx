@@ -88,16 +88,22 @@ as spec.type when authoring a datasource manifest.`,
 				return fmt.Errorf("failed to list datasource plugin types: %w", err)
 			}
 
-			if opts.IO.OutputFormat == "table" {
-				return opts.IO.Encode(cmd.OutOrStdout(), types)
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), map[string]any{"types": types})
+			// Pattern 13: single shape for all formats. The table codec extracts
+			// .Types to render rows; JSON/YAML serialize the envelope.
+			return opts.IO.Encode(cmd.OutOrStdout(), &pluginTypesResult{Types: types})
 		},
 	}
 
 	configOpts.BindFlags(cmd.Flags())
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// pluginTypesResult is the single shape passed to every codec for `datasources
+// schemas list`. JSON/YAML serialize the envelope; the table codec extracts
+// .Types to render rows (Pattern 13: format-agnostic data).
+type pluginTypesResult struct {
+	Types []dsclient.PluginType `json:"types" yaml:"types"`
 }
 
 type pluginTypeTableCodec struct{}
@@ -107,13 +113,13 @@ func (c *pluginTypeTableCodec) Format() format.Format {
 }
 
 func (c *pluginTypeTableCodec) Encode(w io.Writer, data any) error {
-	types, ok := data.([]dsclient.PluginType)
+	result, ok := data.(*pluginTypesResult)
 	if !ok {
 		return errors.New("invalid data type for table codec")
 	}
 
 	t := style.NewTable("TYPE", "NAME", "CATEGORY")
-	for _, pt := range types {
+	for _, pt := range result.Types {
 		t.Row(pt.ID, pt.Name, pt.Category)
 	}
 	return t.Render(w)

@@ -75,12 +75,9 @@ an apply-ready manifest that can be edited and re-applied via update -f -.`,
 				return fmt.Errorf("failed to get datasource: %w", err)
 			}
 
-			// Human detail view.
-			if opts.IO.OutputFormat == "text" {
-				return opts.IO.Encode(cmd.OutOrStdout(), detailFromDatasource(ds))
-			}
-
-			// Machine formats emit the apply-ready manifest.
+			// Pattern 13: single shape for all formats. The manifest is the
+			// canonical, apply-ready representation; the registered text codec
+			// renders the human detail view directly from its fields.
 			manifest := dsclient.ManifestFromDatasource(ds)
 			manifest.Sanitize()
 			return opts.IO.Encode(cmd.OutOrStdout(), manifest)
@@ -92,59 +89,30 @@ an apply-ready manifest that can be edited and re-applied via update -f -.`,
 	return cmd
 }
 
-type datasourceDetail struct {
-	UID       string `json:"uid" yaml:"uid"`
-	Name      string `json:"name" yaml:"name"`
-	Type      string `json:"type" yaml:"type"`
-	URL       string `json:"url" yaml:"url"`
-	Access    string `json:"access" yaml:"access"`
-	Default   bool   `json:"default" yaml:"default"`
-	ReadOnly  bool   `json:"readOnly" yaml:"readOnly"`
-	Database  string `json:"database,omitempty" yaml:"database,omitempty"`
-	BasicAuth bool   `json:"basicAuth" yaml:"basicAuth"`
-	WithCreds bool   `json:"withCredentials" yaml:"withCredentials"`
-	JSONData  any    `json:"jsonData,omitempty" yaml:"jsonData,omitempty"`
-}
-
-func detailFromDatasource(ds *dsclient.Datasource) *datasourceDetail {
-	return &datasourceDetail{
-		UID:       ds.UID,
-		Name:      ds.Name,
-		Type:      ds.Type,
-		URL:       ds.URL,
-		Access:    ds.Access,
-		Default:   ds.IsDefault,
-		ReadOnly:  ds.ReadOnly,
-		Database:  ds.Database,
-		BasicAuth: ds.BasicAuth,
-		WithCreds: ds.WithCredentials,
-		JSONData:  ds.JSONData,
-	}
-}
-
-// datasourceDetailCodec renders a datasourceDetail as a human-readable table.
+// datasourceDetailCodec renders a DataSourceManifest as a human-readable table.
+// All -o formats share the same manifest input; only the rendering differs.
 type datasourceDetailCodec struct{}
 
 func (c *datasourceDetailCodec) Format() format.Format { return "text" }
 
 func (c *datasourceDetailCodec) Encode(w io.Writer, data any) error {
-	d, ok := data.(*datasourceDetail)
+	m, ok := data.(*dsclient.DataSourceManifest)
 	if !ok {
 		return errors.New("invalid data type for text codec")
 	}
 	t := style.NewTable("FIELD", "VALUE")
-	t.Row("UID", d.UID)
-	t.Row("Name", d.Name)
-	t.Row("Type", d.Type)
-	t.Row("URL", d.URL)
-	t.Row("Access", d.Access)
-	t.Row("Default", strconv.FormatBool(d.Default))
-	t.Row("ReadOnly", strconv.FormatBool(d.ReadOnly))
-	if d.Database != "" {
-		t.Row("Database", d.Database)
+	t.Row("UID", m.Metadata.Name)
+	t.Row("Name", m.Spec.Title)
+	t.Row("Type", m.Spec.Type)
+	t.Row("URL", m.Spec.URL)
+	t.Row("Access", m.Spec.Access)
+	t.Row("Default", strconv.FormatBool(m.Spec.IsDefault))
+	t.Row("ReadOnly", strconv.FormatBool(m.Spec.ReadOnly))
+	if m.Spec.Database != "" {
+		t.Row("Database", m.Spec.Database)
 	}
-	t.Row("BasicAuth", strconv.FormatBool(d.BasicAuth))
-	t.Row("WithCredentials", strconv.FormatBool(d.WithCreds))
+	t.Row("BasicAuth", strconv.FormatBool(m.Spec.BasicAuth))
+	t.Row("WithCredentials", strconv.FormatBool(m.Spec.WithCredentials))
 	return t.Render(w)
 }
 
