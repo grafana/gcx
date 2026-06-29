@@ -582,7 +582,7 @@ func checkEntityCounts(ctx context.Context, client *Client) (CheckResult, map[st
 // scopes map so the Orientation block can detect known/unknown scope
 // values without a second API call. scopes is nil on API error.
 func checkScopeValues(ctx context.Context, client *Client) (CheckResult, map[string][]string) {
-	scopes, err := client.ListEntityScopes(ctx)
+	scopes, err := client.ListEntityScopes(ctx, 0, 0)
 	if err != nil {
 		return CheckResult{
 			Name:           "Scope values",

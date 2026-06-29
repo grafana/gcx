@@ -116,7 +116,8 @@ func (f *scopeFlags) validateScopes(ctx context.Context, client *Client) error {
 	if len(active) == 0 {
 		return nil
 	}
-	scopes, err := client.ListEntityScopes(ctx)
+	startMs, endMs, _ := f.resolveTime()
+	scopes, err := client.ListEntityScopes(ctx, startMs, endMs)
 	if err != nil {
 		return nil //nolint:nilerr // best-effort: scope validation is advisory
 	}
@@ -2378,14 +2379,18 @@ func newDescribeScopesCmd(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			scopes, err := client.ListEntityScopes(cmd.Context())
+			startMs, endMs, err := opts.Time.resolveTime()
+			if err != nil {
+				return err
+			}
+			scopes, err := client.ListEntityScopes(cmd.Context(), startMs, endMs)
 			if err != nil {
 				return err
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Scopes: scopes})
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.setupWithTime(cmd.Flags())
 	return cmd
 }
 
@@ -2512,7 +2517,7 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 				return nil
 			})
 			g.Go(func() error {
-				scopes, scopeErr := client.ListEntityScopes(gCtx)
+				scopes, scopeErr := client.ListEntityScopes(gCtx, startMs, endMs)
 				if scopeErr != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: scope values failed to load: %v\n", scopeErr)
 					return nil

@@ -481,11 +481,18 @@ func (c *Client) CountEntityTypes(ctx context.Context, startMs, endMs int64, sc 
 }
 
 // ListEntityScopes retrieves the available scope dimension values.
-func (c *Client) ListEntityScopes(ctx context.Context) (map[string][]string, error) {
+func (c *Client) ListEntityScopes(ctx context.Context, startMs, endMs int64) (map[string][]string, error) {
+	if startMs == 0 || endMs == 0 {
+		endMs = time.Now().UnixMilli()
+		startMs = endMs - 3600000
+	}
+	q := url.Values{}
+	q.Set("start", strconv.FormatInt(startMs, 10))
+	q.Set("end", strconv.FormatInt(endMs, 10))
 	var wrapper struct {
 		ScopeValues map[string][]string `json:"scopeValues"`
 	}
-	if err := c.getJSON(ctx, scopesPath, &wrapper); err != nil {
+	if err := c.getJSON(ctx, scopesPath+"?"+q.Encode(), &wrapper); err != nil {
 		return nil, fmt.Errorf("kg: list entity scopes: %w", err)
 	}
 	return wrapper.ScopeValues, nil
