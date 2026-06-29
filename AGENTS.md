@@ -44,11 +44,12 @@ Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud p
 mise run build       # Build to bin/gcx
 mise run tests       # Run all tests with race detection
 mise run lint        # Run golangci-lint
+mise run gate        # lint + tests + build (no docs) — fast pre-push gate for code changes
 mise run all         # lint + tests + build + docs
 mise run docs        # Generate + build all documentation
 ```
 
-**Without mise**: replace with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`.
+**Without mise**: replace with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`. Lint runs in Go **module mode** (`golangci-lint`'s `modules-download-mode: readonly`), so no `vendor/` directory is needed locally — the module cache (`go mod download`, run automatically on worktree entry) is sufficient.
 
 > **Agent environments**: always prefix with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults in `mise run docs`, producing wrong CLI reference docs.
 
