@@ -310,6 +310,16 @@ gcx traces tags -d <tempo-uid> -l resource.service.name --llm -o json
 See [`references/traceql-patterns.md`](references/traceql-patterns.md) for full
 TraceQL syntax reference.
 
+If the issue is trace waterfall gaps, `<root span not yet received>`, or child
+spans with missing parents, follow
+[`references/trace-gaps.md`](references/trace-gaps.md):
+detect missing parents, distinguish missing-parent evidence from uninstrumented
+app/runtime work, and use
+[`references/opentelemetry.md`](references/opentelemetry.md)
+for the staged OpenTelemetry pipeline checks: in-process, collector/Alloy, and
+Grafana Cloud / Tempo. For Java agent investigations, use
+[`references/opentelemetry-java.md`](references/opentelemetry-java.md).
+
 ### Step 6: Check Related Dashboards and Resources
 
 Check whether relevant dashboards exist that give broader context, and inspect
@@ -620,3 +630,27 @@ gcx alert rules list -o json | jq '.[] | .rules[]? | select(.state == "firing")'
 - [`references/traceql-patterns.md`](references/traceql-patterns.md) — TraceQL
   query patterns for Tempo trace search, attribute scoping rules, and the
   distinction between `traces query` and `traces get`.
+
+- [`references/trace-gaps.md`](references/trace-gaps.md) —
+  Generic trace-gap workflow for separating missing-parent evidence from
+  uninstrumented app/runtime work.
+
+- [`references/opentelemetry.md`](references/opentelemetry.md) —
+  OpenTelemetry pipeline overview for walking from in-process telemetry creation
+  through collector/Alloy to Grafana Cloud / Tempo.
+
+- [`references/opentelemetry-in-process.md`](references/opentelemetry-in-process.md) —
+  In-process OpenTelemetry checks for SDK/exporter output, local debug logs,
+  and metrics that indicate export failure or drops.
+
+- [`references/opentelemetry-collector.md`](references/opentelemetry-collector.md) —
+  Collector/Alloy checks for receiver acceptance, processor/queue health,
+  exporter send failures, and debug exporter usage.
+
+- [`references/opentelemetry-grafana-cloud.md`](references/opentelemetry-grafana-cloud.md) —
+  Grafana Cloud OTLP / Tempo checks for final-hop export success, trace
+  queryability, and escalation evidence.
+
+- [`references/opentelemetry-java.md`](references/opentelemetry-java.md) —
+  Java-agent-specific checks for local console export, debug logging,
+  `LoggingSpanExporter`, JDBC datasource spans, and agent isolation.
