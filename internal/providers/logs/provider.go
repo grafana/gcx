@@ -29,6 +29,9 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Query logs using configured default datasource
   gcx logs query '{job="varlogs"}'
 
+  # Query logs at a specific time
+  gcx logs query '{job="varlogs"}' --time 2026-01-15T10:30:00Z
+
   # Query with explicit datasource UID
   gcx logs query -d abc123 '{job="varlogs"} |= "error"'
 

@@ -32,10 +32,13 @@ TRACEQL is the TraceQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds. Share links require an
-explicit time range via --since or --from/--to.`,
+explicit time range via --since, --from/--to, or --time.`,
 		Example: `
   # Search traces using configured default datasource
   gcx datasources tempo query '{ span.http.status_code >= 500 }'
+
+  # Search for traces at a specific time (1-minute window ending at that time)
+  gcx datasources tempo query '{ span.http.status_code >= 500 }' --time 2026-01-15T10:30:00Z
 
   # Search with explicit datasource UID and time range
   gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h
@@ -86,6 +89,16 @@ explicit time range via --since or --from/--to.`,
 				return err
 			}
 
+			// --time: search a 1-minute window ending at the specified timestamp
+			if shared.Time != "" {
+				t, err := dsquery.ParseTime(shared.Time, now)
+				if err != nil {
+					return fmt.Errorf("invalid --time value: %w", err)
+				}
+				start = t.Add(-time.Minute)
+				end = t
+			}
+
 			client, err := tempo.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
@@ -105,18 +118,19 @@ explicit time range via --since or --from/--to.`,
 
 			exploreURL := ""
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("search")
+			hasRange := shared.IsRange() || shared.Time != ""
 			switch {
-			case !shared.IsRange() && share.Enabled():
-				unavailableMsg = "search succeeded, but Grafana Explore links require --since or --from/--to for Tempo trace searches"
+			case !hasRange && share.Enabled():
+				unavailableMsg = "search succeeded, but Grafana Explore links require --since, --from/--to, or --time for Tempo trace searches"
 			case limit == 0 && share.Enabled():
 				unavailableMsg = "search succeeded, but Grafana Explore links do not support --limit 0 for Tempo trace searches"
-			case shared.IsRange():
+			case hasRange:
 				exploreURL = SearchExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 					DatasourceUID:  datasourceUID,
 					DatasourceType: "tempo",
 					Expr:           expr,
-					From:           shared.From,
-					To:             shared.To,
+					From:           start.Format(time.RFC3339),
+					To:             end.Format(time.RFC3339),
 					OrgID:          dsquery.OrgID(cfgCtx),
 				}, limit)
 			}
@@ -137,6 +151,7 @@ explicit time range via --since or --from/--to.`,
 	}
 
 	shared.Setup(cmd.Flags(), false)
+	shared.SetupInstantFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum number of traces to return (0 means no limit)")
 	share.Setup(cmd.Flags(), "executed query")

@@ -15,6 +15,7 @@ bodies or -o json for the full structured response.
 Default --limit is 50; use --limit 0 for no cap.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
+--time evaluates the query over a 1-minute window ending at the given timestamp.
 
 ```
 gcx logs query [EXPR] [flags]
@@ -26,6 +27,9 @@ gcx logs query [EXPR] [flags]
 
   # Query logs using configured default datasource
   gcx logs query '{job="varlogs"}'
+
+  # Query logs at a specific time
+  gcx logs query '{job="varlogs"}' --time 2026-01-15T10:30:00Z
 
   # Query with explicit datasource UID
   gcx logs query -d abc123 '{job="varlogs"} |= "error"'
@@ -55,6 +59,7 @@ gcx logs query [EXPR] [flags]
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
+      --time string         Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'). Mutually exclusive with --from/--to/--since
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 

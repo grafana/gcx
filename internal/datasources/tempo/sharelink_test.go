@@ -102,7 +102,7 @@ current-context: default
 	assert.Equal(t, 1, searchCalls)
 	assert.Zero(t, metadataCalls)
 	assert.Contains(t, stdout, `"traceID": "trace-123"`)
-	assert.Contains(t, stderr, "Grafana Explore links require --since or --from/--to")
+	assert.Contains(t, stderr, "Grafana Explore links require --since, --from/--to, or --time")
 	assert.NotContains(t, stderr, "Explore link:")
 }
 

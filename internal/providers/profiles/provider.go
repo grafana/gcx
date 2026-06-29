@@ -31,6 +31,10 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx profiles query -d abc123 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
+  # Profile query at a specific time (1-minute window ending at that time)
+  gcx profiles query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --time 2026-01-15T10:30:00Z
+
   # Using configured default datasource
   gcx profiles query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h

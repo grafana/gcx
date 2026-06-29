@@ -34,10 +34,14 @@ bodies or -o json for the full structured response.
 
 Default --limit is 50; use --limit 0 for no cap.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds.
+--time evaluates the query over a 1-minute window ending at the given timestamp.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
+
+  # Query logs at a specific time
+  gcx datasources loki query '{job="varlogs"}' --time 2026-01-15T10:30:00Z
 
   # Query with explicit datasource UID
   gcx datasources loki query -d UID '{job="varlogs"} |= "error"'
@@ -88,6 +92,14 @@ open it in your browser after the query succeeds.`,
 				return err
 			}
 
+			if shared.Time != "" {
+				t, err := dsquery.ParseTime(shared.Time, now)
+				if err != nil {
+					return fmt.Errorf("invalid --time value: %w", err)
+				}
+				start = t
+			}
+
 			client, err := loki.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
@@ -135,6 +147,7 @@ open it in your browser after the query succeeds.`,
 	shared.IO.RegisterCustomCodec("raw", loki.NewRawQueryCodec())
 	shared.IO.BindFlags(cmd.Flags())
 	shared.SetupTimeFlags(cmd.Flags())
+	shared.SetupInstantFlag(cmd.Flags())
 	cmd.Flags().StringVar(&shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
 	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
