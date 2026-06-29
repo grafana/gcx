@@ -43,7 +43,7 @@ gcx kg entities list [flags]
   -o, --output string          Output format. One of: agents, json, table, yaml (default "table")
       --page int               Page number (0-based)
       --property stringArray   Filter by property: name=value (exact) or name=~value (contains); repeatable (run 'gcx kg meta schema' to list property names)
-      --since string           Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
+      --since string           Duration before --to (or now); mutually exclusive with --from/--to (e.g. 1h, 30m, 7d)
       --site string            Site scope (run 'gcx kg meta scopes' to see valid values)
       --to string              End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string            Entity type to list (run 'gcx kg meta schema' to see available types)
