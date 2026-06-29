@@ -84,7 +84,7 @@ uv pip install --system -q -r requirements.txt
 
 [tasks.clean]
 description = "Remove build artifacts"
-run = "rm -rf bin vendor .venv"
+run = "rm -rf bin .venv"
 
 [tasks.setup]
 description = "Set up local development environment (commit template, etc.)"
