@@ -3,30 +3,11 @@ package clickhouse
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/query/dataframe"
+	querysql "github.com/grafana/gcx/internal/query/sql"
 )
-
-// GrafanaQueryResponse is the top-level Grafana datasource query response.
-type GrafanaQueryResponse = dataframe.Response
-
-// GrafanaResult represents a single Grafana datasource query result.
-type GrafanaResult = dataframe.Result
-
-// DataFrame represents a Grafana data frame.
-type DataFrame = dataframe.Frame
-
-// DataFrameSchema describes the structure of a Grafana data frame.
-type DataFrameSchema = dataframe.Schema
-
-// DataFrameField describes a field in a Grafana data frame.
-type DataFrameField = dataframe.Field
-
-// DataFrameData contains column-oriented Grafana data frame values.
-type DataFrameData = dataframe.Data
 
 // EscapeSQLString escapes single quotes for use in SQL string literals.
 // Matches the ClickHouse plugin's own escapeSQLString implementation.
@@ -47,38 +28,14 @@ func ValidateIdentifier(name, field string) error {
 	return nil
 }
 
-var (
-	limitClauseRe = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\s*$`)
-	limitBailRe   = regexp.MustCompile(`(?im)(\bLIMIT\s+\d+\s+BY\b|\bLIMIT\s+\d+\s+OFFSET\b|\bLIMIT\s+\d+\s*,|\bFORMAT\b|\bSETTINGS\b|^\s*EXPLAIN\b|^\s*DESC(RIBE)?\b|^\s*SHOW\s+CREATE\b|^\s*EXISTS\b|^\s*CHECK\b)`)
-)
+var limitBailRe = regexp.MustCompile(`(?im)(\bLIMIT\s+\d+\s+BY\b|\bLIMIT\s+\d+\s+OFFSET\b|\bLIMIT\s+\d+\s*,|\bFORMAT\b|\bSETTINGS\b|^\s*EXPLAIN\b|^\s*DESC(RIBE)?\b|^\s*SHOW\s+CREATE\b|^\s*EXISTS\b|^\s*CHECK\b)`)
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds.
 // If limit is 0, enforcement is disabled (pass-through).
-// If the SQL contains LIMIT BY, FORMAT, or SETTINGS, it bails out (pass-through).
+// If the SQL contains LIMIT BY, FORMAT, SETTINGS, or a metadata statement
+// (EXPLAIN/DESCRIBE/SHOW CREATE/EXISTS/CHECK), it bails out (pass-through).
 func EnforceLimit(sql string, limit, maxLimit int) string {
-	if limit == 0 {
-		return sql
-	}
-
-	if limitBailRe.MatchString(sql) {
-		return sql
-	}
-
-	trimmed := strings.TrimRight(sql, "; \t\n")
-	suffix := sql[len(trimmed):]
-
-	if m := limitClauseRe.FindStringSubmatchIndex(trimmed); m != nil {
-		existing, _ := strconv.Atoi(trimmed[m[2]:m[3]])
-		if existing > maxLimit {
-			return trimmed[:m[2]] + strconv.Itoa(maxLimit) + trimmed[m[3]:] + suffix
-		}
-		return sql
-	}
-
-	if limit > maxLimit {
-		limit = maxLimit
-	}
-	return trimmed + " LIMIT " + strconv.Itoa(limit) + suffix
+	return querysql.EnforceLimit(sql, limit, maxLimit, limitBailRe.MatchString)
 }
 
 // QueryRequest represents a ClickHouse query request.
@@ -87,18 +44,6 @@ type QueryRequest struct {
 	Start      time.Time
 	End        time.Time
 	IntervalMs int64
-}
-
-// QueryResponse holds the parsed row-oriented result of a ClickHouse query.
-type QueryResponse struct {
-	Columns []Column `json:"columns"`
-	Rows    [][]any  `json:"rows"`
-}
-
-// Column describes a result column.
-type Column struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
 }
 
 // TableInfo represents a row from system.tables.
@@ -120,7 +65,7 @@ type ColumnInfo struct {
 }
 
 // ParseTableInfoRows converts a QueryResponse from the system.tables query into typed TableInfo.
-func ParseTableInfoRows(resp *QueryResponse) []TableInfo {
+func ParseTableInfoRows(resp *querysql.QueryResponse) []TableInfo {
 	tables := make([]TableInfo, 0, len(resp.Rows))
 	for _, row := range resp.Rows {
 		if len(row) < 5 {
@@ -147,7 +92,7 @@ func ParseTableInfoRows(resp *QueryResponse) []TableInfo {
 }
 
 // ParseColumnInfoRows converts a QueryResponse from the system.columns query into typed ColumnInfo.
-func ParseColumnInfoRows(resp *QueryResponse) []ColumnInfo {
+func ParseColumnInfoRows(resp *querysql.QueryResponse) []ColumnInfo {
 	cols := make([]ColumnInfo, 0, len(resp.Rows))
 	for _, row := range resp.Rows {
 		if len(row) < 5 {

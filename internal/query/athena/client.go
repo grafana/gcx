@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/query/grafanaquery"
+	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
@@ -70,7 +71,7 @@ func (c *Client) Resource(ctx context.Context, datasourceUID string, path string
 }
 
 // Query executes a SQL query against the specified Athena datasource.
-func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
+func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*querysql.QueryResponse, error) {
 	from := strconv.FormatInt(req.Start.UnixMilli(), 10)
 	to := strconv.FormatInt(req.End.UnixMilli(), 10)
 	if req.Start.IsZero() || req.End.IsZero() {
@@ -122,53 +123,5 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, err
 	}
 
-	return parseResponse(respBody)
-}
-
-func parseResponse(respBody []byte) (*QueryResponse, error) {
-	var raw GrafanaQueryResponse
-	if err := json.Unmarshal(respBody, &raw); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	result, ok := raw.Results["A"]
-	if !ok {
-		return &QueryResponse{}, nil
-	}
-	if result.Error != "" {
-		status := result.Status
-		if status == 0 {
-			status = http.StatusBadRequest
-		}
-		return nil, queryerror.New("athena", "query", status, result.Error, result.ErrorSource)
-	}
-
-	resp := &QueryResponse{}
-
-	// Athena uses grafana/sqlds which returns exactly one frame per query result set.
-	// See: github.com/grafana/sqlds/blob/5b4920612a218a63954c7f9f34947c63d2bff19b/query.go#L252
-	// Ref: github.com/grafana/athena-datasource/blob/e0876565e2a37d28b3ecc2c1d213fb1c5fa66f3b/pkg/athena/datasource.go#L21
-	if len(result.Frames) == 0 {
-		return resp, nil
-	}
-	frame := result.Frames[0]
-
-	for _, f := range frame.Schema.Fields {
-		resp.Columns = append(resp.Columns, Column{Name: f.Name, Type: f.Type})
-	}
-
-	if len(frame.Data.Values) == 0 || len(frame.Data.Values[0]) == 0 {
-		return resp, nil
-	}
-	numRows := len(frame.Data.Values[0])
-	for rowIdx := range numRows {
-		row := make([]any, len(frame.Data.Values))
-		for colIdx := range frame.Data.Values {
-			if rowIdx < len(frame.Data.Values[colIdx]) {
-				row[colIdx] = frame.Data.Values[colIdx][rowIdx]
-			}
-		}
-		resp.Rows = append(resp.Rows, row)
-	}
-	return resp, nil
+	return querysql.ParseResponse(respBody, "athena")
 }

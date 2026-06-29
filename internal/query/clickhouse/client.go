@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/grafanaquery"
-	"github.com/grafana/gcx/internal/queryerror"
+	querysql "github.com/grafana/gcx/internal/query/sql"
 )
 
 // Client is a client for executing ClickHouse queries via Grafana's datasource API.
@@ -29,7 +28,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 }
 
 // Query executes a ClickHouse query against the specified datasource.
-func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
+func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*querysql.QueryResponse, error) {
 	intervalMs := req.IntervalMs
 	if intervalMs == 0 {
 		intervalMs = 60000
@@ -67,54 +66,5 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, err
 	}
 
-	return parseResponse(respBody)
-}
-
-func parseResponse(respBody []byte) (*QueryResponse, error) {
-	var raw GrafanaQueryResponse
-	if err := json.Unmarshal(respBody, &raw); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	result, ok := raw.Results["A"]
-	if !ok {
-		return &QueryResponse{}, nil
-	}
-	if result.Error != "" {
-		status := result.Status
-		if status == 0 {
-			status = http.StatusBadRequest
-		}
-		return nil, queryerror.New("clickhouse", "query", status, result.Error, result.ErrorSource)
-	}
-
-	resp := &QueryResponse{}
-
-	// ClickHouse with FormatOptionTable (format=1) produces exactly one frame per
-	// result set. Only the first frame is used.
-	// See: github.com/grafana/clickhouse-datasource/blob/c56e3af64308ffc4cf304c8f4dd9ce545d6b2063/pkg/plugin/driver.go#L448-L453
-	// Ref: github.com/grafana/mcp-grafana/blob/9517bc0fc86b4d4f8a5978f28498bf376dc51d65/tools/clickhouse.go#L326-L349
-	if len(result.Frames) == 0 {
-		return resp, nil
-	}
-	frame := result.Frames[0]
-
-	for _, f := range frame.Schema.Fields {
-		resp.Columns = append(resp.Columns, Column{Name: f.Name, Type: f.Type})
-	}
-
-	if len(frame.Data.Values) == 0 || len(frame.Data.Values[0]) == 0 {
-		return resp, nil
-	}
-	numRows := len(frame.Data.Values[0])
-	for rowIdx := range numRows {
-		row := make([]any, len(frame.Data.Values))
-		for colIdx := range frame.Data.Values {
-			if rowIdx < len(frame.Data.Values[colIdx]) {
-				row[colIdx] = frame.Data.Values[colIdx][rowIdx]
-			}
-		}
-		resp.Rows = append(resp.Rows, row)
-	}
-	return resp, nil
+	return querysql.ParseResponse(respBody, "clickhouse")
 }

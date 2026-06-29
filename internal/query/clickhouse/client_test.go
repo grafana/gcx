@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/clickhouse"
+	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,7 +30,7 @@ func TestQuery(t *testing.T) {
 	tests := []struct {
 		name       string
 		handler    http.HandlerFunc
-		assertResp func(t *testing.T, resp *clickhouse.QueryResponse)
+		assertResp func(t *testing.T, resp *querysql.QueryResponse)
 	}{
 		{
 			name: "parses columnar response",
@@ -38,7 +39,7 @@ func TestQuery(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"col1","type":"string"},{"name":"col2","type":"number"}]},"data":{"values":[["a","b"],[1,2]]}}],"status":200}}}`))
 			}),
-			assertResp: func(t *testing.T, resp *clickhouse.QueryResponse) {
+			assertResp: func(t *testing.T, resp *querysql.QueryResponse) {
 				t.Helper()
 				assert.Len(t, resp.Columns, 2)
 				assert.Equal(t, "col1", resp.Columns[0].Name)
@@ -55,7 +56,7 @@ func TestQuery(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"x","type":"string"}]},"data":{"values":[[]]}}],"status":200}}}`))
 			}),
-			assertResp: func(t *testing.T, resp *clickhouse.QueryResponse) {
+			assertResp: func(t *testing.T, resp *querysql.QueryResponse) {
 				t.Helper()
 				assert.Len(t, resp.Columns, 1)
 				assert.Empty(t, resp.Rows)
@@ -68,7 +69,7 @@ func TestQuery(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"name","type":"string"},{"name":"total_rows","type":"number"}]},"data":{"values":[["t1","t2"],[100,null]]}}],"status":200}}}`))
 			}),
-			assertResp: func(t *testing.T, resp *clickhouse.QueryResponse) {
+			assertResp: func(t *testing.T, resp *querysql.QueryResponse) {
 				t.Helper()
 				assert.Len(t, resp.Rows, 2)
 				assert.Nil(t, resp.Rows[1][1])
