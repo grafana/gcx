@@ -433,20 +433,32 @@ func verificationCode(codeChallenge string) string {
 }
 
 func openBrowser(ctx context.Context, url string) error {
-	var cmd *exec.Cmd
-
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.CommandContext(ctx, "open", url)
-	case "linux":
-		cmd = exec.CommandContext(ctx, "xdg-open", url)
-	case "windows":
-		cmd = exec.CommandContext(ctx, "cmd", "/c", "start", url)
-	default:
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	cmd, err := browserCommand(ctx, runtime.GOOS, url)
+	if err != nil {
+		return err
 	}
-
 	return cmd.Start()
+}
+
+// browserCommand builds the platform-specific command that opens url in the
+// user's default browser. goos is passed explicitly (rather than read from
+// runtime.GOOS) so the per-platform argv is unit-testable.
+func browserCommand(ctx context.Context, goos, url string) (*exec.Cmd, error) {
+	switch goos {
+	case "darwin":
+		return exec.CommandContext(ctx, "open", url), nil
+	case "linux":
+		return exec.CommandContext(ctx, "xdg-open", url), nil
+	case "windows":
+		// explorer.exe parses its arguments with CommandLineToArgvW (whitespace
+		// split only), so query-string separators like & survive intact. Using
+		// cmd.exe ("cmd /c start") truncates the URL at the first & because cmd
+		// treats it as a command separator, dropping state/code_challenge and
+		// breaking OAuth login (#814).
+		return exec.CommandContext(ctx, "explorer.exe", url), nil
+	default:
+		return nil, fmt.Errorf("unsupported platform: %s", goos)
+	}
 }
 
 // StripControlChars sanitises errors to stop potentially malicious errors from
