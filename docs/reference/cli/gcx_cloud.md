@@ -22,5 +22,6 @@ Manage your Grafana Cloud resources
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx cloud login](gcx_cloud_login.md)	 - Authenticate with the Grafana Cloud API (GCOM)
 * [gcx cloud stacks](gcx_cloud_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
 

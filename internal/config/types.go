@@ -128,12 +128,22 @@ type CloudConfig struct {
 	// Token is a Grafana Cloud API token used to authenticate against GCOM.
 	Token string `datapolicy:"secret" env:"GRAFANA_CLOUD_TOKEN" json:"token,omitempty" yaml:"token,omitempty"`
 
+	// TokenExpiresAt is the token expiration time in RFC3339 format.
+	// Only set for OAuth tokens obtained via `gcx cloud login`.
+	TokenExpiresAt string `json:"token-expires-at,omitempty" yaml:"token-expires-at,omitempty"`
+
 	// Stack is the Grafana Cloud stack slug (e.g. "mystack").
 	// Optional: if not set, the slug may be derived from Grafana.Server.
 	Stack string `env:"GRAFANA_CLOUD_STACK" json:"stack,omitempty" yaml:"stack,omitempty"`
 
-	// APIUrl is the base URL of the Grafana Cloud API (GCOM).
-	// Optional: defaults to "https://grafana.com".
+	// OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
+	// login`. It is used only during login. Optional: defaults to
+	// "https://grafana.com".
+	OAuthUrl string `env:"GRAFANA_CLOUD_OAUTH_URL" json:"oauth-url,omitempty" yaml:"oauth-url,omitempty"`
+
+	// APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls
+	// (stacks, regions, access policies, etc.). Every client talking to GCOM
+	// uses it. Optional: defaults to "https://grafana.com".
 	APIUrl string `env:"GRAFANA_CLOUD_API_URL" json:"api-url,omitempty" yaml:"api-url,omitempty"`
 }
 
@@ -343,23 +353,17 @@ func ContextNameFromServerURL(serverURL string) string {
 	return strings.ReplaceAll(parsed.Hostname(), ".", "-")
 }
 
-// ResolveGCOMURL returns the Grafana Cloud API (GCOM) base URL for this context.
-// Resolution order:
+// ResolveCloudAPIURL returns the base URL for Grafana Cloud API (GCOM) resource
+// calls (stacks, regions, access policies, etc.). Every client talking to GCOM
+// uses it. Resolution order:
 //  1. An explicit Cloud.APIUrl, prefixed with "https://" if it has no scheme.
 //  2. The GCOM root derived from the stack server URL's environment, so that an
 //     ops stack (*.grafana-ops.net) resolves to grafana-ops.com and a dev stack
 //     to grafana-dev.com instead of prod grafana.com.
 //  3. "https://grafana.com" as the default (prod, or non-Grafana-Cloud hosts).
-func (context *Context) ResolveGCOMURL() string {
+func (context *Context) ResolveCloudAPIURL() string {
 	if context.Cloud != nil && context.Cloud.APIUrl != "" {
-		apiURL := context.Cloud.APIUrl
-		if !strings.HasPrefix(apiURL, "https://") && !strings.HasPrefix(apiURL, "http://") {
-			apiURL = "https://" + apiURL
-		}
-		if strings.HasPrefix(apiURL, "http://") {
-			slog.Warn("GCOM API URL uses http:// — cloud tokens may be sent unencrypted", "url", apiURL)
-		}
-		return apiURL
+		return NormalizeCloudURL(context.Cloud.APIUrl)
 	}
 
 	if context.Grafana != nil {
@@ -369,6 +373,28 @@ func (context *Context) ResolveGCOMURL() string {
 	}
 
 	return "https://grafana.com"
+}
+
+// ResolveOAuthURL returns the base URL for the OAuth login flow run by
+// `gcx cloud login`. It returns the normalized Cloud.OAuthUrl, or
+// "https://grafana.com" when unset. Used only during login.
+func (context *Context) ResolveOAuthURL() string {
+	if context.Cloud != nil && context.Cloud.OAuthUrl != "" {
+		return NormalizeCloudURL(context.Cloud.OAuthUrl)
+	}
+	return "https://grafana.com"
+}
+
+// NormalizeCloudURL prefixes a Grafana Cloud URL with "https://" when no scheme
+// is present, and warns when an insecure http:// scheme is used.
+func NormalizeCloudURL(raw string) string {
+	if !strings.HasPrefix(raw, "https://") && !strings.HasPrefix(raw, "http://") {
+		raw = "https://" + raw
+	}
+	if strings.HasPrefix(raw, "http://") {
+		slog.Warn("Grafana Cloud URL uses http:// - credentials may be sent unencrypted", "url", raw)
+	}
+	return raw
 }
 
 type GrafanaConfig struct {

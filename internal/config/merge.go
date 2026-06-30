@@ -175,6 +175,9 @@ func mergeCloudConfig(base, over *CloudConfig) CloudConfig {
 	if over.Stack != "" {
 		result.Stack = over.Stack
 	}
+	if over.OAuthUrl != "" {
+		result.OAuthUrl = over.OAuthUrl
+	}
 	if over.APIUrl != "" {
 		result.APIUrl = over.APIUrl
 	}

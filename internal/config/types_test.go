@@ -491,7 +491,7 @@ func TestContextNameFromServerURL_DotsToHyphens(t *testing.T) {
 	}
 }
 
-func TestContext_ResolveGCOMURL(t *testing.T) {
+func TestContext_ResolveCloudAPIURL(t *testing.T) {
 	testCases := []struct {
 		name     string
 		ctx      config.Context
@@ -500,6 +500,13 @@ func TestContext_ResolveGCOMURL(t *testing.T) {
 		{
 			name:     "no cloud config returns default grafana.com URL",
 			ctx:      config.Context{},
+			expected: "https://grafana.com",
+		},
+		{
+			name: "cloud.oauth-url does not affect the API URL",
+			ctx: config.Context{
+				Cloud: &config.CloudConfig{OAuthUrl: "https://grafana-dev.com"},
+			},
 			expected: "https://grafana.com",
 		},
 		{
@@ -571,7 +578,56 @@ func TestContext_ResolveGCOMURL(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			req := require.New(t)
-			req.Equal(tc.expected, tc.ctx.ResolveGCOMURL())
+			req.Equal(tc.expected, tc.ctx.ResolveCloudAPIURL())
+		})
+	}
+}
+
+func TestContext_ResolveOAuthURL(t *testing.T) {
+	testCases := []struct {
+		name     string
+		ctx      config.Context
+		expected string
+	}{
+		{
+			name:     "no cloud config returns default grafana.com URL",
+			ctx:      config.Context{},
+			expected: "https://grafana.com",
+		},
+		{
+			name: "empty cloud.oauth-url returns default grafana.com URL",
+			ctx: config.Context{
+				Cloud: &config.CloudConfig{},
+			},
+			expected: "https://grafana.com",
+		},
+		{
+			name: "custom cloud.oauth-url is prefixed with https://",
+			ctx: config.Context{
+				Cloud: &config.CloudConfig{OAuthUrl: "grafana-dev.com"},
+			},
+			expected: "https://grafana-dev.com",
+		},
+		{
+			name: "cloud.api-url does not affect the OAuth URL",
+			ctx: config.Context{
+				Cloud: &config.CloudConfig{APIUrl: "https://grafana-dev.com"},
+			},
+			expected: "https://grafana.com",
+		},
+		{
+			name: "stack server env does not affect the OAuth URL",
+			ctx: config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-ops.net"},
+			},
+			expected: "https://grafana.com",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := require.New(t)
+			req.Equal(tc.expected, tc.ctx.ResolveOAuthURL())
 		})
 	}
 }

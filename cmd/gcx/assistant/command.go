@@ -508,7 +508,7 @@ func buildTokenRefresher(ctx context.Context, configOpts *cmdconfig.Options, ctx
 		}
 
 		// Do the refresh
-		rr, err := auth.DoRefresh(ctx, proxyEndpoint, refreshToken)
+		rr, err := auth.ProxyRefresh(ctx, proxyEndpoint, refreshToken)
 		if err != nil {
 			return token, err // return stale token on failure
 		}

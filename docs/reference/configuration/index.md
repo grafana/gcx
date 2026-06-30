@@ -96,11 +96,19 @@ contexts:
       # CloudConfig holds Grafana Cloud platform credentials and configuration.
       # Token is a Grafana Cloud API token used to authenticate against GCOM.
       token: string
+      # TokenExpiresAt is the token expiration time in RFC3339 format.
+      # Only set for OAuth tokens obtained via `gcx cloud login`.
+      token-expires-at: string
       # Stack is the Grafana Cloud stack slug (e.g. "mystack").
       # Optional: if not set, the slug may be derived from Grafana.Server.
       stack: string
-      # APIUrl is the base URL of the Grafana Cloud API (GCOM).
-      # Optional: defaults to "https://grafana.com".
+      # OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
+      # login`. It is used only during login. Optional: defaults to
+      # "https://grafana.com".
+      oauth-url: string
+      # APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls
+      # (stacks, regions, access policies, etc.). Every client talking to GCOM
+      # uses it. Optional: defaults to "https://grafana.com".
       api-url: string
     # DefaultPrometheusDatasource is the UID of the default Prometheus datasource to use for queries.
     default-prometheus-datasource: string
