@@ -493,14 +493,14 @@ func maybeAttachAuthURL(cmd *cobra.Command, client *assistantmcp.Client, result 
 	if result == nil || result.Server == nil || result.AuthURL != "" {
 		return nil
 	}
-	validation, err := client.Validate(cmd.Context(), result.Server.ID)
+	validation, err := client.ValidateByID(cmd.Context(), result.Server.ID)
 	if err != nil {
 		return err
 	}
 	if validation.Status != assistantmcp.ValidationStatusOAuthRequired {
 		return nil
 	}
-	oauth, err := client.InitiateOAuth(cmd.Context(), result.Server.ID)
+	oauth, err := client.InitiateOAuthByID(cmd.Context(), result.Server.ID, result.Server.Scope)
 	if err != nil {
 		return err
 	}
@@ -517,11 +517,12 @@ func existingResult(cmd *cobra.Command, client *assistantmcp.Client, name string
 		return nil, false, err
 	}
 
+	// --if-not-exists is an idempotent check: the server already exists and is
+	// returned unchanged. Do not validate, initiate OAuth, or open a browser
+	// here -- those side effects would surprise automation expecting a no-op.
+	// Run an explicit create/update (without --if-not-exists) to (re)trigger
+	// the OAuth flow for an existing server.
 	result := &assistantmcp.MutationResult{Operation: "unchanged", Server: existing}
-	if err := maybeAttachAuthURL(cmd, client, result); err != nil {
-		return nil, false, err
-	}
-	maybeOpenAuthURL(cmd, result)
 	return result, true, nil
 }
 

@@ -405,6 +405,58 @@ func TestUpdateUserToTenantRejectsEmailHeaderOnly(t *testing.T) {
 	assert.Contains(t, err.Error(), "--scope tenant requires at least one authentication --header with a value")
 }
 
+func TestUpdateUserToTenantSucceedsWithAuthHeader(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-assistant-app/resources/api/v1/integrations/mcp-1":
+			writeJSON(w, map[string]any{
+				"data": map[string]any{
+					"id":      "mcp-1",
+					"name":    "Remote MCP",
+					"type":    "mcp",
+					"enabled": true,
+					"scope":   "user",
+					"configuration": map[string]any{
+						"url": "https://mcp.example.com/mcp",
+					},
+				},
+			})
+		case r.Method == http.MethodPut && r.URL.Path == "/api/plugins/grafana-assistant-app/resources/api/v1/integrations/mcp-1":
+			// The scope header carries the current (source) scope so the
+			// backend can locate the resource; the body scope promotes it.
+			assert.Equal(t, "user", r.Header.Get("X-Resource-Scope"))
+			var payload map[string]any
+			if !readJSONRequest(t, r, &payload) {
+				return
+			}
+			assert.Equal(t, "tenant", payload["scope"])
+			assert.NotEmpty(t, payload["custom_headers"])
+
+			writeJSON(w, map[string]any{
+				"data": map[string]any{
+					"integration": map[string]any{
+						"id":      "mcp-1",
+						"name":    "Remote MCP",
+						"type":    "mcp",
+						"enabled": true,
+						"scope":   "tenant",
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+
+	updated, err := client.Update(t.Context(), "mcp-1", mcpservers.ServerInput{
+		Scope:   "tenant",
+		Headers: []mcpservers.Header{{Name: "Authorization", Value: "Bearer token"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "updated", updated.Operation)
+	assert.Equal(t, "tenant", updated.Server.Scope)
+}
+
 func TestDeleteResolvesNameBeforeDelete(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

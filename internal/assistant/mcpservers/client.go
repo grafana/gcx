@@ -240,9 +240,16 @@ func (c *Client) Validate(ctx context.Context, ref string) (*ValidationResult, e
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/api/v1/integrations/"+url.PathEscape(current.ID)+"/validate", nil)
+	return c.ValidateByID(ctx, current.ID)
+}
+
+// ValidateByID validates a server without re-resolving the ref. Callers that
+// already hold the resolved ID (e.g. right after create/update) use this to
+// avoid an extra Get round trip.
+func (c *Client) ValidateByID(ctx context.Context, id string) (*ValidationResult, error) {
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/api/v1/integrations/"+url.PathEscape(id)+"/validate", nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to validate MCP server %s: %w", ref, err)
+		return nil, fmt.Errorf("failed to validate MCP server %s: %w", id, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -265,12 +272,18 @@ func (c *Client) InitiateOAuth(ctx context.Context, ref string) (*OAuthResult, e
 	if err != nil {
 		return nil, err
 	}
-	scope := current.Scope
+	return c.InitiateOAuthByID(ctx, current.ID, current.Scope)
+}
+
+// InitiateOAuthByID starts the OAuth flow without re-resolving the ref. Callers
+// that already hold the resolved ID and scope use this to avoid an extra Get
+// round trip.
+func (c *Client) InitiateOAuthByID(ctx context.Context, id, scope string) (*OAuthResult, error) {
 	if scope == "" {
 		scope = defaultScope
 	}
 	body, err := json.Marshal(map[string]string{
-		"integration_id": current.ID,
+		"integration_id": id,
 		"scope":          scope,
 	})
 	if err != nil {
@@ -279,7 +292,7 @@ func (c *Client) InitiateOAuth(ctx context.Context, ref string) (*OAuthResult, e
 
 	resp, err := c.base.DoRequest(ctx, http.MethodPost, "/api/v1/integrations/oauth/initiate", bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("failed to initiate MCP server OAuth for %s: %w", ref, err)
+		return nil, fmt.Errorf("failed to initiate MCP server OAuth for %s: %w", id, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
