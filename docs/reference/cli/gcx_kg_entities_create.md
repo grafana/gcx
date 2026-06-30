@@ -23,7 +23,7 @@ gcx kg entities create [flags]
 ### Options
 
 ```
-      --domain string             Writable domain slug (required; 'kg' is reserved)
+      --domain string             Writable domain slug — a specific application domain such as 'irm' (required; 'kg' is reserved)
   -f, --file string               Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags
   -h, --help                      help for create
       --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.

@@ -22,7 +22,7 @@ gcx kg relationships create [flags]
 ### Options
 
 ```
-      --domain string               Writable domain slug for the edge (required)
+      --domain string               Writable domain slug for the edge — a specific application domain such as 'irm' (required)
   -f, --file string                 Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags
       --from string                 Source entity ref as domain/Type/name (required)
       --from-scope stringToString   Scope for --from as key=value (repeatable or comma-separated) (default [])

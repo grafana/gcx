@@ -15,7 +15,7 @@ gcx kg entities delete [Type--Name] [flags]
 ### Options
 
 ```
-      --domain string          Writable domain slug (required)
+      --domain string          Writable domain slug — a specific application domain such as 'irm' (required)
       --force                  Skip confirmation prompt
   -h, --help                   help for delete
       --name string            Entity name (or use positional Type--Name)

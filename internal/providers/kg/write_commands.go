@@ -61,7 +61,7 @@ func (o *entityCreateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.file, "file", "f", "", "Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags")
-	flags.StringVar(&o.domain, "domain", "", "Writable domain slug (required; 'kg' is reserved)")
+	flags.StringVar(&o.domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm' (required; 'kg' is reserved)")
 	flags.StringVar(&o.entityType, "type", "", "Entity type (identifier; required)")
 	flags.StringVar(&o.name, "name", "", "Entity name (required)")
 	flags.StringToStringVar(&o.scope, "scope", nil, "Scope as key=value (repeatable or comma-separated; identity-significant)")
@@ -265,7 +265,7 @@ mismatch returns 404 (not found).`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&domain, "domain", "", "Writable domain slug (required)")
+	cmd.Flags().StringVar(&domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm' (required)")
 	cmd.Flags().StringVar(&entityType, "type", "", "Entity type (or use positional Type--Name)")
 	cmd.Flags().StringVar(&name, "name", "", "Entity name (or use positional Type--Name)")
 	cmd.Flags().StringToStringVar(&scope, "scope", nil, "Scope as key=value (repeatable or comma-separated; must match create-time scope)")
@@ -356,7 +356,7 @@ func (o *relCreateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.file, "file", "f", "", "Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags")
-	flags.StringVar(&o.domain, "domain", "", "Writable domain slug for the edge (required)")
+	flags.StringVar(&o.domain, "domain", "", "Writable domain slug for the edge — a specific application domain such as 'irm' (required)")
 	flags.StringVar(&o.relType, "type", "", "Relationship type (identifier; required)")
 	flags.StringVar(&o.from, "from", "", "Source entity ref as domain/Type/name (required)")
 	flags.StringToStringVar(&o.fromScope, "from-scope", nil, "Scope for --from as key=value (repeatable or comma-separated)")
