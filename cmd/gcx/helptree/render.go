@@ -62,6 +62,11 @@ func renderNode(buf *strings.Builder, cmd *cobra.Command, depth int, opts Render
 		line += "  # skill: " + strings.ReplaceAll(skill, ",", ", ")
 	}
 
+	// Append availability annotation.
+	if availability := cmd.Annotations[agent.AnnotationAvailability]; availability != "" {
+		line += "  # " + availability
+	}
+
 	fmt.Fprintln(buf, line)
 
 	// Recurse into subcommands if depth allows.

@@ -17,7 +17,7 @@ gcx kg insights sources [Type--Name] [flags]
       --label stringArray   Assertion label as key=value (repeatable; typically copied from 'kg entities inspect' timeLines[].labels)
       --name string         Entity name
       --namespace string    Namespace scope
-      --since string        Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
+      --since string        Duration before --to (or now); mutually exclusive with --from/--to (e.g. 1h, 30m, 7d)
       --site string         Site scope
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string         Entity type

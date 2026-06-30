@@ -103,7 +103,7 @@ func runLabelsDiagnose(ctx context.Context, client *Client, promClient *promethe
 	})
 
 	g.Go(func() error {
-		scopes, err := client.ListEntityScopes(ctx)
+		scopes, err := client.ListEntityScopes(ctx, 0, 0)
 		mu.Lock()
 		if err == nil {
 			scopeEnvs = scopes["env"]

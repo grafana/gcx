@@ -9,10 +9,13 @@ gcx kg meta scopes [flags]
 ### Options
 
 ```
+      --from string     Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help            help for scopes
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+      --since string    Duration before --to (or now); mutually exclusive with --from/--to (e.g. 1h, 30m, 7d)
+      --to string       End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands

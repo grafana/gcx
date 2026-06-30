@@ -43,7 +43,8 @@ func buildTestTree() *cobra.Command {
 		Use:   "baz",
 		Short: "Nested baz",
 		Annotations: map[string]string{
-			agent.AnnotationTokenCost: "large",
+			agent.AnnotationTokenCost:    "large",
+			agent.AnnotationAvailability: agent.AvailabilityCloudOnly,
 		},
 	}
 	bar.AddCommand(baz)
@@ -110,6 +111,9 @@ func TestWalkCommand(t *testing.T) {
 	if foo.Args != "[NAME]" {
 		t.Errorf("foo args = %q", foo.Args)
 	}
+	if foo.Availability != "" {
+		t.Errorf("foo availability = %q, want empty", foo.Availability)
+	}
 
 	// Check flags
 	if len(foo.Flags) != 2 {
@@ -173,6 +177,9 @@ func TestWalkCommandNested(t *testing.T) {
 	}
 	if baz.TokenCost != "large" {
 		t.Errorf("baz token_cost = %q", baz.TokenCost)
+	}
+	if baz.Availability != agent.AvailabilityCloudOnly {
+		t.Errorf("baz availability = %q, want %q", baz.Availability, agent.AvailabilityCloudOnly)
 	}
 }
 
