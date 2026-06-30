@@ -71,9 +71,10 @@ func TestQuery_FallsBackOn403(t *testing.T) {
 }
 
 func TestQuery_ReturnsTypedAPIErrorForGrafanaEnvelope(t *testing.T) {
+	// A 400 from the k8s query API now triggers the fallback, so both endpoints
+	// return the same envelope; the typed error from the final response surfaces.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Contains(t, r.URL.Path, "/apis/query.grafana.app/v0alpha1/namespaces/default/query")
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"results":{"A":{"error":"parse error at line 1, col 12: syntax error: unexpected IDENTIFIER, expecting STRING","errorSource":"downstream","status":400}}}`))
 	}))

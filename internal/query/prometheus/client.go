@@ -100,9 +100,10 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Fall back to legacy /api/ds/query if the K8s query API is unavailable
-	// (404) or forbidden for the user's role (403, e.g. Viewer).
-	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusForbidden {
+	// Fall back to the legacy /api/ds/query endpoint on any non-200 response.
+	// The K8s query API is not enabled everywhere and can fail in ways beyond
+	// 404 (e.g. 403 for a Viewer role); /api/ds/query is the universal path.
+	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
 		apiPath = "/api/ds/query"
 		httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))

@@ -296,6 +296,46 @@ func TestQuery_FallbackOn403(t *testing.T) {
 	assert.Equal(t, []any{float64(1)}, resp.Rows[0])
 }
 
+func TestQuery_FallbackOn500(t *testing.T) {
+	var callCount atomic.Int32
+	var mu sync.Mutex
+	var paths []string
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		n := callCount.Add(1)
+
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
+
+		if n == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message":"Internal Server Error"}`))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"id","type":"number"}]},"data":{"values":[[1]]}}]}}}`))
+	})
+
+	resp, err := client.Query(context.Background(), "ds-uid", infinity.QueryRequest{Expr: "$.data[*]"})
+	require.NoError(t, err)
+
+	assert.Equal(t, int32(2), callCount.Load(), "expected exactly 2 requests (primary + fallback)")
+
+	mu.Lock()
+	capturedPaths := make([]string, len(paths))
+	copy(capturedPaths, paths)
+	mu.Unlock()
+
+	assert.Contains(t, capturedPaths[0], "/apis/query.grafana.app/v0alpha1")
+	assert.Equal(t, "/api/ds/query", capturedPaths[1])
+
+	require.NotNil(t, resp)
+	require.Len(t, resp.Rows, 1)
+	assert.Equal(t, []any{float64(1)}, resp.Rows[0])
+}
+
 func TestQuery_FallbackOn404BothFail(t *testing.T) {
 	var callCount atomic.Int32
 
