@@ -371,7 +371,7 @@ while agent mode still requires explicit --force for destructive operations.`,
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete MCP server %q?", args[0]))
 			if err != nil {
 				return err

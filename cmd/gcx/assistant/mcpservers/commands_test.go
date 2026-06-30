@@ -180,14 +180,17 @@ func TestCreateOptsValidateAcceptsClickHouseTokenHeaderForTenantScope(t *testing
 
 func TestDeletePromptsAndAbortsWithoutConfigLoad(t *testing.T) {
 	cmd := newDeleteCommand(&providers.ConfigLoader{})
-	var out bytes.Buffer
+	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
 	cmd.SetIn(strings.NewReader("n\n"))
 	cmd.SetArgs([]string{"GitHub"})
 
 	require.NoError(t, cmd.Execute())
-	assert.Contains(t, out.String(), `Delete MCP server "GitHub"?`)
-	assert.Contains(t, out.String(), "Aborted.")
+	// Prompts go to stderr so structured stdout stays machine-readable.
+	assert.Contains(t, errOut.String(), `Delete MCP server "GitHub"?`)
+	assert.Contains(t, errOut.String(), "Aborted.")
+	assert.Empty(t, out.String())
 }
 
 func TestMaybeOpenAuthURLWarnsWhenBrowserOpenFails(t *testing.T) {
