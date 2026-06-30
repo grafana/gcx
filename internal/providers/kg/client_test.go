@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -193,6 +194,50 @@ func TestClient_CountEntityTypes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), counts["Service"])
 	assert.Equal(t, int64(5), counts["Namespace"])
+}
+
+func TestClient_ListEntityScopes(t *testing.T) {
+	t.Run("passes explicit time window as query params", func(t *testing.T) {
+		var gotStart, gotEnd string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodGet, r.Method)
+			assert.Contains(t, r.URL.Path, "entity_scope")
+			gotStart = r.URL.Query().Get("start")
+			gotEnd = r.URL.Query().Get("end")
+			writeJSON(w, map[string]any{
+				"scopeValues": map[string][]string{
+					"env":       {"prod"},
+					"namespace": {"loki-prod-029"},
+				},
+			})
+		}))
+		defer server.Close()
+
+		client := newTestClient(t, server)
+		scopes, err := client.ListEntityScopes(t.Context(), 1000, 2000)
+		require.NoError(t, err)
+		assert.Equal(t, "1000", gotStart)
+		assert.Equal(t, "2000", gotEnd)
+		assert.Equal(t, []string{"prod"}, scopes["env"])
+		assert.Equal(t, []string{"loki-prod-029"}, scopes["namespace"])
+	})
+
+	t.Run("defaults to a one-hour window when unset", func(t *testing.T) {
+		var gotStart, gotEnd int64
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotStart, _ = strconv.ParseInt(r.URL.Query().Get("start"), 10, 64)
+			gotEnd, _ = strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)
+			writeJSON(w, map[string]any{"scopeValues": map[string][]string{}})
+		}))
+		defer server.Close()
+
+		client := newTestClient(t, server)
+		_, err := client.ListEntityScopes(t.Context(), 0, 0)
+		require.NoError(t, err)
+		assert.Positive(t, gotStart)
+		assert.Positive(t, gotEnd)
+		assert.Equal(t, int64(3600000), gotEnd-gotStart, "default window should span one hour")
+	})
 }
 
 func TestClient_UploadPromRules(t *testing.T) {

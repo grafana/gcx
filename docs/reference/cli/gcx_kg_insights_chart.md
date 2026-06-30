@@ -17,7 +17,7 @@ gcx kg insights chart [Type--Name] [flags]
       --label stringArray   Extra assertion label as key=value (repeatable; e.g. asserts_resource_type=jvm:live_threads to narrow ResourceRateAnomaly to a specific resource)
       --name string         Entity name
       --namespace string    Namespace scope
-      --since string        Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
+      --since string        Duration before --to (or now); mutually exclusive with --from/--to (e.g. 1h, 30m, 7d)
       --site string         Site scope
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string         Entity type
