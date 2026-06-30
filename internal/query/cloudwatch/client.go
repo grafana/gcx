@@ -90,8 +90,9 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 		return nil, err
 	}
 
-	// Fall back to legacy /api/ds/query if K8s query API is not available.
-	if statusCode == http.StatusNotFound {
+	// Fall back to legacy /api/ds/query if the K8s query API is unavailable
+	// (404) or forbidden for the user's role (403, e.g. Viewer).
+	if statusCode == http.StatusNotFound || statusCode == http.StatusForbidden {
 		apiPath = "/api/ds/query"
 		respBody, statusCode, err = c.post(ctx, apiPath, body)
 		if err != nil {

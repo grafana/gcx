@@ -91,8 +91,9 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Fall back to legacy /api/ds/query if K8s query API doesn't exist.
-	if resp.StatusCode == http.StatusNotFound {
+	// Fall back to legacy /api/ds/query if the K8s query API is unavailable
+	// (404) or forbidden for the user's role (403, e.g. Viewer).
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusForbidden {
 		resp.Body.Close()
 		apiPath = "/api/ds/query"
 		httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
@@ -190,8 +191,9 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Fall back to legacy /api/ds/query if K8s query API doesn't exist.
-	if resp.StatusCode == http.StatusNotFound {
+	// Fall back to legacy /api/ds/query if the K8s query API is unavailable
+	// (404) or forbidden for the user's role (403, e.g. Viewer).
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusForbidden {
 		resp.Body.Close()
 		apiPath = "/api/ds/query"
 		httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
