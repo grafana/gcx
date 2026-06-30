@@ -15,6 +15,7 @@ import (
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant"
+	"github.com/grafana/gcx/internal/assistant/integrations"
 	"github.com/grafana/gcx/internal/assistant/investigations"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
@@ -100,6 +101,23 @@ Service account tokens are not supported.`,
 		return nil
 	}
 	cmd.AddCommand(invCmd)
+
+	// Wire integrations the same way.
+	intLoader := &providers.ConfigLoader{}
+	intCmd := integrations.Commands(intLoader)
+	intCmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
+		if err := cmd.PersistentPreRunE(c, args); err != nil {
+			return err
+		}
+		if configOpts.ConfigFile != "" {
+			intLoader.SetConfigFile(configOpts.ConfigFile)
+		}
+		if configOpts.Context != "" {
+			intLoader.SetContextName(configOpts.Context)
+		}
+		return nil
+	}
+	cmd.AddCommand(intCmd)
 	return cmd
 }
 
