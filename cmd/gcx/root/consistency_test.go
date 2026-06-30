@@ -114,6 +114,7 @@ func TestConsistency_OnlyKnownAnnotationKeys(t *testing.T) {
 		agent.AnnotationRequiredRole:       true,
 		agent.AnnotationRequiredAction:     true,
 		agent.AnnotationSkill:              true,
+		agent.AnnotationAvailability:       true,
 		cobra.BashCompOneRequiredFlag:      true,
 		cobra.BashCompCustom:               true,
 		cobra.BashCompFilenameExt:          true,
@@ -153,6 +154,44 @@ func TestConsistency_NoOrphanedRegistryEntries(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestConsistency_CloudOnlyPathsResolveToCommands verifies every path in the
+// Grafana Cloud-only registry matches an actual command in the tree, catching
+// renamed or removed command groups.
+func TestConsistency_CloudOnlyPathsResolveToCommands(t *testing.T) {
+	rootCmd := buildRootCmd()
+
+	paths := make(map[string]bool)
+	agent.WalkCommands(rootCmd, func(cmd *cobra.Command) {
+		paths[cmd.CommandPath()] = true
+	})
+
+	for _, cloudPath := range agent.CloudOnlyPaths() {
+		t.Run(cloudPath, func(t *testing.T) {
+			if !paths[cloudPath] {
+				t.Errorf("cloud-only path %q does not match any command in the tree", cloudPath)
+			}
+		})
+	}
+}
+
+// TestConsistency_AvailabilityValuesValid verifies the availability annotation
+// only ever carries the single supported value.
+func TestConsistency_AvailabilityValuesValid(t *testing.T) {
+	rootCmd := buildRootCmd()
+
+	agent.WalkCommands(rootCmd, func(cmd *cobra.Command) {
+		val := cmd.Annotations[agent.AnnotationAvailability]
+		if val == "" {
+			return
+		}
+		t.Run(cmd.CommandPath(), func(t *testing.T) {
+			if val != agent.AvailabilityCloudOnly {
+				t.Errorf("invalid availability %q, want %q", val, agent.AvailabilityCloudOnly)
+			}
+		})
+	})
 }
 
 // TestConsistency_SkillMappingResolvesToCommands verifies every key in the

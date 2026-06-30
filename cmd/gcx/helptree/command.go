@@ -32,12 +32,13 @@ func (o *helptreeOpts) Validate() error {
 
 // treeNode is the structured representation for JSON/YAML output.
 type treeNode struct {
-	Name     string      `json:"name"`
-	Short    string      `json:"short,omitempty"`
-	Args     string      `json:"args,omitempty"`
-	Hint     string      `json:"hint,omitempty"`
-	Skill    string      `json:"skill,omitempty"`
-	Children []*treeNode `json:"children,omitempty"`
+	Name         string      `json:"name"`
+	Short        string      `json:"short,omitempty"`
+	Args         string      `json:"args,omitempty"`
+	Hint         string      `json:"hint,omitempty"`
+	Skill        string      `json:"skill,omitempty"`
+	Availability string      `json:"availability,omitempty"`
+	Children     []*treeNode `json:"children,omitempty"`
 }
 
 func buildTreeNode(cmd *cobra.Command, depth int, opts RenderOptions) *treeNode {
@@ -51,6 +52,9 @@ func buildTreeNode(cmd *cobra.Command, depth int, opts RenderOptions) *treeNode 
 	}
 	if skill := cmd.Annotations[agent.AnnotationSkill]; skill != "" {
 		node.Skill = skill
+	}
+	if availability := cmd.Annotations[agent.AnnotationAvailability]; availability != "" {
+		node.Availability = availability
 	}
 	if opts.MaxDepth > 0 && depth >= opts.MaxDepth {
 		return node
