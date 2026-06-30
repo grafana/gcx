@@ -7,9 +7,8 @@ import (
 )
 
 // Transport is the datasource lifecycle interface used by the commands. It is
-// implemented today by the legacy REST Client; a Kubernetes app-platform
-// implementation can be added behind the same interface when those APIs are
-// served, without touching the command layer.
+// implemented by the legacy REST Client, the app-platform k8sTransport, and the
+// dualTransport that prefers the latter and falls back to the former per call.
 type Transport interface {
 	List(ctx context.Context) ([]*Datasource, error)
 	GetByUID(ctx context.Context, uid string) (*Datasource, error)
@@ -21,8 +20,18 @@ type Transport interface {
 
 var _ Transport = (*Client)(nil)
 
-// NewTransport returns the datasource transport for the given config. It
-// currently returns the legacy REST client.
+// NewTransport returns the dual-mode datasource transport: it prefers the
+// Grafana app-platform API (/apis/{pluginID}.datasource.grafana.app/...) when
+// served and transparently falls back to the legacy /api/datasources REST API.
+// Neither client performs I/O at construction.
 func NewTransport(cfg config.NamespacedRESTConfig) (Transport, error) {
-	return NewClient(cfg)
+	restClient, err := NewClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	k8sClient, err := newK8sTransport(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &dualTransport{rest: restClient, k8s: k8sClient}, nil
 }

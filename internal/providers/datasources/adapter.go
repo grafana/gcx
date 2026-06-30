@@ -24,7 +24,7 @@ import (
 // the dedicated `gcx datasources` commands emit (top-level `secure`,
 // `spec.title`, per-plugin apiVersion).
 type datasourceAdapter struct {
-	client    *dsclient.Client
+	client    dsclient.Transport
 	namespace string
 	desc      resources.Descriptor
 	schema    json.RawMessage

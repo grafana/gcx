@@ -50,6 +50,10 @@ func newDatasourceListServer(t *testing.T, count int) *httptest.Server {
 		case r.Method == http.MethodGet && r.URL.Path == "/bootdata":
 			http.NotFound(w, r)
 			return
+		case r.Method == http.MethodGet && r.URL.Path == "/apis":
+			// App-platform discovery unavailable — dual transport falls back to REST.
+			http.NotFound(w, r)
+			return
 		case r.Method == http.MethodGet && r.URL.Path == "/api/datasources":
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(items); err != nil {

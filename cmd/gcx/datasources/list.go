@@ -68,7 +68,7 @@ func listCmd() *cobra.Command {
 				return err
 			}
 
-			dsClient, err := dsclient.NewClient(restCfg)
+			dsClient, err := dsclient.NewTransport(restCfg)
 			if err != nil {
 				return err
 			}

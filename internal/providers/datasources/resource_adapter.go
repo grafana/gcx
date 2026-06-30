@@ -144,8 +144,11 @@ func DatasourceExample() json.RawMessage {
 }
 
 // newAdapter builds the custom datasource ResourceAdapter from a REST config.
+// It uses the dual-mode transport so resource-pipeline writes prefer the
+// app-platform API and fall back to legacy REST, mirroring the `gcx datasources`
+// commands.
 func newAdapter(cfg internalconfig.NamespacedRESTConfig) (*datasourceAdapter, error) {
-	client, err := dsclient.NewClient(cfg)
+	client, err := dsclient.NewTransport(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create datasource client: %w", err)
 	}
