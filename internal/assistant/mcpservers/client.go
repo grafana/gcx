@@ -38,7 +38,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) ([]Server, error) {
 	if opts.Offset > 0 {
 		params.Set("offset", strconv.Itoa(opts.Offset))
 	}
-	path := "/integrations"
+	path := "/api/v1/integrations"
 	if len(params) > 0 {
 		path += "?" + params.Encode()
 	}
@@ -71,7 +71,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) ([]Server, error) {
 }
 
 func (c *Client) Get(ctx context.Context, ref string) (*Server, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/integrations/"+url.PathEscape(ref), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/api/v1/integrations/"+url.PathEscape(ref), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get MCP server %s: %w", ref, err)
 	}
@@ -128,7 +128,7 @@ func (c *Client) Create(ctx context.Context, input ServerInput) (*MutationResult
 		return nil, fmt.Errorf("failed to marshal MCP server create request: %w", err)
 	}
 
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, "/integrations", bytes.NewReader(body))
+	resp, err := c.base.DoRequest(ctx, http.MethodPost, "/api/v1/integrations", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MCP server: %w", err)
 	}
@@ -194,7 +194,7 @@ func (c *Client) Update(ctx context.Context, ref string, input ServerInput) (*Mu
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal MCP server update request: %w", err)
 	}
-	resp, err := c.base.DoRequestWithHeaders(ctx, http.MethodPut, "/integrations/"+url.PathEscape(current.ID), bytes.NewReader(body), scopeHeader(current.Scope))
+	resp, err := c.base.DoRequestWithHeaders(ctx, http.MethodPut, "/api/v1/integrations/"+url.PathEscape(current.ID), bytes.NewReader(body), scopeHeader(current.Scope))
 	if err != nil {
 		return nil, fmt.Errorf("failed to update MCP server %s: %w", ref, err)
 	}
@@ -224,7 +224,7 @@ func (c *Client) Delete(ctx context.Context, ref string) (*MutationResult, error
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.base.DoRequestWithHeaders(ctx, http.MethodDelete, "/integrations/"+url.PathEscape(current.ID), nil, scopeHeader(current.Scope))
+	resp, err := c.base.DoRequestWithHeaders(ctx, http.MethodDelete, "/api/v1/integrations/"+url.PathEscape(current.ID), nil, scopeHeader(current.Scope))
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete MCP server %s: %w", ref, err)
 	}
@@ -240,7 +240,7 @@ func (c *Client) Validate(ctx context.Context, ref string) (*ValidationResult, e
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/integrations/"+url.PathEscape(current.ID)+"/validate", nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/api/v1/integrations/"+url.PathEscape(current.ID)+"/validate", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate MCP server %s: %w", ref, err)
 	}
@@ -277,7 +277,7 @@ func (c *Client) InitiateOAuth(ctx context.Context, ref string) (*OAuthResult, e
 		return nil, fmt.Errorf("failed to marshal MCP server OAuth request: %w", err)
 	}
 
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, "/integrations/oauth/initiate", bytes.NewReader(body))
+	resp, err := c.base.DoRequest(ctx, http.MethodPost, "/api/v1/integrations/oauth/initiate", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to initiate MCP server OAuth for %s: %w", ref, err)
 	}
