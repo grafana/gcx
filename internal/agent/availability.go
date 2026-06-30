@@ -27,9 +27,12 @@ var cloudOnlyPaths = []string{
 	"gcx aio11y",               // AI Observability — Grafana Cloud
 	"gcx instrumentation",      // Instrumentation Hub — Grafana Cloud service
 	"gcx cloud",                // Grafana Cloud stacks management
+	"gcx setup",                // Grafana Cloud product onboarding
 	"gcx metrics adaptive",     // Adaptive Metrics — Grafana Cloud
+	"gcx metrics billing",      // Grafana Cloud billing/usage metrics (grafanacloud-usage datasource)
 	"gcx logs adaptive",        // Adaptive Logs — Grafana Cloud
 	"gcx traces adaptive",      // Adaptive Traces — Grafana Cloud
+	"gcx profiles adaptive",    // Adaptive Profiles — Grafana Cloud
 }
 
 // IsCloudOnlyPath reports whether the given command path (as returned by
