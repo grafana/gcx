@@ -193,7 +193,8 @@ func TestCreateReadsBackServerWhenResponseOmitsIntegration(t *testing.T) {
 			writeJSON(w, map[string]any{
 				"data": map[string]any{
 					"integrations": []map[string]any{
-						{"id": "mcp-1", "name": "Remote MCP", "type": "mcp", "enabled": true},
+						{"id": "mcp-1", "name": "Remote MCP", "type": "mcp", "enabled": true, "scope": "user",
+							"configuration": map[string]any{"url": "https://mcp.example.com/mcp"}},
 					},
 				},
 			})
@@ -210,6 +211,41 @@ func TestCreateReadsBackServerWhenResponseOmitsIntegration(t *testing.T) {
 	require.NotNil(t, created.Server)
 	assert.Equal(t, "mcp-1", created.Server.ID)
 	assert.Equal(t, "created", created.Operation)
+}
+
+func TestCreateReadBackDisambiguatesSameNameByScope(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/plugins/grafana-assistant-app/resources/api/v1/integrations":
+			w.WriteHeader(http.StatusCreated)
+			writeJSON(w, map[string]any{"data": map[string]any{}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-assistant-app/resources/api/v1/integrations":
+			// A user-scoped and tenant-scoped server share the same name.
+			// Read-back must pick the just-created tenant server, not error.
+			writeJSON(w, map[string]any{
+				"data": map[string]any{
+					"integrations": []map[string]any{
+						{"id": "mcp-user", "name": "Remote MCP", "type": "mcp", "enabled": true, "scope": "user",
+							"configuration": map[string]any{"url": "https://mcp.example.com/mcp"}},
+						{"id": "mcp-tenant", "name": "Remote MCP", "type": "mcp", "enabled": true, "scope": "tenant",
+							"configuration": map[string]any{"url": "https://mcp.example.com/mcp"}},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+
+	created, err := client.Create(t.Context(), mcpservers.ServerInput{
+		Name:    "Remote MCP",
+		URL:     "https://mcp.example.com/mcp",
+		Scope:   "tenant",
+		Headers: []mcpservers.Header{{Name: "Authorization", Value: "Bearer token"}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created.Server)
+	assert.Equal(t, "mcp-tenant", created.Server.ID)
 }
 
 func TestCreateFailsWhenResponseOmitsIntegrationAndReadBackFails(t *testing.T) {

@@ -143,13 +143,33 @@ func (c *Client) Create(ctx context.Context, input ServerInput) (*MutationResult
 	}
 	result.Operation = "created"
 	if result.Server == nil {
-		server, getErr := c.Get(ctx, input.Name)
+		server, getErr := c.readBackCreated(ctx, input)
 		if getErr != nil {
 			return nil, fmt.Errorf("failed to read back created MCP server: %w", getErr)
 		}
 		result.Server = server
 	}
 	return result, nil
+}
+
+// readBackCreated locates a just-created server when the create response omits
+// the integration payload. It matches on name + URL + scope rather than name
+// alone, so a user-scoped and tenant-scoped server sharing a name do not
+// collide (which would otherwise surface as AmbiguousReferenceError on a
+// successful create).
+func (c *Client) readBackCreated(ctx context.Context, input ServerInput) (*Server, error) {
+	servers, err := c.List(ctx, ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	wantScope := scopeOrDefault(input.Scope)
+	for i := range servers {
+		s := servers[i]
+		if strings.EqualFold(s.Name, input.Name) && s.URL == input.URL && scopeOrDefault(s.Scope) == wantScope {
+			return &servers[i], nil
+		}
+	}
+	return nil, fmt.Errorf("%w: %s", ErrNotFound, input.Name)
 }
 
 func (c *Client) Update(ctx context.Context, ref string, input ServerInput) (*MutationResult, error) {
