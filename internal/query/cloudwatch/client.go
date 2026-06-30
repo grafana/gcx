@@ -90,9 +90,8 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 		return nil, err
 	}
 
-	// Fall back to the legacy /api/ds/query endpoint on any non-200 response.
-	// The K8s query API is not enabled everywhere and can fail in ways beyond
-	// 404 (e.g. 403 for a Viewer role); /api/ds/query is the universal path.
+	// The K8s query API is not enabled everywhere and can return a non-200
+	// (e.g. 403 for some roles); fall back to the legacy /api/ds/query.
 	if statusCode != http.StatusOK {
 		apiPath = "/api/ds/query"
 		respBody, statusCode, err = c.post(ctx, apiPath, body)

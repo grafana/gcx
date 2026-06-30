@@ -91,9 +91,8 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Fall back to the legacy /api/ds/query endpoint on any non-200 response.
-	// The K8s query API is not enabled everywhere and can fail in ways beyond
-	// 404 (e.g. 403 for a Viewer role); /api/ds/query is the universal path.
+	// The K8s query API is not enabled everywhere and can return a non-200
+	// (e.g. 403 for some roles); fall back to the legacy /api/ds/query.
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
 		apiPath = "/api/ds/query"
@@ -192,9 +191,8 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Fall back to the legacy /api/ds/query endpoint on any non-200 response.
-	// The K8s query API is not enabled everywhere and can fail in ways beyond
-	// 404 (e.g. 403 for a Viewer role); /api/ds/query is the universal path.
+	// The K8s query API is not enabled everywhere and can return a non-200
+	// (e.g. 403 for some roles); fall back to the legacy /api/ds/query.
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
 		apiPath = "/api/ds/query"

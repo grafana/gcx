@@ -54,10 +54,9 @@ func (c *Client) Execute(ctx context.Context, body []byte, datasource, operation
 		return nil, err
 	}
 
-	// The K8s query API is not enabled everywhere and can fail in ways beyond
-	// 404 (e.g. 403 for a Viewer role); on any non-200, fall back to the
-	// universally-available endpoint. Queries are idempotent reads, so the
-	// retry is safe.
+	// The K8s query API is not enabled everywhere and can return a non-200
+	// (e.g. 403 for some roles); fall back to the universally-available
+	// endpoint. Queries are idempotent reads, so the retry is safe.
 	if statusCode != http.StatusOK {
 		statusCode, respBody, err = c.post(ctx, "/api/ds/query", body)
 		if err != nil {
