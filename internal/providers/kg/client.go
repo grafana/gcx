@@ -789,7 +789,7 @@ func (c *Client) GetRule(ctx context.Context, name string) (*Rule, error) {
 // UpsertRelationship creates or updates a custom (API-origin) edge between two
 // existing entities. Both endpoints must already exist (404 otherwise).
 func (c *Client) UpsertRelationship(ctx context.Context, req RelationshipWriteRequest) (*RelationshipWriteResponse, error) {
-	path := fmt.Sprintf(kgRelationshipsFmt, c.namespace)
+	path := fmt.Sprintf(kgRelationshipsFmt, url.PathEscape(c.namespace))
 	var resp RelationshipWriteResponse
 	if _, err := c.doJSONStatus(ctx, http.MethodPost, path, req, &resp); err != nil {
 		return nil, fmt.Errorf("kg: upsert relationship: %w", err)
@@ -800,7 +800,7 @@ func (c *Client) UpsertRelationship(ctx context.Context, req RelationshipWriteRe
 // DeleteRelationship deletes a custom edge of relType between from and to.
 // The endpoint coordinates travel as from.*/to.* query params.
 func (c *Client) DeleteRelationship(ctx context.Context, relType string, from, to EntityRef) error {
-	path := fmt.Sprintf(kgRelationshipFmt, c.namespace, url.PathEscape(relType))
+	path := fmt.Sprintf(kgRelationshipFmt, url.PathEscape(c.namespace), url.PathEscape(relType))
 	q := url.Values{}
 	addRef := func(prefix string, ref EntityRef) {
 		q.Set(prefix+".domain", ref.Domain)
@@ -834,7 +834,7 @@ func (c *Client) DeleteRelationship(ctx context.Context, relType string, from, t
 // UpsertEntity creates or updates a custom (API-origin) entity. The returned
 // bool is true when the entity was created (HTTP 201), false when updated (200).
 func (c *Client) UpsertEntity(ctx context.Context, req EntityWriteRequest) (*EntityWriteResponse, bool, error) {
-	path := fmt.Sprintf(kgEntitiesPathFmt, c.namespace)
+	path := fmt.Sprintf(kgEntitiesPathFmt, url.PathEscape(c.namespace))
 	var resp EntityWriteResponse
 	status, err := c.doJSONStatus(ctx, http.MethodPost, path, req, &resp)
 	if err != nil {
@@ -846,7 +846,7 @@ func (c *Client) UpsertEntity(ctx context.Context, req EntityWriteRequest) (*Ent
 // DeleteEntity deletes a custom entity identified by (domain, type, name, scope).
 // Scope is identity-significant and must match the value used at create.
 func (c *Client) DeleteEntity(ctx context.Context, domain, entityType, name string, scope map[string]string) error {
-	path := fmt.Sprintf(kgEntityPathFmt, c.namespace, url.PathEscape(entityType), url.PathEscape(name))
+	path := fmt.Sprintf(kgEntityPathFmt, url.PathEscape(c.namespace), url.PathEscape(entityType), url.PathEscape(name))
 	q := url.Values{}
 	q.Set("domain", domain)
 	for k, v := range scope {
