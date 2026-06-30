@@ -117,29 +117,14 @@ func ValidateWritableDomain(d string) error               { return validateWrita
 func ValidateDomain(d string) error                       { return validateDomain(d) }
 func ValidateIdentifier(s, field string) error            { return validateIdentifier(s, field) }
 
-// --- KG write-gate test entry points ---
-
-// WriteAPIDisabledMsg is the verbatim disabled-gate error text.
-const WriteAPIDisabledMsg = writeAPIDisabledMsg
-
-// RequireWriteAPIEnabled wraps requireWriteAPIEnabled for testing.
-func RequireWriteAPIEnabled(ctx context.Context, loader RESTConfigLoader) error {
-	return requireWriteAPIEnabled(ctx, loader)
-}
-
 // FakeWriteLoader is a RESTConfigLoader test double for write-command tests.
 type FakeWriteLoader struct {
-	Cfg         internalconfig.NamespacedRESTConfig
-	CfgErr      error
-	ProviderCfg map[string]string
+	Cfg    internalconfig.NamespacedRESTConfig
+	CfgErr error
 }
 
 func (f *FakeWriteLoader) LoadGrafanaConfig(_ context.Context) (internalconfig.NamespacedRESTConfig, error) {
 	return f.Cfg, f.CfgErr
-}
-
-func (f *FakeWriteLoader) LoadProviderConfig(_ context.Context, _ string) (map[string]string, string, error) {
-	return f.ProviderCfg, f.Cfg.Namespace, nil
 }
 
 // --- KG write-command test entry points ---

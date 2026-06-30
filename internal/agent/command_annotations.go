@@ -316,10 +316,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg suppressions create":  {Cost: "small"},
 	"gcx kg suppressions delete":  {Cost: "small"},
 	"gcx kg suppressions list":    {Cost: "small"},
-	"gcx kg entities create":      {Cost: "small", Hint: "--domain <d> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; requires the KG write API (GRAFANA_PROVIDER_KG_WRITE_API_ENABLED=true)"},
-	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at create; requires the KG write API (GRAFANA_PROVIDER_KG_WRITE_API_ENABLED=true)"},
-	"gcx kg relationships create": {Cost: "small", Hint: "--type <REL> --domain <d> --from <domain/Type/name> --to <domain/Type/name> [--from-scope k=v] [--to-scope k=v] [--ttl 1h] | upsert a custom edge; both endpoints must already exist; requires the KG write API (GRAFANA_PROVIDER_KG_WRITE_API_ENABLED=true)"},
-	"gcx kg relationships delete": {Cost: "small", Hint: "--type <REL> --from <domain/Type/name> --to <domain/Type/name> [--force] | delete a custom edge; --from/--to must match the values used at create; requires the KG write API (GRAFANA_PROVIDER_KG_WRITE_API_ENABLED=true)"},
+	"gcx kg entities create":      {Cost: "small", Hint: "--domain <d> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
+	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at create; experimental (KG write API, gated server-side)"},
+	"gcx kg relationships create": {Cost: "small", Hint: "--type <REL> --domain <d> --from <domain/Type/name> --to <domain/Type/name> [--from-scope k=v] [--to-scope k=v] [--ttl 1h] | upsert a custom edge; both endpoints must already exist; experimental (KG write API, gated server-side)"},
+	"gcx kg relationships delete": {Cost: "small", Hint: "--type <REL> --from <domain/Type/name> --to <domain/Type/name> [--force] | delete a custom edge; --from/--to must match the values used at create; experimental (KG write API, gated server-side)"},
 
 	// -----------------------------------------------------------------------
 	// Logs provider

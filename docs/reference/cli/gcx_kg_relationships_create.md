@@ -1,11 +1,14 @@
 ## gcx kg relationships create
 
-Create or update a custom relationship (upsert).
+Create or update a custom relationship (upsert) [experimental].
 
 ### Synopsis
 
 Create or update an API-origin edge between two existing entities.
 Both endpoints must already exist.
+
+Experimental: this command uses the Knowledge Graph write API, which is gated
+server-side and may change.
 
 ```
 gcx kg relationships create [flags]
@@ -51,5 +54,5 @@ gcx kg relationships create [flags]
 
 ### SEE ALSO
 
-* [gcx kg relationships](gcx_kg_relationships.md)	 - Manage custom Knowledge Graph relationships.
+* [gcx kg relationships](gcx_kg_relationships.md)	 - Manage custom Knowledge Graph relationships [experimental].
 

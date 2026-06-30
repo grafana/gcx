@@ -73,17 +73,18 @@ func newEntitiesCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &entityCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create or update a custom entity (upsert).",
+		Short: "Create or update a custom entity (upsert) [experimental].",
 		Long: `Create or update an API-origin entity in a writable domain.
+
+Experimental: this command uses the Knowledge Graph write API, which is gated
+server-side and may change. If the write API is not enabled on your stack, the
+server returns an error explaining how to request access.
 
 Identity is (type, name, scope) + domain; re-running with the same identity
 updates the entity. Scope is optional but identity-significant.`,
 		Example: `  gcx kg entities create --domain myapp --type Service --name checkout --scope env=prod --ttl 1h
   gcx kg entities create -f entity.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := requireWriteAPIEnabled(cmd.Context(), loader); err != nil {
-				return err
-			}
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
@@ -217,15 +218,15 @@ func newEntitiesDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "delete [Type--Name]",
-		Short: "Delete a custom entity.",
+		Short: "Delete a custom entity [experimental].",
 		Long: `Delete an API-origin entity. Scope is part of the entity's identity, so it must
 match the value used at create — omitting it targets the scope-less entity, and a
-mismatch returns 404 (not found).`,
+mismatch returns 404 (not found).
+
+Experimental: this command uses the Knowledge Graph write API, which is gated
+server-side and may change.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireWriteAPIEnabled(cmd.Context(), loader); err != nil {
-				return err
-			}
 			et, n, err := resolveEntityTypeAndName(cmd, args)
 			if err != nil {
 				return err
@@ -284,7 +285,7 @@ func newRelationshipsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "relationships",
 		Aliases: []string{"relationship", "rels"},
-		Short:   "Manage custom Knowledge Graph relationships.",
+		Short:   "Manage custom Knowledge Graph relationships [experimental].",
 	}
 	cmd.AddCommand(newRelationshipsCreateCommand(loader), newRelationshipsDeleteCommand(loader))
 	return cmd
@@ -370,16 +371,16 @@ func newRelationshipsCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &relCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create or update a custom relationship (upsert).",
+		Short: "Create or update a custom relationship (upsert) [experimental].",
 		Long: `Create or update an API-origin edge between two existing entities.
-Both endpoints must already exist.`,
+Both endpoints must already exist.
+
+Experimental: this command uses the Knowledge Graph write API, which is gated
+server-side and may change.`,
 		Example: `  gcx kg relationships create --type CALLS --domain myapp \
     --from myapp/Service/checkout --to myapp/Service/cart --to-scope env=prod --ttl 1h
   gcx kg relationships create -f rel.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := requireWriteAPIEnabled(cmd.Context(), loader); err != nil {
-				return err
-			}
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
@@ -515,15 +516,15 @@ func newRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "delete",
-		Short: "Delete a custom relationship.",
+		Short: "Delete a custom relationship [experimental].",
 		Long: `Delete an API-origin edge of the given type between the from/to entities.
-The endpoint refs (incl. scope) must match the values used at create.`,
+The endpoint refs (incl. scope) must match the values used at create.
+
+Experimental: this command uses the Knowledge Graph write API, which is gated
+server-side and may change.`,
 		Example: `  gcx kg relationships delete --type CALLS \
     --from myapp/Service/checkout --to myapp/Service/cart --force`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := requireWriteAPIEnabled(cmd.Context(), loader); err != nil {
-				return err
-			}
 			if err := validateIdentifier(relType, "type"); err != nil {
 				return err
 			}

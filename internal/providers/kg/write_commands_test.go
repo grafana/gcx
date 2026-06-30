@@ -38,28 +38,11 @@ func TestBuildEntityWriteRequest(t *testing.T) {
 	require.Error(t, err, "property shadowing a scope key must be rejected")
 }
 
-// writeLoaderFor returns a FakeWriteLoader pointed at server with write enabled/disabled.
-func writeLoaderFor(server *httptest.Server, enabled bool) *kg.FakeWriteLoader {
-	cfg := map[string]string{}
-	if enabled {
-		cfg["write-api-enabled"] = "true"
-	}
+// writeLoaderFor returns a FakeWriteLoader pointed at server.
+func writeLoaderFor(server *httptest.Server) *kg.FakeWriteLoader {
 	return &kg.FakeWriteLoader{
-		Cfg:         internalconfig.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "stack-123"},
-		ProviderCfg: cfg,
+		Cfg: internalconfig.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "stack-123"},
 	}
-}
-
-func TestEntitiesCreate_GateDisabled_NoHTTP(t *testing.T) {
-	called := false
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
-	defer server.Close()
-	cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server, false))
-	cmd.SetArgs([]string{"--domain", "myapp", "--type", "Service", "--name", "checkout"})
-	err := cmd.Execute()
-	require.Error(t, err)
-	assert.Equal(t, kg.WriteAPIDisabledMsg, err.Error())
-	assert.False(t, called, "no HTTP call must be made when gate is disabled")
 }
 
 func TestEntitiesCreate_Success(t *testing.T) {
@@ -69,7 +52,7 @@ func TestEntitiesCreate_Success(t *testing.T) {
 		writeJSON(w, kg.EntityWriteResponse{Domain: "myapp", Type: "Service", Name: "checkout"})
 	}))
 	defer server.Close()
-	cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server, true))
+	cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server))
 	cmd.SetArgs([]string{"--domain", "myapp", "--type", "Service", "--name", "checkout", "-o", "json"})
 	require.NoError(t, cmd.Execute())
 }
@@ -77,7 +60,7 @@ func TestEntitiesCreate_Success(t *testing.T) {
 func TestEntitiesCreate_FileAndFlagsConflict(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer server.Close()
-	cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server, true))
+	cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server))
 	cmd.SetArgs([]string{"-f", "x.yaml", "--domain", "myapp", "--type", "Service", "--name", "checkout"})
 	require.Error(t, cmd.Execute())
 }
@@ -94,7 +77,7 @@ func TestEntitiesCreate_ClientSideValidation(t *testing.T) {
 	for _, args := range cases {
 		called := false
 		server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
-		cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server, true))
+		cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server))
 		cmd.SetArgs(args)
 		require.Error(t, cmd.Execute(), "args %v", args)
 		assert.False(t, called, "validation must fail before HTTP for args %v", args)
@@ -112,7 +95,7 @@ func TestEntitiesDelete_ForceSendsDelete(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
-	cmd := kg.NewEntitiesDeleteCommand(writeLoaderFor(server, true))
+	cmd := kg.NewEntitiesDeleteCommand(writeLoaderFor(server))
 	cmd.SetArgs([]string{"Service--checkout", "--domain", "myapp", "--scope", "env=prod", "--force"})
 	require.NoError(t, cmd.Execute())
 	assert.True(t, called)
@@ -122,7 +105,7 @@ func TestEntitiesDelete_RejectsBadType(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
 	defer server.Close()
-	cmd := kg.NewEntitiesDeleteCommand(writeLoaderFor(server, true))
+	cmd := kg.NewEntitiesDeleteCommand(writeLoaderFor(server))
 	cmd.SetArgs([]string{"9bad--checkout", "--domain", "myapp", "--force"})
 	require.Error(t, cmd.Execute())
 	assert.False(t, called, "invalid type must be rejected before HTTP")
@@ -132,7 +115,7 @@ func TestEntitiesCreate_RejectsBadScopeKeyNoHTTP(t *testing.T) {
 	for _, scope := range []string{"=v", "name=x", "_x=v"} {
 		called := false
 		server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
-		cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server, true))
+		cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server))
 		cmd.SetArgs([]string{"--domain", "myapp", "--type", "Service", "--name", "x", "--scope", scope})
 		require.Error(t, cmd.Execute(), "scope %q must be rejected", scope)
 		assert.False(t, called, "invalid scope key %q must not reach the wire", scope)
@@ -150,7 +133,7 @@ func TestEntitiesCreate_FileDefaultsNeverExpire(t *testing.T) {
 		writeJSON(w, kg.EntityWriteResponse{Domain: "myapp", Type: "Service", Name: "checkout"})
 	}))
 	defer server.Close()
-	cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server, true))
+	cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server))
 	cmd.SetArgs([]string{"-f", "-", "-o", "json"})
 	cmd.SetIn(bytes.NewBufferString("domain: myapp\ntype: Service\nname: checkout\n")) // no ttlSeconds
 	require.NoError(t, cmd.Execute())
@@ -162,22 +145,12 @@ func TestEntitiesDelete_DeclineSkipsDelete(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
 	defer server.Close()
-	cmd := kg.NewEntitiesDeleteCommand(writeLoaderFor(server, true))
+	cmd := kg.NewEntitiesDeleteCommand(writeLoaderFor(server))
 	cmd.SetArgs([]string{"Service--checkout", "--domain", "myapp"})
 	cmd.SetIn(bytes.NewBufferString("n\n"))
 	cmd.SetOut(&bytes.Buffer{})
 	require.NoError(t, cmd.Execute())
 	assert.False(t, called, "declined confirmation must not issue DELETE")
-}
-
-func TestEntitiesDelete_GateDisabled(t *testing.T) {
-	called := false
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
-	defer server.Close()
-	cmd := kg.NewEntitiesDeleteCommand(writeLoaderFor(server, false))
-	cmd.SetArgs([]string{"Service--checkout", "--domain", "myapp", "--force"})
-	require.Error(t, cmd.Execute())
-	assert.False(t, called)
 }
 
 func TestBuildRelationshipWriteRequest(t *testing.T) {
@@ -204,27 +177,17 @@ func TestRelationshipsCreate_Success(t *testing.T) {
 		writeJSON(w, kg.RelationshipWriteResponse{Type: "CALLS"})
 	}))
 	defer server.Close()
-	cmd := kg.NewRelationshipsCreateCommand(writeLoaderFor(server, true))
+	cmd := kg.NewRelationshipsCreateCommand(writeLoaderFor(server))
 	cmd.SetArgs([]string{"--type", "CALLS", "--domain", "myapp",
 		"--from", "myapp/Service/checkout", "--to", "myapp/Service/cart", "-o", "json"})
 	require.NoError(t, cmd.Execute())
-}
-
-func TestRelationshipsCreate_GateDisabled(t *testing.T) {
-	called := false
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
-	defer server.Close()
-	cmd := kg.NewRelationshipsCreateCommand(writeLoaderFor(server, false))
-	cmd.SetArgs([]string{"--type", "CALLS", "--domain", "myapp", "--from", "myapp/Service/checkout", "--to", "myapp/Service/cart"})
-	require.Error(t, cmd.Execute())
-	assert.False(t, called)
 }
 
 func TestRelationshipsCreate_BadRefValidation(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
 	defer server.Close()
-	cmd := kg.NewRelationshipsCreateCommand(writeLoaderFor(server, true))
+	cmd := kg.NewRelationshipsCreateCommand(writeLoaderFor(server))
 	cmd.SetArgs([]string{"--type", "CALLS", "--domain", "myapp", "--from", "bad", "--to", "myapp/Service/cart"})
 	require.Error(t, cmd.Execute())
 	assert.False(t, called)
@@ -240,7 +203,7 @@ func TestRelationshipsDelete_ForceSendsDelete(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
-	cmd := kg.NewRelationshipsDeleteCommand(writeLoaderFor(server, true))
+	cmd := kg.NewRelationshipsDeleteCommand(writeLoaderFor(server))
 	cmd.SetArgs([]string{"--type", "CALLS", "--from", "myapp/Service/checkout", "--to", "myapp/Service/cart", "--force"})
 	require.NoError(t, cmd.Execute())
 	assert.True(t, called)
@@ -250,7 +213,7 @@ func TestRelationshipsDelete_DeclineSkips(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
 	defer server.Close()
-	cmd := kg.NewRelationshipsDeleteCommand(writeLoaderFor(server, true))
+	cmd := kg.NewRelationshipsDeleteCommand(writeLoaderFor(server))
 	cmd.SetArgs([]string{"--type", "CALLS", "--from", "myapp/Service/checkout", "--to", "myapp/Service/cart"})
 	cmd.SetIn(bytes.NewBufferString("n\n"))
 	cmd.SetOut(&bytes.Buffer{})
