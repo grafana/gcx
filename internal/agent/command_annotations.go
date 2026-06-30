@@ -78,6 +78,13 @@ var commandAnnotations = map[string]annotation{
 	"gcx datasources clickhouse list-tables":    {Cost: "small"},
 	"gcx datasources clickhouse describe-table": {Cost: "small", Hint: "TABLE -d UID --database default -o json"},
 
+	// datasources athena
+	"gcx datasources athena query":          {Cost: "medium", Hint: "-d UID 'SELECT count(*) FROM events' -o json"},
+	"gcx datasources athena list-catalogs":  {Cost: "small", Hint: "-d UID -o json"},
+	"gcx datasources athena list-databases": {Cost: "small", Hint: "-d UID --catalog AwsDataCatalog -o json"},
+	"gcx datasources athena list-tables":    {Cost: "small", Hint: "-d UID --catalog AwsDataCatalog --database mydb -o json"},
+	"gcx datasources athena describe-table": {Cost: "small", Hint: "TABLE -d UID --catalog AwsDataCatalog --database mydb -o json"},
+
 	// datasources cloudwatch
 	"gcx datasources cloudwatch query":           {Cost: "large", Hint: "gcx datasources cloudwatch query -d UID --region us-east-1 --namespace AWS/EC2 --metric CPUUtilization --since 1h -o json"},
 	"gcx datasources cloudwatch list-namespaces": {Cost: "small", Hint: "gcx datasources cloudwatch list-namespaces -d UID --region us-east-1 -o json"},

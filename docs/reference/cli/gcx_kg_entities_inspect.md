@@ -36,7 +36,7 @@ gcx kg entities inspect [Type--Name] [flags]
       --open                               Open the entity in the RCA Workbench in your browser
   -o, --output string                      Output format. One of: agents, json, yaml (default "json")
       --share-link                         Print the RCA Workbench URL for this entity to stderr
-      --since string                       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
+      --since string                       Duration before --to (or now); mutually exclusive with --from/--to (e.g. 1h, 30m, 7d)
       --site string                        Site scope (run 'gcx kg meta scopes' to see valid values)
       --to string                          End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string                        Entity type (run 'gcx kg meta schema' to see available types)

@@ -407,17 +407,24 @@ func (c *Client) GetRelabelRules(ctx context.Context, t RelabelRuleType) (map[st
 // Entity operations
 // ---------------------------------------------------------------------------
 
-// GetEntityInfo retrieves rich entity information by type, name, and optional scope.
-func (c *Client) GetEntityInfo(ctx context.Context, entityType, name string, scope map[string]string, startMs, endMs int64) (*GraphEntity, error) {
+// timeRangeParams returns query params with start/end set for the given window,
+// defaulting to the last hour when either bound is unset.
+func timeRangeParams(startMs, endMs int64) url.Values {
 	if startMs == 0 || endMs == 0 {
 		endMs = time.Now().UnixMilli()
 		startMs = endMs - 3600000
 	}
 	q := url.Values{}
-	q.Set("entity_type", entityType)
-	q.Set("entity_name", name)
 	q.Set("start", strconv.FormatInt(startMs, 10))
 	q.Set("end", strconv.FormatInt(endMs, 10))
+	return q
+}
+
+// GetEntityInfo retrieves rich entity information by type, name, and optional scope.
+func (c *Client) GetEntityInfo(ctx context.Context, entityType, name string, scope map[string]string, startMs, endMs int64) (*GraphEntity, error) {
+	q := timeRangeParams(startMs, endMs)
+	q.Set("entity_type", entityType)
+	q.Set("entity_name", name)
 	for k, v := range scope {
 		q.Set(k, v)
 	}
@@ -431,15 +438,9 @@ func (c *Client) GetEntityInfo(ctx context.Context, entityType, name string, sco
 // LookupEntity retrieves entity details from Prometheus alert label params.
 // Returns nil, nil on 204 No Content (entity not found).
 func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scope map[string]string, startMs, endMs int64) (*GraphEntity, error) {
-	if startMs == 0 || endMs == 0 {
-		endMs = time.Now().UnixMilli()
-		startMs = endMs - 3600000
-	}
-	q := url.Values{}
+	q := timeRangeParams(startMs, endMs)
 	q.Set("asserts_entity_type", entityType)
 	q.Set("asserts_entity_name", name)
-	q.Set("start", strconv.FormatInt(startMs, 10))
-	q.Set("end", strconv.FormatInt(endMs, 10))
 	for k, v := range scope {
 		q.Set(k, v)
 	}
@@ -481,11 +482,12 @@ func (c *Client) CountEntityTypes(ctx context.Context, startMs, endMs int64, sc 
 }
 
 // ListEntityScopes retrieves the available scope dimension values.
-func (c *Client) ListEntityScopes(ctx context.Context) (map[string][]string, error) {
+func (c *Client) ListEntityScopes(ctx context.Context, startMs, endMs int64) (map[string][]string, error) {
+	q := timeRangeParams(startMs, endMs)
 	var wrapper struct {
 		ScopeValues map[string][]string `json:"scopeValues"`
 	}
-	if err := c.getJSON(ctx, scopesPath, &wrapper); err != nil {
+	if err := c.getJSON(ctx, scopesPath+"?"+q.Encode(), &wrapper); err != nil {
 		return nil, fmt.Errorf("kg: list entity scopes: %w", err)
 	}
 	return wrapper.ScopeValues, nil

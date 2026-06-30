@@ -16,7 +16,7 @@ gcx kg summary [flags]
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --namespace string   Namespace scope
   -o, --output string      Output format. One of: agents, json, yaml (default "json")
-      --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
+      --since string       Duration before --to (or now); mutually exclusive with --from/--to (e.g. 1h, 30m, 7d)
       --site string        Site scope
       --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string        Limit to a specific entity type

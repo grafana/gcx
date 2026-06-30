@@ -158,6 +158,8 @@ func NormalizeKind(pluginID string) string {
 		return "pyroscope"
 	case "grafana-clickhouse-datasource":
 		return "clickhouse"
+	case "grafana-athena-datasource":
+		return "athena"
 	case "yesoreyeram-infinity-datasource":
 		return "infinity"
 	case "synthetic-monitoring-datasource":

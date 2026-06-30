@@ -251,7 +251,7 @@ func scopeSpecSchema() map[string]any {
 func NewScopeAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 	return newListOnlyFactory[Scope](loader, scopeDescriptor,
 		func(client *Client, ctx context.Context) ([]Scope, error) {
-			scopeMap, err := client.ListEntityScopes(ctx)
+			scopeMap, err := client.ListEntityScopes(ctx, 0, 0)
 			if err != nil {
 				return nil, err
 			}

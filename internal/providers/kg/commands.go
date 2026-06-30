@@ -50,7 +50,7 @@ func (f *scopeFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.site, "site", "", "Site scope")
 	cmd.Flags().StringVar(&f.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	cmd.Flags().StringVar(&f.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
-	cmd.Flags().StringVar(&f.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
+	cmd.Flags().StringVar(&f.since, "since", "", "Duration before --to (or now); mutually exclusive with --from/--to (e.g. 1h, 30m, 7d)")
 }
 
 func (f *scopeFlags) resolveTime() (int64, int64, error) {
@@ -116,7 +116,11 @@ func (f *scopeFlags) validateScopes(ctx context.Context, client *Client) error {
 	if len(active) == 0 {
 		return nil
 	}
-	scopes, err := client.ListEntityScopes(ctx)
+	startMs, endMs, err := f.resolveTime()
+	if err != nil {
+		return err
+	}
+	scopes, err := client.ListEntityScopes(ctx, startMs, endMs)
 	if err != nil {
 		return nil //nolint:nilerr // best-effort: scope validation is advisory
 	}
@@ -2013,7 +2017,7 @@ Tips:
 	}
 	cmd.Flags().StringVar(&cypherScope.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	cmd.Flags().StringVar(&cypherScope.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
-	cmd.Flags().StringVar(&cypherScope.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
+	cmd.Flags().StringVar(&cypherScope.since, "since", "", "Duration before --to (or now); mutually exclusive with --from/--to (e.g. 1h, 30m, 7d)")
 	cmd.Flags().IntVar(&cypherPage, "page", 0, "Page number (0-based)")
 	cmd.Flags().BoolVar(&withInsights, "insights-only", false, "Return only entities with active insights")
 	ioOpts.setup(cmd.Flags())
@@ -2236,7 +2240,7 @@ func (o *describeOpts) setupWithTime(flags *pflag.FlagSet) {
 	o.setup(flags)
 	flags.StringVar(&o.Time.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	flags.StringVar(&o.Time.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
-	flags.StringVar(&o.Time.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
+	flags.StringVar(&o.Time.since, "since", "", "Duration before --to (or now); mutually exclusive with --from/--to (e.g. 1h, 30m, 7d)")
 }
 
 // DescribeTextCodec renders KGMetadataOutput in the compact LLM-friendly text format
@@ -2378,14 +2382,18 @@ func newDescribeScopesCmd(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			scopes, err := client.ListEntityScopes(cmd.Context())
+			startMs, endMs, err := opts.Time.resolveTime()
+			if err != nil {
+				return err
+			}
+			scopes, err := client.ListEntityScopes(cmd.Context(), startMs, endMs)
 			if err != nil {
 				return err
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Scopes: scopes})
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.setupWithTime(cmd.Flags())
 	return cmd
 }
 
@@ -2512,7 +2520,7 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 				return nil
 			})
 			g.Go(func() error {
-				scopes, scopeErr := client.ListEntityScopes(gCtx)
+				scopes, scopeErr := client.ListEntityScopes(gCtx, startMs, endMs)
 				if scopeErr != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: scope values failed to load: %v\n", scopeErr)
 					return nil

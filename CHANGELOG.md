@@ -1,3 +1,13 @@
+## v0.4.2 (2026-06-29)
+
+- Add Athena datasource provider (query, list catalogs/databases/tables, describe-table)
+- Introduce shared SQL query package, refactoring ClickHouse onto it
+- Synthetic Monitoring now syncs via a Grafana datasource proxy client
+- Set X-Grafana-Caller-Id header on all datasource queries
+- Refine output formatting (format and jq handling)
+- Remove obsolete publish-technical-documentation workflows
+
+
 ## Unreleased
 
 ## v0.4.1 (2026-06-23)
