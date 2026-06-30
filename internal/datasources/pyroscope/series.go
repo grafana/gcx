@@ -1,6 +1,7 @@
 package pyroscope
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -39,7 +40,7 @@ func (opts *pyroscopeMetricsOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVar(&opts.shared.From, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	flags.StringVar(&opts.shared.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
-	flags.StringVar(&opts.shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
+	flags.StringVar(&opts.shared.Step, "step", "", "Query step (e.g., '15s', '1m'); defaults to the Pyroscope datasource minStep (or 15s) when omitted")
 	flags.StringVar(&opts.shared.Since, "since", "", "Duration before --to (or now if omitted); mutually exclusive with --from")
 
 	opts.shared.SetupExprFlag(flags)
@@ -149,16 +150,14 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				groupBy = []string{"service_name"}
 			}
 
-			// --top mode: set step to full range to get one bucket per series.
-			var stepSeconds float64
-			if opts.Top {
-				if start.IsZero() || end.IsZero() {
-					s, e := pyroscope.DefaultTimeRange(start, end)
-					start, end = s, e
-				}
-				stepSeconds = end.Sub(start).Seconds()
-			} else if step > 0 {
-				stepSeconds = step.Seconds()
+			// --top mode queries the full range to get one bucket per series.
+			if opts.Top && (start.IsZero() || end.IsZero()) {
+				start, end = pyroscope.DefaultTimeRange(start, end)
+			}
+
+			stepSeconds, err := resolveMetricsStepSeconds(ctx, cfg, datasourceUID, opts.Top, start, end, step)
+			if err != nil {
+				return err
 			}
 
 			client, err := pyroscope.NewClient(cfg)
@@ -198,6 +197,23 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+func resolveMetricsStepSeconds(ctx context.Context, cfg internalconfig.NamespacedRESTConfig, datasourceUID string, top bool, start, end time.Time, step time.Duration) (float64, error) {
+	switch {
+	case top:
+		// One bucket per series across the (already-defaulted) full range.
+		return end.Sub(start).Seconds(), nil
+	case step > 0:
+		// Explicit --step wins over the datasource minStep.
+		return step.Seconds(), nil
+	default:
+		minStep, err := dsquery.GetPyroscopeMinStep(ctx, cfg, datasourceUID)
+		if err != nil {
+			return 0, err
+		}
+		return minStep.Seconds(), nil
+	}
 }
 
 // pyroscopeSeriesTableCodec renders SelectSeriesResponse or TopSeriesResponse as a table.
