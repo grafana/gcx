@@ -236,8 +236,9 @@ func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 	}
 
 	token := curCtx.Cloud.Token
-	gcomURL := curCtx.ResolveGCOMURL()
-	client, err := cloud.NewGCOMClient(gcomURL, token)
+	apiURL := curCtx.ResolveCloudAPIURL()
+
+	client, err := cloud.NewGCOMClient(apiURL, token)
 	if err != nil {
 		return cloudBase{}, fmt.Errorf("failed to create GCOM client: %w", err)
 	}

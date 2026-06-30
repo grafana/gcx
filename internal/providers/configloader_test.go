@@ -96,7 +96,7 @@ current-context: default
 // cloud section.
 func TestConfigLoader_LoadCloudConfig_EnvVars(t *testing.T) {
 	// Config file has api-url pointing at our test server (the scheme is supplied
-	// by ResolveGCOMURL as "https://", so we can't use the test server's plain
+	// by ResolveCloudAPIURL as "https://", so we can't use the test server's plain
 	// HTTP URL here — but we still verify that env vars are parsed and validation
 	// passes by checking the error is a network error, not a validation error).
 	cfgFile := writeConfigFile(t, `
@@ -126,8 +126,8 @@ func TestConfigLoader_LoadCloudConfig_GCOMCallAttempted(t *testing.T) {
 	srv := newMockGCOMServer(t, cloud.StackInfo{ID: 42, Slug: "mystack"})
 	defer srv.Close()
 
-	// ResolveGCOMURL prepends "https://"; our test server is HTTP only. We
-	// write api-url without the scheme so ResolveGCOMURL adds "https://".
+	// ResolveCloudAPIURL prepends "https://"; our test server is HTTP only. We
+	// write api-url without the scheme so ResolveCloudAPIURL adds "https://".
 	// This means the connection will fail at TLS, proving the GCOM call
 	// was attempted (rather than a validation failure).
 	cfgFile := writeConfigFile(t, `
@@ -692,7 +692,7 @@ func TestConfigLoader_LoadCloudConfig_FullRoundTrip(t *testing.T) {
 	srv := newMockGCOMServer(t, wantStack)
 	defer srv.Close()
 
-	// Use the full http:// URL — ResolveGCOMURL now preserves existing schemes.
+	// Use the full http:// URL — ResolveCloudAPIURL now preserves existing schemes.
 	cfgFile := writeConfigFile(t, `
 contexts:
   default:

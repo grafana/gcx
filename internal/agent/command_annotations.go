@@ -52,7 +52,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant conversation get":                 {Cost: "large", Hint: "Pull a conversation transcript by ID before continuing it with 'gcx assistant prompt --context-id'. Example: <conversation-id> -o json"},
 
 	// login
-	"gcx login": {Cost: "small", Hint: "Browser OAuth (recommended for Grafana Cloud): gcx login <ctx> --server <url> --oauth — opens a browser for the user to approve; works in agent mode. Non-interactive token: gcx login <ctx> --yes --server <url> --token <grafana-sa-token> [--cloud-token <cap-token>]. Service-account tokens (--token) are created inside the Grafana instance — see " + docs.ServiceAccounts + ". Cloud access-policy tokens (--cloud-token) are created at grafana.com — see " + docs.AccessPolicies + ". Append .md to any grafana.com/docs URL to fetch markdown. Do not guess token URLs."},
+	"gcx login":       {Cost: "small", Hint: "Browser OAuth (recommended for Grafana Cloud): gcx login <ctx> --server <url> --oauth — opens a browser for the user to approve; works in agent mode. Non-interactive token: gcx login <ctx> --yes --server <url> --token <grafana-sa-token> [--cloud-token <cap-token>]. Service-account tokens (--token) are created inside the Grafana instance — see " + docs.ServiceAccounts + ". Cloud access-policy tokens (--cloud-token) are created at grafana.com — see " + docs.AccessPolicies + ". Append .md to any grafana.com/docs URL to fetch markdown. Do not guess token URLs."},
+	"gcx cloud login": {Cost: "small", Hint: "Authenticate to the Grafana Cloud platform API (grafana.com) for managing stacks and access policies, distinct from 'gcx login' which targets a single stack. Browser OAuth by default; non-interactive: gcx cloud login --cloud-token <cap-token>. Cloud access-policy tokens are created at grafana.com, see " + docs.AccessPolicies + "."},
 
 	// commands
 	"gcx commands": {Cost: "medium", Hint: "--flat -o json"},
