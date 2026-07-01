@@ -396,11 +396,17 @@ func (c *OnCallClient) DeleteSchedule(ctx context.Context, id string) error {
 }
 
 // ListFilterEvents returns resolved on-call events for a schedule.
-func (c *OnCallClient) ListFilterEvents(ctx context.Context, scheduleID, userTZ, startingDate string, days int) (*FilterEventsResponse, error) {
+//
+// date is the first day of the window (YYYY-MM-DD) and days its length. The
+// OnCall internal filter_events API names this parameter "date" — not
+// "starting_date" (which is the public final_shifts API's name). Sending the
+// wrong key causes the API to silently ignore it and default to today, which
+// makes historical queries impossible; see the schedules final-shifts command.
+func (c *OnCallClient) ListFilterEvents(ctx context.Context, scheduleID, userTZ, date string, days int) (*FilterEventsResponse, error) {
 	params := url.Values{}
 	params.Set("type", "final")
 	params.Set("user_tz", userTZ)
-	params.Set("starting_date", startingDate)
+	params.Set("date", date)
 	params.Set("days", strconv.Itoa(days))
 	path := fmt.Sprintf("%s%s/filter_events/?%s", schedulesPath, url.PathEscape(scheduleID), params.Encode())
 

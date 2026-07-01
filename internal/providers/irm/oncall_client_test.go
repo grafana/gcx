@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +87,42 @@ func TestListIntegrations(t *testing.T) {
 	}
 	if items[0].ID != "int1" || items[0].VerbalName != "My Integration" {
 		t.Errorf("unexpected first integration: %+v", items[0])
+	}
+}
+
+// TestListFilterEventsSendsDateParam guards the historical-shift regression:
+// the OnCall internal filter_events API names the window-start parameter "date".
+// Sending "starting_date" (the public final_shifts API's name) makes the API
+// silently ignore it and default to today, breaking any past-shift query.
+func TestListFilterEventsSendsDateParam(t *testing.T) {
+	t.Parallel()
+
+	var gotQuery url.Values
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"events": []any{}}) //nolint:errcheck
+	}))
+
+	_, err := client.ListFilterEvents(context.Background(), "S123", "UTC", "2026-04-01", 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := gotQuery.Get("date"); got != "2026-04-01" {
+		t.Errorf("date param = %q, want %q", got, "2026-04-01")
+	}
+	if gotQuery.Has("starting_date") {
+		t.Errorf("must not send starting_date (public-API name); the internal API ignores it: %v", gotQuery)
+	}
+	if got := gotQuery.Get("days"); got != "20" {
+		t.Errorf("days param = %q, want %q", got, "20")
+	}
+	if got := gotQuery.Get("user_tz"); got != "UTC" {
+		t.Errorf("user_tz param = %q, want %q", got, "UTC")
+	}
+	if got := gotQuery.Get("type"); got != "final" {
+		t.Errorf("type param = %q, want %q", got, "final")
 	}
 }
 
