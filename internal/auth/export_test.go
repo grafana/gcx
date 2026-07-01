@@ -1,6 +1,8 @@
 package auth
 
-import "context"
+import (
+	"context"
+)
 
 // ExchangeCodeForToken exposes the unexported exchangeCodeForToken for black-box tests.
 func ExchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier string) (any, error) {
