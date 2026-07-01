@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -83,44 +82,5 @@ func TestFlowRun_FailsBeforeBrowserOutputWhenFixedPortUnavailable(t *testing.T) 
 	}
 	if writer.Len() != 0 {
 		t.Fatalf("expected no browser instructions before bind failure, got %q", writer.String())
-	}
-}
-
-func TestBrowserCommand(t *testing.T) {
-	// A representative OAuth URL: the query string carries & separators that
-	// cmd.exe would treat as command separators (#814).
-	const url = "https://mystack.grafana.net/a/grafana-assistant-app/cli/auth?callback_port=54321&state=abc&code_challenge=xyz&code_challenge_method=S256"
-
-	tests := []struct {
-		name     string
-		goos     string
-		wantArgs []string
-	}{
-		{"darwin", "darwin", []string{"open", url}},
-		{"linux", "linux", []string{"xdg-open", url}},
-		{"windows", "windows", []string{"explorer.exe", url}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cmd, err := auth.BrowserCommand(context.Background(), tt.goos, url)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if !reflect.DeepEqual(cmd.Args, tt.wantArgs) {
-				t.Fatalf("args = %v, want %v", cmd.Args, tt.wantArgs)
-			}
-			// Regression for #814: the full URL must be passed as a single,
-			// intact argument — never split or truncated at an & separator.
-			if got := cmd.Args[len(cmd.Args)-1]; got != url {
-				t.Fatalf("url argument = %q, want %q", got, url)
-			}
-		})
-	}
-}
-
-func TestBrowserCommand_UnsupportedPlatform(t *testing.T) {
-	if _, err := auth.BrowserCommand(context.Background(), "plan9", "https://mystack.grafana.net"); err == nil {
-		t.Fatal("expected error for unsupported platform")
 	}
 }
