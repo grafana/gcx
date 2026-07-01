@@ -279,8 +279,6 @@ type RefreshResult struct {
 }
 
 // ProxyRefresh calls the proxy refresh endpoint and returns new token credentials.
-// This is used by the assistant command's token refresher, which needs to refresh
-// tokens outside of an HTTP round-trip context.
 func ProxyRefresh(ctx context.Context, proxyEndpoint, refreshTok string) (RefreshResult, error) {
 	t := &RefreshTransport{ProxyEndpoint: proxyEndpoint}
 	return t.doProxyRefresh(ctx, refreshTok)
