@@ -96,7 +96,7 @@
 1. **Kubernetes client libraries as foundation.** Grafana 12+ exposes a K8s-compatible
    API. Using `k8s.io/client-go` directly gives gcx pagination, discovery,
    dry-run, error handling, and unstructured object support for free. The trade-off
-   is a large vendor directory, but the implementation savings are substantial.
+   is a large dependency graph, but the implementation savings are substantial.
 
 2. **No public Go API.** Everything is under `internal/`. gcx is a CLI tool,
    not a library. This gives the team freedom to refactor without worrying about
@@ -106,9 +106,11 @@
    API's discovery endpoint, not hardcoded. This means new resource types added to
    Grafana are automatically available without gcx code changes.
 
-4. **Vendored dependencies.** All Go dependencies are committed to `vendor/`. This
-   ensures reproducible builds without network access and makes the full dependency
-   graph auditable in code review.
+4. **Go module mode.** Dependencies are resolved from the Go module cache (`go mod
+   download`), not a committed `vendor/` tree. `go.mod`/`go.sum` pin exact versions
+   and hashes, so builds are reproducible and the dependency graph is auditable in
+   code review without the overhead of vendoring. Lint runs with
+   `modules-download-mode: readonly`, matching `go build`/`go test`.
 
 ---
 
@@ -484,8 +486,8 @@ and checked for drift in CI.
    resource transformation from I/O, making it easy to add new transformations
    without touching pipeline code.
 
-6. **Reproducible builds.** Vendored dependencies, mise, and CI caching ensure
-   identical builds across environments.
+6. **Reproducible builds.** `go.mod`/`go.sum` version pinning, mise toolchain pinning,
+   and CI module caching ensure identical builds across environments.
 
 7. **Serve command.** The local development server with live reload, reverse proxy,
    and dashboard interception is a genuinely differentiating feature for

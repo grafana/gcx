@@ -15,6 +15,10 @@ uv = "latest"
 description = "Validate skills, lint, test, build, and generate docs"
 depends = ["validate-skills", "lint", "tests", "build", "docs"]
 
+[tasks.gate]
+description = "Fast pre-push gate for code changes: lint + tests + build (no docs)"
+depends = ["lint", "tests", "build"]
+
 # =============================================================================
 # DEVELOPMENT
 # =============================================================================
@@ -74,13 +78,13 @@ description = "Install Go and Python dependencies"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-go mod vendor
+go mod download
 uv pip install --system -q -r requirements.txt
 """
 
 [tasks.clean]
 description = "Remove build artifacts"
-run = "rm -rf bin vendor .venv"
+run = "rm -rf bin .venv"
 
 [tasks.setup]
 description = "Set up local development environment (commit template, etc.)"

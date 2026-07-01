@@ -2,7 +2,7 @@ version: "2"
 
 run:
   go: "1.26"
-  modules-download-mode: vendor
+  modules-download-mode: readonly
 
 linters:
   default: all
