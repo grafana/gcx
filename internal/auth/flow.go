@@ -19,11 +19,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/grafana/gcx/internal/deeplink"
 )
 
 //go:embed templates/*.html
@@ -159,7 +159,7 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 	fmt.Fprintln(f.writer, "Check that this code matches what is shown in the browser before approving.")
 	fmt.Fprintln(f.writer)
 
-	if err := openBrowser(ctx, authURL); err != nil {
+	if err := deeplink.Open(authURL); err != nil {
 		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
 	}
 
@@ -430,23 +430,6 @@ func verificationCode(codeChallenge string) string {
 	}
 	h := hex.EncodeToString(raw[:4])
 	return h[:4] + "-" + h[4:]
-}
-
-func openBrowser(ctx context.Context, url string) error {
-	var cmd *exec.Cmd
-
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.CommandContext(ctx, "open", url)
-	case "linux":
-		cmd = exec.CommandContext(ctx, "xdg-open", url)
-	case "windows":
-		cmd = exec.CommandContext(ctx, "cmd", "/c", "start", url)
-	default:
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
-	}
-
-	return cmd.Start()
 }
 
 // StripControlChars sanitises errors to stop potentially malicious errors from
