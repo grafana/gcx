@@ -90,7 +90,6 @@ type Region struct {
 type CreateStackRequest struct {
 	Name             string            `json:"name"`
 	Slug             string            `json:"slug"`
-	Org              string            `json:"org,omitempty"`
 	URL              string            `json:"url,omitempty"`
 	Region           string            `json:"region,omitempty"`
 	Description      string            `json:"description,omitempty"`
@@ -143,11 +142,9 @@ func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 		return nil, fmt.Errorf("gcom client: base URL must use HTTPS (got %q)", parsedBase.Scheme)
 	}
 
-	transport := http.RoundTripper(&httputils.UserAgentTransport{Base: &retry.Transport{}})
-
 	httpClient := &http.Client{
 		Timeout:   30 * time.Second,
-		Transport: transport,
+		Transport: &httputils.UserAgentTransport{Base: &retry.Transport{}},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if req.URL.Host != parsedBase.Host {
 				return fmt.Errorf("gcom client: refusing cross-domain redirect to %s (configured base: %s)",

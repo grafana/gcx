@@ -96,9 +96,6 @@ contexts:
       # CloudConfig holds Grafana Cloud platform credentials and configuration.
       # Token is a Grafana Cloud API token used to authenticate against GCOM.
       token: string
-      # TokenExpiresAt is the token expiration time in RFC3339 format.
-      # Only set for OAuth tokens obtained via `gcx cloud login`.
-      token-expires-at: string
       # Stack is the Grafana Cloud stack slug (e.g. "mystack").
       # Optional: if not set, the slug may be derived from Grafana.Server.
       stack: string

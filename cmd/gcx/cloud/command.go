@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/auth"
@@ -151,19 +150,15 @@ func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, oauthURL,
 	fmt.Fprintf(os.Stderr, "Scopes: %s\n", result.Scope)
 
 	cloud := &config.CloudConfig{
-		Token:          result.AccessToken,
-		TokenExpiresAt: time.Now().Add(time.Duration(result.ExpiresIn) * time.Second).Format(time.RFC3339),
-		OAuthUrl:       oauthURL,
-		APIUrl:         apiURL,
+		Token:    result.AccessToken,
+		OAuthUrl: oauthURL,
+		APIUrl:   apiURL,
 	}
 	return saveCloudConfig(ctx, configOpts, cloud)
 }
 
 func saveCloudConfig(ctx context.Context, configOpts *cmdconfig.Options, cloud *config.CloudConfig) error {
 	source := configOpts.ConfigSource()
-	if source == nil {
-		source = config.StandardLocation()
-	}
 
 	cfg, err := config.Load(ctx, source)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {

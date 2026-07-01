@@ -234,7 +234,17 @@ func (f *GCOMFlow) exchangeGCOMToken(ctx context.Context, code, codeVerifier, re
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			redirectEndpoint := req.URL.Scheme + "://" + req.URL.Host
+			if err := ValidateEndpointURL(redirectEndpoint); err != nil {
+				return fmt.Errorf("redirect to untrusted URL blocked: %w", err)
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("token request failed: %w", err)
 	}
