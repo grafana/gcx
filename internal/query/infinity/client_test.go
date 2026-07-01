@@ -215,45 +215,60 @@ func TestQuery_HTTPErrorReturnsAPIError(t *testing.T) {
 	}
 }
 
-func TestQuery_FallbackOn404(t *testing.T) {
-	var callCount atomic.Int32
-	var mu sync.Mutex
-	var paths []string
+// Any non-200 from the K8s query API (404 not deployed, 403 RBAC, 500 from a
+// rolling-out query service, ...) should fall back to /api/ds/query.
+func TestQuery_FallbackOnNon200(t *testing.T) {
+	statuses := []struct {
+		name        string
+		firstStatus int
+	}{
+		{"not found", http.StatusNotFound},
+		{"forbidden", http.StatusForbidden},
+		{"server error", http.StatusInternalServerError},
+	}
 
-	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		n := callCount.Add(1)
+	for _, tc := range statuses {
+		t.Run(tc.name, func(t *testing.T) {
+			var callCount atomic.Int32
+			var mu sync.Mutex
+			var paths []string
 
-		mu.Lock()
-		paths = append(paths, r.URL.Path)
-		mu.Unlock()
+			client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				n := callCount.Add(1)
 
-		if n == 1 {
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
-			return
-		}
+				mu.Lock()
+				paths = append(paths, r.URL.Path)
+				mu.Unlock()
 
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"id","type":"number"}]},"data":{"values":[[1]]}}]}}}`))
-	})
+				if n == 1 {
+					w.WriteHeader(tc.firstStatus)
+					_, _ = w.Write([]byte(`{"message":"error"}`))
+					return
+				}
 
-	resp, err := client.Query(context.Background(), "ds-uid", infinity.QueryRequest{Expr: "$.data[*]"})
-	require.NoError(t, err)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"id","type":"number"}]},"data":{"values":[[1]]}}]}}}`))
+			})
 
-	assert.Equal(t, int32(2), callCount.Load(), "expected exactly 2 requests (primary + fallback)")
+			resp, err := client.Query(context.Background(), "ds-uid", infinity.QueryRequest{Expr: "$.data[*]"})
+			require.NoError(t, err)
 
-	mu.Lock()
-	capturedPaths := make([]string, len(paths))
-	copy(capturedPaths, paths)
-	mu.Unlock()
+			assert.Equal(t, int32(2), callCount.Load(), "expected exactly 2 requests (primary + fallback)")
 
-	assert.Contains(t, capturedPaths[0], "/apis/query.grafana.app/v0alpha1")
-	assert.Equal(t, "/api/ds/query", capturedPaths[1])
+			mu.Lock()
+			capturedPaths := make([]string, len(paths))
+			copy(capturedPaths, paths)
+			mu.Unlock()
 
-	require.NotNil(t, resp)
-	assert.Equal(t, []infinity.Column{{Name: "id", Type: "number"}}, resp.Columns)
-	require.Len(t, resp.Rows, 1)
-	assert.Equal(t, []any{float64(1)}, resp.Rows[0])
+			assert.Contains(t, capturedPaths[0], "/apis/query.grafana.app/v0alpha1")
+			assert.Equal(t, "/api/ds/query", capturedPaths[1])
+
+			require.NotNil(t, resp)
+			assert.Equal(t, []infinity.Column{{Name: "id", Type: "number"}}, resp.Columns)
+			require.Len(t, resp.Rows, 1)
+			assert.Equal(t, []any{float64(1)}, resp.Rows[0])
+		})
+	}
 }
 
 func TestQuery_FallbackOn404BothFail(t *testing.T) {

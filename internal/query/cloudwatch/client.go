@@ -90,8 +90,9 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 		return nil, err
 	}
 
-	// Fall back to legacy /api/ds/query if K8s query API is not available.
-	if statusCode == http.StatusNotFound {
+	// The K8s query API is not enabled everywhere and can return a non-200
+	// (e.g. 403 for some roles); fall back to the legacy /api/ds/query.
+	if statusCode != http.StatusOK {
 		apiPath = "/api/ds/query"
 		respBody, statusCode, err = c.post(ctx, apiPath, body)
 		if err != nil {
