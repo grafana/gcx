@@ -605,6 +605,20 @@ func ApplyAnnotations(root *cobra.Command) {
 			cmd.Annotations[AnnotationSkill] = strings.Join(skills, ",")
 		}
 	})
+
+	// Mark Grafana Cloud-only commands. Derived from the command path so the
+	// whole subtree of each cloud-only product group is covered at once.
+	WalkCommands(root, func(cmd *cobra.Command) {
+		if !IsCloudOnlyPath(cmd.CommandPath()) {
+			return
+		}
+		if cmd.Annotations == nil {
+			cmd.Annotations = make(map[string]string)
+		}
+		if _, exists := cmd.Annotations[AnnotationAvailability]; !exists {
+			cmd.Annotations[AnnotationAvailability] = AvailabilityCloudOnly
+		}
+	})
 }
 
 // WalkCommands recursively calls fn on cmd and all its subcommands.
