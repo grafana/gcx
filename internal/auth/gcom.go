@@ -246,7 +246,7 @@ func (f *GCOMFlow) exchangeGCOMToken(ctx context.Context, code, codeVerifier, re
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("token exchange returned status %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("token exchange returned status %d", resp.StatusCode)
 	}
 
 	var tokenResp gcomTokenResponse

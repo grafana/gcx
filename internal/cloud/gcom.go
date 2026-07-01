@@ -132,13 +132,6 @@ type GCOMClient struct {
 // The client uses a 30-second timeout and will not follow HTTP redirects to a
 // different domain than baseURL.
 func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
-	return NewGCOMClientWithTransport(baseURL, token, nil)
-}
-
-// NewGCOMClientWithTransport is like NewGCOMClient but allows injecting a
-// custom http.RoundTripper that wraps the default transport stack. When
-// transport is nil, the default UserAgent + retry stack is used directly.
-func NewGCOMClientWithTransport(baseURL, token string, transport http.RoundTripper) (*GCOMClient, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 
 	parsedBase, err := url.Parse(baseURL)
@@ -150,9 +143,7 @@ func NewGCOMClientWithTransport(baseURL, token string, transport http.RoundTripp
 		return nil, fmt.Errorf("gcom client: base URL must use HTTPS (got %q)", parsedBase.Scheme)
 	}
 
-	if transport == nil {
-		transport = &httputils.UserAgentTransport{Base: &retry.Transport{}}
-	}
+	transport := http.RoundTripper(&httputils.UserAgentTransport{Base: &retry.Transport{}})
 
 	httpClient := &http.Client{
 		Timeout:   30 * time.Second,
