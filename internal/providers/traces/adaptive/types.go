@@ -50,6 +50,20 @@ type RecommendationAction struct {
 	Seed                 *PolicySeed `json:"seed,omitempty"`
 }
 
+// Config is the Adaptive Traces tenant configuration document.
+//
+// The schema is intentionally flexible: Adaptive Traces makes no backwards
+// compatibility guarantees about config fields, and the set of supported keys
+// changes as features are enabled or disabled server-side. Modeling the
+// document as a generic map lets new and removed fields flow through
+// round-trips unchanged without requiring CLI releases.
+//
+// Updates always replace the entire document — the API does not support
+// partial patches today. Callers should `show` the current config, mutate
+// the returned map, then `set` it back; any field omitted from the set
+// payload is dropped, not preserved.
+type Config map[string]any
+
 // Recommendation represents an adaptive traces sampling recommendation.
 type Recommendation struct {
 	ID          string                 `json:"id"`

@@ -3,6 +3,7 @@ package traces_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -413,6 +414,140 @@ func TestClient_ApplyRecommendation(t *testing.T) {
 // ---------------------------------------------------------------------------
 // DismissRecommendation
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// GetConfig
+// ---------------------------------------------------------------------------
+
+func TestClient_GetConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		want    traces.Config
+		wantErr bool
+	}{
+		{
+			name: "success",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/adaptive-traces/api/v1/config", r.URL.Path)
+				assert.Equal(t, "Basic NDI6dGVzdC10b2tlbg==", r.Header.Get("Authorization"))
+				writeJSON(w, map[string]any{
+					"default_sampling_percentage": 10.0,
+					"feature_flags":               map[string]any{"recommendations_enabled": true},
+				})
+			},
+			want: traces.Config{
+				"default_sampling_percentage": 10.0,
+				"feature_flags":               map[string]any{"recommendations_enabled": true},
+			},
+		},
+		{
+			name: "null body returns empty config",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte("null"))
+			},
+			want: traces.Config{},
+		},
+		{
+			name: "server error",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				writeJSON(w, map[string]string{"error": "boom"})
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handler)
+			defer srv.Close()
+
+			client := newTestClient(srv)
+			got, err := client.GetConfig(context.Background())
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UpdateConfig
+// ---------------------------------------------------------------------------
+
+func TestClient_UpdateConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   traces.Config
+		handler http.HandlerFunc
+		want    traces.Config
+		wantErr bool
+	}{
+		{
+			name:  "success sends full payload via PUT",
+			input: traces.Config{"default_sampling_percentage": 25.0},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPut, r.Method)
+				assert.Equal(t, "/adaptive-traces/api/v1/config", r.URL.Path)
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				body, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
+				var sent map[string]any
+				assert.NoError(t, json.Unmarshal(body, &sent))
+				assert.Equal(t, map[string]any{"default_sampling_percentage": 25.0}, sent)
+				writeJSON(w, sent)
+			},
+			want: traces.Config{"default_sampling_percentage": 25.0},
+		},
+		{
+			name:  "204 no content echoes input",
+			input: traces.Config{"default_sampling_percentage": 7.5},
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNoContent)
+			},
+			want: traces.Config{"default_sampling_percentage": 7.5},
+		},
+		{
+			name:  "null body returns empty config",
+			input: traces.Config{"default_sampling_percentage": 1.0},
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte("null"))
+			},
+			want: traces.Config{},
+		},
+		{
+			name:  "server error",
+			input: traces.Config{},
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				writeJSON(w, map[string]string{"error": "invalid"})
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handler)
+			defer srv.Close()
+
+			client := newTestClient(srv)
+			got, err := client.UpdateConfig(context.Background(), tc.input)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
 
 //nolint:dupl // Similar test pattern for similar API, acceptable duplication.
 func TestClient_DismissRecommendation(t *testing.T) {

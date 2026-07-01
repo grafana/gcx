@@ -569,6 +569,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx traces adaptive recommendations apply":   {Cost: "small"},
 	"gcx traces adaptive recommendations dismiss": {Cost: "small"},
 	"gcx traces adaptive recommendations show":    {Cost: "small", Hint: "Docs: " + docs.AdaptiveTraces},
+	"gcx traces adaptive config show":             {Cost: "small"},
+	"gcx traces adaptive config set":              {Cost: "small", Hint: "Run `gcx traces adaptive config show` first, edit the returned document, then pass the full result back via -f. The API replaces the entire payload — fields omitted from the set body are dropped, not preserved."},
 }
 
 // ApplyAnnotations walks the command tree and applies agent annotations from
