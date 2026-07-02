@@ -20,10 +20,7 @@ import (
 type GCOMResult struct {
 	AccessToken string
 	Scope       string
-	ExpiresIn   int
-	UserID      int
 	Info        struct {
-		Name  string `json:"name"`
 		Email string `json:"email"`
 		Login string `json:"login"`
 	}
@@ -40,12 +37,6 @@ type GCOMOptions struct {
 	// Scopes is the list of OAuth2 scopes to request.
 	Scopes []string
 
-	// Port specifies a fixed port for the callback server. 0 = auto.
-	Port int
-
-	// BindAddress for the callback server. Defaults to "127.0.0.1".
-	BindAddress string
-
 	// Writer for user-facing messages. Defaults to os.Stderr.
 	Writer io.Writer
 }
@@ -58,9 +49,6 @@ type GCOMFlow struct {
 
 // NewGCOMFlow creates a new GCOM OAuth2 PKCE flow.
 func NewGCOMFlow(opts GCOMOptions) *GCOMFlow {
-	if opts.BindAddress == "" {
-		opts.BindAddress = "127.0.0.1"
-	}
 	if opts.GCOMURL == "" {
 		opts.GCOMURL = "https://grafana.com"
 	}
@@ -73,7 +61,7 @@ func NewGCOMFlow(opts GCOMOptions) *GCOMFlow {
 
 // Run executes the GCOM OAuth2 PKCE flow.
 func (f *GCOMFlow) Run(ctx context.Context) (*GCOMResult, error) {
-	listener, port, err := listenOnCallbackPort(ctx, f.opts.BindAddress, f.opts.Port)
+	listener, port, err := listenOnCallbackPort(ctx, "127.0.0.1", 0)
 	if err != nil {
 		return nil, fmt.Errorf("no available port: %w", err)
 	}
@@ -199,12 +187,8 @@ func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Lis
 
 type gcomTokenResponse struct {
 	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	ExpiresIn   int    `json:"expires_in"`
 	Scope       string `json:"scope"`
-	UID         int    `json:"uid"`
 	Info        struct {
-		Name  string `json:"name"`
 		Email string `json:"email"`
 		Login string `json:"login"`
 	} `json:"info"`
@@ -271,8 +255,6 @@ func (f *GCOMFlow) exchangeGCOMToken(ctx context.Context, code, codeVerifier, re
 	return &GCOMResult{
 		AccessToken: tokenResp.AccessToken,
 		Scope:       tokenResp.Scope,
-		ExpiresIn:   tokenResp.ExpiresIn,
-		UserID:      tokenResp.UID,
 		Info:        tokenResp.Info,
 	}, nil
 }
