@@ -18,9 +18,7 @@ directly via --cloud-token.
 
 Two endpoints can be configured independently, both defaulting to
 https://grafana.com: --oauth-url is used only for the login flow here, while
---api-url is used by every command that talks to the Grafana Cloud API. In
-production neither needs setting; against a dev environment where the two
-differ (e.g. a private API endpoint), set both.
+--api-url is used by every command that talks to the Grafana Cloud API.
 
 ```
 gcx cloud login [flags]
@@ -31,7 +29,6 @@ gcx cloud login [flags]
 ```
   gcx cloud login
   gcx cloud login --cloud-token glsa_abc123
-  gcx cloud login --oauth-url https://grafana.example.com --api-url https://api.internal.example.com
 ```
 
 ### Options
