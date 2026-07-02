@@ -166,6 +166,7 @@ internal/
 ├── notifier/    Update notifications (skills + gcx version checks; XDG state, throttling, message rendering — wired into root PersistentPostRun)
 ├── skills/      Portable Agent Skills installer primitives (BundledSkillNames, Install, Update — extracted from cmd/gcx/skills)
 ├── strcase/     String case conversion (snake_case, kebab-case, PascalCase)
+├── suggest/     Fuzzy matcher for "did you mean" suggestions on unknown commands/flags
 ├── xdg/         XDG Base Directory paths (config home, state home, config dirs)
 └── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
 ```

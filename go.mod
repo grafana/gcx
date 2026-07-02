@@ -42,6 +42,7 @@ require (
 )
 
 require (
+	github.com/agnivade/levenshtein v1.2.1
 	github.com/go-openapi/runtime v0.32.4
 	github.com/gofrs/flock v0.13.0
 	github.com/grafana/otel-checker v0.2.0
@@ -54,7 +55,6 @@ require (
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
-	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect

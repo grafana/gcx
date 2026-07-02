@@ -97,6 +97,7 @@ func convertUsageErrors(err error) (*gcxerrors.DetailedError, bool) {
 		Summary:     "Invalid command usage",
 		Details:     details,
 		Suggestions: usageErr.Suggestions,
+		Corrections: usageErr.Corrections,
 		ExitCode:    new(gcxerrors.ExitUsageError),
 	}, true
 }

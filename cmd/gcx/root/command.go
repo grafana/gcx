@@ -232,11 +232,11 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		},
 	}
 
-	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		if strings.Contains(err.Error(), "--log-http-payload") && strings.Contains(err.Error(), "flag has been renamed") {
 			return errors.New("--log-http-payload has been renamed; use --insecure-log-http-payload instead")
 		}
-		return err
+		return flagUsageError(cmd, err, os.Args[1:])
 	})
 
 	defaultHelp := rootCmd.HelpFunc()
