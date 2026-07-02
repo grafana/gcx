@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
-	"k8s.io/client-go/rest"
 )
 
 const pluginBasePath = "/api/plugins/grafana-sigil-app/resources"
@@ -26,9 +25,9 @@ type Client struct {
 
 // NewClient creates a new AI Observability client from a Grafana REST config.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	httpClient, err := providers.NewHTTPClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
+		return nil, err
 	}
 
 	return &Client{
@@ -151,14 +150,5 @@ func Truncate(s string, maxLen int) string {
 
 // HandleErrorResponse reads an error response body and returns a formatted error.
 func HandleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
+	return providers.ParseErrorBody(resp)
 }
