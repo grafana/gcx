@@ -2,7 +2,6 @@ package generations
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -27,19 +26,5 @@ func NewClient(base *aio11yhttp.Client) *Client {
 
 // Get returns a single generation by ID.
 func (c *Client) Get(ctx context.Context, id string) (map[string]any, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(generationByIDFmt, url.PathEscape(id)), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get generation %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var detail map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
-		return nil, fmt.Errorf("failed to decode generation response: %w", err)
-	}
-	return detail, nil
+	return aio11yhttp.DoJSON[any, map[string]any](ctx, c.base, http.MethodGet, fmt.Sprintf(generationByIDFmt, url.PathEscape(id)), nil, http.StatusOK)
 }

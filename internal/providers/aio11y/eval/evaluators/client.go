@@ -1,9 +1,7 @@
 package evaluators
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -35,81 +33,32 @@ func (c *Client) List(ctx context.Context) ([]eval.EvaluatorDefinition, error) {
 
 // Get returns a single evaluator by ID.
 func (c *Client) Get(ctx context.Context, id string) (*eval.EvaluatorDefinition, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(evaluatorByIDFmt, url.PathEscape(id)), nil)
+	evaluator, err := aio11yhttp.DoJSON[any, eval.EvaluatorDefinition](ctx, c.base, http.MethodGet, fmt.Sprintf(evaluatorByIDFmt, url.PathEscape(id)), nil, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get evaluator %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var evaluator eval.EvaluatorDefinition
-	if err := json.NewDecoder(resp.Body).Decode(&evaluator); err != nil {
-		return nil, fmt.Errorf("failed to decode evaluator response: %w", err)
+		return nil, err
 	}
 	return &evaluator, nil
 }
 
 // Create creates or updates an evaluator (POST is create-or-update).
 func (c *Client) Create(ctx context.Context, evaluator *eval.EvaluatorDefinition) (*eval.EvaluatorDefinition, error) {
-	body, err := json.Marshal(evaluator)
+	created, err := aio11yhttp.DoJSON[eval.EvaluatorDefinition, eval.EvaluatorDefinition](ctx, c.base, http.MethodPost, basePath, evaluator, http.StatusOK, http.StatusCreated)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal evaluator: %w", err)
-	}
-
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, basePath, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create evaluator: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var created eval.EvaluatorDefinition
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
-		return nil, fmt.Errorf("failed to decode evaluator response: %w", err)
+		return nil, err
 	}
 	return &created, nil
 }
 
 // RunTest executes a one-shot eval:test against a generation.
 func (c *Client) RunTest(ctx context.Context, req *eval.EvalTestRequest) (*eval.EvalTestResponse, error) {
-	body, err := json.Marshal(req)
+	result, err := aio11yhttp.DoJSON[eval.EvalTestRequest, eval.EvalTestResponse](ctx, c.base, http.MethodPost, evalTestPath, req, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal test request: %w", err)
-	}
-
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, evalTestPath, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to run eval test: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var result eval.EvalTestResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode test response: %w", err)
+		return nil, err
 	}
 	return &result, nil
 }
 
 // Delete soft-deletes an evaluator by ID.
 func (c *Client) Delete(ctx context.Context, id string) error {
-	resp, err := c.base.DoRequest(ctx, http.MethodDelete, fmt.Sprintf(evaluatorByIDFmt, url.PathEscape(id)), nil)
-	if err != nil {
-		return fmt.Errorf("failed to delete evaluator %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return aio11yhttp.HandleErrorResponse(resp)
-	}
-	return nil
+	return aio11yhttp.DoStatus[any](ctx, c.base, http.MethodDelete, fmt.Sprintf(evaluatorByIDFmt, url.PathEscape(id)), nil, http.StatusOK, http.StatusNoContent)
 }

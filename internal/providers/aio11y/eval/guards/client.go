@@ -1,9 +1,7 @@
 package guards
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -38,46 +36,19 @@ func (c *Client) List(ctx context.Context) ([]eval.HookRuleDefinition, error) {
 
 // Get returns a single hook rule by ID.
 func (c *Client) Get(ctx context.Context, id string) (*eval.HookRuleDefinition, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(hookRuleByIDFmt, url.PathEscape(id)), nil)
+	rule, err := aio11yhttp.DoJSONNotFound[any, eval.HookRuleDefinition](ctx, c.base, http.MethodGet, fmt.Sprintf(hookRuleByIDFmt, url.PathEscape(id)), nil,
+		fmt.Errorf("hook rule %s: %w", id, ErrNotFound), http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get hook rule %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("hook rule %s: %w", id, ErrNotFound)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var rule eval.HookRuleDefinition
-	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil {
-		return nil, fmt.Errorf("failed to decode hook rule response: %w", err)
+		return nil, err
 	}
 	return &rule, nil
 }
 
 // Create creates a new hook rule.
 func (c *Client) Create(ctx context.Context, rule *eval.HookRuleDefinition) (*eval.HookRuleDefinition, error) {
-	body, err := json.Marshal(rule)
+	created, err := aio11yhttp.DoJSON[eval.HookRuleDefinition, eval.HookRuleDefinition](ctx, c.base, http.MethodPost, basePath, rule, http.StatusOK, http.StatusCreated)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal hook rule: %w", err)
-	}
-
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, basePath, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create hook rule: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var created eval.HookRuleDefinition
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
-		return nil, fmt.Errorf("failed to decode hook rule response: %w", err)
+		return nil, err
 	}
 	return &created, nil
 }
@@ -86,24 +57,9 @@ func (c *Client) Create(ctx context.Context, rule *eval.HookRuleDefinition) (*ev
 // does not support PATCH; omitted fields reset to server defaults, so callers
 // must send the complete state.
 func (c *Client) Update(ctx context.Context, id string, rule *eval.HookRuleDefinition) (*eval.HookRuleDefinition, error) {
-	body, err := json.Marshal(rule)
+	updated, err := aio11yhttp.DoJSON[eval.HookRuleDefinition, eval.HookRuleDefinition](ctx, c.base, http.MethodPut, fmt.Sprintf(hookRuleByIDFmt, url.PathEscape(id)), rule, http.StatusOK, http.StatusCreated)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal hook rule: %w", err)
-	}
-
-	resp, err := c.base.DoRequest(ctx, http.MethodPut, fmt.Sprintf(hookRuleByIDFmt, url.PathEscape(id)), bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to update hook rule: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var updated eval.HookRuleDefinition
-	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
-		return nil, fmt.Errorf("failed to decode hook rule response: %w", err)
+		return nil, err
 	}
 	return &updated, nil
 }
@@ -113,14 +69,5 @@ func (c *Client) Update(ctx context.Context, id string, rule *eval.HookRuleDefin
 // Sigil returns 204 No Content on success; 200 is also accepted for forward
 // compatibility.
 func (c *Client) Delete(ctx context.Context, id string) error {
-	resp, err := c.base.DoRequest(ctx, http.MethodDelete, fmt.Sprintf(hookRuleByIDFmt, url.PathEscape(id)), nil)
-	if err != nil {
-		return fmt.Errorf("failed to delete hook rule %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return aio11yhttp.HandleErrorResponse(resp)
-	}
-	return nil
+	return aio11yhttp.DoStatus[any](ctx, c.base, http.MethodDelete, fmt.Sprintf(hookRuleByIDFmt, url.PathEscape(id)), nil, http.StatusOK, http.StatusNoContent)
 }

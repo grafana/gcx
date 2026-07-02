@@ -1,9 +1,7 @@
 package experiments
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -37,73 +35,29 @@ func (c *Client) List(ctx context.Context, limit int) ([]Experiment, error) {
 
 // Get returns a single experiment by run ID.
 func (c *Client) Get(ctx context.Context, runID string) (*Experiment, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, basePath+"/"+url.PathEscape(runID), nil)
+	exp, err := aio11yhttp.DoJSONNotFound[any, Experiment](ctx, c.base, http.MethodGet, basePath+"/"+url.PathEscape(runID), nil,
+		fmt.Errorf("%s: %w", runID, ErrNotFound), http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get experiment %s: %w", runID, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("%s: %w", runID, ErrNotFound)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var exp Experiment
-	if err := json.NewDecoder(resp.Body).Decode(&exp); err != nil {
-		return nil, fmt.Errorf("failed to decode experiment response: %w", err)
+		return nil, err
 	}
 	return &exp, nil
 }
 
 // Create creates a new experiment.
 func (c *Client) Create(ctx context.Context, exp *Experiment) (*Experiment, error) {
-	body, err := json.Marshal(exp)
+	created, err := aio11yhttp.DoJSON[Experiment, Experiment](ctx, c.base, http.MethodPost, basePath, exp, http.StatusOK, http.StatusCreated)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal create request: %w", err)
-	}
-
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, basePath, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create experiment: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var created Experiment
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
-		return nil, fmt.Errorf("failed to decode experiment response: %w", err)
+		return nil, err
 	}
 	return &created, nil
 }
 
 // Update sends a partial PATCH against an existing experiment.
 func (c *Client) Update(ctx context.Context, runID string, req *UpdateRequest) (*Experiment, error) {
-	body, err := json.Marshal(req)
+	exp, err := aio11yhttp.DoJSONNotFound[UpdateRequest, Experiment](ctx, c.base, http.MethodPatch, basePath+"/"+url.PathEscape(runID), req,
+		fmt.Errorf("%s: %w", runID, ErrNotFound), http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal update request: %w", err)
-	}
-
-	resp, err := c.base.DoRequest(ctx, http.MethodPatch, basePath+"/"+url.PathEscape(runID), bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to update experiment %s: %w", runID, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("%s: %w", runID, ErrNotFound)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var exp Experiment
-	if err := json.NewDecoder(resp.Body).Decode(&exp); err != nil {
-		return nil, fmt.Errorf("failed to decode experiment response: %w", err)
+		return nil, err
 	}
 	return &exp, nil
 }
@@ -117,19 +71,8 @@ func (c *Client) Update(ctx context.Context, runID string, req *UpdateRequest) (
 // it manually before appending the action suffix.
 func (c *Client) Cancel(ctx context.Context, runID string) error {
 	escaped := strings.ReplaceAll(url.PathEscape(runID), ":", "%3A")
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, basePath+"/"+escaped+":cancel", nil)
-	if err != nil {
-		return fmt.Errorf("failed to cancel experiment %s: %w", runID, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("%s: %w", runID, ErrNotFound)
-	}
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusAccepted {
-		return aio11yhttp.HandleErrorResponse(resp)
-	}
-	return nil
+	return aio11yhttp.DoStatusNotFound[any](ctx, c.base, http.MethodPost, basePath+"/"+escaped+":cancel", nil,
+		fmt.Errorf("%s: %w", runID, ErrNotFound), http.StatusOK, http.StatusNoContent, http.StatusAccepted)
 }
 
 // ListScores returns scores associated with a single experiment run.
@@ -140,22 +83,10 @@ func (c *Client) ListScores(ctx context.Context, runID string, limit int) ([]Sco
 
 // GetReport returns the aggregate report for an experiment run.
 func (c *Client) GetReport(ctx context.Context, runID string) (*ExperimentReport, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, basePath+"/"+url.PathEscape(runID)+"/report", nil)
+	report, err := aio11yhttp.DoJSONNotFound[any, ExperimentReport](ctx, c.base, http.MethodGet, basePath+"/"+url.PathEscape(runID)+"/report", nil,
+		fmt.Errorf("%s: %w", runID, ErrNotFound), http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get experiment report %s: %w", runID, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("%s: %w", runID, ErrNotFound)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var report ExperimentReport
-	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
-		return nil, fmt.Errorf("failed to decode experiment report: %w", err)
+		return nil, err
 	}
 	return &report, nil
 }

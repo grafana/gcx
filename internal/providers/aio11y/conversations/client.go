@@ -1,9 +1,7 @@
 package conversations
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -34,43 +32,18 @@ func (c *Client) List(ctx context.Context, limit int) ([]Conversation, error) {
 
 // Get returns a single conversation by ID with all its generations.
 func (c *Client) Get(ctx context.Context, id string) (*ConversationDetail, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(conversationByIDFmt, url.PathEscape(id)), nil)
+	detail, err := aio11yhttp.DoJSON[any, ConversationDetail](ctx, c.base, http.MethodGet, fmt.Sprintf(conversationByIDFmt, url.PathEscape(id)), nil, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get conversation %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var detail ConversationDetail
-	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
-		return nil, fmt.Errorf("failed to decode conversation response: %w", err)
+		return nil, err
 	}
 	return &detail, nil
 }
 
 // Search searches conversations with filters and time range.
 func (c *Client) Search(ctx context.Context, req SearchRequest) (*SearchResponse, error) {
-	body, err := json.Marshal(req)
+	searchResp, err := aio11yhttp.DoJSON[SearchRequest, SearchResponse](ctx, c.base, http.MethodPost, conversationSearchPath, &req, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal search request: %w", err)
-	}
-
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, conversationSearchPath, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to search conversations: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var searchResp SearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
-		return nil, fmt.Errorf("failed to decode search response: %w", err)
+		return nil, err
 	}
 	return &searchResp, nil
 }

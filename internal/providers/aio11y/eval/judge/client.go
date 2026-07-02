@@ -2,8 +2,6 @@ package judge
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 
@@ -26,23 +24,21 @@ func NewClient(base *aio11yhttp.Client) *Client {
 	return &Client{base: base}
 }
 
+// providersEnvelope is the response envelope for the judge providers endpoint.
+type providersEnvelope struct {
+	Providers []eval.JudgeProvider `json:"providers"`
+}
+
+// modelsEnvelope is the response envelope for the judge models endpoint.
+type modelsEnvelope struct {
+	Models []eval.JudgeModel `json:"models"`
+}
+
 // ListProviders returns available judge providers.
 func (c *Client) ListProviders(ctx context.Context) ([]eval.JudgeProvider, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, judgeProvidersPath, nil)
+	envelope, err := aio11yhttp.DoJSON[any, providersEnvelope](ctx, c.base, http.MethodGet, judgeProvidersPath, nil, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list judge providers: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var envelope struct {
-		Providers []eval.JudgeProvider `json:"providers"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("failed to decode judge providers response: %w", err)
+		return nil, err
 	}
 	return envelope.Providers, nil
 }
@@ -59,21 +55,9 @@ func (c *Client) ListModels(ctx context.Context, provider string) ([]eval.JudgeM
 		path += "?" + encoded
 	}
 
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, path, nil)
+	envelope, err := aio11yhttp.DoJSON[any, modelsEnvelope](ctx, c.base, http.MethodGet, path, nil, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list judge models: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var envelope struct {
-		Models []eval.JudgeModel `json:"models"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("failed to decode judge models response: %w", err)
+		return nil, err
 	}
 	return envelope.Models, nil
 }
