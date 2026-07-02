@@ -134,6 +134,7 @@ gcx/
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Agent Skills catalog validation, local reconciliation, content reads, install/update/uninstall
 │   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
+│   ├── suggest/              # Fuzzy matcher for "did you mean" suggestions (unknown commands/flags)
 │   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, wire vocabularies: volume buckets, k8s reasons, auth methods, api routes and datasource types; flat-JSON HTTP export)
 │   │   └── capture/          # Process-wide invocation facts written mid-run, read once at exit by the usage-event builder (holds no wire vocabulary, so writing a signal does not pull in the event model or HTTP exporter)
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()

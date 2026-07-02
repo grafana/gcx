@@ -6,6 +6,9 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/suggest"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -54,8 +57,20 @@ func ValidateArgs(rootCmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	commandPath := strings.TrimSpace(cmd.CommandPath())
+	candidates := subcommandCandidates(cmd, positionals[0])
+
 	suggestions := []string{}
+	corrections := []gcxerrors.Correction{}
+	for _, sub := range candidates {
+		invocation := strings.Join(append([]string{cmd.CommandPath(), sub.Name()}, positionals[1:]...), " ")
+		suggestions = append(suggestions, fmt.Sprintf("Did you mean '%s'?", invocation))
+		corrections = append(corrections, gcxerrors.Correction{
+			Command: invocation,
+			Hint:    sub.Annotations[agent.AnnotationLLMHint],
+		})
+	}
+
+	commandPath := strings.TrimSpace(cmd.CommandPath())
 	if commandPath != "" {
 		for _, name := range cmd.SuggestionsFor(positionals[0]) {
 			suggestions = append(suggestions, fmt.Sprintf("Did you mean '%s %s'?", commandPath, name))
@@ -64,9 +79,39 @@ func ValidateArgs(rootCmd *cobra.Command, args []string) error {
 	}
 
 	return &fail.UsageError{
-		Message:     formatUnknownGroupCommand(cmd, positionals[0]),
+		Message:     formatUnknownGroupCommand(cmd, positionals[0], candidates),
 		Suggestions: suggestions,
+		Corrections: corrections,
 	}
+}
+
+// subcommandCandidates fuzzy-matches an unknown token against the group's
+// available subcommand names and aliases, returning the matched subcommands
+// best-first (deduplicated when a name and alias hit the same command).
+func subcommandCandidates(cmd *cobra.Command, unknown string) []*cobra.Command {
+	vocabulary := []string{}
+	byToken := map[string]*cobra.Command{}
+	for _, sub := range cmd.Commands() {
+		if !sub.IsAvailableCommand() || sub.Name() == "help" {
+			continue
+		}
+		for _, token := range append([]string{sub.Name()}, sub.Aliases...) {
+			vocabulary = append(vocabulary, token)
+			byToken[strings.ToLower(token)] = sub
+		}
+	}
+
+	candidates := []*cobra.Command{}
+	seen := map[*cobra.Command]bool{}
+	for _, token := range suggest.Candidates(unknown, vocabulary) {
+		sub := byToken[strings.ToLower(token)]
+		if sub == nil || seen[sub] {
+			continue
+		}
+		seen[sub] = true
+		candidates = append(candidates, sub)
+	}
+	return candidates
 }
 
 func trimLeadingRootFlags(rootCmd *cobra.Command, args []string) ([]string, bool) {
@@ -92,7 +137,7 @@ func parseGroupFlags(cmd *cobra.Command, args []string) bool {
 	return cmd.ParseFlags(args) == nil
 }
 
-func formatUnknownGroupCommand(cmd *cobra.Command, unknown string) string {
+func formatUnknownGroupCommand(cmd *cobra.Command, unknown string, candidates []*cobra.Command) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "unknown command %q for %q\n\n", unknown, cmd.CommandPath())
 	fmt.Fprintln(&b, "Usage:")
@@ -101,6 +146,14 @@ func formatUnknownGroupCommand(cmd *cobra.Command, unknown string) string {
 		fmt.Fprint(&b, " [flags]")
 	}
 	fmt.Fprintln(&b)
+
+	if len(candidates) > 0 {
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, "Did you mean this?")
+		for _, sub := range candidates {
+			fmt.Fprintf(&b, "  %s\n", sub.Name())
+		}
+	}
 
 	if cmd.HasAvailableSubCommands() {
 		fmt.Fprintln(&b)
