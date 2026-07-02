@@ -29,6 +29,8 @@ When you run this:
 3. Complete the OAuth flow in the browser; gcx receives the tokens on a local callback and writes them to the `my-stack` context.
 4. The prompt then asks whether to add a Cloud Access Policy token for Cloud product API access — see the [Grafana Cloud product APIs](#grafana-cloud-product-apis) section. Press Enter to skip.
 
+**Required role.** The OAuth consent step is gated by the `grafana-assistant-app.tokens.gcx:access` permission, granted by the **gcx User** role that the grafana-assistant-app plugin registers (available since plugin version 2.0.26). Grafana assigns the role automatically to users with the basic role Viewer or higher. The permission only allows minting gcx tokens for the requesting user; proxied requests run with the user's own identity and RBAC permissions. If the consent page shows a `Permission Required` error, see the [troubleshooting entry](#troubleshooting) below.
+
 If OAuth does not suit your setup (corporate SSO restrictions, no browser available, etc.), pick "Service account token" at the prompt instead.
 
 ### Service account token
@@ -186,23 +188,27 @@ Each entry pairs the error you see with what it means and how to fix it.
     - *Means:* gcx tried to open a browser for OAuth but the system command returned an error, or the OAuth refresh flow failed.
     - *Fix:* Re-run `gcx login` to trigger a fresh flow. If your environment has no browser, use a service account token instead. For corporate proxies, check that the OAuth callback URL is reachable.
 
-4. **`grafana version X is not supported; gcx requires Grafana 12.0.0 or later`**
+4. **`Permission Required` on the OAuth consent page (`gcx User` role / `grafana-assistant-app.tokens.gcx:access`)**
+    - *Means:* your Grafana user lacks the `grafana-assistant-app.tokens.gcx:access` permission that gates gcx token minting. The **gcx User** role granting it is normally auto-assigned to Viewer and above, but the instance may run a grafana-assistant-app version older than 2.0.26 (role does not exist yet) or have customized basic-role grants.
+    - *Fix:* ask your Grafana administrator to assign the **gcx User** role, or a custom role including `grafana-assistant-app.tokens.gcx:access`. If the role is missing entirely, the grafana-assistant-app plugin needs updating. As a workaround, authenticate with a service account token instead.
+
+5. **`grafana version X is not supported; gcx requires Grafana 12.0.0 or later`**
     - *Means:* gcx requires Grafana 12 or newer because it uses the Grafana K8s-compatible `/apis` surface introduced in 12.
     - *Fix:* Upgrade your Grafana instance, or use a different tool for older versions.
 
-5. **GCOM 401 / Cloud Access Policy token rejected**
+6. **GCOM 401 / Cloud Access Policy token rejected**
     - *Means:* the Cloud Access Policy token was rejected by GCOM or a Cloud product API.
     - *Fix:* Verify the token at [grafana.com → Access Policies](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/). Rotate if compromised. Provide the new token via `gcx login --context X --cloud-token glc_...`.
 
-6. **Health check or `/apis` connectivity failures**
+7. **Health check or `/apis` connectivity failures**
     - *Means:* gcx could not reach the server during the validation pipeline — typically a wrong URL, DNS/proxy issue, or TLS mismatch.
     - *Fix:* Verify the server URL is correct and reachable. Check any corporate proxies (`HTTPS_PROXY`) and TLS configuration (`--insecure-skip-verify` for development only).
 
-7. **`gcx assistant` commands fail with a service account token**
+8. **`gcx assistant` commands fail with a service account token**
     - *Means:* `gcx assistant` commands (prompt, investigations) require OAuth, which is only available when you log in via the browser-based OAuth flow. Service account tokens are not supported.
     - *Fix:* Re-run `gcx login` and choose the OAuth (browser) option. If your environment cannot open a browser, `gcx assistant` is not available — use the Grafana UI instead.
 
-8. **Flag vs env-var precedence confusion**
+9. **Flag vs env-var precedence confusion**
     - *Means:* both a CLI flag and an environment variable are set for the same field, and gcx behaves unexpectedly.
     - *Fix:* Flags take precedence over env vars, which take precedence over config-file values. Run `gcx config view` to inspect the resolved config and spot the conflict.
 

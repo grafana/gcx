@@ -2,15 +2,12 @@ package tempo
 
 import (
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
-	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/tempo"
-	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -62,15 +59,7 @@ explicit time range via --since or --from/--to.`,
 			ctx := cmd.Context()
 
 			// Resolve datasource UID from -d flag, config, or Grafana auto-discovery.
-			var cfgCtx *internalconfig.Context
-			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err != nil {
-				logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
-			} else {
-				cfgCtx = fullCfg.GetCurrentContext()
-			}
-
-			cfg, err := loader.LoadGrafanaConfig(ctx)
+			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 			if err != nil {
 				return err
 			}
