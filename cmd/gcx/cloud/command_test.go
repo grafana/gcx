@@ -1,3 +1,4 @@
+//nolint:testpackage // white-box testing: accesses unexported saveCloudConfig.
 package cloud
 
 import (
