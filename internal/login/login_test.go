@@ -106,6 +106,40 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			},
 		},
 		{
+			// A browser-OAuth Cloud token records the GCOM endpoint it came from
+			// (derived from the ops-stack env), matching `gcx cloud login`, so a
+			// later cloud re-auth targets grafana-ops.com rather than prod.
+			name: "cloud_oauth_token_records_gcom_endpoint",
+			opts: func(dir string) login.Options {
+				return login.Options{
+					Inputs: login.Inputs{
+						Server:              "https://ops.grafana-ops.net",
+						ContextName:         "ops-stack",
+						Target:              login.TargetCloud,
+						UseOAuth:            true,
+						CloudToken:          "gcom-oauth-token",
+						CloudTokenFromOAuth: true,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+							return &stubAuthFlow{result: oauthResult}
+						},
+						ValidateFn: noopValidate,
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["ops-stack"]
+				require.NotNil(t, ctx)
+				require.NotNil(t, ctx.Cloud)
+				assert.Equal(t, "gcom-oauth-token", ctx.Cloud.Token)
+				assert.Equal(t, "https://grafana-ops.com", ctx.Cloud.OAuthUrl, "OAuth token must record its GCOM origin")
+				assert.Equal(t, "https://grafana-ops.com", ctx.Cloud.APIUrl, "APIUrl defaults to the same GCOM root")
+			},
+		},
+		{
 			// AC-002: First-run Cloud without CAP (Yes=true skips cloud-token prompt)
 			name: "cloud_oauth_skip_cap",
 			opts: func(dir string) login.Options {
@@ -945,7 +979,7 @@ func TestRun_OptionalCloudTokenRejected_WarnsAndPersists(t *testing.T) {
 	result, err := login.Run(context.Background(), &opts)
 	require.NoError(t, err, "an optional CAP-token rejection must not fail login")
 	assert.True(t, result.HasCloudToken, "the CAP token should still be persisted")
-	assert.Contains(t, warnBuf.String(), "Cloud Access Policy token could not be validated")
+	assert.Contains(t, warnBuf.String(), "could not verify Grafana Cloud access")
 	assert.Contains(t, warnBuf.String(), "401")
 
 	// The context must have been written despite the CAP validation failure.
@@ -1389,7 +1423,7 @@ func TestRun_OAuthSuccess_AnnouncesSignInBeforeCloudTokenPrompt(t *testing.T) {
 	out := buf.String()
 	assert.Contains(t, out, "Signed in to https://mystack.grafana.net as you@example.com",
 		"OAuth completion must be acknowledged with identity and endpoint")
-	assert.Contains(t, out, "Grafana Cloud API token",
+	assert.Contains(t, out, "log in to Grafana Cloud",
 		"the optional next step must be framed before the prompt appears")
 }
 
