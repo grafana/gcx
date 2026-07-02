@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/grafana/gcx/internal/deeplink"
 )
 
 // GCOMResult contains the result of a GCOM OAuth2 PKCE authentication flow.
@@ -110,7 +112,7 @@ func (f *GCOMFlow) Run(ctx context.Context) (*GCOMResult, error) {
 	fmt.Fprintln(f.writer, "Opening browser to authenticate with Grafana Cloud...")
 	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", authURL)
 
-	if err := openBrowser(ctx, authURL); err != nil {
+	if err := deeplink.Open(authURL); err != nil {
 		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
 	}
 
