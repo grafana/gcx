@@ -69,6 +69,18 @@ func TestFlagUsageError_EqualsSyntaxPreservedInCorrection(t *testing.T) {
 	assert.Equal(t, "gcx resources get --format=json", usageErr.Corrections[0].Command)
 }
 
+func TestFlagUsageError_SpacedValueQuotedInCorrection(t *testing.T) {
+	cmd := newFlagTestCommand(t)
+	parseErr := parseFlagError(t, cmd, []string{"--formt", "up == 1"})
+
+	err := root.FlagUsageErrorForTest(cmd, parseErr, []string{"resources", "get", "--formt", "up == 1", "it's"})
+
+	usageErr := &fail.UsageError{}
+	require.ErrorAs(t, err, &usageErr)
+	require.Len(t, usageErr.Corrections, 1)
+	assert.Equal(t, `gcx resources get --format 'up == 1' 'it'\''s'`, usageErr.Corrections[0].Command)
+}
+
 func TestFlagUsageError_MatchesInheritedFlags(t *testing.T) {
 	cmd := newFlagTestCommand(t)
 	parseErr := parseFlagError(t, cmd, []string{"--contxt", "dev"})
