@@ -41,6 +41,11 @@ const (
 	resolutionNotesPath    = "resolution_notes/"
 	shiftSwapsPath         = "shift_swaps/"
 	directPagingPath       = "direct_paging"
+	// oncallCompliancePath is the OnCall compliance ruleset resource. NOTE: the real
+	// endpoint lives on the OnCall *public* API (GET/POST /api/v1/oncall_compliance/,
+	// with an Authorization token + X-Grafana-Instance-ID header), not the plugin-proxy
+	// /api/internal/v1 surface the rest of this client uses. Transport is wired later.
+	oncallCompliancePath = "oncall_compliance/"
 )
 
 var _ OnCallAPI = (*OnCallClient)(nil)
@@ -83,10 +88,43 @@ func handleErrorResponse(resp *http.Response) error {
 	if err != nil {
 		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
 	}
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
+	if msg := summarizeErrorBody(resp, body); msg != "" {
+		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, msg)
 	}
 	return fmt.Errorf("request failed with status %d", resp.StatusCode)
+}
+
+// summarizeErrorBody turns an error response body into a concise message. HTML pages
+// (e.g. a Django debug/error page) are never dumped verbatim — only their <title> is
+// surfaced; other bodies are returned trimmed and length-capped.
+func summarizeErrorBody(resp *http.Response, body []byte) string {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return ""
+	}
+	if strings.Contains(resp.Header.Get("Content-Type"), "text/html") || trimmed[0] == '<' {
+		return htmlTitle(trimmed) // "" when no <title>, leaving just the status code
+	}
+	const maxLen = 500
+	if len(trimmed) > maxLen {
+		return string(trimmed[:maxLen]) + "…"
+	}
+	return string(trimmed)
+}
+
+// htmlTitle extracts and whitespace-normalizes the <title> of an HTML document.
+func htmlTitle(b []byte) string {
+	lower := bytes.ToLower(b)
+	start := bytes.Index(lower, []byte("<title>"))
+	if start < 0 {
+		return ""
+	}
+	start += len("<title>")
+	end := bytes.Index(lower[start:], []byte("</title>"))
+	if end < 0 {
+		return ""
+	}
+	return strings.Join(strings.Fields(string(b[start:start+end])), " ")
 }
 
 type paginatedResponse[T any] struct {
@@ -750,4 +788,30 @@ func (c *OnCallClient) TakeShiftSwap(ctx context.Context, id string, input TakeS
 
 func (c *OnCallClient) CreateDirectPaging(ctx context.Context, input DirectPagingInput) (*DirectPagingResult, error) {
 	return createResource[DirectPagingInput, DirectPagingResult](ctx, c, directPagingPath, input, "direct paging")
+}
+
+// --- Compliance Rules ---
+
+// GetComplianceRules fetches the org's notification compliance rules.
+func (c *OnCallClient) GetComplianceRules(ctx context.Context) (*ComplianceRules, error) {
+	resp, err := c.DoRequest(ctx, http.MethodGet, oncallCompliancePath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("irm: get compliance rules: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleErrorResponse(resp)
+	}
+
+	var result ComplianceRules
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("irm: decode compliance rules: %w", err)
+	}
+	return &result, nil
+}
+
+// SetComplianceRules creates or updates the org's notification compliance rules.
+func (c *OnCallClient) SetComplianceRules(ctx context.Context, rules ComplianceRules) (*ComplianceRules, error) {
+	return createResource[ComplianceRules, ComplianceRules](ctx, c, oncallCompliancePath, rules, "compliance rules")
 }

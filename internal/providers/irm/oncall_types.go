@@ -194,6 +194,41 @@ type OnCallAPI interface {
 	TakeShiftSwap(ctx context.Context, id string, input TakeShiftSwapInput) (*ShiftSwap, error)
 
 	CreateDirectPaging(ctx context.Context, input DirectPagingInput) (*DirectPagingResult, error)
+
+	GetComplianceRules(ctx context.Context) (*ComplianceRules, error)
+	SetComplianceRules(ctx context.Context, rules ComplianceRules) (*ComplianceRules, error)
+}
+
+// ComplianceRules is the org-level "expected configuration" that user notification
+// settings are checked against. Shape mirrors the documented compliance endpoint body
+// (required_channels + required_notification_rules); the backend is wired later.
+type ComplianceRules struct {
+	RequiredChannels          []string                    `json:"required_channels,omitempty"`
+	RequiredNotificationRules ComplianceNotificationRules `json:"required_notification_rules"`
+
+	// CreatedAt and UpdatedAt are server-set; read-only on GET responses.
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+// ComplianceNotificationRules lists the notification rule types (notify_by_*) required
+// in each personal notification policy.
+type ComplianceNotificationRules struct {
+	Default   []string `json:"default,omitempty"`
+	Important []string `json:"important,omitempty"`
+}
+
+// ComplianceEvaluation is the result of evaluating org users against the compliance
+// rules: who is ready to be paged and who is not, with per-user violations.
+type ComplianceEvaluation struct {
+	Compliant    []string                  `json:"compliant"`
+	NonCompliant []UserComplianceViolation `json:"non_compliant"`
+}
+
+// UserComplianceViolation lists why a single user fails the compliance rules.
+type UserComplianceViolation struct {
+	UserID     string   `json:"user_id"`
+	Violations []string `json:"violations"`
 }
 
 func (x Integration) GetResourceName() string           { return x.ID }

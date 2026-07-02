@@ -1,18 +1,18 @@
-## gcx irm
+## gcx irm oncall compliance-rules
 
-Manage Grafana IRM (OnCall + Incidents)
+Manage the org's notification compliance rules (expected configuration).
 
 ### Options
 
 ```
-      --config string   Path to the configuration file to use
-  -h, --help            help for irm
+  -h, --help   help for compliance-rules
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -22,8 +22,8 @@ Manage Grafana IRM (OnCall + Incidents)
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx irm doctor](gcx_irm_doctor.md)	 - Check whether your OnCall notification setup meets the org's compliance rules.
-* [gcx irm incidents](gcx_irm_incidents.md)	 - Manage incidents.
 * [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx irm oncall compliance-rules evaluate](gcx_irm_oncall_compliance-rules_evaluate.md)	 - Evaluate org users against the compliance rules (who is ready to be paged).
+* [gcx irm oncall compliance-rules get](gcx_irm_oncall_compliance-rules_get.md)	 - Show the org's notification compliance rules.
+* [gcx irm oncall compliance-rules set](gcx_irm_oncall_compliance-rules_set.md)	 - Create or update the org's notification compliance rules.
 
