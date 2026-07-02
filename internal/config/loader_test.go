@@ -207,6 +207,46 @@ func TestWrite(t *testing.T) {
 	req.FileExists(configFile)
 }
 
+// Write must replace the config file atomically: token persistence rewrites
+// the config while other gcx invocations Load it without holding the refresh
+// flock, and a truncating in-place write lets them observe a partial file
+// (EOF or YAML parse error).
+func TestWrite_AtomicUnderConcurrentLoad(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yaml")
+	source := config.ExplicitConfigFile(configFile)
+
+	cfg := config.Config{CurrentContext: "local"}
+	require.NoError(t, config.Write(t.Context(), source, cfg))
+
+	done := make(chan struct{})
+	writeErr := make(chan error, 1)
+	go func() {
+		defer close(done)
+		for range 1000 {
+			if err := config.Write(t.Context(), source, cfg); err != nil {
+				writeErr <- err
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-done:
+			select {
+			case err := <-writeErr:
+				t.Fatalf("concurrent Write failed: %v", err)
+			default:
+			}
+			return
+		default:
+			_, err := config.Load(t.Context(), source)
+			require.NoError(t, err, "Load must never observe a partially written config")
+		}
+	}
+}
+
 func TestDiscoverSources(t *testing.T) {
 	systemDir := t.TempDir()
 	userDir := t.TempDir()

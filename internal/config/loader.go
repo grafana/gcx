@@ -426,14 +426,31 @@ func Write(ctx context.Context, source Source, cfg Config) error {
 		defer restore()
 	}
 
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, configFilePermissions)
+	// Write to a temp file and rename it into place so concurrent readers
+	// never observe a truncated config. Token persistence rewrites this file
+	// while other gcx invocations Load it without holding the refresh flock.
+	tmp, err := os.CreateTemp(filepath.Dir(filename), filepath.Base(filename)+"-*.tmp")
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }() // no-op once renamed
 
 	codec := &format.YAMLCodec{BytesAsBase64: true}
-	return codec.Encode(file, cfg)
+	if err := codec.Encode(tmp, cfg); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	// os.CreateTemp creates the file 0o600; chmod keeps the contract explicit
+	// should configFilePermissions ever change.
+	if err := tmp.Chmod(configFilePermissions); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, filename)
 }
 
 // LoadLayered discovers config files, loads and deep-merges them, then applies overrides.
