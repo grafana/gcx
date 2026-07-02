@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/rest"
 )
 
 // resourceDef defines a single k6 sub-resource type for adapter registration.
@@ -80,7 +79,7 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (API, st
 	}
 
 	if restCfg.IsOAuthProxy() {
-		authClient, err := rest.HTTPClientFor(&restCfg.Config)
+		authClient, err := providers.NewHTTPClient(restCfg)
 		if err != nil {
 			return nil, "", err
 		}

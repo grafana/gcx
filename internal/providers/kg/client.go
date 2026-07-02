@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"golang.org/x/sync/errgroup"
-	"k8s.io/client-go/rest"
 )
 
 // ruleFetchConcurrency caps parallel GetRule calls during ListRules fan-out.
@@ -85,9 +85,9 @@ type Client struct {
 
 // NewClient creates a new KG client from the given REST config.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	httpClient, err := providers.NewHTTPClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("kg: failed to create HTTP client: %w", err)
+		return nil, fmt.Errorf("kg: %w", err)
 	}
 	return &Client{httpClient: httpClient, host: cfg.Host, namespace: cfg.Namespace}, nil
 }

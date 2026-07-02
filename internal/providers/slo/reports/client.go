@@ -10,7 +10,7 @@ import (
 	"net/http"
 
 	"github.com/grafana/gcx/internal/config"
-	"k8s.io/client-go/rest"
+	"github.com/grafana/gcx/internal/providers"
 )
 
 // ErrNotFound is returned when a requested report does not exist (HTTP 404).
@@ -29,9 +29,9 @@ type Client struct {
 
 // NewClient creates a new SLO reports client.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	httpClient, err := providers.NewHTTPClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
+		return nil, err
 	}
 
 	return &Client{
@@ -49,7 +49,7 @@ func (c *Client) List(ctx context.Context) ([]Report, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.ParseErrorBody(resp)
 	}
 
 	var listResp ReportListResponse
@@ -77,7 +77,7 @@ func (c *Client) Get(ctx context.Context, uuid string) (*Report, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.ParseErrorBody(resp)
 	}
 
 	var report Report
@@ -102,7 +102,7 @@ func (c *Client) Create(ctx context.Context, report *Report) (*ReportCreateRespo
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.ParseErrorBody(resp)
 	}
 
 	var createResp ReportCreateResponse
@@ -127,7 +127,7 @@ func (c *Client) Update(ctx context.Context, uuid string, report *Report) error 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return handleErrorResponse(resp)
+		return providers.ParseErrorBody(resp)
 	}
 
 	return nil
@@ -142,7 +142,7 @@ func (c *Client) Delete(ctx context.Context, uuid string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return handleErrorResponse(resp)
+		return providers.ParseErrorBody(resp)
 	}
 
 	return nil
@@ -165,23 +165,4 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 	}
 
 	return resp, nil
-}
-
-// handleErrorResponse reads an error response body and returns a formatted error.
-func handleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-
-	var errResp ErrorResponse
-	if err := json.Unmarshal(body, &errResp); err == nil && errResp.Error != "" {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Error)
-	}
-
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
 }

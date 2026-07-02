@@ -145,9 +145,3 @@ type SLOCreateResponse struct {
 	UUID    string `json:"uuid"`
 	Message string `json:"message"`
 }
-
-// ErrorResponse is the response for an error.
-type ErrorResponse struct {
-	Code  int    `json:"code"`
-	Error string `json:"error"`
-}

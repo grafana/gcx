@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/alert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,7 +85,7 @@ func TestClient_List(t *testing.T) {
 			name: "server error",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				writeJSON(w, alert.ErrorResponse{Error: "internal server error"})
+				writeJSON(w, providers.ErrorResponse{Error: "internal server error"})
 			},
 			wantErr: true,
 		},
@@ -286,7 +287,7 @@ func TestClient_ErrorResponses(t *testing.T) {
 			name:       "401 with JSON body",
 			statusCode: http.StatusUnauthorized,
 			body: func(w http.ResponseWriter) {
-				writeJSON(w, alert.ErrorResponse{Error: "unauthorized"})
+				writeJSON(w, providers.ErrorResponse{Error: "unauthorized"})
 			},
 			wantErrMsg: "401",
 		},
@@ -294,7 +295,7 @@ func TestClient_ErrorResponses(t *testing.T) {
 			name:       "403 with JSON body",
 			statusCode: http.StatusForbidden,
 			body: func(w http.ResponseWriter) {
-				writeJSON(w, alert.ErrorResponse{Error: "forbidden"})
+				writeJSON(w, providers.ErrorResponse{Error: "forbidden"})
 			},
 			wantErrMsg: "403",
 		},

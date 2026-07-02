@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/config"
-	"k8s.io/client-go/rest"
+	"github.com/grafana/gcx/internal/providers"
 )
 
 // ErrNotFound is returned when a requested alert rule or group does not exist.
@@ -30,9 +29,9 @@ type Client struct {
 
 // NewClient creates a new alert client.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	httpClient, err := providers.NewHTTPClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
+		return nil, err
 	}
 	return &Client{httpClient: httpClient, host: cfg.Host}, nil
 }
@@ -131,7 +130,7 @@ func (c *Client) doRequest(ctx context.Context, path string) (*RulesResponse, er
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.ParseErrorBody(resp)
 	}
 
 	var result RulesResponse
@@ -140,23 +139,4 @@ func (c *Client) doRequest(ctx context.Context, path string) (*RulesResponse, er
 	}
 
 	return &result, nil
-}
-
-// handleErrorResponse reads an error response body and returns a formatted error.
-func handleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-
-	var errResp ErrorResponse
-	if err := json.Unmarshal(body, &errResp); err == nil && errResp.Error != "" {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Error)
-	}
-
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
 }

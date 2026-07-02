@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -98,7 +99,7 @@ func TestResourceAdapter_List(t *testing.T) {
 			namespace: "stack-123",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				writeJSON(w, definitions.ErrorResponse{Code: 500, Error: "internal error"})
+				writeJSON(w, providers.ErrorResponse{Error: "internal error"})
 			},
 			wantErr: true,
 		},
@@ -155,7 +156,7 @@ func TestResourceAdapter_Get(t *testing.T) {
 			uuid:      "missing",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, definitions.ErrorResponse{Code: 404, Error: "not found"})
+				writeJSON(w, providers.ErrorResponse{Error: "not found"})
 			},
 			wantErr: true,
 		},
@@ -288,7 +289,7 @@ func TestResourceAdapter_Delete(t *testing.T) {
 			uuid: "missing",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, definitions.ErrorResponse{Code: 404, Error: "not found"})
+				writeJSON(w, providers.ErrorResponse{Error: "not found"})
 			},
 			wantErr: true,
 		},

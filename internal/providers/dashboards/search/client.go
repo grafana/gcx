@@ -11,10 +11,10 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
 )
 
 // searchAPIVersion is pinned to v0alpha1 — the only Grafana API version that
@@ -39,9 +39,9 @@ type searchClient struct {
 // newSearchClient creates a searchClient from the given NamespacedRESTConfig.
 // The HTTP client inherits auth, TLS, and retry transports from rest.HTTPClientFor.
 func newSearchClient(cfg config.NamespacedRESTConfig) (*searchClient, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	httpClient, err := providers.NewHTTPClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP client for search: %w", err)
+		return nil, err
 	}
 
 	return &searchClient{

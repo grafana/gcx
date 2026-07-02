@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
@@ -14,7 +13,6 @@ import (
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	k8srest "k8s.io/client-go/rest"
 )
 
 const settingsEndpoint = "/api/plugin-proxy/grafana-app-observability-app/provisioned-plugin-settings"
@@ -68,9 +66,9 @@ type settingsAPIClient struct {
 }
 
 func newSettingsAPIClient(cfg internalconfig.NamespacedRESTConfig) (*settingsAPIClient, error) {
-	httpClient, err := k8srest.HTTPClientFor(&cfg.Config)
+	httpClient, err := providers.NewHTTPClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
+		return nil, err
 	}
 	return &settingsAPIClient{
 		host:       cfg.Host,
@@ -132,16 +130,7 @@ func checkSettingsStatus(resp *http.Response) error {
 		return errors.New("Grafana App Observability plugin is not installed or not enabled") //nolint:staticcheck // "Grafana" is a proper noun, capitalization is intentional
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
+	return providers.ParseErrorBody(resp)
 }
 
 // NewTypedCRUD creates a TypedCRUD for App Observability settings.
