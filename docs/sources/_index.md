@@ -1,5 +1,10 @@
 ---
 title: gcx CLI
+labels:
+  products:
+    - cloud
+    - enterprise
+    - oss
 description: Use gcx to manage Grafana and Grafana Cloud from the terminal and from agentic coding tools.
 keywords:
   - gcx

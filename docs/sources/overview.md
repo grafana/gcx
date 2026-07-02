@@ -1,5 +1,10 @@
 ---
 title: Introduction to gcx
+labels:
+  products:
+    - cloud
+    - enterprise
+    - oss
 weight: 1
 ---
 
