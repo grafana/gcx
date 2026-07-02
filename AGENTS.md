@@ -104,6 +104,7 @@ internal/
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
+│   ├── crudcmd/    Shared CRUD command scaffolding for the Cloud provider tier (generic list/get/create/update/delete/pull/push cobra builders, table codec generics, TypedCRUD-backed list helper) — the provider-tier analog of `internal/resources/adapter.TypedCRUD[T]`
 │   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
 │   ├── datasources/ Datasources provider — bridges /api/datasources into the resources pipeline via ResourceAdapter (no commands; managed via `gcx resources`)
 │   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`

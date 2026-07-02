@@ -5,20 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -50,22 +46,8 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 // list command
 // ---------------------------------------------------------------------------
 
-type listOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &reportTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &reportTableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
-}
-
 func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &listOpts{}
+	opts := &crudcmd.ListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List SLO reports.",
@@ -112,7 +94,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.Setup(cmd.Flags(), "table", 50, "Maximum number of items to return (0 for all)", &reportTableCodec{}, &reportTableCodec{Wide: true})
 	return cmd
 }
 
@@ -121,27 +103,10 @@ type reportTableCodec struct {
 	Wide bool
 }
 
-func (c *reportTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
+func (c *reportTableCodec) Format() format.Format { return crudcmd.WideFormat(c.Wide) }
 
 func (c *reportTableCodec) Encode(w io.Writer, v any) error {
-	rpts, ok := v.([]Report)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Report")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("UUID", "NAME", "TIME_SPAN", "SLOS", "SLO_UUIDS")
-	} else {
-		t = style.NewTable("UUID", "NAME", "TIME_SPAN", "SLOS")
-	}
-
-	for _, report := range rpts {
+	row := func(t *style.TableBuilder, report Report) {
 		timeSpan := mapTimeSpan(report.TimeSpan)
 		sloCount := len(report.ReportDefinition.Slos)
 
@@ -151,16 +116,19 @@ func (c *reportTableCodec) Encode(w io.Writer, v any) error {
 				sloUUIDs = append(sloUUIDs, s.SloUUID)
 			}
 			t.Row(report.UUID, report.Name, timeSpan, strconv.Itoa(sloCount), strings.Join(sloUUIDs, ","))
-		} else {
-			t.Row(report.UUID, report.Name, timeSpan, strconv.Itoa(sloCount))
+			return
 		}
+		t.Row(report.UUID, report.Name, timeSpan, strconv.Itoa(sloCount))
 	}
 
-	return t.Render(w)
+	if c.Wide {
+		return crudcmd.EncodeTable(w, v, "Report", []string{"UUID", "NAME", "TIME_SPAN", "SLOS", "SLO_UUIDS"}, row)
+	}
+	return crudcmd.EncodeTable(w, v, "Report", []string{"UUID", "NAME", "TIME_SPAN", "SLOS"}, row)
 }
 
 func (c *reportTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }
 
 // mapTimeSpan converts API timeSpan values to human-readable labels.
@@ -181,234 +149,126 @@ func mapTimeSpan(timeSpan string) string {
 // get command
 // ---------------------------------------------------------------------------
 
-type getOpts struct {
-	IO cmdio.Options
-}
-
-func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-}
-
 func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &getOpts{}
-	cmd := &cobra.Command{
-		Use:   "get UUID",
-		Short: "Get a single SLO report.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
-			uuid := args[0]
-
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[*unstructured.Unstructured]{
+		Use:        "get UUID",
+		Short:      "Get a single SLO report.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "yaml",
+		Fetch: func(ctx context.Context, args []string) (*unstructured.Unstructured, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
 
-			report, err := client.Get(ctx, uuid)
+			report, err := client.Get(ctx, args[0])
 			if err != nil {
-				return err
+				return nil, err
 			}
 
 			res, err := ToResource(*report, restCfg.Namespace)
 			if err != nil {
-				return fmt.Errorf("failed to convert report to resource: %w", err)
+				return nil, fmt.Errorf("failed to convert report to resource: %w", err)
 			}
 
 			obj := res.ToUnstructured()
-			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
+			return &obj, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // ---------------------------------------------------------------------------
 // pull command
 // ---------------------------------------------------------------------------
 
-type pullOpts struct {
-	OutputDir string
-}
-
-func (o *pullOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.OutputDir, "output-dir", "d", ".", "Directory to write SLO report files to")
-}
-
 func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &pullOpts{}
-	cmd := &cobra.Command{
-		Use:   "pull",
-		Short: "Pull SLO reports to disk.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-
+	return crudcmd.NewPullCommand(crudcmd.PullConfig[Report]{
+		Use:         "pull",
+		Short:       "Pull SLO reports to disk.",
+		OutputUsage: "Directory to write SLO report files to",
+		SubDir:      "Report",
+		Noun:        "SLO reports",
+		Fetch: func(ctx context.Context) ([]Report, string, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, "", err
 			}
-
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, "", err
 			}
-
 			rpts, err := client.List(ctx)
 			if err != nil {
-				return err
+				return nil, "", err
 			}
-
-			outputDir := filepath.Join(opts.OutputDir, "Report")
-			if err := os.MkdirAll(outputDir, 0755); err != nil {
-				return fmt.Errorf("failed to create output directory %s: %w", outputDir, err)
-			}
-
-			codec := format.NewYAMLCodec()
-
-			for _, report := range rpts {
-				res, err := ToResource(report, restCfg.Namespace)
-				if err != nil {
-					return fmt.Errorf("failed to convert report %s to resource: %w", report.UUID, err)
-				}
-
-				filePath := filepath.Join(outputDir, report.UUID+".yaml")
-				f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-				if err != nil {
-					return fmt.Errorf("failed to open file %s: %w", filePath, err)
-				}
-
-				obj := res.ToUnstructured()
-				if err := codec.Encode(f, &obj); err != nil {
-					f.Close()
-					return fmt.Errorf("failed to write report %s: %w", report.UUID, err)
-				}
-				f.Close()
-			}
-
-			cmdio.Success(cmd.OutOrStdout(), "Pulled %d SLO reports to %s/", len(rpts), outputDir)
-			return nil
+			return rpts, restCfg.Namespace, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		ToResource: ToResource,
+		ID:         func(report Report) string { return report.UUID },
+	})
 }
 
 // ---------------------------------------------------------------------------
 // push command
 // ---------------------------------------------------------------------------
 
-type pushOpts struct {
-	DryRun bool
-}
-
-func (o *pushOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview changes without making them")
-}
-
 func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &pushOpts{}
-	cmd := &cobra.Command{
-		Use:   "push FILE...",
-		Short: "Push SLO reports from files.",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-
+	return crudcmd.NewPushCommand(crudcmd.PushConfig[Report]{
+		Use:          "push FILE...",
+		Short:        "Push SLO reports from files.",
+		FromResource: FromResource,
+		NewUpsert: func(ctx context.Context) (func(cmd *cobra.Command, item *Report) error, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
-			yamlCodec := format.NewYAMLCodec()
-
-			for _, filePath := range args {
-				data, err := os.ReadFile(filePath)
-				if err != nil {
-					return fmt.Errorf("failed to read file %s: %w", filePath, err)
-				}
-
-				// Decode YAML into an unstructured object
-				var obj unstructured.Unstructured
-				if err := yamlCodec.Decode(strings.NewReader(string(data)), &obj); err != nil {
-					return fmt.Errorf("failed to parse %s: %w", filePath, err)
-				}
-
-				res, err := resources.FromUnstructured(&obj)
-				if err != nil {
-					return fmt.Errorf("failed to build resource from %s: %w", filePath, err)
-				}
-
-				report, err := FromResource(res)
-				if err != nil {
-					return fmt.Errorf("failed to convert resource to report from %s: %w", filePath, err)
-				}
-
-				if opts.DryRun {
-					cmdio.Info(cmd.OutOrStdout(), "[dry-run] Would push report %q (uuid=%s)", report.Name, report.UUID)
-					continue
-				}
-
-				if err := upsertReport(ctx, cmd, client, report); err != nil {
-					return err
-				}
-			}
-
-			return nil
+			return func(cmd *cobra.Command, report *Report) error {
+				return crudcmd.Upsert(ctx, *report, reportUpsertConfig(cmd, client))
+			}, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Name: func(r Report) string { return r.Name },
+		ID:   func(r Report) string { return r.UUID },
+	})
 }
 
-// upsertReport creates or updates a report depending on whether it already exists.
-// If report.UUID is set, it checks the server; a 404 means create, otherwise update.
-// If report.UUID is empty, it always creates.
-func upsertReport(ctx context.Context, cmd *cobra.Command, client *Client, report *Report) error {
-	if report.UUID == "" {
-		resp, err := client.Create(ctx, report)
-		if err != nil {
-			return fmt.Errorf("failed to create report %s: %w", report.Name, err)
-		}
-		cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", report.Name, resp.UUID)
-		return nil
-	}
-
-	_, getErr := client.Get(ctx, report.UUID)
-	switch {
-	case getErr == nil:
-		// Report exists — update.
-		if err := client.Update(ctx, report.UUID, report); err != nil {
-			return fmt.Errorf("failed to update report %s: %w", report.UUID, err)
-		}
-		cmdio.Success(cmd.OutOrStdout(), "Updated %s", report.Name)
-		return nil
-
-	case errors.Is(getErr, ErrNotFound):
-		// Report not found — create.
-		resp, err := client.Create(ctx, report)
-		if err != nil {
-			return fmt.Errorf("failed to create report %s: %w", report.Name, err)
-		}
-		cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", report.Name, resp.UUID)
-		return nil
-
-	default:
-		// Any other error (auth, network, server) — propagate.
-		return fmt.Errorf("failed to check report %s: %w", report.UUID, getErr)
+// reportUpsertConfig adapts the raw report Client to the generic
+// create-or-update-by-probing-404 flow shared with other push commands.
+func reportUpsertConfig(cmd *cobra.Command, client *Client) crudcmd.UpsertConfig[Report] {
+	return crudcmd.UpsertConfig[Report]{
+		HasID: func(r Report) bool { return r.UUID != "" },
+		ID:    func(r Report) string { return r.UUID },
+		Name:  func(r Report) string { return r.Name },
+		Get: func(ctx context.Context, id string) error {
+			_, err := client.Get(ctx, id)
+			return err
+		},
+		IsNotFound: func(err error) bool { return errors.Is(err, ErrNotFound) },
+		Create: func(ctx context.Context, r Report) (Report, error) {
+			resp, err := client.Create(ctx, &r)
+			if err != nil {
+				return Report{}, err
+			}
+			r.UUID = resp.UUID
+			return r, nil
+		},
+		Update: func(ctx context.Context, id string, r Report) error {
+			return client.Update(ctx, id, &r)
+		},
+		OnCreated: func(created Report) {
+			cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", created.Name, created.UUID)
+		},
+		OnUpdated: func(r Report) {
+			cmdio.Success(cmd.OutOrStdout(), "Updated %s", r.Name)
+		},
 	}
 }
 
@@ -416,52 +276,25 @@ func upsertReport(ctx context.Context, cmd *cobra.Command, client *Client, repor
 // delete command
 // ---------------------------------------------------------------------------
 
-type deleteOpts struct {
-	Force bool
-}
-
-func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
-}
-
 func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &deleteOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewDeleteCommand(crudcmd.DeleteConfig{
 		Use:   "delete UUID...",
 		Short: "Delete SLO reports.",
 		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
-				fmt.Sprintf("Delete %d report(s)?", len(args)))
-			if err != nil {
-				return err
-			}
-			if !proceed {
-				return nil
-			}
-
+		Confirm: func(args []string) string {
+			return fmt.Sprintf("Delete %d report(s)?", len(args))
+		},
+		NewDelete: func(ctx context.Context) (func(string) error, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
-			for _, uuid := range args {
-				if err := client.Delete(ctx, uuid); err != nil {
-					return fmt.Errorf("failed to delete report %s: %w", uuid, err)
-				}
-				cmdio.Success(cmd.OutOrStdout(), "Deleted %s", uuid)
-			}
-
-			return nil
+			return func(uuid string) error { return client.Delete(ctx, uuid) }, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Success: func(uuid string) string { return "Deleted " + uuid },
+	})
 }

@@ -1,20 +1,19 @@
 package collections
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 
-	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/savedconversations"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
@@ -22,8 +21,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
-	base, err := aio11yhttp.NewClientFromCommand(cmd, loader)
+func newClient(ctx context.Context, loader *providers.ConfigLoader) (*Client, error) {
+	base, err := aio11yhttp.NewClientFromContext(ctx, loader)
 	if err != nil {
 		return nil, err
 	}
@@ -49,106 +48,46 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- list ---
 
-type listOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of collections to return (0 for no limit)")
-}
-
 func newListCommand() *cobra.Command {
-	opts := &listOpts{}
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List collections.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
-			if err != nil {
-				return err
-			}
-
-			typedObjs, err := crud.List(ctx, opts.Limit)
-			if err != nil {
-				return err
-			}
-
-			specs := make([]Collection, len(typedObjs))
-			for i := range typedObjs {
-				specs[i] = typedObjs[i].Spec
-			}
-
-			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), specs)
-			}
-
-			objs := make([]unstructured.Unstructured, 0, len(specs))
-			for _, spec := range specs {
-				u, err := crud.ToUnstructured(spec)
-				if err != nil {
-					return err
-				}
-				objs = append(objs, u)
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+	return crudcmd.NewTypedListCommand(crudcmd.TypedListConfig[Collection]{
+		Use:          "list",
+		Short:        "List collections.",
+		DefaultFmt:   "table",
+		LimitDefault: 50,
+		LimitUsage:   "Maximum number of collections to return (0 for no limit)",
+		Codecs:       []format.Codec{&TableCodec{}, &TableCodec{Wide: true}},
+		Noun:         "collection",
+		NewCRUD:      NewTypedCRUD,
+		ToResource: func(crud *adapter.TypedCRUD[Collection], item Collection) (unstructured.Unstructured, error) {
+			return crud.ToUnstructured(item)
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // --- get ---
 
-type getOpts struct {
-	IO cmdio.Options
-}
-
-func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-}
-
 func newGetCommand() *cobra.Command {
-	opts := &getOpts{}
-	cmd := &cobra.Command{
-		Use:   "get <collection-id>",
-		Short: "Get a single collection.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[*unstructured.Unstructured]{
+		Use:        "get <collection-id>",
+		Short:      "Get a single collection.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "yaml",
+		Fetch: func(ctx context.Context, args []string) (*unstructured.Unstructured, error) {
 			crud, _, err := NewTypedCRUD(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
 			typedObj, err := crud.Get(ctx, args[0])
 			if err != nil {
-				return err
+				return nil, err
 			}
-
 			u, err := crud.ToUnstructured(typedObj.Spec)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), &u)
+			return &u, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // --- create ---
@@ -181,29 +120,14 @@ func (o *createOpts) Validate() error {
 // readCollectionFile reads a Collection from a JSON or YAML file. For
 // envelope-shaped YAMLs use `gcx resources push`.
 func readCollectionFile(path string, stdin io.Reader) (*Collection, error) {
-	var data []byte
-	var err error
-	if path == "-" {
-		data, err = io.ReadAll(stdin)
-	} else {
-		data, err = os.ReadFile(path)
-	}
+	col, err := crudcmd.ReadJSONOrYAMLFile[Collection](path, stdin)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", path, err)
-	}
-
-	var col Collection
-	if err := json.Unmarshal(data, &col); err != nil {
-		var yamlCol Collection
-		if yamlErr := yaml.Unmarshal(data, &yamlCol); yamlErr != nil {
-			return nil, fmt.Errorf("parsing %s: %w", path, yamlErr)
-		}
-		col = yamlCol
+		return nil, err
 	}
 	if strings.TrimSpace(col.Name) == "" {
 		return nil, fmt.Errorf("parsing %s: name is required", path)
 	}
-	return &col, nil
+	return col, nil
 }
 
 func newCreateCommand() *cobra.Command {
@@ -300,7 +224,7 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			client, err := newClient(cmd, loader)
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -323,47 +247,24 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- delete ---
 
-type deleteOpts struct {
-	Force bool
-}
-
-func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
-}
-
 func newDeleteCommand() *cobra.Command {
-	opts := &deleteOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewDeleteCommand(crudcmd.DeleteConfig{
 		Use:   "delete COLLECTION-ID...",
 		Short: "Delete collections.",
 		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
-				fmt.Sprintf("Delete %d collection(s)?", len(args)))
-			if err != nil {
-				return err
-			}
-			if !proceed {
-				return nil
-			}
-
-			ctx := cmd.Context()
+		Out:   func(cmd *cobra.Command) io.Writer { return cmd.ErrOrStderr() },
+		Confirm: func(args []string) string {
+			return fmt.Sprintf("Delete %d collection(s)?", len(args))
+		},
+		NewDelete: func(ctx context.Context) (func(string) error, error) {
 			crud, _, err := NewTypedCRUD(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
-			for _, id := range args {
-				if err := crud.Delete(ctx, id); err != nil {
-					return fmt.Errorf("deleting collection %s: %w", id, err)
-				}
-				cmdio.Success(cmd.ErrOrStderr(), "Deleted collection %s", id)
-			}
-			return nil
+			return func(id string) error { return crud.Delete(ctx, id) }, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Success: func(id string) string { return "Deleted collection " + id },
+	})
 }
 
 // --- conversations subgroup ---
@@ -381,21 +282,8 @@ func newConversationsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-type membersListOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *membersListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &savedconversations.TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &savedconversations.TableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of saved conversations to return (0 for no limit)")
-}
-
 func newConversationsListCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &membersListOpts{}
+	opts := &crudcmd.ListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list <collection-id>",
 		Short: "List saved conversations belonging to a collection.",
@@ -404,18 +292,20 @@ func newConversationsListCommand(loader *providers.ConfigLoader) *cobra.Command 
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+			ctx := cmd.Context()
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
-			items, err := client.ListMembers(cmd.Context(), args[0], int(opts.Limit))
+			items, err := client.ListMembers(ctx, args[0], int(opts.Limit))
 			if err != nil {
 				return err
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), items)
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.Setup(cmd.Flags(), "table", 50, "Maximum number of saved conversations to return (0 for no limit)",
+		&savedconversations.TableCodec{}, &savedconversations.TableCodec{Wide: true})
 	return cmd
 }
 
@@ -427,11 +317,12 @@ func newConversationsAddCommand(loader *providers.ConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			collectionID := args[0]
 			savedIDs := args[1:]
-			client, err := newClient(cmd, loader)
+			ctx := cmd.Context()
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
-			if err := client.AddMembers(cmd.Context(), collectionID, savedIDs); err != nil {
+			if err := client.AddMembers(ctx, collectionID, savedIDs); err != nil {
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Added %d conversation(s) to collection %s", len(savedIDs), collectionID)
@@ -449,11 +340,12 @@ func newConversationsRemoveCommand(loader *providers.ConfigLoader) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			collectionID := args[0]
 			savedID := args[1]
-			client, err := newClient(cmd, loader)
+			ctx := cmd.Context()
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
-			if err := client.RemoveMember(cmd.Context(), collectionID, savedID); err != nil {
+			if err := client.RemoveMember(ctx, collectionID, savedID); err != nil {
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Removed %s from collection %s", savedID, collectionID)
@@ -470,42 +362,31 @@ type TableCodec struct {
 	Wide bool
 }
 
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
+func (c *TableCodec) Format() format.Format { return crudcmd.WideFormat(c.Wide) }
 
 func (c *TableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]Collection)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Collection")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "NAME", "MEMBERS", "DESCRIPTION", "CREATED BY", "CREATED AT", "UPDATED AT")
-	} else {
-		t = style.NewTable("ID", "NAME", "MEMBERS", "DESCRIPTION")
-	}
-
-	for _, col := range items {
+	row := func(t *style.TableBuilder, col Collection) {
 		desc := aio11yhttp.Truncate(col.Description, 40)
 		members := strconv.Itoa(col.MemberCount)
-		if c.Wide {
-			createdBy := col.CreatedBy
-			if createdBy == "" {
-				createdBy = "-"
-			}
-			t.Row(col.CollectionID, col.Name, members, desc, createdBy, aio11yhttp.FormatTime(col.CreatedAt), aio11yhttp.FormatTime(col.UpdatedAt))
-		} else {
+
+		if !c.Wide {
 			t.Row(col.CollectionID, col.Name, members, desc)
+			return
 		}
+
+		createdBy := col.CreatedBy
+		if createdBy == "" {
+			createdBy = "-"
+		}
+		t.Row(col.CollectionID, col.Name, members, desc, createdBy, aio11yhttp.FormatTime(col.CreatedAt), aio11yhttp.FormatTime(col.UpdatedAt))
 	}
-	return t.Render(w)
+
+	if c.Wide {
+		return crudcmd.EncodeTable(w, v, "Collection", []string{"ID", "NAME", "MEMBERS", "DESCRIPTION", "CREATED BY", "CREATED AT", "UPDATED AT"}, row)
+	}
+	return crudcmd.EncodeTable(w, v, "Collection", []string{"ID", "NAME", "MEMBERS", "DESCRIPTION"}, row)
 }
 
 func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }

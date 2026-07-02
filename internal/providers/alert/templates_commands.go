@@ -1,17 +1,16 @@
 package alert
 
 import (
+	"context"
 	"errors"
 	"io"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/format"
-	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 // templatesCommands returns the templates command group.
@@ -30,46 +29,29 @@ func templatesCommands(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-type templatesListOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *templatesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TemplatesTableCodec{})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
-}
-
 func newTemplatesListCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &templatesListOpts{}
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List notification templates.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
+	return crudcmd.NewListCommand(crudcmd.ListConfig[NotificationTemplate]{
+		Use:          "list",
+		Short:        "List notification templates.",
+		DefaultFmt:   "table",
+		LimitDefault: 50,
+		Codecs:       []format.Codec{&TemplatesTableCodec{}},
+		Fetch: func(ctx context.Context, limit int64) ([]NotificationTemplate, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			templates, err := client.ListTemplates(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			templates = adapter.TruncateSlice(templates, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), templates)
+			return adapter.TruncateSlice(templates, limit), nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // TemplatesTableCodec renders notification templates as a tabular table.
@@ -78,73 +60,37 @@ type TemplatesTableCodec struct{}
 func (c *TemplatesTableCodec) Format() format.Format { return "table" }
 
 func (c *TemplatesTableCodec) Encode(w io.Writer, v any) error {
-	templates, ok := v.([]NotificationTemplate)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []NotificationTemplate")
-	}
-	t := style.NewTable("NAME", "PROVENANCE", "LENGTH")
-	for _, tmpl := range templates {
+	return crudcmd.EncodeTable(w, v, "NotificationTemplate", []string{"NAME", "PROVENANCE", "LENGTH"}, func(t *style.TableBuilder, tmpl NotificationTemplate) {
 		t.Row(tmpl.Name, tmpl.Provenance, strconv.Itoa(len(tmpl.Template)))
-	}
-	return t.Render(w)
+	})
 }
 
 func (c *TemplatesTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
-}
-
-type templatesGetOpts struct {
-	IO cmdio.Options
-}
-
-func (o *templatesGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
+	return crudcmd.ErrTableDecode
 }
 
 func newTemplatesGetCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &templatesGetOpts{}
-	cmd := &cobra.Command{
-		Use:   "get NAME",
-		Short: "Get a notification template by name.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[*NotificationTemplate]{
+		Use:        "get NAME",
+		Short:      "Get a notification template by name.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "json",
+		Fetch: func(ctx context.Context, args []string) (*NotificationTemplate, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			tmpl, err := client.GetTemplate(ctx, args[0])
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), tmpl)
+			return client.GetTemplate(ctx, args[0])
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
-type templatesUpsertOpts struct {
-	IO   cmdio.Options
-	File string
-}
-
-func (o *templatesUpsertOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-	flags.StringVarP(&o.File, "filename", "f", "", "File containing the template definition (JSON/YAML, use - for stdin)")
+	})
 }
 
 func newTemplatesUpsertCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &templatesUpsertOpts{}
+	opts := &crudcmd.MutateOpts{}
 	cmd := &cobra.Command{
 		Use:   "upsert",
 		Short: "Create or update a notification template.",
@@ -157,8 +103,8 @@ so the same command handles both create and update.`,
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			var t NotificationTemplate
-			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &t); err != nil {
+			t, err := crudcmd.ReadYAMLOrJSONFile[NotificationTemplate](opts.File, cmd.InOrStdin())
+			if err != nil {
 				return err
 			}
 			if t.Name == "" {
@@ -173,57 +119,36 @@ so the same command handles both create and update.`,
 			if err != nil {
 				return err
 			}
-			saved, err := client.UpsertTemplate(ctx, t)
+			saved, err := client.UpsertTemplate(ctx, *t)
 			if err != nil {
 				return err
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), saved)
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.Setup(cmd.Flags(), "json", "File containing the template definition (JSON/YAML, use - for stdin)")
 	return cmd
 }
 
-type templatesDeleteOpts struct {
-	Force bool
-}
-
-func (o *templatesDeleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
-}
-
-//nolint:dupl // Similar structure to contact-points and mute-timings delete commands is intentional
 func newTemplatesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &templatesDeleteOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewDeleteCommand(crudcmd.DeleteConfig{
 		Use:   "delete NAME",
 		Short: "Delete a notification template by name.",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
-				"Delete notification template "+args[0]+"?")
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return nil
-			}
+		Confirm: func(args []string) string {
+			return "Delete notification template " + args[0] + "?"
+		},
+		NewDelete: func(ctx context.Context) (func(string) error, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			if err := client.DeleteTemplate(ctx, args[0]); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted template %s", args[0])
-			return nil
+			return func(id string) error { return client.DeleteTemplate(ctx, id) }, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Success: func(id string) string { return "Deleted template " + id },
+	})
 }

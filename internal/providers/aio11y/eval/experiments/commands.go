@@ -1,11 +1,11 @@
 package experiments
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,13 +15,14 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
-	base, err := aio11yhttp.NewClientFromCommand(cmd, loader)
+func newClient(ctx context.Context, loader *providers.ConfigLoader) (*Client, error) {
+	base, err := aio11yhttp.NewClientFromContext(ctx, loader)
 	if err != nil {
 		return nil, err
 	}
@@ -48,100 +49,43 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- list ---
 
-type listOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of experiments to return (0 for no limit)")
-}
-
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &listOpts{}
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List experiments.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			client, err := newClient(cmd, loader)
+	return crudcmd.NewListCommand(crudcmd.ListConfig[Experiment]{
+		Use:          "list",
+		Short:        "List experiments.",
+		DefaultFmt:   "table",
+		LimitDefault: 50,
+		LimitUsage:   "Maximum number of experiments to return (0 for no limit)",
+		Codecs:       []format.Codec{&TableCodec{}, &TableCodec{Wide: true}},
+		Fetch: func(ctx context.Context, limit int64) ([]Experiment, error) {
+			client, err := newClient(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			items, err := client.List(cmd.Context(), int(opts.Limit))
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return client.List(ctx, int(limit))
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // --- get ---
 
-type getOpts struct {
-	IO cmdio.Options
-}
-
-func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-}
-
 func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &getOpts{}
-	cmd := &cobra.Command{
-		Use:   "get <run-id>",
-		Short: "Get a single experiment by run ID.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			client, err := newClient(cmd, loader)
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[*Experiment]{
+		Use:        "get <run-id>",
+		Short:      "Get a single experiment by run ID.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "yaml",
+		Fetch: func(ctx context.Context, args []string) (*Experiment, error) {
+			client, err := newClient(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			exp, err := client.Get(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), exp)
+			return client.Get(ctx, args[0])
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // --- create ---
-
-type createOpts struct {
-	IO   cmdio.Options
-	File string
-}
-
-func (o *createOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-	flags.StringVarP(&o.File, "filename", "f", "", "File containing the experiment create payload (use - for stdin)")
-}
-
-func (o *createOpts) Validate() error {
-	if strings.TrimSpace(o.File) == "" {
-		return errors.New("--filename/-f is required")
-	}
-	return o.IO.Validate()
-}
 
 // readExperimentFile reads an Experiment from a JSON or YAML file. The
 // format is picked from the file extension when known (.json, .yaml, .yml)
@@ -149,13 +93,7 @@ func (o *createOpts) Validate() error {
 // confusing YAML one. For stdin or unknown extensions, JSON is tried first
 // and YAML is used as a fallback.
 func readExperimentFile(path string, stdin io.Reader) (*Experiment, error) {
-	var data []byte
-	var err error
-	if path == "-" {
-		data, err = io.ReadAll(stdin)
-	} else {
-		data, err = os.ReadFile(path)
-	}
+	data, err := crudcmd.ReadFile(path, stdin)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
@@ -187,8 +125,7 @@ func readExperimentFile(path string, stdin io.Reader) (*Experiment, error) {
 }
 
 func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &createOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewCreateCommand(crudcmd.CreateConfig[Experiment]{
 		Use:   "create",
 		Short: "Create a new experiment from a JSON or YAML file.",
 		Example: `  # Create from a YAML file.
@@ -196,31 +133,24 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 
   # Create from stdin.
   cat experiment.json | gcx aio11y experiments create -f -`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-
-			exp, err := readExperimentFile(opts.File, cmd.InOrStdin())
+		DefaultFmt:    "json",
+		FilenameUsage: "File containing the experiment create payload (use - for stdin)",
+		Read:          readExperimentFile,
+		Create: func(ctx context.Context, exp Experiment) (Experiment, error) {
+			client, err := newClient(ctx, loader)
 			if err != nil {
-				return err
+				return Experiment{}, err
 			}
-
-			client, err := newClient(cmd, loader)
+			created, err := client.Create(ctx, &exp)
 			if err != nil {
-				return err
+				return Experiment{}, err
 			}
-			created, err := client.Create(cmd.Context(), exp)
-			if err != nil {
-				return err
-			}
-
-			cmdio.Success(cmd.ErrOrStderr(), "Experiment %s created", created.RunID)
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			return *created, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		OnSuccess: func(cmd *cobra.Command, created Experiment) {
+			cmdio.Success(cmd.ErrOrStderr(), "Experiment %s created", created.RunID)
+		},
+	})
 }
 
 // --- update ---
@@ -273,11 +203,12 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return errors.New("--name, --description, or --tag is required")
 			}
 
-			client, err := newClient(cmd, loader)
+			ctx := cmd.Context()
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
-			updated, err := client.Update(cmd.Context(), args[0], req)
+			updated, err := client.Update(ctx, args[0], req)
 			if err != nil {
 				return err
 			}
@@ -318,11 +249,12 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return nil
 			}
 
-			client, err := newClient(cmd, loader)
+			ctx := cmd.Context()
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
-			if err := client.Cancel(cmd.Context(), args[0]); err != nil {
+			if err := client.Cancel(ctx, args[0]); err != nil {
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Experiment %s canceled", args[0])
@@ -335,21 +267,8 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- scores ---
 
-type scoresOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *scoresOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ScoresTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &ScoresTableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of scores to return (0 for no limit)")
-}
-
 func newScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &scoresOpts{}
+	opts := &crudcmd.ListOpts{}
 	cmd := &cobra.Command{
 		Use:   "scores <run-id>",
 		Short: "List scores produced by an experiment.",
@@ -359,57 +278,39 @@ func newScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			client, err := newClient(cmd, loader)
+			ctx := cmd.Context()
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
-			items, err := client.ListScores(cmd.Context(), args[0], int(opts.Limit))
+			items, err := client.ListScores(ctx, args[0], int(opts.Limit))
 			if err != nil {
 				return err
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), items)
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.Setup(cmd.Flags(), "table", 50, "Maximum number of scores to return (0 for no limit)", &ScoresTableCodec{}, &ScoresTableCodec{Wide: true})
 	return cmd
 }
 
 // --- report ---
 
-type reportOpts struct {
-	IO cmdio.Options
-}
-
-func (o *reportOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("text", &ReportTextCodec{})
-	o.IO.DefaultFormat("text")
-	o.IO.BindFlags(flags)
-}
-
 func newReportCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &reportOpts{}
-	cmd := &cobra.Command{
-		Use:   "report <run-id>",
-		Short: "Fetch the aggregate report for an experiment.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			client, err := newClient(cmd, loader)
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[*ExperimentReport]{
+		Use:        "report <run-id>",
+		Short:      "Fetch the aggregate report for an experiment.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "text",
+		Codecs:     []format.Codec{&ReportTextCodec{}},
+		Fetch: func(ctx context.Context, args []string) (*ExperimentReport, error) {
+			client, err := newClient(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			report, err := client.GetReport(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), report)
+			return client.GetReport(ctx, args[0])
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // --- table codecs ---
@@ -419,27 +320,10 @@ type TableCodec struct {
 	Wide bool
 }
 
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
+func (c *TableCodec) Format() format.Format { return crudcmd.WideFormat(c.Wide) }
 
 func (c *TableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]Experiment)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Experiment")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("RUN-ID", "NAME", "STATUS", "SOURCE", "COLLECTION-ID", "TAGS", "SCORES", "CREATED", "COMPLETED", "DESCRIPTION", "ERROR")
-	} else {
-		t = style.NewTable("RUN-ID", "NAME", "STATUS", "SOURCE", "COLLECTION-ID", "TAGS", "SCORES", "CREATED")
-	}
-
-	for _, exp := range items {
+	row := func(t *style.TableBuilder, exp Experiment) {
 		scores := strconv.Itoa(exp.ScoreCount)
 		collection := exp.CollectionID
 		if collection == "" {
@@ -454,17 +338,21 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 			source = "-"
 		}
 		tags := formatTags(exp.Tags)
-		if c.Wide {
-			completed := "-"
-			if exp.CompletedAt != nil {
-				completed = aio11yhttp.FormatTime(*exp.CompletedAt)
-			}
-			t.Row(exp.RunID, exp.Name, status, source, collection, tags, scores, aio11yhttp.FormatTime(exp.CreatedAt), completed, aio11yhttp.Truncate(exp.Description, 40), aio11yhttp.Truncate(exp.Error, 40))
-		} else {
+		if !c.Wide {
 			t.Row(exp.RunID, exp.Name, status, source, collection, tags, scores, aio11yhttp.FormatTime(exp.CreatedAt))
+			return
 		}
+		completed := "-"
+		if exp.CompletedAt != nil {
+			completed = aio11yhttp.FormatTime(*exp.CompletedAt)
+		}
+		t.Row(exp.RunID, exp.Name, status, source, collection, tags, scores, aio11yhttp.FormatTime(exp.CreatedAt), completed, aio11yhttp.Truncate(exp.Description, 40), aio11yhttp.Truncate(exp.Error, 40))
 	}
-	return t.Render(w)
+
+	if c.Wide {
+		return crudcmd.EncodeTable(w, v, "Experiment", []string{"RUN-ID", "NAME", "STATUS", "SOURCE", "COLLECTION-ID", "TAGS", "SCORES", "CREATED", "COMPLETED", "DESCRIPTION", "ERROR"}, row)
+	}
+	return crudcmd.EncodeTable(w, v, "Experiment", []string{"RUN-ID", "NAME", "STATUS", "SOURCE", "COLLECTION-ID", "TAGS", "SCORES", "CREATED"}, row)
 }
 
 func formatTags(tags []string) string {
@@ -475,7 +363,7 @@ func formatTags(tags []string) string {
 }
 
 func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }
 
 // ScoresTableCodec renders []ScoreItem rows.
@@ -483,27 +371,10 @@ type ScoresTableCodec struct {
 	Wide bool
 }
 
-func (c *ScoresTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
+func (c *ScoresTableCodec) Format() format.Format { return crudcmd.WideFormat(c.Wide) }
 
 func (c *ScoresTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]ScoreItem)
-	if !ok {
-		return errors.New("invalid data type for scores table codec: expected []ScoreItem")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("SCORE-ID", "EVALUATOR", "KEY", "VALUE", "PASSED", "GENERATION", "EXPLANATION", "CREATED")
-	} else {
-		t = style.NewTable("SCORE-ID", "EVALUATOR", "KEY", "VALUE", "PASSED", "GENERATION")
-	}
-
-	for _, s := range items {
+	row := func(t *style.TableBuilder, s ScoreItem) {
 		passed := "-"
 		if s.Passed != nil {
 			if *s.Passed {
@@ -525,17 +396,21 @@ func (c *ScoresTableCodec) Encode(w io.Writer, v any) error {
 		if evaluator == "" {
 			evaluator = "-"
 		}
-		if c.Wide {
-			t.Row(s.ScoreID, evaluator, key, value, passed, gen, aio11yhttp.Truncate(s.Explanation, 40), aio11yhttp.FormatTime(s.CreatedAt))
-		} else {
+		if !c.Wide {
 			t.Row(s.ScoreID, evaluator, key, value, passed, gen)
+			return
 		}
+		t.Row(s.ScoreID, evaluator, key, value, passed, gen, aio11yhttp.Truncate(s.Explanation, 40), aio11yhttp.FormatTime(s.CreatedAt))
 	}
-	return t.Render(w)
+
+	if c.Wide {
+		return crudcmd.EncodeTable(w, v, "ScoreItem", []string{"SCORE-ID", "EVALUATOR", "KEY", "VALUE", "PASSED", "GENERATION", "EXPLANATION", "CREATED"}, row)
+	}
+	return crudcmd.EncodeTable(w, v, "ScoreItem", []string{"SCORE-ID", "EVALUATOR", "KEY", "VALUE", "PASSED", "GENERATION"}, row)
 }
 
 func (c *ScoresTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }
 
 // ReportTextCodec renders an *ExperimentReport (or ExperimentReport) as a

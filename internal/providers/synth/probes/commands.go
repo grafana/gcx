@@ -1,6 +1,7 @@
 package probes
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,8 +10,9 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -38,69 +40,24 @@ func Commands(loader smcfg.Loader) *cobra.Command {
 // list
 // ---------------------------------------------------------------------------
 
-type listOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &probeTableCodec{})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
-}
-
 func newListCommand(loader smcfg.Loader) *cobra.Command {
-	opts := &listOpts{}
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List Synthetic Monitoring probes.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
-
-			crud, namespace, err := NewTypedCRUD(ctx, loader)
+	return crudcmd.NewTypedListCommand(crudcmd.TypedListConfig[Probe]{
+		Use:          "list",
+		Short:        "List Synthetic Monitoring probes.",
+		DefaultFmt:   "table",
+		LimitDefault: 50,
+		LimitUsage:   "Maximum number of items to return (0 for all)",
+		Codecs:       []format.Codec{&probeTableCodec{}},
+		Noun:         "probe",
+		NewCRUD:      func(ctx context.Context) (*adapter.TypedCRUD[Probe], string, error) { return NewTypedCRUD(ctx, loader) },
+		ToResource: func(crud *adapter.TypedCRUD[Probe], p Probe) (unstructured.Unstructured, error) {
+			res, err := ToResource(p, crud.Namespace)
 			if err != nil {
-				return err
+				return unstructured.Unstructured{}, err
 			}
-
-			typedObjs, err := crud.List(ctx, opts.Limit)
-			if err != nil {
-				return err
-			}
-
-			// Extract probes from TypedObject
-			probeList := make([]Probe, len(typedObjs))
-			for i := range typedObjs {
-				probeList[i] = typedObjs[i].Spec
-			}
-
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			if codec.Format() == "table" {
-				return codec.Encode(cmd.OutOrStdout(), probeList)
-			}
-
-			var objs []unstructured.Unstructured
-			for _, typedObj := range typedObjs {
-				res, err := ToResource(typedObj.Spec, namespace)
-				if err != nil {
-					return fmt.Errorf("converting probe %d: %w", typedObj.Spec.ID, err)
-				}
-				objs = append(objs, res.ToUnstructured())
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			return res.ToUnstructured(), nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -198,57 +155,23 @@ func newCreateCommand(loader smcfg.Loader) *cobra.Command {
 // delete
 // ---------------------------------------------------------------------------
 
-type deleteOpts struct {
-	Force bool
-}
-
-func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
-}
-
-func (o *deleteOpts) Validate() error {
-	return nil
-}
-
 func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
-	opts := &deleteOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewDeleteCommand(crudcmd.DeleteConfig{
 		Use:   "delete ID...",
 		Short: "Delete Synthetic Monitoring probes.",
 		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
-			w := cmd.OutOrStdout()
-
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), w, opts.Force,
-				fmt.Sprintf("Delete %d probe(s)?", len(args)))
-			if err != nil {
-				return err
-			}
-			if !proceed {
-				return nil
-			}
-
+		Confirm: func(args []string) string {
+			return fmt.Sprintf("Delete %d probe(s)?", len(args))
+		},
+		NewDelete: func(ctx context.Context) (func(string) error, error) {
 			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
-			for _, arg := range args {
-				if err := crud.Delete(ctx, arg); err != nil {
-					return fmt.Errorf("deleting probe %s: %w", arg, err)
-				}
-				cmdio.Success(w, "Deleted probe %s", arg)
-			}
-			return nil
+			return func(id string) error { return crud.Delete(ctx, id) }, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Success: func(id string) string { return "Deleted probe " + id },
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -369,25 +292,16 @@ type probeTableCodec struct{}
 func (c *probeTableCodec) Format() format.Format { return "table" }
 
 func (c *probeTableCodec) Encode(w io.Writer, v any) error {
-	probeList, ok := v.([]Probe)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Probe")
-	}
-
-	t := style.NewTable("ID", "NAME", "REGION", "PUBLIC", "ONLINE")
-
-	for _, p := range probeList {
+	return crudcmd.EncodeTable(w, v, "Probe", []string{"ID", "NAME", "REGION", "PUBLIC", "ONLINE"}, func(t *style.TableBuilder, p Probe) {
 		t.Row(
 			strconv.FormatInt(p.ID, 10),
 			p.Name,
 			p.Region,
 			strconv.FormatBool(p.Public),
 			strconv.FormatBool(p.Online))
-	}
-
-	return t.Render(w)
+	})
 }
 
 func (c *probeTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }
