@@ -181,8 +181,12 @@ func saveCloudConfig(ctx context.Context, configOpts *cmdconfig.Options, cloud *
 		cfg.SetContext(contextName, true, config.Context{})
 	}
 	curCtx := cfg.Contexts[contextName]
-	// replace the entire cloud config - clears any stale OAuth fields
-	// when switching from OAuth to SA token or vice versa
+	// Replace the entire cloud config to clear any stale OAuth/token fields
+	// when switching from OAuth to SA token or vice versa, but preserve the
+	// non-auth Stack selection so re-authenticating doesn't drop it.
+	if curCtx.Cloud != nil {
+		cloud.Stack = curCtx.Cloud.Stack
+	}
 	curCtx.Cloud = cloud
 
 	if err := config.Write(ctx, source, cfg); err != nil {
