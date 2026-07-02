@@ -167,7 +167,10 @@ func dashboardv1Converter(resource *model.Resource) (string, string, error) {
 		return "", "", err
 	}
 
-	object := dashboard.Dashboard{}
+	// Intentionally uses the v1 dashboard schema: convertersMap routes the
+	// v0alpha1/v1/v1beta1 API versions here, so the deprecated type is the
+	// correct one for these versions (dashboardv2 has an incompatible schema).
+	object := dashboard.Dashboard{} //nolint:staticcheck // intentional v1 schema for v0alpha1/v1/v1beta1 imports
 	if err = json.Unmarshal(marshalled, &object); err != nil {
 		return "", "", err
 	}
@@ -186,7 +189,10 @@ func dashboardv2Converter(resource *model.Resource) (string, string, error) {
 		return "", "", err
 	}
 
-	object := dashboardv2beta1.Dashboard{}
+	// Intentionally uses the v2beta1 dashboard schema: convertersMap routes the
+	// v2beta1 API version here, so this is the schema type matching the imported
+	// resource's version.
+	object := dashboardv2beta1.Dashboard{} //nolint:staticcheck // intentional v2beta1 schema for v2beta1 imports
 	if err = json.Unmarshal(marshalled, &object); err != nil {
 		return "", "", err
 	}
@@ -205,7 +211,9 @@ func folderConverter(resource *model.Resource) (string, string, error) {
 		return "", "", err
 	}
 
-	object := folderv1beta1.Folder{}
+	// Intentionally uses the v1beta1 folder schema: convertersMap routes the
+	// folder v1 API version here, matching the imported resource's version.
+	object := folderv1beta1.Folder{} //nolint:staticcheck // intentional v1beta1 schema for folder imports
 	if err = json.Unmarshal(marshalled, &object); err != nil {
 		return "", "", err
 	}

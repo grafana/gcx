@@ -3,7 +3,9 @@ package kg
 import (
 	"context"
 
+	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/spf13/cobra"
 )
 
 // ScopeFlags is an exported alias for scopeFlags, used only in tests.
@@ -105,4 +107,56 @@ func BuildStartingPoints(scope ScopeSummary) []StartingPoint {
 // function for testing.
 func PipelineHealthFromSummary(s DiagnoseSummary) PipelineHealth {
 	return pipelineHealthFromSummary(s)
+}
+
+// --- KG write-flag helper test entry points ---
+
+func ParseEntityRefToken(token string) (EntityRef, error) { return parseEntityRefToken(token) }
+func ParseTTL(s string) (int64, error)                    { return parseTTL(s) }
+func ValidateWritableDomain(d string) error               { return validateWritableDomain(d) }
+func ValidateDomain(d string) error                       { return validateDomain(d) }
+func ValidateIdentifier(s, field string) error            { return validateIdentifier(s, field) }
+
+// FakeWriteLoader is a RESTConfigLoader test double for write-command tests.
+type FakeWriteLoader struct {
+	Cfg    internalconfig.NamespacedRESTConfig
+	CfgErr error
+}
+
+func (f *FakeWriteLoader) LoadGrafanaConfig(_ context.Context) (internalconfig.NamespacedRESTConfig, error) {
+	return f.Cfg, f.CfgErr
+}
+
+// --- KG write-command test entry points ---
+
+func NewEntitiesCreateCommand(loader RESTConfigLoader) *cobra.Command {
+	return newEntitiesCreateCommand(loader)
+}
+
+func NewEntitiesDeleteCommand(loader RESTConfigLoader) *cobra.Command {
+	return newEntitiesDeleteCommand(loader)
+}
+
+func BuildEntityWriteRequest(domain, entityType, name string, scope, property map[string]string, ttl string) (EntityWriteRequest, error) {
+	return buildEntityWriteRequest(domain, entityType, name, scope, property, ttl)
+}
+
+func NewRelationshipsCreateCommand(loader RESTConfigLoader) *cobra.Command {
+	return newRelationshipsCreateCommand(loader)
+}
+
+func NewRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
+	return newRelationshipsDeleteCommand(loader)
+}
+
+func BuildRelationshipWriteRequest(domain, relType, from string, fromScope map[string]string, to string, toScope, property map[string]string, ttl string) (RelationshipWriteRequest, error) {
+	return buildRelationshipWriteRequest(domain, relType, from, fromScope, to, toScope, property, ttl)
+}
+
+// DiscoverEntityScope wraps the unexported discoverEntityScope for testing.
+// It builds a throwaway cobra command to satisfy the context/stderr deps.
+func DiscoverEntityScope(client *Client, entityType, name, domain string, startMs, endMs int64) (map[string]string, error) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	return discoverEntityScope(cmd, client, entityType, name, domain, startMs, endMs)
 }

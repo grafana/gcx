@@ -45,15 +45,19 @@ func NewClientWithHTTPClient(cfg config.NamespacedRESTConfig, httpClient *http.C
 }
 
 // Execute posts body to Grafana's K8s datasource query API, falls back to the
-// legacy /api/ds/query endpoint on 404, and converts non-200 responses to a
-// typed query API error for datasource and operation.
+// legacy /api/ds/query endpoint on any non-200 response (the K8s query API is
+// not enabled everywhere), and converts non-200 responses to a typed query API
+// error for datasource and operation.
 func (c *Client) Execute(ctx context.Context, body []byte, datasource, operation string) ([]byte, error) {
 	statusCode, respBody, err := c.post(ctx, c.k8sQueryPath(), body)
 	if err != nil {
 		return nil, err
 	}
 
-	if statusCode == http.StatusNotFound {
+	// The K8s query API is not enabled everywhere and can return a non-200
+	// (e.g. 403 for some roles); fall back to the universally-available
+	// endpoint. Queries are idempotent reads, so the retry is safe.
+	if statusCode != http.StatusOK {
 		statusCode, respBody, err = c.post(ctx, "/api/ds/query", body)
 		if err != nil {
 			return nil, err

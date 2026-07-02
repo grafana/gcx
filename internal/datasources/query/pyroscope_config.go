@@ -26,12 +26,11 @@ func GetPyroscopeMinStep(ctx context.Context, cfg config.NamespacedRESTConfig, u
 		return 0, fmt.Errorf("failed to get datasource %q: %w", uid, err)
 	}
 
-	jsonData, ok := ds.JSONData.(map[string]any)
-	if !ok || jsonData == nil {
+	if ds.JSONData == nil {
 		return defaultPyroscopeMinStep, nil
 	}
 
-	minStep, _ := jsonData["minStep"].(string)
+	minStep, _ := ds.JSONData["minStep"].(string)
 	if minStep == "" {
 		return defaultPyroscopeMinStep, nil
 	}

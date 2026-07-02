@@ -49,6 +49,13 @@ const (
 	v2TraceConfigPath    = v2ConfigPath + "/trace"
 	v2ProfileConfigPath  = v2ConfigPath + "/profile"
 	v2RelabelRulesPath   = v2ConfigPath + "/relabel-rules"
+
+	// KG Write API (K8s-style, namespaced). %s is the stacks-<id> namespace.
+	kgWriteAPIBase     = "/apis/kg.grafana.com/v1alpha1/namespaces/%s"
+	kgEntitiesPathFmt  = kgWriteAPIBase + "/entities"
+	kgEntityPathFmt    = kgWriteAPIBase + "/entities/%s/%s" // type, name
+	kgRelationshipsFmt = kgWriteAPIBase + "/relationships"
+	kgRelationshipFmt  = kgWriteAPIBase + "/relationships/%s" // type
 )
 
 // RelabelRuleType identifies which Mimir relabel rule group to operate on.
@@ -73,6 +80,7 @@ func (t RelabelRuleType) IsValid() bool {
 type Client struct {
 	httpClient *http.Client
 	host       string
+	namespace  string
 }
 
 // NewClient creates a new KG client from the given REST config.
@@ -81,7 +89,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("kg: failed to create HTTP client: %w", err)
 	}
-	return &Client{httpClient: httpClient, host: cfg.Host}, nil
+	return &Client{httpClient: httpClient, host: cfg.Host, namespace: cfg.Namespace}, nil
 }
 
 // getJSON performs a GET request and decodes the JSON response into v.
@@ -141,6 +149,40 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, v any) e
 		return json.NewDecoder(resp.Body).Decode(v)
 	}
 	return nil
+}
+
+// doJSONStatus performs a JSON request and returns the HTTP status code so
+// callers can distinguish 201-created from 200-updated. Decodes into v if non-nil.
+func (c *Client) doJSONStatus(ctx context.Context, method, path string, body, v any) (int, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return 0, fmt.Errorf("kg: marshal request body: %w", err)
+		}
+		bodyReader = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.host+path, bodyReader)
+	if err != nil {
+		return 0, fmt.Errorf("kg: create request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return resp.StatusCode, readError(resp)
+	}
+	if v != nil {
+		if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
+			return resp.StatusCode, fmt.Errorf("kg: decode response: %w", err)
+		}
+	}
+	return resp.StatusCode, nil
 }
 
 // doYAML performs an HTTP request with a YAML body.
@@ -421,12 +463,15 @@ func timeRangeParams(startMs, endMs int64) url.Values {
 }
 
 // GetEntityInfo retrieves rich entity information by type, name, and optional scope.
-func (c *Client) GetEntityInfo(ctx context.Context, entityType, name string, scope map[string]string, startMs, endMs int64) (*GraphEntity, error) {
+func (c *Client) GetEntityInfo(ctx context.Context, entityType, name string, scope map[string]string, domain string, startMs, endMs int64) (*GraphEntity, error) {
 	q := timeRangeParams(startMs, endMs)
 	q.Set("entity_type", entityType)
 	q.Set("entity_name", name)
 	for k, v := range scope {
 		q.Set(k, v)
+	}
+	if domain != "" {
+		q.Set("domain", domain)
 	}
 	var result GraphEntity
 	if err := c.getJSON(ctx, entitiesPath+"?"+q.Encode(), &result); err != nil {
@@ -437,12 +482,15 @@ func (c *Client) GetEntityInfo(ctx context.Context, entityType, name string, sco
 
 // LookupEntity retrieves entity details from Prometheus alert label params.
 // Returns nil, nil on 204 No Content (entity not found).
-func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scope map[string]string, startMs, endMs int64) (*GraphEntity, error) {
+func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scope map[string]string, domain string, startMs, endMs int64) (*GraphEntity, error) {
 	q := timeRangeParams(startMs, endMs)
 	q.Set("asserts_entity_type", entityType)
 	q.Set("asserts_entity_name", name)
 	for k, v := range scope {
 		q.Set(k, v)
+	}
+	if domain != "" {
+		q.Set("domain", domain)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+entityLookupPath+"?"+q.Encode(), nil)
@@ -732,4 +780,89 @@ func (c *Client) GetRule(ctx context.Context, name string) (*Rule, error) {
 		return nil, fmt.Errorf("kg: rule %q not found", name)
 	}
 	return &f, nil
+}
+
+// ---------------------------------------------------------------------------
+// KG Write API: relationships
+// ---------------------------------------------------------------------------
+
+// UpsertRelationship creates or updates a custom (API-origin) edge between two
+// existing entities. Both endpoints must already exist (404 otherwise).
+func (c *Client) UpsertRelationship(ctx context.Context, req RelationshipWriteRequest) (*RelationshipWriteResponse, error) {
+	path := fmt.Sprintf(kgRelationshipsFmt, url.PathEscape(c.namespace))
+	var resp RelationshipWriteResponse
+	if _, err := c.doJSONStatus(ctx, http.MethodPost, path, req, &resp); err != nil {
+		return nil, fmt.Errorf("kg: upsert relationship: %w", err)
+	}
+	return &resp, nil
+}
+
+// DeleteRelationship deletes a custom edge of relType between from and to.
+// The endpoint coordinates travel as from.*/to.* query params.
+func (c *Client) DeleteRelationship(ctx context.Context, relType string, from, to EntityRef) error {
+	path := fmt.Sprintf(kgRelationshipFmt, url.PathEscape(c.namespace), url.PathEscape(relType))
+	q := url.Values{}
+	addRef := func(prefix string, ref EntityRef) {
+		q.Set(prefix+".domain", ref.Domain)
+		q.Set(prefix+".type", ref.Type)
+		q.Set(prefix+".name", ref.Name)
+		for k, v := range ref.Scope {
+			q.Set(prefix+".scope["+k+"]", v)
+		}
+	}
+	addRef("from", from)
+	addRef("to", to)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.host+path+"?"+q.Encode(), nil)
+	if err != nil {
+		return fmt.Errorf("kg: create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return readError(resp)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// KG Write API: entities
+// ---------------------------------------------------------------------------
+
+// UpsertEntity creates or updates a custom (API-origin) entity. The returned
+// bool is true when the entity was created (HTTP 201), false when updated (200).
+func (c *Client) UpsertEntity(ctx context.Context, req EntityWriteRequest) (*EntityWriteResponse, bool, error) {
+	path := fmt.Sprintf(kgEntitiesPathFmt, url.PathEscape(c.namespace))
+	var resp EntityWriteResponse
+	status, err := c.doJSONStatus(ctx, http.MethodPost, path, req, &resp)
+	if err != nil {
+		return nil, false, fmt.Errorf("kg: upsert entity: %w", err)
+	}
+	return &resp, status == http.StatusCreated, nil
+}
+
+// DeleteEntity deletes a custom entity identified by (domain, type, name, scope).
+// Scope is identity-significant and must match the value used at create.
+func (c *Client) DeleteEntity(ctx context.Context, domain, entityType, name string, scope map[string]string) error {
+	path := fmt.Sprintf(kgEntityPathFmt, url.PathEscape(c.namespace), url.PathEscape(entityType), url.PathEscape(name))
+	q := url.Values{}
+	q.Set("domain", domain)
+	for k, v := range scope {
+		q.Set("scope["+k+"]", v)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.host+path+"?"+q.Encode(), nil)
+	if err != nil {
+		return fmt.Errorf("kg: create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return readError(resp)
+	}
+	return nil
 }

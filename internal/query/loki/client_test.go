@@ -41,10 +41,40 @@ func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 	}
 }
 
+func TestQuery_FallsBackOn403(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path != "/api/ds/query" {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message":"forbidden"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "default",
+	}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	_, err = client.Query(context.Background(), "loki-uid", loki.QueryRequest{Query: `{job="grafana"}`})
+	require.NoError(t, err)
+
+	require.Len(t, paths, 2)
+	assert.Contains(t, paths[0], "/apis/query.grafana.app/v0alpha1/namespaces/default/query")
+	assert.Equal(t, "/api/ds/query", paths[1])
+}
+
 func TestQuery_ReturnsTypedAPIErrorForGrafanaEnvelope(t *testing.T) {
+	// A 400 from the k8s query API now triggers the fallback, so both endpoints
+	// return the same envelope; the typed error from the final response surfaces.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Contains(t, r.URL.Path, "/apis/query.grafana.app/v0alpha1/namespaces/default/query")
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"results":{"A":{"error":"parse error at line 1, col 12: syntax error: unexpected IDENTIFIER, expecting STRING","errorSource":"downstream","status":400}}}`))
 	}))

@@ -586,9 +586,62 @@ func TestClient_LookupEntity_NotFound(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server)
-	entity, err := client.LookupEntity(t.Context(), "Service", "nonexistent", nil, 0, 0)
+	entity, err := client.LookupEntity(t.Context(), "Service", "nonexistent", nil, "", 0, 0)
 	require.NoError(t, err)
 	assert.Nil(t, entity)
+}
+
+func TestClient_LookupEntity_SendsDomain(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "myapp", r.URL.Query().Get("domain"))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	client := newTestClient(t, server)
+	_, err := client.LookupEntity(t.Context(), "Service", "checkout", nil, "myapp", 0, 0)
+	require.NoError(t, err)
+}
+
+// When a domain filter is set and the domain-honoring LookupEntity finds no
+// match, discoverEntityScope must NOT fall back to the domain-blind search
+// (which could surface an entity from another domain) — it returns "not found"
+// instead. Asserted by failing the test if the search endpoint is ever called.
+func TestDiscoverEntityScope_DomainSet_NoSearchFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/v1/search") {
+			t.Errorf("search fallback must not run when --domain is set; got request to %s", r.URL.Path)
+		}
+		// entity lookup: no match in the requested domain.
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	scope, err := kg.DiscoverEntityScope(client, "Service", "checkout", "myapp", 0, 0)
+	require.NoError(t, err)
+	assert.Nil(t, scope)
+}
+
+// Without a domain filter, discoverEntityScope still falls back to a name-exact
+// search and returns the single match's scope.
+func TestDiscoverEntityScope_NoDomain_SearchFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/v1/search") {
+			writeJSON(w, map[string]any{"data": map[string]any{
+				"entities": []kg.SearchResult{{Type: "Service", Name: "checkout", Scope: map[string]string{"env": "prod"}}},
+				"lastPage": true,
+			}})
+			return
+		}
+		// entity lookup: no direct match, force the search fallback.
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	scope, err := kg.DiscoverEntityScope(client, "Service", "checkout", "", 0, 0)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"env": "prod"}, scope)
 }
 
 func TestClient_ListModelRuleNames(t *testing.T) {
@@ -696,4 +749,131 @@ func TestClient_DeleteModelRules(t *testing.T) {
 	client := newTestClient(t, server)
 	require.NoError(t, client.DeleteModelRules(t.Context(), "my-rules"))
 	assert.True(t, called)
+}
+
+func TestClient_UpsertEntity(t *testing.T) {
+	tests := []struct {
+		name        string
+		status      int
+		wantCreated bool
+		wantErr     bool
+	}{
+		{name: "201 created", status: http.StatusCreated, wantCreated: true},
+		{name: "200 updated", status: http.StatusOK, wantCreated: false},
+		{name: "409 conflict", status: http.StatusConflict, wantErr: true},
+		{name: "422 validation", status: http.StatusUnprocessableEntity, wantErr: true},
+		{name: "500 server", status: http.StatusInternalServerError, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Contains(t, r.URL.Path, "/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/entities")
+				var got kg.EntityWriteRequest
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+				assert.Equal(t, "myapp", got.Domain)
+				if tt.status >= 400 {
+					w.WriteHeader(tt.status)
+					writeJSON(w, map[string]string{"message": "boom"})
+					return
+				}
+				w.WriteHeader(tt.status)
+				writeJSON(w, kg.EntityWriteResponse{Domain: "myapp", Type: "Service", Name: "checkout"})
+			}))
+			defer server.Close()
+			client := newTestClient(t, server)
+			resp, created, err := client.UpsertEntity(t.Context(), kg.EntityWriteRequest{
+				Domain: "myapp", Type: "Service", Name: "checkout", TTLSeconds: new(int64(-1)),
+			})
+			if tt.wantErr {
+				require.Error(t, err)
+				var apiErr *kg.APIError
+				require.ErrorAs(t, err, &apiErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCreated, created)
+			assert.Equal(t, "checkout", resp.Name)
+		})
+	}
+}
+
+func TestClient_DeleteEntity(t *testing.T) {
+	t.Run("sends domain and scope query params", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodDelete, r.Method)
+			assert.Contains(t, r.URL.Path, "/namespaces/stack-123/entities/Service/checkout")
+			assert.Equal(t, "myapp", r.URL.Query().Get("domain"))
+			assert.Equal(t, "prod", r.URL.Query().Get("scope[env]"))
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer server.Close()
+		client := newTestClient(t, server)
+		require.NoError(t, client.DeleteEntity(t.Context(), "myapp", "Service", "checkout", map[string]string{"env": "prod"}))
+	})
+	t.Run("404 surfaces APIError", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+		client := newTestClient(t, server)
+		err := client.DeleteEntity(t.Context(), "myapp", "Service", "missing", nil)
+		var apiErr *kg.APIError
+		require.ErrorAs(t, err, &apiErr)
+		assert.Equal(t, http.StatusNotFound, apiErr.StatusCode)
+	})
+}
+
+func TestClient_DeleteRelationship(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Contains(t, r.URL.Path, "/namespaces/stack-123/relationships/CALLS")
+		q := r.URL.Query()
+		assert.Equal(t, "myapp", q.Get("from.domain"))
+		assert.Equal(t, "Service", q.Get("from.type"))
+		assert.Equal(t, "checkout", q.Get("from.name"))
+		assert.Equal(t, "prod", q.Get("from.scope[env]"))
+		assert.Equal(t, "cart", q.Get("to.name"))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	client := newTestClient(t, server)
+	err := client.DeleteRelationship(t.Context(), "CALLS",
+		kg.EntityRef{Domain: "myapp", Type: "Service", Name: "checkout", Scope: map[string]string{"env": "prod"}},
+		kg.EntityRef{Domain: "myapp", Type: "Service", Name: "cart"})
+	require.NoError(t, err)
+}
+
+func TestClient_UpsertRelationship(t *testing.T) {
+	t.Run("200 written", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Contains(t, r.URL.Path, "/namespaces/stack-123/relationships")
+			var got kg.RelationshipWriteRequest
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+			assert.Equal(t, "CALLS", got.Type)
+			assert.Equal(t, "checkout", got.From.Name)
+			writeJSON(w, kg.RelationshipWriteResponse{Type: "CALLS"})
+		}))
+		defer server.Close()
+		client := newTestClient(t, server)
+		resp, err := client.UpsertRelationship(t.Context(), kg.RelationshipWriteRequest{
+			Domain: "myapp", Type: "CALLS",
+			From:       kg.EntityRef{Domain: "myapp", Type: "Service", Name: "checkout"},
+			To:         kg.EntityRef{Domain: "myapp", Type: "Service", Name: "cart"},
+			TTLSeconds: new(int64(-1)),
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "CALLS", resp.Type)
+	})
+	t.Run("404 from/to not found", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+		client := newTestClient(t, server)
+		_, err := client.UpsertRelationship(t.Context(), kg.RelationshipWriteRequest{Domain: "myapp", Type: "CALLS", TTLSeconds: new(int64(-1))})
+		var apiErr *kg.APIError
+		require.ErrorAs(t, err, &apiErr)
+	})
 }

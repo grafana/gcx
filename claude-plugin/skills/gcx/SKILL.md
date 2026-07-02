@@ -137,7 +137,7 @@ All resource commands accept selectors: `gcx resources get dashboards`,
 ## Datasource Queries
 
 The `gcx datasources` group provides typed query interfaces:
-- `list` / `get` — discover available datasources
+- `list` / `get` — discover available datasources (`get -o yaml` emits an apply-ready manifest)
 - `prometheus` — PromQL queries (query, labels, metadata, targets)
 - `loki` — LogQL queries (query, labels, series)
 - `pyroscope` — profiling queries
@@ -145,6 +145,21 @@ The `gcx datasources` group provides typed query interfaces:
 - `generic` — auto-detect datasource type
 
 Use `gcx datasources <type> --help` to discover type-specific flags.
+
+### Datasource lifecycle (declarative CRUD)
+
+Manage datasource instances with Kubernetes-style manifests (file or stdin):
+- `create -f FILE` / `update UID -f FILE` — apply a manifest; `--dry-run` previews
+  a secret-redacted diff. Secrets go in the top-level `secure` block via
+  `{create: <value>}`, `{fromEnv: <VAR>}`, or `{fromFile: <path>}` — never on argv.
+- `delete UID...` — prompts unless `--force`/`--yes` (auto-approved in agent mode);
+  batch-safe with partial-failure exit code 4.
+- `health [UID]` — exit 0 healthy, 4 unhealthy (resource failure), 1/2/3 command failure.
+- `schemas get --type <plugin>` — plugin configuration schema (when the server
+  serves the datasource app-platform API).
+
+Custom HTTP headers use the flat convention: name in `jsonData.httpHeaderName{N}`,
+value (secret) in `secure.httpHeaderValue{N}`.
 
 ### Tempo LLM-friendly output for agents
 
