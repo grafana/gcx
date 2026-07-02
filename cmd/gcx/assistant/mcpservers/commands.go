@@ -138,6 +138,10 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+func (o *getOpts) Validate() error {
+	return o.IO.Validate()
+}
+
 func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
@@ -145,7 +149,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Get an Assistant MCP server.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			client, err := newClient(cmd, loader)
@@ -181,7 +185,7 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 	bindInputFlags(flags, &o.File, &o.Name, &o.Description, &o.URL, &o.Enabled, &o.Disabled, &o.Scope, &o.Headers, &o.Applications)
-	flags.BoolVar(&o.IfNotExists, "if-not-exists", false, "Return an existing server with the same name instead of failing")
+	flags.BoolVar(&o.IfNotExists, "if-not-exists", false, "Return an existing server with the same name, URL, and scope instead of failing")
 }
 
 func (o *createOpts) Validate() error {
@@ -247,7 +251,7 @@ reports that OAuth is required.`,
 				return err
 			}
 			if opts.IfNotExists {
-				result, found, err := existingResult(cmd, client, input.Name)
+				result, found, err := existingResult(cmd, client, input)
 				if err != nil {
 					return err
 				}
@@ -289,6 +293,10 @@ func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	bindInputFlags(flags, &o.File, &o.Name, &o.Description, &o.URL, &o.Enabled, &o.Disabled, &o.Scope, &o.Headers, &o.Applications)
 }
 
+func (o *updateOpts) Validate() error {
+	return o.IO.Validate()
+}
+
 func (o *updateOpts) buildInput() (assistantmcp.ServerInput, error) {
 	return buildInput(inputOptions{
 		File:         o.File,
@@ -319,7 +327,7 @@ authentication header.`,
   gcx assistant mcp-servers update LocalTools --scope tenant --header "X-API-Key=<token>"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			input, err := opts.buildInput()
@@ -356,6 +364,10 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Delete without confirmation")
 }
 
+func (o *deleteOpts) Validate() error {
+	return o.IO.Validate()
+}
+
 func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
@@ -368,7 +380,7 @@ prompt. GCX_AUTO_APPROVE also bypasses the prompt for non-interactive workflows,
 while agent mode still requires explicit --force for destructive operations.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
@@ -508,8 +520,8 @@ func maybeAttachAuthURL(cmd *cobra.Command, client *assistantmcp.Client, result 
 	return nil
 }
 
-func existingResult(cmd *cobra.Command, client *assistantmcp.Client, name string) (*assistantmcp.MutationResult, bool, error) {
-	existing, err := client.Get(cmd.Context(), name)
+func existingResult(cmd *cobra.Command, client *assistantmcp.Client, input assistantmcp.ServerInput) (*assistantmcp.MutationResult, bool, error) {
+	existing, err := client.Find(cmd.Context(), input)
 	if err != nil {
 		if errors.Is(err, assistantmcp.ErrNotFound) {
 			return nil, false, nil

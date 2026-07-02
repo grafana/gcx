@@ -141,11 +141,11 @@ type OAuthResult struct {
 func ParseHeader(value string) (Header, error) {
 	name, headerValue, ok := strings.Cut(value, "=")
 	if !ok {
-		return Header{}, errors.New("header must be NAME=VALUE")
+		return Header{}, fmt.Errorf("--header %q must be NAME=VALUE", value)
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return Header{}, errors.New("header name is required")
+		return Header{}, fmt.Errorf("--header %q name is required", value)
 	}
 	return Header{Name: name, Value: headerValue}, nil
 }

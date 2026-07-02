@@ -2,15 +2,22 @@ package mcpservers //nolint:testpackage
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 func TestCreateOptsValidateRequiresNameAndURL(t *testing.T) {
@@ -209,4 +216,56 @@ func TestMaybeOpenAuthURLWarnsWhenBrowserOpenFails(t *testing.T) {
 	assert.Contains(t, stderr.String(), "Open the OAuth authorization URL manually")
 	assert.Contains(t, stderr.String(), "https://example.com/oauth")
 	assert.Contains(t, stderr.String(), "browser unavailable")
+}
+
+func newExistingResultTestClient(t *testing.T, integrations []map[string]any) *assistantmcp.Client {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{"integrations": integrations},
+		}); err != nil {
+			t.Errorf("failed to encode integrations response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "default",
+	}
+	base, err := assistanthttp.NewClient(cfg)
+	require.NoError(t, err)
+	return assistantmcp.NewClient(base)
+}
+
+func TestExistingResultMatchesNameURLAndScope(t *testing.T) {
+	client := newExistingResultTestClient(t, []map[string]any{
+		{"id": "mcp-tenant", "name": "GitHub", "type": "mcp", "enabled": true, "scope": "tenant",
+			"configuration": map[string]any{"url": "https://mcp.example.com/mcp"}},
+	})
+	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
+
+	// Same name, different scope: not the requested server, create must proceed.
+	_, found, err := existingResult(cmd, client, assistantmcp.ServerInput{
+		Name: "GitHub", URL: "https://mcp.example.com/mcp", Scope: "user",
+	})
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	// Same name, different URL: not the requested server either.
+	_, found, err = existingResult(cmd, client, assistantmcp.ServerInput{
+		Name: "GitHub", URL: "https://other.example.com/mcp", Scope: "tenant",
+	})
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	result, found, err := existingResult(cmd, client, assistantmcp.ServerInput{
+		Name: "GitHub", URL: "https://mcp.example.com/mcp", Scope: "tenant",
+	})
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "unchanged", result.Operation)
+	assert.Equal(t, "mcp-tenant", result.Server.ID)
 }

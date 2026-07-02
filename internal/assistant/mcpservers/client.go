@@ -143,7 +143,7 @@ func (c *Client) Create(ctx context.Context, input ServerInput) (*MutationResult
 	}
 	result.Operation = "created"
 	if result.Server == nil {
-		server, getErr := c.readBackCreated(ctx, input)
+		server, getErr := c.Find(ctx, input)
 		if getErr != nil {
 			return nil, fmt.Errorf("failed to read back created MCP server: %w", getErr)
 		}
@@ -152,12 +152,13 @@ func (c *Client) Create(ctx context.Context, input ServerInput) (*MutationResult
 	return result, nil
 }
 
-// readBackCreated locates a just-created server when the create response omits
-// the integration payload. It matches on name + URL + scope rather than name
-// alone, so a user-scoped and tenant-scoped server sharing a name do not
-// collide (which would otherwise surface as AmbiguousReferenceError on a
-// successful create).
-func (c *Client) readBackCreated(ctx context.Context, input ServerInput) (*Server, error) {
+// Find locates a server matching the input's name, URL, and scope. It matches
+// on all three fields rather than name alone, so a user-scoped and
+// tenant-scoped server sharing a name do not collide. Used to read back a
+// just-created server when the create response omits the integration payload,
+// and by --if-not-exists to decide whether the requested server already
+// exists. Returns ErrNotFound when no server matches.
+func (c *Client) Find(ctx context.Context, input ServerInput) (*Server, error) {
 	servers, err := c.List(ctx, ListOptions{})
 	if err != nil {
 		return nil, err

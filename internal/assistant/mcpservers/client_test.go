@@ -595,6 +595,42 @@ func TestInitiateOAuthPostsIntegrationIDAndScope(t *testing.T) {
 func TestParseHeaderRejectsInvalidValue(t *testing.T) {
 	_, err := mcpservers.ParseHeader("Authorization")
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--header")
+
+	_, err = mcpservers.ParseHeader("=value")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--header")
+}
+
+func TestFindMatchesNameURLAndScope(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/plugins/grafana-assistant-app/resources/api/v1/integrations", r.URL.Path)
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"integrations": []map[string]any{
+					{"id": "mcp-tenant", "name": "Remote MCP", "type": "mcp", "enabled": true, "scope": "tenant",
+						"configuration": map[string]any{"url": "https://mcp.example.com/mcp"}},
+				},
+			},
+		})
+	}))
+
+	_, err := client.Find(t.Context(), mcpservers.ServerInput{
+		Name: "Remote MCP", URL: "https://mcp.example.com/mcp", Scope: "user",
+	})
+	require.ErrorIs(t, err, mcpservers.ErrNotFound, "same name in a different scope must not match")
+
+	_, err = client.Find(t.Context(), mcpservers.ServerInput{
+		Name: "Remote MCP", URL: "https://other.example.com/mcp", Scope: "tenant",
+	})
+	require.ErrorIs(t, err, mcpservers.ErrNotFound, "same name at a different URL must not match")
+
+	server, err := client.Find(t.Context(), mcpservers.ServerInput{
+		Name: "Remote MCP", URL: "https://mcp.example.com/mcp", Scope: "tenant",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "mcp-tenant", server.ID)
 }
 
 func readJSONRequest(t *testing.T, r *http.Request, dst any) bool {

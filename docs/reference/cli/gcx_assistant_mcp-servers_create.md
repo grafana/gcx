@@ -37,7 +37,7 @@ gcx assistant mcp-servers create [flags]
   -f, --file string               Read MCP server input from a YAML or JSON file
       --header stringArray        Custom header as NAME=VALUE (repeatable; tenant scope requires an auth header)
   -h, --help                      help for create
-      --if-not-exists             Return an existing server with the same name instead of failing
+      --if-not-exists             Return an existing server with the same name, URL, and scope instead of failing
       --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string               MCP server display name
