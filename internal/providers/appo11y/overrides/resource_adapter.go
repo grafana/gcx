@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	k8srest "k8s.io/client-go/rest"
 )
 
 const (
@@ -142,9 +143,9 @@ type client struct {
 }
 
 func newClient(cfg internalconfig.NamespacedRESTConfig) (*client, error) {
-	hc, err := providers.NewHTTPClient(cfg)
+	hc, err := k8srest.HTTPClientFor(&cfg.Config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 	return &client{host: cfg.Host, httpClient: hc}, nil
 }
@@ -224,5 +225,5 @@ func checkStatus(resp *http.Response) error {
 		return errors.New("concurrent modification conflict: overrides were modified since last read — re-fetch and retry")
 	}
 
-	return providers.ParseErrorBody(resp)
+	return providers.HandleErrorResponse(resp)
 }

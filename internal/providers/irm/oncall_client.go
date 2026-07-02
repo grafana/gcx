@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
+	"k8s.io/client-go/rest"
 )
 
 // Internal API paths (relative to basePath, which is the plugin resources root).
@@ -53,12 +54,11 @@ type OnCallClient struct {
 }
 
 // NewOnCallClient creates a new OnCall client from the given REST config.
-// It uses rest.HTTPClientFor (via providers.NewHTTPClient) to get a client
-// with Bearer token auth via the k8s transport.
+// It uses rest.HTTPClientFor to get a client with Bearer token auth via the k8s transport.
 func NewOnCallClient(cfg config.NamespacedRESTConfig) (*OnCallClient, error) {
-	httpClient, err := providers.NewHTTPClient(cfg)
+	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
-		return nil, fmt.Errorf("irm oncall: %w", err)
+		return nil, fmt.Errorf("irm oncall: create http client: %w", err)
 	}
 	return &OnCallClient{HTTPClient: httpClient, Host: cfg.Host}, nil
 }
@@ -103,7 +103,7 @@ func iterResources[T any](ctx context.Context, c *OnCallClient, path, resourceTy
 			}
 
 			if resp.StatusCode != http.StatusOK {
-				err := providers.ParseErrorBody(resp)
+				err := providers.HandleErrorResponse(resp)
 				resp.Body.Close()
 				var z T
 				yield(z, err)
@@ -218,7 +218,7 @@ func getResource[T any](ctx context.Context, c *OnCallClient, basePath, id, reso
 		return nil, fmt.Errorf("irm: %s %q not found", resourceType, id)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result T
@@ -241,7 +241,7 @@ func createResource[In any, Out any](ctx context.Context, c *OnCallClient, path 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result Out
@@ -264,7 +264,7 @@ func updateResource[In any, Out any](ctx context.Context, c *OnCallClient, baseP
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result Out
@@ -281,7 +281,7 @@ func deleteResource(ctx context.Context, c *OnCallClient, basePath, id, resource
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return providers.ParseErrorBody(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 	return nil
 }
@@ -401,7 +401,7 @@ func (c *OnCallClient) ListFilterEvents(ctx context.Context, scheduleID, userTZ,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result FilterEventsResponse
@@ -558,7 +558,7 @@ func (c *OnCallClient) SilenceAlertGroup(ctx context.Context, id string, delaySe
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return providers.ParseErrorBody(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 	return nil
 }
@@ -582,7 +582,7 @@ func (c *OnCallClient) alertGroupAction(ctx context.Context, id, action string) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return providers.ParseErrorBody(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 	return nil
 }
@@ -604,7 +604,7 @@ func (c *OnCallClient) GetCurrentUser(ctx context.Context) (*User, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 	var user User
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
@@ -659,7 +659,7 @@ func (c *OnCallClient) GetOrganization(ctx context.Context) (*Organization, erro
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 	var org Organization
 	if err := json.NewDecoder(resp.Body).Decode(&org); err != nil {
@@ -727,7 +727,7 @@ func (c *OnCallClient) TakeShiftSwap(ctx context.Context, id string, input TakeS
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 	var result ShiftSwap
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {

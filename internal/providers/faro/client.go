@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/grafana-app-sdk/logging"
+	"k8s.io/client-go/rest"
 )
 
 const (
@@ -48,9 +48,9 @@ type Client struct {
 
 // NewClient creates a new Faro client from the given REST config.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := providers.NewHTTPClient(cfg)
+	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
-		return nil, fmt.Errorf("faro: %w", err)
+		return nil, fmt.Errorf("faro: failed to create HTTP client: %w", err)
 	}
 	return &Client{httpClient: httpClient, host: cfg.Host}, nil
 }

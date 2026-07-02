@@ -55,7 +55,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, in, out any) e
 	case resp.StatusCode == http.StatusNotFound:
 		return fmt.Errorf("%s %s: %w", method, path, ErrProvisioningNotFound)
 	case resp.StatusCode >= 400:
-		return providers.ParseErrorBody(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 
 	if out == nil {
@@ -93,7 +93,7 @@ func (c *Client) doRaw(ctx context.Context, path string) ([]byte, error) {
 		return nil, fmt.Errorf("GET %s: %w", path, ErrProvisioningNotFound)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	return io.ReadAll(resp.Body)

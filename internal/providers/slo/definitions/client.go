@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
+	"k8s.io/client-go/rest"
 )
 
 // ErrNotFound is returned when a requested SLO does not exist (HTTP 404).
@@ -29,9 +30,9 @@ type Client struct {
 
 // NewClient creates a new SLO definitions client.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := providers.NewHTTPClient(cfg)
+	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
 	return &Client{
@@ -49,7 +50,7 @@ func (c *Client) List(ctx context.Context) ([]Slo, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var listResp SLOListResponse
@@ -77,7 +78,7 @@ func (c *Client) Get(ctx context.Context, uuid string) (*Slo, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var slo Slo
@@ -102,7 +103,7 @@ func (c *Client) Create(ctx context.Context, slo *Slo) (*SLOCreateResponse, erro
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var createResp SLOCreateResponse
@@ -127,7 +128,7 @@ func (c *Client) Update(ctx context.Context, uuid string, slo *Slo) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
-		return providers.ParseErrorBody(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 
 	return nil
@@ -142,7 +143,7 @@ func (c *Client) Delete(ctx context.Context, uuid string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return providers.ParseErrorBody(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 
 	return nil

@@ -55,7 +55,7 @@ func (c *OnCallClient) GetAlertGroupRich(ctx context.Context, id string) (*Alert
 		return nil, fmt.Errorf("irm: alert group %q not found", id)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -187,7 +187,7 @@ func (c *OnCallClient) GetAlertRich(ctx context.Context, id string) (*alertAPI, 
 		return nil, nil, fmt.Errorf("irm: alert %q not found", id)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, providers.ParseErrorBody(resp)
+		return nil, nil, providers.HandleErrorResponse(resp)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -290,7 +290,7 @@ func (c *OnCallClient) listAlertIDs(ctx context.Context, alertGroupID string, li
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, 0, providers.ParseErrorBody(resp)
+		return nil, 0, providers.HandleErrorResponse(resp)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

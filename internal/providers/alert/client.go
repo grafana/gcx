@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
+	"k8s.io/client-go/rest"
 )
 
 // ErrNotFound is returned when a requested alert rule or group does not exist.
@@ -29,9 +30,9 @@ type Client struct {
 
 // NewClient creates a new alert client.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := providers.NewHTTPClient(cfg)
+	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 	return &Client{httpClient: httpClient, host: cfg.Host}, nil
 }
@@ -130,7 +131,7 @@ func (c *Client) doRequest(ctx context.Context, path string) (*RulesResponse, er
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, providers.ParseErrorBody(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result RulesResponse
