@@ -390,25 +390,15 @@ func decodeServer(r io.Reader) (*Server, error) {
 func decodeMutation(r io.Reader) (*MutationResult, error) {
 	var envelope struct {
 		Data struct {
-			Integration      rawIntegration `json:"integration"`
-			Server           rawIntegration `json:"server"`
-			AuthURL          string         `json:"authUrl"`
-			AuthorizationURL string         `json:"authorizationUrl"`
-			OAuthURL         string         `json:"oauthUrl"`
-			ConnectURL       string         `json:"connectUrl"`
+			Integration rawIntegration `json:"integration"`
+			AuthURL     string         `json:"authUrl"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(r).Decode(&envelope); err != nil {
 		return nil, err
 	}
-	raw := envelope.Data.Integration
-	if raw.ID == "" && envelope.Data.Server.ID != "" {
-		raw = envelope.Data.Server
-	}
-	result := &MutationResult{
-		AuthURL: firstNonEmpty(envelope.Data.AuthURL, envelope.Data.AuthorizationURL, envelope.Data.OAuthURL, envelope.Data.ConnectURL),
-	}
-	if raw.ID != "" || raw.Name != "" {
+	result := &MutationResult{AuthURL: envelope.Data.AuthURL}
+	if raw := envelope.Data.Integration; raw.ID != "" || raw.Name != "" {
 		server := raw.server()
 		result.Server = &server
 	}
@@ -475,13 +465,4 @@ func stringValue(values map[string]any, key string) string {
 	}
 	s, _ := v.(string)
 	return s
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }

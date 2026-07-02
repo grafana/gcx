@@ -168,23 +168,16 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 }
 
 type createOpts struct {
-	IO           cmdio.Options
-	File         string
-	Name         string
-	Description  string
-	URL          string
-	Enabled      bool
-	Disabled     bool
-	Scope        string
-	Headers      []string
-	Applications []string
-	IfNotExists  bool
+	inputFlags
+
+	IO          cmdio.Options
+	IfNotExists bool
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
-	bindInputFlags(flags, &o.File, &o.Name, &o.Description, &o.URL, &o.Enabled, &o.Disabled, &o.Scope, &o.Headers, &o.Applications)
+	o.bind(flags)
 	flags.BoolVar(&o.IfNotExists, "if-not-exists", false, "Return an existing server with the same name, URL, and scope instead of failing")
 }
 
@@ -200,20 +193,6 @@ func (o *createOpts) Validate() error {
 		return assistantmcp.ValidateTenantAuthHeaders(input.Headers)
 	}
 	return nil
-}
-
-func (o *createOpts) buildInput() (assistantmcp.ServerInput, error) {
-	return buildInput(inputOptions{
-		File:         o.File,
-		Name:         o.Name,
-		Description:  o.Description,
-		URL:          o.URL,
-		Enabled:      o.Enabled,
-		Disabled:     o.Disabled,
-		Scope:        o.Scope,
-		Headers:      o.Headers,
-		Applications: o.Applications,
-	})
 }
 
 func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -275,40 +254,19 @@ reports that OAuth is required.`,
 }
 
 type updateOpts struct {
-	IO           cmdio.Options
-	File         string
-	Name         string
-	Description  string
-	URL          string
-	Enabled      bool
-	Disabled     bool
-	Scope        string
-	Headers      []string
-	Applications []string
+	inputFlags
+
+	IO cmdio.Options
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
-	bindInputFlags(flags, &o.File, &o.Name, &o.Description, &o.URL, &o.Enabled, &o.Disabled, &o.Scope, &o.Headers, &o.Applications)
+	o.bind(flags)
 }
 
 func (o *updateOpts) Validate() error {
 	return o.IO.Validate()
-}
-
-func (o *updateOpts) buildInput() (assistantmcp.ServerInput, error) {
-	return buildInput(inputOptions{
-		File:         o.File,
-		Name:         o.Name,
-		Description:  o.Description,
-		URL:          o.URL,
-		Enabled:      o.Enabled,
-		Disabled:     o.Disabled,
-		Scope:        o.Scope,
-		Headers:      o.Headers,
-		Applications: o.Applications,
-	})
 }
 
 func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -406,7 +364,10 @@ while agent mode still requires explicit --force for destructive operations.`,
 	return cmd
 }
 
-type inputOptions struct {
+// inputFlags holds the flags shared by create and update for building a
+// ServerInput. Both commands embed it so flag wiring and merge logic live in
+// one place.
+type inputFlags struct {
 	File         string
 	Name         string
 	Description  string
@@ -418,43 +379,55 @@ type inputOptions struct {
 	Applications []string
 }
 
-func buildInput(opts inputOptions) (assistantmcp.ServerInput, error) {
+func (in *inputFlags) bind(flags *pflag.FlagSet) {
+	flags.StringVarP(&in.File, "file", "f", "", "Read MCP server input from a YAML or JSON file")
+	flags.StringVar(&in.Name, "name", "", "MCP server display name")
+	flags.StringVar(&in.Description, "description", "", "MCP server description")
+	flags.StringVar(&in.URL, "url", "", "Remote MCP server URL")
+	flags.BoolVar(&in.Enabled, "enabled", false, "Enable the MCP server")
+	flags.BoolVar(&in.Disabled, "disabled", false, "Disable the MCP server")
+	flags.StringVar(&in.Scope, "scope", "", "MCP server scope: user or tenant")
+	flags.StringArrayVar(&in.Headers, "header", nil, "Custom header as NAME=VALUE (repeatable; tenant scope requires an auth header)")
+	flags.StringArrayVar(&in.Applications, "application", nil, "Assistant application allowed to use this server (repeatable)")
+}
+
+func (in *inputFlags) buildInput() (assistantmcp.ServerInput, error) {
 	input := assistantmcp.ServerInput{}
-	if opts.Enabled && opts.Disabled {
+	if in.Enabled && in.Disabled {
 		return input, errors.New("cannot use both --enabled and --disabled")
 	}
-	if opts.File != "" {
-		loaded, err := loadInputFile(opts.File)
+	if in.File != "" {
+		loaded, err := loadInputFile(in.File)
 		if err != nil {
 			return input, err
 		}
 		input = loaded
 	}
-	if opts.Name != "" {
-		input.Name = opts.Name
+	if in.Name != "" {
+		input.Name = in.Name
 	}
-	if opts.Description != "" {
-		input.Description = opts.Description
+	if in.Description != "" {
+		input.Description = in.Description
 	}
-	if opts.URL != "" {
-		input.URL = opts.URL
+	if in.URL != "" {
+		input.URL = in.URL
 	}
-	if opts.Scope != "" {
-		input.Scope = opts.Scope
+	if in.Scope != "" {
+		input.Scope = in.Scope
 	}
-	if len(opts.Applications) > 0 {
-		input.Applications = opts.Applications
+	if len(in.Applications) > 0 {
+		input.Applications = in.Applications
 	}
-	if opts.Disabled {
+	if in.Disabled {
 		enabled := false
 		input.Enabled = &enabled
-	} else if opts.Enabled {
+	} else if in.Enabled {
 		enabled := true
 		input.Enabled = &enabled
 	}
-	if len(opts.Headers) > 0 {
-		headers := make([]assistantmcp.Header, 0, len(opts.Headers))
-		for _, raw := range opts.Headers {
+	if len(in.Headers) > 0 {
+		headers := make([]assistantmcp.Header, 0, len(in.Headers))
+		for _, raw := range in.Headers {
 			header, err := assistantmcp.ParseHeader(raw)
 			if err != nil {
 				return input, err
@@ -464,18 +437,6 @@ func buildInput(opts inputOptions) (assistantmcp.ServerInput, error) {
 		input.Headers = headers
 	}
 	return input, nil
-}
-
-func bindInputFlags(flags *pflag.FlagSet, file, name, description, serverURL *string, enabled, disabled *bool, scope *string, headers, applications *[]string) {
-	flags.StringVarP(file, "file", "f", "", "Read MCP server input from a YAML or JSON file")
-	flags.StringVar(name, "name", "", "MCP server display name")
-	flags.StringVar(description, "description", "", "MCP server description")
-	flags.StringVar(serverURL, "url", "", "Remote MCP server URL")
-	flags.BoolVar(enabled, "enabled", false, "Enable the MCP server")
-	flags.BoolVar(disabled, "disabled", false, "Disable the MCP server")
-	flags.StringVar(scope, "scope", "", "MCP server scope: user or tenant")
-	flags.StringArrayVar(headers, "header", nil, "Custom header as NAME=VALUE (repeatable; tenant scope requires an auth header)")
-	flags.StringArrayVar(applications, "application", nil, "Assistant application allowed to use this server (repeatable)")
 }
 
 func loadInputFile(path string) (assistantmcp.ServerInput, error) {

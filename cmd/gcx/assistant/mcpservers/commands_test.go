@@ -65,11 +65,11 @@ func TestListAndCreateRejectPositionalArgs(t *testing.T) {
 }
 
 func TestCreateOptsBuildInputMergesHeaders(t *testing.T) {
-	opts := &createOpts{
+	opts := &createOpts{inputFlags: inputFlags{
 		Name:    "Remote MCP",
 		URL:     "https://mcp.example.com/mcp",
 		Headers: []string{"Authorization=Bearer token"},
-	}
+	}}
 
 	input, err := opts.buildInput()
 	require.NoError(t, err)
@@ -81,11 +81,11 @@ func TestCreateOptsBuildInputMergesHeaders(t *testing.T) {
 }
 
 func TestCreateOptsValidateRejectsInvalidScope(t *testing.T) {
-	opts := &createOpts{
+	opts := &createOpts{inputFlags: inputFlags{
 		Name:  "Remote MCP",
 		URL:   "https://mcp.example.com/mcp",
 		Scope: "stack",
-	}
+	}}
 
 	err := opts.Validate()
 	require.Error(t, err)
@@ -103,7 +103,7 @@ func TestCreateOptsValidateRejectsInvalidURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts := &createOpts{Name: "Remote MCP", URL: tt.raw}
+			opts := &createOpts{inputFlags: inputFlags{Name: "Remote MCP", URL: tt.raw}}
 
 			err := opts.Validate()
 			require.Error(t, err)
@@ -113,11 +113,11 @@ func TestCreateOptsValidateRejectsInvalidURL(t *testing.T) {
 }
 
 func TestCreateOptsValidateRequiresHeadersForTenantScope(t *testing.T) {
-	opts := &createOpts{
+	opts := &createOpts{inputFlags: inputFlags{
 		Name:  "Remote MCP",
 		URL:   "https://mcp.example.com/mcp",
 		Scope: "tenant",
-	}
+	}}
 
 	err := opts.Validate()
 	require.Error(t, err)
@@ -125,12 +125,12 @@ func TestCreateOptsValidateRequiresHeadersForTenantScope(t *testing.T) {
 }
 
 func TestCreateOptsValidateRequiresAuthHeaderForTenantScope(t *testing.T) {
-	opts := &createOpts{
+	opts := &createOpts{inputFlags: inputFlags{
 		Name:    "Remote MCP",
 		URL:     "https://mcp.example.com/mcp",
 		Scope:   "tenant",
 		Headers: []string{"X-Trace-ID=abc"},
-	}
+	}}
 
 	err := opts.Validate()
 	require.Error(t, err)
@@ -138,12 +138,12 @@ func TestCreateOptsValidateRequiresAuthHeaderForTenantScope(t *testing.T) {
 }
 
 func TestCreateOptsValidateRequiresAuthHeaderValueForTenantScope(t *testing.T) {
-	opts := &createOpts{
+	opts := &createOpts{inputFlags: inputFlags{
 		Name:    "Remote MCP",
 		URL:     "https://mcp.example.com/mcp",
 		Scope:   "tenant",
 		Headers: []string{"Authorization="},
-	}
+	}}
 
 	err := opts.Validate()
 	require.Error(t, err)
@@ -151,23 +151,23 @@ func TestCreateOptsValidateRequiresAuthHeaderValueForTenantScope(t *testing.T) {
 }
 
 func TestCreateOptsValidateAcceptsAuthHeaderForTenantScope(t *testing.T) {
-	opts := &createOpts{
+	opts := &createOpts{inputFlags: inputFlags{
 		Name:    "Remote MCP",
 		URL:     "https://mcp.example.com/mcp",
 		Scope:   "tenant",
 		Headers: []string{"Authorization=Bearer token"},
-	}
+	}}
 
 	require.NoError(t, opts.Validate())
 }
 
 func TestCreateOptsValidateRejectsTenantScopeWithEmailHeaderOnly(t *testing.T) {
-	opts := &createOpts{
+	opts := &createOpts{inputFlags: inputFlags{
 		Name:    "Remote MCP",
 		URL:     "https://mcp.example.com/mcp",
 		Scope:   "tenant",
 		Headers: []string{"X-CH-Auth-Email=user@example.com"},
-	}
+	}}
 
 	err := opts.Validate()
 	require.Error(t, err)
@@ -175,12 +175,12 @@ func TestCreateOptsValidateRejectsTenantScopeWithEmailHeaderOnly(t *testing.T) {
 }
 
 func TestCreateOptsValidateAcceptsClickHouseTokenHeaderForTenantScope(t *testing.T) {
-	opts := &createOpts{
+	opts := &createOpts{inputFlags: inputFlags{
 		Name:    "Remote MCP",
 		URL:     "https://mcp.example.com/mcp",
 		Scope:   "tenant",
 		Headers: []string{"X-CH-Auth-Email=user@example.com", "X-CH-Auth-API-Token=token"},
-	}
+	}}
 
 	require.NoError(t, opts.Validate())
 }
