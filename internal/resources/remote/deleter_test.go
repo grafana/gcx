@@ -214,3 +214,50 @@ func TestDeleter_Delete_FailureDetails(t *testing.T) {
 	require.Equal(t, "dashboard-bad", failures[0].Resource.Name())
 	require.Equal(t, deleteErr, failures[0].Error)
 }
+
+// TestDeleter_Delete_NormalizesGVK is a regression test: a fetched object can
+// carry an alternate API group (e.g. a per-plugin datasource group) that differs
+// from the registered canonical descriptor. The deleter must normalize the GVK
+// before its supported-descriptor lookup, otherwise the resource is silently
+// skipped ("0 resources deleted").
+func TestDeleter_Delete_NormalizesGVK(t *testing.T) {
+	// Register a normalizer scoped to a single unique group so it cannot affect
+	// other tests in this package (the registry has no cross-package reset).
+	canonical := schema.GroupVersionKind{Group: "datasource.grafana.app", Version: "v0alpha1", Kind: "DataSource"}
+	resources.RegisterGVKNormalizer(func(gvk schema.GroupVersionKind) (schema.GroupVersionKind, bool) {
+		if gvk.Kind == "DataSource" && gvk.Version == "v0alpha1" &&
+			gvk.Group == "prometheus.datasource.grafana.app" {
+			return canonical, true
+		}
+		return schema.GroupVersionKind{}, false
+	})
+
+	canonicalDesc := resources.Descriptor{
+		GroupVersion: schema.GroupVersion{Group: canonical.Group, Version: canonical.Version},
+		Kind:         canonical.Kind,
+		Singular:     "datasource",
+		Plural:       "datasources",
+	}
+
+	// The resource carries the per-plugin group, as a fetched datasource would.
+	perPlugin := resources.MustFromObject(map[string]any{
+		"apiVersion": "prometheus.datasource.grafana.app/v0alpha1",
+		"kind":       "DataSource",
+		"metadata":   map[string]any{"name": "my-prom", "namespace": "default"},
+		"spec":       map[string]any{"title": "my-prom", "type": "prometheus"},
+	}, resources.SourceInfo{})
+
+	mockClient := &mockDeleteClient{}
+	mockRegistry := &mockPushRegistry{supportedResources: []resources.Descriptor{canonicalDesc}}
+	deleter := remote.NewDeleterWithClient(mockClient, mockRegistry)
+
+	summary, err := deleter.Delete(t.Context(), remote.DeleteRequest{
+		Resources:      resources.NewResources(perPlugin),
+		MaxConcurrency: 1,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, summary.SuccessCount())
+	require.Equal(t, 0, summary.FailedCount())
+	require.Equal(t, []string{"my-prom"}, mockClient.deletedNames)
+}

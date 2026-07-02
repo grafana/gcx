@@ -1,3 +1,13 @@
+## v0.4.3 (2026-07-01)
+
+- Query: fall back to `/api/ds/query` on any non-200 from the k8s query API
+- Pyroscope: default the metrics query step from the datasource config
+- Knowledge Graph: apply the selected time range to entity scopes lookup
+- Agent mode: mark cloud-only commands via new `agent.availability` annotation
+- Windows: open OAuth browser via `explorer.exe` so the login URL survives
+- CI: auto-publish the Homebrew formula and drop dead docs jobs
+
+
 ## v0.4.2 (2026-06-29)
 
 - Add Athena datasource provider (query, list catalogs/databases/tables, describe-table)

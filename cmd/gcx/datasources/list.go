@@ -68,7 +68,7 @@ func listCmd() *cobra.Command {
 				return err
 			}
 
-			dsClient, err := dsclient.NewClient(restCfg)
+			dsClient, err := dsclient.NewTransport(restCfg)
 			if err != nil {
 				return err
 			}
@@ -78,29 +78,11 @@ func listCmd() *cobra.Command {
 				return fmt.Errorf("failed to list datasources: %w", err)
 			}
 
-			if opts.Type != "" {
-				filtered := make([]*datasourceInfo, 0)
-				for _, ds := range datasources {
-					if strings.EqualFold(ds.Type, opts.Type) {
-						filtered = append(filtered, &datasourceInfo{
-							UID:      ds.UID,
-							Name:     ds.Name,
-							Type:     ds.Type,
-							URL:      ds.URL,
-							Access:   ds.Access,
-							Default:  ds.IsDefault,
-							ReadOnly: ds.ReadOnly,
-						})
-					}
-				}
-				if opts.Limit > 0 && len(filtered) > opts.Limit {
-					filtered = filtered[:opts.Limit]
-				}
-				return outputDatasources(cmd, opts, filtered)
-			}
-
 			infos := make([]*datasourceInfo, 0, len(datasources))
 			for _, ds := range datasources {
+				if opts.Type != "" && !strings.EqualFold(ds.Type, opts.Type) {
+					continue
+				}
 				infos = append(infos, &datasourceInfo{
 					UID:      ds.UID,
 					Name:     ds.Name,
@@ -116,7 +98,9 @@ func listCmd() *cobra.Command {
 				infos = infos[:opts.Limit]
 			}
 
-			return outputDatasources(cmd, opts, infos)
+			// Pattern 13: single shape for all formats. The table codec extracts
+			// .Datasources to render rows; JSON/YAML serialize the envelope.
+			return opts.IO.Encode(cmd.OutOrStdout(), &datasourceListResult{Datasources: infos})
 		},
 	}
 
@@ -135,12 +119,11 @@ type datasourceInfo struct {
 	ReadOnly bool   `json:"readOnly" yaml:"readOnly"`
 }
 
-func outputDatasources(cmd *cobra.Command, opts *listOpts, datasources []*datasourceInfo) error {
-	if opts.IO.OutputFormat == "table" {
-		return opts.IO.Encode(cmd.OutOrStdout(), datasources)
-	}
-
-	return opts.IO.Encode(cmd.OutOrStdout(), map[string]any{"datasources": datasources})
+// datasourceListResult is the single shape passed to every codec for
+// `datasources list`. JSON/YAML serialize the envelope; the table codec
+// extracts .Datasources to render rows (Pattern 13: format-agnostic data).
+type datasourceListResult struct {
+	Datasources []*datasourceInfo `json:"datasources" yaml:"datasources"`
 }
 
 type datasourceTableCodec struct{}
@@ -150,14 +133,14 @@ func (c *datasourceTableCodec) Format() format.Format {
 }
 
 func (c *datasourceTableCodec) Encode(w io.Writer, data any) error {
-	datasources, ok := data.([]*datasourceInfo)
+	result, ok := data.(*datasourceListResult)
 	if !ok {
 		return errors.New("invalid data type for table codec")
 	}
 
 	// we haven't added ACCESS here, because it doesn't provide much value (its nearly always "proxy")
 	t := style.NewTable("UID", "NAME", "TYPE", "URL", "DEFAULT")
-	for _, ds := range datasources {
+	for _, ds := range result.Datasources {
 		defaultStr := ""
 		if ds.Default {
 			defaultStr = "*"

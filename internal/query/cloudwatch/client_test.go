@@ -214,6 +214,26 @@ func TestClient_Query(t *testing.T) {
 		assert.Contains(t, paths, "/api/ds/query")
 	})
 
+	t.Run("K8s 403 falls back to legacy /api/ds/query", func(t *testing.T) {
+		var paths []string
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			paths = append(paths, r.URL.Path)
+			if r.URL.Path != "/api/ds/query" {
+				http.Error(w, `{"message":"forbidden"}`, http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(queryResultBody(t, testResultEntry{
+				Frames: []testFrame{simpleFrame([]float64{1747000000000}, []any{5.0})},
+			}))
+		}))
+
+		resp, err := client.Query(context.Background(), "test-uid", testQueryReq())
+		require.NoError(t, err)
+		assert.NotEmpty(t, resp.Frames)
+		assert.Contains(t, paths, "/api/ds/query")
+	})
+
 	t.Run("malformed JSON", func(t *testing.T) {
 		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)

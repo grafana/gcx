@@ -22,6 +22,7 @@ gcx kg entities inspect [Type--Name] [flags]
 ### Options
 
 ```
+      --domain string                      Restrict scope auto-discovery to a single KG domain (only applies when scope is auto-discovered; no effect when --env/--namespace/--site is given)
       --env string                         Environment scope (run 'gcx kg meta scopes' to see valid values)
       --from string                        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                               help for inspect

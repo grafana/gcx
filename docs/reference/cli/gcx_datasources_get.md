@@ -4,7 +4,10 @@ Get details of a specific datasource
 
 ### Synopsis
 
-Get detailed information about a specific datasource by its UID.
+Get a datasource by its UID.
+
+The default text output shows a human-readable detail view. -o yaml/json emits
+an apply-ready manifest that can be edited and re-applied via update -f -.
 
 ```
 gcx datasources get UID [flags]
@@ -14,11 +17,11 @@ gcx datasources get UID [flags]
 
 ```
 
-	# Get datasource details
+	# Human-readable detail
 	gcx datasources get my-prometheus
 
-	# Output as JSON
-	gcx datasources get my-prometheus -o json
+	# Apply-ready manifest (round-trips into update -f -)
+	gcx datasources get my-prometheus -o yaml
 ```
 
 ### Options
@@ -29,7 +32,7 @@ gcx datasources get UID [flags]
   -h, --help             help for get
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string    Output format. One of: agents, json, yaml (default "yaml")
+  -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

@@ -82,7 +82,11 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 	err := request.Resources.ForEachConcurrently(ctx, request.MaxConcurrency,
 		func(ctx context.Context, res *resources.Resource) error {
 			name := res.Name()
-			gvk := res.GroupVersionKind()
+			// Collapse alternate API groups onto their canonical, statically-registered
+			// GVK so a fetched object carrying a per-plugin group — e.g.
+			// prometheus.datasource.grafana.app/v0alpha1 — routes to the right
+			// adapter. A no-op when no normalizer matches.
+			gvk := resources.NormalizeGVK(res.GroupVersionKind())
 
 			logger := logging.FromContext(ctx).With(
 				"gvk", gvk,
