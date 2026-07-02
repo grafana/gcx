@@ -32,7 +32,7 @@ func flagUsageError(cmd *cobra.Command, err error, invocationArgs []string) erro
 			suggestions = append(suggestions, fmt.Sprintf("Did you mean '%s'?", candidate))
 			correction := gcxerrors.Correction{Hint: flagUsageHint(cmd, candidate)}
 			if corrected, ok := substituteFlag(invocationArgs, unknown, candidate); ok {
-				correction.Command = strings.Join(append([]string{cmd.Root().Name()}, corrected...), " ")
+				correction.Command = shellJoin(append([]string{cmd.Root().Name()}, corrected...))
 				corrections = append(corrections, correction)
 			}
 		}
@@ -104,4 +104,24 @@ func substituteFlag(args []string, unknown, candidate string) ([]string, bool) {
 	copy(corrected, args)
 	corrected[matched] = candidate + strings.TrimPrefix(args[matched], unknown)
 	return corrected, true
+}
+
+// shellJoin joins argv tokens into a shell command string, single-quoting any
+// token a POSIX shell would not pass through verbatim, so emitted corrections
+// stay runnable as-is.
+func shellJoin(tokens []string) string {
+	quoted := make([]string, len(tokens))
+	for i, token := range tokens {
+		quoted[i] = shellQuote(token)
+	}
+	return strings.Join(quoted, " ")
+}
+
+const shellSafeChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./=:@%+,"
+
+func shellQuote(token string) string {
+	if token != "" && strings.Trim(token, shellSafeChars) == "" {
+		return token
+	}
+	return "'" + strings.ReplaceAll(token, "'", `'\''`) + "'"
 }
