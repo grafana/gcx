@@ -1,23 +1,20 @@
 package evaluators
 
 import (
-	"encoding/json"
-	"errors"
+	"context"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 
-	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -39,131 +36,52 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- list ---
 
-type listOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of evaluators to return (0 for no limit)")
-}
-
 func newListCommand() *cobra.Command {
-	opts := &listOpts{}
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List evaluator definitions.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
-			crud, namespace, err := NewTypedCRUD(ctx)
-			if err != nil {
-				return err
-			}
-
-			typedObjs, err := crud.List(ctx, opts.Limit)
-			if err != nil {
-				return err
-			}
-
-			specs := make([]eval.EvaluatorDefinition, len(typedObjs))
-			for i := range typedObjs {
-				specs[i] = typedObjs[i].Spec
-			}
-
-			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), specs)
-			}
-
-			objs := make([]unstructured.Unstructured, 0, len(specs))
-			for _, spec := range specs {
-				u, err := specToUnstructured(spec, namespace)
-				if err != nil {
-					return err
-				}
-				objs = append(objs, u)
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+	return crudcmd.NewTypedListCommand(crudcmd.TypedListConfig[eval.EvaluatorDefinition]{
+		Use:          "list",
+		Short:        "List evaluator definitions.",
+		DefaultFmt:   "table",
+		LimitDefault: 50,
+		LimitUsage:   "Maximum number of evaluators to return (0 for no limit)",
+		Codecs:       []format.Codec{&TableCodec{}, &TableCodec{Wide: true}},
+		Noun:         "evaluator",
+		NewCRUD:      NewTypedCRUD,
+		ToResource: func(crud *adapter.TypedCRUD[eval.EvaluatorDefinition], item eval.EvaluatorDefinition) (unstructured.Unstructured, error) {
+			return specToUnstructured(item, crud.Namespace)
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // --- get ---
 
-type getOpts struct {
-	IO cmdio.Options
-}
-
-func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-}
-
 func newGetCommand() *cobra.Command {
-	opts := &getOpts{}
-	cmd := &cobra.Command{
-		Use:   "get <evaluator-id>",
-		Short: "Get a single evaluator definition.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[*unstructured.Unstructured]{
+		Use:        "get <evaluator-id>",
+		Short:      "Get a single evaluator definition.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "yaml",
+		Fetch: func(ctx context.Context, args []string) (*unstructured.Unstructured, error) {
 			crud, namespace, err := NewTypedCRUD(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
 			typedObj, err := crud.Get(ctx, args[0])
 			if err != nil {
-				return err
+				return nil, err
 			}
-
 			u, err := specToUnstructured(typedObj.Spec, namespace)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), &u)
+			return &u, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // --- create ---
 
-type createOpts struct {
-	File string
-	IO   cmdio.Options
-}
-
-func (o *createOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.File, "filename", "f", "", "File containing the evaluator definition (use - for stdin)")
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-}
-
-func (o *createOpts) Validate() error {
-	if o.File == "" {
-		return errors.New("--filename/-f is required")
-	}
-	return o.IO.Validate()
-}
-
 func newCreateCommand() *cobra.Command {
-	opts := &createOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewCreateCommand(crudcmd.CreateConfig[eval.EvaluatorDefinition]{
 		Use:   "create",
 		Short: "Create or update an evaluator from a file.",
 		Example: `  # Create an evaluator from a YAML file.
@@ -175,102 +93,52 @@ func newCreateCommand() *cobra.Command {
   # Export a template, customize it, then create an evaluator.
   gcx aio11y templates show <template-id> -o yaml > evaluator.yaml
   gcx aio11y evaluators create -f evaluator.yaml`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-
-			def, err := ReadEvaluatorFile(opts.File, cmd.InOrStdin())
-			if err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
+		DefaultFmt:    "json",
+		FilenameUsage: "File containing the evaluator definition (use - for stdin)",
+		Read:          ReadEvaluatorFile,
+		Create: func(ctx context.Context, def eval.EvaluatorDefinition) (eval.EvaluatorDefinition, error) {
 			crud, _, err := NewTypedCRUD(ctx)
 			if err != nil {
-				return err
+				return eval.EvaluatorDefinition{}, err
 			}
-
-			typedObj := &adapter.TypedObject[eval.EvaluatorDefinition]{Spec: *def}
-			created, err := crud.Create(ctx, typedObj)
+			created, err := crud.Create(ctx, &adapter.TypedObject[eval.EvaluatorDefinition]{Spec: def})
 			if err != nil {
-				return err
+				return eval.EvaluatorDefinition{}, err
 			}
-
-			cmdio.Success(cmd.ErrOrStderr(), "Evaluator %s created", created.Spec.EvaluatorID)
-			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
+			return created.Spec, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		OnSuccess: func(cmd *cobra.Command, created eval.EvaluatorDefinition) {
+			cmdio.Success(cmd.ErrOrStderr(), "Evaluator %s created", created.EvaluatorID)
+		},
+	})
 }
 
 // --- delete ---
 
-type deleteOpts struct {
-	Force bool
-}
-
-func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
-}
-
 func newDeleteCommand() *cobra.Command {
-	opts := &deleteOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewDeleteCommand(crudcmd.DeleteConfig{
 		Use:   "delete ID...",
 		Short: "Delete evaluators.",
 		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
-				fmt.Sprintf("Delete %d evaluator(s)?", len(args)))
-			if err != nil {
-				return err
-			}
-			if !proceed {
-				return nil
-			}
-
-			ctx := cmd.Context()
+		Out:   func(cmd *cobra.Command) io.Writer { return cmd.ErrOrStderr() },
+		Confirm: func(args []string) string {
+			return fmt.Sprintf("Delete %d evaluator(s)?", len(args))
+		},
+		NewDelete: func(ctx context.Context) (func(string) error, error) {
 			crud, _, err := NewTypedCRUD(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
-			for _, id := range args {
-				if err := crud.Delete(ctx, id); err != nil {
-					return fmt.Errorf("deleting evaluator %s: %w", id, err)
-				}
-				cmdio.Success(cmd.ErrOrStderr(), "Deleted evaluator %s", id)
-			}
-			return nil
+			return func(id string) error { return crud.Delete(ctx, id) }, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Success: func(id string) string { return "Deleted evaluator " + id },
+	})
 }
 
+// ReadEvaluatorFile reads an evaluator definition from path (or stdin, for
+// "-"), trying JSON first and falling back to YAML.
 func ReadEvaluatorFile(path string, stdin io.Reader) (*eval.EvaluatorDefinition, error) {
-	var data []byte
-	var err error
-	if path == "-" {
-		data, err = io.ReadAll(stdin)
-	} else {
-		data, err = os.ReadFile(path)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", path, err)
-	}
-
-	var def eval.EvaluatorDefinition
-	if err := json.Unmarshal(data, &def); err != nil {
-		var yamlDef eval.EvaluatorDefinition
-		if yamlErr := yaml.Unmarshal(data, &yamlDef); yamlErr != nil {
-			return nil, fmt.Errorf("parsing %s: %w", path, yamlErr)
-		}
-		return &yamlDef, nil
-	}
-	return &def, nil
+	return crudcmd.ReadJSONOrYAMLFile[eval.EvaluatorDefinition](path, stdin)
 }
 
 // --- table codec ---
@@ -279,42 +147,30 @@ type TableCodec struct {
 	Wide bool
 }
 
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
+func (c *TableCodec) Format() format.Format { return crudcmd.WideFormat(c.Wide) }
 
 func (c *TableCodec) Encode(w io.Writer, v any) error {
-	evaluators, ok := v.([]eval.EvaluatorDefinition)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []EvaluatorDefinition")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "VERSION", "KIND", "DESCRIPTION", "OUTPUTS", "CREATED BY", "CREATED AT")
-	} else {
-		t = style.NewTable("ID", "VERSION", "KIND", "DESCRIPTION")
-	}
-
-	for _, e := range evaluators {
+	row := func(t *style.TableBuilder, e eval.EvaluatorDefinition) {
 		desc := aio11yhttp.Truncate(e.Description, 40)
 
-		if c.Wide {
-			createdBy := e.CreatedBy
-			if createdBy == "" {
-				createdBy = "-"
-			}
-			t.Row(e.EvaluatorID, e.Version, e.Kind, desc, strconv.Itoa(len(e.OutputKeys)), createdBy, aio11yhttp.FormatTime(e.CreatedAt))
-		} else {
+		if !c.Wide {
 			t.Row(e.EvaluatorID, e.Version, e.Kind, desc)
+			return
 		}
+
+		createdBy := e.CreatedBy
+		if createdBy == "" {
+			createdBy = "-"
+		}
+		t.Row(e.EvaluatorID, e.Version, e.Kind, desc, strconv.Itoa(len(e.OutputKeys)), createdBy, aio11yhttp.FormatTime(e.CreatedAt))
 	}
-	return t.Render(w)
+
+	if c.Wide {
+		return crudcmd.EncodeTable(w, v, "EvaluatorDefinition", []string{"ID", "VERSION", "KIND", "DESCRIPTION", "OUTPUTS", "CREATED BY", "CREATED AT"}, row)
+	}
+	return crudcmd.EncodeTable(w, v, "EvaluatorDefinition", []string{"ID", "VERSION", "KIND", "DESCRIPTION"}, row)
 }
 
 func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }

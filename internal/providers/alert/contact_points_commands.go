@@ -1,16 +1,14 @@
 package alert
 
 import (
-	"errors"
+	"context"
 	"io"
 
 	"github.com/grafana/gcx/internal/format"
-	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 // contactPointsCommands returns the contact-points command group.
@@ -31,46 +29,29 @@ func contactPointsCommands(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-type contactPointsListOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *contactPointsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ContactPointsTableCodec{})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
-}
-
 func newContactPointsListCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &contactPointsListOpts{}
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List alerting contact points.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
+	return crudcmd.NewListCommand(crudcmd.ListConfig[ContactPoint]{
+		Use:          "list",
+		Short:        "List alerting contact points.",
+		DefaultFmt:   "table",
+		LimitDefault: 50,
+		Codecs:       []format.Codec{&ContactPointsTableCodec{}},
+		Fetch: func(ctx context.Context, limit int64) ([]ContactPoint, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			points, err := client.ListContactPoints(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			points = adapter.TruncateSlice(points, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), points)
+			return adapter.TruncateSlice(points, limit), nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // ContactPointsTableCodec renders contact points as a tabular table.
@@ -79,180 +60,109 @@ type ContactPointsTableCodec struct{}
 func (c *ContactPointsTableCodec) Format() format.Format { return "table" }
 
 func (c *ContactPointsTableCodec) Encode(w io.Writer, v any) error {
-	points, ok := v.([]ContactPoint)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []ContactPoint")
-	}
-	t := style.NewTable("UID", "NAME", "TYPE", "PROVENANCE")
-	for _, p := range points {
+	return crudcmd.EncodeTable(w, v, "ContactPoint", []string{"UID", "NAME", "TYPE", "PROVENANCE"}, func(t *style.TableBuilder, p ContactPoint) {
 		t.Row(p.UID, p.Name, p.Type, p.Provenance)
-	}
-	return t.Render(w)
+	})
 }
 
 func (c *ContactPointsTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
-}
-
-type contactPointsGetOpts struct {
-	IO cmdio.Options
-}
-
-func (o *contactPointsGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
+	return crudcmd.ErrTableDecode
 }
 
 func newContactPointsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &contactPointsGetOpts{}
-	cmd := &cobra.Command{
-		Use:   "get UID",
-		Short: "Get a single contact point by UID.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[*ContactPoint]{
+		Use:        "get UID",
+		Short:      "Get a single contact point by UID.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "json",
+		Fetch: func(ctx context.Context, args []string) (*ContactPoint, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			cp, err := client.GetContactPoint(ctx, args[0])
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), cp)
+			return client.GetContactPoint(ctx, args[0])
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
-type contactPointsMutateOpts struct {
-	IO   cmdio.Options
-	File string
-}
-
-func (o *contactPointsMutateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-	flags.StringVarP(&o.File, "filename", "f", "", "File containing the contact point definition (JSON/YAML, use - for stdin)")
-}
+const contactPointFilenameUsage = "File containing the contact point definition (JSON/YAML, use - for stdin)"
 
 func newContactPointsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &contactPointsMutateOpts{}
-	cmd := &cobra.Command{
-		Use:   "create",
-		Short: "Create a new contact point.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			var cp ContactPoint
-			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &cp); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
+	return crudcmd.NewCreateCommand(crudcmd.CreateConfig[ContactPoint]{
+		Use:           "create",
+		Short:         "Create a new contact point.",
+		DefaultFmt:    "json",
+		FilenameUsage: contactPointFilenameUsage,
+		Read:          crudcmd.ReadYAMLOrJSONFile[ContactPoint],
+		Create: func(ctx context.Context, cp ContactPoint) (ContactPoint, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return ContactPoint{}, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return ContactPoint{}, err
 			}
 			created, err := client.CreateContactPoint(ctx, cp)
 			if err != nil {
-				return err
+				return ContactPoint{}, err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			return *created, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 func newContactPointsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &contactPointsMutateOpts{}
-	cmd := &cobra.Command{
-		Use:   "update UID",
-		Short: "Update an existing contact point by UID.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			var cp ContactPoint
-			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &cp); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
+	return crudcmd.NewUpdateCommand(crudcmd.UpdateConfig[ContactPoint]{
+		Use:           "update UID",
+		Short:         "Update an existing contact point by UID.",
+		Args:          cobra.ExactArgs(1),
+		DefaultFmt:    "json",
+		FilenameUsage: contactPointFilenameUsage,
+		Read:          crudcmd.ReadYAMLOrJSONFile[ContactPoint],
+		Update: func(ctx context.Context, id string, cp ContactPoint) (ContactPoint, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return ContactPoint{}, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return ContactPoint{}, err
 			}
-			updated, err := client.UpdateContactPoint(ctx, args[0], cp)
+			updated, err := client.UpdateContactPoint(ctx, id, cp)
 			if err != nil {
-				return err
+				return ContactPoint{}, err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+			return *updated, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
-type contactPointsDeleteOpts struct {
-	Force bool
-}
-
-func (o *contactPointsDeleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
-}
-
-//nolint:dupl // Similar structure to mute-timings and templates delete commands is intentional
 func newContactPointsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &contactPointsDeleteOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewDeleteCommand(crudcmd.DeleteConfig{
 		Use:   "delete UID",
 		Short: "Delete a contact point by UID.",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
-				"Delete contact point "+args[0]+"?")
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return nil
-			}
+		Confirm: func(args []string) string {
+			return "Delete contact point " + args[0] + "?"
+		},
+		NewDelete: func(ctx context.Context) (func(string) error, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			if err := client.DeleteContactPoint(ctx, args[0]); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted contact point %s", args[0])
-			return nil
+			return func(id string) error { return client.DeleteContactPoint(ctx, id) }, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Success: func(id string) string { return "Deleted contact point " + id },
+	})
 }
 
 type contactPointsExportOpts struct {
