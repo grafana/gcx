@@ -1,7 +1,6 @@
 package prometheus
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,14 +10,16 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/query/grafanaquery"
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
 
 // Client is a client for executing Prometheus queries via Grafana's datasource API.
 type Client struct {
-	restConfig config.NamespacedRESTConfig
-	httpClient *http.Client
+	restConfig  config.NamespacedRESTConfig
+	httpClient  *http.Client
+	queryClient *grafanaquery.Client
 }
 
 // NewClient creates a new Prometheus query client.
@@ -29,15 +30,14 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	}
 
 	return &Client{
-		restConfig: cfg,
-		httpClient: httpClient,
+		restConfig:  cfg,
+		httpClient:  httpClient,
+		queryClient: grafanaquery.NewClientWithHTTPClient(cfg, httpClient),
 	}, nil
 }
 
 // Query executes a Prometheus query against the specified datasource.
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
-	apiPath := c.buildQueryPath()
-
 	// Build the query object with datasource info
 	query := map[string]any{
 		"refId": "A",
@@ -82,47 +82,9 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+	respBody, err := c.queryClient.Execute(ctx, body, "prometheus", "query")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// The K8s query API is not enabled everywhere and can return a non-200
-	// (e.g. 403 for some roles); fall back to the legacy /api/ds/query.
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		apiPath = "/api/ds/query"
-		httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %w", err)
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		resp, err = c.httpClient.Do(httpReq)
-		if err != nil {
-			return nil, fmt.Errorf("failed to execute query: %w", err)
-		}
-		defer resp.Body.Close()
-		respBody, err = httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read response: %w", err)
-		}
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("prometheus", "query", resp.StatusCode, respBody)
+		return nil, err
 	}
 
 	// Parse the Grafana datasource response format
@@ -248,11 +210,6 @@ func (c *Client) Metadata(ctx context.Context, datasourceUID string, metric stri
 	}
 
 	return &result, nil
-}
-
-func (c *Client) buildQueryPath() string {
-	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query",
-		c.restConfig.Namespace)
 }
 
 func (c *Client) buildLabelsPath(datasourceUID string) string {
