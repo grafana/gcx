@@ -10,3 +10,13 @@ import (
 func NewCommandForTest(version string, pp []providers.Provider) *cobra.Command {
 	return newCommand(version, pp)
 }
+
+// FlagUsageErrorForTest exposes flagUsageError for external (_test) packages.
+func FlagUsageErrorForTest(cmd *cobra.Command, err error, invocationArgs []string) error {
+	return flagUsageError(cmd, err, invocationArgs)
+}
+
+// SubstituteFlagForTest exposes substituteFlag for external (_test) packages.
+func SubstituteFlagForTest(args []string, unknown, candidate string) ([]string, bool) {
+	return substituteFlag(args, unknown, candidate)
+}
