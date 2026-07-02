@@ -1,6 +1,7 @@
 package aio11yhttp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
@@ -117,6 +119,98 @@ func ListAll[T any](ctx context.Context, c *Client, basePath string, query url.V
 		return []T{}, nil
 	}
 	return all, nil
+}
+
+// DoJSON executes an HTTP request against the plugin API, optionally
+// marshaling body as the JSON request payload, and decodes a JSON response
+// into Resp. Pass a nil body for requests with no request body (e.g.
+// GET/DELETE) — in that case Req can be instantiated as `any`.
+//
+// Any response status not present in okStatuses is treated as an error via
+// HandleErrorResponse.
+func DoJSON[Req, Resp any](ctx context.Context, c *Client, method, path string, body *Req, okStatuses ...int) (Resp, error) {
+	return doJSON[Req, Resp](ctx, c, method, path, body, nil, okStatuses)
+}
+
+// DoJSONNotFound behaves like DoJSON, but returns notFoundErr instead of the
+// generic HandleErrorResponse error when the response status is 404.
+// Callers typically pass a sentinel wrapped with request-specific context,
+// e.g. fmt.Errorf("%s: %w", id, ErrNotFound), so that errors.Is still
+// matches the resource-specific sentinel.
+func DoJSONNotFound[Req, Resp any](ctx context.Context, c *Client, method, path string, body *Req, notFoundErr error, okStatuses ...int) (Resp, error) {
+	return doJSON[Req, Resp](ctx, c, method, path, body, notFoundErr, okStatuses)
+}
+
+func doJSON[Req, Resp any](ctx context.Context, c *Client, method, path string, body *Req, notFoundErr error, okStatuses []int) (Resp, error) {
+	var zero Resp
+
+	var reader io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return zero, fmt.Errorf("failed to marshal request: %w", err)
+		}
+		reader = bytes.NewReader(b)
+	}
+
+	resp, err := c.DoRequest(ctx, method, path, reader)
+	if err != nil {
+		return zero, err
+	}
+	defer resp.Body.Close()
+
+	if notFoundErr != nil && resp.StatusCode == http.StatusNotFound {
+		return zero, notFoundErr
+	}
+	if !slices.Contains(okStatuses, resp.StatusCode) {
+		return zero, HandleErrorResponse(resp)
+	}
+
+	var result Resp
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return zero, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return result, nil
+}
+
+// DoStatus executes an HTTP request against the plugin API, optionally
+// marshaling body as the JSON request payload, and checks that the response
+// status is one of okStatuses without decoding a response body. Use this for
+// endpoints that return no useful body (e.g. DELETE, or actions like
+// cancel/add-members).
+func DoStatus[Req any](ctx context.Context, c *Client, method, path string, body *Req, okStatuses ...int) error {
+	return doStatus[Req](ctx, c, method, path, body, nil, okStatuses)
+}
+
+// DoStatusNotFound behaves like DoStatus, but returns notFoundErr instead of
+// the generic HandleErrorResponse error when the response status is 404.
+func DoStatusNotFound[Req any](ctx context.Context, c *Client, method, path string, body *Req, notFoundErr error, okStatuses ...int) error {
+	return doStatus[Req](ctx, c, method, path, body, notFoundErr, okStatuses)
+}
+
+func doStatus[Req any](ctx context.Context, c *Client, method, path string, body *Req, notFoundErr error, okStatuses []int) error {
+	var reader io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request: %w", err)
+		}
+		reader = bytes.NewReader(b)
+	}
+
+	resp, err := c.DoRequest(ctx, method, path, reader)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if notFoundErr != nil && resp.StatusCode == http.StatusNotFound {
+		return notFoundErr
+	}
+	if !slices.Contains(okStatuses, resp.StatusCode) {
+		return HandleErrorResponse(resp)
+	}
+	return nil
 }
 
 // NewClientFromCommand creates a Client from a cobra command and config loader.

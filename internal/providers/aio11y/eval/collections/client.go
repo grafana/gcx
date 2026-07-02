@@ -1,9 +1,7 @@
 package collections
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -36,22 +34,10 @@ func (c *Client) List(ctx context.Context, limit int) ([]Collection, error) {
 // callers (and the resource adapter) can distinguish missing resources from
 // other API errors.
 func (c *Client) Get(ctx context.Context, id string) (*Collection, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, basePath+"/"+url.PathEscape(id), nil)
+	col, err := aio11yhttp.DoJSONNotFound[any, Collection](ctx, c.base, http.MethodGet, basePath+"/"+url.PathEscape(id), nil,
+		fmt.Errorf("%s: %w", id, ErrNotFound), http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get collection %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("%s: %w", id, ErrNotFound)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var col Collection
-	if err := json.NewDecoder(resp.Body).Decode(&col); err != nil {
-		return nil, fmt.Errorf("failed to decode collection response: %w", err)
+		return nil, err
 	}
 	return &col, nil
 }
@@ -59,24 +45,9 @@ func (c *Client) Get(ctx context.Context, id string) (*Collection, error) {
 // Create creates a new collection. Server-managed fields on the input are
 // dropped on the wire by the `omitempty` / `omitzero` JSON tags.
 func (c *Client) Create(ctx context.Context, col *Collection) (*Collection, error) {
-	body, err := json.Marshal(col)
+	created, err := aio11yhttp.DoJSON[Collection, Collection](ctx, c.base, http.MethodPost, basePath, col, http.StatusOK, http.StatusCreated)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal create request: %w", err)
-	}
-
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, basePath, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create collection: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var created Collection
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
-		return nil, fmt.Errorf("failed to decode collection response: %w", err)
+		return nil, err
 	}
 	return &created, nil
 }
@@ -84,40 +55,16 @@ func (c *Client) Create(ctx context.Context, col *Collection) (*Collection, erro
 // Update patches a collection's name and/or description. The collections API
 // is not an upsert — Update must be called against an existing collection.
 func (c *Client) Update(ctx context.Context, id string, req *UpdateRequest) (*Collection, error) {
-	body, err := json.Marshal(req)
+	col, err := aio11yhttp.DoJSON[UpdateRequest, Collection](ctx, c.base, http.MethodPatch, basePath+"/"+url.PathEscape(id), req, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal update request: %w", err)
-	}
-
-	resp, err := c.base.DoRequest(ctx, http.MethodPatch, basePath+"/"+url.PathEscape(id), bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to update collection %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var col Collection
-	if err := json.NewDecoder(resp.Body).Decode(&col); err != nil {
-		return nil, fmt.Errorf("failed to decode collection response: %w", err)
+		return nil, err
 	}
 	return &col, nil
 }
 
 // Delete removes a collection by ID.
 func (c *Client) Delete(ctx context.Context, id string) error {
-	resp, err := c.base.DoRequest(ctx, http.MethodDelete, basePath+"/"+url.PathEscape(id), nil)
-	if err != nil {
-		return fmt.Errorf("failed to delete collection %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return aio11yhttp.HandleErrorResponse(resp)
-	}
-	return nil
+	return aio11yhttp.DoStatus[any](ctx, c.base, http.MethodDelete, basePath+"/"+url.PathEscape(id), nil, http.StatusOK, http.StatusNoContent)
 }
 
 // ListMembers returns the saved conversations belonging to a collection.
@@ -130,35 +77,12 @@ func (c *Client) ListMembers(ctx context.Context, id string, limit int) ([]saved
 
 // AddMembers adds one or more saved conversations to a collection.
 func (c *Client) AddMembers(ctx context.Context, id string, savedIDs []string) error {
-	body, err := json.Marshal(&AddMembersRequest{SavedIDs: savedIDs})
-	if err != nil {
-		return fmt.Errorf("failed to marshal add-members request: %w", err)
-	}
-
 	path := basePath + "/" + url.PathEscape(id) + "/members"
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, path, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("failed to add members to collection %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
-		return aio11yhttp.HandleErrorResponse(resp)
-	}
-	return nil
+	return aio11yhttp.DoStatus(ctx, c.base, http.MethodPost, path, &AddMembersRequest{SavedIDs: savedIDs}, http.StatusOK, http.StatusCreated, http.StatusNoContent)
 }
 
 // RemoveMember removes a single saved conversation from a collection.
 func (c *Client) RemoveMember(ctx context.Context, id, savedID string) error {
 	path := basePath + "/" + url.PathEscape(id) + "/members/" + url.PathEscape(savedID)
-	resp, err := c.base.DoRequest(ctx, http.MethodDelete, path, nil)
-	if err != nil {
-		return fmt.Errorf("failed to remove member %s from collection %s: %w", savedID, id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return aio11yhttp.HandleErrorResponse(resp)
-	}
-	return nil
+	return aio11yhttp.DoStatus[any](ctx, c.base, http.MethodDelete, path, nil, http.StatusOK, http.StatusNoContent)
 }
