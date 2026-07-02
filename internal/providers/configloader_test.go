@@ -44,6 +44,19 @@ func newMockGCOMServer(t *testing.T, info cloud.StackInfo) *httptest.Server {
 	}))
 }
 
+// newMockGCOMServerWithAuth behaves like newMockGCOMServer but records the
+// Authorization header of the last request into *seenAuth.
+func newMockGCOMServerWithAuth(t *testing.T, info cloud.StackInfo, seenAuth *string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*seenAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(info); err != nil {
+			t.Errorf("mock GCOM server: encode response: %v", err)
+		}
+	}))
+}
+
 // writeConfigFile writes YAML content to a temp file and returns its path.
 func writeConfigFile(t *testing.T, content string) string {
 	t.Helper()
@@ -715,6 +728,67 @@ current-context: default
 	assert.Equal(t, 789, got.Stack.AgentManagementInstanceID)
 	assert.Equal(t, "https://fleet.example.com", got.Stack.AgentManagementInstanceURL)
 	assert.Equal(t, "default", got.Namespace)
+}
+
+// TestConfigLoader_LoadCloudConfig_FromTopLevelEnv verifies a context with no
+// per-context cloud token resolves its auth from the shared top-level
+// cloud.envs section, while the stack slug still comes from the context.
+func TestConfigLoader_LoadCloudConfig_FromTopLevelEnv(t *testing.T) {
+	wantStack := cloud.StackInfo{ID: 7, Slug: "mystack", Name: "My Stack", URL: "https://mystack.grafana.net"}
+	srv := newMockGCOMServer(t, wantStack)
+	defer srv.Close()
+
+	cfgFile := writeConfigFile(t, `
+cloud:
+  current: prod
+  envs:
+    prod:
+      token: "env-token"
+      api-url: "`+srv.URL+`"
+contexts:
+  default:
+    cloud:
+      stack: "mystack"
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	got, err := loader.LoadCloudConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "env-token", got.Token, "token resolved from top-level env")
+	assert.Equal(t, "mystack", got.Stack.Slug)
+}
+
+// TestConfigLoader_LoadCloudConfig_ContextTokenOverridesEnv verifies a
+// per-context cloud token (stack-scoped CAP) wins over the shared env token.
+func TestConfigLoader_LoadCloudConfig_ContextTokenOverridesEnv(t *testing.T) {
+	var seenAuth string
+	wantStack := cloud.StackInfo{ID: 7, Slug: "mystack", Name: "My Stack"}
+	srv := newMockGCOMServerWithAuth(t, wantStack, &seenAuth)
+	defer srv.Close()
+
+	cfgFile := writeConfigFile(t, `
+cloud:
+  current: prod
+  envs:
+    prod:
+      token: "env-token"
+      api-url: "`+srv.URL+`"
+contexts:
+  default:
+    cloud:
+      token: "stack-cap"
+      stack: "mystack"
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	got, err := loader.LoadCloudConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "stack-cap", got.Token, "per-context token must override the env token")
+	assert.Contains(t, seenAuth, "stack-cap", "request must carry the overriding token")
 }
 
 func TestConfigLoader_SaveProviderConfig_ContextOverrideBeforeEnvVars(t *testing.T) {

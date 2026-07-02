@@ -19,8 +19,14 @@ func TestResolveContextPath(t *testing.T) {
 		{
 			name: "bare path resolves under current context",
 			cfg:  config.Config{CurrentContext: "dev"},
-			path: "cloud.token",
-			want: "contexts.dev.cloud.token",
+			path: "grafana.server",
+			want: "contexts.dev.grafana.server",
+		},
+		{
+			name: "cloud prefix targets the top-level section",
+			cfg:  config.Config{CurrentContext: "dev"},
+			path: "cloud.envs.prod.token",
+			want: "cloud.envs.prod.token",
 		},
 		{
 			name: "nested bare path resolves under current context",
@@ -43,7 +49,7 @@ func TestResolveContextPath(t *testing.T) {
 		{
 			name:    "bare path with no current context errors",
 			cfg:     config.Config{},
-			path:    "cloud.token",
+			path:    "grafana.server",
 			wantErr: "no current context set",
 		},
 	}

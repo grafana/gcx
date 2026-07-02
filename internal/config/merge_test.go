@@ -192,6 +192,30 @@ func TestMergeConfigs_DiagnosticsLayering(t *testing.T) {
 	assert.True(t, merged.Diagnostics.AgentInvocationLog)
 }
 
+func TestMergeConfigs_CloudSettingsLayering(t *testing.T) {
+	// User layer defines prod; local layer adds ops and switches current.
+	// Envs merge by key and the higher layer's current wins.
+	userCfg := config.Config{
+		Cloud: &config.CloudSettings{
+			Current: "prod",
+			Envs:    map[string]*config.CloudConfig{"prod": {Token: "prod-token"}},
+		},
+	}
+	localCfg := config.Config{
+		Cloud: &config.CloudSettings{
+			Current: "ops",
+			Envs:    map[string]*config.CloudConfig{"ops": {Token: "ops-token"}},
+		},
+	}
+
+	merged := config.MergeConfigs(userCfg, localCfg)
+
+	require.NotNil(t, merged.Cloud)
+	assert.Equal(t, "ops", merged.Cloud.Current, "higher layer current wins")
+	assert.Equal(t, "prod-token", merged.Cloud.Envs["prod"].Token, "base env survives")
+	assert.Equal(t, "ops-token", merged.Cloud.Envs["ops"].Token, "overlay env is added")
+}
+
 func TestMergeGrafanaConfig_OAuthAndProxyFields(t *testing.T) {
 	tests := []struct {
 		name string

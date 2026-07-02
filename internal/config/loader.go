@@ -385,6 +385,12 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 		config.keychainFields, config.keychainPreserve = resolveSentinelsForContext(config.CurrentContext, cur, store)
 	}
 
+	// Cloud environments are global (not tied to a context), so resolve their
+	// token sentinels eagerly and fold the results into the same tracking maps.
+	envBacked, envPreserve := resolveEnvSentinels(&config, store)
+	config.keychainFields = mergeBacked(config.keychainFields, envBacked)
+	config.keychainPreserve = mergeBacked(config.keychainPreserve, envPreserve)
+
 	if migrated := migratePlaintextSecrets(&config, store, log); migrated > 0 {
 		log.Info("migrated plaintext credentials into OS keychain",
 			"count", migrated,

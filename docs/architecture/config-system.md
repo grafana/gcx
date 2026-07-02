@@ -319,22 +319,38 @@ Context.Cloud *CloudConfig
   └── APIUrl     (GRAFANA_CLOUD_API_URL)    — GCOM base URL (default: "https://grafana.com")
 ```
 
-The `Cloud` struct is optional. It is used by provider implementations (e.g.,
-`internal/cloud/client.go`) to discover stack metadata via the Grafana Cloud
-OpenAPI (GCOM). Token is marked `datapolicy:"secret"` and is redacted in
-`config view` output unless `--raw` is passed.
+Token is marked `datapolicy:"secret"` and is redacted in `config view` output
+unless `--raw` is passed.
+
+GCOM auth is shared across contexts via a top-level `cloud` section holding
+named **environments** (staff use prod/ops/dev; public users have one). `gcx
+cloud login` writes the current environment by default. The per-context `cloud`
+block is an **override** layer for stack-scoped access policy tokens. Cloud auth
+for a context resolves as (`Config.ResolveCloudConfig`):
+
+1. `GRAFANA_CLOUD_TOKEN` / env vars (parsed into the per-context block, highest priority)
+2. per-context `contexts.<ctx>.cloud` fields
+3. the selected environment — `contexts.<ctx>.cloud.env`, else `cloud.current`, else the sole env, else `prod`
+
+`stack` is always per-context. Environment tokens are keychain-backed under the
+`cloud-env:<name>` scope, like context tokens.
 
 Example:
 ```yaml
+cloud:
+  current: prod                      # hidden in UX when only one env exists
+  envs:
+    prod:
+      token: "glc_xxxx"              # GCOM token (keychain-backed)
+      api-url: "https://grafana.com" # optional: defaults to https://grafana.com
 contexts:
   cloud-prod:
     grafana:
       server: "https://mystack.grafana.net"
       token: "glsa_xxxx"
     cloud:
-      token: "glc_xxxx"              # separate GCOM token
       stack: "mystack"               # optional: slug derived from server if not set
-      api-url: "https://grafana.com" # optional: defaults to https://grafana.com
+      # token: "glc_stack_scoped"    # optional: overrides the env token for this stack
 ```
 
 ---

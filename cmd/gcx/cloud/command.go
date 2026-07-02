@@ -38,6 +38,7 @@ func loginCmd() *cobra.Command {
 		apiURL     string
 		scopes     []string
 		cloudToken string
+		envName    string
 	)
 
 	cmd := &cobra.Command{
@@ -55,21 +56,34 @@ By default, opens a browser for interactive OAuth2 authentication.
 For non-interactive use (CI/CD, scripts), pass a Cloud Access Policy token
 directly via --cloud-token.
 
+The result is written to a shared cloud environment (cloud.envs in the
+config) so every context can use it by default. Staff working against
+non-public environments can keep several (e.g. prod, ops, dev) and select one
+with --env. Pass --context to instead write a stack-scoped override on that
+context (contexts.<name>.cloud), for stack-scoped access policies.
+
 Two endpoints can be configured independently, both defaulting to
 https://grafana.com: --oauth-url is used only for the login flow here, while
 --api-url is used by every command that talks to the Grafana Cloud API.`,
 		Example: `  gcx cloud login
-  gcx cloud login --cloud-token glsa_abc123`,
+  gcx cloud login --cloud-token glsa_abc123
+  gcx cloud login --env ops --oauth-url https://grafana-ops.com --api-url https://grafana-ops.com
+  gcx --context pdc-dev cloud login --cloud-token glsa_abc123`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Endpoint URLs are sticky across re-auth: when not passed
-			// explicitly, carry over whatever the current context already has so
-			// a plain `gcx cloud login` doesn't wipe a previously set value.
-			cur := currentCloudContext(cmd.Context(), configOpts)
-			if !cmd.Flags().Changed("oauth-url") && cur != nil && cur.Cloud != nil && cur.Cloud.OAuthUrl != "" {
-				oauthURL = cur.Cloud.OAuthUrl
+			tgt, err := resolveLoginTarget(cmd, configOpts, envName)
+			if err != nil {
+				return err
 			}
-			if !cmd.Flags().Changed("api-url") && cur != nil && cur.Cloud != nil && cur.Cloud.APIUrl != "" {
-				apiURL = cur.Cloud.APIUrl
+
+			// Endpoint URLs are sticky across re-auth: when not passed
+			// explicitly, carry over whatever the target already has so a plain
+			// `gcx cloud login` doesn't wipe a previously set value.
+			existing := tgt.existingCloud(cmd.Context(), configOpts)
+			if !cmd.Flags().Changed("oauth-url") && existing != nil && existing.OAuthUrl != "" {
+				oauthURL = existing.OAuthUrl
+			}
+			if !cmd.Flags().Changed("api-url") && existing != nil && existing.APIUrl != "" {
+				apiURL = existing.APIUrl
 			}
 			// Normalize whichever values won (flag, carry-over, or default)
 			// so a bare host (e.g. "grafana.example.com") gets an https:// scheme
@@ -77,14 +91,15 @@ https://grafana.com: --oauth-url is used only for the login flow here, while
 			oauthURL = config.NormalizeCloudURL(oauthURL)
 			apiURL = config.NormalizeCloudURL(apiURL)
 			if cloudToken != "" {
-				return runTokenLogin(cmd.Context(), configOpts, cloudToken, oauthURL, apiURL)
+				return runTokenLogin(cmd.Context(), configOpts, tgt, cloudToken, oauthURL, apiURL)
 			}
-			return runOAuthLogin(cmd.Context(), configOpts, oauthURL, apiURL, scopes)
+			return runOAuthLogin(cmd.Context(), configOpts, tgt, oauthURL, apiURL, scopes)
 		},
 	}
 
 	configOpts.BindFlags(cmd.Flags())
 	cmd.Flags().StringVar(&cloudToken, "cloud-token", "", "Cloud Access Policy token (skips interactive OAuth flow)")
+	cmd.Flags().StringVar(&envName, "env", "", "Cloud environment to write to (default: the current environment)")
 	cmd.Flags().StringVar(&oauthURL, "oauth-url", "https://grafana.com", "Base URL for the OAuth login flow (used only by this command)")
 	cmd.Flags().StringVar(&apiURL, "api-url", "https://grafana.com", "Base URL for Grafana Cloud API resource calls (stacks etc.)")
 	cmd.Flags().StringSliceVar(&scopes, "scope", []string{
@@ -95,34 +110,70 @@ https://grafana.com: --oauth-url is used only for the login flow here, while
 	return cmd
 }
 
-// currentCloudContext loads the config and returns the current context, or nil
-// if config can't be loaded or the context doesn't exist yet.
-func currentCloudContext(ctx context.Context, configOpts *cmdconfig.Options) *config.Context {
+// writeTarget identifies where `gcx cloud login` writes its result: either a
+// top-level cloud environment (envName set) or a per-context stack-scoped
+// override (ctxName set). Exactly one field is non-empty.
+type writeTarget struct {
+	ctxName string
+	envName string
+}
+
+// resolveLoginTarget decides where to write the login result. A --context
+// (threaded as the global flag) selects a per-context override; otherwise the
+// result goes to a top-level environment named by --env, defaulting to the
+// current environment. The two are mutually exclusive.
+func resolveLoginTarget(cmd *cobra.Command, configOpts *cmdconfig.Options, envFlag string) (writeTarget, error) {
+	ctxName := config.ContextNameFromCtx(cmd.Context())
+	if ctxName != "" {
+		if cmd.Flags().Changed("env") {
+			return writeTarget{}, &gcxerrors.DetailedError{
+				Summary: "--context and --env cannot be combined",
+				Suggestions: []string{
+					"Use --context to write a stack-scoped cloud token override",
+					"Use --env to write a shared cloud environment",
+				},
+			}
+		}
+		return writeTarget{ctxName: ctxName}, nil
+	}
+
+	envName := envFlag
+	if envName == "" {
+		cfg, _ := config.Load(cmd.Context(), configOpts.ConfigSource())
+		envName = cfg.ResolveCloudEnvName(cfg.CurrentContext)
+	}
+	return writeTarget{envName: envName}, nil
+}
+
+// existingCloud returns the cloud config currently stored at the target, or nil.
+// Used to carry over sticky endpoint URLs across re-auth.
+func (t writeTarget) existingCloud(ctx context.Context, configOpts *cmdconfig.Options) *config.CloudConfig {
 	cfg, err := config.Load(ctx, configOpts.ConfigSource())
 	if err != nil {
 		return nil
 	}
-	ctxName := cfg.CurrentContext
-	if ctxName == "" {
-		ctxName = config.DefaultContextName
+	if t.ctxName != "" {
+		if c := cfg.Contexts[t.ctxName]; c != nil {
+			return c.Cloud
+		}
+		return nil
 	}
-	return cfg.Contexts[ctxName]
+	if cfg.Cloud != nil {
+		return cfg.Cloud.Envs[t.envName]
+	}
+	return nil
 }
 
-func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, token, oauthURL, apiURL string) error {
+func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, tgt writeTarget, token, oauthURL, apiURL string) error {
 	cloud := &config.CloudConfig{
 		Token:    token,
 		OAuthUrl: oauthURL,
 		APIUrl:   apiURL,
 	}
-	if err := saveCloudConfig(ctx, configOpts, cloud); err != nil {
-		return err
-	}
-	fmt.Fprintln(os.Stderr, "Cloud token saved.")
-	return nil
+	return saveCloudConfig(ctx, configOpts, tgt, cloud)
 }
 
-func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, oauthURL, apiURL string, scopes []string) error {
+func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, tgt writeTarget, oauthURL, apiURL string, scopes []string) error {
 	flow := auth.NewGCOMFlow(auth.GCOMOptions{
 		ClientID: defaultClientID,
 		GCOMURL:  oauthURL,
@@ -151,10 +202,10 @@ func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, oauthURL,
 		OAuthUrl: oauthURL,
 		APIUrl:   apiURL,
 	}
-	return saveCloudConfig(ctx, configOpts, cloud)
+	return saveCloudConfig(ctx, configOpts, tgt, cloud)
 }
 
-func saveCloudConfig(ctx context.Context, configOpts *cmdconfig.Options, cloud *config.CloudConfig) error {
+func saveCloudConfig(ctx context.Context, configOpts *cmdconfig.Options, tgt writeTarget, cloud *config.CloudConfig) error {
 	source := configOpts.ConfigSource()
 
 	cfg, err := config.Load(ctx, source)
@@ -172,22 +223,10 @@ func saveCloudConfig(ctx context.Context, configOpts *cmdconfig.Options, cloud *
 		cfg = config.Config{}
 	}
 
-	contextName := cfg.CurrentContext
-	if contextName == "" {
-		contextName = config.DefaultContextName
+	dest, err := applyCloudConfig(&cfg, tgt, cloud)
+	if err != nil {
+		return err
 	}
-
-	if !cfg.HasContext(contextName) {
-		cfg.SetContext(contextName, true, config.Context{})
-	}
-	curCtx := cfg.Contexts[contextName]
-	// Replace the entire cloud config to clear any stale OAuth/token fields
-	// when switching from OAuth to SA token or vice versa, but preserve the
-	// non-auth Stack selection so re-authenticating doesn't drop it.
-	if curCtx.Cloud != nil {
-		cloud.Stack = curCtx.Cloud.Stack
-	}
-	curCtx.Cloud = cloud
 
 	if err := config.Write(ctx, source, cfg); err != nil {
 		return &gcxerrors.DetailedError{
@@ -200,6 +239,37 @@ func saveCloudConfig(ctx context.Context, configOpts *cmdconfig.Options, cloud *
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "Token saved to context %q\n", contextName)
+	fmt.Fprintf(os.Stderr, "Cloud token saved to %s\n", dest)
 	return nil
+}
+
+// applyCloudConfig writes cloud into cfg at the target and returns a
+// human-readable description of where it landed. The cloud block is replaced
+// wholesale so stale OAuth fields are cleared when switching auth methods, but
+// the non-auth Stack selection is preserved so re-authenticating never drops it.
+func applyCloudConfig(cfg *config.Config, tgt writeTarget, cloud *config.CloudConfig) (string, error) {
+	if tgt.ctxName != "" {
+		if !cfg.HasContext(tgt.ctxName) {
+			return "", config.ContextNotFound(tgt.ctxName)
+		}
+		if existing := cfg.Contexts[tgt.ctxName].Cloud; existing != nil {
+			cloud.Stack = existing.Stack
+		}
+		cfg.Contexts[tgt.ctxName].Cloud = cloud
+		return fmt.Sprintf("context %q", tgt.ctxName), nil
+	}
+
+	if cfg.Cloud == nil {
+		cfg.Cloud = &config.CloudSettings{}
+	}
+	if cfg.Cloud.Envs == nil {
+		cfg.Cloud.Envs = make(map[string]*config.CloudConfig)
+	}
+	cfg.Cloud.Envs[tgt.envName] = cloud
+	// First environment configured becomes the default; adding more never
+	// silently switches the current one.
+	if cfg.Cloud.Current == "" {
+		cfg.Cloud.Current = tgt.envName
+	}
+	return fmt.Sprintf("environment %q", tgt.envName), nil
 }

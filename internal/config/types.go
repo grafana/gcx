@@ -34,6 +34,11 @@ type Config struct {
 	// CurrentContext is the name of the context currently in use.
 	CurrentContext string `json:"current-context" yaml:"current-context"`
 
+	// Cloud holds the top-level Grafana Cloud auth configuration shared across
+	// contexts. Contexts use the selected environment by default; per-context
+	// cloud blocks override it (see CloudConfig).
+	Cloud *CloudSettings `json:"cloud,omitempty" yaml:"cloud,omitempty"`
+
 	// Diagnostics holds optional local diagnostic settings. All features are off by default.
 	Diagnostics *DiagnosticsConfig `json:"diagnostics,omitempty" yaml:"diagnostics,omitempty"`
 
@@ -123,10 +128,34 @@ func (config *Config) SetContext(name string, makeCurrent bool, context Context)
 	}
 }
 
-// CloudConfig holds Grafana Cloud platform credentials and configuration.
+// DefaultCloudEnv is the cloud environment name used when none is configured.
+const DefaultCloudEnv = "prod"
+
+// CloudSettings holds the top-level Grafana Cloud auth configuration. Each named
+// environment carries its own GCOM credentials and endpoints; staff use several
+// (prod, ops, dev) while public users have only one. Current names the
+// environment used by default.
+type CloudSettings struct {
+	// Current is the name of the cloud environment used by default. When empty,
+	// the sole environment is used, falling back to DefaultCloudEnv.
+	Current string `json:"current,omitempty" yaml:"current,omitempty"`
+
+	// Envs maps environment name to its cloud auth configuration.
+	Envs map[string]*CloudConfig `json:"envs,omitempty" yaml:"envs,omitempty"`
+}
+
+// CloudConfig holds Grafana Cloud platform credentials and configuration. It is
+// used both for a top-level environment entry (CloudSettings.Envs) and as a
+// per-context override block (Context.Cloud). On a context block, non-empty
+// fields override the selected environment; Env and Stack are context-only.
 type CloudConfig struct {
 	// Token is a Grafana Cloud API token used to authenticate against GCOM.
 	Token string `datapolicy:"secret" env:"GRAFANA_CLOUD_TOKEN" json:"token,omitempty" yaml:"token,omitempty"`
+
+	// Env names the top-level cloud environment (CloudSettings.Envs) this
+	// context uses. Only meaningful on a per-context cloud block; when empty the
+	// context uses CloudSettings.Current. Ignored on environment entries.
+	Env string `json:"env,omitempty" yaml:"env,omitempty"`
 
 	// Stack is the Grafana Cloud stack slug (e.g. "mystack").
 	// Optional: if not set, the slug may be derived from Grafana.Server.
@@ -347,6 +376,71 @@ func ContextNameFromServerURL(serverURL string) string {
 	}
 
 	return strings.ReplaceAll(parsed.Hostname(), ".", "-")
+}
+
+// ResolveCloudEnvName returns the cloud environment a context resolves to:
+// the context's explicit Cloud.Env, else CloudSettings.Current, else the sole
+// configured environment, else DefaultCloudEnv.
+func (config *Config) ResolveCloudEnvName(ctxName string) string {
+	if ctx := config.Contexts[ctxName]; ctx != nil && ctx.Cloud != nil && ctx.Cloud.Env != "" {
+		return ctx.Cloud.Env
+	}
+	if config.Cloud != nil {
+		if config.Cloud.Current != "" {
+			return config.Cloud.Current
+		}
+		if len(config.Cloud.Envs) == 1 {
+			for name := range config.Cloud.Envs {
+				return name
+			}
+		}
+	}
+	return DefaultCloudEnv
+}
+
+// ResolveCloudConfig returns the effective cloud auth for the named context:
+// the selected environment's config overlaid with any non-empty per-context
+// override fields. Stack is always taken from the context; Env is not carried
+// through. The result is always non-nil (possibly empty).
+func (config *Config) ResolveCloudConfig(ctxName string) *CloudConfig {
+	out := &CloudConfig{}
+	if config.Cloud != nil {
+		if env := config.Cloud.Envs[config.ResolveCloudEnvName(ctxName)]; env != nil {
+			*out = *env
+		}
+	}
+	out.Env = ""
+	out.Stack = ""
+
+	if ctx := config.Contexts[ctxName]; ctx != nil && ctx.Cloud != nil {
+		over := ctx.Cloud
+		if over.Token != "" {
+			out.Token = over.Token
+		}
+		if over.OAuthUrl != "" {
+			out.OAuthUrl = over.OAuthUrl
+		}
+		if over.APIUrl != "" {
+			out.APIUrl = over.APIUrl
+		}
+		out.Stack = over.Stack
+	}
+	return out
+}
+
+// ResolveCloudAPIURL returns the effective Grafana Cloud API (GCOM) base URL for
+// the named context, resolving the environment and per-context overrides, then
+// falling back to the GCOM root derived from the stack server URL.
+func (config *Config) ResolveCloudAPIURL(ctxName string) string {
+	if merged := config.ResolveCloudConfig(ctxName); merged.APIUrl != "" {
+		return NormalizeCloudURL(merged.APIUrl)
+	}
+	if ctx := config.Contexts[ctxName]; ctx != nil && ctx.Grafana != nil {
+		if root, ok := GCOMRootFromServerURL(ctx.Grafana.Server); ok {
+			return root
+		}
+	}
+	return "https://grafana.com"
 }
 
 // ResolveCloudAPIURL returns the base URL for Grafana Cloud API (GCOM) resource

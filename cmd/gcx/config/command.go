@@ -643,7 +643,7 @@ func setCmd(configOpts *Options) *cobra.Command {
 
 PROPERTY_NAME is a dot-delimited reference to the value to set. It can either represent a field or a map entry.
 
-A bare path (e.g. "cloud.token") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context.
+A bare path (e.g. "grafana.server") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context. Paths starting with "cloud." target the shared top-level cloud auth section (e.g. "cloud.current", "cloud.envs.prod.token").
 
 PROPERTY_VALUE is the new value to set.`,
 		Example: `
@@ -693,7 +693,7 @@ func unsetCmd(configOpts *Options) *cobra.Command {
 
 PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
 
-A bare path (e.g. "cloud.token") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context.`,
+A bare path (e.g. "grafana.server") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context. Paths starting with "cloud." target the shared top-level cloud auth section.`,
 		Example: `
 	# Unset the "foo" context
 	gcx config unset contexts.foo

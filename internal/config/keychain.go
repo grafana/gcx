@@ -45,6 +45,23 @@ func (k keychainBacked) mark(ctx string, field credentials.Field) {
 	k[ctx][field] = true
 }
 
+// mergeBacked folds src into dst, allocating dst when nil. Used to combine
+// per-context and cloud-environment resolution results at load time.
+func mergeBacked(dst, src keychainBacked) keychainBacked {
+	if len(src) == 0 {
+		return dst
+	}
+	if dst == nil {
+		dst = keychainBacked{}
+	}
+	for scope, fields := range src {
+		for field := range fields {
+			dst.mark(scope, field)
+		}
+	}
+	return dst
+}
+
 // secretRef is a get/set handle for a secret field. Provider-map secrets
 // cannot be addressed by *string (Go map values are not addressable), so all
 // callers go through this interface uniformly.
@@ -128,12 +145,90 @@ func providerFieldRef(ctx *Context, provider, key string) (secretRef, bool) {
 	}, true
 }
 
+// cloudEnvScope returns the keychain scope name for a top-level cloud
+// environment token. It is namespaced with a "cloud-env:" prefix so it never
+// collides with a context name; ParseSentinel splits on the final colon, so the
+// environment name itself may contain colons.
+func cloudEnvScope(envName string) string {
+	return "cloud-env:" + envName
+}
+
+// secretScope pairs a keychain scope name (a context name, or a cloud-env scope)
+// with the secret field references it owns.
+type secretScope struct {
+	name string
+	refs map[credentials.Field]secretRef
+}
+
+// secretScopes enumerates every secret-bearing scope in the config: one per
+// context, plus one per top-level cloud environment (which owns only a cloud
+// token). It is the single source of truth for the migrate/reconcile/
+// has-secrets walkers so contexts and environments are handled uniformly.
+func (cfg *Config) secretScopes() []secretScope {
+	var scopes []secretScope
+	for ctxName, ctx := range cfg.Contexts {
+		if ctx == nil {
+			continue
+		}
+		refs := make(map[credentials.Field]secretRef)
+		for _, field := range credentials.AllFields {
+			if ref, ok := fieldRef(ctx, field); ok {
+				refs[field] = ref
+			}
+		}
+		scopes = append(scopes, secretScope{name: ctxName, refs: refs})
+	}
+	if cfg.Cloud != nil {
+		for name, env := range cfg.Cloud.Envs {
+			if env == nil {
+				continue
+			}
+			env := env
+			scopes = append(scopes, secretScope{
+				name: cloudEnvScope(name),
+				refs: map[credentials.Field]secretRef{
+					credentials.FieldCloudToken: {
+						get: func() string { return env.Token },
+						set: func(v string) { env.Token = v },
+					},
+				},
+			})
+		}
+	}
+	return scopes
+}
+
+// resolveSentinelRef replaces a single sentinel-valued secret with its plaintext
+// from the store, recording the outcome in backed/preserve. On any failure the
+// in-memory value is cleared so the command surfaces a missing credential rather
+// than sending a sentinel string as one.
+func resolveSentinelRef(scope string, field credentials.Field, ref secretRef, store credentials.Store, backed, preserve keychainBacked) {
+	cur := ref.get()
+	if !credentials.IsSentinel(cur) {
+		return
+	}
+	parsedScope, parsedField, ok := credentials.ParseSentinel(cur)
+	if !ok || parsedScope != scope || parsedField != field {
+		ref.set("")
+		return
+	}
+	value, err := store.Get(credentials.AccountKey(scope, field))
+	if err != nil {
+		ref.set("")
+		if errors.Is(err, credentials.ErrNotFound) {
+			return
+		}
+		preserve.mark(scope, field)
+		return
+	}
+	ref.set(value)
+	backed.mark(scope, field)
+}
+
 // resolveSentinelsForContext replaces keychain sentinels with their plaintext
 // values from the store for a single context. It returns two maps: backed lists
 // the (context, field) pairs that resolved successfully, and preserve lists
-// pairs whose lookup failed because the keychain was unavailable. In both
-// failure cases the in-memory value is cleared so the command surfaces a
-// missing credential rather than sending a sentinel string as one.
+// pairs whose lookup failed because the keychain was unavailable.
 func resolveSentinelsForContext(ctxName string, ctx *Context, store credentials.Store) (keychainBacked, keychainBacked) {
 	backed, preserve := keychainBacked{}, keychainBacked{}
 	for _, field := range credentials.AllFields {
@@ -141,26 +236,30 @@ func resolveSentinelsForContext(ctxName string, ctx *Context, store credentials.
 		if !ok {
 			continue
 		}
-		cur := ref.get()
-		if !credentials.IsSentinel(cur) {
+		resolveSentinelRef(ctxName, field, ref, store, backed, preserve)
+	}
+	return backed, preserve
+}
+
+// resolveEnvSentinels replaces keychain sentinels with plaintext for every
+// top-level cloud environment token. Unlike contexts (resolved lazily), cloud
+// environments are global, so the loader resolves them eagerly.
+func resolveEnvSentinels(cfg *Config, store credentials.Store) (keychainBacked, keychainBacked) {
+	backed, preserve := keychainBacked{}, keychainBacked{}
+	if cfg.Cloud == nil {
+		return backed, preserve
+	}
+	for name, env := range cfg.Cloud.Envs {
+		if env == nil {
 			continue
 		}
-		parsedCtx, parsedField, ok := credentials.ParseSentinel(cur)
-		if !ok || parsedCtx != ctxName || parsedField != field {
-			ref.set("")
-			continue
+		env := env
+		scope := cloudEnvScope(name)
+		ref := secretRef{
+			get: func() string { return env.Token },
+			set: func(v string) { env.Token = v },
 		}
-		value, err := store.Get(credentials.AccountKey(ctxName, field))
-		if err != nil {
-			ref.set("")
-			if errors.Is(err, credentials.ErrNotFound) {
-				continue
-			}
-			preserve.mark(ctxName, field)
-			continue
-		}
-		ref.set(value)
-		backed.mark(ctxName, field)
+		resolveSentinelRef(scope, credentials.FieldCloudToken, ref, store, backed, preserve)
 	}
 	return backed, preserve
 }
@@ -170,23 +269,16 @@ func resolveSentinelsForContext(ctxName string, ctx *Context, store credentials.
 // If the store is unavailable, it emits a one-time warning and returns 0.
 func migratePlaintextSecrets(cfg *Config, store credentials.Store, log logging.Logger) int {
 	migrated := 0
-	for ctxName, ctx := range cfg.Contexts {
-		if ctx == nil {
-			continue
-		}
-		for _, field := range credentials.AllFields {
-			ref, ok := fieldRef(ctx, field)
-			if !ok {
-				continue
-			}
+	for _, scope := range cfg.secretScopes() {
+		for field, ref := range scope.refs {
 			cur := ref.get()
 			if cur == "" || credentials.IsSentinel(cur) {
 				continue
 			}
-			if cfg.keychainFields[ctxName][field] {
+			if cfg.keychainFields[scope.name][field] {
 				continue
 			}
-			if err := store.Set(credentials.AccountKey(ctxName, field), cur); err != nil {
+			if err := store.Set(credentials.AccountKey(scope.name, field), cur); err != nil {
 				if errors.Is(err, credentials.ErrUnavailable) {
 					credentials.WarnUnavailableOnce(func() {
 						log.Warn("keychain unavailable; credentials remain in plaintext on disk",
@@ -195,7 +287,7 @@ func migratePlaintextSecrets(cfg *Config, store credentials.Store, log logging.L
 					return migrated
 				}
 				log.Warn("could not write keychain entry",
-					"context", ctxName,
+					"context", scope.name,
 					"field", string(field),
 					"error", err.Error())
 				continue
@@ -203,7 +295,7 @@ func migratePlaintextSecrets(cfg *Config, store credentials.Store, log logging.L
 			if cfg.keychainFields == nil {
 				cfg.keychainFields = keychainBacked{}
 			}
-			cfg.keychainFields.mark(ctxName, field)
+			cfg.keychainFields.mark(scope.name, field)
 			migrated++
 		}
 	}
@@ -220,12 +312,9 @@ func (cfg *Config) hasSecretsToReconcile() bool {
 	if len(cfg.keychainFields) > 0 || len(cfg.keychainPreserve) > 0 {
 		return true
 	}
-	for _, ctx := range cfg.Contexts {
-		if ctx == nil {
-			continue
-		}
-		for _, field := range credentials.AllFields {
-			if ref, ok := fieldRef(ctx, field); ok && ref.get() != "" {
+	for _, scope := range cfg.secretScopes() {
+		for _, ref := range scope.refs {
+			if ref.get() != "" {
 				return true
 			}
 		}
@@ -256,21 +345,14 @@ func reconcileKeychain(cfg *Config, store credentials.Store, log logging.Logger)
 		plaintext string
 	}
 	var swaps []swap
-	for ctxName, ctx := range cfg.Contexts {
-		if ctx == nil {
-			continue
-		}
-		for _, field := range credentials.AllFields {
-			ref, ok := fieldRef(ctx, field)
-			if !ok {
-				continue
-			}
-			key := credentials.AccountKey(ctxName, field)
+	for _, scope := range cfg.secretScopes() {
+		for field, ref := range scope.refs {
+			key := credentials.AccountKey(scope.name, field)
 
 			// Unresolvable at load: round-trip the sentinel verbatim.
-			if cfg.keychainPreserve[ctxName][field] {
+			if cfg.keychainPreserve[scope.name][field] {
 				swaps = append(swaps, swap{ref: ref, plaintext: ref.get()})
-				ref.set(credentials.FormatSentinel(ctxName, field))
+				ref.set(credentials.FormatSentinel(scope.name, field))
 				continue
 			}
 
@@ -279,14 +361,14 @@ func reconcileKeychain(cfg *Config, store credentials.Store, log logging.Logger)
 			if cur == "" {
 				// Field cleared. If it was keychain-backed, remove the now-stale
 				// entry instead of orphaning it.
-				if cfg.keychainFields[ctxName][field] {
+				if cfg.keychainFields[scope.name][field] {
 					if err := store.Delete(key); err != nil && !errors.Is(err, credentials.ErrUnavailable) {
 						log.Warn("could not remove stale keychain entry",
-							"context", ctxName,
+							"context", scope.name,
 							"field", string(field),
 							"error", err.Error())
 					}
-					delete(cfg.keychainFields[ctxName], field)
+					delete(cfg.keychainFields[scope.name], field)
 				}
 				continue
 			}
@@ -306,14 +388,14 @@ func reconcileKeychain(cfg *Config, store credentials.Store, log logging.Logger)
 					continue
 				}
 				log.Warn("could not write keychain entry",
-					"context", ctxName,
+					"context", scope.name,
 					"field", string(field),
 					"error", err.Error())
 				continue
 			}
-			cfg.keychainFields.mark(ctxName, field)
+			cfg.keychainFields.mark(scope.name, field)
 			swaps = append(swaps, swap{ref: ref, plaintext: cur})
-			ref.set(credentials.FormatSentinel(ctxName, field))
+			ref.set(credentials.FormatSentinel(scope.name, field))
 		}
 	}
 	return func() {

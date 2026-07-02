@@ -231,12 +231,13 @@ func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 
 	curCtx := loaded.GetCurrentContext()
 
-	if curCtx.Cloud == nil || curCtx.Cloud.Token == "" {
-		return cloudBase{}, errors.New("cloud token is required: set cloud.token in config or GRAFANA_CLOUD_TOKEN env var")
+	merged := loaded.ResolveCloudConfig(loaded.CurrentContext)
+	if merged.Token == "" {
+		return cloudBase{}, errors.New("cloud token is required: run `gcx cloud login`, set a cloud token in config, or set GRAFANA_CLOUD_TOKEN")
 	}
 
-	token := curCtx.Cloud.Token
-	apiURL := curCtx.ResolveCloudAPIURL()
+	token := merged.Token
+	apiURL := loaded.ResolveCloudAPIURL(loaded.CurrentContext)
 
 	client, err := cloud.NewGCOMClient(apiURL, token)
 	if err != nil {

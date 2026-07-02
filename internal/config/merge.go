@@ -32,6 +32,16 @@ func MergeConfigs(base, over Config) Config {
 		}
 	}
 
+	// Top-level cloud: merge environments by key; current-env wins if non-empty.
+	if over.Cloud != nil {
+		if result.Cloud == nil {
+			result.Cloud = over.Cloud
+		} else {
+			merged := mergeCloudSettings(result.Cloud, over.Cloud)
+			result.Cloud = &merged
+		}
+	}
+
 	// Diagnostics: propagate from any layer that enables it.
 	if over.Diagnostics != nil {
 		if result.Diagnostics == nil {
@@ -167,10 +177,34 @@ func mergeGrafanaConfig(base, over *GrafanaConfig) GrafanaConfig {
 	return result
 }
 
+func mergeCloudSettings(base, over *CloudSettings) CloudSettings {
+	result := *base
+	if over.Current != "" {
+		result.Current = over.Current
+	}
+	if over.Envs != nil {
+		if result.Envs == nil {
+			result.Envs = make(map[string]*CloudConfig)
+		}
+		for name, overEnv := range over.Envs {
+			if baseEnv, ok := result.Envs[name]; ok {
+				merged := mergeCloudConfig(baseEnv, overEnv)
+				result.Envs[name] = &merged
+			} else {
+				result.Envs[name] = overEnv
+			}
+		}
+	}
+	return result
+}
+
 func mergeCloudConfig(base, over *CloudConfig) CloudConfig {
 	result := *base
 	if over.Token != "" {
 		result.Token = over.Token
+	}
+	if over.Env != "" {
+		result.Env = over.Env
 	}
 	if over.Stack != "" {
 		result.Stack = over.Stack

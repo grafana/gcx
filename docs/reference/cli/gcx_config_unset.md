@@ -8,7 +8,7 @@ Unset a single value in a configuration file.
 
 PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
 
-A bare path (e.g. "cloud.token") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context.
+A bare path (e.g. "grafana.server") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context. Paths starting with "cloud." target the shared top-level cloud auth section.
 
 ```
 gcx config unset PROPERTY_NAME [flags]

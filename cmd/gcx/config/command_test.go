@@ -400,22 +400,22 @@ func Test_SetCommand_barePathResolvesAgainstCurrentContext(t *testing.T) {
 
 	configFile := testutils.CreateTempFile(t, cfg)
 
-	setCloudToken := testutils.CommandTestCase{
+	setUser := testutils.CommandTestCase{
 		Cmd:     config.Command(),
-		Command: []string{"set", "--config", configFile, "cloud.token", "glc_abc123"},
+		Command: []string{"set", "--config", configFile, "grafana.user", "admin"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 		},
 	}
-	setCloudToken.Run(t)
+	setUser.Run(t)
 
 	viewCmd := testutils.CommandTestCase{
 		Cmd:     config.Command(),
 		Command: []string{"view", "--config", configFile, "--minify", "--raw"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
-			testutils.CommandOutputContains(`cloud:
-      token: glc_abc123`),
+			testutils.CommandOutputContains(`grafana:
+      user: admin`),
 		},
 	}
 	viewCmd.Run(t)
@@ -426,12 +426,74 @@ func Test_SetCommand_barePathWithoutCurrentContextErrors(t *testing.T) {
 
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
-		Command: []string{"set", "--config", configFile, "cloud.token", "glc_abc123"},
+		Command: []string{"set", "--config", configFile, "grafana.user", "admin"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandErrorContains("no current context set"),
 		},
 	}
 	testCase.Run(t)
+}
+
+func Test_SetCommand_cloudPathTargetsTopLevel(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, `current-context: dev`)
+
+	setEnvToken := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"set", "--config", configFile, "cloud.envs.prod.token", "glc_abc123"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+		},
+	}
+	setEnvToken.Run(t)
+
+	setCurrent := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"set", "--config", configFile, "cloud.current", "prod"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+		},
+	}
+	setCurrent.Run(t)
+
+	viewCmd := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"view", "--config", configFile, "--raw"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`cloud:
+  current: prod
+  envs:
+    prod:
+      token: glc_abc123`),
+		},
+	}
+	viewCmd.Run(t)
+}
+
+func Test_ViewCommand_RedactsTopLevelCloudToken(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, `cloud:
+  current: prod
+  envs:
+    prod:
+      token: glc_supersecret
+      api-url: https://grafana.com
+current-context: dev
+contexts:
+  dev:
+    grafana:
+      server: https://example.invalid
+`)
+
+	viewCmd := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"view", "--config", configFile},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains("**REDACTED**"),
+			testutils.CommandOutputDoesNotContain("glc_supersecret"),
+		},
+	}
+	viewCmd.Run(t)
 }
 
 func Test_UnsetCommand(t *testing.T) {

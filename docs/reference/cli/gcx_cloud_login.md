@@ -16,6 +16,12 @@ By default, opens a browser for interactive OAuth2 authentication.
 For non-interactive use (CI/CD, scripts), pass a Cloud Access Policy token
 directly via --cloud-token.
 
+The result is written to a shared cloud environment (cloud.envs in the
+config) so every context can use it by default. Staff working against
+non-public environments can keep several (e.g. prod, ops, dev) and select one
+with --env. Pass --context to instead write a stack-scoped override on that
+context (contexts.<name>.cloud), for stack-scoped access policies.
+
 Two endpoints can be configured independently, both defaulting to
 https://grafana.com: --oauth-url is used only for the login flow here, while
 --api-url is used by every command that talks to the Grafana Cloud API.
@@ -29,6 +35,8 @@ gcx cloud login [flags]
 ```
   gcx cloud login
   gcx cloud login --cloud-token glsa_abc123
+  gcx cloud login --env ops --oauth-url https://grafana-ops.com --api-url https://grafana-ops.com
+  gcx --context pdc-dev cloud login --cloud-token glsa_abc123
 ```
 
 ### Options
@@ -38,6 +46,7 @@ gcx cloud login [flags]
       --cloud-token string   Cloud Access Policy token (skips interactive OAuth flow)
       --config string        Path to the configuration file to use
       --context string       Name of the context to use
+      --env string           Cloud environment to write to (default: the current environment)
   -h, --help                 help for login
       --oauth-url string     Base URL for the OAuth login flow (used only by this command) (default "https://grafana.com")
       --scope strings        OAuth2 scopes to request (default [stacks:read,stacks:write,stacks:delete,accesspolicies:read,accesspolicies:write,accesspolicies:delete])

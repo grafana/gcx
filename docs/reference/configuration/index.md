@@ -93,9 +93,16 @@ contexts:
           - ...
           
     cloud: 
-      # CloudConfig holds Grafana Cloud platform credentials and configuration.
+      # CloudConfig holds Grafana Cloud platform credentials and configuration. It is
+      # used both for a top-level environment entry (CloudSettings.Envs) and as a
+      # per-context override block (Context.Cloud). On a context block, non-empty
+      # fields override the selected environment; Env and Stack are context-only.
       # Token is a Grafana Cloud API token used to authenticate against GCOM.
       token: string
+      # Env names the top-level cloud environment (CloudSettings.Envs) this
+      # context uses. Only meaningful on a per-context cloud block; when empty the
+      # context uses CloudSettings.Current. Ignored on environment entries.
+      env: string
       # Stack is the Grafana Cloud stack slug (e.g. "mystack").
       # Optional: if not set, the slug may be derived from Grafana.Server.
       stack: string
@@ -130,6 +137,41 @@ contexts:
           string
 # CurrentContext is the name of the context currently in use.
 current-context: string
+# Cloud holds the top-level Grafana Cloud auth configuration shared across
+# contexts. Contexts use the selected environment by default; per-context
+# cloud blocks override it (see CloudConfig).
+cloud: 
+  # CloudSettings holds the top-level Grafana Cloud auth configuration. Each named
+  # environment carries its own GCOM credentials and endpoints; staff use several
+  # (prod, ops, dev) while public users have only one. Current names the
+  # environment used by default.
+  # Current is the name of the cloud environment used by default. When empty,
+  # the sole environment is used, falling back to DefaultCloudEnv.
+  current: string
+  # Envs maps environment name to its cloud auth configuration.
+  envs: 
+    ${string}:
+      # CloudConfig holds Grafana Cloud platform credentials and configuration. It is
+      # used both for a top-level environment entry (CloudSettings.Envs) and as a
+      # per-context override block (Context.Cloud). On a context block, non-empty
+      # fields override the selected environment; Env and Stack are context-only.
+      # Token is a Grafana Cloud API token used to authenticate against GCOM.
+      token: string
+      # Env names the top-level cloud environment (CloudSettings.Envs) this
+      # context uses. Only meaningful on a per-context cloud block; when empty the
+      # context uses CloudSettings.Current. Ignored on environment entries.
+      env: string
+      # Stack is the Grafana Cloud stack slug (e.g. "mystack").
+      # Optional: if not set, the slug may be derived from Grafana.Server.
+      stack: string
+      # OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
+      # login`. It is used only during login. Optional: defaults to
+      # "https://grafana.com".
+      oauth-url: string
+      # APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls
+      # (stacks, regions, access policies, etc.). Every client talking to GCOM
+      # uses it. Optional: defaults to "https://grafana.com".
+      api-url: string
 # Diagnostics holds optional local diagnostic settings. All features are off by default.
 diagnostics: 
   # DiagnosticsConfig controls optional local diagnostic features.

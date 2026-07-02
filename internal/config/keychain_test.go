@@ -190,6 +190,58 @@ current-context: default
 	assert.Equal(t, "plain-svc-token", got)
 }
 
+func TestLoad_MigratesEnvCloudTokenIntoKeychain(t *testing.T) {
+	store := withFakeStore(t)
+	path := writeYAML(t, `
+cloud:
+  current: prod
+  envs:
+    prod:
+      token: plain-env-token
+      api-url: https://grafana.com
+current-context: default
+contexts:
+  default:
+    grafana:
+      server: https://example.invalid
+`)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+
+	assert.Equal(t, "plain-env-token", cfg.Cloud.Envs["prod"].Token, "in-memory value should be plaintext")
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	disk := string(raw)
+	assert.Contains(t, disk, "keychain:gcx:cloud-env:prod:cloud-token")
+	assert.NotContains(t, disk, "plain-env-token")
+
+	got, err := store.Get(credentials.AccountKey("cloud-env:prod", credentials.FieldCloudToken))
+	require.NoError(t, err)
+	assert.Equal(t, "plain-env-token", got)
+}
+
+func TestLoad_ResolvesEnvCloudTokenSentinel(t *testing.T) {
+	store := withFakeStore(t)
+	require.NoError(t, store.Set(credentials.AccountKey("cloud-env:ops", credentials.FieldCloudToken), "resolved-env-token"))
+
+	path := writeYAML(t, `
+cloud:
+  current: ops
+  envs:
+    ops:
+      token: keychain:gcx:cloud-env:ops:cloud-token
+contexts: {}
+`)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+
+	assert.Equal(t, "resolved-env-token", cfg.Cloud.Envs["ops"].Token,
+		"cloud environment token sentinels must be resolved eagerly at load")
+}
+
 func TestLoad_MigratesProviderSMToken(t *testing.T) {
 	store := withFakeStore(t)
 	path := writeYAML(t, `

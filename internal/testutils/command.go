@@ -38,6 +38,14 @@ func CommandOutputContains(expected string) CommandAssertion {
 	}
 }
 
+func CommandOutputDoesNotContain(unexpected string) CommandAssertion {
+	return func(t *testing.T, result CommandResult) {
+		t.Helper()
+
+		require.NotContains(t, result.Stdout, unexpected)
+	}
+}
+
 func CommandOutputEquals(expected string) CommandAssertion {
 	return func(t *testing.T, result CommandResult) {
 		t.Helper()
