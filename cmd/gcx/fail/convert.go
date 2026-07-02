@@ -51,6 +51,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertPartialFailureErrors,
 		convertUsageErrors,
 		convertCobraUnknownCommandErrors,
+		convertUnknownFlagErrors,
 		convertContextCanceled,                      // Context cancellation (must be first — cancellation can wrap other errors)
 		convertRequiredFlagErrors,                   // Cobra required-flag errors — must appear before generic checks
 		convertConfigErrors,                         // Config-related
@@ -97,7 +98,27 @@ func convertUsageErrors(err error) (*gcxerrors.DetailedError, bool) {
 		Summary:     "Invalid command usage",
 		Details:     details,
 		Suggestions: usageErr.Suggestions,
+		Corrections: usageErr.Corrections,
 		ExitCode:    new(gcxerrors.ExitUsageError),
+	}, true
+}
+
+// convertUnknownFlagErrors is a safety net for raw pflag unknown-flag errors
+// that bypass the root FlagErrorFunc (which wraps them in UsageError with
+// did-you-mean suggestions). It ensures the usage exit code is still applied.
+func convertUnknownFlagErrors(err error) (*gcxerrors.DetailedError, bool) {
+	msg := strings.TrimSpace(err.Error())
+	if !strings.HasPrefix(msg, "unknown flag:") && !strings.HasPrefix(msg, "unknown shorthand flag:") {
+		return nil, false
+	}
+
+	return &gcxerrors.DetailedError{
+		Summary: "Invalid command usage",
+		Details: msg,
+		Suggestions: []string{
+			"Run the command with --help to list valid flags",
+		},
+		ExitCode: new(gcxerrors.ExitUsageError),
 	}, true
 }
 

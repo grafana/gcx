@@ -121,6 +121,7 @@ to **stdout** in addition to the existing stderr `DetailedError` output
 | `exitCode` | int | yes | Matches the process exit code |
 | `details` | string | no | Omitted when empty |
 | `suggestions` | []string | no | Omitted when empty |
+| `corrections` | []object | no | Omitted when empty. Ranked ready-to-run fixes for mistyped commands/flags: `{"command": "<full corrected invocation>", "hint": "<llm_hint or flag usage>"}` |
 | `docsLink` | string | no | Omitted when empty |
 
 **Guarantees:**

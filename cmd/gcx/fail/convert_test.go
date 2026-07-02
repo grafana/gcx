@@ -1063,3 +1063,42 @@ func TestErrorToDetailedError_ValueTypedPreservesExitCode(t *testing.T) {
 		})
 	}
 }
+
+func TestErrorToDetailedError_UnknownFlagFallback(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{name: "long flag", err: errors.New("unknown flag: --formt")},
+		{name: "shorthand flag", err: errors.New(`unknown shorthand flag: 'z' in -z`)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			require.NotNil(t, got)
+			assert.Equal(t, "Invalid command usage", got.Summary)
+			assert.Equal(t, tc.err.Error(), got.Details)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
+			assert.Contains(t, got.Suggestions, "Run the command with --help to list valid flags")
+		})
+	}
+}
+
+func TestErrorToDetailedError_UsageErrorCarriesCorrections(t *testing.T) {
+	corrections := []gcxerrors.Correction{
+		{Command: "gcx resources get dashboards --format json", Hint: "Rendering format"},
+	}
+
+	got := fail.ErrorToDetailedError(&fail.UsageError{
+		Message:     "unknown flag: --formt",
+		Corrections: corrections,
+	})
+
+	require.NotNil(t, got)
+	assert.Equal(t, corrections, got.Corrections)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
+}
