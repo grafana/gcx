@@ -76,6 +76,17 @@ func TestValidateArgs_CorrectionReattachesTrailingArgs(t *testing.T) {
 	assert.Equal(t, "gcx aio11y agents show my-agent", usageErr.Corrections[0].Command)
 }
 
+func TestValidateArgs_CorrectionQuotesSpacedTrailingArgs(t *testing.T) {
+	rootCmd := newAgentsTestRoot(t)
+
+	err := root.ValidateArgs(rootCmd, []string{"aio11y", "agents", "shwo", "my agent"})
+	require.Error(t, err)
+
+	usageErr := asUsageError(t, err)
+	require.Len(t, usageErr.Corrections, 1)
+	assert.Equal(t, `gcx aio11y agents show 'my agent'`, usageErr.Corrections[0].Command)
+}
+
 func TestValidateArgs_SuggestsViaAlias(t *testing.T) {
 	rootCmd := newAgentsTestRoot(t)
 
