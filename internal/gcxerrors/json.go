@@ -61,11 +61,12 @@ func (e DetailedError) resolvedDetails() string {
 // errorJSON is the JSON representation of a DetailedError.
 // Optional fields use pointers so they are omitted when empty.
 type errorJSON struct {
-	Summary     string   `json:"summary"`
-	ExitCode    int      `json:"exitCode"`
-	Details     string   `json:"details,omitempty"`
-	Suggestions []string `json:"suggestions,omitempty"`
-	DocsLink    string   `json:"docsLink,omitempty"`
+	Summary     string       `json:"summary"`
+	ExitCode    int          `json:"exitCode"`
+	Details     string       `json:"details,omitempty"`
+	Suggestions []string     `json:"suggestions,omitempty"`
+	Corrections []Correction `json:"corrections,omitempty"`
+	DocsLink    string       `json:"docsLink,omitempty"`
 }
 
 // Discriminators for the gcx-owned envelope shapes written to stdout. The
@@ -104,6 +105,7 @@ func (e DetailedError) WriteJSON(w io.Writer, exitCode int) error {
 			ExitCode:    exitCode,
 			Details:     stripBoxChars(e.resolvedDetails()),
 			Suggestions: e.agentSuggestions(),
+			Corrections: e.Corrections,
 			DocsLink:    e.DocsLink,
 		},
 	}
@@ -138,6 +140,7 @@ func (e DetailedError) WriteJSONWithItems(w io.Writer, exitCode int, items any) 
 			ExitCode:    exitCode,
 			Details:     stripBoxChars(e.resolvedDetails()),
 			Suggestions: e.agentSuggestions(),
+			Corrections: e.Corrections,
 			DocsLink:    e.DocsLink,
 		},
 	}
