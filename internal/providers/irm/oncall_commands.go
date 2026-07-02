@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
@@ -99,6 +100,31 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+type mutateOpts struct {
+	IO   cmdio.Options
+	File string
+}
+
+func (o *mutateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the resource definition (JSON/YAML, use - for stdin)")
+}
+
+type deleteOpts struct {
+	Force bool
+}
+
+func (o *deleteOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
+// noListFn is a stub list function for TypedCRUD instances built by verbs
+// that never list (get/create/update/delete).
+func noListFn[T adapter.ResourceNamer](_ context.Context, _ OnCallAPI) ([]T, error) {
+	return nil, nil
+}
+
 // newListSubcommand creates a "list" subcommand using TypedCRUD.
 func newListSubcommand[T adapter.ResourceNamer](
 	loader OnCallConfigLoader, resource, kind, short string, idField string,
@@ -158,7 +184,7 @@ func newGetSubcommand[T adapter.ResourceNamer](
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := newTypedCRUD(ctx, loader, func(_ context.Context, _ OnCallAPI) ([]T, error) { return nil, nil }, getFn)
+			crud, _, err := newTypedCRUD(ctx, loader, noListFn[T], getFn)
 			if err != nil {
 				return err
 			}
@@ -172,6 +198,123 @@ func newGetSubcommand[T adapter.ResourceNamer](
 		},
 	}
 	go2.setup(cmd.Flags())
+	return cmd
+}
+
+// newCreateSubcommand creates a "create" subcommand. It reads a bare resource
+// object from -f/--filename (or stdin when "-"), dispatches through the same
+// TypedCRUD wiring the resource adapter uses, and emits the created object.
+func newCreateSubcommand[T adapter.ResourceNamer](
+	loader OnCallConfigLoader, short string, crudOpts []crudOption[T],
+) *cobra.Command {
+	mo := &mutateOpts{}
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: short,
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := mo.IO.Validate(); err != nil {
+				return err
+			}
+
+			var item T
+			if err := providers.ReadFileOrStdin(mo.File, cmd.InOrStdin(), &item); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := newTypedCRUD(ctx, loader, noListFn[T], nil, crudOpts...)
+			if err != nil {
+				return err
+			}
+
+			result, err := crud.Create(ctx, &adapter.TypedObject[T]{Spec: item})
+			if err != nil {
+				return err
+			}
+
+			return mo.IO.Encode(cmd.OutOrStdout(), result.Spec)
+		},
+	}
+	mo.setup(cmd.Flags())
+	return cmd
+}
+
+// newUpdateSubcommand creates an "update <id>" subcommand reading the new
+// resource definition from -f/--filename.
+func newUpdateSubcommand[T adapter.ResourceNamer](
+	loader OnCallConfigLoader, short string, crudOpts []crudOption[T],
+) *cobra.Command {
+	mo := &mutateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update <id>",
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := mo.IO.Validate(); err != nil {
+				return err
+			}
+
+			var item T
+			if err := providers.ReadFileOrStdin(mo.File, cmd.InOrStdin(), &item); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := newTypedCRUD(ctx, loader, noListFn[T], nil, crudOpts...)
+			if err != nil {
+				return err
+			}
+
+			result, err := crud.Update(ctx, args[0], &adapter.TypedObject[T]{Spec: item})
+			if err != nil {
+				return err
+			}
+
+			return mo.IO.Encode(cmd.OutOrStdout(), result.Spec)
+		},
+	}
+	mo.setup(cmd.Flags())
+	return cmd
+}
+
+// newDeleteSubcommand creates a "delete <id>" subcommand with a confirmation
+// prompt unless --force is set.
+func newDeleteSubcommand[T adapter.ResourceNamer](
+	loader OnCallConfigLoader, short, label string, crudOpts []crudOption[T],
+) *cobra.Command {
+	do := &deleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete <id>",
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), do.Force,
+				fmt.Sprintf("Delete %s %s?", label, id))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := newTypedCRUD(ctx, loader, noListFn[T], nil, crudOpts...)
+			if err != nil {
+				return err
+			}
+
+			if err := crud.Delete(ctx, id); err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.OutOrStdout(), "Deleted %s %s", label, id)
+			return nil
+		},
+	}
+	do.setup(cmd.Flags())
 	return cmd
 }
 
@@ -213,6 +356,7 @@ func newTypedCRUD[T adapter.ResourceNamer](
 // Per-resource group commands: oncall <resource> list|get|...
 // ---------------------------------------------------------------------------
 
+//nolint:dupl // Each noun builder follows the same CRUD wiring pattern; structural duplication is intentional.
 func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "integrations",
@@ -229,10 +373,14 @@ func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Integration, error) {
 				return c.GetIntegration(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create an integration.", integrationCRUDOpts()),
+		newUpdateSubcommand(loader, "Update an integration by ID.", integrationCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete an integration by ID.", "integration", integrationCRUDOpts()),
 	)
 	return cmd
 }
 
+//nolint:dupl // Each noun builder follows the same CRUD wiring pattern; structural duplication is intentional.
 func newEscalationChainsCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "escalation-chains",
@@ -251,6 +399,9 @@ func newEscalationChainsCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*EscalationChain, error) {
 				return c.GetEscalationChain(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create an escalation chain.", escalationChainCRUDOpts()),
+		newUpdateSubcommand(loader, "Update an escalation chain by ID.", escalationChainCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete an escalation chain by ID.", "escalation chain", escalationChainCRUDOpts()),
 	)
 	return cmd
 }
@@ -273,6 +424,10 @@ func newEscalationPoliciesCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*EscalationPolicy, error) {
 				return c.GetEscalationPolicy(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create an escalation policy.", escalationPolicyCRUDOpts()),
+		newUpdateSubcommand(loader, "Update an escalation policy by ID.", escalationPolicyCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete an escalation policy by ID.", "escalation policy", escalationPolicyCRUDOpts()),
+		newEscalationStepsCmd(loader),
 	)
 	return cmd
 }
@@ -293,11 +448,15 @@ func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
 				return c.GetSchedule(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create a schedule.", scheduleCRUDOpts()),
+		newUpdateSubcommand(loader, "Update a schedule by ID.", scheduleCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete a schedule by ID.", "schedule", scheduleCRUDOpts()),
 		newScheduleFinalShiftsCommand(loader),
 	)
 	return cmd
 }
 
+//nolint:dupl // Each noun builder follows the same CRUD wiring pattern; structural duplication is intentional.
 func newShiftsCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "shifts",
@@ -310,6 +469,9 @@ func newShiftsCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Shift, error) { return c.GetShift(ctx, name) }),
 		newGetSubcommand(loader, "Get a shift by ID.",
 			func(ctx context.Context, c OnCallAPI, name string) (*Shift, error) { return c.GetShift(ctx, name) }),
+		newCreateSubcommand(loader, "Create a shift.", shiftCRUDOpts()),
+		newUpdateSubcommand(loader, "Update a shift by ID.", shiftCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete a shift by ID.", "shift", shiftCRUDOpts()),
 	)
 	return cmd
 }
@@ -326,6 +488,10 @@ func newRoutesCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Route, error) { return c.GetRoute(ctx, name) }),
 		newGetSubcommand(loader, "Get a route by ID.",
 			func(ctx context.Context, c OnCallAPI, name string) (*Route, error) { return c.GetRoute(ctx, name) }),
+		newCreateSubcommand(loader, "Create a route.", routeCRUDOpts()),
+		newUpdateSubcommand(loader, "Update a route by ID.", routeCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete a route by ID.", "route", routeCRUDOpts()),
+		newRouteFilterTypesCmd(loader),
 	)
 	return cmd
 }
@@ -346,6 +512,11 @@ func newWebhooksCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Webhook, error) {
 				return c.GetWebhook(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create an outgoing webhook.", webhookCRUDOpts()),
+		newUpdateSubcommand(loader, "Update an outgoing webhook by ID.", webhookCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete an outgoing webhook by ID.", "webhook", webhookCRUDOpts()),
+		newWebhookTriggersCmd(loader),
+		newWebhookPresetsCmd(loader),
 	)
 	return cmd
 }
@@ -443,10 +614,14 @@ func newResolutionNotesCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*ResolutionNote, error) {
 				return c.GetResolutionNote(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create a resolution note.", resolutionNoteCRUDOpts()),
+		newUpdateSubcommand(loader, "Update a resolution note by ID.", resolutionNoteCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete a resolution note by ID.", "resolution note", resolutionNoteCRUDOpts()),
 	)
 	return cmd
 }
 
+//nolint:dupl // Each noun builder follows the same CRUD wiring pattern; structural duplication is intentional.
 func newShiftSwapsCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "shift-swaps",
@@ -463,6 +638,9 @@ func newShiftSwapsCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*ShiftSwap, error) {
 				return c.GetShiftSwap(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create a shift swap.", shiftSwapCRUDOpts()),
+		newUpdateSubcommand(loader, "Update a shift swap by ID.", shiftSwapCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete a shift swap by ID.", "shift swap", shiftSwapCRUDOpts()),
 	)
 	return cmd
 }

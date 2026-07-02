@@ -154,7 +154,7 @@ func newContactPointsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			var cp ContactPoint
-			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &cp); err != nil {
+			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &cp); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -188,7 +188,7 @@ func newContactPointsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			var cp ContactPoint
-			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &cp); err != nil {
+			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &cp); err != nil {
 				return err
 			}
 			ctx := cmd.Context()

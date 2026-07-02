@@ -23,6 +23,9 @@ Manage shift swaps.
 ### SEE ALSO
 
 * [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx irm oncall shift-swaps create](gcx_irm_oncall_shift-swaps_create.md)	 - Create a shift swap.
+* [gcx irm oncall shift-swaps delete](gcx_irm_oncall_shift-swaps_delete.md)	 - Delete a shift swap by ID.
 * [gcx irm oncall shift-swaps get](gcx_irm_oncall_shift-swaps_get.md)	 - Get a shift swap by ID.
 * [gcx irm oncall shift-swaps list](gcx_irm_oncall_shift-swaps_list.md)	 - List shift swaps.
+* [gcx irm oncall shift-swaps update](gcx_irm_oncall_shift-swaps_update.md)	 - Update a shift swap by ID.
 

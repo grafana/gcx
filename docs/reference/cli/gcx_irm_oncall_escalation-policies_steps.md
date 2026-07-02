@@ -1,11 +1,11 @@
-## gcx irm oncall escalation-chains
+## gcx irm oncall escalation-policies steps
 
-Manage escalation chains.
+Discover allowed escalation policy step types.
 
 ### Options
 
 ```
-  -h, --help   help for escalation-chains
+  -h, --help   help for steps
 ```
 
 ### Options inherited from parent commands
@@ -22,10 +22,6 @@ Manage escalation chains.
 
 ### SEE ALSO
 
-* [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
-* [gcx irm oncall escalation-chains create](gcx_irm_oncall_escalation-chains_create.md)	 - Create an escalation chain.
-* [gcx irm oncall escalation-chains delete](gcx_irm_oncall_escalation-chains_delete.md)	 - Delete an escalation chain by ID.
-* [gcx irm oncall escalation-chains get](gcx_irm_oncall_escalation-chains_get.md)	 - Get an escalation chain by ID.
-* [gcx irm oncall escalation-chains list](gcx_irm_oncall_escalation-chains_list.md)	 - List escalation chains.
-* [gcx irm oncall escalation-chains update](gcx_irm_oncall_escalation-chains_update.md)	 - Update an escalation chain by ID.
+* [gcx irm oncall escalation-policies](gcx_irm_oncall_escalation-policies.md)	 - Manage escalation policies.
+* [gcx irm oncall escalation-policies steps list](gcx_irm_oncall_escalation-policies_steps_list.md)	 - List allowed values for an escalation policy's step field.
 

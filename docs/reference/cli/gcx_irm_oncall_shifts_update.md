@@ -1,11 +1,19 @@
-## gcx irm oncall escalation-chains
+## gcx irm oncall shifts update
 
-Manage escalation chains.
+Update a shift by ID.
+
+```
+gcx irm oncall shifts update <id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for escalation-chains
+  -f, --filename string   File containing the resource definition (JSON/YAML, use - for stdin)
+  -h, --help              help for update
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
@@ -22,10 +30,5 @@ Manage escalation chains.
 
 ### SEE ALSO
 
-* [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
-* [gcx irm oncall escalation-chains create](gcx_irm_oncall_escalation-chains_create.md)	 - Create an escalation chain.
-* [gcx irm oncall escalation-chains delete](gcx_irm_oncall_escalation-chains_delete.md)	 - Delete an escalation chain by ID.
-* [gcx irm oncall escalation-chains get](gcx_irm_oncall_escalation-chains_get.md)	 - Get an escalation chain by ID.
-* [gcx irm oncall escalation-chains list](gcx_irm_oncall_escalation-chains_list.md)	 - List escalation chains.
-* [gcx irm oncall escalation-chains update](gcx_irm_oncall_escalation-chains_update.md)	 - Update an escalation chain by ID.
+* [gcx irm oncall shifts](gcx_irm_oncall_shifts.md)	 - Manage OnCall shifts.
 
