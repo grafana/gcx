@@ -1,27 +1,27 @@
-## gcx datasources get
+## gcx datasources schemas get
 
-Get details of a specific datasource
+Get the configuration schema for a datasource plugin type
 
 ### Synopsis
 
-Get a datasource by its UID.
+Get the configuration schema for a datasource plugin type.
 
-The default text output shows a human-readable detail view. -o yaml/json emits
-an apply-ready manifest that can be edited and re-applied via update -f -.
+The schema lists the configuration fields available for a plugin, derived from
+the server's OpenAPI document. Use it to author create/update manifests.
 
 ```
-gcx datasources get UID [flags]
+gcx datasources schemas get [flags]
 ```
 
 ### Examples
 
 ```
 
-	# Human-readable detail
-	gcx datasources get my-prometheus
+	# Show a plugin's configuration schema
+	gcx datasources schemas get --type grafana-sentry-datasource
 
-	# Apply-ready manifest (round-trips into update -f -)
-	gcx datasources get my-prometheus -o yaml
+	# As JSON
+	gcx datasources schemas get --type grafana-sentry-datasource -o json
 ```
 
 ### Options
@@ -32,7 +32,9 @@ gcx datasources get UID [flags]
   -h, --help             help for get
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
+      --kind string      Schema kind: config (query is not yet supported) (default "config")
+  -o, --output string    Output format. One of: agents, json, yaml (default "yaml")
+  -t, --type string      Datasource plugin id (e.g. grafana-sentry-datasource)
 ```
 
 ### Options inherited from parent commands
@@ -47,5 +49,5 @@ gcx datasources get UID [flags]
 
 ### SEE ALSO
 
-* [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx datasources schemas](gcx_datasources_schemas.md)	 - Inspect datasource plugin schemas
 

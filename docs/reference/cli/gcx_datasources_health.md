@@ -1,27 +1,35 @@
-## gcx datasources get
+## gcx datasources health
 
-Get details of a specific datasource
+Check the health of one or more datasources
 
 ### Synopsis
 
-Get a datasource by its UID.
+Check datasource health via the Grafana datasource health endpoint.
 
-The default text output shows a human-readable detail view. -o yaml/json emits
-an apply-ready manifest that can be edited and re-applied via update -f -.
+With a UID, checks a single datasource. Without arguments, checks all
+datasources. Use --type to check all datasources of a given plugin type.
+
+Exit codes distinguish resource failure from command failure:
+  0 - all checked datasources are healthy
+  4 - the check ran but one or more datasources are unhealthy (resource failure)
+  1/2/3 - the check could not run (operational, usage, or auth failure)
 
 ```
-gcx datasources get UID [flags]
+gcx datasources health [UID] [flags]
 ```
 
 ### Examples
 
 ```
 
-	# Human-readable detail
-	gcx datasources get my-prometheus
+	# Check a single datasource
+	gcx datasources health my-ds-uid
 
-	# Apply-ready manifest (round-trips into update -f -)
-	gcx datasources get my-prometheus -o yaml
+	# Check all datasources
+	gcx datasources health
+
+	# Check all datasources of a given type
+	gcx datasources health --type grafana-sentry-datasource
 ```
 
 ### Options
@@ -29,10 +37,11 @@ gcx datasources get UID [flags]
 ```
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
-  -h, --help             help for get
+  -h, --help             help for health
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
+  -o, --output string    Output format. One of: agents, json, table, yaml (default "table")
+  -t, --type string      Filter by datasource type (e.g., prometheus, grafana-sentry-datasource)
 ```
 
 ### Options inherited from parent commands

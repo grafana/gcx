@@ -105,6 +105,7 @@ internal/
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
 │   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
+│   ├── datasources/ Datasources provider — bridges /api/datasources into the resources pipeline via ResourceAdapter (no commands; managed via `gcx resources`)
 │   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   ├── fleet/      Fleet Management provider (pipeline and collector resources)
 │   ├── instrumentation/  Instrumentation Hub provider (typed connect-go client, RMW with optimistic-lock, output codecs, helm formatter, enumerate helper)

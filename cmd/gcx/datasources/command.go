@@ -17,6 +17,11 @@ func Command() *cobra.Command {
 	cmd.AddCommand(listCmd())
 	cmd.AddCommand(getCmd())
 	cmd.AddCommand(QueryCmd())
+	cmd.AddCommand(createCmd())
+	cmd.AddCommand(updateCmd())
+	cmd.AddCommand(deleteCmd())
+	cmd.AddCommand(healthCmd())
+	cmd.AddCommand(schemasCmd())
 
 	for _, dp := range datasources.AllProviders() {
 		loader := &providers.ConfigLoader{}
