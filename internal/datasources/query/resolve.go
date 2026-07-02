@@ -45,6 +45,33 @@ type DatasourceSaver interface {
 	SaveDatasourceUID(ctx context.Context, kind, uid string) error
 }
 
+// ConfigLoader loads gcx's full config and the Grafana REST config. Satisfied
+// by *providers.ConfigLoader.
+type ConfigLoader interface {
+	LoadFullConfig(ctx context.Context) (*config.Config, error)
+	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
+}
+
+// LoadContextAndConfig loads the current config context and the Grafana REST
+// config used for datasource resolution (e.g. via ResolveDatasource,
+// ResolveAndSaveDatasource, or ResolveValidateAndSaveDatasource).
+//
+// Failure to load the full config is non-fatal: a warning is logged and a nil
+// context is returned so callers fall back to auto-discovery. Failure to load
+// the Grafana config is fatal and is returned to the caller.
+func LoadContextAndConfig(ctx context.Context, loader ConfigLoader) (*config.Context, config.NamespacedRESTConfig, error) {
+	var cfgCtx *config.Context
+	fullCfg, err := loader.LoadFullConfig(ctx)
+	if err != nil {
+		logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
+	} else {
+		cfgCtx = fullCfg.GetCurrentContext()
+	}
+
+	cfg, err := loader.LoadGrafanaConfig(ctx)
+	return cfgCtx, cfg, err
+}
+
 // ResolveDatasource resolves a datasource UID from the -d flag, config fallback,
 // or auto-discovery from Grafana when a single matching datasource is visible.
 //
