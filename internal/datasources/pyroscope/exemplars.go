@@ -4,18 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
-	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/grafana/gcx/internal/queryerror"
-	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -135,16 +132,9 @@ EXPR is the label selector (e.g. '{service_name="frontend"}').`,
 
 			ctx := cmd.Context()
 
-			cfg, err := loader.LoadGrafanaConfig(ctx)
+			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 			if err != nil {
 				return err
-			}
-			var cfgCtx *internalconfig.Context
-			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err != nil {
-				logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
-			} else {
-				cfgCtx = fullCfg.GetCurrentContext()
 			}
 			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
 			if err != nil {
@@ -219,16 +209,9 @@ EXPR is the label selector (e.g. '{service_name="frontend"}').`,
 
 			ctx := cmd.Context()
 
-			cfg, err := loader.LoadGrafanaConfig(ctx)
+			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 			if err != nil {
 				return err
-			}
-			var cfgCtx *internalconfig.Context
-			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err != nil {
-				logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
-			} else {
-				cfgCtx = fullCfg.GetCurrentContext()
 			}
 			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
 			if err != nil {

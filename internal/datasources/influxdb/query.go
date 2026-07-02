@@ -2,15 +2,12 @@ package influxdb
 
 import (
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
-	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/influxdb"
-	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -65,15 +62,7 @@ Datasource is resolved from -d flag or datasources.influxdb in your context.`,
 
 			ctx := cmd.Context()
 
-			var cfgCtx *internalconfig.Context
-			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err != nil {
-				logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
-			} else {
-				cfgCtx = fullCfg.GetCurrentContext()
-			}
-
-			cfg, err := loader.LoadGrafanaConfig(ctx)
+			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 			if err != nil {
 				return err
 			}
