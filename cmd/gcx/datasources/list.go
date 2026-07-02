@@ -19,6 +19,7 @@ import (
 type listOpts struct {
 	IO    cmdio.Options
 	Type  string
+	Name  string
 	Limit int
 }
 
@@ -28,6 +29,7 @@ func (opts *listOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Type, "type", "t", "", "Filter by datasource type (e.g., prometheus, loki)")
+	flags.StringVar(&opts.Name, "name", "", "Filter by datasource name (case-insensitive substring match)")
 	flags.IntVar(&opts.Limit, "limit", 50, "Maximum number of datasources to return")
 }
 
@@ -42,10 +44,10 @@ func listCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all datasources",
-		Long:  "List all datasources configured in Grafana.",
+		Long:  "List all datasources configured in Grafana. Filter by type and/or name (case-insensitive substring match).",
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "medium",
-			agent.AnnotationLLMHint:   "--type prometheus -o json",
+			agent.AnnotationLLMHint:   "--type prometheus --name prod -o json",
 		},
 		Example: `
 	# List all datasources
@@ -53,6 +55,12 @@ func listCmd() *cobra.Command {
 
 	# List only Prometheus datasources
 	gcx datasources list --type prometheus
+
+	# Filter by name substring (matches "prometheus-prod-eu", "loki-prod-us", ...)
+	gcx datasources list --name prod
+
+	# Combine type and name filters
+	gcx datasources list --type prometheus --name prod
 
 	# Output as JSON
 	gcx datasources list -o json`,
@@ -78,9 +86,16 @@ func listCmd() *cobra.Command {
 				return fmt.Errorf("failed to list datasources: %w", err)
 			}
 
+			// Name is a case-insensitive substring match, composable (AND) with
+			// the type filter. Grafana's /api/datasources API has no server-side
+			// name filter, so both are applied client-side before the limit trim.
+			name := strings.ToLower(opts.Name)
 			infos := make([]*datasourceInfo, 0, len(datasources))
 			for _, ds := range datasources {
 				if opts.Type != "" && !strings.EqualFold(ds.Type, opts.Type) {
+					continue
+				}
+				if name != "" && !strings.Contains(strings.ToLower(ds.Name), name) {
 					continue
 				}
 				infos = append(infos, &datasourceInfo{
