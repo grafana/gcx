@@ -17,10 +17,8 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
-	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
-	"k8s.io/client-go/rest"
 )
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
@@ -328,7 +326,7 @@ func registerSMInstall(ctx context.Context, smURL, cloudToken string, stack clou
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("SM register/install: %w", smcfg.HandleErrorResponse(resp))
+		return "", fmt.Errorf("SM register/install: %w", providers.ParseErrorBody(resp))
 	}
 
 	var result struct {
@@ -353,9 +351,9 @@ func registerSMInstall(ctx context.Context, smURL, cloudToken string, stack clou
 // forwards them to the real Grafana server with proper auth. In direct mode,
 // requests go straight to cfg.GrafanaURL with the configured bearer token.
 func discoverSMURL(ctx context.Context, cfg config.NamespacedRESTConfig) (string, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	httpClient, err := providers.NewHTTPClient(cfg)
 	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP client: %w", err)
+		return "", err
 	}
 
 	// In OAuth proxy mode, cfg.Host routes through the proxy which handles auth.

@@ -38,9 +38,3 @@ type ReportCreateResponse struct {
 	Message string `json:"message"`
 	UUID    string `json:"uuid"`
 }
-
-// ErrorResponse is the response for an error.
-type ErrorResponse struct {
-	Code  int    `json:"code"`
-	Error string `json:"error"`
-}

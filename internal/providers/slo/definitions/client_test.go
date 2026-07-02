@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,7 +77,7 @@ func TestClient_List(t *testing.T) {
 			name: "server error",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				writeJSON(w, definitions.ErrorResponse{Code: 500, Error: "internal server error"})
+				writeJSON(w, providers.ErrorResponse{Error: "internal server error"})
 			},
 			wantErr: true,
 		},
@@ -125,7 +126,7 @@ func TestClient_Get(t *testing.T) {
 			uuid: "uuid-missing",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, definitions.ErrorResponse{Code: 404, Error: "SLO not found"})
+				writeJSON(w, providers.ErrorResponse{Error: "SLO not found"})
 			},
 			wantErr: true,
 		},
@@ -195,7 +196,7 @@ func TestClient_Create(t *testing.T) {
 			slo:  &definitions.Slo{},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusBadRequest)
-				writeJSON(w, definitions.ErrorResponse{Code: 400, Error: "invalid SLO definition"})
+				writeJSON(w, providers.ErrorResponse{Error: "invalid SLO definition"})
 			},
 			wantErr: true,
 		},
@@ -255,7 +256,7 @@ func TestClient_Update(t *testing.T) {
 			slo:  &definitions.Slo{Name: "Updated SLO"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, definitions.ErrorResponse{Code: 404, Error: "SLO not found"})
+				writeJSON(w, providers.ErrorResponse{Error: "SLO not found"})
 			},
 			wantErr: true,
 		},
@@ -309,7 +310,7 @@ func TestClient_Delete(t *testing.T) {
 			uuid: "uuid-missing",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, definitions.ErrorResponse{Code: 404, Error: "SLO not found"})
+				writeJSON(w, providers.ErrorResponse{Error: "SLO not found"})
 			},
 			wantErr: true,
 		},
@@ -337,25 +338,25 @@ func TestClient_ErrorResponses(t *testing.T) {
 	tests := []struct {
 		name       string
 		statusCode int
-		errBody    definitions.ErrorResponse
+		errBody    providers.ErrorResponse
 		wantErrMsg string
 	}{
 		{
 			name:       "401 unauthorized",
 			statusCode: http.StatusUnauthorized,
-			errBody:    definitions.ErrorResponse{Code: 401, Error: "unauthorized"},
+			errBody:    providers.ErrorResponse{Error: "unauthorized"},
 			wantErrMsg: "401",
 		},
 		{
 			name:       "403 forbidden",
 			statusCode: http.StatusForbidden,
-			errBody:    definitions.ErrorResponse{Code: 403, Error: "forbidden"},
+			errBody:    providers.ErrorResponse{Error: "forbidden"},
 			wantErrMsg: "403",
 		},
 		{
 			name:       "500 internal server error",
 			statusCode: http.StatusInternalServerError,
-			errBody:    definitions.ErrorResponse{Code: 500, Error: "internal server error"},
+			errBody:    providers.ErrorResponse{Error: "internal server error"},
 			wantErrMsg: "500",
 		},
 	}
