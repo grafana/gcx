@@ -23,6 +23,9 @@ Manage OnCall shifts.
 ### SEE ALSO
 
 * [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx irm oncall shifts create](gcx_irm_oncall_shifts_create.md)	 - Create a shift.
+* [gcx irm oncall shifts delete](gcx_irm_oncall_shifts_delete.md)	 - Delete a shift by ID.
 * [gcx irm oncall shifts get](gcx_irm_oncall_shifts_get.md)	 - Get a shift by ID.
 * [gcx irm oncall shifts list](gcx_irm_oncall_shifts_list.md)	 - List OnCall shifts.
+* [gcx irm oncall shifts update](gcx_irm_oncall_shifts_update.md)	 - Update a shift by ID.
 

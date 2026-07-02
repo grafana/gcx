@@ -1,11 +1,16 @@
-## gcx irm oncall escalation-chains
+## gcx irm oncall shift-swaps delete
 
-Manage escalation chains.
+Delete a shift swap by ID.
+
+```
+gcx irm oncall shift-swaps delete <id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for escalation-chains
+      --force   Skip confirmation prompt
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -22,10 +27,5 @@ Manage escalation chains.
 
 ### SEE ALSO
 
-* [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
-* [gcx irm oncall escalation-chains create](gcx_irm_oncall_escalation-chains_create.md)	 - Create an escalation chain.
-* [gcx irm oncall escalation-chains delete](gcx_irm_oncall_escalation-chains_delete.md)	 - Delete an escalation chain by ID.
-* [gcx irm oncall escalation-chains get](gcx_irm_oncall_escalation-chains_get.md)	 - Get an escalation chain by ID.
-* [gcx irm oncall escalation-chains list](gcx_irm_oncall_escalation-chains_list.md)	 - List escalation chains.
-* [gcx irm oncall escalation-chains update](gcx_irm_oncall_escalation-chains_update.md)	 - Update an escalation chain by ID.
+* [gcx irm oncall shift-swaps](gcx_irm_oncall_shift-swaps.md)	 - Manage shift swaps.
 

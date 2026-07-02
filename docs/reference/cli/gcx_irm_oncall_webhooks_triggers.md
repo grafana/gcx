@@ -1,11 +1,11 @@
-## gcx irm oncall escalation-chains
+## gcx irm oncall webhooks triggers
 
-Manage escalation chains.
+Discover allowed webhook trigger types.
 
 ### Options
 
 ```
-  -h, --help   help for escalation-chains
+  -h, --help   help for triggers
 ```
 
 ### Options inherited from parent commands
@@ -22,10 +22,6 @@ Manage escalation chains.
 
 ### SEE ALSO
 
-* [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
-* [gcx irm oncall escalation-chains create](gcx_irm_oncall_escalation-chains_create.md)	 - Create an escalation chain.
-* [gcx irm oncall escalation-chains delete](gcx_irm_oncall_escalation-chains_delete.md)	 - Delete an escalation chain by ID.
-* [gcx irm oncall escalation-chains get](gcx_irm_oncall_escalation-chains_get.md)	 - Get an escalation chain by ID.
-* [gcx irm oncall escalation-chains list](gcx_irm_oncall_escalation-chains_list.md)	 - List escalation chains.
-* [gcx irm oncall escalation-chains update](gcx_irm_oncall_escalation-chains_update.md)	 - Update an escalation chain by ID.
+* [gcx irm oncall webhooks](gcx_irm_oncall_webhooks.md)	 - Manage outgoing webhooks.
+* [gcx irm oncall webhooks triggers list](gcx_irm_oncall_webhooks_triggers_list.md)	 - List allowed values for a webhook's trigger_type field.
 
