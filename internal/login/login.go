@@ -505,27 +505,7 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) 
 	}
 
 	if opts.CloudToken != "" {
-		cc := &config.CloudConfig{
-			Token:  opts.CloudToken,
-			APIUrl: opts.CloudAPIURL,
-		}
-		// For an OAuth or kept (already-trusted) token, record the GCOM endpoint
-		// for this stack env, matching `gcx cloud login`. Without this a later
-		// `gcx cloud login` on an ops/dev context would default to prod
-		// grafana.com. A freshly pasted CAP token carries no such origin, so it
-		// is left to APIUrl auto-derivation at use time.
-		if opts.CloudTokenFromOAuth {
-			if root, ok := config.GCOMRootFromServerURL(opts.Server); ok {
-				cc.OAuthUrl = root
-				if cc.APIUrl == "" {
-					cc.APIUrl = root
-				}
-			}
-		}
-		if slug := resolveStackSlug(opts.Server); slug != "" {
-			cc.Stack = slug
-		}
-		return cc, nil
+		return cloudConfigForToken(opts), nil
 	}
 
 	// Cloud target with no token: skip if Yes or agent mode (D9, D10).
@@ -546,6 +526,29 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) 
 		Optional: true,
 		Hint:     cloudTokenHint(opts.Server),
 	}
+}
+
+// cloudConfigForToken builds the CloudConfig for a Cloud target that has a
+// resolved token. For an OAuth or kept (already-trusted) token it records the
+// GCOM endpoint for this stack env, matching `gcx cloud login`; without this a
+// later `gcx cloud login` on an ops/dev context would default to prod
+// grafana.com. A freshly pasted CAP token carries no such origin, so its API
+// URL is left to auto-derivation at use time.
+func cloudConfigForToken(opts Options) *config.CloudConfig {
+	cc := &config.CloudConfig{
+		Token:  opts.CloudToken,
+		APIUrl: opts.CloudAPIURL,
+	}
+	if root, ok := config.GCOMRootFromServerURL(opts.Server); ok && opts.CloudTokenFromOAuth {
+		cc.OAuthUrl = root
+		if cc.APIUrl == "" {
+			cc.APIUrl = root
+		}
+	}
+	if slug := resolveStackSlug(opts.Server); slug != "" {
+		cc.Stack = slug
+	}
+	return cc
 }
 
 // announceOAuthLogin surfaces a clear success message once the interactive OAuth

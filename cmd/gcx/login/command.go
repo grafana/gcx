@@ -447,7 +447,7 @@ func runCloudOAuth(ctx context.Context, opts *login.Options) error {
 	flow := internalauth.NewGCOMFlow(internalauth.GCOMOptions{
 		ClientID: internalauth.DefaultGCOMClientID,
 		GCOMURL:  gcomURL,
-		Scopes:   internalauth.DefaultGCOMScopes,
+		Scopes:   internalauth.DefaultGCOMScopes(),
 		Writer:   opts.Writer,
 	})
 	result, err := flow.Run(ctx)
