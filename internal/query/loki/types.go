@@ -2,6 +2,8 @@ package loki
 
 import (
 	"time"
+
+	"github.com/grafana/gcx/internal/query/dataframe"
 )
 
 // QueryRequest represents a Loki query request.
@@ -86,63 +88,29 @@ type MetricQuerySample struct {
 	Values [][]any           `json:"values,omitempty"` // [[timestamp, value], ...] for range queries
 }
 
-// GrafanaQueryResponse represents the response from Grafana's datasource query API.
-type GrafanaQueryResponse struct {
-	Results map[string]GrafanaResult `json:"results"`
-}
+// GrafanaQueryResponse is the top-level Grafana datasource query response.
+type GrafanaQueryResponse = dataframe.Response
 
 // GrafanaResult represents a single result from a Grafana query.
-type GrafanaResult struct {
-	Frames      []DataFrame `json:"frames,omitempty"`
-	Error       string      `json:"error,omitempty"`
-	ErrorSource string      `json:"errorSource,omitempty"`
-	Status      int         `json:"status,omitempty"`
-}
+type GrafanaResult = dataframe.Result
 
 // DataFrame represents a Grafana data frame.
-type DataFrame struct {
-	Schema DataFrameSchema `json:"schema"`
-	Data   DataFrameData   `json:"data"`
-}
+type DataFrame = dataframe.Frame
 
 // DataFrameSchema describes the structure of a data frame.
-type DataFrameSchema struct {
-	RefId  string     `json:"refId,omitempty"`
-	Meta   *FrameMeta `json:"meta,omitempty"`
-	Name   string     `json:"name,omitempty"`
-	Fields []Field    `json:"fields,omitempty"`
-}
+type DataFrameSchema = dataframe.Schema
 
 // FrameMeta contains metadata about a data frame.
-type FrameMeta struct {
-	Type                string        `json:"type,omitempty"`
-	Stats               []FrameStat   `json:"stats,omitempty"`
-	Notices             []FrameNotice `json:"notices,omitempty"`
-	ExecutedQueryString string        `json:"executedQueryString,omitempty"`
-}
+type FrameMeta = dataframe.Meta
 
 // FrameStat represents a single statistic from query execution.
-type FrameStat struct {
-	DisplayName string  `json:"displayName"`
-	Unit        string  `json:"unit,omitempty"`
-	Value       float64 `json:"value"`
-}
+type FrameStat = dataframe.Stat
 
 // FrameNotice represents a notice or warning from the query.
-type FrameNotice struct {
-	Severity string `json:"severity"`
-	Text     string `json:"text"`
-}
+type FrameNotice = dataframe.Notice
 
 // Field describes a field in a data frame.
-type Field struct {
-	Name   string            `json:"name,omitempty"`
-	Type   string            `json:"type,omitempty"`
-	Labels map[string]string `json:"labels,omitempty"`
-}
+type Field = dataframe.Field
 
 // DataFrameData contains the actual data values.
-type DataFrameData struct {
-	Values [][]any `json:"values,omitempty"`
-	Nanos  [][]int `json:"nanos,omitempty"`
-}
+type DataFrameData = dataframe.Data

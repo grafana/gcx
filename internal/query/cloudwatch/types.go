@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/grafana/gcx/internal/query/dataframe"
 	"github.com/grafana/gcx/internal/queryerror"
 )
 
@@ -56,46 +57,9 @@ type Account struct {
 	ARN   string `json:"arn"`
 }
 
-// grafanaQueryResponse is the raw Grafana /api/ds/query (or K8s query API) response.
-type grafanaQueryResponse struct {
-	Results map[string]grafanaResult `json:"results"`
-}
-
-type grafanaResult struct {
-	Frames      []dataFrame `json:"frames,omitempty"`
-	Error       string      `json:"error,omitempty"`
-	ErrorSource string      `json:"errorSource,omitempty"`
-	Status      int         `json:"status,omitempty"`
-}
-
-type dataFrame struct {
-	Schema dataFrameSchema `json:"schema"`
-	Data   dataFrameData   `json:"data"`
-}
-
-type dataFrameSchema struct {
-	Name   string  `json:"name,omitempty"`
-	Fields []field `json:"fields,omitempty"`
-}
-
-type fieldConfig struct {
-	DisplayNameFromDS string `json:"displayNameFromDS,omitempty"`
-}
-
-type field struct {
-	Name   string            `json:"name,omitempty"`
-	Type   string            `json:"type,omitempty"`
-	Labels map[string]string `json:"labels,omitempty"`
-	Config *fieldConfig      `json:"config,omitempty"`
-}
-
-type dataFrameData struct {
-	Values []json.RawMessage `json:"values,omitempty"`
-}
-
 // ParseQueryResponse converts the raw Grafana response bytes into a QueryResponse.
 func ParseQueryResponse(body []byte) (*QueryResponse, error) {
-	var raw grafanaQueryResponse
+	var raw dataframe.Response
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse cloudwatch response: %w", err)
 	}
@@ -118,10 +82,7 @@ func ParseQueryResponse(body []byte) (*QueryResponse, error) {
 	}
 
 	for _, df := range result.Frames {
-		frame, ok, err := parseDataFrame(df)
-		if err != nil {
-			return nil, err
-		}
+		frame, ok := parseDataFrame(df)
 		if ok {
 			resp.Frames = append(resp.Frames, frame)
 		}
@@ -130,10 +91,10 @@ func ParseQueryResponse(body []byte) (*QueryResponse, error) {
 	return resp, nil
 }
 
-func parseDataFrame(df dataFrame) (Frame, bool, error) {
+func parseDataFrame(df dataframe.Frame) (Frame, bool) {
 	// Treat schema/data length mismatch as malformed (don't index past Data).
 	if len(df.Schema.Fields) != len(df.Data.Values) || len(df.Data.Values) < 2 {
-		return Frame{}, false, nil
+		return Frame{}, false
 	}
 
 	var timeIdx, valueIdx = -1, -1
@@ -157,18 +118,11 @@ func parseDataFrame(df dataFrame) (Frame, bool, error) {
 	}
 
 	if timeIdx == -1 || valueIdx == -1 {
-		return Frame{}, false, nil
+		return Frame{}, false
 	}
 
-	var tsRaw []any
-	if err := json.Unmarshal(df.Data.Values[timeIdx], &tsRaw); err != nil {
-		return Frame{}, false, fmt.Errorf("failed to parse timestamps: %w", err)
-	}
-
-	var valRaw []any
-	if err := json.Unmarshal(df.Data.Values[valueIdx], &valRaw); err != nil {
-		return Frame{}, false, fmt.Errorf("failed to parse values: %w", err)
-	}
+	tsRaw := df.Data.Values[timeIdx]
+	valRaw := df.Data.Values[valueIdx]
 
 	n := min(len(tsRaw), len(valRaw))
 
@@ -198,7 +152,7 @@ func parseDataFrame(df dataFrame) (Frame, bool, error) {
 
 	if len(timestamps) == 0 {
 		// Drop empty/all-unparseable frames so callers see "no data" rather than a phantom series.
-		return Frame{}, false, nil
+		return Frame{}, false
 	}
 
 	return Frame{
@@ -206,7 +160,7 @@ func parseDataFrame(df dataFrame) (Frame, bool, error) {
 		Labels:     labels,
 		Timestamps: timestamps,
 		Values:     values,
-	}, true, nil
+	}, true
 }
 
 // toFloat64 returns ok=false if v is not a number or a parseable numeric string.
