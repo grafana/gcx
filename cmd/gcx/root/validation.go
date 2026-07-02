@@ -62,7 +62,9 @@ func ValidateArgs(rootCmd *cobra.Command, args []string) error {
 	suggestions := []string{}
 	corrections := []gcxerrors.Correction{}
 	for _, sub := range candidates {
-		invocation := strings.Join(append([]string{cmd.CommandPath(), sub.Name()}, positionals[1:]...), " ")
+		// CommandPath is a space-separated path, not a single token, so it
+		// joins as-is; only the subcommand name and user tokens get quoted.
+		invocation := cmd.CommandPath() + " " + shellJoin(append([]string{sub.Name()}, positionals[1:]...))
 		suggestions = append(suggestions, fmt.Sprintf("Did you mean '%s'?", invocation))
 		corrections = append(corrections, gcxerrors.Correction{
 			Command: invocation,
