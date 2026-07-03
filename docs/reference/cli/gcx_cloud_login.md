@@ -40,7 +40,7 @@ gcx cloud login [flags]
       --context string       Name of the context to use
   -h, --help                 help for login
       --oauth-url string     Base URL for the OAuth login flow (used only by this command) (default "https://grafana.com")
-      --scope strings        OAuth2 scopes to request (default [stacks:read,stacks:write,stacks:delete])
+      --scope strings        OAuth2 scopes to request (default [stacks:read,stacks:write,stacks:delete,metrics:write,logs:write,traces:write,fleet-management:read,fleet-management:write])
 ```
 
 ### Options inherited from parent commands
