@@ -113,18 +113,27 @@ https://grafana.com: --oauth-url is used only for the login flow here, while
 	return cmd
 }
 
-// currentCloudContext loads the config and returns the current context, or nil
+// currentCloudContext loads the config and returns the target context, or nil
 // if config can't be loaded or the context doesn't exist yet.
 func currentCloudContext(ctx context.Context, configOpts *cmdconfig.Options) *config.Context {
 	cfg, err := config.Load(ctx, configOpts.ConfigSource())
 	if err != nil {
 		return nil
 	}
-	ctxName := cfg.CurrentContext
-	if ctxName == "" {
-		ctxName = config.DefaultContextName
+	return cfg.Contexts[targetContextName(configOpts, cfg)]
+}
+
+// targetContextName resolves which context login should read from and write to:
+// the explicit --context flag when set, otherwise the config's current context,
+// falling back to the default.
+func targetContextName(configOpts *cmdconfig.Options, cfg config.Config) string {
+	if configOpts.Context != "" {
+		return configOpts.Context
 	}
-	return cfg.Contexts[ctxName]
+	if cfg.CurrentContext != "" {
+		return cfg.CurrentContext
+	}
+	return config.DefaultContextName
 }
 
 func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts) error {
@@ -190,10 +199,7 @@ func saveCloudConfig(ctx context.Context, configOpts *cmdconfig.Options, cloud *
 		cfg = config.Config{}
 	}
 
-	contextName := cfg.CurrentContext
-	if contextName == "" {
-		contextName = config.DefaultContextName
-	}
+	contextName := targetContextName(configOpts, cfg)
 
 	if !cfg.HasContext(contextName) {
 		cfg.SetContext(contextName, true, config.Context{})
