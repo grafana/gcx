@@ -16,6 +16,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type loginOpts struct {
+	oauthURL   string
+	apiURL     string
+	scopes     []string
+	cloudToken string
+}
+
+func (opts *loginOpts) Validate() error {
+	if opts.oauthURL == "" {
+		return errors.New("--oauth-url must not be empty")
+	}
+	if opts.apiURL == "" {
+		return errors.New("--api-url must not be empty")
+	}
+	if opts.cloudToken == "" && len(opts.scopes) == 0 {
+		return errors.New("--scope must not be empty for interactive OAuth login")
+	}
+	return nil
+}
+
 // Command returns the top-level "cloud" cobra command with all subcommands.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
@@ -33,12 +53,7 @@ const defaultClientID = "gcx"
 
 func loginCmd() *cobra.Command {
 	configOpts := &cmdconfig.Options{}
-	var (
-		oauthURL   string
-		apiURL     string
-		scopes     []string
-		cloudToken string
-	)
+	opts := &loginOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -66,28 +81,31 @@ https://grafana.com: --oauth-url is used only for the login flow here, while
 			// a plain `gcx cloud login` doesn't wipe a previously set value.
 			cur := currentCloudContext(cmd.Context(), configOpts)
 			if !cmd.Flags().Changed("oauth-url") && cur != nil && cur.Cloud != nil && cur.Cloud.OAuthUrl != "" {
-				oauthURL = cur.Cloud.OAuthUrl
+				opts.oauthURL = cur.Cloud.OAuthUrl
 			}
 			if !cmd.Flags().Changed("api-url") && cur != nil && cur.Cloud != nil && cur.Cloud.APIUrl != "" {
-				apiURL = cur.Cloud.APIUrl
+				opts.apiURL = cur.Cloud.APIUrl
 			}
 			// Normalize whichever values won (flag, carry-over, or default)
 			// so a bare host (e.g. "grafana.example.com") gets an https:// scheme
 			// before it reaches the OAuth flow or is saved to config.
-			oauthURL = config.NormalizeCloudURL(oauthURL)
-			apiURL = config.NormalizeCloudURL(apiURL)
-			if cloudToken != "" {
-				return runTokenLogin(cmd.Context(), configOpts, cloudToken, oauthURL, apiURL)
+			opts.oauthURL = config.NormalizeCloudURL(opts.oauthURL)
+			opts.apiURL = config.NormalizeCloudURL(opts.apiURL)
+			if err := opts.Validate(); err != nil {
+				return err
 			}
-			return runOAuthLogin(cmd.Context(), configOpts, oauthURL, apiURL, scopes)
+			if opts.cloudToken != "" {
+				return runTokenLogin(cmd.Context(), configOpts, opts)
+			}
+			return runOAuthLogin(cmd.Context(), configOpts, opts)
 		},
 	}
 
 	configOpts.BindFlags(cmd.Flags())
-	cmd.Flags().StringVar(&cloudToken, "cloud-token", "", "Cloud Access Policy token (skips interactive OAuth flow)")
-	cmd.Flags().StringVar(&oauthURL, "oauth-url", "https://grafana.com", "Base URL for the OAuth login flow (used only by this command)")
-	cmd.Flags().StringVar(&apiURL, "api-url", "https://grafana.com", "Base URL for Grafana Cloud API resource calls (stacks etc.)")
-	cmd.Flags().StringSliceVar(&scopes, "scope", []string{
+	cmd.Flags().StringVar(&opts.cloudToken, "cloud-token", "", "Cloud Access Policy token (skips interactive OAuth flow)")
+	cmd.Flags().StringVar(&opts.oauthURL, "oauth-url", "https://grafana.com", "Base URL for the OAuth login flow (used only by this command)")
+	cmd.Flags().StringVar(&opts.apiURL, "api-url", "https://grafana.com", "Base URL for Grafana Cloud API resource calls (stacks etc.)")
+	cmd.Flags().StringSliceVar(&opts.scopes, "scope", []string{
 		"stacks:read", "stacks:write", "stacks:delete",
 		"accesspolicies:read", "accesspolicies:write", "accesspolicies:delete",
 	}, "OAuth2 scopes to request")
@@ -109,11 +127,11 @@ func currentCloudContext(ctx context.Context, configOpts *cmdconfig.Options) *co
 	return cfg.Contexts[ctxName]
 }
 
-func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, token, oauthURL, apiURL string) error {
+func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts) error {
 	cloud := &config.CloudConfig{
-		Token:    token,
-		OAuthUrl: oauthURL,
-		APIUrl:   apiURL,
+		Token:    opts.cloudToken,
+		OAuthUrl: opts.oauthURL,
+		APIUrl:   opts.apiURL,
 	}
 	if err := saveCloudConfig(ctx, configOpts, cloud); err != nil {
 		return err
@@ -122,11 +140,11 @@ func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, token, oa
 	return nil
 }
 
-func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, oauthURL, apiURL string, scopes []string) error {
+func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts) error {
 	flow := auth.NewGCOMFlow(auth.GCOMOptions{
 		ClientID: defaultClientID,
-		GCOMURL:  oauthURL,
-		Scopes:   scopes,
+		GCOMURL:  opts.oauthURL,
+		Scopes:   opts.scopes,
 		Writer:   os.Stderr,
 	})
 
@@ -148,8 +166,8 @@ func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, oauthURL,
 
 	cloud := &config.CloudConfig{
 		Token:    result.AccessToken,
-		OAuthUrl: oauthURL,
-		APIUrl:   apiURL,
+		OAuthUrl: opts.oauthURL,
+		APIUrl:   opts.apiURL,
 	}
 	return saveCloudConfig(ctx, configOpts, cloud)
 }
