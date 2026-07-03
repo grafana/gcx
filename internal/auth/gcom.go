@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/deeplink"
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 // GCOMResult contains the result of a GCOM OAuth2 PKCE authentication flow.
@@ -198,15 +199,17 @@ func (f *GCOMFlow) exchangeGCOMToken(ctx context.Context, code, codeVerifier, re
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	// NewClient (not NewDefaultClient): NewDefaultClient logs payloads from ctx,
+	// which would dump the OAuth code/code_verifier secrets.
+	client := httputils.NewClient(httputils.ClientOpts{
+		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
 			redirectEndpoint := req.URL.Scheme + "://" + req.URL.Host
 			if err := ValidateEndpointURL(redirectEndpoint); err != nil {
 				return fmt.Errorf("redirect to untrusted URL blocked: %w", err)
 			}
 			return nil
 		},
-	}
+	})
 
 	resp, err := client.Do(req)
 	if err != nil {
