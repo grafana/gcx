@@ -1,12 +1,10 @@
-//nolint:testpackage // white-box testing: accesses unexported saveCloudConfig.
-package cloud
+package config_test
 
 import (
 	"context"
 	"path/filepath"
 	"testing"
 
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/config"
 )
 
@@ -30,14 +28,13 @@ func TestSaveCloudConfigPreservesStack(t *testing.T) {
 		t.Fatalf("seed write: %v", err)
 	}
 
-	configOpts := &cmdconfig.Options{ConfigFile: path}
 	newCloud := &config.CloudConfig{
 		Token:    "new-token",
 		OAuthUrl: "https://grafana.com",
 		APIUrl:   "https://grafana.com",
 	}
-	if err := saveCloudConfig(ctx, configOpts, newCloud); err != nil {
-		t.Fatalf("saveCloudConfig: %v", err)
+	if _, err := config.SaveCloudConfig(ctx, source, "", newCloud); err != nil {
+		t.Fatalf("SaveCloudConfig: %v", err)
 	}
 
 	got, err := config.Load(ctx, source)

@@ -673,27 +673,6 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context, ex
 
 	// Update Cloud config if present in the incoming context.
 	if incoming.Cloud != nil {
-		existing.Cloud = mergeCloudInto(existing.Cloud, incoming.Cloud)
+		existing.Cloud = config.MergeCloudInto(existing.Cloud, incoming.Cloud)
 	}
-}
-
-// mergeCloudInto applies non-empty fields from incoming onto existing,
-// allocating existing if nil. It returns the merged config.
-func mergeCloudInto(existing, incoming *config.CloudConfig) *config.CloudConfig {
-	if existing == nil {
-		existing = &config.CloudConfig{}
-	}
-	if incoming.Token != "" {
-		existing.Token = incoming.Token
-	}
-	if incoming.OAuthUrl != "" {
-		existing.OAuthUrl = incoming.OAuthUrl
-	}
-	if incoming.APIUrl != "" {
-		existing.APIUrl = incoming.APIUrl
-	}
-	if incoming.Stack != "" {
-		existing.Stack = incoming.Stack
-	}
-	return existing
 }

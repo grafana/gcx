@@ -125,20 +125,7 @@ func currentCloudContext(ctx context.Context, configOpts *cmdconfig.Options) *co
 	if err != nil {
 		return nil
 	}
-	return cfg.Contexts[targetContextName(configOpts, cfg)]
-}
-
-// targetContextName resolves which context login should read from and write to:
-// the explicit --context flag when set, otherwise the config's current context,
-// falling back to the default.
-func targetContextName(configOpts *cmdconfig.Options, cfg config.Config) string {
-	if configOpts.Context != "" {
-		return configOpts.Context
-	}
-	if cfg.CurrentContext != "" {
-		return cfg.CurrentContext
-	}
-	return config.DefaultContextName
+	return cfg.Contexts[config.ResolveContextName(configOpts.Context, cfg)]
 }
 
 func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts) error {
@@ -147,9 +134,11 @@ func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *log
 		OAuthUrl: opts.oauthURL,
 		APIUrl:   opts.apiURL,
 	}
-	if err := saveCloudConfig(ctx, configOpts, cloud); err != nil {
+	contextName, err := config.SaveCloudConfig(ctx, configOpts.ConfigSource(), configOpts.Context, cloud)
+	if err != nil {
 		return err
 	}
+	fmt.Fprintf(os.Stderr, "Token saved to context %q\n", contextName)
 	fmt.Fprintln(os.Stderr, "Cloud token saved.")
 	return nil
 }
@@ -183,52 +172,10 @@ func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *log
 		OAuthUrl: opts.oauthURL,
 		APIUrl:   opts.apiURL,
 	}
-	return saveCloudConfig(ctx, configOpts, cloud)
-}
-
-func saveCloudConfig(ctx context.Context, configOpts *cmdconfig.Options, cloud *config.CloudConfig) error {
-	source := configOpts.ConfigSource()
-
-	cfg, err := config.Load(ctx, source)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return &gcxerrors.DetailedError{
-			Summary: "Failed to load config",
-			Parent:  err,
-			Suggestions: []string{
-				"Check your config file syntax: gcx config edit",
-				"Or reset with: rm ~/.config/gcx/config.yaml && gcx cloud login",
-			},
-		}
+	contextName, err := config.SaveCloudConfig(ctx, configOpts.ConfigSource(), configOpts.Context, cloud)
+	if err != nil {
+		return err
 	}
-	if errors.Is(err, os.ErrNotExist) {
-		cfg = config.Config{}
-	}
-
-	contextName := targetContextName(configOpts, cfg)
-
-	if !cfg.HasContext(contextName) {
-		cfg.SetContext(contextName, true, config.Context{})
-	}
-	curCtx := cfg.Contexts[contextName]
-	// Replace the entire cloud config to clear any stale OAuth/token fields
-	// when switching from OAuth to SA token or vice versa, but preserve the
-	// non-auth Stack selection so re-authenticating doesn't drop it.
-	if curCtx.Cloud != nil {
-		cloud.Stack = curCtx.Cloud.Stack
-	}
-	curCtx.Cloud = cloud
-
-	if err := config.Write(ctx, source, cfg); err != nil {
-		return &gcxerrors.DetailedError{
-			Summary: "Failed to save config",
-			Parent:  err,
-			Suggestions: []string{
-				"Check file permissions on the config file",
-				"Try: gcx config edit",
-			},
-		}
-	}
-
 	fmt.Fprintf(os.Stderr, "Token saved to context %q\n", contextName)
 	return nil
 }
