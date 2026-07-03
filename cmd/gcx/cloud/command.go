@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/stacks"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 type loginOpts struct {
@@ -21,6 +22,16 @@ type loginOpts struct {
 	apiURL     string
 	scopes     []string
 	cloudToken string
+}
+
+func (opts *loginOpts) bindFlags(flags *pflag.FlagSet) {
+	flags.StringVar(&opts.cloudToken, "cloud-token", "", "Cloud Access Policy token (skips interactive OAuth flow)")
+	flags.StringVar(&opts.oauthURL, "oauth-url", "https://grafana.com", "Base URL for the OAuth login flow (used only by this command)")
+	flags.StringVar(&opts.apiURL, "api-url", "https://grafana.com", "Base URL for Grafana Cloud API resource calls (stacks etc.)")
+	flags.StringSliceVar(&opts.scopes, "scope", []string{
+		"stacks:read", "stacks:write", "stacks:delete",
+		"accesspolicies:read", "accesspolicies:write", "accesspolicies:delete",
+	}, "OAuth2 scopes to request")
 }
 
 func (opts *loginOpts) Validate() error {
@@ -102,13 +113,7 @@ https://grafana.com: --oauth-url is used only for the login flow here, while
 	}
 
 	configOpts.BindFlags(cmd.Flags())
-	cmd.Flags().StringVar(&opts.cloudToken, "cloud-token", "", "Cloud Access Policy token (skips interactive OAuth flow)")
-	cmd.Flags().StringVar(&opts.oauthURL, "oauth-url", "https://grafana.com", "Base URL for the OAuth login flow (used only by this command)")
-	cmd.Flags().StringVar(&opts.apiURL, "api-url", "https://grafana.com", "Base URL for Grafana Cloud API resource calls (stacks etc.)")
-	cmd.Flags().StringSliceVar(&opts.scopes, "scope", []string{
-		"stacks:read", "stacks:write", "stacks:delete",
-		"accesspolicies:read", "accesspolicies:write", "accesspolicies:delete",
-	}, "OAuth2 scopes to request")
+	opts.bindFlags(cmd.Flags())
 
 	return cmd
 }
