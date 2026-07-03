@@ -37,9 +37,32 @@ type QueryResultData struct {
 }
 
 // StreamEntry represents a single log stream from the query result.
+//
+// Stream holds ONLY the indexed stream labels — the labels that are valid
+// inside a {...} LogQL selector. Structured metadata and query-time parsed
+// labels are per-line (they can differ between lines that share the same
+// indexed labels), so they live on each LogEntry in Values, not here.
 type StreamEntry struct {
 	Stream map[string]string `json:"stream"`
-	Values [][]string        `json:"values"` // [[timestamp, line], ...]
+	Values []LogEntry        `json:"values"`
+}
+
+// LogEntry is a single log line within a stream. It carries the line body plus
+// the two categories of non-indexed key/value data Loki attaches per line:
+//
+//   - StructuredMetadata: attached at ingest, not indexed. Only usable as a
+//     post-pipe label filter (e.g. `{app="x"} | detected_level="error"`),
+//     never inside a {...} selector.
+//   - Parsed: extracted at query time by a parser stage (`| json`, `| logfmt`).
+//
+// Keeping them distinct from the indexed Stream labels lets callers build valid
+// LogQL instead of dropping a structured-metadata key into a {...} selector
+// (which matches nothing).
+type LogEntry struct {
+	Timestamp          string            `json:"timestamp"`
+	Line               string            `json:"line"`
+	StructuredMetadata map[string]string `json:"structuredMetadata,omitempty"`
+	Parsed             map[string]string `json:"parsed,omitempty"`
 }
 
 // QueryStats contains statistics about the query execution.

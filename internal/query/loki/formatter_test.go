@@ -16,16 +16,16 @@ func TestFormatQueryTable_HumanFriendlyMixedFormats(t *testing.T) {
 			Result: []loki.StreamEntry{
 				{
 					Stream: map[string]string{"namespace": "tempo-prod"},
-					Values: [][]string{{
-						"1775637286777686890",
-						`level=info ts=2026-04-08T08:34:46.77768689Z caller=retention.go:113 msg="deleting block" blockID=47f92c6c tenantID=120351`,
+					Values: []loki.LogEntry{{
+						Timestamp: "1775637286777686890",
+						Line:      `level=info ts=2026-04-08T08:34:46.77768689Z caller=retention.go:113 msg="deleting block" blockID=47f92c6c tenantID=120351`,
 					}},
 				},
 				{
 					Stream: map[string]string{"app": "adaptive-traces", "namespace": "tempo-prod"},
-					Values: [][]string{{
-						"1775637286554667000",
-						`{"level":"info","ts":1775637286.554667,"caller":"zap@v1.1.7/zap.go:125","msg":"/adaptive-traces/api/v1/config","component":"api","status":200,"method":"GET","path":"/adaptive-traces/api/v1/config","query":"","tenant":1336544}`,
+					Values: []loki.LogEntry{{
+						Timestamp: "1775637286554667000",
+						Line:      `{"level":"info","ts":1775637286.554667,"caller":"zap@v1.1.7/zap.go:125","msg":"/adaptive-traces/api/v1/config","component":"api","status":200,"method":"GET","path":"/adaptive-traces/api/v1/config","query":"","tenant":1336544}`,
 					}},
 				},
 			},
@@ -67,9 +67,9 @@ func TestFormatQueryTableWide_IncludesTimestampAndLabels(t *testing.T) {
 					"namespace": "prod",
 					"__meta":    "hidden",
 				},
-				Values: [][]string{{
-					"1775637286777686890",
-					`level=warn caller=retention.go:113 msg="compaction delayed" tenantID=120351`,
+				Values: []loki.LogEntry{{
+					Timestamp: "1775637286777686890",
+					Line:      `level=warn caller=retention.go:113 msg="compaction delayed" tenantID=120351`,
 				}},
 			}},
 		},
@@ -102,7 +102,7 @@ func TestFormatQueryTable_FallsBackToPlainMessage(t *testing.T) {
 	resp := &loki.QueryResponse{
 		Data: loki.QueryResultData{
 			Result: []loki.StreamEntry{{
-				Values: [][]string{{"1775637286777686890", "plain unstructured log line"}},
+				Values: []loki.LogEntry{{Timestamp: "1775637286777686890", Line: "plain unstructured log line"}},
 			}},
 		},
 	}
@@ -124,7 +124,7 @@ func TestFormatQueryTable_RejectsAmbiguousLogfmtBareTokens(t *testing.T) {
 	resp := &loki.QueryResponse{
 		Data: loki.QueryResultData{
 			Result: []loki.StreamEntry{{
-				Values: [][]string{{"1775637286777686890", `msg=login failed for user=bob`}},
+				Values: []loki.LogEntry{{Timestamp: "1775637286777686890", Line: `msg=login failed for user=bob`}},
 			}},
 		},
 	}
@@ -145,7 +145,7 @@ func TestFormatQueryTable_RejectsAmbiguousLogfmtWithoutQuotedMessage(t *testing.
 	resp := &loki.QueryResponse{
 		Data: loki.QueryResultData{
 			Result: []loki.StreamEntry{{
-				Values: [][]string{{"1775637286777686890", `level=info request completed status=200`}},
+				Values: []loki.LogEntry{{Timestamp: "1775637286777686890", Line: `level=info request completed status=200`}},
 			}},
 		},
 	}
@@ -161,11 +161,40 @@ func TestFormatQueryTable_RejectsAmbiguousLogfmtWithoutQuotedMessage(t *testing.
 	assert.NotContains(t, out, "DETAILS")
 }
 
+func TestFormatQueryTable_SurfacesStructuredMetadataInDetails(t *testing.T) {
+	// Structured metadata (and parsed labels) are per-line, non-indexed context.
+	// They should appear in DETAILS, and detected_level should populate LEVEL
+	// when the body carried none, but they must NOT appear in the STREAM column.
+	resp := &loki.QueryResponse{
+		Data: loki.QueryResultData{
+			Result: []loki.StreamEntry{{
+				Stream: map[string]string{"service_name": "checkout"},
+				Values: []loki.LogEntry{{
+					Timestamp:          "1775637286777686890",
+					Line:               "a plain unstructured line",
+					StructuredMetadata: map[string]string{"detected_level": "error", "trace_id": "abc123"},
+				}},
+			}},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatQueryTable(&buf, resp))
+
+	out := buf.String()
+	assert.Contains(t, out, "LEVEL")
+	assert.Contains(t, out, "error")           // detected_level -> LEVEL
+	assert.Contains(t, out, "trace_id=abc123") // structured metadata -> DETAILS
+	assert.Contains(t, out, "DETAILS")
+	// detected_level was consumed into LEVEL, not left dangling in DETAILS.
+	assert.NotContains(t, out, "detected_level=")
+}
+
 func TestFormatQueryRaw_PrintsOriginalLineBodies(t *testing.T) {
 	resp := &loki.QueryResponse{
 		Data: loki.QueryResultData{
 			Result: []loki.StreamEntry{{
-				Values: [][]string{{"1", "first line"}, {"2", "second line"}},
+				Values: []loki.LogEntry{{Timestamp: "1", Line: "first line"}, {Timestamp: "2", Line: "second line"}},
 			}},
 		},
 	}

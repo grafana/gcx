@@ -290,6 +290,15 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 
 		labelsIdx, hasLabels := fieldIndices["labels"]
 
+		// labelTypes is a companion field emitted by Grafana's Loki datasource
+		// mapping each label name to its category ("I"=indexed, "S"=structured
+		// metadata, "P"=parsed). It's absent on older Grafana; -1 means "treat
+		// every label as indexed", which preserves the pre-categorization output.
+		labelTypesIdx := -1
+		if idx, ok := fieldIndices["labelTypes"]; ok {
+			labelTypesIdx = idx
+		}
+
 		timestampIdx, hasTimestamp := fieldIndices["timestamp"]
 		if !hasTimestamp {
 			timestampIdx, hasTimestamp = fieldIndices["Time"]
@@ -302,7 +311,7 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 
 		// Handle log-lines format (per-line labels in values)
 		if hasLabels && hasTimestamp && hasBody {
-			convertLogLines(frame, labelsIdx, timestampIdx, bodyIdx, result)
+			convertLogLines(frame, labelsIdx, labelTypesIdx, timestampIdx, bodyIdx, result)
 			continue
 		}
 
@@ -313,7 +322,7 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 	return result
 }
 
-func convertLogLines(frame DataFrame, labelsIdx, timestampIdx, bodyIdx int, result *QueryResponse) {
+func convertLogLines(frame DataFrame, labelsIdx, labelTypesIdx, timestampIdx, bodyIdx int, result *QueryResponse) {
 	if len(frame.Data.Values) <= labelsIdx ||
 		len(frame.Data.Values) <= timestampIdx ||
 		len(frame.Data.Values) <= bodyIdx {
@@ -323,6 +332,11 @@ func convertLogLines(frame DataFrame, labelsIdx, timestampIdx, bodyIdx int, resu
 	labelsValues := frame.Data.Values[labelsIdx]
 	timestampValues := frame.Data.Values[timestampIdx]
 	bodyValues := frame.Data.Values[bodyIdx]
+
+	var labelTypesValues []any
+	if labelTypesIdx >= 0 && labelTypesIdx < len(frame.Data.Values) {
+		labelTypesValues = frame.Data.Values[labelTypesIdx]
+	}
 
 	numEntries := len(timestampValues)
 	if numEntries == 0 {
@@ -335,31 +349,77 @@ func convertLogLines(frame DataFrame, labelsIdx, timestampIdx, bodyIdx int, resu
 		nanos = frame.Data.Nanos[timestampIdx]
 	}
 
-	// Group entries by labels
+	// Group entries by their INDEXED labels only. Structured metadata (e.g.
+	// detected_level) and parsed labels are per-line and often high-cardinality
+	// (e.g. a unique execution_id per line); grouping by the merged set would
+	// explode one logical stream into one entry per line.
 	streamMap := make(map[string]*StreamEntry)
 	streamOrder := make([]string, 0)
 
 	for i := range numEntries {
-		labels := parseLabels(labelsValues[i])
+		merged := parseLabels(labelsValues[i])
+		var types map[string]string
+		if labelTypesValues != nil && i < len(labelTypesValues) {
+			types = parseLabels(labelTypesValues[i])
+		}
+		indexed, structured, parsed := splitLabelsByType(merged, types)
+
 		ts := formatTimestampWithNanos(timestampValues[i], nanos, i)
 		body := toString(bodyValues[i])
 
-		key := labelsKey(labels)
+		key := labelsKey(indexed)
 		entry, exists := streamMap[key]
 		if !exists {
 			entry = &StreamEntry{
-				Stream: labels,
-				Values: make([][]string, 0),
+				Stream: indexed,
+				Values: make([]LogEntry, 0),
 			}
 			streamMap[key] = entry
 			streamOrder = append(streamOrder, key)
 		}
-		entry.Values = append(entry.Values, []string{ts, body})
+		entry.Values = append(entry.Values, LogEntry{
+			Timestamp:          ts,
+			Line:               body,
+			StructuredMetadata: nilIfEmpty(structured),
+			Parsed:             nilIfEmpty(parsed),
+		})
 	}
 
 	for _, key := range streamOrder {
 		result.Data.Result = append(result.Data.Result, *streamMap[key])
 	}
+}
+
+// splitLabelsByType partitions a merged Loki label map into indexed stream
+// labels, structured metadata, and query-time parsed labels using Grafana's
+// per-line labelTypes categorization ("I"=indexed, "S"=structured metadata,
+// "P"=parsed). Keys with no type information — older Grafana that doesn't emit
+// labelTypes — default to indexed, preserving the previous (merged) behaviour
+// rather than silently moving labels out of the {...}-selectable set.
+func splitLabelsByType(labels, types map[string]string) (map[string]string, map[string]string, map[string]string) {
+	indexed := make(map[string]string)
+	structured := make(map[string]string)
+	parsed := make(map[string]string)
+	for k, v := range labels {
+		switch types[k] {
+		case "S":
+			structured[k] = v
+		case "P":
+			parsed[k] = v
+		default:
+			indexed[k] = v
+		}
+	}
+	return indexed, structured, parsed
+}
+
+// nilIfEmpty returns nil for an empty map so that omitempty drops the field from
+// JSON/YAML output instead of emitting an empty object.
+func nilIfEmpty(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 func convertLegacyFormat(frame DataFrame, result *QueryResponse) {
@@ -407,13 +467,13 @@ func convertLegacyFormat(frame DataFrame, result *QueryResponse) {
 
 	entry := StreamEntry{
 		Stream: labels,
-		Values: make([][]string, 0, len(timeValues)),
+		Values: make([]LogEntry, 0, len(timeValues)),
 	}
 
 	for i := range timeValues {
 		ts := formatTimestamp(timeValues[i])
 		value := toString(dataValues[i])
-		entry.Values = append(entry.Values, []string{ts, value})
+		entry.Values = append(entry.Values, LogEntry{Timestamp: ts, Line: value})
 	}
 
 	result.Data.Result = append(result.Data.Result, entry)

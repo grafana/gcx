@@ -178,7 +178,11 @@ Basic log filtering:
 # All logs from a job
 gcx logs query -d <loki-uid> '{job="varlogs"}'
 
-# Multiple labels (AND)
+# Multiple labels (AND) — every key inside {} must be an INDEXED label.
+# `level` works here only if it's indexed on your stack; Loki's auto-added
+# `detected_level` is structured metadata, so it must go after a pipe instead:
+#   {job="varlogs"} | detected_level="error"
+# See "Label kinds" below.
 gcx logs query -d <loki-uid> '{job="varlogs",level="error"}'
 
 # Regex matching
@@ -363,10 +367,11 @@ Shows all labels plus the log line:
 
 ```bash
 gcx logs query -d <loki-uid> '{job="varlogs"}' --from now-5m --to now -o wide
-# Output:
-# CLUSTER        DETECTED_LEVEL  JOB       NAMESPACE  POD          LINE
-# dev-eu-west-2  info            varlogs   prod       app-abc123   ts=2026-03-06T10:30:00Z...
-# dev-eu-west-2  error           varlogs   prod       app-abc123   ts=2026-03-06T10:30:01Z...
+# Output (STREAM columns are indexed labels; detected_level is structured
+# metadata surfaced in DETAILS/LEVEL, NOT a stream label you can put in {}):
+# CLUSTER        JOB       NAMESPACE  POD          LEVEL  MESSAGE                  DETAILS
+# dev-eu-west-2  varlogs   prod       app-abc123   info   ts=2026-03-06T10:30:00Z  detected_level=info
+# dev-eu-west-2  varlogs   prod       app-abc123   error  ts=2026-03-06T10:30:01Z  detected_level=error
 ```
 
 ### JSON Format
@@ -571,21 +576,36 @@ Always include `| __error__=""` after `| json` to drop lines that failed to
 parse, otherwise the parser stage silently keeps them and they pollute the
 count.
 
-### Stream Labels vs Extracted Labels
+### Label kinds: indexed vs structured metadata vs parsed
 
-Loki has two kinds of labels — confusing them causes silent failures:
+Loki has **three** kinds of key/value data on a log line. Confusing them causes
+silent empty results — a query that returns `success` with zero streams:
 
-| | Stream labels | Extracted labels |
-|---|---|---|
-| Set by | Log ingestion config | Parser stages (`| json`, `| logfmt`) |
-| Used in | Stream selector `{job="app"}` | Filter expressions after `|` |
-| Indexed | Yes (fast) | No (line-by-line scan) |
-| Available | Always | Only after parser stage |
+| | Indexed stream labels | Structured metadata | Parsed labels |
+|---|---|---|---|
+| Set by | Ingestion / stream config | Attached per-line at ingest (incl. Loki's auto-added `detected_level`) | Parser stages (`\| json`, `\| logfmt`) |
+| Used in | Stream selector `{job="app"}` | Filter **after** a pipe: `\| detected_level="error"` | Filter **after** the parser: `\| json \| status="500"` |
+| Indexed | Yes (fast) | No | No |
+| Valid inside `{}` | **Yes** | **No** | **No** |
+
+How gcx surfaces them in `gcx logs query` output (as of the label-type split):
+- `-o json`: each stream's `stream` map is **indexed labels only**; each entry
+  carries `structuredMetadata` and `parsed` maps for the non-indexed keys.
+- `-o table`: the `STREAM` column shows indexed labels; structured metadata and
+  parsed labels land in `DETAILS` (and `detected_level` fills `LEVEL`).
+
+So the rule is simple: **only keys that appear in `stream` (or the `STREAM`
+column) are valid inside `{...}`.** Anything under `structuredMetadata` / `parsed`
+/ `DETAILS` must go after a `|`.
 
 Common mistakes:
-- Filtering extracted labels in `{}` — fails silently: `{namespace="prod", pod="app-123"}` won't work if `pod` is extracted, not a stream label
-- Using `label_format` to rename extracted fields before they're parsed — add the parser stage first
-- Assuming a field visible in Grafana Explore is a stream label — check with `gcx logs labels -d <uid>` (only shows stream labels)
+- Putting a structured-metadata key inside `{}` — fails silently:
+  `{detected_level="error"}` matches nothing; use `{job="app"} | detected_level="error"` instead.
+- Putting a parsed field in `{}` before the parser runs — add `| json` / `| logfmt` first, then `| status="500"`.
+- `gcx logs labels` lists the **indexed** label names (what's valid in `{}`); it
+  does NOT enumerate structured-metadata keys, so don't assume a key is a stream
+  label just because you saw it in query output — check whether it came from
+  `stream` vs `structuredMetadata`.
 
 ## Common Patterns
 
