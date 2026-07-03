@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/deeplink"
@@ -133,62 +132,37 @@ func (f *GCOMFlow) Run(ctx context.Context) (*GCOMResult, error) {
 }
 
 func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, resultCh chan<- *GCOMResult, errCh chan<- error) *http.Server {
-	var once sync.Once
-
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		handled := false
-		once.Do(func() {
-			handled = true
-			state := r.URL.Query().Get("state")
-			if state != expectedState {
-				errCh <- errors.New("invalid state - possible CSRF attack")
-				renderErrorPage(w, "Invalid state parameter")
-				return
-			}
-
-			if errMsg := r.URL.Query().Get("error"); errMsg != "" {
-				errCh <- fmt.Errorf("authentication denied: %s", StripControlChars(errMsg))
-				renderErrorPage(w, StripControlChars(errMsg))
-				return
-			}
-
-			code := r.URL.Query().Get("code")
-			if code == "" {
-				errCh <- errors.New("no authorization code received")
-				renderErrorPage(w, "No authorization code received")
-				return
-			}
-
-			result, err := f.exchangeGCOMToken(ctx, code, codeVerifier, redirectURI)
-			if err != nil {
-				errCh <- fmt.Errorf("token exchange failed: %w", err)
-				renderErrorPage(w, "Token exchange failed")
-				return
-			}
-
-			resultCh <- result
-			renderSuccessPage(w)
-		})
-		if !handled {
-			http.Error(w, "Authentication already processed", http.StatusGone)
+	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
+		state := r.URL.Query().Get("state")
+		if state != expectedState {
+			errCh <- errors.New("invalid state - possible CSRF attack")
+			renderErrorPage(w, "Invalid state parameter")
+			return
 		}
+
+		if errMsg := r.URL.Query().Get("error"); errMsg != "" {
+			errCh <- fmt.Errorf("authentication denied: %s", StripControlChars(errMsg))
+			renderErrorPage(w, StripControlChars(errMsg))
+			return
+		}
+
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			errCh <- errors.New("no authorization code received")
+			renderErrorPage(w, "No authorization code received")
+			return
+		}
+
+		result, err := f.exchangeGCOMToken(ctx, code, codeVerifier, redirectURI)
+		if err != nil {
+			errCh <- fmt.Errorf("token exchange failed: %w", err)
+			renderErrorPage(w, "Token exchange failed")
+			return
+		}
+
+		resultCh <- result
+		renderSuccessPage(w)
 	})
-
-	server := &http.Server{
-		Addr:              listener.Addr().String(),
-		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-
-	go func() {
-		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- fmt.Errorf("callback server error: %w", err)
-		}
-	}()
-
-	return server
 }
 
 type gcomTokenResponse struct {
