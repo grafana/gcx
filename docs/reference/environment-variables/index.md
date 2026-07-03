@@ -13,8 +13,15 @@ disables the notifier (NO_COLOR convention).
 
 ## `GRAFANA_CLOUD_API_URL`
 
-APIUrl is the base URL of the Grafana Cloud API (GCOM).
-Optional: defaults to "https://grafana.com".
+APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls
+(stacks, regions, access policies, etc.). Every client talking to GCOM
+uses it. Optional: defaults to "https://grafana.com".
+
+## `GRAFANA_CLOUD_OAUTH_URL`
+
+OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
+login`. It is used only during login. Optional: defaults to
+"https://grafana.com".
 
 ## `GRAFANA_CLOUD_STACK`
 

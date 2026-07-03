@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -176,80 +177,88 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 }
 
 func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier string, resultCh chan<- *Result, errCh chan<- error) *http.Server {
+	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
+		state := r.URL.Query().Get("state")
+		if state != expectedState {
+			errCh <- errors.New("invalid state - possible CSRF attack")
+			renderErrorPage(w, "Invalid state parameter")
+			return
+		}
+
+		if errMsg := r.URL.Query().Get("error"); errMsg != "" {
+			errMsg = StripControlChars(errMsg)
+			errCh <- fmt.Errorf("authentication denied: %s", errMsg)
+			renderErrorPage(w, errMsg)
+			return
+		}
+
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			errCh <- errors.New("no authorization code received")
+			renderErrorPage(w, "No authorization code received")
+			return
+		}
+
+		endpoint := r.URL.Query().Get("endpoint")
+		if endpoint == "" {
+			errCh <- errors.New("no API endpoint received")
+			renderErrorPage(w, "No API endpoint received")
+			return
+		}
+		if err := ValidateEndpointURL(endpoint); err != nil {
+			errCh <- fmt.Errorf("invalid API endpoint: %w", err)
+			renderErrorPage(w, "Invalid API endpoint")
+			return
+		}
+
+		exchangeResult, err := exchangeCodeForToken(ctx, endpoint, code, codeVerifier)
+		if err != nil {
+			errCh <- fmt.Errorf("token exchange failed: %w", err)
+			renderErrorPage(w, "Token exchange failed")
+			return
+		}
+
+		instanceEndpoint := r.URL.Query().Get("instanceEndpoint")
+		instanceEndpointUrl, err := url.Parse(instanceEndpoint)
+		if err != nil {
+			errCh <- fmt.Errorf("invalid endpoint url: %w", err)
+			renderErrorPage(w, "Invalid instance endpoint passed")
+			return
+		}
+		if instanceEndpointUrl.Scheme != "https" {
+			errCh <- fmt.Errorf("invalid endpoint scheme: expected 'https', got '%s'", instanceEndpointUrl.Scheme)
+			renderErrorPage(w, "Invalid instance endpoint: needs to be an HTTPS URL")
+			return
+		}
+
+		result := &Result{
+			Token:            exchangeResult.Data.Token,
+			Email:            exchangeResult.Data.Email,
+			DeviceName:       r.URL.Query().Get("device"),
+			APIEndpoint:      exchangeResult.Data.APIEndpoint,
+			ExpiresAt:        exchangeResult.Data.ExpiresAt,
+			RefreshToken:     exchangeResult.Data.RefreshToken,
+			RefreshExpiresAt: exchangeResult.Data.RefreshExpiresAt,
+			InstanceEndpoint: instanceEndpoint,
+		}
+
+		resultCh <- result
+		renderSuccessPage(w)
+	})
+}
+
+// newCallbackServer binds a single-use /callback handler to listener and starts
+// serving in a goroutine. handle runs at most once; replayed callbacks get 410
+// Gone. Serve errors are reported on errCh.
+func newCallbackServer(listener net.Listener, errCh chan<- error, handle http.HandlerFunc) *http.Server {
 	var once sync.Once
 
 	mux := http.NewServeMux()
-
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		handled := false
 		once.Do(func() {
 			handled = true
-			state := r.URL.Query().Get("state")
-			if state != expectedState {
-				errCh <- errors.New("invalid state - possible CSRF attack")
-				renderErrorPage(w, "Invalid state parameter")
-				return
-			}
-
-			if errMsg := r.URL.Query().Get("error"); errMsg != "" {
-				errMsg = StripControlChars(errMsg)
-				errCh <- fmt.Errorf("authentication denied: %s", errMsg)
-				renderErrorPage(w, errMsg)
-				return
-			}
-
-			code := r.URL.Query().Get("code")
-			if code == "" {
-				errCh <- errors.New("no authorization code received")
-				renderErrorPage(w, "No authorization code received")
-				return
-			}
-
-			endpoint := r.URL.Query().Get("endpoint")
-			if endpoint == "" {
-				errCh <- errors.New("no API endpoint received")
-				renderErrorPage(w, "No API endpoint received")
-				return
-			}
-			if err := ValidateEndpointURL(endpoint); err != nil {
-				errCh <- fmt.Errorf("invalid API endpoint: %w", err)
-				renderErrorPage(w, "Invalid API endpoint")
-				return
-			}
-
-			exchangeResult, err := exchangeCodeForToken(ctx, endpoint, code, codeVerifier)
-			if err != nil {
-				errCh <- fmt.Errorf("token exchange failed: %w", err)
-				renderErrorPage(w, "Token exchange failed")
-				return
-			}
-
-			instanceEndpoint := r.URL.Query().Get("instanceEndpoint")
-			instanceEndpointUrl, err := url.Parse(instanceEndpoint)
-			if err != nil {
-				errCh <- fmt.Errorf("invalid endpoint url: %w", err)
-				renderErrorPage(w, "Invalid instance endpoint passed")
-				return
-			}
-			if instanceEndpointUrl.Scheme != "https" {
-				errCh <- fmt.Errorf("invalid endpoint scheme: expected 'https', got '%s'", instanceEndpointUrl.Scheme)
-				renderErrorPage(w, "Invalid instance endpoint: needs to be an HTTPS URL")
-				return
-			}
-
-			result := &Result{
-				Token:            exchangeResult.Data.Token,
-				Email:            exchangeResult.Data.Email,
-				DeviceName:       r.URL.Query().Get("device"),
-				APIEndpoint:      exchangeResult.Data.APIEndpoint,
-				ExpiresAt:        exchangeResult.Data.ExpiresAt,
-				RefreshToken:     exchangeResult.Data.RefreshToken,
-				RefreshExpiresAt: exchangeResult.Data.RefreshExpiresAt,
-				InstanceEndpoint: instanceEndpoint,
-			}
-
-			resultCh <- result
-			renderSuccessPage(w)
+			handle(w, r)
 		})
 		if !handled {
 			http.Error(w, "Authentication already processed", http.StatusGone)
@@ -305,6 +314,42 @@ func ValidateEndpointURL(endpoint string) error {
 	}
 
 	return fmt.Errorf("endpoint host %q is not a trusted Grafana domain", hostname)
+}
+
+var allowedGCOMHosts = []string{ //nolint:gochecknoglobals
+	"grafana.com",
+	"grafana-dev.com",
+	"grafana-ops.com",
+}
+
+// validateGCOMURL checks that the given URL points at a trusted Grafana Cloud
+// platform (GCOM) domain or a local address. Unlike ValidateEndpointURL, which
+// guards per-stack *.grafana.net endpoints, this validates the grafana.com
+// family used by the cloud login flow. Returns an error if the URL is untrusted.
+func validateGCOMURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("malformed URL: %w", err)
+	}
+	if u.Host == "" {
+		return errors.New("URL has no host")
+	}
+
+	hostname := u.Hostname()
+
+	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
+		return nil
+	}
+
+	if u.Scheme != "https" {
+		return fmt.Errorf("URL must use HTTPS, got %q", u.Scheme)
+	}
+
+	if slices.Contains(allowedGCOMHosts, hostname) {
+		return nil
+	}
+
+	return fmt.Errorf("URL host %q is not a trusted Grafana Cloud domain", hostname)
 }
 
 type exchangeResponse struct {

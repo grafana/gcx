@@ -155,7 +155,7 @@ func Validate(ctx context.Context, opts Options, restCfg config.NamespacedRESTCo
 			Grafana: &config.GrafanaConfig{Server: opts.Server},
 			Cloud:   &config.CloudConfig{APIUrl: opts.CloudAPIURL},
 		}
-		gcomC, err := cloud.NewGCOMClient(gcomCtx.ResolveGCOMURL(), opts.CloudToken)
+		gcomC, err := cloud.NewGCOMClient(gcomCtx.ResolveCloudAPIURL(), opts.CloudToken)
 		if err != nil {
 			return "", fmt.Errorf("connectivity validation: invalid GCOM URL: %w", err)
 		}
