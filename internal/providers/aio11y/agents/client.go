@@ -2,8 +2,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -43,19 +41,9 @@ func (c *Client) Lookup(ctx context.Context, name, version string) (*AgentDetail
 		query.Set("version", version)
 	}
 
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, agentLookupPath+"?"+query.Encode(), nil)
+	detail, err := aio11yhttp.DoJSON[any, AgentDetail](ctx, c.base, http.MethodGet, agentLookupPath+"?"+query.Encode(), nil, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to lookup agent %s: %w", name, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var detail AgentDetail
-	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
-		return nil, fmt.Errorf("failed to decode agent response: %w", err)
+		return nil, err
 	}
 	return &detail, nil
 }

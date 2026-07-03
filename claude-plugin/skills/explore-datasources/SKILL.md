@@ -65,6 +65,8 @@ gcx logs series -d <datasource-uid> -M '{job="varlogs"}'
 
 **Note:** The `series` command requires at least one `-M` (match) selector using LogQL syntax.
 
+**Note:** `gcx logs labels` lists *indexed* stream labels — the keys valid inside a `{...}` selector. Loki also has structured metadata (per-line, e.g. `detected_level`) and parsed labels that are NOT indexed and must be filtered after a pipe (`{job="x"} | detected_level="error"`), never inside `{}`. In `gcx logs query` output they appear under each entry's `structuredMetadata` / `parsed` (not the `stream` map).
+
 ### Step 3: Test Queries (Optional)
 
 Once you've identified available data, verify with a test query.

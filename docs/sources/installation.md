@@ -1,5 +1,10 @@
 ---
 title: Install gcx
+labels:
+  products:
+    - cloud
+    - enterprise
+    - oss
 weight: 2
 ---
 

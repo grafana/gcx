@@ -144,6 +144,15 @@ gcx logs series -d <uid> -M '{app="myapp", environment="production"}'
 gcx logs series -d <uid> -M '{app="myapp", level!="debug"}'
 ```
 
+> **Only indexed labels are valid inside `{...}`.** Loki also has *structured
+> metadata* (per-line keys attached at ingest, including Loki's auto-added
+> `detected_level`) and *parsed labels* (from `| json` / `| logfmt`). Those are
+> NOT indexed and must be filtered **after a pipe** — `{app="myapp"} |
+> detected_level="error"`, not `{detected_level="error"}` (which matches
+> nothing). `gcx logs labels` lists the indexed labels; a key you saw in query
+> output is only `{}`-valid if it appeared in the `stream` map (`-o json`) /
+> `STREAM` column, not under `structuredMetadata` / `parsed` / `DETAILS`.
+
 ### Find Container Logs
 
 ```bash
@@ -265,9 +274,12 @@ Loki uses [RE2 regex syntax](https://github.com/google/re2/wiki/Syntax). Common 
    # See what jobs exist
    gcx logs labels -d <uid> --label job
 
-   # Then query specific job
+   # Then query specific job (job is an indexed label, so it's valid in {})
    gcx logs series -d <uid> -M '{job="<value-from-above>"}'
    ```
+   `gcx logs labels` returns indexed labels only — every value it lists is safe
+   inside `{}`. Structured-metadata keys (e.g. `detected_level`) won't appear
+   here and are not `{}`-valid; filter them after a pipe.
 
 4. **Use JSON output for large results**: Pipe to jq for filtering
    ```bash

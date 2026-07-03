@@ -1,7 +1,6 @@
 package loki
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,13 +10,15 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/query/grafanaquery"
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
 
 type Client struct {
-	restConfig config.NamespacedRESTConfig
-	httpClient *http.Client
+	restConfig  config.NamespacedRESTConfig
+	httpClient  *http.Client
+	queryClient *grafanaquery.Client
 }
 
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
@@ -27,14 +28,46 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	}
 
 	return &Client{
-		restConfig: cfg,
-		httpClient: httpClient,
+		restConfig:  cfg,
+		httpClient:  httpClient,
+		queryClient: grafanaquery.NewClientWithHTTPClient(cfg, httpClient),
 	}, nil
 }
 
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
-	apiPath := c.buildQueryPath()
+	body, err := c.buildQueryBody(datasourceUID, req, true)
+	if err != nil {
+		return nil, err
+	}
 
+	grafanaResp, err := c.executeQuery(ctx, body, "query")
+	if err != nil {
+		return nil, err
+	}
+
+	return convertGrafanaResponse(grafanaResp), nil
+}
+
+// MetricQuery executes a metric LogQL query and returns a Prometheus-compatible time-series response.
+// Metric LogQL expressions (e.g., rate, count_over_time) return time-series data rather than log streams.
+func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req QueryRequest) (*MetricQueryResponse, error) {
+	body, err := c.buildQueryBody(datasourceUID, req, false)
+	if err != nil {
+		return nil, err
+	}
+
+	grafanaResp, err := c.executeQuery(ctx, body, "metric query")
+	if err != nil {
+		return nil, err
+	}
+
+	return convertMetricResponse(grafanaResp), nil
+}
+
+// buildQueryBody builds the Grafana datasource query API request body shared by
+// Query and MetricQuery. includeMaxLines controls whether req.Limit is sent as
+// maxLines — MetricQuery results are time-series, not log lines, so it doesn't apply.
+func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest, includeMaxLines bool) ([]byte, error) {
 	query := map[string]any{
 		"refId": "A",
 		"datasource": map[string]any{
@@ -58,7 +91,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		query["instant"] = true
 	}
 
-	if req.Limit > 0 {
+	if includeMaxLines && req.Limit > 0 {
 		query["maxLines"] = req.Limit
 	}
 
@@ -73,147 +106,16 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// The K8s query API is not enabled everywhere and can return a non-200
-	// (e.g. 403 for some roles); fall back to the legacy /api/ds/query.
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		apiPath = "/api/ds/query"
-		httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %w", err)
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		resp, err = c.httpClient.Do(httpReq)
-		if err != nil {
-			return nil, fmt.Errorf("failed to execute query: %w", err)
-		}
-		defer resp.Body.Close()
-		respBody, err = httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read response: %w", err)
-		}
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("loki", "query", resp.StatusCode, respBody)
-	}
-
-	var grafanaResp GrafanaQueryResponse
-	if err := json.Unmarshal(respBody, &grafanaResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if result, ok := grafanaResp.Results["A"]; ok {
-		if result.Error != "" {
-			status := result.Status
-			if status == 0 {
-				status = http.StatusBadRequest
-			}
-			return nil, queryerror.New("loki", "query", status, result.Error, result.ErrorSource)
-		}
-	}
-
-	return convertGrafanaResponse(&grafanaResp), nil
+	return body, nil
 }
 
-// MetricQuery executes a metric LogQL query and returns a Prometheus-compatible time-series response.
-// Metric LogQL expressions (e.g., rate, count_over_time) return time-series data rather than log streams.
-func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req QueryRequest) (*MetricQueryResponse, error) {
-	apiPath := c.buildQueryPath()
-
-	query := map[string]any{
-		"refId": "A",
-		"datasource": map[string]any{
-			"type": "loki",
-			"uid":  datasourceUID,
-		},
-		"expr":       req.Query,
-		"intervalMs": 60000,
-	}
-
-	var from, to string
-	if req.IsRange() {
-		from = strconv.FormatInt(req.Start.UnixMilli(), 10)
-		to = strconv.FormatInt(req.End.UnixMilli(), 10)
-		if req.Step > 0 {
-			query["intervalMs"] = req.Step.Milliseconds()
-		}
-	} else {
-		from = "now-1m"
-		to = "now"
-		query["instant"] = true
-	}
-
-	bodyMap := map[string]any{
-		"queries": []any{query},
-		"from":    from,
-		"to":      to,
-	}
-
-	body, err := json.Marshal(bodyMap)
+// executeQuery posts body to Grafana's datasource query API (fallback to the
+// legacy endpoint is handled by grafanaquery.Client) and decodes the envelope,
+// translating an embedded query-level error into a typed API error.
+func (c *Client) executeQuery(ctx context.Context, body []byte, operation string) (*GrafanaQueryResponse, error) {
+	respBody, err := c.queryClient.Execute(ctx, body, "loki", operation)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// The K8s query API is not enabled everywhere and can return a non-200
-	// (e.g. 403 for some roles); fall back to the legacy /api/ds/query.
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		apiPath = "/api/ds/query"
-		httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %w", err)
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		resp, err = c.httpClient.Do(httpReq)
-		if err != nil {
-			return nil, fmt.Errorf("failed to execute query: %w", err)
-		}
-		defer resp.Body.Close()
-		respBody, err = httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read response: %w", err)
-		}
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("loki", "metric query", resp.StatusCode, respBody)
+		return nil, err
 	}
 
 	var grafanaResp GrafanaQueryResponse
@@ -227,11 +129,11 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 			if status == 0 {
 				status = http.StatusBadRequest
 			}
-			return nil, queryerror.New("loki", "metric query", status, result.Error, result.ErrorSource)
+			return nil, queryerror.New("loki", operation, status, result.Error, result.ErrorSource)
 		}
 	}
 
-	return convertMetricResponse(&grafanaResp), nil
+	return &grafanaResp, nil
 }
 
 func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsResponse, error) {
@@ -335,11 +237,6 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 	return &result, nil
 }
 
-func (c *Client) buildQueryPath() string {
-	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query",
-		c.restConfig.Namespace)
-}
-
 func (c *Client) buildLabelsPath(datasourceUID string) string {
 	return fmt.Sprintf("/api/datasources/uid/%s/resources/labels", url.PathEscape(datasourceUID))
 }
@@ -393,6 +290,15 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 
 		labelsIdx, hasLabels := fieldIndices["labels"]
 
+		// labelTypes is a companion field emitted by Grafana's Loki datasource
+		// mapping each label name to its category ("I"=indexed, "S"=structured
+		// metadata, "P"=parsed). It's absent on older Grafana; -1 means "treat
+		// every label as indexed", which preserves the pre-categorization output.
+		labelTypesIdx := -1
+		if idx, ok := fieldIndices["labelTypes"]; ok {
+			labelTypesIdx = idx
+		}
+
 		timestampIdx, hasTimestamp := fieldIndices["timestamp"]
 		if !hasTimestamp {
 			timestampIdx, hasTimestamp = fieldIndices["Time"]
@@ -405,7 +311,7 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 
 		// Handle log-lines format (per-line labels in values)
 		if hasLabels && hasTimestamp && hasBody {
-			convertLogLines(frame, labelsIdx, timestampIdx, bodyIdx, result)
+			convertLogLines(frame, labelsIdx, labelTypesIdx, timestampIdx, bodyIdx, result)
 			continue
 		}
 
@@ -416,7 +322,7 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 	return result
 }
 
-func convertLogLines(frame DataFrame, labelsIdx, timestampIdx, bodyIdx int, result *QueryResponse) {
+func convertLogLines(frame DataFrame, labelsIdx, labelTypesIdx, timestampIdx, bodyIdx int, result *QueryResponse) {
 	if len(frame.Data.Values) <= labelsIdx ||
 		len(frame.Data.Values) <= timestampIdx ||
 		len(frame.Data.Values) <= bodyIdx {
@@ -426,6 +332,11 @@ func convertLogLines(frame DataFrame, labelsIdx, timestampIdx, bodyIdx int, resu
 	labelsValues := frame.Data.Values[labelsIdx]
 	timestampValues := frame.Data.Values[timestampIdx]
 	bodyValues := frame.Data.Values[bodyIdx]
+
+	var labelTypesValues []any
+	if labelTypesIdx >= 0 && labelTypesIdx < len(frame.Data.Values) {
+		labelTypesValues = frame.Data.Values[labelTypesIdx]
+	}
 
 	numEntries := len(timestampValues)
 	if numEntries == 0 {
@@ -438,31 +349,77 @@ func convertLogLines(frame DataFrame, labelsIdx, timestampIdx, bodyIdx int, resu
 		nanos = frame.Data.Nanos[timestampIdx]
 	}
 
-	// Group entries by labels
+	// Group entries by their INDEXED labels only. Structured metadata (e.g.
+	// detected_level) and parsed labels are per-line and often high-cardinality
+	// (e.g. a unique execution_id per line); grouping by the merged set would
+	// explode one logical stream into one entry per line.
 	streamMap := make(map[string]*StreamEntry)
 	streamOrder := make([]string, 0)
 
 	for i := range numEntries {
-		labels := parseLabels(labelsValues[i])
+		merged := parseLabels(labelsValues[i])
+		var types map[string]string
+		if labelTypesValues != nil && i < len(labelTypesValues) {
+			types = parseLabels(labelTypesValues[i])
+		}
+		indexed, structured, parsed := splitLabelsByType(merged, types)
+
 		ts := formatTimestampWithNanos(timestampValues[i], nanos, i)
 		body := toString(bodyValues[i])
 
-		key := labelsKey(labels)
+		key := labelsKey(indexed)
 		entry, exists := streamMap[key]
 		if !exists {
 			entry = &StreamEntry{
-				Stream: labels,
-				Values: make([][]string, 0),
+				Stream: indexed,
+				Values: make([]LogEntry, 0),
 			}
 			streamMap[key] = entry
 			streamOrder = append(streamOrder, key)
 		}
-		entry.Values = append(entry.Values, []string{ts, body})
+		entry.Values = append(entry.Values, LogEntry{
+			Timestamp:          ts,
+			Line:               body,
+			StructuredMetadata: nilIfEmpty(structured),
+			Parsed:             nilIfEmpty(parsed),
+		})
 	}
 
 	for _, key := range streamOrder {
 		result.Data.Result = append(result.Data.Result, *streamMap[key])
 	}
+}
+
+// splitLabelsByType partitions a merged Loki label map into indexed stream
+// labels, structured metadata, and query-time parsed labels using Grafana's
+// per-line labelTypes categorization ("I"=indexed, "S"=structured metadata,
+// "P"=parsed). Keys with no type information — older Grafana that doesn't emit
+// labelTypes — default to indexed, preserving the previous (merged) behaviour
+// rather than silently moving labels out of the {...}-selectable set.
+func splitLabelsByType(labels, types map[string]string) (map[string]string, map[string]string, map[string]string) {
+	indexed := make(map[string]string)
+	structured := make(map[string]string)
+	parsed := make(map[string]string)
+	for k, v := range labels {
+		switch types[k] {
+		case "S":
+			structured[k] = v
+		case "P":
+			parsed[k] = v
+		default:
+			indexed[k] = v
+		}
+	}
+	return indexed, structured, parsed
+}
+
+// nilIfEmpty returns nil for an empty map so that omitempty drops the field from
+// JSON/YAML output instead of emitting an empty object.
+func nilIfEmpty(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 func convertLegacyFormat(frame DataFrame, result *QueryResponse) {
@@ -510,13 +467,13 @@ func convertLegacyFormat(frame DataFrame, result *QueryResponse) {
 
 	entry := StreamEntry{
 		Stream: labels,
-		Values: make([][]string, 0, len(timeValues)),
+		Values: make([]LogEntry, 0, len(timeValues)),
 	}
 
 	for i := range timeValues {
 		ts := formatTimestamp(timeValues[i])
 		value := toString(dataValues[i])
-		entry.Values = append(entry.Values, []string{ts, value})
+		entry.Values = append(entry.Values, LogEntry{Timestamp: ts, Line: value})
 	}
 
 	result.Data.Result = append(result.Data.Result, entry)

@@ -49,7 +49,7 @@ func TestConvertGrafanaResponse_NewFieldNames(t *testing.T) {
 
 	// Values must contain actual log content, not ID hashes
 	require.Len(t, entry.Values, 1)
-	assert.Equal(t, "level=info msg=\"HTTP request\" status=200", entry.Values[0][1])
+	assert.Equal(t, "level=info msg=\"HTTP request\" status=200", entry.Values[0].Line)
 }
 
 func TestConvertGrafanaResponse_OldFieldNames(t *testing.T) {
@@ -81,7 +81,7 @@ func TestConvertGrafanaResponse_OldFieldNames(t *testing.T) {
 
 	require.Len(t, resp.Data.Result, 1)
 	assert.Equal(t, map[string]string{"app": "test"}, resp.Data.Result[0].Stream)
-	assert.Equal(t, "hello world", resp.Data.Result[0].Values[0][1])
+	assert.Equal(t, "hello world", resp.Data.Result[0].Values[0].Line)
 }
 
 func TestConvertGrafanaResponse_MultipleStreams(t *testing.T) {
@@ -126,6 +126,96 @@ func TestConvertGrafanaResponse_MultipleStreams(t *testing.T) {
 	assert.Len(t, resp.Data.Result[1].Values, 1)
 }
 
+func TestConvertGrafanaResponse_CategorizesLabelTypes(t *testing.T) {
+	// Grafana's Loki datasource emits a labelTypes field categorizing each label
+	// as "I" (indexed), "S" (structured metadata), or "P" (parsed). Those three
+	// categories must be split apart, and streams must be grouped by INDEXED
+	// labels only so per-line structured metadata (e.g. execution_id) doesn't
+	// explode one stream into one entry per line.
+	resp := loki.ConvertGrafanaResponse(&loki.GrafanaQueryResponse{
+		Results: map[string]loki.GrafanaResult{
+			"A": {
+				Frames: []loki.DataFrame{
+					{
+						Schema: loki.DataFrameSchema{
+							Fields: []loki.Field{
+								{Name: "labels", Type: "other"},
+								{Name: "Time", Type: "time"},
+								{Name: "Line", Type: "string"},
+								{Name: "labelTypes", Type: "other"},
+							},
+						},
+						Data: loki.DataFrameData{
+							Values: [][]any{
+								{
+									map[string]any{"job": "opnsense", "detected_level": "info", "execution_id": "aaa", "tenant": "t1"},
+									map[string]any{"job": "opnsense", "detected_level": "warn", "execution_id": "bbb", "tenant": "t1"},
+								},
+								{float64(1000), float64(2000)},
+								{"line-1", "line-2"},
+								{
+									map[string]any{"job": "I", "detected_level": "S", "execution_id": "S", "tenant": "P"},
+									map[string]any{"job": "I", "detected_level": "S", "execution_id": "S", "tenant": "P"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	// Both lines share the same indexed labels -> a single stream, not two.
+	require.Len(t, resp.Data.Result, 1)
+	entry := resp.Data.Result[0]
+
+	// Stream holds ONLY indexed labels; structured metadata and parsed labels
+	// must not leak into it.
+	assert.Equal(t, map[string]string{"job": "opnsense"}, entry.Stream)
+
+	require.Len(t, entry.Values, 2)
+	assert.Equal(t, "line-1", entry.Values[0].Line)
+	assert.Equal(t, map[string]string{"detected_level": "info", "execution_id": "aaa"}, entry.Values[0].StructuredMetadata)
+	assert.Equal(t, map[string]string{"tenant": "t1"}, entry.Values[0].Parsed)
+	assert.Equal(t, map[string]string{"detected_level": "warn", "execution_id": "bbb"}, entry.Values[1].StructuredMetadata)
+}
+
+func TestConvertGrafanaResponse_NoLabelTypesDefaultsToIndexed(t *testing.T) {
+	// Older Grafana without a labelTypes field: every label is treated as
+	// indexed, preserving the pre-categorization behaviour (no data lost).
+	resp := loki.ConvertGrafanaResponse(&loki.GrafanaQueryResponse{
+		Results: map[string]loki.GrafanaResult{
+			"A": {
+				Frames: []loki.DataFrame{
+					{
+						Schema: loki.DataFrameSchema{
+							Fields: []loki.Field{
+								{Name: "labels", Type: "other"},
+								{Name: "Time", Type: "time"},
+								{Name: "Line", Type: "string"},
+							},
+						},
+						Data: loki.DataFrameData{
+							Values: [][]any{
+								{map[string]any{"job": "grafana", "detected_level": "info"}},
+								{float64(1000)},
+								{"a line"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	require.Len(t, resp.Data.Result, 1)
+	entry := resp.Data.Result[0]
+	assert.Equal(t, map[string]string{"job": "grafana", "detected_level": "info"}, entry.Stream)
+	require.Len(t, entry.Values, 1)
+	assert.Nil(t, entry.Values[0].StructuredMetadata)
+	assert.Nil(t, entry.Values[0].Parsed)
+}
+
 func TestConvertGrafanaResponse_LegacyFormat(t *testing.T) {
 	// Legacy format: no "labels" field, labels in field metadata.
 	resp := loki.ConvertGrafanaResponse(&loki.GrafanaQueryResponse{
@@ -153,7 +243,7 @@ func TestConvertGrafanaResponse_LegacyFormat(t *testing.T) {
 
 	require.Len(t, resp.Data.Result, 1)
 	assert.Equal(t, map[string]string{"job": "legacy"}, resp.Data.Result[0].Stream)
-	assert.Equal(t, "legacy log line", resp.Data.Result[0].Values[0][1])
+	assert.Equal(t, "legacy log line", resp.Data.Result[0].Values[0].Line)
 }
 
 func TestConvertGrafanaResponse_LegacyFormat_PrefersContentField(t *testing.T) {
@@ -187,7 +277,7 @@ func TestConvertGrafanaResponse_LegacyFormat_PrefersContentField(t *testing.T) {
 	})
 
 	require.Len(t, resp.Data.Result, 1)
-	assert.Equal(t, "the actual log line", resp.Data.Result[0].Values[0][1])
+	assert.Equal(t, "the actual log line", resp.Data.Result[0].Values[0].Line)
 }
 
 func TestParseLabels(t *testing.T) {

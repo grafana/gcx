@@ -240,17 +240,36 @@ gcx logs query -d <loki-uid> \
     "resultType": "streams",
     "result": [
       {
-        "stream": {"job": "<service-name>", "level": "<level>"},
-        "values": [["<ns-timestamp>", "<log-line>"], ...]
+        "stream": {"job": "<service-name>"},
+        "values": [
+          {
+            "timestamp": "<ns-timestamp>",
+            "line": "<log-line>",
+            "structuredMetadata": {"detected_level": "error"},
+            "parsed": {"status": "500"}
+          }
+        ]
       }
     ]
   }
 }
 ```
+`stream` holds indexed labels only (valid inside `{...}`). `structuredMetadata`
+(per-line, e.g. `detected_level`) and `parsed` (from `| json` / `| logfmt`) are
+present only when the line has them, and are usable only after a pipe — not in a
+`{}` selector.
 
 > **LogQL pitfall**: Loki requires at least one non-empty label matcher in the
 > stream selector. `{}` and `{} |~ "pattern"` will be rejected. Always include
 > at least one label, e.g., `{job=~".+"}` as a catch-all.
+>
+> **Label-kind pitfall**: only *indexed* labels are valid inside `{...}`. Loki's
+> structured metadata (e.g. its auto-added `detected_level`) and parsed fields
+> are NOT — `{detected_level="error"}` returns zero streams silently. Filter
+> them after a pipe: `{job="app"} | detected_level="error"`. In `gcx logs query`
+> output, indexed labels are in the `stream` map / `STREAM` column; structured
+> metadata and parsed labels are in per-entry `structuredMetadata` / `parsed`
+> (`-o json`) or `DETAILS` (`-o table`).
 
 Look for:
 - Repeated error messages pointing to a specific code path or dependency

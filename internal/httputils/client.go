@@ -28,6 +28,9 @@ type ClientOpts struct {
 	TLSConfig   *tls.Config
 	Timeout     time.Duration // default: 60s
 	Middlewares []Middleware  // default: []Middleware{LoggingMiddleware}
+	// CheckRedirect, if non-nil, is set on the returned client to gate redirects
+	// (see http.Client.CheckRedirect).
+	CheckRedirect func(req *http.Request, via []*http.Request) error
 }
 
 // NewClient returns a configured *http.Client.
@@ -49,7 +52,7 @@ func NewClient(opts ClientOpts) *http.Client {
 	// Outermost layers: User-Agent injection, then retry for rate limiting (429) and transient errors.
 	rt = &retry.Transport{Base: rt}
 	rt = &UserAgentTransport{Base: rt}
-	return &http.Client{Timeout: timeout, Transport: rt}
+	return &http.Client{Timeout: timeout, Transport: rt, CheckRedirect: opts.CheckRedirect}
 }
 
 // NewDefaultClient returns an *http.Client with LoggingRoundTripper, 60s timeout,

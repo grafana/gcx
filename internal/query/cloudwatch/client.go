@@ -1,7 +1,6 @@
 package cloudwatch
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/query/grafanaquery"
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
@@ -19,8 +19,9 @@ const maxResourceResponseBytes = 1 << 20 // 1 MB
 
 // Client is an HTTP client for CloudWatch queries and resource listing via Grafana's proxy.
 type Client struct {
-	restConfig config.NamespacedRESTConfig
-	httpClient *http.Client
+	restConfig  config.NamespacedRESTConfig
+	httpClient  *http.Client
+	queryClient *grafanaquery.Client
 }
 
 // NewClient creates a new CloudWatch query client.
@@ -29,7 +30,11 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
-	return &Client{restConfig: cfg, httpClient: httpClient}, nil
+	return &Client{
+		restConfig:  cfg,
+		httpClient:  httpClient,
+		queryClient: grafanaquery.NewClientWithHTTPClient(cfg, httpClient),
+	}, nil
 }
 
 // Query executes a CloudWatch metric query via the Grafana datasource proxy.
@@ -84,24 +89,9 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	apiPath := c.buildK8sQueryPath()
-	respBody, statusCode, err := c.post(ctx, apiPath, body)
+	respBody, err := c.queryClient.Execute(ctx, body, "cloudwatch", "query")
 	if err != nil {
 		return nil, err
-	}
-
-	// The K8s query API is not enabled everywhere and can return a non-200
-	// (e.g. 403 for some roles); fall back to the legacy /api/ds/query.
-	if statusCode != http.StatusOK {
-		apiPath = "/api/ds/query"
-		respBody, statusCode, err = c.post(ctx, apiPath, body)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if statusCode != http.StatusOK {
-		return nil, queryerror.FromBody("cloudwatch", "query", statusCode, respBody)
 	}
 
 	return ParseQueryResponse(respBody)
@@ -207,32 +197,6 @@ func (c *Client) getResource(ctx context.Context, dsUID, resource string, params
 	}
 
 	return body, nil
-}
-
-func (c *Client) post(ctx context.Context, apiPath string, body []byte) ([]byte, int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to execute query: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-	if err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	return respBody, resp.StatusCode, nil
-}
-
-func (c *Client) buildK8sQueryPath() string {
-	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query",
-		c.restConfig.Namespace)
 }
 
 // orEmptyDimensions returns an empty map (instead of nil) so the JSON body

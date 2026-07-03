@@ -215,21 +215,31 @@ gcx logs query <loki-uid> 'topk(10, sum by(pod) (rate({job="app"} [5m])))'
 
 Rule of thumb: if your query uses `rate()`, `count_over_time()`, or `bytes_over_time()`, wrap it with `sum()`, `sum by(label)`, or `topk()`.
 
-### Stream Labels vs Extracted Labels
+### Label kinds: indexed vs structured metadata vs parsed
 
-Loki has two kinds of labels — confusing them causes silent failures:
+Loki has **three** kinds of key/value data on a log line. Confusing them causes
+silent failures — a query that returns `success` with zero streams:
 
-| | Stream labels | Extracted labels |
-|---|---|---|
-| Set by | Log ingestion config | Parser stages (`| json`, `| logfmt`) |
-| Used in | Stream selector `{job="app"}` | Filter expressions after `|` |
-| Indexed | Yes (fast) | No (line-by-line scan) |
-| Available | Always | Only after parser stage |
+| | Indexed stream labels | Structured metadata | Parsed labels |
+|---|---|---|---|
+| Set by | Ingestion / stream config | Attached per-line at ingest (incl. Loki's auto-added `detected_level`) | Parser stages (`\| json`, `\| logfmt`) |
+| Used in | Stream selector `{job="app"}` | Filter **after** a pipe: `\| detected_level="error"` | Filter **after** the parser: `\| json \| status="500"` |
+| Indexed | Yes (fast) | No | No |
+| Valid inside `{}` | **Yes** | **No** | **No** |
+
+gcx separates these in `gcx logs query` output: `-o json` puts indexed labels in
+each stream's `stream` map and the rest in per-entry `structuredMetadata` /
+`parsed` maps; `-o table` shows indexed labels in `STREAM` and the rest in
+`DETAILS`. **Only keys in `stream` / the `STREAM` column are valid inside `{...}`.**
 
 Common mistakes:
-- Filtering extracted labels in `{}` — fails silently: `{namespace="prod", pod="app-123"}` won't work if `pod` is extracted, not a stream label
-- Using `label_format` to rename extracted fields before they're parsed — add the parser stage first
-- Assuming a field visible in Grafana Explore is a stream label — check with `gcx logs labels -d <uid>` (only shows stream labels)
+- Putting a structured-metadata key inside `{}` — fails silently:
+  `{detected_level="error"}` matches nothing; use `{job="app"} | detected_level="error"`.
+- Putting a parsed field in `{}` before the parser runs — add `| json` / `| logfmt` first, then `| status="500"`.
+- Assuming a key is a stream label just because it appeared in query output —
+  check whether it came from `stream` vs `structuredMetadata`. `gcx logs labels`
+  lists the indexed labels (what's valid in `{}`); it does not enumerate
+  structured-metadata keys.
 
 ---
 

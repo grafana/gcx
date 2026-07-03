@@ -1,5 +1,10 @@
 ---
 title: Configure gcx
+labels:
+  products:
+    - cloud
+    - enterprise
+    - oss
 weight: 3
 ---
 

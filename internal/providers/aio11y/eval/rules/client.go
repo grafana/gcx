@@ -1,9 +1,7 @@
 package rules
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -34,81 +32,32 @@ func (c *Client) List(ctx context.Context) ([]eval.RuleDefinition, error) {
 
 // Get returns a single rule by ID.
 func (c *Client) Get(ctx context.Context, id string) (*eval.RuleDefinition, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), nil)
+	rule, err := aio11yhttp.DoJSON[any, eval.RuleDefinition](ctx, c.base, http.MethodGet, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), nil, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get rule %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var rule eval.RuleDefinition
-	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil {
-		return nil, fmt.Errorf("failed to decode rule response: %w", err)
+		return nil, err
 	}
 	return &rule, nil
 }
 
 // Create creates a new rule.
 func (c *Client) Create(ctx context.Context, rule *eval.RuleDefinition) (*eval.RuleDefinition, error) {
-	body, err := json.Marshal(rule)
+	created, err := aio11yhttp.DoJSON[eval.RuleDefinition, eval.RuleDefinition](ctx, c.base, http.MethodPost, basePath, rule, http.StatusOK, http.StatusCreated)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal rule: %w", err)
-	}
-
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, basePath, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create rule: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var created eval.RuleDefinition
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
-		return nil, fmt.Errorf("failed to decode rule response: %w", err)
+		return nil, err
 	}
 	return &created, nil
 }
 
 // Update sends a full rule definition as a PATCH request.
 func (c *Client) Update(ctx context.Context, id string, rule *eval.RuleDefinition) (*eval.RuleDefinition, error) {
-	body, err := json.Marshal(rule)
+	updated, err := aio11yhttp.DoJSON[eval.RuleDefinition, eval.RuleDefinition](ctx, c.base, http.MethodPatch, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), rule, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal rule: %w", err)
-	}
-
-	resp, err := c.base.DoRequest(ctx, http.MethodPatch, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to update rule: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var updated eval.RuleDefinition
-	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
-		return nil, fmt.Errorf("failed to decode rule response: %w", err)
+		return nil, err
 	}
 	return &updated, nil
 }
 
 // Delete deletes a rule by ID.
 func (c *Client) Delete(ctx context.Context, id string) error {
-	resp, err := c.base.DoRequest(ctx, http.MethodDelete, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), nil)
-	if err != nil {
-		return fmt.Errorf("failed to delete rule %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return aio11yhttp.HandleErrorResponse(resp)
-	}
-	return nil
+	return aio11yhttp.DoStatus[any](ctx, c.base, http.MethodDelete, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), nil, http.StatusOK, http.StatusNoContent)
 }
