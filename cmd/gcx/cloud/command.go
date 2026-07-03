@@ -82,6 +82,11 @@ Cloud resources like stacks and access policies.
 
 By default, opens a browser for interactive OAuth2 authentication.
 
+EXPERIMENTAL: interactive OAuth login is an experimental flow that stores an
+OAuth-issued token as the context's cloud.token. Some commands that talk to
+grafana.com do not yet work with an OAuth token. For full functionality, pass
+a Cloud Access Policy token via --cloud-token instead.
+
 For non-interactive use (CI/CD, scripts), pass a Cloud Access Policy token
 directly via --cloud-token.
 
@@ -148,6 +153,9 @@ func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *log
 }
 
 func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts) error {
+	fmt.Fprintln(os.Stderr, "Warning: interactive OAuth login is experimental. It stores an OAuth-issued token as the context's cloud.token.")
+	fmt.Fprintln(os.Stderr, "Some commands that talk to grafana.com do not yet work with an OAuth token. For full functionality, use --cloud-token with a Cloud Access Policy token.")
+
 	flow := auth.NewGCOMFlow(auth.GCOMOptions{
 		ClientID: defaultClientID,
 		GCOMURL:  opts.oauthURL,
