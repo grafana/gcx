@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -305,6 +306,42 @@ func ValidateEndpointURL(endpoint string) error {
 	}
 
 	return fmt.Errorf("endpoint host %q is not a trusted Grafana domain", hostname)
+}
+
+var allowedGCOMHosts = []string{ //nolint:gochecknoglobals
+	"grafana.com",
+	"grafana-dev.com",
+	"grafana-ops.com",
+}
+
+// validateGCOMURL checks that the given URL points at a trusted Grafana Cloud
+// platform (GCOM) domain or a local address. Unlike ValidateEndpointURL, which
+// guards per-stack *.grafana.net endpoints, this validates the grafana.com
+// family used by the cloud login flow. Returns an error if the URL is untrusted.
+func validateGCOMURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("malformed URL: %w", err)
+	}
+	if u.Host == "" {
+		return errors.New("URL has no host")
+	}
+
+	hostname := u.Hostname()
+
+	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
+		return nil
+	}
+
+	if u.Scheme != "https" {
+		return fmt.Errorf("URL must use HTTPS, got %q", u.Scheme)
+	}
+
+	if slices.Contains(allowedGCOMHosts, hostname) {
+		return nil
+	}
+
+	return fmt.Errorf("URL host %q is not a trusted Grafana Cloud domain", hostname)
 }
 
 type exchangeResponse struct {

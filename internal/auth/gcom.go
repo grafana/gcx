@@ -63,6 +63,10 @@ func NewGCOMFlow(opts GCOMOptions) *GCOMFlow {
 
 // Run executes the GCOM OAuth2 PKCE flow.
 func (f *GCOMFlow) Run(ctx context.Context) (*GCOMResult, error) {
+	if err := validateGCOMURL(f.opts.GCOMURL); err != nil {
+		return nil, fmt.Errorf("invalid GCOM URL: %w", err)
+	}
+
 	listener, port, err := listenOnCallbackPort(ctx, "127.0.0.1", 0)
 	if err != nil {
 		return nil, fmt.Errorf("no available port: %w", err)
