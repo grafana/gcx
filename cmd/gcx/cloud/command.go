@@ -28,9 +28,13 @@ func (opts *loginOpts) bindFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.cloudToken, "cloud-token", "", "Cloud Access Policy token (skips interactive OAuth flow)")
 	flags.StringVar(&opts.oauthURL, "oauth-url", "https://grafana.com", "Base URL for the OAuth login flow (used only by this command)")
 	flags.StringVar(&opts.apiURL, "api-url", "https://grafana.com", "Base URL for Grafana Cloud API resource calls (stacks etc.)")
+	// Only stacks:* is grantable through the interactive OAuth flow (the gcx OAuth
+	// client's registered allowlist). The product scopes gcx also uses
+	// (metrics:*, logs:*, traces:*, fleet-management:*, set:alloy-data-write) are
+	// Cloud Access Policy scopes: they can't be obtained here, only on a token
+	// created in the Access Policies UI and passed via --cloud-token.
 	flags.StringSliceVar(&opts.scopes, "scope", []string{
 		"stacks:read", "stacks:write", "stacks:delete",
-		"accesspolicies:read", "accesspolicies:write", "accesspolicies:delete",
 	}, "OAuth2 scopes to request")
 }
 
