@@ -51,6 +51,39 @@ func TestValidateEndpointURL_RejectsUntrustedDomains(t *testing.T) {
 	}
 }
 
+func TestGCOMFlowRun_RejectsUntrustedURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		gcomURL string
+	}{
+		{"random domain", "https://evil.example.com"},
+		{"http non-local", "http://grafana.com"},
+		{"stack endpoint", "https://mystack.grafana.net"},
+		{"subdomain bypass", "https://grafana.com.attacker.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var writer bytes.Buffer
+			flow := auth.NewGCOMFlow(auth.GCOMOptions{
+				GCOMURL: tt.gcomURL,
+				Writer:  &writer,
+			})
+
+			_, err := flow.Run(context.Background())
+			if err == nil {
+				t.Fatalf("expected %q to be rejected", tt.gcomURL)
+			}
+			if !strings.Contains(err.Error(), "invalid GCOM URL") {
+				t.Fatalf("expected invalid GCOM URL error, got %v", err)
+			}
+			if writer.Len() != 0 {
+				t.Fatalf("expected no browser instructions before validation failure, got %q", writer.String())
+			}
+		})
+	}
+}
+
 func TestFlowRun_FailsBeforeBrowserOutputWhenFixedPortUnavailable(t *testing.T) {
 	var lc net.ListenConfig
 	listener, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")

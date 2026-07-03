@@ -156,11 +156,8 @@ func FormatQueryRaw(w io.Writer, resp *QueryResponse) error {
 	}
 
 	for _, stream := range resp.Data.Result {
-		for _, value := range stream.Values {
-			if len(value) < 2 {
-				continue
-			}
-			fmt.Fprintln(w, value[1])
+		for _, entry := range stream.Values {
+			fmt.Fprintln(w, entry.Line)
 		}
 	}
 
@@ -254,25 +251,43 @@ func buildDisplayEntries(resp *QueryResponse) []displayLogEntry {
 	entries := make([]displayLogEntry, 0)
 	for _, stream := range resp.Data.Result {
 		for _, value := range stream.Values {
-			if len(value) < 2 {
-				continue
-			}
-			entries = append(entries, newDisplayLogEntry(stream.Stream, value[0], value[1]))
+			entries = append(entries, newDisplayLogEntry(stream.Stream, value))
 		}
 	}
 	return entries
 }
 
-func newDisplayLogEntry(stream map[string]string, rawTimestamp, rawLine string) displayLogEntry {
+func newDisplayLogEntry(stream map[string]string, e LogEntry) displayLogEntry {
 	entry := displayLogEntry{
-		Timestamp: formatHumanTimestamp(rawTimestamp),
-		Message:   rawLine,
+		Timestamp: formatHumanTimestamp(e.Timestamp),
+		Message:   e.Line,
 		Stream:    stream,
 	}
 
+	fields := promoteBodyFields(&entry, e.Line)
+
+	// Structured metadata and parsed labels are per-line, non-indexed context.
+	// Surface them in DETAILS so they're visible without being confused with the
+	// indexed STREAM labels. Fall back to detected_level for the LEVEL column
+	// when the log body itself carried no level.
+	mergeDetailFields(fields, e.Parsed)
+	mergeDetailFields(fields, e.StructuredMetadata)
+	if entry.Level == "" {
+		entry.Level = popFirst(fields, "detected_level")
+	}
+
+	entry.Details = formatDetails(fields)
+
+	return entry
+}
+
+// promoteBodyFields parses structured key/values out of the log body, promoting
+// level/source/message onto entry, and returns the remaining fields for DETAILS.
+// It returns an empty map when the body is not structured.
+func promoteBodyFields(entry *displayLogEntry, rawLine string) map[string]string {
 	fields, ok := parseStructuredLogBody(rawLine)
 	if !ok {
-		return entry
+		return map[string]string{}
 	}
 
 	entry.Level = popFirst(fields, "level", "lvl", "severity")
@@ -295,9 +310,18 @@ func newDisplayLogEntry(stream map[string]string, rawTimestamp, rawLine string) 
 	if entry.Message == "" {
 		entry.Message = rawLine
 	}
-	entry.Details = formatDetails(fields)
 
-	return entry
+	return fields
+}
+
+// mergeDetailFields copies src entries into dst without overwriting keys already
+// present (body-parsed fields take precedence over per-line metadata).
+func mergeDetailFields(dst, src map[string]string) {
+	for k, v := range src {
+		if _, exists := dst[k]; !exists {
+			dst[k] = v
+		}
+	}
 }
 
 func anyEntry(entries []displayLogEntry, field func(displayLogEntry) string) bool {

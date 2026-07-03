@@ -132,14 +132,12 @@ func FromLokiResponse(resp *loki.QueryResponse) (*ChartData, error) {
 			Points: make([]Point, 0),
 		}
 
-		for _, vals := range stream.Values {
-			if len(vals) >= 2 {
-				t, v, err := parseLokiPoint(vals[0], vals[1])
-				if err != nil {
-					continue
-				}
-				series.Points = append(series.Points, Point{Time: t, Value: v})
+		for _, entry := range stream.Values {
+			t, v, err := parseLokiPoint(entry.Timestamp, entry.Line)
+			if err != nil {
+				continue
 			}
+			series.Points = append(series.Points, Point{Time: t, Value: v})
 		}
 
 		if len(series.Points) > 0 {

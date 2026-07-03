@@ -2,7 +2,6 @@ package templates
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -39,19 +38,9 @@ func (c *Client) List(ctx context.Context, scope string, maxItems ...int) ([]eva
 
 // Get returns a single template by ID.
 func (c *Client) Get(ctx context.Context, id string) (*eval.TemplateDetail, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(templateByIDFmt, url.PathEscape(id)), nil)
+	detail, err := aio11yhttp.DoJSON[any, eval.TemplateDetail](ctx, c.base, http.MethodGet, fmt.Sprintf(templateByIDFmt, url.PathEscape(id)), nil, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get template %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, aio11yhttp.HandleErrorResponse(resp)
-	}
-
-	var detail eval.TemplateDetail
-	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
-		return nil, fmt.Errorf("failed to decode template response: %w", err)
+		return nil, err
 	}
 	return &detail, nil
 }
