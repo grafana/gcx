@@ -40,6 +40,12 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 
 // DoRequest builds and executes an HTTP request against the Assistant plugin API.
 func (c *Client) DoRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+	return c.DoRequestWithHeaders(ctx, method, path, body, nil)
+}
+
+// DoRequestWithHeaders builds and executes an HTTP request with custom headers
+// against the Assistant plugin API.
+func (c *Client) DoRequestWithHeaders(ctx context.Context, method, path string, body io.Reader, headers map[string]string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.restConfig.Host+pluginBasePath+path, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -47,6 +53,9 @@ func (c *Client) DoRequest(ctx context.Context, method, path string, body io.Rea
 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for name, value := range headers {
+		req.Header.Set(name, value)
 	}
 
 	resp, err := c.httpClient.Do(req)
