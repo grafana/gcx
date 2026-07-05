@@ -158,6 +158,101 @@ func TestGrafanaConfig_Validate_BootdataUnavailableAndSuppliedStackId(t *testing
 	req.NoError(cfg.Validate("ctx"))
 }
 
+func TestGrafanaConfig_Validate_Exec(t *testing.T) {
+	testCases := []struct {
+		name    string
+		exec    *config.ExecConfig
+		method  string
+		token   string
+		wantErr string // "" means no error
+	}{
+		{
+			name:   "valid exec block",
+			exec:   &config.ExecConfig{Command: "gcx-token-helper", InteractiveMode: "Never"},
+			method: "exec",
+		},
+		{
+			name:   "valid exec block, default interactive mode",
+			exec:   &config.ExecConfig{Command: "gcx-token-helper"},
+			method: "exec",
+		},
+		{
+			name:    "exec method but no exec block",
+			exec:    nil,
+			method:  "exec",
+			wantErr: "exec auth requires a command",
+		},
+		{
+			name:    "exec block missing command",
+			exec:    &config.ExecConfig{Args: []string{"--foo"}},
+			wantErr: "exec auth requires a command",
+		},
+		{
+			name:    "invalid interactive mode",
+			exec:    &config.ExecConfig{Command: "helper", InteractiveMode: "Sometimes"},
+			wantErr: `invalid interactive-mode "Sometimes"`,
+		},
+		{
+			// A stale/half-configured exec block under a non-exec method is
+			// ignored at REST-config build time, so it must not fail validation.
+			name:   "stale exec block ignored under auth-method token",
+			exec:   &config.ExecConfig{InteractiveMode: "Sometimes"}, // invalid, but not exec method
+			method: "token",
+			token:  "glsa_x",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := require.New(t)
+			// OrgID set so namespace validation short-circuits without a
+			// network call to stack discovery.
+			cfg := config.GrafanaConfig{
+				Server:     "https://grafana.example.net",
+				OrgID:      1,
+				AuthMethod: tc.method,
+				APIToken:   tc.token,
+				Exec:       tc.exec,
+			}
+			err := cfg.Validate("ctx")
+			if tc.wantErr == "" {
+				req.NoError(err)
+				return
+			}
+			req.Error(err)
+			req.ErrorContains(err, tc.wantErr)
+		})
+	}
+}
+
+// TestGrafanaConfig_Validate_ExecSkipsOAuthPairing verifies that an exec
+// context is not rejected by the OAuth-pairing check when a lone stale OAuth
+// field lingers (e.g. merged from a lower config layer): NewNamespacedRESTConfig
+// routes exec through the exec provider and ignores OAuth fields, so validation
+// must agree. Non-exec contexts keep the original pairing check.
+func TestGrafanaConfig_Validate_ExecSkipsOAuthPairing(t *testing.T) {
+	req := require.New(t)
+	base := config.GrafanaConfig{
+		Server:     "https://grafana.example.net",
+		OrgID:      1,
+		OAuthToken: "gat_stale", // lone OAuth field, no proxy-endpoint
+	}
+
+	// exec context: lone stale oauth-token must not fail validation.
+	execCfg := base
+	execCfg.AuthMethod = "exec"
+	execCfg.Exec = &config.ExecConfig{Command: "gcx-token-helper"}
+	req.NoError(execCfg.Validate("ctx"))
+
+	// non-exec context: the same lone field still trips the pairing check.
+	tokenCfg := base
+	tokenCfg.AuthMethod = "token"
+	tokenCfg.APIToken = "glsa_x"
+	err := tokenCfg.Validate("ctx")
+	req.Error(err)
+	req.ErrorContains(err, "incomplete OAuth config")
+}
+
 func TestContext_WithProviders(t *testing.T) {
 	testCases := []struct {
 		name     string
@@ -603,6 +698,16 @@ func TestGrafanaConfig_InferredAuthMethod(t *testing.T) {
 			name:     "APIToken set infers token",
 			cfg:      config.GrafanaConfig{APIToken: "glsa_x"},
 			expected: "token",
+		},
+		{
+			name:     "Exec block infers exec",
+			cfg:      config.GrafanaConfig{Exec: &config.ExecConfig{Command: "helper"}},
+			expected: "exec",
+		},
+		{
+			name:     "Exec takes priority over APIToken",
+			cfg:      config.GrafanaConfig{Exec: &config.ExecConfig{Command: "helper"}, APIToken: "glsa_x"},
+			expected: "exec",
 		},
 		{
 			name:     "OAuthToken takes priority over APIToken",

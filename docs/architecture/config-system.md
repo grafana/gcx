@@ -100,6 +100,21 @@ contexts:
       user: "admin"
       password: "admin"           # REDACTED in `config view` output
       org-id: 1
+
+  # Exec credential helper, for a Grafana behind an identity-aware proxy
+  # (Cloudflare Access, Google IAP, oauth2-proxy, Pomerium, ...). gcx runs the
+  # helper, sends the token it prints as a bearer header, and caches/refreshes
+  # it via client-go's credential-plugin machinery. No secret is stored on disk.
+  behind-proxy:
+    grafana:
+      server: "https://grafana.example.net"
+      org-id: 1
+      auth-method: "exec"
+      exec:
+        command: "gcx-token-helper"     # required; prints an ExecCredential JSON
+        args: ["--audience", "grafana"] # optional
+        install-hint: "go install example.com/gcx-token-helper@latest"  # optional
+        interactive-mode: "IfAvailable" # optional: Never | IfAvailable | Always
 ```
 
 ---

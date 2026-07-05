@@ -435,6 +435,49 @@ type GrafanaConfig struct {
 
 	// TLS contains TLS-related configuration settings.
 	TLS *TLS `json:"tls,omitempty" yaml:"tls,omitempty"`
+
+	// Exec configures an external credential helper that mints the bearer
+	// token gcx sends. Used for Grafana instances behind an identity-aware
+	// proxy (Cloudflare Access, Google IAP, oauth2-proxy, Pomerium, ...) that
+	// verifies an IdP-minted token at the edge. Requires auth-method "exec".
+	// This is the kubeconfig client-go credential-plugin mechanism; the token
+	// is fetched at runtime and never stored in the config file.
+	Exec *ExecConfig `json:"exec,omitempty" yaml:"exec,omitempty"`
+}
+
+// ExecConfig configures an external command that prints a client credential
+// (in the client.authentication.k8s.io ExecCredential format) which gcx sends
+// as a bearer token. client-go runs the command, caches the token in memory,
+// and re-runs the command when the token expires. No secret is stored on disk.
+type ExecConfig struct {
+	// Command is the executable to run. Required.
+	Command string `json:"command" yaml:"command"`
+
+	// Args are passed to the command when executing it. Optional.
+	Args []string `json:"args,omitempty" yaml:"args,omitempty"`
+
+	// Env defines additional environment variables exposed to the command.
+	// These are unioned with the host environment. Optional.
+	Env []ExecEnvVar `json:"env,omitempty" yaml:"env,omitempty"`
+
+	// InstallHint is shown to the user when the command cannot be found
+	// (e.g. "go install github.com/example/gcx-token-helper@latest"). Optional.
+	InstallHint string `json:"install-hint,omitempty" yaml:"install-hint,omitempty"`
+
+	// InteractiveMode controls the command's relationship with stdin: one of
+	// "Never", "IfAvailable", or "Always". Defaults to "IfAvailable" when
+	// empty. Optional.
+	InteractiveMode string `json:"interactive-mode,omitempty" yaml:"interactive-mode,omitempty"`
+}
+
+// ExecEnvVar is a single environment variable exposed to the exec command.
+type ExecEnvVar struct {
+	Name string `json:"name" yaml:"name"`
+	// Value is redacted in `config view`: a credential helper's env may carry
+	// a client secret or static token. (The tag must sit on the struct field,
+	// not the parent slice — the redactor recurses into slice elements with
+	// the secret flag cleared, so a slice-level tag would be a no-op.)
+	Value string `datapolicy:"secret" json:"value" yaml:"value"`
 }
 
 func (grafana GrafanaConfig) validateNamespace(contextName string) error {
@@ -490,16 +533,49 @@ func (grafana GrafanaConfig) Validate(contextName string) error {
 		}
 	}
 
-	hasProxy := grafana.ProxyEndpoint != ""
-	hasOAuth := grafana.OAuthToken != ""
-	if hasProxy != hasOAuth {
-		return ValidationError{
-			Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
-			Message: "incomplete OAuth config: proxy-endpoint and oauth-token must both be set",
-			Suggestions: []string{
-				"Run `gcx login` to complete the OAuth flow",
-				"Or remove partial OAuth fields from the config",
-			},
+	// Skip the OAuth-pairing check for exec auth: NewNamespacedRESTConfig routes
+	// an exec context through the exec provider and ignores OAuth fields, so a
+	// lone stale proxy-endpoint/oauth-token (e.g. merged from a lower config
+	// layer) must not block an otherwise valid exec context. Non-exec methods
+	// keep the original unconditional check.
+	if grafana.InferredAuthMethod() != "exec" {
+		hasProxy := grafana.ProxyEndpoint != ""
+		hasOAuth := grafana.OAuthToken != ""
+		if hasProxy != hasOAuth {
+			return ValidationError{
+				Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
+				Message: "incomplete OAuth config: proxy-endpoint and oauth-token must both be set",
+				Suggestions: []string{
+					"Run `gcx login` to complete the OAuth flow",
+					"Or remove partial OAuth fields from the config",
+				},
+			}
+		}
+	}
+
+	// Validate the exec block only when exec is the effective auth method — the
+	// same gate NewNamespacedRESTConfig uses to route auth. A missing command is
+	// a hard error (an explicit auth-method: exec with a nil block reports the
+	// same, naming the missing field).
+	if grafana.InferredAuthMethod() == "exec" {
+		if grafana.Exec == nil || grafana.Exec.Command == "" {
+			return ValidationError{
+				Path:    fmt.Sprintf("$.contexts.'%s'.grafana.exec", contextName),
+				Message: "exec auth requires a command to run",
+				Suggestions: []string{
+					"Set contexts." + contextName + ".grafana.exec.command to the credential helper executable",
+					"Or remove the exec block and choose another auth method",
+				},
+			}
+		}
+		if m := grafana.Exec.InteractiveMode; m != "" && m != "Never" && m != "IfAvailable" && m != "Always" {
+			return ValidationError{
+				Path:    fmt.Sprintf("$.contexts.'%s'.grafana.exec.interactive-mode", contextName),
+				Message: fmt.Sprintf("invalid interactive-mode %q", m),
+				Suggestions: []string{
+					`Use one of "Never", "IfAvailable", or "Always" (or omit for the default)`,
+				},
+			}
 		}
 	}
 
@@ -516,11 +592,15 @@ func (grafana GrafanaConfig) IsEmpty() bool {
 
 // InferredAuthMethod returns the effective authentication method for this config.
 // When AuthMethod is set, it is returned verbatim. Otherwise, the method is inferred
-// from populated credential fields: OAuthToken => "oauth"; APIToken => "token";
-// User or Password => "basic"; TLS with client cert => "mtls"; no credentials => "unknown".
+// from populated credential fields: Exec => "exec"; OAuthToken => "oauth";
+// APIToken => "token"; User or Password => "basic"; TLS with client cert => "mtls";
+// no credentials => "unknown".
 func (grafana GrafanaConfig) InferredAuthMethod() string {
 	if grafana.AuthMethod != "" {
 		return grafana.AuthMethod
+	}
+	if grafana.Exec != nil {
+		return "exec"
 	}
 	if grafana.OAuthToken != "" {
 		return "oauth"
