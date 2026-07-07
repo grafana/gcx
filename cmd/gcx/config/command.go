@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
 
 type Options struct {
@@ -589,19 +590,55 @@ func checkCmd(configOpts *Options) *cobra.Command {
 
 			fmt.Fprintln(reportWriter)
 
-			for _, gCtx := range cfg.Contexts {
-				if err := cmd.Context().Err(); err != nil {
-					return err
+			// Check contexts concurrently, each into its own buffer. Goroutines
+			// return nil and stash real errors per-index so one failing context
+			// never cancels the others (matches the prior serial semantics).
+			// Names are sorted and buffers flushed in that order, so output is
+			// deterministic (the prior serial loop ranged a map, so ordering was
+			// previously non-deterministic).
+			names := make([]string, 0, len(cfg.Contexts))
+			for name := range cfg.Contexts {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+
+			// Load resolves only the current context eagerly. config check
+			// validates every context, so resolve the deferred keychain
+			// references up front — this mutates cfg's keychain bookkeeping and
+			// so cannot run inside the concurrent checks below. Missing or
+			// foreign references become typed rejection evidence and are
+			// therefore reported with connectivity skipped instead of being
+			// sent upstream.
+			for _, name := range names {
+				cfg.ResolveContext(name)
+			}
+
+			bufs := make([]bytes.Buffer, len(names))
+			errs := make([]error, len(names))
+			source := configOpts.ConfigSource()
+
+			g, gctx := errgroup.WithContext(cmd.Context())
+			g.SetLimit(10)
+			for i, name := range names {
+				g.Go(func() error {
+					errs[i] = checkContext(gctx, &cfg, cfg.Contexts[name], source, &bufs[i])
+					return nil
+				})
+			}
+			_ = g.Wait()
+
+			for i := range names {
+				_, _ = io.Copy(reportWriter, &bufs[i])
+				if errs[i] == nil {
+					continue
 				}
-				if err := checkContext(cmd, &cfg, gCtx, configOpts.ConfigSource(), reportWriter); err != nil {
-					if ctxErr := cmd.Context().Err(); ctxErr != nil {
-						return ctxErr
-					}
-					if errors.Is(err, context.Canceled) {
-						return context.Canceled
-					}
-					recordFailure(err)
+				if ctxErr := cmd.Context().Err(); ctxErr != nil {
+					return ctxErr
 				}
+				if errors.Is(errs[i], context.Canceled) {
+					return context.Canceled
+				}
+				recordFailure(errs[i])
 			}
 
 			if failedChecks != 0 {
@@ -640,7 +677,7 @@ func checkCmd(configOpts *Options) *cobra.Command {
 	return cmd
 }
 
-func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, source config.Source, stdout io.Writer) error {
+func checkContext(ctx context.Context, cfg *config.Config, gCtx *config.Context, source config.Source, stdout io.Writer) error {
 	title := "Context: "
 	titleLen := len(title) + len(gCtx.Name)
 	title += cmdio.Bold(gCtx.Name)
@@ -670,14 +707,7 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 	fmt.Fprintln(stdout, cmdio.Yellow(title))
 	fmt.Fprintln(stdout, cmdio.Yellow(strings.Repeat("=", titleLen)))
 
-	// Load resolves only the current context eagerly. config check validates
-	// every context, so resolve this context's deferred keychain references
-	// before validation can construct a namespace-discovery transport. Missing
-	// or foreign references become typed rejection evidence and are therefore
-	// reported with connectivity skipped instead of being sent upstream.
-	cfg.ResolveContext(gCtx.Name)
-
-	if err := gCtx.Validate(cmd.Context()); err != nil {
+	if err := gCtx.Validate(ctx); err != nil {
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(summarizeError(err)))
 		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
@@ -712,16 +742,16 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 	}
 	cmdio.Info(stdout, "Context type: %s", contextType)
 
-	restCfg, err := gCtx.ToRESTConfig(cmd.Context())
+	restCfg, err := gCtx.ToRESTConfig(ctx)
 	if err != nil {
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(err.Error()))
 		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
 		return err
 	}
-	restCfg.WireTokenPersistence(cmd.Context(), source, gCtx.Name, gCtx.Stack, cfg.Sources)
+	restCfg.WireTokenPersistence(ctx, source, gCtx.Name, gCtx.Stack, cfg.Sources)
 
-	if _, err := discovery.NewDefaultRegistry(cmd.Context(), restCfg); err != nil {
+	if _, err := discovery.NewDefaultRegistry(ctx, restCfg); err != nil {
 		cmdio.Error(stdout, "Connectivity: %s", cmdio.Red(summarizeError(err)))
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
 		printSuggestions(err)
@@ -730,7 +760,7 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 
 	cmdio.Success(stdout, "Connectivity: %s", cmdio.Green("online"))
 
-	version, raw, err := grafana.GetVersion(cmd.Context(), gCtx)
+	version, raw, err := grafana.GetVersion(ctx, gCtx)
 	if err != nil {
 		cmdio.Error(stdout, "Grafana version: %s", cmdio.Red(summarizeError(err))+"\n")
 		printSuggestions(err)
