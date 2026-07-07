@@ -216,6 +216,15 @@ var commandAnnotations = map[string]annotation{
 	"gcx annotations mass-delete": {Cost: "small", Hint: "--dashboard-uid <uid> --panel-id <n>"},
 
 	// -----------------------------------------------------------------------
+	// Organization provider
+	// -----------------------------------------------------------------------
+	"gcx org users list":        {Cost: "medium", Hint: "--limit 50 -o json"},
+	"gcx org users get":         {Cost: "small", Hint: "<login-or-email> -o json"},
+	"gcx org users add":         {Cost: "small", Hint: "--login <login-or-email> --role Editor"},
+	"gcx org users update-role": {Cost: "small", Hint: "<user-id> --role Admin"},
+	"gcx org users remove":      {Cost: "small"},
+
+	// -----------------------------------------------------------------------
 	// App Observability provider
 	// -----------------------------------------------------------------------
 	"gcx appo11y overrides get":    {Cost: "small"},
