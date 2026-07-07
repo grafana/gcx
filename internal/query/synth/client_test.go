@@ -48,6 +48,25 @@ func TestGet_BuildsProxyPathAndReturnsBody(t *testing.T) {
 	assert.JSONEq(t, `[{"id":1}]`, string(resp.Body))
 }
 
+// TestGet_SendsClientIdentityHeaders locks the SM-attribution contract: gcx must
+// send X-Client-ID / X-Client-Version on the proxy path, because sm-api classifies
+// callers by those headers (not User-Agent). Without X-Client-ID="gcx" the request
+// is logged as client_type="unknown".
+func TestGet_SendsClientIdentityHeaders(t *testing.T) {
+	var gotClientID, gotClientVersion string
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotClientID = r.Header.Get("X-Client-Id")
+		gotClientVersion = r.Header.Get("X-Client-Version")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	_, err := client.Get(context.Background(), testDSUID, "check/list")
+	require.NoError(t, err)
+
+	assert.Equal(t, "gcx", gotClientID, "sm-api attributes callers by X-Client-ID")
+	assert.NotEmpty(t, gotClientVersion, "X-Client-Version must be set so client_version is not \"unknown\"")
+}
+
 func TestPost_SendsBodyWithJSONContentType(t *testing.T) {
 	var gotMethod, gotPath, gotContentType string
 	var gotBody []byte
