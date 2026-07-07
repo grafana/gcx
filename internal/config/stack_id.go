@@ -61,6 +61,17 @@ func resolveNamespace(ctx context.Context, cfg GrafanaConfig) string {
 	return authlib.CloudNamespaceFormatter(cfg.StackID)
 }
 
+// cachedStackID peeks the process-lifetime discovery cache for a server without
+// issuing a /bootdata round-trip. ok is false when no successful discovery has
+// been memoized for the server yet.
+func cachedStackID(server string) (int64, bool) {
+	key := strings.TrimSuffix(server, "/")
+	stackIDCacheMu.Lock()
+	defer stackIDCacheMu.Unlock()
+	id, ok := stackIDCache[key]
+	return id, ok
+}
+
 // discoverStackIDCached wraps DiscoverStackID with a process-lifetime positive
 // cache keyed by server URL. Failures are not cached so a transient error does
 // not pin a missing stack ID for the rest of the process.

@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -49,7 +50,7 @@ func TestGrafanaConfig_Validate_AllowsDiscoveredStackID(t *testing.T) {
 
 	cfg := config.GrafanaConfig{Server: server.URL}
 
-	req.NoError(cfg.Validate("ctx"))
+	req.NoError(cfg.Validate(context.Background(), "ctx"))
 }
 
 func TestGrafanaConfig_Validate_AllowsDiscoveredStackIDAndSuppliedStackID(t *testing.T) {
@@ -68,7 +69,7 @@ func TestGrafanaConfig_Validate_AllowsDiscoveredStackIDAndSuppliedStackID(t *tes
 		Server:  server.URL,
 		StackID: 12345,
 	}
-	req.NoError(cfg.Validate("ctx"))
+	req.NoError(cfg.Validate(context.Background(), "ctx"))
 }
 
 func TestGrafanaConfig_Validate_AllowsOrgId(t *testing.T) {
@@ -87,7 +88,7 @@ func TestGrafanaConfig_Validate_AllowsOrgId(t *testing.T) {
 		Server: server.URL,
 		OrgID:  1,
 	}
-	req.NoError(cfg.Validate("ctx"))
+	req.NoError(cfg.Validate(context.Background(), "ctx"))
 }
 
 func TestGrafanaConfig_Validate_AllowsOrgIdWhenDiscoveryFails(t *testing.T) {
@@ -102,27 +103,24 @@ func TestGrafanaConfig_Validate_AllowsOrgIdWhenDiscoveryFails(t *testing.T) {
 		Server: server.URL,
 		OrgID:  1,
 	}
-	req.NoError(cfg.Validate("ctx"))
+	req.NoError(cfg.Validate(context.Background(), "ctx"))
 }
 
 func TestGrafanaConfig_Validate_MismatchedStackID(t *testing.T) {
 	req := require.New(t)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"settings": map[string]any{
-				"namespace": "stacks-12345",
-			},
-		})
-	}))
-	defer server.Close()
-
+	// A configured StackID is trusted without a /bootdata round-trip; the
+	// mismatch check only fires when a discovered value is already memoized this
+	// process (e.g. warmed by an earlier resolveNamespace). Seed the cache to
+	// exercise that path.
 	cfg := config.GrafanaConfig{
-		Server:  server.URL,
+		Server:  "https://mismatch.example.net",
 		StackID: 54321,
 	}
+	restore := config.SeedStackIDCacheForTest(cfg.Server, 12345)
+	defer restore()
 
-	err := cfg.Validate("ctx")
+	err := cfg.Validate(context.Background(), "ctx")
 	req.Error(err)
 	req.ErrorContains(err, "mismatched")
 	req.ErrorContains(err, "contexts.ctx.grafana.stack-id")
@@ -138,7 +136,7 @@ func TestGrafanaConfig_Validate_MissingStackWhenBootdataUnavailable(t *testing.T
 
 	cfg := config.GrafanaConfig{Server: server.URL}
 
-	err := cfg.Validate("ctx")
+	err := cfg.Validate(context.Background(), "ctx")
 	req.Error(err)
 	req.ErrorContains(err, "missing")
 	req.ErrorContains(err, "contexts.ctx.grafana.org-id")
@@ -155,7 +153,7 @@ func TestGrafanaConfig_Validate_BootdataUnavailableAndSuppliedStackId(t *testing
 
 	cfg := config.GrafanaConfig{Server: server.URL, StackID: 5431}
 
-	req.NoError(cfg.Validate("ctx"))
+	req.NoError(cfg.Validate(context.Background(), "ctx"))
 }
 
 func TestContext_WithProviders(t *testing.T) {
