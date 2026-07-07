@@ -47,6 +47,7 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx logs](gcx_logs.md)	 - Query Loki datasources and manage Adaptive Logs
 * [gcx metrics](gcx_metrics.md)	 - Query Prometheus datasources and manage Adaptive Metrics
 * [gcx org](gcx_org.md)	 - Manage Grafana organization resources
+* [gcx permissions](gcx_permissions.md)	 - Manage Grafana resource permissions (RBAC)
 * [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
 * [gcx providers](gcx_providers.md)	 - Manage registered providers
 * [gcx public-dashboards](gcx_public-dashboards.md)	 - Manage public dashboards

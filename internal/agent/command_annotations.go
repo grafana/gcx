@@ -234,6 +234,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx public-dashboards delete": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
+	// Permissions provider (granular RBAC)
+	// -----------------------------------------------------------------------
+	"gcx permissions get":    {Cost: "medium", Hint: "<resource> <id> -o json; resource is folders|dashboards|datasources|teams|serviceaccounts"},
+	"gcx permissions set":    {Cost: "small", Hint: "<resource> <id> -f acl.json"},
+	"gcx permissions grant":  {Cost: "small", Hint: "<resource> <id> --team 3 --level Edit"},
+	"gcx permissions levels": {Cost: "small", Hint: "<resource> -o json"},
+
+	// -----------------------------------------------------------------------
 	// App Observability provider
 	// -----------------------------------------------------------------------
 	"gcx appo11y overrides get":    {Cost: "small"},
