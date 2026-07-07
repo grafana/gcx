@@ -32,6 +32,7 @@ func Commands() *cobra.Command {
 	cmd.AddCommand(newGetCommand())
 	cmd.AddCommand(newMapCommand())
 	cmd.AddCommand(newListOperationsCommand())
+	cmd.AddCommand(newLabelsCommand())
 	return cmd
 }
 

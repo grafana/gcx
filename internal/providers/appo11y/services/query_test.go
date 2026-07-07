@@ -307,6 +307,65 @@ func TestParseGroupBy(t *testing.T) {
 	}
 }
 
+func TestBuildSeriesSelector(t *testing.T) {
+	got := buildSeriesSelector("traces_span_metrics_calls_total", "billing/checkout", nil)
+	want := `traces_span_metrics_calls_total{job="billing/checkout"}`
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+
+	got = buildSeriesSelector("traces_span_metrics_calls_total", "auth", []Matcher{
+		{Label: "k8s_cluster_name", Op: "=", Value: "prod"},
+		{Label: "cloud_region", Op: "!=", Value: `eu"west`}, // embedded quote escaped
+	})
+	want = `traces_span_metrics_calls_total{job="auth",k8s_cluster_name="prod",cloud_region!="eu\"west"}`
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+func TestCollectAndSummarizeLabels(t *testing.T) {
+	series := []map[string]string{
+		{"__name__": "traces_span_metrics_calls_total", "job": "billing/checkout", "k8s_cluster_name": "east", "span_name": "GET /"},
+		{"__name__": "traces_span_metrics_calls_total", "job": "billing/checkout", "k8s_cluster_name": "west", "span_name": "GET /"},
+		{"__name__": "traces_span_metrics_calls_total", "job": "billing/checkout", "k8s_cluster_name": "east", "span_name": "POST /x"},
+	}
+	index := collectSeriesLabels(series)
+	// __name__ dropped; job/k8s_cluster_name/span_name kept.
+	if _, ok := index["__name__"]; ok {
+		t.Error("__name__ should be dropped")
+	}
+	if len(index["k8s_cluster_name"]) != 2 {
+		t.Errorf("k8s_cluster_name distinct = %d, want 2", len(index["k8s_cluster_name"]))
+	}
+	if len(index["job"]) != 1 {
+		t.Errorf("job distinct = %d, want 1", len(index["job"]))
+	}
+
+	// Summary is sorted by name; sampleN caps values but Cardinality is full.
+	rows := summarizeLabels(index, 1)
+	if len(rows) != 3 {
+		t.Fatalf("rows = %d, want 3: %+v", len(rows), rows)
+	}
+	if rows[0].Name != "job" || rows[1].Name != "k8s_cluster_name" || rows[2].Name != "span_name" {
+		t.Errorf("rows not sorted by name: %+v", rows)
+	}
+	cluster := rows[1]
+	if cluster.Cardinality != 2 || len(cluster.Values) != 1 {
+		t.Errorf("cluster row wrong (want cardinality 2, 1 sampled value): %+v", cluster)
+	}
+
+	// sampleN=0 returns all values.
+	rows = summarizeLabels(index, 0)
+	for _, r := range rows {
+		if r.Name == "k8s_cluster_name" {
+			if len(r.Values) != 2 || r.Values[0] != "east" || r.Values[1] != "west" {
+				t.Errorf("full values wrong/unsorted: %+v", r)
+			}
+		}
+	}
+}
+
 func TestMergeGroupedRED(t *testing.T) {
 	// Two clusters; "west" is the latency/error outlier. mergeGroupedRED
 	// sorts by rate desc, so east (busier) comes first, but the point is

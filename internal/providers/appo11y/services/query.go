@@ -581,6 +581,90 @@ func buildModeProbeQuery(metric, job string, matchers []Matcher) (string, error)
 	return expr.String(), nil
 }
 
+// buildSeriesSelector renders a Prometheus `/series` match selector for a
+// metric scoped to one service (job) plus any --filter matchers, e.g.
+// `traces_span_metrics_calls_total{job="billing/checkout",k8s_cluster_name="prod"}`.
+// Used by `services labels` to enumerate the label keys/values that
+// --filter and --group-by can operate on. Values are escaped the same way
+// as the query builders (no injection).
+func buildSeriesSelector(metric, job string, matchers []Matcher) string {
+	var b strings.Builder
+	b.WriteString(metric)
+	b.WriteString(`{job="`)
+	b.WriteString(escapePromqlValue(job))
+	b.WriteString(`"`)
+	for _, m := range matchers {
+		b.WriteString(",")
+		b.WriteString(m.Label)
+		b.WriteString(m.Op)
+		b.WriteString(`"`)
+		b.WriteString(escapePromqlValue(m.Value))
+		b.WriteString(`"`)
+	}
+	b.WriteString("}")
+	return b.String()
+}
+
+// LabelSummary is one row of `services labels`: a label present on the
+// service's series, its distinct-value count, and either a sample of
+// values (default view) or the full set (when a single label is
+// requested).
+type LabelSummary struct {
+	Name        string   `json:"name" yaml:"name"`
+	Cardinality int      `json:"cardinality" yaml:"cardinality"`
+	Values      []string `json:"values,omitempty" yaml:"values,omitempty"`
+}
+
+// ServiceLabelsResponse is the `services labels` response: the queried
+// service, the metric whose series were inspected, and one entry per
+// discovered label (sorted by name).
+type ServiceLabelsResponse struct {
+	Service Service        `json:"service" yaml:"service"`
+	Metric  string         `json:"metric" yaml:"metric"`
+	Window  string         `json:"window" yaml:"window"`
+	Items   []LabelSummary `json:"items" yaml:"items"`
+}
+
+// collectSeriesLabels folds a /series response (one map per series) into a
+// label→distinct-values index, dropping the synthetic __name__. Callers
+// turn this into LabelSummary rows.
+func collectSeriesLabels(series []map[string]string) map[string]map[string]struct{} {
+	out := make(map[string]map[string]struct{})
+	for _, s := range series {
+		for k, v := range s {
+			if k == "__name__" {
+				continue
+			}
+			if out[k] == nil {
+				out[k] = make(map[string]struct{})
+			}
+			out[k][v] = struct{}{}
+		}
+	}
+	return out
+}
+
+// summarizeLabels turns the collectSeriesLabels index into sorted
+// LabelSummary rows. sampleN caps how many values each row carries (0 =
+// all); the full count is always reported via Cardinality so the caller
+// can show "N more".
+func summarizeLabels(index map[string]map[string]struct{}, sampleN int) []LabelSummary {
+	out := make([]LabelSummary, 0, len(index))
+	for name, vals := range index {
+		values := make([]string, 0, len(vals))
+		for v := range vals {
+			values = append(values, v)
+		}
+		sort.Strings(values)
+		if sampleN > 0 && len(values) > sampleN {
+			values = values[:sampleN]
+		}
+		out = append(out, LabelSummary{Name: name, Cardinality: len(vals), Values: values})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 // jobLabel returns the PromQL `job` label value for a (namespace, name)
 // pair, matching the `<namespace>/<service>` encoding target_info uses
 // throughout this package.
