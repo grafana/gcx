@@ -38,6 +38,7 @@ type operationsOpts struct {
 	MetricsMode string
 	Limit       int
 	Filters     []string
+	GroupBy     []string
 }
 
 func (o *operationsOpts) setup(flags *pflag.FlagSet) {
@@ -53,6 +54,7 @@ func (o *operationsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.MetricsMode, "metrics-mode", metricsModeAuto, "Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket)")
 	flags.IntVar(&o.Limit, "limit", operationsDefaultLimit, "Limit the number of operations returned (0 = unlimited; applied after sorting by time-share desc)")
 	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the operations breakdown to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the span metrics")
+	flags.StringSliceVar(&o.GroupBy, "group-by", nil, "Break each operation out per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). Time-share is normalized within each group so per-cluster hotspots are comparable; the label must exist on the span metrics")
 }
 
 func (o *operationsOpts) Validate(cmd *cobra.Command) error {
@@ -108,12 +110,15 @@ default. Use --metrics-mode to pin it; see "gcx appo11y services get
   gcx appo11y services list-operations payments/checkoutservice --since 1h --limit 0 -o json
 
   # Break a multi-cluster service down to a single cluster
-  gcx appo11y services list-operations faro-collector --filter k8s_cluster_name=prod-us-central-0`,
+  gcx appo11y services list-operations faro-collector --filter k8s_cluster_name=prod-us-central-0
+
+  # Break each operation out per cluster to spot per-cluster hotspots
+  gcx appo11y services list-operations faro-collector --group-by k8s_cluster_name`,
 		Args: cobra.ExactArgs(1),
 		RunE: runOperations(opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-operation RED breakdown for one App Observability service: one row per span_name with rate (req/s), error rate, error percent, avg latency, p50/p95/p99, and time-share % (rate * avg_latency normalized across the service). Sorted by time-share desc to surface latency hotspots. Pairs with 'gcx appo11y services get' (which is the headline summary) — use 'list-operations' once a service is identified as hot to find which endpoints carry the load. Use --filter <label><op><value> (repeatable) to scope the breakdown to a subset of series — most usefully a cluster/region label (e.g. --filter k8s_cluster_name=prod-us) to break a multi-cluster service down one cluster at a time. Examples: gcx appo11y services list-operations <name> -o json; gcx appo11y services list-operations <ns>/<name> --since 1h --limit 0 -o json; gcx appo11y services list-operations <name> -o wide; gcx appo11y services list-operations <name> --filter k8s_cluster_name=<cluster> -o json`,
+			agent.AnnotationLLMHint:   `Per-operation RED breakdown for one App Observability service: one row per span_name with rate (req/s), error rate, error percent, avg latency, p50/p95/p99, and time-share % (rate * avg_latency normalized across the service). Sorted by time-share desc to surface latency hotspots. Pairs with 'gcx appo11y services get' (which is the headline summary) — use 'list-operations' once a service is identified as hot to find which endpoints carry the load. Use --filter <label><op><value> (repeatable) to scope the breakdown to a subset of series — most usefully a cluster/region label (e.g. --filter k8s_cluster_name=prod-us) to break a multi-cluster service down one cluster at a time. Use --group-by <label> to instead break every operation out per distinct value of that label (time-share is normalized within each group) — surfaces per-cluster/per-region hotspots. Examples: gcx appo11y services list-operations <name> -o json; gcx appo11y services list-operations <ns>/<name> --since 1h --limit 0 -o json; gcx appo11y services list-operations <name> -o wide; gcx appo11y services list-operations <name> --filter k8s_cluster_name=<cluster> -o json; gcx appo11y services list-operations <name> --group-by k8s_cluster_name -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -138,6 +143,10 @@ func runOperations(opts *operationsOpts) func(*cobra.Command, []string) error {
 			return fail.NewCommandUsageError(cmd, "", err)
 		}
 		matchers, err := parseFilters(opts.Filters)
+		if err != nil {
+			return fail.NewCommandUsageError(cmd, "", err)
+		}
+		groupBy, err := parseGroupBy(opts.GroupBy)
 		if err != nil {
 			return fail.NewCommandUsageError(cmd, "", err)
 		}
@@ -186,7 +195,7 @@ func runOperations(opts *operationsOpts) func(*cobra.Command, []string) error {
 			}
 		}
 
-		response, err := fetchOperations(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode, matchers)
+		response, err := fetchOperations(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode, matchers, groupBy)
 		if err != nil {
 			return err
 		}
@@ -219,7 +228,7 @@ func runOperations(opts *operationsOpts) func(*cobra.Command, []string) error {
 // lookup in parallel and folds the responses into an OperationsResponse.
 // Metadata uses the same target_info union as `services get` so the
 // language/labels/env fields are consistent between commands.
-func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher) (*OperationsResponse, error) {
+func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string) (*OperationsResponse, error) {
 	names, ok := metricNamesByMode(mode)
 	if !ok {
 		return nil, fmt.Errorf("unknown metrics mode %q", mode)
@@ -245,7 +254,7 @@ func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceU
 		})
 	}
 	eg.Go(func() error {
-		expr, err := buildOperationsRateQuery(names, namespace, name, window, kinds, matchers)
+		expr, err := buildOperationsRateQuery(names, namespace, name, window, kinds, matchers, groupBy)
 		if err != nil {
 			return fmt.Errorf("failed to build rate query: %w", err)
 		}
@@ -257,7 +266,7 @@ func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceU
 		return nil
 	})
 	eg.Go(func() error {
-		expr, err := buildOperationsErrorRateQuery(names, namespace, name, window, kinds, matchers)
+		expr, err := buildOperationsErrorRateQuery(names, namespace, name, window, kinds, matchers, groupBy)
 		if err != nil {
 			return fmt.Errorf("failed to build error-rate query: %w", err)
 		}
@@ -269,7 +278,7 @@ func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceU
 		return nil
 	})
 	eg.Go(func() error {
-		expr, err := buildOperationsAvgLatencyQuery(names, namespace, name, window, kinds, matchers)
+		expr, err := buildOperationsAvgLatencyQuery(names, namespace, name, window, kinds, matchers, groupBy)
 		if err != nil {
 			return fmt.Errorf("failed to build avg-latency query: %w", err)
 		}
@@ -286,7 +295,7 @@ func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceU
 		0.99: &p99Resp,
 	} {
 		eg.Go(func() error {
-			expr, err := buildOperationsLatencyQuantileQuery(names, namespace, name, window, kinds, phi, matchers)
+			expr, err := buildOperationsLatencyQuantileQuery(names, namespace, name, window, kinds, phi, matchers, groupBy)
 			if err != nil {
 				return fmt.Errorf("failed to build p%.0f latency query: %w", phi*100, err)
 			}
@@ -309,12 +318,13 @@ func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceU
 	svc := selectMetadataService(metadata, namespace, name)
 
 	items := mergeOperations(
-		extractBySpanName(rateResp),
-		extractBySpanName(errorResp),
-		extractBySpanName(avgResp),
-		extractBySpanName(p50Resp),
-		extractBySpanName(p95Resp),
-		extractBySpanName(p99Resp),
+		extractOperations(rateResp, groupBy),
+		extractOperations(errorResp, groupBy),
+		extractOperations(avgResp, groupBy),
+		extractOperations(p50Resp, groupBy),
+		extractOperations(p95Resp, groupBy),
+		extractOperations(p99Resp, groupBy),
+		groupBy,
 	)
 
 	return &OperationsResponse{
@@ -322,6 +332,7 @@ func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceU
 		Window:      window,
 		MetricsMode: mode,
 		SpanKinds:   spanKindRegex(kinds),
+		GroupBy:     groupBy,
 		Items:       items,
 	}, nil
 }
@@ -360,14 +371,27 @@ func (c *operationsTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	headers := []string{"OPERATION", "RATE", "ERROR %", "P95", "TIME %"}
+	// When grouping, a column per group label is prepended so each row
+	// reads "<group> <operation> ...". mergeOperations already clusters
+	// rows by group then time-share.
+	groupHeaders := upperHeaders(resp.GroupBy)
+
+	var headers []string
+	headers = append(headers, groupHeaders...)
 	if c.Wide {
-		headers = []string{"OPERATION", "RATE", "ERRORS", "ERROR %", "P50", "P95", "P99", "TIME %"}
+		headers = append(headers, "OPERATION", "RATE", "ERRORS", "ERROR %", "P50", "P95", "P99", "TIME %")
+	} else {
+		headers = append(headers, "OPERATION", "RATE", "ERROR %", "P95", "TIME %")
 	}
 	t := style.NewTable(headers...)
-	for _, op := range resp.Items {
+	for i := range resp.Items {
+		op := &resp.Items[i]
+		row := make([]string, 0, len(headers))
+		for _, l := range resp.GroupBy {
+			row = append(row, orDash(op.Labels[l]))
+		}
 		if c.Wide {
-			t.Row(
+			row = append(row,
 				op.Name,
 				formatRateWithUnit(op.RatePerSecond, op.HasTraffic),
 				formatRateWithUnit(op.ErrorRatePerSec, op.HasErrors),
@@ -377,15 +401,16 @@ func (c *operationsTableCodec) Encode(w io.Writer, v any) error {
 				formatDuration(op.P99Seconds, op.HasLatencyP99),
 				formatPercentMaybe(op.TimeSharePercent, op.HasAvgLatency && op.HasTraffic),
 			)
-			continue
+		} else {
+			row = append(row,
+				op.Name,
+				formatRateWithUnit(op.RatePerSecond, op.HasTraffic),
+				formatPercentMaybe(op.ErrorPercent, op.HasTraffic),
+				formatDuration(op.P95Seconds, op.HasLatencyP95),
+				formatPercentMaybe(op.TimeSharePercent, op.HasAvgLatency && op.HasTraffic),
+			)
 		}
-		t.Row(
-			op.Name,
-			formatRateWithUnit(op.RatePerSecond, op.HasTraffic),
-			formatPercentMaybe(op.ErrorPercent, op.HasTraffic),
-			formatDuration(op.P95Seconds, op.HasLatencyP95),
-			formatPercentMaybe(op.TimeSharePercent, op.HasAvgLatency && op.HasTraffic),
-		)
+		t.Row(row...)
 	}
 	return t.Render(w)
 }

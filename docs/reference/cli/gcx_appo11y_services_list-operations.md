@@ -39,6 +39,9 @@ gcx appo11y services list-operations <service> [--namespace ns] [flags]
 
   # Break a multi-cluster service down to a single cluster
   gcx appo11y services list-operations faro-collector --filter k8s_cluster_name=prod-us-central-0
+
+  # Break each operation out per cluster to spot per-cluster hotspots
+  gcx appo11y services list-operations faro-collector --group-by k8s_cluster_name
 ```
 
 ### Options
@@ -46,6 +49,7 @@ gcx appo11y services list-operations <service> [--namespace ns] [flags]
 ```
   -d, --datasource string     Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
       --filter stringArray    Scope the operations breakdown to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the span metrics
+      --group-by strings      Break each operation out per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). Time-share is normalized within each group so per-cluster hotspots are comparable; the label must exist on the span metrics
   -h, --help                  help for list-operations
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields

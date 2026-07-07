@@ -129,7 +129,7 @@ func TestBuildServiceMetadataQuery(t *testing.T) {
 
 func TestBuildRateQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer, spanKindConsumer}, nil)
+	got, err := buildRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer, spanKindConsumer}, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -140,7 +140,7 @@ func TestBuildRateQuery(t *testing.T) {
 
 	// Tempo (legacy) mode swaps to traces_spanmetrics_* without changing the job/kind filters.
 	tempo, _ := metricNamesByMode(MetricsModeTempo)
-	got, err = buildRateQuery(tempo, "", "auth", "1m", []string{spanKindServer}, nil)
+	got, err = buildRateQuery(tempo, "", "auth", "1m", []string{spanKindServer}, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -149,14 +149,14 @@ func TestBuildRateQuery(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 
-	if _, err := buildRateQuery(v3, "", "", "5m", nil, nil); err == nil {
+	if _, err := buildRateQuery(v3, "", "", "5m", nil, nil, nil); err == nil {
 		t.Error("expected error for empty service name")
 	}
 }
 
 func TestBuildErrorRateQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildErrorRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, nil)
+	got, err := buildErrorRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -168,7 +168,7 @@ func TestBuildErrorRateQuery(t *testing.T) {
 
 func TestBuildLatencyQuantileQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildLatencyQuantileQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, 0.95, nil)
+	got, err := buildLatencyQuantileQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, 0.95, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -179,7 +179,7 @@ func TestBuildLatencyQuantileQuery(t *testing.T) {
 
 	// OTel mode uses the bare names (no traces_ prefix).
 	otel, _ := metricNamesByMode(MetricsModeOTel)
-	got, err = buildLatencyQuantileQuery(otel, "billing", "checkout", "5m", []string{spanKindServer}, 0.95, nil)
+	got, err = buildLatencyQuantileQuery(otel, "billing", "checkout", "5m", []string{spanKindServer}, 0.95, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -188,7 +188,7 @@ func TestBuildLatencyQuantileQuery(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 
-	if _, err := buildLatencyQuantileQuery(v3, "", "x", "5m", nil, 1.5, nil); err == nil {
+	if _, err := buildLatencyQuantileQuery(v3, "", "x", "5m", nil, 1.5, nil, nil); err == nil {
 		t.Error("expected error for phi out of range")
 	}
 }
