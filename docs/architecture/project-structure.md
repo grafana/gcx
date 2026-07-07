@@ -38,6 +38,7 @@ gcx/
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
+│   ├── coreapi/              # Shared HTTP client + generic DoJSON/DoStatus helpers for core Grafana `/api/*` REST providers (annotations, org, permissions, publicdashboards)
 │   ├── fleet/                # Shared fleet base client (HTTP + stack config, over the grafana-collector-app plugin proxy — shared by fleet provider and instrumentation provider)
 │   ├── config/               # Config loading, context management, auth types (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
 │   │   └── testdata/         # YAML fixtures for config unit tests
