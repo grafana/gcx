@@ -215,7 +215,14 @@ func doStatus[Req any](ctx context.Context, c *Client, method, path string, body
 
 // NewClientFromCommand creates a Client from a cobra command and config loader.
 func NewClientFromCommand(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
-	cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+	return NewClientFromContext(cmd.Context(), loader)
+}
+
+// NewClientFromContext creates a Client from a context and config loader.
+// Prefer this over NewClientFromCommand when building a client inside a
+// closure that only has a context (e.g. crudcmd's generic command builders).
+func NewClientFromContext(ctx context.Context, loader *providers.ConfigLoader) (*Client, error) {
+	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
 		return nil, err
 	}

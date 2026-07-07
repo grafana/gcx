@@ -1,6 +1,7 @@
 package savedconversations
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,13 +12,14 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
-	base, err := aio11yhttp.NewClientFromCommand(cmd, loader)
+func newClient(ctx context.Context, loader *providers.ConfigLoader) (*Client, error) {
+	base, err := aio11yhttp.NewClientFromContext(ctx, loader)
 	if err != nil {
 		return nil, err
 	}
@@ -42,79 +44,44 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- list ---
 
-type listOpts struct {
-	IO     cmdio.Options
-	Source string
-	Limit  int64
-}
-
-func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.StringVar(&o.Source, "source", "", "Filter by source (telemetry or manual)")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of saved conversations to return (0 for no limit)")
-}
-
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &listOpts{}
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List saved conversations.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			client, err := newClient(cmd, loader)
-			if err != nil {
-				return err
-			}
-			items, err := client.List(cmd.Context(), opts.Source, int(opts.Limit))
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+	var source string
+	return crudcmd.NewListCommand(crudcmd.ListConfig[SavedConversation]{
+		Use:          "list",
+		Short:        "List saved conversations.",
+		DefaultFmt:   "table",
+		LimitDefault: 50,
+		LimitUsage:   "Maximum number of saved conversations to return (0 for no limit)",
+		Codecs:       []format.Codec{&TableCodec{}, &TableCodec{Wide: true}},
+		ExtraFlags: func(flags *pflag.FlagSet) {
+			flags.StringVar(&source, "source", "", "Filter by source (telemetry or manual)")
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Fetch: func(ctx context.Context, limit int64) ([]SavedConversation, error) {
+			client, err := newClient(ctx, loader)
+			if err != nil {
+				return nil, err
+			}
+			return client.List(ctx, source, int(limit))
+		},
+	})
 }
 
 // --- get ---
 
-type getOpts struct {
-	IO cmdio.Options
-}
-
-func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-}
-
 func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &getOpts{}
-	cmd := &cobra.Command{
-		Use:   "get <saved-id>",
-		Short: "Get a single saved conversation.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			client, err := newClient(cmd, loader)
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[*SavedConversation]{
+		Use:        "get <saved-id>",
+		Short:      "Get a single saved conversation.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "yaml",
+		Fetch: func(ctx context.Context, args []string) (*SavedConversation, error) {
+			client, err := newClient(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			sc, err := client.Get(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), sc)
+			return client.Get(ctx, args[0])
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // --- save ---
@@ -186,11 +153,12 @@ plugin UI; pass --saved-id to override.`,
 				savedID = "saved-" + conversationID
 			}
 
-			client, err := newClient(cmd, loader)
+			ctx := cmd.Context()
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
-			sc, err := client.Save(cmd.Context(), &SaveRequest{
+			sc, err := client.Save(ctx, &SaveRequest{
 				SavedID:        savedID,
 				ConversationID: conversationID,
 				Name:           opts.Name,
@@ -209,83 +177,43 @@ plugin UI; pass --saved-id to override.`,
 
 // --- delete ---
 
-type deleteOpts struct {
-	Force bool
-}
-
-func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
-}
-
 func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &deleteOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewDeleteCommand(crudcmd.DeleteConfig{
 		Use:   "delete SAVED-ID...",
 		Short: "Delete saved conversations.",
 		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
-				fmt.Sprintf("Delete %d saved conversation(s)?", len(args)))
-			if err != nil {
-				return err
-			}
-			if !proceed {
-				return nil
-			}
-
-			client, err := newClient(cmd, loader)
-			if err != nil {
-				return err
-			}
-			for _, id := range args {
-				if err := client.Delete(cmd.Context(), id); err != nil {
-					return fmt.Errorf("deleting saved conversation %s: %w", id, err)
-				}
-				cmdio.Success(cmd.ErrOrStderr(), "Deleted saved conversation %s", id)
-			}
-			return nil
+		Out:   func(cmd *cobra.Command) io.Writer { return cmd.ErrOrStderr() },
+		Confirm: func(args []string) string {
+			return fmt.Sprintf("Delete %d saved conversation(s)?", len(args))
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		NewDelete: func(ctx context.Context) (func(string) error, error) {
+			client, err := newClient(ctx, loader)
+			if err != nil {
+				return nil, err
+			}
+			return func(id string) error { return client.Delete(ctx, id) }, nil
+		},
+		Success: func(id string) string { return "Deleted saved conversation " + id },
+	})
 }
 
 // --- collections (reverse lookup) ---
 
-type collectionsOpts struct {
-	IO cmdio.Options
-}
-
-func (o *collectionsOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &CollectionsTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &CollectionsTableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-}
-
 func newCollectionsCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &collectionsOpts{}
-	cmd := &cobra.Command{
-		Use:   "collections <saved-id>",
-		Short: "List collections that contain a saved conversation.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			client, err := newClient(cmd, loader)
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[[]CollectionRef]{
+		Use:        "collections <saved-id>",
+		Short:      "List collections that contain a saved conversation.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "table",
+		Codecs:     []format.Codec{&CollectionsTableCodec{}, &CollectionsTableCodec{Wide: true}},
+		Fetch: func(ctx context.Context, args []string) ([]CollectionRef, error) {
+			client, err := newClient(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			items, err := client.ListCollections(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return client.ListCollections(ctx, args[0])
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // --- table codecs ---
@@ -295,48 +223,37 @@ type TableCodec struct {
 	Wide bool
 }
 
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
+func (c *TableCodec) Format() format.Format { return crudcmd.WideFormat(c.Wide) }
 
 func (c *TableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]SavedConversation)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []SavedConversation")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("SAVED ID", "NAME", "CONVERSATION", "SOURCE", "GENS", "SAVED BY", "CREATED AT")
-	} else {
-		t = style.NewTable("SAVED ID", "NAME", "CONVERSATION", "SOURCE", "GENS")
-	}
-
-	for _, sc := range items {
+	row := func(t *style.TableBuilder, sc SavedConversation) {
 		name := aio11yhttp.Truncate(sc.Name, 40)
 		source := sc.Source
 		if source == "" {
 			source = "-"
 		}
 		gens := strconv.Itoa(sc.GenerationCount)
-		if c.Wide {
-			savedBy := sc.SavedBy
-			if savedBy == "" {
-				savedBy = "-"
-			}
-			t.Row(sc.SavedID, name, sc.ConversationID, source, gens, savedBy, aio11yhttp.FormatTime(sc.CreatedAt))
-		} else {
+
+		if !c.Wide {
 			t.Row(sc.SavedID, name, sc.ConversationID, source, gens)
+			return
 		}
+
+		savedBy := sc.SavedBy
+		if savedBy == "" {
+			savedBy = "-"
+		}
+		t.Row(sc.SavedID, name, sc.ConversationID, source, gens, savedBy, aio11yhttp.FormatTime(sc.CreatedAt))
 	}
-	return t.Render(w)
+
+	if c.Wide {
+		return crudcmd.EncodeTable(w, v, "SavedConversation", []string{"SAVED ID", "NAME", "CONVERSATION", "SOURCE", "GENS", "SAVED BY", "CREATED AT"}, row)
+	}
+	return crudcmd.EncodeTable(w, v, "SavedConversation", []string{"SAVED ID", "NAME", "CONVERSATION", "SOURCE", "GENS"}, row)
 }
 
 func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }
 
 // CollectionsTableCodec renders []CollectionRef rows for the reverse-lookup
@@ -345,42 +262,29 @@ type CollectionsTableCodec struct {
 	Wide bool
 }
 
-func (c *CollectionsTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
+func (c *CollectionsTableCodec) Format() format.Format { return crudcmd.WideFormat(c.Wide) }
 
 func (c *CollectionsTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]CollectionRef)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []CollectionRef")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("COLLECTION ID", "NAME", "MEMBERS", "DESCRIPTION", "CREATED BY", "CREATED AT")
-	} else {
-		t = style.NewTable("COLLECTION ID", "NAME", "MEMBERS")
-	}
-
-	for _, cref := range items {
+	row := func(t *style.TableBuilder, cref CollectionRef) {
 		members := strconv.Itoa(cref.MemberCount)
-		if c.Wide {
-			desc := aio11yhttp.Truncate(cref.Description, 40)
-			createdBy := cref.CreatedBy
-			if createdBy == "" {
-				createdBy = "-"
-			}
-			t.Row(cref.CollectionID, cref.Name, members, desc, createdBy, aio11yhttp.FormatTime(cref.CreatedAt))
-		} else {
+		if !c.Wide {
 			t.Row(cref.CollectionID, cref.Name, members)
+			return
 		}
+		desc := aio11yhttp.Truncate(cref.Description, 40)
+		createdBy := cref.CreatedBy
+		if createdBy == "" {
+			createdBy = "-"
+		}
+		t.Row(cref.CollectionID, cref.Name, members, desc, createdBy, aio11yhttp.FormatTime(cref.CreatedAt))
 	}
-	return t.Render(w)
+
+	if c.Wide {
+		return crudcmd.EncodeTable(w, v, "CollectionRef", []string{"COLLECTION ID", "NAME", "MEMBERS", "DESCRIPTION", "CREATED BY", "CREATED AT"}, row)
+	}
+	return crudcmd.EncodeTable(w, v, "CollectionRef", []string{"COLLECTION ID", "NAME", "MEMBERS"}, row)
 }
 
 func (c *CollectionsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }

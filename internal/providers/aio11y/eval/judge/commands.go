@@ -1,22 +1,22 @@
 package judge
 
 import (
+	"context"
 	"errors"
 	"io"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/format"
-	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
-func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
-	base, err := aio11yhttp.NewClientFromCommand(cmd, loader)
+func newClient(ctx context.Context, loader *providers.ConfigLoader) (*Client, error) {
+	base, err := aio11yhttp.NewClientFromContext(ctx, loader)
 	if err != nil {
 		return nil, err
 	}
@@ -41,84 +41,45 @@ Use these values in the 'provider' and 'model' fields of an llm_judge evaluator 
 
 // --- providers ---
 
-type providersOpts struct {
-	IO cmdio.Options
-}
-
-func (o *providersOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ProvidersTableCodec{})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-}
-
 func newProvidersCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &providersOpts{}
-	cmd := &cobra.Command{
-		Use:   "providers",
-		Short: "List available judge providers.",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			client, err := newClient(cmd, loader)
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[[]eval.JudgeProvider]{
+		Use:        "providers",
+		Short:      "List available judge providers.",
+		Args:       cobra.NoArgs,
+		DefaultFmt: "table",
+		Codecs:     []format.Codec{&ProvidersTableCodec{}},
+		Fetch: func(ctx context.Context, _ []string) ([]eval.JudgeProvider, error) {
+			client, err := newClient(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			providers, err := client.ListProviders(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), providers)
+			return client.ListProviders(ctx)
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // --- models ---
 
-type modelsOpts struct {
-	IO       cmdio.Options
-	Provider string
-}
-
-func (o *modelsOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ModelsTableCodec{})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.StringVar(&o.Provider, "provider", "", "Provider ID (required, see 'judge providers')")
-}
-
-func (o *modelsOpts) Validate() error {
-	if o.Provider == "" {
-		return errors.New("--provider is required (see 'gcx aio11y judge providers')")
-	}
-	return o.IO.Validate()
-}
-
 func newModelsCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &modelsOpts{}
-	cmd := &cobra.Command{
-		Use:   "models --provider <id>",
-		Short: "List available judge models.",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
+	var provider string
+	cmd := crudcmd.NewGetCommand(crudcmd.GetConfig[[]eval.JudgeModel]{
+		Use:        "models --provider <id>",
+		Short:      "List available judge models.",
+		Args:       cobra.NoArgs,
+		DefaultFmt: "table",
+		Codecs:     []format.Codec{&ModelsTableCodec{}},
+		Fetch: func(ctx context.Context, _ []string) ([]eval.JudgeModel, error) {
+			if provider == "" {
+				return nil, errors.New("--provider is required (see 'gcx aio11y judge providers')")
 			}
-			client, err := newClient(cmd, loader)
+			client, err := newClient(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			models, err := client.ListModels(cmd.Context(), opts.Provider)
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), models)
+			return client.ListModels(ctx, provider)
 		},
-	}
-	opts.setup(cmd.Flags())
+	})
+	cmd.Flags().StringVar(&provider, "provider", "", "Provider ID (required, see 'judge providers')")
 	_ = cmd.MarkFlagRequired("provider")
 	return cmd
 }
@@ -131,20 +92,13 @@ type ProvidersTableCodec struct{}
 func (c *ProvidersTableCodec) Format() format.Format { return "table" }
 
 func (c *ProvidersTableCodec) Encode(w io.Writer, v any) error {
-	providers, ok := v.([]eval.JudgeProvider)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []JudgeProvider")
-	}
-
-	t := style.NewTable("ID", "NAME", "TYPE")
-	for _, p := range providers {
+	return crudcmd.EncodeTable(w, v, "JudgeProvider", []string{"ID", "NAME", "TYPE"}, func(t *style.TableBuilder, p eval.JudgeProvider) {
 		t.Row(p.ID, p.Name, p.Type)
-	}
-	return t.Render(w)
+	})
 }
 
 func (c *ProvidersTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }
 
 // ModelsTableCodec renders judge models as a text table.
@@ -153,22 +107,15 @@ type ModelsTableCodec struct{}
 func (c *ModelsTableCodec) Format() format.Format { return "table" }
 
 func (c *ModelsTableCodec) Encode(w io.Writer, v any) error {
-	models, ok := v.([]eval.JudgeModel)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []JudgeModel")
-	}
-
-	t := style.NewTable("ID", "NAME", "PROVIDER", "CONTEXT WINDOW")
-	for _, m := range models {
-		ctx := "-"
+	return crudcmd.EncodeTable(w, v, "JudgeModel", []string{"ID", "NAME", "PROVIDER", "CONTEXT WINDOW"}, func(t *style.TableBuilder, m eval.JudgeModel) {
+		ctxWindow := "-"
 		if m.ContextWindow > 0 {
-			ctx = strconv.Itoa(m.ContextWindow)
+			ctxWindow = strconv.Itoa(m.ContextWindow)
 		}
-		t.Row(m.ID, m.Name, m.Provider, ctx)
-	}
-	return t.Render(w)
+		t.Row(m.ID, m.Name, m.Provider, ctxWindow)
+	})
 }
 
 func (c *ModelsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }

@@ -5,19 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -49,22 +44,8 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 // list command
 // ---------------------------------------------------------------------------
 
-type listOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &sloTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &sloTableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-
-	flags.Int64Var(&o.Limit, "limit", 0, "Maximum number of items to return after fetch (0 for all; use a positive value to trim output only)")
-}
-
 func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &listOpts{}
+	opts := &crudcmd.ListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List SLO definitions.",
@@ -110,7 +91,9 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.Setup(cmd.Flags(), "table", 0,
+		"Maximum number of items to return after fetch (0 for all; use a positive value to trim output only)",
+		&sloTableCodec{}, &sloTableCodec{Wide: true})
 	return cmd
 }
 
@@ -119,27 +102,10 @@ type sloTableCodec struct {
 	Wide bool
 }
 
-func (c *sloTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
+func (c *sloTableCodec) Format() format.Format { return crudcmd.WideFormat(c.Wide) }
 
 func (c *sloTableCodec) Encode(w io.Writer, v any) error {
-	slos, ok := v.([]Slo)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Slo")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("UUID", "NAME", "TARGET", "WINDOW", "STATUS", "DESCRIPTION")
-	} else {
-		t = style.NewTable("UUID", "NAME", "TARGET", "WINDOW", "STATUS")
-	}
-
-	for _, slo := range slos {
+	row := func(t *style.TableBuilder, slo Slo) {
 		target := "-"
 		window := "-"
 		if len(slo.Objectives) > 0 {
@@ -154,248 +120,138 @@ func (c *sloTableCodec) Encode(w io.Writer, v any) error {
 
 		if c.Wide {
 			t.Row(slo.UUID, slo.Name, target, window, status, slo.Description)
-		} else {
-			t.Row(slo.UUID, slo.Name, target, window, status)
+			return
 		}
+		t.Row(slo.UUID, slo.Name, target, window, status)
 	}
 
-	return t.Render(w)
+	if c.Wide {
+		return crudcmd.EncodeTable(w, v, "Slo", []string{"UUID", "NAME", "TARGET", "WINDOW", "STATUS", "DESCRIPTION"}, row)
+	}
+	return crudcmd.EncodeTable(w, v, "Slo", []string{"UUID", "NAME", "TARGET", "WINDOW", "STATUS"}, row)
 }
 
 func (c *sloTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }
 
 // ---------------------------------------------------------------------------
 // get command
 // ---------------------------------------------------------------------------
 
-type getOpts struct {
-	IO cmdio.Options
-}
-
-func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-}
-
 func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &getOpts{}
-	cmd := &cobra.Command{
-		Use:   "get UUID",
-		Short: "Get a single SLO definition.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
-			uuid := args[0]
-
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[*unstructured.Unstructured]{
+		Use:        "get UUID",
+		Short:      "Get a single SLO definition.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "yaml",
+		Fetch: func(ctx context.Context, args []string) (*unstructured.Unstructured, error) {
 			crud, cfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
 
-			typedObj, err := crud.Get(ctx, uuid)
+			typedObj, err := crud.Get(ctx, args[0])
 			if err != nil {
-				return err
+				return nil, err
 			}
 
-			slo := typedObj.Spec
-			res, err := ToResource(slo, cfg.Namespace)
+			res, err := ToResource(typedObj.Spec, cfg.Namespace)
 			if err != nil {
-				return fmt.Errorf("failed to convert SLO to resource: %w", err)
+				return nil, fmt.Errorf("failed to convert SLO to resource: %w", err)
 			}
 
 			obj := res.ToUnstructured()
-			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
+			return &obj, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // ---------------------------------------------------------------------------
 // pull command
 // ---------------------------------------------------------------------------
 
-type pullOpts struct {
-	OutputDir string
-}
-
-func (o *pullOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.OutputDir, "output-dir", "d", ".", "Directory to write SLO definition files to")
-}
-
 func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &pullOpts{}
-	cmd := &cobra.Command{
-		Use:   "pull",
-		Short: "Pull SLO definitions to disk.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-
+	return crudcmd.NewPullCommand(crudcmd.PullConfig[Slo]{
+		Use:         "pull",
+		Short:       "Pull SLO definitions to disk.",
+		OutputUsage: "Directory to write SLO definition files to",
+		SubDir:      "SLO",
+		Noun:        "SLO definitions",
+		Fetch: func(ctx context.Context) ([]Slo, string, error) {
 			crud, cfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
-				return err
+				return nil, "", err
 			}
-
 			typedObjs, err := crud.List(ctx, 0)
 			if err != nil {
-				return err
+				return nil, "", err
 			}
-
-			outputDir := filepath.Join(opts.OutputDir, "SLO")
-			if err := os.MkdirAll(outputDir, 0755); err != nil {
-				return fmt.Errorf("failed to create output directory %s: %w", outputDir, err)
+			slos := make([]Slo, len(typedObjs))
+			for i := range typedObjs {
+				slos[i] = typedObjs[i].Spec
 			}
-
-			codec := format.NewYAMLCodec()
-
-			for _, typedObj := range typedObjs {
-				slo := typedObj.Spec
-				res, err := ToResource(slo, cfg.Namespace)
-				if err != nil {
-					return fmt.Errorf("failed to convert SLO %s to resource: %w", slo.UUID, err)
-				}
-
-				filePath := filepath.Join(outputDir, slo.UUID+".yaml")
-				f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-				if err != nil {
-					return fmt.Errorf("failed to open file %s: %w", filePath, err)
-				}
-
-				obj := res.ToUnstructured()
-				if err := codec.Encode(f, &obj); err != nil {
-					f.Close()
-					return fmt.Errorf("failed to write SLO %s: %w", slo.UUID, err)
-				}
-				f.Close()
-			}
-
-			cmdio.Success(cmd.OutOrStdout(), "Pulled %d SLO definitions to %s/", len(typedObjs), outputDir)
-			return nil
+			return slos, cfg.Namespace, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		ToResource: ToResource,
+		ID:         func(slo Slo) string { return slo.UUID },
+	})
 }
 
 // ---------------------------------------------------------------------------
 // push command
 // ---------------------------------------------------------------------------
 
-type pushOpts struct {
-	DryRun bool
-}
-
-func (o *pushOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview changes without making them")
-}
-
 func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &pushOpts{}
-	cmd := &cobra.Command{
-		Use:   "push FILE...",
-		Short: "Push SLO definitions from files.",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-
+	return crudcmd.NewPushCommand(crudcmd.PushConfig[Slo]{
+		Use:          "push FILE...",
+		Short:        "Push SLO definitions from files.",
+		FromResource: FromResource,
+		NewUpsert: func(ctx context.Context) (func(cmd *cobra.Command, item *Slo) error, error) {
 			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
-			yamlCodec := format.NewYAMLCodec()
-
-			for _, filePath := range args {
-				data, err := os.ReadFile(filePath)
-				if err != nil {
-					return fmt.Errorf("failed to read file %s: %w", filePath, err)
-				}
-
-				// Decode YAML into an unstructured object
-				var obj unstructured.Unstructured
-				if err := yamlCodec.Decode(strings.NewReader(string(data)), &obj); err != nil {
-					return fmt.Errorf("failed to parse %s: %w", filePath, err)
-				}
-
-				res, err := resources.FromUnstructured(&obj)
-				if err != nil {
-					return fmt.Errorf("failed to build resource from %s: %w", filePath, err)
-				}
-
-				slo, err := FromResource(res)
-				if err != nil {
-					return fmt.Errorf("failed to convert resource to SLO from %s: %w", filePath, err)
-				}
-
-				if opts.DryRun {
-					cmdio.Info(cmd.OutOrStdout(), "[dry-run] Would push SLO %q (uuid=%s)", slo.Name, slo.UUID)
-					continue
-				}
-
-				if err := upsertSLO(ctx, cmd, crud, slo); err != nil {
-					return err
-				}
-			}
-
-			return nil
+			return func(cmd *cobra.Command, slo *Slo) error {
+				return crudcmd.Upsert(ctx, *slo, sloUpsertConfig(cmd, crud))
+			}, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Name: func(s Slo) string { return s.Name },
+		ID:   func(s Slo) string { return s.UUID },
+	})
 }
 
-// upsertSLO creates or updates an SLO depending on whether it already exists.
-// If slo.UUID is set, it checks the server; a 404 means create, otherwise update.
-// If slo.UUID is empty, it always creates.
-func upsertSLO(ctx context.Context, cmd *cobra.Command, crud *adapter.TypedCRUD[Slo], slo *Slo) error {
-	if slo.UUID == "" {
-		// Wrap in TypedObject for create
-		typedObj := &adapter.TypedObject[Slo]{
-			Spec: *slo,
-		}
-		created, err := crud.Create(ctx, typedObj)
-		if err != nil {
-			return fmt.Errorf("failed to create SLO %s: %w", slo.Name, err)
-		}
-		cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", slo.Name, created.Spec.UUID)
-		return nil
-	}
-
-	_, getErr := crud.Get(ctx, slo.UUID)
-	switch {
-	case getErr == nil:
-		// SLO exists — update.
-		typedObj := &adapter.TypedObject[Slo]{
-			Spec: *slo,
-		}
-		typedObj.SetName(slo.UUID)
-		if _, err := crud.Update(ctx, slo.UUID, typedObj); err != nil {
-			return fmt.Errorf("failed to update SLO %s: %w", slo.UUID, err)
-		}
-		cmdio.Success(cmd.OutOrStdout(), "Updated %s", slo.Name)
-		return nil
-
-	case errors.Is(getErr, ErrNotFound):
-		// SLO not found — create.
-		typedObj := &adapter.TypedObject[Slo]{
-			Spec: *slo,
-		}
-		created, err := crud.Create(ctx, typedObj)
-		if err != nil {
-			return fmt.Errorf("failed to create SLO %s: %w", slo.Name, err)
-		}
-		cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", slo.Name, created.Spec.UUID)
-		return nil
-
-	default:
-		// Any other error (auth, network, server) — propagate.
-		return fmt.Errorf("failed to check SLO %s: %w", slo.UUID, getErr)
+// sloUpsertConfig adapts TypedCRUD[Slo] to the generic create-or-update-by-
+// probing-404 flow shared with other push commands.
+func sloUpsertConfig(cmd *cobra.Command, crud *adapter.TypedCRUD[Slo]) crudcmd.UpsertConfig[Slo] {
+	return crudcmd.UpsertConfig[Slo]{
+		HasID: func(slo Slo) bool { return slo.UUID != "" },
+		ID:    func(slo Slo) string { return slo.UUID },
+		Name:  func(slo Slo) string { return slo.Name },
+		Get: func(ctx context.Context, id string) error {
+			_, err := crud.Get(ctx, id)
+			return err
+		},
+		IsNotFound: func(err error) bool { return errors.Is(err, ErrNotFound) },
+		Create: func(ctx context.Context, slo Slo) (Slo, error) {
+			created, err := crud.Create(ctx, &adapter.TypedObject[Slo]{Spec: slo})
+			if err != nil {
+				return Slo{}, err
+			}
+			return created.Spec, nil
+		},
+		Update: func(ctx context.Context, id string, slo Slo) error {
+			typedObj := &adapter.TypedObject[Slo]{Spec: slo}
+			typedObj.SetName(id)
+			_, err := crud.Update(ctx, id, typedObj)
+			return err
+		},
+		OnCreated: func(created Slo) {
+			cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", created.Name, created.UUID)
+		},
+		OnUpdated: func(slo Slo) {
+			cmdio.Success(cmd.OutOrStdout(), "Updated %s", slo.Name)
+		},
 	}
 }
 
@@ -403,47 +259,21 @@ func upsertSLO(ctx context.Context, cmd *cobra.Command, crud *adapter.TypedCRUD[
 // delete command
 // ---------------------------------------------------------------------------
 
-type deleteOpts struct {
-	Force bool
-}
-
-func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
-}
-
 func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &deleteOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewDeleteCommand(crudcmd.DeleteConfig{
 		Use:   "delete UUID...",
 		Short: "Delete SLO definitions.",
 		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
-				fmt.Sprintf("Delete %d SLO definition(s)?", len(args)))
-			if err != nil {
-				return err
-			}
-			if !proceed {
-				return nil
-			}
-
+		Confirm: func(args []string) string {
+			return fmt.Sprintf("Delete %d SLO definition(s)?", len(args))
+		},
+		NewDelete: func(ctx context.Context) (func(string) error, error) {
 			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
-			for _, uuid := range args {
-				if err := crud.Delete(ctx, uuid); err != nil {
-					return fmt.Errorf("failed to delete SLO %s: %w", uuid, err)
-				}
-				cmdio.Success(cmd.OutOrStdout(), "Deleted %s", uuid)
-			}
-
-			return nil
+			return func(uuid string) error { return crud.Delete(ctx, uuid) }, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Success: func(uuid string) string { return "Deleted " + uuid },
+	})
 }

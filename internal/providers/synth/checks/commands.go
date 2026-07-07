@@ -13,7 +13,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -47,21 +47,16 @@ func Commands(loader smcfg.StatusLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type listOpts struct {
-	IO         cmdio.Options
+	crudcmd.ListOpts
+
 	Labels     []string
 	JobPattern string
-	Limit      int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &checkTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &checkWideTableCodec{})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-
+	o.Setup(flags, "table", 50, "Maximum number of items to return (0 for all)", &checkTableCodec{}, &checkWideTableCodec{})
 	flags.StringArrayVar(&o.Labels, "label", nil, "Filter by label key=value (repeatable, e.g. --label env=prod)")
 	flags.StringVar(&o.JobPattern, "job", "", "Filter by job name glob pattern (e.g. --job 'shopk8s-*')")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newListCommand(loader smcfg.Loader) *cobra.Command {
@@ -170,22 +165,13 @@ type checkTableCodec struct{}
 func (c *checkTableCodec) Format() format.Format { return "table" }
 
 func (c *checkTableCodec) Encode(w io.Writer, v any) error {
-	checkList, ok := v.([]Check)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Check")
-	}
-
-	t := style.NewTable("NAME", "JOB", "TARGET", "TYPE")
-
-	for _, c := range checkList {
+	return crudcmd.EncodeTable(w, v, "Check", []string{"NAME", "JOB", "TARGET", "TYPE"}, func(t *style.TableBuilder, c Check) {
 		t.Row(checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType())
-	}
-
-	return t.Render(w)
+	})
 }
 
 func (c *checkTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }
 
 type checkWideTableCodec struct{}
@@ -193,26 +179,17 @@ type checkWideTableCodec struct{}
 func (c *checkWideTableCodec) Format() format.Format { return "wide" }
 
 func (c *checkWideTableCodec) Encode(w io.Writer, v any) error {
-	checkList, ok := v.([]Check)
-	if !ok {
-		return errors.New("invalid data type for wide codec: expected []Check")
-	}
-
-	t := style.NewTable("NAME", "JOB", "TARGET", "TYPE", "ENABLED", "FREQ", "TIMEOUT", "PROBES")
-
-	for _, c := range checkList {
+	return crudcmd.EncodeTable(w, v, "Check", []string{"NAME", "JOB", "TARGET", "TYPE", "ENABLED", "FREQ", "TIMEOUT", "PROBES"}, func(t *style.TableBuilder, c Check) {
 		t.Row(checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType(),
 			strconv.FormatBool(c.Enabled),
 			fmt.Sprintf("%ds", c.Frequency/1000),
 			fmt.Sprintf("%ds", c.Timeout/1000),
 			strconv.Itoa(len(c.Probes)))
-	}
-
-	return t.Render(w)
+	})
 }
 
 func (c *checkWideTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("wide format does not support decoding")
+	return crudcmd.ErrTableDecode
 }
 
 // ---------------------------------------------------------------------------
@@ -220,16 +197,13 @@ func (c *checkWideTableCodec) Decode(r io.Reader, v any) error {
 // ---------------------------------------------------------------------------
 
 type getOpts struct {
-	IO         cmdio.Options
+	crudcmd.GetOpts
+
 	ShowStatus bool
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &checkTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &checkWideTableCodec{})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-
+	o.Setup(flags, "table", &checkTableCodec{}, &checkWideTableCodec{})
 	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display the check's current execution status from Prometheus")
 }
 
@@ -575,50 +549,25 @@ func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64
 // delete
 // ---------------------------------------------------------------------------
 
-type deleteOpts struct {
-	Force bool
-}
-
-func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
-}
-
 func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
-	opts := &deleteOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewDeleteCommand(crudcmd.DeleteConfig{
 		Use:   "delete NAME...",
 		Short: "Delete Synthetic Monitoring checks.",
 		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
-				fmt.Sprintf("Delete %d check(s)?", len(args)))
-			if err != nil {
-				return err
-			}
-			if !proceed {
-				return nil
-			}
-
+		Confirm: func(args []string) string {
+			return fmt.Sprintf("Delete %d check(s)?", len(args))
+		},
+		NewDelete: func(ctx context.Context) (func(string) error, error) {
 			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
-			for _, name := range args {
-				// Accepts both slug-id names (grafana-instance-health-5594) and bare numeric IDs (5594).
-				// DeleteFn extracts the numeric ID via extractIDFromSlug.
-				if err := crud.Delete(ctx, name); err != nil {
-					return fmt.Errorf("deleting check %s: %w", name, err)
-				}
-				cmdio.Success(cmd.OutOrStdout(), "Deleted check %s", name)
-			}
-			return nil
+			// Accepts both slug-id names (grafana-instance-health-5594) and bare numeric IDs (5594).
+			// DeleteFn extracts the numeric ID via extractIDFromSlug.
+			return func(name string) error { return crud.Delete(ctx, name) }, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Success: func(name string) string { return "Deleted check " + name },
+	})
 }
 
 // ---------------------------------------------------------------------------

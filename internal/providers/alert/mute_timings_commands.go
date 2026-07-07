@@ -1,18 +1,16 @@
 package alert
 
 import (
-	"errors"
+	"context"
 	"io"
 	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
-	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 // muteTimingsCommands returns the mute-timings command group.
@@ -33,46 +31,29 @@ func muteTimingsCommands(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-type muteTimingsListOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *muteTimingsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &MuteTimingsTableCodec{})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
-}
-
 func newMuteTimingsListCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &muteTimingsListOpts{}
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List mute timings.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
+	return crudcmd.NewListCommand(crudcmd.ListConfig[MuteTiming]{
+		Use:          "list",
+		Short:        "List mute timings.",
+		DefaultFmt:   "table",
+		LimitDefault: 50,
+		Codecs:       []format.Codec{&MuteTimingsTableCodec{}},
+		Fetch: func(ctx context.Context, limit int64) ([]MuteTiming, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			timings, err := client.ListMuteTimings(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			timings = adapter.TruncateSlice(timings, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), timings)
+			return adapter.TruncateSlice(timings, limit), nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // MuteTimingsTableCodec renders mute timings as a tabular table.
@@ -81,19 +62,13 @@ type MuteTimingsTableCodec struct{}
 func (c *MuteTimingsTableCodec) Format() format.Format { return "table" }
 
 func (c *MuteTimingsTableCodec) Encode(w io.Writer, v any) error {
-	timings, ok := v.([]MuteTiming)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []MuteTiming")
-	}
-	t := style.NewTable("NAME", "INTERVALS", "SUMMARY")
-	for _, mt := range timings {
+	return crudcmd.EncodeTable(w, v, "MuteTiming", []string{"NAME", "INTERVALS", "SUMMARY"}, func(t *style.TableBuilder, mt MuteTiming) {
 		t.Row(mt.Name, strconv.Itoa(len(mt.TimeIntervals)), summarizeIntervals(mt.TimeIntervals))
-	}
-	return t.Render(w)
+	})
 }
 
 func (c *MuteTimingsTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
+	return crudcmd.ErrTableDecode
 }
 
 func summarizeIntervals(intervals []TimeInterval) string {
@@ -108,165 +83,100 @@ func summarizeIntervals(intervals []TimeInterval) string {
 	return strings.Join(parts, ",")
 }
 
-type muteTimingsGetOpts struct {
-	IO cmdio.Options
-}
-
-func (o *muteTimingsGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-}
-
 func newMuteTimingsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &muteTimingsGetOpts{}
-	cmd := &cobra.Command{
-		Use:   "get NAME",
-		Short: "Get a mute timing by name.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[*MuteTiming]{
+		Use:        "get NAME",
+		Short:      "Get a mute timing by name.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "json",
+		Fetch: func(ctx context.Context, args []string) (*MuteTiming, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			mt, err := client.GetMuteTiming(ctx, args[0])
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), mt)
+			return client.GetMuteTiming(ctx, args[0])
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
-type muteTimingsMutateOpts struct {
-	IO   cmdio.Options
-	File string
-}
-
-func (o *muteTimingsMutateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-	flags.StringVarP(&o.File, "filename", "f", "", "File containing the mute timing definition (JSON/YAML, use - for stdin)")
-}
+const muteTimingFilenameUsage = "File containing the mute timing definition (JSON/YAML, use - for stdin)"
 
 func newMuteTimingsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &muteTimingsMutateOpts{}
-	cmd := &cobra.Command{
-		Use:   "create",
-		Short: "Create a new mute timing.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			var mt MuteTiming
-			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &mt); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
+	return crudcmd.NewCreateCommand(crudcmd.CreateConfig[MuteTiming]{
+		Use:           "create",
+		Short:         "Create a new mute timing.",
+		DefaultFmt:    "json",
+		FilenameUsage: muteTimingFilenameUsage,
+		Read:          crudcmd.ReadYAMLOrJSONFile[MuteTiming],
+		Create: func(ctx context.Context, mt MuteTiming) (MuteTiming, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return MuteTiming{}, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return MuteTiming{}, err
 			}
 			created, err := client.CreateMuteTiming(ctx, mt)
 			if err != nil {
-				return err
+				return MuteTiming{}, err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			return *created, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 func newMuteTimingsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &muteTimingsMutateOpts{}
-	cmd := &cobra.Command{
-		Use:   "update NAME",
-		Short: "Update an existing mute timing by name.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			var mt MuteTiming
-			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &mt); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
+	return crudcmd.NewUpdateCommand(crudcmd.UpdateConfig[MuteTiming]{
+		Use:           "update NAME",
+		Short:         "Update an existing mute timing by name.",
+		Args:          cobra.ExactArgs(1),
+		DefaultFmt:    "json",
+		FilenameUsage: muteTimingFilenameUsage,
+		Read:          crudcmd.ReadYAMLOrJSONFile[MuteTiming],
+		Update: func(ctx context.Context, id string, mt MuteTiming) (MuteTiming, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return MuteTiming{}, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return MuteTiming{}, err
 			}
-			updated, err := client.UpdateMuteTiming(ctx, args[0], mt)
+			updated, err := client.UpdateMuteTiming(ctx, id, mt)
 			if err != nil {
-				return err
+				return MuteTiming{}, err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+			return *updated, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
-type muteTimingsDeleteOpts struct {
-	Force bool
-}
-
-func (o *muteTimingsDeleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
-}
-
-//nolint:dupl // Similar structure to contact-points and templates delete commands is intentional
 func newMuteTimingsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &muteTimingsDeleteOpts{}
-	cmd := &cobra.Command{
+	return crudcmd.NewDeleteCommand(crudcmd.DeleteConfig{
 		Use:   "delete NAME",
 		Short: "Delete a mute timing by name.",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
-				"Delete mute timing "+args[0]+"?")
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return nil
-			}
+		Confirm: func(args []string) string {
+			return "Delete mute timing " + args[0] + "?"
+		},
+		NewDelete: func(ctx context.Context) (func(string) error, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			if err := client.DeleteMuteTiming(ctx, args[0]); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted mute timing %s", args[0])
-			return nil
+			return func(id string) error { return client.DeleteMuteTiming(ctx, id) }, nil
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+		Success: func(id string) string { return "Deleted mute timing " + id },
+	})
 }
 
 type muteTimingsExportOpts struct {

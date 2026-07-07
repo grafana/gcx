@@ -2,13 +2,12 @@ package alert
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
-	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers/crudcmd"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
@@ -34,22 +33,18 @@ func rulesCommands(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 type rulesListOpts struct {
-	IO        cmdio.Options
+	crudcmd.ListOpts
+
 	GroupName string
 	FolderUID string
 	State     string
-	Limit     int64
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &RulesTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &RulesTableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
+	o.Setup(flags, "table", 50, "", &RulesTableCodec{}, &RulesTableCodec{Wide: true})
 	flags.StringVar(&o.GroupName, "group", "", "Filter by group name")
 	flags.StringVar(&o.FolderUID, "folder", "", "Filter by folder UID")
 	flags.StringVar(&o.State, "state", "", "Filter by rule state (firing, pending, inactive)")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
 }
 
 func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -120,96 +115,57 @@ type RulesTableCodec struct {
 	Wide bool
 }
 
-func (c *RulesTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
+func (c *RulesTableCodec) Format() format.Format { return crudcmd.WideFormat(c.Wide) }
 
 func (c *RulesTableCodec) Encode(w io.Writer, v any) error {
-	rules, ok := v.([]RuleStatus)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []RuleStatus")
-	}
-
-	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("UID", "NAME", "STATE", "HEALTH", "LAST_EVAL", "EVAL_TIME", "PAUSED", "FOLDER")
-	} else {
-		t = style.NewTable("UID", "NAME", "STATE", "HEALTH", "PAUSED")
+		return crudcmd.EncodeTable(w, v, "RuleStatus",
+			[]string{"UID", "NAME", "STATE", "HEALTH", "LAST_EVAL", "EVAL_TIME", "PAUSED", "FOLDER"},
+			func(t *style.TableBuilder, r RuleStatus) {
+				paused := "no"
+				if r.IsPaused {
+					paused = "yes"
+				}
+				lastEval := r.LastEvaluation
+				if lastEval == "0001-01-01T00:00:00Z" {
+					lastEval = "never"
+				}
+				evalTime := fmt.Sprintf("%.3fs", r.EvaluationTime)
+				t.Row(r.UID, r.Name, r.State, r.Health, lastEval, evalTime, paused, r.FolderUID)
+			})
 	}
-
-	for _, r := range rules {
+	return crudcmd.EncodeTable(w, v, "RuleStatus", []string{"UID", "NAME", "STATE", "HEALTH", "PAUSED"}, func(t *style.TableBuilder, r RuleStatus) {
 		paused := "no"
 		if r.IsPaused {
 			paused = "yes"
 		}
-
-		if c.Wide {
-			lastEval := r.LastEvaluation
-			if lastEval == "0001-01-01T00:00:00Z" {
-				lastEval = "never"
-			}
-			evalTime := fmt.Sprintf("%.3fs", r.EvaluationTime)
-			t.Row(r.UID, r.Name, r.State, r.Health, lastEval, evalTime, paused, r.FolderUID)
-		} else {
-			t.Row(r.UID, r.Name, r.State, r.Health, paused)
-		}
-	}
-
-	return t.Render(w)
+		t.Row(r.UID, r.Name, r.State, r.Health, paused)
+	})
 }
 
-func (c *RulesTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
+func (c *RulesTableCodec) Decode(io.Reader, any) error {
+	return crudcmd.ErrTableDecode
 }
 
-type rulesGetOpts struct {
-	IO cmdio.Options
-}
-
-func (o *rulesGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &RuleDetailTableCodec{})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-}
-
-//nolint:dupl // Similar structure to groups get command is intentional
 func newRulesGetCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &rulesGetOpts{}
-	cmd := &cobra.Command{
-		Use:   "get UID",
-		Short: "Get a single alert rule.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
-			uid := args[0]
-
+	return crudcmd.NewGetCommand(crudcmd.GetConfig[*RuleStatus]{
+		Use:        "get UID",
+		Short:      "Get a single alert rule.",
+		Args:       cobra.ExactArgs(1),
+		DefaultFmt: "table",
+		Codecs:     []format.Codec{&RuleDetailTableCodec{}},
+		Fetch: func(ctx context.Context, args []string) (*RuleStatus, error) {
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
 			client, err := NewClient(restCfg)
 			if err != nil {
-				return err
+				return nil, err
 			}
-
-			rule, err := client.GetRule(ctx, uid)
-			if err != nil {
-				return err
-			}
-
-			return opts.IO.Encode(cmd.OutOrStdout(), rule)
+			return client.GetRule(ctx, args[0])
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 // RuleDetailTableCodec renders a single rule as a table row.
@@ -218,21 +174,15 @@ type RuleDetailTableCodec struct{}
 func (c *RuleDetailTableCodec) Format() format.Format { return "table" }
 
 func (c *RuleDetailTableCodec) Encode(w io.Writer, v any) error {
-	rule, ok := v.(*RuleStatus)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected *RuleStatus")
-	}
-
-	paused := "no"
-	if rule.IsPaused {
-		paused = "yes"
-	}
-
-	t := style.NewTable("UID", "NAME", "STATE", "HEALTH", "PAUSED")
-	t.Row(rule.UID, rule.Name, rule.State, rule.Health, paused)
-	return t.Render(w)
+	return crudcmd.EncodeItem(w, v, "RuleStatus", []string{"UID", "NAME", "STATE", "HEALTH", "PAUSED"}, func(t *style.TableBuilder, rule RuleStatus) {
+		paused := "no"
+		if rule.IsPaused {
+			paused = "yes"
+		}
+		t.Row(rule.UID, rule.Name, rule.State, rule.Health, paused)
+	})
 }
 
-func (c *RuleDetailTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
+func (c *RuleDetailTableCodec) Decode(io.Reader, any) error {
+	return crudcmd.ErrTableDecode
 }
