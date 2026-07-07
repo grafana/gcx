@@ -1101,7 +1101,13 @@ func newScheduleFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command {
 				return errors.New("--end must be after --start")
 			}
 
+			// The OnCall API rejects "Local" (Go's name for an unnamed local
+			// zone) with 400 "Invalid timezone", so fall back to UTC. Final
+			// shift events are returned as absolute timestamps regardless.
 			tz := time.Now().Location().String()
+			if tz == "" || tz == "Local" {
+				tz = "UTC"
+			}
 			result, err := client.ListFilterEvents(cmd.Context(), args[0], tz, opts.Start, days)
 			if err != nil {
 				return err
