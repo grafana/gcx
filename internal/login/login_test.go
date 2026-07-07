@@ -1299,7 +1299,7 @@ func TestRun_CloudTokenHintGuidance(t *testing.T) {
 		"hint must deep-link to the in-stack Access Policies app for the known server")
 	assert.Contains(t, hint, "access-policies", "hint must link to the access-policies docs")
 	assert.Contains(t, hint, "stacks:read", "hint must name stacks:read as the required baseline scope")
-	assert.Contains(t, hint, "metrics:write", "hint must name the Synthetic Monitoring & k6 write scopes")
+	assert.Contains(t, hint, "metrics:write", "hint must name the Synthetic Monitoring write scopes")
 	assert.Contains(t, hint, "fleet-management:read", "hint must name the Fleet scope")
 	assert.Contains(t, hint, "stacks:write", "hint must name the stack-management scope")
 	assert.Contains(t, strings.ToLower(hint), "skip", "hint must retain the skip affordance")
