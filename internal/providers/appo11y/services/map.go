@@ -30,6 +30,7 @@ type mapOpts struct {
 	Datasource string
 	Since      string
 	Namespace  string
+	Filters    []string
 }
 
 func (o *mapOpts) setup(flags *pflag.FlagSet) {
@@ -43,6 +44,7 @@ func (o *mapOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
 	flags.StringVarP(&o.Namespace, "namespace", "n", "", "Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)")
 	flags.StringVar(&o.Since, "since", defaultRedWindow, "Rate/quantile window applied to service-graph metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the map to service-graph edges matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the service-graph metrics")
 }
 
 func (o *mapOpts) Validate(cmd *cobra.Command) error {
@@ -99,12 +101,15 @@ suitable for inlining in markdown / piping to "dot -Tpng".`,
   gcx appo11y services map payments/checkoutservice --since 1h -o wide
 
   # JSON for scripting
-  gcx appo11y services map checkoutservice -o json`,
+  gcx appo11y services map checkoutservice -o json
+
+  # Break a multi-cluster service's map down to a single cluster
+  gcx appo11y services map faro-collector --filter k8s_cluster_name=prod-us-central-0`,
 		Args: cobra.ExactArgs(1),
 		RunE: runMap(opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Service-graph slice for one App Observability service: callers (peers calling into the service) and callees (peers the service calls), with per-edge rate (req/s), error %, and direction-aware p95 latency (server-side for callers, client-side for callees). Connection-type label distinguishes HTTP/gRPC (empty), database, messaging, and virtual_node (uninstrumented upstreams synthesised by Tempo). Output formats: table/wide (default two-section view), json/yaml (structured), mermaid (markdown-renderable graph), dot (Graphviz). Pairs with 'gcx appo11y services get' (single-service RED) and 'gcx appo11y services list-operations' (per-endpoint breakdown). Examples: gcx appo11y services map <name> -o json; gcx appo11y services map <ns>/<name> --since 1h -o mermaid`,
+			agent.AnnotationLLMHint:   `Service-graph slice for one App Observability service: callers (peers calling into the service) and callees (peers the service calls), with per-edge rate (req/s), error %, and direction-aware p95 latency (server-side for callers, client-side for callees). Connection-type label distinguishes HTTP/gRPC (empty), database, messaging, and virtual_node (uninstrumented upstreams synthesised by Tempo). Output formats: table/wide (default two-section view), json/yaml (structured), mermaid (markdown-renderable graph), dot (Graphviz). Pairs with 'gcx appo11y services get' (single-service RED) and 'gcx appo11y services list-operations' (per-endpoint breakdown). Use --filter <label><op><value> (repeatable) to scope the edges to a subset of series — most usefully a cluster/region label (e.g. --filter k8s_cluster_name=prod-us) to break a multi-cluster service down one cluster at a time. Examples: gcx appo11y services map <name> -o json; gcx appo11y services map <ns>/<name> --since 1h -o mermaid; gcx appo11y services map <name> --filter k8s_cluster_name=<cluster> -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -117,6 +122,10 @@ func runMap(opts *mapOpts) func(*cobra.Command, []string) error {
 			return err
 		}
 		namespace, name, err := parseServiceArg(args[0], opts.Namespace)
+		if err != nil {
+			return fail.NewCommandUsageError(cmd, "", err)
+		}
+		matchers, err := parseFilters(opts.Filters)
 		if err != nil {
 			return fail.NewCommandUsageError(cmd, "", err)
 		}
@@ -148,14 +157,14 @@ func runMap(opts *mapOpts) func(*cobra.Command, []string) error {
 
 		// Bare-name resolution: same UX as `services get` and `services list-operations`.
 		if namespace == "" {
-			resolved, err := resolveNamespaceForBareName(ctx, client, datasourceUID, name)
+			resolved, err := resolveNamespaceForBareName(ctx, client, datasourceUID, name, matchers)
 			if err != nil {
 				return err
 			}
 			namespace = resolved
 		}
 
-		result, err := fetchServiceMap(ctx, client, datasourceUID, namespace, name, opts.Since)
+		result, err := fetchServiceMap(ctx, client, datasourceUID, namespace, name, opts.Since, matchers)
 		if err != nil {
 			return err
 		}
@@ -177,7 +186,7 @@ func runMap(opts *mapOpts) func(*cobra.Command, []string) error {
 // fetchServiceMap runs both direction × {rate, errors, p95} = 6 queries
 // in parallel and folds them into a ServiceMap. Each direction's edges
 // are independently parsed and merged, then sorted by rate desc.
-func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string) (*ServiceMap, error) {
+func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, matchers []Matcher) (*ServiceMap, error) {
 	type edgeQuerySet struct {
 		rate, errors, p95 *prometheus.QueryResponse
 	}
@@ -194,7 +203,7 @@ func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceU
 	eg, egCtx := errgroup.WithContext(ctx)
 	for _, d := range directions {
 		eg.Go(func() error {
-			expr, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, d.dir, namespace, name, window)
+			expr, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, d.dir, namespace, name, window, matchers)
 			if err != nil {
 				return fmt.Errorf("failed to build %s rate query: %w", directionLabel(d.dir), err)
 			}
@@ -206,7 +215,7 @@ func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceU
 			return nil
 		})
 		eg.Go(func() error {
-			expr, err := buildServiceMapEdgeQuery(serviceGraphRequestFailedTotalMetric, d.dir, namespace, name, window)
+			expr, err := buildServiceMapEdgeQuery(serviceGraphRequestFailedTotalMetric, d.dir, namespace, name, window, matchers)
 			if err != nil {
 				return fmt.Errorf("failed to build %s error-rate query: %w", directionLabel(d.dir), err)
 			}
@@ -218,7 +227,7 @@ func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceU
 			return nil
 		})
 		eg.Go(func() error {
-			expr, err := buildServiceMapLatencyQuery(d.dir, namespace, name, window, 0.95)
+			expr, err := buildServiceMapLatencyQuery(d.dir, namespace, name, window, 0.95, matchers)
 			if err != nil {
 				return fmt.Errorf("failed to build %s p95 latency query: %w", directionLabel(d.dir), err)
 			}

@@ -12,7 +12,7 @@ import (
 
 func TestBuildOperationsRateQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildOperationsRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer, spanKindConsumer})
+	got, err := buildOperationsRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer, spanKindConsumer}, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -21,14 +21,14 @@ func TestBuildOperationsRateQuery(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 
-	if _, err := buildOperationsRateQuery(v3, "", "", "5m", nil); err == nil {
+	if _, err := buildOperationsRateQuery(v3, "", "", "5m", nil, nil); err == nil {
 		t.Error("expected error for empty service name")
 	}
 }
 
 func TestBuildOperationsErrorRateQuery(t *testing.T) {
 	tempo, _ := metricNamesByMode(MetricsModeTempo)
-	got, err := buildOperationsErrorRateQuery(tempo, "", "auth", "1m", []string{spanKindServer})
+	got, err := buildOperationsErrorRateQuery(tempo, "", "auth", "1m", []string{spanKindServer}, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -40,7 +40,7 @@ func TestBuildOperationsErrorRateQuery(t *testing.T) {
 
 func TestBuildOperationsLatencyQuantileQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildOperationsLatencyQuantileQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, 0.95)
+	got, err := buildOperationsLatencyQuantileQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, 0.95, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -48,14 +48,14 @@ func TestBuildOperationsLatencyQuantileQuery(t *testing.T) {
 	if got != want {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
-	if _, err := buildOperationsLatencyQuantileQuery(v3, "", "x", "5m", nil, 1.5); err == nil {
+	if _, err := buildOperationsLatencyQuantileQuery(v3, "", "x", "5m", nil, 1.5, nil); err == nil {
 		t.Error("expected error for phi out of range")
 	}
 }
 
 func TestBuildOperationsAvgLatencyQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildOperationsAvgLatencyQuery(v3, "billing", "checkout", "5m", []string{spanKindServer})
+	got, err := buildOperationsAvgLatencyQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}

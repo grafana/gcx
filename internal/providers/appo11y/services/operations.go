@@ -37,6 +37,7 @@ type operationsOpts struct {
 	Kind        string
 	MetricsMode string
 	Limit       int
+	Filters     []string
 }
 
 func (o *operationsOpts) setup(flags *pflag.FlagSet) {
@@ -51,6 +52,7 @@ func (o *operationsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Kind, "kind", "inbound", "Span kinds to include. One of: inbound (server+consumer), server, consumer, all, or a comma-separated list of SPAN_KIND_* literals")
 	flags.StringVar(&o.MetricsMode, "metrics-mode", metricsModeAuto, "Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket)")
 	flags.IntVar(&o.Limit, "limit", operationsDefaultLimit, "Limit the number of operations returned (0 = unlimited; applied after sorting by time-share desc)")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the operations breakdown to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the span metrics")
 }
 
 func (o *operationsOpts) Validate(cmd *cobra.Command) error {
@@ -103,12 +105,15 @@ default. Use --metrics-mode to pin it; see "gcx appo11y services get
   gcx appo11y services list-operations checkoutservice -o wide
 
   # Last hour, unlimited rows, JSON for scripting
-  gcx appo11y services list-operations payments/checkoutservice --since 1h --limit 0 -o json`,
+  gcx appo11y services list-operations payments/checkoutservice --since 1h --limit 0 -o json
+
+  # Break a multi-cluster service down to a single cluster
+  gcx appo11y services list-operations faro-collector --filter k8s_cluster_name=prod-us-central-0`,
 		Args: cobra.ExactArgs(1),
 		RunE: runOperations(opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-operation RED breakdown for one App Observability service: one row per span_name with rate (req/s), error rate, error percent, avg latency, p50/p95/p99, and time-share % (rate * avg_latency normalized across the service). Sorted by time-share desc to surface latency hotspots. Pairs with 'gcx appo11y services get' (which is the headline summary) — use 'list-operations' once a service is identified as hot to find which endpoints carry the load. Examples: gcx appo11y services list-operations <name> -o json; gcx appo11y services list-operations <ns>/<name> --since 1h --limit 0 -o json; gcx appo11y services list-operations <name> -o wide`,
+			agent.AnnotationLLMHint:   `Per-operation RED breakdown for one App Observability service: one row per span_name with rate (req/s), error rate, error percent, avg latency, p50/p95/p99, and time-share % (rate * avg_latency normalized across the service). Sorted by time-share desc to surface latency hotspots. Pairs with 'gcx appo11y services get' (which is the headline summary) — use 'list-operations' once a service is identified as hot to find which endpoints carry the load. Use --filter <label><op><value> (repeatable) to scope the breakdown to a subset of series — most usefully a cluster/region label (e.g. --filter k8s_cluster_name=prod-us) to break a multi-cluster service down one cluster at a time. Examples: gcx appo11y services list-operations <name> -o json; gcx appo11y services list-operations <ns>/<name> --since 1h --limit 0 -o json; gcx appo11y services list-operations <name> -o wide; gcx appo11y services list-operations <name> --filter k8s_cluster_name=<cluster> -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -129,6 +134,10 @@ func runOperations(opts *operationsOpts) func(*cobra.Command, []string) error {
 			return fail.NewCommandUsageError(cmd, "", err)
 		}
 		mode, auto, err := resolveMetricsMode(opts.MetricsMode)
+		if err != nil {
+			return fail.NewCommandUsageError(cmd, "", err)
+		}
+		matchers, err := parseFilters(opts.Filters)
 		if err != nil {
 			return fail.NewCommandUsageError(cmd, "", err)
 		}
@@ -163,7 +172,7 @@ func runOperations(opts *operationsOpts) func(*cobra.Command, []string) error {
 		// bare name silently returns no rows because the `job` label is
 		// `<ns>/<name>`, not `<name>`.
 		if namespace == "" {
-			resolved, err := resolveNamespaceForBareName(ctx, client, datasourceUID, name)
+			resolved, err := resolveNamespaceForBareName(ctx, client, datasourceUID, name, matchers)
 			if err != nil {
 				return err
 			}
@@ -171,13 +180,13 @@ func runOperations(opts *operationsOpts) func(*cobra.Command, []string) error {
 		}
 
 		if auto {
-			mode, err = detectMetricsMode(ctx, client, datasourceUID, namespace, name)
+			mode, err = detectMetricsMode(ctx, client, datasourceUID, namespace, name, matchers)
 			if err != nil {
 				return fmt.Errorf("metrics-mode auto-detect failed: %w", err)
 			}
 		}
 
-		response, err := fetchOperations(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode)
+		response, err := fetchOperations(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode, matchers)
 		if err != nil {
 			return err
 		}
@@ -210,7 +219,7 @@ func runOperations(opts *operationsOpts) func(*cobra.Command, []string) error {
 // lookup in parallel and folds the responses into an OperationsResponse.
 // Metadata uses the same target_info union as `services get` so the
 // language/labels/env fields are consistent between commands.
-func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, kinds []string, mode MetricsMode) (*OperationsResponse, error) {
+func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher) (*OperationsResponse, error) {
 	names, ok := metricNamesByMode(mode)
 	if !ok {
 		return nil, fmt.Errorf("unknown metrics mode %q", mode)
@@ -223,7 +232,7 @@ func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceU
 	eg, egCtx := errgroup.WithContext(ctx)
 	for i, metric := range metrics {
 		eg.Go(func() error {
-			expr, err := buildServiceMetadataQuery(metric, namespace, name)
+			expr, err := buildServiceMetadataQuery(metric, namespace, name, matchers)
 			if err != nil {
 				return fmt.Errorf("failed to build %s metadata query: %w", metric, err)
 			}
@@ -236,7 +245,7 @@ func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceU
 		})
 	}
 	eg.Go(func() error {
-		expr, err := buildOperationsRateQuery(names, namespace, name, window, kinds)
+		expr, err := buildOperationsRateQuery(names, namespace, name, window, kinds, matchers)
 		if err != nil {
 			return fmt.Errorf("failed to build rate query: %w", err)
 		}
@@ -248,7 +257,7 @@ func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceU
 		return nil
 	})
 	eg.Go(func() error {
-		expr, err := buildOperationsErrorRateQuery(names, namespace, name, window, kinds)
+		expr, err := buildOperationsErrorRateQuery(names, namespace, name, window, kinds, matchers)
 		if err != nil {
 			return fmt.Errorf("failed to build error-rate query: %w", err)
 		}
@@ -260,7 +269,7 @@ func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceU
 		return nil
 	})
 	eg.Go(func() error {
-		expr, err := buildOperationsAvgLatencyQuery(names, namespace, name, window, kinds)
+		expr, err := buildOperationsAvgLatencyQuery(names, namespace, name, window, kinds, matchers)
 		if err != nil {
 			return fmt.Errorf("failed to build avg-latency query: %w", err)
 		}
@@ -277,7 +286,7 @@ func fetchOperations(ctx context.Context, client *prometheus.Client, datasourceU
 		0.99: &p99Resp,
 	} {
 		eg.Go(func() error {
-			expr, err := buildOperationsLatencyQuantileQuery(names, namespace, name, window, kinds, phi)
+			expr, err := buildOperationsLatencyQuantileQuery(names, namespace, name, window, kinds, phi, matchers)
 			if err != nil {
 				return fmt.Errorf("failed to build p%.0f latency query: %w", phi*100, err)
 			}

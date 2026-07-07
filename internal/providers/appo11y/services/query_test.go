@@ -1,6 +1,7 @@
 package services //nolint:testpackage // Tests cover unexported helpers (buildServicesQuery, parseFilter, parseServicesResponse).
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -238,6 +239,102 @@ func TestParseFilter(t *testing.T) {
 				t.Errorf("parseFilter() = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseFilters(t *testing.T) {
+	// Empty in → nil out (callers treat nil as "no scoping").
+	got, err := parseFilters(nil)
+	if err != nil {
+		t.Fatalf("parseFilters(nil) err = %v", err)
+	}
+	if got != nil {
+		t.Errorf("parseFilters(nil) = %v, want nil", got)
+	}
+
+	got, err = parseFilters([]string{"k8s_cluster_name=prod-us", "telemetry_sdk_language!=java"})
+	if err != nil {
+		t.Fatalf("parseFilters() err = %v", err)
+	}
+	want := []Matcher{
+		{Label: "k8s_cluster_name", Op: "=", Value: "prod-us"},
+		{Label: "telemetry_sdk_language", Op: "!=", Value: "java"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("parseFilters() = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("parseFilters()[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+
+	if _, err := parseFilters([]string{"bogus"}); err == nil {
+		t.Error("expected error for malformed filter")
+	}
+}
+
+// TestFilterMatchersThreadIntoQueries locks in that a --filter matcher is
+// appended to every per-service query family that carries it — the RED
+// span-metric queries, the operations breakdown, the service-graph edges,
+// and the target_info metadata/lookup queries — so a multi-cluster service
+// can be scoped one cluster at a time. It also confirms the matcher value
+// is quote-escaped identically to the job selector (no injection).
+func TestFilterMatchersThreadIntoQueries(t *testing.T) {
+	v3, _ := metricNamesByMode(MetricsModeV3)
+	m := []Matcher{{Label: "k8s_cluster_name", Op: "=", Value: "prod-us"}}
+	const clusterSel = `k8s_cluster_name="prod-us"`
+
+	checks := []struct {
+		name  string
+		build func() (string, error)
+	}{
+		{"rate", func() (string, error) {
+			return buildRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, m)
+		}},
+		{"error", func() (string, error) {
+			return buildErrorRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, m)
+		}},
+		{"latency", func() (string, error) {
+			return buildLatencyQuantileQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, 0.95, m)
+		}},
+		{"ops-rate", func() (string, error) {
+			return buildOperationsRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, m)
+		}},
+		{"ops-avg", func() (string, error) {
+			return buildOperationsAvgLatencyQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, m)
+		}},
+		{"map-edge", func() (string, error) {
+			return buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, callersDirection, "billing", "checkout", "5m", m)
+		}},
+		{"map-latency", func() (string, error) {
+			return buildServiceMapLatencyQuery(callersDirection, "billing", "checkout", "5m", 0.95, m)
+		}},
+		{"metadata", func() (string, error) { return buildServiceMetadataQuery("target_info", "billing", "checkout", m) }},
+		{"probe", func() (string, error) { return buildModeProbeQuery(v3.calls, "billing/checkout", m) }},
+		{"bare-name", func() (string, error) { return buildBareNameLookupQuery("target_info", "checkout", m) }},
+	}
+	for _, c := range checks {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := c.build()
+			if err != nil {
+				t.Fatalf("build err = %v", err)
+			}
+			if !strings.Contains(got, clusterSel) {
+				t.Errorf("query missing cluster selector %q: %s", clusterSel, got)
+			}
+		})
+	}
+
+	// Injection guard: a matcher value with an embedded quote is escaped so
+	// it can't break out of the selector.
+	evil := []Matcher{{Label: "cloud_region", Op: "=", Value: `x"} or up{`}}
+	got, err := buildRateQuery(v3, "", "checkout", "5m", []string{spanKindServer}, evil)
+	if err != nil {
+		t.Fatalf("build err = %v", err)
+	}
+	if !strings.Contains(got, `cloud_region="x\"} or up{"`) {
+		t.Errorf("matcher value not escaped: %s", got)
 	}
 }
 

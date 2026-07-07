@@ -10,7 +10,7 @@ import (
 )
 
 func TestBuildServiceMapEdgeQuery_Callers(t *testing.T) {
-	got, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, callersDirection, "billing", "checkout", "5m")
+	got, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, callersDirection, "billing", "checkout", "5m", nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -22,7 +22,7 @@ func TestBuildServiceMapEdgeQuery_Callers(t *testing.T) {
 }
 
 func TestBuildServiceMapEdgeQuery_Callees(t *testing.T) {
-	got, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, calleesDirection, "billing", "checkout", "5m")
+	got, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, calleesDirection, "billing", "checkout", "5m", nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -34,7 +34,7 @@ func TestBuildServiceMapEdgeQuery_Callees(t *testing.T) {
 }
 
 func TestBuildServiceMapEdgeQuery_BareName(t *testing.T) {
-	got, err := buildServiceMapEdgeQuery(serviceGraphRequestFailedTotalMetric, callersDirection, "", "auth", "1m")
+	got, err := buildServiceMapEdgeQuery(serviceGraphRequestFailedTotalMetric, callersDirection, "", "auth", "1m", nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -43,17 +43,17 @@ func TestBuildServiceMapEdgeQuery_BareName(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 
-	if _, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, callersDirection, "", "", "5m"); err == nil {
+	if _, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, callersDirection, "", "", "5m", nil); err == nil {
 		t.Error("expected error for empty service name")
 	}
-	if _, err := buildServiceMapEdgeQuery("", callersDirection, "", "auth", "5m"); err == nil {
+	if _, err := buildServiceMapEdgeQuery("", callersDirection, "", "auth", "5m", nil); err == nil {
 		t.Error("expected error for empty metric")
 	}
 }
 
 func TestBuildServiceMapLatencyQuery_DirectionPicksHistogram(t *testing.T) {
 	// Callers should query the server_seconds bucket (how long X took to respond).
-	got, err := buildServiceMapLatencyQuery(callersDirection, "billing", "checkout", "5m", 0.95)
+	got, err := buildServiceMapLatencyQuery(callersDirection, "billing", "checkout", "5m", 0.95, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -63,7 +63,7 @@ func TestBuildServiceMapLatencyQuery_DirectionPicksHistogram(t *testing.T) {
 	}
 
 	// Callees should query the client_seconds bucket (how long X waited on the peer).
-	got, err = buildServiceMapLatencyQuery(calleesDirection, "billing", "checkout", "5m", 0.95)
+	got, err = buildServiceMapLatencyQuery(calleesDirection, "billing", "checkout", "5m", 0.95, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -72,7 +72,7 @@ func TestBuildServiceMapLatencyQuery_DirectionPicksHistogram(t *testing.T) {
 		t.Errorf("callees latency query wrong\ngot %q\nwant %q", got, want)
 	}
 
-	if _, err := buildServiceMapLatencyQuery(callersDirection, "", "x", "5m", 1.5); err == nil {
+	if _, err := buildServiceMapLatencyQuery(callersDirection, "", "x", "5m", 1.5, nil); err == nil {
 		t.Error("expected error for phi out of range")
 	}
 }

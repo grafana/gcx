@@ -133,6 +133,26 @@ func parseFilter(raw string) (Matcher, error) {
 	return Matcher{Label: label, Op: op, Value: val}, nil
 }
 
+// parseFilters validates a slice of raw `--filter` strings into Matchers.
+// Shared by the per-service commands (get, map, list-operations) so a
+// single service can be scoped to a dimension the underlying metric
+// carries — most usefully a cluster/region label. The list command has
+// its own buildFilters wrapper because it layers --language/--env on top.
+func parseFilters(raw []string) ([]Matcher, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	out := make([]Matcher, 0, len(raw))
+	for _, f := range raw {
+		parsed, err := parseFilter(f)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, parsed)
+	}
+	return out, nil
+}
+
 // Service is a single row in the services inventory.
 //
 // Name is the bare service name (no namespace prefix). Namespace is parsed
@@ -479,11 +499,14 @@ func resolveMetricsMode(raw string) (MetricsMode, bool, error) {
 // single scalar when the named calls metric has any series for the
 // requested job, and empty otherwise. Used by auto-detection to pick a
 // MetricsMode without running the full RED query against every family.
-func buildModeProbeQuery(metric, job string) (string, error) {
+func buildModeProbeQuery(metric, job string, matchers []Matcher) (string, error) {
 	if metric == "" || job == "" {
 		return "", errors.New("metric and job are required")
 	}
 	v := promql.Vector(metric).Label("job", escapePromqlValue(job))
+	for _, m := range matchers {
+		v = m.apply(v)
+	}
 	expr, err := promql.Count(v).Build()
 	if err != nil {
 		return "", err
@@ -523,7 +546,7 @@ func spanKindRegex(kinds []string) string {
 // to catch the `job="auth"` shape; otherwise it matches the canonical
 // `<namespace>/<name>` encoding. metric must be one of `target_info` or
 // `traces_target_info`.
-func buildServiceMetadataQuery(metric, namespace, name string) (string, error) {
+func buildServiceMetadataQuery(metric, namespace, name string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
@@ -532,6 +555,9 @@ func buildServiceMetadataQuery(metric, namespace, name string) (string, error) {
 		job = namespace + "/" + name
 	}
 	v := promql.Vector(metric).Label("job", escapePromqlValue(job))
+	for _, m := range matchers {
+		v = m.apply(v)
+	}
 	expr, err := promql.Group(v).By(groupByLabels(nil)).Build()
 	if err != nil {
 		return "", err
@@ -544,7 +570,7 @@ func buildServiceMetadataQuery(metric, namespace, name string) (string, error) {
 // Used to auto-resolve the namespace when the user passes only a bare
 // service name (the alternative is silent no-data for namespaced services).
 // metric must be one of `target_info` or `traces_target_info`.
-func buildBareNameLookupQuery(metric, name string) (string, error) {
+func buildBareNameLookupQuery(metric, name string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
@@ -553,6 +579,9 @@ func buildBareNameLookupQuery(metric, name string) (string, error) {
 	// for full-match, so we don't need ^/$ markers.
 	pattern := "(.+/)?" + regexp.QuoteMeta(name)
 	v := promql.Vector(metric).LabelMatchRegexp("job", escapePromqlValue(pattern))
+	for _, m := range matchers {
+		v = m.apply(v)
+	}
 	expr, err := promql.Group(v).By([]string{"job"}).Build()
 	if err != nil {
 		return "", err
@@ -622,12 +651,13 @@ func namespacesForName(jobs []string, name string) []string {
 }
 
 // buildRateQuery returns the PromQL for the headline request rate (per
-// second) over the given window, scoped to the service and span kinds.
-func buildRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+// second) over the given window, scoped to the service, span kinds, and
+// any caller-supplied `--filter` matchers.
+func buildRateQuery(names metricNames, namespace, name, window string, kinds []string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
-	v := scopedSpanMetric(names.calls, namespace, name, kinds, window)
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window, matchers)
 	expr, err := promql.Sum(promql.Rate(v)).Build()
 	if err != nil {
 		return "", err
@@ -637,11 +667,11 @@ func buildRateQuery(names metricNames, namespace, name, window string, kinds []s
 
 // buildErrorRateQuery returns the PromQL for the error rate (per second)
 // over the given window, scoped to status_code=STATUS_CODE_ERROR.
-func buildErrorRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+func buildErrorRateQuery(names metricNames, namespace, name, window string, kinds []string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
-	v := scopedSpanMetric(names.calls, namespace, name, kinds, window).
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window, matchers).
 		Label("status_code", statusCodeError)
 	expr, err := promql.Sum(promql.Rate(v)).Build()
 	if err != nil {
@@ -652,14 +682,14 @@ func buildErrorRateQuery(names metricNames, namespace, name, window string, kind
 
 // buildLatencyQuantileQuery returns the PromQL for `histogram_quantile(phi,
 // sum by (le) (rate(... [window]))) `. phi must be in [0, 1].
-func buildLatencyQuantileQuery(names metricNames, namespace, name, window string, kinds []string, phi float64) (string, error) {
+func buildLatencyQuantileQuery(names metricNames, namespace, name, window string, kinds []string, phi float64, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
 	if phi < 0 || phi > 1 {
 		return "", fmt.Errorf("phi must be in [0,1], got %v", phi)
 	}
-	v := scopedSpanMetric(names.latencyBucket, namespace, name, kinds, window)
+	v := scopedSpanMetric(names.latencyBucket, namespace, name, kinds, window, matchers)
 	sumByLe := promql.Sum(promql.Rate(v)).By([]string{"le"})
 	expr, err := promql.HistogramQuantile(phi, sumByLe).Build()
 	if err != nil {
@@ -672,11 +702,11 @@ func buildLatencyQuantileQuery(names metricNames, namespace, name, window string
 // the given window: `sum by (span_name) (rate(<calls>[<window>]))`.
 // Shape parallels buildRateQuery but the aggregation is grouped by
 // span_name so the response can be pivoted into one row per operation.
-func buildOperationsRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+func buildOperationsRateQuery(names metricNames, namespace, name, window string, kinds []string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
-	v := scopedSpanMetric(names.calls, namespace, name, kinds, window)
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window, matchers)
 	expr, err := promql.Sum(promql.Rate(v)).By([]string{"span_name"}).Build()
 	if err != nil {
 		return "", err
@@ -687,11 +717,11 @@ func buildOperationsRateQuery(names metricNames, namespace, name, window string,
 // buildOperationsErrorRateQuery returns the per-operation error rate,
 // filtered to status_code=STATUS_CODE_ERROR. An operation with no errors
 // in the window produces no series — the caller treats that as 0.
-func buildOperationsErrorRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+func buildOperationsErrorRateQuery(names metricNames, namespace, name, window string, kinds []string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
-	v := scopedSpanMetric(names.calls, namespace, name, kinds, window).
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window, matchers).
 		Label("status_code", statusCodeError)
 	expr, err := promql.Sum(promql.Rate(v)).By([]string{"span_name"}).Build()
 	if err != nil {
@@ -704,14 +734,14 @@ func buildOperationsErrorRateQuery(names metricNames, namespace, name, window st
 // `histogram_quantile(phi, sum by (le, span_name) (rate(<bucket>[<window>])))`.
 // span_name is preserved through the histogram_quantile call so quantiles
 // stay per-operation.
-func buildOperationsLatencyQuantileQuery(names metricNames, namespace, name, window string, kinds []string, phi float64) (string, error) {
+func buildOperationsLatencyQuantileQuery(names metricNames, namespace, name, window string, kinds []string, phi float64, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
 	if phi < 0 || phi > 1 {
 		return "", fmt.Errorf("phi must be in [0,1], got %v", phi)
 	}
-	v := scopedSpanMetric(names.latencyBucket, namespace, name, kinds, window)
+	v := scopedSpanMetric(names.latencyBucket, namespace, name, kinds, window, matchers)
 	sumByLeAndOp := promql.Sum(promql.Rate(v)).By([]string{"le", "span_name"})
 	expr, err := promql.HistogramQuantile(phi, sumByLeAndOp).Build()
 	if err != nil {
@@ -728,12 +758,12 @@ func buildOperationsLatencyQuantileQuery(names metricNames, namespace, name, win
 // The average × rate gives wall-clock time spent per second, which is
 // what we sort the table by (time share). Native quantiles aren't a
 // substitute — the time-share signal needs the first moment.
-func buildOperationsAvgLatencyQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+func buildOperationsAvgLatencyQuery(names metricNames, namespace, name, window string, kinds []string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
-	sumV := scopedSpanMetric(names.latencySum, namespace, name, kinds, window)
-	countV := scopedSpanMetric(names.latencyCount, namespace, name, kinds, window)
+	sumV := scopedSpanMetric(names.latencySum, namespace, name, kinds, window, matchers)
+	countV := scopedSpanMetric(names.latencyCount, namespace, name, kinds, window, matchers)
 	num := promql.Sum(promql.Rate(sumV)).By([]string{"span_name"})
 	den := promql.Sum(promql.Rate(countV)).By([]string{"span_name"})
 	expr, err := promql.Div(num, den).Build()
@@ -745,18 +775,27 @@ func buildOperationsAvgLatencyQuery(names metricNames, namespace, name, window s
 
 // scopedSpanMetric returns a vector selector for `metric` filtered by a
 // single `job="<ns>/<name>"` (or bare `job="<name>"`) label plus a
-// span_kind regex. Range is applied so the caller can wrap in `rate()`.
+// span_kind regex, then any caller-supplied matchers. Range is applied so
+// the caller can wrap in `rate()`.
 //
 // We keep `service` + `service_namespace` out of the selector on purpose:
 // not every metric family emits them. Newer stacks emit both, but the
 // legacy Tempo `traces_spanmetrics_*` family and the OTel Collector
 // variant only emit `job`. Filtering on `job` alone keeps the query
 // portable across every metrics-mode this command supports.
-func scopedSpanMetric(metric, namespace, name string, kinds []string, window string) *promql.VectorExprBuilder {
-	return promql.Vector(metric).
+//
+// matchers are the user's `--filter` label selectors; they scope the
+// numbers to a dimension the span metric happens to carry — most
+// commonly a cluster label (k8s_cluster_name / cluster) so a service
+// deployed across regions can be broken out one region at a time.
+func scopedSpanMetric(metric, namespace, name string, kinds []string, window string, matchers []Matcher) *promql.VectorExprBuilder {
+	v := promql.Vector(metric).
 		Label("job", escapePromqlValue(jobLabel(namespace, name))).
-		LabelMatchRegexp("span_kind", spanKindRegex(kinds)).
-		Range(window)
+		LabelMatchRegexp("span_kind", spanKindRegex(kinds))
+	for _, m := range matchers {
+		v = m.apply(v)
+	}
+	return v.Range(window)
 }
 
 // instantScalar pulls the first sample's value out of a Prometheus instant
@@ -874,7 +913,7 @@ func (d mapDirection) latencyBucketMetric() string {
 // aggregates a service-graph counter to one row per peer per
 // connection-type. metric is one of the service-graph counter metrics
 // (request_total, request_failed_total).
-func buildServiceMapEdgeQuery(metric string, dir mapDirection, namespace, name, window string) (string, error) {
+func buildServiceMapEdgeQuery(metric string, dir mapDirection, namespace, name, window string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
@@ -887,6 +926,9 @@ func buildServiceMapEdgeQuery(metric string, dir mapDirection, namespace, name, 
 	v := promql.Vector(metric).Label(selfName, escapePromqlValue(name))
 	if namespace != "" {
 		v = v.Label(selfNs, escapePromqlValue(namespace))
+	}
+	for _, m := range matchers {
+		v = m.apply(v)
 	}
 	v = v.Range(window)
 
@@ -904,7 +946,7 @@ func buildServiceMapEdgeQuery(metric string, dir mapDirection, namespace, name, 
 //	histogram_quantile(phi, sum by (le, peer_name, peer_namespace, connection_type) (rate(<bucket>[window])))
 //
 // with the bucket metric picked by `dir.latencyBucketMetric()`.
-func buildServiceMapLatencyQuery(dir mapDirection, namespace, name, window string, phi float64) (string, error) {
+func buildServiceMapLatencyQuery(dir mapDirection, namespace, name, window string, phi float64, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
@@ -917,6 +959,9 @@ func buildServiceMapLatencyQuery(dir mapDirection, namespace, name, window strin
 	v := promql.Vector(dir.latencyBucketMetric()).Label(selfName, escapePromqlValue(name))
 	if namespace != "" {
 		v = v.Label(selfNs, escapePromqlValue(namespace))
+	}
+	for _, m := range matchers {
+		v = m.apply(v)
 	}
 	v = v.Range(window)
 

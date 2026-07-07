@@ -36,6 +36,7 @@ type getOpts struct {
 	Namespace   string
 	Kind        string
 	MetricsMode string
+	Filters     []string
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
@@ -49,6 +50,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Since, "since", defaultRedWindow, "Rate/quantile window applied to span metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax")
 	flags.StringVar(&o.Kind, "kind", "inbound", "Span kinds to include. One of: inbound (server+consumer), server, consumer, all, or a comma-separated list of SPAN_KIND_* literals")
 	flags.StringVar(&o.MetricsMode, "metrics-mode", metricsModeAuto, "Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket)")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the RED snapshot to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the span metrics")
 }
 
 func (o *getOpts) Validate(cmd *cobra.Command) error {
@@ -171,12 +173,15 @@ which family produced the numbers.`,
   gcx appo11y services get checkoutservice --kind server
 
   # Stack double-emits both families; force the Tempo metrics-generator numbers
-  gcx appo11y services get checkoutservice --metrics-mode tempo`,
+  gcx appo11y services get checkoutservice --metrics-mode tempo
+
+  # Break a multi-cluster service down to a single cluster
+  gcx appo11y services get faro-collector --filter k8s_cluster_name=prod-us-central-0`,
 		Args: cobra.ExactArgs(1),
 		RunE: runGet(opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-service RED snapshot from Tempo/OTel span metrics: rate (req/s), error rate, error percent, p50/p95/p99 latency (seconds) over --since (default 5m), scoped to inbound spans (SERVER+CONSUMER). --metrics-mode picks the family: auto (default, probes the stack), v3 (traces_span_metrics_*, OTel Collector >= 0.109 / Alloy >= 1.5), tempo (traces_spanmetrics_*, Tempo metrics-generator — Grafana Cloud default — and Beyla), otel (bare calls_total/duration_seconds_bucket, older Collector/Alloy/Agent). Pairs with 'gcx appo11y services list' to drill into a single row. Examples: gcx appo11y services get <name> -o json; gcx appo11y services get <ns>/<name> --since 1h -o json; gcx appo11y services get <name> --metrics-mode tempo -o json`,
+			agent.AnnotationLLMHint:   `Per-service RED snapshot from Tempo/OTel span metrics: rate (req/s), error rate, error percent, p50/p95/p99 latency (seconds) over --since (default 5m), scoped to inbound spans (SERVER+CONSUMER). --metrics-mode picks the family: auto (default, probes the stack), v3 (traces_span_metrics_*, OTel Collector >= 0.109 / Alloy >= 1.5), tempo (traces_spanmetrics_*, Tempo metrics-generator — Grafana Cloud default — and Beyla), otel (bare calls_total/duration_seconds_bucket, older Collector/Alloy/Agent). Pairs with 'gcx appo11y services list' to drill into a single row. Use --filter <label><op><value> (repeatable) to scope the snapshot to a subset of series — most usefully a cluster/region label (e.g. --filter k8s_cluster_name=prod-us) to break a multi-cluster service down one cluster at a time. Examples: gcx appo11y services get <name> -o json; gcx appo11y services get <ns>/<name> --since 1h -o json; gcx appo11y services get <name> --metrics-mode tempo -o json; gcx appo11y services get <name> --filter k8s_cluster_name=<cluster> -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -197,6 +202,10 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 			return fail.NewCommandUsageError(cmd, "", err)
 		}
 		mode, auto, err := resolveMetricsMode(opts.MetricsMode)
+		if err != nil {
+			return fail.NewCommandUsageError(cmd, "", err)
+		}
+		matchers, err := parseFilters(opts.Filters)
 		if err != nil {
 			return fail.NewCommandUsageError(cmd, "", err)
 		}
@@ -232,7 +241,7 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 		// service via its bare name silently returns no data because the
 		// `job` label is `<ns>/<name>`, not `<name>`.
 		if namespace == "" {
-			resolved, err := resolveNamespaceForBareName(ctx, client, datasourceUID, name)
+			resolved, err := resolveNamespaceForBareName(ctx, client, datasourceUID, name, matchers)
 			if err != nil {
 				return err
 			}
@@ -240,13 +249,13 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 		}
 
 		if auto {
-			mode, err = detectMetricsMode(ctx, client, datasourceUID, namespace, name)
+			mode, err = detectMetricsMode(ctx, client, datasourceUID, namespace, name, matchers)
 			if err != nil {
 				return fmt.Errorf("metrics-mode auto-detect failed: %w", err)
 			}
 		}
 
-		detail, err := fetchServiceDetail(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode)
+		detail, err := fetchServiceDetail(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode, matchers)
 		if err != nil {
 			return err
 		}
@@ -280,14 +289,14 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 //   - an error listing the candidates when multiple namespaces have a
 //     service with the requested name — ambiguity is something the user
 //     must resolve explicitly with `<ns>/<name>` or `--namespace`.
-func resolveNamespaceForBareName(ctx context.Context, client *prometheus.Client, datasourceUID, name string) (string, error) {
+func resolveNamespaceForBareName(ctx context.Context, client *prometheus.Client, datasourceUID, name string, matchers []Matcher) (string, error) {
 	metrics := targetInfoMetrics()
 	responses := make([]*prometheus.QueryResponse, len(metrics))
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	for i, metric := range metrics {
 		eg.Go(func() error {
-			expr, err := buildBareNameLookupQuery(metric, name)
+			expr, err := buildBareNameLookupQuery(metric, name, matchers)
 			if err != nil {
 				return fmt.Errorf("failed to build %s lookup query: %w", metric, err)
 			}
@@ -345,7 +354,7 @@ func summarizeNamespaces(namespaces []string, limit int) string {
 // (see metricsModePreference). When no family has data — uninstrumented
 // service, stale telemetry, wrong stack — it falls back to v3 so the RED
 // snapshot still renders (just with "no traffic") instead of erroring.
-func detectMetricsMode(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name string) (MetricsMode, error) {
+func detectMetricsMode(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name string, matchers []Matcher) (MetricsMode, error) {
 	preference := metricsModePreference()
 	found := make([]bool, len(preference))
 	job := jobLabel(namespace, name)
@@ -357,7 +366,7 @@ func detectMetricsMode(ctx context.Context, client *prometheus.Client, datasourc
 			return "", fmt.Errorf("unknown metrics mode %q", m)
 		}
 		eg.Go(func() error {
-			expr, err := buildModeProbeQuery(names.calls, job)
+			expr, err := buildModeProbeQuery(names.calls, job, matchers)
 			if err != nil {
 				return fmt.Errorf("failed to build %s probe query: %w", m, err)
 			}
@@ -386,7 +395,7 @@ func detectMetricsMode(ctx context.Context, client *prometheus.Client, datasourc
 // the responses into one ServiceDetail. Latency and error queries return
 // zero with HasX=false when there's no series in the window; the table
 // codec renders those as `-`.
-func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, kinds []string, mode MetricsMode) (*ServiceDetail, error) {
+func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher) (*ServiceDetail, error) {
 	names, ok := metricNamesByMode(mode)
 	if !ok {
 		return nil, fmt.Errorf("unknown metrics mode %q", mode)
@@ -399,7 +408,7 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 	eg, egCtx := errgroup.WithContext(ctx)
 	for i, metric := range metrics {
 		eg.Go(func() error {
-			expr, err := buildServiceMetadataQuery(metric, namespace, name)
+			expr, err := buildServiceMetadataQuery(metric, namespace, name, matchers)
 			if err != nil {
 				return fmt.Errorf("failed to build %s metadata query: %w", metric, err)
 			}
@@ -412,7 +421,7 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 		})
 	}
 	eg.Go(func() error {
-		expr, err := buildRateQuery(names, namespace, name, window, kinds)
+		expr, err := buildRateQuery(names, namespace, name, window, kinds, matchers)
 		if err != nil {
 			return fmt.Errorf("failed to build rate query: %w", err)
 		}
@@ -424,7 +433,7 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 		return nil
 	})
 	eg.Go(func() error {
-		expr, err := buildErrorRateQuery(names, namespace, name, window, kinds)
+		expr, err := buildErrorRateQuery(names, namespace, name, window, kinds, matchers)
 		if err != nil {
 			return fmt.Errorf("failed to build error-rate query: %w", err)
 		}
@@ -441,7 +450,7 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 		0.99: &p99Resp,
 	} {
 		eg.Go(func() error {
-			expr, err := buildLatencyQuantileQuery(names, namespace, name, window, kinds, phi)
+			expr, err := buildLatencyQuantileQuery(names, namespace, name, window, kinds, phi, matchers)
 			if err != nil {
 				return fmt.Errorf("failed to build p%.0f latency query: %w", phi*100, err)
 			}
