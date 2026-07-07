@@ -225,6 +225,15 @@ var commandAnnotations = map[string]annotation{
 	"gcx org users remove":      {Cost: "small"},
 
 	// -----------------------------------------------------------------------
+	// Public Dashboards provider
+	// -----------------------------------------------------------------------
+	"gcx public-dashboards list":   {Cost: "medium", Hint: "-o json"},
+	"gcx public-dashboards get":    {Cost: "small", Hint: "<dashboard-uid> -o json"},
+	"gcx public-dashboards create": {Cost: "small", Hint: "<dashboard-uid> -f public-dashboard.json"},
+	"gcx public-dashboards update": {Cost: "small", Hint: "<dashboard-uid> <pd-uid> -f patch.json"},
+	"gcx public-dashboards delete": {Cost: "small"},
+
+	// -----------------------------------------------------------------------
 	// App Observability provider
 	// -----------------------------------------------------------------------
 	"gcx appo11y overrides get":    {Cost: "small"},

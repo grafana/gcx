@@ -49,6 +49,7 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx org](gcx_org.md)	 - Manage Grafana organization resources
 * [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
 * [gcx providers](gcx_providers.md)	 - Manage registered providers
+* [gcx public-dashboards](gcx_public-dashboards.md)	 - Manage public dashboards
 * [gcx resources](gcx_resources.md)	 - Manipulate Grafana resources
 * [gcx setup](gcx_setup.md)	 - Onboard and configure Grafana Cloud products.
 * [gcx slo](gcx_slo.md)	 - Manage Grafana SLO definitions and reports
