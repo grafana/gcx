@@ -18,6 +18,14 @@ func (c *Client) BuildSeriesPath(datasourceUID string) string {
 	return c.buildSeriesPath(datasourceUID)
 }
 
+func (c *Client) BuildCardinalityLabelNamesPath(datasourceUID string) string {
+	return c.buildCardinalityLabelNamesPath(datasourceUID)
+}
+
+func (c *Client) BuildCardinalityLabelValuesPath(datasourceUID string) string {
+	return c.buildCardinalityLabelValuesPath(datasourceUID)
+}
+
 // ConvertGrafanaResponse exposes the unexported converter for the external test package.
 func ConvertGrafanaResponse(grafanaResp *GrafanaQueryResponse, isRange bool) *QueryResponse {
 	return convertGrafanaResponse(grafanaResp, isRange)
