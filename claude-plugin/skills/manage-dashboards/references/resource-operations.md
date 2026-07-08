@@ -7,6 +7,18 @@
 This file documents the full flag set and usage patterns for each `gcx resources`
 subcommand, the selector syntax, and the `serve` live development workflow.
 
+## Contents
+
+- [Selector Syntax](#selector-syntax)
+- [`gcx resources get`](#gcx-resources-get)
+- [`gcx resources push`](#gcx-resources-push)
+- [`gcx resources pull`](#gcx-resources-pull)
+- [`gcx resources delete`](#gcx-resources-delete)
+- [`gcx resources edit`](#gcx-resources-edit)
+- [`gcx resources validate`](#gcx-resources-validate)
+- [`gcx dev serve`](#gcx-dev-serve)
+- [`--on-error` Policy Reference](#--on-error-policy-reference)
+
 ---
 
 ## Selector Syntax

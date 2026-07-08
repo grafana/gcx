@@ -1,7 +1,7 @@
 ---
 name: manage-dashboards
 description: >
-  Use for operational management of existing Grafana dashboards: list, get,
+  Manages existing Grafana dashboards operationally via gcx: list, get,
   search, create or update from an already-authored manifest, delete, inspect
   and restore versions, pull/push/validate/promote dashboard resource files,
   manage dashboard folders, or render PNG snapshots. Do NOT use when the task
@@ -147,7 +147,8 @@ review the newest version, and retry only if the restore is still correct.
 
 ## References
 
-- [`references/resource-operations.md`](references/resource-operations.md) —
-  selector syntax, pull/push/validate flags, and `gcx dev serve` details.
-- [`references/resource-model.md`](references/resource-model.md) — resource
-  structure, manager metadata, folder ordering, and lifecycle behavior.
+- For full flag sets, selector syntax, `--on-error` policy, and the
+  `gcx dev serve` live-reload workflow, read
+  [references/resource-operations.md](references/resource-operations.md).
+- For resource structure, manager metadata, push ordering, and lifecycle
+  behavior, read [references/resource-model.md](references/resource-model.md).

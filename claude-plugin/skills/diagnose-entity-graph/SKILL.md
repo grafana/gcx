@@ -56,9 +56,9 @@ workflow before assuming it exists on this stack.
 
 ## Prerequisites
 
-gcx must be installed (v0.2.14+) and configured with a valid context. If
-`gcx kg diagnose` is available (fork or future release), use it as a shortcut
-where noted. Otherwise, the individual commands below produce equivalent results.
+gcx must be installed and configured with a valid context. `gcx kg diagnose`
+bundles most of the per-step checks below; the individual commands produce
+equivalent results when you need to drill into one check.
 
 ```bash
 gcx config view
@@ -82,11 +82,11 @@ the Asserts app onboarding flow.
 ## Step 2: Entity Counts and Scopes
 
 ```bash
-gcx kg health --since 1h
+gcx kg summary --since 1h
 gcx kg meta scopes
 ```
 
-**Check:** `totalEntities` should be > 0. The `meta scopes` output shows
+**Check:** entity counts should be > 0. The `meta scopes` output shows
 available `env`, `site`, and `namespace` values.
 
 If scoping to a specific environment, note the exact `env` value — you'll
@@ -150,7 +150,7 @@ gcx metrics query 'count(asserts:request:rate5m{asserts_env="ENV"})' --since 1h
 
 ## Step 5: Edge Source Analysis
 
-CALLS edges can come from 11 sources, not just OTel traces:
+CALLS edges can come from many sources, not just OTel traces:
 
 | Source | Input Metric | Requires Traces? |
 |--------|-------------|-----------------|
@@ -199,7 +199,7 @@ rule that maps `namespace` or another label to `asserts_env` for this metric.
 - If services are discovered via JMX (`job` contains `jmx`) → JMX alone
   cannot produce edges. Spring Boot Actuator or OTel tracing is needed.
 
-**Shortcut:** `gcx kg diagnose` now detects this gap automatically and warns
+**Shortcut:** `gcx kg diagnose` detects this gap automatically and warns
 when edge source metrics exist but lack `asserts_env`.
 
 **Most common fix:** If metrics have `deployment_environment` but not
@@ -244,10 +244,10 @@ For a specific missing or edge-less service:
 
 ```bash
 # Find in graph
-gcx kg cypher "MATCH (s:Service {name: \"SERVICE\"}) RETURN s" --since 1h
+gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"}) RETURN s" --since 1h
 
 # Check relationships
-gcx kg cypher "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other" --since 1h
+gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other" --since 1h
 
 # Source metrics
 gcx metrics query 'count(traces_service_graph_request_total{client="SERVICE"})' --since 1h

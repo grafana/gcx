@@ -1,6 +1,6 @@
 ---
 name: investigate-alert
-description: Investigate Grafana alerts to determine why they are firing, their scope, and impact. Use when the user asks about a specific alert, wants to understand alert behavior, or needs to diagnose why an alert is in a firing or pending state.
+description: Investigate Grafana alerts to determine why they are firing, their scope, and impact. Use when the user asks about a specific alert, wants to understand alert behavior, or needs to diagnose why an alert is in a firing or pending state. Trigger on phrases like "why is this alert firing", "investigate this alert", "what is this alert rule doing", or a named alert rule. For triaging what is actively paging in OnCall (alert groups, ack/silence/resolve) use oncall-triage instead.
 ---
 
 # Grafana Alert Investigator
@@ -60,12 +60,12 @@ Query the datasource. Use -o json to get the data for yourself. Use with a graph
 
 ```bash
 # Prometheus
-gcx metrics query <datasource-uid> '<query>' --from now-1h --to now --step 1m -o json
-gcx metrics query <datasource-uid> '<query>' --from now-1h --to now --step 1m -o graph
+gcx metrics query -d <datasource-uid> '<query>' --from now-1h --to now --step 1m -o json
+gcx metrics query -d <datasource-uid> '<query>' --from now-1h --to now --step 1m -o graph
 
 # Loki
-gcx logs query <datasource-uid> '<query>' --from now-1h --to now -o json
-gcx logs query <datasource-uid> '<query>' --from now-1h --to now -o graph
+gcx logs query -d <datasource-uid> '<query>' --from now-1h --to now -o json
+gcx logs query -d <datasource-uid> '<query>' --from now-1h --to now -o graph
 ```
 
 Analyze the results: What's the current value? Spike or gradual? When did it start?

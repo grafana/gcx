@@ -2,6 +2,12 @@
 
 Workflow and query patterns for Tempo trace search using gcx.
 
+## Contents
+
+- [Commands](#commands) - query/get/labels/tags surface
+- [Workflow: discover, search, get](#workflow-discover--search--get)
+- [Attribute scoping rules](#attribute-scoping-rules) - `resource.` / `span.` prefixes and intrinsics
+
 ## Commands
 
 | Command | Purpose | Positional arg |

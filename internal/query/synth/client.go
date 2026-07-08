@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/version"
 	"k8s.io/client-go/rest"
 )
 
@@ -32,6 +33,27 @@ const maxResponseBytes = 50 << 20 // 50 MB
 // API ({{.JsonData.apiHost}}/api/v1/). A logical SM path like "check/list" is
 // reached at "<proxy>/sm/check/list".
 const smRoute = "sm"
+
+// The SM API classifies callers in its request logs (the "mux" subsystem) by the
+// X-Client-ID / X-Client-Version headers — NOT the User-Agent, which Grafana's
+// datasource proxy unconditionally overwrites with "Grafana/<version>".
+//
+// clientIDValue must match an entry in sm-api's allowedClientTypes; any other
+// value is logged as client_type="unknown". Both headers survive the assistant
+// CLI proxy and datasource proxy hops intact (verified end-to-end).
+const (
+	clientIDHeader      = "X-Client-Id"
+	clientVersionHeader = "X-Client-Version"
+	clientIDValue       = "gcx"
+)
+
+// setClientIdentity stamps gcx's SM-API client identity onto a request so the SM
+// API attributes it as client_type="gcx" rather than "unknown". Applied on both
+// the datasource-proxy and direct SM-API request paths.
+func setClientIdentity(h http.Header) {
+	h.Set(clientIDHeader, clientIDValue)
+	h.Set(clientVersionHeader, version.Get())
+}
 
 // Response is the outcome of a proxied SM request. Non-2xx statuses are
 // returned here (not as an error) so callers can inspect StatusCode and decide
@@ -91,6 +113,7 @@ func (c *Client) do(ctx context.Context, method, datasourceUID, smPath string, b
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	setClientIdentity(req.Header)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

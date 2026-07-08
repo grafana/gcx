@@ -1,14 +1,15 @@
 ---
 name: slo-optimize
 description: |
-  Use when the user wants to analyze SLO performance trends and receive improvement recommendations —
+  Analyzes Grafana SLO timeline trends via gcx and produces data-backed advisory recommendations:
   objective tuning, alerting sensitivity review, label visibility, or window adjustments.
+  Use when the user wants to analyze SLO performance trends and receive improvement suggestions.
   Trigger on phrases like "optimize my SLO", "SLO improvement suggestions", "tune my SLO",
   "SLO performance analysis", or "should I change my SLO objective".
   For SLO status overview use slo-check-status.
   For investigating breaching SLOs use slo-investigate.
   For creating or modifying SLO definitions use slo-manage.
-allowed-tools: [gcx, Bash]
+allowed-tools: Bash
 ---
 
 # SLO Optimizer
@@ -94,16 +95,16 @@ using the datasource UID from Step 1:
 
 ```bash
 # SLI window metric (primary trend signal)
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   'grafana_slo_sli_window{slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 
 # Success and total rate for ratio SLOs
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   'grafana_slo_success_rate_5m{slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   'grafana_slo_total_rate_5m{slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 ```

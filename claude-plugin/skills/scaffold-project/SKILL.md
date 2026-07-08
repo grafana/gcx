@@ -1,10 +1,12 @@
 ---
 name: scaffold-project
 description: >
-  Use when the user wants to create a new Grafana resources-as-code project,
-  start a new dashboards-as-code repo, scaffold a gcx project, or asks
-  "how do I get started with gcx". Triggers on phrases like "new project",
-  "scaffold", "bootstrap", "create project", "get started".
+  Scaffolds a new Go project for managing Grafana resources as code via
+  gcx dev scaffold. Use when the user wants to create a new Grafana
+  resources-as-code project, start a new dashboards-as-code repo, scaffold
+  a gcx project, or asks "how do I get started with gcx". Triggers on
+  phrases like "new project", "scaffold", "bootstrap", "create project",
+  "get started".
 ---
 
 # Scaffold a gcx Project
@@ -31,8 +33,8 @@ gcx dev scaffold
 ```
 
 Prompts for:
-- **Project name** — becomes the directory name (kebab-cased)
-- **Go module path** — e.g. `github.com/myorg/my-dashboards`
+- **Project name** - becomes the directory name (kebab-cased)
+- **Go module path** - e.g. `github.com/myorg/my-dashboards`
 
 ### Non-Interactive Mode
 
@@ -58,7 +60,7 @@ my-dashboards/
 ## Next Steps After Scaffolding
 
 1. `cd my-dashboards && go mod tidy`
-2. Configure gcx: `gcx config set server <URL>` and `gcx config set token <TOKEN>`
+2. Configure gcx: `gcx config set grafana.server <URL>` and `gcx config set grafana.token <TOKEN>`
 3. Edit `internal/dashboards/sample.go` or generate new stubs with `gcx dev generate`
 4. Push to Grafana: `gcx resources push`
 
@@ -66,6 +68,6 @@ my-dashboards/
 
 | Issue | Fix |
 |-------|-----|
-| `go mod tidy` fails | Ensure Go 1.24+ is installed |
+| `go mod tidy` fails | Ensure your Go toolchain meets the version required by the generated `go.mod` |
 | Project name has spaces | Names are auto-kebab-cased; spaces become hyphens |
 | Want to add alert rules | Create `internal/alerts/` and use `gcx dev generate alerts/my-rule.go` |

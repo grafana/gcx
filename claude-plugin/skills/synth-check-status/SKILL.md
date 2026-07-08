@@ -1,12 +1,12 @@
 ---
 name: synth-check-status
-description: Use when the user asks about Synthetic Monitoring check health, status, or trends. Trigger on phrases like "are my checks healthy", "check status", "synth check", "probe status", or when users mention specific check names or IDs. For investigating failing checks use synth-investigate-check. For creating or managing checks use synth-manage-checks.
-allowed-tools: [gcx, Bash]
+description: Shows Synthetic Monitoring check health - check inventory, per-check pass/fail status with success rates, and success-rate timelines as terminal graphs. Use when the user asks about Synthetic Monitoring check health, status, or trends. Trigger on phrases like "are my checks healthy", "check status", "synth check", "probe status", or when users mention specific check names or IDs. For investigating failing checks use synth-investigate-check. For creating or managing checks use synth-manage-checks.
+allowed-tools: Bash
 ---
 
 # Synthetic Monitoring Check Status
 
-View check health, status, and timelines. Concise and direct — experienced operators need actionable status, not hand-holding.
+View check health, status, and timelines.
 
 ## Core Principles
 
@@ -25,11 +25,11 @@ Always start with the full check inventory:
 gcx synthetic-monitoring checks list
 ```
 
-Output columns: ID, JOB, TARGET, TYPE. Identify the check(s) the user is asking about.
+Output columns: NAME, JOB, TARGET, TYPE. The NAME suffix is the numeric check ID (e.g. `web-check-1001` is ID `1001`) - use that ID in the commands below. Identify the check(s) the user is asking about.
 
-If the user specifies a check name or target, filter after listing:
+If the user specifies a check name, filter with a job glob:
 ```bash
-gcx synthetic-monitoring checks list -o json | jq '.[] | select(.spec.job == "my-check")'
+gcx synthetic-monitoring checks list --job 'my-check*'
 ```
 
 ### Step 2: Show Status
@@ -44,12 +44,17 @@ For a specific check:
 gcx synthetic-monitoring checks status <ID>
 ```
 
-Output columns: ID, JOB, SUCCESS%, STATUS, PROBES_UP.
+Only failing checks:
+```bash
+gcx synthetic-monitoring checks status --status FAILING
+```
 
-**Status interpretation:**
-- `OK` — success rate >= 50%; check is healthy
-- `FAILING` — success rate < 50%; more than half of probes failing; route to synth-investigate-check for deeper analysis
-- `NODATA` — no Prometheus data; check may be disabled or datasource misconfigured
+Output columns: NAME, JOB, TARGET, SUCCESS, LATENCY, STATUS. Use `-o wide` for PROBES_UP/PROBES_TOTAL, or `-o json` for all fields.
+
+**Status interpretation** (threshold depends on the check's `alertSensitivity`: high = 95%, medium/default = 90%, low = 75%):
+- `OK` - success rate at or above the threshold; check is healthy
+- `FAILING` - success rate below the threshold; route to synth-investigate-check for deeper analysis
+- `NODATA` - no Prometheus data; check may be disabled or datasource misconfigured
 
 ### Step 3: Conditional Timeline
 
@@ -69,10 +74,8 @@ gcx synthetic-monitoring checks timeline <ID> --from <start> --to <end>
 
 Examples:
 ```bash
-gcx synthetic-monitoring checks timeline 42 --since 1h
 gcx synthetic-monitoring checks timeline 42 --since 6h
 gcx synthetic-monitoring checks timeline 42 --from now-24h --to now
-gcx synthetic-monitoring checks timeline 42 --from 2026-01-01T00:00:00Z --to 2026-01-02T00:00:00Z
 ```
 
 Note: `--since` and `--from`/`--to` are mutually exclusive. Use one or the other.
@@ -138,13 +141,13 @@ Possible causes:
 - Synthetic Monitoring datasource not configured
 - Metrics not yet available (newly created check)
 
-Verify: gcx synthetic-monitoring checks status <ID> -o json | jq '.spec.enabled'
+Verify: gcx synthetic-monitoring checks get <ID> -o json | jq '.spec.enabled'
 ```
 
 ## Error Handling
 
 - **`gcx synthetic-monitoring checks list` returns empty**: No checks configured in this context. Verify the gcx context with `gcx config view`.
-- **`gcx synthetic-monitoring checks status <ID>` fails with "not found"**: Confirm the ID from `gcx synthetic-monitoring checks list`. IDs are numeric.
+- **`gcx synthetic-monitoring checks status <ID>` fails with "not found"**: Confirm the ID from `gcx synthetic-monitoring checks list` (the numeric suffix of NAME).
 - **`gcx synthetic-monitoring checks timeline <ID>` fails**: Verify the ID exists and that the check has been running long enough to have data. New checks may show no timeline data.
 - **`--since` and `--from`/`--to` both provided**: These flags are mutually exclusive. Use one or the other.
 - **Timeline shows no data for the selected range**: Try a longer duration (e.g., `--since 24h` instead of `--since 1h`). The check may have been created recently.

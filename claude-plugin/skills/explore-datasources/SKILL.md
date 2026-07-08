@@ -133,11 +133,8 @@ After setting defaults, you can omit the `-d` flag in datasource commands.
 
 **Actions:**
 1. Verify datasource exists: `gcx datasources get <uid>`
-2. Check if service is being monitored:
-   - Prometheus: `gcx metrics query -d <uid> 'up{job="service-x"}'`
-   - Look for service in scrape results
-3. Verify labels exist: `gcx metrics labels -d <uid> --label job`
-4. Test simple query: `gcx metrics query -d <uid> 'up{job="service-x"}'`
+2. Verify labels exist: `gcx metrics labels -d <uid> --label job`
+3. Check if service is being scraped: `gcx metrics query -d <uid> 'up{job="service-x"}'`
 
 **Result:** Identifies whether datasource is misconfigured, service isn't being scraped, or label selectors are wrong.
 
@@ -213,9 +210,9 @@ gcx logs series -d <uid> -M {name="value"}
 
 ## Advanced Usage
 
-For detailed patterns, LogQL syntax guide, and advanced discovery workflows, see:
-- [`references/discovery-patterns.md`](references/discovery-patterns.md) - Common discovery patterns and workflows
-- [`references/logql-syntax.md`](references/logql-syntax.md) - LogQL selector syntax guide
+For detailed patterns and advanced discovery workflows, see:
+- [`references/discovery-patterns.md`](references/discovery-patterns.md) - Common discovery patterns and workflows (jq filtering, cross-datasource search, graph output)
+- [`references/logql-syntax.md`](references/logql-syntax.md) - gcx-specific selector rules for `logs series` (OR via multiple `-M` flags, shell quoting, indexed vs structured-metadata labels)
 
 ## Output Formats
 

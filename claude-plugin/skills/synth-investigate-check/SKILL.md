@@ -1,12 +1,12 @@
 ---
 name: synth-investigate-check
-description: Use when the user wants to diagnose why a Synthetic Monitoring check is failing — triage probe failures, classify failure scope, run per-probe breakdown, and identify root cause. Trigger on phrases like "why is my check failing", "investigate synthetic check", "probe failures", "check is down". For check status overview use synth-check-status. For creating or managing checks use synth-manage-checks.
-allowed-tools: [gcx, Bash]
+description: Diagnoses why a Synthetic Monitoring check is failing - triages probe failures, classifies failure scope, runs per-probe breakdown, and identifies root cause. Use when the user wants to investigate a failing check. Trigger on phrases like "why is my check failing", "investigate synthetic check", "probe failures", "check is down". For check status overview use synth-check-status. For creating or managing checks use synth-manage-checks.
+allowed-tools: Bash
 ---
 
 # Synthetic Check Investigator
 
-Investigate Synthetic Monitoring check failures by triaging probe data, classifying failure scope, and identifying root cause. Experienced operators need actionable diagnosis, not hand-holding.
+Investigate Synthetic Monitoring check failures by triaging probe data, classifying failure scope, and identifying root cause.
 
 ## Core Principles
 
@@ -16,10 +16,6 @@ Investigate Synthetic Monitoring check failures by triaging probe data, classify
 4. Show timeline graphs for time-series data — they communicate trends faster than text
 5. Collect errors; report them at the end, not interleaved in workflow steps
 
-## Prerequisites
-
-gcx configured with an active context and appropriate permissions.
-
 ## Investigation Workflow
 
 ### Step 1: Get Check Status (with early exit)
@@ -28,12 +24,12 @@ gcx configured with an active context and appropriate permissions.
 gcx synthetic-monitoring checks status <ID>
 ```
 
-If the user provided a name instead of ID, list first:
+If the user provided a name instead of ID, list first with a job glob (the numeric ID is the NAME suffix, e.g. `web-check-1001` is ID `1001`):
 ```bash
-gcx synthetic-monitoring checks list -o json | jq -r '.[] | select(.job | test("<name>"; "i")) | [.id, .job, .target, .type] | @tsv'
+gcx synthetic-monitoring checks list --job '*<name>*'
 ```
 
-**Early exit — OK:** Check success rate >= 50% across all probes.
+**Early exit — OK:** Status command reports `OK` (success rate at or above the check's alertSensitivity threshold: high = 95%, medium/default = 90%, low = 75%).
 Report: "Check `<job>` is healthy. Success rate: <rate>%. <probe_count> probes up."
 Stop unless the user asks for more.
 
@@ -81,7 +77,7 @@ Get the probe list for geographic mapping:
 gcx synthetic-monitoring probes list -o json
 ```
 
-Cross-reference probe IDs from the check config against probe regions. Map failing probes to their regions.
+Cross-reference the probe names from the check config against each probe's `region` field. Map failing probes to their regions.
 
 **All probes failing:** Target/service issue — likely target down, SSL error, or DNS failure.
 
@@ -99,39 +95,25 @@ Resolve datasource UID if not already known:
 gcx datasources list --type prometheus
 ```
 
-Run per-probe success rate to pinpoint failing probes:
+Run per-probe success rate to pinpoint failing probes (use `-o json` for parsing, `-o graph` to show the user):
 ```bash
-gcx metrics query <datasource-uid> \
-  'avg by (probe) (probe_success{job="<job>",instance="<target>"})' \
-  --from now-1h --to now --step 1m -o json
-```
-
-Show as graph for the user:
-```bash
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   'avg by (probe) (probe_success{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o graph
 ```
 
 For HTTP checks, also run HTTP phase latency to locate where time is spent:
 ```bash
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   'avg by (phase) (probe_http_duration_seconds{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o graph
 ```
 
-For SSL/TLS failures or near-expiry concerns:
-```bash
-gcx metrics query <datasource-uid> \
-  '(probe_ssl_earliest_cert_expiry{job="<job>",instance="<target>"} - time()) / 86400' \
-  --from now-1h --to now --step 5m -o json
-```
-
-See `references/sm-promql-patterns.md` for full PromQL pattern library.
+For SSL/TLS cert expiry, DNS latency, per-probe error rates, and other patterns, see [sm-promql-patterns.md](references/sm-promql-patterns.md).
 
 ### Step 6: Classify Failure Mode
 
-Cross-reference signals against `references/failure-modes.md` to select the most likely failure mode:
+Cross-reference signals against [failure-modes.md](references/failure-modes.md) (full signal/cause/next-action table and decision tree) to select the most likely failure mode:
 
 1. All probes failing + HTTP non-2xx or connection refused → **Target down**
 2. Subset of probes failing → **Regional/CDN**
@@ -144,17 +126,7 @@ Cross-reference signals against `references/failure-modes.md` to select the most
 
 ### Step 7: Diagnosis and Next Actions
 
-Synthesize findings into an actionable report (see Output Format below).
-
-Next actions depend on failure mode:
-- **Target down**: Check service health, recent deployments, upstream dependencies
-- **Regional/CDN**: Check CDN config, BGP routes, regional incidents for affected regions
-- **SSL/TLS**: Renew cert if expiring; check intermediate chain; verify TLS config
-- **DNS resolution**: Check DNS provider status, record TTLs, CNAME chains
-- **Timeout**: Increase check timeout (must stay < frequency); investigate latency spikes
-- **Content/assertion**: Check if response body/status code changed due to a deployment
-- **Private probe infra**: Check private probe agent health and connectivity
-- **Rate limiting**: Reduce check frequency or add allowlist for SM probe IPs
+Synthesize findings into an actionable report (see Output Format below). Take next actions from the "Next Action" column of the failure mode's row in [failure-modes.md](references/failure-modes.md).
 
 If deeper investigation is needed (e.g., logs, infra repos), ask the user if they want to proceed.
 
@@ -210,6 +182,6 @@ Use minimal formatting. Avoid excessive bold text. Trust the user to prioritize.
 
 - `gcx synthetic-monitoring checks status` returns no rows: check ID may be wrong — list all checks and confirm
 - `gcx synthetic-monitoring probes list` fails: skip geographic mapping; classify probes by name where possible
-- `gcx datasources {kind} query` fails with datasource error: note it, skip PromQL steps, classify using timeline data only
+- `gcx metrics query` fails with datasource error: note it, skip PromQL steps, classify using timeline data only
 - Multiple checks match the search name: list all with IDs and targets, ask which to investigate
 - Timeline returns no data for the window: widen to `--from now-6h --to now` before concluding NODATA

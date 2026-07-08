@@ -1,11 +1,11 @@
 ---
 name: create-dashboard
 description: >
-  Use when the user wants to create a new Grafana dashboard, add panels,
-  variables, or annotations to an existing dashboard, design dashboard panels,
-  variables, queries, or layout, or make a material visual redesign of an
-  existing dashboard. This skill uses gcx plus `gcx dashboards snapshot` as
-  a visual feedback loop. Triggers on "create dashboard", "new dashboard",
+  Designs and creates Grafana dashboards with gcx, using `gcx dashboards
+  snapshot` as a visual feedback loop. Use when the user wants to create a
+  new Grafana dashboard, add panels, variables, or annotations to an existing
+  dashboard, design dashboard panels, variables, queries, or layout, or make
+  a material visual redesign. Triggers on "create dashboard", "new dashboard",
   "build dashboard", "dashboard for <service>", "add panels", "add variable",
   "add annotation", "improve this dashboard", or "iterate on a dashboard".
 ---
@@ -140,36 +140,26 @@ Dashboards should answer a diagnostic question. Prefer a top-to-bottom story:
 Context and health → user impact → traffic/errors/latency → dependency path → resources → logs/traces links
 ```
 
-Panel rules:
-
-- Put the most actionable row in the first screen.
-- Use variables for the entity scope users will actually change: cluster,
-  namespace, service, route, tenant, datasource.
-- Give every panel a clear title, unit, legend, and short description.
-- Use thresholds only where they encode an operational decision.
-- Collapse deep-dive/noisy rows by default.
-- Avoid panels that are empty by design in the normal case unless the panel
-  title/description says that empty is healthy.
-- Add drilldown links when a panel naturally leads to logs, traces, or another
-  dashboard.
-
-Dashboard quality checklist, distilled from Grafana dashboard best practices:
+Design rules, distilled from Grafana dashboard best practices:
 
 - Define the dashboard's job before adding panels. If a panel does not support
   that job, remove it or move it to a collapsed deep-dive row.
-- Prefer fewer, decision-oriented panels over metric inventory. The top row
-  should answer "is there a problem and where should I look next?"
-- Use consistent units, decimals, color semantics, thresholds, and legend names
-  across panels.
-- Keep variables useful but limited. Too many variables make snapshots and
-  debugging ambiguous.
+- Prefer fewer, decision-oriented panels over metric inventory. The first
+  screen should answer "is there a problem and where should I look next?"
+- Use variables for the entity scope users will actually change (cluster,
+  namespace, service, route, tenant, datasource), but keep them limited; too
+  many variables make snapshots and debugging ambiguous.
+- Give every panel a clear title, unit, legend, and short description. Keep
+  units, decimals, color semantics, and legend names consistent across panels.
+- Use thresholds only where they encode an operational decision.
 - Avoid unbounded/high-cardinality queries in default panels. Use aggregation,
   `topk()`, scoped variables, and sensible time ranges.
 - Tune refresh and time ranges for the use case. Do not make expensive panels
   auto-refresh faster than the data or the user decision requires.
-- Make empty states intentional: either empty means healthy and the description
-  says so, or the panel should be fixed/removed.
-- Validate readability at the expected viewport, not only the JSON structure.
+- Make empty states intentional: either empty means healthy and the panel
+  description says so, or the panel should be fixed/removed.
+- Add drilldown links when a panel naturally leads to logs, traces, or another
+  dashboard.
 
 ### 5. Author the dashboard
 

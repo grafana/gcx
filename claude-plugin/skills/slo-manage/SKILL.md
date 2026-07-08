@@ -1,7 +1,7 @@
 ---
 name: slo-manage
-description: Use when the user wants to create, update, pull, push, or delete SLO definitions. Trigger on phrases like "create an SLO", "update SLO objective", "push SLO", "pull SLOs", "delete SLO", or "GitOps sync SLOs". For checking SLO health or status, use slo-check-status instead. For investigating a breaching SLO, use slo-investigate instead.
-allowed-tools: [gcx, Bash, Read, Write, Edit]
+description: Creates, updates, syncs, and deletes Grafana SLO definitions via gcx with dry-run validation and GitOps pull/push workflows. Use when the user wants to create, update, pull, push, or delete SLO definitions. Trigger on phrases like "create an SLO", "update SLO objective", "push SLO", "pull SLOs", "delete SLO", or "GitOps sync SLOs". For checking SLO health or status, use slo-check-status instead. For investigating a breaching SLO, use slo-investigate instead.
+allowed-tools: Bash, Read, Write, Edit
 ---
 
 # SLO Management
@@ -55,7 +55,7 @@ Use the UID from the output. If multiple Prometheus datasources exist, ask the u
 
 ### Step 3: Build YAML from the appropriate template
 
-See `references/slo-templates.md` for complete templates. Key structure:
+For complete ratio, freeform, and threshold templates (including alerting, labels, and folder fields), see [references/slo-templates.md](references/slo-templates.md). Key structure:
 
 ```yaml
 apiVersion: slo.ext.grafana.app/v1alpha1

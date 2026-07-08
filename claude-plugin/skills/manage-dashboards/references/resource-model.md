@@ -2,6 +2,21 @@
 
 This document describes how Grafana resources are structured and how they relate to each other.
 
+## Contents
+
+- [Resource Structure](#resource-structure)
+- [Resource Relationships](#resource-relationships)
+- [Resource Groups](#resource-groups)
+- [Manager Metadata](#manager-metadata)
+- [API Versions](#api-versions)
+- [Discovery System](#discovery-system)
+- [Push Order](#push-order)
+- [Source Tracking](#source-tracking)
+- [Resource Filtering](#resource-filtering)
+- [Memory Considerations](#memory-considerations)
+- [Resource Lifecycle](#resource-lifecycle)
+- [Best Practices](#best-practices)
+
 ## Resource Structure
 
 All Grafana resources follow Kubernetes-style conventions:
@@ -108,31 +123,10 @@ metadata:
   - Use `--include-managed` to modify (use with caution)
   - Prevents accidental overwrites from different tools
 
-### Three-Way Merge (Future)
+## API Versions
 
-Currently gcx uses simple upsert logic. Future versions will implement proper three-way merge:
-- Track field ownership by manager
-- Allow multiple managers to coexist
-- Detect and resolve conflicts
-- Similar to `kubectl apply` behavior
-
-## Resource Versioning
-
-### API Versions
-
-Resources can have multiple API versions:
-- **v1alpha1**: Alpha version, subject to breaking changes
-- **v1beta1**: Beta version, more stable
-- **v1**: Stable version (when available)
-
-gcx uses **preferred version** by default (typically latest stable version).
-
-### Resource Versions (Future)
-
-Currently gcx does not track `resourceVersion` for optimistic locking. Future versions will:
-- Include `resourceVersion` in metadata
-- Detect concurrent modifications
-- Retry on conflict with exponential backoff
+Resources can have multiple API versions (e.g. v1alpha1, v1beta1, v1). gcx uses
+the **preferred version** by default (typically the latest stable version).
 
 ## Discovery System
 
@@ -205,9 +199,6 @@ gcx resources pull dashboards/uid1,uid2,uid3
 # Preferred version (default)
 gcx resources pull dashboards
 
-# All versions
-gcx resources pull dashboards --all-versions
-
 # Specific version
 gcx resources pull dashboards.v1alpha1.dashboard.grafana.app
 ```
@@ -218,8 +209,6 @@ gcx loads all resources into memory during operations:
 - **Typical usage**: ~1MB per 100 dashboards
 - **Practical limit**: ~10,000 resources before memory pressure
 - **Mitigation**: Use selective pulling (specific resource types or UIDs)
-
-Future versions may add streaming support for very large deployments.
 
 ## Resource Lifecycle
 
