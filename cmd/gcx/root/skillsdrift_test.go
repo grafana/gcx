@@ -79,6 +79,11 @@ func TestSkillsGcxInvocationsMatchCommandTree(t *testing.T) {
 	t.Logf("validated %d gcx invocations from bundled skills", total)
 }
 
+// TestValidateInvocation pins the validation behaviour of the skills drift
+// check against the real command tree: alias resolution, flags written before
+// their subcommand (resolved by cobra's Find, not the token position),
+// placeholders in command position, and the exact "unknown command"/"unknown
+// flag" message formats that the drift test and its allowances match on.
 func TestValidateInvocation(t *testing.T) {
 	rootCmd := buildRootCmd()
 	rootCmd.InitDefaultHelpCmd()
