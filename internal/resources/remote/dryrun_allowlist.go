@@ -39,8 +39,9 @@ type dryRunAllowlist struct {
 // values are skipped and returned separately rather than failing: a typo'd assertion simply
 // does not take effect, so the resource falls back to the fail-safe best-effort path instead
 // of a bad value blocking every operation.
-func newDryRunAllowlist(assumed []string) (allowlist dryRunAllowlist, invalid []string) {
+func newDryRunAllowlist(assumed []string) (dryRunAllowlist, []string) {
 	extra := make(map[schema.GroupResource]struct{}, len(assumed))
+	var invalid []string
 	for _, s := range assumed {
 		gr, err := parseGroupResource(s)
 		if err != nil {
@@ -52,10 +53,10 @@ func newDryRunAllowlist(assumed []string) (allowlist dryRunAllowlist, invalid []
 	return dryRunAllowlist{extra: extra}, invalid
 }
 
-// classify reports whether gr honors server-side dryRun and, when it does, whether that
-// comes from the built-in static seed (static=true) or from a user assertion (static=false).
-// Callers use static=false to note that the safety assertion came from the user, not gcx.
-func (a dryRunAllowlist) classify(gr schema.GroupResource) (honored, static bool) {
+// classify reports (honored, static): whether gr honors server-side dryRun, and (when it
+// does) whether that comes from the built-in static seed (true) or from a user assertion
+// (false). A false static tells callers the safety assertion came from the user, not gcx.
+func (a dryRunAllowlist) classify(gr schema.GroupResource) (bool, bool) {
 	if _, ok := staticServerDryRunAllowlist[gr]; ok {
 		return true, true
 	}

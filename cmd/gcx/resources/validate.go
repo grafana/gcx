@@ -134,50 +134,8 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			// Resources whose API does not honor server-side dry-run are recorded as skipped
-			// (server-verification impossible) rather than falsely reported as valid. Surface
-			// that count in every output mode, including structured output that agents consume.
-			skipped := summary.SkippedCount()
-
-			if opts.IO.OutputFormat == "text" {
-				if summary.FailedCount() == 0 {
-					if skipped > 0 {
-						cmdio.Warning(cmd.OutOrStdout(), "%d resources validated, %d skipped (server-side dry-run unsupported, not verified)", summary.SuccessCount(), skipped)
-					} else {
-						cmdio.Success(cmd.OutOrStdout(), "No errors found.")
-					}
-					return nil
-				}
-
-				if err := opts.IO.Encode(cmd.OutOrStdout(), summary); err != nil {
-					return err
-				}
-				if skipped > 0 {
-					cmdio.Warning(cmd.OutOrStdout(), "%d resources skipped (server-side dry-run unsupported, not verified)", skipped)
-				}
-			} else {
-				printableSummary := struct {
-					Failures []map[string]string `json:"failures" yaml:"failures"`
-					Skipped  int                 `json:"skipped" yaml:"skipped"`
-				}{
-					Failures: make([]map[string]string, 0),
-					Skipped:  skipped,
-				}
-
-				for _, failure := range summary.Failures() {
-					file := ""
-					if failure.Resource != nil {
-						file = failure.Resource.SourcePath()
-					}
-					printableSummary.Failures = append(printableSummary.Failures, map[string]string{
-						"file":  file,
-						"error": failure.Error.Error(),
-					})
-				}
-
-				if err := opts.IO.Encode(cmd.OutOrStdout(), printableSummary); err != nil {
-					return err
-				}
+			if err := reportValidation(cmd.OutOrStdout(), opts.IO, summary); err != nil {
+				return err
 			}
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
@@ -191,6 +149,61 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+// reportValidation renders the validation outcome. Resources whose API does not honor
+// server-side dry-run are recorded as skipped (server-verification impossible) rather than
+// falsely reported as valid, so the skipped count is surfaced in every output mode,
+// including the structured output that agents consume.
+func reportValidation(w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
+	if ioOpts.OutputFormat != "text" {
+		return encodeValidationSummary(w, ioOpts, summary)
+	}
+	return reportValidationText(w, ioOpts, summary)
+}
+
+func reportValidationText(w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
+	skipped := summary.SkippedCount()
+
+	if summary.FailedCount() == 0 {
+		if skipped > 0 {
+			cmdio.Warning(w, "%d resources validated, %d skipped (server-side dry-run unsupported, not verified)", summary.SuccessCount(), skipped)
+		} else {
+			cmdio.Success(w, "No errors found.")
+		}
+		return nil
+	}
+
+	if err := ioOpts.Encode(w, summary); err != nil {
+		return err
+	}
+	if skipped > 0 {
+		cmdio.Warning(w, "%d resources skipped (server-side dry-run unsupported, not verified)", skipped)
+	}
+	return nil
+}
+
+func encodeValidationSummary(w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
+	printableSummary := struct {
+		Failures []map[string]string `json:"failures" yaml:"failures"`
+		Skipped  int                 `json:"skipped" yaml:"skipped"`
+	}{
+		Failures: make([]map[string]string, 0),
+		Skipped:  summary.SkippedCount(),
+	}
+
+	for _, failure := range summary.Failures() {
+		file := ""
+		if failure.Resource != nil {
+			file = failure.Resource.SourcePath()
+		}
+		printableSummary.Failures = append(printableSummary.Failures, map[string]string{
+			"file":  file,
+			"error": failure.Error.Error(),
+		})
+	}
+
+	return ioOpts.Encode(w, printableSummary)
 }
 
 type validationTableCodec struct{}

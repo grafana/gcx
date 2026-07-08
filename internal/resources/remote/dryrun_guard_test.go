@@ -1,4 +1,4 @@
-package remote
+package remote //nolint:testpackage // White-box test for the dry-run guard internals.
 
 import (
 	"bytes"
@@ -201,6 +201,7 @@ func TestDryRunGuard_NonBlockingDeleteError(t *testing.T) {
 
 type errGetClient struct {
 	fakeDynamicClient
+
 	err error
 }
 
