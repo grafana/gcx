@@ -22,13 +22,12 @@ import (
 const DefaultGCOMClientID = "gcx"
 
 // DefaultGCOMScopes returns the OAuth2 scopes requested when logging in to the
-// Grafana Cloud platform API (grafana.com) for stack and access-policy
-// management. A fresh slice is returned on each call so callers (e.g. a Cobra
-// flag default) can mutate their copy without affecting others.
+// Grafana Cloud platform API (grafana.com) for stack management. A fresh slice
+// is returned on each call so callers (e.g. a Cobra flag default) can mutate
+// their copy without affecting others.
 func DefaultGCOMScopes() []string {
 	return []string{
 		"stacks:read", "stacks:write", "stacks:delete",
-		"accesspolicies:read", "accesspolicies:write", "accesspolicies:delete",
 	}
 }
 
