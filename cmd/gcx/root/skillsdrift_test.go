@@ -13,21 +13,25 @@ import (
 	"github.com/spf13/pflag"
 )
 
+type driftAllowance struct {
+	file     string
+	contains string
+}
+
 // knownSkillDrift lists gcx invocations in the bundled skills that are known
 // to be wrong on main. All entries are already fixed on the PR #936 branch;
 // delete the whole list when #936 merges. Each entry suppresses failures in
 // one file whose message contains the given substring.
-var knownSkillDrift = []struct {
-	file     string
-	contains string
-}{
-	{"diagnose-entity-graph/SKILL.md", "unknown command `gcx kg health`"},
-	{"diagnose-entity-graph/SKILL.md", "unknown command `gcx kg cypher`"},
-	// push takes -p/--path, not -f
-	{"gcx-observability/SKILL.md", "unknown flag -f on `gcx resources push`"},
-	{"manage-dashboards/references/resource-model.md", "unknown flag --all-versions on `gcx resources pull`"},
-	// the acknowledge confirmation flag is --force, not --yes
-	{"oncall-triage/SKILL.md", "unknown flag --yes on `gcx irm oncall alert-groups acknowledge`"},
+func knownSkillDrift() []driftAllowance {
+	return []driftAllowance{
+		{"diagnose-entity-graph/SKILL.md", "unknown command `gcx kg health`"},
+		{"diagnose-entity-graph/SKILL.md", "unknown command `gcx kg cypher`"},
+		// push takes -p/--path, not -f
+		{"gcx-observability/SKILL.md", "unknown flag -f on `gcx resources push`"},
+		{"manage-dashboards/references/resource-model.md", "unknown flag --all-versions on `gcx resources pull`"},
+		// the acknowledge confirmation flag is --force, not --yes
+		{"oncall-triage/SKILL.md", "unknown flag --yes on `gcx irm oncall alert-groups acknowledge`"},
+	}
 }
 
 // TestSkillsGcxInvocationsMatchCommandTree extracts every gcx invocation from
@@ -138,7 +142,7 @@ func TestValidateInvocation(t *testing.T) {
 }
 
 func allowedDrift(file, msg string) bool {
-	for _, k := range knownSkillDrift {
+	for _, k := range knownSkillDrift() {
 		if k.file == file && strings.Contains(msg, k.contains) {
 			return true
 		}
@@ -157,9 +161,15 @@ func (inv invocation) String() string {
 
 var envAssignRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 
-// shellKeywords are leading words stripped so invocations inside loops and
-// conditionals (e.g. `do gcx ...`) are still recognised.
-var shellKeywords = map[string]bool{"do": true, "then": true, "else": true, "time": true, "exec": true}
+// isShellKeyword reports leading words stripped so invocations inside loops
+// and conditionals (e.g. `do gcx ...`) are still recognised.
+func isShellKeyword(tok string) bool {
+	switch tok {
+	case "do", "then", "else", "time", "exec":
+		return true
+	}
+	return false
+}
 
 // extractInvocations returns every gcx invocation found in shell-flavoured
 // (bash, sh, shell, or bare) fenced code blocks of a markdown document.
@@ -201,7 +211,7 @@ func extractInvocations(content string) []invocation {
 // gcxArgs strips env-var assignment prefixes and shell keywords and reports
 // whether the remaining simple command is a gcx invocation.
 func gcxArgs(tokens []string) ([]string, bool) {
-	for len(tokens) > 0 && (envAssignRe.MatchString(tokens[0]) || shellKeywords[tokens[0]]) {
+	for len(tokens) > 0 && (envAssignRe.MatchString(tokens[0]) || isShellKeyword(tokens[0])) {
 		tokens = tokens[1:]
 	}
 	if len(tokens) == 0 || tokens[0] != "gcx" {
@@ -244,36 +254,13 @@ func parseCommands(line string) [][]string {
 		c := line[i]
 		switch {
 		case c == '\'':
-			end := strings.IndexByte(line[i+1:], '\'')
-			if end < 0 {
-				word.WriteString(line[i+1:])
-				inWord = true
-				i = len(line)
-				break
-			}
-			word.WriteString(line[i+1 : i+1+end])
+			i = scanSingleQuoted(line, i+1, &word)
 			inWord = true
-			i += end + 2
 		case c == '"':
-			i++
-			for i < len(line) && line[i] != '"' {
-				if line[i] == '\\' && i+1 < len(line) {
-					word.WriteByte(line[i+1])
-					i += 2
-					continue
-				}
-				if line[i] == '$' && i+1 < len(line) && line[i+1] == '(' {
-					inner, next := captureParen(line, i+2)
-					cmds = append(cmds, parseCommands(inner)...)
-					word.WriteString("$(...)")
-					i = next
-					continue
-				}
-				word.WriteByte(line[i])
-				i++
-			}
+			var nested [][]string
+			nested, i = scanDoubleQuoted(line, i+1, &word)
+			cmds = append(cmds, nested...)
 			inWord = true
-			i++
 		case c == '$' && i+1 < len(line) && line[i+1] == '(':
 			inner, next := captureParen(line, i+2)
 			cmds = append(cmds, parseCommands(inner)...)
@@ -328,6 +315,44 @@ func parseCommands(line string) [][]string {
 	}
 	flushCmd()
 	return cmds
+}
+
+// scanSingleQuoted consumes a single-quoted section starting just after the
+// opening quote, appending its content to word; it returns the index just
+// past the closing quote.
+func scanSingleQuoted(line string, i int, word *strings.Builder) int {
+	end := strings.IndexByte(line[i:], '\'')
+	if end < 0 {
+		word.WriteString(line[i:])
+		return len(line)
+	}
+	word.WriteString(line[i : i+end])
+	return i + end + 1
+}
+
+// scanDoubleQuoted consumes a double-quoted section starting just after the
+// opening quote, appending its content to word, honouring backslash escapes
+// and recursing into $(...) substitutions. It returns commands found in the
+// substitutions and the index just past the closing quote.
+func scanDoubleQuoted(line string, i int, word *strings.Builder) ([][]string, int) {
+	var cmds [][]string
+	for i < len(line) && line[i] != '"' {
+		if line[i] == '\\' && i+1 < len(line) {
+			word.WriteByte(line[i+1])
+			i += 2
+			continue
+		}
+		if line[i] == '$' && i+1 < len(line) && line[i+1] == '(' {
+			inner, next := captureParen(line, i+2)
+			cmds = append(cmds, parseCommands(inner)...)
+			word.WriteString("$(...)")
+			i = next
+			continue
+		}
+		word.WriteByte(line[i])
+		i++
+	}
+	return cmds, i + 1
 }
 
 // captureParen returns the content up to the parenthesis matching an already
@@ -449,8 +474,7 @@ func validateInvocation(rootCmd *cobra.Command, args []string) error {
 			continue
 		}
 		name, _, hasValue := strings.Cut(tok, "=")
-		if strings.HasPrefix(name, "--") {
-			long := strings.TrimPrefix(name, "--")
+		if long, isLong := strings.CutPrefix(name, "--"); isLong {
 			if long == "help" || long == "version" {
 				continue
 			}
@@ -464,7 +488,7 @@ func validateInvocation(rootCmd *cobra.Command, args []string) error {
 			continue
 		}
 		shorts := name[1:]
-		for k := 0; k < len(shorts); k++ {
+		for k := range len(shorts) {
 			s := string(shorts[k])
 			// the help flag is registered lazily by cobra at execute time
 			if s == "h" {
@@ -496,8 +520,7 @@ func flagConsumesValue(cmd *cobra.Command, tok string) bool {
 	if hasValue {
 		return false
 	}
-	if strings.HasPrefix(name, "--") {
-		long := strings.TrimPrefix(name, "--")
+	if long, isLong := strings.CutPrefix(name, "--"); isLong {
 		if long == "help" || long == "version" {
 			return false
 		}
