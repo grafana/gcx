@@ -69,6 +69,12 @@ Compiles from source on your machine (requires Homebrew's `go`, installed
 automatically as a build dependency). First install takes ~30–60 seconds
 while Go fetches dependencies; subsequent upgrades are faster.
 
+To update to the latest version:
+
+```bash
+brew update && brew upgrade gcx
+```
+
 **Pre-built binary (Linux/macOS/Windows):**
 
 Download the latest archive for your OS and architecture from the
