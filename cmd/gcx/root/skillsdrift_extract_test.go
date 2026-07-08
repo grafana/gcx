@@ -5,6 +5,12 @@ import (
 	"testing"
 )
 
+// TestExtractInvocations pins the extraction behaviour of the skills drift
+// check: which parts of a skill markdown document count as gcx invocations
+// (shell fences, inline code spans) and how shell syntax within them is
+// tokenized (continuations, pipes, substitutions, quoting, placeholders).
+// When TestSkillsGcxInvocationsMatchCommandTree misbehaves, these cases
+// separate extractor bugs from genuine command-tree drift.
 func TestExtractInvocations(t *testing.T) {
 	tests := []struct {
 		name    string
