@@ -51,10 +51,12 @@ func (p *IRMProvider) Commands() []*cobra.Command {
 		newResolutionNotesCmd(loader),
 		newShiftSwapsCmd(loader),
 		newEscalateCommand(loader),
+		newComplianceRulesCmd(loader),
 	)
 
 	irmCmd.AddCommand(oncallCmd)
 	irmCmd.AddCommand(newIncidentsCmd(loader))
+	irmCmd.AddCommand(newDoctorCmd(loader))
 
 	return []*cobra.Command{irmCmd}
 }
