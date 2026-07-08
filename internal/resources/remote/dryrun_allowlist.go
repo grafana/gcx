@@ -13,9 +13,9 @@ import (
 // else is denied by default, notably all alerting resources, which are legacy-only and
 // whose bridges ignore dryRun, so a dry-run push silently applies the mutation.
 //
-// The criterion is "honors dryRun regardless of storage mode", not "the legacy bridge
-// honors dryRun": safety is decided by the mode a request routes to, not by the bridge.
-// See docs/plans/2026-07-07-dryrun-client-side-mitigation.md and grafana-enterprise#12569.
+// Only add things here that are guaranteed to honour dryRun: safety is decided by the
+// storage mode a request routes to, not by whether the legacy bridge honours dryRun.
+// See grafana-enterprise#12569.
 //
 //nolint:gochecknoglobals // constant lookup table.
 var staticServerDryRunAllowlist = map[schema.GroupResource]struct{}{

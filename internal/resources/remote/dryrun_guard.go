@@ -20,7 +20,6 @@ import (
 // request targets a resource that does not honor server-side dryRun. The pusher and deleter
 // recognise it and record the resource as skipped (neither a failure nor a success), so gcx
 // never claims it pushed or deleted something it deliberately did not send.
-// See docs/plans/2026-07-07-dryrun-client-side-mitigation.md.
 var errDryRunUnverified = errors.New("server-side dry-run not supported; checked client-side only (not verified)")
 
 // GuardConfig configures the dry-run safety guard applied to a Pusher or Deleter.
