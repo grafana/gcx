@@ -80,7 +80,7 @@ Use JSON/YAML for programmatic work and table/wide output for human summaries.
 | Create from finished file | `gcx dashboards create -f <dashboard.yaml>` |
 | Update from finished file | `gcx dashboards update <dashboard-name> -f <dashboard.yaml>` |
 | Delete with confirmation | `gcx dashboards delete <dashboard-name>` |
-| Delete non-interactively | `gcx dashboards delete <dashboard-name> --yes` |
+| Delete non-interactively | `gcx dashboards delete <dashboard-name> --force` |
 | Version history | `gcx dashboards versions list <dashboard-name>` |
 | Restore version | `gcx dashboards versions restore <dashboard-name> <version> --message "<why>"` |
 | Pull dashboards/folders | `gcx resources pull dashboards folders -p <dir> -o yaml` |
