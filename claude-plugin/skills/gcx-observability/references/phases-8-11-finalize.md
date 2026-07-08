@@ -30,8 +30,8 @@ gcx resources examples Folder
 ```
 Write folder YAML, then push:
 ```bash
-gcx resources push -f folder.yaml --dry-run
-gcx resources push -f folder.yaml
+gcx resources push -p folder.yaml --dry-run
+gcx resources push -p folder.yaml
 ```
 List folders to confirm and capture the UID.
 
@@ -48,7 +48,7 @@ Each agent:
 1. Gets a dashboard example: `gcx resources examples Dashboard`
 2. Customizes the dashboard JSON with appropriate panels and queries
 3. Writes `dashboard-<name>.yaml`
-4. Pushes: `gcx resources push -f dashboard-<name>.yaml --dry-run` then `gcx resources push -f dashboard-<name>.yaml`
+4. Pushes: `gcx resources push -p dashboard-<name>.yaml --dry-run` then `gcx resources push -p dashboard-<name>.yaml`
 5. Verifies: `gcx resources get dashboards` filtered by folder UID
 
 Launch all dashboard agents simultaneously. Mark task completed.

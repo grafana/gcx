@@ -18,24 +18,6 @@ type driftAllowance struct {
 	contains string
 }
 
-// knownSkillDrift lists gcx invocations in the bundled skills that are known
-// to be wrong on main and are being fixed in PR #936; delete entries as the
-// fixes merge. Each entry suppresses failures in one file whose message
-// contains the given substring.
-func knownSkillDrift() []driftAllowance {
-	return []driftAllowance{
-		{"diagnose-entity-graph/SKILL.md", "unknown command `gcx kg health`"},
-		{"diagnose-entity-graph/SKILL.md", "unknown command `gcx kg cypher`"},
-		// push takes -p/--path, not -f
-		{"gcx-observability/SKILL.md", "unknown flag -f on `gcx resources push`"},
-		{"manage-dashboards/references/resource-model.md", "unknown flag --all-versions on `gcx resources pull`"},
-		// the acknowledge confirmation flag is --force, not --yes
-		{"oncall-triage/SKILL.md", "unknown flag --yes on `gcx irm oncall alert-groups acknowledge`"},
-		// overrides is a singleton resource: the verbs are get/update, not list
-		{"gcx/SKILL.md", "unknown command `gcx appo11y overrides list`"},
-	}
-}
-
 // intentionalReferences lists mentions of removed gcx commands that skills
 // reference deliberately as historical context. These are permanent
 // allowances, not drift.
@@ -158,11 +140,9 @@ func TestValidateInvocation(t *testing.T) {
 }
 
 func allowedDrift(file, msg string) bool {
-	for _, list := range [][]driftAllowance{knownSkillDrift(), intentionalReferences()} {
-		for _, k := range list {
-			if k.file == file && strings.Contains(msg, k.contains) {
-				return true
-			}
+	for _, k := range intentionalReferences() {
+		if k.file == file && strings.Contains(msg, k.contains) {
+			return true
 		}
 	}
 	return false

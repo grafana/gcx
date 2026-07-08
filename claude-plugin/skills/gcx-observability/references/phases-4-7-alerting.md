@@ -34,8 +34,8 @@ For each journey `J`, launch an agent that:
 - Creates the SLO: `gcx slo definitions push slo-J.yaml --dry-run` then `gcx slo definitions push slo-J.yaml`. List SLOs to confirm.
 - Creates burn-rate alert rules as K8s resources. Get an example: `gcx resources examples AlertRule`. Build 1h/6h/24h burn-rate rules and push them:
   ```bash
-  gcx resources push -f alert-rules-J.yaml --dry-run
-  gcx resources push -f alert-rules-J.yaml
+  gcx resources push -p alert-rules-J.yaml --dry-run
+  gcx resources push -p alert-rules-J.yaml
   ```
   List rules to confirm: `gcx alert rules list`.
 
