@@ -421,47 +421,29 @@ func isFlagToken(tok string) bool {
 // against the real command tree and checks that every flag used exists on the
 // resolved command (including persistent flags inherited from parents).
 //
-// Like cobra, it resolves the command path first, skipping over flag tokens,
-// and only then parses flags against the resolved leaf - so a flag may
-// legally appear before the subcommand it belongs to (e.g. `gcx --config x
-// resources get`, where --config lives on the resources subtree).
+// Resolution is cobra's own Find, which skips flag tokens the way execution
+// would - so a flag may legally appear before the subcommand it belongs to
+// (e.g. `gcx --config x resources get`, where --config lives on the resources
+// subtree).
 func validateInvocation(rootCmd *cobra.Command, args []string) error {
-	// pass 1: resolve the command path, skipping flag tokens
-	cmd := rootCmd
-	var pathTokens []string
-	descending := true
-	for i := 0; i < len(args); i++ {
-		tok := args[i]
-		if tok == "--" {
-			break
+	// Find's own error only covers root-level unknowns (legacyArgs); the
+	// post-check below reports those and deeper ones uniformly.
+	cmd, remaining, _ := rootCmd.Find(args)
+
+	// Find stops descending at the first token that is not a subcommand;
+	// that token is the first positional of the remaining args.
+	if tok := firstPositional(cmd, remaining); tok != "" {
+		if isPlaceholder(tok) {
+			// placeholder in command position: the rest cannot be resolved
+			return nil
 		}
-		if isFlagToken(tok) {
-			if flagConsumesValue(cmd, tok) {
-				i++
-			}
-			continue
+		if !cmd.Runnable() && cmd.HasSubCommands() {
+			return fmt.Errorf("unknown command `gcx %s`", strings.Join(append(pathOf(cmd), tok), " "))
 		}
-		if !descending {
-			continue
-		}
-		child := findChild(cmd, tok)
-		if child == nil {
-			if isPlaceholder(tok) {
-				// placeholder in command position: the rest cannot be resolved
-				return nil
-			}
-			if !cmd.Runnable() && cmd.HasSubCommands() {
-				return fmt.Errorf("unknown command `gcx %s`", strings.Join(append(pathTokens, tok), " "))
-			}
-			descending = false // positional argument of a runnable command
-			continue
-		}
-		cmd = child
-		pathTokens = append(pathTokens, tok)
 	}
 	cmdPath := "gcx"
-	if len(pathTokens) > 0 {
-		cmdPath += " " + strings.Join(pathTokens, " ")
+	if p := pathOf(cmd); len(p) > 0 {
+		cmdPath += " " + strings.Join(p, " ")
 	}
 
 	// pass 2: validate every flag against the resolved leaf
@@ -478,7 +460,7 @@ func validateInvocation(rootCmd *cobra.Command, args []string) error {
 			if long == "help" || long == "version" {
 				continue
 			}
-			f := lookupFlag(cmd, long)
+			f := cmd.Flag(long)
 			if f == nil {
 				return fmt.Errorf("unknown flag %s on `%s`", name, cmdPath)
 			}
@@ -494,7 +476,7 @@ func validateInvocation(rootCmd *cobra.Command, args []string) error {
 			if s == "h" {
 				continue
 			}
-			f := lookupShorthand(cmd, s)
+			f := shorthand(cmd, s)
 			if f == nil {
 				return fmt.Errorf("unknown flag -%s on `%s`", s, cmdPath)
 			}
@@ -511,64 +493,53 @@ func validateInvocation(rootCmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// flagConsumesValue reports whether a flag token eats the next token during
-// path resolution. Mirrors cobra's stripFlags: a space-separated flag not yet
-// known at the current node is assumed to consume a value, because its
-// definition may live on a leaf that is still being resolved.
-func flagConsumesValue(cmd *cobra.Command, tok string) bool {
-	name, _, hasValue := strings.Cut(tok, "=")
-	if hasValue {
-		return false
-	}
-	if long, isLong := strings.CutPrefix(name, "--"); isLong {
-		if long == "help" || long == "version" {
-			return false
+// firstPositional returns the first non-flag token in remaining, skipping
+// flag values: a known bool-like flag consumes nothing, while known value
+// flags and unknown space-separated flags consume the next token, mirroring
+// the stripFlags heuristic cobra's Find used to produce remaining.
+func firstPositional(cmd *cobra.Command, remaining []string) string {
+	for i := 0; i < len(remaining); i++ {
+		tok := remaining[i]
+		if tok == "--" {
+			return ""
 		}
-		if f := lookupFlag(cmd, long); f != nil {
-			return f.NoOptDefVal == ""
+		if !isFlagToken(tok) {
+			return tok
 		}
-		return true
+		name, _, hasValue := strings.Cut(tok, "=")
+		if hasValue {
+			continue
+		}
+		if long, isLong := strings.CutPrefix(name, "--"); isLong {
+			if f := cmd.Flag(long); f != nil && f.NoOptDefVal != "" {
+				continue
+			}
+			i++
+			continue
+		}
+		// cobra only consumes a value for single-letter shorthands
+		if short := name[1:]; len(short) == 1 {
+			if f := shorthand(cmd, short); f != nil && f.NoOptDefVal != "" {
+				continue
+			}
+			i++
+		}
 	}
-	short := name[1:]
-	// cobra only consumes a value for single-letter shorthands
-	if len(short) != 1 || short == "h" {
-		return false
-	}
-	if f := lookupShorthand(cmd, short); f != nil {
-		return f.NoOptDefVal == ""
-	}
-	return true
+	return ""
 }
 
-func findChild(cmd *cobra.Command, name string) *cobra.Command {
-	for _, c := range cmd.Commands() {
-		if c.Name() == name || c.HasAlias(name) {
-			return c
-		}
+// pathOf returns the command path below the root.
+func pathOf(cmd *cobra.Command) []string {
+	var names []string
+	for c := cmd; c.HasParent(); c = c.Parent() {
+		names = append([]string{c.Name()}, names...)
 	}
-	return nil
+	return names
 }
 
-func lookupFlag(cmd *cobra.Command, name string) *pflag.Flag {
-	if f := cmd.Flags().Lookup(name); f != nil {
-		return f
-	}
-	for c := cmd; c != nil; c = c.Parent() {
-		if f := c.PersistentFlags().Lookup(name); f != nil {
-			return f
-		}
-	}
-	return nil
-}
-
-func lookupShorthand(cmd *cobra.Command, s string) *pflag.Flag {
+func shorthand(cmd *cobra.Command, s string) *pflag.Flag {
 	if f := cmd.Flags().ShorthandLookup(s); f != nil {
 		return f
 	}
-	for c := cmd; c != nil; c = c.Parent() {
-		if f := c.PersistentFlags().ShorthandLookup(s); f != nil {
-			return f
-		}
-	}
-	return nil
+	return cmd.InheritedFlags().ShorthandLookup(s)
 }
