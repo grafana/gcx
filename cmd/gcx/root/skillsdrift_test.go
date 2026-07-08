@@ -19,9 +19,9 @@ type driftAllowance struct {
 }
 
 // knownSkillDrift lists gcx invocations in the bundled skills that are known
-// to be wrong on main. All entries are already fixed on the PR #936 branch;
-// delete the whole list when #936 merges. Each entry suppresses failures in
-// one file whose message contains the given substring.
+// to be wrong on main and are being fixed in PR #936; delete entries as the
+// fixes merge. Each entry suppresses failures in one file whose message
+// contains the given substring.
 func knownSkillDrift() []driftAllowance {
 	return []driftAllowance{
 		{"diagnose-entity-graph/SKILL.md", "unknown command `gcx kg health`"},
@@ -31,6 +31,19 @@ func knownSkillDrift() []driftAllowance {
 		{"manage-dashboards/references/resource-model.md", "unknown flag --all-versions on `gcx resources pull`"},
 		// the acknowledge confirmation flag is --force, not --yes
 		{"oncall-triage/SKILL.md", "unknown flag --yes on `gcx irm oncall alert-groups acknowledge`"},
+		// overrides is a singleton resource: the verbs are get/update, not list
+		{"gcx/SKILL.md", "unknown command `gcx appo11y overrides list`"},
+	}
+}
+
+// intentionalReferences lists mentions of removed gcx commands that skills
+// reference deliberately as historical context. These are permanent
+// allowances, not drift.
+func intentionalReferences() []driftAllowance {
+	return []driftAllowance{
+		// documents the removed `irm oncall alerts` commands and points
+		// readers at `alert-groups list-alerts` instead
+		{"oncall-triage/SKILL.md", "unknown command `gcx irm oncall alerts`"},
 	}
 }
 
@@ -75,8 +88,11 @@ func TestSkillsGcxInvocationsMatchCommandTree(t *testing.T) {
 	}
 
 	// Guard against the extractor silently matching nothing after a refactor.
-	if total < 100 {
-		t.Fatalf("extracted only %d gcx invocations from bundled skills, expected hundreds; extractor is likely broken", total)
+	// The bundle currently yields ~1000 invocations (~700 from fences, ~330
+	// from inline spans); 500 catches a broken fence scan or total collapse
+	// while leaving room for skills to shrink.
+	if total < 500 {
+		t.Fatalf("extracted only %d gcx invocations from bundled skills, expected around a thousand; extractor is likely broken", total)
 	}
 	t.Logf("validated %d gcx invocations from bundled skills", total)
 }
@@ -142,9 +158,11 @@ func TestValidateInvocation(t *testing.T) {
 }
 
 func allowedDrift(file, msg string) bool {
-	for _, k := range knownSkillDrift() {
-		if k.file == file && strings.Contains(msg, k.contains) {
-			return true
+	for _, list := range [][]driftAllowance{knownSkillDrift(), intentionalReferences()} {
+		for _, k := range list {
+			if k.file == file && strings.Contains(msg, k.contains) {
+				return true
+			}
 		}
 	}
 	return false
@@ -172,7 +190,8 @@ func isShellKeyword(tok string) bool {
 }
 
 // extractInvocations returns every gcx invocation found in shell-flavoured
-// (bash, sh, shell, or bare) fenced code blocks of a markdown document.
+// (bash, sh, shell, or bare) fenced code blocks of a markdown document, plus
+// invocations in inline code spans of prose and tables outside fences.
 func extractInvocations(content string) []invocation {
 	lines := strings.Split(content, "\n")
 	var invs []invocation
@@ -189,7 +208,15 @@ func extractInvocations(content string) []invocation {
 			shellFence = lang == "" || lang == "bash" || lang == "sh" || lang == "shell"
 			continue
 		}
-		if !inFence || !shellFence {
+		if !inFence {
+			for _, cmd := range inlineGcxCommands(lines[i]) {
+				if args, ok := gcxArgs(cmd); ok {
+					invs = append(invs, invocation{line: i + 1, args: args})
+				}
+			}
+			continue
+		}
+		if !shellFence {
 			continue
 		}
 		start := i
@@ -206,6 +233,37 @@ func extractInvocations(content string) []invocation {
 		}
 	}
 	return invs
+}
+
+// inlineGcxCommands returns the simple commands found in backtick code spans
+// of a prose or table line. A span opens and closes with equal-length backtick
+// runs, so double-backtick spans quoting text with backticks are matched too.
+// Only spans starting with "gcx " are treated as invocations; anything else
+// (fragments like `--force` or `resources delete`) is a mention, not a
+// runnable command.
+func inlineGcxCommands(line string) [][]string {
+	var cmds [][]string
+	for i := 0; i < len(line); {
+		if line[i] != '`' {
+			i++
+			continue
+		}
+		open := i
+		for i < len(line) && line[i] == '`' {
+			i++
+		}
+		delim := line[open:i]
+		end := strings.Index(line[i:], delim)
+		if end < 0 {
+			break
+		}
+		content := strings.TrimSpace(line[i : i+end])
+		i += end + len(delim)
+		if strings.HasPrefix(content, "gcx ") {
+			cmds = append(cmds, parseCommands(content)...)
+		}
+	}
+	return cmds
 }
 
 // gcxArgs strips env-var assignment prefixes and shell keywords and reports

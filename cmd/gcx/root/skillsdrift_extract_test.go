@@ -27,8 +27,41 @@ func TestExtractInvocations(t *testing.T) {
 			want:    nil,
 		},
 		{
-			name:    "outside fences skipped",
+			name:    "inline span in prose extracted",
 			content: "run `gcx slo definitions list` to see them\n",
+			want:    []invocation{{line: 1, args: []string{"slo", "definitions", "list"}}},
+		},
+		{
+			name:    "inline span in table cell",
+			content: "| delete | `gcx dashboards delete <name> --force` | notes |\n",
+			want:    []invocation{{line: 1, args: []string{"dashboards", "delete", "<name>", "--force"}}},
+		},
+		{
+			name:    "inline span with placeholder",
+			content: "fetch it with `gcx slo definitions get <uid>` first\n",
+			want:    []invocation{{line: 1, args: []string{"slo", "definitions", "get", "<uid>"}}},
+		},
+		{
+			name:    "non-gcx inline span ignored",
+			content: "use `kubectl get pods` instead\n",
+			want:    nil,
+		},
+		{
+			name:    "fragment inline spans ignored",
+			content: "pass `--force` to `resources delete`, or just `gcx` alone\n",
+			want:    nil,
+		},
+		{
+			name:    "double-backtick span and second span",
+			content: "``gcx providers`` and `gcx config check`\n",
+			want: []invocation{
+				{line: 1, args: []string{"providers"}},
+				{line: 1, args: []string{"config", "check"}},
+			},
+		},
+		{
+			name:    "inline span inside non-shell fence not scanned",
+			content: "```go\n// see `gcx providers` for details\n```\n",
 			want:    nil,
 		},
 		{
