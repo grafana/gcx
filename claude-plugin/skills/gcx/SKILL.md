@@ -1,8 +1,8 @@
 ---
 name: gcx
 description: >
-  Use gcx CLI to manage Grafana Cloud resources. Trigger when the user wants to
-  inspect, create, update, delete, query, or automate any Grafana resource —
+  Manages Grafana Cloud resources via the gcx CLI. Trigger when the user wants to
+  inspect, create, update, delete, query, or automate any Grafana resource -
   dashboards, datasources, alerts, SLOs, synthetic checks, oncall, incidents,
   fleet, k6, knowledge graph, or adaptive telemetry.
 user-invocable: true

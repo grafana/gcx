@@ -1,7 +1,7 @@
 ---
 name: synth-check-status
 description: Shows Synthetic Monitoring check health - check inventory, per-check pass/fail status with success rates, and success-rate timelines as terminal graphs. Use when the user asks about Synthetic Monitoring check health, status, or trends. Trigger on phrases like "are my checks healthy", "check status", "synth check", "probe status", or when users mention specific check names or IDs. For investigating failing checks use synth-investigate-check. For creating or managing checks use synth-manage-checks.
-allowed-tools: [Bash]
+allowed-tools: Bash
 ---
 
 # Synthetic Monitoring Check Status

@@ -1,7 +1,7 @@
 ---
 name: slo-investigate
 description: Diagnoses breaching Grafana SLOs via gcx - root cause analysis, dimensional breakdown, alert rule correlation, runbook access. Use when a specific SLO is breaching or alerting and the user needs to understand why. Trigger on phrases like "investigate SLO", "why is my SLO breaching", "SLO error budget burning", "SLO alerting". For SLO status overview use slo-check-status. For creating or modifying SLOs use slo-manage. For optimization suggestions use slo-optimize.
-allowed-tools: [Bash]
+allowed-tools: Bash
 ---
 
 # SLO Investigator

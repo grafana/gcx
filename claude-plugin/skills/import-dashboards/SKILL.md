@@ -1,9 +1,10 @@
 ---
 name: import-dashboards
 description: >
-  Use when the user wants to import existing Grafana dashboards as Go code,
-  convert live dashboards to builder code, migrate dashboards to code,
-  or reverse-engineer a dashboard from a Grafana instance. Triggers on
+  Imports existing Grafana dashboards as Go builder code via gcx. Use when
+  the user wants to convert live dashboards to builder code, migrate
+  dashboards to code, or reverse-engineer a dashboard from a Grafana
+  instance. Triggers on
   "import dashboard", "convert to code", "dashboard as code", "export dashboard".
   For pulling dashboards as YAML/JSON resource files rather than Go code,
   use manage-dashboards instead.

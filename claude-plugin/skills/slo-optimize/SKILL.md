@@ -9,7 +9,7 @@ description: |
   For SLO status overview use slo-check-status.
   For investigating breaching SLOs use slo-investigate.
   For creating or modifying SLO definitions use slo-manage.
-allowed-tools: [Bash]
+allowed-tools: Bash
 ---
 
 # SLO Optimizer

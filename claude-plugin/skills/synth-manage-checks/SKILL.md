@@ -1,7 +1,7 @@
 ---
 name: synth-manage-checks
 description: Creates, updates, exports, and deletes Synthetic Monitoring checks from YAML definitions via gcx. Use when the user wants to create, update, pull, push, or delete Synthetic Monitoring checks. Trigger on phrases like "create a check", "add a synthetic check", "update check", "pull my SM checks", "push checks", "delete check", or when the user provides a target URL/hostname/domain for monitoring. For check status overview use synth-check-status. For investigating failing checks use synth-investigate-check.
-allowed-tools: [Bash, Read, Write, Edit]
+allowed-tools: Bash, Read, Write, Edit
 ---
 
 # Synthetic Monitoring Check Manager

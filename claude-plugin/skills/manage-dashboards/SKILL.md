@@ -1,7 +1,7 @@
 ---
 name: manage-dashboards
 description: >
-  Use for operational management of existing Grafana dashboards: list, get,
+  Manages existing Grafana dashboards operationally via gcx: list, get,
   search, create or update from an already-authored manifest, delete, inspect
   and restore versions, pull/push/validate/promote dashboard resource files,
   manage dashboard folders, or render PNG snapshots. Do NOT use when the task

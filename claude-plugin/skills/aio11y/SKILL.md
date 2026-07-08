@@ -1,13 +1,15 @@
 ---
 name: aio11y
 description: >
-  Use when the user wants to list or search AI Observability conversations, inspect generations,
+  Inspects and manages Grafana AI Observability resources via gcx:
+  conversations, generations, evaluators, rules, scores, and templates.
+  Use when the user wants to list or search conversations, inspect generations,
   manage evaluators (create, test, delete), set up evaluation rules, check scores,
   or browse evaluator templates. Trigger on phrases like "list conversations",
   "search generations", "what did the agent do", "debug LLM conversation",
   "create evaluator", "set up evaluation rule", "test evaluator", "check scores",
   "evaluate generation quality", or "set up online evaluation".
-allowed-tools: [Bash, Read, Write, Edit]
+allowed-tools: Bash, Read, Write, Edit
 ---
 
 # AI Observability

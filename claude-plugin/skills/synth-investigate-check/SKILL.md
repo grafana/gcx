@@ -1,7 +1,7 @@
 ---
 name: synth-investigate-check
 description: Diagnoses why a Synthetic Monitoring check is failing - triages probe failures, classifies failure scope, runs per-probe breakdown, and identifies root cause. Use when the user wants to investigate a failing check. Trigger on phrases like "why is my check failing", "investigate synthetic check", "probe failures", "check is down". For check status overview use synth-check-status. For creating or managing checks use synth-manage-checks.
-allowed-tools: [Bash]
+allowed-tools: Bash
 ---
 
 # Synthetic Check Investigator
