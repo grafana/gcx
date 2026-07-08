@@ -102,7 +102,7 @@ internal/
 │   ├── dynamic/    k8s dynamic client wrapper (namespaced + versioned)
 │   ├── local/      FSReader, FSWriter (disk I/O)
 │   ├── process/    Processors: ManagerFields, ServerFields, Namespace
-│   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary, dry-run guard (fail-safe client-side dry-run for APIs that ignore server-side dryRun)
+│   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary, dry-run guard
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
 │   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
