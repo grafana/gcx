@@ -44,7 +44,7 @@ func writeMutationSummary(w io.Writer, verb string, summary *remote.OperationSum
 	}
 
 	if skipped > 0 {
-		printer(w, "%d resources %s, %d errors (%d skipped: dry-run not supported server-side, not verified)",
+		printer(w, "%d resources %s, %d errors (%d skipped: not server-verified)",
 			summary.SuccessCount(), verb, summary.FailedCount(), skipped)
 		return
 	}

@@ -72,14 +72,14 @@ func newDryRunGuard(inner adapter.DynamicClient, allowlist dryRunAllowlist, warn
 // blockDryRun reports whether a mutating call must be blocked because it is a dry-run against
 // a resource that does not honor server-side dryRun. Non-dry-run calls are never blocked. It
 // emits the one-time stderr warning (blocked) or note (user-asserted) as a side effect.
-func (g *dryRunGuard) blockDryRun(desc resources.Descriptor, dryRun []string) bool {
+func (g *dryRunGuard) blockDryRun(desc resources.Descriptor, dryRun []string, checkedDetail string) bool {
 	if !slices.Contains(dryRun, metav1.DryRunAll) {
 		return false
 	}
 	gr := schema.GroupResource{Group: desc.GroupVersion.Group, Resource: desc.Plural}
 	honored, static := g.allowlist.classify(gr)
 	if !honored {
-		g.warnBlocked(gr)
+		g.warnBlocked(gr, checkedDetail)
 		return true
 	}
 	if !static {
@@ -88,10 +88,19 @@ func (g *dryRunGuard) blockDryRun(desc resources.Descriptor, dryRun []string) bo
 	return false
 }
 
+// Verb-specific descriptions of the client-side checks a blocked dry-run actually ran,
+// so the warning states what gcx verified rather than only what it skipped. Push covers
+// both create and update (the pusher determines which and runs the same checks).
+const (
+	pushDryRunChecks = "gcx checked client-side only: the manifest parses and the kind is served by this API. " +
+		"It did not validate the spec, references, or uniqueness. No changes were sent."
+	deleteDryRunChecks = "gcx checked client-side only whether the target exists. No delete was sent."
+)
+
 func (g *dryRunGuard) Create(
 	ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.CreateOptions,
 ) (*unstructured.Unstructured, error) {
-	if g.blockDryRun(desc, opts.DryRun) {
+	if g.blockDryRun(desc, opts.DryRun, pushDryRunChecks) {
 		return nil, errDryRunUnverified
 	}
 	return g.inner.Create(ctx, desc, obj, opts)
@@ -100,14 +109,14 @@ func (g *dryRunGuard) Create(
 func (g *dryRunGuard) Update(
 	ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.UpdateOptions,
 ) (*unstructured.Unstructured, error) {
-	if g.blockDryRun(desc, opts.DryRun) {
+	if g.blockDryRun(desc, opts.DryRun, pushDryRunChecks) {
 		return nil, errDryRunUnverified
 	}
 	return g.inner.Update(ctx, desc, obj, opts)
 }
 
 func (g *dryRunGuard) Delete(ctx context.Context, desc resources.Descriptor, name string, opts metav1.DeleteOptions) error {
-	if g.blockDryRun(desc, opts.DryRun) {
+	if g.blockDryRun(desc, opts.DryRun, deleteDryRunChecks) {
 		// Best-effort existence check: this never sends the Delete a legacy bridge would
 		// otherwise apply. A NotFound is still reported as skipped (nothing to delete).
 		if _, err := g.inner.Get(ctx, desc, name, metav1.GetOptions{}); err != nil && !apierrors.IsNotFound(err) {
@@ -138,9 +147,9 @@ func (g *dryRunGuard) List(
 	return g.inner.List(ctx, desc, opts)
 }
 
-func (g *dryRunGuard) warnBlocked(gr schema.GroupResource) {
+func (g *dryRunGuard) warnBlocked(gr schema.GroupResource, checkedDetail string) {
 	g.announceOnce(gr, func(w io.Writer) {
-		output.Warning(w, "%s does not support server-side dry-run; checked client-side only (not verified). No changes were sent.", gr.String())
+		output.Warning(w, "%s does not support server-side dry-run. %s", gr.String(), checkedDetail)
 	})
 }
 

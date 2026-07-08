@@ -102,6 +102,7 @@ func TestDryRunGuard_BlocksNonHonoringCreate(t *testing.T) {
 	require.ErrorIs(t, err, errDryRunUnverified)
 	require.Empty(t, fake.creates, "guard must not forward the Create to a non-honoring API")
 	require.Contains(t, warn.String(), "alertrules.rules.alerting.grafana.app")
+	require.Contains(t, warn.String(), "did not validate the spec", "warning should itemize what was NOT checked")
 	require.Contains(t, warn.String(), "No changes were sent")
 }
 
@@ -117,13 +118,16 @@ func TestDryRunGuard_BlocksNonHonoringUpdate(t *testing.T) {
 
 func TestDryRunGuard_BlocksNonHonoringDelete_ExistenceChecked(t *testing.T) {
 	fake := &fakeDynamicClient{}
-	guard := newDryRunGuard(fake, testAllowlist(t), &bytes.Buffer{})
+	warn := &bytes.Buffer{}
+	guard := newDryRunGuard(fake, testAllowlist(t), warn)
 
 	err := guard.Delete(context.Background(), guardAlertRuleDesc(), "rule-1", metav1.DeleteOptions{DryRun: dryRun()})
 
 	require.ErrorIs(t, err, errDryRunUnverified)
 	require.Equal(t, []string{"rule-1"}, fake.gets, "guard should confirm existence via Get")
 	require.Empty(t, fake.deletes, "guard must not forward the Delete to a non-honoring API")
+	require.Contains(t, warn.String(), "whether the target exists", "delete warning should describe the existence check")
+	require.Contains(t, warn.String(), "No delete was sent")
 }
 
 func TestDryRunGuard_BlocksNonHonoringDelete_NotFound(t *testing.T) {
