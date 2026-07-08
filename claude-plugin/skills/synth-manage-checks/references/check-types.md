@@ -1,5 +1,14 @@
 # Check Type Reference
 
+## Contents
+
+- [Decision Tree](#decision-tree)
+- [HTTP Check](#http-check)
+- [Ping Check](#ping-check)
+- [DNS Check](#dns-check)
+- [TCP Check](#tcp-check)
+- [Traceroute Check](#traceroute-check)
+
 ## Decision Tree
 
 ```
@@ -23,7 +32,7 @@ Tests URL availability, response codes, response time, and optional content matc
 apiVersion: syntheticmonitoring.ext.grafana.app/v1alpha1
 kind: Check
 metadata:
-  name: my-api-http         # non-numeric = create
+  name: my-api-http         # gcx rewrites this to <job>-<id> after create
 spec:
   job: my-api-http
   target: https://api.example.com/health

@@ -147,7 +147,8 @@ review the newest version, and retry only if the restore is still correct.
 
 ## References
 
-- [`references/resource-operations.md`](references/resource-operations.md) —
-  selector syntax, pull/push/validate flags, and `gcx dev serve` details.
-- [`references/resource-model.md`](references/resource-model.md) — resource
-  structure, manager metadata, folder ordering, and lifecycle behavior.
+- For full flag sets, selector syntax, `--on-error` policy, and the
+  `gcx dev serve` live-reload workflow, read
+  [references/resource-operations.md](references/resource-operations.md).
+- For resource structure, manager metadata, push ordering, and lifecycle
+  behavior, read [references/resource-model.md](references/resource-model.md).

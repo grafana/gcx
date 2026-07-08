@@ -2,6 +2,17 @@
 
 Advanced patterns for querying Prometheus and Loki datasources with gcx.
 
+## Contents
+
+- [Datasource UID Resolution](#datasource-uid-resolution) - finding UIDs, setting defaults
+- [Prometheus Query Patterns](#prometheus-query-patterns) - instant vs range, time formats, step intervals
+- [Loki Query Patterns](#loki-query-patterns) - stream selectors, log metric queries
+- [Prometheus Datasource Operations](#prometheus-datasource-operations) - label/metadata discovery workflow
+- [Loki Datasource Operations](#loki-datasource-operations) - label/series discovery workflow
+- [Output Formats](#output-formats) - table, wide, JSON shapes, `--json` field selection
+- [Performance Tips](#performance-tips) - Loki series limits, distributed-request counting, indexed vs structured-metadata vs parsed labels
+- [Comparison Queries](#comparison-queries) - comparing now vs a past instant
+
 ## Datasource UID Resolution
 
 **CRITICAL**: Always use datasource UID, never the name.
@@ -138,35 +149,8 @@ gcx metrics query -d <uid> 'rate(requests[1h])' \
 
 **Rule of thumb**: Step should be ~1/100th of total range for smooth charts.
 
-### Aggregation Patterns
-
-```bash
-# Sum across all instances
-gcx metrics query -d <uid> 'sum(http_requests_total)'
-
-# Average by label
-gcx metrics query -d <uid> 'avg by(job) (cpu_usage)'
-
-# Top 5 by value
-gcx metrics query -d <uid> 'topk(5, http_requests_total)'
-
-# 95th percentile
-gcx metrics query -d <uid> 'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))'
-```
-
-### Combining with Graph
-
-```bash
-# Line chart (default) — pass -o graph directly to the query command
-gcx metrics query -d <uid> 'rate(http_requests_total[5m])' \
-  --from now-1h --to now --step 1m -o graph
-
-# Instant query as graph
-gcx metrics query -d <uid> 'up' -o graph
-
-# Range query as graph
-gcx metrics query -d <uid> 'cpu_usage' --from now-6h --to now --step 5m -o graph
-```
+Pass `-o graph` directly to any query command (instant or range) to render a
+terminal line chart.
 
 ## Loki Query Patterns
 
@@ -192,35 +176,10 @@ gcx logs query -d <loki-uid> '{job=~"mysql.*",level!="debug"}'
 gcx logs query -d <loki-uid> '{namespace="production",pod!~"test.*"}'
 ```
 
-### Log Stream Operators
-
-```bash
-# Contains text
-gcx logs query -d <loki-uid> '{job="varlogs"} |= "error"'
-
-# Doesn't contain text
-gcx logs query -d <loki-uid> '{job="varlogs"} != "debug"'
-
-# Regex match in log line
-gcx logs query -d <loki-uid> '{job="varlogs"} |~ "error|exception"'
-
-# JSON parsing
-gcx logs query -d <loki-uid> '{job="varlogs"} | json | level="error"'
-```
-
-### Log Range Queries
-
-Query logs over time:
-
-```bash
-# Last hour of logs
-gcx logs query -d <loki-uid> '{job="varlogs"}' \
-  --from now-1h --to now
-
-# Specific time range
-gcx logs query -d <loki-uid> '{namespace="prod"}' \
-  --from 2026-03-01T00:00:00Z --to 2026-03-01T12:00:00Z
-```
+Line filters and parsers (`|= "error"`, `|~ "regex"`, `| json`, `| logfmt`)
+follow standard LogQL syntax after the selector. Time ranges use the same
+`--from`/`--to` formats as Prometheus queries (see
+[Time Range Formats](#time-range-formats)).
 
 ### Log Metrics (Rate Queries)
 
@@ -241,17 +200,8 @@ gcx logs query -d <loki-uid> \
 gcx logs query -d <loki-uid> \
   'sum by(level) (rate({job="varlogs"} | json [5m]))' \
   --from now-1h --to now --step 1m
-```
 
-### Combining Loki with Graph
-
-```bash
-# Visualize log volume
-gcx logs query -d <loki-uid> \
-  'sum(rate({job="varlogs"}[5m]))' \
-  --from now-6h --to now --step 5m -o graph
-
-# Error rate over time
+# Visualize log volume with -o graph
 gcx logs query -d <loki-uid> \
   'sum(rate({job="app"} |= "error" [5m]))' \
   --from now-24h --to now --step 15m -o graph
@@ -398,12 +348,6 @@ JSON structure:
 }
 ```
 
-### YAML Format
-
-```bash
-gcx metrics query -d <uid> 'up' -o yaml
-```
-
 ### Field Selection
 
 Use `--json` to select fields without external tools:
@@ -423,84 +367,7 @@ gcx metrics query -d <uid> 'up' -o json 2>/dev/null | \
 > **Piping caution**: Never use `2>&1` when piping gcx JSON output — gcx writes
 > hints to stderr that break JSON parsers. Use `2>/dev/null` instead.
 
-## Scripting Patterns
-
-### Automated Monitoring
-
-```bash
-#!/bin/bash
-DS_UID=$(gcx datasources list --type prometheus -o json 2>/dev/null | \
-  python3 -c "import json,sys; print(json.load(sys.stdin)['datasources'][0]['uid'])")
-
-# Check if service is up
-UP=$(gcx metrics query -d $DS_UID 'up{job="critical-service"}' -o json 2>/dev/null | \
-     python3 -c "import json,sys; print(json.load(sys.stdin)['data']['result'][0]['value'][1])")
-
-if [ "$UP" != "1" ]; then
-  echo "ALERT: critical-service is down!"
-  exit 1
-fi
-```
-
-### Batch Queries
-
-```bash
-#!/bin/bash
-DS_UID="<your-datasource-uid>"
-
-QUERIES=(
-  "up"
-  "rate(http_requests_total[5m])"
-  "node_memory_MemAvailable_bytes"
-)
-
-for query in "${QUERIES[@]}"; do
-  echo "Query: $query"
-  gcx metrics query -d $DS_UID "$query" --from now-5m --to now -o graph
-  echo "---"
-done
-```
-
-### Exporting Data
-
-```bash
-# Export query results to file
-gcx metrics query -d <uid> 'cpu_usage' --from now-24h --to now --step 1m -o json > cpu-data.json
-
-# Convert to CSV
-gcx metrics query -d <uid> 'up' -o json 2>/dev/null | \
-  python3 -c "import json,sys,csv; w=csv.writer(sys.stdout); data=json.load(sys.stdin); [w.writerow([r['metric'].get('job',''),r['value'][0],r['value'][1]]) for r in data['data']['result']]" > results.csv
-```
-
 ## Performance Tips
-
-### Query Optimization
-
-1. **Use specific label filters**: More specific = faster queries
-```bash
-# Slow
-gcx metrics query -d <uid> 'http_requests_total'
-
-# Fast
-gcx metrics query -d <uid> 'http_requests_total{job="api",status="200"}'
-```
-
-2. **Choose appropriate range selectors**:
-```bash
-# For rate queries, match range to step
-gcx metrics query -d <uid> 'rate(requests[5m])' --step 5m
-
-# Don't use huge ranges for instant queries
-gcx metrics query -d <uid> 'rate(requests[5m])'  # Good
-gcx metrics query -d <uid> 'rate(requests[1h])'  # Usually unnecessary
-```
-
-3. **Limit time ranges**:
-```bash
-# Query only what you need
-gcx metrics query -d <uid> 'up' --from now-1h --to now  # Good
-gcx metrics query -d <uid> 'up' --from now-30d --to now  # Slow
-```
 
 ### Loki Performance
 
@@ -607,48 +474,10 @@ Common mistakes:
   label just because you saw it in query output — check whether it came from
   `stream` vs `structuredMetadata`.
 
-## Common Patterns
-
-### Health Check
-
-```bash
-# Check if services are up
-gcx metrics query -d <uid> 'up{job="critical-service"}' | grep "1"
-```
-
-### Error Rate
-
-```bash
-# HTTP error rate
-gcx metrics query -d <uid> 'rate(http_requests_total{status=~"5.."}[5m])' \
-  --from now-1h --to now --step 1m -o graph
-```
-
-### Resource Usage
-
-```bash
-# Memory usage by pod
-gcx metrics query -d <uid> 'container_memory_usage_bytes{namespace="production"}' -o graph
-```
-
-### Log Analysis
-
-```bash
-# Count errors in last hour
-gcx logs query -d <loki-uid> \
-  'count_over_time({job="app"} |= "error" [1h])'
-```
-
-### Comparison Queries
+## Comparison Queries
 
 ```bash
 # Compare current vs 24h ago — use --time for instant snapshots, not range queries
 gcx metrics query -d <uid> 'rate(requests[5m])' --time now -o json > now.json
 gcx metrics query -d <uid> 'rate(requests[5m])' --time now-24h -o json > yesterday.json
 ```
-
-## Tempo / TraceQL Patterns
-
-For TraceQL query syntax, `traces query` vs `traces get`, attribute scoping
-rules, and common trace search patterns, see
-[`traceql-patterns.md`](traceql-patterns.md).

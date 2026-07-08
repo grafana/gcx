@@ -1,8 +1,17 @@
 # SM PromQL Patterns
 
+## Contents
+
+- [probe_success Rate Over Time](#probe_success-rate-over-time)
+- [HTTP Phase Latency](#http-phase-latency)
+- [SSL Certificate Expiry](#ssl-certificate-expiry)
+- [Per-Probe Error Rates](#per-probe-error-rates)
+- [Useful Filters](#useful-filters)
+- [Example gcx Commands](#example-gcx-commands)
+
 PromQL query patterns for Synthetic Monitoring metrics. Run via:
 ```bash
-gcx metrics query <datasource-uid> '<query>' --from <start> --to <end> --step <step>
+gcx metrics query -d <datasource-uid> '<query>' --from <start> --to <end> --step <step>
 ```
 
 Replace `<job>` with the check job name and `<instance>` with the check target (URL or hostname).
@@ -115,25 +124,25 @@ probe_success{job="<job>",instance="<target>",probe=~"<probe1>|<probe2>"}
 
 ---
 
-## Recommended Gcx Commands
+## Example gcx Commands
 
 Quick per-probe check (JSON for agent processing):
 ```bash
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   'avg by (probe) (probe_success{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o json
 ```
 
 Graph for user display:
 ```bash
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   'avg by (probe) (probe_success{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o graph
 ```
 
 Cert expiry check:
 ```bash
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   '(probe_ssl_earliest_cert_expiry{job="<job>",instance="<target>"} - time()) / 86400' \
   --from now-5m --to now --step 1m -o json
 ```

@@ -1,18 +1,21 @@
 ---
 name: setup-gcx
 description: >
-  Use this skill to set up gcx, configure authentication, establish a
-  connection to a Grafana instance, and complete first-time configuration. This
-  skill covers Grafana Cloud and on-premise deployments, environment variable
-  overrides for CI/CD, default datasource configuration, and troubleshooting
-  connection and authentication problems.
+  Sets up gcx: installation, context creation, authentication, and connection
+  to a Grafana instance. Covers Grafana Cloud and on-premise deployments,
+  environment variable overrides for CI/CD, default datasource configuration,
+  and troubleshooting connection and authentication problems. Use when
+  installing gcx, connecting gcx to a Grafana instance for the first time, or
+  when gcx commands fail with auth or connectivity errors (401, 403,
+  connection refused, missing namespace).
 ---
 
 # Setup gcx
 
-This skill teaches agents to configure gcx for a Grafana instance,
-covering the three configuration paths (Grafana Cloud, on-premise, and
-environment variables) and resolving common setup errors.
+Three configuration paths: Grafana Cloud (Path A), on-premise (Path B), and
+environment variables for CI/CD (Path C). For the complete config reference
+(all `config set` paths, TLS options, namespace resolution rules, multi-context
+patterns), see [configuration.md](references/configuration.md).
 
 ## Step 0: Install gcx
 
@@ -23,7 +26,7 @@ gcx --version
 ```
 
 If the command is not found, build it from source. Requires
-[git](https://git-scm.com/) and [Go](https://go.dev/) v1.24+:
+[git](https://git-scm.com/) and a recent [Go](https://go.dev/) toolchain:
 
 ```bash
 tmp=$(mktemp -d) && git clone --depth 1 https://github.com/grafana/gcx.git "$tmp" && (cd "$tmp" && go install ./cmd/gcx) && rm -rf "$tmp"
@@ -108,13 +111,9 @@ errors. For Grafana Cloud, the stack ID (namespace) is auto-discovered from
 the server's `/bootdata` endpoint -- you do not need to set `grafana.stack-id`
 manually unless auto-discovery fails.
 
-**Namespace note**: gcx maps Grafana Cloud instances to a Kubernetes
-namespace of the form `stacks-<id>`. This namespace is discovered automatically
-by calling the `/bootdata` endpoint on the server URL. If the discovered stack
-ID conflicts with a manually configured `grafana.stack-id`, gcx raises a
-validation error. To resolve: either remove the manually configured stack ID
-(`gcx config unset contexts.cloud.grafana.stack-id`) or correct it to
-match the discovered value.
+If the discovered stack ID conflicts with a manually configured
+`grafana.stack-id`, gcx raises a validation error - see
+[Namespace resolution issues](#namespace-resolution-issues).
 
 ---
 
@@ -218,7 +217,7 @@ modify the config file on disk.
 
 ### Config file location
 
-If you need to supply a config file path explicitly:
+To supply a config file path explicitly:
 
 ```bash
 gcx --config /path/to/config.yaml resources get dashboards
@@ -226,13 +225,8 @@ gcx --config /path/to/config.yaml resources get dashboards
 export GCX_CONFIG=/path/to/config.yaml
 ```
 
-Config file search order (highest to lowest priority):
-
-1. `--config <path>` CLI flag
-2. `$GCX_CONFIG` environment variable
-3. `$XDG_CONFIG_HOME/gcx/config.yaml`
-4. `$HOME/.config/gcx/config.yaml`
-5. `$XDG_CONFIG_DIRS/gcx/config.yaml`
+For the full config file search order, see
+[configuration.md](references/configuration.md#config-file-location).
 
 ---
 
@@ -276,37 +270,22 @@ use the configured defaults automatically.
 
 ## Multi-Context Management
 
-To work with multiple Grafana environments, create a context for each:
+To work with multiple Grafana environments, repeat Path A or B once per
+environment with a distinct context name, then:
 
 ```bash
-# Create contexts
-gcx config set contexts.production.grafana.server https://grafana.example.com
-gcx config set contexts.production.grafana.token glsa_PROD_TOKEN
-gcx config set contexts.production.grafana.org-id 1
-
-gcx config set contexts.staging.grafana.server https://grafana-staging.example.com
-gcx config set contexts.staging.grafana.token glsa_STAGING_TOKEN
-gcx config set contexts.staging.grafana.org-id 1
-
 # Switch between contexts
-gcx config use-context production
 gcx config use-context staging
 
 # Use a context for a single command without switching
 gcx --context staging resources get dashboards
-```
 
-To list all configured contexts, view the full config:
-
-```bash
+# List all contexts (secrets redacted; add --raw to reveal)
 gcx config view
 ```
 
-Secrets (`token`, `password`) are redacted in this output. To see raw values:
-
-```bash
-gcx config view --raw
-```
+For create/update/remove patterns, see
+[configuration.md](references/configuration.md#multi-context-management).
 
 ---
 
@@ -406,7 +385,7 @@ gcx config set contexts.<name>.grafana.stack-id 12345
 
 ---
 
-## Complete Example: Grafana Cloud Setup
+## Complete Example: Grafana Cloud with a Service Account Token
 
 ```bash
 # 1. Set server and token
@@ -432,6 +411,6 @@ gcx resources get dashboards -o json
 
 ## Reference
 
-For a complete listing of all config set paths, environment variables,
-namespace resolution logic, and multi-context patterns, see
-`references/configuration.md`.
+For all config set paths, TLS fields, environment variables, namespace
+resolution rules, and multi-context patterns, see
+[configuration.md](references/configuration.md).
