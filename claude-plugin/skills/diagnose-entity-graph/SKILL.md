@@ -82,11 +82,11 @@ the Asserts app onboarding flow.
 ## Step 2: Entity Counts and Scopes
 
 ```bash
-gcx kg health --since 1h
+gcx kg summary --since 1h
 gcx kg meta scopes
 ```
 
-**Check:** `totalEntities` should be > 0. The `meta scopes` output shows
+**Check:** entity counts should be > 0. The `meta scopes` output shows
 available `env`, `site`, and `namespace` values.
 
 If scoping to a specific environment, note the exact `env` value — you'll
@@ -244,10 +244,10 @@ For a specific missing or edge-less service:
 
 ```bash
 # Find in graph
-gcx kg cypher "MATCH (s:Service {name: \"SERVICE\"}) RETURN s" --since 1h
+gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"}) RETURN s" --since 1h
 
 # Check relationships
-gcx kg cypher "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other" --since 1h
+gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other" --since 1h
 
 # Source metrics
 gcx metrics query 'count(traces_service_graph_request_total{client="SERVICE"})' --since 1h

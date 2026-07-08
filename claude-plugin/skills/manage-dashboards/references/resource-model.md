@@ -199,9 +199,6 @@ gcx resources pull dashboards/uid1,uid2,uid3
 # Preferred version (default)
 gcx resources pull dashboards
 
-# All versions
-gcx resources pull dashboards --all-versions
-
 # Specific version
 gcx resources pull dashboards.v1alpha1.dashboard.grafana.app
 ```
