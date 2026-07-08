@@ -172,6 +172,28 @@ type Context struct {
 	// Secret fields are selectively redacted by providers.RedactSecrets using
 	// each provider's ConfigKey metadata.
 	Providers map[string]map[string]string `json:"providers,omitempty" yaml:"providers,omitempty"`
+
+	// Resources holds settings for the `gcx resources` commands in this context.
+	Resources *ResourcesConfig `json:"resources,omitempty" yaml:"resources,omitempty"`
+}
+
+// ResourcesConfig holds per-context settings for the `gcx resources` commands.
+type ResourcesConfig struct {
+	// AssumeServerDryRun lists GroupResource strings ("<resource>.<group>", e.g.
+	// "alertrules.rules.alerting.grafana.app") that the user asserts honor server-side
+	// dry-run on this stack. It augments the built-in allowlist so --dry-run passes those
+	// requests through instead of falling back to a best-effort client-side check. It never
+	// removes built-in entries.
+	AssumeServerDryRun []string `json:"assume-server-dry-run,omitempty" yaml:"assume-server-dry-run,omitempty"`
+}
+
+// AssumeServerDryRun returns the context's user-asserted server-side dry-run allowlist,
+// or nil when unset.
+func (context *Context) AssumeServerDryRun() []string {
+	if context.Resources == nil {
+		return nil
+	}
+	return context.Resources.AssumeServerDryRun
 }
 
 func (context *Context) Validate(ctx context.Context) error {

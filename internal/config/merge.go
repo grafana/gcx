@@ -111,6 +111,16 @@ func mergeContexts(base, over *Context) *Context {
 		maps.Copy(result.Datasources, over.Datasources)
 	}
 
+	// Resources config: union the assume-server-dry-run allowlists across layers.
+	if over.Resources != nil {
+		if result.Resources == nil {
+			result.Resources = over.Resources
+		} else {
+			merged := mergeResourcesConfig(result.Resources, over.Resources)
+			result.Resources = &merged
+		}
+	}
+
 	// Named datasource overrides.
 	if over.DefaultPrometheusDatasource != "" {
 		result.DefaultPrometheusDatasource = over.DefaultPrometheusDatasource
@@ -123,6 +133,30 @@ func mergeContexts(base, over *Context) *Context {
 	}
 
 	return &result
+}
+
+func mergeResourcesConfig(base, over *ResourcesConfig) ResourcesConfig {
+	result := *base
+
+	seen := make(map[string]struct{}, len(base.AssumeServerDryRun)+len(over.AssumeServerDryRun))
+	merged := make([]string, 0, len(base.AssumeServerDryRun)+len(over.AssumeServerDryRun))
+	for _, gr := range base.AssumeServerDryRun {
+		if _, ok := seen[gr]; ok {
+			continue
+		}
+		seen[gr] = struct{}{}
+		merged = append(merged, gr)
+	}
+	for _, gr := range over.AssumeServerDryRun {
+		if _, ok := seen[gr]; ok {
+			continue
+		}
+		seen[gr] = struct{}{}
+		merged = append(merged, gr)
+	}
+	result.AssumeServerDryRun = merged
+
+	return result
 }
 
 func mergeGrafanaConfig(base, over *GrafanaConfig) GrafanaConfig {

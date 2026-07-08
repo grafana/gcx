@@ -192,6 +192,22 @@ func TestMergeConfigs_DiagnosticsLayering(t *testing.T) {
 	assert.True(t, merged.Diagnostics.AgentInvocationLog)
 }
 
+func TestMergeContexts_AssumeServerDryRunUnion(t *testing.T) {
+	base := config.Config{Contexts: map[string]*config.Context{
+		"ctx": {Resources: &config.ResourcesConfig{AssumeServerDryRun: []string{"a.grp", "shared.grp"}}},
+	}}
+	over := config.Config{Contexts: map[string]*config.Context{
+		"ctx": {Resources: &config.ResourcesConfig{AssumeServerDryRun: []string{"shared.grp", "b.grp"}}},
+	}}
+
+	merged := config.MergeConfigs(base, over)
+
+	require.NotNil(t, merged.Contexts["ctx"].Resources)
+	assert.Equal(t, []string{"a.grp", "shared.grp", "b.grp"},
+		merged.Contexts["ctx"].Resources.AssumeServerDryRun,
+		"layers should union without duplicating shared entries")
+}
+
 func TestMergeGrafanaConfig_OAuthAndProxyFields(t *testing.T) {
 	tests := []struct {
 		name string

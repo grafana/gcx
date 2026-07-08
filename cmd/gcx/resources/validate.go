@@ -20,9 +20,10 @@ import (
 type validateOpts struct {
 	IO cmdio.Options
 
-	Paths         []string
-	MaxConcurrent int
-	OnError       OnErrorMode
+	Paths              []string
+	MaxConcurrent      int
+	OnError            OnErrorMode
+	AssumeServerDryRun []string
 }
 
 func (opts *validateOpts) setup(flags *pflag.FlagSet) {
@@ -34,6 +35,7 @@ func (opts *validateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVarP(&opts.Paths, "path", "p", []string{defaultResourcesPath}, "Paths on disk from which to read the resources.")
 	flags.IntVar(&opts.MaxConcurrent, "max-concurrent", 10, "Maximum number of concurrent operations")
 	bindOnErrorFlag(flags, &opts.OnError)
+	flags.StringSliceVar(&opts.AssumeServerDryRun, assumeServerDryRunFlag, nil, assumeServerDryRunUsage)
 }
 
 func (opts *validateOpts) Validate() error {
@@ -79,7 +81,7 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			cfg, err := configOpts.LoadGrafanaConfig(ctx)
+			cfg, current, err := configOpts.LoadGrafanaConfigWithContext(ctx)
 			if err != nil {
 				return err
 			}
@@ -113,7 +115,8 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			pusher, err := remote.NewDefaultPusher(ctx, cfg)
+			pusher, err := remote.NewDefaultPusher(ctx, cfg,
+				dryRunGuardConfig(current, opts.AssumeServerDryRun, cmd.ErrOrStderr()))
 			if err != nil {
 				return err
 			}
@@ -131,20 +134,34 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			if summary.FailedCount() == 0 && opts.IO.OutputFormat == "text" {
-				cmdio.Success(cmd.OutOrStdout(), "No errors found.")
-				return nil
-			}
+			// Resources whose API does not honor server-side dry-run are recorded as skipped
+			// (server-verification impossible) rather than falsely reported as valid. Surface
+			// that count in every output mode, including structured output that agents consume.
+			skipped := summary.SkippedCount()
 
 			if opts.IO.OutputFormat == "text" {
+				if summary.FailedCount() == 0 {
+					if skipped > 0 {
+						cmdio.Warning(cmd.OutOrStdout(), "%d resources validated, %d skipped (server-side dry-run unsupported, not verified)", summary.SuccessCount(), skipped)
+					} else {
+						cmdio.Success(cmd.OutOrStdout(), "No errors found.")
+					}
+					return nil
+				}
+
 				if err := opts.IO.Encode(cmd.OutOrStdout(), summary); err != nil {
 					return err
+				}
+				if skipped > 0 {
+					cmdio.Warning(cmd.OutOrStdout(), "%d resources skipped (server-side dry-run unsupported, not verified)", skipped)
 				}
 			} else {
 				printableSummary := struct {
 					Failures []map[string]string `json:"failures" yaml:"failures"`
+					Skipped  int                 `json:"skipped" yaml:"skipped"`
 				}{
 					Failures: make([]map[string]string, 0),
+					Skipped:  skipped,
 				}
 
 				for _, failure := range summary.Failures() {
