@@ -35,7 +35,7 @@ func (opts *validateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVarP(&opts.Paths, "path", "p", []string{defaultResourcesPath}, "Paths on disk from which to read the resources.")
 	flags.IntVar(&opts.MaxConcurrent, "max-concurrent", 10, "Maximum number of concurrent operations")
 	bindOnErrorFlag(flags, &opts.OnError)
-	flags.StringSliceVar(&opts.AssumeServerDryRun, assumeServerDryRunFlag, nil, assumeServerDryRunUsage)
+	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
 }
 
 func (opts *validateOpts) Validate() error {

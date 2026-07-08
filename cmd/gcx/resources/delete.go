@@ -34,7 +34,7 @@ func (opts *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.DryRun, "dry-run", opts.DryRun, "If set, the delete operation will be simulated")
 	flags.StringSliceVarP(&opts.Path, "path", "p", nil, "Path on disk containing the resources to delete")
 	flags.BoolVarP(&opts.Yes, "yes", "y", false, "Auto-approve destructive operations (automatically enables --force)")
-	flags.StringSliceVar(&opts.AssumeServerDryRun, assumeServerDryRunFlag, nil, assumeServerDryRunUsage)
+	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
 }
 
 func (opts *deleteOpts) Validate(args []string) error {

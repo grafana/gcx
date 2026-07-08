@@ -50,6 +50,12 @@ func newGuardedDynamicClient(inner adapter.DynamicClient, cfg GuardConfig) adapt
 // non-dry-run mutations, and dry-run mutations against allowlisted resources) pass straight
 // through. Only the dynamic fallback is wrapped, so the provider-adapter path (already
 // dry-run-safe via typedAdapter) is untouched.
+//
+// It holds inner as a plain field and spells out the pass-through read methods by hand
+// instead of embedding adapter.DynamicClient. That is deliberate: this is a safety guard,
+// so if someone adds a new mutating method to the interface later, we want this file to
+// fail to compile until it is handled here. Embedding would instead auto-forward the new
+// method straight to the server, quietly letting a mutation slip past the guard.
 type dryRunGuard struct {
 	inner     adapter.DynamicClient
 	allowlist dryRunAllowlist

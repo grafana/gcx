@@ -32,7 +32,7 @@ func (opts *pushOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.DryRun, "dry-run", opts.DryRun, "If set, the push operation will be simulated, without actually creating or updating any resources")
 	flags.BoolVar(&opts.OmitManagerFields, "omit-manager-fields", opts.OmitManagerFields, "If set, the manager fields will not be appended to the resources")
 	flags.BoolVar(&opts.IncludeManaged, "include-managed", opts.IncludeManaged, "If set, resources managed by other tools will be included in the push operation")
-	flags.StringSliceVar(&opts.AssumeServerDryRun, assumeServerDryRunFlag, nil, assumeServerDryRunUsage)
+	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
 }
 
 func (opts *pushOpts) Validate() error {

@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/remote"
+	"github.com/spf13/pflag"
 )
 
 const (
@@ -13,6 +14,13 @@ const (
 	assumeServerDryRunUsage = "Assert that the given resources honor server-side dry-run, augmenting the built-in allowlist. " +
 		"Repeatable or comma-separated, each value a GroupResource string (<resource>.<group>), e.g. alertrules.rules.alerting.grafana.app"
 )
+
+// bindAssumeServerDryRunFlag registers the --assume-server-dry-run flag on the given flag
+// set. Only the mutating dry-run commands (push, delete, validate) bind it; it is not a
+// persistent flag on the resources group because it is meaningless for get/pull/schemas/etc.
+func bindAssumeServerDryRunFlag(flags *pflag.FlagSet, target *[]string) {
+	flags.StringSliceVar(target, assumeServerDryRunFlag, nil, assumeServerDryRunUsage)
+}
 
 // dryRunGuardConfig builds the guard config for push/delete/validate from the per-context
 // resources.assume-server-dry-run config merged with the --assume-server-dry-run flag, and
