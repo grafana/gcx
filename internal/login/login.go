@@ -31,7 +31,7 @@ func cloudTokenHint(server string) string {
 	}
 	return create + " (Access Policies → Create access policy).\n" +
 		"Recommended scopes: stacks:read (required — resolves your stack). Then add per product:\n" +
-		"  metrics:write, logs:write, traces:write — Synthetic Monitoring & k6\n" +
+		"  metrics:write, logs:write, traces:write — Synthetic Monitoring\n" +
 		"  fleet-management:read — Fleet\n" +
 		"  stacks:write — create or update stacks\n" +
 		"Docs: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies\n" +

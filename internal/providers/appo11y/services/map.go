@@ -30,6 +30,8 @@ type mapOpts struct {
 	Datasource string
 	Since      string
 	Namespace  string
+	Filters    []string
+	GroupBy    []string
 }
 
 func (o *mapOpts) setup(flags *pflag.FlagSet) {
@@ -43,6 +45,8 @@ func (o *mapOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
 	flags.StringVarP(&o.Namespace, "namespace", "n", "", "Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)")
 	flags.StringVar(&o.Since, "since", defaultRedWindow, "Rate/quantile window applied to service-graph metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the map to service-graph edges matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the service-graph metrics")
+	flags.StringSliceVar(&o.GroupBy, "group-by", nil, "Split each edge per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). The label must exist on the service-graph metrics — note the Tempo service-graph family often omits cluster labels, in which case no edges match")
 }
 
 func (o *mapOpts) Validate(cmd *cobra.Command) error {
@@ -99,12 +103,18 @@ suitable for inlining in markdown / piping to "dot -Tpng".`,
   gcx appo11y services map payments/checkoutservice --since 1h -o wide
 
   # JSON for scripting
-  gcx appo11y services map checkoutservice -o json`,
+  gcx appo11y services map checkoutservice -o json
+
+  # Break a multi-cluster service's map down to a single cluster
+  gcx appo11y services map faro-collector --filter k8s_cluster_name=prod-us-central-0
+
+  # Split each edge per cluster (service-graph metrics must carry the label)
+  gcx appo11y services map faro-collector --group-by k8s_cluster_name`,
 		Args: cobra.ExactArgs(1),
 		RunE: runMap(opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Service-graph slice for one App Observability service: callers (peers calling into the service) and callees (peers the service calls), with per-edge rate (req/s), error %, and direction-aware p95 latency (server-side for callers, client-side for callees). Connection-type label distinguishes HTTP/gRPC (empty), database, messaging, and virtual_node (uninstrumented upstreams synthesised by Tempo). Output formats: table/wide (default two-section view), json/yaml (structured), mermaid (markdown-renderable graph), dot (Graphviz). Pairs with 'gcx appo11y services get' (single-service RED) and 'gcx appo11y services list-operations' (per-endpoint breakdown). Examples: gcx appo11y services map <name> -o json; gcx appo11y services map <ns>/<name> --since 1h -o mermaid`,
+			agent.AnnotationLLMHint:   `Service-graph slice for one App Observability service: callers (peers calling into the service) and callees (peers the service calls), with per-edge rate (req/s), error %, and direction-aware p95 latency (server-side for callers, client-side for callees). Connection-type label distinguishes HTTP/gRPC (empty), database, messaging, and virtual_node (uninstrumented upstreams synthesised by Tempo). Output formats: table/wide (default two-section view), json/yaml (structured), mermaid (markdown-renderable graph), dot (Graphviz). Pairs with 'gcx appo11y services get' (single-service RED) and 'gcx appo11y services list-operations' (per-endpoint breakdown). Use --filter <label><op><value> (repeatable) to scope the edges to a subset of series — most usefully a cluster/region label (e.g. --filter k8s_cluster_name=prod-us) to break a multi-cluster service down one cluster at a time. Use --group-by <label> to instead split each edge per distinct value of that label (note: the Tempo service-graph family often omits cluster labels, so this may return no edges — --filter/--group-by on span-metric-backed 'get'/'list-operations' is more reliable for cluster breakdowns). Examples: gcx appo11y services map <name> -o json; gcx appo11y services map <ns>/<name> --since 1h -o mermaid; gcx appo11y services map <name> --filter k8s_cluster_name=<cluster> -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -117,6 +127,14 @@ func runMap(opts *mapOpts) func(*cobra.Command, []string) error {
 			return err
 		}
 		namespace, name, err := parseServiceArg(args[0], opts.Namespace)
+		if err != nil {
+			return fail.NewCommandUsageError(cmd, "", err)
+		}
+		matchers, err := parseFilters(opts.Filters)
+		if err != nil {
+			return fail.NewCommandUsageError(cmd, "", err)
+		}
+		groupBy, err := parseGroupBy(opts.GroupBy)
 		if err != nil {
 			return fail.NewCommandUsageError(cmd, "", err)
 		}
@@ -148,14 +166,14 @@ func runMap(opts *mapOpts) func(*cobra.Command, []string) error {
 
 		// Bare-name resolution: same UX as `services get` and `services list-operations`.
 		if namespace == "" {
-			resolved, err := resolveNamespaceForBareName(ctx, client, datasourceUID, name)
+			resolved, err := resolveNamespaceForBareName(ctx, client, datasourceUID, name, matchers)
 			if err != nil {
 				return err
 			}
 			namespace = resolved
 		}
 
-		result, err := fetchServiceMap(ctx, client, datasourceUID, namespace, name, opts.Since)
+		result, err := fetchServiceMap(ctx, client, datasourceUID, namespace, name, opts.Since, matchers, groupBy)
 		if err != nil {
 			return err
 		}
@@ -177,7 +195,7 @@ func runMap(opts *mapOpts) func(*cobra.Command, []string) error {
 // fetchServiceMap runs both direction × {rate, errors, p95} = 6 queries
 // in parallel and folds them into a ServiceMap. Each direction's edges
 // are independently parsed and merged, then sorted by rate desc.
-func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string) (*ServiceMap, error) {
+func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, matchers []Matcher, groupBy []string) (*ServiceMap, error) {
 	type edgeQuerySet struct {
 		rate, errors, p95 *prometheus.QueryResponse
 	}
@@ -194,7 +212,7 @@ func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceU
 	eg, egCtx := errgroup.WithContext(ctx)
 	for _, d := range directions {
 		eg.Go(func() error {
-			expr, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, d.dir, namespace, name, window)
+			expr, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, d.dir, namespace, name, window, matchers, groupBy)
 			if err != nil {
 				return fmt.Errorf("failed to build %s rate query: %w", directionLabel(d.dir), err)
 			}
@@ -206,7 +224,7 @@ func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceU
 			return nil
 		})
 		eg.Go(func() error {
-			expr, err := buildServiceMapEdgeQuery(serviceGraphRequestFailedTotalMetric, d.dir, namespace, name, window)
+			expr, err := buildServiceMapEdgeQuery(serviceGraphRequestFailedTotalMetric, d.dir, namespace, name, window, matchers, groupBy)
 			if err != nil {
 				return fmt.Errorf("failed to build %s error-rate query: %w", directionLabel(d.dir), err)
 			}
@@ -218,7 +236,7 @@ func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceU
 			return nil
 		})
 		eg.Go(func() error {
-			expr, err := buildServiceMapLatencyQuery(d.dir, namespace, name, window, 0.95)
+			expr, err := buildServiceMapLatencyQuery(d.dir, namespace, name, window, 0.95, matchers, groupBy)
 			if err != nil {
 				return fmt.Errorf("failed to build %s p95 latency query: %w", directionLabel(d.dir), err)
 			}
@@ -237,15 +255,17 @@ func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceU
 	parseEdges := func(set edgeQuerySet, dir mapDirection) []Edge {
 		peerName, peerNs := dir.peerLabels()
 		return mergeEdges(
-			extractEdges(set.rate, peerName, peerNs),
-			extractEdges(set.errors, peerName, peerNs),
-			extractEdges(set.p95, peerName, peerNs),
+			extractEdges(set.rate, peerName, peerNs, groupBy),
+			extractEdges(set.errors, peerName, peerNs, groupBy),
+			extractEdges(set.p95, peerName, peerNs, groupBy),
+			groupBy,
 		)
 	}
 
 	return &ServiceMap{
 		Service: Service{Name: name, Namespace: namespace},
 		Window:  window,
+		GroupBy: groupBy,
 		Callers: parseEdges(callerSet, callersDirection),
 		Callees: parseEdges(calleeSet, calleesDirection),
 	}, nil
@@ -275,6 +295,27 @@ func orDashConnType(t string) string {
 	return t
 }
 
+// peerDisplayLabel renders a peer for graph output, appending the
+// --group-by combination in braces (e.g. "cart (billing) {prod-us}") so
+// the same peer in two groups reads as two distinct, labelled nodes.
+func peerDisplayLabel(e Edge, groupBy []string) string {
+	label := formatPeer(e)
+	if len(groupBy) > 0 {
+		label += " {" + groupLabelString(e.Labels, groupBy) + "}"
+	}
+	return label
+}
+
+// mermaidPeerID folds the group combination into the Mermaid node ID so
+// per-group edges to the same peer don't collapse onto one node.
+func mermaidPeerID(e Edge, groupBy []string) string {
+	ns := e.Peer.Namespace
+	if len(groupBy) > 0 {
+		ns += "_" + groupLabelString(e.Labels, groupBy)
+	}
+	return mermaidNodeID(e.Peer.Name, ns)
+}
+
 // serviceMapTableCodec renders a two-section table: callers above,
 // callees below, separated by a blank line. Default columns:
 // PEER, RATE, ERROR %, P95, TYPE. --output wide is identical for now
@@ -299,30 +340,39 @@ func (c *serviceMapTableCodec) Encode(w io.Writer, v any) error {
 	if !ok {
 		return fmt.Errorf("invalid data type for services map table codec: %T", v)
 	}
-	if err := c.encodeSection(w, "CALLERS", resp.Callers); err != nil {
+	if err := c.encodeSection(w, "CALLERS", resp.Callers, resp.GroupBy); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(w); err != nil {
 		return err
 	}
-	return c.encodeSection(w, "CALLEES", resp.Callees)
+	return c.encodeSection(w, "CALLEES", resp.Callees, resp.GroupBy)
 }
 
-func (c *serviceMapTableCodec) encodeSection(w io.Writer, label string, edges []Edge) error {
+func (c *serviceMapTableCodec) encodeSection(w io.Writer, label string, edges []Edge, groupBy []string) error {
 	if len(edges) == 0 {
 		_, err := fmt.Fprintf(w, "%s: (none)\n", label)
 		return err
 	}
-	headers := []string{label, "RATE", "ERROR %", "P95", "TYPE"}
+	// When grouping, a column per group label is inserted after the peer
+	// column so each row reads "<peer> <group> ...".
+	headers := make([]string, 0, len(groupBy)+5)
+	headers = append(headers, label)
+	headers = append(headers, upperHeaders(groupBy)...)
+	headers = append(headers, "RATE", "ERROR %", "P95", "TYPE")
 	t := style.NewTable(headers...)
 	for _, e := range edges {
-		t.Row(
-			formatPeer(e),
+		row := []string{formatPeer(e)}
+		for _, l := range groupBy {
+			row = append(row, orDash(e.Labels[l]))
+		}
+		row = append(row,
 			formatRateWithUnit(e.RatePerSecond, e.RatePerSecond > 0),
 			formatPercentMaybe(e.ErrorPercent, e.RatePerSecond > 0),
 			formatDuration(e.P95Seconds, e.HasLatency),
 			orDashConnType(e.ConnectionType),
 		)
+		t.Row(row...)
 	}
 	return t.Render(w)
 }
@@ -417,8 +467,8 @@ func (c *serviceMapMermaidCodec) Encode(w io.Writer, v any) error {
 
 	emitEdges := func(edges []Edge, into bool) {
 		for _, e := range edges {
-			peerID := mermaidNodeID(e.Peer.Name, e.Peer.Namespace)
-			fmt.Fprintf(tw, "  %s\n", mermaidNode(peerID, formatPeer(e), e.ConnectionType, false))
+			peerID := mermaidPeerID(e, resp.GroupBy)
+			fmt.Fprintf(tw, "  %s\n", mermaidNode(peerID, peerDisplayLabel(e, resp.GroupBy), e.ConnectionType, false))
 			label := formatMermaidEdgeLabel(e)
 			if into {
 				fmt.Fprintf(tw, "  %s -->|%s| %s\n", peerID, label, centerID)
@@ -466,7 +516,7 @@ func (c *serviceMapDOTCodec) Encode(w io.Writer, v any) error {
 
 	emit := func(edges []Edge, into bool) {
 		for _, e := range edges {
-			peerLabel := formatPeer(e)
+			peerLabel := peerDisplayLabel(e, resp.GroupBy)
 			fmt.Fprintf(w, "  %q [%s];\n", peerLabel, dotPeerAttrs(e.ConnectionType))
 			edgeLabel := formatRateWithUnit(e.RatePerSecond, e.RatePerSecond > 0)
 			if into {

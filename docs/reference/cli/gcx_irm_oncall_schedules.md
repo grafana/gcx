@@ -23,7 +23,10 @@ Manage OnCall schedules.
 ### SEE ALSO
 
 * [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx irm oncall schedules create](gcx_irm_oncall_schedules_create.md)	 - Create a schedule.
+* [gcx irm oncall schedules delete](gcx_irm_oncall_schedules_delete.md)	 - Delete a schedule by ID.
 * [gcx irm oncall schedules final-shifts](gcx_irm_oncall_schedules_final-shifts.md)	 - List final shifts for a schedule.
 * [gcx irm oncall schedules get](gcx_irm_oncall_schedules_get.md)	 - Get a schedule by ID.
 * [gcx irm oncall schedules list](gcx_irm_oncall_schedules_list.md)	 - List OnCall schedules.
+* [gcx irm oncall schedules update](gcx_irm_oncall_schedules_update.md)	 - Update a schedule by ID.
 

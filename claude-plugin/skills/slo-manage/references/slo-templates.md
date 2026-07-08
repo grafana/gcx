@@ -2,6 +2,12 @@
 
 Use `apiVersion: slo.ext.grafana.app/v1alpha1` and `kind: SLO` for all SLO definitions.
 
+## Contents
+
+- [Ratio Query Template](#ratio-query-template) - success/total ratio (HTTP success rate, availability)
+- [Freeform Query Template](#freeform-query-template) - raw PromQL expression returning 0-1
+- [Threshold Query Template](#threshold-query-template) - metric above/below a fixed threshold
+
 ---
 
 ## Ratio Query Template

@@ -10,7 +10,7 @@ import (
 )
 
 func TestBuildServiceMapEdgeQuery_Callers(t *testing.T) {
-	got, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, callersDirection, "billing", "checkout", "5m")
+	got, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, callersDirection, "billing", "checkout", "5m", nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -19,10 +19,20 @@ func TestBuildServiceMapEdgeQuery_Callers(t *testing.T) {
 	if got != want {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
+
+	// With --group-by, the label joins the peer aggregation.
+	got, err = buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, callersDirection, "billing", "checkout", "5m", nil, []string{"k8s_cluster_name"})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	want = `sum by (client, client_service_namespace, connection_type, k8s_cluster_name) (rate(traces_service_graph_request_total{server="checkout",server_service_namespace="billing"}[5m]))`
+	if got != want {
+		t.Errorf("grouped got %q\nwant %q", got, want)
+	}
 }
 
 func TestBuildServiceMapEdgeQuery_Callees(t *testing.T) {
-	got, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, calleesDirection, "billing", "checkout", "5m")
+	got, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, calleesDirection, "billing", "checkout", "5m", nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -34,7 +44,7 @@ func TestBuildServiceMapEdgeQuery_Callees(t *testing.T) {
 }
 
 func TestBuildServiceMapEdgeQuery_BareName(t *testing.T) {
-	got, err := buildServiceMapEdgeQuery(serviceGraphRequestFailedTotalMetric, callersDirection, "", "auth", "1m")
+	got, err := buildServiceMapEdgeQuery(serviceGraphRequestFailedTotalMetric, callersDirection, "", "auth", "1m", nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -43,17 +53,17 @@ func TestBuildServiceMapEdgeQuery_BareName(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 
-	if _, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, callersDirection, "", "", "5m"); err == nil {
+	if _, err := buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, callersDirection, "", "", "5m", nil, nil); err == nil {
 		t.Error("expected error for empty service name")
 	}
-	if _, err := buildServiceMapEdgeQuery("", callersDirection, "", "auth", "5m"); err == nil {
+	if _, err := buildServiceMapEdgeQuery("", callersDirection, "", "auth", "5m", nil, nil); err == nil {
 		t.Error("expected error for empty metric")
 	}
 }
 
 func TestBuildServiceMapLatencyQuery_DirectionPicksHistogram(t *testing.T) {
 	// Callers should query the server_seconds bucket (how long X took to respond).
-	got, err := buildServiceMapLatencyQuery(callersDirection, "billing", "checkout", "5m", 0.95)
+	got, err := buildServiceMapLatencyQuery(callersDirection, "billing", "checkout", "5m", 0.95, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -63,7 +73,7 @@ func TestBuildServiceMapLatencyQuery_DirectionPicksHistogram(t *testing.T) {
 	}
 
 	// Callees should query the client_seconds bucket (how long X waited on the peer).
-	got, err = buildServiceMapLatencyQuery(calleesDirection, "billing", "checkout", "5m", 0.95)
+	got, err = buildServiceMapLatencyQuery(calleesDirection, "billing", "checkout", "5m", 0.95, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -72,7 +82,7 @@ func TestBuildServiceMapLatencyQuery_DirectionPicksHistogram(t *testing.T) {
 		t.Errorf("callees latency query wrong\ngot %q\nwant %q", got, want)
 	}
 
-	if _, err := buildServiceMapLatencyQuery(callersDirection, "", "x", "5m", 1.5); err == nil {
+	if _, err := buildServiceMapLatencyQuery(callersDirection, "", "x", "5m", 1.5, nil, nil); err == nil {
 		t.Error("expected error for phi out of range")
 	}
 }
@@ -87,35 +97,52 @@ func TestExtractEdges(t *testing.T) {
 		{Metric: map[string]string{"client": "user", "connection_type": "virtual_node"}, Value: []any{1.0, "NaN"}}, // dropped
 		{Metric: map[string]string{"client": "noop"}, Value: []any{1.0}},                                           // dropped (short)
 	}}}
-	got := extractEdges(resp, "client", "client_service_namespace")
+	got := extractEdges(resp, "client", "client_service_namespace", nil)
 	if len(got) != 2 {
 		t.Fatalf("len = %d, want 2: %v", len(got), got)
 	}
-	if got[edgeKey{name: "frontend", namespace: "oteldemo01", connType: ""}] != 0.5 {
+	if got[edgeKey{name: "frontend", namespace: "oteldemo01", connType: ""}].value != 0.5 {
 		t.Errorf("frontend value wrong: %v", got)
 	}
-	if got[edgeKey{name: "postgres", namespace: "", connType: "database"}] != 0.044 {
+	if got[edgeKey{name: "postgres", namespace: "", connType: "database"}].value != 0.044 {
 		t.Errorf("postgres value wrong: %v", got)
 	}
 
-	if got := extractEdges(nil, "client", "client_service_namespace"); len(got) != 0 {
+	if got := extractEdges(nil, "client", "client_service_namespace", nil); len(got) != 0 {
 		t.Errorf("nil response should produce empty map, got %v", got)
 	}
 }
 
+func TestExtractEdges_Grouped(t *testing.T) {
+	// Same peer in two clusters → two distinct edgeKeys, each carrying
+	// its group labels for display.
+	resp := &prometheus.QueryResponse{Data: prometheus.ResultData{Result: []prometheus.Sample{
+		{Metric: map[string]string{"client": "frontend", "k8s_cluster_name": "east"}, Value: []any{1.0, "0.5"}},
+		{Metric: map[string]string{"client": "frontend", "k8s_cluster_name": "west"}, Value: []any{1.0, "0.2"}},
+	}}}
+	got := extractEdges(resp, "client", "client_service_namespace", []string{"k8s_cluster_name"})
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2: %v", len(got), got)
+	}
+	east := got[edgeKey{name: "frontend", groupKey: "east"}]
+	if east.value != 0.5 || east.labels["k8s_cluster_name"] != "east" {
+		t.Errorf("east edge wrong: %+v", east)
+	}
+}
+
 func TestMergeEdges(t *testing.T) {
-	rates := map[edgeKey]float64{
-		{name: "A", namespace: "ns"}:             1.0,
-		{name: "B", namespace: "ns"}:             5.0,
-		{name: "postgres", connType: "database"}: 0.5,
+	rates := map[edgeKey]groupBucket{
+		{name: "A", namespace: "ns"}:             {value: 1.0},
+		{name: "B", namespace: "ns"}:             {value: 5.0},
+		{name: "postgres", connType: "database"}: {value: 0.5},
 	}
-	errors := map[edgeKey]float64{
-		{name: "A", namespace: "ns"}: 0.1, // 10% error
+	errors := map[edgeKey]groupBucket{
+		{name: "A", namespace: "ns"}: {value: 0.1}, // 10% error
 	}
-	p95s := map[edgeKey]float64{
-		{name: "B", namespace: "ns"}: 0.020,
+	p95s := map[edgeKey]groupBucket{
+		{name: "B", namespace: "ns"}: {value: 0.020},
 	}
-	got := mergeEdges(rates, errors, p95s)
+	got := mergeEdges(rates, errors, p95s, nil)
 	if len(got) != 3 {
 		t.Fatalf("len = %d, want 3", len(got))
 	}
@@ -143,7 +170,7 @@ func TestMergeEdges(t *testing.T) {
 }
 
 func TestMergeEdges_Empty(t *testing.T) {
-	if got := mergeEdges(nil, nil, nil); len(got) != 0 {
+	if got := mergeEdges(nil, nil, nil, nil); len(got) != 0 {
 		t.Errorf("expected empty slice, got %v", got)
 	}
 }

@@ -133,6 +133,93 @@ func parseFilter(raw string) (Matcher, error) {
 	return Matcher{Label: label, Op: op, Value: val}, nil
 }
 
+// labelNamePattern is the PromQL label-name grammar; `--group-by` values
+// must match it so they can be dropped into a `by (...)` clause verbatim.
+var labelNamePattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+
+// parseGroupBy splits and validates the `--group-by` values (comma-separated
+// or repeated) into an ordered, de-duplicated slice of label names. Grouping
+// pivots a command's aggregation from a single collapsed number into one row
+// per distinct value of the label(s) — the outlier-finding counterpart to
+// --filter. Returns nil when nothing was requested.
+func parseGroupBy(raw []string) ([]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(raw))
+	for _, entry := range raw {
+		for label := range strings.SplitSeq(entry, ",") {
+			label = strings.TrimSpace(label)
+			if label == "" {
+				continue
+			}
+			if !labelNamePattern.MatchString(label) {
+				return nil, fmt.Errorf("invalid --group-by %q: expected a PromQL label name (letters, digits, underscore; not starting with a digit)", label)
+			}
+			if _, dup := seen[label]; dup {
+				continue
+			}
+			seen[label] = struct{}{}
+			out = append(out, label)
+		}
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+// groupKeyDelim separates label values in a canonical group key. NUL never
+// appears in a Prometheus label value, so it can't collide two distinct
+// combinations into one key.
+const groupKeyDelim = "\x00"
+
+// groupKeyFor builds a canonical key for a sample's values of groupLabels
+// (in order) and returns the label→value map for display. An absent label
+// contributes an empty string, so series missing a group label collapse
+// into a single "(none)"-style bucket rather than vanishing.
+func groupKeyFor(metric map[string]string, groupLabels []string) (string, map[string]string) {
+	labels := make(map[string]string, len(groupLabels))
+	parts := make([]string, len(groupLabels))
+	for i, l := range groupLabels {
+		v := metric[l]
+		labels[l] = v
+		parts[i] = v
+	}
+	return strings.Join(parts, groupKeyDelim), labels
+}
+
+// sumBy returns the group-by label set for a plain (non-quantile)
+// aggregation: exactly the requested group labels, or nil to signal the
+// caller should emit `sum(...)` with no `by` clause at all.
+func sumBy(groupBy []string) []string {
+	if len(groupBy) == 0 {
+		return nil
+	}
+	return groupBy
+}
+
+// parseFilters validates a slice of raw `--filter` strings into Matchers.
+// Shared by the per-service commands (get, map, list-operations) so a
+// single service can be scoped to a dimension the underlying metric
+// carries — most usefully a cluster/region label. The list command has
+// its own buildFilters wrapper because it layers --language/--env on top.
+func parseFilters(raw []string) ([]Matcher, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	out := make([]Matcher, 0, len(raw))
+	for _, f := range raw {
+		parsed, err := parseFilter(f)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, parsed)
+	}
+	return out, nil
+}
+
 // Service is a single row in the services inventory.
 //
 // Name is the bare service name (no namespace prefix). Namespace is parsed
@@ -479,16 +566,103 @@ func resolveMetricsMode(raw string) (MetricsMode, bool, error) {
 // single scalar when the named calls metric has any series for the
 // requested job, and empty otherwise. Used by auto-detection to pick a
 // MetricsMode without running the full RED query against every family.
-func buildModeProbeQuery(metric, job string) (string, error) {
+func buildModeProbeQuery(metric, job string, matchers []Matcher) (string, error) {
 	if metric == "" || job == "" {
 		return "", errors.New("metric and job are required")
 	}
 	v := promql.Vector(metric).Label("job", escapePromqlValue(job))
+	for _, m := range matchers {
+		v = m.apply(v)
+	}
 	expr, err := promql.Count(v).Build()
 	if err != nil {
 		return "", err
 	}
 	return expr.String(), nil
+}
+
+// buildSeriesSelector renders a Prometheus `/series` match selector for a
+// metric scoped to one service (job) plus any --filter matchers, e.g.
+// `traces_span_metrics_calls_total{job="billing/checkout",k8s_cluster_name="prod"}`.
+// Used by `services labels` to enumerate the label keys/values that
+// --filter and --group-by can operate on. Values are escaped the same way
+// as the query builders (no injection).
+func buildSeriesSelector(metric, job string, matchers []Matcher) string {
+	var b strings.Builder
+	b.WriteString(metric)
+	b.WriteString(`{job="`)
+	b.WriteString(escapePromqlValue(job))
+	b.WriteString(`"`)
+	for _, m := range matchers {
+		b.WriteString(",")
+		b.WriteString(m.Label)
+		b.WriteString(m.Op)
+		b.WriteString(`"`)
+		b.WriteString(escapePromqlValue(m.Value))
+		b.WriteString(`"`)
+	}
+	b.WriteString("}")
+	return b.String()
+}
+
+// LabelSummary is one row of `services labels`: a label present on the
+// service's series, its distinct-value count, and either a sample of
+// values (default view) or the full set (when a single label is
+// requested).
+type LabelSummary struct {
+	Name        string   `json:"name" yaml:"name"`
+	Cardinality int      `json:"cardinality" yaml:"cardinality"`
+	Values      []string `json:"values,omitempty" yaml:"values,omitempty"`
+}
+
+// ServiceLabelsResponse is the `services labels` response: the queried
+// service, the metric whose series were inspected, and one entry per
+// discovered label (sorted by name).
+type ServiceLabelsResponse struct {
+	Service Service        `json:"service" yaml:"service"`
+	Metric  string         `json:"metric" yaml:"metric"`
+	Window  string         `json:"window" yaml:"window"`
+	Items   []LabelSummary `json:"items" yaml:"items"`
+}
+
+// collectSeriesLabels folds a /series response (one map per series) into a
+// label→distinct-values index, dropping the synthetic __name__. Callers
+// turn this into LabelSummary rows.
+func collectSeriesLabels(series []map[string]string) map[string]map[string]struct{} {
+	out := make(map[string]map[string]struct{})
+	for _, s := range series {
+		for k, v := range s {
+			if k == "__name__" {
+				continue
+			}
+			if out[k] == nil {
+				out[k] = make(map[string]struct{})
+			}
+			out[k][v] = struct{}{}
+		}
+	}
+	return out
+}
+
+// summarizeLabels turns the collectSeriesLabels index into sorted
+// LabelSummary rows. sampleN caps how many values each row carries (0 =
+// all); the full count is always reported via Cardinality so the caller
+// can show "N more".
+func summarizeLabels(index map[string]map[string]struct{}, sampleN int) []LabelSummary {
+	out := make([]LabelSummary, 0, len(index))
+	for name, vals := range index {
+		values := make([]string, 0, len(vals))
+		for v := range vals {
+			values = append(values, v)
+		}
+		sort.Strings(values)
+		if sampleN > 0 && len(values) > sampleN {
+			values = values[:sampleN]
+		}
+		out = append(out, LabelSummary{Name: name, Cardinality: len(vals), Values: values})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 // jobLabel returns the PromQL `job` label value for a (namespace, name)
@@ -523,7 +697,7 @@ func spanKindRegex(kinds []string) string {
 // to catch the `job="auth"` shape; otherwise it matches the canonical
 // `<namespace>/<name>` encoding. metric must be one of `target_info` or
 // `traces_target_info`.
-func buildServiceMetadataQuery(metric, namespace, name string) (string, error) {
+func buildServiceMetadataQuery(metric, namespace, name string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
@@ -532,6 +706,9 @@ func buildServiceMetadataQuery(metric, namespace, name string) (string, error) {
 		job = namespace + "/" + name
 	}
 	v := promql.Vector(metric).Label("job", escapePromqlValue(job))
+	for _, m := range matchers {
+		v = m.apply(v)
+	}
 	expr, err := promql.Group(v).By(groupByLabels(nil)).Build()
 	if err != nil {
 		return "", err
@@ -544,7 +721,7 @@ func buildServiceMetadataQuery(metric, namespace, name string) (string, error) {
 // Used to auto-resolve the namespace when the user passes only a bare
 // service name (the alternative is silent no-data for namespaced services).
 // metric must be one of `target_info` or `traces_target_info`.
-func buildBareNameLookupQuery(metric, name string) (string, error) {
+func buildBareNameLookupQuery(metric, name string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
@@ -553,6 +730,9 @@ func buildBareNameLookupQuery(metric, name string) (string, error) {
 	// for full-match, so we don't need ^/$ markers.
 	pattern := "(.+/)?" + regexp.QuoteMeta(name)
 	v := promql.Vector(metric).LabelMatchRegexp("job", escapePromqlValue(pattern))
+	for _, m := range matchers {
+		v = m.apply(v)
+	}
 	expr, err := promql.Group(v).By([]string{"job"}).Build()
 	if err != nil {
 		return "", err
@@ -622,13 +802,20 @@ func namespacesForName(jobs []string, name string) []string {
 }
 
 // buildRateQuery returns the PromQL for the headline request rate (per
-// second) over the given window, scoped to the service and span kinds.
-func buildRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+// second) over the given window, scoped to the service, span kinds, and
+// any caller-supplied `--filter` matchers. When groupBy is non-empty the
+// aggregation pivots to `sum by (<groupBy>)` so each label combination
+// yields its own row.
+func buildRateQuery(names metricNames, namespace, name, window string, kinds []string, matchers []Matcher, groupBy []string) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
-	v := scopedSpanMetric(names.calls, namespace, name, kinds, window)
-	expr, err := promql.Sum(promql.Rate(v)).Build()
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window, matchers)
+	agg := promql.Sum(promql.Rate(v))
+	if by := sumBy(groupBy); by != nil {
+		agg = agg.By(by)
+	}
+	expr, err := agg.Build()
 	if err != nil {
 		return "", err
 	}
@@ -637,13 +824,17 @@ func buildRateQuery(names metricNames, namespace, name, window string, kinds []s
 
 // buildErrorRateQuery returns the PromQL for the error rate (per second)
 // over the given window, scoped to status_code=STATUS_CODE_ERROR.
-func buildErrorRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+func buildErrorRateQuery(names metricNames, namespace, name, window string, kinds []string, matchers []Matcher, groupBy []string) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
-	v := scopedSpanMetric(names.calls, namespace, name, kinds, window).
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window, matchers).
 		Label("status_code", statusCodeError)
-	expr, err := promql.Sum(promql.Rate(v)).Build()
+	agg := promql.Sum(promql.Rate(v))
+	if by := sumBy(groupBy); by != nil {
+		agg = agg.By(by)
+	}
+	expr, err := agg.Build()
 	if err != nil {
 		return "", err
 	}
@@ -651,16 +842,18 @@ func buildErrorRateQuery(names metricNames, namespace, name, window string, kind
 }
 
 // buildLatencyQuantileQuery returns the PromQL for `histogram_quantile(phi,
-// sum by (le) (rate(... [window]))) `. phi must be in [0, 1].
-func buildLatencyQuantileQuery(names metricNames, namespace, name, window string, kinds []string, phi float64) (string, error) {
+// sum by (le[, groupBy]) (rate(... [window]))) `. phi must be in [0, 1].
+// The group-by labels are preserved through the quantile so each
+// combination keeps its own latency.
+func buildLatencyQuantileQuery(names metricNames, namespace, name, window string, kinds []string, phi float64, matchers []Matcher, groupBy []string) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
 	if phi < 0 || phi > 1 {
 		return "", fmt.Errorf("phi must be in [0,1], got %v", phi)
 	}
-	v := scopedSpanMetric(names.latencyBucket, namespace, name, kinds, window)
-	sumByLe := promql.Sum(promql.Rate(v)).By([]string{"le"})
+	v := scopedSpanMetric(names.latencyBucket, namespace, name, kinds, window, matchers)
+	sumByLe := promql.Sum(promql.Rate(v)).By(append([]string{"le"}, groupBy...))
 	expr, err := promql.HistogramQuantile(phi, sumByLe).Build()
 	if err != nil {
 		return "", err
@@ -672,12 +865,12 @@ func buildLatencyQuantileQuery(names metricNames, namespace, name, window string
 // the given window: `sum by (span_name) (rate(<calls>[<window>]))`.
 // Shape parallels buildRateQuery but the aggregation is grouped by
 // span_name so the response can be pivoted into one row per operation.
-func buildOperationsRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+func buildOperationsRateQuery(names metricNames, namespace, name, window string, kinds []string, matchers []Matcher, groupBy []string) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
-	v := scopedSpanMetric(names.calls, namespace, name, kinds, window)
-	expr, err := promql.Sum(promql.Rate(v)).By([]string{"span_name"}).Build()
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window, matchers)
+	expr, err := promql.Sum(promql.Rate(v)).By(append([]string{"span_name"}, groupBy...)).Build()
 	if err != nil {
 		return "", err
 	}
@@ -687,13 +880,13 @@ func buildOperationsRateQuery(names metricNames, namespace, name, window string,
 // buildOperationsErrorRateQuery returns the per-operation error rate,
 // filtered to status_code=STATUS_CODE_ERROR. An operation with no errors
 // in the window produces no series — the caller treats that as 0.
-func buildOperationsErrorRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+func buildOperationsErrorRateQuery(names metricNames, namespace, name, window string, kinds []string, matchers []Matcher, groupBy []string) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
-	v := scopedSpanMetric(names.calls, namespace, name, kinds, window).
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window, matchers).
 		Label("status_code", statusCodeError)
-	expr, err := promql.Sum(promql.Rate(v)).By([]string{"span_name"}).Build()
+	expr, err := promql.Sum(promql.Rate(v)).By(append([]string{"span_name"}, groupBy...)).Build()
 	if err != nil {
 		return "", err
 	}
@@ -704,15 +897,15 @@ func buildOperationsErrorRateQuery(names metricNames, namespace, name, window st
 // `histogram_quantile(phi, sum by (le, span_name) (rate(<bucket>[<window>])))`.
 // span_name is preserved through the histogram_quantile call so quantiles
 // stay per-operation.
-func buildOperationsLatencyQuantileQuery(names metricNames, namespace, name, window string, kinds []string, phi float64) (string, error) {
+func buildOperationsLatencyQuantileQuery(names metricNames, namespace, name, window string, kinds []string, phi float64, matchers []Matcher, groupBy []string) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
 	if phi < 0 || phi > 1 {
 		return "", fmt.Errorf("phi must be in [0,1], got %v", phi)
 	}
-	v := scopedSpanMetric(names.latencyBucket, namespace, name, kinds, window)
-	sumByLeAndOp := promql.Sum(promql.Rate(v)).By([]string{"le", "span_name"})
+	v := scopedSpanMetric(names.latencyBucket, namespace, name, kinds, window, matchers)
+	sumByLeAndOp := promql.Sum(promql.Rate(v)).By(append([]string{"le", "span_name"}, groupBy...))
 	expr, err := promql.HistogramQuantile(phi, sumByLeAndOp).Build()
 	if err != nil {
 		return "", err
@@ -728,14 +921,15 @@ func buildOperationsLatencyQuantileQuery(names metricNames, namespace, name, win
 // The average × rate gives wall-clock time spent per second, which is
 // what we sort the table by (time share). Native quantiles aren't a
 // substitute — the time-share signal needs the first moment.
-func buildOperationsAvgLatencyQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+func buildOperationsAvgLatencyQuery(names metricNames, namespace, name, window string, kinds []string, matchers []Matcher, groupBy []string) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
-	sumV := scopedSpanMetric(names.latencySum, namespace, name, kinds, window)
-	countV := scopedSpanMetric(names.latencyCount, namespace, name, kinds, window)
-	num := promql.Sum(promql.Rate(sumV)).By([]string{"span_name"})
-	den := promql.Sum(promql.Rate(countV)).By([]string{"span_name"})
+	sumV := scopedSpanMetric(names.latencySum, namespace, name, kinds, window, matchers)
+	countV := scopedSpanMetric(names.latencyCount, namespace, name, kinds, window, matchers)
+	byOp := append([]string{"span_name"}, groupBy...)
+	num := promql.Sum(promql.Rate(sumV)).By(byOp)
+	den := promql.Sum(promql.Rate(countV)).By(byOp)
 	expr, err := promql.Div(num, den).Build()
 	if err != nil {
 		return "", err
@@ -745,18 +939,27 @@ func buildOperationsAvgLatencyQuery(names metricNames, namespace, name, window s
 
 // scopedSpanMetric returns a vector selector for `metric` filtered by a
 // single `job="<ns>/<name>"` (or bare `job="<name>"`) label plus a
-// span_kind regex. Range is applied so the caller can wrap in `rate()`.
+// span_kind regex, then any caller-supplied matchers. Range is applied so
+// the caller can wrap in `rate()`.
 //
 // We keep `service` + `service_namespace` out of the selector on purpose:
 // not every metric family emits them. Newer stacks emit both, but the
 // legacy Tempo `traces_spanmetrics_*` family and the OTel Collector
 // variant only emit `job`. Filtering on `job` alone keeps the query
 // portable across every metrics-mode this command supports.
-func scopedSpanMetric(metric, namespace, name string, kinds []string, window string) *promql.VectorExprBuilder {
-	return promql.Vector(metric).
+//
+// matchers are the user's `--filter` label selectors; they scope the
+// numbers to a dimension the span metric happens to carry — most
+// commonly a cluster label (k8s_cluster_name / cluster) so a service
+// deployed across regions can be broken out one region at a time.
+func scopedSpanMetric(metric, namespace, name string, kinds []string, window string, matchers []Matcher) *promql.VectorExprBuilder {
+	v := promql.Vector(metric).
 		Label("job", escapePromqlValue(jobLabel(namespace, name))).
-		LabelMatchRegexp("span_kind", spanKindRegex(kinds)).
-		Range(window)
+		LabelMatchRegexp("span_kind", spanKindRegex(kinds))
+	for _, m := range matchers {
+		v = m.apply(v)
+	}
+	return v.Range(window)
 }
 
 // instantScalar pulls the first sample's value out of a Prometheus instant
@@ -768,7 +971,13 @@ func instantScalar(resp *prometheus.QueryResponse) (float64, bool) {
 	if resp == nil || len(resp.Data.Result) == 0 {
 		return 0, false
 	}
-	sample := resp.Data.Result[0]
+	return sampleScalar(resp.Data.Result[0])
+}
+
+// sampleScalar parses one Prometheus sample's instant value as float64.
+// Returns false for a missing value, NaN/Inf, or an unparseable string so
+// callers can render "no data" rather than a misleading zero.
+func sampleScalar(sample prometheus.Sample) (float64, bool) {
 	if len(sample.Value) < 2 {
 		return 0, false
 	}
@@ -781,6 +990,34 @@ func instantScalar(resp *prometheus.QueryResponse) (float64, bool) {
 		return 0, false
 	}
 	return f, true
+}
+
+// groupBucket carries a value plus the label→value map that identifies its
+// group, so a grouped response can be pivoted into per-combination rows.
+type groupBucket struct {
+	value  float64
+	labels map[string]string
+}
+
+// extractGrouped pivots a grouped instant response into one bucket per
+// distinct combination of groupLabels. The canonical key (groupKeyFor)
+// dedupes; the last sample wins for a given key (a well-formed grouped
+// query emits one series per combination, so collisions don't occur in
+// practice). Samples with unparseable values are dropped.
+func extractGrouped(resp *prometheus.QueryResponse, groupLabels []string) map[string]groupBucket {
+	out := make(map[string]groupBucket)
+	if resp == nil {
+		return out
+	}
+	for _, sample := range resp.Data.Result {
+		f, ok := sampleScalar(sample)
+		if !ok {
+			continue
+		}
+		key, labels := groupKeyFor(sample.Metric, groupLabels)
+		out[key] = groupBucket{value: f, labels: labels}
+	}
+	return out
 }
 
 // REDStats holds the rate / errors / duration snapshot for one service over
@@ -812,6 +1049,104 @@ type REDStats struct {
 type ServiceDetail struct {
 	Service Service  `json:"service" yaml:"service"`
 	RED     REDStats `json:"red" yaml:"red"`
+}
+
+// GroupedRED is one row of a `services get --group-by` result: the group's
+// label values plus that group's RED snapshot. Labels is keyed by the
+// requested group label name(s); an empty value means the series didn't
+// carry that label.
+type GroupedRED struct {
+	Labels map[string]string `json:"labels" yaml:"labels"`
+	RED    REDStats          `json:"red" yaml:"red"`
+}
+
+// GroupedServiceDetail is the get-command response when --group-by is set:
+// the service identity plus one RED row per distinct group-label
+// combination, sorted by request rate desc so the busiest/outlier groups
+// surface first.
+type GroupedServiceDetail struct {
+	Service Service      `json:"service" yaml:"service"`
+	GroupBy []string     `json:"group_by" yaml:"group_by"`
+	Window  string       `json:"window" yaml:"window"`
+	Items   []GroupedRED `json:"items" yaml:"items"`
+}
+
+// mergeGroupedRED joins the per-group rate/error/latency buckets into one
+// GroupedRED per distinct group key, mirroring the single-service field
+// semantics in fetchServiceDetail (HasErrors is inferred once there's
+// traffic; latency flags track "measured" vs "no series"). Rows are sorted
+// by rate desc with a stable group-label tiebreak so outliers surface and
+// output is reproducible.
+func mergeGroupedRED(window string, mode MetricsMode, kinds []string, groupBy []string, rates, errs, p50s, p95s, p99s map[string]groupBucket) []GroupedRED {
+	keys := make(map[string]struct{})
+	for _, m := range []map[string]groupBucket{rates, errs, p50s, p95s, p99s} {
+		for k := range m {
+			keys[k] = struct{}{}
+		}
+	}
+
+	// labelsFor prefers whichever bucket carried the group labels for a key;
+	// rate is the most likely to be present, but any of them will do.
+	labelsFor := func(key string) map[string]string {
+		for _, m := range []map[string]groupBucket{rates, errs, p50s, p95s, p99s} {
+			if b, ok := m[key]; ok {
+				return b.labels
+			}
+		}
+		return map[string]string{}
+	}
+
+	out := make([]GroupedRED, 0, len(keys))
+	for key := range keys {
+		rate, hasRate := rates[key]
+		errRate, hasErr := errs[key]
+		p50, hasP50 := p50s[key]
+		p95, hasP95 := p95s[key]
+		p99, hasP99 := p99s[key]
+		hasTraffic := hasRate && rate.value > 0
+		out = append(out, GroupedRED{
+			Labels: labelsFor(key),
+			RED: REDStats{
+				Window:          window,
+				MetricsMode:     mode,
+				SpanKinds:       spanKindRegex(kinds),
+				RatePerSecond:   rate.value,
+				ErrorRatePerSec: errRate.value,
+				ErrorPercent:    computeErrorPercent(errRate.value, rate.value),
+				P50Seconds:      p50.value,
+				P95Seconds:      p95.value,
+				P99Seconds:      p99.value,
+				HasTraffic:      hasTraffic,
+				HasErrors:       hasErr || hasTraffic,
+				HasLatencyP50:   hasP50,
+				HasLatencyP95:   hasP95,
+				HasLatencyP99:   hasP99,
+			},
+		})
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].RED.RatePerSecond != out[j].RED.RatePerSecond {
+			return out[i].RED.RatePerSecond > out[j].RED.RatePerSecond
+		}
+		return groupLabelString(out[i].Labels, groupBy) < groupLabelString(out[j].Labels, groupBy)
+	})
+	return out
+}
+
+// groupLabelString renders a group's label values in groupBy order for a
+// stable sort tiebreak and for table display (e.g. "prod-us" or
+// "prod-us / go" for multi-label grouping). Empty values render as "(none)".
+func groupLabelString(labels map[string]string, groupBy []string) string {
+	parts := make([]string, len(groupBy))
+	for i, l := range groupBy {
+		v := labels[l]
+		if v == "" {
+			v = "(none)"
+		}
+		parts[i] = v
+	}
+	return strings.Join(parts, " / ")
 }
 
 // Service-graph metric names. These are emitted by Tempo's
@@ -874,7 +1209,7 @@ func (d mapDirection) latencyBucketMetric() string {
 // aggregates a service-graph counter to one row per peer per
 // connection-type. metric is one of the service-graph counter metrics
 // (request_total, request_failed_total).
-func buildServiceMapEdgeQuery(metric string, dir mapDirection, namespace, name, window string) (string, error) {
+func buildServiceMapEdgeQuery(metric string, dir mapDirection, namespace, name, window string, matchers []Matcher, groupBy []string) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
@@ -888,10 +1223,13 @@ func buildServiceMapEdgeQuery(metric string, dir mapDirection, namespace, name, 
 	if namespace != "" {
 		v = v.Label(selfNs, escapePromqlValue(namespace))
 	}
+	for _, m := range matchers {
+		v = m.apply(v)
+	}
 	v = v.Range(window)
 
 	expr, err := promql.Sum(promql.Rate(v)).
-		By([]string{peerName, peerNs, "connection_type"}).
+		By(append([]string{peerName, peerNs, "connection_type"}, groupBy...)).
 		Build()
 	if err != nil {
 		return "", err
@@ -904,7 +1242,7 @@ func buildServiceMapEdgeQuery(metric string, dir mapDirection, namespace, name, 
 //	histogram_quantile(phi, sum by (le, peer_name, peer_namespace, connection_type) (rate(<bucket>[window])))
 //
 // with the bucket metric picked by `dir.latencyBucketMetric()`.
-func buildServiceMapLatencyQuery(dir mapDirection, namespace, name, window string, phi float64) (string, error) {
+func buildServiceMapLatencyQuery(dir mapDirection, namespace, name, window string, phi float64, matchers []Matcher, groupBy []string) (string, error) {
 	if name == "" {
 		return "", errors.New("service name is required")
 	}
@@ -918,9 +1256,12 @@ func buildServiceMapLatencyQuery(dir mapDirection, namespace, name, window strin
 	if namespace != "" {
 		v = v.Label(selfNs, escapePromqlValue(namespace))
 	}
+	for _, m := range matchers {
+		v = m.apply(v)
+	}
 	v = v.Range(window)
 
-	sumByLe := promql.Sum(promql.Rate(v)).By([]string{"le", peerName, peerNs, "connection_type"})
+	sumByLe := promql.Sum(promql.Rate(v)).By(append([]string{"le", peerName, peerNs, "connection_type"}, groupBy...))
 	expr, err := promql.HistogramQuantile(phi, sumByLe).Build()
 	if err != nil {
 		return "", err
@@ -933,14 +1274,15 @@ func buildServiceMapLatencyQuery(dir mapDirection, namespace, name, window strin
 // Connection type is empty for HTTP/gRPC peers; `database` / `messaging`
 // / `virtual_node` for typed edges.
 type Edge struct {
-	Peer            Service `json:"peer" yaml:"peer"`
-	ConnectionType  string  `json:"connection_type,omitempty" yaml:"connection_type,omitempty"`
-	RatePerSecond   float64 `json:"rate_per_second" yaml:"rate_per_second"`
-	ErrorRatePerSec float64 `json:"error_rate_per_second" yaml:"error_rate_per_second"`
-	ErrorPercent    float64 `json:"error_percent" yaml:"error_percent"`
-	P95Seconds      float64 `json:"p95_seconds" yaml:"p95_seconds"`
-	HasErrors       bool    `json:"has_errors" yaml:"has_errors"`
-	HasLatency      bool    `json:"has_latency" yaml:"has_latency"`
+	Peer            Service           `json:"peer" yaml:"peer"`
+	ConnectionType  string            `json:"connection_type,omitempty" yaml:"connection_type,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	RatePerSecond   float64           `json:"rate_per_second" yaml:"rate_per_second"`
+	ErrorRatePerSec float64           `json:"error_rate_per_second" yaml:"error_rate_per_second"`
+	ErrorPercent    float64           `json:"error_percent" yaml:"error_percent"`
+	P95Seconds      float64           `json:"p95_seconds" yaml:"p95_seconds"`
+	HasErrors       bool              `json:"has_errors" yaml:"has_errors"`
+	HasLatency      bool              `json:"has_latency" yaml:"has_latency"`
 }
 
 // ServiceMap is the response shape for `services map`: the queried
@@ -948,27 +1290,31 @@ type Edge struct {
 // the Tempo service-graph metric. Each direction is independently
 // sorted by rate desc.
 type ServiceMap struct {
-	Service Service `json:"service" yaml:"service"`
-	Window  string  `json:"window" yaml:"window"`
-	Callers []Edge  `json:"callers" yaml:"callers"`
-	Callees []Edge  `json:"callees" yaml:"callees"`
+	Service Service  `json:"service" yaml:"service"`
+	Window  string   `json:"window" yaml:"window"`
+	GroupBy []string `json:"group_by,omitempty" yaml:"group_by,omitempty"`
+	Callers []Edge   `json:"callers" yaml:"callers"`
+	Callees []Edge   `json:"callees" yaml:"callees"`
 }
 
 // edgeKey identifies an edge for the purpose of joining the rate /
 // error / latency responses. The same peer reached over two different
-// connection types is two distinct edges in the service graph.
+// connection types is two distinct edges in the service graph; groupKey
+// splits an edge further per --group-by combination.
 type edgeKey struct {
 	name      string
 	namespace string
 	connType  string
+	groupKey  string
 }
 
 // extractEdges flattens a Prometheus instant response into a map keyed
-// by (peer name, peer namespace, connection_type). Samples with empty
-// peer name or unparseable values are dropped so callers can treat
-// absence as "no data". peerName / peerNs name which labels to read.
-func extractEdges(resp *prometheus.QueryResponse, peerName, peerNs string) map[edgeKey]float64 {
-	out := make(map[edgeKey]float64)
+// by (peer name, peer namespace, connection_type, group). Samples with
+// empty peer name or unparseable values are dropped so callers can treat
+// absence as "no data". peerName / peerNs name which labels to read;
+// groupLabels are the --group-by dimensions carried in the bucket.
+func extractEdges(resp *prometheus.QueryResponse, peerName, peerNs string, groupLabels []string) map[edgeKey]groupBucket {
+	out := make(map[edgeKey]groupBucket)
 	if resp == nil {
 		return out
 	}
@@ -977,23 +1323,18 @@ func extractEdges(resp *prometheus.QueryResponse, peerName, peerNs string) map[e
 		if n == "" {
 			continue
 		}
-		if len(sample.Value) < 2 {
-			continue
-		}
-		str, ok := sample.Value[1].(string)
+		f, ok := sampleScalar(sample)
 		if !ok {
 			continue
 		}
-		f, err := strconv.ParseFloat(str, 64)
-		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
-			continue
-		}
+		gkey, glabels := groupKeyFor(sample.Metric, groupLabels)
 		key := edgeKey{
 			name:      n,
 			namespace: sample.Metric[peerNs],
 			connType:  sample.Metric["connection_type"],
+			groupKey:  gkey,
 		}
-		out[key] = f
+		out[key] = groupBucket{value: f, labels: glabels}
 	}
 	return out
 }
@@ -1004,21 +1345,22 @@ func extractEdges(resp *prometheus.QueryResponse, peerName, peerNs string) map[e
 // used to compute time-share. *Has* flags distinguish "0 measured" from
 // "no series in window" the same way REDStats does.
 type Operation struct {
-	Name             string  `json:"operation" yaml:"operation"`
-	RatePerSecond    float64 `json:"rate_per_second" yaml:"rate_per_second"`
-	ErrorRatePerSec  float64 `json:"error_rate_per_second" yaml:"error_rate_per_second"`
-	ErrorPercent     float64 `json:"error_percent" yaml:"error_percent"`
-	AvgSeconds       float64 `json:"avg_seconds" yaml:"avg_seconds"`
-	P50Seconds       float64 `json:"p50_seconds" yaml:"p50_seconds"`
-	P95Seconds       float64 `json:"p95_seconds" yaml:"p95_seconds"`
-	P99Seconds       float64 `json:"p99_seconds" yaml:"p99_seconds"`
-	TimeSharePercent float64 `json:"time_share_percent" yaml:"time_share_percent"`
-	HasTraffic       bool    `json:"has_traffic" yaml:"has_traffic"`
-	HasErrors        bool    `json:"has_errors" yaml:"has_errors"`
-	HasAvgLatency    bool    `json:"has_avg_latency" yaml:"has_avg_latency"`
-	HasLatencyP50    bool    `json:"has_latency_p50" yaml:"has_latency_p50"`
-	HasLatencyP95    bool    `json:"has_latency_p95" yaml:"has_latency_p95"`
-	HasLatencyP99    bool    `json:"has_latency_p99" yaml:"has_latency_p99"`
+	Name             string            `json:"operation" yaml:"operation"`
+	Labels           map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	RatePerSecond    float64           `json:"rate_per_second" yaml:"rate_per_second"`
+	ErrorRatePerSec  float64           `json:"error_rate_per_second" yaml:"error_rate_per_second"`
+	ErrorPercent     float64           `json:"error_percent" yaml:"error_percent"`
+	AvgSeconds       float64           `json:"avg_seconds" yaml:"avg_seconds"`
+	P50Seconds       float64           `json:"p50_seconds" yaml:"p50_seconds"`
+	P95Seconds       float64           `json:"p95_seconds" yaml:"p95_seconds"`
+	P99Seconds       float64           `json:"p99_seconds" yaml:"p99_seconds"`
+	TimeSharePercent float64           `json:"time_share_percent" yaml:"time_share_percent"`
+	HasTraffic       bool              `json:"has_traffic" yaml:"has_traffic"`
+	HasErrors        bool              `json:"has_errors" yaml:"has_errors"`
+	HasAvgLatency    bool              `json:"has_avg_latency" yaml:"has_avg_latency"`
+	HasLatencyP50    bool              `json:"has_latency_p50" yaml:"has_latency_p50"`
+	HasLatencyP95    bool              `json:"has_latency_p95" yaml:"has_latency_p95"`
+	HasLatencyP99    bool              `json:"has_latency_p99" yaml:"has_latency_p99"`
 }
 
 // OperationsResponse is the top-level shape for the operations command:
@@ -1030,15 +1372,25 @@ type OperationsResponse struct {
 	Window      string      `json:"window" yaml:"window"`
 	MetricsMode MetricsMode `json:"metrics_mode" yaml:"metrics_mode"`
 	SpanKinds   string      `json:"span_kinds" yaml:"span_kinds"`
+	GroupBy     []string    `json:"group_by,omitempty" yaml:"group_by,omitempty"`
 	Items       []Operation `json:"items" yaml:"items"`
 }
 
-// extractBySpanName collapses a Prometheus instant response into a map
-// of span_name → scalar value. Samples with empty span_name or
+// opAggKey identifies an operations row: the span_name plus the
+// canonical --group-by combination (empty when not grouping, so the map
+// collapses to one row per span_name exactly as before).
+type opAggKey struct {
+	name     string
+	groupKey string
+}
+
+// extractOperations collapses a Prometheus instant response into a map
+// keyed by (span_name, group). Samples with empty span_name or
 // unparseable values are dropped so callers can treat absence as
-// "no data".
-func extractBySpanName(resp *prometheus.QueryResponse) map[string]float64 {
-	out := make(map[string]float64)
+// "no data". groupLabels are the --group-by dimensions carried in the
+// bucket.
+func extractOperations(resp *prometheus.QueryResponse, groupLabels []string) map[opAggKey]groupBucket {
+	out := make(map[opAggKey]groupBucket)
 	if resp == nil {
 		return out
 	}
@@ -1047,51 +1399,63 @@ func extractBySpanName(resp *prometheus.QueryResponse) map[string]float64 {
 		if op == "" {
 			continue
 		}
-		if len(sample.Value) < 2 {
-			continue
-		}
-		str, ok := sample.Value[1].(string)
+		f, ok := sampleScalar(sample)
 		if !ok {
 			continue
 		}
-		f, err := strconv.ParseFloat(str, 64)
-		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
-			continue
-		}
-		out[op] = f
+		gkey, glabels := groupKeyFor(sample.Metric, groupLabels)
+		out[opAggKey{name: op, groupKey: gkey}] = groupBucket{value: f, labels: glabels}
 	}
 	return out
 }
 
+// bucketLabelsFor returns the group-label map for key, preferring
+// whichever of the supplied maps carries it (rate is usually present).
+func edgeLabelsFor(key edgeKey, maps ...map[edgeKey]groupBucket) map[string]string {
+	for _, m := range maps {
+		if b, ok := m[key]; ok {
+			return b.labels
+		}
+	}
+	return nil
+}
+
+func opLabelsFor(key opAggKey, maps ...map[opAggKey]groupBucket) map[string]string {
+	for _, m := range maps {
+		if b, ok := m[key]; ok {
+			return b.labels
+		}
+	}
+	return nil
+}
+
 // mergeEdges joins per-quantity maps (rate, errors, p95) into one row
-// per (peer, connection_type), then sorts by rate desc with a stable
-// (name, namespace) tiebreak. HasErrors is inferred when rate>0 — a
-// healthy edge with no STATUS_CODE_ERROR series prints 0% rather than
-// "no data". Matches the convention from REDStats / Operation.
-func mergeEdges(rates, errors, p95s map[edgeKey]float64) []Edge {
+// per (peer, connection_type, group), then sorts by rate desc with a
+// stable (group, namespace, name, connType) tiebreak. HasErrors is
+// inferred when rate>0 — a healthy edge with no STATUS_CODE_ERROR series
+// prints 0% rather than "no data". Matches the convention from REDStats /
+// Operation. groupBy orders the group tiebreak.
+func mergeEdges(rates, errors, p95s map[edgeKey]groupBucket, groupBy []string) []Edge {
 	keys := make(map[edgeKey]struct{})
-	for k := range rates {
-		keys[k] = struct{}{}
-	}
-	for k := range errors {
-		keys[k] = struct{}{}
-	}
-	for k := range p95s {
-		keys[k] = struct{}{}
+	for _, m := range []map[edgeKey]groupBucket{rates, errors, p95s} {
+		for k := range m {
+			keys[k] = struct{}{}
+		}
 	}
 	out := make([]Edge, 0, len(keys))
 	for k := range keys {
 		rate, hasRate := rates[k]
 		errRate, hasErr := errors[k]
 		p95, hasP95 := p95s[k]
-		hasTraffic := hasRate && rate > 0
+		hasTraffic := hasRate && rate.value > 0
 		out = append(out, Edge{
 			Peer:            Service{Name: k.name, Namespace: k.namespace},
 			ConnectionType:  k.connType,
-			RatePerSecond:   rate,
-			ErrorRatePerSec: errRate,
-			ErrorPercent:    computeErrorPercent(errRate, rate),
-			P95Seconds:      p95,
+			Labels:          edgeLabelsFor(k, rates, errors, p95s),
+			RatePerSecond:   rate.value,
+			ErrorRatePerSec: errRate.value,
+			ErrorPercent:    computeErrorPercent(errRate.value, rate.value),
+			P95Seconds:      p95.value,
 			HasErrors:       hasErr || hasTraffic,
 			HasLatency:      hasP95,
 		})
@@ -1099,6 +1463,9 @@ func mergeEdges(rates, errors, p95s map[edgeKey]float64) []Edge {
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].RatePerSecond != out[j].RatePerSecond {
 			return out[i].RatePerSecond > out[j].RatePerSecond
+		}
+		if gi, gj := groupLabelString(out[i].Labels, groupBy), groupLabelString(out[j].Labels, groupBy); gi != gj {
+			return gi < gj
 		}
 		if out[i].Peer.Namespace != out[j].Peer.Namespace {
 			return out[i].Peer.Namespace < out[j].Peer.Namespace
@@ -1112,58 +1479,48 @@ func mergeEdges(rates, errors, p95s map[edgeKey]float64) []Edge {
 }
 
 // mergeOperations joins per-quantity maps (rate, errors, avg, p50, p95,
-// p99) into one row per distinct span_name, then computes time-share
-// client-side. The time-share denominator is the sum of (avg × rate)
-// across all observed operations — i.e. the share of total wall-clock
-// time each operation consumes. Operations missing an avg-latency
-// signal contribute 0 to the denominator and a 0 share to the output.
-func mergeOperations(rates, errors, avgs, p50s, p95s, p99s map[string]float64) []Operation {
-	names := make(map[string]struct{})
-	for k := range rates {
-		names[k] = struct{}{}
-	}
-	for k := range errors {
-		names[k] = struct{}{}
-	}
-	for k := range avgs {
-		names[k] = struct{}{}
-	}
-	for k := range p50s {
-		names[k] = struct{}{}
-	}
-	for k := range p95s {
-		names[k] = struct{}{}
-	}
-	for k := range p99s {
-		names[k] = struct{}{}
+// p99) into one row per distinct (span_name, group), then computes
+// time-share client-side. Time-share is normalized WITHIN each group —
+// the denominator is the sum of (avg × rate) across the operations
+// sharing that group key — so a per-cluster breakdown has each cluster's
+// operations sum to ~100%, which is what makes cross-group outliers
+// comparable. Operations missing an avg-latency signal contribute 0.
+func mergeOperations(rates, errors, avgs, p50s, p95s, p99s map[opAggKey]groupBucket, groupBy []string) []Operation {
+	keys := make(map[opAggKey]struct{})
+	for _, m := range []map[opAggKey]groupBucket{rates, errors, avgs, p50s, p95s, p99s} {
+		for k := range m {
+			keys[k] = struct{}{}
+		}
 	}
 
-	out := make([]Operation, 0, len(names))
-	totalWall := 0.0
-	for n := range names {
-		rate, hasRate := rates[n]
-		errRate, hasErr := errors[n]
-		avg, hasAvg := avgs[n]
-		p50, hasP50 := p50s[n]
-		p95, hasP95 := p95s[n]
-		p99, hasP99 := p99s[n]
+	out := make([]Operation, 0, len(keys))
+	rowGroupKeys := make([]string, 0, len(keys))
+	totalWall := make(map[string]float64)
+	for k := range keys {
+		rate, hasRate := rates[k]
+		errRate, hasErr := errors[k]
+		avg, hasAvg := avgs[k]
+		p50, hasP50 := p50s[k]
+		p95, hasP95 := p95s[k]
+		p99, hasP99 := p99s[k]
 
-		hasTraffic := hasRate && rate > 0
+		hasTraffic := hasRate && rate.value > 0
 		// Once we know there's traffic, missing error series ⇒ 0 errors,
 		// not "unknown" — same logic as REDStats.HasErrors in services get.
 		hasErrors := hasErr || hasTraffic
 		if hasAvg && hasTraffic {
-			totalWall += avg * rate
+			totalWall[k.groupKey] += avg.value * rate.value
 		}
 		out = append(out, Operation{
-			Name:            n,
-			RatePerSecond:   rate,
-			ErrorRatePerSec: errRate,
-			ErrorPercent:    computeErrorPercent(errRate, rate),
-			AvgSeconds:      avg,
-			P50Seconds:      p50,
-			P95Seconds:      p95,
-			P99Seconds:      p99,
+			Name:            k.name,
+			Labels:          opLabelsFor(k, rates, errors, avgs, p50s, p95s, p99s),
+			RatePerSecond:   rate.value,
+			ErrorRatePerSec: errRate.value,
+			ErrorPercent:    computeErrorPercent(errRate.value, rate.value),
+			AvgSeconds:      avg.value,
+			P50Seconds:      p50.value,
+			P95Seconds:      p95.value,
+			P99Seconds:      p99.value,
 			HasTraffic:      hasTraffic,
 			HasErrors:       hasErrors,
 			HasAvgLatency:   hasAvg,
@@ -1171,20 +1528,25 @@ func mergeOperations(rates, errors, avgs, p50s, p95s, p99s map[string]float64) [
 			HasLatencyP95:   hasP95,
 			HasLatencyP99:   hasP99,
 		})
+		rowGroupKeys = append(rowGroupKeys, k.groupKey)
 	}
 
-	if totalWall > 0 {
-		for i := range out {
-			if out[i].HasAvgLatency && out[i].HasTraffic {
-				out[i].TimeSharePercent = (out[i].AvgSeconds * out[i].RatePerSecond / totalWall) * 100
+	for i := range out {
+		if out[i].HasAvgLatency && out[i].HasTraffic {
+			if tw := totalWall[rowGroupKeys[i]]; tw > 0 {
+				out[i].TimeSharePercent = (out[i].AvgSeconds * out[i].RatePerSecond / tw) * 100
 			}
 		}
 	}
 
-	// Default order matches the plugin: time-share desc, then by name
-	// asc so equal-share rows (typically the zero-share tail) are
-	// reproducible across runs.
+	// Default order: group asc (rows cluster by group), then time-share
+	// desc, then name asc so equal-share rows are reproducible. When not
+	// grouping, the group key is "" for every row and this collapses to
+	// the original (time-share desc, name asc).
 	sort.Slice(out, func(i, j int) bool {
+		if gi, gj := groupLabelString(out[i].Labels, groupBy), groupLabelString(out[j].Labels, groupBy); gi != gj {
+			return gi < gj
+		}
 		if out[i].TimeSharePercent != out[j].TimeSharePercent {
 			return out[i].TimeSharePercent > out[j].TimeSharePercent
 		}

@@ -4,6 +4,18 @@ gcx uses a context-based configuration model inspired by kubectl's kubeconfig. A
 file holds named contexts, each describing a Grafana instance. One context is "current" at any time;
 all commands operate against it unless overridden.
 
+## Contents
+
+- [Config File Location](#config-file-location)
+- [Config File Structure](#config-file-structure)
+- [Config Set Paths](#config-set-paths)
+- [Environment Variables](#environment-variables)
+- [Namespace Resolution](#namespace-resolution)
+- [Multi-Context Management](#multi-context-management)
+- [Authentication](#authentication)
+- [Secret Redaction](#secret-redaction)
+- [Quick-Start: Minimum Valid Configuration](#quick-start-minimum-valid-configuration)
+
 ---
 
 ## Config File Location

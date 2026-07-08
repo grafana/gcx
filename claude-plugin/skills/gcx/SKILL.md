@@ -1,8 +1,8 @@
 ---
 name: gcx
 description: >
-  Use gcx CLI to manage Grafana Cloud resources. Trigger when the user wants to
-  inspect, create, update, delete, query, or automate any Grafana resource —
+  Manages Grafana Cloud resources via the gcx CLI. Trigger when the user wants to
+  inspect, create, update, delete, query, or automate any Grafana resource -
   dashboards, datasources, alerts, SLOs, synthetic checks, oncall, incidents,
   fleet, k6, knowledge graph, or adaptive telemetry.
 user-invocable: true
@@ -38,7 +38,7 @@ gcx resources examples <kind>       # example manifest
 ```
 
 Only fall back to `gcx commands --flat -o json` when you need structured metadata
-for automation — it is 255KB and should not be used for orientation.
+for automation - the output is hundreds of kilobytes and unsuitable for orientation.
 
 ### Intent-to-Group Quick Reference
 
@@ -56,7 +56,7 @@ right group:
 | PromQL / Adaptive Metrics | `metrics` | `gcx metrics query -d <uid> 'up'` |
 | LogQL / Adaptive Logs | `logs` | `gcx logs query -d <uid> '{app="foo"}'` |
 | Profiling (Pyroscope) | `profiles` | `gcx profiles query` |
-| Tracing (Tempo) | `traces` | Search: `gcx traces query -d <uid> '{ status = error }'`; values: `gcx traces tags -d <uid> -l resource.service.name --llm -o json`; trace: `gcx traces get -d <uid> <trace-id> --llm -o json` |
+| Tracing (Tempo) | `traces` | `gcx traces query -d <uid> '{ status = error }'` (see Tempo LLM-friendly output below) |
 | Datasource info and queries | `datasources` | `gcx datasources list` |
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
 | Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |

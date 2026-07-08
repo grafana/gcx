@@ -23,6 +23,9 @@ Manage escalation chains.
 ### SEE ALSO
 
 * [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx irm oncall escalation-chains create](gcx_irm_oncall_escalation-chains_create.md)	 - Create an escalation chain.
+* [gcx irm oncall escalation-chains delete](gcx_irm_oncall_escalation-chains_delete.md)	 - Delete an escalation chain by ID.
 * [gcx irm oncall escalation-chains get](gcx_irm_oncall_escalation-chains_get.md)	 - Get an escalation chain by ID.
 * [gcx irm oncall escalation-chains list](gcx_irm_oncall_escalation-chains_list.md)	 - List escalation chains.
+* [gcx irm oncall escalation-chains update](gcx_irm_oncall_escalation-chains_update.md)	 - Update an escalation chain by ID.
 

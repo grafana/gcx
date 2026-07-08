@@ -3,6 +3,15 @@
 Reference for investigating Grafana alerts with gcx. Covers the alert
 JSON structure, common investigation query patterns, and graph interpretation.
 
+## Contents
+
+- [Alert JSON Structure](#alert-json-structure) - fields returned by `gcx alert rules list -o json`, query extraction
+- [JSON Response Envelopes](#json-response-envelopes) - jq access patterns per command
+- [Common Investigation Query Patterns](#common-investigation-query-patterns) - by alert class (latency, error rate, resources, certs, availability)
+- [Loki Log Investigation Patterns](#loki-log-investigation-patterns) - log correlation, series limits, label kinds
+- [Interpreting Graph Output](#interpreting-graph-output) - visual pattern to likely cause
+- [Runbook Fetching](#runbook-fetching)
+
 ---
 
 ## Alert JSON Structure
@@ -105,12 +114,12 @@ For P99/P95 latency alerts:
 
 ```bash
 # Current latency percentiles
-gcx metrics query <uid> \
+gcx metrics query -d <uid> \
   'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))' \
   --from now-1h --to now --step 1m -o graph
 
 # Latency by endpoint
-gcx metrics query <uid> \
+gcx metrics query -d <uid> \
   'histogram_quantile(0.99, sum by(job, handler) (rate(http_request_duration_seconds_bucket[5m])))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -121,12 +130,12 @@ For alerts on HTTP 5xx or error rates:
 
 ```bash
 # Overall error rate
-gcx metrics query <uid> \
+gcx metrics query -d <uid> \
   'rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])' \
   --from now-1h --to now --step 1m -o graph
 
 # Error rate by service
-gcx metrics query <uid> \
+gcx metrics query -d <uid> \
   'sum by(job) (rate(http_requests_total{status=~"5.."}[5m])) / sum by(job) (rate(http_requests_total[5m]))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -137,17 +146,17 @@ For CPU, memory, or disk alerts:
 
 ```bash
 # CPU usage by pod
-gcx metrics query <uid> \
+gcx metrics query -d <uid> \
   'sum by(pod) (rate(container_cpu_usage_seconds_total[5m]))' \
   --from now-1h --to now --step 1m -o graph
 
 # Memory usage
-gcx metrics query <uid> \
+gcx metrics query -d <uid> \
   'container_memory_working_set_bytes{container!=""}' \
   --from now-30m --to now --step 1m -o json
 
 # Disk free percentage
-gcx metrics query <uid> \
+gcx metrics query -d <uid> \
   'node_filesystem_avail_bytes / node_filesystem_size_bytes' \
   --from now-6h --to now --step 5m -o graph
 ```
@@ -158,7 +167,7 @@ For cert expiry alerts:
 
 ```bash
 # Days until certificate expiry
-gcx metrics query <uid> \
+gcx metrics query -d <uid> \
   '(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400' \
   --from now-1h --to now --step 10m -o json
 ```
@@ -169,12 +178,12 @@ For availability or SLO breach alerts:
 
 ```bash
 # Uptime over last hour
-gcx metrics query <uid> \
+gcx metrics query -d <uid> \
   'avg_over_time(up[1h])' \
   --from now-6h --to now --step 5m -o graph
 
 # Current up/down status
-gcx metrics query <uid> \
+gcx metrics query -d <uid> \
   'up == 0' \
   --from now-15m --to now --step 1m -o json
 ```
@@ -187,15 +196,15 @@ After identifying an issue from metrics, correlate with logs:
 
 ```bash
 # Find error logs for a service
-gcx logs query <loki-uid> '{job="api-server"} |= "error"' \
+gcx logs query -d <loki-uid> '{job="api-server"} |= "error"' \
   --from now-1h --to now -o json
 
 # Find logs around the time the alert started firing (replace timestamp)
-gcx logs query <loki-uid> '{namespace="production"} |= "error"' \
+gcx logs query -d <loki-uid> '{namespace="production"} |= "error"' \
   --from 2024-01-15T10:00:00Z --to 2024-01-15T10:30:00Z -o json
 
 # Rate of error log lines (for trend analysis)
-gcx logs query <loki-uid> 'rate({job="api-server"} |= "error" [5m])' \
+gcx logs query -d <loki-uid> 'rate({job="api-server"} |= "error" [5m])' \
   --from now-2h --to now --step 1m -o graph
 ```
 
@@ -205,12 +214,12 @@ Loki metric queries (`rate()`, `count_over_time()`, etc.) produce one series per
 
 ```bash
 # BAD — one series per pod/namespace/level/... combination
-gcx logs query <loki-uid> 'count_over_time({job="app"} [5m])'
+gcx logs query -d <loki-uid> 'count_over_time({job="app"} [5m])'
 
 # GOOD — aggregate down to what you need
-gcx logs query <loki-uid> 'sum(count_over_time({job="app"} [5m]))'
-gcx logs query <loki-uid> 'sum by(level) (count_over_time({job="app"} | json [5m]))'
-gcx logs query <loki-uid> 'topk(10, sum by(pod) (rate({job="app"} [5m])))'
+gcx logs query -d <loki-uid> 'sum(count_over_time({job="app"} [5m]))'
+gcx logs query -d <loki-uid> 'sum by(level) (count_over_time({job="app"} | json [5m]))'
+gcx logs query -d <loki-uid> 'topk(10, sum by(pod) (rate({job="app"} [5m])))'
 ```
 
 Rule of thumb: if your query uses `rate()`, `count_over_time()`, or `bytes_over_time()`, wrap it with `sum()`, `sum by(label)`, or `topk()`.
@@ -259,8 +268,8 @@ Common mistakes:
 Use `-o json` after `-o graph` to extract exact values:
 ```bash
 # Get the peak value during the alert window
-gcx metrics query <uid> '<query>' --from now-2h --to now --step 1m -o json | \
-  jq '[.data[].values[] | .value] | max'
+gcx metrics query -d <uid> '<query>' --from now-2h --to now --step 1m -o json | \
+  jq '[.data.result[].values[][1] | tonumber] | max'
 ```
 
 ---

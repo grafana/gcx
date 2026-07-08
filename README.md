@@ -69,6 +69,12 @@ Compiles from source on your machine (requires Homebrew's `go`, installed
 automatically as a build dependency). First install takes ~30–60 seconds
 while Go fetches dependencies; subsequent upgrades are faster.
 
+To update to the latest version:
+
+```bash
+brew update && brew upgrade gcx
+```
+
 **Pre-built binary (Linux/macOS/Windows):**
 
 Download the latest archive for your OS and architecture from the
@@ -82,7 +88,7 @@ chmod +x gcx && sudo mv gcx /usr/local/bin/
 
 On macOS, the manually-downloaded binary may be blocked on first run with
 *"Apple could not verify…"* or `killed: 9` — see
-[macOS Gatekeeper and killed: 9](docs/installation.md#macos-gatekeeper-and-killed-9)
+[macOS Gatekeeper and killed: 9](docs/sources/installation.md#macos-gatekeeper-and-killed-9)
 for the one-time workaround. The `curl | sh` installer above handles this
 automatically.
 
@@ -509,8 +515,8 @@ jobs:
 
 | Topic | Description |
 |-------|-------------|
-| [Installation](docs/installation.md) | Install gcx on macOS, Linux, and Windows |
-| [Configuration](docs/configuration.md) | Contexts, authentication, environment variables |
+| [Installation](docs/sources/installation.md) | Install gcx on macOS, Linux, and Windows |
+| [Configuration](docs/sources/configuration.md) | Contexts, authentication, environment variables |
 | [Managing Resources](docs/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
 | [Dashboards as Code](docs/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
 | [Linting Resources](docs/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |

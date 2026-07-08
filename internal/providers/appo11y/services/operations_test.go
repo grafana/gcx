@@ -2,6 +2,7 @@ package services //nolint:testpackage // Tests cover unexported builders, merge 
 
 import (
 	"bytes"
+	"maps"
 	"math"
 	"strings"
 	"testing"
@@ -12,7 +13,7 @@ import (
 
 func TestBuildOperationsRateQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildOperationsRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer, spanKindConsumer})
+	got, err := buildOperationsRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer, spanKindConsumer}, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -21,14 +22,24 @@ func TestBuildOperationsRateQuery(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 
-	if _, err := buildOperationsRateQuery(v3, "", "", "5m", nil); err == nil {
+	// With --group-by, the label joins the span_name aggregation.
+	got, err = buildOperationsRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, nil, []string{"k8s_cluster_name"})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	want = `sum by (span_name, k8s_cluster_name) (rate(traces_span_metrics_calls_total{job="billing/checkout",span_kind=~"SPAN_KIND_SERVER"}[5m]))`
+	if got != want {
+		t.Errorf("grouped got %q\nwant %q", got, want)
+	}
+
+	if _, err := buildOperationsRateQuery(v3, "", "", "5m", nil, nil, nil); err == nil {
 		t.Error("expected error for empty service name")
 	}
 }
 
 func TestBuildOperationsErrorRateQuery(t *testing.T) {
 	tempo, _ := metricNamesByMode(MetricsModeTempo)
-	got, err := buildOperationsErrorRateQuery(tempo, "", "auth", "1m", []string{spanKindServer})
+	got, err := buildOperationsErrorRateQuery(tempo, "", "auth", "1m", []string{spanKindServer}, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -40,7 +51,7 @@ func TestBuildOperationsErrorRateQuery(t *testing.T) {
 
 func TestBuildOperationsLatencyQuantileQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildOperationsLatencyQuantileQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, 0.95)
+	got, err := buildOperationsLatencyQuantileQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, 0.95, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -48,14 +59,14 @@ func TestBuildOperationsLatencyQuantileQuery(t *testing.T) {
 	if got != want {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
-	if _, err := buildOperationsLatencyQuantileQuery(v3, "", "x", "5m", nil, 1.5); err == nil {
+	if _, err := buildOperationsLatencyQuantileQuery(v3, "", "x", "5m", nil, 1.5, nil, nil); err == nil {
 		t.Error("expected error for phi out of range")
 	}
 }
 
 func TestBuildOperationsAvgLatencyQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildOperationsAvgLatencyQuery(v3, "billing", "checkout", "5m", []string{spanKindServer})
+	got, err := buildOperationsAvgLatencyQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -67,7 +78,17 @@ func TestBuildOperationsAvgLatencyQuery(t *testing.T) {
 	}
 }
 
-func TestExtractBySpanName(t *testing.T) {
+// opBuckets builds an extractOperations-style map from span_name→value,
+// with no group labels (groupKey empty) — the non-grouped shape.
+func opBuckets(m map[string]float64) map[opAggKey]groupBucket {
+	out := make(map[opAggKey]groupBucket, len(m))
+	for name, v := range m {
+		out[opAggKey{name: name}] = groupBucket{value: v}
+	}
+	return out
+}
+
+func TestExtractOperations(t *testing.T) {
 	resp := &prometheus.QueryResponse{Data: prometheus.ResultData{Result: []prometheus.Sample{
 		{Metric: map[string]string{"span_name": "GET /api/foo"}, Value: []any{1.0, "12.5"}},
 		{Metric: map[string]string{"span_name": "POST /api/bar"}, Value: []any{1.0, "0.5"}},
@@ -75,16 +96,37 @@ func TestExtractBySpanName(t *testing.T) {
 		{Metric: map[string]string{"span_name": "noop"}, Value: []any{1.0, "NaN"}}, // dropped (NaN)
 		{Metric: map[string]string{"span_name": "noop2"}, Value: []any{1.0}},       // dropped (short)
 	}}}
-	got := extractBySpanName(resp)
+	got := extractOperations(resp, nil)
 	if len(got) != 2 {
 		t.Fatalf("len = %d, want 2: %v", len(got), got)
 	}
-	if got["GET /api/foo"] != 12.5 || got["POST /api/bar"] != 0.5 {
+	if got[opAggKey{name: "GET /api/foo"}].value != 12.5 || got[opAggKey{name: "POST /api/bar"}].value != 0.5 {
 		t.Errorf("values wrong: %v", got)
 	}
 
-	if got := extractBySpanName(nil); len(got) != 0 {
+	if got := extractOperations(nil, nil); len(got) != 0 {
 		t.Errorf("nil response should produce empty map, got %v", got)
+	}
+}
+
+func TestExtractOperations_Grouped(t *testing.T) {
+	// Same span_name in two clusters must produce two distinct keys, each
+	// carrying its group labels.
+	resp := &prometheus.QueryResponse{Data: prometheus.ResultData{Result: []prometheus.Sample{
+		{Metric: map[string]string{"span_name": "GET /", "k8s_cluster_name": "east"}, Value: []any{1.0, "10"}},
+		{Metric: map[string]string{"span_name": "GET /", "k8s_cluster_name": "west"}, Value: []any{1.0, "3"}},
+	}}}
+	got := extractOperations(resp, []string{"k8s_cluster_name"})
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2: %v", len(got), got)
+	}
+	east := got[opAggKey{name: "GET /", groupKey: "east"}]
+	if east.value != 10 || east.labels["k8s_cluster_name"] != "east" {
+		t.Errorf("east bucket wrong: %+v", east)
+	}
+	west := got[opAggKey{name: "GET /", groupKey: "west"}]
+	if west.value != 3 || west.labels["k8s_cluster_name"] != "west" {
+		t.Errorf("west bucket wrong: %+v", west)
 	}
 }
 
@@ -93,14 +135,14 @@ func TestMergeOperations_TimeShareNormalisation(t *testing.T) {
 	// B is low-rate-slow (1 req/s × 200ms = 200ms/s). Time-share
 	// must rank B above A even though A has higher rate — that's the
 	// whole point of the metric.
-	rates := map[string]float64{"A": 10, "B": 1}
-	errors := map[string]float64{}
-	avgs := map[string]float64{"A": 0.005, "B": 0.200}
-	p50s := map[string]float64{"A": 0.004, "B": 0.150}
-	p95s := map[string]float64{"A": 0.008, "B": 0.300}
-	p99s := map[string]float64{"A": 0.010, "B": 0.400}
+	rates := opBuckets(map[string]float64{"A": 10, "B": 1})
+	errors := opBuckets(map[string]float64{})
+	avgs := opBuckets(map[string]float64{"A": 0.005, "B": 0.200})
+	p50s := opBuckets(map[string]float64{"A": 0.004, "B": 0.150})
+	p95s := opBuckets(map[string]float64{"A": 0.008, "B": 0.300})
+	p99s := opBuckets(map[string]float64{"A": 0.010, "B": 0.400})
 
-	got := mergeOperations(rates, errors, avgs, p50s, p95s, p99s)
+	got := mergeOperations(rates, errors, avgs, p50s, p95s, p99s, nil)
 	if len(got) != 2 {
 		t.Fatalf("len = %d, want 2", len(got))
 	}
@@ -126,13 +168,46 @@ func TestMergeOperations_TimeShareNormalisation(t *testing.T) {
 	}
 }
 
+func TestMergeOperations_TimeShareNormalisedWithinGroup(t *testing.T) {
+	// Same op "A" in two clusters. Time-share is normalized WITHIN each
+	// group, so each cluster's lone op is 100% of its own group — not
+	// split across clusters.
+	mk := func(cluster string, v float64) map[opAggKey]groupBucket {
+		return map[opAggKey]groupBucket{
+			{name: "A", groupKey: cluster}: {value: v, labels: map[string]string{"k8s_cluster_name": cluster}},
+		}
+	}
+	merge := func(m1, m2 map[opAggKey]groupBucket) map[opAggKey]groupBucket {
+		out := map[opAggKey]groupBucket{}
+		maps.Copy(out, m1)
+		maps.Copy(out, m2)
+		return out
+	}
+	rates := merge(mk("east", 10), mk("west", 1))
+	avgs := merge(mk("east", 0.01), mk("west", 0.5))
+
+	got := mergeOperations(rates, nil, avgs, nil, nil, nil, []string{"k8s_cluster_name"})
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2: %+v", len(got), got)
+	}
+	for _, op := range got {
+		if math.Abs(op.TimeSharePercent-100) > 0.001 {
+			t.Errorf("op in cluster %q time-share = %.4f, want 100 (within-group)", op.Labels["k8s_cluster_name"], op.TimeSharePercent)
+		}
+	}
+	// Sorted by group label asc: east before west.
+	if got[0].Labels["k8s_cluster_name"] != "east" || got[1].Labels["k8s_cluster_name"] != "west" {
+		t.Errorf("expected east,west order, got %q,%q", got[0].Labels["k8s_cluster_name"], got[1].Labels["k8s_cluster_name"])
+	}
+}
+
 func TestMergeOperations_OperationWithoutAvgLatencyHasZeroTimeShare(t *testing.T) {
 	// Op "C" appears only in the rate map — no latency at all. Should
 	// render in the output with HasTraffic=true but TimeSharePercent=0,
 	// not crash and not skew the others' shares.
-	rates := map[string]float64{"A": 10, "C": 5}
-	avgs := map[string]float64{"A": 0.010}
-	got := mergeOperations(rates, nil, avgs, nil, nil, nil)
+	rates := opBuckets(map[string]float64{"A": 10, "C": 5})
+	avgs := opBuckets(map[string]float64{"A": 0.010})
+	got := mergeOperations(rates, nil, avgs, nil, nil, nil, nil)
 
 	byName := map[string]Operation{}
 	for _, op := range got {
@@ -150,16 +225,16 @@ func TestMergeOperations_OperationWithoutAvgLatencyHasZeroTimeShare(t *testing.T
 func TestMergeOperations_NoTrafficAtAll(t *testing.T) {
 	// Edge case: no rate data anywhere. We should return an empty
 	// slice (not nil-deref) and not panic on a zero denominator.
-	got := mergeOperations(nil, nil, nil, nil, nil, nil)
+	got := mergeOperations(nil, nil, nil, nil, nil, nil, nil)
 	if len(got) != 0 {
 		t.Errorf("expected empty, got %v", got)
 	}
 }
 
 func TestMergeOperations_ErrorPercentBoundedAndHasErrorsInferred(t *testing.T) {
-	rates := map[string]float64{"A": 10, "B": 5}
-	errors := map[string]float64{"A": 2} // only A has errors observed
-	got := mergeOperations(rates, errors, nil, nil, nil, nil)
+	rates := opBuckets(map[string]float64{"A": 10, "B": 5})
+	errors := opBuckets(map[string]float64{"A": 2}) // only A has errors observed
+	got := mergeOperations(rates, errors, nil, nil, nil, nil, nil)
 
 	byName := map[string]Operation{}
 	for _, op := range got {

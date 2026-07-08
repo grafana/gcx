@@ -129,6 +129,7 @@ type OnCallAPI interface {
 	CreateEscalationPolicy(ctx context.Context, p EscalationPolicy) (*EscalationPolicy, error)
 	UpdateEscalationPolicy(ctx context.Context, id string, p EscalationPolicy) (*EscalationPolicy, error)
 	DeleteEscalationPolicy(ctx context.Context, id string) error
+	ListEscalationStepOptions(ctx context.Context) ([]EscalationStepOption, error)
 
 	ListSchedules(ctx context.Context) ([]Schedule, error)
 	GetSchedule(ctx context.Context, id string) (*Schedule, error)
@@ -148,12 +149,15 @@ type OnCallAPI interface {
 	CreateRoute(ctx context.Context, r Route) (*Route, error)
 	UpdateRoute(ctx context.Context, id string, r Route) (*Route, error)
 	DeleteRoute(ctx context.Context, id string) error
+	ListRouteFilterTypes(ctx context.Context) ([]RouteFilterType, error)
 
 	ListWebhooks(ctx context.Context) ([]Webhook, error)
 	GetWebhook(ctx context.Context, id string) (*Webhook, error)
 	CreateWebhook(ctx context.Context, w Webhook) (*Webhook, error)
 	UpdateWebhook(ctx context.Context, id string, w Webhook) (*Webhook, error)
 	DeleteWebhook(ctx context.Context, id string) error
+	ListWebhookPresets(ctx context.Context) ([]WebhookPreset, error)
+	ListWebhookTriggerOptions(ctx context.Context) ([]WebhookTriggerOption, error)
 
 	ListAlertGroups(ctx context.Context, opts ...ListOption) ([]AlertGroup, error)
 	GetAlertGroup(ctx context.Context, id string) (*AlertGroup, error)
@@ -437,7 +441,10 @@ type CreateShiftSwapInput struct {
 	Beneficiary string `json:"beneficiary"`
 }
 
+// UpdateShiftSwapInput is the PUT body for shift swaps. The backend requires
+// `schedule` on full updates even though it cannot change.
 type UpdateShiftSwapInput struct {
+	Schedule  string `json:"schedule"`
 	SwapStart string `json:"swap_start,omitempty"`
 	SwapEnd   string `json:"swap_end,omitempty"`
 }
@@ -471,6 +478,7 @@ type ShiftRequest struct {
 	Schedule                   string   `json:"schedule,omitempty"`
 	PriorityLevel              int      `json:"priority_level,omitempty"`
 	ShiftStart                 string   `json:"shift_start,omitempty"`
+	ShiftEnd                   any      `json:"shift_end,omitempty"`
 	RotationStart              string   `json:"rotation_start,omitempty"`
 	Until                      string   `json:"until,omitempty"`
 	Frequency                  any      `json:"frequency,omitempty"`
@@ -510,4 +518,48 @@ type FilterEventsResponse struct {
 	Name   string            `json:"name"`
 	Type   any               `json:"type"`
 	Events []FinalShiftEvent `json:"events"`
+}
+
+// EscalationStepOption describes one allowed value of an escalation policy's
+// `step` field. Returned by GET /escalation_policies/escalation_options/.
+type EscalationStepOption struct {
+	Value                    int    `json:"value"`
+	CreateDisplayName        string `json:"create_display_name"`
+	DisplayName              string `json:"display_name"`
+	SlackIntegrationRequired bool   `json:"slack_integration_required,omitempty"`
+	CanChangeImportance      bool   `json:"can_change_importance,omitempty"`
+}
+
+// WebhookPresetTriggerType is one trigger type allowed by a webhook preset.
+// Value is the numeric trigger_type enum, serialized as a string by the API.
+type WebhookPresetTriggerType struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// WebhookPreset describes a webhook configuration preset (e.g.
+// grafana_assistant). Returned by GET /webhooks/preset_options/.
+type WebhookPreset struct {
+	ID               string                     `json:"id"`
+	Name             string                     `json:"name"`
+	Description      string                     `json:"description,omitempty"`
+	Logo             string                     `json:"logo,omitempty"`
+	ControlledFields []string                   `json:"controlled_fields,omitempty"`
+	TriggerTypes     []WebhookPresetTriggerType `json:"trigger_types,omitempty"`
+}
+
+// WebhookTriggerOption describes one allowed value of a webhook's
+// trigger_type field, read from the trigger_type filter options in
+// GET /webhooks/filters/ (the only endpoint exposing the full enum).
+type WebhookTriggerOption struct {
+	Value       int    `json:"value"`
+	DisplayName string `json:"display_name"`
+}
+
+// RouteFilterType describes one allowed value of a route's
+// filtering_term_type field, read from the DRF OPTIONS metadata on
+// /channel_filters/.
+type RouteFilterType struct {
+	Value       int    `json:"value"`
+	DisplayName string `json:"display_name"`
 }

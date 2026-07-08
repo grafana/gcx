@@ -1,26 +1,26 @@
 ---
 name: synth-manage-checks
-description: Use when the user wants to create, update, pull, push, or delete Synthetic Monitoring checks. Trigger on phrases like "create a check", "add a synthetic check", "update check", "pull my SM checks", "push checks", "delete check", or when the user provides a target URL/hostname/domain for monitoring. For check status overview use synth-check-status. For investigating failing checks use synth-investigate-check.
-allowed-tools: [gcx, Bash, Read, Write, Edit]
+description: Creates, updates, exports, and deletes Synthetic Monitoring checks from YAML definitions via gcx. Use when the user wants to create, update, pull, push, or delete Synthetic Monitoring checks. Trigger on phrases like "create a check", "add a synthetic check", "update check", "pull my SM checks", "push checks", "delete check", or when the user provides a target URL/hostname/domain for monitoring. For check status overview use synth-check-status. For investigating failing checks use synth-investigate-check.
+allowed-tools: Bash, Read, Write, Edit
 ---
 
 # Synthetic Monitoring Check Manager
 
-Manage SM checks using gcx. Experienced operators — no hand-holding.
+Manage Synthetic Monitoring checks using gcx.
 
 ## Core Principles
 
 1. Use gcx commands; never call Grafana APIs directly (no curl, no HTTP calls)
 2. Trust the user's expertise — no explanations of what SM or gcx is
 3. Use `-o json` for agent processing; default table format for user display
-4. Always dry-run before pushing: `--dry-run` first, actual push only on success
+4. gcx validates specs client-side before calling the API (probe names, check type, target format) — no separate dry-run step is needed
 5. Probe names are case-sensitive — always copy-paste from `gcx synthetic-monitoring probes list`
 
 ## Workflow 1: Create New Check
 
 ### Step 1: Determine Check Type
 
-Use the decision table in `references/check-types.md`:
+Pick the type from the target format (full decision tree and per-type templates: [check-types.md](references/check-types.md)):
 
 | Target | Check Type |
 |--------|------------|
@@ -42,13 +42,13 @@ Recommend at least 3 geographically distributed probes. Copy names exactly as sh
 
 ### Step 3: Build YAML Definition
 
-Use the template from `references/check-types.md` for the chosen type. Scaffold the file locally:
+Use the template from [check-types.md](references/check-types.md) for the chosen type, filling the type-specific `settings` block. Common fields:
 
 ```yaml
 apiVersion: syntheticmonitoring.ext.grafana.app/v1alpha1
 kind: Check
 metadata:
-  name: <job-name>   # Non-numeric = create; numeric = update
+  name: <job-name>   # gcx rewrites this to <job>-<id> after create
 spec:
   job: <job-name>
   target: <target>
@@ -56,8 +56,10 @@ spec:
   timeout: 10000      # milliseconds; must be < frequency
   enabled: true
   labels:
-    environment: production
-    team: platform
+    - name: environment
+      value: production
+    - name: team
+      value: platform
   probes:
     - Atlanta
     - Frankfurt
@@ -81,6 +83,8 @@ Configuration guidance:
 gcx synthetic-monitoring checks create -f <file.yaml>
 ```
 
+For HTTP checks, `--validate-targets` pre-flights the target with a HEAD request (warning only). If client-side validation fails, fix the field named in the error and re-run.
+
 After creation, verify with:
 ```bash
 gcx synthetic-monitoring checks list
@@ -99,7 +103,7 @@ gcx synthetic-monitoring checks get <ID> -o yaml > check-<ID>.yaml
 
 ### Step 2: Edit and Update
 
-Edit the YAML file (the `metadata.name` will be the numeric ID). Modify only the fields that need changing.
+Edit the YAML file, keeping `metadata.name` unchanged (it is the `<job>-<id>` composite that targets the right check). Modify only the fields that need changing.
 
 ```bash
 # Update the check from file
@@ -108,7 +112,7 @@ gcx synthetic-monitoring checks update <ID> -f check-<ID>.yaml
 
 ## Workflow 3: GitOps Sync (Pull/Push)
 
-List all checks, export to files, edit in source control, then update to apply:
+When users say "pull" they mean export with `checks get -o yaml`; "push" means apply with `checks create`/`checks update -f`. Export to files, edit in source control, then update to apply:
 
 ```bash
 # List all checks and export each to YAML
@@ -133,7 +137,7 @@ gcx synthetic-monitoring checks list
 gcx synthetic-monitoring checks delete <ID>
 
 # Skip confirmation prompt
-gcx synthetic-monitoring checks delete <ID> -f
+gcx synthetic-monitoring checks delete <ID> --force
 
 # Delete multiple checks
 gcx synthetic-monitoring checks delete <ID1> <ID2> <ID3>
@@ -149,15 +153,15 @@ Check: <job-name>
 Target: <target>
 Type: <HTTP|Ping|DNS|TCP|Traceroute>
 Probes: <count> selected (<list>)
-Push: SUCCESS — ID: <assigned-id>
+Result: <created (id=<ID>) | updated>
 
 Verify status:
   gcx synthetic-monitoring checks status <ID>
 ```
 
-After pull:
+After export:
 ```
-Pulled <N> checks to <dir>/
+Exported <N> checks to <dir>/
 Files: <list of filenames>
 ```
 
@@ -170,8 +174,8 @@ Deleted check <ID> (<job-name> -> <target>)
 
 - **"probe not found"**: Probe names are case-sensitive. Run `gcx synthetic-monitoring probes list` and copy names exactly.
 - **"timeout must be less than frequency"**: Reduce `timeout` value or increase `frequency`.
-- **"invalid frequency"**: `frequency` must be between 10,000ms and 120,000ms (10s–2min).
-- **Dry-run fails with validation error**: Fix the YAML field indicated in the error before pushing.
-- **Push fails with "check already exists"**: The check job+target combination may already exist. Use `gcx synthetic-monitoring checks list` to find it and update instead of create.
+- **"invalid frequency"**: The allowed `frequency` range depends on check type (e.g. traceroute allows longer intervals); the API error states the valid range.
+- **"check validation failed"**: gcx validates the spec client-side before calling the API. Fix the YAML field indicated in the error and re-run.
+- **Create fails with "check already exists"**: The check job+target combination may already exist. Use `gcx synthetic-monitoring checks list` to find it and update instead of create.
 - **No probes available**: Run `gcx synthetic-monitoring probes list`; if empty, verify gcx context and SM API access.
 - **Complex check types (MultiHTTP, Browser, Scripted)**: Settings map is not fully documented. Pull an existing check of that type as a template: `gcx synthetic-monitoring checks get <ID> -o yaml`.

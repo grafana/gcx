@@ -113,6 +113,7 @@ func (t *Transport) directDo(ctx context.Context, method, smPath string, body []
 		return 0, nil, fmt.Errorf("creating request: %w", err)
 	}
 
+	setClientIdentity(req.Header)
 	req.Header.Set("Authorization", "Bearer "+t.directTok)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")

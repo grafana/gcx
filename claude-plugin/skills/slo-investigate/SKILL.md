@@ -1,7 +1,7 @@
 ---
 name: slo-investigate
-description: Use when a specific SLO is breaching or alerting and the user needs to understand why — root cause analysis, dimensional breakdown, alert rule correlation, runbook access. Trigger on phrases like "investigate SLO", "why is my SLO breaching", "SLO error budget burning", "SLO alerting". For SLO status overview use slo-check-status. For creating or modifying SLOs use slo-manage. For optimization suggestions use slo-optimize.
-allowed-tools: [gcx, Bash]
+description: Diagnoses breaching Grafana SLOs via gcx - root cause analysis, dimensional breakdown, alert rule correlation, runbook access. Use when a specific SLO is breaching or alerting and the user needs to understand why. Trigger on phrases like "investigate SLO", "why is my SLO breaching", "SLO error budget burning", "SLO alerting". For SLO status overview use slo-check-status. For creating or modifying SLOs use slo-manage. For optimization suggestions use slo-optimize.
+allowed-tools: Bash
 ---
 
 # SLO Investigator
@@ -93,12 +93,12 @@ gcx datasources list --type prometheus
 
 ```bash
 # Success rate by dimension (e.g., cluster, status_code, endpoint)
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   'sum by (<groupByLabel>) (rate(<successMetric>[5m])) / sum by (<groupByLabel>) (rate(<totalMetric>[5m]))' \
   --from now-1h --to now --step 1m
 
 # Error rate by dimension to spot the bad actor
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   'sum by (<groupByLabel>) (rate(<totalMetric>[5m])) - sum by (<groupByLabel>) (rate(<successMetric>[5m]))' \
   --from now-1h --to now --step 1m
 ```
@@ -108,17 +108,19 @@ If `groupByLabels` is empty, try common dimensions: `cluster`, `namespace`, `ser
 **For freeform queries** — use the raw PromQL expression and add `by (<label>)` grouping:
 
 ```bash
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   '<freeform_expression> by (cluster)' \
   --from now-1h --to now --step 1m
 
 # Also try other likely breakdown dimensions
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   '<freeform_expression> by (namespace)' \
   --from now-1h --to now --step 1m
 ```
 
 Use graph output to display dimensional trends visually. Use `-o json` to extract exact values for the report.
+
+To query the SLO's own recording rule metrics instead (`grafana_slo_sli_window`, burn rate, error budget expressions), see [references/slo-promql-patterns.md](references/slo-promql-patterns.md) for the metric inventory and ready-made PromQL patterns.
 
 ### Step 5: Search for Related Alert Rules
 
@@ -185,8 +187,8 @@ Next actions:
 
 - **gcx slo definitions get fails with 404**: SLO UUID not found. Run `gcx slo definitions list` and confirm the UUID.
 - **gcx slo definitions status returns empty**: No status available — SLO may be newly created. Check if recording rules are running (STATUS may show NODATA).
-- **gcx datasources {kind} query fails with datasource error**: Datasource UID may be wrong. Run `gcx datasources list --type prometheus` to find the correct UID.
-- **gcx datasources {kind} query returns no data**: The SLO metrics may write to a separate datasource (check `.spec.destinationDatasource.uid`). Try both the destination datasource and the default Prometheus datasource.
+- **gcx metrics query fails with datasource error**: Datasource UID may be wrong. Run `gcx datasources list --type prometheus` to find the correct UID.
+- **gcx metrics query returns no data**: The SLO metrics may write to a separate datasource (check `.spec.destinationDatasource.uid`). Try both the destination datasource and the default Prometheus datasource.
 - **alert rules list returns empty**: Alert rules may be in a different folder. Try without filters: `gcx alert rules list -o json | jq length` to confirm total count.
 - **gh api fails**: If `gh` is not authenticated or unavailable, report the runbook URL directly and skip content fetching.
 - **SLO has no groupByLabels (ratio query)**: Try common breakdown dimensions: `cluster`, `namespace`, `service`, `endpoint`, `status_code`. Report which ones return data.

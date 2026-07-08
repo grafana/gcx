@@ -111,7 +111,7 @@ func TestBuildServiceMetadataQuery(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := buildServiceMetadataQuery(tt.metric, tt.ns, tt.svc)
+			got, err := buildServiceMetadataQuery(tt.metric, tt.ns, tt.svc, nil)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -129,7 +129,7 @@ func TestBuildServiceMetadataQuery(t *testing.T) {
 
 func TestBuildRateQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer, spanKindConsumer})
+	got, err := buildRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer, spanKindConsumer}, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -140,7 +140,7 @@ func TestBuildRateQuery(t *testing.T) {
 
 	// Tempo (legacy) mode swaps to traces_spanmetrics_* without changing the job/kind filters.
 	tempo, _ := metricNamesByMode(MetricsModeTempo)
-	got, err = buildRateQuery(tempo, "", "auth", "1m", []string{spanKindServer})
+	got, err = buildRateQuery(tempo, "", "auth", "1m", []string{spanKindServer}, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -149,14 +149,14 @@ func TestBuildRateQuery(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 
-	if _, err := buildRateQuery(v3, "", "", "5m", nil); err == nil {
+	if _, err := buildRateQuery(v3, "", "", "5m", nil, nil, nil); err == nil {
 		t.Error("expected error for empty service name")
 	}
 }
 
 func TestBuildErrorRateQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildErrorRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer})
+	got, err := buildErrorRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -168,7 +168,7 @@ func TestBuildErrorRateQuery(t *testing.T) {
 
 func TestBuildLatencyQuantileQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildLatencyQuantileQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, 0.95)
+	got, err := buildLatencyQuantileQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, 0.95, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -179,7 +179,7 @@ func TestBuildLatencyQuantileQuery(t *testing.T) {
 
 	// OTel mode uses the bare names (no traces_ prefix).
 	otel, _ := metricNamesByMode(MetricsModeOTel)
-	got, err = buildLatencyQuantileQuery(otel, "billing", "checkout", "5m", []string{spanKindServer}, 0.95)
+	got, err = buildLatencyQuantileQuery(otel, "billing", "checkout", "5m", []string{spanKindServer}, 0.95, nil, nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -188,7 +188,7 @@ func TestBuildLatencyQuantileQuery(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 
-	if _, err := buildLatencyQuantileQuery(v3, "", "x", "5m", nil, 1.5); err == nil {
+	if _, err := buildLatencyQuantileQuery(v3, "", "x", "5m", nil, 1.5, nil, nil); err == nil {
 		t.Error("expected error for phi out of range")
 	}
 }
@@ -232,7 +232,7 @@ func TestResolveMetricsMode(t *testing.T) {
 }
 
 func TestBuildBareNameLookupQuery(t *testing.T) {
-	got, err := buildBareNameLookupQuery("target_info", "checkoutservice")
+	got, err := buildBareNameLookupQuery("target_info", "checkoutservice", nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -243,7 +243,7 @@ func TestBuildBareNameLookupQuery(t *testing.T) {
 
 	// Regex metachars in the name are escaped so a service named "v1.api"
 	// doesn't accidentally match "v1Xapi" via the literal `.`.
-	got, err = buildBareNameLookupQuery("traces_target_info", "v1.api")
+	got, err = buildBareNameLookupQuery("traces_target_info", "v1.api", nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -252,7 +252,7 @@ func TestBuildBareNameLookupQuery(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 
-	if _, err := buildBareNameLookupQuery("target_info", ""); err == nil {
+	if _, err := buildBareNameLookupQuery("target_info", "", nil); err == nil {
 		t.Error("expected error for empty name")
 	}
 }
@@ -324,7 +324,7 @@ func TestNamespacesForName(t *testing.T) {
 }
 
 func TestBuildModeProbeQuery(t *testing.T) {
-	got, err := buildModeProbeQuery("traces_span_metrics_calls_total", "billing/checkout")
+	got, err := buildModeProbeQuery("traces_span_metrics_calls_total", "billing/checkout", nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -333,10 +333,10 @@ func TestBuildModeProbeQuery(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 
-	if _, err := buildModeProbeQuery("", "x"); err == nil {
+	if _, err := buildModeProbeQuery("", "x", nil); err == nil {
 		t.Error("expected error for empty metric")
 	}
-	if _, err := buildModeProbeQuery("metric", ""); err == nil {
+	if _, err := buildModeProbeQuery("metric", "", nil); err == nil {
 		t.Error("expected error for empty job")
 	}
 }

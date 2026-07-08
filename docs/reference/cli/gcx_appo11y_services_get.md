@@ -51,12 +51,20 @@ gcx appo11y services get <service> [--namespace ns] [flags]
 
   # Stack double-emits both families; force the Tempo metrics-generator numbers
   gcx appo11y services get checkoutservice --metrics-mode tempo
+
+  # Break a multi-cluster service down to a single cluster
+  gcx appo11y services get faro-collector --filter k8s_cluster_name=prod-us-central-0
+
+  # Compare a service's RED across all clusters to spot the outlier
+  gcx appo11y services get faro-collector --group-by k8s_cluster_name
 ```
 
 ### Options
 
 ```
   -d, --datasource string     Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
+      --filter stringArray    Scope the RED snapshot to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the span metrics
+      --group-by strings      Pivot the RED snapshot into one row per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). Surfaces outliers across clusters/regions without naming each one; the label must exist on the span metrics
   -h, --help                  help for get
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields

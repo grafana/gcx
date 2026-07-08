@@ -1,7 +1,7 @@
 ---
 name: slo-check-status
-description: Use when the user asks about SLO health, wants an overview of all SLOs, or needs status of a specific SLO. Trigger on phrases like "how are my SLOs doing", "SLO status", "check my SLOs", "is my SLO healthy", "SLO budget", "SLO burn rate". For investigating breaching SLOs use slo-investigate. For optimization suggestions use slo-optimize. For creating or modifying SLO definitions use slo-manage.
-allowed-tools: [gcx, Bash]
+description: Checks Grafana SLO health, error budget, and burn rate via gcx, with timeline graphs for trends. Use when the user asks about SLO health, wants an overview of all SLOs, or needs status of a specific SLO. Trigger on phrases like "how are my SLOs doing", "SLO status", "check my SLOs", "is my SLO healthy", "SLO budget", "SLO burn rate". For investigating breaching SLOs use slo-investigate. For optimization suggestions use slo-optimize. For creating or modifying SLO definitions use slo-manage.
+allowed-tools: Bash
 ---
 
 # SLO Status Checker

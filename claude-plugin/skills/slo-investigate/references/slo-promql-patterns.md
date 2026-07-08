@@ -2,6 +2,13 @@
 
 Reference for querying Grafana-generated SLO recording rule metrics.
 
+## Contents
+
+- [Metric Inventory](#metric-inventory)
+- [Patterns by Use Case](#patterns-by-use-case): current SLI, short-window snapshots, error budget, burn rate, success/total rate, objective value
+- [Querying with gcx](#querying-with-gcx)
+- [Notes](#notes)
+
 ## Metric Inventory
 
 | Metric | Description | Labels |
@@ -62,8 +69,6 @@ Burn rate measures how fast the error budget is being consumed relative to the b
 # Burn rate = (1 - current_SLI) / (1 - objective)
 # A burn rate of 1.0 = consuming budget exactly as fast as it accrues
 # A burn rate of 2.0 = consuming budget 2x faster than it accrues
-(1 - grafana_slo_sli_1h{slo_uuid="<uuid>"}) /
-(1 - grafana_slo_objective{slo_uuid="<uuid>"})
 
 # Short-window burn rate (1h) — used for fast-burn alerting
 (1 - grafana_slo_sli_1h{slo_uuid="<uuid>"}) /
@@ -78,7 +83,7 @@ Burn rate measures how fast the error budget is being consumed relative to the b
 - `< 1.0` — budget accruing faster than consumed; on track
 - `1.0` — exactly on track to exhaust budget at end of window
 - `> 1.0` — breaching; budget will exhaust before window ends
-- `> 14.4` — fast-burn threshold for 1h window (burns 30-day budget in 2h)
+- `> 14.4` — fast-burn threshold for 1h window (consumes 2% of a 30-day budget per hour)
 
 ### Success/Total Rate (Ratio Queries)
 
@@ -108,17 +113,17 @@ sort_desc(grafana_slo_sli_window - on(slo_uuid) grafana_slo_objective)
 
 ```bash
 # Current window SLI
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   'grafana_slo_sli_window{slo_uuid="<uuid>"}' \
   --from now-1h --to now --step 1m
 
 # Burn rate over last hour
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   '(1 - grafana_slo_sli_1h{slo_uuid="<uuid>"}) / (1 - grafana_slo_objective{slo_uuid="<uuid>"})' \
   --from now-1h --to now --step 1m
 
 # Error budget trend (28-day window)
-gcx metrics query <datasource-uid> \
+gcx metrics query -d <datasource-uid> \
   '(grafana_slo_sli_window{slo_uuid="<uuid>"} - grafana_slo_objective{slo_uuid="<uuid>"}) / (1 - grafana_slo_objective{slo_uuid="<uuid>"})' \
   --from now-28d --to now --step 1h
 ```

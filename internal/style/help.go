@@ -14,6 +14,17 @@ import (
 // jsonDiscoveryTip is the help text shown for commands that support --json field selection.
 const jsonDiscoveryTip = "Use --json list to discover available fields, --json field1,field2 to select specific fields."
 
+// renderLong renders a command's Long description with word wrap disabled so
+// long tokens such as documentation URLs stay on a single logical line and
+// remain clickable in terminals that auto-detect links.
+func renderLong(long string) (string, error) {
+	r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(0))
+	if err != nil {
+		return "", err
+	}
+	return r.Render(long)
+}
+
 // relatedSkillFooter returns the "Related skill" footer lines for a command, or
 // nil when no skill is mapped to the command or its ancestors.
 func relatedSkillFooter(cmd *cobra.Command) []string {
@@ -72,7 +83,11 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 
 		// --- Long description ---
 		if cmd.Long != "" {
-			rendered, err := glamour.Render(cmd.Long, "dark")
+			// Word wrap is disabled so long tokens (notably doc URLs) are not
+			// hard-broken across lines, which would stop terminals from
+			// detecting them as clickable links. This matches the non-styled
+			// fallback, which prints Long verbatim.
+			rendered, err := renderLong(cmd.Long)
 			if err == nil {
 				fmt.Fprint(w, rendered)
 			} else {

@@ -78,7 +78,7 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 		Short: "Replace the entire notification policy tree.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var policy NotificationPolicy
-			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &policy); err != nil {
+			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &policy); err != nil {
 				return err
 			}
 			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,

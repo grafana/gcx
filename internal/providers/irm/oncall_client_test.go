@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -412,5 +413,179 @@ func TestExtractNextPath(t *testing.T) {
 				t.Errorf("got %q, want %q", got, want)
 			}
 		})
+	}
+}
+
+func TestListEscalationStepOptions(t *testing.T) {
+	t.Parallel()
+
+	// Response shape verified against a live stack (escalation_options).
+	body := `[
+		{"value":0,"create_display_name":"Wait","display_name":"Wait {{wait_delay}} minute(s)","slack_integration_required":false,"can_change_importance":false},
+		{"value":19,"create_display_name":"Declare Incident (valid only for non-default integration routes)","display_name":"Declare Incident with severity {{severity}} (valid only for non-default integration routes)","slack_integration_required":false,"can_change_importance":false},
+		{"value":2,"create_display_name":"Escalate to all Slack channel members (use with caution)","display_name":"Escalate to all Slack channel members (use with caution)","slack_integration_required":true,"can_change_importance":false}
+	]`
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wantPath := irm.BasePath + "/escalation_policies/escalation_options/"
+		if r.URL.Path != wantPath {
+			t.Errorf("got path %q, want %q", r.URL.Path, wantPath)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body)) //nolint:errcheck
+	}))
+
+	options, err := client.ListEscalationStepOptions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(options) != 3 {
+		t.Fatalf("expected 3 options, got %d", len(options))
+	}
+	if options[1].Value != 19 || !strings.HasPrefix(options[1].CreateDisplayName, "Declare Incident") {
+		t.Errorf("unexpected option: %+v", options[1])
+	}
+	if !options[2].SlackIntegrationRequired {
+		t.Errorf("expected slack_integration_required to decode, got %+v", options[2])
+	}
+}
+
+func TestListWebhookPresets(t *testing.T) {
+	t.Parallel()
+
+	// Response shape verified against a live stack (preset_options).
+	body := `[
+		{"id":"grafana_assistant","name":"Grafana Assistant","description":"Investigate alert groups with Grafana Assistant.","logo":"assistant",
+		 "controlled_fields":["url","http_method"],
+		 "trigger_types":[{"label":"Alert Group Created","value":"1"},{"label":"Acknowledged","value":"2"}]}
+	]`
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wantPath := irm.BasePath + "/webhooks/preset_options/"
+		if r.URL.Path != wantPath {
+			t.Errorf("got path %q, want %q", r.URL.Path, wantPath)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body)) //nolint:errcheck
+	}))
+
+	presets, err := client.ListWebhookPresets(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(presets) != 1 {
+		t.Fatalf("expected 1 preset, got %d", len(presets))
+	}
+	p := presets[0]
+	if p.ID != "grafana_assistant" || len(p.ControlledFields) != 2 {
+		t.Errorf("unexpected preset: %+v", p)
+	}
+	if len(p.TriggerTypes) != 2 || p.TriggerTypes[0].Value != "1" || p.TriggerTypes[0].Label != "Alert Group Created" {
+		t.Errorf("unexpected trigger types: %+v", p.TriggerTypes)
+	}
+}
+
+func TestListRouteFilterTypes(t *testing.T) {
+	t.Parallel()
+
+	// Response shape verified against a live stack (DRF OPTIONS metadata).
+	body := `{"actions":{"POST":{
+		"filtering_term_type":{"choices":[
+			{"display_name":"regex","value":0},
+			{"display_name":"jinja2","value":1},
+			{"display_name":"labels","value":2}
+		],"label":"Filtering term type","type":"choice"},
+		"filtering_term":{"label":"Filtering term","type":"string"}
+	}}}`
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wantPath := irm.BasePath + "/channel_filters/"
+		if r.URL.Path != wantPath {
+			t.Errorf("got path %q, want %q", r.URL.Path, wantPath)
+		}
+		if r.Method != http.MethodOptions {
+			t.Errorf("expected OPTIONS, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body)) //nolint:errcheck
+	}))
+
+	types, err := client.ListRouteFilterTypes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []irm.RouteFilterType{
+		{Value: 0, DisplayName: "regex"},
+		{Value: 1, DisplayName: "jinja2"},
+		{Value: 2, DisplayName: "labels"},
+	}
+	if len(types) != len(want) {
+		t.Fatalf("expected %d filter types, got %d", len(want), len(types))
+	}
+	for i, ft := range types {
+		if ft != want[i] {
+			t.Errorf("filter type %d: got %+v, want %+v", i, ft, want[i])
+		}
+	}
+}
+
+func TestListWebhookTriggerOptions(t *testing.T) {
+	t.Parallel()
+
+	// Response shape verified against a live stack (webhooks/filters/):
+	// a filters list whose trigger_type entry carries the full enum. The
+	// preset entry's options use string values and must not break decoding.
+	body := `[
+		{"name":"search","type":"search"},
+		{"global":true,"href":"/api/internal/v1/teams/","name":"team","type":"team_select"},
+		{"name":"trigger_type","type":"options","options":[
+			{"display_name":"Manual or escalation step","value":0},
+			{"display_name":"Alert Group Created","value":1},
+			{"display_name":"Shift Swap Taken","value":20}
+		]},
+		{"name":"preset","type":"options","options":[
+			{"display_name":"Grafana Assistant","value":"grafana_assistant"}
+		]}
+	]`
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wantPath := irm.BasePath + "/webhooks/filters/"
+		if r.URL.Path != wantPath {
+			t.Errorf("got path %q, want %q", r.URL.Path, wantPath)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body)) //nolint:errcheck
+	}))
+
+	options, err := client.ListWebhookTriggerOptions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []irm.WebhookTriggerOption{
+		{Value: 0, DisplayName: "Manual or escalation step"},
+		{Value: 1, DisplayName: "Alert Group Created"},
+		{Value: 20, DisplayName: "Shift Swap Taken"},
+	}
+	if !reflect.DeepEqual(options, want) {
+		t.Errorf("got %+v, want %+v", options, want)
+	}
+}
+
+func TestListWebhookTriggerOptionsMissingFilter(t *testing.T) {
+	t.Parallel()
+
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[{"name":"search","type":"search"}]`)) //nolint:errcheck
+	}))
+
+	_, err := client.ListWebhookTriggerOptions(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "no trigger_type filter") {
+		t.Errorf("expected missing-filter error, got %v", err)
 	}
 }

@@ -1,7 +1,7 @@
 ---
 name: oncall-triage
-description: Use when the user is triaging what is actively paging in Grafana OnCall, or asks about active alert groups, acknowledging or silencing or resolving fires, on-call queue, or "what's paging right now". Trigger on phrases like "what's paging", "on-call alerts", "ack this", "silence the page", "what's firing in OnCall", "show me active pages", or any reference to OnCall alert groups. For root cause of why a Grafana alert rule is evaluating (rule-side, pre-routing) use investigate-alert. For schedules, integrations, or escalation chains use the gcx skill.
-allowed-tools: [gcx, Bash]
+description: Triages active Grafana OnCall alert groups via gcx - list, inspect, acknowledge, silence, resolve. Use when the user is triaging what is actively paging in Grafana OnCall, or asks about active alert groups, acknowledging or silencing or resolving fires, on-call queue, or "what's paging right now". Trigger on phrases like "what's paging", "on-call alerts", "ack this", "silence the page", "what's firing in OnCall", "show me active pages", or any reference to OnCall alert groups. For root cause of why a Grafana alert rule is evaluating (rule-side, pre-routing) use investigate-alert. For schedules, integrations, or escalation chains use the gcx skill.
+allowed-tools: Bash
 ---
 
 # OnCall Alert-Group Triage
@@ -13,7 +13,7 @@ OnCall **alert groups** are post-routing aggregations of alert deliveries — th
 1. Use gcx — do not call OnCall APIs directly (no curl, no HTTP libraries).
 2. The CLI emits structured diagnostics on stderr (`hint:`, `note:`, `warn:`; JSONL with `class` in agent mode). Pass them through.
 3. The default `alert-groups list` filter excludes resolved + child groups. Surface `--all` only when the user asks about history.
-4. Action verbs in agent mode require `--yes` when matched count > 1. Never pre-fill `--yes` without user confirmation.
+4. Action verbs in agent mode require `--force` when matched count > 1. Never pre-fill `--force` without user confirmation.
 
 ## Prerequisites
 
@@ -98,7 +98,7 @@ gcx irm oncall alert-groups acknowledge <id>
 gcx irm oncall alert-groups silence <id> --duration 3600
 
 # Bulk-by-filter (filter flags mirror `list`)
-gcx irm oncall alert-groups acknowledge --team <PK> --state firing --yes
+gcx irm oncall alert-groups acknowledge --team <PK> --state firing --force
 ```
 
 Result envelopes:
@@ -113,12 +113,12 @@ Result envelopes:
 
 `changed:false` / `skipped++` on idempotent re-runs (not an error). `matched == succeeded + skipped + failed`. `failures[]` carries only errored targets.
 
-Bulk in agent mode REQUIRES `--yes` when matched count > 1. Show the user the filter set and confirm before running — do not pre-fill `--yes`. A bulk call with no `<id>` AND no filter flags is blocked with a structured error containing `suggestions[]`.
+Bulk in agent mode REQUIRES `--force` when matched count > 1. Show the user the filter set and confirm before running — do not pre-fill `--force`. A bulk call with no `<id>` AND no filter flags is blocked with a structured error containing `suggestions[]`.
 
 ## Error Handling
 
 - `<id> argument or filter flag required` — surface the error's `suggestions[]` to the user.
-- Agent mode + matched > 1 + no `--yes` — confirm scope with the user, then re-run with `--yes`.
+- Agent mode + matched > 1 + no `--force` — confirm scope with the user, then re-run with `--force`.
 - 404 on `get <id>` — group may have been purged; retry the prior `list` with `--all --state resolved`.
 - `webhook` / `formatted_webhook` integrations — partial `status.links.*` and empty `subject.labels` are expected, not errors.
 

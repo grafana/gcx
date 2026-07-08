@@ -1,18 +1,20 @@
 ---
 name: aio11y
 description: >
-  Use when the user wants to list or search AI Observability conversations, inspect generations,
+  Inspects and manages Grafana AI Observability resources via gcx:
+  conversations, generations, evaluators, rules, scores, and templates.
+  Use when the user wants to list or search conversations, inspect generations,
   manage evaluators (create, test, delete), set up evaluation rules, check scores,
   or browse evaluator templates. Trigger on phrases like "list conversations",
   "search generations", "what did the agent do", "debug LLM conversation",
   "create evaluator", "set up evaluation rule", "test evaluator", "check scores",
   "evaluate generation quality", or "set up online evaluation".
-allowed-tools: [gcx, Bash, Read, Write, Edit]
+allowed-tools: Bash, Read, Write, Edit
 ---
 
 # AI Observability
 
-AI Observability is Grafana's AI observability platform. It records what LLM-powered applications do in production and scores the quality of their output.
+AI Observability records what LLM-powered applications do in production and scores the quality of their output.
 
 Applications send generations (individual LLM API calls — request, response, model, tokens, tool calls) to AI Observability. Generations belonging to the same user session are grouped into a conversation.
 
@@ -117,7 +119,7 @@ Evaluators use create-or-update semantics: re-creating with the same `evaluator_
 2. Write an evaluator YAML using the input format above, create: `gcx aio11y evaluators create -f evaluator.yaml`
 3. Test against a real generation: `gcx aio11y evaluators test -e <evaluator-id> -g <generation-id>`
 4. Iterate until the evaluator scores as expected
-5. Write a rule YAML (see `references/rule-templates.md`), create: `gcx aio11y rules create -f rule.yaml`
+5. Write a rule YAML (see [rule-templates.md](references/rule-templates.md) for copy-paste templates), create: `gcx aio11y rules create -f rule.yaml`
 6. Verify: `gcx aio11y rules list`
 
 ## Rule Selectors

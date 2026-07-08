@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -296,6 +297,26 @@ func deleteResource(ctx context.Context, c *OnCallClient, basePath, id, resource
 	return nil
 }
 
+// listUnpaginated fetches a bare JSON array from an endpoint that does not
+// use the paginated results/next envelope (e.g. enum catalogs).
+func listUnpaginated[T any](ctx context.Context, c *OnCallClient, path, resourceType string) ([]T, error) {
+	resp, err := c.DoRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("irm: list %s: %w", resourceType, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleErrorResponse(resp)
+	}
+
+	var result []T
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("irm: decode %s: %w", resourceType, err)
+	}
+	return result, nil
+}
+
 func pathWithParams(base string, params url.Values) string {
 	if len(params) > 0 {
 		return base + "?" + params.Encode()
@@ -371,6 +392,12 @@ func (c *OnCallClient) UpdateEscalationPolicy(ctx context.Context, id string, p 
 
 func (c *OnCallClient) DeleteEscalationPolicy(ctx context.Context, id string) error {
 	return deleteResource(ctx, c, escalationPoliciesPath, id, "escalation policy")
+}
+
+// ListEscalationStepOptions fetches the catalog of allowed `step` values from
+// GET /escalation_policies/escalation_options/.
+func (c *OnCallClient) ListEscalationStepOptions(ctx context.Context) ([]EscalationStepOption, error) {
+	return listUnpaginated[EscalationStepOption](ctx, c, escalationPoliciesPath+"escalation_options/", "escalation step option")
 }
 
 // --- Schedules ---
@@ -469,6 +496,35 @@ func (c *OnCallClient) DeleteRoute(ctx context.Context, id string) error {
 	return deleteResource(ctx, c, routesPath, id, "route")
 }
 
+// ListRouteFilterTypes reads the allowed filtering_term_type values from the
+// DRF OPTIONS metadata on /channel_filters/ — the backend exposes no
+// dedicated discovery endpoint for this enum.
+func (c *OnCallClient) ListRouteFilterTypes(ctx context.Context) ([]RouteFilterType, error) {
+	resp, err := c.DoRequest(ctx, http.MethodOptions, routesPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("irm: list route filter types: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleErrorResponse(resp)
+	}
+
+	var meta struct {
+		Actions struct {
+			Post struct {
+				FilteringTermType struct {
+					Choices []RouteFilterType `json:"choices"`
+				} `json:"filtering_term_type"`
+			} `json:"POST"`
+		} `json:"actions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+		return nil, fmt.Errorf("irm: decode route filter types: %w", err)
+	}
+	return meta.Actions.Post.FilteringTermType.Choices, nil
+}
+
 // --- Webhooks ---
 
 func (c *OnCallClient) ListWebhooks(ctx context.Context) ([]Webhook, error) {
@@ -489,6 +545,38 @@ func (c *OnCallClient) UpdateWebhook(ctx context.Context, id string, w Webhook) 
 
 func (c *OnCallClient) DeleteWebhook(ctx context.Context, id string) error {
 	return deleteResource(ctx, c, webhooksPath, id, "webhook")
+}
+
+// ListWebhookPresets fetches webhook configuration presets from
+// GET /webhooks/preset_options/.
+func (c *OnCallClient) ListWebhookPresets(ctx context.Context) ([]WebhookPreset, error) {
+	return listUnpaginated[WebhookPreset](ctx, c, webhooksPath+"preset_options/", "webhook preset")
+}
+
+// ListWebhookTriggerOptions reads the full trigger_type enum from the
+// trigger_type entry of GET /webhooks/filters/ — the only endpoint that
+// surfaces the complete catalog (presets only list their own subset).
+// Options are decoded lazily because other filter entries (e.g. preset)
+// carry string-valued options.
+func (c *OnCallClient) ListWebhookTriggerOptions(ctx context.Context) ([]WebhookTriggerOption, error) {
+	filters, err := listUnpaginated[struct {
+		Name    string          `json:"name"`
+		Options json.RawMessage `json:"options"`
+	}](ctx, c, webhooksPath+"filters/", "webhook trigger option")
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range filters {
+		if f.Name != "trigger_type" {
+			continue
+		}
+		var options []WebhookTriggerOption
+		if err := json.Unmarshal(f.Options, &options); err != nil {
+			return nil, fmt.Errorf("irm: decode webhook trigger options: %w", err)
+		}
+		return options, nil
+	}
+	return nil, errors.New("irm: webhooks/filters/ response has no trigger_type filter")
 }
 
 // --- Alert Groups ---

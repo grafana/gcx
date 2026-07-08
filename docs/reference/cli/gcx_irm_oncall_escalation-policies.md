@@ -23,6 +23,10 @@ Manage escalation policies.
 ### SEE ALSO
 
 * [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx irm oncall escalation-policies create](gcx_irm_oncall_escalation-policies_create.md)	 - Create an escalation policy.
+* [gcx irm oncall escalation-policies delete](gcx_irm_oncall_escalation-policies_delete.md)	 - Delete an escalation policy by ID.
 * [gcx irm oncall escalation-policies get](gcx_irm_oncall_escalation-policies_get.md)	 - Get an escalation policy by ID.
 * [gcx irm oncall escalation-policies list](gcx_irm_oncall_escalation-policies_list.md)	 - List escalation policies.
+* [gcx irm oncall escalation-policies steps](gcx_irm_oncall_escalation-policies_steps.md)	 - Discover allowed escalation policy step types.
+* [gcx irm oncall escalation-policies update](gcx_irm_oncall_escalation-policies_update.md)	 - Update an escalation policy by ID.
 

@@ -78,7 +78,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 				LLMHint:   `gcx metrics series -d abc123 '{__name__="up"}' --since 1h -o json`,
 			},
 		},
-		ExtraCommands: []signals.CommandBuilder{BillingCommands},
+		ExtraCommands: []signals.CommandBuilder{BillingCommands, CardinalityCommands},
 		Adaptive: &signals.AdaptiveSpec{
 			Build: adaptivemetrics.Commands,
 			Use:   "adaptive",

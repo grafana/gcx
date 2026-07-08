@@ -245,6 +245,64 @@ func formatSeriesSelector(labels map[string]string) string {
 	return b.String()
 }
 
+// FormatCardinalityLabelNamesTable formats a label names cardinality response as
+// two tables: a summary of the response-level totals followed by the per-label-name
+// distinct value counts.
+func FormatCardinalityLabelNamesTable(w io.Writer, resp *CardinalityLabelNamesResponse) error {
+	if resp.LabelNamesCount == 0 && resp.LabelValuesCountTotal == 0 && len(resp.Cardinality) == 0 {
+		fmt.Fprintln(w, "No data")
+		return nil
+	}
+
+	fmt.Fprintln(w, "Summary:")
+	summary := style.NewTable("UNIQUE LABEL NAMES", "UNIQUE LABEL VALUES")
+	summary.Row(strconv.Itoa(resp.LabelNamesCount), strconv.Itoa(resp.LabelValuesCountTotal))
+	if err := summary.Render(w); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Label names:")
+	if len(resp.Cardinality) == 0 {
+		fmt.Fprintln(w, "No data")
+		return nil
+	}
+	t := style.NewTable("LABEL NAME", "UNIQUE LABEL VALUES")
+	for _, entry := range resp.Cardinality {
+		t.Row(entry.LabelName, strconv.Itoa(entry.LabelValuesCount))
+	}
+	return t.Render(w)
+}
+
+// FormatCardinalityLabelValuesTable formats a label values cardinality response
+// as two tables: a per-label summary (distinct value and series counts) followed
+// by the per-value series-count breakdown.
+func FormatCardinalityLabelValuesTable(w io.Writer, resp *CardinalityLabelValuesResponse) error {
+	if len(resp.Labels) == 0 {
+		fmt.Fprintln(w, "No data")
+		return nil
+	}
+
+	fmt.Fprintln(w, "Summary:")
+	summary := style.NewTable("LABEL NAME", "UNIQUE LABEL VALUES", "SERIES")
+	for _, label := range resp.Labels {
+		summary.Row(label.LabelName, strconv.Itoa(label.LabelValuesCount), strconv.Itoa(label.SeriesCount))
+	}
+	if err := summary.Render(w); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Label values:")
+	values := style.NewTable("LABEL NAME", "LABEL VALUE", "SERIES")
+	for _, label := range resp.Labels {
+		for _, value := range label.Cardinality {
+			values.Row(label.LabelName, value.LabelValue, strconv.Itoa(value.SeriesCount))
+		}
+	}
+	return values.Render(w)
+}
+
 // FormatMetadataTable formats a MetadataResponse as a table.
 func FormatMetadataTable(w io.Writer, resp *MetadataResponse) error {
 	t := style.NewTable("METRIC", "TYPE", "HELP")

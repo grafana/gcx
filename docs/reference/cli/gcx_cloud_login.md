@@ -13,6 +13,11 @@ Cloud resources like stacks and access policies.
 
 By default, opens a browser for interactive OAuth2 authentication.
 
+EXPERIMENTAL: interactive OAuth login is an experimental flow that stores an
+OAuth-issued token as the context's cloud.token. Some commands that talk to
+grafana.com do not yet work with an OAuth token. For full functionality, pass
+a Cloud Access Policy token via --cloud-token instead.
+
 For non-interactive use (CI/CD, scripts), pass a Cloud Access Policy token
 directly via --cloud-token.
 
@@ -40,7 +45,7 @@ gcx cloud login [flags]
       --context string       Name of the context to use
   -h, --help                 help for login
       --oauth-url string     Base URL for the OAuth login flow (used only by this command) (default "https://grafana.com")
-      --scope strings        OAuth2 scopes to request (default [stacks:read,stacks:write,stacks:delete])
+      --scope strings        OAuth2 scopes to request (default [stacks:read,stacks:write,stacks:delete,metrics:write,logs:write,traces:write,fleet-management:read,fleet-management:write])
 ```
 
 ### Options inherited from parent commands

@@ -23,6 +23,9 @@ Manage resolution notes.
 ### SEE ALSO
 
 * [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx irm oncall resolution-notes create](gcx_irm_oncall_resolution-notes_create.md)	 - Create a resolution note.
+* [gcx irm oncall resolution-notes delete](gcx_irm_oncall_resolution-notes_delete.md)	 - Delete a resolution note by ID.
 * [gcx irm oncall resolution-notes get](gcx_irm_oncall_resolution-notes_get.md)	 - Get a resolution note by ID.
 * [gcx irm oncall resolution-notes list](gcx_irm_oncall_resolution-notes_list.md)	 - List resolution notes.
+* [gcx irm oncall resolution-notes update](gcx_irm_oncall_resolution-notes_update.md)	 - Update a resolution note by ID.
 

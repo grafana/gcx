@@ -49,18 +49,26 @@ gcx appo11y services map <service> [--namespace ns] [flags]
 
   # JSON for scripting
   gcx appo11y services map checkoutservice -o json
+
+  # Break a multi-cluster service's map down to a single cluster
+  gcx appo11y services map faro-collector --filter k8s_cluster_name=prod-us-central-0
+
+  # Split each edge per cluster (service-graph metrics must carry the label)
+  gcx appo11y services map faro-collector --group-by k8s_cluster_name
 ```
 
 ### Options
 
 ```
-  -d, --datasource string   Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
-  -h, --help                help for map
-      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -n, --namespace string    Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)
-  -o, --output string       Output format. One of: agents, dot, json, mermaid, table, wide, yaml (default "table")
-      --since string        Rate/quantile window applied to service-graph metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax (default "5m")
+  -d, --datasource string    Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
+      --filter stringArray   Scope the map to service-graph edges matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the service-graph metrics
+      --group-by strings     Split each edge per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). The label must exist on the service-graph metrics — note the Tempo service-graph family often omits cluster labels, in which case no edges match
+  -h, --help                 help for map
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -n, --namespace string     Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)
+  -o, --output string        Output format. One of: agents, dot, json, mermaid, table, wide, yaml (default "table")
+      --since string         Rate/quantile window applied to service-graph metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax (default "5m")
 ```
 
 ### Options inherited from parent commands

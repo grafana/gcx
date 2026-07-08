@@ -1,10 +1,13 @@
 ---
 name: import-dashboards
 description: >
-  Use when the user wants to import existing Grafana dashboards as Go code,
-  convert live dashboards to builder code, migrate dashboards to code,
-  or reverse-engineer a dashboard from a Grafana instance. Triggers on
+  Imports existing Grafana dashboards as Go builder code via gcx. Use when
+  the user wants to convert live dashboards to builder code, migrate
+  dashboards to code, or reverse-engineer a dashboard from a Grafana
+  instance. Triggers on
   "import dashboard", "convert to code", "dashboard as code", "export dashboard".
+  For pulling dashboards as YAML/JSON resource files rather than Go code,
+  use manage-dashboards instead.
 ---
 
 # Import Dashboards as Code
@@ -56,7 +59,7 @@ Grafana Instance
 gcx dev import dashboards/foo
     │
     ├── 1. Fetches resource via K8s API (/apis endpoint)
-    ├── 2. Detects API version (v0alpha1, v1beta1, v2beta1)
+    ├── 2. Detects the resource API version
     ├── 3. Runs version-specific converter (JSON → SDK builder code)
     ├── 4. Wraps in resource.NewManifestBuilder()
     └── 5. Writes to imported/<snake_case_name>.go
@@ -91,7 +94,11 @@ gcx dev import dashboards --path internal/dashboards
 # 2. Review and edit the generated code
 #    (fix up builder calls, add variables, etc.)
 
-# 3. Push back to Grafana
+# 3. Render manifests from the builders. In a gcx-scaffolded project,
+#    `go run .` writes JSON manifests to ./resources
+go run .
+
+# 4. Push back to Grafana
 gcx resources push
 ```
 
@@ -99,7 +106,7 @@ gcx resources push
 
 | Issue | Fix |
 |-------|-----|
-| "no converter found" | Dashboard uses an unsupported API version; only v0alpha1, v1beta1, v2beta1 supported |
+| "no converter found" | The resource's API version has no converter; the error message names the unsupported version |
 | Auth error (401/403) | Run `gcx config check` to verify credentials |
 | Empty import | The selector matched no resources; check UID with `gcx resources get dashboards` |
 | Imported code doesn't compile | Some complex dashboards produce converter output that needs manual fixup |

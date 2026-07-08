@@ -158,7 +158,7 @@ so the same command handles both create and update.`,
 				return err
 			}
 			var t NotificationTemplate
-			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &t); err != nil {
+			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &t); err != nil {
 				return err
 			}
 			if t.Name == "" {

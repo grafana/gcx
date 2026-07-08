@@ -57,6 +57,152 @@ func withDelete[T adapter.ResourceNamer](fn func(ctx context.Context, c OnCallAP
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Per-resource CRUD wiring, shared between the resource adapters (push/pull)
+// and the noun-command verbs (create/update/delete). A single source of truth
+// keeps both access paths identical (dual-CRUD invariant in CONSTITUTION.md).
+// ---------------------------------------------------------------------------
+
+func integrationCRUDOpts() []crudOption[Integration] {
+	return []crudOption[Integration]{
+		withCreate(func(ctx context.Context, c OnCallAPI, item *Integration) (*Integration, error) {
+			return c.CreateIntegration(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Integration) (*Integration, error) {
+			return c.UpdateIntegration(ctx, name, *item)
+		}),
+		withDelete[Integration](func(ctx context.Context, c OnCallAPI, name string) error {
+			return c.DeleteIntegration(ctx, name)
+		}),
+	}
+}
+
+func escalationChainCRUDOpts() []crudOption[EscalationChain] {
+	return []crudOption[EscalationChain]{
+		withCreate(func(ctx context.Context, c OnCallAPI, item *EscalationChain) (*EscalationChain, error) {
+			return c.CreateEscalationChain(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationChain) (*EscalationChain, error) {
+			return c.UpdateEscalationChain(ctx, name, *item)
+		}),
+		withDelete[EscalationChain](func(ctx context.Context, c OnCallAPI, name string) error {
+			return c.DeleteEscalationChain(ctx, name)
+		}),
+	}
+}
+
+func escalationPolicyCRUDOpts() []crudOption[EscalationPolicy] {
+	return []crudOption[EscalationPolicy]{
+		withCreate(func(ctx context.Context, c OnCallAPI, item *EscalationPolicy) (*EscalationPolicy, error) {
+			return c.CreateEscalationPolicy(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationPolicy) (*EscalationPolicy, error) {
+			return c.UpdateEscalationPolicy(ctx, name, *item)
+		}),
+		withDelete[EscalationPolicy](func(ctx context.Context, c OnCallAPI, name string) error {
+			return c.DeleteEscalationPolicy(ctx, name)
+		}),
+	}
+}
+
+func scheduleCRUDOpts() []crudOption[Schedule] {
+	return []crudOption[Schedule]{
+		withCreate(func(ctx context.Context, c OnCallAPI, item *Schedule) (*Schedule, error) {
+			return c.CreateSchedule(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Schedule) (*Schedule, error) {
+			return c.UpdateSchedule(ctx, name, *item)
+		}),
+		withDelete[Schedule](func(ctx context.Context, c OnCallAPI, name string) error {
+			return c.DeleteSchedule(ctx, name)
+		}),
+	}
+}
+
+func shiftCRUDOpts() []crudOption[Shift] {
+	return []crudOption[Shift]{
+		withCreate(func(ctx context.Context, c OnCallAPI, item *Shift) (*Shift, error) {
+			return c.CreateShift(ctx, shiftToRequest(item))
+		}),
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Shift) (*Shift, error) {
+			return c.UpdateShift(ctx, name, shiftToRequest(item))
+		}),
+		withDelete[Shift](func(ctx context.Context, c OnCallAPI, name string) error {
+			return c.DeleteShift(ctx, name)
+		}),
+	}
+}
+
+func routeCRUDOpts() []crudOption[Route] {
+	return []crudOption[Route]{
+		withCreate(func(ctx context.Context, c OnCallAPI, item *Route) (*Route, error) {
+			return c.CreateRoute(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Route) (*Route, error) {
+			return c.UpdateRoute(ctx, name, *item)
+		}),
+		withDelete[Route](func(ctx context.Context, c OnCallAPI, name string) error {
+			return c.DeleteRoute(ctx, name)
+		}),
+	}
+}
+
+func webhookCRUDOpts() []crudOption[Webhook] {
+	return []crudOption[Webhook]{
+		withCreate(func(ctx context.Context, c OnCallAPI, item *Webhook) (*Webhook, error) {
+			return c.CreateWebhook(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Webhook) (*Webhook, error) {
+			return c.UpdateWebhook(ctx, name, *item)
+		}),
+		withDelete[Webhook](func(ctx context.Context, c OnCallAPI, name string) error {
+			return c.DeleteWebhook(ctx, name)
+		}),
+	}
+}
+
+func resolutionNoteCRUDOpts() []crudOption[ResolutionNote] {
+	return []crudOption[ResolutionNote]{
+		withCreate(func(ctx context.Context, c OnCallAPI, item *ResolutionNote) (*ResolutionNote, error) {
+			return c.CreateResolutionNote(ctx, CreateResolutionNoteInput{
+				AlertGroup: item.AlertGroup,
+				Text:       item.Text,
+			})
+		}),
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *ResolutionNote) (*ResolutionNote, error) {
+			return c.UpdateResolutionNote(ctx, name, UpdateResolutionNoteInput{
+				Text: item.Text,
+			})
+		}),
+		withDelete[ResolutionNote](func(ctx context.Context, c OnCallAPI, name string) error {
+			return c.DeleteResolutionNote(ctx, name)
+		}),
+	}
+}
+
+func shiftSwapCRUDOpts() []crudOption[ShiftSwap] {
+	return []crudOption[ShiftSwap]{
+		withCreate(func(ctx context.Context, c OnCallAPI, item *ShiftSwap) (*ShiftSwap, error) {
+			return c.CreateShiftSwap(ctx, CreateShiftSwapInput{
+				Schedule:    item.Schedule,
+				SwapStart:   item.SwapStart,
+				SwapEnd:     item.SwapEnd,
+				Beneficiary: item.Beneficiary,
+			})
+		}),
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *ShiftSwap) (*ShiftSwap, error) {
+			return c.UpdateShiftSwap(ctx, name, UpdateShiftSwapInput{
+				Schedule:  item.Schedule,
+				SwapStart: item.SwapStart,
+				SwapEnd:   item.SwapEnd,
+			})
+		}),
+		withDelete[ShiftSwap](func(ctx context.Context, c OnCallAPI, name string) error {
+			return c.DeleteShiftSwap(ctx, name)
+		}),
+	}
+}
+
 func buildRegistration[T adapter.ResourceNamer](
 	loader OnCallConfigLoader,
 	meta resourceMeta,
@@ -116,7 +262,6 @@ func oncallMeta(kind, singular, plural string) resourceMeta {
 	}
 }
 
-//nolint:dupl,maintidx // Table-driven registration: each block configures a different type with identical structure.
 func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration {
 	var regs []adapter.Registration
 
@@ -130,15 +275,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		func(ctx context.Context, c OnCallAPI, name string) (*Integration, error) {
 			return c.GetIntegration(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c OnCallAPI, item *Integration) (*Integration, error) {
-			return c.CreateIntegration(ctx, *item)
-		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Integration) (*Integration, error) {
-			return c.UpdateIntegration(ctx, name, *item)
-		}),
-		withDelete[Integration](func(ctx context.Context, c OnCallAPI, name string) error {
-			return c.DeleteIntegration(ctx, name)
-		}),
+		integrationCRUDOpts()...,
 	))
 
 	// 2. EscalationChain — full CRUD
@@ -153,15 +290,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		func(ctx context.Context, c OnCallAPI, name string) (*EscalationChain, error) {
 			return c.GetEscalationChain(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c OnCallAPI, item *EscalationChain) (*EscalationChain, error) {
-			return c.CreateEscalationChain(ctx, *item)
-		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationChain) (*EscalationChain, error) {
-			return c.UpdateEscalationChain(ctx, name, *item)
-		}),
-		withDelete[EscalationChain](func(ctx context.Context, c OnCallAPI, name string) error {
-			return c.DeleteEscalationChain(ctx, name)
-		}),
+		escalationChainCRUDOpts()...,
 	))
 
 	// 3. EscalationPolicy — full CRUD
@@ -175,15 +304,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		func(ctx context.Context, c OnCallAPI, name string) (*EscalationPolicy, error) {
 			return c.GetEscalationPolicy(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c OnCallAPI, item *EscalationPolicy) (*EscalationPolicy, error) {
-			return c.CreateEscalationPolicy(ctx, *item)
-		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationPolicy) (*EscalationPolicy, error) {
-			return c.UpdateEscalationPolicy(ctx, name, *item)
-		}),
-		withDelete[EscalationPolicy](func(ctx context.Context, c OnCallAPI, name string) error {
-			return c.DeleteEscalationPolicy(ctx, name)
-		}),
+		escalationPolicyCRUDOpts()...,
 	))
 
 	// 4. Schedule — full CRUD
@@ -196,15 +317,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
 			return c.GetSchedule(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c OnCallAPI, item *Schedule) (*Schedule, error) {
-			return c.CreateSchedule(ctx, *item)
-		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Schedule) (*Schedule, error) {
-			return c.UpdateSchedule(ctx, name, *item)
-		}),
-		withDelete[Schedule](func(ctx context.Context, c OnCallAPI, name string) error {
-			return c.DeleteSchedule(ctx, name)
-		}),
+		scheduleCRUDOpts()...,
 	))
 
 	// 5. Shift — CRUD with ShiftRequest conversion
@@ -214,15 +327,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	regs = append(regs, buildRegistration(loader, meta,
 		func(ctx context.Context, c OnCallAPI) ([]Shift, error) { return c.ListShifts(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*Shift, error) { return c.GetShift(ctx, name) },
-		withCreate(func(ctx context.Context, c OnCallAPI, item *Shift) (*Shift, error) {
-			return c.CreateShift(ctx, shiftToRequest(item))
-		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Shift) (*Shift, error) {
-			return c.UpdateShift(ctx, name, shiftToRequest(item))
-		}),
-		withDelete[Shift](func(ctx context.Context, c OnCallAPI, name string) error {
-			return c.DeleteShift(ctx, name)
-		}),
+		shiftCRUDOpts()...,
 	))
 
 	// 6. Route — full CRUD
@@ -232,15 +337,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	regs = append(regs, buildRegistration(loader, meta,
 		func(ctx context.Context, c OnCallAPI) ([]Route, error) { return c.ListRoutes(ctx, "") },
 		func(ctx context.Context, c OnCallAPI, name string) (*Route, error) { return c.GetRoute(ctx, name) },
-		withCreate(func(ctx context.Context, c OnCallAPI, item *Route) (*Route, error) {
-			return c.CreateRoute(ctx, *item)
-		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Route) (*Route, error) {
-			return c.UpdateRoute(ctx, name, *item)
-		}),
-		withDelete[Route](func(ctx context.Context, c OnCallAPI, name string) error {
-			return c.DeleteRoute(ctx, name)
-		}),
+		routeCRUDOpts()...,
 	))
 
 	// 7. Webhook — full CRUD
@@ -253,15 +350,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		func(ctx context.Context, c OnCallAPI, name string) (*Webhook, error) {
 			return c.GetWebhook(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c OnCallAPI, item *Webhook) (*Webhook, error) {
-			return c.CreateWebhook(ctx, *item)
-		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Webhook) (*Webhook, error) {
-			return c.UpdateWebhook(ctx, name, *item)
-		}),
-		withDelete[Webhook](func(ctx context.Context, c OnCallAPI, name string) error {
-			return c.DeleteWebhook(ctx, name)
-		}),
+		webhookCRUDOpts()...,
 	))
 
 	// 8. AlertGroup — read-only + delete
@@ -339,20 +428,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		func(ctx context.Context, c OnCallAPI, name string) (*ResolutionNote, error) {
 			return c.GetResolutionNote(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c OnCallAPI, item *ResolutionNote) (*ResolutionNote, error) {
-			return c.CreateResolutionNote(ctx, CreateResolutionNoteInput{
-				AlertGroup: item.AlertGroup,
-				Text:       item.Text,
-			})
-		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *ResolutionNote) (*ResolutionNote, error) {
-			return c.UpdateResolutionNote(ctx, name, UpdateResolutionNoteInput{
-				Text: item.Text,
-			})
-		}),
-		withDelete[ResolutionNote](func(ctx context.Context, c OnCallAPI, name string) error {
-			return c.DeleteResolutionNote(ctx, name)
-		}),
+		resolutionNoteCRUDOpts()...,
 	))
 
 	// 16. ShiftSwap — CRUD with input conversion
@@ -364,23 +440,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		func(ctx context.Context, c OnCallAPI, name string) (*ShiftSwap, error) {
 			return c.GetShiftSwap(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c OnCallAPI, item *ShiftSwap) (*ShiftSwap, error) {
-			return c.CreateShiftSwap(ctx, CreateShiftSwapInput{
-				Schedule:    item.Schedule,
-				SwapStart:   item.SwapStart,
-				SwapEnd:     item.SwapEnd,
-				Beneficiary: item.Beneficiary,
-			})
-		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *ShiftSwap) (*ShiftSwap, error) {
-			return c.UpdateShiftSwap(ctx, name, UpdateShiftSwapInput{
-				SwapStart: item.SwapStart,
-				SwapEnd:   item.SwapEnd,
-			})
-		}),
-		withDelete[ShiftSwap](func(ctx context.Context, c OnCallAPI, name string) error {
-			return c.DeleteShiftSwap(ctx, name)
-		}),
+		shiftSwapCRUDOpts()...,
 	))
 
 	return regs
@@ -393,6 +453,7 @@ func shiftToRequest(s *Shift) ShiftRequest {
 		Schedule:      s.Schedule,
 		PriorityLevel: s.PriorityLevel,
 		ShiftStart:    s.ShiftStart,
+		ShiftEnd:      s.ShiftEnd,
 		RotationStart: s.RotationStart,
 		Until:         s.Until,
 		Frequency:     s.Frequency,

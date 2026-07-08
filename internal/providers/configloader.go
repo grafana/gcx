@@ -190,7 +190,7 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 		envOverride,
 		contextMustExist,
 		func(cfg *config.Config) error {
-			return cfg.GetCurrentContext().Validate()
+			return cfg.GetCurrentContext().Validate(ctx)
 		},
 	}
 

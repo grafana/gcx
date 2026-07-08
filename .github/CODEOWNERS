@@ -11,6 +11,7 @@
 # Providers
 /internal/providers/slo/ @grafana/grafana-gcx @grafana/slo-squad
 /internal/providers/synth/ @grafana/grafana-gcx @grafana/synthetic-monitoring-dev
+/internal/query/synth/ @grafana/grafana-gcx @grafana/synthetic-monitoring-dev
 /internal/providers/irm/ @grafana/grafana-gcx @grafana/grafana-irm-backend
 /internal/providers/k6/ @grafana/grafana-gcx @grafana/k6-backend
 /internal/providers/faro/ @grafana/grafana-gcx @grafana/kowalski

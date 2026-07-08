@@ -1,6 +1,16 @@
-# Grafana Foundation SDK — Go Builder Reference (v0.0.12)
+# Grafana Foundation SDK Go Builder Reference
 
 Reference for building dashboards and alerts using `grafana-foundation-sdk/go`.
+The generated project's `go.mod` pins the SDK version the stubs target.
+
+## Contents
+
+- [Import Paths](#import-paths)
+- [DashboardBuilder (dashboardv2beta1)](#dashboardbuilder-dashboardv2beta1)
+- [Visualization Types](#visualization-types)
+- [Datasource Query Types](#datasource-query-types)
+- [Alert Rule Builder (alerting)](#alert-rule-builder-alerting)
+- [Common Patterns](#common-patterns)
 
 ## Import Paths
 
@@ -139,45 +149,20 @@ return dashboard.Manifest("resource-name", builder)
 
 ## Visualization Types
 
-### Timeseries
-```go
-timeseries.NewVisualizationBuilder()  // Line/area/bar chart over time
-```
+Each visualization package exposes `NewVisualizationBuilder()`; pass the result
+to `.Visualization(...)` on a panel builder.
 
-### Stat
-```go
-stat.NewVisualizationBuilder()  // Single big number
-```
-
-### Gauge
-```go
-gauge.NewVisualizationBuilder()  // Gauge with thresholds
-```
-
-### Table
-```go
-table.NewVisualizationBuilder()  // Data table
-```
-
-### Bar Chart
-```go
-barchart.NewVisualizationBuilder()  // Category bar chart
-```
-
-### Heatmap
-```go
-heatmap.NewVisualizationBuilder()  // Heatmap
-```
-
-### Logs
-```go
-logs.NewVisualizationBuilder()  // Log viewer
-```
-
-### Text
-```go
-text.NewVisualizationBuilder()  // Markdown/HTML text panel
-```
+| Package | Use for |
+|---------|---------|
+| `timeseries` | Line/area/bar chart over time |
+| `stat` | Single big number |
+| `gauge` | Gauge with thresholds |
+| `barchart` | Category bar chart |
+| `table` | Data table |
+| `heatmap` | Heatmap |
+| `piechart` | Pie chart |
+| `logs` | Log viewer |
+| `text` | Markdown/HTML text panel |
 
 ## Datasource Query Types
 

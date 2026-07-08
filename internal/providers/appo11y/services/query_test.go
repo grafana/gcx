@@ -1,6 +1,9 @@
 package services //nolint:testpackage // Tests cover unexported helpers (buildServicesQuery, parseFilter, parseServicesResponse).
 
 import (
+	"maps"
+	"math"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -238,6 +241,234 @@ func TestParseFilter(t *testing.T) {
 				t.Errorf("parseFilter() = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseFilters(t *testing.T) {
+	// Empty in → nil out (callers treat nil as "no scoping").
+	got, err := parseFilters(nil)
+	if err != nil {
+		t.Fatalf("parseFilters(nil) err = %v", err)
+	}
+	if got != nil {
+		t.Errorf("parseFilters(nil) = %v, want nil", got)
+	}
+
+	got, err = parseFilters([]string{"k8s_cluster_name=prod-us", "telemetry_sdk_language!=java"})
+	if err != nil {
+		t.Fatalf("parseFilters() err = %v", err)
+	}
+	want := []Matcher{
+		{Label: "k8s_cluster_name", Op: "=", Value: "prod-us"},
+		{Label: "telemetry_sdk_language", Op: "!=", Value: "java"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("parseFilters() = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("parseFilters()[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+
+	if _, err := parseFilters([]string{"bogus"}); err == nil {
+		t.Error("expected error for malformed filter")
+	}
+}
+
+func TestParseGroupBy(t *testing.T) {
+	// nil / empty in → nil out.
+	if got, err := parseGroupBy(nil); err != nil || got != nil {
+		t.Fatalf("parseGroupBy(nil) = %v, %v; want nil, nil", got, err)
+	}
+
+	// Comma-separated and repeated entries flatten, trim, and de-dupe
+	// (order preserved by first occurrence).
+	got, err := parseGroupBy([]string{"k8s_cluster_name, cloud_region", "k8s_cluster_name", " deployment_environment "})
+	if err != nil {
+		t.Fatalf("parseGroupBy err = %v", err)
+	}
+	want := []string{"k8s_cluster_name", "cloud_region", "deployment_environment"}
+	if len(got) != len(want) {
+		t.Fatalf("parseGroupBy = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("parseGroupBy[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+
+	// An invalid label name is rejected (protects the `by (...)` clause).
+	if _, err := parseGroupBy([]string{"1bad"}); err == nil {
+		t.Error("expected error for label name starting with a digit")
+	}
+	if _, err := parseGroupBy([]string{"has-dash"}); err == nil {
+		t.Error("expected error for label name with a dash")
+	}
+}
+
+func TestBuildSeriesSelector(t *testing.T) {
+	got := buildSeriesSelector("traces_span_metrics_calls_total", "billing/checkout", nil)
+	want := `traces_span_metrics_calls_total{job="billing/checkout"}`
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+
+	got = buildSeriesSelector("traces_span_metrics_calls_total", "auth", []Matcher{
+		{Label: "k8s_cluster_name", Op: "=", Value: "prod"},
+		{Label: "cloud_region", Op: "!=", Value: `eu"west`}, // embedded quote escaped
+	})
+	want = `traces_span_metrics_calls_total{job="auth",k8s_cluster_name="prod",cloud_region!="eu\"west"}`
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+func TestCollectAndSummarizeLabels(t *testing.T) {
+	series := []map[string]string{
+		{"__name__": "traces_span_metrics_calls_total", "job": "billing/checkout", "k8s_cluster_name": "east", "span_name": "GET /"},
+		{"__name__": "traces_span_metrics_calls_total", "job": "billing/checkout", "k8s_cluster_name": "west", "span_name": "GET /"},
+		{"__name__": "traces_span_metrics_calls_total", "job": "billing/checkout", "k8s_cluster_name": "east", "span_name": "POST /x"},
+	}
+	index := collectSeriesLabels(series)
+	// __name__ dropped; job/k8s_cluster_name/span_name kept.
+	if _, ok := index["__name__"]; ok {
+		t.Error("__name__ should be dropped")
+	}
+	if len(index["k8s_cluster_name"]) != 2 {
+		t.Errorf("k8s_cluster_name distinct = %d, want 2", len(index["k8s_cluster_name"]))
+	}
+	if len(index["job"]) != 1 {
+		t.Errorf("job distinct = %d, want 1", len(index["job"]))
+	}
+
+	// Summary is sorted by name; sampleN caps values but Cardinality is full.
+	rows := summarizeLabels(index, 1)
+	if len(rows) != 3 {
+		t.Fatalf("rows = %d, want 3: %+v", len(rows), rows)
+	}
+	if rows[0].Name != "job" || rows[1].Name != "k8s_cluster_name" || rows[2].Name != "span_name" {
+		t.Errorf("rows not sorted by name: %+v", rows)
+	}
+	cluster := rows[1]
+	if cluster.Cardinality != 2 || len(cluster.Values) != 1 {
+		t.Errorf("cluster row wrong (want cardinality 2, 1 sampled value): %+v", cluster)
+	}
+
+	// sampleN=0 returns all values.
+	rows = summarizeLabels(index, 0)
+	for _, r := range rows {
+		if r.Name == "k8s_cluster_name" {
+			if len(r.Values) != 2 || r.Values[0] != "east" || r.Values[1] != "west" {
+				t.Errorf("full values wrong/unsorted: %+v", r)
+			}
+		}
+	}
+}
+
+func TestMergeGroupedRED(t *testing.T) {
+	// Two clusters; "west" is the latency/error outlier. mergeGroupedRED
+	// sorts by rate desc, so east (busier) comes first, but the point is
+	// each row carries its own RED + group label.
+	bucket := func(cluster string, v float64) map[string]groupBucket {
+		return map[string]groupBucket{cluster: {value: v, labels: map[string]string{"k8s_cluster_name": cluster}}}
+	}
+	merge2 := func(a, b map[string]groupBucket) map[string]groupBucket {
+		out := map[string]groupBucket{}
+		maps.Copy(out, a)
+		maps.Copy(out, b)
+		return out
+	}
+	rates := merge2(bucket("east", 12), bucket("west", 3))
+	errs := merge2(bucket("east", 0), bucket("west", 1.5)) // west 50% errors
+	p95s := merge2(bucket("east", 0.05), bucket("west", 1.2))
+
+	items := mergeGroupedRED("5m", MetricsModeV3, []string{spanKindServer}, []string{"k8s_cluster_name"},
+		rates, errs, nil, p95s, nil)
+	if len(items) != 2 {
+		t.Fatalf("len = %d, want 2: %+v", len(items), items)
+	}
+	// Sorted by rate desc → east first.
+	if items[0].Labels["k8s_cluster_name"] != "east" || items[1].Labels["k8s_cluster_name"] != "west" {
+		t.Fatalf("order wrong: %q, %q", items[0].Labels["k8s_cluster_name"], items[1].Labels["k8s_cluster_name"])
+	}
+	west := items[1].RED
+	if !west.HasTraffic || west.RatePerSecond != 3 {
+		t.Errorf("west RED wrong: %+v", west)
+	}
+	if math.Abs(west.ErrorPercent-50) > 0.001 {
+		t.Errorf("west error%% = %.4f, want 50", west.ErrorPercent)
+	}
+	if !west.HasLatencyP95 || west.P95Seconds != 1.2 {
+		t.Errorf("west p95 wrong: %+v", west)
+	}
+	// east: traffic present, no error series → HasErrors inferred true, 0%.
+	if east := items[0].RED; !east.HasErrors || east.ErrorPercent != 0 {
+		t.Errorf("east errors wrong: %+v", east)
+	}
+}
+
+// TestFilterMatchersThreadIntoQueries locks in that a --filter matcher is
+// appended to every per-service query family that carries it — the RED
+// span-metric queries, the operations breakdown, the service-graph edges,
+// and the target_info metadata/lookup queries — so a multi-cluster service
+// can be scoped one cluster at a time. It also confirms the matcher value
+// is quote-escaped identically to the job selector (no injection).
+func TestFilterMatchersThreadIntoQueries(t *testing.T) {
+	v3, _ := metricNamesByMode(MetricsModeV3)
+	m := []Matcher{{Label: "k8s_cluster_name", Op: "=", Value: "prod-us"}}
+	const clusterSel = `k8s_cluster_name="prod-us"`
+
+	checks := []struct {
+		name  string
+		build func() (string, error)
+	}{
+		{"rate", func() (string, error) {
+			return buildRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, m, nil)
+		}},
+		{"error", func() (string, error) {
+			return buildErrorRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, m, nil)
+		}},
+		{"latency", func() (string, error) {
+			return buildLatencyQuantileQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, 0.95, m, nil)
+		}},
+		{"ops-rate", func() (string, error) {
+			return buildOperationsRateQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, m, nil)
+		}},
+		{"ops-avg", func() (string, error) {
+			return buildOperationsAvgLatencyQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, m, nil)
+		}},
+		{"map-edge", func() (string, error) {
+			return buildServiceMapEdgeQuery(serviceGraphRequestTotalMetric, callersDirection, "billing", "checkout", "5m", m, nil)
+		}},
+		{"map-latency", func() (string, error) {
+			return buildServiceMapLatencyQuery(callersDirection, "billing", "checkout", "5m", 0.95, m, nil)
+		}},
+		{"metadata", func() (string, error) { return buildServiceMetadataQuery("target_info", "billing", "checkout", m) }},
+		{"probe", func() (string, error) { return buildModeProbeQuery(v3.calls, "billing/checkout", m) }},
+		{"bare-name", func() (string, error) { return buildBareNameLookupQuery("target_info", "checkout", m) }},
+	}
+	for _, c := range checks {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := c.build()
+			if err != nil {
+				t.Fatalf("build err = %v", err)
+			}
+			if !strings.Contains(got, clusterSel) {
+				t.Errorf("query missing cluster selector %q: %s", clusterSel, got)
+			}
+		})
+	}
+
+	// Injection guard: a matcher value with an embedded quote is escaped so
+	// it can't break out of the selector.
+	evil := []Matcher{{Label: "cloud_region", Op: "=", Value: `x"} or up{`}}
+	got, err := buildRateQuery(v3, "", "checkout", "5m", []string{spanKindServer}, evil, nil)
+	if err != nil {
+		t.Fatalf("build err = %v", err)
+	}
+	if !strings.Contains(got, `cloud_region="x\"} or up{"`) {
+		t.Errorf("matcher value not escaped: %s", got)
 	}
 }
 

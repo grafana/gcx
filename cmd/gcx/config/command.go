@@ -121,7 +121,7 @@ func (opts *Options) LoadConfig(ctx context.Context) (config.Config, error) {
 			return config.ContextNotFound(cfg.CurrentContext)
 		}
 
-		return cfg.GetCurrentContext().Validate()
+		return cfg.GetCurrentContext().Validate(ctx)
 	}
 
 	return opts.LoadConfigTolerant(ctx, validator)
@@ -400,7 +400,7 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	cmd.Println(cmdio.Yellow(title))
 	cmd.Println(cmdio.Yellow(strings.Repeat("=", titleLen)))
 
-	if err := gCtx.Validate(); err != nil {
+	if err := gCtx.Validate(cmd.Context()); err != nil {
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(summarizeError(err)))
 		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")

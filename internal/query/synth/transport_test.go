@@ -244,6 +244,29 @@ func TestTransport_FallbackResolvedOnceAcrossCalls(t *testing.T) {
 	assert.Equal(t, 1, fallback.calls, "credentials must be resolved exactly once across calls")
 }
 
+// TestTransport_DirectPathSendsClientIdentity verifies the fallback (direct
+// SM-API) path also stamps the X-Client-Id / X-Client-Version headers, so gcx is
+// attributed as client_type="gcx" regardless of which mode serves the request.
+func TestTransport_DirectPathSendsClientIdentity(t *testing.T) {
+	var gotClientID, gotClientVersion string
+	directSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotClientID = r.Header.Get("X-Client-Id")
+		gotClientVersion = r.Header.Get("X-Client-Version")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer directSrv.Close()
+
+	fallback := &fakeFallback{baseURL: directSrv.URL, token: "direct-token"}
+	tr, err := synth.NewTransport(config.NamespacedRESTConfig{}, "", fallback)
+	require.NoError(t, err)
+
+	_, _, err = tr.Do(context.Background(), http.MethodGet, "check/list", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "gcx", gotClientID, "sm-api attributes callers by X-Client-ID")
+	assert.NotEmpty(t, gotClientVersion, "X-Client-Version must be set so client_version is not \"unknown\"")
+}
+
 func TestTransport_UnsupportedMethod(t *testing.T) {
 	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

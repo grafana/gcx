@@ -140,7 +140,6 @@ gcx/
 │   ├── default-config.yaml   # Default config fixture
 │   └── folder.yaml           # Sample resource manifest
 │
-├── vendor/                   # Vendored Go dependencies (committed to repo)
 ├── bin/                      # Build output (gitignored)
 ├── build/                    # mkdocs output (gitignored)
 │
@@ -183,7 +182,7 @@ tool versions are used regardless of shell configuration.
 | `mise run install` | Copies binary to `$GOPATH/bin` |
 | `mise run tests` | `go test -v ./...` (all packages, with race detection implied) |
 | `mise run lint` | Runs `golangci-lint run -c .golangci.yaml` |
-| `mise run deps` | `go mod vendor` + `uv pip install -r requirements.txt` |
+| `mise run deps` | `go mod download` + `uv pip install -r requirements.txt` |
 | `mise run docs` | Runs `reference` then `mkdocs build` → `build/documentation/` |
 | `mise run reference` | Runs all four doc-generation scripts |
 | `mise run reference-drift` | Re-generates docs, fails if `git diff` finds changes |
@@ -191,7 +190,7 @@ tool versions are used regardless of shell configuration.
 | `mise run test-env-up` | `docker-compose up -d` + health-wait loop |
 | `mise run test-env-down` | `docker-compose down` |
 | `mise run test-env-clean` | `docker-compose down -v` (removes volumes) |
-| `mise run clean` | Removes `bin/`, `vendor/`, `.venv/` |
+| `mise run clean` | Removes `bin/`, `.venv/` |
 
 ### Version injection
 
@@ -233,7 +232,7 @@ uv = "latest"
 ```
 
 A new contributor runs `mise install` to get the full toolchain, then `mise run deps`
-to install Go vendors and Python packages. CI uses `jdx/mise-action` to replicate
+to download Go modules and install Python packages. CI uses `jdx/mise-action` to replicate
 this.
 
 ---
@@ -294,13 +293,16 @@ the release workflow.
 
 ## 5. Dependency Management
 
-**Strategy: vendoring.** All dependencies are committed to `vendor/` and
-`go mod vendor` is the canonical way to update them. The linter runs with
-`modules-download-mode: vendor`, and the build uses vendored code.
+**Strategy: Go module mode.** Dependencies are resolved from the Go module cache,
+not a committed `vendor/` tree. `go mod download` populates the cache (`mise run deps`),
+and `go.mod`/`go.sum` are the canonical record. The linter runs with
+`modules-download-mode: readonly`, matching `go build`/`go test`.
 
-**Rationale**: Vendoring ensures reproducible builds without a module proxy,
-avoids network dependencies in CI, and makes the full dependency graph auditable
-in code review.
+**Rationale**: `go.sum` already pins exact versions and hashes for reproducible,
+auditable builds, so a vendored copy was redundant overhead (~99MB regenerated on
+every CI run and worktree). The module cache is shared across builds and cached in
+CI by `go.sum` key. Run `go mod vendor` manually only if you need a local vendored
+tree (e.g. fully offline work); it is never required.
 
 ### Dependency categories
 
@@ -400,7 +402,7 @@ set of linters that conflict with the project's style:
 - `depguard` denies `github.com/davecgh/go-spew` — debug statements must
   be removed before merging
 - `revive`'s `var-naming` rule is disabled (allows non-standard naming)
-- `modules-download-mode: vendor` — uses vendored deps, not module cache
+- `modules-download-mode: readonly` — resolves deps from the module cache (no `vendor/`)
 
 ---
 
@@ -504,6 +506,6 @@ git tag v1.2.3 && git push --tags
 ### Add a New Dependency
 ```bash
 go get github.com/some/package
-mise run deps                 # runs go mod vendor to vendor new dep
-git add vendor/ go.mod go.sum
+go mod tidy                   # update go.mod/go.sum
+git add go.mod go.sum
 ```

@@ -131,14 +131,11 @@ Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
 Auth sources (for non-interactive use):
-  --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a
-                 browser for the user to approve; works in agent mode.
-  --token        Grafana service-account token (created inside the Grafana
-                 instance). See:
-                 ` + docs.ServiceAccounts + `
+  --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
+  --token        Grafana service-account token (created inside the Grafana instance).
+                 See: ` + docs.ServiceAccounts + `
   --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
-                 See:
-                 ` + docs.AccessPolicies,
+                 See: ` + docs.AccessPolicies,
 		Example: `  gcx login
   gcx login prod
   gcx login prod --server https://prod.grafana.net

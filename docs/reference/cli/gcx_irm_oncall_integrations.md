@@ -23,6 +23,9 @@ Manage OnCall integrations.
 ### SEE ALSO
 
 * [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx irm oncall integrations create](gcx_irm_oncall_integrations_create.md)	 - Create an integration.
+* [gcx irm oncall integrations delete](gcx_irm_oncall_integrations_delete.md)	 - Delete an integration by ID.
 * [gcx irm oncall integrations get](gcx_irm_oncall_integrations_get.md)	 - Get an integration by ID.
 * [gcx irm oncall integrations list](gcx_irm_oncall_integrations_list.md)	 - List OnCall integrations.
+* [gcx irm oncall integrations update](gcx_irm_oncall_integrations_update.md)	 - Update an integration by ID.
 
