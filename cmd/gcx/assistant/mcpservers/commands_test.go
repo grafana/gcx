@@ -205,7 +205,7 @@ func TestRunListEmitsShowingFirstHintWhenMoreMayExist(t *testing.T) {
 	var stderr bytes.Buffer
 	cmd.SetErr(&stderr)
 
-	require.NoError(t, runList(cmd, client, opts))
+	require.NoError(t, runList(cmd, client, "default", opts))
 	assert.Contains(t, stderr.String(), "showing first 1 — use --limit for more")
 	assert.NotContains(t, stderr.String(), "of 1", "hint must never present the integration total as an MCP-server count")
 }
@@ -223,7 +223,7 @@ func TestRunListNoHintWhenPageIsShort(t *testing.T) {
 	var stderr bytes.Buffer
 	cmd.SetErr(&stderr)
 
-	require.NoError(t, runList(cmd, client, opts))
+	require.NoError(t, runList(cmd, client, "default", opts))
 	assert.Empty(t, stderr.String())
 }
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
+	"github.com/grafana/gcx/internal/assistant/mcpserver"
 	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
@@ -22,16 +23,52 @@ import (
 
 var openURL = deeplink.Open //nolint:gochecknoglobals // Test seam for browser-open failure handling.
 
-func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*assistantmcp.Client, error) {
+// newClient builds the MCP-servers client and returns the namespace from the
+// resolved Grafana config, so callers needing envelope parity with the
+// resources path (FR-022) can build a matching mcpserver.TypedCRUD without
+// re-resolving config.
+func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*assistantmcp.Client, string, error) {
 	cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	base, err := assistanthttp.NewClient(cfg)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return assistantmcp.NewClient(base), nil
+	return assistantmcp.NewClient(base), cfg.Namespace, nil
+}
+
+// isEnvelopeFormat reports whether the resolved output format must produce
+// the exact {apiVersion, kind, metadata, spec} envelope gcx resources
+// get/pull emits, so gcx assistant mcp-servers get/list and gcx resources
+// get mcpservers are byte-identical for JSON and YAML (FR-022, AC-006).
+// Table/wide/text output keeps the flat, human-friendly Server view.
+func isEnvelopeFormat(f string) bool {
+	return f == string(format.JSON) || f == string(format.YAML)
+}
+
+// envelopeList is the JSON/YAML shape gcx resources get emits for a
+// multi-item result (cmd/gcx/resources.printItems) -- an "items" array of
+// bare envelope maps, never a bare array.
+type envelopeList struct {
+	Items []map[string]any `json:"items" yaml:"items"`
+}
+
+// mcpServerEnvelopes converts already-fetched client Servers into the same
+// unstructured {apiVersion, kind, metadata, spec} envelope maps the adapter
+// produces, without any extra network calls.
+func mcpServerEnvelopes(client *assistantmcp.Client, namespace string, servers []assistantmcp.Server) ([]map[string]any, error) {
+	crud := mcpserver.NewTypedCRUDForClient(client, namespace)
+	items := make([]map[string]any, 0, len(servers))
+	for _, s := range servers {
+		u, err := crud.ToUnstructured(mcpserver.ServerToMCPServer(s))
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, u.Object)
+	}
+	return items, nil
 }
 
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
@@ -114,11 +151,11 @@ json, yaml, or agents for machine-readable output.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+			client, namespace, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
-			return runList(cmd, client, opts)
+			return runList(cmd, client, namespace, opts)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -131,13 +168,24 @@ json, yaml, or agents for machine-readable output.`,
 // -- it reads "showing first N -- use --limit for more", never "N of TOTAL",
 // because MCP servers are narrowed client-side and the total spans all
 // assistant integrations.
-func runList(cmd *cobra.Command, client *assistantmcp.Client, opts *listOpts) error {
+//
+// For --output json/yaml, the page is rendered as the same {"items": [...]}
+// envelope shape gcx resources get mcpservers emits (FR-022) instead of the
+// flat Server view; other formats are unaffected.
+func runList(cmd *cobra.Command, client *assistantmcp.Client, namespace string, opts *listOpts) error {
 	result, err := client.ListBounded(cmd.Context(), assistantmcp.ListOptions{Limit: opts.Limit, Offset: opts.Offset})
 	if err != nil {
 		return err
 	}
 	if result.HasMore {
 		cmdio.EmitHint(cmd.ErrOrStderr(), fmt.Sprintf("showing first %d — use --limit for more", result.Limit), "")
+	}
+	if isEnvelopeFormat(opts.IO.OutputFormat) {
+		items, err := mcpServerEnvelopes(client, namespace, result.Servers)
+		if err != nil {
+			return err
+		}
+		return opts.IO.Encode(cmd.OutOrStdout(), envelopeList{Items: items})
 	}
 	return opts.IO.Encode(cmd.OutOrStdout(), result.Servers)
 }
@@ -165,19 +213,36 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+			client, namespace, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
-			server, err := client.Get(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), server)
+			return runGet(cmd, client, namespace, opts, args[0])
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// runGet resolves ref (an ID or human name, per client.Get) to the underlying
+// server. For --output json/yaml, the result is rendered as the same
+// {apiVersion, kind, metadata, spec} envelope gcx resources get mcpservers/
+// <name> emits (FR-022, AC-006) instead of the flat Server view; other
+// formats are unaffected.
+func runGet(cmd *cobra.Command, client *assistantmcp.Client, namespace string, opts *getOpts, ref string) error {
+	server, err := client.Get(cmd.Context(), ref)
+	if err != nil {
+		return err
+	}
+	if isEnvelopeFormat(opts.IO.OutputFormat) {
+		crud := mcpserver.NewTypedCRUDForClient(client, namespace)
+		u, err := crud.ToUnstructured(mcpserver.ServerToMCPServer(*server))
+		if err != nil {
+			return err
+		}
+		return opts.IO.Encode(cmd.OutOrStdout(), u.Object)
+	}
+	return opts.IO.Encode(cmd.OutOrStdout(), server)
 }
 
 type createOpts struct {
@@ -238,7 +303,7 @@ reports that OAuth is required.`,
 			if err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+			client, _, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
@@ -308,7 +373,7 @@ requires a non-empty authentication header.`,
 			if err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+			client, _, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
@@ -365,7 +430,7 @@ while agent mode still requires explicit --force for destructive operations.`,
 			if !proceed {
 				return nil
 			}
-			client, err := newClient(cmd, loader)
+			client, _, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}

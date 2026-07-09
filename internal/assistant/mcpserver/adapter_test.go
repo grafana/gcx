@@ -1,4 +1,4 @@
-package assistant_test
+package mcpserver_test
 
 import (
 	"encoding/json"
@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
+	"github.com/grafana/gcx/internal/assistant/mcpserver"
 	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/providers/assistant"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,15 +62,15 @@ func TestList_ReturnsBothScopesAsEnvelopes(t *testing.T) {
 		})
 	}))
 
-	crud := assistant.NewTypedCRUDForClient(client, "default")
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
 	list, err := crud.AsAdapter().List(t.Context(), metav1.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, list.Items, 2)
 
 	names := make([]string, 0, 2)
 	for _, item := range list.Items {
-		assert.Equal(t, assistant.MCPServerAPIVersion, item.GetAPIVersion())
-		assert.Equal(t, assistant.MCPServerKind, item.GetKind())
+		assert.Equal(t, mcpserver.MCPServerAPIVersion, item.GetAPIVersion())
+		assert.Equal(t, mcpserver.MCPServerKind, item.GetKind())
 		names = append(names, item.GetName())
 	}
 	assert.ElementsMatch(t, []string{"user-my-server", "tenant-github"}, names)
@@ -111,7 +111,7 @@ func TestList_ExhaustsMultiplePagesIncludingMCPEmptyPage(t *testing.T) {
 		})
 	}))
 
-	crud := assistant.NewTypedCRUDForClient(client, "default")
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
 	list, err := crud.AsAdapter().List(t.Context(), metav1.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, list.Items, 2, "must not truncate at the MCP-empty page")
@@ -138,12 +138,12 @@ func TestGet_ResolvesComposedNameAndAnnotatesID(t *testing.T) {
 		})
 	}))
 
-	crud := assistant.NewTypedCRUDForClient(client, "default")
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
 	obj, err := crud.AsAdapter().Get(t.Context(), "tenant-github", metav1.GetOptions{})
 	require.NoError(t, err)
 
 	assert.Equal(t, "tenant-github", obj.GetName())
-	assert.Equal(t, "srv-abc123", obj.GetAnnotations()[assistant.MCPServerIDAnnotation])
+	assert.Equal(t, "srv-abc123", obj.GetAnnotations()[mcpserver.MCPServerIDAnnotation])
 
 	spec, ok := obj.Object["spec"].(map[string]any)
 	require.True(t, ok)
@@ -166,7 +166,7 @@ func TestGet_NotFoundWrapsAdapterErrNotFound(t *testing.T) {
 		writeJSON(t, w, map[string]any{"data": map[string]any{"integrations": []map[string]any{}}})
 	}))
 
-	crud := assistant.NewTypedCRUDForClient(client, "default")
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
 	_, err := crud.Get(t.Context(), "tenant-does-not-exist")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, adapter.ErrNotFound)
@@ -193,13 +193,13 @@ func TestCreate_SendsMaterializedSpecAsServerInput(t *testing.T) {
 		}
 	}))
 
-	crud := assistant.NewTypedCRUDForClient(client, "default")
-	created, err := crud.CreateFn(t.Context(), &assistant.MCPServer{
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+	created, err := crud.CreateFn(t.Context(), &mcpserver.MCPServer{
 		Name:    "SharedTools",
 		Scope:   "tenant",
 		URL:     "https://mcp.example.com/shared",
 		Enabled: true,
-		Headers: []assistant.MCPServerHeader{{Name: "Authorization", Value: "Bearer secret"}},
+		Headers: []mcpserver.MCPServerHeader{{Name: "Authorization", Value: "Bearer secret"}},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "SharedTools", created.Name)
@@ -269,13 +269,13 @@ func TestUpdate_ResolvesExistingServerByNaturalKeyAndPreservesHeader(t *testing.
 		}
 	}))
 
-	crud := assistant.NewTypedCRUDForClient(client, "default")
-	updated, err := crud.UpdateFn(t.Context(), "tenant-github", &assistant.MCPServer{
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+	updated, err := crud.UpdateFn(t.Context(), "tenant-github", &mcpserver.MCPServer{
 		Name:    "GitHub",
 		Scope:   "tenant",
 		URL:     "https://api.githubcopilot.com/mcp/",
 		Enabled: false,                                                // the field actually being changed
-		Headers: []assistant.MCPServerHeader{{Name: "Authorization"}}, // name-only: preserve
+		Headers: []mcpserver.MCPServerHeader{{Name: "Authorization"}}, // name-only: preserve
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "GitHub", updated.Name)
@@ -316,7 +316,7 @@ func TestDelete_ResolvesComposedNameToServerID(t *testing.T) {
 		}
 	}))
 
-	crud := assistant.NewTypedCRUDForClient(client, "default")
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
 	err := crud.DeleteFn(t.Context(), "tenant-github")
 	require.NoError(t, err)
 	assert.Contains(t, deletedPath, "srv-to-delete")
@@ -326,7 +326,7 @@ func TestDelete_ResolvesComposedNameToServerID(t *testing.T) {
 // unexported serverID carrier field (added purely so MetadataFn can emit
 // MCPServerIDAnnotation) ever leaking into the generated JSON Schema.
 func TestMCPServerSchema_DoesNotLeakInternalServerIDField(t *testing.T) {
-	schema := assistant.MCPServerSchema()
+	schema := mcpserver.MCPServerSchema()
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal(schema, &parsed))
 

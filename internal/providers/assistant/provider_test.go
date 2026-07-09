@@ -3,6 +3,7 @@ package assistant_test
 import (
 	"testing"
 
+	"github.com/grafana/gcx/internal/assistant/mcpserver"
 	"github.com/grafana/gcx/internal/providers"
 	assistantprovider "github.com/grafana/gcx/internal/providers/assistant"
 	"github.com/stretchr/testify/assert"
@@ -53,9 +54,9 @@ func TestProviderRegistration(t *testing.T) {
 		require.Len(t, regs, 1, "exactly one adapter registration — MCPServer (FR-005)")
 
 		reg := regs[0]
-		assert.Equal(t, assistantprovider.MCPServerKind, reg.GVK.Kind)
-		assert.Equal(t, assistantprovider.MCPServerAPIGroup, reg.GVK.Group)
-		assert.Equal(t, assistantprovider.MCPServerVersion, reg.GVK.Version)
+		assert.Equal(t, mcpserver.MCPServerKind, reg.GVK.Kind)
+		assert.Equal(t, mcpserver.MCPServerAPIGroup, reg.GVK.Group)
+		assert.Equal(t, mcpserver.MCPServerVersion, reg.GVK.Version)
 		assert.NotNil(t, reg.Schema)
 		assert.NotNil(t, reg.Example)
 		assert.NotNil(t, reg.Factory)

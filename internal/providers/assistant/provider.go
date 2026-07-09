@@ -5,6 +5,7 @@ package assistant
 
 import (
 	assistantcmd "github.com/grafana/gcx/cmd/gcx/assistant"
+	"github.com/grafana/gcx/internal/assistant/mcpserver"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -49,14 +50,14 @@ func (p *AssistantProvider) ConfigKeys() []providers.ConfigKey {
 // types. MCPServer is the only registered type — investigations,
 // conversation, and the A2A prompt/dashboard path stay command-only (FR-005).
 func (p *AssistantProvider) TypedRegistrations() []adapter.Registration {
-	desc := MCPServerDescriptor()
+	desc := mcpserver.MCPServerDescriptor()
 	return []adapter.Registration{
 		{
-			Factory:    NewLazyFactory(),
+			Factory:    mcpserver.NewLazyFactory(),
 			Descriptor: desc,
 			GVK:        desc.GroupVersionKind(),
-			Schema:     MCPServerSchema(),
-			Example:    MCPServerExample(),
+			Schema:     mcpserver.MCPServerSchema(),
+			Example:    mcpserver.MCPServerExample(),
 		},
 	}
 }

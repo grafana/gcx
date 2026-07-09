@@ -1,4 +1,4 @@
-package assistant
+package mcpserver
 
 import (
 	"context"
@@ -65,7 +65,7 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 			}
 			result := make([]MCPServer, 0, len(servers))
 			for _, s := range servers {
-				result = append(result, serverToMCPServer(s))
+				result = append(result, ServerToMCPServer(s))
 			}
 			return result, nil
 		}),
@@ -75,7 +75,7 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 			if err != nil {
 				return nil, err
 			}
-			m := serverToMCPServer(*server)
+			m := ServerToMCPServer(*server)
 			return &m, nil
 		},
 
@@ -87,7 +87,7 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 			if result.Server == nil {
 				return nil, fmt.Errorf("assistant API did not return the created MCP server %q", item.Name)
 			}
-			m := serverToMCPServer(*result.Server)
+			m := ServerToMCPServer(*result.Server)
 			return &m, nil
 		},
 
@@ -103,7 +103,7 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 			if result.Server == nil {
 				return nil, fmt.Errorf("assistant API did not return the updated MCP server %q", item.Name)
 			}
-			m := serverToMCPServer(*result.Server)
+			m := ServerToMCPServer(*result.Server)
 			return &m, nil
 		},
 
@@ -195,10 +195,10 @@ func findServerByResourceName(ctx context.Context, client *assistantmcp.Client, 
 	return nil, fmt.Errorf("MCP server %q: %w", name, adapter.ErrNotFound)
 }
 
-// serverToMCPServer converts a client Server (redacted header values) into
+// ServerToMCPServer converts a client Server (redacted header values) into
 // the manifest domain type. Header values are never populated here — the
 // client's Server.CustomHeaders only ever carries names (FR-021).
-func serverToMCPServer(s assistantmcp.Server) MCPServer {
+func ServerToMCPServer(s assistantmcp.Server) MCPServer {
 	headers := make([]MCPServerHeader, 0, len(s.CustomHeaders))
 	for _, h := range s.CustomHeaders {
 		headers = append(headers, MCPServerHeader{Name: h.Name})

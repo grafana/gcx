@@ -1,30 +1,30 @@
-package assistant_test
+package mcpserver_test
 
 import (
 	"encoding/json"
 	"reflect"
 	"testing"
 
-	"github.com/grafana/gcx/internal/providers/assistant"
+	"github.com/grafana/gcx/internal/assistant/mcpserver"
 	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
-var _ adapter.ResourceIdentity = &assistant.MCPServer{}
+var _ adapter.ResourceIdentity = &mcpserver.MCPServer{}
 
 func TestMCPServer_ResourceIdentity(t *testing.T) {
 	tests := []struct {
 		name string
-		in   assistant.MCPServer
+		in   mcpserver.MCPServer
 		want string
 	}{
 		{
 			name: "tenant scope",
-			in:   assistant.MCPServer{Name: "GitHub", Scope: "tenant"},
+			in:   mcpserver.MCPServer{Name: "GitHub", Scope: "tenant"},
 			want: "tenant-github",
 		},
 		{
 			name: "user scope",
-			in:   assistant.MCPServer{Name: "My Custom Server", Scope: "user"},
+			in:   mcpserver.MCPServer{Name: "My Custom Server", Scope: "user"},
 			want: "user-my-custom-server",
 		},
 	}
@@ -39,7 +39,7 @@ func TestMCPServer_ResourceIdentity(t *testing.T) {
 }
 
 func TestMCPServer_SetResourceNameIsNoOp(t *testing.T) {
-	m := assistant.MCPServer{Name: "GitHub", Scope: "tenant"}
+	m := mcpserver.MCPServer{Name: "GitHub", Scope: "tenant"}
 	m.SetResourceName("some-other-name")
 
 	if m.Name != "GitHub" || m.Scope != "tenant" {
@@ -48,7 +48,7 @@ func TestMCPServer_SetResourceNameIsNoOp(t *testing.T) {
 }
 
 func TestMCPServer_JSONRoundTrip(t *testing.T) {
-	original := assistant.MCPServer{
+	original := mcpserver.MCPServer{
 		Name:         "GitHub",
 		Scope:        "tenant",
 		URL:          "https://api.githubcopilot.com/mcp/",
@@ -58,7 +58,7 @@ func TestMCPServer_JSONRoundTrip(t *testing.T) {
 		Config: map[string]any{
 			"timeout": "30s",
 		},
-		Headers: []assistant.MCPServerHeader{
+		Headers: []mcpserver.MCPServerHeader{
 			{Name: "Authorization", Value: "secret-token"},
 			{Name: "X-Preserve-Me"},
 			{Name: "X-From-Env", FromEnv: "GITHUB_MCP_TOKEN"},
@@ -71,7 +71,7 @@ func TestMCPServer_JSONRoundTrip(t *testing.T) {
 		t.Fatalf("Marshal() error = %v", err)
 	}
 
-	var roundTripped assistant.MCPServer
+	var roundTripped mcpserver.MCPServer
 	if err := json.Unmarshal(data, &roundTripped); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
@@ -85,7 +85,7 @@ func TestMCPServer_SpecFieldsPresent(t *testing.T) {
 	// AC-005: a tenant-scoped server named GitHub, when marshaled, must
 	// carry name, scope, url, enabled, and (where set) description,
 	// applications, config, headers.
-	server := assistant.MCPServer{
+	server := mcpserver.MCPServer{
 		Name:         "GitHub",
 		Scope:        "tenant",
 		URL:          "https://api.githubcopilot.com/mcp/",
@@ -93,7 +93,7 @@ func TestMCPServer_SpecFieldsPresent(t *testing.T) {
 		Description:  "GitHub MCP server",
 		Applications: []string{"assistant"},
 		Config:       map[string]any{"timeout": "30s"},
-		Headers:      []assistant.MCPServerHeader{{Name: "Authorization"}},
+		Headers:      []mcpserver.MCPServerHeader{{Name: "Authorization"}},
 	}
 
 	data, err := json.Marshal(server)
@@ -123,7 +123,7 @@ func TestMCPServer_SpecFieldsPresent(t *testing.T) {
 func TestMCPServer_SpecFieldsOmitEmpty(t *testing.T) {
 	// A minimal server (no description/applications/config/headers) must
 	// still round-trip name/scope/url/enabled without the optional fields.
-	server := assistant.MCPServer{
+	server := mcpserver.MCPServer{
 		Name:    "Minimal",
 		Scope:   "user",
 		URL:     "https://example.com/mcp/",
@@ -148,7 +148,7 @@ func TestMCPServer_SpecFieldsOmitEmpty(t *testing.T) {
 }
 
 func TestMCPServerSchema_NonNil(t *testing.T) {
-	schema := assistant.MCPServerSchema()
+	schema := mcpserver.MCPServerSchema()
 	if schema == nil {
 		t.Fatal("MCPServerSchema() = nil, want non-nil")
 	}
@@ -160,7 +160,7 @@ func TestMCPServerSchema_NonNil(t *testing.T) {
 }
 
 func TestMCPServerExample_NonNil(t *testing.T) {
-	example := assistant.MCPServerExample()
+	example := mcpserver.MCPServerExample()
 	if example == nil {
 		t.Fatal("MCPServerExample() = nil, want non-nil")
 	}
@@ -185,10 +185,10 @@ func TestMCPServerRegistration_SchemaAndExampleSetDirectly(t *testing.T) {
 	// FR-009: Schema and Example must be set on the Registration struct
 	// directly, not relied upon via AsAdapter() (which doesn't propagate them).
 	reg := adapter.Registration{
-		Descriptor: assistant.MCPServerDescriptor(),
-		GVK:        assistant.MCPServerDescriptor().GroupVersionKind(),
-		Schema:     assistant.MCPServerSchema(),
-		Example:    assistant.MCPServerExample(),
+		Descriptor: mcpserver.MCPServerDescriptor(),
+		GVK:        mcpserver.MCPServerDescriptor().GroupVersionKind(),
+		Schema:     mcpserver.MCPServerSchema(),
+		Example:    mcpserver.MCPServerExample(),
 	}
 
 	if reg.Schema == nil {
@@ -197,7 +197,7 @@ func TestMCPServerRegistration_SchemaAndExampleSetDirectly(t *testing.T) {
 	if reg.Example == nil {
 		t.Error("Registration.Example is nil, want non-nil")
 	}
-	if reg.GVK.Kind != assistant.MCPServerKind {
-		t.Errorf("Registration.GVK.Kind = %q, want %q", reg.GVK.Kind, assistant.MCPServerKind)
+	if reg.GVK.Kind != mcpserver.MCPServerKind {
+		t.Errorf("Registration.GVK.Kind = %q, want %q", reg.GVK.Kind, mcpserver.MCPServerKind)
 	}
 }
