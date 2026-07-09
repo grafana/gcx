@@ -4,8 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
+	"sort"
 	"text/template"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
@@ -108,6 +113,70 @@ func importCmd() *cobra.Command {
 
 type resourceConverter func(resource *model.Resource) (string, string, error)
 
+// sdkImportOverrides maps package identifiers referenced by foundation-sdk
+// converter output to their subpath within the SDK module when that subpath
+// is not simply go/<identifier>. These are the SDK's only nested packages.
+//
+//nolint:gochecknoglobals
+var sdkImportOverrides = map[string]string{
+	"variants": "cog/variants",
+	"plugins":  "cog/plugins",
+}
+
+func sdkImportPath(ident string) string {
+	sub := ident
+	if override, ok := sdkImportOverrides[ident]; ok {
+		sub = override
+	}
+	return "github.com/grafana/grafana-foundation-sdk/go/" + sub
+}
+
+// computeSDKImports parses generated source and returns the import paths its
+// selector expressions need. Foundation-sdk converters emit builder code that
+// references SDK packages (cog, common, panel and query packages, …) without
+// any import information, and goimports cannot resolve them reliably — the
+// module cache offers several candidates for e.g. "cog" — so the importer
+// derives the import list from actual usage instead. Selector roots that
+// resolve to declarations in the file (locals) or to predeclared identifiers
+// are ignored.
+func computeSDKImports(src []byte) ([]string, error) {
+	fset := token.NewFileSet()
+	// Object resolution is what lets us tell locals apart from package
+	// references below; it is on by default in parser.ParseFile.
+	file, err := parser.ParseFile(fset, "generated.go", src, 0)
+	if err != nil {
+		return nil, fmt.Errorf("parsing generated code: %w", err)
+	}
+
+	idents := map[string]struct{}{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		ident, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		// ast.Object is deprecated but still populated; a nil Obj on a
+		// selector root means "not declared in this file", i.e. a package
+		// reference.
+		if ident.Obj != nil || types.Universe.Lookup(ident.Name) != nil {
+			return true
+		}
+		idents[ident.Name] = struct{}{}
+		return true
+	})
+
+	paths := make([]string, 0, len(idents))
+	for ident := range idents {
+		paths = append(paths, sdkImportPath(ident))
+	}
+	sort.Strings(paths)
+
+	return paths, nil
+}
+
 func convertResource(destinationRoot string, resource *model.Resource) error {
 	tmpl, err := template.New("").Option("missingkey=error").ParseFS(templatesFS, "templates/import/*.tmpl")
 	if err != nil {
@@ -122,7 +191,7 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 		return fmt.Errorf("no converter found for %s", converterKey)
 	}
 
-	converted, sdkPkg, err := converter(resource)
+	converted, _, err := converter(resource)
 	if err != nil {
 		return err
 	}
@@ -133,23 +202,41 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 		return err
 	}
 
-	var buf bytes.Buffer
-	err = tmpl.ExecuteTemplate(&buf, "resource.go.tmpl", map[string]any{
+	templateData := map[string]any{
 		"Package":          filepath.Base(destinationRoot),
 		"GroupVersion":     gvk.GroupVersion().String(),
 		"Kind":             resource.Kind(),
 		"Name":             resource.Name(),
-		"SDKPackage":       sdkPkg,
 		"FuncName":         strcase.ToPascalCase(resource.Name()),
 		"ConvertedBuilder": converted,
-	})
-	if err != nil {
+		"Imports":          []string(nil),
+	}
+
+	// First render without imports to discover, from the code itself, which
+	// SDK packages the converter output references; then render again with
+	// the complete import block so the file compiles regardless of whether
+	// goimports can resolve anything.
+	var scanBuf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&scanBuf, "resource.go.tmpl", templateData); err != nil {
 		return err
 	}
 
+	sdkImports, err := computeSDKImports(scanBuf.Bytes())
+	if err != nil {
+		return err
+	}
+	templateData["Imports"] = sdkImports
+
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, "resource.go.tmpl", templateData); err != nil {
+		return err
+	}
+
+	// The import list is already complete; goimports only formats and sorts.
 	formatted, err := imports.Process(convertedFile, buf.Bytes(), nil)
 	if err != nil {
-		// Fall back to unformatted output if goimports fails.
+		// Fall back to unformatted output if goimports fails — the file
+		// still compiles since its imports were derived from usage.
 		formatted = buf.Bytes()
 	}
 
