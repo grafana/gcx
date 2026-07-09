@@ -49,9 +49,10 @@ func newGuardedDynamicClient(inner adapter.DynamicClient, cfg GuardConfig) adapt
 // allowlisted resources) passes straight through. Only the dynamic fallback is wrapped; the
 // provider-adapter path is already dry-run-safe.
 //
-// inner is a plain field and the read methods are written out by hand, rather than embedding
-// the interface. That is deliberate: a safety guard should fail to compile if the interface
-// gains a new mutating method, instead of embedding silently forwarding it past the guard.
+// inner is a named field and the read methods are written out by hand, instead of embedding
+// adapter.DynamicClient (which would auto-forward every method). That is deliberate: if the
+// interface gains a new mutating method, this file should fail to compile rather than forward
+// it to the server past the guard.
 type dryRunGuard struct {
 	inner     adapter.DynamicClient
 	allowlist dryRunAllowlist
