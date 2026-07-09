@@ -120,6 +120,18 @@ Delete prompts for confirmation by default. `--force` bypasses the prompt, `GCX_
 gcx assistant mcp-servers delete GitHub --force
 ```
 
+## Resources pipeline (GitOps)
+
+MCP servers are also addressable as a `gcx resources` type (`mcpservers`, GVK `assistant.ext.grafana.app/v1alpha1`), so they can be pulled, versioned, and pushed like any other resource:
+
+```sh
+gcx resources pull mcpservers
+gcx resources get mcpservers/tenant-github -o yaml
+gcx resources push mcpservers/tenant-github.yaml
+```
+
+`metadata.name` is computed as `{scope}-{slug(name)}`; matching across stacks uses the natural key `(scope, name, url)`, not the server-assigned ID. On `push`, manifest headers follow the same explicit write-intent model as the command path (a header with a value overwrites, a name-only header preserves the stored secret on update, and an omitted header is removed) — with `fromEnv`/`fromFile` sourcing available for CI. See [ADR-021](../adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) for the full design.
+
 ## CLI reference
 
 For the generated command reference, see [`gcx assistant mcp-servers`](./cli/gcx_assistant_mcp-servers.md).
