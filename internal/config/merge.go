@@ -138,8 +138,8 @@ func mergeContexts(base, over *Context) *Context {
 func mergeResourcesConfig(base, over *ResourcesConfig) ResourcesConfig {
 	result := *base
 
-	seen := make(map[string]struct{}, len(base.AssumeServerDryRun)+len(over.AssumeServerDryRun))
-	merged := make([]string, 0, len(base.AssumeServerDryRun)+len(over.AssumeServerDryRun))
+	seen := make(map[string]struct{})
+	var merged []string
 	for _, gr := range base.AssumeServerDryRun {
 		if _, ok := seen[gr]; ok {
 			continue
