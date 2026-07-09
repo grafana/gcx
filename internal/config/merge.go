@@ -111,7 +111,9 @@ func mergeContexts(base, over *Context) *Context {
 		maps.Copy(result.Datasources, over.Datasources)
 	}
 
-	// Resources config: union the assume-server-dry-run allowlists across layers.
+	// Resources config: last definition wins. Assume-server-dry-run weakens the
+	// dry-run guard, so a higher layer must be able to narrow (or clear, via an
+	// explicit []) what a lower layer asserts — a union could only ever widen it.
 	if over.Resources != nil {
 		if result.Resources == nil {
 			result.Resources = over.Resources
@@ -137,25 +139,9 @@ func mergeContexts(base, over *Context) *Context {
 
 func mergeResourcesConfig(base, over *ResourcesConfig) ResourcesConfig {
 	result := *base
-
-	seen := make(map[string]struct{})
-	var merged []string
-	for _, gr := range base.AssumeServerDryRun {
-		if _, ok := seen[gr]; ok {
-			continue
-		}
-		seen[gr] = struct{}{}
-		merged = append(merged, gr)
+	if over.AssumeServerDryRun != nil {
+		result.AssumeServerDryRun = over.AssumeServerDryRun
 	}
-	for _, gr := range over.AssumeServerDryRun {
-		if _, ok := seen[gr]; ok {
-			continue
-		}
-		seen[gr] = struct{}{}
-		merged = append(merged, gr)
-	}
-	result.AssumeServerDryRun = merged
-
 	return result
 }
 
