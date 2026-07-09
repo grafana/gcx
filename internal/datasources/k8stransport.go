@@ -12,8 +12,13 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/client-go/rest"
 )
+
+// maxConcurrentGroupFetches bounds the per-plugin-group fan-out in listAll,
+// matching the fan-out cap used elsewhere in the resources pipeline.
+const maxConcurrentGroupFetches = 10
 
 // errK8sNotServed signals that the app-platform datasource API did not serve a
 // request (the per-plugin group is absent, the discovery probe found no
@@ -164,31 +169,62 @@ func (t *k8sTransport) listAll(ctx context.Context) ([]*Datasource, bool, error)
 		return nil, false, errK8sNotServed
 	}
 
+	// Fetch each served group concurrently (bounded), writing into per-index
+	// slots so the merge below stays lock-free and order-deterministic. The
+	// legacy sequential loop made this the dominant cost of `datasources list`.
+	type groupResult struct {
+		datasources []*Datasource
+		incomplete  bool
+	}
+	results := make([]groupResult, len(plugins))
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrentGroupFetches)
+	for i, pluginID := range plugins {
+		g.Go(func() error {
+			status, body, err := t.do(ctx, http.MethodGet, t.collectionPath(pluginID), nil)
+			if err != nil {
+				return err
+			}
+			if status != http.StatusOK {
+				// A served group may be inaccessible (403), gone (404), or backed
+				// by a broken/absent plugin (5xx). Any of these makes the
+				// app-platform enumeration incomplete: skip the group and flag it
+				// so List falls back to the permission-aware legacy list for a
+				// complete view.
+				results[i].incomplete = true
+				return nil
+			}
+			var list k8sList
+			if err := json.Unmarshal(body, &list); err != nil {
+				return fmt.Errorf("failed to parse datasources response: %w", err)
+			}
+			dss := make([]*Datasource, 0, len(list.Items))
+			for j := range list.Items {
+				ds, err := fromK8s(&list.Items[j])
+				if err != nil {
+					return err
+				}
+				dss = append(dss, ds)
+			}
+			results[i].datasources = dss
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, false, err
+	}
+
+	// Merge in plugin order (single goroutine — no lock needed on index).
 	var out []*Datasource
 	var incomplete bool
 	index := make(map[string]string)
-	for _, pluginID := range plugins {
-		status, body, err := t.do(ctx, http.MethodGet, t.collectionPath(pluginID), nil)
-		if err != nil {
-			return nil, false, err
-		}
-		if status != http.StatusOK {
-			// A served group may be inaccessible (403), gone (404), or backed by
-			// a broken/absent plugin (5xx). Any of these makes the app-platform
-			// enumeration incomplete: skip the group and flag it so List falls
-			// back to the permission-aware legacy list for a complete view.
+	for i, pluginID := range plugins {
+		if results[i].incomplete {
 			incomplete = true
 			continue
 		}
-		var list k8sList
-		if err := json.Unmarshal(body, &list); err != nil {
-			return nil, false, fmt.Errorf("failed to parse datasources response: %w", err)
-		}
-		for i := range list.Items {
-			ds, err := fromK8s(&list.Items[i])
-			if err != nil {
-				return nil, false, err
-			}
+		for _, ds := range results[i].datasources {
 			out = append(out, ds)
 			index[ds.UID] = pluginID
 		}

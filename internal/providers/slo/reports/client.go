@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"k8s.io/client-go/rest"
 )
 
@@ -49,7 +50,7 @@ func (c *Client) List(ctx context.Context) ([]Report, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var listResp ReportListResponse
@@ -77,7 +78,7 @@ func (c *Client) Get(ctx context.Context, uuid string) (*Report, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var report Report
@@ -102,7 +103,7 @@ func (c *Client) Create(ctx context.Context, report *Report) (*ReportCreateRespo
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var createResp ReportCreateResponse
@@ -127,7 +128,7 @@ func (c *Client) Update(ctx context.Context, uuid string, report *Report) error 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return handleErrorResponse(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 
 	return nil
@@ -142,7 +143,7 @@ func (c *Client) Delete(ctx context.Context, uuid string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return handleErrorResponse(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 
 	return nil
@@ -165,23 +166,4 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 	}
 
 	return resp, nil
-}
-
-// handleErrorResponse reads an error response body and returns a formatted error.
-func handleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-
-	var errResp ErrorResponse
-	if err := json.Unmarshal(body, &errResp); err == nil && errResp.Error != "" {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Error)
-	}
-
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
 }
