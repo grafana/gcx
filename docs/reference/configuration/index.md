@@ -141,8 +141,8 @@ diagnostics:
   # Default: $XDG_STATE_HOME/gcx/ (platform-specific).
   log-dir: string
   # Telemetry controls anonymous usage telemetry: "enabled", "disabled",
-  # or "log" (print the event to stderr and send nothing). Overridden by
-  # the GCX_TELEMETRY and DO_NOT_TRACK environment variables.
+  # or "log" (prints to stderr). Overridden by the GCX_TELEMETRY and
+  # DO_NOT_TRACK environment variables.
   telemetry: string
 
 ```

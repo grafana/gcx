@@ -191,7 +191,7 @@ func TestDetectedFromEnv(t *testing.T) {
 	}
 }
 
-func TestHarness(t *testing.T) {
+func TestName(t *testing.T) {
 	tests := []struct {
 		name    string
 		envVars map[string]string
@@ -235,7 +235,7 @@ func TestHarness(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			assert.Equal(t, tc.want, agent.Harness())
+			assert.Equal(t, tc.want, agent.Name())
 		})
 	}
 }

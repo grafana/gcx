@@ -69,8 +69,8 @@ type DiagnosticsConfig struct {
 	LogDir string `json:"log-dir,omitempty" yaml:"log-dir,omitempty"`
 
 	// Telemetry controls anonymous usage telemetry: "enabled", "disabled",
-	// or "log" (print the event to stderr and send nothing). Overridden by
-	// the GCX_TELEMETRY and DO_NOT_TRACK environment variables.
+	// or "log" (prints to stderr). Overridden by the GCX_TELEMETRY and
+	// DO_NOT_TRACK environment variables.
 	Telemetry string `json:"telemetry,omitempty" yaml:"telemetry,omitempty"`
 }
 

@@ -90,11 +90,11 @@ func detectFromEnv() {
 	}
 }
 
-// Harness returns the name of the detected agent harness (e.g. "claude-code"),
-// or "" when no known harness env var is set. It reports the harness even when
-// agent mode was explicitly disabled via GCX_AGENT_MODE or --agent=false;
-// callers should combine it with [IsAgentMode].
-func Harness() string {
+// Name returns the name of the detected agent (e.g. "claude-code"), or ""
+// when no known agent env var is set. It reports the name even when agent
+// mode was explicitly disabled via GCX_AGENT_MODE or --agent=false; callers
+// should combine it with [IsAgentMode].
+func Name() string {
 	for _, h := range harnessEnvVars {
 		if isTruthy(os.Getenv(h.envVar)) {
 			return h.name

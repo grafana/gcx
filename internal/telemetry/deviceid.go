@@ -18,11 +18,10 @@ func DeviceIDPath() string {
 }
 
 // DeviceID returns the anonymous per-install device ID and whether it is
-// persisted, creating and storing a random UUIDv4 on first use. It is
-// random, never machine-derived. When the state dir is unwritable (or the
-// ID file is corrupt and cannot be rewritten) it returns a fresh ephemeral
-// ID with persisted=false, so ephemeral IDs can be excluded from install
-// counts.
+// persisted, creating and storing a random UUIDv4 on first use. When the
+// state dir is unwritable (or the ID file is corrupt and cannot be
+// rewritten) it returns a fresh ephemeral ID with persisted=false, so
+// ephemeral IDs can be excluded from install counts.
 func DeviceID() (string, bool) {
 	path := DeviceIDPath()
 	if data, err := os.ReadFile(path); err == nil {

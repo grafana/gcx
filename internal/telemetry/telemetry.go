@@ -40,8 +40,8 @@ type Env struct {
 	Telemetry string `env:"GCX_TELEMETRY"`
 
 	// DoNotTrack disables anonymous usage telemetry when set to "1" or
-	// "true" (cross-tool convention, see https://consoledonottrack.com).
-	// Overridden by GCX_TELEMETRY.
+	// "true" (cross-tool DO_NOT_TRACK convention). Overridden by
+	// GCX_TELEMETRY.
 	DoNotTrack string `env:"DO_NOT_TRACK"`
 }
 
