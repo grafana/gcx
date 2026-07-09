@@ -31,9 +31,9 @@ type GuardConfig struct {
 	Warn io.Writer
 }
 
-// newGuardedDynamicClient wraps inner with the dry-run guard configured by cfg. Malformed
-// user-asserted GroupResource values are ignored (with a warning) rather than failing, so a
-// bad --assume-server-dry-run value or persisted config entry never blocks the operation.
+// newGuardedDynamicClient wraps inner with the dry-run guard. Malformed user-asserted values
+// are ignored with a warning rather than failing, so a bad flag or config entry never blocks
+// the operation.
 func newGuardedDynamicClient(inner adapter.DynamicClient, cfg GuardConfig) adapter.DynamicClient {
 	allowlist, invalid := newDryRunAllowlist(cfg.AssumeServerDryRun)
 	if len(invalid) > 0 && cfg.Warn != nil {
@@ -42,19 +42,16 @@ func newGuardedDynamicClient(inner adapter.DynamicClient, cfg GuardConfig) adapt
 	return newDryRunGuard(inner, allowlist, cfg.Warn)
 }
 
-// dryRunGuard decorates a DynamicClient to make --dry-run fail safe. For mutating verbs
-// carrying DryRun against a resource NOT known to honor server-side dryRun, it refuses to
-// send the request (which a legacy storage bridge would otherwise apply for real) and returns
-// errDryRunUnverified after a best-effort client-side check. All other calls (reads,
-// non-dry-run mutations, and dry-run mutations against allowlisted resources) pass straight
-// through. Only the dynamic fallback is wrapped, so the provider-adapter path (already
-// dry-run-safe via typedAdapter) is untouched.
+// dryRunGuard wraps a DynamicClient to make --dry-run fail safe. For a dry-run mutation
+// against a resource not known to honor server-side dryRun, it skips the request (which a
+// legacy backend would otherwise apply for real) after a best-effort client-side check and
+// returns errDryRunUnverified. Everything else (reads, real mutations, and dry-runs of
+// allowlisted resources) passes straight through. Only the dynamic fallback is wrapped; the
+// provider-adapter path is already dry-run-safe.
 //
-// It holds inner as a plain field and spells out the pass-through read methods by hand
-// instead of embedding adapter.DynamicClient. That is deliberate: this is a safety guard,
-// so if someone adds a new mutating method to the interface later, we want this file to
-// fail to compile until it is handled here. Embedding would instead auto-forward the new
-// method straight to the server, quietly letting a mutation slip past the guard.
+// inner is a plain field and the read methods are written out by hand, rather than embedding
+// the interface. That is deliberate: a safety guard should fail to compile if the interface
+// gains a new mutating method, instead of embedding silently forwarding it past the guard.
 type dryRunGuard struct {
 	inner     adapter.DynamicClient
 	allowlist dryRunAllowlist
@@ -73,9 +70,9 @@ func newDryRunGuard(inner adapter.DynamicClient, allowlist dryRunAllowlist, warn
 	}
 }
 
-// blockDryRun reports whether a mutating call must be blocked because it is a dry-run against
-// a resource that does not honor server-side dryRun. Non-dry-run calls are never blocked. It
-// emits the one-time stderr warning (blocked) or note (user-asserted) as a side effect.
+// blockDryRun reports whether a dry-run mutation must be blocked (the resource does not honor
+// server-side dryRun). Non-dry-run calls are never blocked. It emits the one-time stderr
+// warning or user-asserted note as a side effect.
 func (g *dryRunGuard) blockDryRun(desc resources.Descriptor, dryRun []string, checkedDetail string) bool {
 	if !slices.Contains(dryRun, metav1.DryRunAll) {
 		return false
@@ -92,9 +89,8 @@ func (g *dryRunGuard) blockDryRun(desc resources.Descriptor, dryRun []string, ch
 	return false
 }
 
-// Verb-specific descriptions of the client-side checks a blocked dry-run actually ran,
-// so the warning states what gcx verified rather than only what it skipped. Push covers
-// both create and update (the pusher determines which and runs the same checks).
+// What a blocked dry-run actually checked client-side, per verb, so the warning says what
+// gcx verified rather than only what it skipped. Push covers both create and update.
 const (
 	pushDryRunChecks = "gcx checked client-side only: the manifest parses and the kind is served by this API. " +
 		"It did not validate the spec, references, or uniqueness. No changes were sent."
@@ -121,8 +117,8 @@ func (g *dryRunGuard) Update(
 
 func (g *dryRunGuard) Delete(ctx context.Context, desc resources.Descriptor, name string, opts metav1.DeleteOptions) error {
 	if g.blockDryRun(desc, opts.DryRun, deleteDryRunChecks) {
-		// Best-effort existence check: this never sends the Delete a legacy bridge would
-		// otherwise apply. A NotFound is still reported as skipped (nothing to delete).
+		// Best-effort existence check; never sends the Delete a legacy backend would apply
+		// for real. A missing target is still reported as skipped (nothing to delete).
 		if _, err := g.inner.Get(ctx, desc, name, metav1.GetOptions{}); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
@@ -163,8 +159,8 @@ func (g *dryRunGuard) noteAsserted(gr schema.GroupResource) {
 	})
 }
 
-// announceOnce writes emit(warn) the first time a GroupResource is seen in this run, so a
-// bulk operation warns once per distinct resource rather than once per item.
+// announceOnce runs emit the first time a GroupResource is seen this run, so a bulk operation
+// warns once per resource type instead of once per item.
 func (g *dryRunGuard) announceOnce(gr schema.GroupResource, emit func(io.Writer)) {
 	if g.warn == nil {
 		return

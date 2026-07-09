@@ -253,9 +253,9 @@ func (p *Pusher) pushSingleResource(
 	}
 
 	if err := p.upsertResource(ctx, desc, name, res, request.DryRun, logger, nkCache); err != nil {
-		// The dry-run guard blocked a mutating request to an API that does not honor
-		// server-side dryRun. Record it as skipped (not a failure) and bypass StopOnError,
-		// mirroring the puller's handling of unlistable resources.
+		// The guard blocked a dry-run against an API that ignores server-side dryRun.
+		// Record it as skipped (not a failure) and keep going, like the puller does for
+		// unlistable types.
 		if errors.Is(err, errDryRunUnverified) {
 			summary.RecordSkipped()
 			logger.Info("Dry-run: change not verified (server-side dry-run unsupported); no changes sent")

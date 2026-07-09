@@ -109,9 +109,8 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 			}
 
 			if err := deleter.deleteResource(ctx, desc, res, request.DryRun); err != nil {
-				// The dry-run guard blocked a delete against an API that does not honor
-				// server-side dryRun. Record it as skipped (not a failure) and bypass
-				// StopOnError, mirroring the puller's handling of unlistable resources.
+				// The guard blocked a dry-run delete against an API that ignores server-side
+				// dryRun. Record it as skipped (not a failure) and keep going, like the puller.
 				if errors.Is(err, errDryRunUnverified) {
 					summary.RecordSkipped()
 					logger.Info("Dry-run: deletion not verified (server-side dry-run unsupported); no delete sent")

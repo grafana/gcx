@@ -11,9 +11,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// sentinelPushClient mimics a guard-wrapped client whose dry-run Create/Update on a
-// non-honoring resource returns errDryRunUnverified. Get returns NotFound so the pusher
-// takes the create path.
+// sentinelPushClient acts like a guarded client: Create/Update return errDryRunUnverified,
+// and Get returns NotFound so the pusher takes the create path.
 type sentinelPushClient struct{}
 
 func (sentinelPushClient) Get(_ context.Context, desc resources.Descriptor, name string, _ metav1.GetOptions) (*unstructured.Unstructured, error) {

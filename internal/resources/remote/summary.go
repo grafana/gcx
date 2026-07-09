@@ -33,11 +33,9 @@ func (s *OperationSummary) RecordSuccess() {
 	s.successCount.Add(1)
 }
 
-// RecordSkipped records something skipped because the API could not perform the
-// requested operation and it is not the user's fault: a resource type the API cannot
-// list (404/405 on LIST, puller), or a mutating dry-run against a resource that does
-// not honor server-side dryRun (pusher/deleter). Skips are distinct from failures and
-// do not affect the exit code.
+// RecordSkipped records something the API could not do through no fault of the user: a
+// resource type it cannot list (puller), or a dry-run against a resource that ignores
+// server-side dryRun (pusher/deleter). Skips are not failures and do not affect the exit code.
 func (s *OperationSummary) RecordSkipped() {
 	s.skippedCount.Add(1)
 }
@@ -66,8 +64,7 @@ func (s *OperationSummary) FailedCount() int {
 	return int(s.failedCount.Load())
 }
 
-// SkippedCount returns the number of resources skipped because the API could not
-// perform the requested operation (see RecordSkipped).
+// SkippedCount returns the number of skipped resources (see RecordSkipped).
 func (s *OperationSummary) SkippedCount() int {
 	return int(s.skippedCount.Load())
 }

@@ -81,8 +81,8 @@ func TestParseGroupResource(t *testing.T) {
 }
 
 func TestNewDryRunAllowlist_InvalidValueIsSkippedNotFatal(t *testing.T) {
-	// A malformed value is reported as invalid and simply does not take effect (fail-safe:
-	// the resource falls back to best-effort), rather than failing the whole operation.
+	// A malformed value is reported as invalid and simply ignored, rather than failing the
+	// whole operation.
 	a, invalid := newDryRunAllowlist([]string{"not-a-group-resource", "alertrules.rules.alerting.grafana.app"})
 
 	require.Equal(t, []string{"not-a-group-resource"}, invalid)

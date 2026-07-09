@@ -22,9 +22,8 @@ func bindAssumeServerDryRunFlag(flags *pflag.FlagSet, target *[]string) {
 	flags.StringSliceVar(target, assumeServerDryRunFlag, nil, assumeServerDryRunUsage)
 }
 
-// dryRunGuardConfig builds the guard config for push/delete/validate from the per-context
-// resources.assume-server-dry-run config merged with the --assume-server-dry-run flag, and
-// routes guard warnings to warn (typically stderr).
+// dryRunGuardConfig builds the guard config from the per-context config list merged with the
+// --assume-server-dry-run flag, sending guard warnings to warn (stderr).
 func dryRunGuardConfig(current *config.Context, flagValues []string, warn io.Writer) remote.GuardConfig {
 	var assumed []string
 	if current != nil {
@@ -34,9 +33,8 @@ func dryRunGuardConfig(current *config.Context, flagValues []string, warn io.Wri
 	return remote.GuardConfig{AssumeServerDryRun: assumed, Warn: warn}
 }
 
-// writeMutationSummary writes the standard "N resources <verb>, M errors" line for push and
-// delete, choosing the success/warning/error style from the counts and appending the dry-run
-// skipped note when the guard skipped any resource.
+// writeMutationSummary writes the "N resources <verb>, M errors" line for push and delete,
+// picking the style from the counts and adding the skipped note when the guard skipped any.
 func writeMutationSummary(w io.Writer, verb string, summary *remote.OperationSummary) {
 	skipped := summary.SkippedCount()
 

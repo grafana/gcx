@@ -151,10 +151,9 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	return cmd
 }
 
-// reportValidation renders the validation outcome. Resources whose API does not honor
-// server-side dry-run are recorded as skipped (server-verification impossible) rather than
-// falsely reported as valid, so the skipped count is surfaced in every output mode,
-// including the structured output that agents consume.
+// reportValidation prints the validation outcome. Resources whose API can't do server-side
+// dry-run are reported as skipped (not falsely "valid"), and the skipped count shows in every
+// output mode, including the JSON/YAML that agents read.
 func reportValidation(w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
 	if ioOpts.OutputFormat != "text" {
 		return encodeValidationSummary(w, ioOpts, summary)

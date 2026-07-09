@@ -135,9 +135,8 @@ func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRE
 	return restCfg, err
 }
 
-// LoadGrafanaConfigWithContext behaves like LoadGrafanaConfig but also returns the resolved
-// current Context, so callers can read per-context resource settings alongside the REST
-// config.
+// LoadGrafanaConfigWithContext is like LoadGrafanaConfig but also returns the current
+// Context, so callers can read its per-context settings.
 func (opts *Options) LoadGrafanaConfigWithContext(ctx context.Context) (config.NamespacedRESTConfig, *config.Context, error) {
 	cfg, err := opts.LoadConfig(ctx)
 	if err != nil {
