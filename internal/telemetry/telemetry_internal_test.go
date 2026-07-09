@@ -101,7 +101,6 @@ func TestEnvTagsMatchResolvedNames(t *testing.T) {
 	typ := reflect.TypeFor[Env]()
 	tags := make(map[string]string, typ.NumField())
 	for f := range typ.Fields() {
-		f := f
 		tags[f.Name] = f.Tag.Get("env")
 	}
 	assert.Equal(t, map[string]string{
