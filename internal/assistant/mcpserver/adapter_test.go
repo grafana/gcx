@@ -438,6 +438,164 @@ func TestDelete_ResolvesComposedNameToServerID(t *testing.T) {
 	assert.Contains(t, deletedPath, "srv-to-delete")
 }
 
+// TestGet_AmbiguousScopeNameCollisionListsCandidates covers AC-008/FR-014:
+// two tenant-scoped servers named "GitHub" with different URLs compute the
+// same composite metadata.name ("tenant-github"). Get must error rather
+// than silently returning either one, and the error must list both
+// candidates so the user can disambiguate.
+func TestGet_AmbiguousScopeNameCollisionListsCandidates(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, map[string]any{
+			"data": map[string]any{
+				"integrations": []map[string]any{
+					integration("srv-one", "GitHub", "tenant", "https://api.githubcopilot.com/mcp/"),
+					integration("srv-two", "GitHub", "tenant", "https://mcp.example.com/other-github"),
+				},
+			},
+		})
+	}))
+
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+	_, err := crud.AsAdapter().Get(t.Context(), "tenant-github", metav1.GetOptions{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tenant-github")
+	assert.Contains(t, err.Error(), "srv-one")
+	assert.Contains(t, err.Error(), "srv-two")
+	assert.Contains(t, err.Error(), "https://api.githubcopilot.com/mcp/")
+	assert.Contains(t, err.Error(), "https://mcp.example.com/other-github")
+}
+
+// TestDelete_AmbiguousScopeNameCollisionErrors covers the same collision
+// guard on the Delete path, which resolves the composite name via the same
+// findServerByResourceName lookup as Get.
+func TestDelete_AmbiguousScopeNameCollisionErrors(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, map[string]any{
+			"data": map[string]any{
+				"integrations": []map[string]any{
+					integration("srv-one", "GitHub", "tenant", "https://api.githubcopilot.com/mcp/"),
+					integration("srv-two", "GitHub", "tenant", "https://mcp.example.com/other-github"),
+				},
+			},
+		})
+	}))
+
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+	err := crud.DeleteFn(t.Context(), "tenant-github")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "srv-one")
+	assert.Contains(t, err.Error(), "srv-two")
+}
+
+// TestCreate_NameOnlyHeaderErrorsOnTrueCreatePath covers AC-013/FR-019: a
+// manifest for a not-yet-existing server (no natural-key match) whose
+// header is name-only must fail with an actionable error naming the header,
+// instructing the user to supply its value via fromEnv/fromFile, and must
+// never reach client.Create with a valueless header.
+func TestCreate_NameOnlyHeaderErrorsOnTrueCreatePath(t *testing.T) {
+	posted := false
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			posted = true
+			writeJSON(t, w, map[string]any{"data": map[string]any{}})
+		default:
+			writeJSON(t, w, map[string]any{"data": map[string]any{"integrations": []map[string]any{}}})
+		}
+	}))
+
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+	_, err := crud.CreateFn(t.Context(), &mcpserver.MCPServer{
+		Name:    "SharedTools",
+		Scope:   "tenant",
+		URL:     "https://mcp.example.com/shared",
+		Enabled: true,
+		Headers: []mcpserver.MCPServerHeader{{Name: "Authorization"}}, // name-only, no source
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Authorization")
+	assert.Contains(t, err.Error(), "fromEnv")
+	assert.Contains(t, err.Error(), "fromFile")
+	assert.False(t, posted, "no valueless header may be created")
+}
+
+// TestCreate_NaturalKeyMatchRoutesToUpdateAndPreservesNameOnlyHeader covers
+// FR-019's create-vs-update determination: a create call whose (scope, name,
+// url) matches an existing server (first-time cross-stack sync) must be
+// routed to the update path -- where a name-only header is a valid preserve
+// intent, not a create-path error -- instead of attempting a duplicate
+// create.
+func TestCreate_NaturalKeyMatchRoutesToUpdateAndPreservesNameOnlyHeader(t *testing.T) {
+	const collectionPath = "/api/plugins/grafana-assistant-app/resources/api/v1/integrations"
+
+	var putCalled, postCalled bool
+	var gotHeaders []map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost:
+			postCalled = true
+			writeJSON(t, w, map[string]any{"data": map[string]any{}})
+		case r.Method == http.MethodGet && r.URL.Path == collectionPath:
+			writeJSON(t, w, map[string]any{
+				"data": map[string]any{
+					"integrations": []map[string]any{
+						{
+							"id": "srv-existing", "name": "GitHub", "type": "mcp", "enabled": true, "scope": "tenant",
+							"configuration":  map[string]any{"url": "https://api.githubcopilot.com/mcp/"},
+							"custom_headers": []map[string]any{{"name": "Authorization", "value": "stored-secret"}},
+						},
+					},
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == collectionPath+"/srv-existing":
+			writeJSON(t, w, map[string]any{
+				"data": map[string]any{
+					"id": "srv-existing", "name": "GitHub", "type": "mcp", "enabled": true, "scope": "tenant",
+					"configuration":  map[string]any{"url": "https://api.githubcopilot.com/mcp/"},
+					"custom_headers": []map[string]any{{"name": "Authorization", "value": "stored-secret"}},
+				},
+			})
+		case r.Method == http.MethodPut:
+			putCalled = true
+			var body map[string]any
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+				return
+			}
+			headers, _ := body["custom_headers"].([]any)
+			for _, h := range headers {
+				hm, ok := h.(map[string]any)
+				if !assert.True(t, ok) {
+					return
+				}
+				gotHeaders = append(gotHeaders, hm)
+			}
+			writeJSON(t, w, map[string]any{
+				"data": map[string]any{
+					"integration": integration("srv-existing", "GitHub", "tenant", "https://api.githubcopilot.com/mcp/"),
+				},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+	created, err := crud.CreateFn(t.Context(), &mcpserver.MCPServer{
+		Name:    "GitHub",
+		Scope:   "tenant",
+		URL:     "https://api.githubcopilot.com/mcp/",
+		Enabled: true,
+		Headers: []mcpserver.MCPServerHeader{{Name: "Authorization"}}, // name-only: preserve, valid on the update path
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "GitHub", created.Name)
+	assert.True(t, putCalled, "natural-key match must route to Update")
+	assert.False(t, postCalled, "natural-key match must not attempt a duplicate Create")
+
+	require.Len(t, gotHeaders, 1)
+	assert.Empty(t, gotHeaders[0]["value"], "name-only header on the routed update path preserves the stored secret")
+}
+
 // TestMCPServerSchema_DoesNotLeakInternalServerIDField guards against the
 // unexported serverID carrier field (added purely so MetadataFn can emit
 // MCPServerIDAnnotation) ever leaking into the generated JSON Schema.

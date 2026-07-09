@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -79,20 +80,32 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 			return &m, nil
 		},
 
+		// CreateFn determines create-vs-update by the (scope, name, url)
+		// natural key before applying header write intent (FR-019): a
+		// natural-key match means a server with this identity already
+		// exists elsewhere in the pipeline's view (e.g. first-time
+		// cross-stack sync), so the call is routed to update instead of
+		// creating a duplicate. Only the true create path -- no natural-key
+		// match -- rejects a name-only header, since there is no existing
+		// secret to preserve there (AC-013).
 		CreateFn: func(ctx context.Context, item *MCPServer) (*MCPServer, error) {
-			input, err := serverInputFromMCPServer(item)
+			headers, err := ResolveHeaders(item.Headers)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create MCP server %q: %w", item.Name, err)
 			}
-			result, err := client.Create(ctx, input)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create MCP server %q: %w", item.Name, err)
+
+			current, err := findServerByKey(ctx, client, item.Scope, item.Name, item.URL)
+			switch {
+			case err == nil:
+				return updateResolvedServer(ctx, client, current.ID, item, headers)
+			case errors.Is(err, adapter.ErrNotFound):
+				if guardErr := rejectNameOnlyHeaders(headers); guardErr != nil {
+					return nil, fmt.Errorf("failed to create MCP server %q: %w", item.Name, guardErr)
+				}
+				return createResolvedServer(ctx, client, item, headers)
+			default:
+				return nil, fmt.Errorf("failed to resolve MCP server %q (scope %q) for create: %w", item.Name, item.Scope, err)
 			}
-			if result.Server == nil {
-				return nil, fmt.Errorf("assistant API did not return the created MCP server %q", item.Name)
-			}
-			m := ServerToMCPServer(*result.Server)
-			return &m, nil
 		},
 
 		UpdateFn: func(ctx context.Context, _ string, item *MCPServer) (*MCPServer, error) {
@@ -100,19 +113,11 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 			if err != nil {
 				return nil, fmt.Errorf("failed to resolve MCP server %q (scope %q) for update: %w", item.Name, item.Scope, err)
 			}
-			input, err := serverInputFromMCPServer(item)
+			headers, err := ResolveHeaders(item.Headers)
 			if err != nil {
 				return nil, fmt.Errorf("failed to update MCP server %q: %w", item.Name, err)
 			}
-			result, err := client.Update(ctx, current.ID, input)
-			if err != nil {
-				return nil, fmt.Errorf("failed to update MCP server %q: %w", item.Name, err)
-			}
-			if result.Server == nil {
-				return nil, fmt.Errorf("assistant API did not return the updated MCP server %q", item.Name)
-			}
-			m := ServerToMCPServer(*result.Server)
-			return &m, nil
+			return updateResolvedServer(ctx, client, current.ID, item, headers)
 		},
 
 		DeleteFn: func(ctx context.Context, name string) error {
@@ -185,22 +190,95 @@ func findServerByKey(ctx context.Context, client *assistantmcp.Client, scope, na
 // computes each candidate's name forward from its own scope/name fields and
 // compares (FR-011).
 //
-// Collision detection for two distinct servers that compute the same name
-// (FR-014/AC-008) is intentionally not implemented here — a later task
-// (create-path guard + collision-as-error) adds the ambiguous-match error
-// on top of this lookup; today the first match wins.
+// Two distinct servers sharing (scope, name) but differing by URL compute
+// the same composite name. Rather than silently picking the first match,
+// every candidate is collected and an ambiguous-match error listing them is
+// returned when more than one is found (FR-014/AC-008) — this lookup is
+// used by both Get and Delete, so neither ever acts on the wrong server of
+// an ambiguous pair.
 func findServerByResourceName(ctx context.Context, client *assistantmcp.Client, name string) (*assistantmcp.Server, error) {
 	servers, err := client.ListAll(ctx, assistantmcp.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list MCP servers: %w", err)
 	}
+	var matches []*assistantmcp.Server
 	for i := range servers {
 		s := &servers[i]
 		if (MCPServer{Name: s.Name, Scope: s.Scope}).GetResourceName() == name {
-			return s, nil
+			matches = append(matches, s)
 		}
 	}
-	return nil, fmt.Errorf("MCP server %q: %w", name, adapter.ErrNotFound)
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("MCP server %q: %w", name, adapter.ErrNotFound)
+	case 1:
+		return matches[0], nil
+	default:
+		return nil, ambiguousResourceNameError(name, matches)
+	}
+}
+
+// ambiguousResourceNameError lists every candidate server sharing the same
+// composite (scope, name)-derived metadata.name so the caller can disambiguate
+// by URL or server ID (FR-014/AC-008) instead of getting a silent, possibly
+// wrong, match.
+func ambiguousResourceNameError(name string, matches []*assistantmcp.Server) error {
+	candidates := make([]string, 0, len(matches))
+	for _, s := range matches {
+		candidates = append(candidates, fmt.Sprintf("id=%s url=%s", s.ID, s.URL))
+	}
+	return fmt.Errorf(
+		"MCP server %q is ambiguous: %d servers share the same scope and name but differ by URL (%s) — disambiguate by URL or server ID",
+		name, len(matches), strings.Join(candidates, "; "),
+	)
+}
+
+// rejectNameOnlyHeaders enforces FR-019: on a true create path there is no
+// existing stored secret to preserve, so a resolved header with an empty
+// value (name-only, no inline value/fromEnv/fromFile) is an actionable
+// error rather than a silently valueless write.
+func rejectNameOnlyHeaders(headers []assistantmcp.Header) error {
+	for _, h := range headers {
+		if h.Value == "" {
+			return fmt.Errorf(
+				"header %q has no value: creating a new MCP server requires a value for every header — set an inline value, or supply one via fromEnv or fromFile",
+				h.Name,
+			)
+		}
+	}
+	return nil
+}
+
+// createResolvedServer sends item as a new server using the already-resolved
+// header list. Shared by CreateFn's true-create branch.
+func createResolvedServer(ctx context.Context, client *assistantmcp.Client, item *MCPServer, headers []assistantmcp.Header) (*MCPServer, error) {
+	input := serverInputFromMCPServer(item, headers)
+	result, err := client.Create(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create MCP server %q: %w", item.Name, err)
+	}
+	if result.Server == nil {
+		return nil, fmt.Errorf("assistant API did not return the created MCP server %q", item.Name)
+	}
+	m := ServerToMCPServer(*result.Server)
+	return &m, nil
+}
+
+// updateResolvedServer sends item as an update to the server identified by
+// id, using the already-resolved header list. Shared by UpdateFn and by
+// CreateFn's natural-key-match branch (routing a create call at an existing
+// server onto the update path instead of creating a duplicate).
+func updateResolvedServer(ctx context.Context, client *assistantmcp.Client, id string, item *MCPServer, headers []assistantmcp.Header) (*MCPServer, error) {
+	input := serverInputFromMCPServer(item, headers)
+	result, err := client.Update(ctx, id, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update MCP server %q: %w", item.Name, err)
+	}
+	if result.Server == nil {
+		return nil, fmt.Errorf("assistant API did not return the updated MCP server %q", item.Name)
+	}
+	m := ServerToMCPServer(*result.Server)
+	return &m, nil
 }
 
 // ServerToMCPServer converts a client Server (redacted header values) into
@@ -241,20 +319,20 @@ func configWithoutDerivedKeys(cfg map[string]any) map[string]any {
 }
 
 // serverInputFromMCPServer converts the manifest domain type into the
-// client's write type. Headers are resolved via ResolveHeaders (headers.go)
-// -- inline value, fromEnv, and fromFile sourcing are all collapsed into a
-// plain name+value list before this reaches Client.Create/Update, so those
-// calls never see an unresolved fromEnv/fromFile reference. A resolved
-// empty Value naturally preserves an existing stored header on update, via
-// Client.Update's internal HeaderWritesForUpdate classification (FR-018);
-// this function does not itself classify overwrite/preserve/remove -- that
-// stays centralized at the client boundary (T2) so the wire-encoding
-// assumption is never duplicated.
-func serverInputFromMCPServer(m *MCPServer) (assistantmcp.ServerInput, error) {
-	headers, err := ResolveHeaders(m.Headers)
-	if err != nil {
-		return assistantmcp.ServerInput{}, fmt.Errorf("failed to resolve headers: %w", err)
-	}
+// client's write type, given the already-resolved header list (via
+// ResolveHeaders in headers.go -- inline value, fromEnv, and fromFile
+// sourcing are all collapsed into a plain name+value list before this
+// reaches Client.Create/Update, so those calls never see an unresolved
+// fromEnv/fromFile reference). Headers are resolved by the caller, once,
+// before it decides the create-vs-update path (FR-019) and applies the
+// create-path name-only guard, so this function does not resolve or
+// re-validate them. A resolved empty Value naturally preserves an existing
+// stored header on update, via Client.Update's internal
+// HeaderWritesForUpdate classification (FR-018); this function does not
+// itself classify overwrite/preserve/remove -- that stays centralized at
+// the client boundary (T2) so the wire-encoding assumption is never
+// duplicated.
+func serverInputFromMCPServer(m *MCPServer, headers []assistantmcp.Header) assistantmcp.ServerInput {
 	enabled := m.Enabled
 	return assistantmcp.ServerInput{
 		Name:         m.Name,
@@ -265,5 +343,5 @@ func serverInputFromMCPServer(m *MCPServer) (assistantmcp.ServerInput, error) {
 		Headers:      headers,
 		Applications: m.Applications,
 		Config:       m.Config,
-	}, nil
+	}
 }
