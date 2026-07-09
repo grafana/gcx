@@ -2,7 +2,6 @@ package remote
 
 import (
 	"context"
-	"errors"
 	"io"
 	"slices"
 	"sync"
@@ -17,9 +16,10 @@ import (
 )
 
 // errDryRunUnverified is returned when the guard blocks a dry-run against a resource that
-// does not honor server-side dryRun. The pusher and deleter record it as skipped, not as a
-// success or failure.
-var errDryRunUnverified = errors.New("server-side dry-run not supported; checked client-side only (not verified)")
+// does not honor server-side dryRun. It is the same sentinel provider adapters return for a
+// dry-run they cannot validate (adapter.ErrDryRunUnverified), so the pusher and deleter
+// record both paths as skipped, not as a success or failure.
+var errDryRunUnverified = adapter.ErrDryRunUnverified
 
 // GuardConfig configures the dry-run safety guard applied to a Pusher or Deleter.
 type GuardConfig struct {
@@ -46,8 +46,9 @@ func newGuardedDynamicClient(inner adapter.DynamicClient, cfg GuardConfig) adapt
 // against a resource not known to honor server-side dryRun, it skips the request (which a
 // legacy backend would otherwise apply for real) after a best-effort client-side check and
 // returns errDryRunUnverified. Everything else (reads, real mutations, and dry-runs of
-// allowlisted resources) passes straight through. Only the dynamic fallback is wrapped; the
-// provider-adapter path is already dry-run-safe.
+// allowlisted resources) passes straight through. Only the dynamic fallback is wrapped;
+// provider adapters never mutate on dry-run and return adapter.ErrDryRunUnverified
+// themselves when they have no way to validate.
 //
 // inner is a named field and the read methods are written out by hand, instead of embedding
 // adapter.DynamicClient (which would auto-forward every method). That is deliberate: if the
