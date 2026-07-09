@@ -565,8 +565,45 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(listCmd, getCmd, createCmd, deleteCmd)
+	schemaOpts := &rulesSchemaOpts{}
+	schemaCmd := &cobra.Command{
+		Use:   "schema",
+		Short: "Fetch the live JSON Schema for Custom Prometheus rules from the backend.",
+		Long: `Fetches the JSON Schema (Draft 2020-12) that describes the Custom Prometheus rules configuration
+shape, derived from the backend DTO tree. Pipe to a file and point your editor at it for autocomplete and
+deep validation when authoring prom-rules manifests.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := schemaOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			schema, err := client.GetPromRulesSchema(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return schemaOpts.IO.Encode(cmd.OutOrStdout(), schema)
+		},
+	}
+	schemaOpts.setup(schemaCmd.Flags())
+
+	cmd.AddCommand(listCmd, getCmd, createCmd, deleteCmd, schemaCmd)
 	return cmd
+}
+
+type rulesSchemaOpts struct {
+	IO cmdio.Options
+}
+
+func (o *rulesSchemaOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
 }
 
 type rulesListOpts struct {

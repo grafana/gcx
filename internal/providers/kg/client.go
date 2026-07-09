@@ -37,6 +37,7 @@ const (
 	searchSamplePath     = searchPath + "/sample"
 	rulesPath            = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
 	ruleByNameFmt        = rulesPath + "/%s"
+	rulesSchemaPath      = rulesPath + "/schema"
 	modelRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
 	modelRulesByNameFmt  = modelRulesPath + "/%s"
 	modelRulesSchemaPath = modelRulesPath + "/schema"
@@ -283,6 +284,19 @@ func (c *Client) GetStatus(ctx context.Context) (*Status, error) {
 // UploadPromRules uploads Prometheus recording rules.
 func (c *Client) UploadPromRules(ctx context.Context, yamlContent string) error {
 	return c.doYAML(ctx, http.MethodPut, rulesPath, yamlContent)
+}
+
+// GetPromRulesSchema fetches the live JSON Schema for the Prometheus rules config from the backend.
+//
+// Backend caches this for 1h. The schema is derived from the Java DTO tree, so it
+// reflects the authoritative prom-rules shape — use it to validate prom-rules YAML
+// before uploading instead of learning the shape from 400s.
+func (c *Client) GetPromRulesSchema(ctx context.Context) (map[string]any, error) {
+	var result map[string]any
+	if err := c.getJSON(ctx, rulesSchemaPath, &result); err != nil {
+		return nil, fmt.Errorf("kg: get prom rules schema: %w", err)
+	}
+	return result, nil
 }
 
 // UploadModelRules uploads model rules configuration.

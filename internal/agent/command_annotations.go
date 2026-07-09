@@ -318,6 +318,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg prom-rules delete":    {Cost: "small"},
 	"gcx kg prom-rules get":       {Cost: "small"},
 	"gcx kg prom-rules list":      {Cost: "small"},
+	"gcx kg prom-rules schema":    {Cost: "medium", Hint: "live JSON Schema for Custom Prometheus rules from backend — pipe to file for editor autocomplete, or validate prom-rules YAML before create"},
 	"gcx kg status":               {Cost: "small"},
 	"gcx kg suppressions create":  {Cost: "small"},
 	"gcx kg suppressions delete":  {Cost: "small"},
