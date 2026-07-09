@@ -131,11 +131,9 @@ contexts:
     # Resources holds settings for the `gcx resources` commands in this context.
     resources: 
       # ResourcesConfig holds per-context settings for the `gcx resources` commands.
-      # AssumeServerDryRun lists GroupResource strings ("<resource>.<group>", e.g.
-      # "alertrules.rules.alerting.grafana.app") that the user asserts honor server-side
-      # dry-run on this stack. It augments the built-in allowlist so --dry-run passes those
-      # requests through instead of falling back to a best-effort client-side check. It never
-      # removes built-in entries.
+      # AssumeServerDryRun lists resources ("<resource>.<group>", e.g.
+      # "alertrules.rules.alerting.grafana.app") the user asserts honor server-side dry-run on
+      # this stack, added to the built-in allowlist so --dry-run sends them to the server.
       assume-server-dry-run: 
         - string
         - ...
