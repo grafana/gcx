@@ -1,14 +1,19 @@
 ---
 name: manage-dashboards
 description: >
-  Manages existing Grafana dashboards operationally via gcx: list, get,
-  search, create or update from an already-authored manifest, delete, inspect
-  and restore versions, pull/push/validate/promote dashboard resource files,
-  manage dashboard folders, or render PNG snapshots. Do NOT use when the task
-  involves adding new panels, variables, or annotations — those require
-  discovering real metrics or log schema, so use create-dashboard instead.
-  For designing or creating a new dashboard, or for material visual/dashboard
-  UX changes, also use create-dashboard.
+  Manages and inspects existing Grafana dashboards via gcx: list, get, search,
+  audit what a saved dashboard actually contains (its panels and their types,
+  the queries and expressions as saved, which datasource each panel uses,
+  variables and what they are wired to), create or update from an
+  already-authored manifest, delete, inspect and restore versions,
+  pull/push/validate/promote dashboard resource files, manage dashboard
+  folders, or render PNG snapshots. Trigger on "what's on dashboard X",
+  "what is each panel querying", "audit this dashboard", "which datasource
+  does each panel use", "does the dashboard have a service dropdown".
+  Do NOT use when the task involves adding new panels, variables, or
+  annotations - those require discovering real metrics or log schema, so use
+  create-dashboard instead. For designing or creating a new dashboard, or for
+  material visual/dashboard UX changes, also use create-dashboard.
 ---
 
 # Manage Dashboards
