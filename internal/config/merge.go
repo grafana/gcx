@@ -32,7 +32,8 @@ func MergeConfigs(base, over Config) Config {
 		}
 	}
 
-	// Diagnostics: propagate from any layer that enables it.
+	// Diagnostics: merged per field — bools propagate from any layer that
+	// enables them, strings are last-non-empty-wins (see mergeDiagnosticsConfig).
 	if over.Diagnostics != nil {
 		if result.Diagnostics == nil {
 			result.Diagnostics = over.Diagnostics

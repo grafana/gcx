@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -91,4 +92,20 @@ func TestResolveMode(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+// The Env struct tags are what the docs generator publishes; resolveMode
+// reads the constants. If they drift, the docs advertise a variable that
+// does nothing while the real one is undocumented.
+func TestEnvTagsMatchResolvedNames(t *testing.T) {
+	typ := reflect.TypeFor[Env]()
+	tags := make(map[string]string, typ.NumField())
+	for f := range typ.Fields() {
+		f := f
+		tags[f.Name] = f.Tag.Get("env")
+	}
+	assert.Equal(t, map[string]string{
+		"Telemetry":  envTelemetry,
+		"DoNotTrack": envDoNotTrack,
+	}, tags)
 }

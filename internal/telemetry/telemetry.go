@@ -53,15 +53,19 @@ func ResolveMode(configValue string) Mode {
 	return resolveMode(os.Getenv, configValue)
 }
 
+// Env var names used by resolveMode. envConsistencyTest asserts they match
+// the Env struct tags the docs generator reads, so the documented names
+// cannot drift from the resolved ones.
+const (
+	envTelemetry  = "GCX_TELEMETRY"
+	envDoNotTrack = "DO_NOT_TRACK"
+)
+
 func resolveMode(getenv func(string) string, configValue string) Mode {
-	env := Env{
-		Telemetry:  getenv("GCX_TELEMETRY"),
-		DoNotTrack: getenv("DO_NOT_TRACK"),
-	}
-	if m, ok := parseMode(env.Telemetry); ok {
+	if m, ok := parseMode(getenv(envTelemetry)); ok {
 		return m
 	}
-	if isDoNotTrack(env.DoNotTrack) {
+	if isDoNotTrack(getenv(envDoNotTrack)) {
 		return ModeDisabled
 	}
 	if m, ok := parseMode(configValue); ok {
@@ -71,9 +75,10 @@ func resolveMode(getenv func(string) string, configValue string) Mode {
 }
 
 func parseMode(s string) (Mode, bool) {
-	switch Mode(strings.ToLower(s)) {
+	m := Mode(strings.ToLower(s))
+	switch m {
 	case ModeEnabled, ModeDisabled, ModeLog:
-		return Mode(strings.ToLower(s)), true
+		return m, true
 	default:
 		return "", false
 	}
