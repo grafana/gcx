@@ -118,15 +118,28 @@ json, yaml, or agents for machine-readable output.`,
 			if err != nil {
 				return err
 			}
-			servers, err := client.List(cmd.Context(), assistantmcp.ListOptions{Limit: opts.Limit, Offset: opts.Offset})
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), servers)
+			return runList(cmd, client, opts)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// runList fetches a single bounded page of MCP servers and, when more
+// integrations may exist beyond it, prints a STDERR hint. The hint never
+// presents the underlying integration total as an MCP-server count (FR-016)
+// -- it reads "showing first N -- use --limit for more", never "N of TOTAL",
+// because MCP servers are narrowed client-side and the total spans all
+// assistant integrations.
+func runList(cmd *cobra.Command, client *assistantmcp.Client, opts *listOpts) error {
+	result, err := client.ListBounded(cmd.Context(), assistantmcp.ListOptions{Limit: opts.Limit, Offset: opts.Offset})
+	if err != nil {
+		return err
+	}
+	if result.HasMore {
+		cmdio.EmitHint(cmd.ErrOrStderr(), fmt.Sprintf("showing first %d — use --limit for more", result.Limit), "")
+	}
+	return opts.IO.Encode(cmd.OutOrStdout(), result.Servers)
 }
 
 type getOpts struct {
@@ -276,10 +289,13 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Update an Assistant MCP server.",
 		Long: `Update an Assistant MCP server integration.
 
-Partial updates are merged with the current server before saving. Existing
-tenant-scoped servers can be updated without re-supplying hidden header values.
-Changing a user-scoped server to tenant scope requires a non-empty
-authentication header.`,
+Partial updates are merged with the current server before saving. Headers
+follow an explicit write-intent model: a --header with a value overwrites
+(or creates) that header; if you pass no --header flags at all, every
+existing header is preserved unchanged; but once you pass any --header
+flags, they become the full desired header list, so any existing header
+you don't list is removed. Changing a user-scoped server to tenant scope
+requires a non-empty authentication header.`,
 		Example: `  gcx assistant mcp-servers update GitHub --disabled
   gcx assistant mcp-servers update SharedTools --description "Shared internal MCP tools"
   gcx assistant mcp-servers update LocalTools --scope tenant --header "X-API-Key=<token>"`,

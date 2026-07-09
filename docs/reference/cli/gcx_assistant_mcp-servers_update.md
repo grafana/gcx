@@ -6,10 +6,13 @@ Update an Assistant MCP server.
 
 Update an Assistant MCP server integration.
 
-Partial updates are merged with the current server before saving. Existing
-tenant-scoped servers can be updated without re-supplying hidden header values.
-Changing a user-scoped server to tenant scope requires a non-empty
-authentication header.
+Partial updates are merged with the current server before saving. Headers
+follow an explicit write-intent model: a --header with a value overwrites
+(or creates) that header; if you pass no --header flags at all, every
+existing header is preserved unchanged; but once you pass any --header
+flags, they become the full desired header list, so any existing header
+you don't list is removed. Changing a user-scoped server to tenant scope
+requires a non-empty authentication header.
 
 ```
 gcx assistant mcp-servers update <id-or-name> [flags]

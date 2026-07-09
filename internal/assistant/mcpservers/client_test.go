@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
@@ -73,6 +74,112 @@ func TestListFiltersMCPIntegrations(t *testing.T) {
 	assert.Equal(t, "mcp-1", servers[0].ID)
 	assert.Equal(t, "Remote MCP", servers[0].Name)
 	assert.Equal(t, "https://mcp.example.com/mcp", servers[0].URL)
+}
+
+// TestListAllExhaustsAllPagesIncludingMCPEmptyPage covers AC-009/FR-015: MCP
+// servers span multiple underlying pages, one of which contains zero MCP
+// servers (only other integration types). ListAll must not stop at that
+// MCP-empty page -- exhaustion is driven by the raw page size, not the
+// filtered count.
+func TestListAllExhaustsAllPagesIncludingMCPEmptyPage(t *testing.T) {
+	pages := [][]map[string]any{
+		{ // page 0 (offset 0): one MCP server, one non-MCP integration.
+			{"id": "mcp-1", "name": "Remote MCP 1", "type": "mcp", "enabled": true},
+			{"id": "other-1", "name": "not mcp", "type": "not-mcp", "enabled": true},
+		},
+		{ // page 1 (offset 2): MCP-empty page -- must not stop paging here.
+			{"id": "other-2", "name": "not mcp", "type": "not-mcp", "enabled": true},
+			{"id": "other-3", "name": "not mcp", "type": "not-mcp", "enabled": true},
+		},
+		{ // page 2 (offset 4): short raw page (1 < limit 2) -- last page.
+			{"id": "mcp-2", "name": "Remote MCP 2", "type": "mcp", "enabled": true},
+		},
+	}
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "2", r.URL.Query().Get("limit"))
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		pageIndex := offset / 2
+		if !assert.Less(t, pageIndex, len(pages), "unexpected offset %d requested more pages than fixtures provide", offset) {
+			return
+		}
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"integrations": pages[pageIndex],
+			},
+		})
+	}))
+
+	servers, err := client.ListAll(t.Context(), mcpservers.ListOptions{Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, servers, 2)
+	assert.Equal(t, "mcp-1", servers[0].ID)
+	assert.Equal(t, "mcp-2", servers[1].ID)
+}
+
+// TestListAllStopsOnReportedTotal covers the offset>=total exhaustion path:
+// a full raw page that nonetheless reaches the reported total must not
+// trigger another request.
+func TestListAllStopsOnReportedTotal(t *testing.T) {
+	requests := 0
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"integrations": []map[string]any{
+					{"id": "mcp-1", "name": "Remote MCP", "type": "mcp", "enabled": true},
+					{"id": "mcp-2", "name": "Remote MCP 2", "type": "mcp", "enabled": true},
+				},
+				"total": 2,
+			},
+		})
+	}))
+
+	servers, err := client.ListAll(t.Context(), mcpservers.ListOptions{Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, servers, 2)
+	assert.Equal(t, 1, requests, "must stop once offset reaches the reported total, even on a full raw page")
+}
+
+// TestListBoundedStaysOnDefaultPageAndReportsHasMore covers AC-010/FR-016:
+// the human list path stays on a single page and reports HasMore off the raw
+// page/total, never the MCP-filtered count.
+func TestListBoundedStaysOnDefaultPageAndReportsHasMore(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "2", r.URL.Query().Get("limit"))
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"integrations": []map[string]any{
+					{"id": "mcp-1", "name": "Remote MCP", "type": "mcp", "enabled": true},
+					{"id": "other-1", "name": "not mcp", "type": "not-mcp", "enabled": true},
+				},
+				"total": 5,
+			},
+		})
+	}))
+
+	result, err := client.ListBounded(t.Context(), mcpservers.ListOptions{Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, result.Servers, 1)
+	assert.Equal(t, "mcp-1", result.Servers[0].ID)
+	assert.True(t, result.HasMore, "offset+rawCount (2) < total (5) must report HasMore")
+}
+
+func TestListBoundedNoMoreWhenExhausted(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"integrations": []map[string]any{
+					{"id": "mcp-1", "name": "Remote MCP", "type": "mcp", "enabled": true},
+				},
+				"total": 1,
+			},
+		})
+	}))
+
+	result, err := client.ListBounded(t.Context(), mcpservers.ListOptions{Limit: 20})
+	require.NoError(t, err)
+	assert.False(t, result.HasMore)
 }
 
 func TestGetFallsBackToListForNames(t *testing.T) {
@@ -335,6 +442,11 @@ func TestUpdateMergesCurrentServerBeforePut(t *testing.T) {
 	assert.Equal(t, "mcp-1", updated.Server.ID)
 }
 
+// TestUpdateExistingTenantServerDoesNotRequireHeaderValues also covers
+// AC-011/FR-017: the current server has a configured auth header and the
+// update leaves headers untouched (no --header flags), so the update must
+// not require header values AND must re-send the header name-only to
+// preserve it -- not drop it (PR #747 Major #1).
 func TestUpdateExistingTenantServerDoesNotRequireHeaderValues(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -353,6 +465,9 @@ func TestUpdateExistingTenantServerDoesNotRequireHeaderValues(t *testing.T) {
 					"configuration": map[string]any{
 						"url": "https://mcp.example.com/mcp",
 					},
+					"custom_headers": []map[string]any{
+						{"name": "Authorization", "value": "configured-secret"},
+					},
 				},
 			})
 		case r.Method == http.MethodPut && r.URL.Path == "/api/plugins/grafana-assistant-app/resources/api/v1/integrations/mcp-1":
@@ -363,6 +478,18 @@ func TestUpdateExistingTenantServerDoesNotRequireHeaderValues(t *testing.T) {
 			}
 			assert.Equal(t, "new description", payload["description"])
 			assert.Equal(t, "tenant", payload["scope"])
+
+			// The full desired header list must still be sent -- with the
+			// existing header preserved name-only (no value), not dropped.
+			headers, ok := payload["custom_headers"].([]any)
+			if !assert.True(t, ok, "custom_headers must be present in the update payload") {
+				return
+			}
+			if !assert.Len(t, headers, 1) {
+				return
+			}
+			assert.Equal(t, map[string]any{"name": "Authorization"}, headers[0],
+				"preserved header must be sent name-only, with no value, to avoid wiping the stored secret")
 
 			writeJSON(w, map[string]any{
 				"data": map[string]any{
@@ -384,6 +511,67 @@ func TestUpdateExistingTenantServerDoesNotRequireHeaderValues(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "updated", updated.Operation)
 	assert.Equal(t, "tenant", updated.Server.Scope)
+}
+
+// TestUpdateExplicitHeaderListReplacesUnlistedHeaders covers the FR-018
+// remove case: once the caller supplies an explicit header list, it is the
+// full desired state -- any current header absent from it is removed, not
+// silently carried over.
+func TestUpdateExplicitHeaderListReplacesUnlistedHeaders(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-assistant-app/resources/api/v1/integrations/mcp-1":
+			writeJSON(w, map[string]any{
+				"data": map[string]any{
+					"id":      "mcp-1",
+					"name":    "Tenant MCP",
+					"type":    "mcp",
+					"enabled": true,
+					"scope":   "tenant",
+					"configuration": map[string]any{
+						"url": "https://mcp.example.com/mcp",
+					},
+					"custom_headers": []map[string]any{
+						{"name": "Authorization", "value": "old-secret"},
+						{"name": "X-Stale-Header", "value": "stale-value"},
+					},
+				},
+			})
+		case r.Method == http.MethodPut && r.URL.Path == "/api/plugins/grafana-assistant-app/resources/api/v1/integrations/mcp-1":
+			var payload map[string]any
+			if !readJSONRequest(t, r, &payload) {
+				return
+			}
+			headers, ok := payload["custom_headers"].([]any)
+			if !assert.True(t, ok) {
+				return
+			}
+			if !assert.Len(t, headers, 1, "X-Stale-Header must be removed, not carried over") {
+				return
+			}
+			assert.Equal(t, map[string]any{"name": "Authorization", "value": "new-secret"}, headers[0])
+
+			writeJSON(w, map[string]any{
+				"data": map[string]any{
+					"integration": map[string]any{
+						"id":      "mcp-1",
+						"name":    "Tenant MCP",
+						"type":    "mcp",
+						"enabled": true,
+						"scope":   "tenant",
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+
+	updated, err := client.Update(t.Context(), "mcp-1", mcpservers.ServerInput{
+		Headers: []mcpservers.Header{{Name: "Authorization", Value: "new-secret"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "updated", updated.Operation)
 }
 
 func TestUpdateUserToTenantRequiresAuthHeaderValue(t *testing.T) {
@@ -590,6 +778,56 @@ func TestInitiateOAuthPostsIntegrationIDAndScope(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https://github.com/login/oauth/authorize", result.AuthURL)
 	assert.Equal(t, "state-1", result.State)
+}
+
+// TestHeaderWritesForUpdateClassifiesByValuePresence documents the exported
+// cross-task contract (T6 builds against this): intent is classified
+// per-header by value presence against the header's name in current -- not
+// by treating a non-empty desired list as a blanket overwrite.
+func TestHeaderWritesForUpdateClassifiesByValuePresence(t *testing.T) {
+	current := []mcpservers.ServerHeader{
+		{Name: "Authorization", ValueConfigured: true},
+		{Name: "X-Stale-Header", ValueConfigured: true},
+	}
+
+	t.Run("nil desired preserves every current header", func(t *testing.T) {
+		writes := mcpservers.HeaderWritesForUpdate(nil, current)
+		require.Len(t, writes, 2)
+		for _, w := range writes {
+			assert.Equal(t, mcpservers.HeaderIntentPreserve, w.Intent)
+			assert.Empty(t, w.Value)
+		}
+	})
+
+	t.Run("explicit list classifies overwrite, preserve, and remove", func(t *testing.T) {
+		writes := mcpservers.HeaderWritesForUpdate([]mcpservers.Header{
+			{Name: "Authorization", Value: "new-secret"}, // value present -> overwrite
+			{Name: "X-New-Header"},                       // name-only, not in current -> preserve
+		}, current)
+
+		byName := make(map[string]mcpservers.HeaderWrite, len(writes))
+		for _, w := range writes {
+			byName[w.Name] = w
+		}
+
+		require.Contains(t, byName, "Authorization")
+		assert.Equal(t, mcpservers.HeaderIntentOverwrite, byName["Authorization"].Intent)
+		assert.Equal(t, "new-secret", byName["Authorization"].Value)
+
+		require.Contains(t, byName, "X-New-Header")
+		assert.Equal(t, mcpservers.HeaderIntentPreserve, byName["X-New-Header"].Intent)
+
+		require.Contains(t, byName, "X-Stale-Header", "absent from desired but present in current -> remove")
+		assert.Equal(t, mcpservers.HeaderIntentRemove, byName["X-Stale-Header"].Intent)
+	})
+
+	t.Run("empty non-nil desired removes every current header", func(t *testing.T) {
+		writes := mcpservers.HeaderWritesForUpdate([]mcpservers.Header{}, current)
+		require.Len(t, writes, 2)
+		for _, w := range writes {
+			assert.Equal(t, mcpservers.HeaderIntentRemove, w.Intent)
+		}
+	})
 }
 
 func TestParseHeaderRejectsInvalidValue(t *testing.T) {

@@ -30,7 +30,18 @@ func NewClient(base *assistanthttp.Client) *Client {
 	return &Client{base: base}
 }
 
-func (c *Client) List(ctx context.Context, opts ListOptions) ([]Server, error) {
+// defaultPageSize is the page size ListAll and ListBounded fall back to when
+// the caller does not specify a positive ListOptions.Limit.
+const defaultPageSize = 100
+
+// fetchPage performs a single offset-paginated request against the
+// underlying (unfiltered) integrations list. It returns the raw integrations
+// for that page (before MCP filtering) and the total reported across ALL
+// assistant integrations (0 if the response does not report one). The total
+// is not MCP-specific -- MCP servers are narrowed client-side, not by the
+// list request itself -- so callers MUST NOT present it as an MCP-server
+// count (FR-016).
+func (c *Client) fetchPage(ctx context.Context, opts ListOptions) ([]rawIntegration, int, error) {
 	params := url.Values{}
 	if opts.Limit > 0 {
 		params.Set("limit", strconv.Itoa(opts.Limit))
@@ -45,29 +56,113 @@ func (c *Client) List(ctx context.Context, opts ListOptions) ([]Server, error) {
 
 	resp, err := c.base.DoRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list MCP servers: %w", err)
+		return nil, 0, fmt.Errorf("failed to list MCP servers: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp)
+		return nil, 0, assistanthttp.HandleErrorResponse(resp)
 	}
 
 	var envelope struct {
 		Data struct {
 			Integrations []rawIntegration `json:"integrations"`
+			Total        int              `json:"total"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("failed to decode MCP servers: %w", err)
+		return nil, 0, fmt.Errorf("failed to decode MCP servers: %w", err)
 	}
+	return envelope.Data.Integrations, envelope.Data.Total, nil
+}
 
-	servers := make([]Server, 0, len(envelope.Data.Integrations))
-	for _, item := range envelope.Data.Integrations {
+func filterMCPServers(raw []rawIntegration) []Server {
+	servers := make([]Server, 0, len(raw))
+	for _, item := range raw {
 		if strings.EqualFold(item.Type, IntegrationTypeMCP) {
 			servers = append(servers, item.server())
 		}
 	}
+	return servers
+}
+
+// List returns the MCP servers on a single page of the underlying
+// integration list, filtered client-side. It does not page beyond what opts
+// requests -- used internally by Get/Find, which only need to search within
+// one page.
+func (c *Client) List(ctx context.Context, opts ListOptions) ([]Server, error) {
+	raw, _, err := c.fetchPage(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return filterMCPServers(raw), nil
+}
+
+// ListAll exhausts every page of the underlying integration list and returns
+// every MCP server across all pages. Exhaustion is driven by the raw
+// (unfiltered) page size and the reported total, never by the MCP-filtered
+// count on a given page -- a page can hold zero MCP servers while more
+// integrations (and MCP servers) exist on later pages, so a filtered-count
+// stop condition would truncate (FR-015). opts.Limit, when positive, sets
+// the page size used for every request; it is not a cap on the number of
+// servers returned. Used by the resources adapter (`pull`/`get`), which must
+// never truncate a large stack.
+func (c *Client) ListAll(ctx context.Context, opts ListOptions) ([]Server, error) {
+	pageSize := opts.Limit
+	if pageSize <= 0 {
+		pageSize = defaultPageSize
+	}
+
+	var servers []Server
+	offset := opts.Offset
+	for {
+		raw, total, err := c.fetchPage(ctx, ListOptions{Limit: pageSize, Offset: offset})
+		if err != nil {
+			return nil, err
+		}
+		servers = append(servers, filterMCPServers(raw)...)
+		offset += len(raw)
+		if len(raw) < pageSize {
+			break
+		}
+		if total > 0 && offset >= total {
+			break
+		}
+	}
 	return servers, nil
+}
+
+// BoundedList is a single bounded page of MCP servers plus whether more may
+// exist on later pages of the underlying integration list.
+type BoundedList struct {
+	Servers []Server
+	// Limit is the effective page size that was requested (after defaulting).
+	Limit int
+	// HasMore reports whether more integrations may exist beyond this page.
+	// It is derived from the raw (unfiltered) page, never from the
+	// MCP-filtered count, so it MAY be true even when this page contains no
+	// MCP servers, and MAY under-represent MCP servers when a page is
+	// dominated by non-MCP integrations (FR-016) -- acceptable for the human
+	// path, since agents/GitOps use the exhausting ListAll instead.
+	HasMore bool
+}
+
+// ListBounded fetches a single page of MCP servers without exhausting the
+// underlying list, for the human `mcp-servers list` command (FR-016).
+func (c *Client) ListBounded(ctx context.Context, opts ListOptions) (BoundedList, error) {
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = defaultPageSize
+	}
+
+	raw, total, err := c.fetchPage(ctx, ListOptions{Limit: limit, Offset: opts.Offset})
+	if err != nil {
+		return BoundedList{}, err
+	}
+	hasMore := len(raw) >= limit
+	if total > 0 {
+		hasMore = opts.Offset+len(raw) < total
+	}
+	return BoundedList{Servers: filterMCPServers(raw), Limit: limit, HasMore: hasMore}, nil
 }
 
 func (c *Client) Get(ctx context.Context, ref string) (*Server, error) {
@@ -211,7 +306,8 @@ func (c *Client) Update(ctx context.Context, ref string, input ServerInput) (*Mu
 		}
 	}
 
-	body, err := json.Marshal(payloadFromInput(input))
+	headerWrites := HeaderWritesForUpdate(input.Headers, current.CustomHeaders)
+	body, err := json.Marshal(payloadFromInputForUpdate(input, headerWrites))
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal MCP server update request: %w", err)
 	}
@@ -361,6 +457,120 @@ func payloadFromInput(input ServerInput) map[string]any {
 	}
 	if len(input.Headers) > 0 {
 		payload["custom_headers"] = input.Headers
+	}
+	return payload
+}
+
+// HeaderIntent is the per-header write intent Update sends to the backend:
+// whether a header's stored value is set, left untouched, or dropped
+// entirely. Client callers still supply headers as a plain []Header on
+// ServerInput -- Update derives HeaderWrite/HeaderIntent internally via
+// HeaderWritesForUpdate. The exported primitives exist so other callers
+// (notably the future MCPServer adapter, T6) can classify a header list the
+// same way without re-deriving the overwrite/preserve/remove rules, and so
+// the classification's shape is a documented, testable cross-task contract.
+type HeaderIntent string
+
+const (
+	// HeaderIntentOverwrite sets (or creates) the header to Value.
+	HeaderIntentOverwrite HeaderIntent = "overwrite"
+	// HeaderIntentPreserve leaves an existing stored header value untouched.
+	// Only meaningful when the header already exists on the server being
+	// updated -- there is nothing to preserve on a create path.
+	HeaderIntentPreserve HeaderIntent = "preserve"
+	// HeaderIntentRemove drops the header entirely.
+	HeaderIntentRemove HeaderIntent = "remove"
+)
+
+// HeaderWrite is one header's desired write intent at the client boundary.
+// Value is only meaningful when Intent is HeaderIntentOverwrite.
+type HeaderWrite struct {
+	Name   string
+	Value  string
+	Intent HeaderIntent
+}
+
+// HeaderWritesForUpdate derives the full per-header write-intent list for an
+// Update call from a caller's desired header list and the server's
+// currently stored headers (name-only; values are redacted on read).
+// Exported so callers other than Update -- notably the future MCPServer
+// adapter (T6), which must classify a manifest's header list the same way
+// before deciding whether a name-only header on a create path is an error
+// (FR-019) -- can reuse the exact same classification instead of
+// re-deriving it.
+//
+// Contract (FR-017/FR-018): desired == nil means the caller did not touch
+// headers at all (e.g. no --header flags on the CLI) -- every current
+// header is preserved untouched, which is what fixes the tenant-update
+// header drop (PR #747 Major #1). A non-nil desired, even if empty, is
+// treated as the full desired state: each entry with a non-empty Value
+// overwrites (or creates) that header, each entry with an empty Value
+// preserves the existing stored value for that name, and any current
+// header whose name is absent from desired is removed.
+func HeaderWritesForUpdate(desired []Header, current []ServerHeader) []HeaderWrite {
+	if desired == nil {
+		writes := make([]HeaderWrite, 0, len(current))
+		for _, h := range current {
+			writes = append(writes, HeaderWrite{Name: h.Name, Intent: HeaderIntentPreserve})
+		}
+		return writes
+	}
+
+	desiredNames := make(map[string]struct{}, len(desired))
+	writes := make([]HeaderWrite, 0, len(desired))
+	for _, h := range desired {
+		desiredNames[strings.ToLower(h.Name)] = struct{}{}
+		if h.Value == "" {
+			writes = append(writes, HeaderWrite{Name: h.Name, Intent: HeaderIntentPreserve})
+		} else {
+			writes = append(writes, HeaderWrite{Name: h.Name, Value: h.Value, Intent: HeaderIntentOverwrite})
+		}
+	}
+	for _, h := range current {
+		if _, ok := desiredNames[strings.ToLower(h.Name)]; !ok {
+			writes = append(writes, HeaderWrite{Name: h.Name, Intent: HeaderIntentRemove})
+		}
+	}
+	return writes
+}
+
+// headerWire is the wire shape for one header entry in an Update payload.
+// Value is omitted (rather than sent as an empty string) to signal
+// HeaderIntentPreserve to the backend, per the API's per-header write-intent
+// support (ADR-021 Decision 5) -- this encoding is an assumption against a
+// closed-source backend and is centralized here so it can be revisited in
+// one place if the wire contract differs.
+type headerWire struct {
+	Name  string `json:"name"`
+	Value string `json:"value,omitempty"`
+}
+
+// headersWireDesired renders the full desired header list for the Update
+// payload. HeaderIntentRemove entries are omitted entirely -- the backend's
+// update replaces the whole header set with whatever is sent, so "absent"
+// is how a header is removed.
+func headersWireDesired(writes []HeaderWrite) []headerWire {
+	out := make([]headerWire, 0, len(writes))
+	for _, w := range writes {
+		if w.Intent == HeaderIntentRemove {
+			continue
+		}
+		out = append(out, headerWire{Name: w.Name, Value: w.Value})
+	}
+	return out
+}
+
+// payloadFromInputForUpdate builds the Update request body, overriding
+// payloadFromInput's custom_headers with the full desired write-intent list
+// so an update never silently drops headers the caller did not intend to
+// touch (FR-017).
+func payloadFromInputForUpdate(input ServerInput, headers []HeaderWrite) map[string]any {
+	payload := payloadFromInput(input)
+	wire := headersWireDesired(headers)
+	if len(wire) > 0 {
+		payload["custom_headers"] = wire
+	} else {
+		delete(payload, "custom_headers")
 	}
 	return payload
 }

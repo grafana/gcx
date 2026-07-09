@@ -185,6 +185,48 @@ func TestCreateOptsValidateAcceptsClickHouseTokenHeaderForTenantScope(t *testing
 	require.NoError(t, opts.Validate())
 }
 
+// TestRunListEmitsShowingFirstHintWhenMoreMayExist covers AC-010/FR-016: the
+// human list path stays bounded and prints a STDERR hint reading "showing
+// first N -- use --limit for more" when more integrations may exist beyond
+// the page -- never presenting the integration total as an MCP-server count.
+func TestRunListEmitsShowingFirstHintWhenMoreMayExist(t *testing.T) {
+	client := newExistingResultTestClient(t, []map[string]any{
+		{"id": "mcp-1", "name": "Remote MCP", "type": "mcp", "enabled": true},
+	})
+	// The fake server ignores query params and always returns one MCP
+	// integration with total:0 unset, so drive HasMore via a tiny --limit
+	// that the single returned raw item meets/exceeds.
+	opts := &listOpts{Limit: 1}
+	opts.setup(pflag.NewFlagSet("list", pflag.ContinueOnError))
+	opts.Limit = 1
+
+	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+
+	require.NoError(t, runList(cmd, client, opts))
+	assert.Contains(t, stderr.String(), "showing first 1 — use --limit for more")
+	assert.NotContains(t, stderr.String(), "of 1", "hint must never present the integration total as an MCP-server count")
+}
+
+func TestRunListNoHintWhenPageIsShort(t *testing.T) {
+	client := newExistingResultTestClient(t, []map[string]any{
+		{"id": "mcp-1", "name": "Remote MCP", "type": "mcp", "enabled": true},
+	})
+	opts := &listOpts{Limit: 50}
+	opts.setup(pflag.NewFlagSet("list", pflag.ContinueOnError))
+	opts.Limit = 50
+
+	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+
+	require.NoError(t, runList(cmd, client, opts))
+	assert.Empty(t, stderr.String())
+}
+
 func TestDeletePromptsAndAbortsWithoutConfigLoad(t *testing.T) {
 	cmd := newDeleteCommand(&providers.ConfigLoader{})
 	var out, errOut bytes.Buffer
