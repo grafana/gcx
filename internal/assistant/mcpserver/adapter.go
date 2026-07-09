@@ -80,7 +80,11 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 		},
 
 		CreateFn: func(ctx context.Context, item *MCPServer) (*MCPServer, error) {
-			result, err := client.Create(ctx, serverInputFromMCPServer(item))
+			input, err := serverInputFromMCPServer(item)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create MCP server %q: %w", item.Name, err)
+			}
+			result, err := client.Create(ctx, input)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create MCP server %q: %w", item.Name, err)
 			}
@@ -96,7 +100,11 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 			if err != nil {
 				return nil, fmt.Errorf("failed to resolve MCP server %q (scope %q) for update: %w", item.Name, item.Scope, err)
 			}
-			result, err := client.Update(ctx, current.ID, serverInputFromMCPServer(item))
+			input, err := serverInputFromMCPServer(item)
+			if err != nil {
+				return nil, fmt.Errorf("failed to update MCP server %q: %w", item.Name, err)
+			}
+			result, err := client.Update(ctx, current.ID, input)
 			if err != nil {
 				return nil, fmt.Errorf("failed to update MCP server %q: %w", item.Name, err)
 			}
@@ -197,12 +205,10 @@ func findServerByResourceName(ctx context.Context, client *assistantmcp.Client, 
 
 // ServerToMCPServer converts a client Server (redacted header values) into
 // the manifest domain type. Header values are never populated here — the
-// client's Server.CustomHeaders only ever carries names (FR-021).
+// client's Server.CustomHeaders only ever carries names, and
+// headersFromServer (headers.go) marks every one of them for preserve
+// (FR-021).
 func ServerToMCPServer(s assistantmcp.Server) MCPServer {
-	headers := make([]MCPServerHeader, 0, len(s.CustomHeaders))
-	for _, h := range s.CustomHeaders {
-		headers = append(headers, MCPServerHeader{Name: h.Name})
-	}
 	return MCPServer{
 		Name:         s.Name,
 		Scope:        s.Scope,
@@ -211,7 +217,7 @@ func ServerToMCPServer(s assistantmcp.Server) MCPServer {
 		Description:  s.Description,
 		Applications: s.Applications,
 		Config:       configWithoutDerivedKeys(s.Configuration),
-		Headers:      headers,
+		Headers:      headersFromServer(s.CustomHeaders),
 		serverID:     s.ID,
 	}
 }
@@ -235,17 +241,21 @@ func configWithoutDerivedKeys(cfg map[string]any) map[string]any {
 }
 
 // serverInputFromMCPServer converts the manifest domain type into the
-// client's write type. Header values are passed through as name+value
-// pairs derived directly from the manifest (a later task maps fromEnv/
-// fromFile sourcing and the overwrite/preserve/remove write-intent onto
-// this list; today an empty Value naturally preserves an existing stored
-// header on update, per HeaderWritesForUpdate).
-func serverInputFromMCPServer(m *MCPServer) assistantmcp.ServerInput {
-	enabled := m.Enabled
-	headers := make([]assistantmcp.Header, 0, len(m.Headers))
-	for _, h := range m.Headers {
-		headers = append(headers, assistantmcp.Header{Name: h.Name, Value: h.Value})
+// client's write type. Headers are resolved via ResolveHeaders (headers.go)
+// -- inline value, fromEnv, and fromFile sourcing are all collapsed into a
+// plain name+value list before this reaches Client.Create/Update, so those
+// calls never see an unresolved fromEnv/fromFile reference. A resolved
+// empty Value naturally preserves an existing stored header on update, via
+// Client.Update's internal HeaderWritesForUpdate classification (FR-018);
+// this function does not itself classify overwrite/preserve/remove -- that
+// stays centralized at the client boundary (T2) so the wire-encoding
+// assumption is never duplicated.
+func serverInputFromMCPServer(m *MCPServer) (assistantmcp.ServerInput, error) {
+	headers, err := ResolveHeaders(m.Headers)
+	if err != nil {
+		return assistantmcp.ServerInput{}, fmt.Errorf("failed to resolve headers: %w", err)
 	}
+	enabled := m.Enabled
 	return assistantmcp.ServerInput{
 		Name:         m.Name,
 		Description:  m.Description,
@@ -255,5 +265,5 @@ func serverInputFromMCPServer(m *MCPServer) assistantmcp.ServerInput {
 		Headers:      headers,
 		Applications: m.Applications,
 		Config:       m.Config,
-	}
+	}, nil
 }

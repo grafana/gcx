@@ -285,6 +285,122 @@ func TestUpdate_ResolvesExistingServerByNaturalKeyAndPreservesHeader(t *testing.
 	assert.Empty(t, gotHeaders[0]["value"], "preserve intent must not send a value")
 }
 
+// TestCreate_ResolvesFromEnvHeaderAndRedactsOnReadBack covers AC-014: a
+// manifest header sourced via fromEnv, with the env var set, must reach the
+// backend on the create POST with its resolved value -- and the read-back
+// conversion into the manifest domain type must carry the header name only,
+// no value, so a subsequent pull writes it back name-only (FR-020/FR-021).
+func TestCreate_ResolvesFromEnvHeaderAndRedactsOnReadBack(t *testing.T) {
+	t.Setenv("GITHUB_MCP_TOKEN", "resolved-from-env")
+
+	var gotHeaders []map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			var body map[string]any
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+				return
+			}
+			headers, _ := body["custom_headers"].([]any)
+			for _, h := range headers {
+				hm, ok := h.(map[string]any)
+				if !assert.True(t, ok) {
+					return
+				}
+				gotHeaders = append(gotHeaders, hm)
+			}
+			writeJSON(t, w, map[string]any{
+				"data": map[string]any{
+					"integration": map[string]any{
+						"id": "srv-new", "name": "GitHub", "type": "mcp", "enabled": true, "scope": "tenant",
+						"configuration":  map[string]any{"url": "https://api.githubcopilot.com/mcp/"},
+						"custom_headers": []map[string]any{{"name": "Authorization", "value": "resolved-from-env"}},
+					},
+				},
+			})
+		default:
+			writeJSON(t, w, map[string]any{"data": map[string]any{"integrations": []map[string]any{}}})
+		}
+	}))
+
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+	created, err := crud.CreateFn(t.Context(), &mcpserver.MCPServer{
+		Name:    "GitHub",
+		Scope:   "tenant",
+		URL:     "https://api.githubcopilot.com/mcp/",
+		Enabled: true,
+		Headers: []mcpserver.MCPServerHeader{{Name: "Authorization", FromEnv: "GITHUB_MCP_TOKEN"}},
+	})
+	require.NoError(t, err)
+
+	require.Len(t, gotHeaders, 1)
+	assert.Equal(t, "resolved-from-env", gotHeaders[0]["value"], "the wire request must carry the resolved fromEnv value")
+
+	// Simulates the subsequent pull: the read-back manifest must carry the
+	// header name only, with no value, fromEnv, or fromFile on disk.
+	require.Len(t, created.Headers, 1)
+	assert.Equal(t, "Authorization", created.Headers[0].Name)
+	assert.Empty(t, created.Headers[0].Value)
+	assert.Empty(t, created.Headers[0].FromEnv)
+	assert.Empty(t, created.Headers[0].FromFile)
+}
+
+// TestUpdate_OmittedHeaderIsRemoved covers AC-015: a manifest that omits a
+// header the server currently has configured must remove it on update, not
+// silently leave it in place.
+func TestUpdate_OmittedHeaderIsRemoved(t *testing.T) {
+	const collectionPath = "/api/plugins/grafana-assistant-app/resources/api/v1/integrations"
+
+	var gotBody map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == collectionPath:
+			writeJSON(t, w, map[string]any{
+				"data": map[string]any{
+					"integrations": []map[string]any{
+						{
+							"id": "srv-existing", "name": "GitHub", "type": "mcp", "enabled": true, "scope": "tenant",
+							"configuration":  map[string]any{"url": "https://api.githubcopilot.com/mcp/"},
+							"custom_headers": []map[string]any{{"name": "X-Removed", "value": "stored-secret"}},
+						},
+					},
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == collectionPath+"/srv-existing":
+			writeJSON(t, w, map[string]any{
+				"data": map[string]any{
+					"id": "srv-existing", "name": "GitHub", "type": "mcp", "enabled": true, "scope": "tenant",
+					"configuration":  map[string]any{"url": "https://api.githubcopilot.com/mcp/"},
+					"custom_headers": []map[string]any{{"name": "X-Removed", "value": "stored-secret"}},
+				},
+			})
+		case r.Method == http.MethodPut:
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody)) {
+				return
+			}
+			writeJSON(t, w, map[string]any{
+				"data": map[string]any{
+					"integration": integration("srv-existing", "GitHub", "tenant", "https://api.githubcopilot.com/mcp/"),
+				},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+	_, err := crud.UpdateFn(t.Context(), "tenant-github", &mcpserver.MCPServer{
+		Name:    "GitHub",
+		Scope:   "tenant",
+		URL:     "https://api.githubcopilot.com/mcp/",
+		Enabled: true,
+		// Headers omits X-Removed entirely -- must be removed, not preserved.
+	})
+	require.NoError(t, err)
+
+	assert.NotContains(t, gotBody, "custom_headers", "an omitted header must be removed, not sent back")
+}
+
 // TestDelete_ResolvesComposedNameToServerID covers the delete path: DeleteFn
 // only receives the composite metadata.name, so it must resolve the target
 // server's ID via ListAll + composite-name matching before deleting.
