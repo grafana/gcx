@@ -50,8 +50,15 @@ func TestProviderRegistration(t *testing.T) {
 
 	t.Run("TypedRegistrations", func(t *testing.T) {
 		regs := p.TypedRegistrations()
-		assert.NotNil(t, regs)
-		assert.Empty(t, regs, "no adapter registrations yet — MCPServer adapter is wired in a follow-up task")
+		require.Len(t, regs, 1, "exactly one adapter registration — MCPServer (FR-005)")
+
+		reg := regs[0]
+		assert.Equal(t, assistantprovider.MCPServerKind, reg.GVK.Kind)
+		assert.Equal(t, assistantprovider.MCPServerAPIGroup, reg.GVK.Group)
+		assert.Equal(t, assistantprovider.MCPServerVersion, reg.GVK.Version)
+		assert.NotNil(t, reg.Schema)
+		assert.NotNil(t, reg.Example)
+		assert.NotNil(t, reg.Factory)
 	})
 
 	t.Run("IsRegistered", func(t *testing.T) {

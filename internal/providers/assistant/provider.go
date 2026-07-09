@@ -46,7 +46,17 @@ func (p *AssistantProvider) ConfigKeys() []providers.ConfigKey {
 }
 
 // TypedRegistrations returns adapter registrations for assistant resource
-// types. Empty for now; a follow-up task wires the MCPServer adapter.
+// types. MCPServer is the only registered type — investigations,
+// conversation, and the A2A prompt/dashboard path stay command-only (FR-005).
 func (p *AssistantProvider) TypedRegistrations() []adapter.Registration {
-	return []adapter.Registration{}
+	desc := MCPServerDescriptor()
+	return []adapter.Registration{
+		{
+			Factory:    NewLazyFactory(),
+			Descriptor: desc,
+			GVK:        desc.GroupVersionKind(),
+			Schema:     MCPServerSchema(),
+			Example:    MCPServerExample(),
+		},
+	}
 }

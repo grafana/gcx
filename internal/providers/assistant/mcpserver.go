@@ -50,6 +50,13 @@ type MCPServer struct {
 	Applications []string          `json:"applications,omitempty"`
 	Config       map[string]any    `json:"config,omitempty"`
 	Headers      []MCPServerHeader `json:"headers,omitempty"`
+
+	// serverID is the server-assigned opaque ID, carried only so the adapter's
+	// MetadataFn can populate MCPServerIDAnnotation for within-stack
+	// addressing (FR-012). Unexported, so it is never serialized and never
+	// participates in JSON round-trips, GetResourceName, or natural-key
+	// matching — those read only Scope/Name/URL (FR-011, FR-013).
+	serverID string
 }
 
 // MCPServerHeader models a single header's write intent on the manifest:
