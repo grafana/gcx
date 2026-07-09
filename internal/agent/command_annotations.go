@@ -319,7 +319,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg prom-rules get":       {Cost: "small"},
 	"gcx kg prom-rules list":      {Cost: "small"},
 	"gcx kg status":               {Cost: "small"},
-	"gcx kg suppressions create":  {Cost: "small"},
+	"gcx kg suppressions create":  {Cost: "small", Hint: "-f suppressions.yaml (or pipe YAML via stdin) | upsert one or more alert suppressions; add --dry-run to validate against the backend and preview the remote->local diff without uploading"},
 	"gcx kg suppressions delete":  {Cost: "small"},
 	"gcx kg suppressions list":    {Cost: "small"},
 	"gcx kg entities create":      {Cost: "small", Hint: "--domain <d> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
