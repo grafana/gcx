@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
@@ -90,7 +91,10 @@ func TestEntitiesDelete_ForceSendsDelete(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.True(t, strings.HasSuffix(r.URL.Path, "/entities"), "delete must hit collection path, got %s", r.URL.Path)
 		assert.Equal(t, "myapp", r.URL.Query().Get("domain"))
+		assert.Equal(t, "Service", r.URL.Query().Get("type"))
+		assert.Equal(t, "checkout", r.URL.Query().Get("name"))
 		assert.Equal(t, "prod", r.URL.Query().Get("scope[env]"), "scope must reach the server")
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -198,6 +202,8 @@ func TestRelationshipsDelete_ForceSendsDelete(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.True(t, strings.HasSuffix(r.URL.Path, "/relationships"), "delete must hit collection path, got %s", r.URL.Path)
+		assert.Equal(t, "CALLS", r.URL.Query().Get("type"))
 		assert.Equal(t, "checkout", r.URL.Query().Get("from.name"))
 		assert.Equal(t, "cart", r.URL.Query().Get("to.name"))
 		w.WriteHeader(http.StatusNoContent)

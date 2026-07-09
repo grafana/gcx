@@ -51,11 +51,12 @@ const (
 	v2RelabelRulesPath   = v2ConfigPath + "/relabel-rules"
 
 	// KG Write API (K8s-style, namespaced). %s is the stacks-<id> namespace.
+	// Entity and relationship deletes use these collection paths with identity
+	// in the query string (type/name are not path segments), so names containing
+	// '/' are addressable without Tomcat rejecting encoded solidus.
 	kgWriteAPIBase     = "/apis/kg.grafana.com/v1alpha1/namespaces/%s"
 	kgEntitiesPathFmt  = kgWriteAPIBase + "/entities"
-	kgEntityPathFmt    = kgWriteAPIBase + "/entities/%s/%s" // type, name
 	kgRelationshipsFmt = kgWriteAPIBase + "/relationships"
-	kgRelationshipFmt  = kgWriteAPIBase + "/relationships/%s" // type
 )
 
 // RelabelRuleType identifies which Mimir relabel rule group to operate on.
@@ -798,10 +799,12 @@ func (c *Client) UpsertRelationship(ctx context.Context, req RelationshipWriteRe
 }
 
 // DeleteRelationship deletes a custom edge of relType between from and to.
-// The endpoint coordinates travel as from.*/to.* query params.
+// Identity travels as query params on the collection path (type, from.*, to.*);
+// there is no request body.
 func (c *Client) DeleteRelationship(ctx context.Context, relType string, from, to EntityRef) error {
-	path := fmt.Sprintf(kgRelationshipFmt, url.PathEscape(c.namespace), url.PathEscape(relType))
+	path := fmt.Sprintf(kgRelationshipsFmt, url.PathEscape(c.namespace))
 	q := url.Values{}
+	q.Set("type", relType)
 	addRef := func(prefix string, ref EntityRef) {
 		q.Set(prefix+".domain", ref.Domain)
 		q.Set(prefix+".type", ref.Type)
@@ -844,11 +847,15 @@ func (c *Client) UpsertEntity(ctx context.Context, req EntityWriteRequest) (*Ent
 }
 
 // DeleteEntity deletes a custom entity identified by (domain, type, name, scope).
-// Scope is identity-significant and must match the value used at create.
+// Identity travels as query params on the collection path (domain, type, name,
+// and optional scope[key]=value); there is no request body. Scope is
+// identity-significant and must match the value used at create.
 func (c *Client) DeleteEntity(ctx context.Context, domain, entityType, name string, scope map[string]string) error {
-	path := fmt.Sprintf(kgEntityPathFmt, url.PathEscape(c.namespace), url.PathEscape(entityType), url.PathEscape(name))
+	path := fmt.Sprintf(kgEntitiesPathFmt, url.PathEscape(c.namespace))
 	q := url.Values{}
 	q.Set("domain", domain)
+	q.Set("type", entityType)
+	q.Set("name", name)
 	for k, v := range scope {
 		q.Set("scope["+k+"]", v)
 	}
