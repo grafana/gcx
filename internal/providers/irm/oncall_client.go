@@ -297,7 +297,7 @@ func listUnpaginated[T any](ctx context.Context, c *OnCallClient, path, resource
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result []T
@@ -497,7 +497,7 @@ func (c *OnCallClient) ListRouteFilterTypes(ctx context.Context) ([]RouteFilterT
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var meta struct {
