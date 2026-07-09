@@ -16,10 +16,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// errDryRunUnverified is a marker error the dry-run guard returns when a mutating dry-run
-// request targets a resource that does not honor server-side dryRun. The pusher and deleter
-// check for it and record the resource as skipped (neither a failure nor a success), so gcx
-// never claims it pushed or deleted something it deliberately did not send.
+// errDryRunUnverified is returned when the guard blocks a dry-run against a resource that
+// does not honor server-side dryRun. The pusher and deleter record it as skipped, not as a
+// success or failure.
 var errDryRunUnverified = errors.New("server-side dry-run not supported; checked client-side only (not verified)")
 
 // GuardConfig configures the dry-run safety guard applied to a Pusher or Deleter.
