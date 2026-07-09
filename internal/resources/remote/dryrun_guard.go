@@ -16,9 +16,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// errDryRunUnverified is a sentinel returned by the dry-run guard when a mutating dry-run
+// errDryRunUnverified is a marker error the dry-run guard returns when a mutating dry-run
 // request targets a resource that does not honor server-side dryRun. The pusher and deleter
-// recognise it and record the resource as skipped (neither a failure nor a success), so gcx
+// check for it and record the resource as skipped (neither a failure nor a success), so gcx
 // never claims it pushed or deleted something it deliberately did not send.
 var errDryRunUnverified = errors.New("server-side dry-run not supported; checked client-side only (not verified)")
 
