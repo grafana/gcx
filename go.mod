@@ -44,6 +44,7 @@ require (
 require (
 	github.com/go-openapi/runtime v0.32.4
 	github.com/gofrs/flock v0.13.0
+	github.com/google/uuid v1.6.0
 	github.com/grafana/otel-checker v0.2.0
 	github.com/itchyny/gojq v0.12.19
 	github.com/prometheus/common v0.69.0
@@ -111,7 +112,6 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

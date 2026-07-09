@@ -53,6 +53,9 @@ func mergeDiagnosticsConfig(base, over *DiagnosticsConfig) DiagnosticsConfig {
 	if over.LogDir != "" {
 		result.LogDir = over.LogDir
 	}
+	if over.Telemetry != "" {
+		result.Telemetry = over.Telemetry
+	}
 	return result
 }
 
