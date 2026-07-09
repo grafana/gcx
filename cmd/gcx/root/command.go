@@ -13,7 +13,6 @@ import (
 	"github.com/go-logr/logr"
 	agentcmd "github.com/grafana/gcx/cmd/gcx/agent"
 	"github.com/grafana/gcx/cmd/gcx/api"
-	assistantcmd "github.com/grafana/gcx/cmd/gcx/assistant"
 	cloudcmd "github.com/grafana/gcx/cmd/gcx/cloud"
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
@@ -36,6 +35,7 @@ import (
 	_ "github.com/grafana/gcx/internal/providers/aio11y"          // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/alert"           // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/appo11y"         // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/assistant"       // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/dashboards"      // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/datasources"     // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/faro"            // Provider registrations — blank imports trigger init() self-registration.
@@ -248,7 +248,6 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 
 	rootCmd.AddCommand(agentcmd.Command())
 	rootCmd.AddCommand(api.Command())
-	rootCmd.AddCommand(assistantcmd.Command())
 	rootCmd.AddCommand(cloudcmd.Command())
 	rootCmd.AddCommand(logincmd.Command())
 	rootCmd.AddCommand(config.Command())
