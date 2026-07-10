@@ -1,7 +1,7 @@
 ---
 type: feature-spec
 title: "Assistant Provider + MCP Servers as Resources"
-status: approved
+status: done
 adr: docs/adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md
 created: 2026-07-07
 ---
