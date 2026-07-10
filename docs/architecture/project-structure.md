@@ -133,6 +133,7 @@ gcx/
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Agent Skills catalog validation, local reconciliation, content reads, install/update/uninstall
+│   ├── shellquote/           # POSIX shell argv quoting shared by did-you-mean corrections, pagination follow-up commands, and the instrumentation helm formatter
 │   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
 │   ├── suggest/              # Fuzzy matcher for "did you mean" suggestions (unknown commands/flags)
 │   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, wire vocabularies: volume buckets, k8s reasons, auth methods, api routes and datasource types; flat-JSON HTTP export)
