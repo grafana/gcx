@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/shellquote"
 	"github.com/grafana/gcx/internal/suggest"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -64,7 +65,7 @@ func ValidateArgs(rootCmd *cobra.Command, args []string) error {
 	for _, sub := range candidates {
 		// CommandPath is a space-separated path, not a single token, so it
 		// joins as-is; only the subcommand name and user tokens get quoted.
-		invocation := cmd.CommandPath() + " " + shellJoin(append([]string{sub.Name()}, positionals[1:]...))
+		invocation := cmd.CommandPath() + " " + shellquote.Join(append([]string{sub.Name()}, positionals[1:]...))
 		suggestions = append(suggestions, fmt.Sprintf("Did you mean '%s'?", invocation))
 		corrections = append(corrections, gcxerrors.Correction{
 			Command: invocation,
