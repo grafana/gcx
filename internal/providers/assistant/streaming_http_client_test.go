@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/gcx/cmd/gcx/assistant"
+	"github.com/grafana/gcx/internal/providers/assistant"
 )
 
 func TestNewAssistantStreamingHTTPClient(t *testing.T) {

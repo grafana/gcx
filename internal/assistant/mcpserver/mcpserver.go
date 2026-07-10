@@ -32,6 +32,13 @@ func (m MCPServer) GetResourceName() string {
 	return m.Scope + "-" + adapter.SlugifyName(m.Name)
 }
 
+// ServerID returns the server-assigned opaque ID carried on a manifest read
+// back from the API (via ServerToMCPServer). It is empty for a manifest built
+// from local input that has not yet been resolved against the server. Callers
+// use it only for within-stack addressing (e.g. the OAuth validate/initiate
+// step after create/update); it is never used for cross-stack matching (FR-012).
+func (m MCPServer) ServerID() string { return m.serverID }
+
 // SetResourceName is a no-op: scope and name are materialized directly in
 // spec and are populated from the manifest's own fields during unmarshal.
 // The composite metadata.name carries no information that isn't already in

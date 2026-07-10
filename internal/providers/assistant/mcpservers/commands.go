@@ -1,6 +1,7 @@
 package mcpservers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -37,6 +39,178 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*assistantmc
 		return nil, "", err
 	}
 	return assistantmcp.NewClient(base), cfg.Namespace, nil
+}
+
+// newCRUDAndClient builds the shared TypedCRUD[MCPServer] the create/update/
+// delete commands route their data access through (CONSTITUTION §37-41), plus
+// the raw client retained only for the non-CRUD OAuth validate/initiate step.
+// Both share one resolved config so no extra round trip is spent.
+func newCRUDAndClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*adapter.TypedCRUD[mcpserver.MCPServer], *assistantmcp.Client, error) {
+	client, namespace, err := newClient(cmd, loader)
+	if err != nil {
+		return nil, nil, err
+	}
+	return mcpserver.NewTypedCRUDForClient(client, namespace), client, nil
+}
+
+// resolveServerRef resolves a user-supplied <id-or-name> reference to a single
+// server through crud.List, so ref resolution stays on the TypedCRUD path
+// rather than the raw client. An exact server-ID match wins outright; otherwise
+// the ref is matched against the display name (case-insensitive) or the
+// composite metadata.name, and an ambiguous name surfaces as an error listing
+// candidates instead of a silent pick (FR-014 parity).
+func resolveServerRef(ctx context.Context, crud *adapter.TypedCRUD[mcpserver.MCPServer], ref string) (*adapter.TypedObject[mcpserver.MCPServer], error) {
+	objs, err := crud.List(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	for i := range objs {
+		if objs[i].Spec.ServerID() == ref {
+			return &objs[i], nil
+		}
+	}
+	var matches []*adapter.TypedObject[mcpserver.MCPServer]
+	for i := range objs {
+		o := &objs[i]
+		if strings.EqualFold(o.Spec.Name, ref) || o.Name == ref {
+			matches = append(matches, o)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("%w: %s", assistantmcp.ErrNotFound, ref)
+	case 1:
+		return matches[0], nil
+	default:
+		servers := make([]assistantmcp.Server, 0, len(matches))
+		for _, m := range matches {
+			servers = append(servers, assistantmcp.Server{ID: m.Spec.ServerID(), Name: m.Spec.Name, Scope: m.Spec.Scope, URL: m.Spec.URL})
+		}
+		return nil, assistantmcp.AmbiguousReferenceError{Ref: ref, Matches: servers}
+	}
+}
+
+// findByNaturalKey returns the server matching m's (scope, name, url) natural
+// key via crud.List, reporting found=false when none exists. Used by create's
+// --if-not-exists idempotent pre-check without leaving the TypedCRUD path.
+func findByNaturalKey(ctx context.Context, crud *adapter.TypedCRUD[mcpserver.MCPServer], m mcpserver.MCPServer) (*adapter.TypedObject[mcpserver.MCPServer], bool, error) {
+	objs, err := crud.List(ctx, 0)
+	if err != nil {
+		return nil, false, err
+	}
+	for i := range objs {
+		o := &objs[i]
+		if strings.EqualFold(o.Spec.Scope, m.Scope) && strings.EqualFold(o.Spec.Name, m.Name) && o.Spec.URL == m.URL {
+			return o, true, nil
+		}
+	}
+	return nil, false, nil
+}
+
+// manifestFromInput converts the CLI's ServerInput (built from flags/--file)
+// into the MCPServer manifest domain type the TypedCRUD adapter operates on.
+// The CLI's --header is inline-value only, so each becomes an overwrite header;
+// the manifest's fromEnv/fromFile write intents are reachable only via the
+// resources push path, not these commands. A nil input.Headers (no --header
+// flags supplied) is preserved as nil so callers can distinguish it from an
+// explicit empty list.
+func manifestFromInput(input assistantmcp.ServerInput) mcpserver.MCPServer {
+	enabled := true
+	if input.Enabled != nil {
+		enabled = *input.Enabled
+	}
+	m := mcpserver.MCPServer{
+		Name:         input.Name,
+		Description:  input.Description,
+		URL:          input.URL,
+		Scope:        input.Scope,
+		Enabled:      enabled,
+		Applications: input.Applications,
+		Config:       input.Config,
+	}
+	if input.Headers != nil {
+		headers := make([]mcpserver.MCPServerHeader, 0, len(input.Headers))
+		for _, h := range input.Headers {
+			headers = append(headers, mcpserver.MCPServerHeader{Name: h.Name, Value: h.Value})
+		}
+		m.Headers = headers
+	}
+	return m
+}
+
+// applyUpdate overlays a partial CLI update onto the current server manifest.
+// scope, name, and url form the immutable natural-key identity (ADR Decision 3;
+// spec: scope is required + immutable), so an attempt to change any of them via
+// update is a clear error rather than a silent no-op — delete and recreate to
+// change identity. Headers follow the CLI write-intent model: no --header flags
+// (nil) preserves every current header; any --header flags become the full
+// desired list.
+func applyUpdate(current mcpserver.MCPServer, input assistantmcp.ServerInput) (mcpserver.MCPServer, error) {
+	desired := current
+	if input.Name != "" && !strings.EqualFold(input.Name, current.Name) {
+		return desired, identityChangeError("name", current.Name)
+	}
+	if input.URL != "" && input.URL != current.URL {
+		return desired, identityChangeError("url", current.Name)
+	}
+	if input.Scope != "" && !strings.EqualFold(input.Scope, current.Scope) {
+		return desired, identityChangeError("scope", current.Name)
+	}
+	if input.Description != "" {
+		desired.Description = input.Description
+	}
+	if input.Enabled != nil {
+		desired.Enabled = *input.Enabled
+	}
+	if len(input.Applications) > 0 {
+		desired.Applications = input.Applications
+	}
+	if len(input.Config) > 0 {
+		desired.Config = input.Config
+	}
+	if input.Headers == nil {
+		desired.Headers = current.Headers
+	} else {
+		headers := make([]mcpserver.MCPServerHeader, 0, len(input.Headers))
+		for _, h := range input.Headers {
+			headers = append(headers, mcpserver.MCPServerHeader{Name: h.Name, Value: h.Value})
+		}
+		desired.Headers = headers
+	}
+	return desired, nil
+}
+
+func identityChangeError(field, name string) error {
+	return fmt.Errorf(
+		"cannot change %s via update: scope, name, and url are the immutable identity of MCP server %q — delete and recreate it to change them",
+		field, name,
+	)
+}
+
+// displayServer renders a manifest returned by the adapter back into the flat
+// Server view create/update/delete emit. Header value presence is best-effort:
+// the adapter never carries stored secret values (they are redacted on read),
+// so ValueConfigured reflects only whether this invocation supplied a value.
+func displayServer(m mcpserver.MCPServer) *assistantmcp.Server {
+	headers := make([]assistantmcp.ServerHeader, 0, len(m.Headers))
+	for _, h := range m.Headers {
+		headers = append(headers, assistantmcp.ServerHeader{
+			Name:            h.Name,
+			ValueConfigured: h.Value != "" || h.FromEnv != "" || h.FromFile != "",
+		})
+	}
+	return &assistantmcp.Server{
+		ID:            m.ServerID(),
+		Name:          m.Name,
+		Description:   m.Description,
+		Type:          assistantmcp.IntegrationTypeMCP,
+		Enabled:       m.Enabled,
+		Scope:         m.Scope,
+		URL:           m.URL,
+		Applications:  m.Applications,
+		CustomHeaders: headers,
+		Configuration: m.Config,
+	}
 }
 
 // isEnvelopeFormat reports whether the resolved output format must produce
@@ -303,23 +477,39 @@ reports that OAuth is required.`,
 			if err != nil {
 				return err
 			}
-			client, _, err := newClient(cmd, loader)
+			crud, client, err := newCRUDAndClient(cmd, loader)
 			if err != nil {
 				return err
 			}
+
+			manifest := manifestFromInput(input)
+			if manifest.Scope == "" {
+				manifest.Scope = "user"
+			}
+
+			// --if-not-exists is an idempotent no-op: if a server with the same
+			// (scope, name, url) already exists, return it unchanged without
+			// creating, updating, or triggering OAuth. Checked via crud.List so
+			// the lookup stays on the TypedCRUD path.
 			if opts.IfNotExists {
-				result, found, err := existingResult(cmd, client, input)
+				existing, found, err := findByNaturalKey(cmd.Context(), crud, manifest)
 				if err != nil {
 					return err
 				}
 				if found {
+					result := &assistantmcp.MutationResult{Operation: "unchanged", Server: displayServer(existing.Spec)}
 					return opts.IO.Encode(cmd.OutOrStdout(), result)
 				}
 			}
-			result, err := client.Create(cmd.Context(), input)
+
+			obj := &adapter.TypedObject[mcpserver.MCPServer]{Spec: manifest}
+			obj.SetName(manifest.GetResourceName())
+			created, err := crud.Create(cmd.Context(), obj)
 			if err != nil {
 				return err
 			}
+
+			result := &assistantmcp.MutationResult{Operation: "created", Server: displayServer(created.Spec)}
 			if err := maybeAttachAuthURL(cmd, client, result); err != nil {
 				return err
 			}
@@ -354,16 +544,16 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Update an Assistant MCP server.",
 		Long: `Update an Assistant MCP server integration.
 
-Partial updates are merged with the current server before saving. Headers
-follow an explicit write-intent model: a --header with a value overwrites
-(or creates) that header; if you pass no --header flags at all, every
-existing header is preserved unchanged; but once you pass any --header
-flags, they become the full desired header list, so any existing header
-you don't list is removed. Changing a user-scoped server to tenant scope
-requires a non-empty authentication header.`,
+Partial updates are merged with the current server before saving. Scope, name,
+and url are the server's immutable identity: they cannot be changed via update —
+delete and recreate the server to change them. Headers follow an explicit
+write-intent model: a --header with a value overwrites (or creates) that header;
+if you pass no --header flags at all, every existing header is preserved
+unchanged; but once you pass any --header flags, they become the full desired
+header list, so any existing header you don't list is removed.`,
 		Example: `  gcx assistant mcp-servers update GitHub --disabled
   gcx assistant mcp-servers update SharedTools --description "Shared internal MCP tools"
-  gcx assistant mcp-servers update LocalTools --scope tenant --header "X-API-Key=<token>"`,
+  gcx assistant mcp-servers update SharedTools --header "X-API-Key=<token>"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -373,14 +563,28 @@ requires a non-empty authentication header.`,
 			if err != nil {
 				return err
 			}
-			client, _, err := newClient(cmd, loader)
+			crud, client, err := newCRUDAndClient(cmd, loader)
 			if err != nil {
 				return err
 			}
-			result, err := client.Update(cmd.Context(), args[0], input)
+
+			current, err := resolveServerRef(cmd.Context(), crud, args[0])
 			if err != nil {
 				return err
 			}
+			desired, err := applyUpdate(current.Spec, input)
+			if err != nil {
+				return err
+			}
+
+			obj := &adapter.TypedObject[mcpserver.MCPServer]{Spec: desired}
+			obj.SetName(desired.GetResourceName())
+			updated, err := crud.Update(cmd.Context(), desired.GetResourceName(), obj)
+			if err != nil {
+				return err
+			}
+
+			result := &assistantmcp.MutationResult{Operation: "updated", Server: displayServer(updated.Spec)}
 			if err := maybeAttachAuthURL(cmd, client, result); err != nil {
 				return err
 			}
@@ -430,14 +634,18 @@ while agent mode still requires explicit --force for destructive operations.`,
 			if !proceed {
 				return nil
 			}
-			client, _, err := newClient(cmd, loader)
+			crud, _, err := newCRUDAndClient(cmd, loader)
 			if err != nil {
 				return err
 			}
-			result, err := client.Delete(cmd.Context(), args[0])
+			current, err := resolveServerRef(cmd.Context(), crud, args[0])
 			if err != nil {
 				return err
 			}
+			if err := crud.Delete(cmd.Context(), current.Name); err != nil {
+				return err
+			}
+			result := &assistantmcp.MutationResult{Operation: "deleted", Server: displayServer(current.Spec)}
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -560,24 +768,6 @@ func maybeAttachAuthURL(cmd *cobra.Command, client *assistantmcp.Client, result 
 	}
 	result.AuthURL = oauth.AuthURL
 	return nil
-}
-
-func existingResult(cmd *cobra.Command, client *assistantmcp.Client, input assistantmcp.ServerInput) (*assistantmcp.MutationResult, bool, error) {
-	existing, err := client.Find(cmd.Context(), input)
-	if err != nil {
-		if errors.Is(err, assistantmcp.ErrNotFound) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
-
-	// --if-not-exists is an idempotent check: the server already exists and is
-	// returned unchanged. Do not validate, initiate OAuth, or open a browser
-	// here -- those side effects would surprise automation expecting a no-op.
-	// Run an explicit create/update (without --if-not-exists) to (re)trigger
-	// the OAuth flow for an existing server.
-	result := &assistantmcp.MutationResult{Operation: "unchanged", Server: existing}
-	return result, true, nil
 }
 
 type ListTableCodec struct {

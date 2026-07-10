@@ -12,8 +12,6 @@ import (
 	"sync"
 	"time"
 
-	mcpserverscmd "github.com/grafana/gcx/cmd/gcx/assistant/mcpservers"
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant"
 	"github.com/grafana/gcx/internal/assistant/investigations"
@@ -24,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	mcpserverscmd "github.com/grafana/gcx/internal/providers/assistant/mcpservers"
 	"github.com/spf13/cobra"
 )
 
@@ -43,7 +42,12 @@ func requireGrafanaCloud(ctx *config.Context) error {
 
 // Command returns the assistant command group.
 func Command() *cobra.Command {
-	configOpts := &cmdconfig.Options{}
+	// A single ConfigLoader is shared across every subcommand (prompt,
+	// dashboard, conversation, investigations, mcp-servers). --config is bound
+	// on the group's persistent flags; --context is the root command's global
+	// flag, threaded into context.Context and read back via
+	// config.ContextNameFromCtx — so no per-subcommand flag-copying is needed.
+	loader := &providers.ConfigLoader{}
 
 	cmd := &cobra.Command{
 		Use:   "assistant",
@@ -59,7 +63,9 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 	// We need a "before each run" hook to block assistant commands on self-hosted
 	// instances. Defining one here replaces the root command's hook (cobra doesn't
 	// stack them), so we call the root's hook manually first. The root != cmd
-	// guard avoids self-recursion when there's no parent (in tests).
+	// guard avoids self-recursion when there's no parent (in tests). Running the
+	// root hook first also threads --context into c.Context() before the loader
+	// resolves it.
 	cmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
 		if root := c.Root(); root != cmd {
 			if root.PersistentPreRunE != nil {
@@ -70,7 +76,7 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 				root.PersistentPreRun(c, args)
 			}
 		}
-		cfg, err := configOpts.LoadConfigTolerant(c.Context())
+		cfg, err := loader.LoadConfigTolerant(c.Context())
 		if err != nil {
 			return err
 		}
@@ -80,47 +86,12 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 		return nil
 	}
 
-	configOpts.BindFlags(cmd.PersistentFlags())
-	cmd.AddCommand(promptCommand(configOpts))
-	cmd.AddCommand(dashboardCommand(configOpts))
-	cmd.AddCommand(conversationCommand(configOpts))
-
-	// Create a ConfigLoader for investigations that shares the same --config/--context
-	// flags already bound by configOpts. Wire the values via PersistentPreRunE so that
-	// the loader picks up flag values resolved at execution time.
-	invLoader := &providers.ConfigLoader{}
-	invCmd := investigations.Commands(invLoader)
-	// Run the parent's hook to get the self-hosted guard, then wire the
-	// resolved --config/--context flag values into the investigations loader.
-	invCmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
-		if err := cmd.PersistentPreRunE(c, args); err != nil {
-			return err
-		}
-		if configOpts.ConfigFile != "" {
-			invLoader.SetConfigFile(configOpts.ConfigFile)
-		}
-		if configOpts.Context != "" {
-			invLoader.SetContextName(configOpts.Context)
-		}
-		return nil
-	}
-	cmd.AddCommand(invCmd)
-
-	mcpLoader := &providers.ConfigLoader{}
-	mcpCmd := mcpserverscmd.Commands(mcpLoader)
-	mcpCmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
-		if err := cmd.PersistentPreRunE(c, args); err != nil {
-			return err
-		}
-		if configOpts.ConfigFile != "" {
-			mcpLoader.SetConfigFile(configOpts.ConfigFile)
-		}
-		if configOpts.Context != "" {
-			mcpLoader.SetContextName(configOpts.Context)
-		}
-		return nil
-	}
-	cmd.AddCommand(mcpCmd)
+	loader.BindFlags(cmd.PersistentFlags())
+	cmd.AddCommand(promptCommand(loader))
+	cmd.AddCommand(dashboardCommand(loader))
+	cmd.AddCommand(conversationCommand(loader))
+	cmd.AddCommand(investigations.Commands(loader))
+	cmd.AddCommand(mcpserverscmd.Commands(loader))
 	return cmd
 }
 
@@ -168,7 +139,7 @@ type promptResult struct {
 	Error     string `json:"error,omitempty"`
 }
 
-func promptCommand(configOpts *cmdconfig.Options) *cobra.Command {
+func promptCommand(configOpts *providers.ConfigLoader) *cobra.Command {
 	opts := &promptOpts{}
 
 	cmd := &cobra.Command{
@@ -206,7 +177,7 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 // dashboardCommand returns a subcommand that routes to the grafana_dashboarding
 // agent. It queries live Prometheus to discover metrics and returns complete
 // dashboard JSON ready for 'gcx resources push'.
-func dashboardCommand(configOpts *cmdconfig.Options) *cobra.Command {
+func dashboardCommand(configOpts *providers.ConfigLoader) *cobra.Command {
 	opts := &promptOpts{agentID: "grafana_dashboarding"}
 
 	cmd := &cobra.Command{
@@ -239,7 +210,7 @@ requests made through gcx. See ` + docs.AssistantPricing + `.`,
 
 // promptRunE returns the RunE used by both `prompt` and `dashboard` — the only
 // per-command difference is the pre-populated agent ID on opts.
-func promptRunE(opts *promptOpts, configOpts *cmdconfig.Options) func(*cobra.Command, []string) error {
+func promptRunE(opts *promptOpts, configOpts *providers.ConfigLoader) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		if err := opts.Validate(); err != nil {
 			return err
@@ -248,7 +219,7 @@ func promptRunE(opts *promptOpts, configOpts *cmdconfig.Options) func(*cobra.Com
 	}
 }
 
-func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts *cmdconfig.Options) error {
+func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts *providers.ConfigLoader) error {
 	ctx := cmd.Context()
 	jsonStream := opts.jsonOut && !opts.noStream
 	w := cmd.OutOrStdout()
@@ -444,7 +415,7 @@ func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts 
 // resolveAssistantClientOptions loads the gcx config and returns assistant
 // ClientOptions for assistant prompt, including an HTTP client whose Timeout
 // matches streamTimeoutSeconds (see --timeout and SSE body reads).
-func resolveAssistantClientOptions(ctx context.Context, configOpts *cmdconfig.Options, streamTimeoutSeconds int, agentID string) (assistant.ClientOptions, error) {
+func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.ConfigLoader, streamTimeoutSeconds int, agentID string) (assistant.ClientOptions, error) {
 	cfg, err := configOpts.LoadConfig(ctx)
 	if err != nil {
 		return assistant.ClientOptions{}, err
@@ -512,7 +483,7 @@ func newAssistantStreamingHTTPClient(ctx context.Context, streamTimeoutSeconds i
 const refreshThreshold = 5 * time.Minute
 
 // buildTokenRefresher creates a TokenRefresher that uses gcx's auth refresh mechanism.
-func buildTokenRefresher(ctx context.Context, configOpts *cmdconfig.Options, ctxName string, grafana *config.GrafanaConfig) assistant.TokenRefresher {
+func buildTokenRefresher(ctx context.Context, configOpts *providers.ConfigLoader, ctxName string, grafana *config.GrafanaConfig) assistant.TokenRefresher {
 	var mu sync.Mutex
 	token := grafana.OAuthToken
 	refreshToken := grafana.OAuthRefreshToken
@@ -559,7 +530,7 @@ func buildTokenRefresher(ctx context.Context, configOpts *cmdconfig.Options, ctx
 	}
 }
 
-func persistRefreshedTokens(ctx context.Context, configOpts *cmdconfig.Options, ctxName, token, refreshToken, expiresAt, refreshExpiresAt string) {
+func persistRefreshedTokens(ctx context.Context, configOpts *providers.ConfigLoader, ctxName, token, refreshToken, expiresAt, refreshExpiresAt string) {
 	// Re-read from disk so env-sourced secrets (GRAFANA_TOKEN, etc.) are not persisted.
 	source := configOpts.ConfigSource()
 	raw, err := config.Load(ctx, source)

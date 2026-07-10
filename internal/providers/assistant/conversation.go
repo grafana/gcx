@@ -4,14 +4,14 @@ import (
 	"errors"
 	"fmt"
 
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/assistant"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-func conversationCommand(configOpts *cmdconfig.Options) *cobra.Command {
+func conversationCommand(configOpts *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "conversation",
 		Short: "Read Grafana Assistant conversations",
@@ -65,7 +65,7 @@ func (o *conversationListOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.timeout, "timeout", 60, "HTTP timeout in seconds")
 }
 
-func conversationListCommand(configOpts *cmdconfig.Options) *cobra.Command {
+func conversationListCommand(configOpts *providers.ConfigLoader) *cobra.Command {
 	opts := &conversationListOpts{}
 
 	cmd := &cobra.Command{
@@ -132,7 +132,7 @@ func (o *conversationGetOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.timeout, "timeout", 60, "HTTP timeout in seconds")
 }
 
-func conversationGetCommand(configOpts *cmdconfig.Options) *cobra.Command {
+func conversationGetCommand(configOpts *providers.ConfigLoader) *cobra.Command {
 	opts := &conversationGetOpts{}
 
 	cmd := &cobra.Command{

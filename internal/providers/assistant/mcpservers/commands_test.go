@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
+	"github.com/grafana/gcx/internal/assistant/mcpserver"
 	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
@@ -281,33 +282,135 @@ func newExistingResultTestClient(t *testing.T, integrations []map[string]any) *a
 	return assistantmcp.NewClient(base)
 }
 
-func TestExistingResultMatchesNameURLAndScope(t *testing.T) {
+// TestFindByNaturalKeyMatchesScopeNameURL covers create's --if-not-exists
+// pre-check: findByNaturalKey (through crud.List) matches only on the full
+// (scope, name, url) natural key, so a same-name server differing by scope or
+// URL is not treated as the requested server.
+func TestFindByNaturalKeyMatchesScopeNameURL(t *testing.T) {
 	client := newExistingResultTestClient(t, []map[string]any{
 		{"id": "mcp-tenant", "name": "GitHub", "type": "mcp", "enabled": true, "scope": "tenant",
 			"configuration": map[string]any{"url": "https://mcp.example.com/mcp"}},
 	})
-	cmd := &cobra.Command{}
-	cmd.SetContext(t.Context())
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
 
 	// Same name, different scope: not the requested server, create must proceed.
-	_, found, err := existingResult(cmd, client, assistantmcp.ServerInput{
+	_, found, err := findByNaturalKey(t.Context(), crud, mcpserver.MCPServer{
 		Name: "GitHub", URL: "https://mcp.example.com/mcp", Scope: "user",
 	})
 	require.NoError(t, err)
 	assert.False(t, found)
 
 	// Same name, different URL: not the requested server either.
-	_, found, err = existingResult(cmd, client, assistantmcp.ServerInput{
+	_, found, err = findByNaturalKey(t.Context(), crud, mcpserver.MCPServer{
 		Name: "GitHub", URL: "https://other.example.com/mcp", Scope: "tenant",
 	})
 	require.NoError(t, err)
 	assert.False(t, found)
 
-	result, found, err := existingResult(cmd, client, assistantmcp.ServerInput{
+	got, found, err := findByNaturalKey(t.Context(), crud, mcpserver.MCPServer{
 		Name: "GitHub", URL: "https://mcp.example.com/mcp", Scope: "tenant",
 	})
 	require.NoError(t, err)
 	require.True(t, found)
-	assert.Equal(t, "unchanged", result.Operation)
-	assert.Equal(t, "mcp-tenant", result.Server.ID)
+	assert.Equal(t, "mcp-tenant", got.Spec.ServerID())
+}
+
+// TestApplyUpdatePreservesHeadersWhenNoHeaderFlags covers the PR #747 Major #1
+// guard through the crud-routed update path: with no --header flags
+// (input.Headers == nil) the desired manifest carries every current header as
+// name-only, which the client boundary treats as preserve-existing.
+func TestApplyUpdatePreservesHeadersWhenNoHeaderFlags(t *testing.T) {
+	current := mcpserver.MCPServer{
+		Name: "GitHub", Scope: "tenant", URL: "https://mcp.example.com/mcp", Enabled: true,
+		Headers: []mcpserver.MCPServerHeader{{Name: "Authorization"}, {Name: "X-API-Key"}},
+	}
+	// No --header flags: ServerInput.Headers stays nil.
+	disabled := false
+	desired, err := applyUpdate(current, assistantmcp.ServerInput{Enabled: &disabled})
+	require.NoError(t, err)
+	assert.Equal(t, current.Headers, desired.Headers, "no --header flags must preserve every current header")
+	assert.False(t, desired.Enabled, "non-identity field overlay must apply")
+}
+
+// TestApplyUpdateReplacesHeadersWhenHeaderFlagsGiven covers the full-desired
+// header semantics: any --header flags become the complete header list, so an
+// existing header not listed is dropped.
+func TestApplyUpdateReplacesHeadersWhenHeaderFlagsGiven(t *testing.T) {
+	current := mcpserver.MCPServer{
+		Name: "GitHub", Scope: "tenant", URL: "https://mcp.example.com/mcp",
+		Headers: []mcpserver.MCPServerHeader{{Name: "Authorization"}, {Name: "X-API-Key"}},
+	}
+	desired, err := applyUpdate(current, assistantmcp.ServerInput{
+		Headers: []assistantmcp.Header{{Name: "X-API-Key", Value: "secret"}},
+	})
+	require.NoError(t, err)
+	require.Len(t, desired.Headers, 1)
+	assert.Equal(t, "X-API-Key", desired.Headers[0].Name)
+	assert.Equal(t, "secret", desired.Headers[0].Value)
+}
+
+// TestApplyUpdateRejectsIdentityChange covers the immutable-identity rule:
+// scope, name, and url form the natural key and cannot change via update.
+func TestApplyUpdateRejectsIdentityChange(t *testing.T) {
+	current := mcpserver.MCPServer{Name: "GitHub", Scope: "user", URL: "https://mcp.example.com/mcp"}
+	tests := []struct {
+		name  string
+		input assistantmcp.ServerInput
+		field string
+	}{
+		{"scope", assistantmcp.ServerInput{Scope: "tenant"}, "scope"},
+		{"name", assistantmcp.ServerInput{Name: "GitLab"}, "name"},
+		{"url", assistantmcp.ServerInput{URL: "https://other.example.com/mcp"}, "url"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := applyUpdate(current, tt.input)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "cannot change "+tt.field)
+		})
+	}
+}
+
+// TestApplyUpdateAcceptsMatchingIdentity covers that re-asserting the current
+// identity (same scope/name/url) is not treated as a change.
+func TestApplyUpdateAcceptsMatchingIdentity(t *testing.T) {
+	current := mcpserver.MCPServer{Name: "GitHub", Scope: "user", URL: "https://mcp.example.com/mcp", Enabled: true}
+	desired, err := applyUpdate(current, assistantmcp.ServerInput{
+		Name: "github", Scope: "USER", URL: "https://mcp.example.com/mcp", Description: "updated",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "updated", desired.Description)
+	assert.Equal(t, "GitHub", desired.Name)
+	assert.Equal(t, "user", desired.Scope)
+}
+
+// TestResolveServerRefByIDNameAndAmbiguity covers the crud.List-backed
+// <id-or-name> resolution used by update/delete: exact ID match, display-name
+// match, and an ambiguous name (two servers sharing scope+name) erroring
+// instead of silently picking one.
+func TestResolveServerRefByIDNameAndAmbiguity(t *testing.T) {
+	client := newExistingResultTestClient(t, []map[string]any{
+		{"id": "srv-1", "name": "GitHub", "type": "mcp", "scope": "tenant",
+			"configuration": map[string]any{"url": "https://a.example.com/mcp"}},
+		{"id": "srv-2", "name": "GitHub", "type": "mcp", "scope": "tenant",
+			"configuration": map[string]any{"url": "https://b.example.com/mcp"}},
+		{"id": "srv-3", "name": "Solo", "type": "mcp", "scope": "user",
+			"configuration": map[string]any{"url": "https://c.example.com/mcp"}},
+	})
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+
+	got, err := resolveServerRef(t.Context(), crud, "srv-2")
+	require.NoError(t, err)
+	assert.Equal(t, "srv-2", got.Spec.ServerID())
+
+	got, err = resolveServerRef(t.Context(), crud, "Solo")
+	require.NoError(t, err)
+	assert.Equal(t, "srv-3", got.Spec.ServerID())
+
+	_, err = resolveServerRef(t.Context(), crud, "GitHub")
+	var ambiguous assistantmcp.AmbiguousReferenceError
+	require.ErrorAs(t, err, &ambiguous)
+
+	_, err = resolveServerRef(t.Context(), crud, "missing")
+	require.ErrorIs(t, err, assistantmcp.ErrNotFound)
 }

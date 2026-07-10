@@ -4,7 +4,6 @@
 package assistant
 
 import (
-	assistantcmd "github.com/grafana/gcx/cmd/gcx/assistant"
 	"github.com/grafana/gcx/internal/assistant/mcpserver"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -31,7 +30,7 @@ func (p *AssistantProvider) ShortDesc() string { return "Interact with Grafana A
 // dashboard, conversation, investigations, mcp-servers), preserving the
 // requireGrafanaCloud guard and per-subcommand config wiring.
 func (p *AssistantProvider) Commands() []*cobra.Command {
-	return []*cobra.Command{assistantcmd.Command()}
+	return []*cobra.Command{Command()}
 }
 
 // Validate checks that the given provider configuration is valid.

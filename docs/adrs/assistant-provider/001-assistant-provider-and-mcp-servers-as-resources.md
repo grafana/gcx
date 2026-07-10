@@ -123,16 +123,26 @@ ambiguity).
 Register via `TypedCRUD[MCPServer]`, not a hand-rolled adapter. datasources
 hand-rolls only because the app-platform DataSource forces a write-only block
 *outside* `spec`; we author the MCPServer manifest, so headers live *inside*
-`spec` and the standard `{metadata, spec}` envelope fits. This keeps the
-`mcp-servers` commands and the `gcx resources` path on one code path (identical
-JSON/YAML output), satisfying the TypedCRUD invariant without an exception.
+`spec` and the standard `{metadata, spec}` envelope fits. Every `mcp-servers`
+CRUD verb (`list`, `get`, `create`, `update`, `delete`) routes its data access
+through this one `TypedCRUD[MCPServer]`, the same code path `gcx resources`
+uses — so both paths share create-vs-update natural-key resolution, per-header
+write intent, and identical JSON/YAML output, satisfying the TypedCRUD
+invariant (CONSTITUTION §37-41) without an exception.
 
 - **GVK:** `assistant.ext.grafana.app/v1alpha1`, Kind `MCPServer`, plural
   `mcpservers` — follows the repo's `<area>.ext.grafana.app` convention and is
   forward-compatible with future assistant resources.
 - Domain type is a dedicated manifest struct (distinct from the client's read/write
   types); `Schema` and `Example` both non-nil (writable).
-- `validate` and OAuth stay as extension verbs on the command tree, not adapter ops.
+- `validate` and OAuth stay as extension verbs on the command tree, not adapter ops —
+  after `create`/`update`, the command drives the OAuth validate/initiate step via
+  the raw client because it is not a CRUD data-access operation.
+- Because the adapter resolves servers by the `(scope, name, url)` natural key,
+  those three fields are the server's immutable identity: `update` overlays only
+  non-identity fields and rejects a scope/name/url change with an actionable
+  error (delete and recreate to change identity), consistent with scope being
+  required + immutable (Decision 3).
 
 ## Decision 5 — Secret round-trip via explicit per-header write intent
 
