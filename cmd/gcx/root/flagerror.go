@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/shellquote"
 	"github.com/grafana/gcx/internal/suggest"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -32,7 +33,8 @@ func flagUsageError(cmd *cobra.Command, err error, invocationArgs []string) erro
 			suggestions = append(suggestions, fmt.Sprintf("Did you mean '%s'?", candidate))
 			correction := gcxerrors.Correction{Hint: flagUsageHint(cmd, candidate)}
 			if corrected, ok := substituteFlag(invocationArgs, unknown, candidate); ok {
-				correction.Command = shellJoin(append([]string{cmd.Root().Name()}, corrected...))
+				safe := redactSensitiveValues(corrected)
+				correction.Command = shellquote.Join(append([]string{cmd.Root().Name()}, safe...))
 				corrections = append(corrections, correction)
 			}
 		}
@@ -106,22 +108,46 @@ func substituteFlag(args []string, unknown, candidate string) ([]string, bool) {
 	return corrected, true
 }
 
-// shellJoin joins argv tokens into a shell command string, single-quoting any
-// token a POSIX shell would not pass through verbatim, so emitted corrections
-// stay runnable as-is.
-func shellJoin(tokens []string) string {
-	quoted := make([]string, len(tokens))
-	for i, token := range tokens {
-		quoted[i] = shellQuote(token)
-	}
-	return strings.Join(quoted, " ")
+// sensitiveFlagNames holds long-flag names whose values must never be
+// echoed back verbatim in a suggested correction, since they commonly carry
+// secrets such as auth tokens, passwords, or API keys (e.g. `gcx login
+// --token <value>`).
+var sensitiveFlagNames = map[string]struct{}{ //nolint:gochecknoglobals // constant-like lookup table; no mutable state.
+	"token":         {},
+	"password":      {},
+	"secret":        {},
+	"client-secret": {},
+	"api-key":       {},
 }
 
-const shellSafeChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./=:@%+,"
+// redactSensitiveValues returns a copy of args with the value of any
+// sensitive flag (see sensitiveFlagNames) replaced by "<redacted>". Other
+// flags and positionals are left untouched so the correction stays runnable
+// as typed, minus the secret.
+func redactSensitiveValues(args []string) []string {
+	redacted := make([]string, len(args))
+	copy(redacted, args)
 
-func shellQuote(token string) string {
-	if token != "" && strings.Trim(token, shellSafeChars) == "" {
-		return token
+	redactNext := false
+	for i, arg := range redacted {
+		if redactNext {
+			redacted[i] = "<redacted>"
+			redactNext = false
+			continue
+		}
+		name, isLongFlag := strings.CutPrefix(arg, "--")
+		if !isLongFlag {
+			continue
+		}
+		if flag, value, hasEquals := strings.Cut(name, "="); hasEquals {
+			if _, sensitive := sensitiveFlagNames[flag]; sensitive && value != "" {
+				redacted[i] = "--" + flag + "=<redacted>"
+			}
+			continue
+		}
+		if _, sensitive := sensitiveFlagNames[name]; sensitive {
+			redactNext = true
+		}
 	}
-	return "'" + strings.ReplaceAll(token, "'", `'\''`) + "'"
+	return redacted
 }

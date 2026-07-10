@@ -20,3 +20,9 @@ func FlagUsageErrorForTest(cmd *cobra.Command, err error, invocationArgs []strin
 func SubstituteFlagForTest(args []string, unknown, candidate string) ([]string, bool) {
 	return substituteFlag(args, unknown, candidate)
 }
+
+// RedactSensitiveValuesForTest exposes redactSensitiveValues for external
+// (_test) packages.
+func RedactSensitiveValuesForTest(args []string) []string {
+	return redactSensitiveValues(args)
+}
