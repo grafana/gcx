@@ -486,39 +486,49 @@ reports that OAuth is required.`,
 			if manifest.Scope == "" {
 				manifest.Scope = "user"
 			}
-
-			// --if-not-exists is an idempotent no-op: if a server with the same
-			// (scope, name, url) already exists, return it unchanged without
-			// creating, updating, or triggering OAuth. Checked via crud.List so
-			// the lookup stays on the TypedCRUD path.
-			if opts.IfNotExists {
-				existing, found, err := findByNaturalKey(cmd.Context(), crud, manifest)
-				if err != nil {
-					return err
-				}
-				if found {
-					result := &assistantmcp.MutationResult{Operation: "unchanged", Server: displayServer(existing.Spec)}
-					return opts.IO.Encode(cmd.OutOrStdout(), result)
-				}
-			}
-
-			obj := &adapter.TypedObject[mcpserver.MCPServer]{Spec: manifest}
-			obj.SetName(manifest.GetResourceName())
-			created, err := crud.Create(cmd.Context(), obj)
-			if err != nil {
-				return err
-			}
-
-			result := &assistantmcp.MutationResult{Operation: "created", Server: displayServer(created.Spec)}
-			if err := maybeAttachAuthURL(cmd, client, result); err != nil {
-				return err
-			}
-			maybeOpenAuthURL(cmd, result)
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return runCreate(cmd, crud, client, opts, manifest)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// runCreate runs the natural-key existence check unconditionally before
+// deciding whether to create. Unlike the adapter's CreateFn (which upserts on a
+// natural-key match so gcx resources push stays idempotent), the human create
+// command must FAIL on an existing (scope, name, url) match — routing a bare
+// create into the adapter's upsert would silently strip stored headers absent
+// from the CLI input (the PR #747 credential-loss class). --if-not-exists opts
+// into an idempotent no-op instead of the error.
+func runCreate(cmd *cobra.Command, crud *adapter.TypedCRUD[mcpserver.MCPServer], client *assistantmcp.Client, opts *createOpts, manifest mcpserver.MCPServer) error {
+	existing, found, err := findByNaturalKey(cmd.Context(), crud, manifest)
+	if err != nil {
+		return err
+	}
+	if found {
+		if opts.IfNotExists {
+			result := &assistantmcp.MutationResult{Operation: "unchanged", Server: displayServer(existing.Spec)}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		}
+		return fmt.Errorf(
+			"MCP server %q (scope %q) already exists at %s; use `gcx assistant mcp-servers update` to modify it, or --if-not-exists to no-op",
+			manifest.Name, manifest.Scope, manifest.URL,
+		)
+	}
+
+	obj := &adapter.TypedObject[mcpserver.MCPServer]{Spec: manifest}
+	obj.SetName(manifest.GetResourceName())
+	created, err := crud.Create(cmd.Context(), obj)
+	if err != nil {
+		return err
+	}
+
+	result := &assistantmcp.MutationResult{Operation: "created", Server: displayServer(created.Spec)}
+	if err := maybeAttachAuthURL(cmd, client, result); err != nil {
+		return err
+	}
+	maybeOpenAuthURL(cmd, result)
+	return opts.IO.Encode(cmd.OutOrStdout(), result)
 }
 
 type updateOpts struct {
@@ -634,23 +644,36 @@ while agent mode still requires explicit --force for destructive operations.`,
 			if !proceed {
 				return nil
 			}
-			crud, _, err := newCRUDAndClient(cmd, loader)
+			crud, client, err := newCRUDAndClient(cmd, loader)
 			if err != nil {
 				return err
 			}
-			current, err := resolveServerRef(cmd.Context(), crud, args[0])
-			if err != nil {
-				return err
-			}
-			if err := crud.Delete(cmd.Context(), current.Name); err != nil {
-				return err
-			}
-			result := &assistantmcp.MutationResult{Operation: "deleted", Server: displayServer(current.Spec)}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return runDelete(cmd, crud, client, opts, args[0])
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// runDelete resolves the <id-or-name> ref to a single server via
+// resolveServerRef (which disambiguates past any (scope, name) collision using
+// the exact server ID) and then deletes by that resolved server ID. It must NOT
+// route back through crud.Delete(current.Name): the composite metadata.name
+// ({scope}-{slug(name)}) is not unique when servers collide on (scope, name),
+// so the adapter's name-based DeleteFn would re-hit the same ambiguity
+// resolveServerRef already resolved past — failing a delete the ID uniquely
+// identified. The generic name-based collision detection stays for
+// gcx resources delete mcpservers/<name> (AC-008); only this CLI path changes.
+func runDelete(cmd *cobra.Command, crud *adapter.TypedCRUD[mcpserver.MCPServer], client *assistantmcp.Client, opts *deleteOpts, ref string) error {
+	current, err := resolveServerRef(cmd.Context(), crud, ref)
+	if err != nil {
+		return err
+	}
+	if _, err := client.Delete(cmd.Context(), current.Spec.ServerID()); err != nil {
+		return err
+	}
+	result := &assistantmcp.MutationResult{Operation: "deleted", Server: displayServer(current.Spec)}
+	return opts.IO.Encode(cmd.OutOrStdout(), result)
 }
 
 // inputFlags holds the flags shared by create and update for building a

@@ -811,7 +811,7 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 | `internal/providers/assistant/provider.go` | `AssistantProvider` implementing the `providers.Provider` interface; `ConfigKeys()` declares the non-secret `providers.assistant.*` capability-cache keys |
 | `internal/assistant/mcpserver/` | `MCPServer` manifest domain type, `TypedCRUD[MCPServer]` adapter wiring (identity `{scope}-{slug(name)}`, natural key `(scope, name, url)`, schema/example), and per-header write-intent mapping (overwrite/preserve/remove, `fromEnv`/`fromFile`) |
 | `internal/assistant/mcpservers/` | MCP-servers HTTP client (offset-paginated, full-exhaustion `List` for the adapter path; bounded list for the human command path) |
-| `cmd/gcx/assistant/mcpservers/commands.go` | Human `mcp-servers` command tree; JSON/YAML output routed through the shared adapter conversion for byte-identical parity with `gcx resources get mcpservers` |
+| `internal/providers/assistant/mcpservers/commands.go` | Human `mcp-servers` command tree; JSON/YAML output routed through the shared adapter conversion for byte-identical parity with `gcx resources get mcpservers` |
 
 ### Linter System
 

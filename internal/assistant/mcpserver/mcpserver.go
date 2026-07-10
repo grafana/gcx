@@ -1,8 +1,8 @@
 // Package mcpserver holds the MCPServer manifest domain type and its
-// TypedCRUD adapter wiring. It has no dependency on cmd/gcx/assistant, so it
-// can be imported both by internal/providers/assistant (for adapter
-// registration) and by cmd/gcx/assistant/mcpservers (for JSON/YAML output
-// parity, FR-022) without an import cycle.
+// TypedCRUD adapter wiring. It has no dependency on the assistant command
+// tree, so it can be imported both by internal/providers/assistant (for
+// adapter registration) and by internal/providers/assistant/mcpservers (for
+// JSON/YAML output parity, FR-022) without an import cycle.
 package mcpserver
 
 import (

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"strings"
 	"testing"
 
@@ -413,4 +414,150 @@ func TestResolveServerRefByIDNameAndAmbiguity(t *testing.T) {
 
 	_, err = resolveServerRef(t.Context(), crud, "missing")
 	require.ErrorIs(t, err, assistantmcp.ErrNotFound)
+}
+
+// newRecordingTestClient serves a routed handler and records every request's
+// "METHOD path" so a test can assert no mutating request was issued. The
+// handler must serve the collection list, the singular GET by ID (used
+// internally by the client's ref-resolving Delete), and DELETE by ID.
+func newRecordingTestClient(t *testing.T, handler http.HandlerFunc) (*assistantmcp.Client, *[]string) {
+	t.Helper()
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		handler(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	base, err := assistanthttp.NewClient(cfg)
+	require.NoError(t, err)
+	return assistantmcp.NewClient(base), &requests
+}
+
+// TestRunCreateErrorsOnExistingWithoutMutating is the regression test for the
+// PR #747 credential-loss class reintroduced via create: a bare create (no
+// --header flags, no --if-not-exists) against an existing (scope, name, url)
+// match must FAIL rather than route into the adapter's upsert — which would
+// resolve the empty desired-header list to "remove all" and strip the stored
+// auth header. Evidence: the call errors and issues zero mutating requests, so
+// the header-wipe path (a PUT) is unreachable.
+func TestRunCreateErrorsOnExistingWithoutMutating(t *testing.T) {
+	existing := map[string]any{
+		"id": "srv-1", "name": "GitHub", "type": "mcp", "enabled": true, "scope": "tenant",
+		"custom_headers": []map[string]any{{"name": "Authorization"}},
+		"configuration":  map[string]any{"url": "https://mcp.example.com/mcp"},
+	}
+	client, requests := newRecordingTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{"integrations": []map[string]any{existing}},
+		}); err != nil {
+			t.Errorf("encode: %v", err)
+		}
+	})
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+
+	opts := &createOpts{}
+	opts.setup(pflag.NewFlagSet("create", pflag.ContinueOnError))
+
+	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	manifest := mcpserver.MCPServer{Name: "GitHub", Scope: "tenant", URL: "https://mcp.example.com/mcp", Enabled: true}
+	err := runCreate(cmd, crud, client, opts, manifest)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+	assert.Empty(t, out.String(), "no result may be encoded on the failure path")
+	for _, req := range *requests {
+		assert.Truef(t, strings.HasPrefix(req, http.MethodGet+" "),
+			"create against an existing server must not issue a mutating request; saw %q", req)
+	}
+}
+
+// TestRunCreateIfNotExistsReturnsUnchangedWithoutMutating confirms the fix does
+// not regress the documented --if-not-exists no-op: an existing match returns
+// "unchanged" and still issues no mutating request.
+func TestRunCreateIfNotExistsReturnsUnchangedWithoutMutating(t *testing.T) {
+	existing := map[string]any{
+		"id": "srv-1", "name": "GitHub", "type": "mcp", "enabled": true, "scope": "tenant",
+		"custom_headers": []map[string]any{{"name": "Authorization"}},
+		"configuration":  map[string]any{"url": "https://mcp.example.com/mcp"},
+	}
+	client, requests := newRecordingTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{"integrations": []map[string]any{existing}},
+		}); err != nil {
+			t.Errorf("encode: %v", err)
+		}
+	})
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+
+	opts := &createOpts{}
+	opts.setup(pflag.NewFlagSet("create", pflag.ContinueOnError))
+	opts.IfNotExists = true
+
+	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	manifest := mcpserver.MCPServer{Name: "GitHub", Scope: "tenant", URL: "https://mcp.example.com/mcp", Enabled: true}
+	require.NoError(t, runCreate(cmd, crud, client, opts, manifest))
+	assert.Contains(t, out.String(), "unchanged")
+	for _, req := range *requests {
+		assert.Truef(t, strings.HasPrefix(req, http.MethodGet+" "),
+			"--if-not-exists no-op must not issue a mutating request; saw %q", req)
+	}
+}
+
+// TestRunDeleteByIDDeletesTargetedServerOnCollision is the regression test for
+// the (scope, name)-collision delete bug: two servers share the composite
+// metadata.name ({scope}-{slug(name)}) but differ by URL. delete <server-id>
+// must resolve past the collision and delete only the targeted server —
+// routing back through crud.Delete(current.Name) would re-hit the ambiguity on
+// the composite name. Evidence: exactly the targeted ID is DELETEd.
+func TestRunDeleteByIDDeletesTargetedServerOnCollision(t *testing.T) {
+	servers := []map[string]any{
+		{"id": "srv-1", "name": "GitHub", "type": "mcp", "enabled": true, "scope": "tenant",
+			"configuration": map[string]any{"url": "https://a.example.com/mcp"}},
+		{"id": "srv-2", "name": "GitHub", "type": "mcp", "enabled": true, "scope": "tenant",
+			"configuration": map[string]any{"url": "https://b.example.com/mcp"}},
+	}
+	var deletedIDs []string
+	client, _ := newRecordingTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		id := path.Base(r.URL.Path) // "" collapses to "integrations" for the collection path
+		switch {
+		case r.Method == http.MethodDelete:
+			deletedIDs = append(deletedIDs, id)
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{}})
+		case strings.HasSuffix(r.URL.Path, "/api/v1/integrations"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"integrations": servers}})
+		default:
+			for _, s := range servers {
+				if s["id"] == id {
+					_ = json.NewEncoder(w).Encode(map[string]any{"data": s})
+					return
+				}
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	crud := mcpserver.NewTypedCRUDForClient(client, "default")
+
+	opts := &deleteOpts{}
+	opts.setup(pflag.NewFlagSet("delete", pflag.ContinueOnError))
+
+	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	require.NoError(t, runDelete(cmd, crud, client, opts, "srv-2"))
+	assert.Equal(t, []string{"srv-2"}, deletedIDs, "only the targeted server ID may be deleted")
 }

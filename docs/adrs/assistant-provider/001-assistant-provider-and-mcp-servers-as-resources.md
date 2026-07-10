@@ -123,12 +123,17 @@ ambiguity).
 Register via `TypedCRUD[MCPServer]`, not a hand-rolled adapter. datasources
 hand-rolls only because the app-platform DataSource forces a write-only block
 *outside* `spec`; we author the MCPServer manifest, so headers live *inside*
-`spec` and the standard `{metadata, spec}` envelope fits. Every `mcp-servers`
-CRUD verb (`list`, `get`, `create`, `update`, `delete`) routes its data access
-through this one `TypedCRUD[MCPServer]`, the same code path `gcx resources`
-uses — so both paths share create-vs-update natural-key resolution, per-header
-write intent, and identical JSON/YAML output, satisfying the TypedCRUD
-invariant (CONSTITUTION §37-41) without an exception.
+`spec` and the standard `{metadata, spec}` envelope fits. The `mcp-servers`
+mutation verbs (`create`, `update`, `delete`) route their data access through
+this one `TypedCRUD[MCPServer]`, the same code path `gcx resources` uses — so
+both paths share create-vs-update natural-key resolution and per-header write
+intent, satisfying the TypedCRUD invariant (CONSTITUTION §37-41). The read
+verbs (`get`, `list`) fetch via the raw client — for id-or-name ref resolution
+and bounded pagination, capabilities `TypedCRUD` does not expose — and reuse
+the adapter only via `ToUnstructured` to emit the identical
+`{apiVersion, kind, metadata, spec}` JSON/YAML envelope as the `resources`
+path. This mirrors the repo's own precedent: `irm` incidents/oncall do the
+same raw-client-read-with-adapter-shaped-output pattern.
 
 - **GVK:** `assistant.ext.grafana.app/v1alpha1`, Kind `MCPServer`, plural
   `mcpservers` — follows the repo's `<area>.ext.grafana.app` convention and is

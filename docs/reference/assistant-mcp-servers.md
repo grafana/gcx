@@ -112,6 +112,8 @@ gcx assistant mcp-servers get GitHub --output yaml
 
 Supported list formats are `text`, `table`, `wide`, `json`, `yaml`, and `agents`.
 
+For `json` and `yaml`, `list` and `get` emit the same `{apiVersion, kind, metadata, spec}` K8s-envelope shape as `gcx resources get mcpservers` — see [Resources pipeline (GitOps)](#resources-pipeline-gitops) below.
+
 ## Delete
 
 Delete prompts for confirmation by default. `--force` bypasses the prompt, `GCX_AUTO_APPROVE=1` auto-approves in non-interactive workflows, and agent mode still requires explicit `--force`.
