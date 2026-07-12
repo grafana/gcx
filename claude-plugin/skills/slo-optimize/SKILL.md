@@ -110,9 +110,12 @@ gcx metrics query -d <datasource-uid> \
 ```
 
 The recording rules label these series with `grafana_slo_uuid` (not `slo_uuid`).
-An empty result from these selectors almost always means a label or UUID
-mismatch, not a data gap — re-check the selector against a bare
-`grafana_slo_sli_window` query before concluding the SLO has no data.
+An empty result is not proof of a data gap — first rule out label, UUID,
+datasource, and time-range mismatches (these series live on the SLO's
+destination datasource, and a new SLO has no history yet). A bare
+`grafana_slo_sli_window` query discriminates quickly: series present means
+the selector is wrong; none at all points to a new SLO or the wrong
+datasource.
 
 If the datasource UID is not in the definition, resolve it:
 

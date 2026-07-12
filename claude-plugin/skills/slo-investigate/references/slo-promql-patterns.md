@@ -134,9 +134,10 @@ gcx metrics query -d <datasource-uid> \
 - There is no name label on these series — they carry `grafana_slo_uuid`, rule-specific
   labels (e.g. `grafana_slo_window`), and labels inherited from the source query (e.g.
   `job`). Resolve names to UUIDs with `gcx slo definitions list`.
-- An empty result from a `grafana_slo_uuid` selector almost always means a label or UUID
-  mismatch, not absent data — verify with a bare metric query (no matcher) before
-  concluding there is a data gap
+- An empty result is not proof of absent data — rule out label, UUID,
+  datasource, and time-range mismatches before concluding there is a data gap
+  (a bare metric query with no matcher separates a selector problem from
+  genuinely missing series)
 - Metrics are only available after recording rules complete their first evaluation (typically 1–2 minutes after SLO creation)
 - If metrics return NODATA, verify the destination datasource UID and that Grafana recording rules are active
 - For dimensional breakdown during investigation, query the raw success/total metrics directly (not the recording rule aggregates) using selectors from `.spec.query.ratio.successMetric` / `.spec.query.ratio.totalMetric`
