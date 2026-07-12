@@ -95,6 +95,10 @@ Resolve datasource UID if not already known:
 gcx datasources list --type prometheus
 ```
 
+If the filtered list comes back empty, the stack may leave the `type` field
+blank in list payloads (known issue) — rerun without `--type` and pick the
+Prometheus datasource by name.
+
 Run per-probe success rate to pinpoint failing probes (use `-o json` for parsing, `-o graph` to show the user):
 ```bash
 gcx metrics query -d <datasource-uid> \
