@@ -296,23 +296,21 @@ func readPermissionsFromFile(path string, stdin io.Reader) ([]SetResourcePermiss
 // must fail loudly instead of decoding into a silent no-op.
 func parsePermissions(data []byte) ([]SetResourcePermissionCommand, error) {
 	var perms []SetResourcePermissionCommand
-	if err := json.Unmarshal(data, &perms); err == nil {
-		if len(perms) == 0 {
-			return nil, errors.New("permissions payload is empty")
+	if err := json.Unmarshal(data, &perms); err != nil {
+		// Not a bare array: require the {"permissions":[...]} envelope shape,
+		// rejecting any unrecognized keys.
+		dec := json.NewDecoder(bytes.NewReader(data))
+		dec.DisallowUnknownFields()
+		var envelope setPermissionsBody
+		if err := dec.Decode(&envelope); err != nil {
+			return nil, fmt.Errorf("failed to parse permissions: expected JSON array or object with 'permissions' field: %w", err)
 		}
-		return perms, nil
+		perms = envelope.Permissions
 	}
-
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	var envelope setPermissionsBody
-	if err := dec.Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("failed to parse permissions: expected JSON array or object with 'permissions' field: %w", err)
-	}
-	if len(envelope.Permissions) == 0 {
+	if len(perms) == 0 {
 		return nil, errors.New("permissions payload is empty")
 	}
-	return envelope.Permissions, nil
+	return perms, nil
 }
 
 // ---- table codecs ----
