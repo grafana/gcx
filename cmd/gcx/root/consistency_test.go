@@ -230,7 +230,7 @@ func TestConsistency_PublicDashboardsHintsMatchCommandArity(t *testing.T) {
 			}
 
 			positionals := 0
-			for _, tok := range strings.Fields(hint) {
+			for tok := range strings.FieldsSeq(hint) {
 				if strings.HasPrefix(tok, "-") {
 					break
 				}
