@@ -317,6 +317,167 @@ func TestClient_Query(t *testing.T) {
 	})
 }
 
+func TestClient_LogsQuery(t *testing.T) {
+	logsReq := azuremonitor.LogsQueryRequest{
+		Subscription:  "sub-1",
+		ResourceGroup: "my-rg",
+		Workspace:     "my-ws",
+		Query:         "AppRequests | take 5",
+		Start:         time.Date(2026, 5, 17, 0, 0, 0, 0, time.UTC),
+		End:           time.Date(2026, 5, 17, 1, 0, 0, 0, time.UTC),
+	}
+
+	t.Run("parses table result with time conversion", func(t *testing.T) {
+		var f testFrame
+		f.Schema.Fields = []testField{
+			{Name: "TimeGenerated", Type: "time"},
+			{Name: "Name", Type: "string"},
+			{Name: "DurationMs", Type: "number"},
+		}
+		f.Data.Values = []any{
+			[]any{1747000000000.0},
+			[]any{"timer"},
+			[]any{146.89},
+		}
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(queryResultBody(t, testResultEntry{Frames: []testFrame{f}}))
+		}))
+
+		resp, err := client.LogsQuery(context.Background(), "test-uid", logsReq)
+		require.NoError(t, err)
+		require.Len(t, resp.Columns, 3)
+		assert.Equal(t, azuremonitor.Column{Name: "TimeGenerated", Type: "time"}, resp.Columns[0])
+		require.Len(t, resp.Rows, 1)
+		assert.Equal(t, "2025-05-11T21:46:40Z", resp.Rows[0][0])
+		assert.Equal(t, "timer", resp.Rows[0][1])
+	})
+
+	// Pins the wire shape: the workspace is addressed as a full ARM resource
+	// URI inside azureLogAnalytics.resources.
+	t.Run("request body shape", func(t *testing.T) {
+		var (
+			captured   map[string]any
+			decodedErr error
+		)
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			decodedErr = json.NewDecoder(r.Body).Decode(&captured)
+			_, _ = w.Write(queryResultBody(t, testResultEntry{Frames: []testFrame{}}))
+		}))
+
+		_, err := client.LogsQuery(context.Background(), "test-uid", logsReq)
+		require.NoError(t, err)
+		require.NoError(t, decodedErr)
+
+		queries, ok := captured["queries"].([]any)
+		require.True(t, ok)
+		require.Len(t, queries, 1)
+		q, ok := queries[0].(map[string]any)
+		require.True(t, ok)
+
+		assert.Equal(t, "Azure Log Analytics", q["queryType"])
+		la, ok := q["azureLogAnalytics"].(map[string]any)
+		require.True(t, ok, "azureLogAnalytics must be a JSON object, got %T", q["azureLogAnalytics"])
+		assert.Equal(t, "AppRequests | take 5", la["query"])
+		assert.Equal(t, "table", la["resultFormat"])
+		resources, ok := la["resources"].([]any)
+		require.True(t, ok)
+		require.Len(t, resources, 1)
+		assert.Equal(t, "/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.OperationalInsights/workspaces/my-ws", resources[0])
+	})
+
+	t.Run("error envelope", func(t *testing.T) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(queryResultBody(t, testResultEntry{Error: "invalid KQL", Status: 400}))
+		}))
+
+		_, err := client.LogsQuery(context.Background(), "test-uid", logsReq)
+		require.Error(t, err)
+
+		var apiErr *queryerror.APIError
+		require.ErrorAs(t, err, &apiErr)
+		assert.Equal(t, "azuremonitor", apiErr.Datasource)
+		assert.Equal(t, "logs", apiErr.Operation)
+	})
+
+	// The plugin returns HTTP 400 with the Azure error envelope embedded in
+	// results.A.error; the wrapped body must be reduced to the deepest inner
+	// message on this transport-error path too, not only inside the parser.
+	t.Run("HTTP 400 with wrapped Azure error is simplified", func(t *testing.T) {
+		wrapped := `request failed, status: 400 Bad Request, body: {"error":{"message":"The request had some invalid properties","code":"BadArgumentError","innererror":{"code":"SemanticError","message":"A semantic error occurred.","innererror":{"code":"SEM0100","message":"bad table"}}}}`
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write(queryResultBody(t, testResultEntry{Error: wrapped, Status: 400}))
+		}))
+
+		_, err := client.LogsQuery(context.Background(), "test-uid", logsReq)
+		require.Error(t, err)
+
+		var apiErr *queryerror.APIError
+		require.ErrorAs(t, err, &apiErr)
+		assert.Equal(t, "SEM0100: bad table", apiErr.Message)
+	})
+}
+
+func TestClient_ResourceGraphQuery(t *testing.T) {
+	argReq := azuremonitor.ResourceGraphRequest{
+		Subscriptions: []string{"sub-1", "sub-2"},
+		Query:         "Resources | project name",
+		Start:         time.Date(2026, 5, 17, 0, 0, 0, 0, time.UTC),
+		End:           time.Date(2026, 5, 17, 1, 0, 0, 0, time.UTC),
+	}
+
+	t.Run("parses table result", func(t *testing.T) {
+		var f testFrame
+		f.Schema.Fields = []testField{{Name: "name", Type: "string"}}
+		f.Data.Values = []any{[]any{"vm-a", "vm-b"}}
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(queryResultBody(t, testResultEntry{Frames: []testFrame{f}}))
+		}))
+
+		resp, err := client.ResourceGraphQuery(context.Background(), "test-uid", argReq)
+		require.NoError(t, err)
+		require.Len(t, resp.Rows, 2)
+		assert.Equal(t, "vm-a", resp.Rows[0][0])
+	})
+
+	// Pins the wire shape: Resource Graph reads a query-level "subscriptions"
+	// array — unlike metrics, which uses a singular "subscription" field.
+	t.Run("request body shape", func(t *testing.T) {
+		var (
+			captured   map[string]any
+			decodedErr error
+		)
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			decodedErr = json.NewDecoder(r.Body).Decode(&captured)
+			_, _ = w.Write(queryResultBody(t, testResultEntry{Frames: []testFrame{}}))
+		}))
+
+		_, err := client.ResourceGraphQuery(context.Background(), "test-uid", argReq)
+		require.NoError(t, err)
+		require.NoError(t, decodedErr)
+
+		queries, ok := captured["queries"].([]any)
+		require.True(t, ok)
+		require.Len(t, queries, 1)
+		q, ok := queries[0].(map[string]any)
+		require.True(t, ok)
+
+		assert.Equal(t, "Azure Resource Graph", q["queryType"])
+		assert.Equal(t, []any{"sub-1", "sub-2"}, q["subscriptions"])
+		_, hasSingular := q["subscription"]
+		assert.False(t, hasSingular, "resource graph must not set the singular subscription field")
+
+		arg, ok := q["azureResourceGraph"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "Resources | project name", arg["query"])
+		assert.Equal(t, "table", arg["resultFormat"])
+	})
+}
+
 func captureQuery(t *testing.T, req azuremonitor.QueryRequest) map[string]any {
 	t.Helper()
 	var (

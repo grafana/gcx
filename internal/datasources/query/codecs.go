@@ -58,6 +58,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return cloudwatch.FormatTable(w, resp)
 	case *azuremonitor.QueryResponse:
 		return azuremonitor.FormatTable(w, resp)
+	case *azuremonitor.TableResponse:
+		return azuremonitor.FormatTableResponse(w, resp)
 	default:
 		return errors.New("invalid data type for query table codec")
 	}
@@ -93,6 +95,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return cloudwatch.FormatWide(w, resp)
 	case *azuremonitor.QueryResponse:
 		return azuremonitor.FormatWide(w, resp)
+	case *azuremonitor.TableResponse:
+		return azuremonitor.FormatTableResponse(w, resp)
 	default:
 		return errors.New("invalid data type for query wide codec")
 	}
@@ -140,6 +144,8 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		if err != nil {
 			return err
 		}
+	case *azuremonitor.TableResponse:
+		return errors.New("graph output is not supported for KQL table results; use -o table/json/yaml")
 	case *tempo.SearchResponse:
 		return errors.New("graph output is not supported for trace search results; use -o table/json/yaml")
 	case *infinity.QueryResponse:

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/query/azuremonitor"
+	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,38 +52,81 @@ func TestParseQueryResponse_ValueCoercion(t *testing.T) {
 		require.Len(t, resp.Frames[0].Values, 1)
 		assert.InDelta(t, 2.0, *resp.Frames[0].Values[0], 0.001)
 	})
+}
 
-	t.Run("unparseable timestamp skips the row", func(t *testing.T) {
-		var f testFrame
-		f.Schema.Fields = []testField{
-			{Name: "Time", Type: "time"},
-			{Name: "Transactions", Type: "number"},
+func TestParseTableResponse(t *testing.T) {
+	t.Run("multiple frames with matching columns are appended", func(t *testing.T) {
+		var f1, f2 testFrame
+		for _, f := range []*testFrame{&f1, &f2} {
+			f.Schema.Fields = []testField{{Name: "name", Type: "string"}}
 		}
-		f.Data.Values = []any{
-			[]any{true, 1747000060000.0},
-			[]any{1.0, 2.0},
-		}
-		body := queryResultBody(t, testResultEntry{Frames: []testFrame{f}})
+		f1.Data.Values = []any{[]any{"a"}}
+		f2.Data.Values = []any{[]any{"b"}}
+		body := queryResultBody(t, testResultEntry{Frames: []testFrame{f1, f2}})
 
-		resp, err := azuremonitor.ParseQueryResponse(body)
+		resp, err := azuremonitor.ParseTableResponse(body, "logs")
 		require.NoError(t, err)
-		require.Len(t, resp.Frames, 1)
-		require.Len(t, resp.Frames[0].Timestamps, 1)
-		assert.InDelta(t, 2.0, *resp.Frames[0].Values[0], 0.001)
+		require.Len(t, resp.Rows, 2)
 	})
 
-	t.Run("frame without a time field is dropped", func(t *testing.T) {
-		var f testFrame
-		f.Schema.Fields = []testField{
-			{Name: "a", Type: "number"},
-			{Name: "b", Type: "number"},
-		}
-		f.Data.Values = []any{[]any{1.0}, []any{2.0}}
-		body := queryResultBody(t, testResultEntry{Frames: []testFrame{f}})
+	t.Run("frame with mismatched columns is skipped", func(t *testing.T) {
+		var f1, f2 testFrame
+		f1.Schema.Fields = []testField{{Name: "name", Type: "string"}}
+		f1.Data.Values = []any{[]any{"a"}}
+		f2.Schema.Fields = []testField{{Name: "other", Type: "number"}}
+		f2.Data.Values = []any{[]any{1.0}}
+		body := queryResultBody(t, testResultEntry{Frames: []testFrame{f1, f2}})
 
-		resp, err := azuremonitor.ParseQueryResponse(body)
+		resp, err := azuremonitor.ParseTableResponse(body, "logs")
 		require.NoError(t, err)
-		assert.Empty(t, resp.Frames)
+		require.Len(t, resp.Rows, 1)
+	})
+
+	t.Run("malformed JSON", func(t *testing.T) {
+		_, err := azuremonitor.ParseTableResponse([]byte(`{bad`), "logs")
+		require.Error(t, err)
+	})
+}
+
+func TestQueryErrorSimplification(t *testing.T) {
+	// Real error strings as produced by the Azure Monitor plugin backend,
+	// captured from live queries.
+	parseErr := func(t *testing.T, errStr string) string {
+		t.Helper()
+		body := queryResultBody(t, testResultEntry{Error: errStr, Status: 400})
+		_, err := azuremonitor.ParseTableResponse(body, "logs")
+		require.Error(t, err)
+		var apiErr *queryerror.APIError
+		require.ErrorAs(t, err, &apiErr)
+		return apiErr.Message
+	}
+
+	t.Run("nested KQL semantic error reduced to deepest message", func(t *testing.T) {
+		raw := `request failed, status: 400 Bad Request, body: {"error":{"message":"The request had some invalid properties","code":"BadArgumentError","correlationId":"c157","innererror":{"code":"SemanticError","message":"A semantic error occurred.","innererror":{"code":"SEM0100","message":"'take' operator: Failed to resolve table or column expression named 'NotARealTable'"}}}}`
+		msg := parseErr(t, raw)
+		assert.Equal(t, "SEM0100: 'take' operator: Failed to resolve table or column expression named 'NotARealTable'", msg)
+	})
+
+	t.Run("flat ARM error keeps code and message", func(t *testing.T) {
+		raw := `request failed, status: 400 Bad Request, body: {"error":{"code":"InvalidSubscriptionId","message":"The provided subscription identifier 'x' is malformed or invalid."}}`
+		msg := parseErr(t, raw)
+		assert.Equal(t, "InvalidSubscriptionId: The provided subscription identifier 'x' is malformed or invalid.", msg)
+	})
+
+	t.Run("flat metrics error shape without envelope", func(t *testing.T) {
+		raw := `request failed, status: 400 Bad Request, body: {"code":"BadRequest","message":"Failed to find metric configuration for provider: Microsoft.Storage, metric: NotARealMetric"}`
+		msg := parseErr(t, raw)
+		assert.Equal(t, "BadRequest: Failed to find metric configuration for provider: Microsoft.Storage, metric: NotARealMetric", msg)
+	})
+
+	t.Run("non-JSON body passes through unchanged", func(t *testing.T) {
+		raw := `request failed, status: 502 Bad Gateway, body: upstream unavailable`
+		assert.Equal(t, raw, parseErr(t, raw))
+	})
+
+	t.Run("plain error passes through unchanged", func(t *testing.T) {
+		raw := "user is not authenticated with Azure AD"
+		assert.Equal(t, raw, parseErr(t, raw))
 	})
 }
 

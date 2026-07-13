@@ -22,6 +22,8 @@ func (p *azuremonitorDSProvider) QueryCmd(loader *providers.ConfigLoader) *cobra
 
 func (p *azuremonitorDSProvider) ExtraCommands(loader *providers.ConfigLoader) []*cobra.Command {
 	return []*cobra.Command{
+		azuremonitor.LogsCmd(loader),
+		azuremonitor.ResourceGraphCmd(loader),
 		azuremonitor.ListSubscriptionsCmd(loader),
 		azuremonitor.ListResourceGroupsCmd(loader),
 		azuremonitor.ListResourcesCmd(loader),

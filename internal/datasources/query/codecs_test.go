@@ -68,6 +68,31 @@ func TestQueryCodecsAcceptAzureMonitorResponses(t *testing.T) {
 		require.NoError(t, newIO("wide").Encode(&out, &azuremonitor.QueryResponse{}))
 		assert.Contains(t, out.String(), "No data")
 	})
+
+	t.Run("table codec renders azuremonitor KQL table responses", func(t *testing.T) {
+		var out bytes.Buffer
+		resp := &azuremonitor.TableResponse{
+			Columns: []azuremonitor.Column{{Name: "name", Type: "string"}},
+			Rows:    [][]any{{"vm-a"}},
+		}
+		require.NoError(t, newIO("table").Encode(&out, resp))
+		assert.Contains(t, out.String(), "vm-a")
+	})
+
+	t.Run("wide codec renders azuremonitor KQL table responses", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("wide").Encode(&out, &azuremonitor.TableResponse{}))
+		assert.Contains(t, out.String(), "No data")
+	})
+
+	t.Run("graph codec rejects azuremonitor KQL table responses", func(t *testing.T) {
+		ioOpts := &cmdio.Options{OutputFormat: "graph"}
+		dsquery.RegisterCodecs(ioOpts, true)
+		var out bytes.Buffer
+		err := ioOpts.Encode(&out, &azuremonitor.TableResponse{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "KQL table results")
+	})
 }
 
 func TestQueryJSONCodecInfluxDBTimestamps(t *testing.T) {
