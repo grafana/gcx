@@ -129,13 +129,19 @@ func manifestFromInput(input assistantmcp.ServerInput) mcpserver.MCPServer {
 		Config:       input.Config,
 	}
 	if input.Headers != nil {
-		headers := make([]mcpserver.MCPServerHeader, 0, len(input.Headers))
-		for _, h := range input.Headers {
-			headers = append(headers, mcpserver.MCPServerHeader{Name: h.Name, Value: h.Value})
-		}
-		m.Headers = headers
+		m.Headers = manifestHeaders(input.Headers)
 	}
 	return m
+}
+
+// manifestHeaders converts the CLI's inline-value-only ServerInput headers into
+// manifest headers; each becomes an overwrite header.
+func manifestHeaders(inputs []assistantmcp.Header) []mcpserver.MCPServerHeader {
+	headers := make([]mcpserver.MCPServerHeader, 0, len(inputs))
+	for _, h := range inputs {
+		headers = append(headers, mcpserver.MCPServerHeader{Name: h.Name, Value: h.Value})
+	}
+	return headers
 }
 
 // applyUpdate overlays a partial CLI update onto the current server manifest.
@@ -170,11 +176,7 @@ func applyUpdate(current mcpserver.MCPServer, input assistantmcp.ServerInput) (m
 	if input.Headers == nil {
 		desired.Headers = current.Headers
 	} else {
-		headers := make([]mcpserver.MCPServerHeader, 0, len(input.Headers))
-		for _, h := range input.Headers {
-			headers = append(headers, mcpserver.MCPServerHeader{Name: h.Name, Value: h.Value})
-		}
-		desired.Headers = headers
+		desired.Headers = manifestHeaders(input.Headers)
 	}
 	return desired, nil
 }
