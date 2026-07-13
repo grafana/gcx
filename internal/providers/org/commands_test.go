@@ -74,6 +74,15 @@ func TestOrgUsersAdd_RequiresLogin(t *testing.T) {
 	assert.Contains(t, err.Error(), "login")
 }
 
+func TestOrgUsersUpdateRole_RequiresRole(t *testing.T) {
+	orgCmd := orgRoot(t)
+	orgCmd.SetArgs([]string{"users", "update-role", "5"})
+
+	err := orgCmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "role")
+}
+
 func TestOrgUsersUpdateRole_ParsesIntArg(t *testing.T) {
 	orgCmd := orgRoot(t)
 	// Non-integer user ID must error during arg parsing, before any HTTP call.

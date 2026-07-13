@@ -183,6 +183,11 @@ type usersAddOpts struct {
 	Role  string
 }
 
+func (o *usersAddOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVar(&o.Login, "login", "", "Login or email of the user to add (required)")
+	flags.StringVar(&o.Role, "role", "", "Role for the user, e.g. Admin, Editor, Viewer (required)")
+}
+
 func (o *usersAddOpts) Validate() error {
 	if o.Login == "" {
 		return errors.New("--login is required")
@@ -226,8 +231,7 @@ func newUsersAddCommand(loader GrafanaConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&opts.Login, "login", "", "Login or email of the user to add (required)")
-	cmd.Flags().StringVar(&opts.Role, "role", "", "Role for the user, e.g. Admin, Editor, Viewer (required)")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -239,6 +243,17 @@ type usersUpdateRoleOpts struct {
 	Role string
 }
 
+func (o *usersUpdateRoleOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVar(&o.Role, "role", "", "New role for the user, e.g. Admin, Editor, Viewer (required)")
+}
+
+func (o *usersUpdateRoleOpts) Validate() error {
+	if o.Role == "" {
+		return errors.New("--role is required")
+	}
+	return nil
+}
+
 func newUsersUpdateRoleCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &usersUpdateRoleOpts{}
 	cmd := &cobra.Command{
@@ -246,8 +261,8 @@ func newUsersUpdateRoleCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "Update the role of a user in the current organization.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if opts.Role == "" {
-				return errors.New("--role is required")
+			if err := opts.Validate(); err != nil {
+				return err
 			}
 			userID, err := parseUserID(args[0])
 			if err != nil {
@@ -272,7 +287,7 @@ func newUsersUpdateRoleCommand(loader GrafanaConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&opts.Role, "role", "", "New role for the user, e.g. Admin, Editor, Viewer (required)")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
