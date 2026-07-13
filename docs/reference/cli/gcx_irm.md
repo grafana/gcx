@@ -2,6 +2,15 @@
 
 Manage Grafana IRM (OnCall + Incidents)
 
+### Synopsis
+
+Manage Grafana IRM (OnCall + Incidents).
+
+Note: Grafana IRM is billed per monthly active user. Actions such as being on
+an OnCall schedule or escalation chain, changing alert group status, or
+creating and editing incidents count a user as active.
+See https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice.md.
+
 ### Options
 
 ```

@@ -1,6 +1,7 @@
 package irm
 
 import (
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -24,6 +25,12 @@ func (p *IRMProvider) Commands() []*cobra.Command {
 	irmCmd := &cobra.Command{
 		Use:   "irm",
 		Short: p.ShortDesc(),
+		Long: `Manage Grafana IRM (OnCall + Incidents).
+
+Note: Grafana IRM is billed per monthly active user. Actions such as being on
+an OnCall schedule or escalation chain, changing alert group status, or
+creating and editing incidents count a user as active.
+See ` + docs.IRMInvoice + `.`,
 	}
 
 	oncallCmd := &cobra.Command{

@@ -9,6 +9,9 @@ Send prompts to Grafana Assistant and receive streaming responses via the A2A pr
 Requires Grafana Cloud with OAuth authentication (gcx login with browser flow).
 Service account tokens are not supported.
 
+Note: Grafana Assistant is billed based on tokens consumed, including requests
+made through gcx. See https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md.
+
 ### Options
 
 ```

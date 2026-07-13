@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/gcx/internal/assistant/investigations"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/httputils"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -50,7 +51,10 @@ func Command() *cobra.Command {
 		Long: `Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.
 
 Requires Grafana Cloud with OAuth authentication (gcx login with browser flow).
-Service account tokens are not supported.`,
+Service account tokens are not supported.
+
+Note: Grafana Assistant is billed based on tokens consumed, including requests
+made through gcx. See ` + docs.AssistantPricing + `.`,
 	}
 	// We need a "before each run" hook to block assistant commands on self-hosted
 	// instances. Defining one here replaces the root command's hook (cobra doesn't
@@ -179,7 +183,10 @@ Known agent IDs:
   grafana_assistant_cli   General-purpose assistant (default)
   grafana_dashboarding    Dashboard builder — queries live Prometheus to discover
                           metrics and returns complete dashboard JSON ready for
-                          'gcx resources push'. See also: gcx assistant dashboard`,
+                          'gcx resources push'. See also: gcx assistant dashboard
+
+Note: each prompt consumes billable Grafana Assistant tokens, including requests
+made through gcx. See ` + docs.AssistantPricing + `.`,
 		Args: cobra.ExactArgs(1),
 		Example: `  gcx assistant prompt "What alerts are firing?"
   gcx assistant prompt "Show CPU usage" --json
@@ -187,7 +194,7 @@ Known agent IDs:
   gcx assistant prompt "Build a CPU dashboard" --agent-id grafana_dashboarding`,
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "large",
-			agent.AnnotationLLMHint:   "Prefer deterministic gcx commands (gcx metrics query, gcx slo definitions status, gcx alert instances list) for precise data retrieval. Use assistant prompt for reasoning: root cause analysis, holistic health questions, or when you don't know which metrics/labels exist — the Assistant's Infrastructure Memories know your stack topology. Example: \"Why is checkout-latency spiking?\" --json",
+			agent.AnnotationLLMHint:   "Prefer deterministic gcx commands (gcx metrics query, gcx slo definitions status, gcx alert instances list) for precise data retrieval. Use assistant prompt for reasoning: root cause analysis, holistic health questions, or when you don't know which metrics/labels exist — the Assistant's Infrastructure Memories know your stack topology. Each prompt consumes billable Grafana Assistant tokens (" + docs.AssistantPricing + "). Example: \"Why is checkout-latency spiking?\" --json",
 		},
 		RunE: promptRunE(opts, configOpts),
 	}
@@ -212,13 +219,16 @@ names, then returns complete dashboard JSON that can be pushed directly with
 'gcx resources push'.
 
 This is equivalent to:
-  gcx assistant prompt --agent-id grafana_dashboarding <message>`,
+  gcx assistant prompt --agent-id grafana_dashboarding <message>
+
+Note: each request consumes billable Grafana Assistant tokens, including
+requests made through gcx. See ` + docs.AssistantPricing + `.`,
 		Args: cobra.ExactArgs(1),
 		Example: `  gcx assistant dashboard "Build a CPU usage dashboard across all clusters"
   gcx assistant dashboard "Create a dashboard for HTTP error rates by service" --json`,
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "large",
-			agent.AnnotationLLMHint:   "Use assistant dashboard to build Grafana dashboards from natural language. The agent discovers live Prometheus metrics and returns complete dashboard JSON. Pipe the result to 'gcx resources push' to publish it.",
+			agent.AnnotationLLMHint:   "Use assistant dashboard to build Grafana dashboards from natural language. The agent discovers live Prometheus metrics and returns complete dashboard JSON. Pipe the result to 'gcx resources push' to publish it. Each request consumes billable Grafana Assistant tokens (" + docs.AssistantPricing + ").",
 		},
 		RunE: promptRunE(opts, configOpts),
 	}

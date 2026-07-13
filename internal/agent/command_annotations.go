@@ -260,7 +260,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx k6 env-vars delete":                      {Cost: "small"},
 	"gcx k6 env-vars list":                        {Cost: "small"},
 	"gcx k6 env-vars update":                      {Cost: "small"},
-	"gcx k6 load-tests create":                    {Cost: "small", Hint: "-f <manifest.yaml>"},
+	"gcx k6 load-tests create":                    {Cost: "small", Hint: "-f <manifest.yaml>. Running the created test consumes billable VU hours (" + docs.PerformanceTestingInvoice + ")."},
 	"gcx k6 load-tests delete":                    {Cost: "small"},
 	"gcx k6 load-tests get":                       {Cost: "small", Hint: "<id-or-name> [--project-id <id>]"},
 	"gcx k6 load-tests list":                      {Cost: "small"},
@@ -284,7 +284,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx k6 schedules get":                        {Cost: "small"},
 	"gcx k6 schedules list":                       {Cost: "small"},
 	"gcx k6 schedules update":                     {Cost: "small"},
-	"gcx k6 test-run emit":                        {Cost: "small", Hint: "[test-name] --project-id <id> [--apply]"},
+	"gcx k6 test-run emit":                        {Cost: "small", Hint: "[test-name] --project-id <id> [--apply]. --apply starts a run that consumes billable VU hours (" + docs.PerformanceTestingInvoice + ")."},
 	"gcx k6 test-run runs list":                   {Cost: "small"},
 	"gcx k6 test-run status":                      {Cost: "small"},
 
@@ -581,13 +581,13 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Synthetic Monitoring provider
 	// -----------------------------------------------------------------------
-	"gcx synthetic-monitoring checks create":      {Cost: "small"},
+	"gcx synthetic-monitoring checks create":      {Cost: "small", Hint: "-f <check.yaml>. Creates a billable check: each test execution and its resulting metrics/logs count toward Grafana Cloud usage (" + docs.SyntheticMonitoringInvoice + ")."},
 	"gcx synthetic-monitoring checks delete":      {Cost: "small"},
 	"gcx synthetic-monitoring checks get":         {Cost: "small"},
 	"gcx synthetic-monitoring checks list":        {Cost: "small"},
 	"gcx synthetic-monitoring checks status":      {Cost: "medium", Hint: "--job <name> -o json"},
 	"gcx synthetic-monitoring checks timeline":    {Cost: "medium", Hint: "<id> --since 1h -o json"},
-	"gcx synthetic-monitoring checks update":      {Cost: "small"},
+	"gcx synthetic-monitoring checks update":      {Cost: "small", Hint: "<name> -f <check.yaml>. Frequency and probe changes affect billable execution volume (" + docs.SyntheticMonitoringInvoice + ")."},
 	"gcx synthetic-monitoring probes create":      {Cost: "small"},
 	"gcx synthetic-monitoring probes delete":      {Cost: "small"},
 	"gcx synthetic-monitoring probes deploy":      {Cost: "small"},

@@ -15,6 +15,9 @@ Known agent IDs:
                           metrics and returns complete dashboard JSON ready for
                           'gcx resources push'. See also: gcx assistant dashboard
 
+Note: each prompt consumes billable Grafana Assistant tokens, including requests
+made through gcx. See https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md.
+
 ```
 gcx assistant prompt <message> [flags]
 ```

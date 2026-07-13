@@ -14,4 +14,6 @@ title: Reference
 
 - :material-shield-check-outline:{ .lg .middle } __[Linter rules](./linter-rules/index.md)__
 
+- :material-currency-usd:{ .lg .middle } __[Costs and billing](./costs.md)__
+
 </div>
