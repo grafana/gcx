@@ -1,6 +1,7 @@
 package permissions
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -262,15 +263,28 @@ func readPermissionsFromFile(path string, stdin io.Reader) ([]SetResourcePermiss
 	return parsePermissions(data)
 }
 
-// parsePermissions accepts either a bare JSON array or a {"permissions":[…]} envelope.
+// parsePermissions accepts either a bare JSON array or a {"permissions":[…]}
+// envelope. It rejects nil/empty results rather than returning them: an empty
+// result here would make Client.Set POST {"permissions": null}, wiping every
+// managed permission on the resource, so unrecognized or empty JSON shapes
+// must fail loudly instead of decoding into a silent no-op.
 func parsePermissions(data []byte) ([]SetResourcePermissionCommand, error) {
 	var perms []SetResourcePermissionCommand
 	if err := json.Unmarshal(data, &perms); err == nil {
+		if len(perms) == 0 {
+			return nil, errors.New("permissions payload is empty")
+		}
 		return perms, nil
 	}
+
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
 	var envelope setPermissionsBody
-	if err := json.Unmarshal(data, &envelope); err != nil {
+	if err := dec.Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("failed to parse permissions: expected JSON array or object with 'permissions' field: %w", err)
+	}
+	if len(envelope.Permissions) == 0 {
+		return nil, errors.New("permissions payload is empty")
 	}
 	return envelope.Permissions, nil
 }
