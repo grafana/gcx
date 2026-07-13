@@ -72,7 +72,7 @@ gcx aio11y conversations search --filters 'agent = "my-agent"' --from 2026-04-01
 | "response must be non-empty and at least N chars" | `heuristic` |
 | "check multiple conditions (non-empty AND has greeting)" | `heuristic` |
 
-Copy-paste definitions for each kind, with the kind-specific constraints (regex needs bool output keys, heuristic needs `config.version: v2`, llm_judge needs template variables in `user_prompt`, …), are in [references/evaluator-examples.md](references/evaluator-examples.md).
+Copy-paste definitions for each kind, with the constraints the API enforces for each, are in [references/evaluator-examples.md](references/evaluator-examples.md).
 
 ## Input Format
 
