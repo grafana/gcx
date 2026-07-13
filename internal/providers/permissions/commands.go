@@ -144,30 +144,44 @@ type grantOpts struct {
 	Team  string
 	Role  string
 	Level string
+
+	// principalKind and principalRef are derived by Validate from exactly
+	// one of User, Team, or Role.
+	principalKind string
+	principalRef  string
 }
 
-func (o *grantOpts) validate() (string, string, error) {
-	var principalKind, principalRef string
+func (o *grantOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVar(&o.User, "user", "", "User to grant to (numeric ID or UID)")
+	flags.StringVar(&o.Team, "team", "", "Team to grant to (numeric ID or UID)")
+	flags.StringVar(&o.Role, "role", "", "Built-in role to grant to (e.g. Viewer, Editor, Admin)")
+	flags.StringVar(&o.Level, "level", "", "Permission level (e.g. View, Edit, Admin)")
+}
+
+// Validate checks that exactly one of --user, --team, or --role was provided
+// alongside --level, and records the resolved principal kind/ref for RunE.
+func (o *grantOpts) Validate() error {
+	o.principalKind, o.principalRef = "", ""
 	set := 0
 	if o.User != "" {
 		set++
-		principalKind, principalRef = "user", o.User
+		o.principalKind, o.principalRef = "user", o.User
 	}
 	if o.Team != "" {
 		set++
-		principalKind, principalRef = "team", o.Team
+		o.principalKind, o.principalRef = "team", o.Team
 	}
 	if o.Role != "" {
 		set++
-		principalKind, principalRef = "role", o.Role
+		o.principalKind, o.principalRef = "role", o.Role
 	}
 	if set != 1 {
-		return "", "", errors.New("provide exactly one of --user, --team, or --role")
+		return errors.New("provide exactly one of --user, --team, or --role")
 	}
 	if o.Level == "" {
-		return "", "", errors.New("--level is required (e.g. View, Edit, Admin; use \"\" via set to remove)")
+		return errors.New("--level is required (e.g. View, Edit, Admin; use \"\" via set to remove)")
 	}
-	return principalKind, principalRef, nil
+	return nil
 }
 
 func newGrantCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -185,8 +199,7 @@ func newGrantCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err := validateResource(args[0]); err != nil {
 				return err
 			}
-			principalKind, principalRef, err := opts.validate()
-			if err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 
@@ -197,25 +210,22 @@ func newGrantCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			resource, id := args[0], args[1]
-			switch principalKind {
+			switch opts.principalKind {
 			case "user":
-				err = client.SetUserPermission(ctx, resource, id, principalRef, opts.Level)
+				err = client.SetUserPermission(ctx, resource, id, opts.principalRef, opts.Level)
 			case "team":
-				err = client.SetTeamPermission(ctx, resource, id, principalRef, opts.Level)
+				err = client.SetTeamPermission(ctx, resource, id, opts.principalRef, opts.Level)
 			case "role":
-				err = client.SetBuiltInRolePermission(ctx, resource, id, principalRef, opts.Level)
+				err = client.SetBuiltInRolePermission(ctx, resource, id, opts.principalRef, opts.Level)
 			}
 			if err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "granted %s permission to %s %s on %s %s", opts.Level, principalKind, principalRef, resource, id)
+			cmdio.Success(cmd.OutOrStdout(), "granted %s permission to %s %s on %s %s", opts.Level, opts.principalKind, opts.principalRef, resource, id)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&opts.User, "user", "", "User to grant to (numeric ID or UID)")
-	cmd.Flags().StringVar(&opts.Team, "team", "", "Team to grant to (numeric ID or UID)")
-	cmd.Flags().StringVar(&opts.Role, "role", "", "Built-in role to grant to (e.g. Viewer, Editor, Admin)")
-	cmd.Flags().StringVar(&opts.Level, "level", "", "Permission level (e.g. View, Edit, Admin)")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
