@@ -2,6 +2,8 @@ package permissions_test
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -49,6 +51,45 @@ func TestGrantCommand_RequiresExactlyOnePrincipal(t *testing.T) {
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exactly one")
+}
+
+func TestSetCommand_DeclineConfirmationSkipsOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "acl.json")
+	require.NoError(t, os.WriteFile(file, []byte(`[{"permission":"Edit","userId":1}]`), 0o600))
+
+	p := &permissions.PermissionsProvider{}
+	root := p.Commands()[0]
+	root.SetArgs([]string{"set", "dashboards", "d1", "-f", file})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetIn(strings.NewReader("n\n"))
+
+	err := root.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), "[y/N]")
+	assert.NotContains(t, out.String(), "updated permissions")
+}
+
+func TestSetCommand_ForceSkipsConfirmationPrompt(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "acl.json")
+	require.NoError(t, os.WriteFile(file, []byte(`[{"permission":"Edit","userId":1}]`), 0o600))
+
+	p := &permissions.PermissionsProvider{}
+	root := p.Commands()[0]
+	root.SetArgs([]string{"set", "dashboards", "d1", "-f", file, "--force"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	// --force bypasses the prompt; the command then goes on to load a
+	// Grafana client from the (unconfigured) test context and fails there —
+	// what matters here is only that no confirmation prompt was shown.
+	_ = root.Execute()
+	assert.NotContains(t, out.String(), "[y/N]")
+	assert.NotContains(t, out.String(), "Aborted.")
 }
 
 func TestPermissionsTableCodec(t *testing.T) {

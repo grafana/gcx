@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/coreapi"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -81,7 +82,13 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 // ---- set ----
 
 type setOpts struct {
-	File string
+	File  string
+	Force bool
+}
+
+func (o *setOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "file", "f", "", "JSON file with the permission set (use - for stdin)")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func newSetCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -104,6 +111,15 @@ func newSetCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+				fmt.Sprintf("Replace all managed permissions on %s %s?", args[0], args[1]))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
+			}
+
 			ctx := cmd.Context()
 			client, err := clientFromLoader(ctx, loader)
 			if err != nil {
@@ -116,7 +132,7 @@ func newSetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&opts.File, "file", "f", "", "JSON file with the permission set (use - for stdin)")
+	opts.setup(cmd.Flags())
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
