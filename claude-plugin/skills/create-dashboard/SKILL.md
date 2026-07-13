@@ -110,8 +110,8 @@ parallel convention.
 
 ### 3. Discover data before panels
 
-Use the `explore-datasources` skill when datasource choice or metric inventory is
-unclear. Minimum discovery for Prometheus/Loki dashboards:
+Discover datasources and metrics directly when datasource choice or metric
+inventory is unclear. Minimum discovery for Prometheus/Loki dashboards:
 
 ```bash
 gcx datasources list -o json

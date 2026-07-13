@@ -74,7 +74,6 @@ canonical portable skill bundle.
 | `import-dashboards` | Import existing Grafana dashboards into Go builder code |
 | `create-dashboard` | Design and create dashboards with datasource discovery and snapshot-based visual iteration |
 | `manage-dashboards` | Operate existing dashboards: list, search, pull, push, validate, promote, restore, delete, and snapshot |
-| `explore-datasources` | Discover datasources, metrics, labels, and log streams |
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
 | `debug-with-grafana` | Run a structured diagnostic workflow across metrics, logs, and dashboards |
 | `diagnose-entity-graph` | Diagnose Knowledge Graph problems: missing entities, missing edges, broken trace context propagation, service-name collisions |
@@ -139,5 +138,6 @@ production — with folder ordering handled automatically.
 **Exploring what data exists:**
 > "What Prometheus metrics are available for the payments service?"
 
-Claude will use `explore-datasources` to list metrics, filter by relevant
+Claude will use gcx datasource commands (`gcx datasources list`,
+`gcx datasources prometheus labels`) to list metrics, filter by relevant
 label selectors, and return sample queries you can use immediately.
