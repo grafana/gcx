@@ -73,11 +73,9 @@ spec:
 Configuration guidance:
 - **frequency**: critical checks 10,000–60,000ms; standard checks 60,000–300,000ms
 - **timeout**: must be strictly less than `frequency`; typically 5,000–30,000ms
-- **alertSensitivity**: default to `none`. `high`/`medium`/`low` bind the check
-  to legacy sensitivity-based alert rules — stacks where those are unavailable
-  or forbidden (including the evaluated unified-alerting Grafana Cloud stack)
-  may reject creation with an opaque `403 check creation denied`. See the note
-  in [references/check-types.md](references/check-types.md).
+- **alertSensitivity**: default to `none` — see "Alert Sensitivity" in
+  [references/check-types.md](references/check-types.md) for why non-`none`
+  values can 403 on some stacks.
 - **basicMetricsOnly**: `true` reduces metric cardinality (fewer label dimensions); `false` emits full metrics
 
 ### Step 4: Create the Check

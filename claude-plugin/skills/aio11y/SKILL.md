@@ -72,45 +72,13 @@ gcx aio11y conversations search --filters 'agent = "my-agent"' --from 2026-04-01
 | "response must be non-empty and at least N chars" | `heuristic` |
 | "check multiple conditions (non-empty AND has greeting)" | `heuristic` |
 
-Copy-paste definitions for each kind, with the kind-specific constraints (regex needs bool output keys, heuristic needs `config.version: v2`, …), are in [references/evaluator-examples.md](references/evaluator-examples.md).
+Copy-paste definitions for each kind, with the kind-specific constraints (regex needs bool output keys, heuristic needs `config.version: v2`, llm_judge needs template variables in `user_prompt`, …), are in [references/evaluator-examples.md](references/evaluator-examples.md).
 
 ## Input Format
 
 `gcx aio11y evaluators get -o yaml` and `gcx aio11y rules get -o yaml` emit K8s-style manifests (`apiVersion/kind/metadata/spec`). `evaluators create -f`, `rules create -f`, and `rules update -f` expect top-level fields only. Do not round-trip get output into create/update.
 
-IDs (`evaluator_id`, `rule_id`) accept only letters, digits, `_`, and `.` — hyphens are rejected server-side.
-
-Evaluator definition (`version` is required; it versions the evaluator itself and is separate from any schema version inside `config`):
-
-```yaml
-evaluator_id: my_evaluator
-kind: llm_judge
-version: "1"
-description: "..."
-config:
-  provider: <provider-id>   # from `gcx aio11y judge providers`
-  model: <model-id>         # from `gcx aio11y judge models --provider <provider-id>`
-  system_prompt: "You rate how helpful an assistant reply is."
-  user_prompt: |-
-    Assistant response:
-    {{assistant_response}}
-
-    Rate the helpfulness of the assistant response from 1 to 10.
-  temperature: 0
-  max_tokens: 256
-output_keys:
-  - key: score
-    type: number
-    min: 1
-    max: 10
-    pass_threshold: 4
-```
-
-The `user_prompt` must inject what is being judged via template variables
-(`{{assistant_response}}`, `{{latest_user_message}}`) — without them the
-judge never sees the generation.
-
-For `regex` and `heuristic` definitions and their kind-specific constraints, see [references/evaluator-examples.md](references/evaluator-examples.md).
+IDs (`evaluator_id`, `rule_id`) accept only letters, digits, `_`, and `.` — hyphens are rejected server-side. `version` is required on evaluator definitions — it versions the evaluator itself, separate from any schema version inside `config` — see [references/evaluator-examples.md](references/evaluator-examples.md) for full examples of every kind.
 
 Rule definition:
 
