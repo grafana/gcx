@@ -37,6 +37,7 @@ const (
 	searchSamplePath         = searchPath + "/sample"
 	rulesPath                = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
 	ruleByNameFmt            = rulesPath + "/%s"
+	rulesSchemaPath          = rulesPath + "/schema"
 	modelRulesPath           = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
 	modelRulesByNameFmt      = modelRulesPath + "/%s"
 	modelRulesSchemaPath     = modelRulesPath + "/schema"
@@ -52,11 +53,12 @@ const (
 	v2RelabelRulesPath       = v2ConfigPath + "/relabel-rules"
 
 	// KG Write API (K8s-style, namespaced). %s is the stacks-<id> namespace.
+	// Entity and relationship deletes use these collection paths with identity
+	// in the query string (type/name are not path segments), so names containing
+	// '/' are addressable without Tomcat rejecting encoded solidus.
 	kgWriteAPIBase     = "/apis/kg.grafana.com/v1alpha1/namespaces/%s"
 	kgEntitiesPathFmt  = kgWriteAPIBase + "/entities"
-	kgEntityPathFmt    = kgWriteAPIBase + "/entities/%s/%s" // type, name
 	kgRelationshipsFmt = kgWriteAPIBase + "/relationships"
-	kgRelationshipFmt  = kgWriteAPIBase + "/relationships/%s" // type
 )
 
 // RelabelRuleType identifies which Mimir relabel rule group to operate on.
@@ -284,6 +286,19 @@ func (c *Client) GetStatus(ctx context.Context) (*Status, error) {
 // UploadPromRules uploads Prometheus recording rules.
 func (c *Client) UploadPromRules(ctx context.Context, yamlContent string) error {
 	return c.doYAML(ctx, http.MethodPut, rulesPath, yamlContent)
+}
+
+// GetPromRulesSchema fetches the live JSON Schema for the Prometheus rules config from the backend.
+//
+// Backend caches this for 1h. The schema is derived from the Java DTO tree, so it
+// reflects the authoritative prom-rules shape — use it to validate prom-rules YAML
+// before uploading instead of learning the shape from 400s.
+func (c *Client) GetPromRulesSchema(ctx context.Context) (map[string]any, error) {
+	var result map[string]any
+	if err := c.getJSON(ctx, rulesSchemaPath, &result); err != nil {
+		return nil, fmt.Errorf("kg: get prom rules schema: %w", err)
+	}
+	return result, nil
 }
 
 // UploadModelRules uploads model rules configuration.
@@ -902,10 +917,12 @@ func (c *Client) UpsertRelationship(ctx context.Context, req RelationshipWriteRe
 }
 
 // DeleteRelationship deletes a custom edge of relType between from and to.
-// The endpoint coordinates travel as from.*/to.* query params.
+// Identity travels as query params on the collection path (type, from.*, to.*);
+// there is no request body.
 func (c *Client) DeleteRelationship(ctx context.Context, relType string, from, to EntityRef) error {
-	path := fmt.Sprintf(kgRelationshipFmt, url.PathEscape(c.namespace), url.PathEscape(relType))
+	path := fmt.Sprintf(kgRelationshipsFmt, url.PathEscape(c.namespace))
 	q := url.Values{}
+	q.Set("type", relType)
 	addRef := func(prefix string, ref EntityRef) {
 		q.Set(prefix+".domain", ref.Domain)
 		q.Set(prefix+".type", ref.Type)
@@ -948,11 +965,15 @@ func (c *Client) UpsertEntity(ctx context.Context, req EntityWriteRequest) (*Ent
 }
 
 // DeleteEntity deletes a custom entity identified by (domain, type, name, scope).
-// Scope is identity-significant and must match the value used at create.
+// Identity travels as query params on the collection path (domain, type, name,
+// and optional scope[key]=value); there is no request body. Scope is
+// identity-significant and must match the value used at create.
 func (c *Client) DeleteEntity(ctx context.Context, domain, entityType, name string, scope map[string]string) error {
-	path := fmt.Sprintf(kgEntityPathFmt, url.PathEscape(c.namespace), url.PathEscape(entityType), url.PathEscape(name))
+	path := fmt.Sprintf(kgEntitiesPathFmt, url.PathEscape(c.namespace))
 	q := url.Values{}
 	q.Set("domain", domain)
+	q.Set("type", entityType)
+	q.Set("name", name)
 	for k, v := range scope {
 		q.Set("scope["+k+"]", v)
 	}

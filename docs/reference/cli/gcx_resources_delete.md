@@ -49,16 +49,17 @@ gcx resources delete [RESOURCE_SELECTOR]... [flags]
 ### Options
 
 ```
-      --dry-run              If set, the delete operation will be simulated
-      --force                Delete all resources of the specified resource types
-  -h, --help                 help for delete
-      --max-concurrent int   Maximum number of concurrent operations (default 10)
-      --on-error string      How to handle errors during resource operations:
-                               ignore — continue processing all resources and exit 0
-                               fail   — continue processing all resources and exit 1 if any failed (default)
-                               abort  — stop on the first error and exit 1 (default "fail")
-  -p, --path strings         Path on disk containing the resources to delete
-  -y, --yes                  Auto-approve destructive operations (automatically enables --force)
+      --assume-server-dry-run strings   Assert that the given resources honor server-side dry-run, augmenting the built-in allowlist. Repeatable or comma-separated, each value a GroupResource string (<resource>.<group>), e.g. alertrules.rules.alerting.grafana.app
+      --dry-run                         If set, the delete operation will be simulated
+      --force                           Delete all resources of the specified resource types
+  -h, --help                            help for delete
+      --max-concurrent int              Maximum number of concurrent operations (default 10)
+      --on-error string                 How to handle errors during resource operations:
+                                          ignore — continue processing all resources and exit 0
+                                          fail   — continue processing all resources and exit 1 if any failed (default)
+                                          abort  — stop on the first error and exit 1 (default "fail")
+  -p, --path strings                    Path on disk containing the resources to delete
+  -y, --yes                             Auto-approve destructive operations (automatically enables --force)
 ```
 
 ### Options inherited from parent commands

@@ -1,5 +1,11 @@
 # Environment variables reference
 
+## `DO_NOT_TRACK`
+
+DoNotTrack disables anonymous usage telemetry when set to "1" or
+"true" (cross-tool DO_NOT_TRACK convention). Overridden by
+GCX_TELEMETRY.
+
 ## `GCX_AUTO_APPROVE`
 
 AutoApprove automatically enables the --force flag on delete operations,
@@ -10,6 +16,13 @@ enabling non-interactive operation in CI/CD pipelines.
 DisableUpdateNotifier disables the periodic notifier that reminds users
 when their installed gcx skills can be updated. Any non-empty value
 disables the notifier (NO_COLOR convention).
+
+## `GCX_TELEMETRY`
+
+Telemetry controls anonymous usage telemetry for this invocation:
+"enabled", "disabled", or "log" (print the event to stderr and send
+nothing). Takes precedence over DO_NOT_TRACK and the
+`diagnostics.telemetry` config field.
 
 ## `GRAFANA_CLOUD_API_URL`
 

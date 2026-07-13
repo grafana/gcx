@@ -102,7 +102,7 @@ internal/
 │   ├── dynamic/    k8s dynamic client wrapper (namespaced + versioned)
 │   ├── local/      FSReader, FSWriter (disk I/O)
 │   ├── process/    Processors: ManagerFields, ServerFields, Namespace
-│   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
+│   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary, dry-run guard
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
 │   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
@@ -168,6 +168,7 @@ internal/
 ├── notifier/    Update notifications (skills + gcx version checks; XDG state, throttling, message rendering — wired into root PersistentPostRun)
 ├── skills/      Portable Agent Skills installer primitives (BundledSkillNames, Install, Update — extracted from cmd/gcx/skills)
 ├── strcase/     String case conversion (snake_case, kebab-case, PascalCase)
+├── telemetry/   Anonymous usage stats library (wide-event model, GCX_TELEMETRY/DO_NOT_TRACK mode resolution, device ID, CI detection — not yet wired into the CLI)
 ├── xdg/         XDG Base Directory paths (config home, state home, config dirs)
 └── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
 ```

@@ -76,7 +76,9 @@ func (a *datasourceAdapter) Create(ctx context.Context, obj *unstructured.Unstru
 	}
 	dsclient.WarnIfSecretMissing(ds)
 	if isDryRun(opts.DryRun) {
-		return obj, nil
+		// The /api/datasources API has no validate endpoint: only the manifest
+		// conversion above was checked, so report skipped rather than valid.
+		return nil, adapter.ErrDryRunUnverified
 	}
 	created, err := a.client.Create(ctx, ds)
 	if err != nil {
@@ -93,7 +95,7 @@ func (a *datasourceAdapter) Update(ctx context.Context, obj *unstructured.Unstru
 	dsclient.WarnIfSecretMissing(ds)
 	name := obj.GetName()
 	if isDryRun(opts.DryRun) {
-		return obj, nil
+		return nil, adapter.ErrDryRunUnverified
 	}
 	updated, err := a.client.Update(ctx, name, ds)
 	if err != nil {

@@ -736,6 +736,27 @@ func TestClient_GetModelRulesSchema(t *testing.T) {
 	assert.Equal(t, "object", schema["type"])
 }
 
+func TestClient_GetPromRulesSchema(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.True(t, strings.HasSuffix(r.URL.Path, "/v1/config/prom-rules/schema"),
+			"unexpected path %q", r.URL.Path)
+		writeJSON(w, map[string]any{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"type":    "object",
+			"properties": map[string]any{
+				"groups": map[string]any{"type": "array"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	schema, err := client.GetPromRulesSchema(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "object", schema["type"])
+}
+
 func TestClient_DeleteModelRules(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -799,17 +820,31 @@ func TestClient_UpsertEntity(t *testing.T) {
 }
 
 func TestClient_DeleteEntity(t *testing.T) {
-	t.Run("sends domain and scope query params", func(t *testing.T) {
+	t.Run("sends identity as query params on collection path", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodDelete, r.Method)
-			assert.Contains(t, r.URL.Path, "/namespaces/stack-123/entities/Service/checkout")
-			assert.Equal(t, "myapp", r.URL.Query().Get("domain"))
-			assert.Equal(t, "prod", r.URL.Query().Get("scope[env]"))
+			assert.Equal(t, "/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/entities", r.URL.Path)
+			q := r.URL.Query()
+			assert.Equal(t, "myapp", q.Get("domain"))
+			assert.Equal(t, "Service", q.Get("type"))
+			assert.Equal(t, "checkout", q.Get("name"))
+			assert.Equal(t, "prod", q.Get("scope[env]"))
 			w.WriteHeader(http.StatusNoContent)
 		}))
 		defer server.Close()
 		client := newTestClient(t, server)
 		require.NoError(t, client.DeleteEntity(t.Context(), "myapp", "Service", "checkout", map[string]string{"env": "prod"}))
+	})
+	t.Run("allows slash in name via query params", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodDelete, r.Method)
+			assert.Equal(t, "/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/entities", r.URL.Path)
+			assert.Equal(t, "foo/bar", r.URL.Query().Get("name"))
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer server.Close()
+		client := newTestClient(t, server)
+		require.NoError(t, client.DeleteEntity(t.Context(), "myapp", "Service", "foo/bar", nil))
 	})
 	t.Run("404 surfaces APIError", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -827,8 +862,9 @@ func TestClient_DeleteEntity(t *testing.T) {
 func TestClient_DeleteRelationship(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Contains(t, r.URL.Path, "/namespaces/stack-123/relationships/CALLS")
+		assert.Equal(t, "/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/relationships", r.URL.Path)
 		q := r.URL.Query()
+		assert.Equal(t, "CALLS", q.Get("type"))
 		assert.Equal(t, "myapp", q.Get("from.domain"))
 		assert.Equal(t, "Service", q.Get("from.type"))
 		assert.Equal(t, "checkout", q.Get("from.name"))

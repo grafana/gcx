@@ -34,16 +34,17 @@ gcx resources validate [RESOURCE_SELECTOR]... [flags]
 ### Options
 
 ```
-  -h, --help                 help for validate
-      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --max-concurrent int   Maximum number of concurrent operations (default 10)
-      --on-error string      How to handle errors during resource operations:
-                               ignore — continue processing all resources and exit 0
-                               fail   — continue processing all resources and exit 1 if any failed (default)
-                               abort  — stop on the first error and exit 1 (default "fail")
-  -o, --output string        Output format. One of: agents, json, text, yaml (default "text")
-  -p, --path strings         Paths on disk from which to read the resources. (default [./resources])
+      --assume-server-dry-run strings   Assert that the given resources honor server-side dry-run, augmenting the built-in allowlist. Repeatable or comma-separated, each value a GroupResource string (<resource>.<group>), e.g. alertrules.rules.alerting.grafana.app
+  -h, --help                            help for validate
+      --jq string                       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string                     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --max-concurrent int              Maximum number of concurrent operations (default 10)
+      --on-error string                 How to handle errors during resource operations:
+                                          ignore — continue processing all resources and exit 0
+                                          fail   — continue processing all resources and exit 1 if any failed (default)
+                                          abort  — stop on the first error and exit 1 (default "fail")
+  -o, --output string                   Output format. One of: agents, json, text, yaml (default "text")
+  -p, --path strings                    Paths on disk from which to read the resources. (default [./resources])
 ```
 
 ### Options inherited from parent commands

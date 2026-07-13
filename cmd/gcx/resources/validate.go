@@ -20,9 +20,10 @@ import (
 type validateOpts struct {
 	IO cmdio.Options
 
-	Paths         []string
-	MaxConcurrent int
-	OnError       OnErrorMode
+	Paths              []string
+	MaxConcurrent      int
+	OnError            OnErrorMode
+	AssumeServerDryRun []string
 }
 
 func (opts *validateOpts) setup(flags *pflag.FlagSet) {
@@ -34,6 +35,7 @@ func (opts *validateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVarP(&opts.Paths, "path", "p", []string{defaultResourcesPath}, "Paths on disk from which to read the resources.")
 	flags.IntVar(&opts.MaxConcurrent, "max-concurrent", 10, "Maximum number of concurrent operations")
 	bindOnErrorFlag(flags, &opts.OnError)
+	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
 }
 
 func (opts *validateOpts) Validate() error {
@@ -79,7 +81,7 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			cfg, err := configOpts.LoadGrafanaConfig(ctx)
+			cfg, current, err := configOpts.LoadGrafanaConfigWithContext(ctx)
 			if err != nil {
 				return err
 			}
@@ -113,7 +115,8 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			pusher, err := remote.NewDefaultPusher(ctx, cfg)
+			pusher, err := remote.NewDefaultPusher(ctx, cfg,
+				dryRunGuardConfig(current, opts.AssumeServerDryRun, cmd.ErrOrStderr()))
 			if err != nil {
 				return err
 			}
@@ -131,36 +134,8 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			if summary.FailedCount() == 0 && opts.IO.OutputFormat == "text" {
-				cmdio.Success(cmd.OutOrStdout(), "No errors found.")
-				return nil
-			}
-
-			if opts.IO.OutputFormat == "text" {
-				if err := opts.IO.Encode(cmd.OutOrStdout(), summary); err != nil {
-					return err
-				}
-			} else {
-				printableSummary := struct {
-					Failures []map[string]string `json:"failures" yaml:"failures"`
-				}{
-					Failures: make([]map[string]string, 0),
-				}
-
-				for _, failure := range summary.Failures() {
-					file := ""
-					if failure.Resource != nil {
-						file = failure.Resource.SourcePath()
-					}
-					printableSummary.Failures = append(printableSummary.Failures, map[string]string{
-						"file":  file,
-						"error": failure.Error.Error(),
-					})
-				}
-
-				if err := opts.IO.Encode(cmd.OutOrStdout(), printableSummary); err != nil {
-					return err
-				}
+			if err := reportValidation(cmd.OutOrStdout(), opts.IO, summary); err != nil {
+				return err
 			}
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
@@ -174,6 +149,60 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+// reportValidation prints the validation outcome. Resources whose API can't do server-side
+// dry-run are reported as skipped (not falsely "valid"), and the skipped count shows in every
+// output mode, including the JSON/YAML that agents read.
+func reportValidation(w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
+	if ioOpts.OutputFormat != "text" {
+		return encodeValidationSummary(w, ioOpts, summary)
+	}
+	return reportValidationText(w, ioOpts, summary)
+}
+
+func reportValidationText(w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
+	skipped := summary.SkippedCount()
+
+	if summary.FailedCount() == 0 {
+		if skipped > 0 {
+			cmdio.Warning(w, "%d resources validated, %d skipped (server-side dry-run unsupported, not verified)", summary.SuccessCount(), skipped)
+		} else {
+			cmdio.Success(w, "No errors found.")
+		}
+		return nil
+	}
+
+	if err := ioOpts.Encode(w, summary); err != nil {
+		return err
+	}
+	if skipped > 0 {
+		cmdio.Warning(w, "%d resources skipped (server-side dry-run unsupported, not verified)", skipped)
+	}
+	return nil
+}
+
+func encodeValidationSummary(w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
+	printableSummary := struct {
+		Failures []map[string]string `json:"failures" yaml:"failures"`
+		Skipped  int                 `json:"skipped" yaml:"skipped"`
+	}{
+		Failures: make([]map[string]string, 0),
+		Skipped:  summary.SkippedCount(),
+	}
+
+	for _, failure := range summary.Failures() {
+		file := ""
+		if failure.Resource != nil {
+			file = failure.Resource.SourcePath()
+		}
+		printableSummary.Failures = append(printableSummary.Failures, map[string]string{
+			"file":  file,
+			"error": failure.Error.Error(),
+		})
+	}
+
+	return ioOpts.Encode(w, printableSummary)
 }
 
 type validationTableCodec struct{}

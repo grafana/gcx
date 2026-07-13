@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/grafana/gcx/internal/config"
@@ -52,18 +53,22 @@ type Pusher struct {
 // NewDefaultPusher creates a new Pusher.
 // It uses a ResourceClientRouter that delegates to provider adapters for provider-backed
 // resource types, and falls back to the default namespaced dynamic client for native resources.
-func NewDefaultPusher(ctx context.Context, cfg config.NamespacedRESTConfig) (*Pusher, error) {
+// The dynamic fallback is wrapped in a dry-run guard (configured by opts) so --dry-run never
+// silently mutates a resource whose API ignores server-side dryRun.
+func NewDefaultPusher(ctx context.Context, cfg config.NamespacedRESTConfig, guard GuardConfig) (*Pusher, error) {
 	dynamicClient, err := dynamic.NewDefaultNamespacedClient(cfg)
 	if err != nil {
 		return nil, err
 	}
+
+	guarded := newGuardedDynamicClient(dynamicClient, guard)
 
 	registry, err := discovery.NewDefaultRegistry(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	router := buildRouter(dynamicClient, registry)
+	router := buildRouter(guarded, registry)
 
 	return NewPusher(router, registry), nil
 }
@@ -248,6 +253,15 @@ func (p *Pusher) pushSingleResource(
 	}
 
 	if err := p.upsertResource(ctx, desc, name, res, request.DryRun, logger, nkCache); err != nil {
+		// The guard blocked a dry-run against an API that ignores server-side dryRun.
+		// Record it as skipped (not a failure) and keep going, like the puller does for
+		// unlistable types.
+		if errors.Is(err, errDryRunUnverified) {
+			summary.RecordSkipped()
+			logger.Info("Dry-run: change not verified (server-side dry-run unsupported); no changes sent")
+			return nil
+		}
+
 		summary.RecordFailure(res, err)
 
 		if request.StopOnError {

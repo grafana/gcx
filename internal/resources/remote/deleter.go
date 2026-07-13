@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/grafana/gcx/internal/config"
@@ -28,18 +29,22 @@ type Deleter struct {
 // NewDeleter creates a new Deleter.
 // It uses a ResourceClientRouter that delegates to provider adapters for provider-backed
 // resource types, and falls back to the default namespaced dynamic client for native resources.
-func NewDeleter(ctx context.Context, cfg config.NamespacedRESTConfig) (*Deleter, error) {
+// The dynamic fallback is wrapped in a dry-run guard (configured by opts) so --dry-run never
+// silently deletes a resource whose API ignores server-side dryRun.
+func NewDeleter(ctx context.Context, cfg config.NamespacedRESTConfig, guard GuardConfig) (*Deleter, error) {
 	dynamicClient, err := dynamic.NewDefaultNamespacedClient(cfg)
 	if err != nil {
 		return nil, err
 	}
+
+	guarded := newGuardedDynamicClient(dynamicClient, guard)
 
 	registry, err := discovery.NewDefaultRegistry(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	router := buildRouter(dynamicClient, registry)
+	router := buildRouter(guarded, registry)
 
 	return &Deleter{
 		client:   router,
@@ -104,6 +109,14 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 			}
 
 			if err := deleter.deleteResource(ctx, desc, res, request.DryRun); err != nil {
+				// The guard blocked a dry-run delete against an API that ignores server-side
+				// dryRun. Record it as skipped (not a failure) and keep going, like the puller.
+				if errors.Is(err, errDryRunUnverified) {
+					summary.RecordSkipped()
+					logger.Info("Dry-run: deletion not verified (server-side dry-run unsupported); no delete sent")
+					return nil
+				}
+
 				summary.RecordFailure(res, err)
 				if request.StopOnError {
 					return err

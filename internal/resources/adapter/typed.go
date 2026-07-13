@@ -42,6 +42,12 @@ func LimitedListFn[T any](fn func(ctx context.Context) ([]T, error)) func(ctx co
 // path to fall through to Create.
 var ErrNotFound = errors.New("not found")
 
+// ErrDryRunUnverified is returned by a dry-run Create/Update that could not be
+// verified against the backend (the adapter has no ValidateFn, or the API does
+// not honor server-side dryRun). Callers record it as skipped, not as a success
+// or failure: the resource was checked client-side only.
+var ErrDryRunUnverified = errors.New("server-side dry-run not supported; checked client-side only (not verified)")
+
 // TypedObject wraps a domain type T with Kubernetes metadata, producing the
 // standard {apiVersion, kind, metadata, spec} envelope when serialized to JSON.
 type TypedObject[T ResourceNamer] struct {
@@ -77,8 +83,9 @@ type TypedCRUD[T ResourceNamer] struct {
 
 	// ValidateFn validates items without performing mutations. Called during
 	// DryRun (e.g. resources validate, push --dry-run) instead of CreateFn/UpdateFn.
-	// When nil and DryRun is requested, Create/Update validate the
-	// unstructured→typed conversion only (no server call).
+	// When nil and DryRun is requested, Create/Update check the unstructured→typed
+	// conversion only (no server call) and return ErrDryRunUnverified so the
+	// resource is reported as skipped rather than falsely valid.
 	ValidateFn func(ctx context.Context, items []*T) error
 
 	// Namespace is set on every produced envelope's metadata.namespace.
@@ -438,13 +445,16 @@ func (a *typedAdapter[T]) Delete(ctx context.Context, name string, opts metav1.D
 	return a.crud.DeleteFn(ctx, name)
 }
 
-// dryRunValidate validates item via ValidateFn (if set) and returns the
-// round-tripped unstructured object without performing any mutation.
+// dryRunValidate validates item via ValidateFn and returns the round-tripped
+// unstructured object without performing any mutation. Without a ValidateFn
+// nothing beyond the already-done unstructured→typed conversion was checked,
+// so it returns ErrDryRunUnverified instead of a false success.
 func (a *typedAdapter[T]) dryRunValidate(ctx context.Context, item *T) (*unstructured.Unstructured, error) {
-	if a.crud.ValidateFn != nil {
-		if err := a.crud.ValidateFn(ctx, []*T{item}); err != nil {
-			return nil, err
-		}
+	if a.crud.ValidateFn == nil {
+		return nil, ErrDryRunUnverified
+	}
+	if err := a.crud.ValidateFn(ctx, []*T{item}); err != nil {
+		return nil, err
 	}
 	u, err := a.crud.ToUnstructured(*item)
 	if err != nil {

@@ -190,3 +190,52 @@ func TestDetectedFromEnv(t *testing.T) {
 		})
 	}
 }
+
+func TestName(t *testing.T) {
+	tests := []struct {
+		name    string
+		envVars map[string]string
+		want    string
+	}{
+		{
+			name: "no harness env",
+			want: "",
+		},
+		{
+			name:    "CLAUDECODE",
+			envVars: map[string]string{"CLAUDECODE": "1"},
+			want:    "claude-code",
+		},
+		{
+			name:    "CLAUDE_CODE maps to the same harness",
+			envVars: map[string]string{"CLAUDE_CODE": "true"},
+			want:    "claude-code",
+		},
+		{
+			name:    "cursor",
+			envVars: map[string]string{"CURSOR_AGENT": "1"},
+			want:    "cursor",
+		},
+		{
+			name:    "GCX_AGENT_MODE alone names no harness",
+			envVars: map[string]string{"GCX_AGENT_MODE": "1"},
+			want:    "",
+		},
+		{
+			name:    "falsy harness var is ignored",
+			envVars: map[string]string{"CLAUDECODE": "0"},
+			want:    "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			clearAgentEnv(t)
+			for k, v := range tc.envVars {
+				t.Setenv(k, v)
+			}
+
+			assert.Equal(t, tc.want, agent.Name())
+		})
+	}
+}

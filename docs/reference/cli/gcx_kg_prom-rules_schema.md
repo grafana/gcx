@@ -1,11 +1,24 @@
-## gcx kg prom-rules
+## gcx kg prom-rules schema
 
-Manage Knowledge Graph Custom Prometheus rules.
+Fetch the live JSON Schema for Custom Prometheus rules from the backend.
+
+### Synopsis
+
+Fetches the JSON Schema (Draft 2020-12) that describes the Custom Prometheus rules configuration
+shape, derived from the backend DTO tree. Pipe to a file and point your editor at it for autocomplete and
+deep validation when authoring prom-rules manifests.
+
+```
+gcx kg prom-rules schema [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for prom-rules
+  -h, --help            help for schema
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -22,10 +35,5 @@ Manage Knowledge Graph Custom Prometheus rules.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg prom-rules create](gcx_kg_prom-rules_create.md)	 - Upload Knowledge Graph Custom Prometheus rules from a YAML file.
-* [gcx kg prom-rules delete](gcx_kg_prom-rules_delete.md)	 - Delete a Knowledge Graph Custom Prometheus rule by name.
-* [gcx kg prom-rules get](gcx_kg_prom-rules_get.md)	 - Get a Knowledge Graph Custom Prometheus rule by name.
-* [gcx kg prom-rules list](gcx_kg_prom-rules_list.md)	 - List Knowledge Graph Custom Prometheus rules.
-* [gcx kg prom-rules schema](gcx_kg_prom-rules_schema.md)	 - Fetch the live JSON Schema for Custom Prometheus rules from the backend.
+* [gcx kg prom-rules](gcx_kg_prom-rules.md)	 - Manage Knowledge Graph Custom Prometheus rules.
 

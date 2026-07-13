@@ -66,7 +66,8 @@ The edition will be cancelled if no changes are written to the file or if the fi
 				return err
 			}
 
-			pusher, err := remote.NewDefaultPusher(ctx, cfg)
+			// edit never dry-runs, so the guard is inert; pass an empty config.
+			pusher, err := remote.NewDefaultPusher(ctx, cfg, remote.GuardConfig{})
 			if err != nil {
 				return err
 			}

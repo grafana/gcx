@@ -128,6 +128,16 @@ contexts:
       ${string}:
         ${string}:
           string
+    # Resources holds settings for the `gcx resources` commands in this context.
+    resources: 
+      # ResourcesConfig holds per-context settings for the `gcx resources` commands.
+      # AssumeServerDryRun lists resources ("<resource>.<group>", e.g.
+      # "alertrules.rules.alerting.grafana.app") the user asserts honor server-side dry-run on
+      # this stack, added to the built-in allowlist so --dry-run sends them to the server.
+      assume-server-dry-run: 
+        - string
+        - ...
+        
 # CurrentContext is the name of the context currently in use.
 current-context: string
 # Diagnostics holds optional local diagnostic settings. All features are off by default.
@@ -140,5 +150,9 @@ diagnostics:
   # LogDir overrides the output directory for agent invocation log files.
   # Default: $XDG_STATE_HOME/gcx/ (platform-specific).
   log-dir: string
+  # Telemetry controls anonymous usage telemetry: "enabled", "disabled",
+  # or "log" (prints to stderr). Overridden by the GCX_TELEMETRY and
+  # DO_NOT_TRACK environment variables.
+  telemetry: string
 
 ```

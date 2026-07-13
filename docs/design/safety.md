@@ -65,9 +65,22 @@ rogue agents from accidentally deleting resources.
 
 ### 3.4 Dry-Run
 
-`--dry-run` is available on `push` and `delete`. It passes
+`--dry-run` is available on `push`, `delete`, and (implicitly) `validate`. It passes
 `DryRun: []string{"All"}` to Kubernetes API options. Always document dry-run
 support in new commands that modify remote state.
+
+**Fail-safe guard.** Some Grafana APIs (all alerting resources today) ignore
+server-side `dryRun` and apply the mutation anyway. A client-side guard
+(`internal/resources/remote/dryrun_guard.go`) wraps the dynamic client and, for a
+mutating dry-run against a resource **not** on the allowlist
+(`dryrun_allowlist.go` — dashboards, folders, playlists), refuses to send the
+request, warns on stderr, and records the resource as **skipped** (not pushed, not
+failed; skips keep exit 0). Best-effort only — it confirms the operation is
+well-formed and (for delete) that the target exists, not spec correctness ("not
+verified"). Users who know a stack runs a resource on dual-write/unified can add it
+via `--assume-server-dry-run <resource>.<group>` or the per-context
+`resources.assume-server-dry-run` config. Robust long-term fix is server-side
+(grafana-enterprise#12569).
 
 ### 3.5 Push Idempotency
 

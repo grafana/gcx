@@ -32,7 +32,8 @@ func MergeConfigs(base, over Config) Config {
 		}
 	}
 
-	// Diagnostics: propagate from any layer that enables it.
+	// Diagnostics: merged per field — bools propagate from any layer that
+	// enables them, strings are last-non-empty-wins (see mergeDiagnosticsConfig).
 	if over.Diagnostics != nil {
 		if result.Diagnostics == nil {
 			result.Diagnostics = over.Diagnostics
@@ -52,6 +53,9 @@ func mergeDiagnosticsConfig(base, over *DiagnosticsConfig) DiagnosticsConfig {
 	}
 	if over.LogDir != "" {
 		result.LogDir = over.LogDir
+	}
+	if over.Telemetry != "" {
+		result.Telemetry = over.Telemetry
 	}
 	return result
 }
@@ -111,6 +115,18 @@ func mergeContexts(base, over *Context) *Context {
 		maps.Copy(result.Datasources, over.Datasources)
 	}
 
+	// Resources config: last definition wins. Assume-server-dry-run weakens the
+	// dry-run guard, so a higher layer must be able to narrow (or clear, via an
+	// explicit []) what a lower layer asserts — a union could only ever widen it.
+	if over.Resources != nil {
+		if result.Resources == nil {
+			result.Resources = over.Resources
+		} else {
+			merged := mergeResourcesConfig(result.Resources, over.Resources)
+			result.Resources = &merged
+		}
+	}
+
 	// Named datasource overrides.
 	if over.DefaultPrometheusDatasource != "" {
 		result.DefaultPrometheusDatasource = over.DefaultPrometheusDatasource
@@ -123,6 +139,14 @@ func mergeContexts(base, over *Context) *Context {
 	}
 
 	return &result
+}
+
+func mergeResourcesConfig(base, over *ResourcesConfig) ResourcesConfig {
+	result := *base
+	if over.AssumeServerDryRun != nil {
+		result.AssumeServerDryRun = over.AssumeServerDryRun
+	}
+	return result
 }
 
 func mergeGrafanaConfig(base, over *GrafanaConfig) GrafanaConfig {
