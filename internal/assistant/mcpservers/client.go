@@ -306,8 +306,7 @@ func (c *Client) Update(ctx context.Context, ref string, input ServerInput) (*Mu
 		}
 	}
 
-	headerWrites := HeaderWritesForUpdate(input.Headers, current.CustomHeaders)
-	body, err := json.Marshal(payloadFromInputForUpdate(input, headerWrites))
+	body, err := json.Marshal(payloadFromInputForUpdate(input, updateHeadersWire(input.Headers, current.CustomHeaders)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal MCP server update request: %w", err)
 	}
@@ -461,83 +460,9 @@ func payloadFromInput(input ServerInput) map[string]any {
 	return payload
 }
 
-// HeaderIntent is the per-header write intent Update sends to the backend:
-// whether a header's stored value is set, left untouched, or dropped
-// entirely. Client callers still supply headers as a plain []Header on
-// ServerInput -- Update derives HeaderWrite/HeaderIntent internally via
-// HeaderWritesForUpdate. The exported primitives exist so other callers
-// (notably the future MCPServer adapter, T6) can classify a header list the
-// same way without re-deriving the overwrite/preserve/remove rules, and so
-// the classification's shape is a documented, testable cross-task contract.
-type HeaderIntent string
-
-const (
-	// HeaderIntentOverwrite sets (or creates) the header to Value.
-	HeaderIntentOverwrite HeaderIntent = "overwrite"
-	// HeaderIntentPreserve leaves an existing stored header value untouched.
-	// Only meaningful when the header already exists on the server being
-	// updated -- there is nothing to preserve on a create path.
-	HeaderIntentPreserve HeaderIntent = "preserve"
-	// HeaderIntentRemove drops the header entirely.
-	HeaderIntentRemove HeaderIntent = "remove"
-)
-
-// HeaderWrite is one header's desired write intent at the client boundary.
-// Value is only meaningful when Intent is HeaderIntentOverwrite.
-type HeaderWrite struct {
-	Name   string
-	Value  string
-	Intent HeaderIntent
-}
-
-// HeaderWritesForUpdate derives the full per-header write-intent list for an
-// Update call from a caller's desired header list and the server's
-// currently stored headers (name-only; values are redacted on read).
-// Exported so callers other than Update -- notably the future MCPServer
-// adapter (T6), which must classify a manifest's header list the same way
-// before deciding whether a name-only header on a create path is an error
-// (FR-019) -- can reuse the exact same classification instead of
-// re-deriving it.
-//
-// Contract (FR-017/FR-018): desired == nil means the caller did not touch
-// headers at all (e.g. no --header flags on the CLI) -- every current
-// header is preserved untouched, which is what fixes the tenant-update
-// header drop (PR #747 Major #1). A non-nil desired, even if empty, is
-// treated as the full desired state: each entry with a non-empty Value
-// overwrites (or creates) that header, each entry with an empty Value
-// preserves the existing stored value for that name, and any current
-// header whose name is absent from desired is removed.
-func HeaderWritesForUpdate(desired []Header, current []ServerHeader) []HeaderWrite {
-	if desired == nil {
-		writes := make([]HeaderWrite, 0, len(current))
-		for _, h := range current {
-			writes = append(writes, HeaderWrite{Name: h.Name, Intent: HeaderIntentPreserve})
-		}
-		return writes
-	}
-
-	desiredNames := make(map[string]struct{}, len(desired))
-	writes := make([]HeaderWrite, 0, len(desired))
-	for _, h := range desired {
-		desiredNames[strings.ToLower(h.Name)] = struct{}{}
-		if h.Value == "" {
-			writes = append(writes, HeaderWrite{Name: h.Name, Intent: HeaderIntentPreserve})
-		} else {
-			writes = append(writes, HeaderWrite{Name: h.Name, Value: h.Value, Intent: HeaderIntentOverwrite})
-		}
-	}
-	for _, h := range current {
-		if _, ok := desiredNames[strings.ToLower(h.Name)]; !ok {
-			writes = append(writes, HeaderWrite{Name: h.Name, Intent: HeaderIntentRemove})
-		}
-	}
-	return writes
-}
-
 // headerWire is the wire shape for one header entry in an Update payload.
-// Value is omitted (rather than sent as an empty string) to signal
-// HeaderIntentPreserve to the backend, per the API's per-header write-intent
-// support (ADR-021 Decision 5) -- this encoding is an assumption against a
+// An omitted Value signals "keep the stored value" to the backend
+// (ADR-021 Decision 5) -- this encoding is an assumption against a
 // closed-source backend and is centralized here so it can be revisited in
 // one place if the wire contract differs.
 type headerWire struct {
@@ -545,30 +470,35 @@ type headerWire struct {
 	Value string `json:"value,omitempty"`
 }
 
-// headersWireDesired renders the full desired header list for the Update
-// payload. HeaderIntentRemove entries are omitted entirely -- the backend's
-// update replaces the whole header set with whatever is sent, so "absent"
-// is how a header is removed.
-func headersWireDesired(writes []HeaderWrite) []headerWire {
-	out := make([]headerWire, 0, len(writes))
-	for _, w := range writes {
-		if w.Intent == HeaderIntentRemove {
-			continue
+// updateHeadersWire renders the full desired header list for an Update
+// payload. desired == nil means the caller did not touch headers at all
+// (e.g. no --header flags): every currently stored header is sent name-only
+// so its stored value is kept. A non-nil desired, even if empty, is the full
+// desired state: entries with a value overwrite, entries without a value
+// keep the stored value, and stored headers absent from desired are removed
+// by omission (the backend's update replaces the whole header set).
+func updateHeadersWire(desired []Header, current []ServerHeader) []headerWire {
+	if desired == nil {
+		wire := make([]headerWire, 0, len(current))
+		for _, h := range current {
+			wire = append(wire, headerWire{Name: h.Name})
 		}
-		out = append(out, headerWire{Name: w.Name, Value: w.Value})
+		return wire
 	}
-	return out
+	wire := make([]headerWire, 0, len(desired))
+	for _, h := range desired {
+		wire = append(wire, headerWire{Name: h.Name, Value: h.Value})
+	}
+	return wire
 }
 
 // payloadFromInputForUpdate builds the Update request body, overriding
-// payloadFromInput's custom_headers with the full desired write-intent list
-// so an update never silently drops headers the caller did not intend to
-// touch (FR-017).
-func payloadFromInputForUpdate(input ServerInput, headers []HeaderWrite) map[string]any {
+// payloadFromInput's custom_headers with the full desired header list so an
+// update never silently drops headers the caller did not intend to touch.
+func payloadFromInputForUpdate(input ServerInput, headers []headerWire) map[string]any {
 	payload := payloadFromInput(input)
-	wire := headersWireDesired(headers)
-	if len(wire) > 0 {
-		payload["custom_headers"] = wire
+	if len(headers) > 0 {
+		payload["custom_headers"] = headers
 	} else {
 		delete(payload, "custom_headers")
 	}

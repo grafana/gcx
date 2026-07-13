@@ -780,56 +780,6 @@ func TestInitiateOAuthPostsIntegrationIDAndScope(t *testing.T) {
 	assert.Equal(t, "state-1", result.State)
 }
 
-// TestHeaderWritesForUpdateClassifiesByValuePresence documents the exported
-// cross-task contract (T6 builds against this): intent is classified
-// per-header by value presence against the header's name in current -- not
-// by treating a non-empty desired list as a blanket overwrite.
-func TestHeaderWritesForUpdateClassifiesByValuePresence(t *testing.T) {
-	current := []mcpservers.ServerHeader{
-		{Name: "Authorization", ValueConfigured: true},
-		{Name: "X-Stale-Header", ValueConfigured: true},
-	}
-
-	t.Run("nil desired preserves every current header", func(t *testing.T) {
-		writes := mcpservers.HeaderWritesForUpdate(nil, current)
-		require.Len(t, writes, 2)
-		for _, w := range writes {
-			assert.Equal(t, mcpservers.HeaderIntentPreserve, w.Intent)
-			assert.Empty(t, w.Value)
-		}
-	})
-
-	t.Run("explicit list classifies overwrite, preserve, and remove", func(t *testing.T) {
-		writes := mcpservers.HeaderWritesForUpdate([]mcpservers.Header{
-			{Name: "Authorization", Value: "new-secret"}, // value present -> overwrite
-			{Name: "X-New-Header"},                       // name-only, not in current -> preserve
-		}, current)
-
-		byName := make(map[string]mcpservers.HeaderWrite, len(writes))
-		for _, w := range writes {
-			byName[w.Name] = w
-		}
-
-		require.Contains(t, byName, "Authorization")
-		assert.Equal(t, mcpservers.HeaderIntentOverwrite, byName["Authorization"].Intent)
-		assert.Equal(t, "new-secret", byName["Authorization"].Value)
-
-		require.Contains(t, byName, "X-New-Header")
-		assert.Equal(t, mcpservers.HeaderIntentPreserve, byName["X-New-Header"].Intent)
-
-		require.Contains(t, byName, "X-Stale-Header", "absent from desired but present in current -> remove")
-		assert.Equal(t, mcpservers.HeaderIntentRemove, byName["X-Stale-Header"].Intent)
-	})
-
-	t.Run("empty non-nil desired removes every current header", func(t *testing.T) {
-		writes := mcpservers.HeaderWritesForUpdate([]mcpservers.Header{}, current)
-		require.Len(t, writes, 2)
-		for _, w := range writes {
-			assert.Equal(t, mcpservers.HeaderIntentRemove, w.Intent)
-		}
-	})
-}
-
 func TestParseHeaderRejectsInvalidValue(t *testing.T) {
 	_, err := mcpservers.ParseHeader("Authorization")
 	require.Error(t, err)
