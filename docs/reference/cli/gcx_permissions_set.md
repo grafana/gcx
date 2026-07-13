@@ -27,6 +27,7 @@ gcx permissions set <resource> <id> -f FILE [flags]
 
 ```
   -f, --file string   JSON file with the permission set (use - for stdin)
+      --force         Skip confirmation prompt
   -h, --help          help for set
 ```
 

@@ -72,6 +72,83 @@ func TestSetCommand_DeclineConfirmationSkipsOverwrite(t *testing.T) {
 	assert.NotContains(t, out.String(), "updated permissions")
 }
 
+// TestSetCommand_RejectsEmptyOrUnrecognizedPermissionsPayload covers the
+// data-loss bug where parsing silently produced an empty permission list for
+// JSON shapes that don't match the documented bare-array or
+// {"permissions":[...]} envelope. Client.Set would then POST
+// {"permissions": null}, wiping every managed permission on the resource.
+// --force is passed so parsing/validation failures surface before any
+// confirmation prompt or network call.
+func TestSetCommand_RejectsEmptyOrUnrecognizedPermissionsPayload(t *testing.T) {
+	tests := []struct {
+		name          string
+		payload       string
+		wantErrSubstr string
+	}{
+		{"empty array", `[]`, "permissions payload is empty"},
+		{"null", `null`, "permissions payload is empty"},
+		{"empty envelope", `{}`, "permissions payload is empty"},
+		// A natural mistake given the sibling `grant` command's flags: this
+		// looks like a permission assignment but isn't the documented
+		// envelope shape.
+		{"unrecognized envelope shape", `{"userId":1,"permission":"Edit"}`, "failed to parse permissions"},
+		{"wrong envelope key", `{"perms":[{"permission":"Edit","userId":1}]}`, "failed to parse permissions"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			file := filepath.Join(dir, "acl.json")
+			require.NoError(t, os.WriteFile(file, []byte(tt.payload), 0o600))
+
+			p := &permissions.PermissionsProvider{}
+			root := p.Commands()[0]
+			root.SetArgs([]string{"set", "dashboards", "d1", "-f", file, "--force"})
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+
+			err := root.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErrSubstr)
+		})
+	}
+}
+
+func TestSetCommand_AcceptsRecognizedPermissionsPayloadShapes(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{"bare array", `[{"permission":"Edit","userId":1}]`},
+		{"envelope", `{"permissions":[{"permission":"Admin","teamId":2}]}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			file := filepath.Join(dir, "acl.json")
+			require.NoError(t, os.WriteFile(file, []byte(tt.payload), 0o600))
+
+			p := &permissions.PermissionsProvider{}
+			root := p.Commands()[0]
+			root.SetArgs([]string{"set", "dashboards", "d1", "-f", file, "--force"})
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+
+			// A recognized payload parses successfully; the command goes on
+			// to fail at client/config loading in this unconfigured test
+			// environment, but that failure must not be a parsing error.
+			err := root.Execute()
+			if err != nil {
+				assert.NotContains(t, err.Error(), "permissions payload is empty")
+				assert.NotContains(t, err.Error(), "failed to parse permissions")
+			}
+		})
+	}
+}
+
 func TestSetCommand_ForceSkipsConfirmationPrompt(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "acl.json")
