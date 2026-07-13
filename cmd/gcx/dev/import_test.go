@@ -202,10 +202,9 @@ func TestConvertResourceEmitsCompleteImports(t *testing.T) {
 
 func TestConverters(t *testing.T) {
 	tests := []struct {
-		name           string
-		object         map[string]any
-		wantSDKPackage string
-		wantContains   string
+		name         string
+		object       map[string]any
+		wantContains string
 	}{
 		{
 			name: "dashboard v1",
@@ -218,8 +217,7 @@ func TestConverters(t *testing.T) {
 					"schemaVersion": float64(36),
 				},
 			},
-			wantSDKPackage: "dashboard",
-			wantContains:   "NewDashboardBuilder",
+			wantContains: "NewDashboardBuilder",
 		},
 		{
 			name: "folder v1",
@@ -232,8 +230,7 @@ func TestConverters(t *testing.T) {
 					"description": "a folder",
 				},
 			},
-			wantSDKPackage: "folderv1beta1",
-			wantContains:   "NewFolderBuilder",
+			wantContains: "NewFolderBuilder",
 		},
 	}
 
@@ -248,9 +245,8 @@ func TestConverters(t *testing.T) {
 			converter, ok := convertersMap[key]
 			require.True(t, ok, "no converter registered for %s", key)
 
-			code, sdkPkg, err := converter(res)
+			code, err := converter(res)
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantSDKPackage, sdkPkg)
 			assert.Contains(t, code, tt.wantContains)
 		})
 	}

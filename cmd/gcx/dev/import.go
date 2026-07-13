@@ -92,7 +92,7 @@ func importCmd() *cobra.Command {
 					return nil
 				}
 
-				imported += 1
+				imported++
 				return nil
 			})
 			if err != nil {
@@ -111,7 +111,7 @@ func importCmd() *cobra.Command {
 	return cmd
 }
 
-type resourceConverter func(resource *model.Resource) (string, string, error)
+type resourceConverter func(resource *model.Resource) (string, error)
 
 // sdkImportOverrides maps package identifiers referenced by foundation-sdk
 // converter output to their subpath within the SDK module when that subpath
@@ -191,7 +191,7 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 		return fmt.Errorf("no converter found for %s", converterKey)
 	}
 
-	converted, _, err := converter(resource)
+	converted, err := converter(resource)
 	if err != nil {
 		return err
 	}
@@ -232,8 +232,14 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 		return err
 	}
 
-	// The import list is already complete; goimports only formats and sorts.
-	formatted, err := imports.Process(convertedFile, buf.Bytes(), nil)
+	// The import list is already complete; FormatOnly keeps goimports from
+	// running its own (ambiguous-package-prone) import resolution.
+	formatted, err := imports.Process(convertedFile, buf.Bytes(), &imports.Options{
+		Comments:   true,
+		TabIndent:  true,
+		TabWidth:   8,
+		FormatOnly: true,
+	})
 	if err != nil {
 		// Fall back to unformatted output if goimports fails — the file
 		// still compiles since its imports were derived from usage.
@@ -243,15 +249,15 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 	return os.WriteFile(convertedFile, formatted, 0600)
 }
 
-func dashboardv1Converter(resource *model.Resource) (string, string, error) {
+func dashboardv1Converter(resource *model.Resource) (string, error) {
 	spec, err := resource.Spec()
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	marshalled, err := json.Marshal(spec)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	// Intentionally uses the v1 dashboard schema: convertersMap routes the
@@ -259,21 +265,21 @@ func dashboardv1Converter(resource *model.Resource) (string, string, error) {
 	// correct one for these versions (dashboardv2 has an incompatible schema).
 	object := dashboard.Dashboard{} //nolint:staticcheck // intentional v1 schema for v0alpha1/v1/v1beta1 imports
 	if err = json.Unmarshal(marshalled, &object); err != nil {
-		return "", "", err
+		return "", err
 	}
 
-	return dashboard.DashboardConverter(object), "dashboard", nil
+	return dashboard.DashboardConverter(object), nil
 }
 
-func dashboardv2Converter(resource *model.Resource) (string, string, error) {
+func dashboardv2Converter(resource *model.Resource) (string, error) {
 	spec, err := resource.Spec()
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	marshalled, err := json.Marshal(spec)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	// Intentionally uses the v2beta1 dashboard schema: convertersMap routes the
@@ -281,29 +287,29 @@ func dashboardv2Converter(resource *model.Resource) (string, string, error) {
 	// resource's version.
 	object := dashboardv2beta1.Dashboard{} //nolint:staticcheck // intentional v2beta1 schema for v2beta1 imports
 	if err = json.Unmarshal(marshalled, &object); err != nil {
-		return "", "", err
+		return "", err
 	}
 
-	return dashboardv2beta1.DashboardConverter(object), "dashboardv2beta1", nil
+	return dashboardv2beta1.DashboardConverter(object), nil
 }
 
-func folderConverter(resource *model.Resource) (string, string, error) {
+func folderConverter(resource *model.Resource) (string, error) {
 	spec, err := resource.Spec()
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	marshalled, err := json.Marshal(spec)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	// Intentionally uses the v1beta1 folder schema: convertersMap routes the
 	// folder v1 API version here, matching the imported resource's version.
 	object := folderv1beta1.Folder{} //nolint:staticcheck // intentional v1beta1 schema for folder imports
 	if err = json.Unmarshal(marshalled, &object); err != nil {
-		return "", "", err
+		return "", err
 	}
 
-	return folderv1beta1.FolderConverter(object), "folderv1beta1", nil
+	return folderv1beta1.FolderConverter(object), nil
 }
