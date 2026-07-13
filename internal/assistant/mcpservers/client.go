@@ -487,7 +487,7 @@ func updateHeadersWire(desired []Header, current []ServerHeader) []headerWire {
 	}
 	wire := make([]headerWire, 0, len(desired))
 	for _, h := range desired {
-		wire = append(wire, headerWire{Name: h.Name, Value: h.Value})
+		wire = append(wire, headerWire(h))
 	}
 	return wire
 }
