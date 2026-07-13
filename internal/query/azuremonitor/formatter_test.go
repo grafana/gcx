@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func ptr(f float64) *float64 { return new(f) }
+func ptr(f float64) *float64 { return &f }
 
 func testResponse() *azuremonitor.QueryResponse {
 	return &azuremonitor.QueryResponse{
