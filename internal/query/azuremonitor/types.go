@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/query/dataframe"
@@ -28,6 +29,36 @@ type QueryRequest struct {
 	DimensionFilters map[string]string
 	Start            time.Time
 	End              time.Time
+}
+
+// LogsQueryRequest represents an Azure Log Analytics KQL query request.
+type LogsQueryRequest struct {
+	Subscription  string
+	ResourceGroup string
+	Workspace     string
+	Query         string
+	Start         time.Time
+	End           time.Time
+}
+
+// ResourceGraphRequest represents an Azure Resource Graph KQL query request.
+type ResourceGraphRequest struct {
+	Subscriptions []string
+	Query         string
+	Start         time.Time
+	End           time.Time
+}
+
+// TableResponse holds a tabular query result (Log Analytics or Resource Graph).
+type TableResponse struct {
+	Columns []Column `json:"columns"`
+	Rows    [][]any  `json:"rows"`
+}
+
+// Column describes a single column in a tabular query result.
+type Column struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
 }
 
 // Frame represents a single time-series frame from an Azure Monitor query result.
@@ -90,7 +121,7 @@ func ParseQueryResponse(body []byte) (*QueryResponse, error) {
 		if status == 0 {
 			status = 400
 		}
-		return nil, queryerror.New("azuremonitor", "query", status, result.Error, result.ErrorSource)
+		return nil, queryerror.New("azuremonitor", "query", status, simplifyPluginError(result.Error), result.ErrorSource)
 	}
 
 	resp := &QueryResponse{
@@ -177,6 +208,127 @@ func parseDataFrame(df dataframe.Frame) (Frame, bool) {
 		Timestamps: timestamps,
 		Values:     values,
 	}, true
+}
+
+// ParseTableResponse converts raw Grafana response bytes into a TableResponse.
+// All frames sharing the first frame's column layout are appended; time-typed
+// columns are converted from epoch milliseconds to RFC3339 strings.
+func ParseTableResponse(body []byte, operation string) (*TableResponse, error) {
+	var raw dataframe.Response
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse azuremonitor response: %w", err)
+	}
+
+	result, ok := raw.Results["A"]
+	if !ok {
+		return &TableResponse{Columns: []Column{}, Rows: [][]any{}}, nil
+	}
+
+	if result.Error != "" {
+		status := result.Status
+		if status == 0 {
+			status = 400
+		}
+		return nil, queryerror.New("azuremonitor", operation, status, simplifyPluginError(result.Error), result.ErrorSource)
+	}
+
+	resp := &TableResponse{Columns: []Column{}, Rows: [][]any{}}
+	for _, frame := range result.Frames {
+		if len(frame.Schema.Fields) == 0 {
+			continue
+		}
+		if len(resp.Columns) == 0 {
+			for _, f := range frame.Schema.Fields {
+				resp.Columns = append(resp.Columns, Column{Name: f.Name, Type: f.Type})
+			}
+		} else if !sameColumns(resp.Columns, frame.Schema.Fields) {
+			continue
+		}
+		appendFrameRows(resp, frame)
+	}
+	return resp, nil
+}
+
+func sameColumns(cols []Column, fields []dataframe.Field) bool {
+	if len(cols) != len(fields) {
+		return false
+	}
+	for i, f := range fields {
+		if cols[i].Name != f.Name || cols[i].Type != f.Type {
+			return false
+		}
+	}
+	return true
+}
+
+func appendFrameRows(resp *TableResponse, frame dataframe.Frame) {
+	if len(frame.Data.Values) != len(resp.Columns) || len(frame.Data.Values) == 0 {
+		return
+	}
+	numRows := len(frame.Data.Values[0])
+	for i := range numRows {
+		row := make([]any, len(resp.Columns))
+		for colIdx, colValues := range frame.Data.Values {
+			if i >= len(colValues) {
+				continue
+			}
+			v := colValues[i]
+			if resp.Columns[colIdx].Type == "time" && v != nil {
+				if ms, ok := toFloat64(v); ok {
+					v = time.UnixMilli(int64(ms)).UTC().Format(time.RFC3339)
+				}
+			}
+			row[colIdx] = v
+		}
+		resp.Rows = append(resp.Rows, row)
+	}
+}
+
+// azureAPIError mirrors the nested error envelope returned by Azure APIs:
+// {"error": {"code", "message", "innererror": {"code", "message", ...}}}.
+type azureAPIError struct {
+	Code       string         `json:"code"`
+	Message    string         `json:"message"`
+	InnerError *azureAPIError `json:"innererror"`
+}
+
+// simplifyPluginError extracts the most specific Azure error from the plugin's
+// wrapped error string ("request failed, status: ..., body: {...}"), walking
+// the innererror chain to the deepest message. Both Azure error body shapes
+// are handled: the Log Analytics/ARM envelope {"error": {code, message, ...}}
+// and the flat metrics shape {code, message}. The original string is returned
+// unchanged when it doesn't carry a parseable Azure error.
+func simplifyPluginError(errMsg string) string {
+	_, after, found := strings.Cut(errMsg, "body: ")
+	if !found || !strings.HasPrefix(after, "{") {
+		return errMsg
+	}
+	body := []byte(after)
+
+	var envelope struct {
+		Error *azureAPIError `json:"error"`
+	}
+	var e *azureAPIError
+	if json.Unmarshal(body, &envelope) == nil && envelope.Error != nil {
+		e = envelope.Error
+	} else {
+		var flat azureAPIError
+		if json.Unmarshal(body, &flat) != nil || flat.Message == "" {
+			return errMsg
+		}
+		e = &flat
+	}
+
+	for e.InnerError != nil && e.InnerError.Message != "" {
+		e = e.InnerError
+	}
+	if e.Message == "" {
+		return errMsg
+	}
+	if e.Code != "" {
+		return e.Code + ": " + e.Message
+	}
+	return e.Message
 }
 
 // fieldDisplayMeta returns the display name and unit for a value field,

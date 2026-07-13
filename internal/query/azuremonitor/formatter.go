@@ -53,6 +53,46 @@ func FormatWide(w io.Writer, resp *QueryResponse) error {
 	return t.Render(w)
 }
 
+// FormatTableResponse renders a tabular query result (Log Analytics or
+// Resource Graph) with its native columns.
+func FormatTableResponse(w io.Writer, resp *TableResponse) error {
+	if len(resp.Columns) == 0 || len(resp.Rows) == 0 {
+		fmt.Fprintln(w, "No data")
+		return nil
+	}
+
+	headers := make([]string, len(resp.Columns))
+	for i, c := range resp.Columns {
+		headers[i] = strings.ToUpper(c.Name)
+	}
+
+	t := style.NewTable(headers...)
+	for _, row := range resp.Rows {
+		cells := make([]string, len(row))
+		for i, v := range row {
+			cells[i] = cellString(v)
+		}
+		t.Row(cells...)
+	}
+	return t.Render(w)
+}
+
+// cellString converts a tabular cell value to its display string.
+func cellString(v any) string {
+	switch val := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return val
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(val)
+	default:
+		return fmt.Sprintf("%v", val)
+	}
+}
+
 // FormatSubscriptions renders a list of Azure subscriptions.
 func FormatSubscriptions(w io.Writer, subs []Subscription) error {
 	if len(subs) == 0 {

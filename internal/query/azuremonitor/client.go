@@ -3,11 +3,13 @@ package azuremonitor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
@@ -110,10 +112,89 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 
 	respBody, err := c.queryClient.Execute(ctx, body, "azuremonitor", "query")
 	if err != nil {
-		return nil, err
+		return nil, simplifyQueryError(err)
 	}
 
 	return ParseQueryResponse(respBody)
+}
+
+// simplifyQueryError rewrites the Azure error body wrapped inside a query API
+// error message to its most specific inner message.
+func simplifyQueryError(err error) error {
+	var apiErr *queryerror.APIError
+	if errors.As(err, &apiErr) {
+		apiErr.Message = simplifyPluginError(apiErr.Message)
+	}
+	return err
+}
+
+// LogsQuery executes a KQL query against a Log Analytics workspace via the
+// Grafana datasource query API.
+func (c *Client) LogsQuery(ctx context.Context, dsUID string, req LogsQueryRequest) (*TableResponse, error) {
+	workspaceURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.OperationalInsights/workspaces/%s",
+		req.Subscription, req.ResourceGroup, req.Workspace)
+
+	query := map[string]any{
+		"refId":     "A",
+		"queryType": "Azure Log Analytics",
+		"datasource": map[string]any{
+			"type": pluginID,
+			"uid":  dsUID,
+		},
+		"azureLogAnalytics": map[string]any{
+			"resources":    []string{workspaceURI},
+			"query":        req.Query,
+			"resultFormat": "table",
+		},
+		"intervalMs":    intervalMsFor(QueryRequest{Start: req.Start, End: req.End}),
+		"maxDataPoints": 1000,
+	}
+
+	return c.executeTableQuery(ctx, query, req.Start, req.End, "logs")
+}
+
+// ResourceGraphQuery executes a KQL query against Azure Resource Graph via the
+// Grafana datasource query API.
+func (c *Client) ResourceGraphQuery(ctx context.Context, dsUID string, req ResourceGraphRequest) (*TableResponse, error) {
+	query := map[string]any{
+		"refId":     "A",
+		"queryType": "Azure Resource Graph",
+		"datasource": map[string]any{
+			"type": pluginID,
+			"uid":  dsUID,
+		},
+		// Unlike metrics (query-level "subscription", singular), Resource
+		// Graph reads a query-level "subscriptions" array.
+		"subscriptions": req.Subscriptions,
+		"azureResourceGraph": map[string]any{
+			"query":        req.Query,
+			"resultFormat": "table",
+		},
+		"intervalMs":    60_000,
+		"maxDataPoints": 1000,
+	}
+
+	return c.executeTableQuery(ctx, query, req.Start, req.End, "resource-graph")
+}
+
+func (c *Client) executeTableQuery(ctx context.Context, query map[string]any, start, end time.Time, operation string) (*TableResponse, error) {
+	bodyMap := map[string]any{
+		"queries": []any{query},
+		"from":    strconv.FormatInt(start.UnixMilli(), 10),
+		"to":      strconv.FormatInt(end.UnixMilli(), 10),
+	}
+
+	body, err := json.Marshal(bodyMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	respBody, err := c.queryClient.Execute(ctx, body, "azuremonitor", operation)
+	if err != nil {
+		return nil, simplifyQueryError(err)
+	}
+
+	return ParseTableResponse(respBody, operation)
 }
 
 // intervalMsFor derives the query interval from the time range so the

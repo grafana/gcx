@@ -10,9 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func ptr(f float64) *float64 { return &f }
-
 func testResponse() *azuremonitor.QueryResponse {
+	v := 42.0
 	return &azuremonitor.QueryResponse{
 		Frames: []azuremonitor.Frame{
 			{
@@ -20,7 +19,7 @@ func testResponse() *azuremonitor.QueryResponse {
 				Labels:     map[string]string{"apiname": "GetBlob"},
 				Unit:       "short",
 				Timestamps: []time.Time{time.Date(2026, 5, 17, 0, 0, 0, 0, time.UTC)},
-				Values:     []*float64{ptr(42)},
+				Values:     []*float64{&v},
 			},
 		},
 	}
@@ -67,6 +66,31 @@ func TestFormatWide(t *testing.T) {
 	t.Run("no data", func(t *testing.T) {
 		var buf strings.Builder
 		require.NoError(t, azuremonitor.FormatWide(&buf, &azuremonitor.QueryResponse{}))
+		assert.Contains(t, buf.String(), "No data")
+	})
+}
+
+func TestFormatTableResponse(t *testing.T) {
+	t.Run("renders native columns", func(t *testing.T) {
+		resp := &azuremonitor.TableResponse{
+			Columns: []azuremonitor.Column{{Name: "TimeGenerated", Type: "time"}, {Name: "Name", Type: "string"}, {Name: "DurationMs", Type: "number"}},
+			Rows: [][]any{
+				{"2026-05-17T00:00:00Z", "timer", 146.89},
+				{"2026-05-17T00:01:00Z", "timer", nil},
+			},
+		}
+		var buf strings.Builder
+		require.NoError(t, azuremonitor.FormatTableResponse(&buf, resp))
+		out := buf.String()
+		assert.Contains(t, out, "TIMEGENERATED")
+		assert.Contains(t, out, "DURATIONMS")
+		assert.Contains(t, out, "timer")
+		assert.Contains(t, out, "146.89")
+	})
+
+	t.Run("no data", func(t *testing.T) {
+		var buf strings.Builder
+		require.NoError(t, azuremonitor.FormatTableResponse(&buf, &azuremonitor.TableResponse{}))
 		assert.Contains(t, buf.String(), "No data")
 	})
 }
