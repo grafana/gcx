@@ -8,6 +8,7 @@ import (
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/azuremonitor"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -45,6 +46,27 @@ func TestGraphCodecRejectsUnsupportedResponseTypes(t *testing.T) {
 		err := newGraphIO().Encode(&out, &infinity.QueryResponse{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Infinity")
+	})
+}
+
+func TestQueryCodecsAcceptAzureMonitorResponses(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterCodecs(ioOpts, false)
+		return ioOpts
+	}
+
+	t.Run("table codec renders azuremonitor responses", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("table").Encode(&out, &azuremonitor.QueryResponse{}))
+		assert.Contains(t, out.String(), "No data")
+	})
+
+	t.Run("wide codec renders azuremonitor responses", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("wide").Encode(&out, &azuremonitor.QueryResponse{}))
+		assert.Contains(t, out.String(), "No data")
 	})
 }
 
