@@ -27,6 +27,7 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx datasources athena](gcx_datasources_athena.md)	 - Query Amazon Athena datasources
+* [gcx datasources azuremonitor](gcx_datasources_azuremonitor.md)	 - Query Azure Monitor datasources
 * [gcx datasources clickhouse](gcx_datasources_clickhouse.md)	 - Query ClickHouse datasources
 * [gcx datasources cloudwatch](gcx_datasources_cloudwatch.md)	 - Query AWS CloudWatch datasources
 * [gcx datasources create](gcx_datasources_create.md)	 - Create a datasource from a manifest file
