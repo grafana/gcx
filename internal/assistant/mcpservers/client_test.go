@@ -76,7 +76,7 @@ func TestListFiltersMCPIntegrations(t *testing.T) {
 	assert.Equal(t, "https://mcp.example.com/mcp", servers[0].URL)
 }
 
-// TestListAllExhaustsAllPagesIncludingMCPEmptyPage covers AC-009/FR-015: MCP
+// TestListAllExhaustsAllPagesIncludingMCPEmptyPage: MCP
 // servers span multiple underlying pages, one of which contains zero MCP
 // servers (only other integration types). ListAll must not stop at that
 // MCP-empty page -- exhaustion is driven by the raw page size, not the
@@ -141,7 +141,7 @@ func TestListAllStopsOnReportedTotal(t *testing.T) {
 	assert.Equal(t, 1, requests, "must stop once offset reaches the reported total, even on a full raw page")
 }
 
-// TestListBoundedStaysOnDefaultPageAndReportsHasMore covers AC-010/FR-016:
+// TestListBoundedStaysOnDefaultPageAndReportsHasMore:
 // the human list path stays on a single page and reports HasMore off the raw
 // page/total, never the MCP-filtered count.
 func TestListBoundedStaysOnDefaultPageAndReportsHasMore(t *testing.T) {
@@ -442,11 +442,11 @@ func TestUpdateMergesCurrentServerBeforePut(t *testing.T) {
 	assert.Equal(t, "mcp-1", updated.Server.ID)
 }
 
-// TestUpdateExistingTenantServerDoesNotRequireHeaderValues also covers
-// AC-011/FR-017: the current server has a configured auth header and the
+// TestUpdateExistingTenantServerDoesNotRequireHeaderValues:
+// the current server has a configured auth header and the
 // update leaves headers untouched (no --header flags), so the update must
 // not require header values AND must re-send the header name-only to
-// preserve it -- not drop it (PR #747 Major #1).
+// preserve it -- not drop it.
 func TestUpdateExistingTenantServerDoesNotRequireHeaderValues(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -513,7 +513,7 @@ func TestUpdateExistingTenantServerDoesNotRequireHeaderValues(t *testing.T) {
 	assert.Equal(t, "tenant", updated.Server.Scope)
 }
 
-// TestUpdateExplicitHeaderListReplacesUnlistedHeaders covers the FR-018
+// TestUpdateExplicitHeaderListReplacesUnlistedHeaders covers the
 // remove case: once the caller supplies an explicit header list, it is the
 // full desired state -- any current header absent from it is removed, not
 // silently carried over.

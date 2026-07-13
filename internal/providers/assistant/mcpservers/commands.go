@@ -27,7 +27,7 @@ var openURL = deeplink.Open //nolint:gochecknoglobals // Test seam for browser-o
 
 // newClient builds the MCP-servers client and returns the namespace from the
 // resolved Grafana config, so callers needing envelope parity with the
-// resources path (FR-022) can build a matching mcpserver.TypedCRUD without
+// resources path can build a matching mcpserver.TypedCRUD without
 // re-resolving config.
 func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*assistantmcp.Client, string, error) {
 	cfg, err := loader.LoadGrafanaConfig(cmd.Context())
@@ -58,7 +58,7 @@ func newCRUDAndClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*adap
 // rather than the raw client. An exact server-ID match wins outright; otherwise
 // the ref is matched against the display name (case-insensitive) or the
 // composite metadata.name, and an ambiguous name surfaces as an error listing
-// candidates instead of a silent pick (FR-014 parity).
+// candidates instead of a silent pick.
 func resolveServerRef(ctx context.Context, crud *adapter.TypedCRUD[mcpserver.MCPServer], ref string) (*adapter.TypedObject[mcpserver.MCPServer], error) {
 	objs, err := crud.List(ctx, 0)
 	if err != nil {
@@ -139,10 +139,9 @@ func manifestFromInput(input assistantmcp.ServerInput) mcpserver.MCPServer {
 }
 
 // applyUpdate overlays a partial CLI update onto the current server manifest.
-// scope, name, and url form the immutable natural-key identity (ADR Decision 3;
-// spec: scope is required + immutable), so an attempt to change any of them via
-// update is a clear error rather than a silent no-op — delete and recreate to
-// change identity. Headers follow the CLI write-intent model: no --header flags
+// scope, name, and url form the immutable natural-key identity (ADR-021
+// Decision 3), so an attempt to change any of them via update is a clear
+// error rather than a silent no-op — delete and recreate to change identity. Headers follow the CLI write-intent model: no --header flags
 // (nil) preserves every current header; any --header flags become the full
 // desired list.
 func applyUpdate(current mcpserver.MCPServer, input assistantmcp.ServerInput) (mcpserver.MCPServer, error) {
@@ -216,7 +215,7 @@ func displayServer(m mcpserver.MCPServer) *assistantmcp.Server {
 // isEnvelopeFormat reports whether the resolved output format must produce
 // the exact {apiVersion, kind, metadata, spec} envelope gcx resources
 // get/pull emits, so gcx assistant mcp-servers get/list and gcx resources
-// get mcpservers are byte-identical for JSON and YAML (FR-022, AC-006).
+// get mcpservers are byte-identical for JSON and YAML.
 // Table/wide/text output keeps the flat, human-friendly Server view.
 func isEnvelopeFormat(f string) bool {
 	return f == string(format.JSON) || f == string(format.YAML)
@@ -338,14 +337,14 @@ json, yaml, or agents for machine-readable output.`,
 
 // runList fetches a single bounded page of MCP servers and, when more
 // integrations may exist beyond it, prints a STDERR hint. The hint never
-// presents the underlying integration total as an MCP-server count (FR-016)
-// -- it reads "showing first N -- use --limit for more", never "N of TOTAL",
+// presents the underlying integration total as an MCP-server count -- it
+// reads "showing first N -- use --limit for more", never "N of TOTAL",
 // because MCP servers are narrowed client-side and the total spans all
 // assistant integrations.
 //
 // For --output json/yaml, the page is rendered as the same {"items": [...]}
-// envelope shape gcx resources get mcpservers emits (FR-022) instead of the
-// flat Server view; other formats are unaffected.
+// envelope shape gcx resources get mcpservers emits instead of the flat
+// Server view; other formats are unaffected.
 func runList(cmd *cobra.Command, client *assistantmcp.Client, namespace string, opts *listOpts) error {
 	result, err := client.ListBounded(cmd.Context(), assistantmcp.ListOptions{Limit: opts.Limit, Offset: opts.Offset})
 	if err != nil {
@@ -401,8 +400,8 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 // runGet resolves ref (an ID or human name, per client.Get) to the underlying
 // server. For --output json/yaml, the result is rendered as the same
 // {apiVersion, kind, metadata, spec} envelope gcx resources get mcpservers/
-// <name> emits (FR-022, AC-006) instead of the flat Server view; other
-// formats are unaffected.
+// <name> emits instead of the flat Server view; other formats are
+// unaffected.
 func runGet(cmd *cobra.Command, client *assistantmcp.Client, namespace string, opts *getOpts, ref string) error {
 	server, err := client.Get(cmd.Context(), ref)
 	if err != nil {
@@ -498,8 +497,8 @@ reports that OAuth is required.`,
 // natural-key match so gcx resources push stays idempotent), the human create
 // command must FAIL on an existing (scope, name, url) match — routing a bare
 // create into the adapter's upsert would silently strip stored headers absent
-// from the CLI input (the PR #747 credential-loss class). --if-not-exists opts
-// into an idempotent no-op instead of the error.
+// from the CLI input. --if-not-exists opts into an idempotent no-op instead
+// of the error.
 func runCreate(cmd *cobra.Command, crud *adapter.TypedCRUD[mcpserver.MCPServer], client *assistantmcp.Client, opts *createOpts, manifest mcpserver.MCPServer) error {
 	existing, found, err := findByNaturalKey(cmd.Context(), crud, manifest)
 	if err != nil {
@@ -663,7 +662,7 @@ while agent mode still requires explicit --force for destructive operations.`,
 // so the adapter's name-based DeleteFn would re-hit the same ambiguity
 // resolveServerRef already resolved past — failing a delete the ID uniquely
 // identified. The generic name-based collision detection stays for
-// gcx resources delete mcpservers/<name> (AC-008); only this CLI path changes.
+// gcx resources delete mcpservers/<name>; only this CLI path changes.
 func runDelete(cmd *cobra.Command, crud *adapter.TypedCRUD[mcpserver.MCPServer], client *assistantmcp.Client, opts *deleteOpts, ref string) error {
 	current, err := resolveServerRef(cmd.Context(), crud, ref)
 	if err != nil {

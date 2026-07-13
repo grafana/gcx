@@ -11,10 +11,10 @@ import (
 // resolveHeaderValue resolves h's supplied source -- inline Value, FromEnv
 // (an environment variable name), or FromFile (a path) -- to its final wire
 // value. At most one source may be set. A header with none set is
-// name-only and resolves to an empty value, which is the preserve-on-update
-// signal consumed by the client boundary (assistantmcp.HeaderWritesForUpdate,
-// added in T2) -- FR-018. A referenced env var or file that is missing/empty
-// is a hard error so an empty secret is never written silently (FR-020).
+// name-only and resolves to an empty value, which the client's Update
+// treats as the preserve-on-update signal. A referenced env var or file
+// that is missing/empty is a hard error so an empty secret is never
+// written silently.
 func resolveHeaderValue(h MCPServerHeader) (string, error) {
 	sources := 0
 	if h.Value != "" {
@@ -59,22 +59,22 @@ func resolveHeaderValue(h MCPServerHeader) (string, error) {
 // Create/Update. fromEnv/fromFile are resolved here, at push time, and are
 // never persisted back into a pulled manifest -- pull only ever populates
 // MCPServerHeader.Name (see ServerToMCPServer below), so there is nothing to
-// resolve on read (FR-020, FR-021).
+// resolve on read.
 //
-// A resolved empty Value marks a name-only header. On an update, the client
-// boundary (assistantmcp.HeaderWritesForUpdate, invoked internally by
-// Client.Update) treats that as preserve-existing-secret. On a create there
-// is no existing secret to preserve -- callers that determine create vs.
-// update (T7's create-path guard) must reject a resolved empty Value before
-// calling Create; ResolveHeaders itself does not know which path it is
-// feeding and does not error on name-only headers.
+// A resolved empty Value marks a name-only header. On an update, the
+// client's Update derives per-header write intent from the desired list and
+// treats an empty value as preserve-existing-secret. On a create there is
+// no existing secret to preserve -- callers that determine create vs.
+// update must reject a resolved empty Value before calling Create;
+// ResolveHeaders itself does not know which path it is feeding and does
+// not error on name-only headers.
 //
 // The returned list is always non-nil (even when headers is empty), so
-// callers always pass Client.Update a full declarative header list --
-// assistantmcp.HeaderWritesForUpdate's desired==nil "preserve everything"
-// branch is reserved for its other caller (the mcp-servers CLI command
-// path, which distinguishes "no --header flags at all" from "an explicit
-// empty header list") and is never exercised via the adapter.
+// callers always pass Client.Update a full declarative header list -- the
+// client's nil-desired "preserve everything" branch is reserved for the
+// mcp-servers CLI command path (which distinguishes "no --header flags at
+// all" from "an explicit empty header list") and is never exercised via
+// the adapter.
 func ResolveHeaders(headers []MCPServerHeader) ([]assistantmcp.Header, error) {
 	resolved := make([]assistantmcp.Header, 0, len(headers))
 	for _, h := range headers {
@@ -89,7 +89,7 @@ func ResolveHeaders(headers []MCPServerHeader) ([]assistantmcp.Header, error) {
 
 // headersFromServer converts a client Server's redacted header list
 // (name-only; values are never returned on read) into the manifest's
-// write-intent header shape, marking every header for preserve (FR-021).
+// write-intent header shape, marking every header for preserve.
 // Used by ServerToMCPServer.
 func headersFromServer(headers []assistantmcp.ServerHeader) []MCPServerHeader {
 	out := make([]MCPServerHeader, 0, len(headers))

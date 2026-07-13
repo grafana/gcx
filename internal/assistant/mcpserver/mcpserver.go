@@ -2,7 +2,7 @@
 // TypedCRUD adapter wiring. It has no dependency on the assistant command
 // tree, so it can be imported both by internal/providers/assistant (for
 // adapter registration) and by internal/providers/assistant/mcpservers (for
-// JSON/YAML output parity, FR-022) without an import cycle.
+// JSON/YAML output parity) without an import cycle.
 package mcpserver
 
 import (
@@ -27,7 +27,7 @@ const (
 
 // GetResourceName returns the composite metadata.name for the manifest:
 // {scope}-{slug(name)}. Server names are not unique and scope is required,
-// so name alone is ambiguous (ADR Decision 3 / FR-011).
+// so name alone is ambiguous (ADR-021 Decision 3).
 func (m MCPServer) GetResourceName() string {
 	return m.Scope + "-" + adapter.SlugifyName(m.Name)
 }
@@ -36,20 +36,20 @@ func (m MCPServer) GetResourceName() string {
 // back from the API (via ServerToMCPServer). It is empty for a manifest built
 // from local input that has not yet been resolved against the server. Callers
 // use it only for within-stack addressing (e.g. the OAuth validate/initiate
-// step after create/update); it is never used for cross-stack matching (FR-012).
+// step after create/update); it is never used for cross-stack matching.
 func (m MCPServer) ServerID() string { return m.serverID }
 
 // SetResourceName is a no-op: scope and name are materialized directly in
 // spec and are populated from the manifest's own fields during unmarshal.
 // The composite metadata.name carries no information that isn't already in
-// spec.scope/spec.name, and FR-011 forbids parsing scope back out of it.
+// spec.scope/spec.name, and scope is never parsed back out of it.
 func (m *MCPServer) SetResourceName(_ string) {}
 
 // MCPServer is the manifest domain type for an assistant MCP server
 // integration, distinct from the client's read type Server (redacts header
 // values) and write type ServerInput (no preserve/remove/fromEnv concept).
 // It materializes every user-editable field into spec so gcx resources
-// get/pull/push/delete can round-trip it losslessly (FR-010).
+// get/pull/push/delete can round-trip it losslessly.
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type MCPServer struct {
@@ -64,9 +64,9 @@ type MCPServer struct {
 
 	// serverID is the server-assigned opaque ID, carried only so the adapter's
 	// MetadataFn can populate MCPServerIDAnnotation for within-stack
-	// addressing (FR-012). Unexported, so it is never serialized and never
+	// addressing. Unexported, so it is never serialized and never
 	// participates in JSON round-trips, GetResourceName, or natural-key
-	// matching — those read only Scope/Name/URL (FR-011, FR-013).
+	// matching — those read only Scope/Name/URL.
 	serverID string
 }
 
@@ -75,7 +75,7 @@ type MCPServer struct {
 // FromFile) means preserve the stored secret on update, and a header
 // omitted from the manifest entirely means remove. FromEnv/FromFile source
 // the value from the environment or a file at push time; neither is ever
-// persisted into a pulled manifest (FR-018 through FR-021, owned by T6).
+// persisted into a pulled manifest.
 type MCPServerHeader struct {
 	Name     string `json:"name"`
 	Value    string `json:"value,omitempty"`

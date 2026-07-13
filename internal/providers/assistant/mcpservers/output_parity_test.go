@@ -62,7 +62,7 @@ func resourcesPathBytes(t *testing.T, client *assistantmcp.Client, namespace, na
 	return buf.Bytes()
 }
 
-// TestGetOutputParityWithResourcesPath covers AC-006/FR-022: the JSON and
+// TestGetOutputParityWithResourcesPath: the JSON and
 // YAML output of "gcx assistant mcp-servers get <ref>" must be byte-identical
 // to "gcx resources get mcpservers/<name>" for the same underlying server.
 func TestGetOutputParityWithResourcesPath(t *testing.T) {
@@ -95,7 +95,7 @@ func TestGetOutputParityWithResourcesPath(t *testing.T) {
 	}
 }
 
-// TestListOutputParityWithResourcesPath covers FR-022 for the list path: the
+// TestListOutputParityWithResourcesPath covers the list path: the
 // JSON/YAML "items" envelope produced by "gcx assistant mcp-servers list"
 // must match the per-item envelope shape "gcx resources get mcpservers"
 // would render for each of the same underlying servers.

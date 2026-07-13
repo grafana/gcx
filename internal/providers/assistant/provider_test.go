@@ -51,7 +51,7 @@ func TestProviderRegistration(t *testing.T) {
 
 	t.Run("TypedRegistrations", func(t *testing.T) {
 		regs := p.TypedRegistrations()
-		require.Len(t, regs, 1, "exactly one adapter registration — MCPServer (FR-005)")
+		require.Len(t, regs, 1, "exactly one adapter registration — MCPServer")
 
 		reg := regs[0]
 		assert.Equal(t, mcpserver.MCPServerKind, reg.GVK.Kind)

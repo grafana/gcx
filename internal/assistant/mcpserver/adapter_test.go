@@ -46,7 +46,7 @@ func integration(id, name, scope, url string) map[string]any {
 	}
 }
 
-// TestList_ReturnsBothScopesAsEnvelopes covers AC-004: a stack with a
+// TestList_ReturnsBothScopesAsEnvelopes: a stack with a
 // user-scoped and a tenant-scoped server must both come back as
 // assistant.ext.grafana.app/v1alpha1 MCPServer envelopes from a single List
 // call (the underlying integrations list is not scope-filtered).
@@ -76,7 +76,7 @@ func TestList_ReturnsBothScopesAsEnvelopes(t *testing.T) {
 	assert.ElementsMatch(t, []string{"user-my-server", "tenant-github"}, names)
 }
 
-// TestList_ExhaustsMultiplePagesIncludingMCPEmptyPage covers AC-009/FR-015:
+// TestList_ExhaustsMultiplePagesIncludingMCPEmptyPage:
 // the adapter's List must go through the client's exhausting ListAll (not
 // the single-page List), so a large stack is never truncated and an
 // MCP-empty page does not stop paging.
@@ -123,10 +123,11 @@ func TestList_ExhaustsMultiplePagesIncludingMCPEmptyPage(t *testing.T) {
 	assert.ElementsMatch(t, []string{"user-server-one", "tenant-server-two"}, names)
 }
 
-// TestGet_ResolvesComposedNameAndAnnotatesID covers AC-005 (metadata.name +
-// materialized spec) and FR-012 (server ID as a within-stack annotation,
-// never used for identity). spec.config must also carry no "url" key, since
-// url is already materialized as its own spec field.
+// TestGet_ResolvesComposedNameAndAnnotatesID: the composite metadata.name
+// resolves to a materialized spec, with the server ID carried as a
+// within-stack annotation, never used for identity. spec.config must also
+// carry no "url" key, since url is already materialized as its own spec
+// field.
 func TestGet_ResolvesComposedNameAndAnnotatesID(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(t, w, map[string]any{
@@ -212,9 +213,8 @@ func TestCreate_SendsMaterializedSpecAsServerInput(t *testing.T) {
 	require.Len(t, headers, 1)
 }
 
-// TestUpdate_ResolvesExistingServerByNaturalKeyAndPreservesHeader covers
-// AC-007 (natural-key match, ID annotation ignored) and AC-011/FR-017 (an
-// update that does not touch a header must not wipe it): the UpdateFn
+// TestUpdate_ResolvesExistingServerByNaturalKeyAndPreservesHeader: an
+// update that does not touch a header must not wipe it. The UpdateFn
 // receives only the manifest's spec (no ID), resolves the target via
 // (scope, name, url), and updates it -- while a name-only header keeps the
 // server's stored value.
@@ -285,11 +285,11 @@ func TestUpdate_ResolvesExistingServerByNaturalKeyAndPreservesHeader(t *testing.
 	assert.Empty(t, gotHeaders[0]["value"], "preserve intent must not send a value")
 }
 
-// TestCreate_ResolvesFromEnvHeaderAndRedactsOnReadBack covers AC-014: a
+// TestCreate_ResolvesFromEnvHeaderAndRedactsOnReadBack: a
 // manifest header sourced via fromEnv, with the env var set, must reach the
 // backend on the create POST with its resolved value -- and the read-back
 // conversion into the manifest domain type must carry the header name only,
-// no value, so a subsequent pull writes it back name-only (FR-020/FR-021).
+// no value, so a subsequent pull writes it back name-only.
 func TestCreate_ResolvesFromEnvHeaderAndRedactsOnReadBack(t *testing.T) {
 	t.Setenv("GITHUB_MCP_TOKEN", "resolved-from-env")
 
@@ -345,7 +345,7 @@ func TestCreate_ResolvesFromEnvHeaderAndRedactsOnReadBack(t *testing.T) {
 	assert.Empty(t, created.Headers[0].FromFile)
 }
 
-// TestUpdate_OmittedHeaderIsRemoved covers AC-015: a manifest that omits a
+// TestUpdate_OmittedHeaderIsRemoved: a manifest that omits a
 // header the server currently has configured must remove it on update, not
 // silently leave it in place.
 func TestUpdate_OmittedHeaderIsRemoved(t *testing.T) {
@@ -438,7 +438,7 @@ func TestDelete_ResolvesComposedNameToServerID(t *testing.T) {
 	assert.Contains(t, deletedPath, "srv-to-delete")
 }
 
-// TestGet_AmbiguousScopeNameCollisionListsCandidates covers AC-008/FR-014:
+// TestGet_AmbiguousScopeNameCollisionListsCandidates:
 // two tenant-scoped servers named "GitHub" with different URLs compute the
 // same composite metadata.name ("tenant-github"). Get must error rather
 // than silently returning either one, and the error must list both
@@ -487,7 +487,7 @@ func TestDelete_AmbiguousScopeNameCollisionErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "srv-two")
 }
 
-// TestCreate_NameOnlyHeaderErrorsOnTrueCreatePath covers AC-013/FR-019: a
+// TestCreate_NameOnlyHeaderErrorsOnTrueCreatePath: a
 // manifest for a not-yet-existing server (no natural-key match) whose
 // header is name-only must fail with an actionable error naming the header,
 // instructing the user to supply its value via fromEnv/fromFile, and must
@@ -520,7 +520,7 @@ func TestCreate_NameOnlyHeaderErrorsOnTrueCreatePath(t *testing.T) {
 }
 
 // TestCreate_NaturalKeyMatchRoutesToUpdateAndPreservesNameOnlyHeader covers
-// FR-019's create-vs-update determination: a create call whose (scope, name,
+// the create-vs-update determination: a create call whose (scope, name,
 // url) matches an existing server (first-time cross-stack sync) must be
 // routed to the update path -- where a name-only header is a valid preserve
 // intent, not a create-path error -- instead of attempting a duplicate

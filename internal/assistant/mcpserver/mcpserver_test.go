@@ -82,7 +82,7 @@ func TestMCPServer_JSONRoundTrip(t *testing.T) {
 }
 
 func TestMCPServer_SpecFieldsPresent(t *testing.T) {
-	// AC-005: a tenant-scoped server named GitHub, when marshaled, must
+	// A tenant-scoped server named GitHub, when marshaled, must
 	// carry name, scope, url, enabled, and (where set) description,
 	// applications, config, headers.
 	server := mcpserver.MCPServer{
@@ -182,7 +182,7 @@ func TestMCPServerExample_NonNil(t *testing.T) {
 }
 
 func TestMCPServerRegistration_SchemaAndExampleSetDirectly(t *testing.T) {
-	// FR-009: Schema and Example must be set on the Registration struct
+	// Schema and Example must be set on the Registration struct
 	// directly, not relied upon via AsAdapter() (which doesn't propagate them).
 	reg := adapter.Registration{
 		Descriptor: mcpserver.MCPServerDescriptor(),

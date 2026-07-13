@@ -40,7 +40,7 @@ const defaultPageSize = 100
 // assistant integrations (0 if the response does not report one). The total
 // is not MCP-specific -- MCP servers are narrowed client-side, not by the
 // list request itself -- so callers MUST NOT present it as an MCP-server
-// count (FR-016).
+// count.
 func (c *Client) fetchPage(ctx context.Context, opts ListOptions) ([]rawIntegration, int, error) {
 	params := url.Values{}
 	if opts.Limit > 0 {
@@ -102,7 +102,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) ([]Server, error) {
 // (unfiltered) page size and the reported total, never by the MCP-filtered
 // count on a given page -- a page can hold zero MCP servers while more
 // integrations (and MCP servers) exist on later pages, so a filtered-count
-// stop condition would truncate (FR-015). opts.Limit, when positive, sets
+// stop condition would truncate. opts.Limit, when positive, sets
 // the page size used for every request; it is not a cap on the number of
 // servers returned. Used by the resources adapter (`pull`/`get`), which must
 // never truncate a large stack.
@@ -141,13 +141,13 @@ type BoundedList struct {
 	// It is derived from the raw (unfiltered) page, never from the
 	// MCP-filtered count, so it MAY be true even when this page contains no
 	// MCP servers, and MAY under-represent MCP servers when a page is
-	// dominated by non-MCP integrations (FR-016) -- acceptable for the human
+	// dominated by non-MCP integrations -- acceptable for the human
 	// path, since agents/GitOps use the exhausting ListAll instead.
 	HasMore bool
 }
 
 // ListBounded fetches a single page of MCP servers without exhausting the
-// underlying list, for the human `mcp-servers list` command (FR-016).
+// underlying list, for the human `mcp-servers list` command.
 func (c *Client) ListBounded(ctx context.Context, opts ListOptions) (BoundedList, error) {
 	limit := opts.Limit
 	if limit <= 0 {

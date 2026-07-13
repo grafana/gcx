@@ -20,9 +20,9 @@ func TestResolveHeaders_InlineValueOverwrites(t *testing.T) {
 }
 
 func TestResolveHeaders_NameOnlyResolvesToEmptyValue(t *testing.T) {
-	// Name-only is the preserve-on-update signal consumed by the client
-	// boundary's HeaderWritesForUpdate (T2) -- ResolveHeaders itself does
-	// not classify overwrite/preserve/remove.
+	// Name-only is the preserve-on-update signal consumed by the client's
+	// Update -- ResolveHeaders itself does not classify
+	// overwrite/preserve/remove.
 	resolved, err := mcpserver.ResolveHeaders([]mcpserver.MCPServerHeader{
 		{Name: "Authorization"},
 	})
@@ -89,7 +89,7 @@ func TestResolveHeaders_MultipleSourcesErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "only one of value, fromEnv, or fromFile")
 }
 
-// TestServerToMCPServer_RedactsHeaderValues covers FR-021: converting a
+// TestServerToMCPServer_RedactsHeaderValues: converting a
 // client Server into the manifest domain type must never populate a header
 // Value/FromEnv/FromFile -- only Name survives, marking the header for
 // preserve on a subsequent push.

@@ -15,13 +15,13 @@ import (
 )
 
 // MCPServerIDAnnotation carries the server-assigned opaque ID for
-// within-stack addressing (FR-012). TypedCRUD strips metadata (including
+// within-stack addressing. TypedCRUD strips metadata (including
 // annotations) before handing a manifest's spec to CreateFn/UpdateFn/
 // DeleteFn/GetFn, so every scope-qualified lookup in this file resolves
 // purely from spec fields (scope, name, url) — never from this annotation
-// and never by parsing metadata.name (FR-011). It exists for display and
+// and never by parsing metadata.name. It exists for display and
 // within-stack round-trip only, and MUST NOT be used for cross-stack
-// matching (FR-012) — that goes through the (scope, name, url) natural key
+// matching — that goes through the (scope, name, url) natural key
 // registered in init() below.
 const MCPServerIDAnnotation = MCPServerAPIGroup + "/server-id"
 
@@ -35,7 +35,7 @@ func init() { //nolint:gochecknoinits // Natural key registration for cross-stac
 // NewTypedCRUD creates a TypedCRUD for MCPServer resources using the
 // provided loader. List and every scope-qualified lookup (Get, Update,
 // Delete) resolve through the client's exhausting ListAll rather than its
-// single-page Get/Find, so large stacks are never truncated (FR-015) and a
+// single-page Get/Find, so large stacks are never truncated and a
 // lookup is never restricted to the first page of the underlying
 // integration list.
 func NewTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) (*adapter.TypedCRUD[MCPServer], internalconfig.NamespacedRESTConfig, error) {
@@ -81,13 +81,13 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 		},
 
 		// CreateFn determines create-vs-update by the (scope, name, url)
-		// natural key before applying header write intent (FR-019): a
-		// natural-key match means a server with this identity already
-		// exists elsewhere in the pipeline's view (e.g. first-time
-		// cross-stack sync), so the call is routed to update instead of
-		// creating a duplicate. Only the true create path -- no natural-key
-		// match -- rejects a name-only header, since there is no existing
-		// secret to preserve there (AC-013).
+		// natural key before applying header write intent: a natural-key
+		// match means a server with this identity already exists elsewhere
+		// in the pipeline's view (e.g. first-time cross-stack sync), so the
+		// call is routed to update instead of creating a duplicate. Only
+		// the true create path -- no natural-key match -- rejects a
+		// name-only header, since there is no existing secret to preserve
+		// there.
 		CreateFn: func(ctx context.Context, item *MCPServer) (*MCPServer, error) {
 			headers, err := ResolveHeaders(item.Headers)
 			if err != nil {
@@ -168,8 +168,8 @@ func NewLazyFactory() adapter.Factory {
 // findServerByKey resolves the underlying server for a given natural key
 // (scope, name, url) by exhausting the full integration list via ListAll —
 // never the client's single-page Get/Find — so large stacks are never
-// truncated (FR-015). Scope is read from the caller's spec fields only,
-// never parsed out of metadata.name (FR-011).
+// truncated. Scope is read from the caller's spec fields only, never
+// parsed out of metadata.name.
 func findServerByKey(ctx context.Context, client *assistantmcp.Client, scope, name, url string) (*assistantmcp.Server, error) {
 	servers, err := client.ListAll(ctx, assistantmcp.ListOptions{})
 	if err != nil {
@@ -188,12 +188,12 @@ func findServerByKey(ctx context.Context, client *assistantmcp.Client, scope, na
 // composite name ({scope}-{slug(name)}, via GetResourceName) equals the
 // given metadata.name. It never parses scope out of the name string — it
 // computes each candidate's name forward from its own scope/name fields and
-// compares (FR-011).
+// compares.
 //
 // Two distinct servers sharing (scope, name) but differing by URL compute
 // the same composite name. Rather than silently picking the first match,
 // every candidate is collected and an ambiguous-match error listing them is
-// returned when more than one is found (FR-014/AC-008) — this lookup is
+// returned when more than one is found — this lookup is
 // used by both Get and Delete, so neither ever acts on the wrong server of
 // an ambiguous pair.
 func findServerByResourceName(ctx context.Context, client *assistantmcp.Client, name string) (*assistantmcp.Server, error) {
@@ -220,7 +220,7 @@ func findServerByResourceName(ctx context.Context, client *assistantmcp.Client, 
 
 // ambiguousResourceNameError lists every candidate server sharing the same
 // composite (scope, name)-derived metadata.name so the caller can disambiguate
-// by URL or server ID (FR-014/AC-008) instead of getting a silent, possibly
+// by URL or server ID instead of getting a silent, possibly
 // wrong, match.
 func ambiguousResourceNameError(name string, matches []*assistantmcp.Server) error {
 	candidates := make([]string, 0, len(matches))
@@ -233,7 +233,7 @@ func ambiguousResourceNameError(name string, matches []*assistantmcp.Server) err
 	)
 }
 
-// rejectNameOnlyHeaders enforces FR-019: on a true create path there is no
+// rejectNameOnlyHeaders guards the true create path: there is no
 // existing stored secret to preserve, so a resolved header with an empty
 // value (name-only, no inline value/fromEnv/fromFile) is an actionable
 // error rather than a silently valueless write.
@@ -284,8 +284,7 @@ func updateResolvedServer(ctx context.Context, client *assistantmcp.Client, id s
 // ServerToMCPServer converts a client Server (redacted header values) into
 // the manifest domain type. Header values are never populated here — the
 // client's Server.CustomHeaders only ever carries names, and
-// headersFromServer (headers.go) marks every one of them for preserve
-// (FR-021).
+// headersFromServer (headers.go) marks every one of them for preserve.
 func ServerToMCPServer(s assistantmcp.Server) MCPServer {
 	return MCPServer{
 		Name:         s.Name,
@@ -324,14 +323,13 @@ func configWithoutDerivedKeys(cfg map[string]any) map[string]any {
 // sourcing are all collapsed into a plain name+value list before this
 // reaches Client.Create/Update, so those calls never see an unresolved
 // fromEnv/fromFile reference). Headers are resolved by the caller, once,
-// before it decides the create-vs-update path (FR-019) and applies the
-// create-path name-only guard, so this function does not resolve or
-// re-validate them. A resolved empty Value naturally preserves an existing
-// stored header on update, via Client.Update's internal
-// HeaderWritesForUpdate classification (FR-018); this function does not
-// itself classify overwrite/preserve/remove -- that stays centralized at
-// the client boundary (T2) so the wire-encoding assumption is never
-// duplicated.
+// before it decides the create-vs-update path and applies the create-path
+// name-only guard, so this function does not resolve or re-validate them.
+// A resolved empty Value naturally preserves an existing stored header on
+// update -- the client's Update derives per-header write intent
+// (overwrite/preserve/remove) from the desired list, so that
+// classification stays centralized at the client boundary and the
+// wire-encoding assumption is never duplicated here.
 func serverInputFromMCPServer(m *MCPServer, headers []assistantmcp.Header) assistantmcp.ServerInput {
 	enabled := m.Enabled
 	return assistantmcp.ServerInput{

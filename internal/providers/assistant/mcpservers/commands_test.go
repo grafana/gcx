@@ -187,7 +187,7 @@ func TestCreateOptsValidateAcceptsClickHouseTokenHeaderForTenantScope(t *testing
 	require.NoError(t, opts.Validate())
 }
 
-// TestRunListEmitsShowingFirstHintWhenMoreMayExist covers AC-010/FR-016: the
+// TestRunListEmitsShowingFirstHintWhenMoreMayExist: the
 // human list path stays bounded and prints a STDERR hint reading "showing
 // first N -- use --limit for more" when more integrations may exist beyond
 // the page -- never presenting the integration total as an MCP-server count.
@@ -316,7 +316,7 @@ func TestFindByNaturalKeyMatchesScopeNameURL(t *testing.T) {
 	assert.Equal(t, "mcp-tenant", got.Spec.ServerID())
 }
 
-// TestApplyUpdatePreservesHeadersWhenNoHeaderFlags covers the PR #747 Major #1
+// TestApplyUpdatePreservesHeadersWhenNoHeaderFlags covers the header-loss
 // guard through the crud-routed update path: with no --header flags
 // (input.Headers == nil) the desired manifest carries every current header as
 // name-only, which the client boundary treats as preserve-existing.
@@ -435,8 +435,8 @@ func newRecordingTestClient(t *testing.T, handler http.HandlerFunc) (*assistantm
 	return assistantmcp.NewClient(base), &requests
 }
 
-// TestRunCreateErrorsOnExistingWithoutMutating is the regression test for the
-// PR #747 credential-loss class reintroduced via create: a bare create (no
+// TestRunCreateErrorsOnExistingWithoutMutating is the regression test for
+// credential loss reintroduced via create: a bare create (no
 // --header flags, no --if-not-exists) against an existing (scope, name, url)
 // match must FAIL rather than route into the adapter's upsert — which would
 // resolve the empty desired-header list to "remove all" and strip the stored
