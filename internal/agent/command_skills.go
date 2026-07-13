@@ -23,7 +23,7 @@ var commandSkills = map[string][]string{
 	"gcx metrics":              {"debug-with-grafana"},
 	"gcx traces":               {"debug-with-grafana"},
 	"gcx profiles":             {"debug-with-grafana"},
-	"gcx datasources":          {"explore-datasources"},
+	"gcx datasources":          {"debug-with-grafana"},
 	"gcx kg":                   {"diagnose-entity-graph"},
 	"gcx aio11y":               {"aio11y"},
 	"gcx setup":                {"setup-gcx"},
