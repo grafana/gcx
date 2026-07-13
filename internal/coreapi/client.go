@@ -58,13 +58,12 @@ func (c *Client) DoRequest(ctx context.Context, method, path string, body io.Rea
 
 // DoJSON executes an HTTP request against the core API, optionally marshaling
 // body as the JSON request payload, and decodes a JSON response into Resp. Pass
-// a nil body for requests with no request body (e.g. GET/DELETE) — in that case
-// Req can be instantiated as `any`.
+// a nil body for requests with no request body (e.g. GET/DELETE).
 //
 // Any response status not present in okStatuses is treated as an error via
 // HandleErrorResponse.
-func DoJSON[Req, Resp any](ctx context.Context, c *Client, method, path string, body *Req, okStatuses ...int) (Resp, error) {
-	return doJSON[Req, Resp](ctx, c, method, path, body, nil, okStatuses)
+func DoJSON[Resp any](ctx context.Context, c *Client, method, path string, body any, okStatuses ...int) (Resp, error) {
+	return doJSON[Resp](ctx, c, method, path, body, nil, okStatuses)
 }
 
 // DoJSONNotFound behaves like DoJSON, but returns notFoundErr instead of the
@@ -72,11 +71,11 @@ func DoJSON[Req, Resp any](ctx context.Context, c *Client, method, path string, 
 // typically pass a sentinel wrapped with request-specific context, e.g.
 // fmt.Errorf("%s: %w", id, ErrNotFound), so that errors.Is still matches the
 // resource-specific sentinel.
-func DoJSONNotFound[Req, Resp any](ctx context.Context, c *Client, method, path string, body *Req, notFoundErr error, okStatuses ...int) (Resp, error) {
-	return doJSON[Req, Resp](ctx, c, method, path, body, notFoundErr, okStatuses)
+func DoJSONNotFound[Resp any](ctx context.Context, c *Client, method, path string, body any, notFoundErr error, okStatuses ...int) (Resp, error) {
+	return doJSON[Resp](ctx, c, method, path, body, notFoundErr, okStatuses)
 }
 
-func doJSON[Req, Resp any](ctx context.Context, c *Client, method, path string, body *Req, notFoundErr error, okStatuses []int) (Resp, error) {
+func doJSON[Resp any](ctx context.Context, c *Client, method, path string, body any, notFoundErr error, okStatuses []int) (Resp, error) {
 	var zero Resp
 
 	var reader io.Reader
@@ -112,17 +111,17 @@ func doJSON[Req, Resp any](ctx context.Context, c *Client, method, path string, 
 // body as the JSON request payload, and checks that the response status is one
 // of okStatuses without decoding a response body. Use this for endpoints that
 // return no useful body (e.g. DELETE, or actions).
-func DoStatus[Req any](ctx context.Context, c *Client, method, path string, body *Req, okStatuses ...int) error {
-	return doStatus[Req](ctx, c, method, path, body, nil, okStatuses)
+func DoStatus(ctx context.Context, c *Client, method, path string, body any, okStatuses ...int) error {
+	return doStatus(ctx, c, method, path, body, nil, okStatuses)
 }
 
 // DoStatusNotFound behaves like DoStatus, but returns notFoundErr instead of the
 // generic HandleErrorResponse error when the response status is 404.
-func DoStatusNotFound[Req any](ctx context.Context, c *Client, method, path string, body *Req, notFoundErr error, okStatuses ...int) error {
-	return doStatus[Req](ctx, c, method, path, body, notFoundErr, okStatuses)
+func DoStatusNotFound(ctx context.Context, c *Client, method, path string, body any, notFoundErr error, okStatuses ...int) error {
+	return doStatus(ctx, c, method, path, body, notFoundErr, okStatuses)
 }
 
-func doStatus[Req any](ctx context.Context, c *Client, method, path string, body *Req, notFoundErr error, okStatuses []int) error {
+func doStatus(ctx context.Context, c *Client, method, path string, body any, notFoundErr error, okStatuses []int) error {
 	var reader io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)

@@ -44,7 +44,7 @@ func TestDoJSON_DecodesResponse(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	got, err := coreapi.DoJSON[any, widget](context.Background(), c, http.MethodGet, "/api/widgets/7", nil, http.StatusOK)
+	got, err := coreapi.DoJSON[widget](context.Background(), c, http.MethodGet, "/api/widgets/7", nil, http.StatusOK)
 	require.NoError(t, err)
 	assert.Equal(t, widget{ID: 7, Name: "alpha"}, got)
 	assert.Equal(t, http.MethodGet, gotMethod)
@@ -66,7 +66,7 @@ func TestDoJSON_MarshalsBodyAndSetsContentType(t *testing.T) {
 
 	c := newTestClient(t, srv.URL)
 	in := widget{Name: "beta"}
-	got, err := coreapi.DoJSON[widget, widget](context.Background(), c, http.MethodPost, "/api/widgets", &in, http.StatusOK, http.StatusCreated)
+	got, err := coreapi.DoJSON[widget](context.Background(), c, http.MethodPost, "/api/widgets", &in, http.StatusOK, http.StatusCreated)
 	require.NoError(t, err)
 	assert.Equal(t, widget{ID: 9, Name: "beta"}, got)
 	assert.JSONEq(t, `{"id":0,"name":"beta"}`, gotBody)
@@ -81,7 +81,7 @@ func TestDoJSON_ErrorParsesMessage(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	_, err := coreapi.DoJSON[any, widget](context.Background(), c, http.MethodGet, "/api/widgets/1", nil, http.StatusOK)
+	_, err := coreapi.DoJSON[widget](context.Background(), c, http.MethodGet, "/api/widgets/1", nil, http.StatusOK)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
 	assert.Contains(t, err.Error(), "permission denied")
@@ -96,7 +96,7 @@ func TestDoJSONNotFound_ReturnsSentinel(t *testing.T) {
 
 	sentinel := errors.New("missing")
 	c := newTestClient(t, srv.URL)
-	_, err := coreapi.DoJSONNotFound[any, widget](context.Background(), c, http.MethodGet, "/api/widgets/1", nil, sentinel, http.StatusOK)
+	_, err := coreapi.DoJSONNotFound[widget](context.Background(), c, http.MethodGet, "/api/widgets/1", nil, sentinel, http.StatusOK)
 	require.ErrorIs(t, err, sentinel)
 }
 
@@ -108,7 +108,7 @@ func TestDoStatus_ChecksStatusWithoutDecoding(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	err := coreapi.DoStatus[any](context.Background(), c, http.MethodDelete, "/api/widgets/1", nil, http.StatusOK, http.StatusNoContent)
+	err := coreapi.DoStatus(context.Background(), c, http.MethodDelete, "/api/widgets/1", nil, http.StatusOK, http.StatusNoContent)
 	require.NoError(t, err)
 }
 
@@ -120,7 +120,7 @@ func TestDoStatus_Error(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	err := coreapi.DoStatus[any](context.Background(), c, http.MethodDelete, "/api/widgets/1", nil, http.StatusOK)
+	err := coreapi.DoStatus(context.Background(), c, http.MethodDelete, "/api/widgets/1", nil, http.StatusOK)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "500")
 	assert.Contains(t, err.Error(), "boom")
