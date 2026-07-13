@@ -481,7 +481,7 @@ func (l *ConfigLoader) LoadConfig(ctx context.Context) (config.Config, error) {
 		if !cfg.HasContext(cfg.CurrentContext) {
 			return config.ContextNotFound(cfg.CurrentContext)
 		}
-		return cfg.GetCurrentContext().Validate()
+		return cfg.GetCurrentContext().Validate(ctx)
 	}
 	return l.LoadConfigTolerant(ctx, validator)
 }
