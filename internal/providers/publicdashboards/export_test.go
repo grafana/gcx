@@ -12,6 +12,6 @@ func ReadPublicDashboardSpecForTest(path string, stdin io.Reader) (*PublicDashbo
 }
 
 // NewCreateCommandForTest exposes newCreateCommand for external tests.
-func NewCreateCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+func NewCreateCommandForTest(loader RESTConfigLoader) *cobra.Command {
 	return newCreateCommand(loader)
 }

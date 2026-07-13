@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// stubLoader implements GrafanaConfigLoader for tests without triggering real config loading.
+// stubLoader implements RESTConfigLoader for tests without triggering real config loading.
 type stubLoader struct{}
 
 func (stubLoader) LoadGrafanaConfig(_ context.Context) (config.NamespacedRESTConfig, error) {

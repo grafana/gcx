@@ -28,11 +28,14 @@ func (p *PublicDashboardsProvider) Commands() []*cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "public-dashboards",
 		Short: p.ShortDesc(),
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if root := cmd.Root(); root.PersistentPreRun != nil {
-				root.PersistentPreRun(cmd, args)
-			}
-		},
+	}
+	// Bubble parent PersistentPreRun when attached to a real CLI root; guard
+	// against self-recursion when cmd itself is used as the root (e.g. in
+	// isolated tests where cmd.Root() == cmd).
+	cmd.PersistentPreRun = func(c *cobra.Command, args []string) {
+		if root := c.Root(); root != cmd && root.PersistentPreRun != nil {
+			root.PersistentPreRun(c, args)
+		}
 	}
 
 	loader.BindFlags(cmd.PersistentFlags())

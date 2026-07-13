@@ -16,10 +16,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// GrafanaConfigLoader is the loader interface used by command constructors.
-// It is an alias for RESTConfigLoader to keep existing test names stable.
-type GrafanaConfigLoader = RESTConfigLoader
-
 // boolLabel renders a nullable toggle: "yes"/"no" when set, "-" when unset
 // (the server always returns concrete values, so "-" only appears for a spec
 // that omitted the field).
@@ -76,7 +72,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
 }
 
-func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newListCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -151,7 +147,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get PD_UID",
@@ -196,7 +192,7 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "file", "f", "", "File containing the public dashboard spec (JSON), or '-' for stdin (required)")
 }
 
-func newCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -253,7 +249,7 @@ func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "file", "f", "", "File containing the public dashboard spec (JSON), or '-' for stdin (required)")
 }
 
-func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &updateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update PD_UID",
@@ -303,7 +299,7 @@ type deleteOpts struct{}
 
 func (o *deleteOpts) setup(_ *pflag.FlagSet) {}
 
-func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete PD_UID",
