@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
+	"github.com/pmezard/go-difflib/difflib"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
@@ -565,8 +566,45 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(listCmd, getCmd, createCmd, deleteCmd)
+	schemaOpts := &rulesSchemaOpts{}
+	schemaCmd := &cobra.Command{
+		Use:   "schema",
+		Short: "Fetch the live JSON Schema for Custom Prometheus rules from the backend.",
+		Long: `Fetches the JSON Schema (Draft 2020-12) that describes the Custom Prometheus rules configuration
+shape, derived from the backend DTO tree. Pipe to a file and point your editor at it for autocomplete and
+deep validation when authoring prom-rules manifests.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := schemaOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			schema, err := client.GetPromRulesSchema(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return schemaOpts.IO.Encode(cmd.OutOrStdout(), schema)
+		},
+	}
+	schemaOpts.setup(schemaCmd.Flags())
+
+	cmd.AddCommand(listCmd, getCmd, createCmd, deleteCmd, schemaCmd)
 	return cmd
+}
+
+type rulesSchemaOpts struct {
+	IO cmdio.Options
+}
+
+func (o *rulesSchemaOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
 }
 
 type rulesListOpts struct {
@@ -908,11 +946,14 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	listOpts.setup(listCmd.Flags())
 
-	var fileFlag string
+	createOpts := &suppressionsCreateOpts{}
 	createCmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create or update one or more suppressions from a YAML file or stdin.",
 		Example: `  gcx kg suppressions create -f suppressions.yaml
+
+  # Validate against the backend and preview the diff without uploading:
+  gcx kg suppressions create -f suppressions.yaml --dry-run
 
   echo 'disabledAlertConfigs:
     - name: my-suppression
@@ -920,7 +961,12 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
         alertname: ErrorRatioBreach
         job: my-service' | gcx kg suppressions create`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
+			if createOpts.DryRun {
+				if err := createOpts.IO.Validate(); err != nil {
+					return err
+				}
+			}
+			data, err := readFileOrStdin(cmd, createOpts.File)
 			if err != nil {
 				return err
 			}
@@ -939,6 +985,9 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if createOpts.DryRun {
+				return runSuppressionsDryRun(cmd, &createOpts.IO, client, &suppressions)
+			}
 			total := len(suppressions.DisabledAlertConfigs)
 			for i, s := range suppressions.DisabledAlertConfigs {
 				if err := client.UpsertSuppression(cmd.Context(), s); err != nil {
@@ -949,7 +998,7 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML), or '-' for stdin. Reads from stdin if omitted.")
+	createOpts.setup(createCmd.Flags())
 
 	var force bool
 	deleteCmd := &cobra.Command{
@@ -985,6 +1034,194 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 
 	cmd.AddCommand(listCmd, createCmd, deleteCmd)
 	return cmd
+}
+
+type suppressionsCreateOpts struct {
+	File   string
+	DryRun bool
+	IO     cmdio.Options
+}
+
+func (o *suppressionsCreateOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin. Reads from stdin if omitted.")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate against the backend and show a diff without uploading.")
+	o.IO.RegisterCustomCodec("text", &SuppressionsDryRunTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+// SuppressionChange describes one entry-level change `create` would apply in a
+// dry-run. Action is one of:
+//   - "add"    — present locally, absent remotely; `create` will add it.
+//   - "modify" — present in both but differing; `create` will update it.
+//
+// The dry-run is scoped to the entries in the input file. `create` is
+// upsert-only — it never deletes — so remote entries absent from the file are
+// not reported and not shown in the diff, keeping the output focused on what
+// `create` will actually do.
+type SuppressionChange struct {
+	Name   string `json:"name" yaml:"name"`
+	Action string `json:"action" yaml:"action"`
+}
+
+// SuppressionsDryRunResult is the structured result of `suppressions create
+// --dry-run`. It is rendered as a unified diff in the default text format and as
+// this struct under -o json/yaml (and the agents format) so consumers do not
+// have to parse diff text. Reaching this result implies validation passed.
+//
+// Both Changes and Diff are scoped to the input file's entries: Changed reports
+// whether `create` would add or modify anything.
+type SuppressionsDryRunResult struct {
+	Valid   bool                `json:"valid" yaml:"valid"`
+	Changed bool                `json:"changed" yaml:"changed"`
+	Changes []SuppressionChange `json:"changes" yaml:"changes"`
+	Diff    string              `json:"diff,omitempty" yaml:"diff,omitempty"`
+}
+
+// runSuppressionsDryRun validates the parsed suppressions against the backend's
+// server-side validator and, if valid, reports what `create` would add or modify
+// versus the current remote configuration. It never writes. A diagnostic banner
+// goes to stderr; the result (unified diff in text mode, structured object under
+// -o json/yaml) goes to stdout so pipe consumers receive clean input.
+func runSuppressionsDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, local *Suppressions) error {
+	if err := client.ValidateSuppressions(cmd.Context(), local); err != nil {
+		return err
+	}
+
+	remote, err := client.GetSuppressions(cmd.Context())
+	if err != nil {
+		return err
+	}
+
+	result, err := buildSuppressionsDryRunResult(remote, local)
+	if err != nil {
+		return err
+	}
+
+	if result.Changed {
+		cmdio.Info(cmd.ErrOrStderr(), "[dry-run] suppressions are valid; %d change(s) (remote -> local)", len(result.Changes))
+	} else {
+		cmdio.Info(cmd.ErrOrStderr(), "[dry-run] suppressions are valid; no changes")
+	}
+	return ioOpts.Encode(cmd.OutOrStdout(), result)
+}
+
+// buildSuppressionsDryRunResult compares the input file's entries against their
+// remote counterparts (matched by name), producing per-entry add/modify changes
+// and a canonical-YAML unified diff scoped to those entries. Remote entries
+// absent from the file are ignored — `create` is upsert-only and never deletes,
+// so surfacing them would only add noise.
+//
+// System-managed fields (see forDiff) are excluded from both the comparison and
+// the diff: they are populated by the backend, not the user, so showing them as
+// added/removed would misrepresent what `create` actually changes.
+func buildSuppressionsDryRunResult(remote, local *Suppressions) (SuppressionsDryRunResult, error) {
+	remoteByName := make(map[string]Suppression, len(remote.DisabledAlertConfigs))
+	for _, s := range remote.DisabledAlertConfigs {
+		remoteByName[s.Name] = s
+	}
+
+	// remoteScoped/localScoped hold the entries the diff compares — file order,
+	// system fields stripped. Added entries appear only in localScoped.
+	// changes is non-nil so it serializes as [] rather than null when empty.
+	changes := []SuppressionChange{}
+	var (
+		remoteScoped Suppressions
+		localScoped  Suppressions
+	)
+	for _, s := range local.DisabledAlertConfigs {
+		localCmp := forDiff(s)
+		r, ok := remoteByName[s.Name]
+		if !ok {
+			changes = append(changes, SuppressionChange{Name: s.Name, Action: "add"})
+			localScoped.DisabledAlertConfigs = append(localScoped.DisabledAlertConfigs, localCmp)
+			continue
+		}
+		remoteCmp := forDiff(r)
+		remoteScoped.DisabledAlertConfigs = append(remoteScoped.DisabledAlertConfigs, remoteCmp)
+		localScoped.DisabledAlertConfigs = append(localScoped.DisabledAlertConfigs, localCmp)
+		if !suppressionEqual(remoteCmp, localCmp) {
+			changes = append(changes, SuppressionChange{Name: s.Name, Action: "modify"})
+		}
+	}
+
+	result := SuppressionsDryRunResult{Valid: true, Changed: len(changes) > 0, Changes: changes}
+	if !result.Changed {
+		return result, nil
+	}
+
+	remoteYAML, err := normalizeYAMLForDiff(&remoteScoped)
+	if err != nil {
+		return SuppressionsDryRunResult{}, fmt.Errorf("render remote suppressions: %w", err)
+	}
+	localYAML, err := normalizeYAMLForDiff(&localScoped)
+	if err != nil {
+		return SuppressionsDryRunResult{}, fmt.Errorf("render local suppressions: %w", err)
+	}
+	diff, err := unifiedYAMLDiff(remoteYAML, localYAML)
+	if err != nil {
+		return SuppressionsDryRunResult{}, fmt.Errorf("render suppressions diff: %w", err)
+	}
+	result.Diff = diff
+	return result, nil
+}
+
+// forDiff returns a copy of s with system-managed fields cleared, so dry-run
+// comparison and diffing consider only the user-authored fields (name,
+// matchLabels). managedBy is set by the backend (e.g. "terraform"), not the
+// input file, so including it would flag unchanged entries as modified and show
+// spurious removals in the diff.
+func forDiff(s Suppression) Suppression {
+	s.ManagedBy = ""
+	return s
+}
+
+func suppressionEqual(a, b Suppression) bool {
+	return a.Name == b.Name && a.ManagedBy == b.ManagedBy && maps.Equal(a.MatchLabels, b.MatchLabels)
+}
+
+// SuppressionsDryRunTextCodec renders a dry-run result as its unified diff (or
+// nothing when there are no changes, keeping stdout empty for pipe consumers).
+type SuppressionsDryRunTextCodec struct{}
+
+func (c *SuppressionsDryRunTextCodec) Format() format.Format { return "text" }
+
+func (c *SuppressionsDryRunTextCodec) Encode(w io.Writer, v any) error {
+	result, ok := v.(SuppressionsDryRunResult)
+	if !ok {
+		return errors.New("invalid data type for text codec: expected SuppressionsDryRunResult")
+	}
+	if result.Diff == "" {
+		return nil
+	}
+	_, err := io.WriteString(w, result.Diff)
+	return err
+}
+
+func (c *SuppressionsDryRunTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
+}
+
+// normalizeYAMLForDiff marshals a value to canonical YAML so that two configs
+// with equivalent content but different key ordering or formatting compare and
+// diff cleanly.
+func normalizeYAMLForDiff(v any) (string, error) {
+	out, err := yaml.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// unifiedYAMLDiff renders a unified diff of remote vs local canonical YAML.
+func unifiedYAMLDiff(remote, local string) (string, error) {
+	return difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+		A:        difflib.SplitLines(remote),
+		B:        difflib.SplitLines(local),
+		FromFile: "remote",
+		ToFile:   "local",
+		Context:  3,
+	})
 }
 
 type suppressionsListOpts struct {

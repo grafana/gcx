@@ -111,3 +111,25 @@ test_resource_is_dashboard_v2_recognizes_DashboardWithAccessInfo_v2beta1 if {
 
 	utils.resource_is_dashboard_v2(resource)
 }
+
+test_resource_is_dashboard_v2_recognizes_Dashboard_v2 if {
+	resource := {
+	    "kind": "Dashboard",
+	    "apiVersion": "dashboard.grafana.app/v2",
+	    "metadata": {"name": "test-dashboard"},
+	    "spec": {"does not": "matter"}
+	}
+
+	utils.resource_is_dashboard_v2(resource)
+}
+
+test_resource_is_dashboard_v2_recognizes_DashboardWithAccessInfo_v2 if {
+	resource := {
+	    "kind": "DashboardWithAccessInfo",
+	    "apiVersion": "dashboard.grafana.app/v2",
+	    "metadata": {"name": "test-dashboard"},
+	    "spec": {"does not": "matter"}
+	}
+
+	utils.resource_is_dashboard_v2(resource)
+}

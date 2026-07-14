@@ -47,6 +47,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grafana/otel-checker v0.2.0
 	github.com/itchyny/gojq v0.12.19
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/prometheus/common v0.69.0
 	github.com/zalando/go-keyring v0.2.8
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
@@ -147,7 +148,6 @@ require (
 	github.com/olekukonko/ll v0.1.8 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/procfs v0.21.0 // indirect
