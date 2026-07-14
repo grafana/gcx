@@ -23,33 +23,34 @@ const ruleFetchConcurrency = 10
 const pluginResourcePath = "/api/plugins/grafana-asserts-app/resources"
 
 const (
-	statusPath           = pluginResourcePath + "/asserts/api-server/v1/stack/status"
-	entitiesPath         = pluginResourcePath + "/asserts/api-server/v1/entity/info"
-	entityTypesPath      = pluginResourcePath + "/asserts/api-server/v1/entity_type"
-	entityCountPath      = entityTypesPath + "/count"
-	scopesPath           = pluginResourcePath + "/asserts/api-server/v1/entity_scope"
-	assertionsPath       = pluginResourcePath + "/asserts/api-server/v1/assertions"
-	assertMetricPath     = assertionsPath + "/entity-metric"
-	assertLLMPath        = assertionsPath + "/llm-summary"
-	sourceMetricPath     = pluginResourcePath + "/asserts/api-server/v1/assertion/source-metrics"
-	searchPath           = pluginResourcePath + "/asserts/api-server/v1/search"
-	searchAssertPath     = searchPath + "/assertions"
-	searchSamplePath     = searchPath + "/sample"
-	rulesPath            = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
-	ruleByNameFmt        = rulesPath + "/%s"
-	rulesSchemaPath      = rulesPath + "/schema"
-	modelRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
-	modelRulesByNameFmt  = modelRulesPath + "/%s"
-	modelRulesSchemaPath = modelRulesPath + "/schema"
-	suppressionPath      = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
-	suppressionByNameFmt = suppressionPath + "/%s"
-	suppressionsPath     = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
-	entityLookupPath     = pluginResourcePath + "/asserts/api-server/v1/entity"
-	v2ConfigPath         = pluginResourcePath + "/asserts/api-server/v2/config"
-	v2LogConfigPath      = v2ConfigPath + "/log"
-	v2TraceConfigPath    = v2ConfigPath + "/trace"
-	v2ProfileConfigPath  = v2ConfigPath + "/profile"
-	v2RelabelRulesPath   = v2ConfigPath + "/relabel-rules"
+	statusPath               = pluginResourcePath + "/asserts/api-server/v1/stack/status"
+	entitiesPath             = pluginResourcePath + "/asserts/api-server/v1/entity/info"
+	entityTypesPath          = pluginResourcePath + "/asserts/api-server/v1/entity_type"
+	entityCountPath          = entityTypesPath + "/count"
+	scopesPath               = pluginResourcePath + "/asserts/api-server/v1/entity_scope"
+	assertionsPath           = pluginResourcePath + "/asserts/api-server/v1/assertions"
+	assertMetricPath         = assertionsPath + "/entity-metric"
+	assertLLMPath            = assertionsPath + "/llm-summary"
+	sourceMetricPath         = pluginResourcePath + "/asserts/api-server/v1/assertion/source-metrics"
+	searchPath               = pluginResourcePath + "/asserts/api-server/v1/search"
+	searchAssertPath         = searchPath + "/assertions"
+	searchSamplePath         = searchPath + "/sample"
+	rulesPath                = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
+	ruleByNameFmt            = rulesPath + "/%s"
+	rulesSchemaPath          = rulesPath + "/schema"
+	modelRulesPath           = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
+	modelRulesByNameFmt      = modelRulesPath + "/%s"
+	modelRulesSchemaPath     = modelRulesPath + "/schema"
+	suppressionPath          = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
+	suppressionByNameFmt     = suppressionPath + "/%s"
+	suppressionsPath         = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
+	suppressionsValidatePath = suppressionsPath + "-validate"
+	entityLookupPath         = pluginResourcePath + "/asserts/api-server/v1/entity"
+	v2ConfigPath             = pluginResourcePath + "/asserts/api-server/v2/config"
+	v2LogConfigPath          = v2ConfigPath + "/log"
+	v2TraceConfigPath        = v2ConfigPath + "/trace"
+	v2ProfileConfigPath      = v2ConfigPath + "/profile"
+	v2RelabelRulesPath       = v2ConfigPath + "/relabel-rules"
 
 	// KG Write API (K8s-style, namespaced). %s is the stacks-<id> namespace.
 	// Entity and relationship deletes use these collection paths with identity
@@ -426,6 +427,109 @@ func (c *Client) GetSuppressions(ctx context.Context) (*Suppressions, error) {
 		return nil, err
 	}
 	return &result, nil
+}
+
+// SuppressionFieldError is a single field-level validation failure reported by
+// the disabled-alerts-validate endpoint, e.g. field "disabledAlertConfigs[0].name",
+// message "Missing Rule Name".
+type SuppressionFieldError struct {
+	Field   string
+	Message string
+}
+
+// SuppressionsValidationError is returned by ValidateSuppressions when the
+// backend rejects the payload (HTTP 422). It carries the per-field errors from
+// the server-side validator so callers can render them without a round-trip to
+// the write endpoint.
+type SuppressionsValidationError struct {
+	StatusCode int
+	Message    string
+	Errors     []SuppressionFieldError
+}
+
+func (e *SuppressionsValidationError) Error() string {
+	msg := e.Message
+	if msg == "" {
+		msg = "suppressions configuration is invalid"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "kg: %s", msg)
+	for _, fe := range e.Errors {
+		fmt.Fprintf(&b, "\n  - %s: %s", fe.Field, fe.Message)
+	}
+	return b.String()
+}
+
+// HTTPStatusCode implements the interface used by internal/fail for rich errors.
+func (e *SuppressionsValidationError) HTTPStatusCode() int { return e.StatusCode }
+
+// APIServiceName implements the interface used by internal/fail for rich errors.
+func (e *SuppressionsValidationError) APIServiceName() string { return "Knowledge Graph" }
+
+// APIUserMessage implements the interface used by internal/fail for rich errors.
+func (e *SuppressionsValidationError) APIUserMessage() string { return e.Error() }
+
+// ValidateSuppressions checks a suppression configuration against the backend's
+// server-side validator without persisting anything, via the validate-only
+// endpoint. It returns nil when the payload is valid, a
+// *SuppressionsValidationError on HTTP 422 (with per-field errors), or an
+// *APIError for other failures.
+func (c *Client) ValidateSuppressions(ctx context.Context, s *Suppressions) error {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return fmt.Errorf("kg: marshal request body: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+suppressionsValidatePath, bytes.NewReader(b))
+	if err != nil {
+		return fmt.Errorf("kg: create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		return parseSuppressionsValidationError(resp)
+	}
+	if resp.StatusCode >= 400 {
+		return readError(resp)
+	}
+	return nil
+}
+
+// parseSuppressionsValidationError parses the ApiError envelope returned by the
+// validate endpoint on HTTP 422 (fields message + subErrors[]{field,message}).
+// If the body is not the expected envelope, it falls back to a generic APIError.
+func parseSuppressionsValidationError(resp *http.Response) error {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &APIError{StatusCode: resp.StatusCode}
+	}
+	var env struct {
+		Message   string `json:"message"`
+		SubErrors []struct {
+			Field   string `json:"field"`
+			Message string `json:"message"`
+		} `json:"subErrors"`
+	}
+	if jsonErr := json.Unmarshal(body, &env); jsonErr == nil && len(env.SubErrors) > 0 {
+		verr := &SuppressionsValidationError{StatusCode: resp.StatusCode, Message: env.Message}
+		for _, se := range env.SubErrors {
+			verr.Errors = append(verr.Errors, SuppressionFieldError{Field: se.Field, Message: se.Message})
+		}
+		return verr
+	}
+	// Not the expected validation envelope — fall back to generic parsing.
+	apiErr := &APIError{StatusCode: resp.StatusCode}
+	if env.Message != "" {
+		apiErr.message = env.Message
+	} else if len(body) > 0 {
+		apiErr.rawBody = string(body)
+	}
+	return apiErr
 }
 
 // GetRelabelRules fetches the relabel rule group of the given type.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/kg"
@@ -414,4 +415,229 @@ func TestRuleTableCodec_RejectsWrongType(t *testing.T) {
 	require.Error(t, err)
 	err = (&kg.RuleWideTableCodec{}).Encode(&bytes.Buffer{}, []string{"nope"})
 	require.Error(t, err)
+}
+
+// suppressionsDryRunHandler routes the three endpoints a dry-run touches. It
+// records whether the single-config write endpoint is ever hit so tests can
+// assert dry-run never writes.
+func suppressionsDryRunHandler(t *testing.T, validateStatus int, validateBody string, remote kg.Suppressions, writeHit *bool) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "disabled-alerts-validate"):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(validateStatus)
+			if validateBody != "" {
+				_, _ = w.Write([]byte(validateBody))
+			}
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "disabled-alerts"):
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(remote)
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "disabled-alert"):
+			*writeHit = true
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}
+}
+
+const localSuppressionYAML = `disabledAlertConfigs:
+  - name: my-suppression
+    matchLabels:
+      alertname: ErrorRatioBreach
+`
+
+func TestSuppressionsCreate_DryRun_Invalid(t *testing.T) {
+	writeHit := false
+	body := `{"message":"Invalid disabled alert configuration file","subErrors":[` +
+		`{"field":"disabledAlertConfigs[0].matchLabels","message":"Missing Assertion"}]}`
+	server := httptest.NewServer(suppressionsDryRunHandler(t, http.StatusUnprocessableEntity, body, kg.Suppressions{}, &writeHit))
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run"})
+	cmd.SetIn(bytes.NewBufferString(localSuppressionYAML))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Missing Assertion")
+	assert.Empty(t, stdout.String(), "no diff on stdout for invalid input")
+	assert.False(t, writeHit, "dry-run must not write")
+}
+
+func TestSuppressionsCreate_DryRun_ValidWithChanges(t *testing.T) {
+	writeHit := false
+	// Remote has a different matchLabels value, so a diff is produced.
+	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
+		{Name: "my-suppression", MatchLabels: map[string]string{"alertname": "SomethingElse"}},
+	}}
+	server := httptest.NewServer(suppressionsDryRunHandler(t, http.StatusOK, "", remote, &writeHit))
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run", "-o", "text"})
+	cmd.SetIn(bytes.NewBufferString(localSuppressionYAML))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	require.NoError(t, cmd.Execute())
+	// Banner on stderr, diff body on stdout.
+	assert.Contains(t, stderr.String(), "[dry-run]")
+	assert.Contains(t, stderr.String(), "change(s)")
+	assert.Contains(t, stdout.String(), "--- remote")
+	assert.Contains(t, stdout.String(), "+++ local")
+	assert.Contains(t, stdout.String(), "ErrorRatioBreach")
+	assert.False(t, writeHit, "dry-run must not write")
+}
+
+func TestSuppressionsCreate_DryRun_JSONOutput(t *testing.T) {
+	writeHit := false
+	// Remote has one differing entry (modify) and, alongside the local-only
+	// entry (add), a remote-only entry that must be ignored (scoped to inputs).
+	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
+		{Name: "my-suppression", MatchLabels: map[string]string{"alertname": "SomethingElse"}},
+		{Name: "remote-only", MatchLabels: map[string]string{"alertname": "Foo"}},
+	}}
+	server := httptest.NewServer(suppressionsDryRunHandler(t, http.StatusOK, "", remote, &writeHit))
+	defer server.Close()
+
+	const localYAML = `disabledAlertConfigs:
+  - name: my-suppression
+    matchLabels:
+      alertname: ErrorRatioBreach
+  - name: brand-new
+    matchLabels:
+      alertname: HighLatency
+`
+	var stdout, stderr bytes.Buffer
+	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run", "-o", "json"})
+	cmd.SetIn(bytes.NewBufferString(localYAML))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	require.NoError(t, cmd.Execute())
+
+	var got kg.SuppressionsDryRunResult
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	assert.True(t, got.Valid)
+	assert.True(t, got.Changed, "add/modify present means create would change state")
+	// Scoped to the file's entries: modify (my-suppression), add (brand-new).
+	// The remote-only entry is ignored entirely — create never deletes.
+	actions := map[string]string{}
+	for _, c := range got.Changes {
+		actions[c.Name] = c.Action
+	}
+	assert.Equal(t, "modify", actions["my-suppression"])
+	assert.Equal(t, "add", actions["brand-new"])
+	assert.NotContains(t, actions, "remote-only", "remote-only entries are not reported (scoped to inputs)")
+	assert.Len(t, got.Changes, 2)
+	assert.NotEmpty(t, got.Diff, "structured result carries the unified diff too")
+	assert.NotContains(t, got.Diff, "remote-only", "diff is scoped to the input entries")
+	assert.False(t, writeHit, "dry-run must not write")
+}
+
+func TestSuppressionsCreate_DryRun_ValidNoChanges(t *testing.T) {
+	writeHit := false
+	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
+		{Name: "my-suppression", MatchLabels: map[string]string{"alertname": "ErrorRatioBreach"}},
+	}}
+	server := httptest.NewServer(suppressionsDryRunHandler(t, http.StatusOK, "", remote, &writeHit))
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run", "-o", "text"})
+	cmd.SetIn(bytes.NewBufferString(localSuppressionYAML))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, stderr.String(), "no changes")
+	assert.Empty(t, stdout.String(), "no diff on stdout when there are no changes")
+	assert.False(t, writeHit, "dry-run must not write")
+}
+
+// When the file's entries all match remote but remote has extra entries, the
+// dry-run reports no changes: remote-only entries are ignored (scoped to inputs)
+// and produce neither a change nor a diff.
+func TestSuppressionsCreate_DryRun_RemoteOnlyIgnored(t *testing.T) {
+	writeHit := false
+	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
+		{Name: "my-suppression", MatchLabels: map[string]string{"alertname": "ErrorRatioBreach"}},
+		{Name: "remote-only", MatchLabels: map[string]string{"alertname": "Foo"}},
+	}}
+	server := httptest.NewServer(suppressionsDryRunHandler(t, http.StatusOK, "", remote, &writeHit))
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run", "-o", "json"})
+	// localSuppressionYAML contains only my-suppression, identical to remote.
+	cmd.SetIn(bytes.NewBufferString(localSuppressionYAML))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	require.NoError(t, cmd.Execute())
+
+	var got kg.SuppressionsDryRunResult
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	assert.True(t, got.Valid)
+	assert.False(t, got.Changed, "create applies nothing when file entries match remote")
+	assert.Empty(t, got.Changes, "remote-only entries are not reported")
+	assert.Empty(t, got.Diff, "no diff when the input entries match remote")
+	// changes serializes as [] (not null) when empty.
+	assert.Contains(t, stdout.String(), `"changes": []`)
+	assert.Contains(t, stderr.String(), "no changes")
+	assert.False(t, writeHit, "dry-run must not write")
+}
+
+// System-managed fields (managedBy) are populated by the backend, not the input
+// file, so an entry whose user fields match remote must report no change even
+// when remote carries a managedBy the file omits — otherwise the diff would show
+// a spurious removal for a field create does not touch.
+func TestSuppressionsCreate_DryRun_SystemFieldsIgnored(t *testing.T) {
+	writeHit := false
+	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
+		{Name: "my-suppression", MatchLabels: map[string]string{"alertname": "ErrorRatioBreach"}, ManagedBy: "terraform"},
+	}}
+	server := httptest.NewServer(suppressionsDryRunHandler(t, http.StatusOK, "", remote, &writeHit))
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run", "-o", "json"})
+	// localSuppressionYAML has the same name/matchLabels but no managedBy.
+	cmd.SetIn(bytes.NewBufferString(localSuppressionYAML))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	require.NoError(t, cmd.Execute())
+
+	var got kg.SuppressionsDryRunResult
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	assert.True(t, got.Valid)
+	assert.False(t, got.Changed, "managedBy is a system field; user fields are unchanged")
+	assert.Empty(t, got.Changes)
+	assert.Empty(t, got.Diff, "system-only differences must not appear in the diff")
+	assert.NotContains(t, stdout.String(), "managedBy")
+	assert.False(t, writeHit, "dry-run must not write")
 }

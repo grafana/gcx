@@ -60,6 +60,21 @@ const (
 
 	// AdaptiveTraces documents reducing traces costs (Adaptive Traces).
 	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/traces-costs.md"
+
+	// AssistantPricing documents Grafana Assistant token-based pricing,
+	// which explicitly counts usage made through the gcx CLI.
+	AssistantPricing = "https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md"
+
+	// SyntheticMonitoringInvoice documents how Synthetic Monitoring test
+	// executions and their resulting metrics/logs are billed.
+	SyntheticMonitoringInvoice = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/synthetic-monitoring-invoice.md"
+
+	// PerformanceTestingInvoice documents how Grafana Cloud k6 test runs are
+	// billed in Virtual User Hours (VUh).
+	PerformanceTestingInvoice = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/performance-testing-invoice.md"
+
+	// IRMInvoice documents how Grafana IRM is billed per monthly active user.
+	IRMInvoice = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice.md"
 )
 
 // All returns every documentation URL in the registry. Used by the
@@ -80,5 +95,9 @@ func All() []string {
 		AdaptiveMetrics,
 		AdaptiveLogs,
 		AdaptiveTraces,
+		AssistantPricing,
+		SyntheticMonitoringInvoice,
+		PerformanceTestingInvoice,
+		IRMInvoice,
 	}
 }

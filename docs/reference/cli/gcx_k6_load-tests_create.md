@@ -2,6 +2,13 @@
 
 Create a new k6 load test.
 
+### Synopsis
+
+Create a new k6 load test.
+
+Note: running the created test in Grafana Cloud consumes billable Virtual User
+Hours (VUh). See https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/performance-testing-invoice.md.
+
 ```
 gcx k6 load-tests create [flags]
 ```

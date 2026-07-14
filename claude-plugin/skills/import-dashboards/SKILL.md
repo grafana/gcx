@@ -109,4 +109,5 @@ gcx resources push
 | "no converter found" | The resource's API version has no converter; the error message names the unsupported version |
 | Auth error (401/403) | Run `gcx config check` to verify credentials |
 | Empty import | The selector matched no resources; check UID with `gcx resources get dashboards` |
-| Imported code doesn't compile | Some complex dashboards produce converter output that needs manual fixup |
+| Build fails with `undefined: cog` (or another lowercase SDK identifier) | Older gcx versions omit SDK imports from generated files. Add the missing import `github.com/grafana/grafana-foundation-sdk/go/<pkg>` for each undefined identifier — `variants` is nested at `go/cog/variants`. Newer gcx emits complete imports |
+| Imported code doesn't compile for other reasons | Complex dashboards can produce converter output that needs manual fixup: build, read the first error, fix, repeat |

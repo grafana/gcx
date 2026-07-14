@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
@@ -689,6 +690,10 @@ func newTestsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new k6 load test.",
+		Long: `Create a new k6 load test.
+
+Note: running the created test in Grafana Cloud consumes billable Virtual User
+Hours (VUh). See ` + docs.PerformanceTestingInvoice + `.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -1954,7 +1959,11 @@ func newTestrunEmitCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "emit [test-name]",
 		Short: "Fetch a k6 Cloud test and emit Kubernetes TestRun CRD manifests.",
-		Args:  cobra.RangeArgs(0, 1),
+		Long: `Fetch a k6 Cloud test and emit Kubernetes TestRun CRD manifests.
+
+Note: applying the manifests (--apply) starts a test run that consumes billable
+Virtual User Hours (VUh). See ` + docs.PerformanceTestingInvoice + `.`,
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			testName, err := requireNameOrID(opts.ID, args)
 			if err != nil {

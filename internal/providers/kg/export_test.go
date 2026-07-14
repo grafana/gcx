@@ -145,6 +145,11 @@ func NewRelationshipsCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	return newRelationshipsCreateCommand(loader)
 }
 
+// NewSuppressionsCommand exposes the suppressions command group for tests.
+func NewSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
+	return newSuppressionsCommand(loader)
+}
+
 func NewRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	return newRelationshipsDeleteCommand(loader)
 }

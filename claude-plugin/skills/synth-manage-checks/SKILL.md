@@ -64,7 +64,7 @@ spec:
     - Atlanta
     - Frankfurt
     - Singapore
-  alertSensitivity: medium  # none, low, medium, high
+  alertSensitivity: none    # none unless the stack uses legacy sensitivity alerts
   basicMetricsOnly: false   # true = fewer metrics, lower cardinality
   settings:
     http: {}   # Replace with type-specific settings
@@ -73,7 +73,9 @@ spec:
 Configuration guidance:
 - **frequency**: critical checks 10,000–60,000ms; standard checks 60,000–300,000ms
 - **timeout**: must be strictly less than `frequency`; typically 5,000–30,000ms
-- **alertSensitivity**: `high` = alert if >5% failing; `medium` = >10%; `low` = >25%; `none` = no alerts
+- **alertSensitivity**: default to `none` — see "Alert Sensitivity" in
+  [references/check-types.md](references/check-types.md) for why non-`none`
+  values can 403 on some stacks.
 - **basicMetricsOnly**: `true` reduces metric cardinality (fewer label dimensions); `false` emits full metrics
 
 ### Step 4: Create the Check

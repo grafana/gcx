@@ -1,13 +1,20 @@
 ---
 name: debug-with-grafana
 description: >
-  Structured diagnostic workflow for debugging application issues using
-  Grafana observability data. Use when the user reports errors, latency
-  spikes, service degradation, HTTP 500s, or wants to investigate why a
-  service is behaving unexpectedly. Triggers for: "my API is returning 500
-  errors", "latency is spiking", "service seems down", "help me debug
-  using Grafana", "investigate why requests are failing", "something is
-  wrong with my service".
+  Structured workflow for investigating application problems with Grafana
+  observability data (metrics, logs, traces) via gcx. Covers live
+  firefighting AND retrospective incident analysis: incident triage,
+  root-cause analysis, blast-radius checks (did an incident spill into
+  other services), verifying whether a deployment or rollout triggered an
+  incident, finding which service, endpoint, or path owns the most errors
+  or slow requests, checking whether retries or queue backlogs piled up,
+  and quantifying error or latency shares over a time window. Trigger on:
+  "my API is returning 500 errors", "latency is spiking", "investigate why
+  requests are failing", "triage the incident", "blast radius", "root
+  cause", "did the rollout cause it", "which endpoint owns the most 5xx",
+  "did retries pile up", or any request to analyse an earlier incident
+  window using telemetry. For authoring dashboards use create-dashboard;
+  for dashboard inventory use manage-dashboards.
 ---
 
 # Debug with Grafana

@@ -13,6 +13,9 @@ names, then returns complete dashboard JSON that can be pushed directly with
 This is equivalent to:
   gcx assistant prompt --agent-id grafana_dashboarding <message>
 
+Note: each request consumes billable Grafana Assistant tokens, including
+requests made through gcx. See https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md.
+
 ```
 gcx assistant dashboard <message> [flags]
 ```

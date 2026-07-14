@@ -36,14 +36,14 @@ All commands live under `gcx aio11y`. Use `gcx aio11y <subcommand> --help` for f
 | `judge` | List judge providers and models |
 | `experiments` | List, get, create, update, cancel runs; inspect scores and reports |
 
-Delete commands (`evaluators delete`, `rules delete`) require `-f` to skip confirmation in agent mode. List first to confirm the target ID:
+Delete commands (`evaluators delete`, `rules delete`) require `--force` to skip confirmation in agent mode (there is no `-f` shorthand on delete). List first to confirm the target ID:
 
 ```bash
 gcx aio11y evaluators list
-gcx aio11y evaluators delete <id> -f
+gcx aio11y evaluators delete <id> --force
 
 gcx aio11y rules list
-gcx aio11y rules delete <id> -f
+gcx aio11y rules delete <id> --force
 ```
 
 Deleting an evaluator referenced by a rule may leave the rule pointing at a missing evaluator — check `gcx aio11y rules list` after.
@@ -72,46 +72,29 @@ gcx aio11y conversations search --filters 'agent = "my-agent"' --from 2026-04-01
 | "response must be non-empty and at least N chars" | `heuristic` |
 | "check multiple conditions (non-empty AND has greeting)" | `heuristic` |
 
+Copy-paste definitions for each kind, with the constraints the API enforces for each, are in [references/evaluator-examples.md](references/evaluator-examples.md).
+
 ## Input Format
 
-`gcx aio11y evaluators get -o yaml` and `gcx aio11y rules get -o yaml` emit K8s-style manifests (`apiVersion/kind/metadata/spec`). The `create -f` and `update -f` commands expect top-level fields only. Do not round-trip get output into create/update.
+`gcx aio11y evaluators get -o yaml` and `gcx aio11y rules get -o yaml` emit K8s-style manifests (`apiVersion/kind/metadata/spec`). `evaluators create -f`, `rules create -f`, and `rules update -f` expect top-level fields only. Do not round-trip get output into create/update.
 
-Evaluator definition:
-
-```yaml
-evaluator_id: my-evaluator
-kind: llm_judge
-description: "..."
-config:
-  provider: openai
-  model: gpt-4o
-  system_prompt: "..."
-  user_prompt: "..."
-  temperature: 0
-  max_tokens: 256
-output_keys:
-  - key: score
-    type: number
-    min: 1
-    max: 10
-    pass_threshold: 4
-```
+IDs (`evaluator_id`, `rule_id`) accept only letters, digits, `_`, and `.` — hyphens are rejected server-side. `version` is required on evaluator definitions — it versions the evaluator itself, separate from any schema version inside `config` — see [references/evaluator-examples.md](references/evaluator-examples.md) for full examples of every kind.
 
 Rule definition:
 
 ```yaml
-rule_id: my-rule
+rule_id: my_rule
 enabled: true
 selector: user_visible_turn
 sample_rate: 1.0
 evaluator_ids:
-  - my-evaluator
+  - my_evaluator
 match:
   agent_name:
     - my-agent
 ```
 
-Evaluators use create-or-update semantics: re-creating with the same `evaluator_id` updates it.
+There is no `evaluators update` command; to change an evaluator, re-run `create` with the same `evaluator_id` and a new `version` (re-using an existing version is rejected with a 409).
 
 ## Setting Up Online Evaluation
 

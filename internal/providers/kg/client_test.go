@@ -913,3 +913,72 @@ func TestClient_UpsertRelationship(t *testing.T) {
 		require.ErrorAs(t, err, &apiErr)
 	})
 }
+
+func TestClient_ValidateSuppressions(t *testing.T) {
+	t.Run("valid returns nil", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Contains(t, r.URL.Path, "config/disabled-alerts-validate")
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			var got kg.Suppressions
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+			if assert.Len(t, got.DisabledAlertConfigs, 1) {
+				assert.Equal(t, "my-suppression", got.DisabledAlertConfigs[0].Name)
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+		client := newTestClient(t, server)
+		err := client.ValidateSuppressions(t.Context(), &kg.Suppressions{
+			DisabledAlertConfigs: []kg.Suppression{
+				{Name: "my-suppression", MatchLabels: map[string]string{"alertname": "ErrorRatioBreach"}},
+			},
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("422 returns field errors", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{
+				"status": "UNPROCESSABLE_ENTITY",
+				"message": "Invalid disabled alert configuration file",
+				"subErrors": [
+					{"@type": "ApiValidationError", "field": "disabledAlertConfigs[0].name", "message": "Missing Rule Name"},
+					{"@type": "ApiValidationError", "field": "disabledAlertConfigs[0].matchLabels", "message": "Missing Assertion"}
+				]
+			}`))
+		}))
+		defer server.Close()
+		client := newTestClient(t, server)
+		err := client.ValidateSuppressions(t.Context(), &kg.Suppressions{
+			DisabledAlertConfigs: []kg.Suppression{{Name: ""}},
+		})
+		var verr *kg.SuppressionsValidationError
+		require.ErrorAs(t, err, &verr)
+		assert.Equal(t, http.StatusUnprocessableEntity, verr.StatusCode)
+		assert.Equal(t, "Invalid disabled alert configuration file", verr.Message)
+		require.Len(t, verr.Errors, 2)
+		assert.Equal(t, "disabledAlertConfigs[0].name", verr.Errors[0].Field)
+		assert.Equal(t, "Missing Rule Name", verr.Errors[0].Message)
+		// Error() renders each field error.
+		assert.Contains(t, verr.Error(), "disabledAlertConfigs[0].name: Missing Rule Name")
+		assert.Contains(t, verr.Error(), "disabledAlertConfigs[0].matchLabels: Missing Assertion")
+	})
+
+	t.Run("500 returns generic APIError", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message": "boom"}`))
+		}))
+		defer server.Close()
+		client := newTestClient(t, server)
+		err := client.ValidateSuppressions(t.Context(), &kg.Suppressions{
+			DisabledAlertConfigs: []kg.Suppression{{Name: "x"}},
+		})
+		var apiErr *kg.APIError
+		require.ErrorAs(t, err, &apiErr)
+		assert.Equal(t, http.StatusInternalServerError, apiErr.HTTPStatusCode())
+	})
+}
