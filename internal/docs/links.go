@@ -61,10 +61,6 @@ const (
 	// AdaptiveTraces documents reducing traces costs (Adaptive Traces).
 	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/traces-costs.md"
 
-	// CostManagementBilling is the Grafana Cloud Cost Management and Billing
-	// hub — the canonical entry point for usage monitoring and invoices.
-	CostManagementBilling = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing.md"
-
 	// AssistantPricing documents Grafana Assistant token-based pricing,
 	// which explicitly counts usage made through the gcx CLI.
 	AssistantPricing = "https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md"
@@ -99,7 +95,6 @@ func All() []string {
 		AdaptiveMetrics,
 		AdaptiveLogs,
 		AdaptiveTraces,
-		CostManagementBilling,
 		AssistantPricing,
 		SyntheticMonitoringInvoice,
 		PerformanceTestingInvoice,
