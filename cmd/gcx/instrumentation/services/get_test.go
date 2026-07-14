@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,7 +45,6 @@ func TestRunGet_HappyPath(t *testing.T) {
 		outOpts,
 		client,
 		"prod-1", "checkout", "frontend",
-		instrumentation.PromHeaders{},
 		&buf,
 	)
 	require.NoError(t, err)
@@ -82,7 +80,6 @@ func TestRunGet_NotFound(t *testing.T) {
 		outOpts,
 		client,
 		"prod-1", "checkout", "missing-svc",
-		instrumentation.PromHeaders{},
 		&bytes.Buffer{},
 	)
 	require.Error(t, err)
@@ -128,7 +125,6 @@ func TestRunGet_WrongCluster(t *testing.T) {
 		outOpts,
 		client,
 		"prod-2", "checkout", "frontend", // wrong cluster
-		instrumentation.PromHeaders{},
 		&bytes.Buffer{},
 	)
 	require.Error(t, err)
@@ -165,7 +161,6 @@ func TestRunGet_JSON_SingleObject(t *testing.T) {
 		outOpts,
 		client,
 		"prod-1", "checkout", "frontend",
-		instrumentation.PromHeaders{},
 		&buf,
 	)
 	require.NoError(t, err)

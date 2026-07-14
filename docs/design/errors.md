@@ -79,18 +79,23 @@ converters before more general ones.
 
 #### Fleet Management HTTP errors
 
-HTTP 401 and 403 responses from the fleet management API are handled by the
-`convertFleetHTTPErrors` converter in `cmd/gcx/fail/convert.go`. This converter
-is ordered before the generic fallback.
+`gcx fleet` and `gcx instrumentation` reach Fleet Management through the
+`grafana-collector-app` plugin proxy (ADR-021), so 401/403 responses are Grafana
+auth/RBAC outcomes, not Cloud-token problems. They are handled by two converters
+in `cmd/gcx/fail/convert.go`, both ordered before the generic fallback:
+`convertFleetHTTPErrors` (typed `fleet.HTTPError`, from the instrumentation
+client) and the string-matched `fleet:` branches (from the fleet provider's
+`status <code>` errors).
 
-- HTTP 401 → summary: `"Authentication failed"`
-- HTTP 403 → summary: `"Authorization failed"`
+- HTTP 401 → summary: `"Authentication failed"` — the Grafana credential was
+  rejected; suggestion: re-authenticate with `gcx login`.
+- HTTP 403 → summary: `"Authorization failed"` — insufficient Grafana role;
+  suggestions name the required role (Viewer for reads, Grafana Admin for
+  mutations) and note the outcome is distinguishable from an FM request
+  rejection.
 
-Both produce `DetailedError` with `ExitAuthFailure` exit code and actionable suggestions
-pointing at `gcx config set cloud.token` and `gcx login`.
-
-The converter is enabled by `fleet.HTTPError` — a typed error returned by all non-2xx
-responses in `internal/providers/instrumentation/client.go`.
+Both produce `DetailedError` with the `ExitAuthFailure` exit code. Neither
+suggests a Cloud access-policy token — fleet/instrumentation no longer use one.
 
 ### 4.4 In-Band Error Reporting
 

@@ -6,15 +6,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/fleet"
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 // includeTestServer tracks GetApp and SetApp calls for include/exclude/clear tests.
@@ -39,18 +42,18 @@ func (s *includeTestServer) start(t *testing.T) *httptest.Server {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/instrumentation.v1.InstrumentationService/GetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(proxyFleetBase+"/instrumentation.v1.InstrumentationService/GetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(s.getAppStatus)
 		_, _ = w.Write([]byte(s.getAppResp))
 	})
-	mux.HandleFunc("/instrumentation.v1.InstrumentationService/SetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(proxyFleetBase+"/instrumentation.v1.InstrumentationService/SetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
 		s.setAppCalled.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(s.setAppStatus)
 		_, _ = w.Write([]byte(`{}`))
 	})
-	mux.HandleFunc("/discovery.v1.DiscoveryService/RunK8sDiscovery", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(proxyFleetBase+"/discovery.v1.DiscoveryService/RunK8sDiscovery", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		items := s.discoveryItems
@@ -67,7 +70,10 @@ func (s *includeTestServer) start(t *testing.T) *httptest.Server {
 
 func makeIncludeClient(t *testing.T, serverURL string) *instrumentation.Client {
 	t.Helper()
-	f := fleet.NewClient(context.Background(), serverURL, "inst-id", "api-token", true, nil)
+	f, err := fleet.NewClient(config.NamespacedRESTConfig{
+		Config: rest.Config{Host: serverURL, BearerToken: "test-bearer"},
+	})
+	require.NoError(t, err)
 	return instrumentation.NewClient(f)
 }
 
@@ -109,14 +115,14 @@ func TestRunInclude_Idempotent_AutoinstrumentDefault(t *testing.T) {
 	ts := &includeTestServer{}
 	var srv *httptest.Server
 	mux := http.NewServeMux()
-	mux.HandleFunc("/discovery.v1.DiscoveryService/RunK8sDiscovery", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(proxyFleetBase+"/discovery.v1.DiscoveryService/RunK8sDiscovery", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{
 			{"clusterName": "c1", "namespace": "grotshop", "name": "frontend"},
 		}})
 	})
-	mux.HandleFunc("/instrumentation.v1.InstrumentationService/GetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(proxyFleetBase+"/instrumentation.v1.InstrumentationService/GetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		if callCount == 0 || callCount == 1 || callCount == 2 {
@@ -128,7 +134,7 @@ func TestRunInclude_Idempotent_AutoinstrumentDefault(t *testing.T) {
 		}
 		callCount++
 	})
-	mux.HandleFunc("/instrumentation.v1.InstrumentationService/SetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(proxyFleetBase+"/instrumentation.v1.InstrumentationService/SetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
 		ts.setAppCalled.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -141,14 +147,14 @@ func TestRunInclude_Idempotent_AutoinstrumentDefault(t *testing.T) {
 
 	// First invocation: should call SetApp once.
 	var out1 bytes.Buffer
-	err1 := services.RunInclude(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out1)
+	err1 := services.RunInclude(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, &out1)
 	require.NoError(t, err1, "first include must succeed (exit 0)")
 	firstCallCount := ts.setAppCalled.Load()
 	assert.Equal(t, int64(1), firstCallCount, "first include must call SetApp once")
 
 	// Second invocation: reads post-write state (INCLUDED already present) → no-op.
 	var out2 bytes.Buffer
-	err2 := services.RunInclude(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out2)
+	err2 := services.RunInclude(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, &out2)
 	require.NoError(t, err2, "second include must succeed (exit 0)")
 	secondCallCount := ts.setAppCalled.Load()
 	assert.Equal(t, firstCallCount, secondCallCount,
@@ -171,7 +177,7 @@ func TestRunInclude_AutoinstrumentTrue_NoOverrideAdded(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunInclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunInclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, &out)
 	require.NoError(t, err)
 	// autoinstrument=true: namespace default is on, no override needed → no-op.
 	assert.Equal(t, int64(0), ts.setAppCalled.Load(), "no Set call when autoinstrument=true and service is not excluded")
@@ -195,7 +201,7 @@ func TestRunInclude_RemovesExcludedOverride(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunInclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunInclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, &out)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), ts.setAppCalled.Load(), "Set must be called once to remove EXCLUDED override")
 }
@@ -215,7 +221,7 @@ func TestRunInclude_NamespaceNotFound(t *testing.T) {
 	srv := ts.start(t)
 	client := makeIncludeClient(t, srv.URL)
 
-	err := services.RunInclude(context.Background(), client, "c1", "missing-ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
+	err := services.RunInclude(context.Background(), client, "c1", "missing-ns", "svc", instrumentation.BackendURLs{}, &bytes.Buffer{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "services include")
 	assert.Contains(t, err.Error(), "missing-ns")
@@ -230,8 +236,8 @@ func TestRunInclude_WorkloadNotFound(t *testing.T) {
 	callCounts := map[string]int{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		callCounts[r.URL.Path]++
-		switch r.URL.Path {
+		callCounts[strings.TrimPrefix(r.URL.Path, proxyFleetBase)]++
+		switch strings.TrimPrefix(r.URL.Path, proxyFleetBase) {
 		case "/discovery.v1.DiscoveryService/RunK8sDiscovery":
 			// Return empty items — workload not found.
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
@@ -246,7 +252,7 @@ func TestRunInclude_WorkloadNotFound(t *testing.T) {
 
 	var out bytes.Buffer
 	err := services.RunInclude(context.Background(), client, "prod-eu", "checkout", "nonexistent-svc",
-		instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+		instrumentation.BackendURLs{}, &out)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Resource not found")
 	// Verify GetAppInstrumentation was NOT called (pre-flight short-circuited).
@@ -261,7 +267,7 @@ func TestRunInclude_WorkloadNotFound(t *testing.T) {
 func TestRunInclude_WorkloadNotFound_ExitCode1(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
+		switch strings.TrimPrefix(r.URL.Path, proxyFleetBase) {
 		case "/discovery.v1.DiscoveryService/RunK8sDiscovery":
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
 		default:
@@ -275,7 +281,7 @@ func TestRunInclude_WorkloadNotFound_ExitCode1(t *testing.T) {
 
 	var out bytes.Buffer
 	err := services.RunInclude(context.Background(), client, "prod-eu", "checkout", "nonexistent-svc",
-		instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+		instrumentation.BackendURLs{}, &out)
 	require.Error(t, err)
 
 	var de *gcxerrors.DetailedError

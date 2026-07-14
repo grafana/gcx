@@ -25,6 +25,12 @@ The instrumentation command tree provides:
   services   Workload-level observed state and per-workload inclusion
              overrides across the fleet: list, get, include, exclude, clear.
 
+Authentication and roles: these commands reach Fleet Management through the
+grafana-collector-app plugin proxy using your active Grafana credential (OAuth
+included) — no Cloud access-policy token is required. Reads (list/get/status)
+need the Viewer role; mutations (setup, configure, remove, include, exclude,
+clear, and the K8s discovery/monitoring calls) require the Grafana Admin role.
+
 ### Options
 
 ```

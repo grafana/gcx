@@ -59,7 +59,7 @@ For on-premises instances, gcx defaults the organization ID to 1 if you do not s
 
 ### Grafana Cloud product APIs
 
-Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, `gcx fleet`, and other Cloud product surfaces require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) in addition to Grafana auth.
+Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, and other Cloud product surfaces require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) in addition to Grafana auth. (`gcx fleet` and `gcx instrumentation` do **not** — they reach Fleet Management through the collector-app plugin proxy using your Grafana credential; see ADR-021.)
 
 #### Where to create the token and which scopes to grant
 
@@ -76,11 +76,10 @@ Scope the access policy to what you manage. `stacks:read` is the required baseli
 |-------|---------|
 | `stacks:read` | **Required.** Stack discovery (resolves the stack slug for all Cloud commands; also covers `gcx k6` reads) |
 | `metrics:write`, `logs:write`, `traces:write` | Synthetic Monitoring and k6 (`gcx sm`, `gcx k6`) — these write verbs are needed to mint the Synthetic Monitoring token |
-| `fleet-management:read` (and `fleet-management:write` for changes) | Fleet Management (`gcx fleet`) |
 | `stacks:write` | Creating or updating stacks |
 | `set:alloy-data-write` | Instrumentation Hub setup (`gcx instrumentation`) |
 
-The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, Fleet, IRM, SLO). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
+The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, IRM, SLO). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
 
 The interactive `gcx login` prompt links to this guidance when it asks for the Cloud Access Policy token.
 
@@ -166,7 +165,7 @@ A short vocabulary so the troubleshooting entries below make sense. For the inte
 
 **Cloud vs on-premises.** gcx detects whether `--server` points at Grafana Cloud or an on-premises instance. The hostname is matched against known Cloud suffixes first (no network call); loopback and RFC1918 addresses are classified as on-premises; anything else is probed with a short HTTP request. The classification drives which auth methods appear in the prompt.
 
-**Three auth methods, three API surfaces.** OAuth (browser-based, Cloud only) and service account tokens both authenticate to the Grafana API — dashboards, folders, datasources, alerts, and the K8s-compatible `/apis` endpoints. Cloud Access Policy tokens are a separate credential used for GCOM (stack management) and Cloud product APIs (Synthetic Monitoring, k6, IRM, SLO, Fleet, etc.). A Cloud context typically holds two tokens: one for Grafana, one for Cloud. An on-premises context holds only a service account token.
+**Three auth methods, three API surfaces.** OAuth (browser-based, Cloud only) and service account tokens both authenticate to the Grafana API — dashboards, folders, datasources, alerts, and the K8s-compatible `/apis` endpoints. Cloud Access Policy tokens are a separate credential used for GCOM (stack management) and Cloud product APIs (Synthetic Monitoring, k6, IRM, SLO, etc.). A Cloud context typically holds two tokens: one for Grafana, one for Cloud. An on-premises context holds only a service account token.
 
 **Interactive, `--yes`, and env-var modes.** Interactive mode opens prompts for anything you did not pass as a flag. `--yes` disables optional prompts and makes `gcx login` fail loudly if a required field is missing — the mode to use in CI. Environment variables (`GRAFANA_SERVER`, `GRAFANA_TOKEN`, `GRAFANA_CLOUD_TOKEN`, `GRAFANA_CLOUD_STACK`) skip `gcx login` entirely and resolve on each command invocation.
 

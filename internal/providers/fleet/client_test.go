@@ -7,14 +7,20 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/fleet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 func newTestClient(t *testing.T, server *httptest.Server) *fleet.Client {
 	t.Helper()
-	return fleet.NewClient(context.Background(), server.URL, "test-instance", "test-token", true, nil)
+	c, err := fleet.NewClient(config.NamespacedRESTConfig{
+		Config: rest.Config{Host: server.URL, BearerToken: "test-bearer"},
+	})
+	require.NoError(t, err)
+	return c
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

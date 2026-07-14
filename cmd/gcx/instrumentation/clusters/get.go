@@ -55,14 +55,13 @@ means PENDING_INSTRUMENTATION; absent means NOT_INSTRUMENTED.`,
 			ctx := cmd.Context()
 			clusterName := args[0]
 
-			r, err := fleet.LoadClientWithStack(ctx, loader)
+			base, _, err := fleet.LoadClient(ctx, loader)
 			if err != nil {
 				return fmt.Errorf("clusters get: %w", err)
 			}
-			client := instrumentation.NewClient(r.Client)
-			promHeaders := instrumentation.PromHeadersFromStack(r.Stack)
+			client := instrumentation.NewClient(base)
 
-			return runGet(ctx, opts, client, clusterName, promHeaders, cmd.OutOrStdout())
+			return runGet(ctx, opts, client, clusterName, cmd.OutOrStdout())
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -76,7 +75,6 @@ func runGet(
 	opts *getOpts,
 	client clusterClient,
 	clusterName string,
-	promHeaders instrumentation.PromHeaders,
 	w io.Writer,
 ) error {
 	// Fetch declared configuration.
@@ -103,7 +101,7 @@ func runGet(
 	}
 
 	// Cross-reference with observed state from RunK8sMonitoring.
-	monResp, err := client.RunK8sMonitoring(ctx, promHeaders)
+	monResp, err := client.RunK8sMonitoring(ctx)
 	if err != nil {
 		return fmt.Errorf("clusters get: RunK8sMonitoring: %w", err)
 	}

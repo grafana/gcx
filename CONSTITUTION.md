@@ -7,7 +7,7 @@
 **What it is:** Unified CLI for managing Grafana resources across two tiers — a K8s resource tier
 for dashboards, folders, and other resources via Grafana 12+'s Kubernetes-compatible API, and a
 Cloud provider tier with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring,
-OnCall, Fleet Management, etc.) using product-specific REST APIs.
+OnCall, etc.) using product-specific REST APIs.
 
 **Primary values:** correctness, API stability, clean layered architecture, extensible provider model
 
@@ -159,13 +159,25 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   credentials independently — this ensures consistent env var precedence,
   secret handling, and auth behavior across all providers.
 - **`httputils.NewDefaultClient(ctx)` for external APIs.** Provider clients
-  calling APIs outside the Grafana server (k6 Cloud, OnCall, Fleet —
+  calling APIs outside the Grafana server (k6 Cloud, OnCall —
   any domain other than `cfg.Host`) must use `httputils.NewDefaultClient(ctx)`,
   never `rest.HTTPClientFor()`. The k8s transport round-tripper injects the
   Grafana bearer token on every outgoing request, which conflicts with the
   product's own auth mechanism. `NewDefaultClient(ctx)` returns an `*http.Client`
   with `LoggingRoundTripper` and no auth injection — providers set their own
   auth headers per request.
+- **Fleet/instrumentation reach FM via the collector-app proxy (carve-out).**
+  `gcx fleet` and `gcx instrumentation` reach the Fleet Management API through the
+  `grafana-collector-app` app plugin proxy at `cfg.Host`
+  (`/api/plugin-proxy/grafana-collector-app/fleet-management-api/…`) using
+  `rest.HTTPClientFor(&cfg.Config)` — the same bearer transport the other
+  plugin-proxied providers use. Because the traffic targets `cfg.Host`, the k8s
+  round-tripper's Grafana bearer is exactly the right credential; the proxy injects
+  the FM credential and the `X-Prom-*`/`X-Scope-OrgID` headers server-side. This is
+  consistent with the rule above (proxy = `cfg.Host`, not an external domain) and
+  is why Fleet is no longer listed as an "outside the Grafana server" case. No
+  Cloud access-policy token is required for either command group. See ADR
+  `fleet-plugin-proxy/001`.
 - **Synth is dual-mode (carve-out).** Synthetic Monitoring reaches its API two
   ways: (1) primary — Grafana's datasource proxy at `cfg.Host`
   (`/api/datasources/proxy/uid/<sm-uid>/sm/…`) via `rest.HTTPClientFor()` in

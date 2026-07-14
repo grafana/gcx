@@ -6,18 +6,29 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
-// newTestClient creates an instrumentation Client pointed at the given test server URL.
-func newTestClient(serverURL string) *instrumentation.Client {
-	f := fleet.NewClient(context.Background(), serverURL, "inst-id", "api-token", true, nil)
+// proxyFleetBase is the collector-app fleet-management-api proxy route prefix
+// prepended to every Connect service/method path by the base client.
+const proxyFleetBase = "/api/plugin-proxy/grafana-collector-app/fleet-management-api"
+
+// newTestClient creates an instrumentation Client pointed at the given test
+// server URL. The Grafana bearer credential ("test-bearer") is injected by the
+// k8s round-tripper — the client sets no Basic auth of its own.
+func newTestClient(t *testing.T, serverURL string) *instrumentation.Client {
+	t.Helper()
+	f, err := fleet.NewClient(config.NamespacedRESTConfig{
+		Config: rest.Config{Host: serverURL, BearerToken: "test-bearer"},
+	})
+	require.NoError(t, err)
 	return instrumentation.NewClient(f)
 }
 
@@ -31,6 +42,11 @@ func captureHandler(t *testing.T, statusCode int, respBody string) (http.Handler
 		cr.Path = r.URL.Path
 		cr.ContentType = r.Header.Get("Content-Type")
 		cr.Accept = r.Header.Get("Accept")
+		cr.Authorization = r.Header.Get("Authorization")
+		_, _, cr.HasBasicAuth = r.BasicAuth()
+		cr.PromClusterID = r.Header.Get("X-Prom-Cluster-Id")
+		cr.PromInstanceID = r.Header.Get("X-Prom-Instance-Id")
+		cr.ScopeOrgID = r.Header.Get("X-Scope-Orgid")
 		b, _ := io.ReadAll(r.Body)
 		cr.Body = string(b)
 		w.Header().Set("Content-Type", "application/json")
@@ -40,21 +56,34 @@ func captureHandler(t *testing.T, statusCode int, respBody string) (http.Handler
 }
 
 type capturedRequest struct {
-	Method      string
-	Path        string
-	ContentType string
-	Accept      string
-	Body        string
+	Method         string
+	Path           string
+	ContentType    string
+	Accept         string
+	Authorization  string
+	HasBasicAuth   bool
+	PromClusterID  string
+	PromInstanceID string
+	ScopeOrgID     string
+	Body           string
 }
 
-// assertConnectRequest verifies that a captured request conforms to the Connect RPC
-// over HTTP POST contract (NC-006): POST method, application/json content type and accept.
+// assertConnectRequest verifies that a captured request conforms to the Connect
+// RPC over HTTP POST contract (NC-006) AND the collector-app plugin-proxy
+// transport contract: POST, JSON content/accept, the full proxy-prefixed URL,
+// the round-tripper-injected Grafana bearer, and no client-set Basic auth or
+// X-Prom-*/X-Scope-OrgID headers (FR-001, FR-003, FR-007, FR-017).
 func assertConnectRequest(t *testing.T, cr *capturedRequest, wantPath string) {
 	t.Helper()
 	assert.Equal(t, http.MethodPost, cr.Method, "must use POST")
 	assert.Equal(t, "application/json", cr.ContentType, "must set Content-Type: application/json")
 	assert.Equal(t, "application/json", cr.Accept, "must set Accept: application/json")
-	assert.True(t, strings.HasSuffix(cr.Path, wantPath), "expected path suffix %q, got %q", wantPath, cr.Path)
+	assert.Equal(t, proxyFleetBase+wantPath, cr.Path, "must target the collector-app fleet-management-api proxy route with the unchanged Connect path suffix")
+	assert.Equal(t, "Bearer test-bearer", cr.Authorization, "bearer must be injected by the round-tripper")
+	assert.False(t, cr.HasBasicAuth, "client must not set Basic auth")
+	assert.Empty(t, cr.PromClusterID, "client must not set X-Prom-Cluster-ID")
+	assert.Empty(t, cr.PromInstanceID, "client must not set X-Prom-Instance-ID")
+	assert.Empty(t, cr.ScopeOrgID, "client must not set X-Scope-OrgID")
 }
 
 func TestClient_GetAppInstrumentation(t *testing.T) {
@@ -95,7 +124,7 @@ func TestClient_GetAppInstrumentation(t *testing.T) {
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
-			client := newTestClient(srv.URL)
+			client := newTestClient(t, srv.URL)
 			resp, err := client.GetAppInstrumentation(context.Background(), tt.clusterName)
 
 			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/GetAppInstrumentation")
@@ -120,7 +149,7 @@ func TestClient_GetAppInstrumentation_Converts(t *testing.T) {
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
-	resp, err := newTestClient(srv.URL).GetAppInstrumentation(context.Background(), "c1")
+	resp, err := newTestClient(t, srv.URL).GetAppInstrumentation(context.Background(), "c1")
 	require.NoError(t, err)
 	require.Len(t, resp.Namespaces, 1)
 
@@ -167,7 +196,7 @@ func TestClient_SetAppInstrumentation(t *testing.T) {
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
-			client := newTestClient(srv.URL)
+			client := newTestClient(t, srv.URL)
 			err := client.SetAppInstrumentation(context.Background(), tt.clusterName, tt.namespaces, instrumentation.BackendURLs{})
 
 			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/SetAppInstrumentation")
@@ -213,7 +242,7 @@ func TestClient_GetK8SInstrumentation(t *testing.T) {
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
-			client := newTestClient(srv.URL)
+			client := newTestClient(t, srv.URL)
 			resp, err := client.GetK8SInstrumentation(context.Background(), tt.clusterName)
 
 			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation")
@@ -263,7 +292,7 @@ func TestClient_SetK8SInstrumentation(t *testing.T) {
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
-			client := newTestClient(srv.URL)
+			client := newTestClient(t, srv.URL)
 			err := client.SetK8SInstrumentation(context.Background(), tt.clusterName, tt.k8s, instrumentation.BackendURLs{})
 
 			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/SetK8SInstrumentation")
@@ -289,7 +318,7 @@ func TestGetK8SInstrumentation_SelectionRoundTrip(t *testing.T) {
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
-	resp, err := newTestClient(srv.URL).GetK8SInstrumentation(context.Background(), "test-cluster")
+	resp, err := newTestClient(t, srv.URL).GetK8SInstrumentation(context.Background(), "test-cluster")
 	require.NoError(t, err)
 	assert.Equal(t, "SELECTION_EXCLUDED", resp.Cluster.Selection,
 		"Selection must survive wire→domain mapping")
@@ -312,7 +341,7 @@ func TestSetK8SInstrumentation_SendsSelectionExcluded(t *testing.T) {
 		Name:      "test-cluster",
 		Selection: "SELECTION_EXCLUDED",
 	}
-	err := newTestClient(srv.URL).SetK8SInstrumentation(context.Background(), "test-cluster", excluded, instrumentation.BackendURLs{})
+	err := newTestClient(t, srv.URL).SetK8SInstrumentation(context.Background(), "test-cluster", excluded, instrumentation.BackendURLs{})
 	require.NoError(t, err)
 	assert.Contains(t, capturedBody, `"SELECTION_EXCLUDED"`,
 		"SetK8SInstrumentation must send SELECTION_EXCLUDED in request body")
@@ -331,7 +360,7 @@ func TestClient_SetK8SInstrumentation_DefaultsSelection(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newTestClient(srv.URL).SetK8SInstrumentation(context.Background(), "c1",
+	err := newTestClient(t, srv.URL).SetK8SInstrumentation(context.Background(), "c1",
 		instrumentation.Cluster{Name: "c1"}, instrumentation.BackendURLs{})
 	require.NoError(t, err)
 	assert.Contains(t, capturedBody, "SELECTION_INCLUDED", "empty Selection must default to SELECTION_INCLUDED")
@@ -363,10 +392,9 @@ func TestClient_SetupK8sDiscovery(t *testing.T) {
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
-			client := newTestClient(srv.URL)
+			client := newTestClient(t, srv.URL)
 			err := client.SetupK8sDiscovery(context.Background(),
-				instrumentation.BackendURLs{},
-				instrumentation.PromHeaders{ClusterID: "42", InstanceID: "123"})
+				instrumentation.BackendURLs{})
 
 			assertConnectRequest(t, cr, "/discovery.v1.DiscoveryService/SetupK8sDiscovery")
 
@@ -413,9 +441,8 @@ func TestClient_RunK8sDiscovery(t *testing.T) {
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
-			client := newTestClient(srv.URL)
-			resp, err := client.RunK8sDiscovery(context.Background(),
-				instrumentation.PromHeaders{ClusterID: "42", InstanceID: "123"})
+			client := newTestClient(t, srv.URL)
+			resp, err := client.RunK8sDiscovery(context.Background())
 
 			assertConnectRequest(t, cr, "/discovery.v1.DiscoveryService/RunK8sDiscovery")
 
@@ -496,9 +523,8 @@ func TestClient_IsNamespaceDiscovered(t *testing.T) {
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
-			client := newTestClient(srv.URL)
+			client := newTestClient(t, srv.URL)
 			got, err := client.IsNamespaceDiscovered(context.Background(),
-				instrumentation.PromHeaders{ClusterID: "1", InstanceID: "2"},
 				tt.cluster, tt.namespace)
 
 			if tt.wantErr {
@@ -519,8 +545,7 @@ func TestClient_RunK8sDiscovery_StatusConversion(t *testing.T) {
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
-	resp, err := newTestClient(srv.URL).RunK8sDiscovery(context.Background(),
-		instrumentation.PromHeaders{ClusterID: "1", InstanceID: "2"})
+	resp, err := newTestClient(t, srv.URL).RunK8sDiscovery(context.Background())
 	require.NoError(t, err)
 	require.Len(t, resp.Items, 1)
 	assert.Equal(t, instrumentation.StatusPendingInstrumentation, resp.Items[0].InstrumentationStatus)
@@ -561,9 +586,8 @@ func TestClient_RunK8sMonitoring(t *testing.T) {
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
-			client := newTestClient(srv.URL)
-			resp, err := client.RunK8sMonitoring(context.Background(),
-				instrumentation.PromHeaders{ClusterID: "42", InstanceID: "123"})
+			client := newTestClient(t, srv.URL)
+			resp, err := client.RunK8sMonitoring(context.Background())
 
 			assertConnectRequest(t, cr, "/discovery.v1.DiscoveryService/RunK8sMonitoring")
 
@@ -614,7 +638,7 @@ func TestClient_ListPipelines(t *testing.T) {
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
-			client := newTestClient(srv.URL)
+			client := newTestClient(t, srv.URL)
 			pipelines, err := client.ListPipelines(context.Background())
 
 			assertConnectRequest(t, cr, "/pipeline.v1.PipelineService/ListPipelines")
@@ -637,7 +661,7 @@ func TestClient_ListPipelines_MetadataPreserved(t *testing.T) {
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
-	pipelines, err := newTestClient(srv.URL).ListPipelines(context.Background())
+	pipelines, err := newTestClient(t, srv.URL).ListPipelines(context.Background())
 	require.NoError(t, err)
 	require.Len(t, pipelines, 1)
 	assert.Equal(t, "abc", pipelines[0].ID)
@@ -692,7 +716,7 @@ func TestClient_AllEndpoints_RequestBodyContainsClusterName(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			err := tt.invoke(newTestClient(srv.URL))
+			err := tt.invoke(newTestClient(t, srv.URL))
 			require.NoError(t, err)
 
 			var body map[string]json.RawMessage

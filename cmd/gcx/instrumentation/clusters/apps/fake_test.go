@@ -76,7 +76,7 @@ func (f *fakeAppsClient) SetAppInstrumentation(_ context.Context, clusterName st
 	return f.setErr
 }
 
-func (f *fakeAppsClient) RunK8sDiscovery(_ context.Context, _ instrumentation.PromHeaders) (*instrumentation.RunK8sDiscoveryResponse, error) {
+func (f *fakeAppsClient) RunK8sDiscovery(_ context.Context) (*instrumentation.RunK8sDiscoveryResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -86,7 +86,7 @@ func (f *fakeAppsClient) RunK8sDiscovery(_ context.Context, _ instrumentation.Pr
 	return &instrumentation.RunK8sDiscoveryResponse{Items: f.discoverItems}, nil
 }
 
-func (f *fakeAppsClient) IsNamespaceDiscovered(_ context.Context, _ instrumentation.PromHeaders, cluster, namespace string) (bool, error) {
+func (f *fakeAppsClient) IsNamespaceDiscovered(_ context.Context, cluster, namespace string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 

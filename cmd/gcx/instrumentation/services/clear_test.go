@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
@@ -32,7 +33,7 @@ func TestRunClear_RemovesOverride(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, &out)
 	require.NoError(t, err, "clear must succeed")
 	assert.Equal(t, int64(1), ts.setAppCalled.Load(), "Set must be called once to remove the override")
 }
@@ -53,7 +54,7 @@ func TestRunClear_NoOp_NoOverride(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, &out)
 	require.NoError(t, err, "clear with no override must be a no-op (exit 0)")
 	assert.Equal(t, int64(0), ts.setAppCalled.Load(), "no Set call when no override exists")
 }
@@ -72,7 +73,7 @@ func TestRunClear_NoOp_NamespaceNotFound(t *testing.T) {
 	srv := ts.start(t)
 	client := makeIncludeClient(t, srv.URL)
 
-	err := services.RunClear(context.Background(), client, "c1", "missing-ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
+	err := services.RunClear(context.Background(), client, "c1", "missing-ns", "svc", instrumentation.BackendURLs{}, &bytes.Buffer{})
 	require.NoError(t, err, "clear on missing namespace must be a no-op")
 	assert.Equal(t, int64(0), ts.setAppCalled.Load(), "no Set call for missing namespace")
 }
@@ -88,14 +89,14 @@ func TestRunClear_Idempotent_TwoCalls(t *testing.T) {
 	callCount := 0
 	ts := &includeTestServer{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/discovery.v1.DiscoveryService/RunK8sDiscovery", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(proxyFleetBase+"/discovery.v1.DiscoveryService/RunK8sDiscovery", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{
 			{"clusterName": "c1", "namespace": "grotshop", "name": "frontend"},
 		}})
 	})
-	mux.HandleFunc("/instrumentation.v1.InstrumentationService/GetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(proxyFleetBase+"/instrumentation.v1.InstrumentationService/GetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		// First 3 calls: pre-check + 2 RMW reads use the with-override state.
@@ -107,7 +108,7 @@ func TestRunClear_Idempotent_TwoCalls(t *testing.T) {
 		}
 		callCount++
 	})
-	mux.HandleFunc("/instrumentation.v1.InstrumentationService/SetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(proxyFleetBase+"/instrumentation.v1.InstrumentationService/SetAppInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
 		ts.setAppCalled.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -119,12 +120,12 @@ func TestRunClear_Idempotent_TwoCalls(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	// First clear: removes the INCLUDED override.
-	err1 := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
+	err1 := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, &bytes.Buffer{})
 	require.NoError(t, err1, "first clear must succeed")
 	assert.Equal(t, int64(1), ts.setAppCalled.Load(), "first clear must call Set once")
 
 	// Second clear: no override → no-op.
-	err2 := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
+	err2 := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, &bytes.Buffer{})
 	require.NoError(t, err2, "second clear must succeed (exit 0)")
 	assert.Equal(t, int64(1), ts.setAppCalled.Load(), "second clear must be a no-op (no additional Set)")
 }
@@ -138,8 +139,8 @@ func TestRunClear_WorkloadNotFound(t *testing.T) {
 	callCounts := map[string]int{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		callCounts[r.URL.Path]++
-		switch r.URL.Path {
+		callCounts[strings.TrimPrefix(r.URL.Path, proxyFleetBase)]++
+		switch strings.TrimPrefix(r.URL.Path, proxyFleetBase) {
 		case "/discovery.v1.DiscoveryService/RunK8sDiscovery":
 			// Return empty items — workload not found.
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
@@ -154,7 +155,7 @@ func TestRunClear_WorkloadNotFound(t *testing.T) {
 
 	var out bytes.Buffer
 	err := services.RunClear(context.Background(), client, "prod-eu", "checkout", "nonexistent-svc",
-		instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+		instrumentation.BackendURLs{}, &out)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Resource not found")
 	// Verify GetAppInstrumentation was NOT called (pre-flight short-circuited).

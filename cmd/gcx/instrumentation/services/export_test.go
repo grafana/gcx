@@ -14,10 +14,9 @@ func RunList(
 	opts *ListOpts,
 	outOpts *cmdio.Options,
 	client *instrumentation.Client,
-	promHeaders instrumentation.PromHeaders,
 	out io.Writer,
 ) error {
-	return runList(ctx, opts, outOpts, client, promHeaders, out)
+	return runList(ctx, opts, outOpts, client, out)
 }
 
 // ListOpts is an alias for listOpts so external tests can construct opts.
@@ -29,10 +28,9 @@ func RunGet(
 	outOpts *cmdio.Options,
 	client *instrumentation.Client,
 	cluster, namespace, service string,
-	promHeaders instrumentation.PromHeaders,
 	out io.Writer,
 ) error {
-	return runGet(ctx, outOpts, client, cluster, namespace, service, promHeaders, out)
+	return runGet(ctx, outOpts, client, cluster, namespace, service, out)
 }
 
 // RunInclude exposes the internal runInclude function for use in external test packages.
@@ -41,10 +39,9 @@ func RunInclude(
 	client *instrumentation.Client,
 	cluster, namespace, service string,
 	urls instrumentation.BackendURLs,
-	promHeaders instrumentation.PromHeaders,
 	out io.Writer,
 ) error {
-	return runInclude(ctx, client, cluster, namespace, service, urls, promHeaders, out)
+	return runInclude(ctx, client, cluster, namespace, service, urls, out)
 }
 
 // RunExclude exposes the internal runExclude function for use in external test packages.
@@ -53,10 +50,9 @@ func RunExclude(
 	client *instrumentation.Client,
 	cluster, namespace, service string,
 	urls instrumentation.BackendURLs,
-	promHeaders instrumentation.PromHeaders,
 	out io.Writer,
 ) error {
-	return runExclude(ctx, client, cluster, namespace, service, urls, promHeaders, out)
+	return runExclude(ctx, client, cluster, namespace, service, urls, out)
 }
 
 // RunClear exposes the internal runClear function for use in external test packages.
@@ -65,10 +61,9 @@ func RunClear(
 	client *instrumentation.Client,
 	cluster, namespace, service string,
 	urls instrumentation.BackendURLs,
-	promHeaders instrumentation.PromHeaders,
 	out io.Writer,
 ) error {
-	return runClear(ctx, client, cluster, namespace, service, urls, promHeaders, out)
+	return runClear(ctx, client, cluster, namespace, service, urls, out)
 }
 
 // ApplyIncludeMutation exposes applyIncludeMutation for unit tests.
@@ -95,8 +90,7 @@ func NormalizeStatus(s string) instrumentation.InstrumentationStatus {
 func ValidateWorkloadExists(
 	ctx context.Context,
 	client *instrumentation.Client,
-	promHeaders instrumentation.PromHeaders,
 	cluster, namespace, service string,
 ) error {
-	return validateWorkloadExists(ctx, client, promHeaders, cluster, namespace, service)
+	return validateWorkloadExists(ctx, client, cluster, namespace, service)
 }

@@ -35,7 +35,7 @@ type fakeClient struct {
 	getResponse *instrumentation.GetK8SInstrumentationResponse
 }
 
-func (f *fakeClient) SetupK8sDiscovery(_ context.Context, _ instrumentation.BackendURLs, _ instrumentation.PromHeaders) error {
+func (f *fakeClient) SetupK8sDiscovery(_ context.Context, _ instrumentation.BackendURLs) error {
 	f.setupCalled = true
 	return f.setupErr
 }
@@ -88,7 +88,6 @@ func TestRun(t *testing.T) { //nolint:maintidx // intentionally large table-driv
 			client:   client,
 			urls:     instrumentation.BackendURLs{},
 			fm:       instrumentation.FleetManagement{URL: "https://fleet.test", Username: "42"},
-			promHdrs: instrumentation.PromHeaders{},
 			token:    "<TOKEN>",
 			stdout:   &bytes.Buffer{},
 			stderr:   &bytes.Buffer{},

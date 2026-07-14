@@ -27,7 +27,7 @@ const k8sMonitoringPipelineType = "k8s_monitoring"
 
 // MonitoringClient is the minimal interface required by Enumerate to call
 // RunK8sMonitoring. The real *instrumentation.Client satisfies this via an
-// adapter (PromHeaders are bound at the call site).
+// adapter that unwraps the response to a cluster slice.
 type MonitoringClient interface {
 	RunK8sMonitoring(ctx context.Context) ([]instrumentation.ClusterObservedState, error)
 }

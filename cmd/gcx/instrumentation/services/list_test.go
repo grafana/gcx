@@ -10,16 +10,22 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/fleet"
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instrumout "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
+
+// proxyFleetBase is the collector-app fleet-management-api proxy route prefix
+// the base client prepends to every Connect service/method path. Test servers
+// register (or trim) it so their route matching mirrors the live transport.
+const proxyFleetBase = "/api/plugin-proxy/grafana-collector-app/fleet-management-api"
 
 // discoveryTestServer serves fake RunK8sDiscovery responses.
 type discoveryTestServer struct {
@@ -29,7 +35,7 @@ type discoveryTestServer struct {
 func (s *discoveryTestServer) start(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/discovery.v1.DiscoveryService/RunK8sDiscovery", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(proxyFleetBase+"/discovery.v1.DiscoveryService/RunK8sDiscovery", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		resp := map[string]any{"items": s.items}
@@ -42,7 +48,10 @@ func (s *discoveryTestServer) start(t *testing.T) *httptest.Server {
 
 func makeDiscoveryClient(t *testing.T, serverURL string) *instrumentation.Client {
 	t.Helper()
-	f := fleet.NewClient(context.Background(), serverURL, "inst-id", "api-token", true, nil)
+	f, err := fleet.NewClient(config.NamespacedRESTConfig{
+		Config: rest.Config{Host: serverURL, BearerToken: "test-bearer"},
+	})
+	require.NoError(t, err)
 	return instrumentation.NewClient(f)
 }
 
@@ -94,7 +103,6 @@ func TestRunList_StatusFilter_ERROR(t *testing.T) {
 		&services.ListOpts{Status: "ERROR"},
 		outOpts,
 		client,
-		instrumentation.PromHeaders{},
 		&buf,
 	)
 	require.NoError(t, err)
@@ -136,7 +144,6 @@ func TestRunList_StatusFilter_FullEnum(t *testing.T) {
 		&services.ListOpts{Status: "INSTRUMENTATION_ERROR"},
 		outOpts,
 		client,
-		instrumentation.PromHeaders{},
 		&buf,
 	)
 	require.NoError(t, err)
@@ -166,7 +173,6 @@ func TestRunList_ClusterFilter(t *testing.T) {
 		&services.ListOpts{Cluster: "c1"},
 		outOpts,
 		client,
-		instrumentation.PromHeaders{},
 		&buf,
 	)
 	require.NoError(t, err)
@@ -196,7 +202,6 @@ func TestRunList_NamespaceFilter(t *testing.T) {
 		&services.ListOpts{Namespace: "checkout"},
 		outOpts,
 		client,
-		instrumentation.PromHeaders{},
 		&buf,
 	)
 	require.NoError(t, err)
@@ -224,7 +229,6 @@ func TestRunList_EmptyResult(t *testing.T) {
 		&services.ListOpts{},
 		outOpts,
 		client,
-		instrumentation.PromHeaders{},
 		&buf,
 	)
 	require.NoError(t, err)
@@ -256,7 +260,6 @@ func TestRunList_JSONEnvelope_NonEmpty(t *testing.T) {
 		&services.ListOpts{},
 		outOpts,
 		client,
-		instrumentation.PromHeaders{},
 		&buf,
 	)
 	require.NoError(t, err)
@@ -296,7 +299,6 @@ func TestRunList_JSONFieldSelection_Valid(t *testing.T) {
 		&services.ListOpts{},
 		outOpts,
 		client,
-		instrumentation.PromHeaders{},
 		&buf,
 	)
 	require.NoError(t, err)
@@ -341,7 +343,6 @@ func TestRunList_JSONFieldSelection_Unknown(t *testing.T) {
 		&services.ListOpts{},
 		outOpts,
 		client,
-		instrumentation.PromHeaders{},
 		&buf,
 	)
 	require.Error(t, err)
@@ -354,8 +355,8 @@ func TestRunList_JSONFieldSelection_Unknown(t *testing.T) {
 // Used for tests that only exercise cobra.Args validation without RunE.
 type noopConfigLoader struct{}
 
-func (noopConfigLoader) LoadCloudConfig(_ context.Context) (providers.CloudRESTConfig, error) {
-	return providers.CloudRESTConfig{}, errors.New("noop loader: not connected")
+func (noopConfigLoader) LoadGrafanaConfig(_ context.Context) (config.NamespacedRESTConfig, error) {
+	return config.NamespacedRESTConfig{}, errors.New("noop loader: not connected")
 }
 
 // TestListCmd_RejectsPositionalArgs verifies that cobra.NoArgs enforcement
@@ -422,7 +423,6 @@ func TestValidateWorkloadExists_SuggestionFlagForm(t *testing.T) {
 	err := services.ValidateWorkloadExists(
 		context.Background(),
 		client,
-		instrumentation.PromHeaders{},
 		"prod-1", "checkout", "frontend",
 	)
 	require.Error(t, err)

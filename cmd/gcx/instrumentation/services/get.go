@@ -52,13 +52,12 @@ Workload-level Selection / override state is not surfaced on this command. To in
 				return err
 			}
 			ctx := cmd.Context()
-			r, err := fleet.LoadClientWithStack(ctx, loader)
+			base, _, err := fleet.LoadClient(ctx, loader)
 			if err != nil {
 				return fmt.Errorf("services get: %w", err)
 			}
-			client := instrumentation.NewClient(r.Client)
-			promHeaders := instrumentation.PromHeadersFromStack(r.Stack)
-			return runGet(ctx, &opts.IO, client, args[0], args[1], args[2], promHeaders, cmd.OutOrStdout())
+			client := instrumentation.NewClient(base)
+			return runGet(ctx, &opts.IO, client, args[0], args[1], args[2], cmd.OutOrStdout())
 		},
 	}
 
@@ -74,10 +73,9 @@ func runGet(
 	outOpts *cmdio.Options,
 	client *instrumentation.Client,
 	cluster, namespace, service string,
-	promHeaders instrumentation.PromHeaders,
 	out io.Writer,
 ) error {
-	resp, err := client.RunK8sDiscovery(ctx, promHeaders)
+	resp, err := client.RunK8sDiscovery(ctx)
 	if err != nil {
 		return fmt.Errorf("services get: %w", err)
 	}

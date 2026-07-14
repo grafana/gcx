@@ -12,20 +12,18 @@ import (
 type clusterClient interface {
 	GetK8SInstrumentation(ctx context.Context, clusterName string) (*instrumentation.GetK8SInstrumentationResponse, error)
 	SetK8SInstrumentation(ctx context.Context, clusterName string, k8s instrumentation.Cluster, urls instrumentation.BackendURLs) error
-	RunK8sMonitoring(ctx context.Context, promHeaders instrumentation.PromHeaders) (*instrumentation.RunK8sMonitoringResponse, error)
+	RunK8sMonitoring(ctx context.Context) (*instrumentation.RunK8sMonitoringResponse, error)
 	ListPipelines(ctx context.Context) ([]instrumentation.Pipeline, error)
 }
 
-// monitoringAdapter adapts a clusterClient + PromHeaders to the
-// enumerate.MonitoringClient interface, which expects RunK8sMonitoring(ctx)
-// without PromHeaders. PromHeaders are bound at construction time.
+// monitoringAdapter adapts a clusterClient to the enumerate.MonitoringClient
+// interface, unwrapping the RunK8sMonitoring response to its cluster slice.
 type monitoringAdapter struct {
-	client      clusterClient
-	promHeaders instrumentation.PromHeaders
+	client clusterClient
 }
 
 func (a *monitoringAdapter) RunK8sMonitoring(ctx context.Context) ([]instrumentation.ClusterObservedState, error) {
-	resp, err := a.client.RunK8sMonitoring(ctx, a.promHeaders)
+	resp, err := a.client.RunK8sMonitoring(ctx)
 	if err != nil {
 		return nil, err
 	}

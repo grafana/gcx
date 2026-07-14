@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/grafana/gcx/internal/config"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 )
 
@@ -16,14 +17,16 @@ type Client struct {
 	*fleetbase.Client
 }
 
-// NewClient creates a new Fleet Management client.
-// When useBasicAuth is true, requests use Basic auth with instanceID:apiToken.
-// Otherwise, requests use Bearer token auth.
-// If httpClient is nil, a default client with a 30-second timeout is used.
-func NewClient(ctx context.Context, baseURL, instanceID, apiToken string, useBasicAuth bool, httpClient *http.Client) *Client {
-	return &Client{
-		Client: fleetbase.NewClient(ctx, baseURL, instanceID, apiToken, useBasicAuth, httpClient),
+// NewClient creates a new Fleet Management client from a Grafana REST config.
+// It wraps the shared base client, which routes through the
+// grafana-collector-app plugin proxy at cfg.Host using the Grafana bearer
+// credential.
+func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
+	base, err := fleetbase.NewClient(cfg)
+	if err != nil {
+		return nil, err
 	}
+	return &Client{Client: base}, nil
 }
 
 // doRequest delegates to the embedded base client's DoRequest.

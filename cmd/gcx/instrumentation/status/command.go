@@ -76,18 +76,17 @@ workload-level status for a specific namespace, powered by RunK8sDiscovery.`,
 
 			ctx := cmd.Context()
 
-			r, err := fleetbase.LoadClientWithStack(ctx, opts.loader)
+			base, _, err := fleetbase.LoadClient(ctx, opts.loader)
 			if err != nil {
 				return fmt.Errorf("instrumentation status: %w", err)
 			}
 
-			client := instrum.NewClient(r.Client)
-			promHdrs := instrum.PromHeadersFromStack(r.Stack)
+			client := instrum.NewClient(base)
 
-			mon := &monitoringAdapter{client: client, promHeaders: promHdrs}
+			mon := &monitoringAdapter{client: client}
 			// *instrum.Client satisfies pipelineSource directly (ListPipelines matches).
 			var pipe pipelineSource = client
-			disc := &discoveryAdapter{client: client, promHeaders: promHdrs}
+			disc := &discoveryAdapter{client: client}
 
 			result, err := run(ctx, opts.Cluster, opts.Namespace, mon, pipe, disc)
 			if err != nil {

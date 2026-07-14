@@ -116,7 +116,9 @@ admin, etc.). Tokens are prefixed `glc_`.
 gcx stores them in `CloudConfig.Token` (`datapolicy:"secret"`). They are
 attached to two different API surfaces: the GCOM API (via the
 `internal/cloud/` client) and Cloud product APIs (via product-specific REST
-clients for synth, k6, IRM, fleet, and others).
+clients for synth, k6, IRM, and others). Fleet Management and instrumentation
+no longer consume a Cloud access-policy token — they reach FM through the
+`grafana-collector-app` plugin proxy at `cfg.Host` (ADR-021).
 
 Rotation is manual: rotate the access policy in the Cloud UI, then update
 the context with `gcx login --context X --cloud-token glc_new_token`.

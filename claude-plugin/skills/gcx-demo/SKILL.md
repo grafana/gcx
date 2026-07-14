@@ -195,7 +195,7 @@ GitOps workflows."
 |-----------|--------|
 | `config check` fails | Stop. Ask user to fix the context before continuing. |
 | Signal datasource not found | Skip that signal type, note it. |
-| `cloud.token` / `cloud.stack` missing | Skip k6 and fleet, note what's needed. |
+| `cloud.token` / `cloud.stack` missing | Skip k6, note what's needed. (Fleet needs no Cloud token — it uses the Grafana credential via the collector-app proxy.) |
 | Assistant unavailable (self-hosted, OAuth missing, 403) | Skip assistant section, note Cloud + OAuth requirement. |
 | Auth scope missing (403) | Note the missing scope, skip, continue. |
 | Empty list (0 resources) | Report "none found" — not an error; continue. |

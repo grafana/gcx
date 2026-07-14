@@ -2,6 +2,15 @@
 
 Manage Grafana Fleet Management pipelines and collectors
 
+### Synopsis
+
+Manage Grafana Fleet Management pipelines and collectors.
+
+Authentication and roles: fleet commands reach Fleet Management through the
+grafana-collector-app plugin proxy using your active Grafana credential (OAuth
+included) — no Cloud access-policy token is required. Reads (list, get) need the
+Viewer role; mutations (create, update, delete) require the Grafana Admin role.
+
 ### Options
 
 ```

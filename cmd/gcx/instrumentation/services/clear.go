@@ -54,7 +54,7 @@ Examples:
 			}
 			client := instrumentation.NewClient(r.Client)
 			urls := instrumentation.BackendURLsFromStack(r.Stack)
-			return runClear(ctx, client, args[0], args[1], args[2], urls, instrumentation.PromHeadersFromStack(r.Stack), cmd.OutOrStdout())
+			return runClear(ctx, client, args[0], args[1], args[2], urls, cmd.OutOrStdout())
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -69,11 +69,10 @@ func runClear(
 	client *instrumentation.Client,
 	cluster, namespace, service string,
 	urls instrumentation.BackendURLs,
-	promHeaders instrumentation.PromHeaders,
 	out io.Writer,
 ) error {
 	// Workload existence pre-flight: verify the service appears in discovery.
-	if err := validateWorkloadExists(ctx, client, promHeaders, cluster, namespace, service); err != nil {
+	if err := validateWorkloadExists(ctx, client, cluster, namespace, service); err != nil {
 		return err
 	}
 

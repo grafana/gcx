@@ -12,10 +12,9 @@ import (
 	instroutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 )
 
-// monitoringSource is the minimal interface required to call RunK8sMonitoring
-// without PromHeaders in the signature. The real *instrumentation.Client
-// requires PromHeaders; the monitoringAdapter struct binds them at construction.
-// Structurally identical to enumerate.MonitoringClient.
+// monitoringSource is the minimal interface required to call RunK8sMonitoring.
+// The monitoringAdapter unwraps the *instrumentation.Client response to a
+// cluster slice. Structurally identical to enumerate.MonitoringClient.
 type monitoringSource interface {
 	RunK8sMonitoring(ctx context.Context) ([]instrumentation.ClusterObservedState, error)
 }
@@ -27,24 +26,23 @@ type pipelineSource interface {
 	ListPipelines(ctx context.Context) ([]instrumentation.Pipeline, error)
 }
 
-// discoverySource is the minimal interface required to call RunK8sDiscovery
-// without PromHeaders in the signature. The discoveryAdapter binds them at
-// construction time.
+// discoverySource is the minimal interface required to call RunK8sDiscovery.
+// The discoveryAdapter unwraps the *instrumentation.Client response to an item
+// slice.
 type discoverySource interface {
 	RunK8sDiscovery(ctx context.Context) ([]instrumentation.DiscoveryItem, error)
 }
 
 // monitoringAdapter adapts *instrumentation.Client to the monitoringSource
-// interface expected by enumerate.Enumerate. PromHeaders are bound at
-// construction so callers can pass this as enumerate.MonitoringClient.
+// interface expected by enumerate.Enumerate, unwrapping the response to its
+// cluster slice.
 type monitoringAdapter struct {
-	client      *instrumentation.Client
-	promHeaders instrumentation.PromHeaders
+	client *instrumentation.Client
 }
 
 // RunK8sMonitoring satisfies monitoringSource (and enumerate.MonitoringClient).
 func (a *monitoringAdapter) RunK8sMonitoring(ctx context.Context) ([]instrumentation.ClusterObservedState, error) {
-	resp, err := a.client.RunK8sMonitoring(ctx, a.promHeaders)
+	resp, err := a.client.RunK8sMonitoring(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -52,15 +50,14 @@ func (a *monitoringAdapter) RunK8sMonitoring(ctx context.Context) ([]instrumenta
 }
 
 // discoveryAdapter adapts *instrumentation.Client to the discoverySource
-// interface. PromHeaders are bound at construction.
+// interface, unwrapping the response to its item slice.
 type discoveryAdapter struct {
-	client      *instrumentation.Client
-	promHeaders instrumentation.PromHeaders
+	client *instrumentation.Client
 }
 
 // RunK8sDiscovery satisfies discoverySource.
 func (a *discoveryAdapter) RunK8sDiscovery(ctx context.Context) ([]instrumentation.DiscoveryItem, error) {
-	resp, err := a.client.RunK8sDiscovery(ctx, a.promHeaders)
+	resp, err := a.client.RunK8sDiscovery(ctx)
 	if err != nil {
 		return nil, err
 	}

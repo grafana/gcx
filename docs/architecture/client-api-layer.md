@@ -436,8 +436,9 @@ dynamic client gets User-Agent through `rest.Config.UserAgent`.
 
 | Caller | Factory | Notes |
 |--------|---------|-------|
-| Provider clients (SLO, Synth, Fleet, k6) | `NewDefaultClient(ctx)` | Via `CloudRESTConfig.HTTPClient(ctx)` when `RESTConfig` is nil; see note below |
+| Provider clients (SLO, Synth, k6) | `NewDefaultClient(ctx)` | Via `CloudRESTConfig.HTTPClient(ctx)` when `RESTConfig` is nil; see note below |
 | Assistant client | `NewDefaultClient(ctx)` | Direct call |
+| Fleet / instrumentation clients | `rest.HTTPClientFor(&cfg.Config)` | Reach FM via the `grafana-collector-app` plugin proxy at `cfg.Host`; Grafana bearer injected by the round-tripper (ADR-021) |
 | K8s tier (dynamic client, query clients) | `rest.Config.WrapTransport` | Chains `LoggingRoundTripper` via `NewNamespacedRESTConfig` |
 | Dev server (`internal/server`) | `NewClient(ClientOpts{...})` | Custom TLS from config context |
 

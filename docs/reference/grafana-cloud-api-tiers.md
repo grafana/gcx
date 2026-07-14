@@ -67,7 +67,7 @@ reflecting Grafana's 10-year evolution from REST to K8s-style to plugin-hosted:
 | Legacy REST                      | `/api/...`                          | Oldest, broadest. Dashboards, users, teams, datasources, alerting, library panels, annotations, reports.  |
 | K8s-style API (Grafana 12+)      | `/apis/<group>.grafana.app/...`     | 33+ groups. Kubeconfig-style auth via `k8s.io/client-go`. Future of all resources.                        |
 | Plugin resources                 | `/api/plugins/<id>/resources/...`   | Per-app-plugin backends. Where Cloud products (SLO, SM, IRM, k6-shim) live.                               |
-| Plugin proxy                     | `/api/plugin-proxy/<id>/...`        | Thin auth-passthrough to a plugin. Used by Fleet UI, App O11y, Faro CRUD.                                 |
+| Plugin proxy                     | `/api/plugin-proxy/<id>/...`        | Thin auth-passthrough to a plugin. Used by App O11y, Faro CRUD, and gcx `fleet`/`instrumentation` (via `grafana-collector-app`, ADR-021).            |
 | App routes + Live WebSocket      | `/a/<id>/...`, `/api/live/ws`       | UI deep-links, CLI proxies (Assistant), streaming.                                                        |
 
 **gcx mapping**:
@@ -134,7 +134,7 @@ Some products emit calls across tiers. Knowing the map avoids wrong-tier fixes:
 
 - **Alerting** — Tier 2 (legacy `/api/ruler` + K8s `rules.alerting.grafana.app`) + Tier 3 (regional ruler + AM)
 - **Synthetic Monitoring** — Tier 2 (plugin settings) + Tier 3 (REST + gRPC) + Tier 1 (install/register)
-- **Fleet Management** — Tier 1 (discovery) + Tier 3 (gRPC) + Tier 2 (plugin-proxy UI)
+- **Fleet Management** — gcx reaches it via Tier 2 (`grafana-collector-app` plugin-proxy at `cfg.Host`, ADR-021); server-side it fronts Tier 3 (gRPC) and Tier 1 (discovery)
 - **Frontend Observability (Faro)** — Tier 2 (plugin-proxy CRUD + sourcemaps) + Tier 3 (API + ingest)
 - **IRM** — Tier 2 (plugin-resources for OnCall + Incidents) + Tier 3 (OnCall public) + legacy Tier 3 Incident
 - **Adaptive {Metrics,Logs,Traces}** — Tier 2 (plugin UI) + Tier 3 (runtime config) + Tier 1 (enablement)

@@ -57,14 +57,13 @@ GetK8SInstrumentation (up to 10 concurrent requests).`,
 				return err
 			}
 			ctx := cmd.Context()
-			r, err := fleet.LoadClientWithStack(ctx, loader)
+			base, _, err := fleet.LoadClient(ctx, loader)
 			if err != nil {
 				return fmt.Errorf("clusters list: %w", err)
 			}
-			client := instrumentation.NewClient(r.Client)
-			promHeaders := instrumentation.PromHeadersFromStack(r.Stack)
+			client := instrumentation.NewClient(base)
 
-			monClient := &monitoringAdapter{client: client, promHeaders: promHeaders}
+			monClient := &monitoringAdapter{client: client}
 			pipeClient := &pipelineAdapter{client: client}
 
 			return runList(ctx, opts, monClient, pipeClient, client, cmd.OutOrStdout())

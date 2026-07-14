@@ -84,14 +84,13 @@ Exit codes:
 			ctx := cmd.Context()
 			clusterName := args[0]
 
-			r, err := fleet.LoadClientWithStack(ctx, loader)
+			base, _, err := fleet.LoadClient(ctx, loader)
 			if err != nil {
 				return fmt.Errorf("clusters wait: %w", err)
 			}
-			client := instrumentation.NewClient(r.Client)
-			promHeaders := instrumentation.PromHeadersFromStack(r.Stack)
+			client := instrumentation.NewClient(base)
 
-			monClient := &monitoringAdapter{client: client, promHeaders: promHeaders}
+			monClient := &monitoringAdapter{client: client}
 
 			return runWait(ctx, opts, client, monClient, clusterName, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},

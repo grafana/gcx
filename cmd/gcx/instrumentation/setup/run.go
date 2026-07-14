@@ -20,7 +20,7 @@ import (
 // clientInterface abstracts the three instrumentation API calls made by setup.
 // The concrete implementation is *instrumentation.Client; tests inject a fake.
 type clientInterface interface {
-	SetupK8sDiscovery(ctx context.Context, urls instrumentation.BackendURLs, promHeaders instrumentation.PromHeaders) error
+	SetupK8sDiscovery(ctx context.Context, urls instrumentation.BackendURLs) error
 	GetK8SInstrumentation(ctx context.Context, clusterName string) (*instrumentation.GetK8SInstrumentationResponse, error)
 	SetK8SInstrumentation(ctx context.Context, clusterName string, k8s instrumentation.Cluster, urls instrumentation.BackendURLs) error
 }
@@ -30,10 +30,9 @@ type clientInterface interface {
 // allow table-driven tests to vary individual components.
 type runner struct {
 	// client is nil when --print-helm-only is set (structural no-call guarantee).
-	client   clientInterface
-	urls     instrumentation.BackendURLs
-	fm       instrumentation.FleetManagement // used by helm.Format
-	promHdrs instrumentation.PromHeaders
+	client clientInterface
+	urls   instrumentation.BackendURLs
+	fm     instrumentation.FleetManagement // used by helm.Format
 	// token is substituted into the helm command as the access-policy password.
 	token string
 	// orgSlug is the Grafana Cloud org slug used to build the access-policies URL
@@ -73,7 +72,7 @@ func run(ctx context.Context, o *opts, cluster string, r *runner) error {
 	}
 
 	// Step 2: SetupK8sDiscovery is idempotent — always call.
-	if err := r.client.SetupK8sDiscovery(ctx, r.urls, r.promHdrs); err != nil {
+	if err := r.client.SetupK8sDiscovery(ctx, r.urls); err != nil {
 		return fmt.Errorf("setup: %w", err)
 	}
 	fmt.Fprintln(r.stderr, "SetupK8sDiscovery: ok")

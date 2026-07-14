@@ -110,7 +110,7 @@ func TestRunGet(t *testing.T) {
 					c.Name = name
 					return &instrumentation.GetK8SInstrumentationResponse{Cluster: c}, nil
 				},
-				RunK8sMonitoringFn: func(_ context.Context, _ instrumentation.PromHeaders) (*instrumentation.RunK8sMonitoringResponse, error) {
+				RunK8sMonitoringFn: func(_ context.Context) (*instrumentation.RunK8sMonitoringResponse, error) {
 					if tt.monErr != nil {
 						return nil, tt.monErr
 					}
@@ -136,7 +136,6 @@ func TestRunGet(t *testing.T) {
 				opts,
 				client,
 				tt.clusterName,
-				instrumentation.PromHeaders{},
 				&buf,
 			)
 

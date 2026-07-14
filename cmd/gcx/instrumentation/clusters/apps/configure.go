@@ -76,7 +76,7 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 				return err
 			}
 			ctx := cmd.Context()
-			client, urls, promHeaders, err := factory(ctx)
+			client, urls, err := factory(ctx)
 			if err != nil {
 				return err
 			}
@@ -109,7 +109,7 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 				updated := replaceOrAppendNamespace(resp.Namespaces, namespace, defaults)
 				if equal, _ := appListEqual(resp.Namespaces, updated); equal {
 					// No write — discover post-state before emitting result.
-					disc, discErr := client.IsNamespaceDiscovered(ctx, promHeaders, cluster, namespace)
+					disc, discErr := client.IsNamespaceDiscovered(ctx, cluster, namespace)
 					if discErr != nil {
 						return fmt.Errorf("apps configure: %w", discErr)
 					}
@@ -124,7 +124,7 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 					return err
 				}
 				// Discover post-write state.
-				disc, discErr := client.IsNamespaceDiscovered(ctx, promHeaders, cluster, namespace)
+				disc, discErr := client.IsNamespaceDiscovered(ctx, cluster, namespace)
 				if discErr != nil {
 					return fmt.Errorf("apps configure: %w", discErr)
 				}
@@ -147,7 +147,7 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 			post := applyAppMutations(pre, namespace, flags,
 				opts.tracing, opts.logging, opts.processMetrics, opts.extendedMetrics, opts.profiling)
 			if equal, _ := appListEqual(pre, post); equal {
-				disc, discErr := client.IsNamespaceDiscovered(ctx, promHeaders, cluster, namespace)
+				disc, discErr := client.IsNamespaceDiscovered(ctx, cluster, namespace)
 				if discErr != nil {
 					return fmt.Errorf("apps configure: %w", discErr)
 				}
@@ -185,7 +185,7 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 				return err
 			}
 			// Discover post-write state.
-			disc, discErr := client.IsNamespaceDiscovered(ctx, promHeaders, cluster, namespace)
+			disc, discErr := client.IsNamespaceDiscovered(ctx, cluster, namespace)
 			if discErr != nil {
 				return fmt.Errorf("apps configure: %w", discErr)
 			}
@@ -205,8 +205,8 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 // newConfigureCmd is a test-facing constructor that injects a pre-built appsClient
 // and BackendURLs. Production code uses makeConfigureCmd(factoryFromLoader(loader)) instead.
 func newConfigureCmd(client appsClient, urls instrumentation.BackendURLs) *cobra.Command {
-	return makeConfigureCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, instrumentation.PromHeaders, error) {
-		return client, urls, instrumentation.PromHeaders{}, nil
+	return makeConfigureCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, error) {
+		return client, urls, nil
 	})
 }
 

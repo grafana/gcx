@@ -46,7 +46,7 @@ func (o *waitOpts) Validate() error {
 //   - Otherwise (all INSTRUMENTED, EXCLUDED, or other terminal non-error states) → exit 0.
 //
 // factory is called inside RunE — after cobra has parsed all flags — to
-// lazily construct the appsClient and PromHeaders.
+// lazily construct the appsClient.
 func makeWaitCmd(factory appClientFactory) *cobra.Command {
 	opts := &waitOpts{}
 
@@ -73,7 +73,7 @@ Exit non-zero when:
 			timeout := opts.timeout
 
 			ctx := cmd.Context()
-			client, _, promHeaders, err := factory(ctx)
+			client, _, err := factory(ctx)
 			if err != nil {
 				return err
 			}
@@ -92,7 +92,7 @@ Exit non-zero when:
 
 			for {
 				// outcome is WaitOutcome; rawStatus is the wire string for logging.
-				outcome, rawStatus, pollErr := pollNamespaceStatus(ctx, client, promHeaders, cluster, namespace)
+				outcome, rawStatus, pollErr := pollNamespaceStatus(ctx, client, cluster, namespace)
 				if pollErr != nil {
 					return fmt.Errorf("apps wait: poll error: %w", pollErr)
 				}
@@ -170,11 +170,11 @@ Exit non-zero when:
 	return cmd
 }
 
-// newWaitCmd is a test-facing constructor that injects a pre-built appsClient
-// and PromHeaders. Production code uses makeWaitCmd(factoryFromLoader(loader)) instead.
-func newWaitCmd(client appsClient, promHeaders instrumentation.PromHeaders) *cobra.Command {
-	return makeWaitCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, instrumentation.PromHeaders, error) {
-		return client, instrumentation.BackendURLs{}, promHeaders, nil
+// newWaitCmd is a test-facing constructor that injects a pre-built appsClient.
+// Production code uses makeWaitCmd(factoryFromLoader(loader)) instead.
+func newWaitCmd(client appsClient) *cobra.Command {
+	return makeWaitCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, error) {
+		return client, instrumentation.BackendURLs{}, nil
 	})
 }
 
@@ -208,10 +208,9 @@ func probePipelineMsg(ctx context.Context, client appsClient, cluster string) st
 func pollNamespaceStatus(
 	ctx context.Context,
 	client appsClient,
-	promHeaders instrumentation.PromHeaders,
 	cluster, namespace string,
 ) (instrumentation.WaitOutcome, instrumentation.InstrumentationStatus, error) {
-	resp, err := client.RunK8sDiscovery(ctx, promHeaders)
+	resp, err := client.RunK8sDiscovery(ctx)
 	if err != nil {
 		return instrumentation.WaitPending, "", err
 	}

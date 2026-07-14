@@ -116,13 +116,11 @@ Cloud Access Policy token scoped to metrics:read and set:alloy-data-write.`,
 				return fmt.Errorf("setup: %w", err)
 			}
 			urls := instrum.BackendURLsFromStack(r.Stack)
-			promHdrs := instrum.PromHeadersFromStack(r.Stack)
 			fm := instrum.FleetManagementFromStack(r.Stack)
 
 			rn := &runner{
 				urls:     urls,
 				fm:       fm,
-				promHdrs: promHdrs,
 				token:    accessPolicyTokenPlaceholder,
 				orgSlug:  r.Stack.OrgSlug,
 				stdout:   cmd.OutOrStdout(),

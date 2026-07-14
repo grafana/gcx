@@ -119,7 +119,7 @@ func TestPollNamespaceStatus(t *testing.T) {
 			}
 
 			ctx := t.Context()
-			outcome, rawStatus, err := pollNamespaceStatus(ctx, client, instrumentation.PromHeaders{}, tc.cluster, tc.namespace)
+			outcome, rawStatus, err := pollNamespaceStatus(ctx, client, tc.cluster, tc.namespace)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -151,7 +151,7 @@ func TestWaitCmd_Timeout(t *testing.T) {
 		},
 	}
 
-	cmd := newWaitCmd(client, instrumentation.PromHeaders{})
+	cmd := newWaitCmd(client)
 
 	// Use a very short timeout to keep the test fast.
 	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=100ms"})
@@ -193,7 +193,7 @@ func TestWaitCmd_ErrorStatus(t *testing.T) {
 		},
 	}
 
-	cmd := newWaitCmd(client, instrumentation.PromHeaders{})
+	cmd := newWaitCmd(client)
 	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=5m"})
 
 	err := cmd.Execute()
@@ -214,7 +214,7 @@ func TestWaitCmd_Success(t *testing.T) {
 		},
 	}
 
-	cmd := newWaitCmd(client, instrumentation.PromHeaders{})
+	cmd := newWaitCmd(client)
 	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=5m"})
 
 	var stdout, stderr strings.Builder

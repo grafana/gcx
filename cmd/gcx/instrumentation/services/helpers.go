@@ -17,10 +17,9 @@ import (
 func validateWorkloadExists(
 	ctx context.Context,
 	client *instrumentation.Client,
-	promHeaders instrumentation.PromHeaders,
 	cluster, namespace, service string,
 ) error {
-	resp, err := client.RunK8sDiscovery(ctx, promHeaders)
+	resp, err := client.RunK8sDiscovery(ctx)
 	if err != nil {
 		return fmt.Errorf("workload validation: %w", err)
 	}

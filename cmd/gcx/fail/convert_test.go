@@ -422,51 +422,52 @@ func TestErrorToDetailedError_CloudStackLookupForbidden(t *testing.T) {
 	}
 }
 
-func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
+// TestErrorToDetailedError_FleetRoleError verifies that fleet errors from the
+// collector-app proxy map to role-based guidance (FR-016): 401 → re-authenticate,
+// 403 on reads → Viewer role, 403 on mutations → Grafana Admin role. Fleet no
+// longer references a Cloud access-policy token or fleet-management scopes.
+func TestErrorToDetailedError_FleetRoleError(t *testing.T) {
 	tests := []struct {
-		name      string
-		err       error
-		wantScope string
+		name        string
+		err         error
+		wantSummary string
+		wantContain string // substring expected in at least one suggestion
 	}{
 		{
-			name:      "list pipelines invalid scope suggests fleet-management:read",
-			err:       errors.New(`fleet: list pipelines: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:read",
+			name:        "fleet 401 suggests re-authentication",
+			err:         errors.New(`fleet: list pipelines: status 401: {"message":"unauthorized"}`),
+			wantSummary: "Authentication failed",
+			wantContain: "gcx login",
 		},
 		{
-			name:      "list collectors invalid scope suggests fleet-management:read",
-			err:       errors.New(`fleet: list collectors: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:read",
+			name:        "fleet 403 list read suggests Viewer role",
+			err:         errors.New(`fleet: list pipelines: status 403: {"message":"forbidden"}`),
+			wantSummary: "Authorization failed",
+			wantContain: "Viewer role",
 		},
 		{
-			name:      "get pipeline invalid scope suggests fleet-management:read",
-			err:       errors.New(`fleet: get pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:read",
+			name:        "fleet 403 get read suggests Viewer role",
+			err:         errors.New(`fleet: get pipeline abc123: status 403: {"message":"forbidden"}`),
+			wantSummary: "Authorization failed",
+			wantContain: "Viewer role",
 		},
 		{
-			name:      "create pipeline invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: create pipeline: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
+			name:        "fleet 403 create mutation suggests Admin role",
+			err:         errors.New(`fleet: create pipeline: status 403: {"message":"forbidden"}`),
+			wantSummary: "Authorization failed",
+			wantContain: "Admin role",
 		},
 		{
-			name:      "update pipeline invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: update pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
+			name:        "fleet 403 update mutation suggests Admin role",
+			err:         errors.New(`fleet: update collector abc123: status 403: {"message":"forbidden"}`),
+			wantSummary: "Authorization failed",
+			wantContain: "Admin role",
 		},
 		{
-			name:      "create collector invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: create collector: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-		{
-			name:      "update collector invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: update collector abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-		{
-			name:      "delete pipeline invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: delete pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
+			name:        "fleet 403 delete mutation suggests Admin role",
+			err:         errors.New(`fleet: delete pipeline abc123: status 403: {"message":"forbidden"}`),
+			wantSummary: "Authorization failed",
+			wantContain: "Admin role",
 		},
 	}
 
@@ -474,16 +475,17 @@ func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := fail.ErrorToDetailedError(tc.err)
 
-			if tc.wantScope == "" {
-				assert.Equal(t, "Unexpected error", got.Summary)
-				return
-			}
-
-			assert.Equal(t, "Fleet Management: permission denied", got.Summary)
+			assert.Equal(t, tc.wantSummary, got.Summary)
 			require.NotNil(t, got.ExitCode)
 			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
-			require.Len(t, got.Suggestions, 1)
-			assert.Contains(t, got.Suggestions[0], tc.wantScope)
+			found := false
+			for _, s := range got.Suggestions {
+				if strings.Contains(s, tc.wantContain) {
+					found = true
+					break
+				}
+			}
+			assert.True(t, found, "expected a suggestion containing %q, got %v", tc.wantContain, got.Suggestions)
 		})
 	}
 }

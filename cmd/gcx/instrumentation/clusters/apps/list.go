@@ -48,7 +48,7 @@ Use "gcx instrumentation status" for observed-state status.`,
 			}
 
 			ctx := cmd.Context()
-			client, _, promHeaders, err := factory(ctx)
+			client, _, err := factory(ctx)
 			if err != nil {
 				return err
 			}
@@ -61,7 +61,7 @@ Use "gcx instrumentation status" for observed-state status.`,
 
 			// Call RunK8sDiscovery once and build a namespace set for this cluster.
 			// This populates the discovered field on each AppView.
-			discResp, err := client.RunK8sDiscovery(ctx, promHeaders)
+			discResp, err := client.RunK8sDiscovery(ctx)
 			if err != nil {
 				return err
 			}
@@ -99,7 +99,7 @@ Use "gcx instrumentation status" for observed-state status.`,
 // newListCmd is a test-facing constructor that injects a pre-built appsClient.
 // Production code uses makeListCmd(factoryFromLoader(loader)) instead.
 func newListCmd(client appsClient) *cobra.Command {
-	return makeListCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, instrumentation.PromHeaders, error) {
-		return client, instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, nil
+	return makeListCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, error) {
+		return client, instrumentation.BackendURLs{}, nil
 	})
 }

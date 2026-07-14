@@ -25,8 +25,8 @@ import (
 type appsClient interface {
 	GetAppInstrumentation(ctx context.Context, clusterName string) (*instrumentation.GetAppInstrumentationResponse, error)
 	SetAppInstrumentation(ctx context.Context, clusterName string, namespaces []instrumentation.App, urls instrumentation.BackendURLs) error
-	RunK8sDiscovery(ctx context.Context, promHeaders instrumentation.PromHeaders) (*instrumentation.RunK8sDiscoveryResponse, error)
-	IsNamespaceDiscovered(ctx context.Context, promHeaders instrumentation.PromHeaders, cluster, namespace string) (bool, error)
+	RunK8sDiscovery(ctx context.Context) (*instrumentation.RunK8sDiscoveryResponse, error)
+	IsNamespaceDiscovered(ctx context.Context, cluster, namespace string) (bool, error)
 	ListPipelines(ctx context.Context) ([]instrumentation.Pipeline, error)
 }
 
@@ -34,9 +34,9 @@ type appsClient interface {
 // command's RunE — after cobra has parsed all flags (including --context) — so
 // client construction is always lazy and never happens at Command() call time.
 //
-// Returning all three values from a single call ensures a single
+// Returning both values from a single call ensures a single
 // fleet.LoadClientWithStack round-trip per command invocation.
-type appClientFactory = func(ctx context.Context) (appsClient, instrumentation.BackendURLs, instrumentation.PromHeaders, error)
+type appClientFactory = func(ctx context.Context) (appsClient, instrumentation.BackendURLs, error)
 
 // factoryFromLoader returns an appClientFactory that lazily constructs the
 // instrumentation client from the given fleet.ConfigLoader.
@@ -45,14 +45,13 @@ type appClientFactory = func(ctx context.Context) (appsClient, instrumentation.B
 // construction (fleet.LoadClientWithStack call) is deferred until the returned
 // function is invoked inside a command's RunE.
 func factoryFromLoader(loader fleet.ConfigLoader) appClientFactory {
-	return func(ctx context.Context) (appsClient, instrumentation.BackendURLs, instrumentation.PromHeaders, error) {
+	return func(ctx context.Context) (appsClient, instrumentation.BackendURLs, error) {
 		r, err := fleet.LoadClientWithStack(ctx, loader)
 		if err != nil {
-			return nil, instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, fmt.Errorf("apps: %w", err)
+			return nil, instrumentation.BackendURLs{}, fmt.Errorf("apps: %w", err)
 		}
 		return instrumentation.NewClient(r.Client),
-			instrumentation.BackendURLsFromStack(r.Stack),
-			instrumentation.PromHeadersFromStack(r.Stack), nil
+			instrumentation.BackendURLsFromStack(r.Stack), nil
 	}
 }
 

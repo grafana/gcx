@@ -40,7 +40,7 @@ namespace has no declared configuration.`,
 			}
 
 			ctx := cmd.Context()
-			client, _, promHeaders, err := factory(ctx)
+			client, _, err := factory(ctx)
 			if err != nil {
 				return err
 			}
@@ -54,7 +54,7 @@ namespace has no declared configuration.`,
 
 			// Cross-reference with RunK8sDiscovery to populate the discovered field.
 			// Discovery RPC error short-circuits — callers can retry.
-			discovered, err := client.IsNamespaceDiscovered(ctx, promHeaders, cluster, namespace)
+			discovered, err := client.IsNamespaceDiscovered(ctx, cluster, namespace)
 			if err != nil {
 				return fmt.Errorf("apps get: %w", err)
 			}
@@ -115,7 +115,7 @@ namespace has no declared configuration.`,
 // newGetCmd is a test-facing constructor that injects a pre-built appsClient.
 // Production code uses makeGetCmd(factoryFromLoader(loader)) instead.
 func newGetCmd(client appsClient) *cobra.Command {
-	return makeGetCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, instrumentation.PromHeaders, error) {
-		return client, instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, nil
+	return makeGetCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, error) {
+		return client, instrumentation.BackendURLs{}, nil
 	})
 }

@@ -62,14 +62,13 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			r, err := fleetbase.LoadClientWithStack(ctx, loader)
+			base, _, err := fleetbase.LoadClient(ctx, loader)
 			if err != nil {
 				return fmt.Errorf("setup: %w", err)
 			}
-			client := instrum.NewClient(r.Client)
-			promHdrs := instrum.PromHeadersFromStack(r.Stack)
+			client := instrum.NewClient(base)
 
-			monResp, err := client.RunK8sMonitoring(ctx, promHdrs)
+			monResp, err := client.RunK8sMonitoring(ctx)
 			if err != nil {
 				return fmt.Errorf("setup: %w", err)
 			}

@@ -53,7 +53,7 @@ This command requires --yes to proceed.`,
 			}
 
 			ctx := cmd.Context()
-			client, urls, _, err := factory(ctx)
+			client, urls, err := factory(ctx)
 			if err != nil {
 				return err
 			}
@@ -105,7 +105,7 @@ func runAppRemove(
 // newRemoveCmd is a test-facing constructor that injects a pre-built appsClient
 // and BackendURLs. Production code uses makeRemoveCmd(factoryFromLoader(loader)) instead.
 func newRemoveCmd(client appsClient, urls instrumentation.BackendURLs) *cobra.Command {
-	return makeRemoveCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, instrumentation.PromHeaders, error) {
-		return client, urls, instrumentation.PromHeaders{}, nil
+	return makeRemoveCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, error) {
+		return client, urls, nil
 	})
 }

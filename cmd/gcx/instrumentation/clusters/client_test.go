@@ -13,7 +13,7 @@ import (
 type fakeClient struct {
 	GetK8SInstrumentationFn func(ctx context.Context, clusterName string) (*instrumentation.GetK8SInstrumentationResponse, error)
 	SetK8SInstrumentationFn func(ctx context.Context, clusterName string, k8s instrumentation.Cluster, urls instrumentation.BackendURLs) error
-	RunK8sMonitoringFn      func(ctx context.Context, promHeaders instrumentation.PromHeaders) (*instrumentation.RunK8sMonitoringResponse, error)
+	RunK8sMonitoringFn      func(ctx context.Context) (*instrumentation.RunK8sMonitoringResponse, error)
 	ListPipelinesFn         func(ctx context.Context) ([]instrumentation.Pipeline, error)
 }
 
@@ -31,9 +31,9 @@ func (f *fakeClient) SetK8SInstrumentation(ctx context.Context, clusterName stri
 	return errors.New("fakeClient: SetK8SInstrumentation not configured")
 }
 
-func (f *fakeClient) RunK8sMonitoring(ctx context.Context, promHeaders instrumentation.PromHeaders) (*instrumentation.RunK8sMonitoringResponse, error) {
+func (f *fakeClient) RunK8sMonitoring(ctx context.Context) (*instrumentation.RunK8sMonitoringResponse, error) {
 	if f.RunK8sMonitoringFn != nil {
-		return f.RunK8sMonitoringFn(ctx, promHeaders)
+		return f.RunK8sMonitoringFn(ctx)
 	}
 	return nil, errors.New("fakeClient: RunK8sMonitoring not configured")
 }

@@ -257,7 +257,7 @@ query/stream endpoints that return Grafana-native response formats, not
 all three client paths without duplication.
 
 **Contrast with external APIs:** Provider clients calling **external** APIs
-(k6 Cloud, OnCall, Synth, Fleet — domains outside the Grafana server) must
+(k6 Cloud, OnCall — domains outside the Grafana server) must
 **not** use `rest.HTTPClientFor`. The k8s transport round-tripper injects the
 Grafana bearer token on every outgoing request, which conflicts with the
 product's own auth mechanism (e.g. OnCall raw token, k6 X-Grafana-Key).
@@ -488,7 +488,7 @@ flag is owned by the root command and threaded to providers via
 | Method | Purpose | Used by |
 |--------|---------|---------|
 | `LoadGrafanaConfig(ctx)` | REST config for Grafana API calls | alert, fleet, incidents, kg, oncall, slo, synth |
-| `LoadCloudConfig(ctx)` | Cloud token + GCOM stack info | k6, fleet |
+| `LoadCloudConfig(ctx)` | Cloud token + GCOM stack info | k6 |
 | `LoadProviderConfig(ctx, name)` | Provider-specific `map[string]string` + namespace | synth, oncall, k6 |
 | `SaveProviderConfig(ctx, name, key, val)` | Write-back a single provider config key | synth (datasource UID) |
 | `LoadFullConfig(ctx)` | Full `*config.Config` (for cross-cutting lookups) | synth (datasource discovery) |

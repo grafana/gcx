@@ -2,67 +2,68 @@ package fleet
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"strconv"
 
 	"github.com/grafana/gcx/internal/cloud"
-	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/config"
 )
 
-// ConfigLoader can load Grafana Cloud configuration from the active context.
-// This mirrors the interface in internal/providers/fleet/ to avoid a circular import.
+// ConfigLoader resolves the Grafana REST config for the active context. Fleet
+// and instrumentation reach the Fleet Management API through the
+// grafana-collector-app plugin proxy at cfg.Host, so they authenticate with the
+// active context's Grafana credential — no Cloud access-policy token is
+// required.
+//
+// This declares the subset of internal/providers.ConfigLoader that the fleet
+// packages need, kept here to avoid a circular import.
 type ConfigLoader interface {
-	LoadCloudConfig(ctx context.Context) (providers.CloudRESTConfig, error)
+	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
-// ClientResult holds the results of LoadClient including the fleet base client,
-// resolved namespace, and the full stack info for deriving backend URLs and
-// prom headers.
+// ClientResult holds the results of LoadClientWithStack: the fleet base client,
+// the resolved namespace, and the stack instance metadata used by
+// instrumentation to derive backend datasource URLs.
 type ClientResult struct {
 	Client    *Client
 	Namespace string
 	Stack     cloud.StackInfo
 }
 
-// LoadClient loads cloud configuration and constructs a Fleet Management client
-// using Basic auth ({instanceID}:{apiToken}).
-// Returns the client, the resolved namespace, and any error.
-// Fails with a descriptive error if AgentManagementInstanceURL or
-// AgentManagementInstanceID is not available for the stack.
+// LoadClient resolves the Grafana REST config for the active context and
+// constructs a Fleet Management base client routed through the collector-app
+// plugin proxy. Returns the client and the resolved namespace. No Cloud
+// access-policy token or Fleet Management instance URL/ID is consulted.
 func LoadClient(ctx context.Context, loader ConfigLoader) (*Client, string, error) {
-	r, err := LoadClientWithStack(ctx, loader)
+	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
 		return nil, "", err
 	}
-	return r.Client, r.Namespace, nil
+	client, err := NewClient(cfg)
+	if err != nil {
+		return nil, "", err
+	}
+	return client, cfg.Namespace, nil
 }
 
-// LoadClientWithStack is like LoadClient but also returns the full stack info,
-// needed by instrumentation commands to derive backend URLs and prom headers.
+// LoadClientWithStack is like LoadClient but also fetches the stack instance
+// metadata through the collector-app's Viewer-role instance-metadata proxy
+// route. Instrumentation mutations use the returned Stack to build backend
+// datasource URLs; reads that do not need it should call LoadClient instead.
 func LoadClientWithStack(ctx context.Context, loader ConfigLoader) (*ClientResult, error) {
-	cloudCfg, err := loader.LoadCloudConfig(ctx)
+	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	url := cloudCfg.Stack.AgentManagementInstanceURL
-	if url == "" {
-		return nil, errors.New("fleet management endpoint is not available for this stack")
-	}
-	if cloudCfg.Stack.AgentManagementInstanceID == 0 {
-		return nil, errors.New("fleet management instance ID is not available for this stack")
-	}
-
-	instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-	httpClient, err := cloudCfg.HTTPClient(ctx)
+	client, err := NewClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("fleet: failed to create HTTP client: %w", err)
+		return nil, err
 	}
-
+	stack, err := client.FetchInstanceMetadata(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return &ClientResult{
-		Client:    NewClient(ctx, url, instanceID, cloudCfg.Token, true, httpClient),
-		Namespace: cloudCfg.Namespace,
-		Stack:     cloudCfg.Stack,
+		Client:    client,
+		Namespace: cfg.Namespace,
+		Stack:     stack,
 	}, nil
 }

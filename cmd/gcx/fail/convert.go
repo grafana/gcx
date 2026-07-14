@@ -982,30 +982,52 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	}
 
-	// Fleet API scope error on read operations.
-	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "invalid scope") &&
-		(strings.Contains(msg, "list ") || strings.Contains(msg, "get ")) {
+	// Fleet Management authentication failure via the collector-app proxy: the
+	// Grafana credential was rejected (HTTP 401). Fleet no longer uses a Cloud
+	// access-policy token — the fix is to re-authenticate to Grafana.
+	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "status 401") {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Fleet Management: permission denied",
+			Summary: "Authentication failed",
+			Details: msg,
 			Suggestions: []string{
-				"Ensure your cloud.token access policy includes the fleet-management:read scope",
+				"Re-authenticate with your Grafana credential: gcx login",
+				"Verify the active context targets the intended Grafana instance: gcx config view",
 			},
-			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
 
-	// Fleet API scope error on write operations.
-	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "invalid scope") &&
+	// Fleet Management RBAC denial via the collector-app proxy (HTTP 403) on read
+	// operations — the caller lacks the Viewer role.
+	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "status 403") &&
+		(strings.Contains(msg, "list ") || strings.Contains(msg, "get ")) {
+		return &gcxerrors.DetailedError{
+			Parent:  err,
+			Summary: "Authorization failed",
+			Details: msg,
+			Suggestions: []string{
+				"Fleet reads require the Viewer role on this Grafana instance (via the grafana-collector-app proxy)",
+				"Ask a Grafana admin to grant your account the Viewer role, then retry",
+				"If your role is already sufficient, this may be a Fleet Management request rejection rather than an RBAC denial",
+			},
+			ExitCode: new(gcxerrors.ExitAuthFailure),
+		}, true
+	}
+
+	// Fleet Management RBAC denial via the collector-app proxy (HTTP 403) on write
+	// operations — the caller lacks the Grafana Admin role.
+	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "status 403") &&
 		(strings.Contains(msg, "create ") || strings.Contains(msg, "update ") || strings.Contains(msg, "delete ")) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Fleet Management: permission denied",
+			Summary: "Authorization failed",
+			Details: msg,
 			Suggestions: []string{
-				"Ensure your cloud.token access policy includes the fleet-management:write scope",
+				"Fleet mutations require the Grafana Admin role (via the grafana-collector-app proxy)",
+				"Ask a Grafana admin to grant your account the Admin role, then retry",
+				"If your role is already sufficient, this may be a Fleet Management request rejection rather than an RBAC denial",
 			},
-			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
@@ -1088,26 +1110,23 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Authentication failed",
-			Details: "HTTP 401 from " + httpErr.Path,
+			Details: "HTTP 401 from " + httpErr.Path + " — the grafana-collector-app proxy rejected the Grafana credential",
 			Suggestions: []string{
-				"Ensure cloud.token is set: gcx config set cloud.token <TOKEN>",
-				"Verify the token has not expired: gcx config view",
-				reauthSuggestion,
+				"Re-authenticate with your Grafana credential: gcx login",
+				"Verify the active context targets the intended Grafana instance: gcx config view",
 			},
-			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	case http.StatusForbidden:
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Authorization failed",
-			Details: "HTTP 403 from " + httpErr.Path,
+			Details: "HTTP 403 from " + httpErr.Path + " — denied by the grafana-collector-app proxy (insufficient Grafana role)",
 			Suggestions: []string{
-				"Ensure your Cloud Access Policy includes the fleet-management:read scope",
-				"Ensure your Cloud Access Policy includes the fleet-management:write scope for mutation commands",
-				reauthSuggestion,
+				"Fleet and instrumentation reads require the Viewer role; mutations require the Grafana Admin role",
+				"Ask a Grafana admin to grant your account the required role, then retry",
+				"If your role is already sufficient, this may be a Fleet Management request rejection rather than an RBAC denial — see the error detail above",
 			},
-			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}

@@ -128,6 +128,8 @@ Action-verb command tree for Grafana Cloud's Instrumentation Hub. Backed by flee
 
 Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider). See ADR-018 for the design.
 
+**Transport.** Both `fleet` and `instrumentation` reach the Fleet Management API through the `grafana-collector-app` app plugin proxy at `cfg.Host` (`/api/plugin-proxy/grafana-collector-app/fleet-management-api/…` + the unchanged Connect service/method path), built with `rest.HTTPClientFor(&cfg.Config)`. The Grafana bearer credential (OAuth included) is injected by the k8s round-tripper; the proxy injects the FM credential and the `X-Prom-*`/`X-Scope-OrgID` headers server-side. `instrumentation` sources backend datasource URLs from the collector-app's Viewer-role instance-metadata proxy route (`/api/plugin-proxy/grafana-collector-app/grafanacom-api/instances/`, decoded into `cloud.StackInfo`). No Cloud access-policy token is required; reads need the Viewer role and mutations the Grafana Admin role. See ADR-021.
+
 ### 7. Configuration
 
 kubectl-inspired context-based multi-environment configuration.
@@ -163,7 +165,7 @@ Multiple auth mechanisms for different tiers.
 | **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
 | **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-cached Basic auth shared across signal providers |
 
-**Precedence:** Token > OAuth > user/password. Explicit flags override env vars override config file. `httputils.NewDefaultClient(ctx)` must be used for APIs outside the Grafana server (k6 Cloud, Synth, Fleet) — the k8s transport injects the Grafana bearer token on every request, which conflicts with product-specific auth.
+**Precedence:** Token > OAuth > user/password. Explicit flags override env vars override config file. `httputils.NewDefaultClient(ctx)` must be used for APIs outside the Grafana server (k6 Cloud, OnCall) — the k8s transport injects the Grafana bearer token on every request, which conflicts with product-specific auth. `fleet`/`instrumentation` are **not** in that set: they reach Fleet Management through the `grafana-collector-app` plugin proxy at `cfg.Host` via `rest.HTTPClientFor()` (ADR-021), so the Grafana bearer is the correct credential and no Cloud access-policy token is required.
 
 **Deep-dive:** [client-api-layer.md](docs/architecture/client-api-layer.md), [config-system.md](docs/architecture/config-system.md).
 
@@ -191,6 +193,7 @@ Multiple auth mechanisms for different tiers.
 | [018](docs/adrs/instrumentation/002-cli-redesign.md) | `gcx instrumentation` CLI redesign: action verbs over Set/Get + observed state | accepted |
 | [019](docs/adrs/oncall-alert-group-rich-shape/001-rich-shape-and-list-defaults.md) | Rich `AlertGroup` shape and actionable `alert-groups list` defaults | implemented |
 | [020](docs/adrs/sm-datasource-proxy/001-dual-mode-transport.md) | Synthetic Monitoring dual-mode transport: datasource proxy primary, direct SM API fallback | accepted |
+| [021](docs/adrs/fleet-plugin-proxy/001-route-fleet-via-collector-app-proxy.md) | Route `fleet`/`instrumentation` through the `grafana-collector-app` plugin proxy | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
