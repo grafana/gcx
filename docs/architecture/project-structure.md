@@ -92,11 +92,13 @@ gcx/
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
 │   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
+│   │   ├── elasticsearch/    # Elasticsearch datasource commands (query, logs, metrics, list-indices, fields)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
 │   │   ├── dataframe/        # Shared Grafana data frame wire types for unified datasource query API responses
 │   │   ├── grafanaquery/     # Shared POST transport for /apis/query.grafana.app/.../query with /api/ds/query fallback
 │   │   ├── cloudwatch/       # CloudWatch HTTP client (metric queries, resource listing)
+│   │   ├── elasticsearch/    # Elasticsearch HTTP query client (Lucene search, logs, aggregations, mapping discovery)
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   ├── influxdb/         # InfluxDB HTTP query client
 │   │   ├── infinity/         # Infinity HTTP query client

@@ -31,6 +31,7 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 * [gcx datasources cloudwatch](gcx_datasources_cloudwatch.md)	 - Query AWS CloudWatch datasources
 * [gcx datasources create](gcx_datasources_create.md)	 - Create a datasource from a manifest file
 * [gcx datasources delete](gcx_datasources_delete.md)	 - Delete one or more datasources
+* [gcx datasources elasticsearch](gcx_datasources_elasticsearch.md)	 - Query Elasticsearch datasources
 * [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
 * [gcx datasources health](gcx_datasources_health.md)	 - Check the health of one or more datasources
 * [gcx datasources infinity](gcx_datasources_infinity.md)	 - Query Infinity datasources (JSON, CSV, XML, GraphQL from any URL)

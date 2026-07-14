@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/query/athena"
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/cloudwatch"
+	"github.com/grafana/gcx/internal/query/elasticsearch"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -55,6 +56,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return athena.FormatStringList(w, resp.Items, resp.Header)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatTable(w, resp)
+	case *elasticsearch.MetricsResponse:
+		return elasticsearch.FormatMetricsTable(w, resp)
 	default:
 		return errors.New("invalid data type for query table codec")
 	}
@@ -88,6 +91,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return athena.FormatStringList(w, resp.Items, resp.Header)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatWide(w, resp)
+	case *elasticsearch.MetricsResponse:
+		return elasticsearch.FormatMetricsTable(w, resp)
 	default:
 		return errors.New("invalid data type for query wide codec")
 	}
@@ -141,6 +146,11 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		}
 	case *influxdb.QueryResponse:
 		chartData, err = graph.FromInfluxDBResponse(resp)
+		if err != nil {
+			return err
+		}
+	case *elasticsearch.MetricsResponse:
+		chartData, err = graph.FromElasticsearchResponse(resp)
 		if err != nil {
 			return err
 		}
