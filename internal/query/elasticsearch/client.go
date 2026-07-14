@@ -117,7 +117,7 @@ func (c *Client) Aggregations(ctx context.Context, dsUID string, req AggsRequest
 		stepMs = intervalMsFor(req.Start, req.End)
 	}
 
-	body, err := c.executeQuery(ctx, dsUID, "aggs", req.Query, req.TimeField, metric, bucketAggs, req.Start, req.End, stepMs)
+	body, err := c.executeQuery(ctx, dsUID, "metrics", req.Query, req.TimeField, metric, bucketAggs, req.Start, req.End, stepMs)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +182,7 @@ func parseAggsResponse(body []byte) (*MetricsResponse, error) {
 		if status == 0 {
 			status = http.StatusBadRequest
 		}
-		return nil, queryerror.New("elasticsearch", "aggs", status, result.Error, result.ErrorSource)
+		return nil, queryerror.New("elasticsearch", "metrics", status, result.Error, result.ErrorSource)
 	}
 
 	resp := &MetricsResponse{}
