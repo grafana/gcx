@@ -74,7 +74,9 @@ Dashboards are K8s resources — listable, pushable, validateable. The `URL`
 column in `-o wide` gives a direct deep link for every dashboard. `gcx
 resources schemas` reveals the full type catalog including any plugin-installed
 types (e.g. Adaptive Logs `DropRule`). `gcx resources examples <Kind>` produces
-a ready-to-push template for any of them.
+a ready-to-push template for provider-registered kinds (try `slos` or
+`DropRule`) — core kinds like dashboards and folders don't ship examples, so
+don't demo it on those.
 
 ### Datasources
 
@@ -138,9 +140,12 @@ gcx alert instances list --state firing
 gcx alert rules list --no-truncate
 ```
 
-SLOs return SLI, error budget, and burn rate in one command — scriptable for
-release gates. Firing alerts include labels, annotations, and runbook URLs.
-Alert rules expose full PromQL, evaluation timing, and datasource UIDs.
+SLOs return SLI, error budget, and status in one command (add `-o wide` for
+burn rate) — scriptable for release gates. Firing alerts include labels,
+annotations, and runbook URLs. The rules list shows state and health at a
+glance; drill into a single rule with `gcx alert rules get <uid> -o json` when
+the audience wants the full PromQL, evaluation timing, or datasource UIDs —
+the list table doesn't carry those.
 
 ### Synthetic Monitoring
 
@@ -149,8 +154,9 @@ gcx synth checks list
 gcx synth probes list
 ```
 
-HTTP and browser checks from a global probe network — probes list shows
-regions, coordinates, and capabilities.
+HTTP and browser checks from a global probe network — the probes table shows
+each probe's region and online status; `-o json` adds coordinates and
+capabilities if the audience asks.
 
 ### IRM
 
@@ -184,8 +190,9 @@ and the commands used. Adapt the summary to what was interesting on this
 particular stack. Don't recite a fixed table.
 
 Close with: "One binary, one context, every Grafana Cloud product. All
-scriptable, all pipelineable — and with `--dry-run` on mutations for safe
-GitOps workflows."
+scriptable, all pipelineable — and with `--dry-run` on resource and SLO pushes
+for safe GitOps workflows." (Don't claim every mutation verb has `--dry-run`;
+the create commands for checks, schedules, and pipelines currently don't.)
 
 ---
 

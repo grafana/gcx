@@ -24,11 +24,9 @@ gcx resources get dashboards
 If the app folder already exists, capture its UID and skip creation. Skip any dashboard that already exists in the folder by title.
 
 **Step 1 - create folder** (needed before dashboards):
-Get an example folder manifest and customize it:
-```bash
-gcx resources examples Folder
-```
-Write folder YAML, then push:
+Folders don't ship a `resources examples` template. Check the server's schema
+(`gcx resources schemas folders`) and write a minimal manifest — `metadata.name`
+(a stable slug) plus `spec.title` is enough. Then push:
 ```bash
 gcx resources push -p folder.yaml --dry-run
 gcx resources push -p folder.yaml
@@ -45,8 +43,11 @@ Generate dashboards covering:
 - k6 load test results
 
 Each agent:
-1. Gets a dashboard example: `gcx resources examples Dashboard`
-2. Customizes the dashboard JSON with appropriate panels and queries
+1. Starts from the live schema (`gcx resources schemas dashboards`) — dashboards
+   don't ship a `resources examples` template. Set the target folder via the
+   `grafana.app/folder` metadata annotation (the folder UID captured in Step 1).
+   The `create-dashboard` skill covers authoring in depth if it is available.
+2. Customizes the dashboard spec with appropriate panels and queries
 3. Writes `dashboard-<name>.yaml`
 4. Pushes: `gcx resources push -p dashboard-<name>.yaml --dry-run` then `gcx resources push -p dashboard-<name>.yaml`
 5. Verifies: `gcx resources get dashboards` filtered by folder UID
@@ -71,7 +72,9 @@ gcx traces adaptive --help
 
 - **Agent A** - adaptive metrics:
   Discover the adaptive-metrics commands (`gcx metrics adaptive --help`).
-  List recommendations, review with user, sync rules if approved, list to confirm they were applied.
+  Review recommendations with the user (the recommendations group uses
+  `show`/`diff`, not `list`), sync rules if approved, then confirm they were
+  applied.
 
 - **Agent B** - adaptive logs:
   Discover the adaptive-logs commands (`gcx logs adaptive --help`).
@@ -92,7 +95,7 @@ Mark task in_progress.
 **Pre-check - check if export already exists:**
 List files in the export directory (default: `./grafana/`). If the directory exists and contains YAML files, run a dry-run push to check for drift:
 ```bash
-gcx resources push ./grafana/ --dry-run
+gcx resources push -p ./grafana/ --dry-run
 ```
 If no drift is detected, the export is up to date - skip and report to the user.
 
@@ -109,13 +112,13 @@ Ask the user where in their repo to place the export (default: `./grafana/`).
 - **Agent B** - prepare CI snippet while export runs:
   Generate a ready-to-paste GitHub Actions step or Makefile target that runs:
   ```bash
-  gcx resources push ./grafana/ --dry-run
+  gcx resources push -p ./grafana/ --dry-run
   ```
   This detects drift between the repo and live Grafana.
 
 Wait for Agent A. Then verify round-trip:
 ```bash
-gcx resources push ./grafana/ --dry-run
+gcx resources push -p ./grafana/ --dry-run
 ls ./grafana/
 ```
 
