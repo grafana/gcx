@@ -90,6 +90,7 @@ gcx/
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
 │   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
+│   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
 │   │   ├── dataframe/        # Shared Grafana data frame wire types for unified datasource query API responses
@@ -99,6 +100,7 @@ gcx/
 │   │   ├── influxdb/         # InfluxDB HTTP query client
 │   │   ├── infinity/         # Infinity HTTP query client
 │   │   ├── loki/             # Loki HTTP client (log + metric queries)
+│   │   ├── postgres/         # PostgreSQL HTTP query client (raw SQL via unified query API)
 │   │   └── clickhouse/       # ClickHouse HTTP client
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
