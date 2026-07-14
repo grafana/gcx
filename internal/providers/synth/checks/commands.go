@@ -352,8 +352,8 @@ func newCreateCommand(loader smcfg.StatusLoader) *cobra.Command {
 		Long: `Create a Synthetic Monitoring check from a file.
 
 Note: checks incur Grafana Cloud usage — each test execution is billed, and
-check results are stored as metrics and logs, which are billed as such.
-See ` + docs.SyntheticMonitoringInvoice + `.`,
+check results are stored as metrics and logs, which count toward your metrics
+and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 		Example: `  # Create a check from a YAML file.
   gcx synthetic-monitoring checks create -f check.yaml
 
@@ -469,8 +469,8 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 		Long: `Update a Synthetic Monitoring check from a file.
 
 Note: frequency and probe changes affect billable usage — each test execution
-is billed, and check results are stored as metrics and logs, which are billed
-as such. See ` + docs.SyntheticMonitoringInvoice + `.`,
+is billed, and check results are stored as metrics and logs, which count
+toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 		Example: `  # Update a check using its resource name.
   gcx synthetic-monitoring checks update web-check-1234 -f check.yaml
 

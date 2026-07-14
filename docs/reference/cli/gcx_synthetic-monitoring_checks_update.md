@@ -7,8 +7,8 @@ Update a Synthetic Monitoring check from a file.
 Update a Synthetic Monitoring check from a file.
 
 Note: frequency and probe changes affect billable usage — each test execution
-is billed, and check results are stored as metrics and logs, which are billed
-as such. See https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/synthetic-monitoring-invoice.md.
+is billed, and check results are stored as metrics and logs, which count
+toward your metrics and logs usage. See https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/synthetic-monitoring-invoice.md.
 
 ```
 gcx synthetic-monitoring checks update <name> [flags]
