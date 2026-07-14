@@ -32,10 +32,25 @@ type Provider interface {
     Commands()   []*cobra.Command
     Validate(cfg map[string]string) error
     ConfigKeys() []ConfigKey
+
+    // TypedRegistrations returns adapter registrations for resource types
+    // this provider exposes through the unified `gcx resources` pipeline.
+    // Providers with no CRUD resource types return nil.
+    TypedRegistrations() []adapter.Registration
 }
 ```
 
-A minimal skeleton:
+**If your provider exposes CRUD resource types** (the common case), skip
+hand-writing this struct: build it declaratively with `adapter.NewProvider`
+instead, which implements all six methods for you — `TypedRegistrations()`
+from the `adapter.Resource[T]` values you declare (Step 4c), `Commands()`
+from your existing hand-written command tree (`WithCommands`, Step 5),
+`ConfigKeys()`/`Validate()` as no-ops unless you need real config keys. See
+Step 5 and the SLO reference (`internal/providers/slo/provider.go`).
+
+A minimal hand-written skeleton — still the right shape for command-only
+providers with no resource types (`TypedRegistrations` returns `nil`), or
+providers that need real `ConfigKeys()`/`Validate()`:
 
 ```go
 package slo
@@ -43,6 +58,7 @@ package slo
 import (
     "github.com/spf13/cobra"
     "github.com/grafana/gcx/internal/providers"
+    "github.com/grafana/gcx/internal/resources/adapter"
 )
 
 // SLOProvider manages Grafana SLO resources.
@@ -52,6 +68,7 @@ var _ providers.Provider = &SLOProvider{}
 
 func (p *SLOProvider) Name() string      { return "slo" }
 func (p *SLOProvider) ShortDesc() string { return "Manage Grafana SLO resources." }
+func (p *SLOProvider) TypedRegistrations() []adapter.Registration { return nil }
 ```
 
 **Naming rules:**
@@ -366,10 +383,102 @@ Always include `httputils.LoggingMiddleware` in custom middleware stacks.
 
 ---
 
+## Step 4c: Declare Resource Types (`adapter.Resource[T]`)
+
+If your provider exposes resource types through `gcx resources` (list/get/
+push/pull/delete), declare each type as one `adapter.Resource[T]` value
+instead of hand-building an `adapter.Registration{}` literal. This is the
+single value a provider author writes per type — `adapter.NewProvider`
+derives `Schema`, `GVK`, `Singular`/`Plural`, and `Namespace` from it, folds
+in natural-key and deep-link registration, and wires CRUD by checking which
+capability interfaces your client implements.
+
+```go
+func SloResource() adapter.Resource[Slo] {
+    return adapter.Resource[Slo]{
+        Group:   "slo.ext.grafana.app",
+        Version: "v1alpha1",
+        Kind:    "SLO",
+
+        NaturalKey:  "name",                          // folds in RegisterNaturalKey — no init() needed
+        URLTemplate: "/a/grafana-slo-app/slo/{name}", // folds in deeplink registration — no init() needed
+        StripFields: []string{"uuid", "readOnly"},
+
+        Example: Slo{ /* one representative, typed value — no hand-written JSON manifest */ },
+
+        NewClient: newAdapterClient, // func(ctx, adapter.ClientDeps) (any, error)
+    }
+}
+```
+
+Implement only the capability interfaces your client's API actually
+supports — an unimplemented interface resolves to `errors.ErrUnsupported`
+with no nil-`Fn` plumbing and no provider-side flags:
+
+| Interface | Method | Verb |
+|-----------|--------|------|
+| `Lister[T]` | `List(ctx, adapter.ListOptions) ([]T, error)` | list |
+| `Getter[T]` | `Get(ctx, name string) (*T, error)` | get |
+| `Creator[T]` | `Create(ctx, item *T) (*T, error)` | create |
+| `Updater[T]` | `Update(ctx, name string, item *T) (*T, error)` | update |
+| `Deleter[T]` | `Delete(ctx, name string) error` | delete |
+| `Validator[T]` | `Validate(ctx, items []*T) error` | `--dry-run` / `resources validate` (if unimplemented, dry-run returns `ErrDryRunUnverified` and the resource is reported as skipped) |
+
+`NewClient` receives `adapter.ClientDeps{HTTP, BaseURL, Namespace}` — a
+pre-built, fully-configured `*http.Client` (logging, retry,
+`--insecure-log-http-payload`, timeouts, auth mode already wired). Reuse
+`deps.HTTP` directly; never construct competing transport (see Step 4b).
+
+Optional fields: `Singular`/`Plural` (override the derived names — set
+`Plural` explicitly for irregulars the naive pluralizer gets wrong) and
+`Namespace` (override `ClientDeps.Namespace`). The domain type implements
+`GetResourceName`/`SetResourceName` itself (see `adapter.ResourceIdentity`).
+
+Reference: `internal/providers/slo/definitions/resource_adapter.go`
+(`SloResource()`, the declaration) and `client.go` (the capability-interface
+implementation, including the create-then-refetch `Creator`/`Updater`
+behavior that used to live in the registration closure).
+
+**Providers with several heterogeneous types sharing one client** (e.g.
+OnCall's 16 types) can instead use the lower-level
+`adapter.BuildRegistration[T, C]` + `CRUDOption[T, C]` builder — see Pattern
+18 in `patterns.md`. Either way, never hand-build an `adapter.Registration{}`
+literal or thread `Schema`/`GVK`/`Example` by hand.
+
+---
+
 ## Step 5: Register the Provider
 
-Providers self-register using the `Register()` function in your provider's `init()` function.
-Add this to your provider package (typically in `internal/providers/{provider}/provider.go`):
+**Recommended: build the provider declaratively.** Once your resource types
+are declared (Step 4c), pass them to `adapter.NewProvider` and attach your
+existing hand-written command tree with `WithCommands` — no separate
+`Provider` struct required:
+
+```go
+func NewSLOProvider() *adapter.Provider {
+    sloCmd := &cobra.Command{Use: "slo", Short: shortDesc /* ... */}
+    sloCmd.AddCommand(definitions.Commands(loader))
+
+    return adapter.NewProvider("slo", shortDesc, loadSLODeps, definitions.SloResource()).
+        WithCommands(sloCmd)
+}
+
+func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
+    providers.Register(NewSLOProvider())
+}
+```
+
+`loadSLODeps` is a `func(ctx context.Context) (adapter.ClientDeps, error)`
+closure — `adapter` cannot import `internal/providers` (the reverse import
+already exists), so every provider supplies its own loader, typically
+`providers.ConfigLoader.LoadGrafanaConfig` + `rest.HTTPClientFor`. Reference:
+`internal/providers/slo/provider.go` for the full implementation.
+`adapter.NewProvider` does **not** auto-generate CRUD command verbs — it
+only attaches the command tree you pass to `WithCommands`.
+
+**Manual alternative:** command-only providers with no resource types, or
+providers that need real `ConfigKeys()`/`Validate()` behavior, hand-write
+the `Provider` struct from Step 1 and self-register the same way:
 
 ```go
 func init() {
@@ -377,13 +486,16 @@ func init() {
 }
 ```
 
-The `Register()` function appends your provider to the global registry automatically. Once registered via `init()`:
+Either path, the `Register()` function appends your provider to the global
+registry and auto-registers its `TypedRegistrations()` atomically. Once
+registered via `init()`:
 - Its commands appear under `gcx`
 - Its name and description appear in `gcx providers`
 - Its secrets are correctly redacted by `gcx config view`
 - Its config is loaded from YAML and env vars automatically
+- Its resource types (if any) appear in `gcx resources schemas`/`examples`/`get`
 
-This self-registration pattern (via `init()`) is handled by Go's import system — just ensure your provider package is imported somewhere in the application startup (e.g., in `cmd/gcx/root/command.go`). Reference: `internal/providers/slo/provider.go` for the full implementation.
+This self-registration pattern (via `init()`) is handled by Go's import system — just ensure your provider package is imported somewhere in the application startup (e.g., in `cmd/gcx/root/command.go`).
 
 ---
 
@@ -448,11 +560,12 @@ when writing tests that need a fake provider:
 
 ```go
 type mockProvider struct {
-    name       string
-    shortDesc  string
-    commands   []*cobra.Command
-    validateFn func(cfg map[string]string) error
-    configKeys []providers.ConfigKey
+    name          string
+    shortDesc     string
+    commands      []*cobra.Command
+    validateFn    func(cfg map[string]string) error
+    configKeys    []providers.ConfigKey
+    registrations []adapter.Registration
 }
 
 var _ providers.Provider = &mockProvider{}
@@ -462,6 +575,7 @@ func (m *mockProvider) ShortDesc() string                    { return m.shortDes
 func (m *mockProvider) Commands() []*cobra.Command           { return m.commands }
 func (m *mockProvider) Validate(cfg map[string]string) error { return m.validateFn(cfg) }
 func (m *mockProvider) ConfigKeys() []providers.ConfigKey    { return m.configKeys }
+func (m *mockProvider) TypedRegistrations() []adapter.Registration { return m.registrations }
 ```
 
 Test the interface contract directly:
@@ -506,12 +620,18 @@ see `internal/providers/redact_test.go` for table-driven examples.
 
 When implementing a new provider (see also [provider-checklist.md](../design/provider-checklist.md) for UX compliance requirements):
 
-- [ ] Struct implements all five `Provider` interface methods
+- [ ] Provider satisfies all six `Provider` interface methods — either built
+  declaratively via `adapter.NewProvider` (Step 5, recommended for
+  resource-backed providers) or hand-written (Step 1, for command-only
+  providers or ones needing real `ConfigKeys()`/`Validate()`)
 - [ ] `Name()` is lowercase, unique, and stable (it is the map key in config files)
 - [ ] All config keys read by commands are declared in `ConfigKeys()`
 - [ ] Secret keys (`passwords`, `tokens`, `api_keys`) have `Secret: true`
 - [ ] `Validate` returns a helpful error message pointing to the `config set` command
-- [ ] Provider is added to `internal/providers/registry.go:All()`
+- [ ] Resource types are declared via `adapter.Resource[T]` (Step 4c), not a
+  hand-built `adapter.Registration{}` literal
+- [ ] Provider self-registers via `providers.Register(...)` in an `init()`
+  function (Step 5) — there is no manual registry list to edit
 - [ ] `mise run build` succeeds
 - [ ] `mise run tests` passes
 - [ ] `gcx providers` lists the new provider

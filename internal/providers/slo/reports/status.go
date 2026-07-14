@@ -11,6 +11,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -114,7 +115,7 @@ metrics, and computes combined SLI and error budget per report.`,
 			})
 			initG.Go(func() error {
 				var err error
-				allSLOs, err = sloClient.List(initCtx)
+				allSLOs, err = sloClient.List(initCtx, adapter.ListOptions{})
 				return err
 			})
 			if err := initG.Wait(); err != nil {

@@ -103,6 +103,12 @@ type TypedCRUD[T ResourceNamer] struct {
 
 	// Aliases are the short names for selector resolution.
 	Aliases []string
+
+	// Example is an optional static example manifest, exposed via
+	// AsAdapter()'s ResourceAdapter.Example(). Nil means no example is
+	// carried on this TypedCRUD instance — use ExampleForGVK for the
+	// authoritative global-registration lookup instead.
+	Example json.RawMessage
 }
 
 // resourceName extracts the name from a domain object using ResourceIdentity.
@@ -228,13 +234,16 @@ func (c *TypedCRUD[T]) wrapTypedObject(item T) TypedObject[T] {
 	}
 }
 
-// AsAdapter returns a ResourceAdapter backed by this TypedCRUD.
-// Note: the returned adapter's Schema() and Example() return nil.
-// Schema/example are static registration metadata injected only via
-// TypedRegistration.ToRegistration(). Use SchemaForGVK/ExampleForGVK
-// for authoritative lookup.
+// AsAdapter returns a ResourceAdapter backed by this TypedCRUD. Schema is
+// always derived from T (SchemaFromType) — it is never nil. Example is
+// whatever c.Example carries (nil unless set). Use SchemaForGVK/ExampleForGVK
+// for the authoritative global-registration lookup instead, when available.
 func (c *TypedCRUD[T]) AsAdapter() ResourceAdapter {
-	return &typedAdapter[T]{crud: c}
+	return &typedAdapter[T]{
+		crud:    c,
+		schema:  SchemaFromType[T](c.Descriptor),
+		example: c.Example,
+	}
 }
 
 // ToUnstructured converts a domain object T into an unstructured Kubernetes envelope,
@@ -465,39 +474,4 @@ func (a *typedAdapter[T]) dryRunValidate(ctx context.Context, item *T) (*unstruc
 
 func isDryRun(dryRun []string) bool {
 	return slices.Contains(dryRun, metav1.DryRunAll)
-}
-
-// TypedRegistration bridges TypedCRUD to the existing Registration system.
-type TypedRegistration[T ResourceNamer] struct {
-	Descriptor  resources.Descriptor
-	Aliases     []string
-	GVK         schema.GroupVersionKind
-	Schema      json.RawMessage
-	Example     json.RawMessage
-	URLTemplate string // URL path template for deep links (e.g., "/a/grafana-oncall-app/schedules/{name}").
-	Factory     func(ctx context.Context) (*TypedCRUD[T], error)
-}
-
-// ToRegistration converts to a standard Registration.
-func (r TypedRegistration[T]) ToRegistration() Registration {
-	return Registration{
-		Factory: func(ctx context.Context) (ResourceAdapter, error) {
-			crud, err := r.Factory(ctx)
-			if err != nil {
-				return nil, err
-			}
-			a := &typedAdapter[T]{
-				crud:    crud,
-				schema:  r.Schema,
-				example: r.Example,
-			}
-			return a, nil
-		},
-		Descriptor:  r.Descriptor,
-		Aliases:     r.Aliases,
-		GVK:         r.GVK,
-		Schema:      r.Schema,
-		Example:     r.Example,
-		URLTemplate: r.URLTemplate,
-	}
 }

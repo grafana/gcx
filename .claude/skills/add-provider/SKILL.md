@@ -175,15 +175,24 @@ Summary of the key steps:
 1. Provider interface + `init()` + `configLoader` (copy from SLO reference)
 2. Config keys + validation
 3. Commands with UX compliance
-4. Types + client + adapter per resource type
-5. Register (blank import + ResourceAdapter)
+4. Types + client per resource type — implement the capability interfaces
+   the client actually supports (`Lister[T]`/`Getter[T]`/`Creator[T]`/
+   `Updater[T]`/`Deleter[T]`/`Validator[T]`); an unsupported verb is simply an
+   interface you don't implement, not a nil function pointer
+5. Declare each type as an `adapter.Resource[T]` and register via
+   `adapter.NewProvider(name, shortDesc, loadDeps, resources...).WithCommands(existingCmds)`
+   + `providers.Register(p)` — no hand-built `adapter.Registration{}` literal
 6. Tests (interface compliance, adapter round-trip, client httptest)
 
 **Key patterns** (see provider-guide.md for details):
 - Hand-roll HTTP client (~200 LOC) — don't use generated OpenAPI clients
 - Copy full `configLoader` from `internal/providers/slo/provider.go`
 - Config key names use hyphen-case
-- Adapter must strip server-generated fields on Create/Update
+- Adapter must strip server-generated fields on Create/Update (`Resource.StripFields`)
+- Declare resource types declaratively (`adapter.Resource[T]` + capability
+  interfaces), not by hand-building `adapter.Registration{}` — see the
+  migrated SLO reference: `internal/providers/slo/definitions/resource_adapter.go`
+  (declaration) + `provider.go` (`adapter.NewProvider`/`WithCommands`)
 
 ### Gate: Stage Complete
 
@@ -227,7 +236,7 @@ All smoke tests pass, all checklists green, docs updated.
 
 | Provider | Auth Model | API Type | Key Entry Point |
 |----------|-----------|----------|-----------------|
-| SLO | Same Grafana token | Plugin API | `internal/providers/slo/provider.go` |
+| SLO | Same Grafana token | Plugin API | `internal/providers/slo/provider.go` — declarative `adapter.Resource[T]` reference |
 | Synth | Separate URL + token | External service | `internal/providers/synth/provider.go` |
 
 Spec plans: `docs/specs/slo-provider/`, `docs/specs/synth-provider/`

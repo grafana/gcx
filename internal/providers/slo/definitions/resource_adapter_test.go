@@ -1,6 +1,7 @@
 package definitions_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -18,16 +19,26 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// newTestAdapter creates a ResourceAdapter backed by a test HTTP server.
+// newTestAdapter creates a ResourceAdapter backed by a test HTTP server, via
+// the same declarative definitions.SloResource + adapter.NewProvider path
+// used by provider.go — the pipeline the `gcx resources` command surface
+// resolves through (AC-001, AC-019).
 func newTestAdapter(t *testing.T, server *httptest.Server, namespace string) adapter.ResourceAdapter {
 	t.Helper()
-	cfg := config.NamespacedRESTConfig{
-		Config:    rest.Config{Host: server.URL},
-		Namespace: namespace,
+
+	loadDeps := func(context.Context) (adapter.ClientDeps, error) {
+		return adapter.ClientDeps{
+			HTTP:      server.Client(),
+			BaseURL:   server.URL,
+			Namespace: namespace,
+		}, nil
 	}
 
-	factory := definitions.NewFactoryFromConfig(cfg)
-	a, err := factory(t.Context())
+	p := adapter.NewProvider("slo", "test", loadDeps, definitions.SloResource())
+	regs := p.TypedRegistrations()
+	require.Len(t, regs, 1)
+
+	a, err := regs[0].Factory(t.Context())
 	require.NoError(t, err)
 	return a
 }
@@ -386,4 +397,83 @@ func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found, "spec field should be present")
 	assert.Equal(t, "Metadata SLO", spec["name"])
+}
+
+// TestSloResource_RegistrationDerivesSchemaAndExample covers AC-002: the SLO
+// definition type's registration carries a non-nil derived schema and a
+// derived example, without SloExample()/SloSchema() hand-written manifests.
+func TestSloResource_RegistrationDerivesSchemaAndExample(t *testing.T) {
+	loadDeps := func(context.Context) (adapter.ClientDeps, error) { return adapter.ClientDeps{}, nil }
+	p := adapter.NewProvider("slo", "test", loadDeps, definitions.SloResource())
+	regs := p.TypedRegistrations()
+	require.Len(t, regs, 1)
+
+	reg := regs[0]
+	assert.NotNil(t, reg.Schema, "schema must be auto-derived from Slo, not hand-threaded")
+	require.NotNil(t, reg.Example, "example must be derived from SloResource.Example")
+	assert.Contains(t, string(reg.Example), "HTTP Availability")
+
+	a, err := reg.Factory(t.Context())
+	require.NoError(t, err)
+	assert.NotNil(t, a.Schema(), "AsAdapter's Schema() must never be nil (FR-016)")
+	assert.Equal(t, reg.Example, a.Example())
+}
+
+// TestSloResource_SharedByBothFrontDoors covers AC-001/AC-019: the same
+// definitions.SloResource declaration (and therefore the same NewClient /
+// capability-seam construction) backs both provider.go's `gcx slo` command
+// tree (via NewTypedCRUD) and the `gcx resources` pipeline (via
+// adapter.NewProvider's TypedRegistrations()) — this test drives both call
+// sites against the same test server and asserts field-for-field equivalent
+// data.
+func TestSloResource_SharedByBothFrontDoors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-slo-app/resources/v1/slo":
+			writeJSON(w, definitions.SLOListResponse{
+				SLOs: []definitions.Slo{{UUID: "shared-uuid", Name: "Shared SLO"}},
+			})
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	// Front door 1: gcx resources, via SloResource's adapter.NewProvider
+	// registration/capability-seam path.
+	a := newTestAdapter(t, server, "shared-ns")
+	viaResources, err := a.List(t.Context(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, viaResources.Items, 1)
+
+	// Front door 2: gcx slo definitions, via commands.go's frozen
+	// NewTypedCRUD entry point — backed by the same Client capability
+	// methods as SloResource.NewClient.
+	loader := stubGrafanaConfigLoader{host: server.URL, namespace: "shared-ns"}
+	crud, _, err := definitions.NewTypedCRUD(t.Context(), loader)
+	require.NoError(t, err)
+	viaCommands, err := crud.List(t.Context(), 0)
+	require.NoError(t, err)
+	require.Len(t, viaCommands, 1)
+
+	assert.Equal(t, viaResources.Items[0].GetName(), viaCommands[0].Spec.UUID)
+	assert.Equal(t, "Shared SLO", viaCommands[0].Spec.Name)
+	spec, found, err := unstructured.NestedMap(viaResources.Items[0].Object, "spec")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "Shared SLO", spec["name"])
+}
+
+// stubGrafanaConfigLoader implements definitions.GrafanaConfigLoader for
+// TestSloResource_SharedByBothFrontDoors.
+type stubGrafanaConfigLoader struct {
+	host      string
+	namespace string
+}
+
+func (l stubGrafanaConfigLoader) LoadGrafanaConfig(context.Context) (config.NamespacedRESTConfig, error) {
+	return config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: l.host},
+		Namespace: l.namespace,
+	}, nil
 }

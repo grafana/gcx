@@ -10,7 +10,7 @@ import (
 )
 
 func TestSLOProvider_Interface(t *testing.T) {
-	p := &slo.SLOProvider{}
+	p := slo.NewSLOProvider()
 
 	assert.Equal(t, "slo", p.Name())
 	assert.NotEmpty(t, p.ShortDesc())
@@ -20,7 +20,7 @@ func TestSLOProvider_Interface(t *testing.T) {
 }
 
 func TestSLOProvider_Commands(t *testing.T) {
-	p := &slo.SLOProvider{}
+	p := slo.NewSLOProvider()
 	cmds := p.Commands()
 	require.Len(t, cmds, 1)
 

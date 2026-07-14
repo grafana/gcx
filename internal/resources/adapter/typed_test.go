@@ -416,101 +416,91 @@ func TestTypedCRUD_DescriptorAndAliases(t *testing.T) {
 	assert.Equal(t, []string{"wdg"}, a.Aliases())
 }
 
-func TestTypedRegistration_ToRegistration(t *testing.T) {
-	desc := widgetDesc
-	gvk := desc.GroupVersionKind()
+// widgetClient is a minimal fake client used to exercise
+// adapter.BuildRegistration end to end (list/get/create/update/delete).
+type widgetClient struct {
+	widgets []TestWidget
+}
 
-	reg := adapter.TypedRegistration[TestWidget]{
-		Descriptor: desc,
-		Aliases:    []string{"wdg"},
-		GVK:        gvk,
-		Factory: func(_ context.Context) (*adapter.TypedCRUD[TestWidget], error) {
-			widgets := []TestWidget{
-				{ID: "w-1", Name: "Alpha", Color: "red"},
-			}
-			return newWidgetCRUD(widgets), nil
-		},
+func (c *widgetClient) list(_ context.Context) ([]TestWidget, error) { return c.widgets, nil }
+
+func (c *widgetClient) get(_ context.Context, name string) (*TestWidget, error) {
+	for i := range c.widgets {
+		if c.widgets[i].ID == name {
+			return &c.widgets[i], nil
+		}
 	}
+	return nil, fmt.Errorf("widget %q: %w", name, adapter.ErrNotFound)
+}
 
-	registration := reg.ToRegistration()
+func TestBuildRegistration(t *testing.T) {
+	client := &widgetClient{widgets: []TestWidget{{ID: "w-1", Name: "Alpha", Color: "red"}}}
+	loadClient := func(_ context.Context) (*widgetClient, string, error) {
+		return client, "stack-1", nil
+	}
+	example := json.RawMessage(`{"apiVersion":"test.grafana.app/v1","kind":"Widget"}`)
 
-	// Verify metadata fields pass through.
-	assert.Equal(t, desc, registration.Descriptor)
-	assert.Equal(t, []string{"wdg"}, registration.Aliases)
-	assert.Equal(t, gvk, registration.GVK)
+	reg := adapter.BuildRegistration(loadClient,
+		adapter.RegistrationMeta{
+			Descriptor: widgetDesc,
+			Example:    example,
+		},
+		func(ctx context.Context, c *widgetClient) ([]TestWidget, error) { return c.list(ctx) },
+		func(ctx context.Context, c *widgetClient, name string) (*TestWidget, error) { return c.get(ctx, name) },
+	)
 
-	// Verify the factory produces a working adapter.
-	a, err := registration.Factory(t.Context())
+	// Descriptor/GVK/Schema are auto-derived; Example is carried as given.
+	assert.Equal(t, widgetDesc, reg.Descriptor)
+	assert.Equal(t, widgetDesc.GroupVersionKind(), reg.GVK)
+	assert.NotNil(t, reg.Schema, "schema must be auto-derived from T, not hand-threaded")
+	assert.Equal(t, example, reg.Example)
+
+	a, err := reg.Factory(t.Context())
 	require.NoError(t, err)
 
 	result, err := a.List(t.Context(), metav1.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, result.Items, 1)
 	assert.Equal(t, "w-1", result.Items[0].GetName())
+	assert.Equal(t, "stack-1", result.Items[0].GetNamespace())
 }
 
-func TestTypedRegistration_SchemaExampleRoundTrip(t *testing.T) {
-	testSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}}}`)
-	testExample := json.RawMessage(`{"apiVersion":"test.grafana.app/v1","kind":"Widget","spec":{"name":"example"}}`)
+func TestBuildRegistration_CRUDOptions(t *testing.T) {
+	var created, updated, deleted bool
+	client := &widgetClient{}
+	loadClient := func(_ context.Context) (*widgetClient, string, error) { return client, "stack-1", nil }
 
-	tests := []struct {
-		name        string
-		schema      json.RawMessage
-		example     json.RawMessage
-		wantSchema  json.RawMessage
-		wantExample json.RawMessage
-	}{
-		{
-			name:        "both schema and example set",
-			schema:      testSchema,
-			example:     testExample,
-			wantSchema:  testSchema,
-			wantExample: testExample,
-		},
-		{
-			name:        "schema only",
-			schema:      testSchema,
-			example:     nil,
-			wantSchema:  testSchema,
-			wantExample: nil,
-		},
-		{
-			name:        "example only",
-			schema:      nil,
-			example:     testExample,
-			wantSchema:  nil,
-			wantExample: testExample,
-		},
-		{
-			name:        "neither set",
-			schema:      nil,
-			example:     nil,
-			wantSchema:  nil,
-			wantExample: nil,
-		},
-	}
+	reg := adapter.BuildRegistration(loadClient,
+		adapter.RegistrationMeta{Descriptor: widgetDesc},
+		func(ctx context.Context, c *widgetClient) ([]TestWidget, error) { return c.list(ctx) },
+		nil,
+		adapter.WithCreate(func(_ context.Context, _ *widgetClient, item *TestWidget) (*TestWidget, error) {
+			created = true
+			return item, nil
+		}),
+		adapter.WithUpdate(func(_ context.Context, _ *widgetClient, _ string, item *TestWidget) (*TestWidget, error) {
+			updated = true
+			return item, nil
+		}),
+		adapter.WithDelete[TestWidget](func(_ context.Context, _ *widgetClient, _ string) error {
+			deleted = true
+			return nil
+		}),
+	)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			reg := adapter.TypedRegistration[TestWidget]{
-				Descriptor: widgetDesc,
-				Aliases:    []string{"wdg"},
-				GVK:        widgetDesc.GroupVersionKind(),
-				Schema:     tt.schema,
-				Example:    tt.example,
-				Factory: func(_ context.Context) (*adapter.TypedCRUD[TestWidget], error) {
-					return newWidgetCRUD(nil), nil
-				},
-			}
+	a, err := reg.Factory(t.Context())
+	require.NoError(t, err)
 
-			registration := reg.ToRegistration()
-			a, err := registration.Factory(t.Context())
-			require.NoError(t, err)
+	_, err = a.Create(t.Context(), buildWidgetUnstructured("w-2", "Gamma", "green"), metav1.CreateOptions{})
+	require.NoError(t, err)
+	assert.True(t, created)
 
-			assert.Equal(t, tt.wantSchema, a.Schema())
-			assert.Equal(t, tt.wantExample, a.Example())
-		})
-	}
+	_, err = a.Update(t.Context(), buildWidgetUnstructured("w-2", "Gamma", "green"), metav1.UpdateOptions{})
+	require.NoError(t, err)
+	assert.True(t, updated)
+
+	require.NoError(t, a.Delete(t.Context(), "w-2", metav1.DeleteOptions{}))
+	assert.True(t, deleted)
 }
 
 // --- Tests for TypedObject and typed methods ---

@@ -478,6 +478,41 @@ Do not introduce new serialization bridges, dispatch patterns, or
 type-erasure mechanisms. If TypedCRUD does not fit your use case, raise
 the issue for architectural discussion.
 
+### Sanctioned Exception — Single-Seam Capability Assertion (`adapter.Resource[T]`)
+
+The declarative `adapter.Resource[T]` + `adapter.NewProvider` registration
+model (see `docs/specs/feature-provider-registration-simplification/`) needs
+to determine, at registration time, which CRUD verbs a provider's `NewClient`
+result actually supports. Detecting capability-interface satisfaction
+intrinsically requires a type assertion on the `any` value `NewClient`
+returns — there is no generics-only way to do this within the TypedCRUD
+model (maintainer ruling, 2026-07-07: acceptable as a documented exception —
+see the spec's Open Questions).
+
+This is a **documented, audited exception** to the "no `any` type erasure"
+rule above, narrowly scoped:
+
+- The assertion is confined to exactly ONE file:
+  `internal/resources/adapter/capability.go`. Grep for `.(Lister[`,
+  `.(Getter[`, `.(Creator[`, `.(Updater[`, `.(Deleter[`, `.(Validator[` — all
+  six must appear only there.
+- No provider package performs this assertion. Providers only implement the
+  capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`,
+  `Deleter[T]`, `Validator[T]`) on their REST client; the seam converts
+  interface satisfaction into `TypedCRUD[T]`'s existing "nil Fn ⇒
+  `errors.ErrUnsupported`" semantics. No new dispatch or serialization
+  mechanism is introduced, and no second seam may be added anywhere else.
+- An unimplemented verb resolves to `errors.ErrUnsupported` (TypedCRUD's
+  existing behavior, unchanged); an unimplemented `Validator[T]` makes
+  dry-run mutations skip the server call and return `ErrDryRunUnverified`,
+  so the resource is reported as skipped rather than falsely valid.
+
+This qualifies Pattern 18's "No `any` type erasure — all 16 types use
+concrete generics" claim below: that claim describes the **hand-written,
+per-provider registration path** (OnCall's `adapter.BuildRegistration`). The
+separate declarative `Resource[T]` path uses exactly one sanctioned
+`any`-assertion seam, documented here.
+
 ### Provider ConfigLoader
 
 All provider commands must use `providers.ConfigLoader` for `--config` flag
@@ -567,37 +602,47 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 
 ### 18. Table-Driven TypedCRUD Registration for Providers
 
-Providers with many resource types (e.g., OnCall with 17 types) use a generic
-`registerXResource[T]` function with functional options to register each type
-in a single, self-contained call. This replaces the earlier switch-dispatch
-pattern where a single adapter struct dispatched all types through runtime
-kind-string matching.
+Providers with many resource types (e.g., OnCall with 16 types) use the
+`adapter` package's generic `BuildRegistration[T, C]` builder with functional
+options to register each type in a single, self-contained call. This lives in
+`internal/resources/adapter` (not per-provider) and replaces the earlier
+switch-dispatch pattern where a single adapter struct dispatched all types
+through runtime kind-string matching.
 
 **Pattern structure:**
 
 ```go
-// 1. resourceMeta holds static registration metadata.
-type resourceMeta struct {
-    Descriptor resources.Descriptor
-    Aliases    []string
-    Schema, Example json.RawMessage
+// 1. RegistrationMeta holds static registration metadata. Schema and GVK are
+// NOT carried here — BuildRegistration derives them from the type parameter
+// and Descriptor, so callers must not hand-thread them.
+type RegistrationMeta struct {
+    Descriptor  resources.Descriptor
+    StripFields []string
+    Example     json.RawMessage
+    URLTemplate string
 }
 
-// 2. crudOption[T] configures optional CRUD operations.
-type crudOption[T any] func(client *Client, crud *adapter.TypedCRUD[T])
+// NewRegistrationMeta builds a RegistrationMeta from a GroupVersion + kind/
+// singular/plural. Providers with their own GroupVersion constants typically
+// wrap this in a package-local helper (see irm.oncallMeta).
+func NewRegistrationMeta(gv schema.GroupVersion, kind, singular, plural string) RegistrationMeta
 
-// 3. withCreate/withUpdate/withDelete set the corresponding Fn fields.
-func withCreate[T any](fn func(ctx context.Context, c *Client, item *T) (*T, error)) crudOption[T]
+// 2. CRUDOption[T, C] configures optional CRUD operations, generic over both
+// the resource type T and the resolved client type C.
+type CRUDOption[T ResourceNamer, C any] func(client C, crud *TypedCRUD[T])
 
-// 4. registerOnCallResource[T] wires everything and calls adapter.Register.
-func registerOnCallResource[T any](
-    loader OnCallConfigLoader,
-    meta   resourceMeta,
-    nameFn func(T) string,
-    listFn func(ctx context.Context, client *Client) ([]T, error),
-    getFn  func(ctx context.Context, client *Client, name string) (*T, error), // nil for list-only
-    opts   ...crudOption[T],
-)
+// 3. WithCreate/WithUpdate/WithDelete set the corresponding Fn fields.
+func WithCreate[T ResourceNamer, C any](fn func(ctx context.Context, client C, item *T) (*T, error)) CRUDOption[T, C]
+
+// 4. BuildRegistration[T, C] wires everything and returns a Registration
+// (Schema/GVK auto-derived from T and meta.Descriptor).
+func BuildRegistration[T ResourceNamer, C any](
+    loadClient func(ctx context.Context) (C, string, error),
+    meta       RegistrationMeta,
+    listFn     func(ctx context.Context, client C) ([]T, error),
+    getFn      func(ctx context.Context, client C, name string) (*T, error), // nil for list-only
+    opts       ...CRUDOption[T, C],
+) Registration
 ```
 
 **When to use:** When a provider has 4+ resource types sharing the same
@@ -605,13 +650,18 @@ API group/version and client initialization pattern. The generic helper
 eliminates per-type boilerplate while keeping each registration self-documenting.
 
 **Key properties:**
-- No `any` type erasure — all 17 types use concrete generics
+- No `any` type erasure in this hand-written registration pattern — all 16
+  types use concrete generics over both the resource type T and the client
+  type C. (The separate declarative `adapter.Resource[T]` registration path
+  uses exactly one sanctioned `any`-assertion seam; see "Sanctioned Exception
+  — Single-Seam Capability Assertion" above.)
 - No switch/case dispatch — CRUD behavior determined at registration time
-- Functional options express the CRUD matrix declaratively (only 10/17 types support create, etc.)
+- Functional options express the CRUD matrix declaratively (only 9/16 types support create, etc.)
 - Special-case type conversions (e.g., Shift→ShiftRequest) are closures in the option, not if/else branches
 
 **Evidence:**
-- `internal/providers/irm/oncall_adapter.go`: `registerOnCallResource[T]`, 17 registrations
+- `internal/resources/adapter/builder.go`: `RegistrationMeta`, `NewRegistrationMeta`, `CRUDOption[T, C]`, `WithCreate`/`WithUpdate`/`WithDelete`, `BuildRegistration[T, C]`
+- `internal/providers/irm/oncall_adapter.go`: `oncallMeta` helper + 16 `adapter.BuildRegistration` calls
 - ADR: `docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md`
 
 ### 19. Singleton Adapter Pattern (Adopt)

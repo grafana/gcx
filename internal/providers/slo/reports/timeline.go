@@ -11,6 +11,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -144,7 +145,7 @@ grafana_slo_sli_window metrics.`,
 			}
 
 			// Fetch all SLO definitions and index by UUID.
-			allSLOs, err := sloClient.List(ctx)
+			allSLOs, err := sloClient.List(ctx, adapter.ListOptions{})
 			if err != nil {
 				return err
 			}

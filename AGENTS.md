@@ -97,7 +97,7 @@ internal/
 ├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and instrumentation provider)
 ├── resources/
 │   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
-│   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration, slug-ID helpers
+│   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration, slug-ID helpers; declarative front door `Resource[T]` + `NewProvider`/`WithCommands`, capability interfaces (`Lister`/`Getter`/`Creator`/`Updater`/`Deleter`/`Validator`), single audited capability-assertion seam (capability.go), and the consolidated `BuildRegistration` builder (ADR-021)
 │   ├── discovery/  API resource discovery, registry index, GVK resolution, OpenAPI schema fetcher
 │   ├── dynamic/    k8s dynamic client wrapper (namespaced + versioned)
 │   ├── local/      FSReader, FSWriter (disk I/O)

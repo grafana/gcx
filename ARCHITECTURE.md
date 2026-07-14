@@ -65,7 +65,9 @@ Provider (internal/providers/slo/)
 
 **Dual access paths** are permanent: provider commands (`gcx slo definitions list`) give ergonomic domain-specific tables; generic commands (`gcx resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull pipeline. JSON/YAML output is identical across both paths by construction (both use the same `ResourceAdapter`).
 
-**Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
+**Declarative registration front door**: `adapter.Resource[T]` + `adapter.NewProvider` (existing command trees attach via `WithCommands`) let a provider declare a resource type once, by implementing plain capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`, `Deleter[T]`, `Validator[T]`) on its client, instead of hand-building a `Registration`. Capability detection is confined to a single audited `any`-assertion seam in `internal/resources/adapter/capability.go` — see ADR-021 and patterns.md's "Sanctioned Exception — Single-Seam Capability Assertion".
+
+**Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§16 (ResourceAdapter and Provider CRUD Routing)](docs/architecture/patterns.md#16-resourceadapter-and-provider-crud-routing), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
 
 ### 3. Signal Providers
 
@@ -178,7 +180,7 @@ Multiple auth mechanisms for different tiers.
 | [005](docs/adrs/constitution-design-principles/001-codify-cli-design-principles.md) | Codify CLI Design Principles in CONSTITUTION.md and Design Guide | accepted |
 | [006](docs/adrs/conventional-commits/001-pr-title-enforcement.md) | Conventional Commits via PR Title Enforcement | accepted |
 | [007](docs/adrs/provider-consolidation/001-consolidation-strategy.md) | Provider Consolidation Strategy | accepted |
-| [008](docs/adrs/typed-resource-adapter-compliance/001-typed-resource-adapter-foundation.md) | TypedResourceAdapter[T] with ResourceIdentity and Provider Command Migration | proposed |
+| [008](docs/adrs/typed-resource-adapter-compliance/001-typed-resource-adapter-foundation.md) | TypedResourceAdapter[T] with ResourceIdentity and Provider Command Migration | accepted |
 | [009](docs/adrs/migrate-provider-rewrite/001-three-stage-blackbox-verification.md) | Three-Stage Skill Structure with Dual Blackbox Isolation | superseded by [012] |
 | [010](docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md) | Table-driven TypedCRUD[T] for OnCall Adapter | proposed |
 | [011](docs/adrs/adaptive-provider/001-cli-ux-and-resource-adapter-design.md) | Adaptive telemetry provider: CLI UX, adapter scope, verb naming | proposed |
@@ -191,6 +193,7 @@ Multiple auth mechanisms for different tiers.
 | [018](docs/adrs/instrumentation/002-cli-redesign.md) | `gcx instrumentation` CLI redesign: action verbs over Set/Get + observed state | accepted |
 | [019](docs/adrs/oncall-alert-group-rich-shape/001-rich-shape-and-list-defaults.md) | Rich `AlertGroup` shape and actionable `alert-groups list` defaults | implemented |
 | [020](docs/adrs/sm-datasource-proxy/001-dual-mode-transport.md) | Synthetic Monitoring dual-mode transport: datasource proxy primary, direct SM API fallback | accepted |
+| [021](docs/adrs/declarative-provider-registration/001-declarative-resource-front-door.md) | Declarative `adapter.Resource[T]` + `adapter.NewProvider` registration front door | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 

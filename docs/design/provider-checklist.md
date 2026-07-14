@@ -11,12 +11,22 @@ UX requirements. All items are unless marked otherwise.
 
 ### Interface Compliance
 
-- [ ] Struct implements all five `Provider` interface methods
+- [ ] Provider satisfies all six `Provider` interface methods — build it
+  declaratively with `adapter.NewProvider` (recommended for resource-backed
+  providers; see the SLO reference, `internal/providers/slo/provider.go`) or
+  hand-write the struct (command-only providers, or ones needing real
+  `ConfigKeys()`/`Validate()`)
 - [ ] `Name()` is lowercase, unique, and stable (it's the config map key)
 - [ ] All config keys are declared in `ConfigKeys()`
 - [ ] Secret keys (passwords, tokens, API keys) have `Secret: true`
 - [ ] `Validate()` returns error pointing to `gcx config set ...`
-- [ ] Provider added to `internal/providers/registry.go:All()`
+- [ ] Each resource type is declared as an `adapter.Resource[T]` value
+  (Group/Version/Kind, `NaturalKey`, `URLTemplate`, typed `Example`,
+  `NewClient`) implementing only the capability interfaces
+  (`Lister`/`Getter`/`Creator`/`Updater`/`Deleter`/`Validator`) its client
+  actually supports — not a hand-built `adapter.Registration{}` literal
+- [ ] Provider self-registers via `providers.Register(...)` in an `init()`
+  function — there is no registry list to edit by hand
 
 ### UX Compliance
 
@@ -81,4 +91,8 @@ Commands that are **exempt** from K8s wrapping:
 
 ## Architecture Patterns
 
-Provider architecture patterns (TypedCRUD, ConfigLoader, output consistency) are documented in [patterns.md § Provider Plugin System](../architecture/patterns.md). Those are structural requirements; this file covers UX requirements.
+Provider architecture patterns (TypedCRUD, ConfigLoader, output consistency,
+and the declarative `adapter.Resource[T]` registration model with its single
+sanctioned capability-assertion seam) are documented in
+[patterns.md § Provider Plugin System](../architecture/patterns.md). Those
+are structural requirements; this file covers UX requirements.

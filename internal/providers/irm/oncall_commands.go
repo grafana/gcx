@@ -319,7 +319,9 @@ func newDeleteSubcommand[T adapter.ResourceNamer](
 }
 
 // crudOption configures optional CRUD operations on a TypedCRUD instance.
-type crudOption[T adapter.ResourceNamer] func(client OnCallAPI, crud *adapter.TypedCRUD[T])
+// Alias of the shared adapter option type so the per-resource *CRUDOpts()
+// helpers feed both the noun-command verbs and adapter.BuildRegistration.
+type crudOption[T adapter.ResourceNamer] = adapter.CRUDOption[T, OnCallAPI]
 
 func newTypedCRUD[T adapter.ResourceNamer](
 	ctx context.Context,

@@ -2,24 +2,19 @@ package definitions
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-func init() { //nolint:gochecknoinits // Natural key registration for cross-stack push identity matching.
-	adapter.RegisterNaturalKey(
-		StaticDescriptor().GroupVersionKind(),
-		adapter.SpecFieldKey("name"),
-	)
-}
-
-// StaticDescriptor returns the resource descriptor for SLO definitions.
+// StaticDescriptor returns the resource descriptor for SLO definitions. Its
+// Group/Version/Kind mirror SloResource()'s declaration below — kept as a
+// small standalone helper because NewTypedCRUD (used by the hand-written
+// commands.go) needs a *adapter.TypedCRUD[Slo] rather than the
+// ResourceAdapter that SloResource()'s registration path builds.
 func StaticDescriptor() resources.Descriptor {
 	return resources.Descriptor{
 		GroupVersion: schema.GroupVersion{
@@ -32,45 +27,78 @@ func StaticDescriptor() resources.Descriptor {
 	}
 }
 
-// SloSchema returns a JSON Schema for the SLO resource type.
-func SloSchema() json.RawMessage {
-	return adapter.SchemaFromType[Slo](StaticDescriptor())
-}
+// SloResource declares the SLO definitions resource type end-to-end for
+// adapter.NewProvider: identity (GVK), registration metadata, and client
+// constructor. Declaring NaturalKey folds in
+// RegisterNaturalKey(gvk, SpecFieldKey("name")) and declaring URLTemplate
+// folds in the deeplink registration — neither needs a separate init().
+// Schema and Example are derived from Slo/the value below rather than
+// hand-written. A function (not a package-level var) to avoid a mutable
+// shared global.
+func SloResource() adapter.Resource[Slo] {
+	return adapter.Resource[Slo]{
+		Group:   "slo.ext.grafana.app",
+		Version: "v1alpha1",
+		Kind:    "SLO",
 
-// SloExample returns an example SLO manifest as JSON.
-func SloExample() json.RawMessage {
-	example := map[string]any{
-		"apiVersion": "slo.ext.grafana.app/v1alpha1",
-		"kind":       "SLO",
-		"metadata": map[string]any{
-			"name": "my-slo",
-		},
-		"spec": map[string]any{
-			"name":        "HTTP Availability",
-			"description": "Tracks HTTP request success rate",
-			"query": map[string]any{
-				"type": "freeform",
-				"freeform": map[string]any{
-					"query": `sum(rate(http_requests_total{status!~"5.."}[5m])) / sum(rate(http_requests_total[5m]))`,
+		NaturalKey:  "name",
+		URLTemplate: "/a/grafana-slo-app/slo/{name}",
+		StripFields: []string{"uuid", "readOnly"},
+
+		Example: Slo{
+			UUID:        "my-slo",
+			Name:        "HTTP Availability",
+			Description: "Tracks HTTP request success rate",
+			Query: Query{
+				Type: "freeform",
+				Freeform: &FreeformQuery{
+					Query: `sum(rate(http_requests_total{status!~"5.."}[5m])) / sum(rate(http_requests_total[5m]))`,
 				},
 			},
-			"objectives": []map[string]any{
-				{"value": 0.995, "window": "28d"},
-			},
-			"labels": []map[string]any{
-				{"key": "team", "value": "platform"},
-			},
+			Objectives: []Objective{{Value: 0.995, Window: "28d"}},
+			Labels:     []Label{{Key: "team", Value: "platform"}},
 		},
+
+		NewClient: newAdapterClient,
 	}
-	b, err := json.Marshal(example)
-	if err != nil {
-		panic(fmt.Sprintf("slo/definitions: failed to marshal example: %v", err))
-	}
-	return b
 }
 
-// NewTypedCRUD creates a TypedCRUD for SLO definitions using the provided loader.
-// Returns both the CRUD instance and the config for additional operations like Prometheus queries.
+// newAdapterClient is SloResource's NewClient implementation. It builds the
+// SLO client directly from ClientDeps.HTTP, constructing no transport of its
+// own. The returned *Client implements the five capability interfaces (see
+// the compile-time guards in client.go), so the capability seam wires all
+// five verbs.
+func newAdapterClient(_ context.Context, deps adapter.ClientDeps) (any, error) {
+	return newClientFromDeps(deps), nil
+}
+
+// newTypedCRUD builds the TypedCRUD used by NewTypedCRUD below. Client's
+// Get/Create/Update/Delete methods are wired directly (they already match
+// the TypedCRUD Fn signatures); List is adapted from ListOptions to the
+// limit parameter TypedCRUD expects.
+func newTypedCRUD(client *Client, cfg internalconfig.NamespacedRESTConfig) *adapter.TypedCRUD[Slo] {
+	return &adapter.TypedCRUD[Slo]{
+		ListFn: func(ctx context.Context, limit int64) ([]Slo, error) {
+			return client.List(ctx, adapter.ListOptions{Limit: limit})
+		},
+		GetFn:       client.Get,
+		CreateFn:    client.Create,
+		UpdateFn:    client.Update,
+		DeleteFn:    client.Delete,
+		Namespace:   cfg.Namespace,
+		StripFields: []string{"uuid", "readOnly"},
+		Descriptor:  StaticDescriptor(),
+	}
+}
+
+// NewTypedCRUD creates a TypedCRUD for SLO definitions using the provided
+// loader. This is the hand-written commands.go's entry point for the
+// `gcx slo definitions` command tree — a separate call site from the
+// `gcx resources` pipeline built via SloResource()/adapter.NewProvider in
+// provider.go, but both are backed by the same Client capability methods,
+// so they return equivalent data.
+// Returns both the CRUD instance and the config for additional operations
+// like Prometheus queries.
 func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader) (*adapter.TypedCRUD[Slo], internalconfig.NamespacedRESTConfig, error) {
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
@@ -82,101 +110,5 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader) (*adapter.Typ
 		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to create SLO definitions client: %w", err)
 	}
 
-	//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory functions.
-	crud := &adapter.TypedCRUD[Slo]{
-		ListFn: adapter.LimitedListFn(client.List),
-		GetFn: func(ctx context.Context, name string) (*Slo, error) {
-			return client.Get(ctx, name)
-		},
-		CreateFn: func(ctx context.Context, slo *Slo) (*Slo, error) {
-			resp, err := client.Create(ctx, slo)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create SLO: %w", err)
-			}
-			created, err := client.Get(ctx, resp.UUID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch created SLO %q: %w", resp.UUID, err)
-			}
-			return created, nil
-		},
-		UpdateFn: func(ctx context.Context, name string, slo *Slo) (*Slo, error) {
-			if err := client.Update(ctx, name, slo); err != nil {
-				return nil, fmt.Errorf("failed to update SLO %q: %w", name, err)
-			}
-			updated, err := client.Get(ctx, name)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch updated SLO %q: %w", name, err)
-			}
-			return updated, nil
-		},
-		DeleteFn: func(ctx context.Context, name string) error {
-			return client.Delete(ctx, name)
-		},
-		Namespace:   cfg.Namespace,
-		StripFields: []string{"uuid", "readOnly"},
-		Descriptor:  StaticDescriptor(),
-	}
-	return crud, cfg, nil
-}
-
-// NewLazyFactory returns an adapter.Factory that loads its config lazily from the
-// default config file when invoked. This is used for global adapter registration in init()
-// and by SLOProvider.ResourceAdapters().
-func NewLazyFactory() adapter.Factory {
-	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		var loader providers.ConfigLoader
-		crud, _, err := NewTypedCRUD(ctx, &loader)
-		if err != nil {
-			return nil, err
-		}
-		return crud.AsAdapter(), nil
-	}
-}
-
-// NewFactoryFromConfig returns an adapter.Factory for SLO definitions that
-// creates a definitions.Client using the provided NamespacedRESTConfig.
-// The factory is lazy — the client is only created when the factory is invoked.
-func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Factory {
-	return func(_ context.Context) (adapter.ResourceAdapter, error) {
-		client, err := NewClient(cfg)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create SLO definitions client: %w", err)
-		}
-
-		//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory functions.
-		crud := &adapter.TypedCRUD[Slo]{
-			ListFn: adapter.LimitedListFn(client.List),
-			GetFn: func(ctx context.Context, name string) (*Slo, error) {
-				return client.Get(ctx, name)
-			},
-			CreateFn: func(ctx context.Context, slo *Slo) (*Slo, error) {
-				resp, err := client.Create(ctx, slo)
-				if err != nil {
-					return nil, fmt.Errorf("failed to create SLO: %w", err)
-				}
-				created, err := client.Get(ctx, resp.UUID)
-				if err != nil {
-					return nil, fmt.Errorf("failed to fetch created SLO %q: %w", resp.UUID, err)
-				}
-				return created, nil
-			},
-			UpdateFn: func(ctx context.Context, name string, slo *Slo) (*Slo, error) {
-				if err := client.Update(ctx, name, slo); err != nil {
-					return nil, fmt.Errorf("failed to update SLO %q: %w", name, err)
-				}
-				updated, err := client.Get(ctx, name)
-				if err != nil {
-					return nil, fmt.Errorf("failed to fetch updated SLO %q: %w", name, err)
-				}
-				return updated, nil
-			},
-			DeleteFn: func(ctx context.Context, name string) error {
-				return client.Delete(ctx, name)
-			},
-			Namespace:   cfg.Namespace,
-			StripFields: []string{"uuid", "readOnly"},
-			Descriptor:  StaticDescriptor(),
-		}
-		return crud.AsAdapter(), nil
-	}
+	return newTypedCRUD(client, cfg), cfg, nil
 }
