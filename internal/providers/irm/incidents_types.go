@@ -28,11 +28,6 @@ func (ft FlexTime) MarshalJSON() ([]byte, error) {
 	return t.MarshalJSON()
 }
 
-// ErrorResponse is the error response body returned by the IRM API.
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
 // GetResourceName returns the incident ID.
 func (i Incident) GetResourceName() string { return i.IncidentID }
 

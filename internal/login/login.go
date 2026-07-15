@@ -58,8 +58,16 @@ type Inputs struct {
 	GrafanaToken string
 	CloudToken   string
 	CloudAPIURL  string
-	OrgID        int
-	UseOAuth     bool
+	// CloudTokenFromOAuth marks CloudToken as already trusted, so the GCOM stack
+	// check in Validate is skipped for it. Set when the token was obtained via
+	// the browser OAuth login (freshly minted with the requested scopes) or when
+	// an already-accepted token is being kept on re-auth. That check exists to
+	// catch typos in freshly pasted Cloud Access Policy tokens; it 403s
+	// spuriously on non-prod stacks, so it must not run for these (matching
+	// `gcx cloud login`, which does not validate at all).
+	CloudTokenFromOAuth bool
+	OrgID               int
+	UseOAuth            bool
 	// OAuthCallbackPort fixes the local port for the OAuth callback server.
 	// Zero means auto-pick from the default range. Useful when only specific
 	// ports are forwarded between a remote dev host and the user's browser.
@@ -497,14 +505,7 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) 
 	}
 
 	if opts.CloudToken != "" {
-		cc := &config.CloudConfig{
-			Token:  opts.CloudToken,
-			APIUrl: opts.CloudAPIURL,
-		}
-		if slug := resolveStackSlug(opts.Server); slug != "" {
-			cc.Stack = slug
-		}
-		return cc, nil
+		return cloudConfigForToken(opts), nil
 	}
 
 	// Cloud target with no token: skip if Yes or agent mode (D9, D10).
@@ -525,6 +526,29 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) 
 		Optional: true,
 		Hint:     cloudTokenHint(opts.Server),
 	}
+}
+
+// cloudConfigForToken builds the CloudConfig for a Cloud target that has a
+// resolved token. For an OAuth or kept (already-trusted) token it records the
+// GCOM endpoint for this stack env, matching `gcx cloud login`; without this a
+// later `gcx cloud login` on an ops/dev context would default to prod
+// grafana.com. A freshly pasted CAP token carries no such origin, so its API
+// URL is left to auto-derivation at use time.
+func cloudConfigForToken(opts Options) *config.CloudConfig {
+	cc := &config.CloudConfig{
+		Token:  opts.CloudToken,
+		APIUrl: opts.CloudAPIURL,
+	}
+	if root, ok := config.GCOMRootFromServerURL(opts.Server); ok && opts.CloudTokenFromOAuth {
+		cc.OAuthUrl = root
+		if cc.APIUrl == "" {
+			cc.APIUrl = root
+		}
+	}
+	if slug := resolveStackSlug(opts.Server); slug != "" {
+		cc.Stack = slug
+	}
+	return cc
 }
 
 // announceOAuthLogin surfaces a clear success message once the interactive OAuth
@@ -556,23 +580,25 @@ func announceCloudTokenStep(w io.Writer) {
 	if w == nil {
 		w = io.Discard
 	}
-	fmt.Fprintln(w, "\nOptional: add a Grafana Cloud API token to enable Cloud management features.")
+	fmt.Fprintln(w, "\nOptional: log in to Grafana Cloud to enable Cloud management features.")
 }
 
-// warnCloudTokenUnvalidated surfaces a non-fatal advisory when a Cloud Access
-// Policy (CAP) token is present but its GCOM validation failed. Because the CAP
-// token is optional, login proceeds; this explains why Cloud management features
-// may not work. It writes to w (the caller-supplied progress writer); a nil
-// writer discards, keeping internal/login free of process streams (NC-001).
+// warnCloudTokenUnvalidated surfaces a non-fatal advisory when a Cloud token is
+// present (from a pasted CAP token or the browser OAuth login) but its GCOM
+// stack check failed. Because Cloud auth is optional, login proceeds; this
+// explains why Cloud management features may not work. The wording is kept
+// auth-method-neutral so it reads correctly for both the token and OAuth paths.
+// It writes to w (the caller-supplied progress writer); a nil writer discards,
+// keeping internal/login free of process streams (NC-001).
 func warnCloudTokenUnvalidated(w io.Writer, e *GCOMStackError) {
 	if w == nil {
 		w = io.Discard
 	}
-	msg := fmt.Sprintf("Warning: Cloud Access Policy token could not be validated for stack %q", e.Slug)
+	msg := fmt.Sprintf("Warning: could not verify Grafana Cloud access for stack %q", e.Slug)
 	if e.Status != 0 {
 		msg += fmt.Sprintf(" (GCOM returned %d)", e.Status)
 	}
-	fmt.Fprintln(w, msg+". Logging in anyway; Cloud management features may be unavailable until a working token is provided.")
+	fmt.Fprintln(w, msg+". Logging in anyway; some Cloud management features may be unavailable.")
 }
 
 // persistContext loads the existing config (tolerating ErrNotExist), upserts the

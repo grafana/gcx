@@ -18,12 +18,13 @@ import (
 )
 
 type deleteOpts struct {
-	OnError       OnErrorMode
-	Force         bool
-	MaxConcurrent int
-	DryRun        bool
-	Path          []string
-	Yes           bool
+	OnError            OnErrorMode
+	Force              bool
+	MaxConcurrent      int
+	DryRun             bool
+	Path               []string
+	Yes                bool
+	AssumeServerDryRun []string
 }
 
 func (opts *deleteOpts) setup(flags *pflag.FlagSet) {
@@ -33,6 +34,7 @@ func (opts *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.DryRun, "dry-run", opts.DryRun, "If set, the delete operation will be simulated")
 	flags.StringSliceVarP(&opts.Path, "path", "p", nil, "Path on disk containing the resources to delete")
 	flags.BoolVarP(&opts.Yes, "yes", "y", false, "Auto-approve destructive operations (automatically enables --force)")
+	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
 }
 
 func (opts *deleteOpts) Validate(args []string) error {
@@ -104,7 +106,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				opts.Force = true
 			}
 
-			cfg, err := configOpts.LoadGrafanaConfig(ctx)
+			cfg, current, err := configOpts.LoadGrafanaConfigWithContext(ctx)
 			if err != nil {
 				return err
 			}
@@ -150,7 +152,8 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			// Delete!
-			deleter, err := remote.NewDeleter(ctx, cfg)
+			deleter, err := remote.NewDeleter(ctx, cfg,
+				dryRunGuardConfig(current, opts.AssumeServerDryRun, cmd.ErrOrStderr()))
 			if err != nil {
 				return err
 			}
@@ -170,16 +173,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			// Reporting time.
-			printer := cmdio.Success
-			if summary.FailedCount() != 0 {
-				printer = cmdio.Warning
-				if summary.SuccessCount() == 0 {
-					printer = cmdio.Error
-				}
-			}
-
-			printer(cmd.OutOrStdout(), "%d resources deleted, %d errors", summary.SuccessCount(), summary.FailedCount())
+			writeMutationSummary(cmd.OutOrStdout(), "deleted", summary)
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
 				return gcxerrors.NewPartialFailureError("delete", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())

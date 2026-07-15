@@ -96,24 +96,37 @@ using the datasource UID from Step 1:
 ```bash
 # SLI window metric (primary trend signal)
 gcx metrics query -d <datasource-uid> \
-  'grafana_slo_sli_window{slo_uuid="<UUID>"}' \
+  'grafana_slo_sli_window{grafana_slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 
 # Success and total rate for ratio SLOs
 gcx metrics query -d <datasource-uid> \
-  'grafana_slo_success_rate_5m{slo_uuid="<UUID>"}' \
+  'grafana_slo_success_rate_5m{grafana_slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 
 gcx metrics query -d <datasource-uid> \
-  'grafana_slo_total_rate_5m{slo_uuid="<UUID>"}' \
+  'grafana_slo_total_rate_5m{grafana_slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 ```
+
+The recording rules label these series with `grafana_slo_uuid` (not `slo_uuid`).
+An empty result is not proof of a data gap — first rule out label, UUID,
+datasource, and time-range mismatches (these series live on the SLO's
+destination datasource, and a new SLO has no history yet). A bare
+`grafana_slo_sli_window` query discriminates quickly: series present means
+the selector is wrong; none at all points to a new SLO or the wrong
+datasource.
 
 If the datasource UID is not in the definition, resolve it:
 
 ```bash
 gcx datasources list --type prometheus
 ```
+
+If the filtered list comes back empty, the stack may leave the `type` field
+blank in list payloads (known issue) — rerun without `--type` and pick the
+Prometheus datasource by name, or use the UID from
+`.spec.destinationDatasource.uid` directly.
 
 ### Step 5: Analyze Trends
 
@@ -147,6 +160,15 @@ Produce numbered recommendations. Each recommendation requires:
 3. Expected outcome
 
 **Objective tuning**
+
+Objective changes need enough history to be trustworthy: a `mean_sli` computed
+over less than 7 days of data reflects startup noise as much as real
+performance. With shorter history, still report the numbers, but frame any
+objective recommendation as provisional pending adequate history and say when
+enough data will exist to confirm it. And when the SLO is chronically
+breaching, lead with investigation (slo-investigate) before proposing a lower
+target — a persistent breach can mean a service problem to fix, not a target
+to relax.
 
 If `mean_sli < objective - 0.005` (more than 0.5 pp below the objective):
 - Suggest lowering the objective to `floor(mean_sli * 1000) / 1000` (rounded down to 3 dp).
@@ -225,6 +247,7 @@ Advisory Recommendations:
    Current: <value>
    Proposed: <value>
    Why: <rationale with numbers>
+   [If based on < 7 days of history: "Provisional — re-evaluate after <N> more days of data"]
 
 2. <Recommendation title>
    ...
@@ -251,8 +274,9 @@ Collect errors; report them at the end of the analysis, not interleaved with fin
   recording rules are evaluating correctly.
 
 - **Datasource UID not in definition**: Run `gcx datasources list --type prometheus`
-  and present the list to the user. Do not block the analysis — use the remaining timeline
-  data from Step 2.
+  and present the list to the user. If the filtered list is empty (blank `type` fields in
+  the list payload), rerun without `--type` and select by name. Do not block the
+  analysis — use the remaining timeline data from Step 2.
 
 - **Timeline data < 7 days of points**: The SLO may be newly created. Note the limited
   analysis window, proceed with available data, and suppress trend classifications that

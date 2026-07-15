@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
@@ -132,16 +131,7 @@ func checkSettingsStatus(resp *http.Response) error {
 		return errors.New("Grafana App Observability plugin is not installed or not enabled") //nolint:staticcheck // "Grafana" is a proper noun, capitalization is intentional
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
+	return providers.HandleErrorResponse(resp)
 }
 
 // NewTypedCRUD creates a TypedCRUD for App Observability settings.

@@ -51,7 +51,18 @@ Use the metric name suffix to pick the query type when the user provides a metri
 gcx datasources list --type prometheus
 ```
 
-Use the UID from the output. If multiple Prometheus datasources exist, ask the user which to use.
+Use the UID from the output. Some stacks do not populate `type` in the list
+response, so the filter can come back empty even though Prometheus datasources
+exist — in that case list everything and pick the canonical Grafana Cloud
+Prometheus entry (name like `grafanacloud-<stack>-prom`):
+
+```bash
+gcx datasources list
+```
+
+If that leaves zero or multiple plausible Prometheus candidates, ask the user
+which UID to use rather than guessing (the stack's `default: true` datasource
+is not necessarily Prometheus).
 
 ### Step 3: Build YAML from the appropriate template
 
@@ -143,10 +154,11 @@ Confirm the UUID and name with the user before deletion.
 ### Step 2: Delete
 
 ```bash
-gcx slo definitions delete <UUID> -f
+gcx slo definitions delete <UUID> --force
 ```
 
-Use `-f` to skip confirmation prompt when running in agent mode.
+Use `--force` to skip the confirmation prompt when running in agent mode
+(there is no `-f` shorthand on delete).
 
 ## Configuration Guidance
 
@@ -192,6 +204,6 @@ Deleted: <uuid> (<name>)
 - **Push fails with 400**: Check YAML structure matches template; verify `destinationDatasource.uid` is valid
 - **Push fails with 404 on update**: UUID in `metadata.name` not found; check with `gcx slo definitions list`
 - **Pull creates empty directory**: No SLOs in this context; check `gcx config view` for active context
-- **Datasource list returns empty**: No Prometheus datasources configured; ask user for UID manually
+- **`--type prometheus` filter returns empty**: the list API may not populate `type` on this stack; run `gcx datasources list` without the filter and match the Cloud Prometheus name pattern before concluding none exist
 - **Dry-run shows unexpected diff**: Show diff to user and ask for confirmation before proceeding
 - **Delete fails with 404**: UUID already deleted or wrong UUID; verify with `gcx slo definitions list`

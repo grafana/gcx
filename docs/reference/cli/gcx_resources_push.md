@@ -67,16 +67,17 @@ gcx resources push [RESOURCE_SELECTOR]... [flags]
 ### Options
 
 ```
-      --dry-run               If set, the push operation will be simulated, without actually creating or updating any resources
-  -h, --help                  help for push
-      --include-managed       If set, resources managed by other tools will be included in the push operation
-      --max-concurrent int    Maximum number of concurrent operations (default 10)
-      --omit-manager-fields   If set, the manager fields will not be appended to the resources
-      --on-error string       How to handle errors during resource operations:
-                                ignore — continue processing all resources and exit 0
-                                fail   — continue processing all resources and exit 1 if any failed (default)
-                                abort  — stop on the first error and exit 1 (default "fail")
-  -p, --path strings          Paths on disk from which to read the resources to push (default [./resources])
+      --assume-server-dry-run strings   Assert that the given resources honor server-side dry-run, augmenting the built-in allowlist. Repeatable or comma-separated, each value a GroupResource string (<resource>.<group>), e.g. alertrules.rules.alerting.grafana.app
+      --dry-run                         If set, the push operation will be simulated, without actually creating or updating any resources
+  -h, --help                            help for push
+      --include-managed                 If set, resources managed by other tools will be included in the push operation
+      --max-concurrent int              Maximum number of concurrent operations (default 10)
+      --omit-manager-fields             If set, the manager fields will not be appended to the resources
+      --on-error string                 How to handle errors during resource operations:
+                                          ignore — continue processing all resources and exit 0
+                                          fail   — continue processing all resources and exit 1 if any failed (default)
+                                          abort  — stop on the first error and exit 1 (default "fail")
+  -p, --path strings                    Paths on disk from which to read the resources to push (default [./resources])
 ```
 
 ### Options inherited from parent commands

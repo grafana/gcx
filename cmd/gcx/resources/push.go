@@ -6,7 +6,6 @@ import (
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
-	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/local"
@@ -17,12 +16,13 @@ import (
 )
 
 type pushOpts struct {
-	Paths             []string
-	MaxConcurrent     int
-	OnError           OnErrorMode
-	DryRun            bool
-	OmitManagerFields bool
-	IncludeManaged    bool
+	Paths              []string
+	MaxConcurrent      int
+	OnError            OnErrorMode
+	DryRun             bool
+	OmitManagerFields  bool
+	IncludeManaged     bool
+	AssumeServerDryRun []string
 }
 
 func (opts *pushOpts) setup(flags *pflag.FlagSet) {
@@ -32,6 +32,7 @@ func (opts *pushOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.DryRun, "dry-run", opts.DryRun, "If set, the push operation will be simulated, without actually creating or updating any resources")
 	flags.BoolVar(&opts.OmitManagerFields, "omit-manager-fields", opts.OmitManagerFields, "If set, the manager fields will not be appended to the resources")
 	flags.BoolVar(&opts.IncludeManaged, "include-managed", opts.IncludeManaged, "If set, resources managed by other tools will be included in the push operation")
+	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
 }
 
 func (opts *pushOpts) Validate() error {
@@ -110,7 +111,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			cfg, err := configOpts.LoadGrafanaConfig(ctx)
+			cfg, current, err := configOpts.LoadGrafanaConfigWithContext(ctx)
 			if err != nil {
 				return err
 			}
@@ -144,7 +145,8 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			pusher, err := remote.NewDefaultPusher(ctx, cfg)
+			pusher, err := remote.NewDefaultPusher(ctx, cfg,
+				dryRunGuardConfig(current, opts.AssumeServerDryRun, cmd.ErrOrStderr()))
 			if err != nil {
 				return err
 			}
@@ -173,15 +175,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			printer := cmdio.Success
-			if summary.FailedCount() != 0 {
-				printer = cmdio.Warning
-				if summary.SuccessCount() == 0 {
-					printer = cmdio.Error
-				}
-			}
-
-			printer(cmd.OutOrStdout(), "%d resources pushed, %d errors", summary.SuccessCount(), summary.FailedCount())
+			writeMutationSummary(cmd.OutOrStdout(), "pushed", summary)
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
 				return gcxerrors.NewPartialFailureError("push", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())

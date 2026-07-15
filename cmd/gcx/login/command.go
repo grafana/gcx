@@ -1,6 +1,7 @@
 package login
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -265,7 +266,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			if !isInteractive {
 				return structuredMissingFieldsError(needInput)
 			}
-			if formErr := askForInput(needInput, &opts, sourceCtx); formErr != nil {
+			if formErr := askForInput(ctx, needInput, &opts, sourceCtx); formErr != nil {
 				if errors.Is(formErr, huh.ErrUserAborted) {
 					// Route advisory to stderr so stdout remains parseable
 					// for -o json / -o yaml consumers.
@@ -296,13 +297,11 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 }
 
 // askForInput shows an interactive huh prompt for each field in ErrNeedInput.
-// For "cloud-token" with Optional=true: empty user input sets opts.Yes=true so
-// that the next Run() call skips this step instead of looping forever (AC-002).
-//
-// When sourceCtx carries an existing stored token (re-auth), the prompt offers
-// "Press Enter to keep existing token" semantics — empty input reuses the
-// stored value instead of skipping or erroring.
-func askForInput(e *login.ErrNeedInput, opts *login.Options, sourceCtx *config.Context) error {
+// For "cloud-token" the optional Grafana Cloud login step is delegated to
+// askCloudAuth (browser OAuth, pasted token, or skip). When sourceCtx carries
+// an existing stored token (re-auth), the prompts offer a "keep existing token"
+// affordance instead of skipping or erroring.
+func askForInput(ctx context.Context, e *login.ErrNeedInput, opts *login.Options, sourceCtx *config.Context) error {
 	existingGrafanaToken := ""
 	existingCloudToken := ""
 	if sourceCtx != nil {
@@ -347,35 +346,124 @@ func askForInput(e *login.ErrNeedInput, opts *login.Options, sourceCtx *config.C
 			}
 
 		case "cloud-token":
-			hint := e.Hint
-			switch {
-			case existingCloudToken != "":
-				hint = "Press Enter to keep existing token"
-			case hint == "":
-				hint = "Press Enter to skip (Cloud management features will be unavailable)"
-			}
-			form := huh.NewForm(huh.NewGroup(
-				huh.NewInput().
-					Title("Grafana Cloud API token").
-					Description(hint).
-					EchoMode(huh.EchoModePassword).
-					Value(&opts.CloudToken),
-			))
-			if err := form.Run(); err != nil {
+			if err := askCloudAuth(ctx, e, opts, existingCloudToken); err != nil {
 				return err
-			}
-			switch {
-			case opts.CloudToken == "" && existingCloudToken != "":
-				// Re-auth: user kept the existing token.
-				opts.CloudToken = existingCloudToken
-			case opts.CloudToken == "":
-				// New context or user chose to skip Cloud auth. Set Yes=true
-				// so the next Run() call bypasses this sentinel instead of
-				// re-prompting.
-				opts.Yes = true
 			}
 		}
 	}
+	return nil
+}
+
+// askCloudAuth handles the optional Grafana Cloud (grafana.com) login shown
+// after stack auth completes. It offers browser OAuth — the same GCOM PKCE flow
+// as `gcx cloud login` — alongside pasting a Cloud Access Policy token and
+// skipping. On re-auth, keeping the existing token is offered first.
+//
+// The resolved credential is written to opts.CloudToken, consumed by the next
+// Run() as the Cloud API token. Skipping sets opts.Yes so the next Run()
+// bypasses this sentinel instead of re-prompting.
+func askCloudAuth(ctx context.Context, e *login.ErrNeedInput, opts *login.Options, existingToken string) error {
+	const (
+		choiceKeep  = "keep"
+		choiceOAuth = "oauth"
+		choiceToken = "token"
+		choiceSkip  = "skip"
+	)
+
+	// "recommended" marks the default (first) option: keeping a still-valid
+	// token on re-auth, or browser login when there's no token yet.
+	var options []huh.Option[string]
+	if existingToken != "" {
+		options = append(options,
+			huh.NewOption("Keep the existing Cloud token (recommended)", choiceKeep),
+			huh.NewOption("OAuth (browser)", choiceOAuth),
+		)
+	} else {
+		options = append(options, huh.NewOption("OAuth (browser) (recommended)", choiceOAuth))
+	}
+	options = append(options,
+		huh.NewOption("Paste a Cloud Access Policy token", choiceToken),
+		huh.NewOption("Skip — Cloud management features will be unavailable", choiceSkip),
+	)
+
+	choice := options[0].Value
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("Also log in to Grafana Cloud (grafana.com)?").
+			Description("Enables managing Cloud resources like stacks and access policies.").
+			Options(options...).
+			Value(&choice),
+	))
+	if err := form.Run(); err != nil {
+		return err
+	}
+
+	switch choice {
+	case choiceKeep:
+		opts.CloudToken = existingToken
+		// The kept token was already accepted on a prior login, so skip the GCOM
+		// stack re-check — same treatment as a freshly OAuth'd token. Without this
+		// a kept OAuth token would 403 spuriously on non-prod stacks and surface a
+		// confusing "could not verify Cloud access" warning on every re-auth.
+		opts.CloudTokenFromOAuth = true
+		return nil
+	case choiceOAuth:
+		return runCloudOAuth(ctx, opts)
+	case choiceSkip:
+		// Set Yes=true so the next Run() call bypasses this sentinel instead
+		// of re-prompting.
+		opts.Yes = true
+		return nil
+	}
+
+	// choiceToken: prompt for a pasted Cloud Access Policy token.
+	hint := e.Hint
+	if hint == "" {
+		hint = "Press Enter to skip (Cloud management features will be unavailable)"
+	}
+	tokenForm := huh.NewForm(huh.NewGroup(
+		huh.NewInput().
+			Title("Grafana Cloud API token").
+			Description(hint).
+			EchoMode(huh.EchoModePassword).
+			Value(&opts.CloudToken),
+	))
+	if err := tokenForm.Run(); err != nil {
+		return err
+	}
+	if opts.CloudToken == "" {
+		opts.Yes = true
+	}
+	return nil
+}
+
+// runCloudOAuth runs the GCOM OAuth2 PKCE browser flow (the same flow used by
+// `gcx cloud login`) and stores the resulting access token in opts.CloudToken so
+// the next Run() persists it as the Cloud API token. The GCOM endpoint is
+// derived from the stack server so dev/ops stacks authenticate against
+// grafana-dev.com / grafana-ops.com instead of prod grafana.com.
+func runCloudOAuth(ctx context.Context, opts *login.Options) error {
+	gcomURL, _ := config.GCOMRootFromServerURL(opts.Server)
+	flow := internalauth.NewGCOMFlow(internalauth.GCOMOptions{
+		ClientID: internalauth.DefaultGCOMClientID,
+		GCOMURL:  gcomURL,
+		Scopes:   internalauth.DefaultGCOMScopes(),
+		Writer:   opts.Writer,
+	})
+	result, err := flow.Run(ctx)
+	if err != nil {
+		return gcxerrors.DetailedError{
+			Summary: "Grafana Cloud authentication failed",
+			Parent:  err,
+			Suggestions: []string{
+				"Ensure you are logged in to Grafana Cloud in your browser",
+				"Re-run and choose \"Skip\" to finish without Cloud management features",
+				"Or add a token later with: gcx cloud login",
+			},
+		}
+	}
+	opts.CloudToken = result.AccessToken
+	opts.CloudTokenFromOAuth = true
 	return nil
 }
 

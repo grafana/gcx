@@ -802,6 +802,17 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 | `internal/providers/kg/commands.go` | KG CLI commands |
 | `internal/providers/kg/resource_adapter.go` | Resource adapter for KG resources |
 
+### Assistant Provider
+
+`Commands()` is a verbatim lift-and-shift of the previously hand-mounted `gcx assistant` tree (`prompt`, `dashboard`, `conversation`, `investigations`, `mcp-servers`); `TypedRegistrations()` registers exactly one adapter, `TypedCRUD[MCPServer]`, so MCP-server configuration flows through `gcx resources get/pull/push/delete` for both `user` and `tenant` scope. See ADR-021.
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/assistant/provider.go` | `AssistantProvider` implementing the `providers.Provider` interface; `ConfigKeys()` declares the non-secret `providers.assistant.*` capability-cache keys |
+| `internal/assistant/mcpserver/` | `MCPServer` manifest domain type, `TypedCRUD[MCPServer]` adapter wiring (identity `{scope}-{slug(name)}`, natural key `(scope, name, url)`, schema/example), and per-header write-intent mapping (overwrite/preserve/remove, `fromEnv`/`fromFile`) |
+| `internal/assistant/mcpservers/` | MCP-servers HTTP client (offset-paginated, full-exhaustion `List` for the adapter path; bounded list for the human command path) |
+| `internal/providers/assistant/mcpservers/commands.go` | Human `mcp-servers` command tree; JSON/YAML output routed through the shared adapter conversion for byte-identical parity with `gcx resources get mcpservers` |
+
 ### Linter System
 
 | File | Purpose |

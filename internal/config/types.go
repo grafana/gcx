@@ -67,6 +67,11 @@ type DiagnosticsConfig struct {
 	// LogDir overrides the output directory for agent invocation log files.
 	// Default: $XDG_STATE_HOME/gcx/ (platform-specific).
 	LogDir string `json:"log-dir,omitempty" yaml:"log-dir,omitempty"`
+
+	// Telemetry controls anonymous usage telemetry: "enabled", "disabled",
+	// or "log" (prints to stderr). Overridden by the GCX_TELEMETRY and
+	// DO_NOT_TRACK environment variables.
+	Telemetry string `json:"telemetry,omitempty" yaml:"telemetry,omitempty"`
 }
 
 func (config *Config) HasContext(name string) bool {
@@ -172,6 +177,25 @@ type Context struct {
 	// Secret fields are selectively redacted by providers.RedactSecrets using
 	// each provider's ConfigKey metadata.
 	Providers map[string]map[string]string `json:"providers,omitempty" yaml:"providers,omitempty"`
+
+	// Resources holds settings for the `gcx resources` commands in this context.
+	Resources *ResourcesConfig `json:"resources,omitempty" yaml:"resources,omitempty"`
+}
+
+// ResourcesConfig holds per-context settings for the `gcx resources` commands.
+type ResourcesConfig struct {
+	// AssumeServerDryRun lists resources ("<resource>.<group>", e.g.
+	// "alertrules.rules.alerting.grafana.app") the user asserts honor server-side dry-run on
+	// this stack, added to the built-in allowlist so --dry-run sends them to the server.
+	AssumeServerDryRun []string `json:"assume-server-dry-run,omitempty" yaml:"assume-server-dry-run,omitempty"`
+}
+
+// AssumeServerDryRun returns the context's assume-server-dry-run list, or nil if unset.
+func (context *Context) AssumeServerDryRun() []string {
+	if context.Resources == nil {
+		return nil
+	}
+	return context.Resources.AssumeServerDryRun
 }
 
 func (context *Context) Validate(ctx context.Context) error {

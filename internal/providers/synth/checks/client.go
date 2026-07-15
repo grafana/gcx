@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/providers"
 	querysynth "github.com/grafana/gcx/internal/query/synth"
 )
 
@@ -56,7 +56,7 @@ func (c *Client) List(ctx context.Context) ([]Check, error) {
 		return nil, fmt.Errorf("listing checks: %w", err)
 	}
 	if status != http.StatusOK {
-		return nil, smcfg.HandleErrorBody(status, body)
+		return nil, providers.FormatError(status, body)
 	}
 
 	var checks []Check
@@ -83,7 +83,7 @@ func (c *Client) Get(ctx context.Context, id int64) (*Check, error) {
 	}
 
 	if status != http.StatusOK {
-		return nil, smcfg.HandleErrorBody(status, body)
+		return nil, providers.FormatError(status, body)
 	}
 
 	var check Check
@@ -107,7 +107,7 @@ func (c *Client) Create(ctx context.Context, check Check) (*Check, error) {
 	}
 
 	if status != http.StatusOK && status != http.StatusCreated {
-		return nil, smcfg.HandleErrorBody(status, body)
+		return nil, providers.FormatError(status, body)
 	}
 
 	var created Check
@@ -131,7 +131,7 @@ func (c *Client) Update(ctx context.Context, check Check) (*Check, error) {
 	}
 
 	if status != http.StatusOK {
-		return nil, smcfg.HandleErrorBody(status, body)
+		return nil, providers.FormatError(status, body)
 	}
 
 	var updated Check
@@ -150,7 +150,7 @@ func (c *Client) Delete(ctx context.Context, id int64) error {
 	}
 
 	if status != http.StatusOK && status != http.StatusNoContent {
-		return smcfg.HandleErrorBody(status, body)
+		return providers.FormatError(status, body)
 	}
 
 	return nil
@@ -164,7 +164,7 @@ func (c *Client) GetTenant(ctx context.Context) (*Tenant, error) {
 	}
 
 	if status != http.StatusOK {
-		return nil, smcfg.HandleErrorBody(status, body)
+		return nil, providers.FormatError(status, body)
 	}
 
 	var tenant Tenant
@@ -183,7 +183,7 @@ func (c *Client) ListProbes(ctx context.Context) ([]ProbeRef, error) {
 	}
 
 	if status != http.StatusOK {
-		return nil, smcfg.HandleErrorBody(status, body)
+		return nil, providers.FormatError(status, body)
 	}
 
 	var raw []struct {

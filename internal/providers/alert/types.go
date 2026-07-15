@@ -7,11 +7,6 @@ const (
 	StateInactive = "inactive"
 )
 
-// ErrorResponse is the error response body returned by the alerting API.
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
 // RulesResponse is the response from /api/prometheus/grafana/api/v1/rules.
 type RulesResponse struct {
 	Status string    `json:"status"`

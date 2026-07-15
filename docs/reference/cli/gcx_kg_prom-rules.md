@@ -27,4 +27,5 @@ Manage Knowledge Graph Custom Prometheus rules.
 * [gcx kg prom-rules delete](gcx_kg_prom-rules_delete.md)	 - Delete a Knowledge Graph Custom Prometheus rule by name.
 * [gcx kg prom-rules get](gcx_kg_prom-rules_get.md)	 - Get a Knowledge Graph Custom Prometheus rule by name.
 * [gcx kg prom-rules list](gcx_kg_prom-rules_list.md)	 - List Knowledge Graph Custom Prometheus rules.
+* [gcx kg prom-rules schema](gcx_kg_prom-rules_schema.md)	 - Fetch the live JSON Schema for Custom Prometheus rules from the backend.
 

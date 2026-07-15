@@ -192,6 +192,49 @@ func TestMergeConfigs_DiagnosticsLayering(t *testing.T) {
 	assert.True(t, merged.Diagnostics.AgentInvocationLog)
 }
 
+func TestMergeContexts_AssumeServerDryRunLastWins(t *testing.T) {
+	tests := []struct {
+		name string
+		base []string
+		over []string
+		want []string
+	}{
+		{
+			name: "higher layer replaces lower layer's list",
+			base: []string{"a.grp", "shared.grp"},
+			over: []string{"shared.grp", "b.grp"},
+			want: []string{"shared.grp", "b.grp"},
+		},
+		{
+			name: "explicit empty list clears lower layer's assertions",
+			base: []string{"a.grp"},
+			over: []string{},
+			want: []string{},
+		},
+		{
+			name: "unset in higher layer keeps lower layer's list",
+			base: []string{"a.grp"},
+			over: nil,
+			want: []string{"a.grp"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base := config.Config{Contexts: map[string]*config.Context{
+				"ctx": {Resources: &config.ResourcesConfig{AssumeServerDryRun: tt.base}},
+			}}
+			over := config.Config{Contexts: map[string]*config.Context{
+				"ctx": {Resources: &config.ResourcesConfig{AssumeServerDryRun: tt.over}},
+			}}
+
+			merged := config.MergeConfigs(base, over)
+
+			require.NotNil(t, merged.Contexts["ctx"].Resources)
+			assert.Equal(t, tt.want, merged.Contexts["ctx"].Resources.AssumeServerDryRun)
+		})
+	}
+}
+
 func TestMergeGrafanaConfig_OAuthAndProxyFields(t *testing.T) {
 	tests := []struct {
 		name string

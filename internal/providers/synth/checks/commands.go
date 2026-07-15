@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -348,6 +349,11 @@ func newCreateCommand(loader smcfg.StatusLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a Synthetic Monitoring check from a file.",
+		Long: `Create a Synthetic Monitoring check from a file.
+
+Note: checks incur Grafana Cloud usage — each test execution is billed, and
+check results are stored as metrics and logs, which count toward your metrics
+and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 		Example: `  # Create a check from a YAML file.
   gcx synthetic-monitoring checks create -f check.yaml
 
@@ -460,6 +466,11 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <name>",
 		Short: "Update a Synthetic Monitoring check from a file.",
+		Long: `Update a Synthetic Monitoring check from a file.
+
+Note: frequency and probe changes affect billable usage — each test execution
+is billed, and check results are stored as metrics and logs, which count
+toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 		Example: `  # Update a check using its resource name.
   gcx synthetic-monitoring checks update web-check-1234 -f check.yaml
 

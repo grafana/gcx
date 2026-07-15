@@ -61,7 +61,7 @@ right group:
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
 | Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |
 | Frontend Observability | `frontend` | `gcx frontend apps list` |
-| App Observability | `appo11y` | `gcx appo11y overrides list` |
+| App Observability | `appo11y` | `gcx appo11y overrides get` |
 
 If no command exists for the requested operation, say so and propose the nearest
 supported flow.

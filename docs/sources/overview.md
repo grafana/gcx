@@ -36,6 +36,14 @@ Among others, `gcx` provides the following benefits:
 - **Multi-environment:** Use named contexts to switch between development, staging, and production environments.
 - **AI agent friendly:** Agent mode auto-detected for Claude Code, Copilot, Cursor, and other.
 
+## Costs
+
+{{< admonition type="note" >}}
+
+`gcx` itself is free, but some commands operate Grafana Cloud products that are billed based on usage: Grafana Assistant is billed per token consumed — including requests made through `gcx` — Synthetic Monitoring per test execution, Performance Testing (k6) per Virtual User Hour, and IRM per monthly active user. For details, refer to the [Cost Management and Billing documentation](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/) and [Grafana Cloud pricing](https://grafana.com/pricing/).
+
+{{< /admonition >}}
+
 ## Compatibility
 
 `gcx` is compatible with any agentic coding tool.

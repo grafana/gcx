@@ -18,6 +18,19 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 )
 
+// DefaultGCOMClientID is the OAuth2 client ID registered in GCOM for gcx.
+const DefaultGCOMClientID = "gcx"
+
+// DefaultGCOMScopes returns the OAuth2 scopes requested when logging in to the
+// Grafana Cloud platform API (grafana.com) for stack management. A fresh slice
+// is returned on each call so callers (e.g. a Cobra flag default) can mutate
+// their copy without affecting others.
+func DefaultGCOMScopes() []string {
+	return []string{
+		"stacks:read", "stacks:write", "stacks:delete",
+	}
+}
+
 // GCOMResult contains the result of a GCOM OAuth2 PKCE authentication flow.
 type GCOMResult struct {
 	AccessToken string

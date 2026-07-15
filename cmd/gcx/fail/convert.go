@@ -48,6 +48,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 	errorConverters := []func(err error) (*gcxerrors.DetailedError, bool){
 		convertWaitTimeoutEmitted,          // Wait timeout already emitted fused envelope — suppress secondary output
 		convertUnknownFieldSelectionErrors, // --json unknown-field validation
+		convertJQRuntimeErrors,             // --jq runtime failures — includes output shape summary
 		convertPartialFailureErrors,
 		convertUsageErrors,
 		convertCobraUnknownCommandErrors,
@@ -1220,6 +1221,48 @@ func convertUnknownFieldSelectionErrors(err error) (*gcxerrors.DetailedError, bo
 		Suggestions: []string{
 			"Run the command with --json list to enumerate valid field names",
 		},
+	}, true
+}
+
+// convertJQRuntimeErrors converts JQRuntimeError (a --jq expression failed
+// against the actual output) into a DetailedError with exit code 2
+// (ExitUsageError). Details carry a compact summary of the output shape —
+// top-level type plus a capped field-path list — so the expression can be
+// corrected in one retry instead of blind trial and error.
+func convertJQRuntimeErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var jqErr cmdoutput.JQRuntimeError
+	if !errors.As(err, &jqErr) {
+		return nil, false
+	}
+
+	details := fmt.Sprintf("jq: %v\n\nThe command's output is %s.", jqErr.Err, jqErr.Shape)
+	if len(jqErr.Fields) > 0 {
+		label := "Fields"
+		if jqErr.ArrayInput {
+			label = "Element fields"
+		}
+		fieldList := strings.Join(jqErr.Fields, ", ")
+		if jqErr.MoreFields > 0 {
+			fieldList += fmt.Sprintf(" (+%d more)", jqErr.MoreFields)
+		}
+		details += fmt.Sprintf("\n%s: %s", label, fieldList)
+	}
+
+	var suggestions []string
+	if jqErr.ArrayInput {
+		suggestions = append(suggestions,
+			"Iterate array elements with .[], e.g. --jq '.items[].name' or --jq '.[].name'")
+	}
+	suggestions = append(suggestions,
+		"Run the command with --json list to enumerate all available field paths",
+		"Run the command without --jq (-o json) to inspect the raw output shape")
+
+	exitCode := gcxerrors.ExitUsageError
+	return &gcxerrors.DetailedError{
+		Summary:     "Invalid command usage",
+		Details:     details,
+		ExitCode:    &exitCode,
+		Suggestions: suggestions,
 	}, true
 }
 

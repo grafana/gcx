@@ -225,14 +225,5 @@ func checkStatus(resp *http.Response) error {
 		return errors.New("concurrent modification conflict: overrides were modified since last read — re-fetch and retry")
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
+	return providers.HandleErrorResponse(resp)
 }

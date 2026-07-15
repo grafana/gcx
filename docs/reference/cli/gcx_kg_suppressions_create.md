@@ -11,6 +11,9 @@ gcx kg suppressions create [flags]
 ```
   gcx kg suppressions create -f suppressions.yaml
 
+  # Validate against the backend and preview the diff without uploading:
+  gcx kg suppressions create -f suppressions.yaml --dry-run
+
   echo 'disabledAlertConfigs:
     - name: my-suppression
       matchLabels:
@@ -21,8 +24,12 @@ gcx kg suppressions create [flags]
 ### Options
 
 ```
-  -f, --file string   Input file (YAML), or '-' for stdin. Reads from stdin if omitted.
-  -h, --help          help for create
+      --dry-run         Validate against the backend and show a diff without uploading.
+  -f, --file string     Input file (YAML), or '-' for stdin. Reads from stdin if omitted.
+  -h, --help            help for create
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

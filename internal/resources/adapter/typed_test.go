@@ -652,12 +652,12 @@ func TestTypedCRUD_CreateDryRun(t *testing.T) {
 
 	t.Run("skips CreateFn when DryRun is set", func(t *testing.T) {
 		createCalled = false
-		result, err := a.Create(t.Context(), input, metav1.CreateOptions{
+		_, err := a.Create(t.Context(), input, metav1.CreateOptions{
 			DryRun: []string{metav1.DryRunAll},
 		})
-		require.NoError(t, err)
+		require.ErrorIs(t, err, adapter.ErrDryRunUnverified,
+			"without a ValidateFn a dry run is unverified, not a success")
 		assert.False(t, createCalled, "CreateFn must not be called during dry run")
-		assert.Equal(t, "w-input", result.GetName())
 	})
 
 	t.Run("calls CreateFn without DryRun", func(t *testing.T) {
@@ -681,12 +681,12 @@ func TestTypedCRUD_UpdateDryRun(t *testing.T) {
 
 	t.Run("skips UpdateFn when DryRun is set", func(t *testing.T) {
 		updateCalled = false
-		result, err := a.Update(t.Context(), input, metav1.UpdateOptions{
+		_, err := a.Update(t.Context(), input, metav1.UpdateOptions{
 			DryRun: []string{metav1.DryRunAll},
 		})
-		require.NoError(t, err)
+		require.ErrorIs(t, err, adapter.ErrDryRunUnverified,
+			"without a ValidateFn a dry run is unverified, not a success")
 		assert.False(t, updateCalled, "UpdateFn must not be called during dry run")
-		assert.Equal(t, "w-existing", result.GetName())
 	})
 
 	t.Run("calls UpdateFn without DryRun", func(t *testing.T) {

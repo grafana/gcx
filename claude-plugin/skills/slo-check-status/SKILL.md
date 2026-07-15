@@ -84,6 +84,13 @@ Adjust the time range based on the SLO window:
 - 7d window SLO → use `--from now-7d --to now`
 - 28d or 30d window SLO → use `--from now-28d --to now`
 
+The window you request is not necessarily the history you have: on a young
+stack or a recently created SLO, a 28d query may return only a few days of
+points. Check the timestamp of the earliest returned point, report the actual
+observed span alongside the requested window, and scope any whole-window
+claims to the data you actually saw — "steady for the 2 days of available
+history (28d window requested)", not "steady for the entire 28-day window".
+
 ### Step 4: SLO Reports Status (Conditional)
 
 When the user asks about SLO reports or wants combined SLO health from the reports subsystem:

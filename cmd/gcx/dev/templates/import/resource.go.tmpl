@@ -1,8 +1,9 @@
 package {{ .Package }}
 
 import (
-	"github.com/grafana/grafana-foundation-sdk/go/{{ .SDKPackage }}"
-	"github.com/grafana/grafana-foundation-sdk/go/resource"
+{{- range .Imports }}
+	"{{ . }}"
+{{- end }}
 )
 
 func {{ .FuncName }}() *resource.ManifestBuilder {

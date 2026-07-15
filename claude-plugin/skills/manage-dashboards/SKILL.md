@@ -1,14 +1,19 @@
 ---
 name: manage-dashboards
 description: >
-  Manages existing Grafana dashboards operationally via gcx: list, get,
-  search, create or update from an already-authored manifest, delete, inspect
-  and restore versions, pull/push/validate/promote dashboard resource files,
-  manage dashboard folders, or render PNG snapshots. Do NOT use when the task
-  involves adding new panels, variables, or annotations — those require
-  discovering real metrics or log schema, so use create-dashboard instead.
-  For designing or creating a new dashboard, or for material visual/dashboard
-  UX changes, also use create-dashboard.
+  Manages and inspects existing Grafana dashboards via gcx: list, get, search,
+  audit what a saved dashboard actually contains (its panels and their types,
+  the queries and expressions as saved, which datasource each panel uses,
+  variables and what they are wired to), create or update from an
+  already-authored manifest, delete, inspect and restore versions,
+  pull/push/validate/promote dashboard resource files, manage dashboard
+  folders, or render PNG snapshots. Trigger on "what's on dashboard X",
+  "what is each panel querying", "audit this dashboard", "which datasource
+  does each panel use", "does the dashboard have a service dropdown".
+  Do NOT use when the task involves adding new panels, variables, or
+  annotations - those require discovering real metrics or log schema, so use
+  create-dashboard instead. For designing or creating a new dashboard, or for
+  material visual/dashboard UX changes, also use create-dashboard.
 ---
 
 # Manage Dashboards
@@ -80,7 +85,7 @@ Use JSON/YAML for programmatic work and table/wide output for human summaries.
 | Create from finished file | `gcx dashboards create -f <dashboard.yaml>` |
 | Update from finished file | `gcx dashboards update <dashboard-name> -f <dashboard.yaml>` |
 | Delete with confirmation | `gcx dashboards delete <dashboard-name>` |
-| Delete non-interactively | `gcx dashboards delete <dashboard-name> --yes` |
+| Delete non-interactively | `gcx dashboards delete <dashboard-name> --force` |
 | Version history | `gcx dashboards versions list <dashboard-name>` |
 | Restore version | `gcx dashboards versions restore <dashboard-name> <version> --message "<why>"` |
 | Pull dashboards/folders | `gcx resources pull dashboards folders -p <dir> -o yaml` |

@@ -67,6 +67,13 @@ Check: gcx datasources list --type prometheus
 Then verify the destination datasource UID matches what the SLO expects.
 ```
 
+When diagnosing NODATA, two environment realities save wasted queries: on
+remote-write stacks there are no scrape targets, so `up`-based scrape-health
+checks return nothing — absence of `up` series is not evidence of a problem.
+And if `datasources list --type prometheus` returns an empty list, the stack
+may leave `type` blank in list payloads (known issue) — rerun without `--type`
+or use the UID from `.spec.destinationDatasource.uid` directly.
+
 **Lifecycle states:** If status is Creating/Updating/Deleting/Error, report that the SLO is in a transient state and investigate the Grafana backend.
 
 ### Step 3: Render Timeline
@@ -130,7 +137,7 @@ gcx alert rules list -o json | jq '[.[] | .rules[]? | select(.name | test("<slo-
 
 Also try searching by UUID fragment if the name-based search returns no results:
 ```bash
-gcx alert rules list -o json | jq '[.[] | .rules[]? | select(.labels.slo_uuid == "<UUID>" or (.name | test("<slo-name>"; "i")))]'
+gcx alert rules list -o json | jq '[.[] | .rules[]? | select(.labels.grafana_slo_uuid == "<UUID>" or (.name | test("<slo-name>"; "i")))]'
 ```
 
 Extract for each matching rule: name, state (firing/pending/inactive), labels, and annotations.
@@ -187,7 +194,7 @@ Next actions:
 
 - **gcx slo definitions get fails with 404**: SLO UUID not found. Run `gcx slo definitions list` and confirm the UUID.
 - **gcx slo definitions status returns empty**: No status available — SLO may be newly created. Check if recording rules are running (STATUS may show NODATA).
-- **gcx metrics query fails with datasource error**: Datasource UID may be wrong. Run `gcx datasources list --type prometheus` to find the correct UID.
+- **gcx metrics query fails with datasource error**: Datasource UID may be wrong. Run `gcx datasources list --type prometheus` to find the correct UID. If that list is empty (blank `type` fields in the payload), rerun without `--type` and select by name.
 - **gcx metrics query returns no data**: The SLO metrics may write to a separate datasource (check `.spec.destinationDatasource.uid`). Try both the destination datasource and the default Prometheus datasource.
 - **alert rules list returns empty**: Alert rules may be in a different folder. Try without filters: `gcx alert rules list -o json | jq length` to confirm total count.
 - **gh api fails**: If `gh` is not authenticated or unavailable, report the runbook URL directly and skip content fetching.

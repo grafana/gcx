@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/reports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,7 +77,7 @@ func TestClient_List(t *testing.T) {
 			name: "server error",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				writeJSON(w, reports.ErrorResponse{Code: 500, Error: "internal server error"})
+				writeJSON(w, providers.ErrorResponse{Error: "internal server error"})
 			},
 			wantErr: true,
 		},
@@ -125,7 +126,7 @@ func TestClient_Get(t *testing.T) {
 			uuid: "uuid-missing",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, reports.ErrorResponse{Code: 404, Error: "report not found"})
+				writeJSON(w, providers.ErrorResponse{Error: "report not found"})
 			},
 			wantErr: true,
 		},
@@ -209,7 +210,7 @@ func TestClient_Create(t *testing.T) {
 			report: &reports.Report{},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusBadRequest)
-				writeJSON(w, reports.ErrorResponse{Code: 400, Error: "invalid report definition"})
+				writeJSON(w, providers.ErrorResponse{Error: "invalid report definition"})
 			},
 			wantErr: true,
 		},
@@ -269,7 +270,7 @@ func TestClient_Update(t *testing.T) {
 			report: &reports.Report{Name: "Updated Report"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, reports.ErrorResponse{Code: 404, Error: "report not found"})
+				writeJSON(w, providers.ErrorResponse{Error: "report not found"})
 			},
 			wantErr: true,
 		},
@@ -323,7 +324,7 @@ func TestClient_Delete(t *testing.T) {
 			uuid: "uuid-missing",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, reports.ErrorResponse{Code: 404, Error: "report not found"})
+				writeJSON(w, providers.ErrorResponse{Error: "report not found"})
 			},
 			wantErr: true,
 		},
@@ -351,25 +352,25 @@ func TestClient_ErrorResponses(t *testing.T) {
 	tests := []struct {
 		name       string
 		statusCode int
-		errBody    reports.ErrorResponse
+		errBody    providers.ErrorResponse
 		wantErrMsg string
 	}{
 		{
 			name:       "401 unauthorized",
 			statusCode: http.StatusUnauthorized,
-			errBody:    reports.ErrorResponse{Code: 401, Error: "unauthorized"},
+			errBody:    providers.ErrorResponse{Error: "unauthorized"},
 			wantErrMsg: "401",
 		},
 		{
 			name:       "403 forbidden",
 			statusCode: http.StatusForbidden,
-			errBody:    reports.ErrorResponse{Code: 403, Error: "forbidden"},
+			errBody:    providers.ErrorResponse{Error: "forbidden"},
 			wantErrMsg: "403",
 		},
 		{
 			name:       "500 internal server error",
 			statusCode: http.StatusInternalServerError,
-			errBody:    reports.ErrorResponse{Code: 500, Error: "internal server error"},
+			errBody:    providers.ErrorResponse{Error: "internal server error"},
 			wantErrMsg: "500",
 		},
 	}

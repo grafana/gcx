@@ -71,9 +71,11 @@ User invocation:
                           │
   ┌───────────────────────▼──────────────────────────────────────────────┐
   │ 4. Push via Pusher                                                    │
-  │    remote.NewDefaultPusher(ctx, cfg) → Pusher                        │
+  │    remote.NewDefaultPusher(ctx, cfg, guard) → Pusher                 │
   │    (internally builds ResourceClientRouter: adapter path for          │
   │     provider-backed GVKs, k8s dynamic client for all others)         │
+  │    The dynamic client is wrapped by the DRY-RUN GUARD                 │
+  │    (newGuardedDynamicClient) before buildRouter — see step 5d.        │
   │    pusher.Push(ctx, PushRequest{...})                                 │
   │                                                                       │
   │    Processors applied (in order) per resource:                        │
@@ -105,7 +107,16 @@ User invocation:
   │         if exists: copy resourceVersion, client.Update(...)          │
   │         if 404:    client.Create(...)                                 │
   │         DryRun: pass DryRun: []string{"All"} to K8s options          │
-  │    e. summary.RecordSuccess() or summary.RecordFailure(res, err)     │
+  │       DRY-RUN GUARD (dryRunGuard) intercepts Create/Update:          │
+  │         legacy-storage APIs (all alerting) ignore server-side        │
+  │         dryRun and PERSIST the mutation. The guard default-denies    │
+  │         any dry-run mutation whose GroupResource is not on the       │
+  │         static allowlist (dashboards, folders, playlists) or         │
+  │         asserted via --assume-server-dry-run. Blocked calls return   │
+  │         errDryRunUnverified — nothing is sent to the server.         │
+  │    e. summary.RecordSuccess(), RecordFailure(res, err), or           │
+  │       RecordSkipped(res) — dry-run blocked by the guard is           │
+  │       recorded as SKIPPED (not sent, not failed; keeps exit 0)       │
   └───────────────────────┬──────────────────────────────────────────────┘
                           │
   ┌───────────────────────▼──────────────────────────────────────────────┐
@@ -119,6 +130,8 @@ Key files:
 - `cmd/gcx/resources/push.go` — CLI wiring
 - `internal/resources/local/reader.go` — FSReader
 - `internal/resources/remote/pusher.go` — Pusher, upsertResource
+- `internal/resources/remote/dryrun_guard.go` — dryRunGuard (fail-safe client-side dry-run)
+- `internal/resources/remote/dryrun_allowlist.go` — default-deny allowlist of resources known to honor server-side dryRun
 - `internal/resources/process/managerfields.go` — ManagerFieldsAppender
 - `internal/resources/process/namespace.go` — NamespaceOverrider
 - `internal/resources/adapter/router.go` — ResourceClientRouter (routes CRUD to adapter or dynamic client)
@@ -219,7 +232,12 @@ CLI args or read from disk by the caller before passing to `Deleter`).
   │           client.Delete(ctx, desc, res.Name(), DeleteOptions{        │
   │             DryRun: ["All"] if dryRun,                               │
   │           })                                                          │
-  │      c. summary.RecordSuccess() or summary.RecordFailure(res, err)   │
+  │           DRY-RUN GUARD intercepts Delete: a dry-run delete of a     │
+  │           non-allowlisted resource is blocked (returns              │
+  │           errDryRunUnverified) rather than hitting a legacy API     │
+  │           that ignores dryRun.                                       │
+  │      c. summary.RecordSuccess(), RecordFailure(res, err), or         │
+  │         RecordSkipped(res) — guard-blocked dry-run is SKIPPED        │
   │                                                                       │
   │    NOTE: No manager check — deleter does NOT verify IsManaged().     │
   │    Callers are expected to filter the resource list before deleting.  │
@@ -228,6 +246,7 @@ CLI args or read from disk by the caller before passing to `Deleter`).
 
 Key files:
 - `internal/resources/remote/deleter.go` — Deleter, delete operations
+- `internal/resources/remote/dryrun_guard.go` — dryRunGuard (fail-safe client-side dry-run, shared with push)
 - `internal/resources/adapter/router.go` — ResourceClientRouter (routes CRUD to adapter or dynamic client)
 
 Difference from push: Deleter does NOT check `res.IsManaged()`. It trusts the caller

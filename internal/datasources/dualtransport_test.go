@@ -3,10 +3,14 @@ package datasources_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
@@ -227,6 +231,62 @@ func TestDualListAndGetViaAppPlatform(t *testing.T) {
 	got, err := tr.GetByUID(context.Background(), "my-prom")
 	require.NoError(t, err)
 	assert.Equal(t, "My Prom", got.Name)
+}
+
+// TestDualListManyGroupsAggregatesConcurrently asserts that List fans the
+// per-plugin-group fetches out concurrently (bounded at 10), aggregates every
+// served group, and never exceeds the concurrency cap.
+func TestDualListManyGroupsAggregatesConcurrently(t *testing.T) {
+	const groups = 25
+
+	// Precompute discovery + per-group response bodies from trusted test data
+	// (keyed by request path), so the handler never echoes request-derived input
+	// back into the response.
+	var b strings.Builder
+	b.WriteString(`{"kind":"APIGroupList","groups":[`)
+	bodies := make(map[string]string, groups)
+	for i := range groups {
+		group := fmt.Sprintf("plugin-%02d-datasource.datasource.grafana.app", i)
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		fmt.Fprintf(&b, `{"name":%q}`, group)
+		path := "/apis/" + group + "/v0alpha1/namespaces/stacks-1/datasources"
+		bodies[path] = fmt.Sprintf(
+			`{"items":[{"apiVersion":"%s/v0alpha1","metadata":{"name":"ds-%02d"},"spec":{}}]}`, group, i)
+	}
+	b.WriteString(`]}`)
+	discovery := b.String()
+
+	var inFlight, maxInFlight int64
+	tr := newDualTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/apis" {
+			_, _ = w.Write([]byte(discovery))
+			return
+		}
+		body, ok := bodies[r.URL.Path]
+		if !ok {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		cur := atomic.AddInt64(&inFlight, 1)
+		for {
+			old := atomic.LoadInt64(&maxInFlight)
+			if cur <= old || atomic.CompareAndSwapInt64(&maxInFlight, old, cur) {
+				break
+			}
+		}
+		time.Sleep(5 * time.Millisecond) // widen the concurrency window
+		atomic.AddInt64(&inFlight, -1)
+		_, _ = io.WriteString(w, body)
+	}))
+
+	list, err := tr.List(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, list, groups, "every served group must be aggregated")
+	assert.LessOrEqual(t, maxInFlight, int64(10), "fan-out must stay bounded at 10")
+	assert.Greater(t, maxInFlight, int64(1), "fetches must actually run concurrently")
 }
 
 // TestDualListForbiddenGroupFallsBackToREST asserts that when a served plugin

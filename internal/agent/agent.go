@@ -11,15 +11,16 @@ import (
 	"strings"
 )
 
-// Environment variables that signal agent mode.
-var agentEnvVars = []string{ //nolint:gochecknoglobals
-	"GCX_AGENT_MODE",
-	"CLAUDECODE",
-	"CLAUDE_CODE",
-	"CURSOR_AGENT",
-	"GITHUB_COPILOT",
-	"AMAZON_Q",
-	"OPENCODE",
+// Environment variables that signal agent mode, with the harness name each
+// one identifies. GCX_AGENT_MODE is handled separately (it is an explicit
+// override, not a harness signal).
+var harnessEnvVars = []struct{ envVar, name string }{ //nolint:gochecknoglobals
+	{"CLAUDECODE", "claude-code"},
+	{"CLAUDE_CODE", "claude-code"},
+	{"CURSOR_AGENT", "cursor"},
+	{"GITHUB_COPILOT", "github-copilot"},
+	{"AMAZON_Q", "amazon-q"},
+	{"OPENCODE", "opencode"},
 }
 
 var (
@@ -78,15 +79,28 @@ func detectFromEnv() {
 		}
 	}
 
-	// Check remaining env vars for a truthy value.
-	for _, env := range agentEnvVars {
-		if isTruthy(os.Getenv(env)) {
+	// Check harness env vars for a truthy value.
+	for _, h := range harnessEnvVars {
+		if isTruthy(os.Getenv(h.envVar)) {
 			detectedFromEnv = true
 			agentMode = true
 
 			return
 		}
 	}
+}
+
+// Name returns the name of the detected agent (e.g. "claude-code"), or ""
+// when no known agent env var is set. It reports the name even when agent
+// mode was explicitly disabled via GCX_AGENT_MODE or --agent=false; callers
+// should combine it with [IsAgentMode].
+func Name() string {
+	for _, h := range harnessEnvVars {
+		if isTruthy(os.Getenv(h.envVar)) {
+			return h.name
+		}
+	}
+	return ""
 }
 
 // isTruthy returns true for the values "1", "true", and "yes" (case-insensitive).

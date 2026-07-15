@@ -15,6 +15,9 @@ Known agent IDs:
                           metrics and returns complete dashboard JSON ready for
                           'gcx resources push'. See also: gcx assistant dashboard
 
+Note: each prompt consumes billable Grafana Assistant tokens, including requests
+made through gcx. See https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md.
+
 ```
 gcx assistant prompt <message> [flags]
 ```
@@ -45,7 +48,7 @@ gcx assistant prompt <message> [flags]
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
-      --context string              Name of the context to use
+      --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)

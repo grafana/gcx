@@ -24,6 +24,18 @@ What is the target?
     └── → TCP
 ```
 
+## Alert Sensitivity
+
+The templates below set `alertSensitivity: none`. Non-`none` values
+(`low`/`medium`/`high`) tie the check to Grafana's legacy sensitivity-based
+alert rules; stacks where those are unavailable or forbidden — including the
+unified-alerting Grafana Cloud stack this was verified against — reject check
+creation with an opaque `403 check creation denied` (the underlying reason,
+"legacy alerts usage is forbidden", only appears in the raw API response).
+Set a sensitivity only when the user's stack has legacy sensitivity alert
+rules configured; otherwise keep `none` and alert on the check's metrics
+through regular alert rules.
+
 ## HTTP Check
 
 Tests URL availability, response codes, response time, and optional content matching.
@@ -46,7 +58,7 @@ spec:
     - Atlanta
     - Frankfurt
     - Singapore
-  alertSensitivity: medium
+  alertSensitivity: none       # see "Alert Sensitivity" above
   basicMetricsOnly: false
   settings:
     http:
@@ -56,7 +68,7 @@ spec:
       noFollowRedirects: false
       tlsConfig:
         insecureSkipVerify: false
-      headers: {}
+      headers: []                # list of "Name: value" strings, not a map
       body: ""
       failIfNotSSL: false
       failIfSSL: false
@@ -64,6 +76,8 @@ spec:
 
 Key HTTP fields:
 - `validStatusCodes`: acceptable HTTP status codes; empty = default (2xx/3xx)
+- `headers`: request headers as a list of `"Name: value"` strings (e.g.
+  `["X-Environment: staging"]`) — the API rejects a map here
 - `failIfNotSSL`: fail if response is not HTTPS
 - `noFollowRedirects`: `true` to test redirect behavior
 - `body`: POST body; set `method: POST` for non-GET
@@ -90,7 +104,7 @@ spec:
     - Atlanta
     - Frankfurt
     - Singapore
-  alertSensitivity: medium
+  alertSensitivity: none
   basicMetricsOnly: false
   settings:
     ping:
@@ -125,7 +139,7 @@ spec:
     - Atlanta
     - Frankfurt
     - Tokyo
-  alertSensitivity: medium
+  alertSensitivity: none
   basicMetricsOnly: false
   settings:
     dns:
@@ -166,7 +180,7 @@ spec:
     - Atlanta
     - Frankfurt
     - Singapore
-  alertSensitivity: high         # database connectivity is critical
+  alertSensitivity: none
   basicMetricsOnly: false
   settings:
     tcp:
@@ -202,7 +216,7 @@ spec:
     - Atlanta
     - Frankfurt
     - Singapore
-  alertSensitivity: low
+  alertSensitivity: none
   basicMetricsOnly: false
   settings:
     traceroute:

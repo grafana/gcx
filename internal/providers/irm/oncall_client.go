@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"k8s.io/client-go/rest"
 )
 
@@ -79,17 +80,6 @@ func (c *OnCallClient) DoRequest(ctx context.Context, method, path string, body 
 	return resp, nil
 }
 
-func handleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
-}
-
 type paginatedResponse[T any] struct {
 	Results []T     `json:"results"`
 	Next    *string `json:"next"`
@@ -114,7 +104,7 @@ func iterResources[T any](ctx context.Context, c *OnCallClient, path, resourceTy
 			}
 
 			if resp.StatusCode != http.StatusOK {
-				err := handleErrorResponse(resp)
+				err := providers.HandleErrorResponse(resp)
 				resp.Body.Close()
 				var z T
 				yield(z, err)
@@ -229,7 +219,7 @@ func getResource[T any](ctx context.Context, c *OnCallClient, basePath, id, reso
 		return nil, fmt.Errorf("irm: %s %q not found", resourceType, id)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result T
@@ -252,7 +242,7 @@ func createResource[In any, Out any](ctx context.Context, c *OnCallClient, path 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result Out
@@ -275,7 +265,7 @@ func updateResource[In any, Out any](ctx context.Context, c *OnCallClient, baseP
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result Out
@@ -292,7 +282,7 @@ func deleteResource(ctx context.Context, c *OnCallClient, basePath, id, resource
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return handleErrorResponse(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 	return nil
 }
@@ -307,7 +297,7 @@ func listUnpaginated[T any](ctx context.Context, c *OnCallClient, path, resource
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result []T
@@ -438,7 +428,7 @@ func (c *OnCallClient) ListFilterEvents(ctx context.Context, scheduleID, userTZ,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result FilterEventsResponse
@@ -507,7 +497,7 @@ func (c *OnCallClient) ListRouteFilterTypes(ctx context.Context) ([]RouteFilterT
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var meta struct {
@@ -656,7 +646,7 @@ func (c *OnCallClient) SilenceAlertGroup(ctx context.Context, id string, delaySe
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return handleErrorResponse(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 	return nil
 }
@@ -680,7 +670,7 @@ func (c *OnCallClient) alertGroupAction(ctx context.Context, id, action string) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return handleErrorResponse(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 	return nil
 }
@@ -702,7 +692,7 @@ func (c *OnCallClient) GetCurrentUser(ctx context.Context) (*User, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 	var user User
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
@@ -757,7 +747,7 @@ func (c *OnCallClient) GetOrganization(ctx context.Context) (*Organization, erro
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 	var org Organization
 	if err := json.NewDecoder(resp.Body).Decode(&org); err != nil {
@@ -825,7 +815,7 @@ func (c *OnCallClient) TakeShiftSwap(ctx context.Context, id string, input TakeS
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 	var result ShiftSwap
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {

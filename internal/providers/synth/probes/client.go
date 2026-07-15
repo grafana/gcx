@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/providers"
 	querysynth "github.com/grafana/gcx/internal/query/synth"
 )
 
@@ -62,7 +62,7 @@ func (c *Client) List(ctx context.Context) ([]Probe, error) {
 	}
 
 	if status != http.StatusOK {
-		return nil, smcfg.HandleErrorBody(status, body)
+		return nil, providers.FormatError(status, body)
 	}
 
 	var probeList []Probe
@@ -91,7 +91,7 @@ func (c *Client) Create(ctx context.Context, probe Probe) (*CreateResponse, erro
 	}
 
 	if status != http.StatusOK {
-		return nil, smcfg.HandleErrorBody(status, body)
+		return nil, providers.FormatError(status, body)
 	}
 
 	var created CreateResponse
@@ -146,7 +146,7 @@ func (c *Client) ResetToken(ctx context.Context, probe Probe) (*Probe, error) {
 	}
 
 	if status != http.StatusOK {
-		return nil, smcfg.HandleErrorBody(status, body)
+		return nil, providers.FormatError(status, body)
 	}
 
 	var updated updateResponse
@@ -165,7 +165,7 @@ func (c *Client) Delete(ctx context.Context, id int64) error {
 	}
 
 	if status != http.StatusOK && status != http.StatusNoContent {
-		return smcfg.HandleErrorBody(status, body)
+		return providers.FormatError(status, body)
 	}
 
 	return nil

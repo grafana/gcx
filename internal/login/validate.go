@@ -65,8 +65,12 @@ func (v *validator) validate(ctx context.Context, opts Options, restCfg config.N
 		return "", &VersionCheckError{Cause: &intgrafana.VersionIncompatibleError{Version: version}}
 	}
 
-	// Step 4: GCOM stack check when Cloud target has a CAP token and a derivable slug
-	if opts.Target == TargetCloud && opts.CloudToken != "" && v.gcom != nil {
+	// Step 4: GCOM stack check when Cloud target has a pasted CAP token and a
+	// derivable slug. Skipped for OAuth-obtained tokens (CloudTokenFromOAuth):
+	// they are freshly minted with the requested scopes, so this check only adds
+	// a spurious 403 warning on non-prod stacks. v.gcom is nil in that case (see
+	// Validate), so the guard is belt-and-braces for direct callers.
+	if opts.Target == TargetCloud && opts.CloudToken != "" && !opts.CloudTokenFromOAuth && v.gcom != nil {
 		slug := resolveStackSlug(opts.Server)
 		if slug != "" {
 			if _, err := v.gcom.GetStack(ctx, slug); err != nil {
@@ -145,7 +149,7 @@ func Validate(ctx context.Context, opts Options, restCfg config.NamespacedRESTCo
 		},
 	}
 
-	if opts.Target == TargetCloud && opts.CloudToken != "" {
+	if opts.Target == TargetCloud && opts.CloudToken != "" && !opts.CloudTokenFromOAuth {
 		// Resolve the GCOM root the same way runtime cloud commands do: an
 		// explicit --cloud-api-url wins, otherwise it is derived from the stack
 		// server URL's environment (ops/dev stacks → grafana-ops.com /

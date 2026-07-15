@@ -30,6 +30,8 @@ gcx/
 │   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
 │   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 │   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP server integrations)
+│   │   ├── mcpservers/       # MCP-servers HTTP client (offset pagination, full-exhaustion List)
+│   │   └── mcpserver/        # MCPServer manifest domain type + TypedCRUD adapter wiring + header write-intent mapping
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
@@ -60,6 +62,7 @@ gcx/
 │   │   │   ├── overrides/    # MetricsGeneratorConfig with ETag concurrency
 │   │   │   └── settings/     # PluginSettings
 │   │   ├── alert/            # Alert provider (rules and groups)
+│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/)
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
 │   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint
@@ -102,6 +105,7 @@ gcx/
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
 │   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
+│   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection)
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer

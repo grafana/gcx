@@ -36,7 +36,7 @@ Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud p
 - **Format-agnostic data fetching**: Commands fetch all data regardless of `--output` format; codecs control display, not data acquisition (see Pattern 13 in `docs/architecture/patterns.md`)
 - **PromQL via promql-builder**: Use `github.com/grafana/promql-builder/go/promql` for PromQL construction, not string formatting (see Pattern 14 in `docs/architecture/patterns.md`)
 - **Datasource query reuse**: Datasource clients that call Grafana's unified datasource query API (`/apis/query.grafana.app/.../query`, with `/api/ds/query` fallback) should reuse `internal/query/grafanaquery` for HTTP transport and `internal/query/dataframe` for Grafana data frame wire types. Do not duplicate POST/fallback/response-limit logic or `GrafanaQueryResponse`/`DataFrame` structs in each datasource package.
-- **Portable agent skills live under `claude-plugin/skills/`**: Treat that tree as the canonical portable Agent Skills bundle. Do not add distributable gcx skills under repo-local `.agents/skills/` — that changes repo-context discovery semantics for tools that scan `.agents`.
+- **Portable agent skills live under `claude-plugin/skills/`**: Treat that tree as the canonical portable Agent Skills bundle. Do not add distributable gcx skills under repo-local `.agents/skills/` — that changes repo-context discovery semantics for tools that scan `.agents`. `gcx` invocations in skill markdown are validated against the real command tree by `TestSkillsGcxInvocationsMatchCommandTree` (`cmd/gcx/root/skillsdrift_test.go`), which fails CI on unknown commands or flags.
 
 ## Essential Commands
 
@@ -75,7 +75,6 @@ cmd/gcx/
   resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
-  assistant/    Assistant commands (AI-powered investigations)
   cloud/        Cloud platform command group (mounts gcx cloud stacks)
   api/          Raw API passthrough
   linter/       Linting (mounted under dev lint)
@@ -102,9 +101,10 @@ internal/
 │   ├── dynamic/    k8s dynamic client wrapper (namespaced + versioned)
 │   ├── local/      FSReader, FSWriter (disk I/O)
 │   ├── process/    Processors: ManagerFields, ServerFields, Namespace
-│   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
+│   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary, dry-run guard
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
+│   ├── assistant/  Assistant provider — owns the full `gcx assistant` command tree (command.go/conversation.go for prompt/dashboard/conversation A2A; `mcpservers/` subpackage for mcp-servers CRUD) built entirely within internal/ (no cmd/ import); all subcommands share one `providers.ConfigLoader`; `TypedRegistrations()` registers the MCPServer adapter (see `internal/assistant/mcpserver/`)
 │   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
 │   ├── datasources/ Datasources provider — bridges /api/datasources into the resources pipeline via ResourceAdapter (no commands; managed via `gcx resources`)
 │   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
@@ -148,7 +148,8 @@ internal/
 ├── assistant/   Assistant client (A2A streaming, prompt, state management)
 │   ├── assistanthttp/  Base HTTP client for grafana-assistant-app plugin API
 │   ├── investigations/ Investigation CRUD commands, table codecs, v1 (legacy) + v2 (Lodestone) API clients with auto-detected capability cached via `SaveProviderConfig` at `providers.assistant.lodestone-v2` in the gcx config file
-│   └── mcpservers/     MCP server integration client (list/get/create/update/delete, OAuth initiate/validate, user vs tenant scope headers)
+│   ├── mcpservers/     MCP server integration HTTP client (offset-paginated list/get/create/update/delete, OAuth initiate/validate, user vs tenant scope headers)
+│   └── mcpserver/      MCPServer manifest domain type + `TypedCRUD[MCPServer]` adapter wiring (identity, natural key, schema/example) + per-header write-intent mapping (overwrite/preserve/remove, fromEnv/fromFile) — consumed by `internal/providers/assistant` (adapter registration + the mcp-servers CRUD commands, which route create/update/delete through this TypedCRUD)
 ├── agent/       Agent mode detection, command annotations, known-resource registry with operation hints
 ├── agentlog/    Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 ├── style/       Terminal styling (Grafana Neon Dark theme, TableBuilder, ASCII banner, glamour help)
@@ -168,6 +169,7 @@ internal/
 ├── notifier/    Update notifications (skills + gcx version checks; XDG state, throttling, message rendering — wired into root PersistentPostRun)
 ├── skills/      Portable Agent Skills installer primitives (BundledSkillNames, Install, Update — extracted from cmd/gcx/skills)
 ├── strcase/     String case conversion (snake_case, kebab-case, PascalCase)
+├── telemetry/   Anonymous usage stats library (wide-event model, GCX_TELEMETRY/DO_NOT_TRACK mode resolution, device ID, CI detection — not yet wired into the CLI)
 ├── xdg/         XDG Base Directory paths (config home, state home, config dirs)
 └── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
 ```

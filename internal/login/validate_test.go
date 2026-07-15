@@ -114,6 +114,15 @@ func TestValidate(t *testing.T) {
 			wantGCOMHit: true,
 		},
 		{
+			name:        "Cloud + OAuth token: GCOM skipped",
+			opts:        Options{Inputs: Inputs{Target: TargetCloud, CloudToken: "oauth-token", CloudTokenFromOAuth: true, Server: "https://mystack.grafana.net"}},
+			grafana:     &stubGrafanaClient{version: v12},
+			discovery:   okDiscovery,
+			gcom:        &stubGCOMClient{},
+			wantErr:     false,
+			wantGCOMHit: false,
+		},
+		{
 			name:        "Cloud without CAP token: GCOM skipped",
 			opts:        Options{Inputs: Inputs{Target: TargetCloud, CloudToken: ""}},
 			grafana:     &stubGrafanaClient{version: v12},

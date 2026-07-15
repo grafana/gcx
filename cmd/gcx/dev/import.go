@@ -4,8 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
+	"sort"
 	"text/template"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
@@ -87,7 +92,7 @@ func importCmd() *cobra.Command {
 					return nil
 				}
 
-				imported += 1
+				imported++
 				return nil
 			})
 			if err != nil {
@@ -106,7 +111,71 @@ func importCmd() *cobra.Command {
 	return cmd
 }
 
-type resourceConverter func(resource *model.Resource) (string, string, error)
+type resourceConverter func(resource *model.Resource) (string, error)
+
+// sdkImportOverrides maps package identifiers referenced by foundation-sdk
+// converter output to their subpath within the SDK module when that subpath
+// is not simply go/<identifier>. These are the SDK's only nested packages.
+//
+//nolint:gochecknoglobals
+var sdkImportOverrides = map[string]string{
+	"variants": "cog/variants",
+	"plugins":  "cog/plugins",
+}
+
+func sdkImportPath(ident string) string {
+	sub := ident
+	if override, ok := sdkImportOverrides[ident]; ok {
+		sub = override
+	}
+	return "github.com/grafana/grafana-foundation-sdk/go/" + sub
+}
+
+// computeSDKImports parses generated source and returns the import paths its
+// selector expressions need. Foundation-sdk converters emit builder code that
+// references SDK packages (cog, common, panel and query packages, …) without
+// any import information, and goimports cannot resolve them reliably — the
+// module cache offers several candidates for e.g. "cog" — so the importer
+// derives the import list from actual usage instead. Selector roots that
+// resolve to declarations in the file (locals) or to predeclared identifiers
+// are ignored.
+func computeSDKImports(src []byte) ([]string, error) {
+	fset := token.NewFileSet()
+	// Object resolution is what lets us tell locals apart from package
+	// references below; it is on by default in parser.ParseFile.
+	file, err := parser.ParseFile(fset, "generated.go", src, 0)
+	if err != nil {
+		return nil, fmt.Errorf("parsing generated code: %w", err)
+	}
+
+	idents := map[string]struct{}{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		ident, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		// ast.Object is deprecated but still populated; a nil Obj on a
+		// selector root means "not declared in this file", i.e. a package
+		// reference.
+		if ident.Obj != nil || types.Universe.Lookup(ident.Name) != nil {
+			return true
+		}
+		idents[ident.Name] = struct{}{}
+		return true
+	})
+
+	paths := make([]string, 0, len(idents))
+	for ident := range idents {
+		paths = append(paths, sdkImportPath(ident))
+	}
+	sort.Strings(paths)
+
+	return paths, nil
+}
 
 func convertResource(destinationRoot string, resource *model.Resource) error {
 	tmpl, err := template.New("").Option("missingkey=error").ParseFS(templatesFS, "templates/import/*.tmpl")
@@ -122,7 +191,7 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 		return fmt.Errorf("no converter found for %s", converterKey)
 	}
 
-	converted, sdkPkg, err := converter(resource)
+	converted, err := converter(resource)
 	if err != nil {
 		return err
 	}
@@ -133,38 +202,62 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 		return err
 	}
 
-	var buf bytes.Buffer
-	err = tmpl.ExecuteTemplate(&buf, "resource.go.tmpl", map[string]any{
+	templateData := map[string]any{
 		"Package":          filepath.Base(destinationRoot),
 		"GroupVersion":     gvk.GroupVersion().String(),
 		"Kind":             resource.Kind(),
 		"Name":             resource.Name(),
-		"SDKPackage":       sdkPkg,
 		"FuncName":         strcase.ToPascalCase(resource.Name()),
 		"ConvertedBuilder": converted,
-	})
-	if err != nil {
+		"Imports":          []string(nil),
+	}
+
+	// First render without imports to discover, from the code itself, which
+	// SDK packages the converter output references; then render again with
+	// the complete import block so the file compiles regardless of whether
+	// goimports can resolve anything.
+	var scanBuf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&scanBuf, "resource.go.tmpl", templateData); err != nil {
 		return err
 	}
 
-	formatted, err := imports.Process(convertedFile, buf.Bytes(), nil)
+	sdkImports, err := computeSDKImports(scanBuf.Bytes())
 	if err != nil {
-		// Fall back to unformatted output if goimports fails.
+		return err
+	}
+	templateData["Imports"] = sdkImports
+
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, "resource.go.tmpl", templateData); err != nil {
+		return err
+	}
+
+	// The import list is already complete; FormatOnly keeps goimports from
+	// running its own (ambiguous-package-prone) import resolution.
+	formatted, err := imports.Process(convertedFile, buf.Bytes(), &imports.Options{
+		Comments:   true,
+		TabIndent:  true,
+		TabWidth:   8,
+		FormatOnly: true,
+	})
+	if err != nil {
+		// Fall back to unformatted output if goimports fails — the file
+		// still compiles since its imports were derived from usage.
 		formatted = buf.Bytes()
 	}
 
 	return os.WriteFile(convertedFile, formatted, 0600)
 }
 
-func dashboardv1Converter(resource *model.Resource) (string, string, error) {
+func dashboardv1Converter(resource *model.Resource) (string, error) {
 	spec, err := resource.Spec()
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	marshalled, err := json.Marshal(spec)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	// Intentionally uses the v1 dashboard schema: convertersMap routes the
@@ -172,21 +265,21 @@ func dashboardv1Converter(resource *model.Resource) (string, string, error) {
 	// correct one for these versions (dashboardv2 has an incompatible schema).
 	object := dashboard.Dashboard{} //nolint:staticcheck // intentional v1 schema for v0alpha1/v1/v1beta1 imports
 	if err = json.Unmarshal(marshalled, &object); err != nil {
-		return "", "", err
+		return "", err
 	}
 
-	return dashboard.DashboardConverter(object), "dashboard", nil
+	return dashboard.DashboardConverter(object), nil
 }
 
-func dashboardv2Converter(resource *model.Resource) (string, string, error) {
+func dashboardv2Converter(resource *model.Resource) (string, error) {
 	spec, err := resource.Spec()
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	marshalled, err := json.Marshal(spec)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	// Intentionally uses the v2beta1 dashboard schema: convertersMap routes the
@@ -194,29 +287,29 @@ func dashboardv2Converter(resource *model.Resource) (string, string, error) {
 	// resource's version.
 	object := dashboardv2beta1.Dashboard{} //nolint:staticcheck // intentional v2beta1 schema for v2beta1 imports
 	if err = json.Unmarshal(marshalled, &object); err != nil {
-		return "", "", err
+		return "", err
 	}
 
-	return dashboardv2beta1.DashboardConverter(object), "dashboardv2beta1", nil
+	return dashboardv2beta1.DashboardConverter(object), nil
 }
 
-func folderConverter(resource *model.Resource) (string, string, error) {
+func folderConverter(resource *model.Resource) (string, error) {
 	spec, err := resource.Spec()
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	marshalled, err := json.Marshal(spec)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	// Intentionally uses the v1beta1 folder schema: convertersMap routes the
 	// folder v1 API version here, matching the imported resource's version.
 	object := folderv1beta1.Folder{} //nolint:staticcheck // intentional v1beta1 schema for folder imports
 	if err = json.Unmarshal(marshalled, &object); err != nil {
-		return "", "", err
+		return "", err
 	}
 
-	return folderv1beta1.FolderConverter(object), "folderv1beta1", nil
+	return folderv1beta1.FolderConverter(object), nil
 }

@@ -131,18 +131,26 @@ func (opts *Options) LoadConfig(ctx context.Context) (config.Config, error) {
 // When OAuth proxy mode is active, it wires the OnRefresh callback to persist
 // refreshed tokens back to the config file.
 func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
+	restCfg, _, err := opts.LoadGrafanaConfigWithContext(ctx)
+	return restCfg, err
+}
+
+// LoadGrafanaConfigWithContext is like LoadGrafanaConfig but also returns the current
+// Context, so callers can read its per-context settings.
+func (opts *Options) LoadGrafanaConfigWithContext(ctx context.Context) (config.NamespacedRESTConfig, *config.Context, error) {
 	cfg, err := opts.LoadConfig(ctx)
 	if err != nil {
-		return config.NamespacedRESTConfig{}, err
+		return config.NamespacedRESTConfig{}, nil, err
 	}
 
-	restCfg, err := cfg.GetCurrentContext().ToRESTConfig(ctx)
+	current := cfg.GetCurrentContext()
+	restCfg, err := current.ToRESTConfig(ctx)
 	if err != nil {
-		return config.NamespacedRESTConfig{}, err
+		return config.NamespacedRESTConfig{}, nil, err
 	}
 	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext, cfg.Sources)
 
-	return restCfg, nil
+	return restCfg, current, nil
 }
 
 // loadConfigTolerantLayered loads the configuration using the layered discovery

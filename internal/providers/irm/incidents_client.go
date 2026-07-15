@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/client-go/rest"
 )
@@ -306,7 +307,7 @@ func (c *IncidentClient) Get(ctx context.Context, id string) (*Incident, error) 
 		return nil, fmt.Errorf("incidents: get %s: %w", id, ErrNotFound)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleIncidentErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result struct {
@@ -353,7 +354,7 @@ func (c *IncidentClient) Create(ctx context.Context, inc *Incident) (*Incident, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleIncidentErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result createIncidentResponse
@@ -383,7 +384,7 @@ func (c *IncidentClient) UpdateStatus(ctx context.Context, id, status string) (*
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleIncidentErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result updateStatusResponse
@@ -418,7 +419,7 @@ func (c *IncidentClient) QueryActivity(ctx context.Context, incidentID string, l
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleIncidentErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result struct {
@@ -449,7 +450,7 @@ func (c *IncidentClient) AddActivity(ctx context.Context, incidentID, body strin
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return handleIncidentErrorResponse(resp)
+		return providers.HandleErrorResponse(resp)
 	}
 
 	return nil
@@ -475,7 +476,7 @@ func (c *IncidentClient) QueryIncidentContext(ctx context.Context, query Inciden
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleIncidentErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result queryIncidentContextResponse
@@ -500,7 +501,7 @@ func (c *IncidentClient) GetSeverities(ctx context.Context) ([]Severity, error) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleIncidentErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result struct {
@@ -535,7 +536,7 @@ func (c *IncidentClient) queryIncidentPreviews(ctx context.Context, query incide
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleIncidentErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
 	var result queryIncidentPreviewsResponse
@@ -565,23 +566,4 @@ func (c *IncidentClient) doRequest(ctx context.Context, path string, body io.Rea
 	}
 
 	return resp, nil
-}
-
-// handleIncidentErrorResponse reads an error response body and returns a formatted error.
-func handleIncidentErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-
-	var errResp ErrorResponse
-	if err := json.Unmarshal(body, &errResp); err == nil && errResp.Error != "" {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Error)
-	}
-
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
 }

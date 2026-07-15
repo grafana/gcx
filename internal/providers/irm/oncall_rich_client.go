@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
+
+	"github.com/grafana/gcx/internal/providers"
 )
 
 // teamsCache is a per-OnCallClient lazy cache of team-id → team-name.
@@ -53,7 +55,7 @@ func (c *OnCallClient) GetAlertGroupRich(ctx context.Context, id string) (*Alert
 		return nil, fmt.Errorf("irm: alert group %q not found", id)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -185,7 +187,7 @@ func (c *OnCallClient) GetAlertRich(ctx context.Context, id string) (*alertAPI, 
 		return nil, nil, fmt.Errorf("irm: alert %q not found", id)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, handleErrorResponse(resp)
+		return nil, nil, providers.HandleErrorResponse(resp)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -288,7 +290,7 @@ func (c *OnCallClient) listAlertIDs(ctx context.Context, alertGroupID string, li
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, 0, handleErrorResponse(resp)
+		return nil, 0, providers.HandleErrorResponse(resp)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

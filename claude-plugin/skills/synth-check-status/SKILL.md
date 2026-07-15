@@ -91,7 +91,7 @@ Note: `--since` and `--from`/`--to` are mutually exclusive. Use one or the other
 After presenting status:
 
 - If any check is `FAILING`: suggest `synth-investigate-check` for per-probe breakdown, failure mode classification, and PromQL deep-dive
-- If any check is `NODATA`: note that no Prometheus data is available; suggest checking if the check is enabled and verifying datasource configuration
+- If any check is `NODATA`: note that no Prometheus data is available; suggest checking if the check is enabled and verifying datasource configuration. A diagnosis alone leaves the user without a path forward — always close with the remediation step: rule out intentional disablement, then recommend re-enabling (route to `synth-manage-checks`) and confirming data resumes
 - If user wants to create, update, or delete checks: route to `synth-manage-checks`
 
 ## Output Format
@@ -142,6 +142,11 @@ Possible causes:
 - Metrics not yet available (newly created check)
 
 Verify: gcx synthetic-monitoring checks get <ID> -o json | jq '.spec.enabled'
+
+Next step:
+- If the check was disabled intentionally, note that and stop.
+- Otherwise, re-enable it (route to synth-manage-checks), then re-run status
+  after a few minutes to confirm data resumes.
 ```
 
 ## Error Handling
