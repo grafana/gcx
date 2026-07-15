@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,15 +59,19 @@ func TestFormatError(t *testing.T) {
 }
 
 func TestConfirmDestructive_NonInteractiveEOF(t *testing.T) {
+	// Pin the env so the interactive prompt path always runs: agent sessions
+	// (CLAUDECODE) would otherwise take the agent-mode error path, and
+	// GCX_AUTO_APPROVE would bypass the prompt entirely.
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_AUTO_APPROVE", "false")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
 	// Empty stdin (no newline): the read fails with EOF and the error must
 	// tell the user how to proceed rather than leaking a bare read error.
 	var out strings.Builder
 	ok, err := providers.ConfirmDestructive(strings.NewReader(""), &out, false, "Delete it?")
-	if err == nil {
-		// Agent mode or GCX_AUTO_APPROVE can bypass the prompt in some test
-		// environments; only assert the message when the prompt path ran.
-		t.Skipf("prompt bypassed (ok=%v)", ok)
-	}
+	require.Error(t, err)
 	assert.False(t, ok)
 	assert.Contains(t, err.Error(), "use --force")
 }
