@@ -3,10 +3,12 @@ package commands_test
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/internal/agent"
+	_ "github.com/grafana/gcx/internal/providers/alert" // registers the alert provider (must contribute no adapter registrations)
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -294,6 +296,24 @@ func TestCollectResourceTypes(t *testing.T) {
 	}
 	if getOp, exists := slo.Operations["get"]; !exists || getOp.TokenCost != "medium" {
 		t.Errorf("SLO get operation token_cost = %v", slo.Operations["get"])
+	}
+}
+
+func TestCollectResourceTypesAlertRuleSingleGroup(t *testing.T) {
+	types := commands.ExportCollectResourceTypes(agent.KnownResources, adapter.AllRegistrations())
+
+	var alertRuleGroups []string
+	for _, rt := range types {
+		if rt.Kind == "AlertRule" {
+			alertRuleGroups = append(alertRuleGroups, rt.Group)
+		}
+		if strings.Contains(rt.Group, "alerting.ext.grafana.app") {
+			t.Errorf("unexpected alerting.ext.grafana.app resource type %q: the alert provider must not register adapters (they would shadow the writable rules.alerting.grafana.app group)", rt.Kind)
+		}
+	}
+
+	if len(alertRuleGroups) != 1 || alertRuleGroups[0] != "rules.alerting.grafana.app" {
+		t.Errorf("expected exactly one AlertRule type under rules.alerting.grafana.app, got %v", alertRuleGroups)
 	}
 }
 

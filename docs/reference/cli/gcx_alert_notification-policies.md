@@ -22,7 +22,7 @@ Manage the Grafana alerting notification policy tree.
 
 ### SEE ALSO
 
-* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
+* [gcx alert](gcx_alert.md)	 - Inspect alert rule status and manage notification settings
 * [gcx alert notification-policies export](gcx_alert_notification-policies_export.md)	 - Export the notification policy tree in provisioning format.
 * [gcx alert notification-policies get](gcx_alert_notification-policies_get.md)	 - Get the notification policy tree.
 * [gcx alert notification-policies reset](gcx_alert_notification-policies_reset.md)	 - Reset the notification policy tree to its default.

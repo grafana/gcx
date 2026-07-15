@@ -166,12 +166,12 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 
 | Feature | Old CLI | New gcx |
 |---------|---------|---------|
-| `alerting rule-groups` CRUD + export | Full | `alert rules/groups` via provider (exists) |
-| `alerting contact-points` CRUD + export | Full | **Missing** |
-| `alerting notification-policies` get/update/export | Full | **Missing** |
-| `alerting mute-timings` CRUD + export | Full | **Missing** |
-| `alerting templates` list/silence | Full | **Missing** |
-| `alerting alerts` (firing) | Show firing alerts | **Missing** |
+| `alerting rule-groups` CRUD + export | Full | Read via `alert rules/groups` (status API); write via `gcx resources pull/push/delete alertrules` (`rules.alerting.grafana.app`) |
+| `alerting contact-points` CRUD + export | Full | `alert contact-points` (full CRUD + export) |
+| `alerting notification-policies` get/update/export | Full | `alert notification-policies` (get/set/reset/export) |
+| `alerting mute-timings` CRUD + export | Full | `alert mute-timings` (full CRUD + export) |
+| `alerting templates` list/silence | Full | `alert templates` (list/get/upsert/delete) |
+| `alerting alerts` (firing) | Show firing alerts | `alert instances list --state firing` |
 | `alerting settings` | Manage settings | **Missing** |
 | `alerting overrides` | Provisioning overrides | **Missing** |
 

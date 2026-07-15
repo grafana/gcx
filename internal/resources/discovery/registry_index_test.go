@@ -326,6 +326,69 @@ func TestRegistryIndex_LookupPartialGVK(t *testing.T) {
 			},
 			wantOK: true,
 		},
+		{
+			name:      "version-only lookup skips candidate groups that do not serve that version",
+			discovery: getVersionSkewDiscovery,
+			gvk: resources.PartialGVK{
+				Resource: "widgets",
+				Version:  "v2",
+			},
+			want: resources.Descriptor{
+				Kind:     "Widget",
+				Plural:   "widgets",
+				Singular: "widget",
+				GroupVersion: schema.GroupVersion{
+					Group:   "b.grafana.app",
+					Version: "v2",
+				},
+			},
+			wantOK: true,
+		},
+		{
+			name:      "version-only lookup resolves to the first candidate group serving that version",
+			discovery: getVersionSkewDiscovery,
+			gvk: resources.PartialGVK{
+				Resource: "widgets",
+				Version:  "v1",
+			},
+			want: resources.Descriptor{
+				Kind:     "Widget",
+				Plural:   "widgets",
+				Singular: "widget",
+				GroupVersion: schema.GroupVersion{
+					Group:   "a.grafana.app",
+					Version: "v1",
+				},
+			},
+			wantOK: true,
+		},
+		{
+			name:      "bare lookup with shared plural resolves to the first candidate group's preferred version",
+			discovery: getVersionSkewDiscovery,
+			gvk: resources.PartialGVK{
+				Resource: "widgets",
+			},
+			want: resources.Descriptor{
+				Kind:     "Widget",
+				Plural:   "widgets",
+				Singular: "widget",
+				GroupVersion: schema.GroupVersion{
+					Group:   "a.grafana.app",
+					Version: "v1",
+				},
+			},
+			wantOK: true,
+		},
+		{
+			name:      "version-only lookup with unserved version returns not found",
+			discovery: getVersionSkewDiscovery,
+			gvk: resources.PartialGVK{
+				Resource: "widgets",
+				Version:  "v3",
+			},
+			want:   resources.Descriptor{},
+			wantOK: false,
+		},
 	}
 
 	for _, test := range tests {
@@ -615,6 +678,47 @@ func TestRegistryIndex_RegisterStatic(t *testing.T) {
 		sloFound, ok := idx.LookupPartialGVK(resources.PartialGVK{Resource: "slo"})
 		require.True(t, ok)
 		assert.Equal(t, "SLO", sloFound.Kind)
+	})
+
+	t.Run("version-aware lookup skips a static group that does not serve the version", func(t *testing.T) {
+		idx := discovery.NewRegistryIndex()
+
+		// Discovered group serves the plural at v0alpha1 only.
+		groups := []*metav1.APIGroup{{
+			Name: "rules.alerting.grafana.app",
+			Versions: []metav1.GroupVersionForDiscovery{
+				{GroupVersion: "rules.alerting.grafana.app/v0alpha1", Version: "v0alpha1"},
+			},
+			PreferredVersion: metav1.GroupVersionForDiscovery{
+				GroupVersion: "rules.alerting.grafana.app/v0alpha1", Version: "v0alpha1",
+			},
+		}}
+		res := []*metav1.APIResourceList{{
+			GroupVersion: "rules.alerting.grafana.app/v0alpha1",
+			APIResources: []metav1.APIResource{
+				{Name: "alertrules", SingularName: "alertrule", Kind: "AlertRule", Namespaced: true},
+			},
+		}}
+		require.NoError(t, idx.Update(t.Context(), groups, res))
+
+		// Static descriptor claims the same plural under a synthetic group at v1alpha1.
+		staticDesc := resources.Descriptor{
+			GroupVersion: schema.GroupVersion{Group: "alerting.ext.grafana.app", Version: "v1alpha1"},
+			Kind:         "AlertRule",
+			Singular:     "alertrule",
+			Plural:       "alertrules",
+		}
+		idx.RegisterStatic(staticDesc, nil)
+
+		// A version-qualified lookup must resolve to the group that serves it,
+		// not fail after committing to whichever candidate comes first.
+		desc, ok := idx.LookupPartialGVK(resources.PartialGVK{Resource: "alertrules", Version: "v0alpha1"})
+		require.True(t, ok, "expected v0alpha1 lookup to resolve to the discovered group")
+		assert.Equal(t, "rules.alerting.grafana.app", desc.GroupVersion.Group)
+
+		desc, ok = idx.LookupPartialGVK(resources.PartialGVK{Resource: "alertrules", Version: "v1alpha1"})
+		require.True(t, ok, "expected v1alpha1 lookup to resolve to the static group")
+		assert.Equal(t, "alerting.ext.grafana.app", desc.GroupVersion.Group)
 	})
 
 	t.Run("no regression for native resource lookup when no static registered", func(t *testing.T) {
@@ -930,6 +1034,48 @@ func getMixedVersionsDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList)
 // getMultiGroupSameResourceDiscovery simulates the datasource scenario where
 // the same resource name ("datasource"/"datasources") appears across multiple
 // API groups (one per datasource plugin type).
+// getVersionSkewDiscovery returns two groups sharing the plural "widgets" where
+// each group serves a different version: a.grafana.app only v1, b.grafana.app only v2.
+func getVersionSkewDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList) {
+	groups := []*metav1.APIGroup{
+		{
+			Name: "a.grafana.app",
+			Versions: []metav1.GroupVersionForDiscovery{
+				{GroupVersion: "a.grafana.app/v1", Version: "v1"},
+			},
+			PreferredVersion: metav1.GroupVersionForDiscovery{
+				GroupVersion: "a.grafana.app/v1", Version: "v1",
+			},
+		},
+		{
+			Name: "b.grafana.app",
+			Versions: []metav1.GroupVersionForDiscovery{
+				{GroupVersion: "b.grafana.app/v2", Version: "v2"},
+			},
+			PreferredVersion: metav1.GroupVersionForDiscovery{
+				GroupVersion: "b.grafana.app/v2", Version: "v2",
+			},
+		},
+	}
+
+	resources := []*metav1.APIResourceList{
+		{
+			GroupVersion: "a.grafana.app/v1",
+			APIResources: []metav1.APIResource{
+				{Name: "widgets", SingularName: "widget", Kind: "Widget", Namespaced: true},
+			},
+		},
+		{
+			GroupVersion: "b.grafana.app/v2",
+			APIResources: []metav1.APIResource{
+				{Name: "widgets", SingularName: "widget", Kind: "Widget", Namespaced: true},
+			},
+		},
+	}
+
+	return groups, resources
+}
+
 func getMultiGroupSameResourceDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList) {
 	groups := []*metav1.APIGroup{
 		{

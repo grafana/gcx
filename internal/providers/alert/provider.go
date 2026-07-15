@@ -19,7 +19,9 @@ type AlertProvider struct{}
 func (p *AlertProvider) Name() string { return "alert" }
 
 // ShortDesc returns a one-line description of the provider.
-func (p *AlertProvider) ShortDesc() string { return "Manage Grafana alert rules and alert groups" }
+func (p *AlertProvider) ShortDesc() string {
+	return "Inspect alert rule status and manage notification settings"
+}
 
 // Commands returns the Cobra commands contributed by this provider.
 func (p *AlertProvider) Commands() []*cobra.Command {
@@ -58,23 +60,7 @@ func (p *AlertProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// TypedRegistrations returns adapter registrations for Alert resource types.
-// Registrations are added globally by providers.Register() which calls this method.
-func (p *AlertProvider) TypedRegistrations() []adapter.Registration {
-	loader := &providers.ConfigLoader{}
-	return []adapter.Registration{
-		{
-			Factory:     NewRulesAdapterFactory(loader),
-			Descriptor:  staticRulesDescriptor,
-			GVK:         staticRulesDescriptor.GroupVersionKind(),
-			Schema:      alertRuleSchema(),
-			URLTemplate: "/alerting/{name}/view",
-		},
-		{
-			Factory:    NewGroupsAdapterFactory(loader),
-			Descriptor: staticGroupsDescriptor,
-			GVK:        staticGroupsDescriptor.GroupVersionKind(),
-			Schema:     alertRuleGroupSchema(),
-		},
-	}
-}
+// TypedRegistrations returns nil: alert rules are served via the K8s dynamic tier
+// (rules.alerting.grafana.app); the `gcx alert` commands are status readers on the
+// Prometheus-compatible API and must not mimic adapter CRUD.
+func (p *AlertProvider) TypedRegistrations() []adapter.Registration { return nil }

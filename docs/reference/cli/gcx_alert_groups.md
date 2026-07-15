@@ -1,6 +1,13 @@
 ## gcx alert groups
 
-Manage alert rule groups.
+Inspect alert rule groups and their evaluation status.
+
+### Synopsis
+
+Inspect Grafana-managed alert rule groups via the Prometheus-compatible status API.
+
+These commands are read-only. To modify the rules in a group, use the
+resources tier: gcx resources pull/push alertrules.
 
 ### Options
 
@@ -22,7 +29,7 @@ Manage alert rule groups.
 
 ### SEE ALSO
 
-* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
+* [gcx alert](gcx_alert.md)	 - Inspect alert rule status and manage notification settings
 * [gcx alert groups get](gcx_alert_groups_get.md)	 - Get a single alert rule group.
 * [gcx alert groups list](gcx_alert_groups_list.md)	 - List alert rule groups.
 * [gcx alert groups status](gcx_alert_groups_status.md)	 - Show alert rule group status.

@@ -22,7 +22,7 @@ Manage Grafana alerting mute timings.
 
 ### SEE ALSO
 
-* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
+* [gcx alert](gcx_alert.md)	 - Inspect alert rule status and manage notification settings
 * [gcx alert mute-timings create](gcx_alert_mute-timings_create.md)	 - Create a new mute timing.
 * [gcx alert mute-timings delete](gcx_alert_mute-timings_delete.md)	 - Delete a mute timing by name.
 * [gcx alert mute-timings export](gcx_alert_mute-timings_export.md)	 - Export mute timings in provisioning format.

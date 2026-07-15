@@ -1,6 +1,6 @@
 ## gcx alert
 
-Manage Grafana alert rules and alert groups
+Inspect alert rule status and manage notification settings
 
 ### Options
 
@@ -24,10 +24,10 @@ Manage Grafana alert rules and alert groups
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx alert contact-points](gcx_alert_contact-points.md)	 - Manage Grafana alerting contact points.
-* [gcx alert groups](gcx_alert_groups.md)	 - Manage alert rule groups.
+* [gcx alert groups](gcx_alert_groups.md)	 - Inspect alert rule groups and their evaluation status.
 * [gcx alert instances](gcx_alert_instances.md)	 - Manage alert instances.
 * [gcx alert mute-timings](gcx_alert_mute-timings.md)	 - Manage Grafana alerting mute timings.
 * [gcx alert notification-policies](gcx_alert_notification-policies.md)	 - Manage the Grafana alerting notification policy tree.
-* [gcx alert rules](gcx_alert_rules.md)	 - Manage alert rules.
+* [gcx alert rules](gcx_alert_rules.md)	 - Inspect alert rule state and health.
 * [gcx alert templates](gcx_alert_templates.md)	 - Manage Grafana alerting notification templates.
 
