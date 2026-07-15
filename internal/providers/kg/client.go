@@ -56,7 +56,14 @@ const (
 	// Entity and relationship deletes use these collection paths with identity
 	// in the query string (type/name are not path segments), so names containing
 	// '/' are addressable without Tomcat rejecting encoded solidus.
-	kgWriteAPIBase     = "/apis/kg.grafana.com/v1alpha1/namespaces/%s"
+	//
+	// Routed through the asserts plugin's resource proxy: the plugin backend
+	// forwards unmatched resource paths to the asserts cell gateway with the
+	// stack's Basic auth, and the gateway maps /apis/kg.grafana.com/* to the
+	// KG api-server. The bare /apis/kg.grafana.com group is not registered
+	// with Grafana's API aggregator, so it is not reachable on the stack URL
+	// directly.
+	kgWriteAPIBase     = pluginResourcePath + "/apis/kg.grafana.com/v1alpha1/namespaces/%s"
 	kgEntitiesPathFmt  = kgWriteAPIBase + "/entities"
 	kgRelationshipsFmt = kgWriteAPIBase + "/relationships"
 )
