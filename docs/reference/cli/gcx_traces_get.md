@@ -42,7 +42,7 @@ gcx traces get TRACE_ID [flags]
   -h, --help                help for get
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --llm                 [experimental] Request LLM-friendly trace format
+      --llm                 [experimental] Request LLM-friendly trace format by sending the 'Accept: application/vnd.grafana.llm' header. Falls back to default JSON
       --open                Open the retrieved trace in Grafana Explore
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the retrieved trace to stderr

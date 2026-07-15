@@ -33,7 +33,7 @@ func (opts *labelsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
 	flags.StringVar(&opts.Scope, "scope", "", "Tag scope filter (resource, span, event, link, instrumentation)")
 	flags.StringVarP(&opts.Query, "query", "q", "", "TraceQL query to filter labels")
-	flags.BoolVar(&opts.LLM, "llm", false, "[experimental] Request LLM-friendly label values format (requires --label)")
+	flags.BoolVar(&opts.LLM, "llm", false, "[experimental] Request LLM-friendly label values format by sending the 'Accept: application/vnd.grafana.llm' header (requires --label). Falls back to default JSON")
 }
 
 func (opts *labelsOpts) Validate() error {

@@ -31,7 +31,7 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
-	flags.BoolVar(&opts.LLM, "llm", false, "[experimental] Request LLM-friendly trace format")
+	flags.BoolVar(&opts.LLM, "llm", false, "[experimental] Request LLM-friendly trace format by sending the 'Accept: application/vnd.grafana.llm' header. Falls back to default JSON")
 	opts.Share.Setup(flags, "retrieved trace")
 	opts.SetupTimeFlags(flags)
 }
