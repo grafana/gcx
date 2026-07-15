@@ -273,11 +273,11 @@ For example: OpenAI Codex, OpenCode, and Pi. View the skills shipped in the bund
 
 ```sh
 gcx agent skills list
-22 skill(s) bundled with gcx
+21 skill(s) bundled with gcx
 
 SKILL                      INSTALLED    DESCRIPTION
 create-dashboard           yes          Design and create dashboards with datasource discovery and snapshot-based visual iteration.
-explore-datasources        yes          Discover what datasources, metrics, labels, and log streams are available in a Grafana instance.
+debug-with-grafana         yes          Structured workflow for investigating application problems with Grafana observability data.
 ....
 ```
 
