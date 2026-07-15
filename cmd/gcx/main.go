@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/agentlog"
-	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
@@ -32,8 +31,13 @@ var (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
+	// used to measure command execution time
+	start := time.Now()
+
+	// stop is deliberately not deferred: every path out of main ends in
+	// os.Exit (exitWith or the cancellation fast path), so a defer would
+	// never run, and signal-handler cleanup is moot at process exit.
+	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
 
 	// Pre-parse --agent flag before Cobra sees it. This must happen before
 	// root.Command() because io.Options.BindFlags() reads agent.IsAgentMode()
@@ -50,11 +54,28 @@ func main() {
 	cmd := root.Command(formattedVersion)
 	boolFlags := collectBoolFlags(cmd)
 	subCmds := collectSubCmds(cmd)
+
+	// prefer sticking to err != nil format, than optimizing for calling exitWith
+	// once
 	if err := root.ValidateArgs(cmd, os.Args[1:]); err != nil {
-		handleError(err, boolFlags, subCmds)
+		exitWith(cmd, start, reportError(err, boolFlags, subCmds))
 	}
 
-	handleError(cmd.ExecuteContext(ctx), boolFlags, subCmds)
+	err := cmd.ExecuteContext(ctx)
+
+	// quick exit on context canceled
+	if errors.Is(err, context.Canceled) {
+		os.Exit(gcxerrors.ExitCancelled)
+	}
+
+	exitWith(cmd, start, reportError(err, boolFlags, subCmds))
+}
+
+// exitWith emits the usage event for this invocation, then exits. Every
+// invocation ends here, except the cancellation fast path above.
+func exitWith(cmd *cobra.Command, start time.Time, exitCode int) {
+	emitUsageEvent(cmd, start, exitCode)
+	os.Exit(exitCode)
 }
 
 // preParseAgentFlag scans os.Args for --agent / --agent=true / --agent=false
@@ -78,21 +99,18 @@ func preParseAgentFlag() {
 	}
 }
 
-func handleError(err error, boolFlags map[string]struct{}, subCmds map[string]bool) {
+// reportError prints the error (if any) to the right stream for the consumer,
+// appends the agent invocation log entry, and returns the process exit code.
+// It never exits; context cancellation is already handled in main before this
+// is called.
+func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bool) int {
 	if err == nil {
-		return
-	}
-
-	// Fast-path: context cancellation (e.g., SIGINT).
-	// Skip detailed error formatting — exit cleanly and quickly.
-	if errors.Is(err, context.Canceled) {
-		os.Exit(gcxerrors.ExitCancelled)
+		return 0
 	}
 
 	detailedErr := fail.ErrorToDetailedError(err)
 	if detailedErr == nil {
-		os.Exit(1)
-		return // unreachable; hint for static analysis
+		return 1
 	}
 
 	exitCode := 1
@@ -122,7 +140,7 @@ func handleError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 		fmt.Fprintln(os.Stderr, detailedErr.Error())
 	}
 
-	os.Exit(exitCode)
+	return exitCode
 }
 
 // collectBoolFlags walks the full command tree and returns a set of all boolean
@@ -170,11 +188,10 @@ func collectSubCmds(cmd *cobra.Command) map[string]bool {
 }
 
 // loadDiagnosticsConfig reads diagnostics settings from the layered gcx config.
-// It runs on every invocation, so it uses LoadDiagnostics, which reads only the
-// diagnostics block — no context parsing, no keychain probe, no config auto-
-// creation. A missing or malformed config simply yields a disabled config.
+// It runs on every invocation, so it uses a memoized result to avoid excessive
+// reads.
 func loadDiagnosticsConfig() agentlog.Config {
-	d := internalconfig.LoadDiagnostics(context.Background())
+	d := diagnosticsConfig()
 	if d == nil || !d.AgentInvocationLog {
 		return agentlog.Config{}
 	}

@@ -61,7 +61,7 @@ import (
 
 // jsonFlagActive is set to true in PersistentPreRun when the resolved command
 // has a --json flag that was explicitly changed by the user. This ensures
-// handleError() in main.go emits JSON errors only for commands that actually
+// reportError() in main.go emits JSON errors only for commands that actually
 // support --json, avoiding false positives from naive os.Args pre-scanning.
 //
 //nolint:gochecknoglobals
@@ -93,19 +93,11 @@ func shouldNotifySkills(cmd *cobra.Command) bool {
 }
 
 func isNonInteractiveCommand(cmd *cobra.Command) bool {
-	switch cmd.Name() {
-	case "help", "completion", "__complete", "__completeNoDesc":
+	if cmd.Name() == "help" || isShellPlumbingCommand(cmd.Name()) {
 		return true
 	}
 
-	if flag := cmd.Flags().Lookup("help"); flag != nil && flag.Changed && flag.Value.String() == "true" {
-		return true
-	}
-	if flag := cmd.Flags().Lookup("version"); flag != nil && flag.Changed && flag.Value.String() == "true" {
-		return true
-	}
-
-	return false
+	return boolFlagSet(cmd, "help") || boolFlagSet(cmd, "version")
 }
 
 func hasInteractiveTextOutput(cmd *cobra.Command) bool {
@@ -157,7 +149,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			jsonFlagActive.Store(false)
 			// Track whether --json was explicitly set on the resolved command.
 			// Only mark active when the command actually declares a --json flag,
@@ -219,6 +211,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			}
 
 			cmd.SetContext(ctx)
+
+			recordTelemetryInfo(cmd, args)
 		},
 		PersistentPostRun: func(cmd *cobra.Command, _ []string) {
 			if !shouldNotifySkills(cmd) {
