@@ -94,7 +94,7 @@ Ensure full check type coverage across all endpoints - not just HTTP. Add any mi
 - TCP checks for database or service port connectivity
 - HTTP checks with relevant headers and methods (POST for write endpoints, not just GET)
 
-Ensure full metrics are collected on all checks (do not set `basicMetricsOnly: true`).
+Ensure full metrics are collected on all checks (do not set `basicMetricsOnly: true`). Trust the read-back, not the write: if `gcx synthetic-monitoring checks get <id> -o json` still shows `basicMetricsOnly: true` after an update, report that full metrics are unavailable for that check instead of claiming success or updating it again.
 
 Wait for all agents. Mark task completed.
 

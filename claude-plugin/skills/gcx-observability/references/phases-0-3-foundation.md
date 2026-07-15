@@ -68,8 +68,12 @@ For each journey `J` from Phase 1, launch an agent that:
 - Discovers the SLO command group (`gcx slo --help`, `gcx slo definitions --help`) to find available subcommands and flags.
 - Runs `gcx resources examples slo -o yaml` to get a template (the default text
   output is only a descriptor table), then customizes it: name, availability
-  target, latency target, 28d window — and enable burn-rate alerting in the
-  SLO's `alerting` section now; Phase 4 relies on it.
+  target, latency target, 28d window.
+- Adds an `alerting` section with `fastBurn` and `slowBurn` entries under
+  `spec.alerting`. The example template omits this section, and an SLO without
+  it deploys fine but never generates burn-rate alert rules — the SLO plugin
+  creates those rules server-side from this section, and Phase 4 only wires
+  notification routing on top, so the omission surfaces late.
 - Writes the result to `slo-J.yaml`.
 
 Do **not** create the SLOs yet - Phase 4 does that after signals are flowing. Store all `slo-*.yaml` files for Phase 4.
@@ -169,7 +173,7 @@ Once Step 2's helm install has run on the cluster, use kubectl to verify Alloy p
   If the frontend uses sourcemaps, upload them: `gcx frontend apps apply-sourcemap <app-name> -f <sourcemap>`.
 
 - **Agent D** - Synthetic checks (early deployment for traffic seeding):
-  Deploy the `check-*.yaml` files from Phase 2 now, before instrumentation is fully verified. For each endpoint, check if the check already exists (`gcx synthetic-monitoring checks list`); if not, create it: `gcx synthetic-monitoring checks create -f check-<endpoint>.yaml`. List checks to confirm each is enabled with probes assigned.
+  Deploy the `check-*.yaml` files from Phase 2 now, before instrumentation is fully verified. For each endpoint, check if the check already exists (`gcx synthetic-monitoring checks list`); if not, create it: `gcx synthetic-monitoring checks create -f check-<endpoint>.yaml`. List checks to confirm each is enabled with probes assigned. After each create, read the check back with `gcx synthetic-monitoring checks get <id> -o json` and confirm `basicMetricsOnly` persisted as intended — if the server keeps it `true`, report that full metrics are unavailable for that check rather than re-submitting.
   > **Purpose:** synthetic checks start probing endpoints immediately, generating real HTTP traffic that flows through Alloy. This seeds the telemetry pipeline so Step 3's signal verification has live data.
   > If endpoints are private, first list available probes (`gcx synthetic-monitoring probes list`), identify private probes, and ensure they are online before creating checks.
 

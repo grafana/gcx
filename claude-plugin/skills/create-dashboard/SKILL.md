@@ -95,8 +95,9 @@ gcx resources get folders -o json
 gcx dashboards search "<service-or-team-keyword>" -o json
 
 # Pin the API version. Without --api-version the server returns its preferred
-# version (v2 on current Grafana Cloud), whose spec uses elements/layout/
-# variables — the jq recipes below would then silently return nothing.
+# version, which may use a different spec shape (elements/layout/variables
+# instead of panels/templating) — the jq recipes below would then silently
+# return nothing.
 gcx dashboards get <similar-dashboard-uid> --api-version dashboard.grafana.app/v1beta1 -o json > /tmp/similar-dashboard.json
 ```
 
@@ -189,11 +190,11 @@ Start from the live schema instead of guessing fields:
 gcx resources schemas dashboards -o json > /tmp/dashboard-schema.json
 ```
 
-Note: the server returns the schema of its *preferred* dashboard API version
-(v2 on current Grafana Cloud, with `elements`/`layout`/`variables`), while the
-template below uses the classic `v1beta1` shape (`panels`/`templating`). Both
-versions are accepted on push — just author consistently against one version
-and don't mix fields between them.
+Note: the server returns the schema of its *preferred* dashboard API version,
+which may use a different spec shape (`elements`/`layout`/`variables`), while
+the template below uses the classic `v1beta1` shape (`panels`/`templating`).
+Both versions are accepted on push — just author consistently against one
+version and don't mix fields between them.
 
 `gcx resources examples` is useful for resource types that ship examples, but
 current dashboard authoring should not depend on an example being available.

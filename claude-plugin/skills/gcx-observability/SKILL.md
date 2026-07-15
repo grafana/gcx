@@ -50,7 +50,7 @@ Grafana Cloud Observability Setup
   Phase 7   IRM Setup              Oncall integrations, escalation chains, schedules
   Phase 8   Custom Dashboards      Dashboards via gcx resources push
   Phase 9   Cost Optimization      Adaptive metrics/logs/traces for cardinality control
-  Phase 10  GitOps Export          Export all resources as declarative YAML
+  Phase 10  GitOps Export          Export managed resources as declarative YAML
   Phase 11  Observability Review   Validate signals, find gaps, recommend next steps
 
 Enter phases to run (e.g. "0 1 2" or "all"):
