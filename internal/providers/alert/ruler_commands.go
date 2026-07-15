@@ -46,7 +46,7 @@ func (o *rulerOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Datasource, "datasource", "", "Datasource UID of the Mimir/Loki ruler (required)")
 }
 
-func (o *rulerOpts) validate() error {
+func (o *rulerOpts) Validate() error {
 	if o.Datasource == "" {
 		return errors.New("--datasource is required")
 	}
@@ -122,7 +122,7 @@ func newRulerNamespacesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			if err := opts.validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -189,7 +189,7 @@ func newRulerNamespacesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command 
 		Short: "Delete a ruler namespace and all rule groups in it.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -267,7 +267,7 @@ func newRulerGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			if err := opts.validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -351,7 +351,7 @@ func newRulerGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			if err := opts.validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -385,8 +385,8 @@ func (o *rulerGroupsApplyOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Parse and validate only; send nothing to the ruler")
 }
 
-func (o *rulerGroupsApplyOpts) validate() error {
-	if err := o.rulerOpts.validate(); err != nil {
+func (o *rulerGroupsApplyOpts) Validate() error {
+	if err := o.rulerOpts.Validate(); err != nil {
 		return err
 	}
 	if o.Namespace == "" {
@@ -404,7 +404,7 @@ func newRulerGroupsApplyCommand(loader GrafanaConfigLoader) *cobra.Command {
 standard Prometheus rules file (with a top-level "groups:" list) or a single
 bare rule group. Applying a group replaces the group with the same name.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			var input RulerApplyInput
@@ -473,7 +473,7 @@ func newRulerGroupsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "Delete a ruler rule group.",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
