@@ -194,6 +194,14 @@ from the other two states leaks in.
 
 ## Step 4 — Draft the definitions as YAML
 
+**First, check whether `./aio11y-prod/` already has drafts from an earlier run** (`ls
+aio11y-prod/**` if it exists). If it does, **read them before writing** — don't blind-overwrite
+(a plain `Write` over an existing file also just errors). Treat a prior draft as a peer proposal:
+reconcile rather than replace. If a previous run made a deliberate, well-reasoned choice — e.g.
+dropped an email-redaction pattern because "this agent's job is to email people, so redacting
+every address is all-false-positive noise" — that judgment is usually right; keep it and fold in
+only what's genuinely new. Overwrite a prior draft only when yours is clearly better, and say why.
+
 Write the definitions to a **local scratch directory**, `./aio11y-prod/`
 (`evaluators/<id>.yaml`, `rules/<id>.yaml`, `guards/<id>.yaml`). These are **working drafts, not
 committed artifacts**: they exist so the developer can review a diff before you apply it, and
