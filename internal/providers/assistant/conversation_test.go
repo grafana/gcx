@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	assistantcmd "github.com/grafana/gcx/cmd/gcx/assistant"
 	"github.com/grafana/gcx/internal/assistant"
+	assistantcmd "github.com/grafana/gcx/internal/providers/assistant"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

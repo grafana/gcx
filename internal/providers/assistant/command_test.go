@@ -7,26 +7,108 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/assistant"
 	"github.com/grafana/gcx/internal/config"
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
+	assistant "github.com/grafana/gcx/internal/providers/assistant"
 	"github.com/spf13/cobra"
 )
 
-// TestConventions_GroupCommandHasConfigFlags verifies that the assistant group command
-// binds persistent config flags (--config, --context) via cmdconfig.Options.BindFlags,
-// matching the pattern used by other commands like api, resources, etc.
-func TestConventions_GroupCommandHasConfigFlags(t *testing.T) {
+// TestConventions_GroupCommandFlags verifies that the assistant group binds
+// --config via providers.ConfigLoader.BindFlags but does NOT bind its own
+// --context: --context is the root command's global persistent flag, threaded
+// into context.Context and read back by the shared loader. A duplicate
+// group-level --context binding would silently shadow the root flag (see
+// cmd/gcx/root/command_test.go).
+func TestConventions_GroupCommandFlags(t *testing.T) {
 	cmd := assistant.Command()
 
-	configFlag := cmd.PersistentFlags().Lookup("config")
-	if configFlag == nil {
-		t.Fatal("expected assistant group command to have persistent --config flag (via cmdconfig.Options.BindFlags)")
+	if cmd.PersistentFlags().Lookup("config") == nil {
+		t.Fatal("expected assistant group command to have persistent --config flag (via providers.ConfigLoader.BindFlags)")
 	}
 
-	contextFlag := cmd.PersistentFlags().Lookup("context")
-	if contextFlag == nil {
-		t.Fatal("expected assistant group command to have persistent --context flag (via cmdconfig.Options.BindFlags)")
+	if cmd.PersistentFlags().Lookup("context") != nil {
+		t.Fatal("assistant group must NOT bind its own --context flag; --context is the root command's global flag")
+	}
+}
+
+// TestContextFlagReachesLoaderViaRootThreading proves the shared ConfigLoader
+// resolves the active context from the root command's global --context flag
+// (threaded into context.Context), regardless of flag position, now that the
+// group no longer binds its own --context. The requireGrafanaCloud guard runs
+// in the group's PersistentPreRunE off the loader's resolved context: a
+// self-hosted target is blocked, a cloud target passes the guard and only then
+// hits RunE flag validation.
+func TestContextFlagReachesLoaderViaRootThreading(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(cfgPath, []byte(`current-context: cloud
+contexts:
+  cloud:
+    grafana:
+      server: https://mystack.grafana.net
+  selfhosted:
+    grafana:
+      server: https://grafana.internal.example.com
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	newRoot := func() *cobra.Command {
+		contextName := ""
+		root := &cobra.Command{
+			Use:           "gcx",
+			SilenceUsage:  true,
+			SilenceErrors: true,
+			PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+				if contextName != "" {
+					cmd.SetContext(config.ContextWithName(cmd.Context(), contextName))
+				}
+			},
+		}
+		root.PersistentFlags().StringVar(&contextName, "context", "", "context")
+		root.SetOut(&bytes.Buffer{})
+		root.SetErr(&bytes.Buffer{})
+		root.AddCommand(assistant.Command())
+		return root
+	}
+
+	tests := []struct {
+		name    string
+		args    []string
+		blocked bool // guard blocks (self-hosted) vs. passes to RunE validation (cloud)
+	}{
+		{
+			name:    "context before subcommand selects self-hosted",
+			args:    []string{"--context", "selfhosted", "assistant", "prompt", "hi", "--config", cfgPath, "--context-id", "a", "--continue"},
+			blocked: true,
+		},
+		{
+			name:    "context after group selects self-hosted",
+			args:    []string{"assistant", "--context", "selfhosted", "prompt", "hi", "--config", cfgPath, "--context-id", "a", "--continue"},
+			blocked: true,
+		},
+		{
+			name:    "context selects cloud passes guard to RunE validation",
+			args:    []string{"--context", "cloud", "assistant", "prompt", "hi", "--config", cfgPath, "--context-id", "a", "--continue"},
+			blocked: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := newRoot()
+			root.SetArgs(tt.args)
+			err := root.Execute()
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if tt.blocked {
+				var de gcxerrors.DetailedError
+				if !errors.As(err, &de) {
+					t.Fatalf("expected self-hosted guard DetailedError, got %T: %v", err, err)
+				}
+			} else if err.Error() != "cannot use both --context-id and --continue flags" {
+				t.Fatalf("expected guard to pass and RunE validation to fire, got: %v", err)
+			}
+		})
 	}
 }
 

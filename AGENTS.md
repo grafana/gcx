@@ -75,7 +75,6 @@ cmd/gcx/
   resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
-  assistant/    Assistant commands (AI-powered investigations)
   cloud/        Cloud platform command group (mounts gcx cloud stacks)
   api/          Raw API passthrough
   linter/       Linting (mounted under dev lint)
@@ -105,6 +104,7 @@ internal/
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary, dry-run guard
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
+│   ├── assistant/  Assistant provider — owns the full `gcx assistant` command tree (command.go/conversation.go for prompt/dashboard/conversation A2A; `mcpservers/` subpackage for mcp-servers CRUD) built entirely within internal/ (no cmd/ import); all subcommands share one `providers.ConfigLoader`; `TypedRegistrations()` registers the MCPServer adapter (see `internal/assistant/mcpserver/`)
 │   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
 │   ├── datasources/ Datasources provider — bridges /api/datasources into the resources pipeline via ResourceAdapter (no commands; managed via `gcx resources`)
 │   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
@@ -148,7 +148,8 @@ internal/
 ├── assistant/   Assistant client (A2A streaming, prompt, state management)
 │   ├── assistanthttp/  Base HTTP client for grafana-assistant-app plugin API
 │   ├── investigations/ Investigation CRUD commands, table codecs, v1 (legacy) + v2 (Lodestone) API clients with auto-detected capability cached via `SaveProviderConfig` at `providers.assistant.lodestone-v2` in the gcx config file
-│   └── mcpservers/     MCP server integration client (list/get/create/update/delete, OAuth initiate/validate, user vs tenant scope headers)
+│   ├── mcpservers/     MCP server integration HTTP client (offset-paginated list/get/create/update/delete, OAuth initiate/validate, user vs tenant scope headers)
+│   └── mcpserver/      MCPServer manifest domain type + `TypedCRUD[MCPServer]` adapter wiring (identity, natural key, schema/example) + per-header write-intent mapping (overwrite/preserve/remove, fromEnv/fromFile) — consumed by `internal/providers/assistant` (adapter registration + the mcp-servers CRUD commands, which route create/update/delete through this TypedCRUD)
 ├── agent/       Agent mode detection, command annotations, known-resource registry with operation hints
 ├── agentlog/    Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 ├── style/       Terminal styling (Grafana Neon Dark theme, TableBuilder, ASCII banner, glamour help)

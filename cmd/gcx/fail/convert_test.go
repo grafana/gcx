@@ -961,6 +961,87 @@ func TestErrorToDetailedError_UnknownFieldSelectionError(t *testing.T) {
 	}
 }
 
+// TestErrorToDetailedError_JQRuntimeError verifies that JQRuntimeError (a --jq
+// expression failed against the actual output) is converted to a DetailedError
+// with:
+//   - Summary: "Invalid command usage"
+//   - ExitCode: 2 (ExitUsageError)
+//   - Details containing the gojq message and the output shape summary
+//   - Suggestions for array iteration (arrays only) and --json list discovery
+func TestErrorToDetailedError_JQRuntimeError(t *testing.T) {
+	tests := []struct {
+		name            string
+		err             error
+		wantInDetails   []string
+		wantSuggestions []string
+		notSuggestions  []string
+	}{
+		{
+			name: "array input includes element fields and iteration hint",
+			err: cmdoutput.JQRuntimeError{
+				Err:        errors.New(`cannot index array with "string"`),
+				Shape:      "an array of 25 objects",
+				Fields:     []string{"name", "ns"},
+				MoreFields: 3,
+				ArrayInput: true,
+			},
+			wantInDetails:   []string{`cannot index array with "string"`, "an array of 25 objects", "Element fields: name, ns (+3 more)"},
+			wantSuggestions: []string{".[]", "--json list"},
+		},
+		{
+			name: "object input has plain fields label and no iteration hint",
+			err: cmdoutput.JQRuntimeError{
+				Err:    errors.New("cannot index number with \"bar\""),
+				Shape:  "an object",
+				Fields: []string{"foo"},
+			},
+			wantInDetails:   []string{"an object", "Fields: foo"},
+			wantSuggestions: []string{"--json list"},
+			notSuggestions:  []string{".[]"},
+		},
+		{
+			name: "scalar input omits field list",
+			err: cmdoutput.JQRuntimeError{
+				Err:   errors.New("cannot index number with \"foo\""),
+				Shape: "a number",
+			},
+			wantInDetails:   []string{"a number"},
+			wantSuggestions: []string{"--json list"},
+		},
+		{
+			name: "wrapped error still converts",
+			err: fmt.Errorf("encode: %w", cmdoutput.JQRuntimeError{
+				Err:        errors.New("cannot iterate over null"),
+				Shape:      "an array of 2 objects",
+				ArrayInput: true,
+			}),
+			wantInDetails:   []string{"cannot iterate over null", "an array of 2 objects"},
+			wantSuggestions: []string{".[]"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			require.NotNil(t, got)
+			assert.Equal(t, "Invalid command usage", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
+			for _, want := range tc.wantInDetails {
+				assert.Contains(t, got.Details, want)
+			}
+			joined := strings.Join(got.Suggestions, "\n")
+			for _, want := range tc.wantSuggestions {
+				assert.Contains(t, joined, want)
+			}
+			for _, notWant := range tc.notSuggestions {
+				assert.NotContains(t, joined, notWant)
+			}
+		})
+	}
+}
+
 func TestErrorToDetailedError_UsageErrorExitCode(t *testing.T) {
 	tests := []struct {
 		name string

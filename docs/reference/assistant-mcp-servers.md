@@ -112,6 +112,8 @@ gcx assistant mcp-servers get GitHub --output yaml
 
 Supported list formats are `text`, `table`, `wide`, `json`, `yaml`, and `agents`.
 
+For `json` and `yaml`, `list` and `get` emit the same `{apiVersion, kind, metadata, spec}` K8s-envelope shape as `gcx resources get mcpservers` — see [Resources pipeline (GitOps)](#resources-pipeline-gitops) below.
+
 ## Delete
 
 Delete prompts for confirmation by default. `--force` bypasses the prompt, `GCX_AUTO_APPROVE=1` auto-approves in non-interactive workflows, and agent mode still requires explicit `--force`.
@@ -119,6 +121,18 @@ Delete prompts for confirmation by default. `--force` bypasses the prompt, `GCX_
 ```sh
 gcx assistant mcp-servers delete GitHub --force
 ```
+
+## Resources pipeline (GitOps)
+
+MCP servers are also addressable as a `gcx resources` type (`mcpservers`, GVK `assistant.ext.grafana.app/v1alpha1`), so they can be pulled, versioned, and pushed like any other resource:
+
+```sh
+gcx resources pull mcpservers
+gcx resources get mcpservers/tenant-github -o yaml
+gcx resources push mcpservers/tenant-github.yaml
+```
+
+`metadata.name` is computed as `{scope}-{slug(name)}`; matching across stacks uses the natural key `(scope, name, url)`, not the server-assigned ID. On `push`, manifest headers follow the same explicit write-intent model as the command path (a header with a value overwrites, a name-only header preserves the stored secret on update, and an omitted header is removed) — with `fromEnv`/`fromFile` sourcing available for CI. See [ADR-021](../adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) for the full design.
 
 ## CLI reference
 

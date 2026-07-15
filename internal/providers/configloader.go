@@ -460,6 +460,39 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 	return config.Write(ctx, l.configSource(), loaded)
 }
 
+// LoadConfigTolerant loads the raw config, applying env var overrides and the
+// resolved --context/--config flags, without validating the resulting context.
+// It mirrors cmd/gcx/config.Options.LoadConfigTolerant exactly (env override
+// first, then extra overrides, then context selection) so callers migrated off
+// cmdconfig.Options keep identical behavior. Used by the assistant A2A command
+// tree, which loads the raw context to read grafana.ProxyEndpoint/OAuthToken
+// directly for its OAuth-PKCE streaming transport.
+func (l *ConfigLoader) LoadConfigTolerant(ctx context.Context, extraOverrides ...config.Override) (config.Config, error) {
+	overrides := append([]config.Override{envOverride}, extraOverrides...)
+	overrides = append(overrides, contextSelectionOverride(l.resolvedContextName(ctx)))
+	return config.LoadLayered(ctx, l.configFile, overrides...)
+}
+
+// LoadConfig loads and validates the raw config. It mirrors
+// cmd/gcx/config.Options.LoadConfig: LoadConfigTolerant plus a validator that
+// requires the current context to exist and pass Validate().
+func (l *ConfigLoader) LoadConfig(ctx context.Context) (config.Config, error) {
+	validator := func(cfg *config.Config) error {
+		if !cfg.HasContext(cfg.CurrentContext) {
+			return config.ContextNotFound(cfg.CurrentContext)
+		}
+		return cfg.GetCurrentContext().Validate(ctx)
+	}
+	return l.LoadConfigTolerant(ctx, validator)
+}
+
+// ConfigSource returns the config.Source to use for write-back operations,
+// mirroring cmd/gcx/config.Options.ConfigSource. Used by the assistant A2A
+// path to re-read and persist refreshed OAuth tokens.
+func (l *ConfigLoader) ConfigSource() config.Source {
+	return l.configSource()
+}
+
 // LoadFullConfig loads the full config from the config file, applying env var
 // overrides and context flags. Returns a pointer to the resolved Config.
 func (l *ConfigLoader) LoadFullConfig(ctx context.Context) (*config.Config, error) {

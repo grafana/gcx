@@ -30,7 +30,18 @@ func NewClient(base *assistanthttp.Client) *Client {
 	return &Client{base: base}
 }
 
-func (c *Client) List(ctx context.Context, opts ListOptions) ([]Server, error) {
+// defaultPageSize is the page size ListAll and ListBounded fall back to when
+// the caller does not specify a positive ListOptions.Limit.
+const defaultPageSize = 100
+
+// fetchPage performs a single offset-paginated request against the
+// underlying (unfiltered) integrations list. It returns the raw integrations
+// for that page (before MCP filtering) and the total reported across ALL
+// assistant integrations (0 if the response does not report one). The total
+// is not MCP-specific -- MCP servers are narrowed client-side, not by the
+// list request itself -- so callers MUST NOT present it as an MCP-server
+// count.
+func (c *Client) fetchPage(ctx context.Context, opts ListOptions) ([]rawIntegration, int, error) {
 	params := url.Values{}
 	if opts.Limit > 0 {
 		params.Set("limit", strconv.Itoa(opts.Limit))
@@ -45,29 +56,113 @@ func (c *Client) List(ctx context.Context, opts ListOptions) ([]Server, error) {
 
 	resp, err := c.base.DoRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list MCP servers: %w", err)
+		return nil, 0, fmt.Errorf("failed to list MCP servers: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp)
+		return nil, 0, assistanthttp.HandleErrorResponse(resp)
 	}
 
 	var envelope struct {
 		Data struct {
 			Integrations []rawIntegration `json:"integrations"`
+			Total        int              `json:"total"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("failed to decode MCP servers: %w", err)
+		return nil, 0, fmt.Errorf("failed to decode MCP servers: %w", err)
 	}
+	return envelope.Data.Integrations, envelope.Data.Total, nil
+}
 
-	servers := make([]Server, 0, len(envelope.Data.Integrations))
-	for _, item := range envelope.Data.Integrations {
+func filterMCPServers(raw []rawIntegration) []Server {
+	servers := make([]Server, 0, len(raw))
+	for _, item := range raw {
 		if strings.EqualFold(item.Type, IntegrationTypeMCP) {
 			servers = append(servers, item.server())
 		}
 	}
+	return servers
+}
+
+// List returns the MCP servers on a single page of the underlying
+// integration list, filtered client-side. It does not page beyond what opts
+// requests -- used internally by Get/Find, which only need to search within
+// one page.
+func (c *Client) List(ctx context.Context, opts ListOptions) ([]Server, error) {
+	raw, _, err := c.fetchPage(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return filterMCPServers(raw), nil
+}
+
+// ListAll exhausts every page of the underlying integration list and returns
+// every MCP server across all pages. Exhaustion is driven by the raw
+// (unfiltered) page size and the reported total, never by the MCP-filtered
+// count on a given page -- a page can hold zero MCP servers while more
+// integrations (and MCP servers) exist on later pages, so a filtered-count
+// stop condition would truncate. opts.Limit, when positive, sets
+// the page size used for every request; it is not a cap on the number of
+// servers returned. Used by the resources adapter (`pull`/`get`), which must
+// never truncate a large stack.
+func (c *Client) ListAll(ctx context.Context, opts ListOptions) ([]Server, error) {
+	pageSize := opts.Limit
+	if pageSize <= 0 {
+		pageSize = defaultPageSize
+	}
+
+	var servers []Server
+	offset := opts.Offset
+	for {
+		raw, total, err := c.fetchPage(ctx, ListOptions{Limit: pageSize, Offset: offset})
+		if err != nil {
+			return nil, err
+		}
+		servers = append(servers, filterMCPServers(raw)...)
+		offset += len(raw)
+		if len(raw) < pageSize {
+			break
+		}
+		if total > 0 && offset >= total {
+			break
+		}
+	}
 	return servers, nil
+}
+
+// BoundedList is a single bounded page of MCP servers plus whether more may
+// exist on later pages of the underlying integration list.
+type BoundedList struct {
+	Servers []Server
+	// Limit is the effective page size that was requested (after defaulting).
+	Limit int
+	// HasMore reports whether more integrations may exist beyond this page.
+	// It is derived from the raw (unfiltered) page, never from the
+	// MCP-filtered count, so it MAY be true even when this page contains no
+	// MCP servers, and MAY under-represent MCP servers when a page is
+	// dominated by non-MCP integrations -- acceptable for the human
+	// path, since agents/GitOps use the exhausting ListAll instead.
+	HasMore bool
+}
+
+// ListBounded fetches a single page of MCP servers without exhausting the
+// underlying list, for the human `mcp-servers list` command.
+func (c *Client) ListBounded(ctx context.Context, opts ListOptions) (BoundedList, error) {
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = defaultPageSize
+	}
+
+	raw, total, err := c.fetchPage(ctx, ListOptions{Limit: limit, Offset: opts.Offset})
+	if err != nil {
+		return BoundedList{}, err
+	}
+	hasMore := len(raw) >= limit
+	if total > 0 {
+		hasMore = opts.Offset+len(raw) < total
+	}
+	return BoundedList{Servers: filterMCPServers(raw), Limit: limit, HasMore: hasMore}, nil
 }
 
 func (c *Client) Get(ctx context.Context, ref string) (*Server, error) {
@@ -211,7 +306,7 @@ func (c *Client) Update(ctx context.Context, ref string, input ServerInput) (*Mu
 		}
 	}
 
-	body, err := json.Marshal(payloadFromInput(input))
+	body, err := json.Marshal(payloadFromInputForUpdate(input, updateHeadersWire(input.Headers, current.CustomHeaders)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal MCP server update request: %w", err)
 	}
@@ -361,6 +456,51 @@ func payloadFromInput(input ServerInput) map[string]any {
 	}
 	if len(input.Headers) > 0 {
 		payload["custom_headers"] = input.Headers
+	}
+	return payload
+}
+
+// headerWire is the wire shape for one header entry in an Update payload.
+// An omitted Value signals "keep the stored value" to the backend
+// (ADR-021 Decision 5) -- this encoding is an assumption against a
+// closed-source backend and is centralized here so it can be revisited in
+// one place if the wire contract differs.
+type headerWire struct {
+	Name  string `json:"name"`
+	Value string `json:"value,omitempty"`
+}
+
+// updateHeadersWire renders the full desired header list for an Update
+// payload. desired == nil means the caller did not touch headers at all
+// (e.g. no --header flags): every currently stored header is sent name-only
+// so its stored value is kept. A non-nil desired, even if empty, is the full
+// desired state: entries with a value overwrite, entries without a value
+// keep the stored value, and stored headers absent from desired are removed
+// by omission (the backend's update replaces the whole header set).
+func updateHeadersWire(desired []Header, current []ServerHeader) []headerWire {
+	if desired == nil {
+		wire := make([]headerWire, 0, len(current))
+		for _, h := range current {
+			wire = append(wire, headerWire{Name: h.Name})
+		}
+		return wire
+	}
+	wire := make([]headerWire, 0, len(desired))
+	for _, h := range desired {
+		wire = append(wire, headerWire(h))
+	}
+	return wire
+}
+
+// payloadFromInputForUpdate builds the Update request body, overriding
+// payloadFromInput's custom_headers with the full desired header list so an
+// update never silently drops headers the caller did not intend to touch.
+func payloadFromInputForUpdate(input ServerInput, headers []headerWire) map[string]any {
+	payload := payloadFromInput(input)
+	if len(headers) > 0 {
+		payload["custom_headers"] = headers
+	} else {
+		delete(payload, "custom_headers")
 	}
 	return payload
 }

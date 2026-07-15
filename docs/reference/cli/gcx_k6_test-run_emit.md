@@ -2,6 +2,13 @@
 
 Fetch a k6 Cloud test and emit Kubernetes TestRun CRD manifests.
 
+### Synopsis
+
+Fetch a k6 Cloud test and emit Kubernetes TestRun CRD manifests.
+
+Note: applying the manifests (--apply) starts a test run that consumes billable
+Virtual User Hours (VUh). See https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/performance-testing-invoice.md.
+
 ```
 gcx k6 test-run emit [test-name] [flags]
 ```

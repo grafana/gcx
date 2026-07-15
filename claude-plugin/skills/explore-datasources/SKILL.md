@@ -1,6 +1,6 @@
 ---
 name: explore-datasources
-description: Discover what datasources, metrics, labels, and log streams are available in a Grafana instance. Use when the user asks what data exists, what metrics are available, what services are being monitored, or needs to find a datasource UID.
+description: Discovers what observability data exists in a Grafana instance via gcx - configured datasources (names, types, UIDs, URL and access settings), available metrics and which services emit them, label values, log streams, and which services show up in traces. Use when the user asks what datasources are configured, how a datasource is configured (URL, proxy or direct access), what metrics exist or which services emit a given metric, which services are monitored or have tracing coverage, or needs a datasource UID. Trigger on "what datasources are configured", "list datasources", "how is our Prometheus datasource configured", "which services emit http_requests_total", "which services have tracing coverage", "what data do we have". For querying and analysing the data use debug-with-grafana; for what a dashboard contains use manage-dashboards.
 ---
 
 # Datasource Discovery

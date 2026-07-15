@@ -2,6 +2,14 @@
 
 Create a Synthetic Monitoring check from a file.
 
+### Synopsis
+
+Create a Synthetic Monitoring check from a file.
+
+Note: checks incur Grafana Cloud usage — each test execution is billed, and
+check results are stored as metrics and logs, which count toward your metrics
+and logs usage. See https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/synthetic-monitoring-invoice.md.
+
 ```
 gcx synthetic-monitoring checks create [flags]
 ```
