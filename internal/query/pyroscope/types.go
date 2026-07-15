@@ -7,7 +7,6 @@ import (
 )
 
 // QueryRequest represents a Pyroscope profile query request.
-// Field names mirror querier.v1.SelectMergeStacktracesRequest.
 type QueryRequest struct {
 	LabelSelector      string
 	ProfileTypeID      string
@@ -15,6 +14,8 @@ type QueryRequest struct {
 	End                time.Time
 	MaxNodes           int64
 	ProfileIDs         []string
+	SpanIDs            []string
+	TraceIDs           []string
 	StackTraceSelector *StackTraceSelector
 }
 
@@ -234,6 +235,7 @@ type PprofRequest struct {
 	Start         time.Time
 	End           time.Time
 	MaxNodes      int64
+	TraceIDs      []string
 }
 
 // PprofWriteResult is the structured output emitted after writing a pprof binary to disk.
