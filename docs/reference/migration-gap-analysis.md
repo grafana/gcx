@@ -200,7 +200,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | `gcx adaptive-metrics rules/recommendations` | Cardinality reduction | **Exists** (`gcx metrics adaptive rules show\|sync`, `gcx metrics adaptive recommendations show\|apply`) |
 | `gcx adaptive-traces policies/recommendations/insights/tenants` | Trace sampling | **Partially exists** (`gcx traces adaptive policies` CRUD, `gcx traces adaptive recommendations show\|apply\|dismiss`; insights/tenants **missing**) |
 | `gcx adaptive-profiles list/sync` | Profile sampling | **Stub** (`gcx profiles adaptive` exists but no subcommands listed) |
-| `gcx recording-rules prometheus/loki` | Recording rules management | **Partially exists** (RecordingRule K8s resource type available via `gcx resources get\|pull\|push`; no dedicated command) |
+| `gcx recording-rules prometheus/loki` | Recording rules management | `alert ruler` (datasource-managed alerting + recording rule groups via the Mimir/Loki ruler: `gcx alert ruler groups list\|get\|apply\|delete --datasource <uid>`); Grafana-managed RecordingRule also via `gcx resources get\|pull\|push` |
 
 ### Other Observability
 

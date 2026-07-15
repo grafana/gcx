@@ -50,6 +50,7 @@ right group:
 | Dashboards, folders, K8s resources | `resources` | `gcx resources get dashboards` |
 | SLO definitions and reports | `slo` | `gcx slo definitions list` |
 | Alert rules and groups | `alert` | `gcx alert rules list` |
+| Datasource-managed (Mimir/Loki ruler) rules | `alert ruler` | `gcx alert ruler groups list --datasource <uid>` |
 | Synthetic Monitoring checks | `synthetic-monitoring` | `gcx synthetic-monitoring checks list` |
 | IRM (OnCall + Incidents) | `irm` | `gcx irm oncall schedules list`, `gcx irm incidents list` |
 | k6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
