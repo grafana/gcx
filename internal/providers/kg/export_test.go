@@ -150,6 +150,16 @@ func NewSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 	return newSuppressionsCommand(loader)
 }
 
+// NewModelRulesCommand exposes the model-rules command group for tests.
+func NewModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
+	return newModelRulesCommand(loader)
+}
+
+// NewPromRulesCommand exposes the prom-rules command group for tests.
+func NewPromRulesCommand(loader RESTConfigLoader) *cobra.Command {
+	return newRulesCommand(loader)
+}
+
 func NewRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	return newRelationshipsDeleteCommand(loader)
 }
