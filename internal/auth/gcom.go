@@ -21,13 +21,19 @@ import (
 // DefaultGCOMClientID is the OAuth2 client ID registered in GCOM for gcx.
 const DefaultGCOMClientID = "gcx"
 
-// DefaultGCOMScopes returns the OAuth2 scopes requested when logging in to the
-// Grafana Cloud platform API (grafana.com) for stack management. A fresh slice
-// is returned on each call so callers (e.g. a Cobra flag default) can mutate
-// their copy without affecting others.
+// DefaultGCOMScopes returns the grafana.com API scopes gcx needs across all
+// commands: stacks (discovery + management), the signal write scopes for
+// minting the Synthetic Monitoring token (metrics/logs/traces:write), and
+// Fleet Management. Both `gcx cloud login` and the `gcx login` cloud followup
+// request this set. A fresh slice is returned on each call so callers (e.g. a
+// Cobra flag default) can mutate their copy without affecting others.
 func DefaultGCOMScopes() []string {
 	return []string{
 		"stacks:read", "stacks:write", "stacks:delete",
+		"metrics:write",
+		"logs:write",
+		"traces:write",
+		"fleet-management:read", "fleet-management:write",
 	}
 }
 
