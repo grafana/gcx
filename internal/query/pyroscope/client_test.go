@@ -121,7 +121,7 @@ func TestClient_SelectSeries(t *testing.T) {
 							"value": 100,
 							"timestamp": "1000",
 							"exemplars": [
-								{"profileId": "p-1", "timestamp": "1100", "value": "5000", "spanId": "span-1"}
+								{"profileId": "p-1", "timestamp": "1100", "value": "5000", "spanId": "span-1", "traceId": "trace-1"}
 							]
 						}]
 					}]
@@ -201,13 +201,14 @@ func TestClient_SelectSeries(t *testing.T) {
 			assert.Len(t, resp.Series, tt.wantSeries)
 
 			// For the exemplars case, spot-check the decoded Exemplar payload:
-			// timestamp/value are json.Number, profileId/spanId propagate through.
+			// timestamp/value are json.Number; IDs propagate through.
 			if tt.name == "exemplarType forwarded and exemplars decoded" {
 				require.Len(t, resp.Series[0].Points, 1)
 				require.Len(t, resp.Series[0].Points[0].Exemplars, 1)
 				ex := resp.Series[0].Points[0].Exemplars[0]
 				assert.Equal(t, "p-1", ex.ProfileID)
 				assert.Equal(t, "span-1", ex.SpanID)
+				assert.Equal(t, "trace-1", ex.TraceID)
 				assert.Equal(t, int64(1100), ex.TimestampMs())
 				assert.Equal(t, int64(5000), ex.Int64Value())
 			}
@@ -472,7 +473,7 @@ func TestClient_SelectHeatmap(t *testing.T) {
 						"slots": [{
 							"timestamp": "1500",
 							"exemplars": [
-								{"spanId": "span-abc", "timestamp": "1600", "value": "12345"}
+								{"spanId": "span-abc", "traceId": "trace-abc", "timestamp": "1600", "value": "12345"}
 							]
 						}]
 					}]
@@ -538,6 +539,7 @@ func TestClient_SelectHeatmap(t *testing.T) {
 				require.Len(t, resp.Series[0].Slots[0].Exemplars, 1)
 				ex := resp.Series[0].Slots[0].Exemplars[0]
 				assert.Equal(t, "span-abc", ex.SpanID)
+				assert.Equal(t, "trace-abc", ex.TraceID)
 				assert.Equal(t, int64(1600), ex.TimestampMs())
 				assert.Equal(t, int64(12345), ex.Int64Value())
 			}

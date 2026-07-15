@@ -137,6 +137,7 @@ type Exemplar struct {
 	Timestamp json.Number `json:"timestamp"` // ms since epoch, encoded as string
 	ProfileID string      `json:"profileId,omitempty"`
 	SpanID    string      `json:"spanId,omitempty"`
+	TraceID   string      `json:"traceId,omitempty"`
 	Value     json.Number `json:"value"`
 	Labels    []LabelPair `json:"labels,omitempty"`
 }
