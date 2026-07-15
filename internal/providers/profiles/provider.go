@@ -49,7 +49,7 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Restrict the query to one or more trace spans
   gcx profiles query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
-    --span-selector 00f067aa0ba902b7
+    --span-id 00f067aa0ba902b7
 
   # Restrict the query to samples from one or more traces
   gcx profiles query '{service_name="frontend"}' \

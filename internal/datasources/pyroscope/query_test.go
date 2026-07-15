@@ -16,12 +16,12 @@ func TestPyroscopeQueryOptsValidateSelectors(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "span selector",
-			args: []string{"--span-selector", "00f067aa0ba902b7"},
+			name: "span ID",
+			args: []string{"--span-id", "00f067aa0ba902b7"},
 		},
 		{
-			name: "multiple span selectors",
-			args: []string{"--span-selector", "00f067aa0ba902b7", "--span-selector", "5a4fe264a9c987fe"},
+			name: "multiple span IDs",
+			args: []string{"--span-id", "00f067aa0ba902b7", "--span-id", "5a4fe264a9c987fe"},
 		},
 		{
 			name: "trace selector",
@@ -36,13 +36,13 @@ func TestPyroscopeQueryOptsValidateSelectors(t *testing.T) {
 			args: []string{"--trace-id", "4bf92f3577b34da6a3ce929d0e0e4736", "--stacktrace-selector", "main.run"},
 		},
 		{
-			name:    "short span selector",
-			args:    []string{"--span-selector", "00f067aa"},
+			name:    "short span ID",
+			args:    []string{"--span-id", "00f067aa"},
 			wantErr: "16-character hex span ID",
 		},
 		{
-			name:    "non-hex span selector",
-			args:    []string{"--span-selector", "00f067aa0ba902bg"},
+			name:    "non-hex span ID",
+			args:    []string{"--span-id", "00f067aa0ba902bg"},
 			wantErr: "16-character hex span ID",
 		},
 		{
@@ -57,18 +57,18 @@ func TestPyroscopeQueryOptsValidateSelectors(t *testing.T) {
 		},
 		{
 			name:    "span and stacktrace selectors",
-			args:    []string{"--span-selector", "00f067aa0ba902b7", "--stacktrace-selector", "main.run"},
-			wantErr: "--span-selector and --stacktrace-selector cannot be used together",
+			args:    []string{"--span-id", "00f067aa0ba902b7", "--stacktrace-selector", "main.run"},
+			wantErr: "--span-id and --stacktrace-selector cannot be used together",
 		},
 		{
 			name:    "span and profile selectors",
-			args:    []string{"--span-selector", "00f067aa0ba902b7", "--profile-id", "550e8400-e29b-41d4-a716-446655440000"},
-			wantErr: "--span-selector and --profile-id cannot be used together",
+			args:    []string{"--span-id", "00f067aa0ba902b7", "--profile-id", "550e8400-e29b-41d4-a716-446655440000"},
+			wantErr: "--span-id and --profile-id cannot be used together",
 		},
 		{
 			name:    "trace and span selectors",
-			args:    []string{"--trace-id", "4bf92f3577b34da6a3ce929d0e0e4736", "--span-selector", "00f067aa0ba902b7"},
-			wantErr: "--trace-id and --span-selector cannot be used together",
+			args:    []string{"--trace-id", "4bf92f3577b34da6a3ce929d0e0e4736", "--span-id", "00f067aa0ba902b7"},
+			wantErr: "--trace-id and --span-id cannot be used together",
 		},
 		{
 			name:    "trace and profile selectors",
@@ -76,9 +76,9 @@ func TestPyroscopeQueryOptsValidateSelectors(t *testing.T) {
 			wantErr: "--trace-id and --profile-id cannot be used together",
 		},
 		{
-			name:    "span selector with pprof",
-			args:    []string{"--span-selector", "00f067aa0ba902b7", "-o", "pprof"},
-			wantErr: "--span-selector is not supported with -o pprof",
+			name:    "span ID with pprof",
+			args:    []string{"--span-id", "00f067aa0ba902b7", "-o", "pprof"},
+			wantErr: "--span-id is not supported with -o pprof",
 		},
 	}
 

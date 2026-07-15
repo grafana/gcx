@@ -39,7 +39,7 @@ gcx datasources pyroscope query [EXPR] [flags]
   # Restrict the query to one or more trace spans
   gcx datasources pyroscope query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
-    --span-selector 00f067aa0ba902b7
+    --span-id 00f067aa0ba902b7
 
   # Restrict the query to samples from one or more traces
   gcx datasources pyroscope query '{service_name="frontend"}' \
@@ -77,7 +77,7 @@ gcx datasources pyroscope query [EXPR] [flags]
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
       --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)
       --since string                  Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
-      --span-selector strings         Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof)
+      --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof)
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)
       --step string                   Query step (e.g., '15s', '1m')
       --to string                     End time (RFC3339, Unix timestamp, or relative like 'now')

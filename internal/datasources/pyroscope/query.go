@@ -52,7 +52,7 @@ func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)")
 	flags.Int64Var(&opts.MaxNodes, "max-nodes", 0, fmt.Sprintf("Maximum nodes in flame graph (default 0/unlimited for pprof output, %d for all other formats)", defaultMaxNodes))
 	flags.StringSliceVar(&opts.ProfileIDs, "profile-id", nil, "Drill down to specific profile UUIDs from exemplar queries (repeatable)")
-	flags.StringSliceVar(&opts.SpanIDs, "span-selector", nil, "Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof)")
+	flags.StringSliceVar(&opts.SpanIDs, "span-id", nil, "Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof)")
 	flags.StringSliceVar(&opts.TraceIDs, "trace-id", nil, "Only query samples with these 32-character hex trace IDs (repeatable)")
 	flags.StringSliceVar(&opts.StacktraceSelector, "stacktrace-selector", nil, "Only query locations with these function names, starting from the root (repeatable)")
 	flags.StringVar(&opts.PprofPath, "pprof-path", "", "Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)")
@@ -77,23 +77,23 @@ func (opts *pyroscopeQueryOpts) Validate(flags *pflag.FlagSet) error {
 		}
 	}
 	if len(opts.SpanIDs) > 0 && len(opts.StacktraceSelector) > 0 {
-		return errors.New("--span-selector and --stacktrace-selector cannot be used together")
+		return errors.New("--span-id and --stacktrace-selector cannot be used together")
 	}
 	if len(opts.SpanIDs) > 0 && len(opts.ProfileIDs) > 0 {
-		return errors.New("--span-selector and --profile-id cannot be used together")
+		return errors.New("--span-id and --profile-id cannot be used together")
 	}
 	if len(opts.TraceIDs) > 0 && len(opts.SpanIDs) > 0 {
-		return errors.New("--trace-id and --span-selector cannot be used together")
+		return errors.New("--trace-id and --span-id cannot be used together")
 	}
 	if len(opts.TraceIDs) > 0 && len(opts.ProfileIDs) > 0 {
 		return errors.New("--trace-id and --profile-id cannot be used together")
 	}
 	if len(opts.SpanIDs) > 0 && opts.shared.IO.OutputFormat == "pprof" {
-		return errors.New("--span-selector is not supported with -o pprof")
+		return errors.New("--span-id is not supported with -o pprof")
 	}
 	for _, id := range opts.SpanIDs {
 		if !isHexID(id, 16) {
-			return fmt.Errorf("--span-selector must be a 16-character hex span ID (got %q)", id)
+			return fmt.Errorf("--span-id must be a 16-character hex span ID (got %q)", id)
 		}
 	}
 	for _, id := range opts.TraceIDs {
@@ -160,7 +160,7 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
   # Restrict the query to one or more trace spans
   gcx datasources pyroscope query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
-    --span-selector 00f067aa0ba902b7
+    --span-id 00f067aa0ba902b7
 
   # Restrict the query to samples from one or more traces
   gcx datasources pyroscope query '{service_name="frontend"}' \
