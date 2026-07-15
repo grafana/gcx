@@ -1031,9 +1031,6 @@ func getMixedVersionsDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList)
 	return groups, resources
 }
 
-// getMultiGroupSameResourceDiscovery simulates the datasource scenario where
-// the same resource name ("datasource"/"datasources") appears across multiple
-// API groups (one per datasource plugin type).
 // getVersionSkewDiscovery returns two groups sharing the plural "widgets" where
 // each group serves a different version: a.grafana.app only v1, b.grafana.app only v2.
 func getVersionSkewDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList) {
@@ -1076,6 +1073,9 @@ func getVersionSkewDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList) {
 	return groups, resources
 }
 
+// getMultiGroupSameResourceDiscovery simulates the datasource scenario where
+// the same resource name ("datasource"/"datasources") appears across multiple
+// API groups (one per datasource plugin type).
 func getMultiGroupSameResourceDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList) {
 	groups := []*metav1.APIGroup{
 		{
