@@ -9,6 +9,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/athena"
 	"github.com/grafana/gcx/internal/query/clickhouse"
+	"github.com/grafana/gcx/internal/query/cloudmonitoring"
 	"github.com/grafana/gcx/internal/query/cloudwatch"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
@@ -55,6 +56,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return athena.FormatStringList(w, resp.Items, resp.Header)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatTable(w, resp)
+	case *cloudmonitoring.QueryResponse:
+		return cloudmonitoring.FormatTable(w, resp)
 	default:
 		return errors.New("invalid data type for query table codec")
 	}
@@ -88,6 +91,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return athena.FormatStringList(w, resp.Items, resp.Header)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatWide(w, resp)
+	case *cloudmonitoring.QueryResponse:
+		return cloudmonitoring.FormatWide(w, resp)
 	default:
 		return errors.New("invalid data type for query wide codec")
 	}
@@ -127,6 +132,11 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		}
 	case *cloudwatch.QueryResponse:
 		chartData, err = graph.FromCloudWatchResponse(resp)
+		if err != nil {
+			return err
+		}
+	case *cloudmonitoring.QueryResponse:
+		chartData, err = graph.FromCloudMonitoringResponse(resp)
 		if err != nil {
 			return err
 		}
