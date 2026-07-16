@@ -25,10 +25,10 @@ func rulesCommands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rules",
 		Short: "Inspect alert rule state and health.",
-		Long: `Inspect Grafana-managed alert rules via the Prometheus-compatible status API.
+		Long: `Inspect Grafana-managed alert rules.
 
 These commands are read-only: they show evaluation state, health, and timing.
-To create, modify, or delete alert rules, use the resources tier:
+To create, modify, or delete alert rules, use the resources commands:
 
   gcx resources pull alertrules -p ./rules   # export rules to disk
   gcx resources push -p ./rules              # apply edited rules

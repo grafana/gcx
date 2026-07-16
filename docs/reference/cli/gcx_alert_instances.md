@@ -22,6 +22,6 @@ Manage alert instances.
 
 ### SEE ALSO
 
-* [gcx alert](gcx_alert.md)	 - Inspect alert rule status and manage notification settings
+* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
 * [gcx alert instances list](gcx_alert_instances_list.md)	 - List alert instances.
 

@@ -1,6 +1,6 @@
 ## gcx alert
 
-Inspect alert rule status and manage notification settings
+Manage Grafana alert rules and alert groups
 
 ### Options
 

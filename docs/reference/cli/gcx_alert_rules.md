@@ -4,10 +4,10 @@ Inspect alert rule state and health.
 
 ### Synopsis
 
-Inspect Grafana-managed alert rules via the Prometheus-compatible status API.
+Inspect Grafana-managed alert rules.
 
 These commands are read-only: they show evaluation state, health, and timing.
-To create, modify, or delete alert rules, use the resources tier:
+To create, modify, or delete alert rules, use the resources commands:
 
   gcx resources pull alertrules -p ./rules   # export rules to disk
   gcx resources push -p ./rules              # apply edited rules
@@ -33,7 +33,7 @@ To create, modify, or delete alert rules, use the resources tier:
 
 ### SEE ALSO
 
-* [gcx alert](gcx_alert.md)	 - Inspect alert rule status and manage notification settings
+* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
 * [gcx alert rules get](gcx_alert_rules_get.md)	 - Get a single alert rule.
 * [gcx alert rules list](gcx_alert_rules_list.md)	 - List alert rules.
 

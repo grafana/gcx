@@ -22,7 +22,7 @@ Manage Grafana alerting notification templates.
 
 ### SEE ALSO
 
-* [gcx alert](gcx_alert.md)	 - Inspect alert rule status and manage notification settings
+* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
 * [gcx alert templates delete](gcx_alert_templates_delete.md)	 - Delete a notification template by name.
 * [gcx alert templates get](gcx_alert_templates_get.md)	 - Get a notification template by name.
 * [gcx alert templates list](gcx_alert_templates_list.md)	 - List notification templates.

@@ -18,10 +18,10 @@ func groupsCommands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "groups",
 		Short: "Inspect alert rule groups and their evaluation status.",
-		Long: `Inspect Grafana-managed alert rule groups via the Prometheus-compatible status API.
+		Long: `Inspect Grafana-managed alert rule groups.
 
 These commands are read-only. To modify the rules in a group, use the
-resources tier: gcx resources pull/push alertrules.`,
+resources commands: gcx resources pull/push alertrules.`,
 	}
 	cmd.AddCommand(
 		newGroupsListCommand(loader),

@@ -720,7 +720,7 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 
 | File | Purpose |
 |------|---------|
-| `internal/providers/alert/provider.go` | `AlertProvider` implementing the `providers.Provider` interface (no adapter registrations — alert rules are written via the K8s dynamic tier, `rules.alerting.grafana.app`) |
+| `internal/providers/alert/provider.go` | `AlertProvider` implementing the `providers.Provider` interface |
 | `internal/providers/alert/rules_commands.go` | Alert rule status inspection (read-only via the Prometheus-compatible alerting API) |
 | `internal/providers/alert/groups_commands.go` | Alert rule group status inspection |
 | `internal/providers/alert/instances_commands.go` | Firing/pending alert instances (`--datasource` for datasource-managed rules) |

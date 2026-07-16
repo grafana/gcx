@@ -8,7 +8,7 @@ import (
 
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/internal/agent"
-	_ "github.com/grafana/gcx/internal/providers/alert" // registers the alert provider (must contribute no adapter registrations)
+	_ "github.com/grafana/gcx/internal/providers/alert" // registers the alert provider (we're testing that it doesn't contribute any adapter registrations)
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"

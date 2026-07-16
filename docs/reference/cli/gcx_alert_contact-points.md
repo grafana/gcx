@@ -22,7 +22,7 @@ Manage Grafana alerting contact points.
 
 ### SEE ALSO
 
-* [gcx alert](gcx_alert.md)	 - Inspect alert rule status and manage notification settings
+* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
 * [gcx alert contact-points create](gcx_alert_contact-points_create.md)	 - Create a new contact point.
 * [gcx alert contact-points delete](gcx_alert_contact-points_delete.md)	 - Delete a contact point by UID.
 * [gcx alert contact-points export](gcx_alert_contact-points_export.md)	 - Export all contact points in provisioning format.
