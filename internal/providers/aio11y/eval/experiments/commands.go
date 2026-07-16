@@ -192,10 +192,10 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "create",
 		Short: "Create a new experiment from a JSON or YAML file.",
 		Example: `  # Create from a YAML file.
-  gcx aio11y experiments create -f experiment.yaml
+  gcx agento11y experiments create -f experiment.yaml
 
   # Create from stdin.
-  cat experiment.json | gcx aio11y experiments create -f -`,
+  cat experiment.json | gcx agento11y experiments create -f -`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

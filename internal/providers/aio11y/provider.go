@@ -23,16 +23,17 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 	providers.Register(&AIO11yProvider{})
 }
 
-// AIO11yProvider manages Grafana AI Observability resources
-// (backed by the upstream `grafana-sigil-app` plugin).
+// AIO11yProvider manages Grafana Agent Observability resources
+// (backed by the upstream `grafana-sigil-app` plugin). The CLI command is
+// `agento11y`; the Go package name is retained for internal stability.
 type AIO11yProvider struct{}
 
 // Name returns the unique identifier for this provider.
-func (p *AIO11yProvider) Name() string { return "aio11y" }
+func (p *AIO11yProvider) Name() string { return "agento11y" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *AIO11yProvider) ShortDesc() string {
-	return "Manage Grafana AI Observability resources"
+	return "Manage Grafana Agent Observability resources"
 }
 
 // Commands returns the Cobra commands contributed by this provider.
@@ -40,8 +41,11 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 	loader := &providers.ConfigLoader{}
 
 	aio11yCmd := &cobra.Command{
-		Use:   "aio11y",
-		Short: p.ShortDesc(),
+		Use: "agento11y",
+		// Deprecated compatibility alias: `gcx aio11y` still resolves to this
+		// command. Remove in a future release once callers have migrated.
+		Aliases: []string{"aio11y"},
+		Short:   p.ShortDesc(),
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			if root := cmd.Root(); root.PersistentPreRun != nil {
 				root.PersistentPreRun(cmd, args)
@@ -54,72 +58,72 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 	convsCmd := conversations.Commands(loader)
 	convsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx aio11y conversations list --limit 10 -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y conversations list --limit 10 -o json`,
 	}
 	agentsCmd := agents.Commands(loader)
 	agentsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx aio11y agents list --limit 10 -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y agents list --limit 10 -o json`,
 	}
 
 	evaluatorsCmd := evaluators.Commands(loader)
 	evaluatorsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx aio11y evaluators list -o json; gcx aio11y evaluators get <id> -o yaml; gcx aio11y evaluators create -f def.yaml -o json; gcx aio11y evaluators test -e <id> -g <gen-id> -o json; gcx aio11y evaluators delete <id> --force`,
+		agent.AnnotationLLMHint:   `gcx agento11y evaluators list -o json; gcx agento11y evaluators get <id> -o yaml; gcx agento11y evaluators create -f def.yaml -o json; gcx agento11y evaluators test -e <id> -g <gen-id> -o json; gcx agento11y evaluators delete <id> --force`,
 	}
 
 	rulesCmd := rules.Commands()
 	rulesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx aio11y rules list -o json; gcx aio11y rules get <id> -o yaml; gcx aio11y rules create -f rule.yaml -o json; gcx aio11y rules update <id> -f patch.yaml -o json; gcx aio11y rules delete <id> --force`,
+		agent.AnnotationLLMHint:   `gcx agento11y rules list -o json; gcx agento11y rules get <id> -o yaml; gcx agento11y rules create -f rule.yaml -o json; gcx agento11y rules update <id> -f patch.yaml -o json; gcx agento11y rules delete <id> --force`,
 	}
 
 	guardsCmd := guards.Commands()
 	guardsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx aio11y guards list -o json; gcx aio11y guards get <id> -o yaml; gcx aio11y guards create -f guard.yaml -o json; gcx aio11y guards update <id> -f guard.yaml -o json; gcx aio11y guards delete <id> --force`,
+		agent.AnnotationLLMHint:   `gcx agento11y guards list -o json; gcx agento11y guards get <id> -o yaml; gcx agento11y guards create -f guard.yaml -o json; gcx agento11y guards update <id> -f guard.yaml -o json; gcx agento11y guards delete <id> --force`,
 	}
 
 	templatesCmd := templates.Commands(loader)
 	templatesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx aio11y templates list -o json; gcx aio11y templates get <id> -o yaml; gcx aio11y templates versions <id> -o json; gcx aio11y templates list --scope global -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y templates list -o json; gcx agento11y templates get <id> -o yaml; gcx agento11y templates versions <id> -o json; gcx agento11y templates list --scope global -o json`,
 	}
 
 	generationsCmd := generations.Commands(loader)
 	generationsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx aio11y generations get <generation-id> -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y generations get <generation-id> -o json`,
 	}
 
 	scoresCmd := scores.Commands(loader)
 	scoresCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx aio11y scores list <generation-id> -o json; gcx aio11y scores list <generation-id> -o wide`,
+		agent.AnnotationLLMHint:   `gcx agento11y scores list <generation-id> -o json; gcx agento11y scores list <generation-id> -o wide`,
 	}
 
 	judgeCmd := judge.Commands(loader)
 	judgeCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx aio11y judge providers -o json; gcx aio11y judge models --provider openai -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y judge providers -o json; gcx agento11y judge models --provider openai -o json`,
 	}
 
 	savedConvsCmd := savedconversations.Commands(loader)
 	savedConvsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx aio11y saved-conversations list -o json; gcx aio11y saved-conversations get <id> -o yaml; gcx aio11y saved-conversations save <conv-id> --name '...' -o json; gcx aio11y saved-conversations collections <saved-id> -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y saved-conversations list -o json; gcx agento11y saved-conversations get <id> -o yaml; gcx agento11y saved-conversations save <conv-id> --name '...' -o json; gcx agento11y saved-conversations collections <saved-id> -o json`,
 	}
 
 	collectionsCmd := collections.Commands(loader)
 	collectionsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx aio11y collections list -o json; gcx aio11y collections get <id> -o yaml; gcx aio11y collections create --name '...' -o json; gcx aio11y collections update <id> --name '...' -o json; gcx aio11y collections delete <id> --force; gcx aio11y collections conversations list <id> -o json; gcx aio11y collections conversations add <id> <saved-id>; gcx aio11y collections conversations remove <id> <saved-id>`,
+		agent.AnnotationLLMHint:   `gcx agento11y collections list -o json; gcx agento11y collections get <id> -o yaml; gcx agento11y collections create --name '...' -o json; gcx agento11y collections update <id> --name '...' -o json; gcx agento11y collections delete <id> --force; gcx agento11y collections conversations list <id> -o json; gcx agento11y collections conversations add <id> <saved-id>; gcx agento11y collections conversations remove <id> <saved-id>`,
 	}
 
 	experimentsCmd := experiments.Commands(loader)
 	experimentsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx aio11y experiments list -o json; gcx aio11y experiments get <run-id> -o yaml; gcx aio11y experiments update <run-id> --description '...' --tag nightly --tag support -o json; gcx aio11y experiments scores <run-id> -o json; gcx aio11y experiments report <run-id> -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y experiments list -o json; gcx agento11y experiments get <run-id> -o yaml; gcx agento11y experiments update <run-id> --description '...' --tag nightly --tag support -o json; gcx agento11y experiments scores <run-id> -o json; gcx agento11y experiments report <run-id> -o json`,
 	}
 
 	aio11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd)
@@ -128,20 +132,20 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 }
 
 // Validate checks that the given provider configuration is valid.
-// AI Observability uses Grafana's built-in authentication via the plugin API,
+// Agent Observability uses Grafana's built-in authentication via the plugin API,
 // so no extra keys are required.
 func (p *AIO11yProvider) Validate(cfg map[string]string) error {
 	return nil
 }
 
 // ConfigKeys returns the configuration keys used by this provider.
-// AI Observability uses Grafana's built-in authentication and does not require
+// Agent Observability uses Grafana's built-in authentication and does not require
 // additional provider-specific keys.
 func (p *AIO11yProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// TypedRegistrations returns adapter registrations for AI Observability resource types.
+// TypedRegistrations returns adapter registrations for Agent Observability resource types.
 //
 // Saved-conversations are intentionally absent: `save` bookmarks a specific
 // live conversation (not an idempotent upsert) and the resource is shaped

@@ -15,7 +15,7 @@ const (
 	ruleByIDFmt = basePath + "/%s"
 )
 
-// Client is an HTTP client for AI Observability rule endpoints.
+// Client is an HTTP client for Agent Observability rule endpoints.
 type Client struct {
 	base *aio11yhttp.Client
 }

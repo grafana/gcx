@@ -63,13 +63,13 @@ func newTestCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "test",
 		Short: "Run an evaluator against a generation without persisting results.",
 		Example: `  # Test an existing evaluator against a generation.
-  gcx aio11y evaluators test -e my-evaluator -g gen-abc123
+  gcx agento11y evaluators test -e my-evaluator -g gen-abc123
 
   # Test from a full request file (kind, config, output_keys, generation_id).
-  gcx aio11y evaluators test -f test-request.yaml
+  gcx agento11y evaluators test -f test-request.yaml
 
   # Test with JSON output.
-  gcx aio11y evaluators test -e my-evaluator -g gen-abc123 -o json`,
+  gcx agento11y evaluators test -e my-evaluator -g gen-abc123 -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

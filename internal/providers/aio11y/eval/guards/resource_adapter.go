@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// StaticDescriptor returns the resource descriptor for AI Observability hook rules (guards).
+// StaticDescriptor returns the resource descriptor for Agent Observability hook rules (guards).
 func StaticDescriptor() resources.Descriptor {
 	return resources.Descriptor{
 		GroupVersion: schema.GroupVersion{
@@ -39,18 +39,18 @@ func hookRuleStripFields() []string {
 	}
 }
 
-// NewTypedCRUD creates a TypedCRUD for AI Observability hook rules.
+// NewTypedCRUD creates a TypedCRUD for Agent Observability hook rules.
 func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[eval.HookRuleDefinition], string, error) {
 	var loader providers.ConfigLoader
 
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load REST config for AI Observability hook rules: %w", err)
+		return nil, "", fmt.Errorf("failed to load REST config for Agent Observability hook rules: %w", err)
 	}
 
 	base, err := aio11yhttp.NewClient(cfg)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create AI Observability HTTP client: %w", err)
+		return nil, "", fmt.Errorf("failed to create Agent Observability HTTP client: %w", err)
 	}
 	client := NewClient(base)
 
@@ -73,7 +73,7 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[eval.HookRuleDefiniti
 	return crud, cfg.Namespace, nil
 }
 
-// NewLazyFactory returns an adapter.Factory for AI Observability hook rules.
+// NewLazyFactory returns an adapter.Factory for Agent Observability hook rules.
 func NewLazyFactory() adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		crud, _, err := NewTypedCRUD(ctx)

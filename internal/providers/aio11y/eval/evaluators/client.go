@@ -16,7 +16,7 @@ const (
 	evalTestPath     = "/eval:test"
 )
 
-// Client is an HTTP client for AI Observability evaluator endpoints.
+// Client is an HTTP client for Agent Observability evaluator endpoints.
 type Client struct {
 	base *aio11yhttp.Client
 }

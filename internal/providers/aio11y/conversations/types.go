@@ -2,7 +2,7 @@ package conversations
 
 import "time"
 
-// Conversation is a list item from the upstream AI Observability query API
+// Conversation is a list item from the upstream Agent Observability query API
 // (proxied via GET /query/conversations).
 type Conversation struct {
 	ID                string         `json:"id"`

@@ -163,14 +163,14 @@ func newSaveCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "save <conversation-id>",
 		Short: "Bookmark an existing live conversation as a saved conversation.",
-		Long: `Bookmark a live conversation surfaced by gcx aio11y conversations.
+		Long: `Bookmark a live conversation surfaced by gcx agento11y conversations.
 By default the bookmark ID is derived as saved-<conversation-id>, matching the
 plugin UI; pass --saved-id to override.`,
 		Example: `  # Bookmark with the default saved ID.
-  gcx aio11y saved-conversations save conv-123 --name "Regression seed"
+  gcx agento11y saved-conversations save conv-123 --name "Regression seed"
 
   # Bookmark with tags.
-  gcx aio11y saved-conversations save conv-123 --name "Regression seed" --tag suite=checkout --tag priority=high`,
+  gcx agento11y saved-conversations save conv-123 --name "Regression seed" --tag suite=checkout --tag priority=high`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {

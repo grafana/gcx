@@ -18,7 +18,7 @@ const basePath = "/eval/experiments"
 // from other API errors.
 var ErrNotFound = errors.New("experiment not found")
 
-// Client wraps the AI Observability plugin proxy with experiment-specific endpoints.
+// Client wraps the Agent Observability plugin proxy with experiment-specific endpoints.
 type Client struct {
 	base *aio11yhttp.Client
 }

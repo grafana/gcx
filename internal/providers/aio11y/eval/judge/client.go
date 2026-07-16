@@ -14,7 +14,7 @@ const (
 	judgeModelsPath    = "/eval/judge/models"
 )
 
-// Client is an HTTP client for AI Observability eval judge endpoints.
+// Client is an HTTP client for Agent Observability eval judge endpoints.
 type Client struct {
 	base *aio11yhttp.Client
 }

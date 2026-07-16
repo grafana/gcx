@@ -15,7 +15,7 @@ const (
 	agentVersionsPath = agentsPath + "/versions"
 )
 
-// Client is an HTTP client for AI Observability agent catalog endpoints.
+// Client is an HTTP client for Agent Observability agent catalog endpoints.
 type Client struct {
 	base *aio11yhttp.Client
 }

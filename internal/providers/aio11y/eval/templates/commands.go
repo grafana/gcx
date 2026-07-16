@@ -59,10 +59,10 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "list",
 		Short: "List eval templates.",
 		Example: `  # List all templates.
-  gcx aio11y templates list
+  gcx agento11y templates list
 
   # Filter by scope.
-  gcx aio11y templates list --scope global`,
+  gcx agento11y templates list --scope global`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -103,8 +103,8 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 Templates are reusable evaluator blueprints. Export a template as YAML,
 customize it, and create an evaluator with 'evaluators create -f'.`,
 		Example: `  # Get a template's config and output keys.
-  gcx aio11y templates get my-template -o yaml > evaluator.yaml
-  gcx aio11y evaluators create -f evaluator.yaml`,
+  gcx agento11y templates get my-template -o yaml > evaluator.yaml
+  gcx agento11y evaluators create -f evaluator.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {

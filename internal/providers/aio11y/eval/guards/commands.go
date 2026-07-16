@@ -30,7 +30,7 @@ func Commands() *cobra.Command {
 		Long: `Guards (hook rules) are synchronous policies evaluated before or after each generation.
 They can deny, warn, or transform a generation based on evaluators, regex patterns, or blocked tool names.
 
-Unlike eval rules (gcx aio11y rules), guards run inline on the request path and short-circuit by default.`,
+Unlike eval rules (gcx agento11y rules), guards run inline on the request path and short-circuit by default.`,
 	}
 	cmd.AddCommand(
 		newListCommand(),
@@ -172,13 +172,13 @@ func newCreateCommand() *cobra.Command {
 		Use:   "create",
 		Short: "Create a hook rule (guard) from a file.",
 		Example: `  # Create a guard from a YAML file.
-  gcx aio11y guards create -f guard.yaml
+  gcx agento11y guards create -f guard.yaml
 
   # Create from stdin.
-  gcx aio11y guards create -f -
+  gcx agento11y guards create -f -
 
   # Create and output as YAML.
-  gcx aio11y guards create -f guard.json -o yaml`,
+  gcx agento11y guards create -f guard.json -o yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -235,7 +235,7 @@ func newUpdateCommand() *cobra.Command {
 		Use:   "update <rule-id>",
 		Short: "Update a hook rule (guard) from a file. Full replace; omitted fields reset to defaults.",
 		Example: `  # Update a guard from a YAML file.
-  gcx aio11y guards update my-guard -f guard.yaml`,
+  gcx agento11y guards update my-guard -f guard.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {

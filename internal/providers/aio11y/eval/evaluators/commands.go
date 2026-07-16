@@ -167,14 +167,14 @@ func newCreateCommand() *cobra.Command {
 		Use:   "create",
 		Short: "Create or update an evaluator from a file.",
 		Example: `  # Create an evaluator from a YAML file.
-  gcx aio11y evaluators create -f evaluator.yaml
+  gcx agento11y evaluators create -f evaluator.yaml
 
   # Create from stdin.
-  gcx aio11y evaluators create -f -
+  gcx agento11y evaluators create -f -
 
   # Export a template, customize it, then create an evaluator.
-  gcx aio11y templates show <template-id> -o yaml > evaluator.yaml
-  gcx aio11y evaluators create -f evaluator.yaml`,
+  gcx agento11y templates show <template-id> -o yaml > evaluator.yaml
+  gcx agento11y evaluators create -f evaluator.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

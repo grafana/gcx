@@ -92,7 +92,7 @@ func (o *modelsOpts) setup(flags *pflag.FlagSet) {
 
 func (o *modelsOpts) Validate() error {
 	if o.Provider == "" {
-		return errors.New("--provider is required (see 'gcx aio11y judge providers')")
+		return errors.New("--provider is required (see 'gcx agento11y judge providers')")
 	}
 	return o.IO.Validate()
 }

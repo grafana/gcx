@@ -25,7 +25,7 @@ var commandSkills = map[string][]string{
 	"gcx profiles":             {"debug-with-grafana"},
 	"gcx datasources":          {"debug-with-grafana"},
 	"gcx kg":                   {"diagnose-entity-graph"},
-	"gcx aio11y":               {"aio11y"},
+	"gcx agento11y":            {"agento11y"},
 	"gcx setup":                {"setup-gcx"},
 	"gcx login":                {"setup-gcx"},
 }

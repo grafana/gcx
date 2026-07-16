@@ -29,7 +29,7 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "conversations",
-		Short: "Query AI Observability conversations.",
+		Short: "Query Agent Observability conversations.",
 	}
 
 	cmd.AddCommand(
@@ -154,9 +154,9 @@ Operators: =, !=, >, <, >=, <=, =~ (regex)
 
 Returns a single page of results (controlled by --page-size). A warning is
 shown when more results are available.`,
-		Example: `  gcx aio11y conversations search --filters 'agent = "claude-code"'
-  gcx aio11y conversations search --filters 'agent = "claude-code" model = "claude-opus-4-6"'
-  gcx aio11y conversations search --filters 'status = "error"' --from 2026-04-01T00:00:00Z --to 2026-04-02T00:00:00Z`,
+		Example: `  gcx agento11y conversations search --filters 'agent = "claude-code"'
+  gcx agento11y conversations search --filters 'agent = "claude-code" model = "claude-opus-4-6"'
+  gcx agento11y conversations search --filters 'status = "error"' --from 2026-04-01T00:00:00Z --to 2026-04-02T00:00:00Z`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -295,12 +295,12 @@ func (c *SearchTableCodec) Decode(_ io.Reader, _ any) error {
 
 func parseTimeRange(from, to string) (*SearchTimeRange, error) {
 	if from == "" && to == "" {
-		// Default to last 24 hours — AI Observability requires both bounds.
+		// Default to last 24 hours — Agent Observability requires both bounds.
 		now := time.Now().UTC()
 		return &SearchTimeRange{From: now.Add(-24 * time.Hour), To: now}, nil
 	}
 	if from == "" || to == "" {
-		return nil, errors.New("both --from and --to are required (AI Observability requires a complete time range)")
+		return nil, errors.New("both --from and --to are required (Agent Observability requires a complete time range)")
 	}
 	fromT, err := time.Parse(time.RFC3339, from)
 	if err != nil {

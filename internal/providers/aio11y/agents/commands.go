@@ -26,7 +26,7 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agents",
-		Short: "Query AI Observability agent catalog.",
+		Short: "Query Agent Observability agent catalog.",
 	}
 
 	cmd.AddCommand(

@@ -168,13 +168,13 @@ func newCreateCommand() *cobra.Command {
 		Use:   "create",
 		Short: "Create an evaluation rule from a file.",
 		Example: `  # Create a rule from a YAML file.
-  gcx aio11y rules create -f rule.yaml
+  gcx agento11y rules create -f rule.yaml
 
   # Create from stdin.
-  gcx aio11y rules create -f -
+  gcx agento11y rules create -f -
 
   # Create and output as YAML.
-  gcx aio11y rules create -f rule.json -o yaml`,
+  gcx agento11y rules create -f rule.json -o yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -231,7 +231,7 @@ func newUpdateCommand() *cobra.Command {
 		Use:   "update <rule-id>",
 		Short: "Update an evaluation rule from a file.",
 		Example: `  # Update a rule from a YAML file.
-  gcx aio11y rules update my-rule -f rule.yaml`,
+  gcx agento11y rules update my-rule -f rule.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {

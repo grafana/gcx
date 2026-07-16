@@ -15,7 +15,7 @@ const (
 	conversationSearchPath = conversationsPath + "/search"
 )
 
-// Client is an HTTP client for AI Observability conversation endpoints.
+// Client is an HTTP client for Agent Observability conversation endpoints.
 type Client struct {
 	base *aio11yhttp.Client
 }

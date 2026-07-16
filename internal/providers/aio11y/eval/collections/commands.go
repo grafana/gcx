@@ -212,10 +212,10 @@ func newCreateCommand() *cobra.Command {
 		Use:   "create",
 		Short: "Create a new collection.",
 		Example: `  # Create with inline flags.
-  gcx aio11y collections create --name "Regression suite" --description "Nightly regression"
+  gcx agento11y collections create --name "Regression suite" --description "Nightly regression"
 
   # Create from a YAML file (either raw {name,description} or a typed resource envelope).
-  gcx aio11y collections create -f collection.yaml`,
+  gcx agento11y collections create -f collection.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
