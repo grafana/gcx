@@ -69,6 +69,12 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   being acted on (resource selectors, UIDs, expressions, file paths) is
   positional. How to act on it (output format, concurrency, dry-run, filters)
   is a flag.
+- **Every runnable command declares an approved operation contract.** The
+  final path token is the operation, an `<operation>-<subject>` compound,
+  or an approved shorthand/protocol exception from the governed vocabulary
+  (see [ADR: Command Operation Contract](docs/adrs/command-operation-contract/001-command-operation-semantics.md)
+  and [docs/design/naming.md §9.7](docs/design/naming.md)). The bare-verb
+  enumeration above is unchanged.
 
 ## Dual-Purpose Design
 
@@ -119,14 +125,18 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   `ResourceAdapter` (via TypedCRUD) for data access, not raw API clients.
   Table/wide codecs may diverge — provider tables show domain-specific
   columns, generic tables show resource-management columns.
-- **Provider-only resources must not mimic adapter verbs.** If a resource
-  does not obey standard list/get/create/update/delete semantics (e.g.,
-  composite keys, scope-required lookups, query-only endpoints), do not
-  register it as an adapter. Keep it in the provider command tree only, but
-  use alternative verbs (`show`, `describe`, `search`) — never `get`, `list`,
-  `create`, `update`, `delete`. This avoids user confusion: adapter verbs
-  (`resources get`) and provider verbs should not overlap for resources that
-  behave differently across the two paths.
+- **Command operations follow the operation contract.** A command's
+  operation is determined by its user-visible subject, addressability,
+  result cardinality, and side effects — never by HTTP method, API path or
+  version, adapter registration, or transport (see
+  [ADR: Command Operation Contract](docs/adrs/command-operation-contract/001-command-operation-semantics.md)).
+  A genuine read-one is `get` and a genuine enumeration is `list`
+  regardless of whether the resource is adapter-registered. Resources that
+  do not obey entity semantics use the appropriate query/view/domain
+  operation from the governed vocabulary — not `get`/`list` in disguise,
+  and not ad-hoc synonyms. Adapter verbs (`resources get`) and provider
+  commands still must not overlap for resources that behave differently
+  across the two paths.
 - **Sub-resources nest under their parent command.** If a resource cannot
   be listed or addressed without a parent ID (e.g. alerts require an
   alert group), it is a sub-resource. Sub-resources must not be registered as standalone typed
@@ -134,6 +144,9 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   as verbs under the parent command: `$PARENT $VERB-$CHILD $PARENT_ID`
   (e.g. `alert-groups list-alerts <id>`). Get-by-ID may still have a
   standalone adapter if the API supports direct ID lookup without a parent.
+  Addressability rules for selector, optional, variadic, and flag-supplied
+  identities are defined in the
+  [operation-contract ADR](docs/adrs/command-operation-contract/001-command-operation-semantics.md).
 - **Typed resource trajectory.** Provider domain types implement
   `ResourceIdentity` for self-describing identity and are wrapped by
   `TypedObject[T]` (embedded `metav1.ObjectMeta` + `TypeMeta` + `Spec T`)

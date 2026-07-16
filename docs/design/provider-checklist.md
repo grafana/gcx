@@ -20,6 +20,7 @@ UX requirements. All items are unless marked otherwise.
 
 ### UX Compliance
 
+- [ ] Every new command declares its operation contract (`commandmeta.Set` beside the constructor, or inherited from a shared builder) per [naming.md §9.7](naming.md) — operational views, query/search, and singleton categories in the exemption table below map onto the contract's view/query classes
 - [ ] All data-display commands support `-o json/yaml` (inherited from `io.Options`)
 - [ ] List/get commands register a `text` table codec as default format
 - [ ] List/get commands register a `wide` codec showing additional detail columns

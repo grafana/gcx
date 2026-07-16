@@ -1,7 +1,8 @@
 # Cross-Signal Command Consistency
 
 **Created**: 2026-04-03
-**Status**: proposed
+**Accepted**: 2026-07-16
+**Status**: accepted
 **Bead**: none
 **Supersedes**: none
 
@@ -157,6 +158,13 @@ only in what the API returns: a single data point vs a time series.
 ### 6. Aliases and clean breaks
 
 We are pre-GA -- no deprecated aliases, just clean renames where needed.
+
+> **Superseded for future renames** by the
+> [Command Operation Contract ADR §10](../command-operation-contract/001-command-operation-semantics.md):
+> clean pre-GA canonicalization remains the default, but if a final v0.x
+> migration release is planned, an enumerated set of already-shipped paths
+> may carry hidden forwarders for that release only. The renames already
+> executed under this ADR are unaffected.
 
 **Traces aliases (non-deprecated, kept permanently):**
 

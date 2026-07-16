@@ -4,6 +4,15 @@
 **Confidence**: High (derived from the generated CLI reference + code inspection)
 **Sources**: 5
 
+> **Preface (2026-07-16).** This audit predates the July 2026 sub-resource
+> ruling and the [Command Operation Contract ADR](../adrs/command-operation-contract/001-command-operation-semantics.md).
+> Its §2 recommendations to convert `list-X` compounds into nested noun
+> groups (e.g. `alert-groups list-alerts` → `alert-groups alerts list`) are
+> **superseded**: compounds of the form `$PARENT $OPERATION-$CHILD
+> $PARENT_ID` are the canonical shape for parent-addressed children. The
+> inventory and the remaining findings stand as the input to the migration
+> census.
+
 ## Executive Summary
 
 - Audited all ~470 leaf commands in `docs/reference/cli/` against four consistency goals: `$PRODUCT $RESOURCE $VERB` grammar, standard verbs (`list|get|create|update|delete`), the standardized `TypedCRUD` interface, and the output model (lists → table, individual items → YAML, agent/scripting → JSON).
