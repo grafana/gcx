@@ -151,7 +151,7 @@ internal/
 │   ├── mcpservers/     MCP server integration HTTP client (offset-paginated list/get/create/update/delete, OAuth initiate/validate, user vs tenant scope headers)
 │   └── mcpserver/      MCPServer manifest domain type + `TypedCRUD[MCPServer]` adapter wiring (identity, natural key, schema/example) + per-header write-intent mapping (overwrite/preserve/remove, fromEnv/fromFile) — consumed by `internal/providers/assistant` (adapter registration + the mcp-servers CRUD commands, which route create/update/delete through this TypedCRUD)
 ├── agent/       Agent mode detection, command annotations, known-resource registry with operation hints
-├── agentlog/    Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
+├── agentlog/    Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into reportError in cmd/gcx/main.go)
 ├── style/       Terminal styling (Grafana Neon Dark theme, TableBuilder, ASCII banner, glamour help)
 ├── terminal/    TTY/pipe detection (IsPiped, NoTruncate, Detect) for output suppression
 ├── linter/      Linting engine (Rego rules, report aggregation, PromQL validator)
