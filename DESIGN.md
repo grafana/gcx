@@ -15,7 +15,7 @@ gcx is a dual-purpose tool. Every command serves both human operators and AI age
 
 ## CLI Grammar
 
-Command structure follows `$AREA $NOUN $VERB`:
+Command structure follows `$AREA $NOUN $VERB` by default:
 
 ```
 gcx slo definitions list
@@ -24,7 +24,7 @@ gcx logs query --from=1h
 gcx irm oncall schedules get my-schedule
 ```
 
-See [CONSTITUTION.md § CLI Grammar](CONSTITUTION.md#cli-grammar) for the authoritative rules (positional arguments, flags, extension commands, verb constraints).
+See [CONSTITUTION.md § CLI Grammar](CONSTITUTION.md#cli-grammar) for the authoritative rules (positional arguments, flags, extension commands, verb constraints), and the [ADR: Command Operation Contract](docs/adrs/command-operation-contract/001-command-operation-semantics.md) for operation semantics (vocabulary, addressability, surface forms). View-operation output defaults are governed separately from the format table below.
 
 ## Dual-Purpose Design
 
@@ -157,5 +157,5 @@ Prescriptive implementation rules live in [docs/design/](docs/design/), split by
 | [agent-mode.md](docs/design/agent-mode.md) | Agent mode detection, behavior changes, opt-out |
 | [provider-checklist.md](docs/design/provider-checklist.md) | Provider UX compliance (architecture patterns in [patterns.md](docs/architecture/patterns.md)) |
 | [help-text.md](docs/design/help-text.md) | Command descriptions, examples format |
-| [naming.md](docs/design/naming.md) | Resource kinds, file naming, config keys, flags |
+| [naming.md](docs/design/naming.md) | Resource kinds, file naming, config keys, flags, command operations |
 | [environment-variables.md](docs/design/environment-variables.md) | Canonical environment variable reference |

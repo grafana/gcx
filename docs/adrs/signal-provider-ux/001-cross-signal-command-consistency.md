@@ -5,6 +5,11 @@
 **Bead**: none
 **Supersedes**: none
 
+<!-- Ratification of this ADR (its command surface shipped in April 2026)
+     is bundled with the Command Operation Contract decision: both flip to
+     accepted in the same acceptance commit once maintainers approve the
+     decision table in docs/plans/2026-07-16-command-operation-contract-rollout.md. -->
+
 ## Context
 
 gcx has four signal providers (metrics, logs, profiles, traces) that grew
@@ -157,6 +162,15 @@ only in what the API returns: a single data point vs a time series.
 ### 6. Aliases and clean breaks
 
 We are pre-GA -- no deprecated aliases, just clean renames where needed.
+
+> **Scoped amendment (pending acceptance).** Once the
+> [Command Operation Contract ADR](../command-operation-contract/001-command-operation-semantics.md)
+> is accepted, its §11 supersedes this section **for future renames**:
+> noncanonical paths are renamed or removed during v1 development with no
+> compatibility forwarders (v1.0.0 is the clean boundary; migration
+> support is the v1 migration guide's old→new table and updated published
+> documentation). The renames already executed under this ADR are
+> unaffected.
 
 **Traces aliases (non-deprecated, kept permanently):**
 

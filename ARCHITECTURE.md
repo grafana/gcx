@@ -192,6 +192,9 @@ Multiple auth mechanisms for different tiers.
 | [019](docs/adrs/oncall-alert-group-rich-shape/001-rich-shape-and-list-defaults.md) | Rich `AlertGroup` shape and actionable `alert-groups list` defaults | implemented |
 | [020](docs/adrs/sm-datasource-proxy/001-dual-mode-transport.md) | Synthetic Monitoring dual-mode transport: datasource proxy primary, direct SM API fallback | accepted |
 | [021](docs/adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) | Assistant provider + MCP servers as resources | proposed |
+| [022](docs/adrs/login-consolidation/001-login-config-consolidation.md) | Login and config consolidation | accepted |
+| [023](docs/adrs/signal-provider-ux/001-cross-signal-command-consistency.md) | Cross-signal command consistency | proposed |
+| [024](docs/adrs/command-operation-contract/001-command-operation-semantics.md) | Command operation contract and pre-GA surface convergence | proposed |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 

@@ -20,6 +20,7 @@ UX requirements. All items are unless marked otherwise.
 
 ### UX Compliance
 
+- [ ] Every new command conforms to the operation contract per [naming.md §9.7](naming.md) (operation, subject, category, effect, addressing, result). Once the contract-metadata implementation lands, declare it explicitly beside the constructor or inherit it from a shared builder. The exemption table below maps onto the contract: operational views → view category; query/search → query category; singleton config → `get` with singleton *addressing*
 - [ ] All data-display commands support `-o json/yaml` (inherited from `io.Options`)
 - [ ] List/get commands register a `text` table codec as default format
 - [ ] List/get commands register a `wide` codec showing additional detail columns

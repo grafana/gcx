@@ -16,5 +16,5 @@ New commands and providers **must comply with all rules documented here**.
 | [agent-mode.md](agent-mode.md) | Agent mode detection, behavior changes, opt-out |
 | [provider-checklist.md](provider-checklist.md) | Provider UX compliance (architecture patterns in [patterns.md](../architecture/patterns.md)) |
 | [help-text.md](help-text.md) | Command descriptions, examples format |
-| [naming.md](naming.md) | Resource kinds, file naming, config keys, flags |
+| [naming.md](naming.md) | Resource kinds, file naming, config keys, flags, command operations |
 | [environment-variables.md](environment-variables.md) | Canonical environment variable reference |

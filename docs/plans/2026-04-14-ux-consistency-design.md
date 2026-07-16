@@ -564,19 +564,22 @@ they're removed.
 
 ### Singleton resources use `show`, not `get`
 
-Resources with no ID and no list (e.g., `appo11y overrides`, `appo11y
-settings`) use `show` to distinguish from the adapter `get` which implies
-"by ID." This is codified as the **singleton rule** in the verb taxonomy.
+> **Superseded.** The singleton rule changed during ratification: under the
+> [Command Operation Contract ADR](../adrs/command-operation-contract/001-command-operation-semantics.md),
+> a no-argument read of a singleton is `get` with singleton *addressing* —
+> `show` is not a canonical operation. `appo11y overrides get` /
+> `settings get` are therefore already canonical.
 
 ### New verb taxonomy rules
 
-Three rules added to `docs/design/naming.md`:
-
-1. **Singleton rule**: Resources with no ID and no list use `show`
-2. **`open` disambiguation**: `browse` for browser navigation, explicit
-   state verbs (`activate`/`close`) for lifecycle changes
-3. **`show`/`list`/`get` decision tree**: `get` = by ID (adapter or not),
-   `list` = collection, `show` = singleton or aggregate view
+> **Correction (2026-07-16).** This section previously claimed three rules
+> were "added to `docs/design/naming.md`" — they never were (documentation
+> drift). The verb taxonomy is defined by the
+> [Command Operation Contract ADR](../adrs/command-operation-contract/001-command-operation-semantics.md)
+> and summarized in [naming.md §9.7](../design/naming.md). Outcomes differ
+> from the original sketch: singleton reads are `get` (not `show`); `show`
+> is not canonical; the `open`/`browse` disambiguation remains an open
+> migration-census question rather than a ratified rule.
 
 ---
 

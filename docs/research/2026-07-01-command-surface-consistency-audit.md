@@ -4,6 +4,34 @@
 **Confidence**: High (derived from the generated CLI reference + code inspection)
 **Sources**: 5
 
+> **HISTORICAL — NON-AUTHORITATIVE (labeled 2026-07-16).** This document
+> is preserved as the point-in-time inventory that motivated the
+> [Command Operation Contract ADR](../adrs/command-operation-contract/001-command-operation-semantics.md).
+> It is **historical context only**: the migration census generated fresh
+> from the live command tree is the sole migration input — neither this
+> document's inventory nor its recommendations feed the census. The
+> recommendations in particular **must not be worked from** — the
+> proposed ADR rejects several of them, and verification against actual
+> command behavior showed several to be wrong when this label was added:
+>
+> - `list-X` → nested noun groups (`alert-groups alerts list`): superseded —
+>   `$PARENT $OPERATION-$CHILD $PARENT_ID` compounds are canonical.
+> - `kg entities inspect` → `get`: rejected — `inspect` is a ratified
+>   diagnostic view with a materially different output contract.
+> - adaptive `show` → `get`: wrong target — those commands return
+>   collections; the canonical rename is `show` → `list`.
+> - `alert templates upsert` → `create`/`update`: rejected — it is a true
+>   create-or-update; splitting would fake existence semantics.
+> - `describe-table` → `get`: superseded — classified per command against
+>   the view rules (Athena ≈ `list-columns`; ClickHouse defensibly
+>   `describe`).
+> - `get` → YAML default output: out of the ADR's scope entirely (output
+>   defaults are a separate workstream), and the "one coordinated change"
+>   claim no longer holds at HEAD.
+>
+> The migration census is generated fresh from the live tree; do not file
+> issues from this document's checklists.
+
 ## Executive Summary
 
 - Audited all ~470 leaf commands in `docs/reference/cli/` against four consistency goals: `$PRODUCT $RESOURCE $VERB` grammar, standard verbs (`list|get|create|update|delete`), the standardized `TypedCRUD` interface, and the output model (lists → table, individual items → YAML, agent/scripting → JSON).
@@ -11,7 +39,7 @@
 - **`TypedCRUD`** is broadly adopted; the notable bespoke holdouts are `dashboards`, `cloud stacks`, and `instrumentation`.
 - **Output**: `list` → table and agent-mode → JSON (`agents` codec) are already correct. The one systemic gap is that `get` / single-item commands default to `text`/table instead of YAML — a **non-agent-mode-only** defect rooted in one design-doc rule (`docs/design/output.md` §1.3) and one shared default call, not 62 separate bugs.
 
-This audit is the input for the pending verb-taxonomy and output-consistency implementation plans anticipated by [the UX Consistency design](../plans/2026-04-14-ux-consistency-design.md) (dimensions 4-5) and tracked under issue #387.
+This audit was input to the verb-taxonomy discussion anticipated by [the UX Consistency design](../plans/2026-04-14-ux-consistency-design.md) (dimensions 4-5); that discussion has since produced the [Command Operation Contract ADR](../adrs/command-operation-contract/001-command-operation-semantics.md) and its rollout plan, which use a fresh live-tree census — not this document — as the sole migration input (see the preface above).
 
 ## Scope and Method
 
