@@ -394,7 +394,12 @@ requirements (min version, feature toggles) is tracked in
 | Adaptive Metrics / Logs / Traces | `metrics adaptive`, `logs adaptive`, `traces adaptive` | ✗ | ✗ | ✓ | ◐ |
 | Grafana Assistant | `assistant` | ✗ | ✗ | ✓ | ✗ |
 
-**‡ Grafana-managed rule writes** — reading alert rules (`gcx alert rules`, `gcx alert groups`) and datasource-managed ruler writes (`gcx alert ruler`) work on Grafana 12+. Writing *Grafana-managed* rules via the resources tier (`gcx resources pull/push alertrules`) requires Grafana 13+, where the `rules.alerting.grafana.app` API is enabled by default; on Grafana 12 it must be enabled explicitly via feature toggle.
+**‡ Grafana-managed rule writes** — reading alert rules (`gcx alert rules`, `gcx alert groups`) and datasource-managed ruler writes (`gcx alert ruler`) work on Grafana 12+. Writing *Grafana-managed* rules via the resources tier (`gcx resources pull/push alertrules`) requires Grafana 13+, where the `rules.alerting.grafana.app` API is enabled by default. On Grafana 12 it must be enabled explicitly with the `kubernetesAlertingRules` feature toggle (experimental in 12.x, requires a restart, and Unified Alerting must be enabled):
+
+```ini
+[feature_toggles]
+kubernetesAlertingRules = true
+```
 
 **† Self-hosted signal queries** — `gcx metrics query`, `gcx logs query`, `gcx traces query`, and `gcx profiles query` work against self-hosted datasources (Prometheus, Loki, Tempo, Pyroscope), but datasource endpoints must be configured manually. For Grafana Cloud, endpoints are auto-discovered from your stack.
 
