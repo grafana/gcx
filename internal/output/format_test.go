@@ -299,6 +299,46 @@ func TestEncodeDiscovery_EmptyTypedSlice(t *testing.T) {
 	assert.NotContains(t, out, "Selection", "json:\"-\" fields must be excluded")
 }
 
+func TestEncodeDiscovery_EmptySingleKeyEnvelope(t *testing.T) {
+	// A single-key list envelope with no rows (nil or empty slice) must still
+	// discover item-level fields via reflection on the element type.
+	type row struct {
+		UID    string `json:"uid"`
+		Status string `json:"status,omitempty"`
+		Hidden string `json:"-"` // excluded by json:"-"
+	}
+	type envelope struct {
+		Results []row `json:"results"`
+	}
+
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{name: "nil slice", value: &envelope{}},
+		{name: "empty slice", value: &envelope{Results: []row{}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &cmdio.Options{}
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			opts.BindFlags(flags)
+			require.NoError(t, flags.Set("json", "list"))
+			require.NoError(t, opts.Validate())
+
+			var buf bytes.Buffer
+			require.NoError(t, opts.Encode(&buf, tt.value))
+
+			out := buf.String()
+			assert.Contains(t, out, "uid", "field 'uid' must appear in discovered fields")
+			assert.Contains(t, out, "status", "field 'status' must appear")
+			assert.NotContains(t, out, "results", "wrapper key must not appear")
+			assert.NotContains(t, out, "Hidden", "json:\"-\" fields must be excluded")
+		})
+	}
+}
+
 // dummyCodec satisfies format.Codec for testing.
 type dummyCodec struct{}
 

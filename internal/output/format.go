@@ -304,13 +304,7 @@ func marshalToSampleMap(value any) (map[string]any, error) {
 	// Try as object first.
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err == nil {
-		// If the object has an "items" array, use the first element.
-		if raw, ok := m["items"]; ok {
-			if items := toSliceOfMaps(raw); len(items) > 0 {
-				return items[0], nil
-			}
-		}
-		return m, nil
+		return sampleFromObject(m, value), nil
 	}
 
 	// Try as array — use first element.
@@ -325,11 +319,7 @@ func marshalToSampleMap(value any) (map[string]any, error) {
 	// Reflection fallback: enumerate exported struct fields from the Go type.
 	// Handles empty typed slices where there is no data to sample.
 	if fields := reflectFields(reflect.TypeOf(value)); len(fields) > 0 {
-		result := make(map[string]any, len(fields))
-		for _, f := range fields {
-			result[f] = nil
-		}
-		return result, nil
+		return nullFieldMap(fields), nil
 	}
 
 	return nil, fmt.Errorf("cannot discover fields from %T: not a JSON object or array", value)
@@ -367,6 +357,76 @@ func reflectFields(t reflect.Type) []string {
 		fields = append(fields, name)
 	}
 	return fields
+}
+
+// sampleFromObject picks the representative sample map for field discovery
+// from a marshaled object: the first element of an "items" array or of a
+// single-key list envelope (e.g. {"datasources": [...]}), reflected item
+// fields for an envelope with no rows, or the object itself.
+func sampleFromObject(m map[string]any, value any) map[string]any {
+	// If the object has an "items" array, use the first element.
+	if raw, ok := m["items"]; ok {
+		if items := toSliceOfMaps(raw); len(items) > 0 {
+			return items[0]
+		}
+	}
+	// Single-key list envelope: sample the first item so discovery lists
+	// item-level fields.
+	if _, items, ok := singleKeyItems(m); ok && len(items) > 0 {
+		return items[0]
+	}
+	// Single-key envelope with no rows (empty or nil slice): reflect on the
+	// wrapper struct's sole slice field so discovery still works.
+	if len(m) == 1 {
+		if fields := reflectSingleSliceField(reflect.TypeOf(value)); len(fields) > 0 {
+			return nullFieldMap(fields)
+		}
+	}
+	return m
+}
+
+// nullFieldMap builds a discovery sample map whose keys are the given field
+// names, each mapped to nil. Used when there is no data row to sample and the
+// field set has to come from reflection instead.
+func nullFieldMap(fields []string) map[string]any {
+	result := make(map[string]any, len(fields))
+	for _, f := range fields {
+		result[f] = nil
+	}
+	return result
+}
+
+// reflectSingleSliceField returns the JSON field names of the element type of
+// a struct's sole exported field, which must be a slice of structs. Returns
+// nil unless t (after pointer unwrapping) is a struct with exactly one
+// exported non-json:"-" field of slice kind. Used to discover item fields of
+// an empty single-key list envelope.
+func reflectSingleSliceField(t reflect.Type) []string {
+	if t == nil {
+		return nil
+	}
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+
+	var sliceType reflect.Type
+	exported := 0
+	for f := range t.Fields() {
+		if !f.IsExported() || f.Tag.Get("json") == "-" {
+			continue
+		}
+		exported++
+		if f.Type.Kind() == reflect.Slice {
+			sliceType = f.Type
+		}
+	}
+	if exported != 1 || sliceType == nil {
+		return nil
+	}
+	return reflectFields(sliceType)
 }
 
 // We have to return an interface here.
