@@ -41,11 +41,8 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 	loader := &providers.ConfigLoader{}
 
 	aio11yCmd := &cobra.Command{
-		Use: "agento11y",
-		// Deprecated compatibility alias: `gcx aio11y` still resolves to this
-		// command. Remove in a future release once callers have migrated.
-		Aliases: []string{"aio11y"},
-		Short:   p.ShortDesc(),
+		Use:   "agento11y",
+		Short: p.ShortDesc(),
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			if root := cmd.Root(); root.PersistentPreRun != nil {
 				root.PersistentPreRun(cmd, args)
