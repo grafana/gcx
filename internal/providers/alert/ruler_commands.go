@@ -26,8 +26,11 @@ func rulerCommands(loader GrafanaConfigLoader) *cobra.Command {
 		Long: `Manage alerting and recording rules stored in a Mimir or Loki ruler,
 via Grafana's per-datasource ruler proxy.
 
-These are datasource-managed rules, distinct from Grafana-managed alert rules
-(see: gcx alert rules, gcx resources pull/push alertrules). Every command
+These are datasource-managed rules, distinct from Grafana-managed alert rules.
+Grafana-managed rules are read via 'gcx alert rules' and written via
+'gcx resources pull/push alertrules' — the write path requires Grafana 13+,
+where the rules.alerting.grafana.app API is enabled by default (on Grafana 12
+it must be enabled explicitly via feature toggle). Every ruler command
 requires --datasource with the UID of a Prometheus-flavored or Loki datasource.`,
 	}
 	cmd.AddCommand(
