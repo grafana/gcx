@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -16,6 +17,8 @@ import (
 )
 
 type profileTypesOpts struct {
+	dsquery.TimeRangeOpts
+
 	IO         cmdio.Options
 	Datasource string
 }
@@ -26,10 +29,14 @@ func (opts *profileTypesOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-pyroscope-datasource is configured)")
+	opts.SetupTimeFlags(flags)
 }
 
 func (opts *profileTypesOpts) Validate() error {
-	return opts.IO.Validate()
+	if err := opts.IO.Validate(); err != nil {
+		return err
+	}
+	return opts.ValidateTimeRange()
 }
 
 func ListProfileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
@@ -46,6 +53,9 @@ func ListProfileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Example: `
 	# List profile types (use datasource UID, not name)
 	gcx datasources pyroscope list-profile-types -d UID
+
+	# Search a wider window than the default last hour
+	gcx datasources pyroscope list-profile-types -d UID --since 24h
 
 	# Output as JSON
 	gcx datasources pyroscope list-profile-types -d UID -o json`,
@@ -71,11 +81,22 @@ func ListProfileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			resp, err := client.ProfileTypes(ctx, datasourceUID, pyroscope.ProfileTypesRequest{})
+			start, end, err := opts.ParseTimeRange(time.Now())
+			if err != nil {
+				return err
+			}
+
+			resp, err := client.ProfileTypes(ctx, datasourceUID, pyroscope.ProfileTypesRequest{
+				Start: start,
+				End:   end,
+			})
 			if err != nil {
 				return fmt.Errorf("failed to get profile types: %w", err)
 			}
 
+			if len(resp.ProfileTypes) == 0 {
+				emitEmptyWindowHint(cmd.ErrOrStderr(), "profile types", start, end, opts.IsRange())
+			}
 			if opts.IO.OutputFormat == "table" {
 				return pyroscope.FormatProfileTypesTable(cmd.OutOrStdout(), resp)
 			}
