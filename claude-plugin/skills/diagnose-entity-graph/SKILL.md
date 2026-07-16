@@ -65,7 +65,13 @@ gcx config view
 gcx kg status
 ```
 
-If `kg status` returns an error, use the `setup-gcx` skill first.
+If `kg status` fails with a config or auth error (no context, connection
+refused, 401), use the `setup-gcx` skill first. Do not route every error
+there: a 404 means the Asserts plugin isn't installed on this stack, and 403s
+from entity endpoints while `kg status` itself succeeds usually mean the
+Knowledge Graph isn't onboarded (or the token lacks plugin access) — those are
+Asserts onboarding/permission issues `setup-gcx` cannot fix; handle them via
+Step 1's onboarding stop instead.
 
 ## Step 1: Stack Health
 
@@ -121,10 +127,11 @@ gcx metrics query 'count(traces_service_graph_request_total{server_deployment_en
   via Prometheus scraping. Continue to Step 4.
 
 For more specific verdicts on this metric pair (Tempo metrics generation
-disabled, broken trace context propagation, service-name collision via
-self-loop edges), run `gcx kg diagnose --env ENV` and read the check
-results — the command encodes the detection logic and emits a targeted
-recommendation per case.
+disabled, broken trace context propagation), run `gcx kg diagnose --env ENV`
+and read the check results — the command encodes the detection logic for
+those two cases and emits a targeted recommendation. Service-name collisions
+are **not** detected by the command; spot them manually via self-loop edges
+(Step 7).
 
 ## Step 4: Recording Rules
 
@@ -265,16 +272,20 @@ gcx metrics query 'count(asserts:mixin_workload_job{service="SERVICE"})' --since
 - Not found via Cypher → check `traces_target_info{service_name="SERVICE"}`.
 - Leaf services (queue consumers, processors) correctly have no outgoing edges.
 
-**Shortcut:** `gcx kg diagnose service SERVICE --env ENV` runs all checks and
-produces an interpreted diagnosis with suggested next steps. It also
-detects two common patterns that present as "missing entities":
+**Shortcut:** `gcx kg diagnose service SERVICE --env ENV` runs the checks
+above and produces an interpreted diagnosis with suggested next steps.
+
+Two common patterns that present as "missing entities" are **not** detected
+by the command — check for them manually:
 
 - **Service-name collision** (multiple workloads share one `service.name`,
-  collapsing into one entity).
+  collapsing into one entity): look for self-loop edges — series where both
+  `client` and `server` equal SERVICE in `traces_service_graph_request_total`
+  — and for a single entity where you expected several workloads.
 - **Env-scope split** (workloads in the same namespace disagree on
-  `deployment.environment`, so cross-env calls don't render as edges).
-
-Read the diagnose check's `Recommendation` for the specific fix.
+  `deployment.environment`, so cross-env calls don't render as edges):
+  compare `client_deployment_environment` vs `server_deployment_environment`
+  on the service's edge series from Step 3.
 
 ## Producing a Report
 

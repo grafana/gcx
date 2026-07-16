@@ -34,7 +34,10 @@ func (e UnknownFieldSelectionError) Error() string {
 // For a single object the output is a flat JSON object containing only the
 // selected fields. For k8s unstructured collections (UnstructuredList) or
 // objects with an "items" field, the output is {"items": [...]}. For plain
-// Go slices, the output preserves the array shape ([...]).
+// Go slices, the output preserves the array shape ([...]). Single-key list
+// envelopes (an object whose only key holds an array of objects, e.g.
+// {"datasources": [...]}) get per-item selection with the wrapper key
+// preserved.
 //
 // Missing fields produce a null value rather than being omitted.
 type FieldSelectCodec struct {
@@ -133,6 +136,17 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 				extracted[i] = extractFields(item, c.fields)
 			}
 			return c.json.Encode(dst, listFieldSelectionOutput(extracted, paginationMetadataFromObjectMap(m)))
+		}
+
+		// Single-key list envelope (e.g. {"datasources": [...]}): apply field
+		// selection per item and preserve the wrapper key. No pagination
+		// metadata by construction (the envelope has exactly one key).
+		if key, items, ok := singleKeyItems(m); ok {
+			extracted := make([]map[string]any, len(items))
+			for i, item := range items {
+				extracted[i] = extractFields(item, c.fields)
+			}
+			return c.json.Encode(dst, map[string]any{key: extracted})
 		}
 
 		return c.json.Encode(dst, extractFields(m, c.fields))
@@ -260,6 +274,30 @@ func paginationMetadataValuePresent(value any) bool {
 		return s != ""
 	}
 	return true
+}
+
+// singleKeyItems reports whether m is a single-key list envelope: exactly one
+// key whose value is an array of objects (or an empty array). Provider list
+// commands wrap their items under such keys (e.g. {"datasources": [...]}).
+// Callers must check the k8s "items" shape first — that path carries
+// pagination metadata and a fixed output shape.
+func singleKeyItems(m map[string]any) (string, []map[string]any, bool) {
+	if len(m) != 1 {
+		return "", nil, false
+	}
+	for key, raw := range m {
+		arr, ok := raw.([]any)
+		if !ok {
+			return "", nil, false
+		}
+		items := toSliceOfMaps(arr)
+		if len(items) != len(arr) {
+			// Elements are not all objects (scalar or mixed array).
+			return "", nil, false
+		}
+		return key, items, true
+	}
+	return "", nil, false
 }
 
 // toSliceOfMaps converts an any value to []map[string]any. Values that are

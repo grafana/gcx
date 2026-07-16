@@ -17,7 +17,7 @@ You are helping the user implement comprehensive Grafana Cloud observability for
 
 **Test-driven observability principle:** Define what "healthy" looks like *before* deploying instrumentation. Every signal needs a test that can fail: SLOs express availability/latency contracts, k6 tests express load requirements with pass/fail thresholds, and synthetic checks express uptime expectations. Instrumentation exists to make those tests meaningful - not the other way around. Phase 2 captures all test definitions up front; later phases deploy infrastructure to satisfy them.
 
-Work interactively - explain each phase, generate YAML using the resource's `example` subcommand as a template, confirm before creating anything, and validate success.
+Work interactively - explain each phase, generate YAML from the resource's `example` subcommand where one exists (not every kind ships an example — fall back to `gcx resources schemas <type>` and a minimal manifest), confirm before creating anything, and validate success.
 
 **Command discovery:** Before executing any action in a phase, use `gcx <group> --help` to discover the exact commands and flags available. Use `gcx commands --flat -o json` to see all command groups. Never assume a command's exact syntax - always discover it first. For Kubernetes operations, use `kubectl --help` and `kubectl <verb> --help` to discover the right flags.
 
@@ -50,7 +50,7 @@ Grafana Cloud Observability Setup
   Phase 7   IRM Setup              Oncall integrations, escalation chains, schedules
   Phase 8   Custom Dashboards      Dashboards via gcx resources push
   Phase 9   Cost Optimization      Adaptive metrics/logs/traces for cardinality control
-  Phase 10  GitOps Export          Export all resources as declarative YAML
+  Phase 10  GitOps Export          Export managed resources as declarative YAML
   Phase 11  Observability Review   Validate signals, find gaps, recommend next steps
 
 Enter phases to run (e.g. "0 1 2" or "all"):

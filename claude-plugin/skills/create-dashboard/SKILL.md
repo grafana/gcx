@@ -93,7 +93,12 @@ gcx resources get folders -o json
 # Similar live dashboards are better than generic examples for variables,
 # datasource UIDs, tags, units, and team conventions.
 gcx dashboards search "<service-or-team-keyword>" -o json
-gcx dashboards get <similar-dashboard-uid> -o json > /tmp/similar-dashboard.json
+
+# Pin the API version. Without --api-version the server returns its preferred
+# version, which may use a different spec shape (elements/layout/variables
+# instead of panels/templating) — the jq recipes below would then silently
+# return nothing.
+gcx dashboards get <similar-dashboard-uid> --api-version dashboard.grafana.app/v1beta1 -o json > /tmp/similar-dashboard.json
 ```
 
 Extract useful patterns:
@@ -125,7 +130,7 @@ gcx datasources list -o json
 | Pyroscope | `gcx datasources pyroscope profile-types -d <uid>` then `labels -d <uid>` | `gcx datasources pyroscope labels -d <uid> --label <label>` |
 
 Prometheus also has `gcx datasources prometheus metadata -d <uid>` for metric type and help text.
-For Prometheus scoped label lookups, fall back to `gcx api "/api/datasources/proxy/<id>/api/v1/label/<label>/values?match[]=<selector>"`.
+For Prometheus scoped label lookups, fall back to `gcx api "/api/datasources/proxy/uid/<uid>/api/v1/label/<label>/values?match[]=<selector>"` — use the datasource `uid` from `gcx datasources list`; the list output has no numeric id.
 Other datasource types may have their own discovery subcommands — check `gcx datasources <type> --help` before using `gcx api`.
 
 Check units, histogram buckets, status labels, route/operation labels, cluster
@@ -185,6 +190,12 @@ Start from the live schema instead of guessing fields:
 gcx resources schemas dashboards -o json > /tmp/dashboard-schema.json
 ```
 
+Note: the server returns the schema of its *preferred* dashboard API version,
+which may use a different spec shape (`elements`/`layout`/`variables`), while
+the template below uses the classic `v1beta1` shape (`panels`/`templating`).
+Both versions are accepted on push — just author consistently against one
+version and don't mix fields between them.
+
 `gcx resources examples` is useful for resource types that ship examples, but
 current dashboard authoring should not depend on an example being available.
 
@@ -197,16 +208,23 @@ apiVersion: dashboard.grafana.app/v1beta1
 kind: Dashboard
 metadata:
   name: <stable-dashboard-slug>
+  annotations:
+    grafana.app/folder: <folder-uid>
 spec:
   title: "<Human readable dashboard title>"
   tags: [gcx]
   timezone: browser
   schemaVersion: 36
-  # folderUID: <folder-uid>
   templating:
     list: []
   panels: []
 ```
+
+Folder placement is the `grafana.app/folder` **metadata annotation** shown
+above — the same key `gcx resources get dashboards` reads to display the
+FOLDER column. There is no `folderUID` field inside `spec`; putting one there
+is ignored and silently lands the dashboard in General, violating the folder
+rule at the top of this skill.
 
 Fill in panels, variables, links, and layout using patterns discovered above.
 
@@ -252,7 +270,8 @@ Then read/open the PNG returned in `file_path`. Inspect for:
 - overlapping panels, gaps, or poor row order
 - unreadable high-cardinality series
 - missing units/thresholds/descriptions
-- too much chrome; consider a larger width or kiosk-style settings if available
+- too much chrome; consider a larger `--width` (the renderer already hides nav
+  chrome — there is no separate kiosk flag)
 
 Render individual panels when a panel is suspect:
 

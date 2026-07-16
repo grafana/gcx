@@ -20,51 +20,54 @@ Mark task in_progress.
 **Pre-check - skip resources that already exist:**
 List SLOs (`gcx slo definitions list`), alert rules (`gcx alert rules list`), and alert groups (`gcx alert groups list`). For each journey, skip its SLO and rule group if they already exist by name.
 
-For contact points, notification policies, and mute timings, use the Grafana provisioning API via `gcx api`:
+For contact points, notification policies, and mute timings, use the native alert commands:
 ```bash
-gcx api /api/v1/provisioning/contact-points
-gcx api /api/v1/provisioning/notification-policies
-gcx api /api/v1/provisioning/mute-timings
+gcx alert contact-points list
+gcx alert notification-policies get
+gcx alert mute-timings list
 ```
 Skip creation of any that already exist.
 
 **Step 1 - parallel: one agent per user journey**, using the `slo-J.yaml` files from Phase 2:
 
 For each journey `J`, launch an agent that:
+- Ensures `slo-J.yaml` enables burn-rate alerting in the SLO definition itself
+  (the SLO spec's `alerting` section with fast-burn/slow-burn rules) — the SLO
+  plugin then generates and manages the burn-rate alert rules server-side.
+  Do not hand-author AlertRule manifests: there is no
+  `gcx resources examples AlertRule` template, and gcx's alert provider is
+  read-only for rules, so `gcx resources push` cannot create them.
 - Creates the SLO: `gcx slo definitions push slo-J.yaml --dry-run` then `gcx slo definitions push slo-J.yaml`. List SLOs to confirm.
-- Creates burn-rate alert rules as K8s resources. Get an example: `gcx resources examples AlertRule`. Build 1h/6h/24h burn-rate rules and push them:
-  ```bash
-  gcx resources push -p alert-rules-J.yaml --dry-run
-  gcx resources push -p alert-rules-J.yaml
-  ```
-  List rules to confirm: `gcx alert rules list`.
+- Confirms the generated burn-rate rules appeared: `gcx alert rules list`.
 
 Launch all journey agents simultaneously. Wait for all to complete.
 
 **Step 2 - sequential (depends on journeys existing):**
 
-Create a contact point targeting the IRM integration webhook (to be created in Phase 7). Use the Grafana provisioning API via `gcx api`:
+Create a contact point targeting the IRM integration webhook (to be created in Phase 7), using the native alert commands:
 
 ```bash
-# Create contact point
-gcx api /api/v1/provisioning/contact-points -X POST -d @contact-point.json
+# Create contact point (JSON/YAML file, or - for stdin)
+gcx alert contact-points create -f contact-point.yaml
 
 # Verify
-gcx api /api/v1/provisioning/contact-points
+gcx alert contact-points list
 
-# Create/update notification policy routing SLO alerts to that contact point
-gcx api /api/v1/provisioning/notification-policies -X PUT -d @notification-policy.json
+# Route SLO alerts to that contact point. `set` REPLACES the entire policy
+# tree, so export the current tree first as a restore point.
+gcx alert notification-policies get -o json > notification-policy-backup.json
+gcx alert notification-policies set -f notification-policy.yaml --force
 
 # Verify
-gcx api /api/v1/provisioning/notification-policies
+gcx alert notification-policies get
 ```
 
 **Step 3 - parallel with Step 2 (independent):**
 
-Create a mute timing via the provisioning API:
+Create a mute timing with the native command:
 ```bash
-gcx api /api/v1/provisioning/mute-timings -X POST -d @mute-timing.json
-gcx api /api/v1/provisioning/mute-timings
+gcx alert mute-timings create -f mute-timing.yaml
+gcx alert mute-timings list
 ```
 
 Launch mute-timings agent at the same time as Step 2. Mark task completed.
@@ -91,7 +94,7 @@ Ensure full check type coverage across all endpoints - not just HTTP. Add any mi
 - TCP checks for database or service port connectivity
 - HTTP checks with relevant headers and methods (POST for write endpoints, not just GET)
 
-Ensure full metrics are collected on all checks (do not set `basicMetricsOnly: true`).
+Ensure full metrics are collected on all checks (do not set `basicMetricsOnly: true`). Trust the read-back, not the write: if `gcx synthetic-monitoring checks get <id> -o json` still shows `basicMetricsOnly: true` after an update, report that full metrics are unavailable for that check instead of claiming success or updating it again.
 
 Wait for all agents. Mark task completed.
 
@@ -141,11 +144,11 @@ Discover the oncall command group (`gcx irm oncall --help`) and list integration
 
 Wait for both. Then **Step 2** (needs integration webhook URL from Agent A):
 
-Create a route via the API: `gcx api /api/v1/routes -X POST -d @route.yaml`, then `gcx irm oncall routes list` to confirm. Then update the Phase 4 contact point to use the IRM webhook URL:
+Create the route with the native command (`gcx irm oncall routes --help` for flags): `gcx irm oncall routes create -f route.yaml`, then `gcx irm oncall routes list` to confirm. Then update the Phase 4 contact point to use the IRM webhook URL:
 
 ```bash
-gcx api /api/v1/provisioning/contact-points/<uid> -X PUT -d @contact-point-updated.json
-gcx api /api/v1/provisioning/contact-points
+gcx alert contact-points update <uid> -f contact-point-updated.yaml
+gcx alert contact-points list
 ```
 
 Verify the webhook URL is correct. Mark task completed.

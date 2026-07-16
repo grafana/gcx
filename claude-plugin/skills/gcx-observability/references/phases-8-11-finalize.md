@@ -24,11 +24,9 @@ gcx resources get dashboards
 If the app folder already exists, capture its UID and skip creation. Skip any dashboard that already exists in the folder by title.
 
 **Step 1 - create folder** (needed before dashboards):
-Get an example folder manifest and customize it:
-```bash
-gcx resources examples Folder
-```
-Write folder YAML, then push:
+Folders don't ship a `resources examples` template. Check the server's schema
+(`gcx resources schemas folders`) and write a minimal manifest — `metadata.name`
+(a stable slug) plus `spec.title` is enough. Then push:
 ```bash
 gcx resources push -p folder.yaml --dry-run
 gcx resources push -p folder.yaml
@@ -45,8 +43,11 @@ Generate dashboards covering:
 - k6 load test results
 
 Each agent:
-1. Gets a dashboard example: `gcx resources examples Dashboard`
-2. Customizes the dashboard JSON with appropriate panels and queries
+1. Starts from the live schema (`gcx resources schemas dashboards`) — dashboards
+   don't ship a `resources examples` template. Set the target folder via the
+   `grafana.app/folder` metadata annotation (the folder UID captured in Step 1).
+   The `create-dashboard` skill covers authoring in depth if it is available.
+2. Customizes the dashboard spec with appropriate panels and queries
 3. Writes `dashboard-<name>.yaml`
 4. Pushes: `gcx resources push -p dashboard-<name>.yaml --dry-run` then `gcx resources push -p dashboard-<name>.yaml`
 5. Verifies: `gcx resources get dashboards` filtered by folder UID
@@ -71,7 +72,9 @@ gcx traces adaptive --help
 
 - **Agent A** - adaptive metrics:
   Discover the adaptive-metrics commands (`gcx metrics adaptive --help`).
-  List recommendations, review with user, sync rules if approved, list to confirm they were applied.
+  Review recommendations with the user (the recommendations group uses
+  `show`/`diff`, not `list`), sync rules if approved, then confirm they were
+  applied.
 
 - **Agent B** - adaptive logs:
   Discover the adaptive-logs commands (`gcx logs adaptive --help`).
@@ -89,33 +92,60 @@ Wait for all three. Report savings estimates and cardinality reduction. Mark tas
 
 Mark task in_progress.
 
+**Pick the managed kind set first.** The GitOps directory is an apply-capable
+set, not an archive: it holds only explicitly selected resource kinds that
+both pull successfully *and* pass `gcx resources push --dry-run` (read-only
+kinds can pull fine yet still fail apply, so "it pulled" is not enough). Use
+the same kind selectors for the export, the push preflight, and the drift
+re-pull. If the user also wants a full-stack archival snapshot, pull it to a
+separate directory — and never run the archival directory through the apply
+preflight.
+
 **Pre-check - check if export already exists:**
-List files in the export directory (default: `./grafana/`). If the directory exists and contains YAML files, run a dry-run push to check for drift:
-```bash
-gcx resources push ./grafana/ --dry-run
-```
-If no drift is detected, the export is up to date - skip and report to the user.
+List files in the export directory (default: `./grafana/`). If it already
+contains an export, run the drift check under Agent B instead of re-exporting;
+if it shows no differences, the export is up to date - skip and report to the
+user.
 
 Ask the user where in their repo to place the export (default: `./grafana/`).
 
 **Parallel:**
 
 - **Agent A** - export (run_in_background: true, can be slow):
-  Pull all resources to the chosen directory:
+  Pull the managed kinds to the chosen directory, pinned to YAML (the default
+  output format varies by mode), then confirm the result is apply-capable.
+  Pass each kind as its own selector argument — space-separated, never
+  comma-joined (`slos checks` below is an illustrative managed set):
   ```bash
-  gcx resources pull -p ./grafana/
+  gcx resources pull slos checks -p ./grafana/ -o yaml
+  gcx resources push -p ./grafana/ --dry-run
   ```
+  If a kind errors on pull or fails the dry-run, move it out of the managed
+  set (the archival snapshot is the place for it) and repeat until both steps
+  pass cleanly.
 
 - **Agent B** - prepare CI snippet while export runs:
-  Generate a ready-to-paste GitHub Actions step or Makefile target that runs:
+  Generate a ready-to-paste GitHub Actions step or Makefile target with two
+  separate steps over the same managed kind selectors:
   ```bash
-  gcx resources push ./grafana/ --dry-run
-  ```
-  This detects drift between the repo and live Grafana.
+  # Validation preflight: simulates create/update of the checked-in manifests
+  # against the live stack. It catches manifests that no longer apply; it does
+  # NOT compare live state against the repo.
+  gcx resources push -p ./grafana/ --dry-run
 
-Wait for Agent A. Then verify round-trip:
+  # Drift check: re-pull the managed kinds — the same selector set as the
+  # export, each kind as its own argument — into a fresh, empty temp
+  # directory and diff; a reused directory with stale files would show
+  # false drift.
+  tmp="$(mktemp -d)"
+  gcx resources pull slos checks -p "$tmp" -o yaml
+  diff -r ./grafana/ "$tmp"
+  ```
+  Any pull error, skipped kind, or preflight failure makes the check
+  incomplete — report it as such, not as drift.
+
+Wait for Agent A. Then report the managed kind set to the user:
 ```bash
-gcx resources push ./grafana/ --dry-run
 ls ./grafana/
 ```
 

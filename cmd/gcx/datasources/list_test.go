@@ -166,6 +166,37 @@ func TestListDefaultReturnsAllDatasources(t *testing.T) {
 	assert.Len(t, result.Datasources, 60)
 }
 
+func TestListJSONFieldDiscoveryAndSelection(t *testing.T) {
+	server := newDatasourceListServer(t, 2)
+	defer server.Close()
+
+	configFile := newConfigFileForServer(t, server.URL)
+
+	t.Run("--json list discovers item fields", func(t *testing.T) {
+		stdout, err := executeDatasourceCommand(t, []string{"datasources", "list", "--config", configFile, "--json", "list"})
+		require.NoError(t, err)
+
+		for _, field := range []string{"uid", "name", "type", "url"} {
+			assert.Contains(t, stdout, field, "item field %q must be discovered", field)
+		}
+		assert.NotContains(t, stdout, "datasources", "wrapper key must not be listed")
+	})
+
+	t.Run("--json uid,name selects per item", func(t *testing.T) {
+		stdout, err := executeDatasourceCommand(t, []string{"datasources", "list", "--config", configFile, "--json", "uid,name"})
+		require.NoError(t, err)
+
+		var result struct {
+			Datasources []map[string]any `json:"datasources"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &result))
+		require.Len(t, result.Datasources, 2)
+		assert.Equal(t, "ds-00", result.Datasources[0]["uid"])
+		assert.Equal(t, "Datasource 00", result.Datasources[0]["name"])
+		assert.NotContains(t, result.Datasources[0], "type")
+	})
+}
+
 func TestListExplicitLimitTrimsDatasources(t *testing.T) {
 	server := newDatasourceListServer(t, 60)
 	defer server.Close()

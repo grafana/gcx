@@ -66,7 +66,14 @@ Ask the user a **single `AskUserQuestion`** to confirm/adjust these defaults:
 
 For each journey `J` from Phase 1, launch an agent that:
 - Discovers the SLO command group (`gcx slo --help`, `gcx slo definitions --help`) to find available subcommands and flags.
-- Runs `gcx resources examples slo` to get a template if available, then customizes it: name, availability target, latency target, 28d window.
+- Runs `gcx resources examples slo -o yaml` to get a template (the default text
+  output is only a descriptor table), then customizes it: name, availability
+  target, latency target, 28d window.
+- Adds an `alerting` section with `fastBurn` and `slowBurn` entries under
+  `spec.alerting`. The example template omits this section, and an SLO without
+  it deploys fine but never generates burn-rate alert rules — the SLO plugin
+  creates those rules server-side from this section, and Phase 4 only wires
+  notification routing on top, so the omission surfaces late.
 - Writes the result to `slo-J.yaml`.
 
 Do **not** create the SLOs yet - Phase 4 does that after signals are flowing. Store all `slo-*.yaml` files for Phase 4.
@@ -84,7 +91,7 @@ Store all scripts and schedule YAMLs for Phase 6.
 
 **Step 3 - Create synthetic check definitions (one per endpoint, parallel):**
 
-For each critical endpoint, discover the synthetic monitoring checks command group (`gcx synthetic-monitoring checks --help`) and check for an example subcommand. Customize it: target=real URL, frequency=30s for critical / 60s for standard, assertions: status=200 and latency < 500ms. Do NOT set basicMetricsOnly: true. Write to `check-<endpoint>.yaml`.
+For each critical endpoint, discover the synthetic monitoring checks command group (`gcx synthetic-monitoring checks --help`) and check for an example subcommand. Customize it: target=real URL, frequency=30s for critical / 60s for standard, assertions: status=200 and latency < 500ms. Do NOT set basicMetricsOnly: true. Leave `alertSensitivity` unset or `none` — on unified-alerting stacks any other value is rejected with a 403 (legacy SM alerts). Write to `check-<endpoint>.yaml`.
 
 Store all `check-*.yaml` files for Phase 5.
 
@@ -116,17 +123,21 @@ If issues are found, list them and ask the user whether to fix before proceeding
 
 ---
 
-**Step 1 - Deploy Alloy collector (sequential, everything else depends on this):**
+**Step 1 - Register Fleet collector configuration (sequential, everything else depends on this):**
 
-Use `gcx fleet collectors --help` to discover collector management commands. Create an Alloy collector configuration:
+Use `gcx fleet collectors --help` to discover collector management commands. Create an Alloy collector configuration record:
 
 ```bash
 gcx fleet collectors create -f alloy-collector.yaml
 ```
 
-After Alloy is deployed, use kubectl to verify Alloy pods are Running and Ready (not CrashLoopBackOff). Check that a Service exposing port 4317 exists in the monitoring namespace. If not, create one targeting Alloy pods.
+Registering a collector or pipeline in Fleet Management only stores
+configuration — **nothing is deployed to the cluster by this step**. The
+actual deployment happens when the helm command printed by
+`gcx instrumentation setup` (Step 2, Agent A) is run on the cluster, so do
+not poll for signals or expect Alloy pods yet.
 
-Use `gcx fleet pipelines --help` to discover pipeline management. List pipelines (`gcx fleet pipelines list`). If no pipeline contains an OTLP receiver on port 4317, create or update a pipeline to add one:
+Use `gcx fleet pipelines --help` to discover pipeline management. List pipelines (`gcx fleet pipelines list`). If no pipeline contains an OTLP receiver on port 4317, create or update a pipeline record to add one:
 
 ```bash
 gcx fleet pipelines create -f pipeline.yaml
@@ -134,7 +145,7 @@ gcx fleet pipelines create -f pipeline.yaml
 gcx fleet pipelines update <name> -f pipeline.yaml
 ```
 
-Then wait for infrastructure signals to appear by polling `gcx instrumentation status` (timeout 5 minutes). If this times out, debug the Alloy deployment before continuing.
+Once Step 2's helm install has run on the cluster, use kubectl to verify Alloy pods are Running and Ready (not CrashLoopBackOff) and that a Service exposing port 4317 exists in the monitoring namespace; signal polling happens in Step 3.
 
 ---
 
@@ -162,7 +173,7 @@ Then wait for infrastructure signals to appear by polling `gcx instrumentation s
   If the frontend uses sourcemaps, upload them: `gcx frontend apps apply-sourcemap <app-name> -f <sourcemap>`.
 
 - **Agent D** - Synthetic checks (early deployment for traffic seeding):
-  Deploy the `check-*.yaml` files from Phase 2 now, before instrumentation is fully verified. For each endpoint, check if the check already exists (`gcx synthetic-monitoring checks list`); if not, create it: `gcx synthetic-monitoring checks create -f check-<endpoint>.yaml`. List checks to confirm each is enabled with probes assigned.
+  Deploy the `check-*.yaml` files from Phase 2 now, before instrumentation is fully verified. For each endpoint, check if the check already exists (`gcx synthetic-monitoring checks list`); if not, create it: `gcx synthetic-monitoring checks create -f check-<endpoint>.yaml`. List checks to confirm each is enabled with probes assigned. After each create, read the check back with `gcx synthetic-monitoring checks get <id> -o json` and confirm `basicMetricsOnly` persisted as intended — if the server keeps it `true`, report that full metrics are unavailable for that check rather than re-submitting.
   > **Purpose:** synthetic checks start probing endpoints immediately, generating real HTTP traffic that flows through Alloy. This seeds the telemetry pipeline so Step 3's signal verification has live data.
   > If endpoints are private, first list available probes (`gcx synthetic-monitoring probes list`), identify private probes, and ensure they are online before creating checks.
 

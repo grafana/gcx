@@ -48,8 +48,9 @@ type Env struct {
 // ResolveMode resolves the telemetry mode for this invocation. Precedence,
 // highest first: GCX_TELEMETRY, DO_NOT_TRACK, the diagnostics.telemetry
 // config value, the built-in default. Unrecognised values fall through to
-// the next level.
-func ResolveMode(configValue string) Mode {
+// the next level. configValue is a func so callers only pay the config-file
+// read when the environment doesn't already decide the mode.
+func ResolveMode(configValue func() string) Mode {
 	return resolveMode(os.Getenv, configValue)
 }
 
@@ -61,14 +62,14 @@ const (
 	envDoNotTrack = "DO_NOT_TRACK"
 )
 
-func resolveMode(getenv func(string) string, configValue string) Mode {
+func resolveMode(getenv func(string) string, configValue func() string) Mode {
 	if m, ok := parseMode(getenv(envTelemetry)); ok {
 		return m
 	}
 	if isDoNotTrack(getenv(envDoNotTrack)) {
 		return ModeDisabled
 	}
-	if m, ok := parseMode(configValue); ok {
+	if m, ok := parseMode(configValue()); ok {
 		return m
 	}
 	return defaultMode
