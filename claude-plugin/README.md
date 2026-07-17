@@ -82,6 +82,7 @@ canonical portable skill bundle.
 | `slo-manage` | Create, update, pull, push, and delete SLO definitions |
 | `slo-optimize` | Analyze SLO trends and recommend objective or alerting improvements |
 | `agento11y` | Browse conversations, manage evaluators and rules, set up online evaluation for LLM quality scoring (Agent Observability) |
+| `agento11y-instrument` | Set up and instrument a developer's own LLM app to send generations to Agent Observability, verifying data lands via gcx |
 | `synth-check-status` | Check Synthetic Monitoring health, status, and trends |
 | `synth-investigate-check` | Diagnose why a Synthetic Monitoring check is failing |
 | `synth-manage-checks` | Create, update, pull, push, and delete Synthetic Monitoring checks |
