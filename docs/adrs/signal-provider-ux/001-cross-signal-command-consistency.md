@@ -6,9 +6,11 @@
 **Supersedes**: none
 
 <!-- Ratification of this ADR (its command surface shipped in April 2026)
-     is bundled with the Command Operation Contract decision: both flip to
-     accepted in the same acceptance commit once maintainers approve the
-     decision table in docs/plans/2026-07-16-command-operation-contract-rollout.md. -->
+     is PROPOSED to be bundled with the Command Operation Semantics
+     decision (D4 in the rollout plan): both would flip to accepted in the
+     same acceptance commit once maintainers approve the decision table in
+     docs/plans/2026-07-16-command-operation-contract-rollout.md. That
+     bundling itself still awaits maintainer approval. -->
 
 ## Context
 
@@ -85,6 +87,14 @@ gcx metrics                       gcx logs                        gcx profiles  
 reliably deduced from `--from`/`--to` presence, and the response shape (vector
 vs matrix) is the same structure. The other signals have genuinely different
 response shapes between their primary query and time-series query.
+
+> **Pending rename (decided 2026-07-17).** `profile-types` is slated for
+> rename to `list-types` — at both mounts of its shared builder
+> (`profiles profile-types` and `datasources pyroscope profile-types`) —
+> under the
+> [Command Operation Semantics ADR](../command-operation-contract/001-command-operation-semantics.md)
+> §4 (rollout decision D4c). The diagram above reflects the shipped
+> surface until that rename executes.
 
 **Rejected:** Single `query` command with auto-detect regex for search vs metrics
 (original design). Each query type has different response shapes, different
@@ -164,7 +174,7 @@ only in what the API returns: a single data point vs a time series.
 We are pre-GA -- no deprecated aliases, just clean renames where needed.
 
 > **Scoped amendment (pending acceptance).** Once the
-> [Command Operation Contract ADR](../command-operation-contract/001-command-operation-semantics.md)
+> [Command Operation Semantics ADR](../command-operation-contract/001-command-operation-semantics.md)
 > is accepted, its §11 supersedes this section **for future renames**:
 > noncanonical paths are renamed or removed during v1 development with no
 > compatibility forwarders (v1.0.0 is the clean boundary; migration

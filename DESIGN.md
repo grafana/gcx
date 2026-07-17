@@ -24,7 +24,7 @@ gcx logs query --from=1h
 gcx irm oncall schedules get my-schedule
 ```
 
-See [CONSTITUTION.md § CLI Grammar](CONSTITUTION.md#cli-grammar) for the authoritative rules (positional arguments, flags, extension commands, verb constraints), and the [ADR: Command Operation Contract](docs/adrs/command-operation-contract/001-command-operation-semantics.md) for operation semantics (vocabulary, addressability, surface forms). View-operation output defaults are governed separately from the format table below.
+See [CONSTITUTION.md § CLI Grammar](CONSTITUTION.md#cli-grammar) for the authoritative rules (positional arguments, flags, extension commands, verb constraints), and the [ADR: Command Operation Semantics](docs/adrs/command-operation-contract/001-command-operation-semantics.md) for operation semantics (vocabulary, addressability, surface forms). View-operation output defaults are governed separately from the format table below.
 
 ## Dual-Purpose Design
 

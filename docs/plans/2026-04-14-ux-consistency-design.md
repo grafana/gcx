@@ -565,7 +565,7 @@ they're removed.
 ### Singleton resources use `show`, not `get`
 
 > **Superseded.** The singleton rule changed during ratification: under the
-> [Command Operation Contract ADR](../adrs/command-operation-contract/001-command-operation-semantics.md),
+> [Command Operation Semantics ADR](../adrs/command-operation-contract/001-command-operation-semantics.md),
 > a no-argument read of a singleton is `get` with singleton *addressing* —
 > `show` is not a canonical operation. `appo11y overrides get` /
 > `settings get` are therefore already canonical.
@@ -575,11 +575,11 @@ they're removed.
 > **Correction (2026-07-16).** This section previously claimed three rules
 > were "added to `docs/design/naming.md`" — they never were (documentation
 > drift). The verb taxonomy is defined by the
-> [Command Operation Contract ADR](../adrs/command-operation-contract/001-command-operation-semantics.md)
+> [Command Operation Semantics ADR](../adrs/command-operation-contract/001-command-operation-semantics.md)
 > and summarized in [naming.md §9.7](../design/naming.md). Outcomes differ
 > from the original sketch: singleton reads are `get` (not `show`); `show`
 > is not canonical; the `open`/`browse` disambiguation remains an open
-> migration-census question rather than a ratified rule.
+> classification question rather than a ratified rule.
 
 ---
 

@@ -52,7 +52,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   and provider commands use `gcx {area} {resource-type} {verb}` (e.g.
   `gcx slo definitions list`, `gcx resources get`,
   `gcx logs query`; approved surface shorthands and protocol-family
-  exceptions are governed by the operation contract). Tooling commands
+  exceptions are governed by the operation-semantics ADR). Tooling commands
   (`dev`, `config`)
   may use `$AREA $VERB` when there is no meaningful noun — these operate on
   the project or CLI itself, not on Grafana resources. Single-token
@@ -62,10 +62,10 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   that report on the binary itself rather than on Grafana — `gcx version`,
   `gcx commands`, `gcx help-tree`, and Cobra-provided `help`/`completion`;
   and (3) the raw API escape hatch — `gcx api` (see the
-  [operation-contract ADR](docs/adrs/command-operation-contract/001-command-operation-semantics.md)
-  for its safety contract: its static effect classification is
-  destructive with `effect_varies` — most invocations read, but agents
-  authorize against the maximum — and it must never be presented as
+  [operation-semantics ADR](docs/adrs/command-operation-contract/001-command-operation-semantics.md)
+  for its safety note: depending on method and body it can mutate or
+  delete arbitrary API objects, and it must never be presented — in help
+  text, catalog metadata, or agent annotations — as
   read-only). This is an explicit, closed
   enumeration — any new top-level command must follow `$AREA $NOUN $VERB`
   or `$AREA $VERB`; it does not qualify as a single-token top-level
@@ -79,19 +79,24 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   being acted on (resource selectors, UIDs, expressions, file paths) is
   positional. How to act on it (output format, concurrency, dry-run, filters)
   is a flag. Commands whose identity is genuinely supplied through flags
-  declare that explicitly in their operation contract rather than by
-  convention.
+  state that explicitly in their help text and are reviewed against the
+  operation-semantics rubric rather than left to convention.
 - **New or modified runnable commands conform to the accepted operation
-  contract.** The final path token is the operation, an
-  `<operation>-<subject>` compound, or an approved shorthand/protocol
-  exception from the governed vocabulary (see
-  [ADR: Command Operation Contract](docs/adrs/command-operation-contract/001-command-operation-semantics.md)
-  and [docs/design/naming.md §9.7](docs/design/naming.md)). Once the
-  contract-metadata and census implementation lands, existing deviations
-  must appear in the migration census and be eliminated before v1.0.0,
-  and the requirement becomes universal — every gcx-owned active runnable
-  command, including hidden active commands. The single-token top-level
-  enumeration above remains closed.
+  semantics.** The final path token is an approved operation, an
+  `<operation>-<subject>` compound of one, or an approved
+  shorthand/protocol exception from the governed vocabulary (see
+  [ADR: Command Operation Semantics](docs/adrs/command-operation-contract/001-command-operation-semantics.md)
+  and [docs/design/naming.md §9.7](docs/design/naming.md)). During the
+  transition this is checked in ordinary PR review against the rubric;
+  the allowed-operation registry and its lexical CI check land in a
+  follow-up implementation PR and become the executable check then.
+  Existing deviations are resolved through the pre-v1
+  inventory-and-classification batches and must be eliminated before
+  v1.0.0 — every gcx-owned active runnable command, including hidden
+  runnable commands; aliases on runnable commands are validated as
+  alternate terminal tokens, while group aliases are path prefixes,
+  inventoried and dispositioned in the classification worksheet. The
+  single-token top-level enumeration above remains closed.
 
 ## Dual-Purpose Design
 
@@ -142,11 +147,11 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   `ResourceAdapter` (via TypedCRUD) for data access, not raw API clients.
   Table/wide codecs may diverge — provider tables show domain-specific
   columns, generic tables show resource-management columns.
-- **Command operations follow the operation contract.** A command's
+- **Command operations follow the operation semantics.** A command's
   operation is determined by its user-visible subject, addressability,
   result cardinality, and side effects — never by HTTP method, API path or
   version, adapter registration, or transport (see
-  [ADR: Command Operation Contract](docs/adrs/command-operation-contract/001-command-operation-semantics.md)).
+  [ADR: Command Operation Semantics](docs/adrs/command-operation-contract/001-command-operation-semantics.md)).
   A genuine read-one is `get` and a genuine enumeration is `list`
   regardless of whether the resource is adapter-registered. Resources that
   do not obey entity semantics use the appropriate query/view/domain
@@ -165,7 +170,7 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   standalone adapter if the API supports direct ID lookup without a parent.
   Addressability rules for selector, optional, variadic, and flag-supplied
   identities are defined in the
-  [operation-contract ADR](docs/adrs/command-operation-contract/001-command-operation-semantics.md).
+  [operation-semantics ADR](docs/adrs/command-operation-contract/001-command-operation-semantics.md).
 - **Typed resource trajectory.** Provider domain types implement
   `ResourceIdentity` for self-describing identity and are wrapped by
   `TypedObject[T]` (embedded `metav1.ObjectMeta` + `TypeMeta` + `Spec T`)

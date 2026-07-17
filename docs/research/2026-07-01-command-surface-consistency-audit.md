@@ -6,10 +6,11 @@
 
 > **HISTORICAL — NON-AUTHORITATIVE (labeled 2026-07-16).** This document
 > is preserved as the point-in-time inventory that motivated the
-> [Command Operation Contract ADR](../adrs/command-operation-contract/001-command-operation-semantics.md).
-> It is **historical context only**: the migration census generated fresh
-> from the live command tree is the sole migration input — neither this
-> document's inventory nor its recommendations feed the census. The
+> [Command Operation Semantics ADR](../adrs/command-operation-contract/001-command-operation-semantics.md).
+> It is **historical context only**: the deterministic inventory and
+> classification generated fresh from the live command tree is the sole
+> migration input — neither this document's inventory nor its
+> recommendations feed it. The
 > recommendations in particular **must not be worked from** — the
 > proposed ADR rejects several of them, and verification against actual
 > command behavior showed several to be wrong when this label was added:
@@ -29,8 +30,8 @@
 >   defaults are a separate workstream), and the "one coordinated change"
 >   claim no longer holds at HEAD.
 >
-> The migration census is generated fresh from the live tree; do not file
-> issues from this document's checklists.
+> The inventory and classification are generated fresh from the live
+> tree; do not file issues from this document's checklists.
 
 ## Executive Summary
 
@@ -39,7 +40,7 @@
 - **`TypedCRUD`** is broadly adopted; the notable bespoke holdouts are `dashboards`, `cloud stacks`, and `instrumentation`.
 - **Output**: `list` → table and agent-mode → JSON (`agents` codec) are already correct. The one systemic gap is that `get` / single-item commands default to `text`/table instead of YAML — a **non-agent-mode-only** defect rooted in one design-doc rule (`docs/design/output.md` §1.3) and one shared default call, not 62 separate bugs.
 
-This audit was input to the verb-taxonomy discussion anticipated by [the UX Consistency design](../plans/2026-04-14-ux-consistency-design.md) (dimensions 4-5); that discussion has since produced the [Command Operation Contract ADR](../adrs/command-operation-contract/001-command-operation-semantics.md) and its rollout plan, which use a fresh live-tree census — not this document — as the sole migration input (see the preface above).
+This audit was input to the verb-taxonomy discussion anticipated by [the UX Consistency design](../plans/2026-04-14-ux-consistency-design.md) (dimensions 4-5); that discussion has since produced the [Command Operation Semantics ADR](../adrs/command-operation-contract/001-command-operation-semantics.md) and its rollout plan, which use a fresh live-tree inventory and classification — not this document — as the sole migration input (see the preface above).
 
 ## Scope and Method
 
