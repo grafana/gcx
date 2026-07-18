@@ -324,7 +324,11 @@ func (c *RulerGroupsTableCodec) Encode(w io.Writer, v any) error {
 	}
 	t := style.NewTable("NAMESPACE", "GROUP", "INTERVAL", "RULES")
 	for _, g := range views {
-		t.Row(g.Namespace, g.Group, g.Interval, strconv.Itoa(g.Rules))
+		interval := g.Interval
+		if interval == "" {
+			interval = "-"
+		}
+		t.Row(g.Namespace, g.Group, interval, strconv.Itoa(g.Rules))
 	}
 	return t.Render(w)
 }

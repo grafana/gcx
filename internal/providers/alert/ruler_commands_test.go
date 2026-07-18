@@ -213,6 +213,7 @@ func TestRulerGroupsTableCodec_Encode(t *testing.T) {
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, []alert.RulerGroupView{
 		{Namespace: "ns-a", Group: "g1", Interval: "1m", Rules: 3},
+		{Namespace: "ns-a", Group: "g2", Rules: 1},
 	})
 	require.NoError(t, err)
 
@@ -220,6 +221,14 @@ func TestRulerGroupsTableCodec_Encode(t *testing.T) {
 	assert.Contains(t, output, "GROUP")
 	assert.Contains(t, output, "g1")
 	assert.Contains(t, output, "1m")
+	// Groups without an explicit interval render a placeholder, not a blank cell.
+	g2Line := ""
+	for line := range strings.SplitSeq(output, "\n") {
+		if strings.Contains(line, "g2") {
+			g2Line = line
+		}
+	}
+	assert.Contains(t, g2Line, "-")
 
 	require.Error(t, codec.Encode(&buf, 42))
 }
