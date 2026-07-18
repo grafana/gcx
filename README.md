@@ -17,7 +17,7 @@ Query production. Investigate alerts. Let the Assistant root-cause issues. Ship 
 
 ## What is gcx?
 
-gcx is a CLI for Grafana. It gives you and your AI coding agent structured access to your Grafana instance: dashboards, alerts, SLOs, metrics, logs, traces, and more.
+gcx is a CLI for Grafana — Cloud, Enterprise, and OSS alike. It gives you and your AI coding agent structured access to your Grafana instance: dashboards, alerts, SLOs, metrics, logs, traces, and more. Core features (resources, alerting, signal queries) work on any Grafana 12+; Grafana Cloud adds product-specific commands on top.
 
 gcx works with any agentic coding tool. It ships with a suite of agent skills for common workflows like alert investigation, dashboard creation and GitOps, SLO management, and observability setup - ready to use out of the box.
 
@@ -33,11 +33,11 @@ gcx login prod --server https://<your-cloud-instance>.grafana.net  # select oaut
 # For self-hosted Grafana instances
 gcx login local --server http://localhost:3000 --token <token>
 
-# check your grafana cloud metrics usage in the last day
-gcx metrics query -d grafanacloud-usage 'grafanacloud_org_metrics_billable_series'  --since 24h  --step 1h
-
-# check how busy your API routes are
+# check how busy your API routes are (works on any Grafana)
 gcx metrics query 'sum by (handler)(rate(grafana_http_request_duration_seconds_count[5m]))' --since 1h
+
+# check your grafana cloud metrics usage in the last day (Grafana Cloud only)
+gcx metrics query -d grafanacloud-usage 'grafanacloud_org_metrics_billable_series'  --since 24h  --step 1h
 
 # list and search your dashboards
 gcx dashboards list
@@ -301,7 +301,7 @@ export GCX_NO_UPDATE_NOTIFIER=1
 
 ## The Agentic Workflow
 
-Here's what it looks like when your coding agent has access to production:
+Here's what it looks like when your coding agent has access to production. This example uses the Grafana Assistant, which requires Grafana Cloud — see the [compatibility matrix](#compatibility); the [workflows below](#beyond-alert-investigation) work on any Grafana.
 
 **1. An alert fires** — P95 latency on the checkout service crosses the SLO threshold.
 
