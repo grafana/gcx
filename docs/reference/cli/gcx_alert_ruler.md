@@ -1,19 +1,19 @@
 ## gcx alert ruler
 
-Manage datasource-managed (Mimir/Loki ruler) rule groups.
+Manage datasource-managed (Mimir/Loki ruler) rules.
 
 ### Synopsis
 
 Manage alerting and recording rules stored in a Mimir or Loki ruler,
 via Grafana's per-datasource ruler proxy.
 
-These are datasource-managed rules, distinct from Grafana-managed alert rules.
-Grafana-managed rules are read via 'gcx alert rules' and written via
-'gcx resources pull/push alertrules' — the write path requires Grafana 13+,
-where the rules.alerting.grafana.app API is enabled by default (on Grafana 12
-it requires the experimental 'kubernetesAlertingRules' feature toggle and a
-restart). Every ruler command requires --datasource with the UID of a
-Prometheus-flavored or Loki datasource.
+These commands work only against Mimir (or another Prometheus-flavored
+ruler) and Loki datasources: every command requires --datasource with the
+UID of such a datasource.
+
+These are datasource-managed rules, distinct from Grafana-managed alert
+rules — inspect those with 'gcx alert rules' and modify them with
+'gcx resources pull/push alertrules'.
 
 ### Options
 
@@ -36,6 +36,6 @@ Prometheus-flavored or Loki datasource.
 ### SEE ALSO
 
 * [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
-* [gcx alert ruler groups](gcx_alert_ruler_groups.md)	 - Manage ruler rule groups.
-* [gcx alert ruler namespaces](gcx_alert_ruler_namespaces.md)	 - Manage ruler namespaces.
+* [gcx alert ruler groups](gcx_alert_ruler_groups.md)	 - Manage datasource-managed (Mimir/Loki ruler) rule groups.
+* [gcx alert ruler namespaces](gcx_alert_ruler_namespaces.md)	 - Manage datasource-managed (Mimir/Loki ruler) namespaces.
 

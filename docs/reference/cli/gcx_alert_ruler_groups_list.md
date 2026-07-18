@@ -9,11 +9,11 @@ gcx alert ruler groups list [flags]
 ### Options
 
 ```
-      --datasource string   Datasource UID of the Mimir/Loki ruler (required)
+  -d, --datasource string   UID of the Mimir or Loki datasource used as ruler (required)
   -h, --help                help for list
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --namespace string    Only list groups in this namespace
+  -n, --namespace string    Only list groups in this namespace
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
 ```
 
@@ -31,5 +31,5 @@ gcx alert ruler groups list [flags]
 
 ### SEE ALSO
 
-* [gcx alert ruler groups](gcx_alert_ruler_groups.md)	 - Manage ruler rule groups.
+* [gcx alert ruler groups](gcx_alert_ruler_groups.md)	 - Manage datasource-managed (Mimir/Loki ruler) rule groups.
 

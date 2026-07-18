@@ -1,6 +1,6 @@
 ## gcx alert ruler groups
 
-Manage ruler rule groups.
+Manage datasource-managed (Mimir/Loki ruler) rule groups.
 
 ### Options
 
@@ -22,7 +22,7 @@ Manage ruler rule groups.
 
 ### SEE ALSO
 
-* [gcx alert ruler](gcx_alert_ruler.md)	 - Manage datasource-managed (Mimir/Loki ruler) rule groups.
+* [gcx alert ruler](gcx_alert_ruler.md)	 - Manage datasource-managed (Mimir/Loki ruler) rules.
 * [gcx alert ruler groups apply](gcx_alert_ruler_groups_apply.md)	 - Create or update ruler rule groups from a file.
 * [gcx alert ruler groups delete](gcx_alert_ruler_groups_delete.md)	 - Delete a ruler rule group.
 * [gcx alert ruler groups get](gcx_alert_ruler_groups_get.md)	 - Get a ruler rule group (YAML by default, round-trips into apply).

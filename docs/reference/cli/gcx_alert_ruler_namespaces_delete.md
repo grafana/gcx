@@ -9,7 +9,7 @@ gcx alert ruler namespaces delete NAMESPACE [flags]
 ### Options
 
 ```
-      --datasource string   Datasource UID of the Mimir/Loki ruler (required)
+  -d, --datasource string   UID of the Mimir or Loki datasource used as ruler (required)
       --force               Skip confirmation prompt
   -h, --help                help for delete
 ```
@@ -28,5 +28,5 @@ gcx alert ruler namespaces delete NAMESPACE [flags]
 
 ### SEE ALSO
 
-* [gcx alert ruler namespaces](gcx_alert_ruler_namespaces.md)	 - Manage ruler namespaces.
+* [gcx alert ruler namespaces](gcx_alert_ruler_namespaces.md)	 - Manage datasource-managed (Mimir/Loki ruler) namespaces.
 

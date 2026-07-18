@@ -9,17 +9,16 @@ standard Prometheus rules file (with a top-level "groups:" list) or a single
 bare rule group. Applying a group replaces the group with the same name.
 
 ```
-gcx alert ruler groups apply [flags]
+gcx alert ruler groups apply NAMESPACE [flags]
 ```
 
 ### Options
 
 ```
-      --datasource string   Datasource UID of the Mimir/Loki ruler (required)
+  -d, --datasource string   UID of the Mimir or Loki datasource used as ruler (required)
       --dry-run             Parse and validate only; send nothing to the ruler
   -f, --filename string     File containing rule groups (Prometheus rules file or a single group; YAML/JSON, use - for stdin)
   -h, --help                help for apply
-      --namespace string    Ruler namespace to apply the groups to (required)
 ```
 
 ### Options inherited from parent commands
@@ -36,5 +35,5 @@ gcx alert ruler groups apply [flags]
 
 ### SEE ALSO
 
-* [gcx alert ruler groups](gcx_alert_ruler_groups.md)	 - Manage ruler rule groups.
+* [gcx alert ruler groups](gcx_alert_ruler_groups.md)	 - Manage datasource-managed (Mimir/Loki ruler) rule groups.
 

@@ -1,6 +1,6 @@
 ## gcx alert ruler namespaces
 
-Manage ruler namespaces.
+Manage datasource-managed (Mimir/Loki ruler) namespaces.
 
 ### Options
 
@@ -22,7 +22,7 @@ Manage ruler namespaces.
 
 ### SEE ALSO
 
-* [gcx alert ruler](gcx_alert_ruler.md)	 - Manage datasource-managed (Mimir/Loki ruler) rule groups.
+* [gcx alert ruler](gcx_alert_ruler.md)	 - Manage datasource-managed (Mimir/Loki ruler) rules.
 * [gcx alert ruler namespaces delete](gcx_alert_ruler_namespaces_delete.md)	 - Delete a ruler namespace and all rule groups in it.
 * [gcx alert ruler namespaces list](gcx_alert_ruler_namespaces_list.md)	 - List ruler namespaces with group and rule counts.
 
