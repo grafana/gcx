@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -61,6 +62,16 @@ func NewDefaultRegistry(ctx context.Context, cfg config.NamespacedRESTConfig) (*
 // NewDefaultRegistryWithCacheDir creates a new discovery registry using a disk-cached
 // discovery client with the specified cache directory.
 func NewDefaultRegistryWithCacheDir(ctx context.Context, cfg config.NamespacedRESTConfig, cacheDir string) (*Registry, error) {
+	// client-go's discovery client issues its HTTP requests on context.TODO(),
+	// so the ctx passed here never reaches the wire and a Ctrl+C would hang
+	// until the client-go request timeout expired. Discovery only happens at
+	// construction (via NewRegistry), so rebinding every request to the
+	// constructor ctx is safe and makes discovery cancellable. cfg is a copy,
+	// the caller's config is not mutated.
+	cfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+		return contextTransport{ctx: ctx, base: rt}
+	})
+
 	client, err := diskcached.NewCachedDiscoveryClientForConfig(&cfg.Config, cacheDir, "", defaultDiscoveryCacheTTL)
 	if err != nil {
 		return nil, err
@@ -74,6 +85,18 @@ func NewDefaultRegistryWithCacheDir(ctx context.Context, cfg config.NamespacedRE
 	adapter.RegisterAll(ctx, reg)
 
 	return reg, nil
+}
+
+// contextTransport rebinds each request to ctx so cancellation propagates to
+// HTTP calls that client-go issues on its own internal context.
+type contextTransport struct {
+	//nolint:containedctx // deliberate: replaces client-go's context.TODO() on discovery requests
+	ctx  context.Context
+	base http.RoundTripper
+}
+
+func (t contextTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return t.base.RoundTrip(req.Clone(t.ctx))
 }
 
 // DiscoveryCacheDir returns the directory to use for caching discovery results.

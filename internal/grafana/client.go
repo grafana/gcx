@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/version"
 	"github.com/grafana/grafana-app-sdk/logging"
 	goapi "github.com/grafana/grafana-openapi-client-go/client"
+	"github.com/grafana/grafana-openapi-client-go/client/health"
 )
 
 // VersionIncompatibleError is returned when a Grafana instance is too old for gcx.
@@ -131,7 +132,7 @@ func GetVersion(ctx context.Context, cfgCtx *config.Context) (*semver.Version, s
 	gClient := res.api
 	gClient.WithHTTPClient(httputils.NewDefaultClientWithTLS(ctx, res.tlsConfig))
 
-	healthResponse, err := gClient.Health.GetHealth()
+	healthResponse, err := gClient.Health.GetHealthWithParams(health.NewGetHealthParams().WithContext(ctx))
 	if err != nil {
 		return nil, "", err
 	}

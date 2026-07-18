@@ -370,6 +370,9 @@ func checkCmd(configOpts *Options) *cobra.Command {
 
 			var checkErr error
 			for _, gCtx := range cfg.Contexts {
+				if err := cmd.Context().Err(); err != nil {
+					return err
+				}
 				if err := checkContext(cmd, cfg, gCtx, configOpts.ConfigSource()); err != nil {
 					checkErr = err
 				}
@@ -408,7 +411,15 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	cmd.Println(cmdio.Yellow(title))
 	cmd.Println(cmdio.Yellow(strings.Repeat("=", titleLen)))
 
+	// Cancellation guards below check cmd.Context() directly instead of the
+	// returned error's chain: client-go's discovery aggregates per-group
+	// failures into an error with no Unwrap, and validateNamespace replaces
+	// the discovery error entirely, so context.Canceled is not always
+	// reachable via errors.Is.
 	if err := gCtx.Validate(cmd.Context()); err != nil {
+		if ctxErr := cmd.Context().Err(); ctxErr != nil {
+			return ctxErr
+		}
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(summarizeError(err)))
 		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
@@ -440,6 +451,9 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	restCfg.WireTokenPersistence(cmd.Context(), source, gCtx.Name, cfg.Sources)
 
 	if _, err := discovery.NewDefaultRegistry(cmd.Context(), restCfg); err != nil {
+		if ctxErr := cmd.Context().Err(); ctxErr != nil {
+			return ctxErr
+		}
 		cmdio.Error(stdout, "Connectivity: %s", cmdio.Red(summarizeError(err)))
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
 		printSuggestions(err)
@@ -450,6 +464,9 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 
 	version, raw, err := grafana.GetVersion(cmd.Context(), gCtx)
 	if err != nil {
+		if ctxErr := cmd.Context().Err(); ctxErr != nil {
+			return ctxErr
+		}
 		cmdio.Error(stdout, "Grafana version: %s", cmdio.Red(summarizeError(err))+"\n")
 		return nil
 	}

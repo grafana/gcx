@@ -2,6 +2,7 @@ package login
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/url"
@@ -81,7 +82,13 @@ func probeTarget(ctx context.Context, server string, httpClient *http.Client) (T
 
 	settings, err := grafana.FetchAnonymousSettings(probeCtx, server, httpClient)
 	if err != nil {
-		// Any error (network failure, timeout, non-200, decode failure) → TargetUnknown.
+		// Ctrl+C must abort detection, not degrade into a clarification
+		// prompt. Only propagate cancellation: a deadline on either ctx is
+		// a normal timeout and stays a TargetUnknown outcome.
+		if ctxErr := ctx.Err(); errors.Is(ctxErr, context.Canceled) {
+			return TargetUnknown, ctxErr
+		}
+		// Any other error (network failure, timeout, non-200, decode failure) → TargetUnknown.
 		return TargetUnknown, nil
 	}
 
