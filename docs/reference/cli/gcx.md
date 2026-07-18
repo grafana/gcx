@@ -25,6 +25,7 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx agent](gcx_agent.md)	 - Agent mode utilities
 * [gcx aio11y](gcx_aio11y.md)	 - Manage Grafana AI Observability resources
 * [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
+* [gcx annotations](gcx_annotations.md)	 - Manage Grafana annotations
 * [gcx api](gcx_api.md)	 - Make direct HTTP requests to the Grafana API
 * [gcx appo11y](gcx_appo11y.md)	 - Manage Grafana App Observability settings
 * [gcx assistant](gcx_assistant.md)	 - Interact with Grafana Assistant
@@ -45,8 +46,11 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx login](gcx_login.md)	 - Log in to a Grafana instance
 * [gcx logs](gcx_logs.md)	 - Query Loki datasources and manage Adaptive Logs
 * [gcx metrics](gcx_metrics.md)	 - Query Prometheus datasources and manage Adaptive Metrics
+* [gcx org](gcx_org.md)	 - Manage Grafana organization resources
+* [gcx permissions](gcx_permissions.md)	 - Manage Grafana resource permissions (RBAC)
 * [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
 * [gcx providers](gcx_providers.md)	 - Manage registered providers
+* [gcx public-dashboards](gcx_public-dashboards.md)	 - Manage public dashboards
 * [gcx resources](gcx_resources.md)	 - Manipulate Grafana resources
 * [gcx setup](gcx_setup.md)	 - Onboard and configure Grafana Cloud products.
 * [gcx slo](gcx_slo.md)	 - Manage Grafana SLO definitions and reports

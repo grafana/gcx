@@ -2,6 +2,7 @@ package root_test
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/root"
@@ -192,6 +193,73 @@ func TestConsistency_AvailabilityValuesValid(t *testing.T) {
 			}
 		})
 	})
+}
+
+// TestConsistency_PublicDashboardsHintsMatchCommandArity guards against the
+// class of bug reported on PR #924: an LLMHint whose leading positional
+// tokens don't match the command's actual cobra.Args arity, or whose flag
+// tokens omit a flag the command marks required. Either causes an agent
+// following the hint to hit a hard cobra error on the first call.
+func TestConsistency_PublicDashboardsHintsMatchCommandArity(t *testing.T) {
+	rootCmd := buildRootCmd()
+
+	cmdsByPath := make(map[string]*cobra.Command)
+	agent.WalkCommands(rootCmd, func(cmd *cobra.Command) {
+		cmdsByPath[cmd.CommandPath()] = cmd
+	})
+
+	cases := []struct {
+		path        string
+		positionals int      // leading hint tokens before the first flag
+		wantFlags   []string // flags the hint must reference
+	}{
+		{path: "gcx public-dashboards get", positionals: 1},
+		{path: "gcx public-dashboards create", positionals: 0, wantFlags: []string{"--dashboard-uid", "-f"}},
+		{path: "gcx public-dashboards update", positionals: 1, wantFlags: []string{"--dashboard-uid", "-f"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			cmd, ok := cmdsByPath[tc.path]
+			if !ok {
+				t.Fatalf("command %q not found in tree", tc.path)
+			}
+			hint := cmd.Annotations[agent.AnnotationLLMHint]
+			if hint == "" {
+				t.Fatalf("missing %s annotation", agent.AnnotationLLMHint)
+			}
+
+			positionals := 0
+			for tok := range strings.FieldsSeq(hint) {
+				if strings.HasPrefix(tok, "-") {
+					break
+				}
+				positionals++
+			}
+			if positionals != tc.positionals {
+				t.Errorf("hint %q implies %d positional arg(s), want %d", hint, positionals, tc.positionals)
+			}
+
+			// Validate the implied positional count against the command's own
+			// arity check (e.g. cobra.ExactArgs), not just the fixture above.
+			// A nil Args means cobra falls back to ArbitraryArgs (no check).
+			if cmd.Args != nil {
+				dummyArgs := make([]string, positionals)
+				for i := range dummyArgs {
+					dummyArgs[i] = "x"
+				}
+				if err := cmd.Args(cmd, dummyArgs); err != nil {
+					t.Errorf("hint implies %d positional arg(s) but the command rejects them: %v", positionals, err)
+				}
+			}
+
+			for _, flag := range tc.wantFlags {
+				if !strings.Contains(hint, flag) {
+					t.Errorf("hint %q does not reference required flag %q", hint, flag)
+				}
+			}
+		})
+	}
 }
 
 // TestConsistency_SkillMappingResolvesToCommands verifies every key in the
