@@ -56,7 +56,7 @@ func rulerSubtypeForDatasourceType(dsType string) (string, error) {
 	case "loki":
 		return "", nil
 	default:
-		return "", fmt.Errorf("datasource type %q has no ruler API (supported: prometheus-flavored, loki)", dsType)
+		return "", fmt.Errorf("datasource type %q has no ruler API (supported types are prometheus-flavored and loki)", dsType)
 	}
 }
 

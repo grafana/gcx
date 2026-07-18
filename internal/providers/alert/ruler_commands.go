@@ -22,17 +22,17 @@ import (
 func rulerCommands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ruler",
-		Short: "Manage datasource-managed (Mimir/Loki ruler) rule groups.",
+		Short: "Manage datasource-managed (Mimir/Loki ruler) rules.",
 		Long: `Manage alerting and recording rules stored in a Mimir or Loki ruler,
 via Grafana's per-datasource ruler proxy.
 
-These are datasource-managed rules, distinct from Grafana-managed alert rules.
-Grafana-managed rules are read via 'gcx alert rules' and written via
-'gcx resources pull/push alertrules' — the write path requires Grafana 13+,
-where the rules.alerting.grafana.app API is enabled by default (on Grafana 12
-it requires the experimental 'kubernetesAlertingRules' feature toggle and a
-restart). Every ruler command requires --datasource with the UID of a
-Prometheus-flavored or Loki datasource.`,
+These commands work only against Mimir (or another Prometheus-flavored
+ruler) and Loki datasources: every command requires --datasource with the
+UID of such a datasource.
+
+These are datasource-managed rules, distinct from Grafana-managed alert
+rules — inspect those with 'gcx alert rules' and modify them with
+'gcx resources pull/push alertrules'.`,
 	}
 	cmd.AddCommand(
 		rulerNamespacesCommands(loader),
@@ -47,7 +47,7 @@ type rulerOpts struct {
 }
 
 func (o *rulerOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVar(&o.Datasource, "datasource", "", "Datasource UID of the Mimir/Loki ruler (required)")
+	flags.StringVarP(&o.Datasource, "datasource", "d", "", "UID of the Mimir or Loki datasource used as ruler (required)")
 }
 
 func (o *rulerOpts) Validate() error {
@@ -87,7 +87,7 @@ func (o *rulerOpts) newRulerClient(ctx context.Context, loader GrafanaConfigLoad
 func rulerNamespacesCommands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "namespaces",
-		Short:   "Manage ruler namespaces.",
+		Short:   "Manage datasource-managed (Mimir/Loki ruler) namespaces.",
 		Aliases: []string{"namespace"},
 	}
 	cmd.AddCommand(
@@ -197,6 +197,10 @@ func newRulerNamespacesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command 
 				return err
 			}
 			ctx := cmd.Context()
+			client, _, err := opts.newRulerClient(ctx, loader)
+			if err != nil {
+				return err
+			}
 			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
 				"Delete ruler namespace "+args[0]+" and all rule groups in it?")
 			if err != nil {
@@ -204,10 +208,6 @@ func newRulerNamespacesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command 
 			}
 			if !ok {
 				return nil
-			}
-			client, _, err := opts.newRulerClient(ctx, loader)
-			if err != nil {
-				return err
 			}
 			if err := client.DeleteNamespace(ctx, args[0]); err != nil {
 				return err
@@ -227,7 +227,7 @@ func newRulerNamespacesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command 
 func rulerGroupsCommands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "groups",
-		Short:   "Manage ruler rule groups.",
+		Short:   "Manage datasource-managed (Mimir/Loki ruler) rule groups.",
 		Aliases: []string{"group"},
 	}
 	cmd.AddCommand(
@@ -251,7 +251,7 @@ func (o *rulerGroupsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	o.rulerOpts.setup(flags)
-	flags.StringVar(&o.Namespace, "namespace", "", "Only list groups in this namespace")
+	flags.StringVarP(&o.Namespace, "namespace", "n", "", "Only list groups in this namespace")
 }
 
 // RulerGroupView is one row of the groups listing.
@@ -381,40 +381,34 @@ func newRulerGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 type rulerGroupsApplyOpts struct {
 	rulerOpts
 
-	File      string
-	Namespace string
-	DryRun    bool
+	File   string
+	DryRun bool
 }
 
 func (o *rulerGroupsApplyOpts) setup(flags *pflag.FlagSet) {
 	o.rulerOpts.setup(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing rule groups (Prometheus rules file or a single group; YAML/JSON, use - for stdin)")
-	flags.StringVar(&o.Namespace, "namespace", "", "Ruler namespace to apply the groups to (required)")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Parse and validate only; send nothing to the ruler")
 }
 
 func (o *rulerGroupsApplyOpts) Validate() error {
-	if err := o.rulerOpts.Validate(); err != nil {
-		return err
-	}
-	if o.Namespace == "" {
-		return errors.New("--namespace is required")
-	}
-	return nil
+	return o.rulerOpts.Validate()
 }
 
 func newRulerGroupsApplyCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &rulerGroupsApplyOpts{}
 	cmd := &cobra.Command{
-		Use:   "apply",
+		Use:   "apply NAMESPACE",
 		Short: "Create or update ruler rule groups from a file.",
 		Long: `Create or update rule groups in a ruler namespace. The input may be a
 standard Prometheus rules file (with a top-level "groups:" list) or a single
 bare rule group. Applying a group replaces the group with the same name.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			namespace := args[0]
 			var input RulerApplyInput
 			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &input); err != nil {
 				return err
@@ -439,19 +433,19 @@ bare rule group. Applying a group replaces the group with the same name.`,
 
 			if opts.DryRun {
 				for _, g := range groups {
-					cmdio.Info(cmd.OutOrStdout(), "would apply group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), opts.Namespace)
+					cmdio.Info(cmd.OutOrStdout(), "would apply group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
 				}
 				return nil
 			}
 
 			var failed int
 			for _, g := range groups {
-				if err := client.ApplyGroup(ctx, opts.Namespace, g); err != nil {
+				if err := client.ApplyGroup(ctx, namespace, g); err != nil {
 					failed++
 					cmdio.Warning(cmd.OutOrStdout(), "failed to apply group %q: %v", g.Name, err)
 					continue
 				}
-				cmdio.Success(cmd.OutOrStdout(), "Applied group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), opts.Namespace)
+				cmdio.Success(cmd.OutOrStdout(), "Applied group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
 			}
 			if failed > 0 {
 				return fmt.Errorf("%d of %d rule group(s) failed to apply", failed, len(groups))
@@ -485,6 +479,10 @@ func newRulerGroupsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			ctx := cmd.Context()
+			client, _, err := opts.newRulerClient(ctx, loader)
+			if err != nil {
+				return err
+			}
 			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
 				"Delete ruler rule group "+args[1]+" in namespace "+args[0]+"?")
 			if err != nil {
@@ -492,10 +490,6 @@ func newRulerGroupsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 			if !ok {
 				return nil
-			}
-			client, _, err := opts.newRulerClient(ctx, loader)
-			if err != nil {
-				return err
 			}
 			if err := client.DeleteGroup(ctx, args[0], args[1]); err != nil {
 				return err

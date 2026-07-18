@@ -107,7 +107,7 @@ func TestRulerGroupsApply_DryRunSendsNoMutation(t *testing.T) {
 `), 0o600))
 
 	out, err := runRuler(t, loader,
-		"groups", "apply", "-f", file, "--namespace", "ns", "--datasource", "my-ds", "--dry-run")
+		"groups", "apply", "ns", "-f", file, "--datasource", "my-ds", "--dry-run")
 	require.NoError(t, err)
 	assert.Contains(t, out, "would apply group")
 }
@@ -126,7 +126,7 @@ func TestRulerGroupsApply_InvalidPromQLRejectedBeforeHTTP(t *testing.T) {
 `), 0o600))
 
 	_, err := runRuler(t, loader,
-		"groups", "apply", "-f", file, "--namespace", "ns", "--datasource", "my-ds")
+		"groups", "apply", "ns", "-f", file, "--datasource", "my-ds")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid PromQL")
 }
@@ -154,7 +154,7 @@ func TestRulerGroupsApply_PostsGroups(t *testing.T) {
 `), 0o600))
 
 	out, err := runRuler(t, loader,
-		"groups", "apply", "-f", file, "--namespace", "ns", "--datasource", "my-ds")
+		"groups", "apply", "ns", "-f", file, "--datasource", "my-ds")
 	require.NoError(t, err)
 	assert.Len(t, posted, 2)
 	assert.Contains(t, out, `Applied group "g1"`)
