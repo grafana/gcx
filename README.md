@@ -273,7 +273,7 @@ For example: OpenAI Codex, OpenCode, and Pi. View the skills shipped in the bund
 
 ```sh
 gcx agent skills list
-21 skill(s) bundled with gcx
+24 skill(s) bundled with gcx
 
 SKILL                      INSTALLED    DESCRIPTION
 create-dashboard           yes          Design and create dashboards with datasource discovery and snapshot-based visual iteration.
