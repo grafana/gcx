@@ -7,6 +7,7 @@
 //	├── setup      — guided onboarding wizard
 //	├── status     — cross-cutting observed-state view
 //	├── check      — validate OTel instrumentation locally (otel-checker)
+//	├── explain    — show a markdown explanation for an otel-checker finding
 //	├── clusters   — declared/observed state per cluster
 //	│   └── apps   — namespace-level RMW operations
 //	└── services   — workload-level observed state + overrides
@@ -19,6 +20,7 @@ package instrumentation
 import (
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/check"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/clusters"
+	"github.com/grafana/gcx/cmd/gcx/instrumentation/explain"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/setup"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/status"
@@ -49,6 +51,9 @@ The instrumentation command tree provides:
              running locally (env vars, SDK, collector, Beyla, Alloy,
              Grafana Cloud connectivity).
 
+  explain    Show a markdown explanation for an otel-checker finding by
+             its explain ID.
+
   clusters   Declared and observed state per K8s cluster:
              list, get, configure, remove, wait.
              Sub-group "apps" manages namespace-level Beyla configuration.
@@ -64,6 +69,7 @@ The instrumentation command tree provides:
 		setup.Command(loader),
 		status.Command(loader),
 		check.Command(),
+		explain.Command(),
 		clusters.Command(loader),
 		services.Command(loader),
 	)
