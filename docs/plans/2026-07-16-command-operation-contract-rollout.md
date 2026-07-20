@@ -1,11 +1,20 @@
 # Rollout Plan: Command Operation Semantics and v1 Naming Convergence
 
-> **Date**: 2026-07-16 (revised 2026-07-17 after maintainer feedback)
+> **Date**: 2026-07-16 (revised 2026-07-17 after maintainer feedback;
+> updated 2026-07-20 with maintainer PR-review answers)
 > **Status**: draft — companion to the [Command Operation Semantics ADR](../adrs/command-operation-contract/001-command-operation-semantics.md)
 > **Related issues**: #387 (verb-taxonomy / UX-consistency umbrella — this
 > plan is its **naming workstream**; #387 also tracks output-format
 > consistency and global `--limit` work per the maintainer's issue
-> comment, which this plan does not cover)
+> comment, which this plan does not cover — maintainer answered
+> 2026-07-20: tracked separately as sub-issue(s))
+>
+> **2026-07-20 — synced in Slack: this document is alignment only, not a
+> gate.** Implementation does not block on merging this PR or on
+> formally accepting the ADR. Inventory/classification, owner outreach,
+> and the pilot renames start immediately and run in parallel; the
+> registry + lexical CI PR ships **last** (maintainer, PR review
+> 2026-07-20: "put the registry PR last; we don't want to block on it").
 
 The ADR records the decision; this plan carries the migration artifacts:
 the maintainer decision table, the rollout sequence, the classification
@@ -21,6 +30,14 @@ registry and its process remain proposed (D10), not maintainer-directed.
 Where a decision below records a maintainer answer, it cites the answer;
 everything else is a recommendation going through normal review.
 
+The 2026-07-20 update records the maintainer's PR-review answers (D4b,
+D6, D10 in principle, D13 — cited in the table) and the Slack sync that
+made this document alignment-only. The maintainer's own summary of what
+matters: (1) conventions chosen — done; (2) list every command that does
+not fit them; (3) choose alternatives and open a PR per provider;
+(4) message each owning team. The registry and any wider enforcement
+come **after** that, and nothing blocks on this ADR.
+
 ## 1. Maintainer decision table
 
 Each item wants an explicit yes/no (or a correction). "Verified" means
@@ -31,35 +48,63 @@ checked against actual command behavior on the current tree.
 | D1 | **Transport neutrality** — genuine read-one is `get`, genuine enumeration is `list`, regardless of adapter registration. Inverts the pre-amendment CONSTITUTION "never `get`/`list`; use `show`/`describe`/`search`" rule. Constitutional change. | Recommended (maintainer feedback agreed meaning comes from user-visible behavior, never the backend) | The old rule leaks implementation tiers to users |
 | D2 | **Semantic review rubric + lexical operation registry** replace word-shape grammar — "last word is a verb" becomes the effect of reviewed vocabulary, not the rule. Reframed 2026-07-17 per maintainer feedback: the rubric guides review; the registry + lexical CI are the proposed executable check. **Not** executable per-command contracts. | Recommended | Word-shape misclassifies `status`, `labels`, and compounds like `list-tables` |
 | D3 | **Addressability principle** — parent-ID compounds vs child groups by child identity (ADR §8). The earlier *required identity metadata* clause is removed — ambiguous identities are stated in help text and judged in review; formal identity metadata belongs to the deferred contract design. | Recommended | Formalizes the July Slack ruling; same outcomes on every audited case |
-| D4 | **Signal shorthands + ADR 023 ratification + `profile-types`** — (a) `labels`/`series`/`metrics`/`metadata` are approved surface shorthands mapped to real list/query semantics; (b) ratifying the cross-signal ADR (023) in full is **bundled with this decision and still awaits maintainer approval**; (c) `profile-types` → **`list-types`** at both mounts of its shared builder — this specific outcome is the maintainer's answer (2026-07-17). | (a)+(b) recommended — pending approval; (c) **decided: `list-types`** | Approving D4 flips ADR 023 to accepted in the acceptance commit |
+| D4 | **Signal shorthands + ADR 023 ratification + `profile-types`** — (a) `labels`/`series`/`metrics`/`metadata` are approved surface shorthands mapped to real list/query semantics; (b) ratifying the cross-signal ADR (023) in full is bundled with this decision — maintainer answered "whatever gets the rename done fastest" (PR review, 2026-07-20): ratification stays bundled as low-ceremony housekeeping and **never blocks a rename**; (c) `profile-types` → **`list-types`** at both mounts of its shared builder — this specific outcome is the maintainer's answer (2026-07-17). | (a) recommended; (b) **answered 2026-07-20: fastest path — bundled, non-blocking**; (c) **decided: `list-types`** | Approving D4 flips ADR 023 to accepted in the acceptance commit |
 | D5 | **View vocabulary** — `status`/`timeline`/`inspect`/`diff`/`stats`/`report`; `describe` admitted narrowly per command; `show` and `summary` not canonical (existing `summary` commands reclassified by real output). `kg entities inspect` stays. | Recommended | Verified: `inspect` is a genuine RCA view |
-| D6 | **`upsert` and `push` both kept, distinguished by user workflow** (ADR §3): `upsert` = direct single-entity create-or-update in one invocation; `push` = manifest apply — creates or updates each supplied resource (potentially many, no deletion of remote objects absent from the manifests) with a pipeline/summary result. Never defined by transport or atomicity. The alert-template `create`/`update`/`apply` aliases are **proposed for removal** in the alert batch. This answers the maintainer's "what about push? IIUC resources push are upserts" — push does create-or-update per supplied resource; the two commands differ in workflow, not mechanism. | **Recommended — awaiting maintainer approval** | Overrides the earlier audit line-item that wanted upsert split |
+| D6 | **`upsert` and `push` both kept, distinguished by user workflow** (ADR §3): `upsert` = direct single-entity create-or-update in one invocation; `push` = manifest apply — creates or updates each supplied resource (potentially many, no deletion of remote objects absent from the manifests) with a pipeline/summary result. Never defined by transport or atomicity. The alert-template `create`/`update`/`apply` aliases are **proposed for removal** in the alert batch. This answers the maintainer's "what about push? IIUC resources push are upserts" — push does create-or-update per supplied resource; the two commands differ in workflow, not mechanism. | **Maintainer answered yes** (PR review, 2026-07-20): keep `upsert`; remove the misleading aliases in the alert batch | Overrides the earlier audit line-item that wanted upsert split |
 | D7 | **v1 gates on naming convergence only** — reviewed canonical names; noncanonical paths and non-approved aliases renamed or removed; docs/skills/annotations synchronized; complete migration dispositions; explicit human disposition of "human review" items (ADR §9). The earlier census-empty/explicit-contract gates are gone. | Recommended | The load-bearing commitment, now scoped to naming |
 | D8 | ~~Zero inferred/unresolved contracts at v1~~ — **deferred/superseded**: there are no per-command contracts in this phase, so there is nothing to infer. Belongs to the deferred contract design (ADR "Deferred, not rejected"). | Deferred | |
 | D9 | **No final v0.x compatibility release — clean start.** Rename and remove noncanonical command paths during v1 development; ship v1.0.0 with only the canonical surface — no migration/deprecation aliases, no compatibility forwarders (intentional permanent synonyms only with explicit approved disposition). Migration support: the v1 migration guide carries complete migration dispositions (§4 gate 6), and published Grafana documentation referencing gcx commands is updated at release time. | **Maintainer answered yes** (2026-07-17): clean start, "with a table in a migration guide to map" | |
-| D10 | **Allowed-operation registry (proposed)** — a reviewed list of operations, each with a written definition; registered **once per operation**, not per occurrence or spelling. Lexical CI validates the terminal tokens of **runnable** commands (and aliases attached to runnable commands as alternate terminal tokens); group aliases are path prefixes, inventoried and dispositioned in the worksheet, never operation-validated. Semantic fit is human review. Includes the **`list-<subject>` rule** (ADR §8). *Existing use does not automatically ratify an operation*; the initial registry lands as a separately approved diff. | Recommended — awaiting approval (the maintainer said he was **open to** a registry; the generic `list-<resource>` allowance follows his suggestion; the **addressability-based conditions are this proposal's refinement**) | Prevents existing tokens becoming standards by accident |
+| D10 | **Allowed-operation registry (proposed)** — a reviewed list of operations, each with a written definition; registered **once per operation**, not per occurrence or spelling. Lexical CI validates the terminal tokens of **runnable** commands (and aliases attached to runnable commands as alternate terminal tokens); group aliases are path prefixes, inventoried and dispositioned in the worksheet, never operation-validated. Semantic fit is human review. Includes the **`list-<subject>` rule** (ADR §8). *Existing use does not automatically ratify an operation*; the initial registry lands as a separately approved diff. | **Approved in principle** (PR review, 2026-07-20: "yes, but the most important thing for v1 is that the current commands are consistent") — enforcement ships **last** in the rollout, never blocks migration batches, and the initial contents are seeded from the converged post-migration surface. The addressability-based `list-<subject>` conditions still await an explicit yes — the maintainer asked what they meant (2026-07-20); §1a Q3 carries the plain-language restatement | Prevents existing tokens becoming standards by accident |
 | D11 | **Utility enumeration** — extend CONSTITUTION's closed single-token list with `commands`, `help-tree`, `api` (they exist today; they cannot be both canonical exceptions and constitutional violations). `gcx api` can mutate or delete arbitrary API objects and is never presented as read-only (behavior verified in `cmd/gcx/api/command.go`). | Recommended (normal review) | Constitutional change |
 | D12 | **Adaptive pilot** — `logs adaptive patterns show`, `metrics adaptive recommendations show`, `traces adaptive recommendations show` → `list`. Verified: all three return collections (`ListRecommendations`). Honest caveat: the pilot fixes the verb only — logs uses subject `patterns` where metrics/traces use `recommendations`; that cross-signal subject mismatch remains and is flagged for classification, not solved by this rename. | Recommended | |
-| D13 | **Tracking granularity + workstream scope** — provider-sized migration tracking issues replace the umbrella issue's original "file individual issues per mismatch" wording (recorded here as an explicit deviation; **pending D13 approval**). This plan is **the naming workstream of #387**: the ADR §9 naming gates complete this workstream, but they do **not** close #387 — the maintainer's issue comment lists further work beyond this PR (output-format consistency review; a global `--limit` with truncation hints). #387's overall scope and closure are not redefined by this plan and need explicit maintainer agreement. | Recommended (normal review) | Process decision |
+| D13 | **Tracking granularity + workstream scope** — provider-sized migration tracking issues replace the umbrella issue's original "file individual issues per mismatch" wording (explicit deviation — aligned with the maintainer's "make a PR per provider for any changes", Slack 2026-07-20). This plan is **the naming workstream of #387**: the ADR §9 naming gates complete this workstream, but they do **not** close #387 — the maintainer's issue comment lists further work beyond this PR (output-format consistency review; a global `--limit` with truncation hints). #387's overall scope and closure are not redefined by this plan. | **Maintainer answered** (PR review, 2026-07-20): the output-format and global `--limit` work is tracked **separately, as sub-issue(s) of #387**, with its own PR(s) | Process decision |
 | D14 | ~~Reads become pure~~ — **withdrawn as a decision.** Reduced to a factual caveat (ADR §4): several datasource reads persist auto-discovered datasource UIDs into config today (`ResolveAndSaveDatasource`), and documentation, help text, and classification must describe that behavior truthfully. Any pure-resolver/configuration refactor is **separate, out-of-scope work** — not designed, decided, or gated here. | Withdrawn (not a decision) | Affected today: e.g. `profiles profile-types`, `metrics labels` paths through `internal/datasources/query/resolve.go` |
 
-### 1a. Open approval questions (explicit — none of these are decided)
+### 1a. Open approval questions — status after maintainer review (2026-07-20)
 
-Presenting this plan does not depend on resolving these, but none of them
-may be treated as already approved:
+The maintainer answered most of these in PR review on 2026-07-20;
+answers are recorded here and in the decision table. Only Q3 remains
+genuinely open.
 
-1. Adopt the allowed-operation registry + lexical CI as the proposed
-   first implementation? (D2/D10)
+1. Adopt the allowed-operation registry + lexical CI? (D2/D10) —
+   **answered: yes**, with the priority caveat "the most important thing
+   for v1 is that the current commands are consistent". Consequence:
+   the registry PR moves to the **end** of the rollout sequence and
+   never blocks migration work.
 2. Keep `upsert` and remove its misleading `create`/`update`/`apply`
-   aliases? (D6)
+   aliases? (D6) — **answered: yes**.
 3. Accept the addressability-based refinement of the `list-<subject>`
-   rule? (D10 — the generic allowance follows the maintainer's
-   suggestion; the two conditions are this proposal's)
-4. Ratify ADR 023 bundled with this decision, or separately? (D4a/b)
+   rule? (D10) — **still open**: the maintainer's review said "I don't
+   know what this means", so the wording failed and the question is
+   re-asked in plain language. What it means:
+
+   > It is the rule for choosing between `gcx <area> things list` and
+   > `gcx <area> list-things`. If a *thing* has its own ID — you can
+   > fetch exactly one with that ID — it gets its own command group
+   > (`k6 load-tests list`, `k6 load-tests get <id>`). `list-things` is
+   > reserved for the two cases where a noun group cannot work: **(a)**
+   > plain value enumerations with no ID of their own (`cloudwatch
+   > list-regions` — there is no `region get`), and **(b)** sub-lists
+   > addressed by the *parent's* ID (`alert-groups list-alerts
+   > <group-id>` — the positional is the group's ID, not an alert's).
+   > "This subject only has a list command today" is **not** a reason to
+   > spell it `list-things`: the day it grows a `get` you face a breaking
+   > rename or a mixed shape. Without (a)/(b), `list-<anything>` is a
+   > legal spelling everywhere and providers grow flat verb-noun leaves
+   > instead of resource groups — exactly the leaf-token sprawl the
+   > registry is meant to stop.
+
+4. Ratify ADR 023 bundled with this decision, or separately? (D4a/b) —
+   **answered: "whatever gets the rename done fastest"** — bundled as
+   low-ceremony housekeeping; ratification never blocks a rename.
 5. How does #387 track the output-format-consistency and global
-   `--limit` work relative to this naming workstream? (D13)
-6. Exact initial operation-registry contents and definitions (separately
-   approved diff).
+   `--limit` work? (D13) — **answered: separately, as sub-issue(s) of
+   #387** with their own PR(s).
+6. Exact initial operation-registry contents and definitions —
+   **rescoped**: per the maintainer ("I guess we need to have changed
+   all the commands to be consistent before we can make this?" / "put
+   the registry PR last"), the registry diff is seeded from the
+   **converged post-migration surface** and ships as the final PR.
 
 Owner decision (routed to its provider batch, **not** a prerequisite for
 approving this ADR): instrumentation `clusters apps` terminology and
@@ -68,48 +113,59 @@ answer (§3b) — silence is not a disposition.
 
 ## 2. Rollout sequence
 
-1. **Revised ADR + governing-doc reconciliation** (this PR, kept draft).
-2. **Explicit maintainer approval** of the decision table on the issue.
-3. **Acceptance commit**: flips BOTH ADRs — operation semantics (024) and
-   the cross-signal ADR (023, whose surface shipped in April but whose
-   ratification is bundled with D4) — to `accepted` with dated
-   `**Accepted**:` lines and ARCHITECTURE table statuses; writes the
-   D4(c) `list-types` outcome into both ADRs and the naming guide's
-   vocabulary table; marks ADR 023's stale "needs implementation"
-   checklists as historical. Constitutional changes land only in this
-   accepted state; the CONSTITUTION naming requirement applies to
-   new/modified commands until the registry CI lands.
-4. **Inventory + classification**: generate a deterministic inventory
-   from the live Cobra tree with two record kinds — a **command record**
-   for every active runnable command (including hidden runnable commands
-   and Cobra built-ins) and an **alias record** for every alias on every
-   node, runnable or not (§3). Classify each command as **OK / suggested
-   fix / human review** against the ADR rubric (LLM-assisted,
-   human-reviewed). Every *suggested fix* cites the observed source
-   behavior it is based on.
-5. **Owner approval**: provider/product owners approve renames, removals,
-   ratified exceptions, every *human review* disposition, every alias
-   disposition, and any *suggested fix* resolved as `keep`.
-   Instrumentation's `clusters apps` questions route to the
-   Beyla/Instrumentation Hub owners as part of their batch (§3b).
-6. **Registry PR**: the allowed-operation registry (operations + written
-   definitions, seeded from §5 and the worksheet) as a separately
-   approved diff, plus the lexical CI check — the algorithm and scoping
-   rules in ADR §10 (runnable-command terminal tokens and their aliases;
-   scoped exceptions; a temporary exact-path deviation list that must be
-   empty before v1.0.0).
-7. **Pilot**: the three adaptive `show → list` renames (D12) — clean
-   renames per D9 (no forwarders), updating skills, annotations, docs,
-   and generated references atomically. The `profile-types → list-types`
-   rename (D4c) rides the same early wave.
-8. **Provider-sized migration batches in parallel, all before GA**: each
-   command record resolves keep / ratify / rename / remove; every alias
-   record resolves keep-synonym / remove; each batch records its
-   migration dispositions (§4 gate 6).
-9. **Migration documentation**: the complete migration-disposition table
+Reordered 2026-07-20 per maintainer review: the ADR/decision ceremony is
+**not on the critical path** ("crack on with these ASAP … we don't have
+much time"), steps 1–3 start immediately **in parallel**, and the
+registry PR moves to the **end** ("put the registry PR last; we don't
+want to block on it"). This PR stays open as the alignment record only.
+
+1. **Inventory + classification** (start now): generate a deterministic
+   inventory from the live Cobra tree with two record kinds — a
+   **command record** for every active runnable command (including
+   hidden runnable commands and Cobra built-ins) and an **alias record**
+   for every alias on every node, runnable or not (§3). Classify each
+   command as **OK / suggested fix / human review** against the ADR
+   rubric (LLM-assisted, human-reviewed). Every *suggested fix* cites
+   the observed source behavior it is based on. This produces the
+   maintainer's "list all commands that do not fit these conventions".
+2. **Pilot renames** (start now, parallel): the three adaptive
+   `show → list` renames (D12) — clean renames per D9 (no forwarders),
+   updating skills, annotations, docs, and generated references
+   atomically. The `profile-types → list-types` rename (D4c) rides the
+   same early wave.
+3. **Owner approval + team comms** (start now, parallel): message each
+   owning team about the conventions and their batch. Provider/product
+   owners approve renames, removals, ratified exceptions, every *human
+   review* disposition, every alias disposition, and any *suggested fix*
+   resolved as `keep`. Instrumentation's `clusters apps` questions route
+   to the Beyla/Instrumentation Hub owners as part of their batch (§3b).
+4. **Provider-sized migration batches in parallel, all before GA** (one
+   PR per provider): each command record resolves keep / ratify /
+   rename / remove; every alias record resolves keep-synonym / remove;
+   each batch records its migration dispositions (§4 gate 6).
+5. **Migration documentation**: the complete migration-disposition table
    in the v1 release notes / migration guide — every changed or removed
    primary command and alias mapped to its outcome; published Grafana
    docs updated at release.
+6. **Registry PR — deliberately last** (maintainer, 2026-07-20): the
+   allowed-operation registry (operations + written definitions, seeded
+   from §5, the worksheet, and the **converged post-migration surface**)
+   as a separately approved diff, plus the lexical CI check — the
+   algorithm and scoping rules in ADR §10 (runnable-command terminal
+   tokens and their aliases; scoped exceptions; a temporary exact-path
+   deviation list that must be empty before v1.0.0). It defends the
+   converged surface against new leaf-token sprawl; it gates nothing
+   before it lands.
+7. **ADR housekeeping** (non-blocking, whenever convenient): flip BOTH
+   ADRs — operation semantics (024) and the cross-signal ADR (023, whose
+   surface shipped in April and whose ratification is bundled with D4,
+   "fastest path") — to `accepted` with dated `**Accepted**:` lines and
+   ARCHITECTURE table statuses; write the D4(c) `list-types` outcome
+   into both ADRs and the naming guide's vocabulary table; mark ADR
+   023's stale "needs implementation" checklists as historical.
+   Constitutional changes land in this accepted state; the CONSTITUTION
+   naming requirement applies to new/modified commands until the
+   registry CI lands. None of the preceding steps wait on this one.
 
 ## 3. Classification worksheet
 
@@ -259,10 +315,14 @@ provider/domain owner approves each classification in their batch.
    paths only (the skills-drift test covers skills; a docs sweep covers
    the rest).
 4. The allowed-operation registry is merged (separately approved diff)
-   and the lexical CI check is green with an empty deviation list.
+   and the lexical CI check is green with an empty deviation list. (The
+   registry PR is deliberately the **last** rollout step — a v1 gate,
+   never a gate on migration batches.)
 5. Both ADRs (023 cross-signal, 024 operation semantics) are `accepted`;
    CONSTITUTION/DESIGN/naming.md carry the reconciled text; the
-   ARCHITECTURE ADR table is current.
+   ARCHITECTURE ADR table is current. (Housekeeping — no implementation
+   step waits on it; per the 2026-07-20 Slack sync the ADR is alignment
+   only.)
 6. The **v1.0.0 release notes / migration guide carry the complete
    migration-disposition table unconditionally**: every changed or
    removed primary command and alias resolves to exactly one of
@@ -273,8 +333,8 @@ provider/domain owner approves each classification in their batch.
    referencing gcx commands is updated at release time (D9).
 7. Gates 1–6 complete **the naming workstream** of #387 (per D13). They
    do not by themselves close #387, whose remaining scope (output-format
-   consistency, global `--limit`) is tracked separately with the
-   maintainers.
+   consistency, global `--limit`) is tracked as separate sub-issue(s) of
+   #387 (maintainer answer, 2026-07-20).
 
 ## 5. Initial operation registry (working input for D10)
 
@@ -362,13 +422,14 @@ now carries a historical/non-authoritative label):
 The issue body proposed six work items. The dispositions below are
 **proposed, pending acceptance of this ADR** — completing this naming
 workstream does not by itself close #387 (output-format consistency and
-global `--limit` remain separate #387 work):
+global `--limit` are tracked as separate sub-issue(s) of #387 per the
+maintainer's 2026-07-20 answer):
 
 | Original item | Proposed disposition |
 |---------------|----------------------|
 | Codify the verb taxonomy in `docs/design/naming.md` | Addressed by this proposal (complete on acceptance): the operation-semantics ADR (024) + naming.md §9.7 |
 | Strengthen CONSTITUTION § Provider Architecture with the full taxonomy | Addressed by this proposal (complete on acceptance) via the ADR's constitutional amendments |
-| Audit all providers and file individual issues per mismatch | Proposed replacement: the inventory/classification worksheet + provider-sized tracking issues (explicit deviation, **pending D13 approval**) |
+| Audit all providers and file individual issues per mismatch | Replacement: the inventory/classification worksheet + provider-sized batches — matches the maintainer's "make a PR per provider for any changes" (Slack, 2026-07-20) |
 | Document the signal provider pattern as canonical | Addressed by this proposal: ADR §4 (approved shorthands) + ADR 023 ratification (**pending D4 approval**) |
 | Audit `wide` codec registration across all providers | **Not pursued** — explicit maintainer objection to enforcing `wide`; the provider-checklist policy line is corrected **in this PR** (register `wide` only when genuinely useful extra columns exist) |
 | Refresh `[CURRENT]`/`[ADOPT]`/`[PLANNED]` markers in `docs/design/` | **Rejected** — those markers do not exist anywhere in the repo (verified by repo-wide search); the item was based on a convention that was never adopted |

@@ -5,6 +5,12 @@
 per-command contract and made the semantic model a review rubric — see
 "Deferred, not rejected" below; this revision additionally **proposes**
 an allowed-operation registry with a lexical CI check)
+**Updated**: 2026-07-20 (maintainer PR review answered most open
+questions — recorded in the rollout plan's decision table; §8 gained a
+plain-language restatement after the maintainer asked what the
+`list-<subject>` refinement meant; per Slack sync the same day, this ADR
+is **alignment only** — implementation does not block on its merge or
+acceptance, and the registry + lexical CI PR ships last)
 **Status**: proposed
 **Supersedes**: none
 **Amends on acceptance**: [cross-signal ADR](../signal-provider-ux/001-cross-signal-command-consistency.md) §6 "Aliases and clean breaks" (compatibility policy for future renames only)
@@ -309,8 +315,31 @@ through the domain-registry review like any other domain candidate.
 
 ### 8. Addressability and the `list-<subject>` rule
 
-The command path indicates the type of the first required positional
-identity:
+**In plain terms** (restated 2026-07-20 after maintainer review asked
+what this section means): it is the rule for choosing between
+`gcx <area> things list` and `gcx <area> list-things`.
+
+- If a *thing* has its own ID — you can fetch exactly one with that
+  ID — it gets its own command group: `k6 load-tests list`,
+  `k6 load-tests get <id>`.
+- `list-things` is reserved for the two cases where a noun group cannot
+  work: **(a)** plain value enumerations with no ID of their own
+  (`cloudwatch list-regions` — there is no `region get`; a region is
+  just a value), and **(b)** sub-lists addressed by the *parent's* ID
+  (`alert-groups list-alerts <group-id>` — the positional you pass is
+  the group's ID, not an alert's).
+- "This subject only has a list command today" is **not** a reason to
+  spell it `list-things`: the day the subject grows a `get`, you face a
+  breaking rename or a mixed shape. The test is "does it have its own
+  ID?", never "how many verbs does it have today?".
+
+Why the two conditions matter: without them, the generic allowance makes
+`list-<anything>` a legal spelling everywhere, and providers grow flat
+verb-noun leaves instead of resource groups — recreating exactly the
+leaf-token sprawl the operation registry exists to stop.
+
+The precise statement follows. The command path indicates the type of
+the first required positional identity:
 
 - Identity is the **parent's** → operation-subject compound under the
   parent: `$PARENT $OPERATION-$CHILD $PARENT_ID`
@@ -351,8 +380,10 @@ an entry per `list-<subject>` spelling (§10).
 
 Attribution: the generic `list-<subject>` allowance follows the
 maintainer's own suggestion (2026-07-17); the two addressability-based
-conditions above are **this proposal's refinement** of it and need the
-same explicit approval as the rest of the decision table.
+conditions above are **this proposal's refinement** of it. The
+maintainer's 2026-07-20 review asked what the refinement meant; the
+plain-language restatement at the top of this section is the answer,
+and the refinement still awaits his explicit yes (rollout plan §1a Q3).
 
 Worked classification example (illustrative, not a decided rename):
 `agento11y experiments scores <run-id>` lists the scores produced by one
@@ -417,6 +448,13 @@ registry diff, not an approved exception); Cobra built-ins (`help`,
 shorthands (§4).
 
 ### 10. Enforcement: allowed-operation registry + lexical CI
+
+Ordering (maintainer, PR review 2026-07-20): approved in principle, but
+"the most important thing for v1 is that the current commands are
+consistent" and "put the registry PR last; we don't want to block on
+it" — the registry + lexical CI PR is the **final** rollout step, seeded
+from the converged post-migration surface, and gates nothing before it
+lands.
 
 - **The registry.** A reviewed list of allowed operations, each with a
   precise one-line written definition (what the operation means, in
