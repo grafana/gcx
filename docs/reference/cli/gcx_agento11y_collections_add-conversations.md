@@ -1,23 +1,15 @@
-## gcx agento11y scores list
+## gcx agento11y collections add-conversations
 
-List evaluation scores for a generation.
-
-### Synopsis
-
-List evaluation scores produced by online rules for a generation.
+Add one or more saved conversations to a collection.
 
 ```
-gcx agento11y scores list <generation-id> [flags]
+gcx agento11y collections add-conversations <collection-id> <saved-id>... [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for list
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of scores to return (default 50)
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+  -h, --help   help for add-conversations
 ```
 
 ### Options inherited from parent commands
@@ -34,5 +26,5 @@ gcx agento11y scores list <generation-id> [flags]
 
 ### SEE ALSO
 
-* [gcx agento11y scores](gcx_agento11y_scores.md)	 - View evaluation scores for generations.
+* [gcx agento11y collections](gcx_agento11y_collections.md)	 - Manage named groups of saved conversations.
 

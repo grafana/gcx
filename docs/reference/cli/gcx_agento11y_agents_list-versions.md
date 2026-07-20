@@ -1,15 +1,18 @@
-## gcx agento11y collections conversations add
+## gcx agento11y agents list-versions
 
-Add one or more saved conversations to a collection.
+List version history for an agent.
 
 ```
-gcx agento11y collections conversations add <collection-id> <saved-id>... [flags]
+gcx agento11y agents list-versions <agent-name> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for add
+  -h, --help            help for list-versions
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -26,5 +29,5 @@ gcx agento11y collections conversations add <collection-id> <saved-id>... [flags
 
 ### SEE ALSO
 
-* [gcx agento11y collections conversations](gcx_agento11y_collections_conversations.md)	 - Manage saved conversations belonging to a collection.
+* [gcx agento11y agents](gcx_agento11y_agents.md)	 - Query Agent Observability agent catalog.
 

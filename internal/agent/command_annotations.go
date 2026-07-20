@@ -500,9 +500,9 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Agent Observability provider
 	// -----------------------------------------------------------------------
-	"gcx agento11y agents get":      {Cost: "small"},
-	"gcx agento11y agents list":     {Cost: "small"},
-	"gcx agento11y agents versions": {Cost: "small"},
+	"gcx agento11y agents get":           {Cost: "small"},
+	"gcx agento11y agents list":          {Cost: "small"},
+	"gcx agento11y agents list-versions": {Cost: "small"},
 
 	"gcx agento11y conversations annotate":         {Cost: "small"},
 	"gcx agento11y conversations get":              {Cost: "medium", Hint: "<conversation-id> -o json"},
@@ -510,13 +510,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y conversations list-annotations": {Cost: "small"},
 	"gcx agento11y conversations search":           {Cost: "medium", Hint: "--from 2024-01-01 --to 2024-01-31 -o json"},
 
-	"gcx agento11y evaluators create": {Cost: "small"},
 	"gcx agento11y evaluators delete": {Cost: "small"},
 	"gcx agento11y evaluators get":    {Cost: "small"},
 	"gcx agento11y evaluators list":   {Cost: "small"},
 	"gcx agento11y evaluators test":   {Cost: "medium", Hint: "<evaluator-id> -o json"},
+	"gcx agento11y evaluators upsert": {Cost: "small"},
 
-	"gcx agento11y generations get": {Cost: "medium", Hint: "<generation-id> -o json"},
+	"gcx agento11y generations get":         {Cost: "medium", Hint: "<generation-id> -o json"},
+	"gcx agento11y generations list-scores": {Cost: "small"},
 
 	"gcx agento11y guards create": {Cost: "small"},
 	"gcx agento11y guards delete": {Cost: "small"},
@@ -524,8 +525,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y guards list":   {Cost: "small"},
 	"gcx agento11y guards update": {Cost: "small"},
 
-	"gcx agento11y judge models":    {Cost: "small"},
-	"gcx agento11y judge providers": {Cost: "small"},
+	"gcx agento11y judge list-models":    {Cost: "small"},
+	"gcx agento11y judge list-providers": {Cost: "small"},
 
 	"gcx agento11y rules create": {Cost: "small"},
 	"gcx agento11y rules delete": {Cost: "small"},
@@ -533,11 +534,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y rules list":   {Cost: "small"},
 	"gcx agento11y rules update": {Cost: "small"},
 
-	"gcx agento11y scores list": {Cost: "small"},
-
-	"gcx agento11y templates get":      {Cost: "small"},
-	"gcx agento11y templates list":     {Cost: "small"},
-	"gcx agento11y templates versions": {Cost: "small"},
+	"gcx agento11y templates get":           {Cost: "small"},
+	"gcx agento11y templates list":          {Cost: "small"},
+	"gcx agento11y templates list-versions": {Cost: "small"},
 
 	"gcx agento11y saved-conversations list":        {Cost: "small"},
 	"gcx agento11y saved-conversations get":         {Cost: "medium", Hint: "<saved-id> -o json"},
@@ -545,22 +544,22 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y saved-conversations delete":      {Cost: "small"},
 	"gcx agento11y saved-conversations collections": {Cost: "small"},
 
-	"gcx agento11y collections list":                 {Cost: "small"},
-	"gcx agento11y collections get":                  {Cost: "small"},
-	"gcx agento11y collections create":               {Cost: "small"},
-	"gcx agento11y collections update":               {Cost: "small"},
-	"gcx agento11y collections delete":               {Cost: "small"},
-	"gcx agento11y collections conversations list":   {Cost: "small"},
-	"gcx agento11y collections conversations add":    {Cost: "small"},
-	"gcx agento11y collections conversations remove": {Cost: "small"},
+	"gcx agento11y collections list":                {Cost: "small"},
+	"gcx agento11y collections get":                 {Cost: "small"},
+	"gcx agento11y collections create":              {Cost: "small"},
+	"gcx agento11y collections update":              {Cost: "small"},
+	"gcx agento11y collections delete":              {Cost: "small"},
+	"gcx agento11y collections list-conversations":  {Cost: "small"},
+	"gcx agento11y collections add-conversations":   {Cost: "small"},
+	"gcx agento11y collections remove-conversation": {Cost: "small"},
 
-	"gcx agento11y experiments list":   {Cost: "small"},
-	"gcx agento11y experiments get":    {Cost: "small"},
-	"gcx agento11y experiments create": {Cost: "small"},
-	"gcx agento11y experiments update": {Cost: "small"},
-	"gcx agento11y experiments cancel": {Cost: "small"},
-	"gcx agento11y experiments scores": {Cost: "medium", Hint: "<run-id> --limit 50 -o json"},
-	"gcx agento11y experiments report": {Cost: "medium", Hint: "<run-id> -o json"},
+	"gcx agento11y experiments list":        {Cost: "small"},
+	"gcx agento11y experiments get":         {Cost: "small"},
+	"gcx agento11y experiments create":      {Cost: "small"},
+	"gcx agento11y experiments update":      {Cost: "small"},
+	"gcx agento11y experiments cancel":      {Cost: "small"},
+	"gcx agento11y experiments list-scores": {Cost: "medium", Hint: "<run-id> --limit 50 -o json"},
+	"gcx agento11y experiments report":      {Cost: "medium", Hint: "<run-id> -o json"},
 
 	// -----------------------------------------------------------------------
 	// SLO provider

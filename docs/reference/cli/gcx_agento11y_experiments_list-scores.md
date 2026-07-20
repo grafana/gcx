@@ -1,11 +1,19 @@
-## gcx agento11y scores
+## gcx agento11y experiments list-scores
 
-View evaluation scores for generations.
+List scores produced by an experiment.
+
+```
+gcx agento11y experiments list-scores <run-id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for scores
+  -h, --help            help for list-scores
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of scores to return (0 for no limit) (default 50)
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -22,6 +30,5 @@ View evaluation scores for generations.
 
 ### SEE ALSO
 
-* [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
-* [gcx agento11y scores list](gcx_agento11y_scores_list.md)	 - List evaluation scores for a generation.
+* [gcx agento11y experiments](gcx_agento11y_experiments.md)	 - Manage eval experiment runs.
 

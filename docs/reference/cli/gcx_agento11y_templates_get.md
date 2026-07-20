@@ -7,7 +7,7 @@ Get a single eval template.
 Get the full template definition including config and output keys.
 
 Templates are reusable evaluator blueprints. Export a template as YAML,
-customize it, and create an evaluator with 'evaluators create -f'.
+customize it, and create an evaluator with 'evaluators upsert -f'.
 
 ```
 gcx agento11y templates get <template-id> [flags]
@@ -18,7 +18,7 @@ gcx agento11y templates get <template-id> [flags]
 ```
   # Get a template's config and output keys.
   gcx agento11y templates get my-template -o yaml > evaluator.yaml
-  gcx agento11y evaluators create -f evaluator.yaml
+  gcx agento11y evaluators upsert -f evaluator.yaml
 ```
 
 ### Options

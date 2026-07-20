@@ -15,7 +15,7 @@ func TestCommands_HasExpectedLeaves(t *testing.T) {
 	cmd := experiments.Commands(nil)
 	require.Equal(t, "experiments", cmd.Name())
 
-	for _, sub := range []string{"list", "get", "create", "update", "cancel", "scores", "report"} {
+	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "report"} {
 		c, _, err := cmd.Find([]string{sub})
 		require.NoError(t, err, "subcommand %q must exist", sub)
 		require.NotNil(t, c)
@@ -114,9 +114,9 @@ func TestCancelCommand_AbortsWithoutForce(t *testing.T) {
 	}
 }
 
-func TestScoresCommand_RequiresArg(t *testing.T) {
+func TestListScoresCommand_RequiresArg(t *testing.T) {
 	cmd := experiments.Commands(nil)
-	cmd.SetArgs([]string{"scores"})
+	cmd.SetArgs([]string{"list-scores"})
 
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)

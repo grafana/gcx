@@ -1,19 +1,19 @@
-## gcx agento11y judge models
+## gcx agento11y judge list-models
 
 List available judge models.
 
 ```
-gcx agento11y judge models --provider <id> [flags]
+gcx agento11y judge list-models --provider <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help              help for models
+  -h, --help              help for list-models
       --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string     Output format. One of: agents, json, table, yaml (default "table")
-      --provider string   Provider ID (required, see 'judge providers')
+      --provider string   Provider ID (required, see 'judge list-providers')
 ```
 
 ### Options inherited from parent commands

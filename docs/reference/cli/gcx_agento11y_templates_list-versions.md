@@ -1,19 +1,18 @@
-## gcx agento11y experiments scores
+## gcx agento11y templates list-versions
 
-List scores produced by an experiment.
+List version history for an eval template.
 
 ```
-gcx agento11y experiments scores <run-id> [flags]
+gcx agento11y templates list-versions <template-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for scores
+  -h, --help            help for list-versions
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of scores to return (0 for no limit) (default 50)
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +29,5 @@ gcx agento11y experiments scores <run-id> [flags]
 
 ### SEE ALSO
 
-* [gcx agento11y experiments](gcx_agento11y_experiments.md)	 - Manage eval experiment runs.
+* [gcx agento11y templates](gcx_agento11y_templates.md)	 - Browse reusable evaluator blueprints (global and tenant-scoped).
 

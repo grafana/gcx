@@ -27,12 +27,11 @@ All commands live under `gcx agento11y`. Use `gcx agento11y <subcommand> --help`
 | Group | Purpose |
 |-------|---------|
 | `conversations` | List, get, search conversations |
-| `generations` | Get a single generation |
+| `generations` | Get a single generation, list its scores |
 | `agents` | List agents, get details, view versions |
-| `evaluators` | List, get, create, delete, test evaluators |
+| `evaluators` | List, get, upsert, delete, test evaluators |
 | `rules` | List, get, create, update, delete evaluation rules |
 | `templates` | List, get built-in evaluator templates |
-| `scores` | List scores for a generation |
 | `judge` | List judge providers and models |
 | `experiments` | List, get, create, update, cancel runs; inspect scores and reports |
 
@@ -76,7 +75,7 @@ Copy-paste definitions for each kind, with the constraints the API enforces for 
 
 ## Input Format
 
-`gcx agento11y evaluators get -o yaml` and `gcx agento11y rules get -o yaml` emit K8s-style manifests (`apiVersion/kind/metadata/spec`). `evaluators create -f`, `rules create -f`, and `rules update -f` expect top-level fields only. Do not round-trip get output into create/update.
+`gcx agento11y evaluators get -o yaml` and `gcx agento11y rules get -o yaml` emit K8s-style manifests (`apiVersion/kind/metadata/spec`). `evaluators upsert -f`, `rules create -f`, and `rules update -f` expect top-level fields only. Do not round-trip get output into create/update.
 
 IDs (`evaluator_id`, `rule_id`) accept only letters, digits, `_`, and `.` — hyphens are rejected server-side. `version` is required on evaluator definitions — it versions the evaluator itself, separate from any schema version inside `config` — see [references/evaluator-examples.md](references/evaluator-examples.md) for full examples of every kind.
 
@@ -94,12 +93,12 @@ match:
     - my-agent
 ```
 
-There is no `evaluators update` command; to change an evaluator, re-run `create` with the same `evaluator_id` and a new `version` (re-using an existing version is rejected with a 409).
+There is no `evaluators update` command; to change an evaluator, re-run `upsert` with the same `evaluator_id` and a new `version` (re-using an existing version is rejected with a 409).
 
 ## Setting Up Online Evaluation
 
-1. Pick a template: `gcx agento11y templates list`, then `gcx agento11y templates get <id> -o yaml`. Template output includes `kind`, `config`, and `output_keys` — copy these into a new evaluator definition and add your own `evaluator_id`. Do not pass the template output directly to `evaluators create`.
-2. Write an evaluator YAML using the input format above, create: `gcx agento11y evaluators create -f evaluator.yaml`
+1. Pick a template: `gcx agento11y templates list`, then `gcx agento11y templates get <id> -o yaml`. Template output includes `kind`, `config`, and `output_keys` — copy these into a new evaluator definition and add your own `evaluator_id`. Do not pass the template output directly to `evaluators upsert`.
+2. Write an evaluator YAML using the input format above, create: `gcx agento11y evaluators upsert -f evaluator.yaml`
 3. Test against a real generation: `gcx agento11y evaluators test -e <evaluator-id> -g <generation-id>`
 4. Iterate until the evaluator scores as expected
 5. Write a rule YAML (see [rule-templates.md](references/rule-templates.md) for copy-paste templates), create: `gcx agento11y rules create -f rule.yaml`

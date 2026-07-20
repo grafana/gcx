@@ -1,19 +1,15 @@
-## gcx agento11y collections conversations list
+## gcx agento11y collections remove-conversation
 
-List saved conversations belonging to a collection.
+Remove a single saved conversation from a collection.
 
 ```
-gcx agento11y collections conversations list <collection-id> [flags]
+gcx agento11y collections remove-conversation <collection-id> <saved-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for list
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of saved conversations to return (0 for no limit) (default 50)
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+  -h, --help   help for remove-conversation
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +26,5 @@ gcx agento11y collections conversations list <collection-id> [flags]
 
 ### SEE ALSO
 
-* [gcx agento11y collections conversations](gcx_agento11y_collections_conversations.md)	 - Manage saved conversations belonging to a collection.
+* [gcx agento11y collections](gcx_agento11y_collections.md)	 - Manage named groups of saved conversations.
 

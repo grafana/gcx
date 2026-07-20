@@ -1,18 +1,19 @@
-## gcx agento11y templates versions
+## gcx agento11y collections list-conversations
 
-List version history for an eval template.
+List saved conversations belonging to a collection.
 
 ```
-gcx agento11y templates versions <template-id> [flags]
+gcx agento11y collections list-conversations <collection-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for versions
+  -h, --help            help for list-conversations
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+      --limit int       Maximum number of saved conversations to return (0 for no limit) (default 50)
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -29,5 +30,5 @@ gcx agento11y templates versions <template-id> [flags]
 
 ### SEE ALSO
 
-* [gcx agento11y templates](gcx_agento11y_templates.md)	 - Browse reusable evaluator blueprints (global and tenant-scoped).
+* [gcx agento11y collections](gcx_agento11y_collections.md)	 - Manage named groups of saved conversations.
 

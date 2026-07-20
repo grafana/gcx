@@ -1,15 +1,23 @@
-## gcx agento11y collections conversations remove
+## gcx agento11y generations list-scores
 
-Remove a single saved conversation from a collection.
+List evaluation scores for a generation.
+
+### Synopsis
+
+List evaluation scores produced by online rules for a generation.
 
 ```
-gcx agento11y collections conversations remove <collection-id> <saved-id> [flags]
+gcx agento11y generations list-scores <generation-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for remove
+  -h, --help            help for list-scores
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of scores to return (default 50)
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -26,5 +34,5 @@ gcx agento11y collections conversations remove <collection-id> <saved-id> [flags
 
 ### SEE ALSO
 
-* [gcx agento11y collections conversations](gcx_agento11y_collections_conversations.md)	 - Manage saved conversations belonging to a collection.
+* [gcx agento11y generations](gcx_agento11y_generations.md)	 - Inspect individual LLM generations.
 

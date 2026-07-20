@@ -164,17 +164,17 @@ func (o *createOpts) Validate() error {
 func newCreateCommand() *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
-		Use:   "create",
+		Use:   "upsert",
 		Short: "Create or update an evaluator from a file.",
 		Example: `  # Create an evaluator from a YAML file.
-  gcx agento11y evaluators create -f evaluator.yaml
+  gcx agento11y evaluators upsert -f evaluator.yaml
 
   # Create from stdin.
-  gcx agento11y evaluators create -f -
+  gcx agento11y evaluators upsert -f -
 
   # Export a template, customize it, then create an evaluator.
-  gcx agento11y templates show <template-id> -o yaml > evaluator.yaml
-  gcx agento11y evaluators create -f evaluator.yaml`,
+  gcx agento11y templates get <template-id> -o yaml > evaluator.yaml
+  gcx agento11y evaluators upsert -f evaluator.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

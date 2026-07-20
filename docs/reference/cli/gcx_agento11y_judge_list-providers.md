@@ -1,15 +1,15 @@
-## gcx agento11y judge providers
+## gcx agento11y judge list-providers
 
 List available judge providers.
 
 ```
-gcx agento11y judge providers [flags]
+gcx agento11y judge list-providers [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for providers
+  -h, --help            help for list-providers
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
