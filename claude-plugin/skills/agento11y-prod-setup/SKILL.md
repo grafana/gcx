@@ -262,7 +262,7 @@ rate in warn mode (Step 6). This skill never drafts an enabled `deny` guard.
 
 ## Step 5 — Confirm, then apply with `gcx`
 
-> **`create`/`update` write to the stack — never run them before the developer's explicit yes
+> **`upsert`/`create`/`update` write to the stack — never run them before the developer's explicit yes
 > (step 2).** The one thing you CAN run before the yes is `evaluators test -f <request>.yaml`,
 > which tests a judge config **without persisting it** (pass `kind`, `config`, `output_keys`,
 > `generation_id` in the file — no evaluator need exist yet). Use it to tune the judge (step 1).
