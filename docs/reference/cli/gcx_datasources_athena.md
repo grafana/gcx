@@ -23,8 +23,8 @@ Query Amazon Athena datasources
 ### SEE ALSO
 
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
-* [gcx datasources athena describe-table](gcx_datasources_athena_describe-table.md)	 - Show column schema for an Athena table
 * [gcx datasources athena list-catalogs](gcx_datasources_athena_list-catalogs.md)	 - List available Athena data catalogs
+* [gcx datasources athena list-columns](gcx_datasources_athena_list-columns.md)	 - List column names for an Athena table
 * [gcx datasources athena list-databases](gcx_datasources_athena_list-databases.md)	 - List databases in an Athena data catalog
 * [gcx datasources athena list-tables](gcx_datasources_athena_list-tables.md)	 - List tables in an Athena database
 * [gcx datasources athena query](gcx_datasources_athena_query.md)	 - Execute a SQL query against an Athena datasource

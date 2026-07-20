@@ -89,7 +89,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx datasources athena list-catalogs":  {Cost: "small", Hint: "-d UID -o json"},
 	"gcx datasources athena list-databases": {Cost: "small", Hint: "-d UID --catalog AwsDataCatalog -o json"},
 	"gcx datasources athena list-tables":    {Cost: "small", Hint: "-d UID --catalog AwsDataCatalog --database mydb -o json"},
-	"gcx datasources athena describe-table": {Cost: "small", Hint: "TABLE -d UID --catalog AwsDataCatalog --database mydb -o json"},
+	"gcx datasources athena list-columns":   {Cost: "small", Hint: "TABLE -d UID --catalog AwsDataCatalog --database mydb -o json"},
 
 	// datasources cloudwatch
 	"gcx datasources cloudwatch query":           {Cost: "large", Hint: "gcx datasources cloudwatch query -d UID --region us-east-1 --namespace AWS/EC2 --metric CPUUtilization --since 1h -o json"},

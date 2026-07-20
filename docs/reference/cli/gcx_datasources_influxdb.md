@@ -23,9 +23,9 @@ Query InfluxDB datasources
 ### SEE ALSO
 
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
-* [gcx datasources influxdb field-keys](gcx_datasources_influxdb_field-keys.md)	 - List field keys
-* [gcx datasources influxdb measurements](gcx_datasources_influxdb_measurements.md)	 - List measurements
+* [gcx datasources influxdb list-field-keys](gcx_datasources_influxdb_list-field-keys.md)	 - List field keys
+* [gcx datasources influxdb list-measurements](gcx_datasources_influxdb_list-measurements.md)	 - List measurements
+* [gcx datasources influxdb list-tag-keys](gcx_datasources_influxdb_list-tag-keys.md)	 - List tag keys
+* [gcx datasources influxdb list-tag-values](gcx_datasources_influxdb_list-tag-values.md)	 - List tag values
 * [gcx datasources influxdb query](gcx_datasources_influxdb_query.md)	 - Execute a query against an InfluxDB datasource
-* [gcx datasources influxdb tag-keys](gcx_datasources_influxdb_tag-keys.md)	 - List tag keys
-* [gcx datasources influxdb tag-values](gcx_datasources_influxdb_tag-values.md)	 - List tag values
 

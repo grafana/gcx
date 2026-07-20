@@ -1,38 +1,40 @@
-## gcx datasources influxdb measurements
+## gcx datasources athena list-columns
 
-List measurements
+List column names for an Athena table
 
 ### Synopsis
 
-List measurement names from an InfluxDB datasource.
+List the column names of the specified table. Only names are returned, not types or other schema details.
 
 ```
-gcx datasources influxdb measurements [flags]
+gcx datasources athena list-columns TABLE [flags]
 ```
 
 ### Examples
 
 ```
 
-  # List all measurements (use datasource UID, not name)
-  gcx datasources influxdb measurements -d UID
+  # List columns for a table
+  gcx datasources athena list-columns my_table -d UID --database mydb
 
-  # List measurements with Flux mode (requires --bucket)
-  gcx datasources influxdb measurements -d UID --bucket my-bucket
+  # With catalog and region
+  gcx datasources athena list-columns my_table -d UID --catalog AwsDataCatalog --database mydb --region us-east-1
 
   # Output as JSON
-  gcx datasources influxdb measurements -d UID -o json
+  gcx datasources athena list-columns my_table -d UID --database mydb -o json
 ```
 
 ### Options
 
 ```
-      --bucket string       Bucket name for Flux mode (defaults to datasource defaultBucket)
-  -d, --datasource string   Datasource UID (required unless datasources.influxdb is configured)
-  -h, --help                help for measurements
+      --catalog string      Data catalog
+      --database string     Database name
+  -d, --datasource string   Datasource UID (required unless datasources.athena is configured)
+  -h, --help                help for list-columns
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
+  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+      --region string       AWS region override
 ```
 
 ### Options inherited from parent commands
@@ -49,5 +51,5 @@ gcx datasources influxdb measurements [flags]
 
 ### SEE ALSO
 
-* [gcx datasources influxdb](gcx_datasources_influxdb.md)	 - Query InfluxDB datasources
+* [gcx datasources athena](gcx_datasources_athena.md)	 - Query Amazon Athena datasources
 

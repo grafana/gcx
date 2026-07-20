@@ -44,7 +44,7 @@ type healthRow struct {
 }
 
 // healthResult is the single shape passed to every codec for `datasources
-// health`. JSON/YAML serialize the envelope; the table codec extracts .Results
+// status`. JSON/YAML serialize the envelope; the table codec extracts .Results
 // to render rows (Pattern 13: format-agnostic data).
 type healthResult struct {
 	Results []*healthRow `json:"results" yaml:"results"`
@@ -55,7 +55,7 @@ func healthCmd() *cobra.Command {
 	opts := &healthOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "health [UID]",
+		Use:   "status [UID]",
 		Short: "Check the health of one or more datasources",
 		Long: `Check datasource health via the Grafana datasource health endpoint.
 
@@ -73,13 +73,13 @@ Exit codes distinguish resource failure from command failure:
 		},
 		Example: `
 	# Check a single datasource
-	gcx datasources health my-ds-uid
+	gcx datasources status my-ds-uid
 
 	# Check all datasources
-	gcx datasources health
+	gcx datasources status
 
 	# Check all datasources of a given type
-	gcx datasources health --type grafana-sentry-datasource`,
+	gcx datasources status --type grafana-sentry-datasource`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

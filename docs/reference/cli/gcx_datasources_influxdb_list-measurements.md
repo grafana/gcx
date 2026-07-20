@@ -1,40 +1,38 @@
-## gcx datasources athena describe-table
+## gcx datasources influxdb list-measurements
 
-Show column schema for an Athena table
+List measurements
 
 ### Synopsis
 
-Show column details including name and type for each column in the specified table.
+List measurement names from an InfluxDB datasource.
 
 ```
-gcx datasources athena describe-table TABLE [flags]
+gcx datasources influxdb list-measurements [flags]
 ```
 
 ### Examples
 
 ```
 
-  # Describe a table
-  gcx datasources athena describe-table my_table -d UID --database mydb
+  # List all measurements (use datasource UID, not name)
+  gcx datasources influxdb list-measurements -d UID
 
-  # With catalog and region
-  gcx datasources athena describe-table my_table -d UID --catalog AwsDataCatalog --database mydb --region us-east-1
+  # List measurements with Flux mode (requires --bucket)
+  gcx datasources influxdb list-measurements -d UID --bucket my-bucket
 
   # Output as JSON
-  gcx datasources athena describe-table my_table -d UID --database mydb -o json
+  gcx datasources influxdb list-measurements -d UID -o json
 ```
 
 ### Options
 
 ```
-      --catalog string      Data catalog
-      --database string     Database name
-  -d, --datasource string   Datasource UID (required unless datasources.athena is configured)
-  -h, --help                help for describe-table
+      --bucket string       Bucket name for Flux mode (defaults to datasource defaultBucket)
+  -d, --datasource string   Datasource UID (required unless datasources.influxdb is configured)
+  -h, --help                help for list-measurements
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
-      --region string       AWS region override
+  -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -51,5 +49,5 @@ gcx datasources athena describe-table TABLE [flags]
 
 ### SEE ALSO
 
-* [gcx datasources athena](gcx_datasources_athena.md)	 - Query Amazon Athena datasources
+* [gcx datasources influxdb](gcx_datasources_influxdb.md)	 - Query InfluxDB datasources
 

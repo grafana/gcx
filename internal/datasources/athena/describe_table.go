@@ -34,23 +34,23 @@ func (opts *describeTableOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-// DescribeTableCmd returns the `describe-table` subcommand for an Athena datasource parent.
+// DescribeTableCmd returns the `list-columns` subcommand for an Athena datasource parent.
 func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &describeTableOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "describe-table TABLE",
-		Short: "Show column schema for an Athena table",
-		Long:  `Show column details including name and type for each column in the specified table.`,
+		Use:   "list-columns TABLE",
+		Short: "List column names for an Athena table",
+		Long:  `List the column names of the specified table. Only names are returned, not types or other schema details.`,
 		Example: `
-  # Describe a table
-  gcx datasources athena describe-table my_table -d UID --database mydb
+  # List columns for a table
+  gcx datasources athena list-columns my_table -d UID --database mydb
 
   # With catalog and region
-  gcx datasources athena describe-table my_table -d UID --catalog AwsDataCatalog --database mydb --region us-east-1
+  gcx datasources athena list-columns my_table -d UID --catalog AwsDataCatalog --database mydb --region us-east-1
 
   # Output as JSON
-  gcx datasources athena describe-table my_table -d UID --database mydb -o json`,
+  gcx datasources athena list-columns my_table -d UID --database mydb -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -105,7 +105,7 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   `gcx datasources athena describe-table TABLE -d UID --catalog AwsDataCatalog --database mydb -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources athena list-columns TABLE -d UID --catalog AwsDataCatalog --database mydb -o json`,
 	}
 
 	opts.setup(cmd.Flags())

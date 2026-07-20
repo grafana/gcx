@@ -1,4 +1,4 @@
-## gcx datasources influxdb tag-values
+## gcx datasources influxdb list-tag-values
 
 List tag values
 
@@ -7,7 +7,7 @@ List tag values
 List tag values for a given key from an InfluxDB datasource. Only supported in InfluxQL mode.
 
 ```
-gcx datasources influxdb tag-values [flags]
+gcx datasources influxdb list-tag-values [flags]
 ```
 
 ### Examples
@@ -15,20 +15,20 @@ gcx datasources influxdb tag-values [flags]
 ```
 
   # List values for a tag key (use datasource UID, not name)
-  gcx datasources influxdb tag-values -d UID --key host
+  gcx datasources influxdb list-tag-values -d UID --key host
 
   # Filter by measurement
-  gcx datasources influxdb tag-values -d UID --key host --measurement cpu
+  gcx datasources influxdb list-tag-values -d UID --key host --measurement cpu
 
   # Output as JSON
-  gcx datasources influxdb tag-values -d UID --key host -o json
+  gcx datasources influxdb list-tag-values -d UID --key host -o json
 ```
 
 ### Options
 
 ```
   -d, --datasource string    Datasource UID (required unless datasources.influxdb is configured)
-  -h, --help                 help for tag-values
+  -h, --help                 help for list-tag-values
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -k, --key string           Tag key to get values for (required)
