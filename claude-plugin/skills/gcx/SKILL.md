@@ -154,7 +154,7 @@ Manage datasource instances with Kubernetes-style manifests (file or stdin):
   `{create: <value>}`, `{fromEnv: <VAR>}`, or `{fromFile: <path>}` — never on argv.
 - `delete UID...` — prompts unless `--force`/`--yes` (auto-approved in agent mode);
   batch-safe with partial-failure exit code 4.
-- `health [UID]` — exit 0 healthy, 4 unhealthy (resource failure), 1/2/3 command failure.
+- `status [UID]` — exit 0 healthy, 4 unhealthy (resource failure), 1/2/3 command failure.
 - `schemas get --type <plugin>` — plugin configuration schema (when the server
   serves the datasource app-platform API).
 
