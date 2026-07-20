@@ -66,6 +66,7 @@ const (
 	LocalConfigFileName    = ".gcx.yaml"
 
 	defaultEmptyConfigFile = `
+version: 1
 contexts:
   default: {}
 current-context: default
@@ -362,14 +363,20 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 		return config, err
 	}
 
-	codec := &format.YAMLCodec{BytesAsBase64: true}
-	if err := codec.Decode(bytes.NewBuffer(contents), &config); err != nil {
-		return config, UnmarshalError{File: filename, Err: err}
+	if isLegacyConfig(contents) {
+		config, err = migrateLegacyConfig(ctx, source, filename, contents)
+		if err != nil {
+			return config, err
+		}
+		config.Source = filename
+	} else {
+		codec := &format.YAMLCodec{BytesAsBase64: true}
+		if err := codec.Decode(bytes.NewBuffer(contents), &config); err != nil {
+			return config, UnmarshalError{File: filename, Err: err}
+		}
 	}
 
-	for name, ctx := range config.Contexts {
-		ctx.Name = name
-	}
+	config.Resolve()
 
 	log := logging.FromContext(ctx)
 	// Defer opening the keychain until a sentinel actually needs resolving or a
@@ -382,7 +389,8 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 	// are resolved on demand via Config.ResolveContext to avoid redundant
 	// keychain lookups.
 	if cur := config.Contexts[config.CurrentContext]; cur != nil {
-		config.keychainFields, config.keychainPreserve = resolveSentinelsForContext(config.CurrentContext, cur, store)
+		backed, preserve := resolveSentinelsForContext(cur, store)
+		config.trackKeychainResults(backed, preserve)
 	}
 
 	if migrated := migratePlaintextSecrets(&config, store, log); migrated > 0 {
@@ -420,6 +428,10 @@ func Write(ctx context.Context, source Source, cfg Config) error {
 
 	log := logging.FromContext(ctx)
 	log.Debug("Writing config", slog.String("filename", filename))
+
+	if cfg.Version == 0 {
+		cfg.Version = ConfigVersion
+	}
 
 	if cfg.hasSecretsToReconcile() {
 		restore := reconcileKeychain(&cfg, keychainStoreFn(), log)
@@ -493,7 +505,7 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 	// Load and merge in priority order (system → user → local).
 	var merged Config
 	for i, src := range sources {
-		loaded, err := Load(ctx, ExplicitConfigFile(src.Path))
+		loaded, err := Load(withConfigLayer(ctx, src.Type), ExplicitConfigFile(src.Path))
 		if err != nil {
 			return Config{}, err
 		}
@@ -552,7 +564,7 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 		for _, s := range sources {
 			if s.Type == fileType {
 				src := ExplicitConfigFile(s.Path)
-				cfg, err := Load(ctx, src)
+				cfg, err := Load(withConfigLayer(ctx, s.Type), src)
 				return cfg, src, err
 			}
 		}

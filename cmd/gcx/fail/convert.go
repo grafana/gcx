@@ -925,7 +925,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Summary: "SM token auto-discovery: permission denied",
 			Details: msg,
 			Suggestions: []string{
-				"Ensure your cloud.token access policy includes these scopes: stacks:read, metrics:write, logs:write, traces:write",
+				"Ensure your cloud token's access policy includes these scopes: stacks:read, metrics:write, logs:write, traces:write",
 				"Or set the SM token directly: gcx config set providers.synth.sm-token <TOKEN>",
 				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
 			},
@@ -942,7 +942,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Suggestions: []string{
 				"Set it: gcx config set providers.synth.sm-token <TOKEN>",
 				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
-				"Auto-discovery requires cloud.token and cloud.stack in the current context",
+				"Auto-discovery requires cloud auth (gcx cloud login) and a stack slug on the current context",
 				"Check config: gcx config view",
 			},
 			DocsLink: docs.SyntheticMonitoring,
@@ -955,14 +955,14 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	msg := err.Error()
 
-	// Cloud token missing.
-	if strings.Contains(msg, "cloud token is required") {
+	// Cloud auth missing (no cloud entry bound, or the entry has no token).
+	if strings.Contains(msg, "context has no cloud auth") || strings.Contains(msg, "has no token") {
 		return &gcxerrors.DetailedError{
 			Summary: "Cloud credentials not configured",
 			Details: msg,
 			Parent:  err,
 			Suggestions: []string{
-				"Set cloud.token in your config: gcx config set cloud.token <TOKEN>",
+				"Run: gcx cloud login",
 				"Or set GRAFANA_CLOUD_TOKEN environment variable",
 			},
 			DocsLink: docs.AccessPolicies,
@@ -976,7 +976,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Details: msg,
 			Parent:  err,
 			Suggestions: []string{
-				"Set cloud.stack in your config: gcx config set cloud.stack <STACK_SLUG>",
+				"Set the stack's slug in your config: gcx config set slug <STACK_SLUG>",
 				"Or set GRAFANA_CLOUD_STACK environment variable",
 			},
 		}, true
@@ -989,7 +989,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Parent:  err,
 			Summary: "Fleet Management: permission denied",
 			Suggestions: []string{
-				"Ensure your cloud.token access policy includes the fleet-management:read scope",
+				"Ensure your cloud token's access policy includes the fleet-management:read scope",
 			},
 			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
@@ -1003,7 +1003,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Parent:  err,
 			Summary: "Fleet Management: permission denied",
 			Suggestions: []string{
-				"Ensure your cloud.token access policy includes the fleet-management:write scope",
+				"Ensure your cloud token's access policy includes the fleet-management:write scope",
 			},
 			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
@@ -1090,7 +1090,7 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Summary: "Authentication failed",
 			Details: "HTTP 401 from " + httpErr.Path,
 			Suggestions: []string{
-				"Ensure cloud.token is set: gcx config set cloud.token <TOKEN>",
+				"Ensure cloud auth is configured: gcx cloud login",
 				"Verify the token has not expired: gcx config view",
 				reauthSuggestion,
 			},
@@ -1409,7 +1409,7 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Parent:   err,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 			Suggestions: []string{
-				"Check your cloud.token is valid and not expired",
+				"Check your cloud token is valid and not expired",
 				reauthSuggestion,
 			},
 		}, true

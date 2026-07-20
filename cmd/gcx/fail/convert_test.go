@@ -612,7 +612,7 @@ func TestErrorToDetailedError_SMTokenNotConfigured(t *testing.T) {
 	require.Len(t, got.Suggestions, 4)
 	assert.Contains(t, got.Suggestions[0], "gcx config set providers.synth.sm-token")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_PROVIDER_SYNTH_SM_TOKEN")
-	assert.Contains(t, got.Suggestions[2], "cloud.token")
+	assert.Contains(t, got.Suggestions[2], "gcx cloud login")
 	assert.Contains(t, got.Suggestions[3], "gcx config view")
 }
 
@@ -677,26 +677,35 @@ func TestErrorToDetailedError_SMTokenRegisterInstallGeneric400FallsThrough(t *te
 }
 
 func TestErrorToDetailedError_CloudTokenNotConfigured(t *testing.T) {
-	err := errors.New("cloud token is required: set cloud.token in config or GRAFANA_CLOUD_TOKEN env var")
+	err := errors.New("context has no cloud auth: run `gcx cloud login`, or set GRAFANA_CLOUD_TOKEN")
 
 	got := fail.ErrorToDetailedError(err)
 
 	require.NotNil(t, got)
 	assert.Equal(t, "Cloud credentials not configured", got.Summary)
 	require.Len(t, got.Suggestions, 2)
-	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.token")
+	assert.Contains(t, got.Suggestions[0], "gcx cloud login")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_TOKEN")
 }
 
+func TestErrorToDetailedError_CloudEntryTokenMissing(t *testing.T) {
+	err := errors.New(`cloud entry "grafana-com" has no token: run ` + "`gcx cloud login`" + `, or set cloud.grafana-com.token or GRAFANA_CLOUD_TOKEN`)
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Cloud credentials not configured", got.Summary)
+}
+
 func TestErrorToDetailedError_CloudStackNotConfigured(t *testing.T) {
-	err := errors.New("cloud stack is not configured: set cloud.stack in config or GRAFANA_CLOUD_STACK env var")
+	err := errors.New("cloud stack is not configured: set the stack's slug (gcx config set slug <slug>) or GRAFANA_CLOUD_STACK env var")
 
 	got := fail.ErrorToDetailedError(err)
 
 	require.NotNil(t, got)
 	assert.Equal(t, "Cloud stack not configured", got.Summary)
 	require.Len(t, got.Suggestions, 2)
-	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.stack")
+	assert.Contains(t, got.Suggestions[0], "gcx config set slug")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_STACK")
 }
 

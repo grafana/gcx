@@ -240,7 +240,8 @@ func Test_ViewCommand(t *testing.T) {
 		Command: []string{"view", "--config", "testdata/config.yaml"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
-			testutils.CommandOutputContains(`contexts:
+			testutils.CommandOutputContains(`version: 1
+stacks:
   local:
     grafana:
       server: http://localhost:3000/
@@ -249,6 +250,11 @@ func Test_ViewCommand(t *testing.T) {
     grafana:
       server: https://grafana.example.com/
       token: "**REDACTED**"
+contexts:
+  local:
+    stack: local
+  prod:
+    stack: prod
 current-context: local`),
 		},
 	}
@@ -262,7 +268,8 @@ func Test_ViewCommand_raw(t *testing.T) {
 		Command: []string{"view", "--config", "testdata/config.yaml", "--raw"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
-			testutils.CommandOutputContains(`contexts:
+			testutils.CommandOutputContains(`version: 1
+stacks:
   local:
     grafana:
       server: http://localhost:3000/
@@ -271,6 +278,11 @@ func Test_ViewCommand_raw(t *testing.T) {
     grafana:
       server: https://grafana.example.com/
       token: prod_token
+contexts:
+  local:
+    stack: local
+  prod:
+    stack: prod
 current-context: local`),
 		},
 	}
@@ -284,11 +296,15 @@ func Test_ViewCommand_minify(t *testing.T) {
 		Command: []string{"view", "--config", "testdata/config.yaml", "--minify"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
-			testutils.CommandOutputContains(`contexts:
+			testutils.CommandOutputContains(`version: 1
+stacks:
   local:
     grafana:
       server: http://localhost:3000/
       token: "**REDACTED**"
+contexts:
+  local:
+    stack: local
 current-context: local`),
 		},
 	}
@@ -302,11 +318,15 @@ func Test_ViewCommand_minify_explicitContext(t *testing.T) {
 		Command: []string{"view", "--config", "testdata/config.yaml", "--minify", "--context", "prod"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
-			testutils.CommandOutputContains(`contexts:
+			testutils.CommandOutputContains(`version: 1
+stacks:
   prod:
     grafana:
       server: https://grafana.example.com/
       token: "**REDACTED**"
+contexts:
+  prod:
+    stack: prod
 current-context: prod`),
 		},
 	}
@@ -321,7 +341,8 @@ func Test_ViewCommand_outputJson(t *testing.T) {
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 			testutils.CommandOutputContains(`{
-  "contexts": {
+  "version": 1,
+  "stacks": {
     "local": {
       "grafana": {
         "server": "http://localhost:3000/",
@@ -333,6 +354,14 @@ func Test_ViewCommand_outputJson(t *testing.T) {
         "server": "https://grafana.example.com/",
         "token": "**REDACTED**"
       }
+    }
+  },
+  "contexts": {
+    "local": {
+      "stack": "local"
+    },
+    "prod": {
+      "stack": "prod"
     }
   },
   "current-context": "local"
@@ -367,13 +396,16 @@ func Test_ViewCommand_failsWithUnknownContext(t *testing.T) {
 }
 
 func Test_SetCommand(t *testing.T) {
-	cfg := `current-context: dev`
+	cfg := `contexts:
+  dev:
+    stack: dev
+current-context: dev`
 
 	configFile := testutils.CreateTempFile(t, cfg)
 
 	changeConfigTest := testutils.CommandTestCase{
 		Cmd:     config.Command(),
-		Command: []string{"set", "--config", configFile, "contexts.dev.grafana.server", "https://grafana-dev.example"},
+		Command: []string{"set", "--config", configFile, "stacks.dev.grafana.server", "https://grafana-dev.example"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 		},
@@ -385,10 +417,13 @@ func Test_SetCommand(t *testing.T) {
 		Command: []string{"view", "--config", configFile, "--minify"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
-			testutils.CommandOutputContains(`contexts:
+			testutils.CommandOutputContains(`stacks:
   dev:
     grafana:
       server: https://grafana-dev.example
+contexts:
+  dev:
+    stack: dev
 current-context: dev`),
 		},
 	}
@@ -396,26 +431,44 @@ current-context: dev`),
 }
 
 func Test_SetCommand_barePathResolvesAgainstCurrentContext(t *testing.T) {
-	cfg := `current-context: dev`
+	cfg := `contexts:
+  dev:
+    stack: dev
+current-context: dev`
 
 	configFile := testutils.CreateTempFile(t, cfg)
 
-	setCloudToken := testutils.CommandTestCase{
+	// Stack-owned bare paths resolve through the current context's stack.
+	setGrafanaServer := testutils.CommandTestCase{
 		Cmd:     config.Command(),
-		Command: []string{"set", "--config", configFile, "cloud.token", "glc_abc123"},
+		Command: []string{"set", "--config", configFile, "grafana.server", "https://grafana-dev.example"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 		},
 	}
-	setCloudToken.Run(t)
+	setGrafanaServer.Run(t)
+
+	// Context-owned bare paths resolve against the current context.
+	setDatasource := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"set", "--config", configFile, "datasources.prometheus", "prom-uid"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+		},
+	}
+	setDatasource.Run(t)
 
 	viewCmd := testutils.CommandTestCase{
 		Cmd:     config.Command(),
 		Command: []string{"view", "--config", configFile, "--minify", "--raw"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
-			testutils.CommandOutputContains(`cloud:
-      token: glc_abc123`),
+			testutils.CommandOutputContains(`stacks:
+  dev:
+    grafana:
+      server: https://grafana-dev.example`),
+			testutils.CommandOutputContains(`    datasources:
+      prometheus: prom-uid`),
 		},
 	}
 	viewCmd.Run(t)
@@ -426,7 +479,7 @@ func Test_SetCommand_barePathWithoutCurrentContextErrors(t *testing.T) {
 
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
-		Command: []string{"set", "--config", configFile, "cloud.token", "glc_abc123"},
+		Command: []string{"set", "--config", configFile, "datasources.prometheus", "prom-uid"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandErrorContains("no current context set"),
 		},
@@ -434,19 +487,37 @@ func Test_SetCommand_barePathWithoutCurrentContextErrors(t *testing.T) {
 	testCase.Run(t)
 }
 
+func Test_SetCommand_legacyCloudPathErrors(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, `current-context: dev
+contexts:
+  dev: {}`)
+
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"set", "--config", configFile, "cloud.token", "glc_abc123"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandErrorContains("cloud credentials now live in named entries; use cloud.<entry>.token"),
+		},
+	}
+	testCase.Run(t)
+}
+
 func Test_UnsetCommand(t *testing.T) {
-	cfg := `contexts:
+	cfg := `stacks:
   dev:
     grafana:
       server: https://grafana-dev.example
       user: remove-me-please
+contexts:
+  dev:
+    stack: dev
 current-context: dev`
 
 	configFile := testutils.CreateTempFile(t, cfg)
 
 	changeConfigTest := testutils.CommandTestCase{
 		Cmd:     config.Command(),
-		Command: []string{"unset", "--config", configFile, "contexts.dev.grafana.user"},
+		Command: []string{"unset", "--config", configFile, "stacks.dev.grafana.user"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 		},
@@ -458,10 +529,13 @@ current-context: dev`
 		Command: []string{"view", "--config", configFile, "--minify"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
-			testutils.CommandOutputContains(`contexts:
+			testutils.CommandOutputContains(`stacks:
   dev:
     grafana:
       server: https://grafana-dev.example
+contexts:
+  dev:
+    stack: dev
 current-context: dev`),
 		},
 	}
@@ -474,12 +548,16 @@ func Test_ViewCommand_withEnvironmentVariables(t *testing.T) {
 		Command: []string{"view", "--config", "testdata/partial-config.yaml", "--minify", "--raw"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
-			testutils.CommandOutputEquals(`contexts:
+			testutils.CommandOutputEquals(`version: 1
+stacks:
   prod:
     grafana:
       server: https://grafana.example.com/
       token: token
       org-id: 42
+contexts:
+  prod:
+    stack: prod
 current-context: prod
 `),
 		},
@@ -509,7 +587,8 @@ func Test_ViewCommand_withEnvVar(t *testing.T) {
 }
 
 func Test_ViewCommand_redactsProviderSecrets(t *testing.T) {
-	cfg := `contexts:
+	cfg := `version: 1
+stacks:
   default:
     grafana:
       server: https://grafana.example.com/
@@ -517,6 +596,9 @@ func Test_ViewCommand_redactsProviderSecrets(t *testing.T) {
     providers:
       slo:
         token: slo-secret-token
+contexts:
+  default:
+    stack: default
 current-context: default`
 
 	configFile := testutils.CreateTempFile(t, cfg)
@@ -536,7 +618,8 @@ current-context: default`
 }
 
 func Test_ViewCommand_rawShowsProviderSecrets(t *testing.T) {
-	cfg := `contexts:
+	cfg := `version: 1
+stacks:
   default:
     grafana:
       server: https://grafana.example.com/
@@ -544,6 +627,9 @@ func Test_ViewCommand_rawShowsProviderSecrets(t *testing.T) {
     providers:
       slo:
         token: slo-secret-token
+contexts:
+  default:
+    stack: default
 current-context: default`
 
 	configFile := testutils.CreateTempFile(t, cfg)
@@ -562,8 +648,20 @@ current-context: default`
 	testCase.Run(t)
 }
 
+// stackBackedProviderConfig gives the current context a stack whose providers
+// map exists: env-derived provider config lands in the context's resolved
+// Providers map, which view only renders when it is shared with a stack entry.
+const stackBackedProviderConfig = `version: 1
+stacks:
+  default:
+    providers: {}
+contexts:
+  default:
+    stack: default
+current-context: default`
+
 func Test_ViewCommand_withProviderEnvVar(t *testing.T) {
-	configFile := testutils.CreateTempFile(t, "contexts:")
+	configFile := testutils.CreateTempFile(t, stackBackedProviderConfig)
 
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
@@ -584,7 +682,7 @@ func Test_ViewCommand_withProviderEnvVar(t *testing.T) {
 }
 
 func Test_ViewCommand_withProviderEnvVar_underscoreToDash(t *testing.T) {
-	configFile := testutils.CreateTempFile(t, "contexts:")
+	configFile := testutils.CreateTempFile(t, stackBackedProviderConfig)
 
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
@@ -605,7 +703,7 @@ func Test_ViewCommand_withProviderEnvVar_underscoreToDash(t *testing.T) {
 }
 
 func Test_ViewCommand_withProviderEnvVar_redacted(t *testing.T) {
-	configFile := testutils.CreateTempFile(t, "contexts:")
+	configFile := testutils.CreateTempFile(t, stackBackedProviderConfig)
 
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
@@ -628,16 +726,16 @@ func Test_ViewCommand_withProviderEnvVar_redacted(t *testing.T) {
 func Test_ViewCommand_withEnvironmentVariablesAndEmptyConfig(t *testing.T) {
 	configFile := testutils.CreateTempFile(t, "contexts:")
 
+	// Env vars synthesize a default context, but its env-derived grafana config
+	// lives on the context's resolved (non-serialized) view, so view renders the
+	// bare context — env secrets never appear in the output.
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
 		Command: []string{"view", "--config", configFile, "--minify", "--raw"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 			testutils.CommandOutputEquals(`contexts:
-  default:
-    grafana:
-      server: https://grafana.example.com/
-      token: token
+  default: {}
 current-context: default
 `),
 		},
@@ -745,7 +843,7 @@ contexts:
   dev: {}
 `)
 
-	_, err := runConfigCmd(t, "set", "contexts.dev.grafana.server", "https://example.test")
+	_, err := runConfigCmd(t, "set", "stacks.dev.grafana.server", "https://example.test")
 	require.NoError(t, err)
 
 	contents, err := os.ReadFile(localPath)

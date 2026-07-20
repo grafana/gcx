@@ -72,15 +72,18 @@ current-context: default
 
 	_, err := loader.LoadCloudConfig(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "cloud token is required")
+	assert.Contains(t, err.Error(), "context has no cloud auth")
 }
 
 func TestConfigLoader_LoadCloudConfig_MissingStack(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
+version: 1
+cloud:
+  grafana-com:
+    token: "my-token"
 contexts:
   default:
-    cloud:
-      token: "my-token"
+    cloud: grafana-com
 current-context: default
 `)
 	loader := &providers.ConfigLoader{}
@@ -115,7 +118,7 @@ current-context: default
 	// The GCOM call will fail (no real GCOM server), but it must NOT fail with a
 	// validation error about missing token or stack — those were set via env vars.
 	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "cloud token is required")
+	assert.NotContains(t, err.Error(), "no cloud auth")
 	assert.NotContains(t, err.Error(), "cloud stack is not configured")
 }
 
@@ -131,12 +134,18 @@ func TestConfigLoader_LoadCloudConfig_GCOMCallAttempted(t *testing.T) {
 	// This means the connection will fail at TLS, proving the GCOM call
 	// was attempted (rather than a validation failure).
 	cfgFile := writeConfigFile(t, `
+version: 1
+stacks:
+  default:
+    slug: "mystack"
+cloud:
+  grafana-com:
+    token: "test-token"
+    api-url: "`+srv.URL[len("http://"):]+`"
 contexts:
   default:
-    cloud:
-      token: "test-token"
-      stack: "mystack"
-      api-url: "`+srv.URL[len("http://"):]+`"
+    stack: default
+    cloud: grafana-com
 current-context: default
 `)
 	loader := &providers.ConfigLoader{}
@@ -145,7 +154,7 @@ current-context: default
 	_, err := loader.LoadCloudConfig(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get stack info")
-	assert.NotContains(t, err.Error(), "cloud token is required")
+	assert.NotContains(t, err.Error(), "no cloud auth")
 	assert.NotContains(t, err.Error(), "cloud stack is not configured")
 }
 
@@ -175,11 +184,15 @@ current-context: default
 			// AC-2: config file value returned when no env var
 			name: "config_file_only",
 			configYAML: `
-contexts:
+version: 1
+stacks:
   default:
     providers:
       synth:
         sm-url: https://file.sm
+contexts:
+  default:
+    stack: default
 current-context: default
 `,
 			providerName: "synth",
@@ -189,11 +202,15 @@ current-context: default
 			// AC-3: env var takes precedence over config file
 			name: "env_var_overrides_config_file",
 			configYAML: `
-contexts:
+version: 1
+stacks:
   default:
     providers:
       synth:
         sm-url: https://file.sm
+contexts:
+  default:
+    stack: default
 current-context: default
 `,
 			envVars:      map[string]string{"GRAFANA_PROVIDER_SYNTH_SM_URL": "https://env.sm"},
@@ -390,12 +407,16 @@ current-context: default
 // to an already-configured provider preserves other keys.
 func TestConfigLoader_SaveProviderConfig_ExistingProvider(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
-contexts:
+version: 1
+stacks:
   default:
     providers:
       synth:
         sm-url: https://file.sm
         sm-token: tok
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 	loader := &providers.ConfigLoader{}
@@ -456,7 +477,8 @@ func TestConfigLoader_LoadGrafanaConfig_PersistsRefreshedTokens(t *testing.T) {
 	defer srv.Close()
 
 	cfgFile := writeConfigFile(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: "`+srv.URL+`"
@@ -466,6 +488,9 @@ contexts:
       oauth-token-expires-at: "2020-01-01T00:00:00Z"
       oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
       stack-id: 123
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 
@@ -531,7 +556,8 @@ func TestLoadGrafanaConfig_PersistsRefreshToLocalOAuthLayer(t *testing.T) {
 	localFile := filepath.Join(workDir, ".gcx.yaml")
 
 	writeFile(t, userFile, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: "`+srv.URL+`"
@@ -541,10 +567,14 @@ contexts:
       oauth-token-expires-at: "2020-01-01T00:00:00Z"
       oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
       stack-id: 123
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 	writeFile(t, localFile, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       proxy-endpoint: "`+srv.URL+`"
@@ -552,6 +582,9 @@ contexts:
       oauth-refresh-token: gar_local_old
       oauth-token-expires-at: "2020-01-01T00:00:00Z"
       oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+contexts:
+  default:
+    stack: default
 `)
 
 	loader := &providers.ConfigLoader{}
@@ -616,7 +649,8 @@ func TestLoadGrafanaConfig_PersistsRefreshToHighestContextLayer(t *testing.T) {
 	localFile := filepath.Join(workDir, ".gcx.yaml")
 
 	writeFile(t, userFile, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: "`+srv.URL+`"
@@ -626,14 +660,21 @@ contexts:
       oauth-token-expires-at: "2020-01-01T00:00:00Z"
       oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
       stack-id: 123
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 	writeFile(t, localFile, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: "`+srv.URL+`"
       proxy-endpoint: "`+srv.URL+`"
+contexts:
+  default:
+    stack: default
 `)
 
 	loader := &providers.ConfigLoader{}
@@ -674,7 +715,7 @@ current-context: default
 
 	_, err := loader.LoadGrafanaConfig(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "grafana config is required")
+	assert.Contains(t, err.Error(), "context references no stack with grafana config")
 }
 
 // TestConfigLoader_LoadCloudConfig_FullRoundTrip tests the full happy-path:
@@ -694,12 +735,18 @@ func TestConfigLoader_LoadCloudConfig_FullRoundTrip(t *testing.T) {
 
 	// Use the full http:// URL — ResolveCloudAPIURL now preserves existing schemes.
 	cfgFile := writeConfigFile(t, `
+version: 1
+stacks:
+  default:
+    slug: "mystack"
+cloud:
+  grafana-com:
+    token: "test-token"
+    api-url: "`+srv.URL+`"
 contexts:
   default:
-    cloud:
-      token: "test-token"
-      stack: "mystack"
-      api-url: "`+srv.URL+`"
+    stack: default
+    cloud: grafana-com
 current-context: default
 `)
 	loader := &providers.ConfigLoader{}
@@ -719,7 +766,8 @@ current-context: default
 
 func TestConfigLoader_SaveProviderConfig_ContextOverrideBeforeEnvVars(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
-contexts:
+version: 1
+stacks:
   prod:
     providers:
       synth:
@@ -728,6 +776,11 @@ contexts:
     providers:
       synth:
         sm-url: https://staging.sm
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
 current-context: prod
 `)
 	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM-TOKEN", "env-sm-token")
@@ -749,7 +802,8 @@ current-context: prod
 
 func TestConfigLoader_LoadFullConfig_ContextOverrideBeforeEnvVars(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
-contexts:
+version: 1
+stacks:
   prod:
     grafana:
       server: https://prod.grafana.net
@@ -758,6 +812,11 @@ contexts:
     grafana:
       server: https://staging.grafana.net
       token: staging-token
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
 current-context: prod
 `)
 	t.Setenv("GRAFANA_TOKEN", "env-token")
@@ -775,7 +834,8 @@ current-context: prod
 
 func TestConfigLoader_LoadGrafanaConfig_ContextOverrideBeforeEnvVars(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
-contexts:
+version: 1
+stacks:
   prod:
     grafana:
       server: https://prod.grafana.net
@@ -784,6 +844,11 @@ contexts:
     grafana:
       server: https://staging.grafana.net
       token: staging-token
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
 current-context: prod
 `)
 	t.Setenv("GRAFANA_TOKEN", "env-token")
@@ -805,17 +870,26 @@ func TestConfigLoader_LoadCloudConfig_ContextOverrideBeforeEnvVars(t *testing.T)
 	defer srv.Close()
 
 	cfgFile := writeConfigFile(t, `
+version: 1
+stacks:
+  prod:
+    slug: prod-stack
+  staging:
+    slug: staging-stack
+cloud:
+  prod-cloud:
+    token: prod-token
+    api-url: `+srv.URL+`
+  staging-cloud:
+    token: staging-token
+    api-url: `+srv.URL+`
 contexts:
   prod:
-    cloud:
-      token: prod-token
-      stack: prod-stack
-      api-url: `+srv.URL+`
+    stack: prod
+    cloud: prod-cloud
   staging:
-    cloud:
-      token: staging-token
-      stack: staging-stack
-      api-url: `+srv.URL+`
+    stack: staging
+    cloud: staging-cloud
 current-context: prod
 `)
 	t.Setenv("GRAFANA_CLOUD_TOKEN", "env-cloud-token")

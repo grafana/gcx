@@ -9,13 +9,19 @@ import (
 )
 
 // MergeCloudInto applies non-empty fields from incoming onto existing,
-// allocating existing if nil. It returns the merged config.
-func MergeCloudInto(existing, incoming *CloudConfig) *CloudConfig {
+// allocating existing if nil. It returns the merged entry.
+func MergeCloudInto(existing, incoming *CloudEntry) *CloudEntry {
 	if existing == nil {
-		existing = &CloudConfig{}
+		existing = &CloudEntry{}
 	}
 	if incoming.Token != "" {
 		existing.Token = incoming.Token
+	}
+	if incoming.OAuthToken != "" {
+		existing.OAuthToken = incoming.OAuthToken
+	}
+	if incoming.OAuthTokenExpiresAt != "" {
+		existing.OAuthTokenExpiresAt = incoming.OAuthTokenExpiresAt
 	}
 	if incoming.OAuthUrl != "" {
 		existing.OAuthUrl = incoming.OAuthUrl
@@ -23,10 +29,19 @@ func MergeCloudInto(existing, incoming *CloudConfig) *CloudConfig {
 	if incoming.APIUrl != "" {
 		existing.APIUrl = incoming.APIUrl
 	}
-	if incoming.Stack != "" {
-		existing.Stack = incoming.Stack
-	}
 	return existing
+}
+
+// EnsureCloudEntry merges entry into the named entry when existingRef is set,
+// otherwise into an entry named after the entry's API URL host, and returns
+// the entry name used. The caller binds the returned name to a context.
+func (config *Config) EnsureCloudEntry(existingRef string, entry CloudEntry) string {
+	name := existingRef
+	if name == "" {
+		name = cloudEntryName(entry.APIUrl)
+	}
+	config.SetCloudEntry(name, *MergeCloudInto(config.Cloud[name], &entry))
+	return name
 }
 
 // ResolveContextName picks the context to operate on: the explicit override when
@@ -41,14 +56,15 @@ func ResolveContextName(override string, cfg Config) string {
 	return DefaultContextName
 }
 
-// SaveCloudConfig writes cloud credentials into the resolved context (see
-// ResolveContextName), creating the context if it doesn't exist and preserving
-// any existing Stack selection so re-authenticating doesn't drop it. It returns
-// the name of the context that was written.
-func SaveCloudConfig(ctx context.Context, source Source, contextOverride string, cloud *CloudConfig) (string, error) {
+// SaveCloudConfig writes cloud credentials into a named cloud entry and binds
+// it to the resolved context (see ResolveContextName), creating the context
+// if it doesn't exist. The entry is the one the context already references,
+// or one named after the API URL host otherwise, so re-authenticating
+// refreshes credentials in place. Returns the context and entry names.
+func SaveCloudConfig(ctx context.Context, source Source, contextOverride string, entry *CloudEntry) (string, string, error) {
 	cfg, err := Load(ctx, source)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return "", &gcxerrors.DetailedError{
+		return "", "", &gcxerrors.DetailedError{
 			Summary: "Failed to load config",
 			Parent:  err,
 			Suggestions: []string{
@@ -67,13 +83,15 @@ func SaveCloudConfig(ctx context.Context, source Source, contextOverride string,
 		cfg.SetContext(contextName, true, Context{})
 	}
 	curCtx := cfg.Contexts[contextName]
-	// Merge the incoming auth fields onto the existing cloud config so
-	// re-authenticating refreshes credentials without dropping the non-auth
-	// Stack selection.
-	curCtx.Cloud = MergeCloudInto(curCtx.Cloud, cloud)
+
+	// Merge the incoming auth fields onto the existing entry so
+	// re-authenticating refreshes credentials without dropping other fields.
+	entryName := cfg.EnsureCloudEntry(curCtx.Cloud, *entry)
+	curCtx.Cloud = entryName
+	cfg.Resolve()
 
 	if err := Write(ctx, source, cfg); err != nil {
-		return "", &gcxerrors.DetailedError{
+		return "", "", &gcxerrors.DetailedError{
 			Summary: "Failed to save config",
 			Parent:  err,
 			Suggestions: []string{
@@ -83,5 +101,5 @@ func SaveCloudConfig(ctx context.Context, source Source, contextOverride string,
 		}
 	}
 
-	return contextName, nil
+	return contextName, entryName, nil
 }

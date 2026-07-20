@@ -102,20 +102,26 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 
 		c := fresh.Contexts[contextName]
 		if c == nil {
-			c = &Context{}
-			if fresh.Contexts == nil {
-				fresh.Contexts = make(map[string]*Context)
-			}
-			fresh.Contexts[contextName] = c
+			fresh.SetContext(contextName, false, Context{})
+			c = fresh.Contexts[contextName]
 		}
-		if c.Grafana == nil {
-			c.Grafana = &GrafanaConfig{}
+		// Tokens live on the stack entry; a detached Grafana config on the
+		// context would not be persisted. Create the stack when missing.
+		if c.StackEntry == nil {
+			fresh.SetStack(contextName, StackConfig{})
+			c.Stack = contextName
+			fresh.Resolve()
+		}
+		if c.StackEntry.Grafana == nil {
+			c.StackEntry.Grafana = &GrafanaConfig{}
+			fresh.Resolve()
 		}
 
-		c.Grafana.OAuthToken = token
-		c.Grafana.OAuthRefreshToken = refreshToken
-		c.Grafana.OAuthTokenExpiresAt = expiresAt
-		c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
+		g := c.StackEntry.Grafana
+		g.OAuthToken = token
+		g.OAuthRefreshToken = refreshToken
+		g.OAuthTokenExpiresAt = expiresAt
+		g.OAuthRefreshExpiresAt = refreshExpiresAt
 		return Write(persistCtx, persistSource, fresh)
 	})
 }

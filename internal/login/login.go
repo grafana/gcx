@@ -289,16 +289,18 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	}
 
 	// Step 5: Cloud API token (Cloud targets only)
-	cloudCfg, err := resolveCloudAuth(*opts, target)
+	cloudEntry, stackSlug, err := resolveCloudAuth(*opts, target)
 	if err != nil {
 		return Result{}, err
 	}
 
-	// Step 6: Build temp context and validate connectivity
+	// Step 6: Build temp context and validate connectivity. The temp context
+	// carries detached resolved views (Grafana, CloudEntry); persistContext
+	// gives them their homes on stack and cloud entries.
 	tempCtx := config.Context{
-		Name:    contextName,
-		Grafana: grafanaCfg,
-		Cloud:   cloudCfg,
+		Name:       contextName,
+		Grafana:    grafanaCfg,
+		CloudEntry: cloudEntry,
 	}
 	restCfg, err := config.NewNamespacedRESTConfig(ctx, tempCtx)
 	if err != nil {
@@ -356,7 +358,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	}
 
 	// Step 7: Persist to config (write only after all validation passes)
-	if err := persistContext(ctx, *opts, contextName, tempCtx); err != nil {
+	if err := persistContext(ctx, *opts, contextName, tempCtx, stackSlug); err != nil {
 		return Result{}, err
 	}
 
@@ -365,7 +367,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 		ContextName:    contextName,
 		AuthMethod:     authMethod,
 		IsCloud:        target == TargetCloud,
-		HasCloudToken:  cloudCfg != nil && cloudCfg.Token != "",
+		HasCloudToken:  cloudEntry != nil && cloudEntry.Token != "",
 		GrafanaVersion: grafanaVersion,
 		StackSlug:      resolveStackSlug(opts.Server),
 	}, nil
@@ -494,61 +496,58 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 	return method, grafanaCfg, nil
 }
 
-// resolveCloudAuth builds CloudConfig for Cloud targets (step 5).
+// resolveCloudAuth builds the cloud auth entry for Cloud targets (step 5),
+// alongside the stack slug to record on the stack entry when derivable.
 // If CloudToken is empty and this is a Cloud target, returns ErrNeedInput
 // unless Yes or agent mode is set (which allows skipping step 5: the CAP
 // token is optional — its absence just disables Cloud management features,
 // it does not block login).
-func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) {
+func resolveCloudAuth(opts Options, target Target) (*config.CloudEntry, string, error) {
 	if target != TargetCloud {
-		return nil, nil //nolint:nilnil // nil CloudConfig means "no Cloud auth"; caller checks for nil.
+		return nil, "", nil
 	}
 
+	slug := resolveStackSlug(opts.Server)
+
 	if opts.CloudToken != "" {
-		return cloudConfigForToken(opts), nil
+		return cloudEntryForToken(opts), slug, nil
 	}
 
 	// Cloud target with no token: skip if Yes or agent mode (D9, D10).
 	// Still persist the stack slug when derivable so datasource auto-discovery
 	// works on stacks with multiple signal datasources.
 	if opts.Yes || agent.IsAgentMode() {
-		if slug := resolveStackSlug(opts.Server); slug != "" {
-			return &config.CloudConfig{Stack: slug}, nil
-		}
-		return nil, nil //nolint:nilnil // nil CloudConfig means "Cloud auth skipped"; valid non-error state.
+		return nil, slug, nil
 	}
 
 	// About to prompt for the optional Cloud API token: frame it as a distinct,
 	// skippable step so it doesn't read as a continuation of OAuth.
 	announceCloudTokenStep(opts.Writer)
-	return nil, &ErrNeedInput{
+	return nil, "", &ErrNeedInput{
 		Fields:   []string{"cloud-token"},
 		Optional: true,
 		Hint:     cloudTokenHint(opts.Server),
 	}
 }
 
-// cloudConfigForToken builds the CloudConfig for a Cloud target that has a
+// cloudEntryForToken builds the cloud auth entry for a Cloud target that has a
 // resolved token. For an OAuth or kept (already-trusted) token it records the
 // GCOM endpoint for this stack env, matching `gcx cloud login`; without this a
 // later `gcx cloud login` on an ops/dev context would default to prod
 // grafana.com. A freshly pasted CAP token carries no such origin, so its API
 // URL is left to auto-derivation at use time.
-func cloudConfigForToken(opts Options) *config.CloudConfig {
-	cc := &config.CloudConfig{
+func cloudEntryForToken(opts Options) *config.CloudEntry {
+	entry := &config.CloudEntry{
 		Token:  opts.CloudToken,
 		APIUrl: opts.CloudAPIURL,
 	}
 	if root, ok := config.GCOMRootFromServerURL(opts.Server); ok && opts.CloudTokenFromOAuth {
-		cc.OAuthUrl = root
-		if cc.APIUrl == "" {
-			cc.APIUrl = root
+		entry.OAuthUrl = root
+		if entry.APIUrl == "" {
+			entry.APIUrl = root
 		}
 	}
-	if slug := resolveStackSlug(opts.Server); slug != "" {
-		cc.Stack = slug
-	}
-	return cc
+	return entry
 }
 
 // announceOAuthLogin surfaces a clear success message once the interactive OAuth
@@ -601,10 +600,13 @@ func warnCloudTokenUnvalidated(w io.Writer, e *GCOMStackError) {
 	fmt.Fprintln(w, msg+". Logging in anyway; some Cloud management features may be unavailable.")
 }
 
-// persistContext loads the existing config (tolerating ErrNotExist), upserts the
-// context, and writes it back. On re-auth (context exists), only token fields and
-// AuthMethod are mutated; other fields are preserved (D20, AC-009).
-func persistContext(ctx context.Context, opts Options, contextName string, tempCtx config.Context) error {
+// persistContext loads the existing config (tolerating ErrNotExist), upserts
+// the stack entry, cloud entry, and context, and writes it back. The stack is
+// named after the context (1:1); the cloud entry reuses the context's existing
+// binding, else one named after its API URL host. On re-auth (context exists),
+// only token fields and AuthMethod are mutated; other fields are preserved
+// (D20, AC-009).
+func persistContext(ctx context.Context, opts Options, contextName string, tempCtx config.Context, stackSlug string) error {
 	source := opts.ConfigSource
 	if source == nil {
 		source = config.StandardLocation()
@@ -643,12 +645,13 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 	}
 
 	// Re-auth mode: preserve existing context fields, update only auth.
-	if existing != nil {
-		mergeAuthIntoExisting(existing, tempCtx, opts.OrgID)
-		cfg.CurrentContext = contextName // make current on success, same as new-context path
+	if existing == nil {
+		cfg.SetContext(contextName, true, config.Context{})
+		existing = cfg.Contexts[contextName]
 	} else {
-		cfg.SetContext(contextName, true, tempCtx)
+		cfg.CurrentContext = contextName // make current on success, same as new-context path
 	}
+	mergeAuthIntoExisting(&cfg, existing, tempCtx, opts.OrgID, stackSlug)
 
 	if err := config.Write(ctx, source, cfg); err != nil {
 		return fmt.Errorf("writing config: %w", err)
@@ -656,18 +659,38 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 	return nil
 }
 
-// mergeAuthIntoExisting updates only auth-related fields on an existing context,
-// preserving all other user-configured fields (OrgID, Datasources, Providers, etc.).
-func mergeAuthIntoExisting(existing *config.Context, incoming config.Context, explicitOrgID int) {
-	if existing.Grafana == nil {
-		existing.Grafana = &config.GrafanaConfig{}
+// mergeAuthIntoExisting updates only auth-related fields on the context's
+// stack and cloud entries, preserving all other user-configured fields
+// (OrgID, Datasources, Providers, etc.). Missing entries are created: the
+// stack named after the context, the cloud entry via EnsureCloudEntry.
+func mergeAuthIntoExisting(cfg *config.Config, existing *config.Context, incoming config.Context, explicitOrgID int, stackSlug string) {
+	if incoming.Grafana != nil {
+		mergeGrafanaAuthIntoStack(cfg, existing, incoming.Grafana, explicitOrgID, stackSlug)
 	}
-	g := existing.Grafana
-	src := incoming.Grafana
 
-	if src == nil {
-		return
+	// Update the cloud entry if the incoming context carries cloud auth.
+	if incoming.CloudEntry != nil {
+		existing.Cloud = cfg.EnsureCloudEntry(existing.Cloud, *incoming.CloudEntry)
 	}
+
+	cfg.Resolve()
+}
+
+// mergeGrafanaAuthIntoStack writes the incoming grafana auth onto the
+// context's stack entry, creating a stack named after the context when it has
+// none.
+func mergeGrafanaAuthIntoStack(cfg *config.Config, existing *config.Context, src *config.GrafanaConfig, explicitOrgID int, stackSlug string) {
+	if existing.Stack == "" {
+		cfg.SetStack(existing.Name, config.StackConfig{})
+		existing.Stack = existing.Name
+		cfg.Resolve()
+	}
+	stack := existing.StackEntry
+	if stack.Grafana == nil {
+		stack.Grafana = &config.GrafanaConfig{}
+		cfg.Resolve()
+	}
+	g := stack.Grafana
 
 	// Always update the server (may have changed scheme or path).
 	g.Server = src.Server
@@ -690,6 +713,10 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context, ex
 
 	if explicitOrgID != 0 {
 		g.OrgID = int64(explicitOrgID)
+	} else if g.OrgID == 0 {
+		// Fresh contexts carry the on-prem OrgID=1 default from
+		// resolveGrafanaAuth; re-auth keeps the user's existing value.
+		g.OrgID = src.OrgID
 	}
 
 	// Sync TLS settings so that re-auth with updated or cleared certs
@@ -697,8 +724,7 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context, ex
 	// the "update certs" and "remove certs" cases.
 	g.TLS = src.TLS
 
-	// Update Cloud config if present in the incoming context.
-	if incoming.Cloud != nil {
-		existing.Cloud = config.MergeCloudInto(existing.Cloud, incoming.Cloud)
+	if stackSlug != "" {
+		stack.Slug = stackSlug
 	}
 }

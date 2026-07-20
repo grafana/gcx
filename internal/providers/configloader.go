@@ -88,14 +88,9 @@ func cloudEnvOverride(cfg *config.Config) error {
 		cfg.SetContext(cfg.CurrentContext, true, config.Context{})
 	}
 
-	curCtx := cfg.Contexts[cfg.CurrentContext]
-	if curCtx.Cloud == nil {
-		curCtx.Cloud = &config.CloudConfig{}
-	}
-	if err := config.ParseEnvIntoContext(curCtx); err != nil {
-		return err
-	}
-	return nil
+	// ParseEnvIntoContext synthesizes an ephemeral cloud entry from the
+	// GRAFANA_CLOUD_* env vars, winning over whatever the context references.
+	return config.ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
 }
 
 // contextMustExist is a config.Override that validates the current context exists.
@@ -168,6 +163,9 @@ func envOverride(cfg *config.Config) error {
 		providerName := strings.ToLower(nameParts[0])
 		configKey := strings.ReplaceAll(strings.ToLower(nameParts[1]), "_", "-")
 
+		// The resolved Providers map is shared with the stack entry when the
+		// context references one; env-derived values overlay the in-memory
+		// view exactly as they overlaid the per-context map before.
 		if curCtx.Providers == nil {
 			curCtx.Providers = make(map[string]map[string]string)
 		}
@@ -216,7 +214,7 @@ type cloudBase struct {
 	curCtx *config.Context
 }
 
-// loadCloudBase loads config, validates cloud.token, resolves the GCOM URL,
+// loadCloudBase loads config, validates cloud auth, resolves the GCOM URL,
 // and creates a GCOMClient. It is the shared preamble for both
 // LoadCloudConfig (which additionally needs a stack slug) and
 // LoadCloudTokenConfig (which does not).
@@ -231,11 +229,11 @@ func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 
 	curCtx := loaded.GetCurrentContext()
 
-	if curCtx.Cloud == nil || curCtx.Cloud.Token == "" {
-		return cloudBase{}, errors.New("cloud token is required: set cloud.token in config or GRAFANA_CLOUD_TOKEN env var")
+	if curCtx.CloudEntry == nil || curCtx.CloudEntry.Token == "" {
+		return cloudBase{}, missingCloudAuthError(&loaded, curCtx)
 	}
 
-	token := curCtx.Cloud.Token
+	token := curCtx.CloudEntry.Token
 	apiURL := curCtx.ResolveCloudAPIURL()
 
 	client, err := cloud.NewGCOMClient(apiURL, token)
@@ -251,6 +249,23 @@ func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 	}, nil
 }
 
+// missingCloudAuthError explains how to get cloud auth onto the current
+// context: bind an existing entry (named when exactly one exists) or run
+// `gcx cloud login`. Cloud binding is optional at validation time, so this is
+// the runtime error for cloud-dependent operations.
+func missingCloudAuthError(cfg *config.Config, curCtx *config.Context) error {
+	if curCtx.Cloud != "" {
+		return fmt.Errorf("cloud entry %q has no token: run `gcx cloud login`, or set cloud.%s.token or GRAFANA_CLOUD_TOKEN",
+			curCtx.Cloud, curCtx.Cloud)
+	}
+	if len(cfg.Cloud) == 1 {
+		for name := range cfg.Cloud {
+			return fmt.Errorf("context has no cloud auth: bind the existing entry with `gcx config set cloud %s`, or run `gcx cloud login`", name)
+		}
+	}
+	return errors.New("context has no cloud auth: run `gcx cloud login`, or set GRAFANA_CLOUD_TOKEN")
+}
+
 // CloudTokenConfig holds the minimal cloud credentials needed for
 // org-level GCOM operations that do not target a specific stack.
 type CloudTokenConfig struct {
@@ -259,7 +274,7 @@ type CloudTokenConfig struct {
 }
 
 // LoadCloudTokenConfig loads Grafana Cloud configuration requiring only
-// cloud.token (or GRAFANA_CLOUD_TOKEN). Unlike LoadCloudConfig it does not
+// a cloud token (or GRAFANA_CLOUD_TOKEN). Unlike LoadCloudConfig it does not
 // require a stack slug and does not call GetStack.
 func (l *ConfigLoader) LoadCloudTokenConfig(ctx context.Context) (CloudTokenConfig, error) {
 	base, err := l.loadCloudBase(ctx)
@@ -274,7 +289,7 @@ func (l *ConfigLoader) LoadCloudTokenConfig(ctx context.Context) (CloudTokenConf
 
 // LoadCloudConfig loads Grafana Cloud configuration, applying env var overrides.
 // Unlike LoadGrafanaConfig it does not require grafana.server to be set.
-// It validates that cloud.token is present, resolves the stack slug and GCOM URL,
+// It validates that a cloud token is present, resolves the stack slug and GCOM URL,
 // calls the GCOM API to discover stack info, and returns a CloudRESTConfig.
 func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, error) {
 	base, err := l.loadCloudBase(ctx)
@@ -284,7 +299,7 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 
 	slug := base.curCtx.ResolveStackSlug()
 	if slug == "" {
-		return CloudRESTConfig{}, errors.New("cloud stack is not configured: set cloud.stack in config or GRAFANA_CLOUD_STACK env var")
+		return CloudRESTConfig{}, errors.New("cloud stack is not configured: set the stack's slug (gcx config set slug <slug>) or GRAFANA_CLOUD_STACK env var")
 	}
 
 	stack, err := base.client.GetStack(ctx, slug)
@@ -428,8 +443,9 @@ func (l *ConfigLoader) datasourceWriteSource() (config.Source, error) {
 	return nil, errNoConfigSource
 }
 
-// SaveProviderConfig persists a single key-value pair to
-// contexts.[current].providers.[providerName].[key] in the config file.
+// SaveProviderConfig persists a single key-value pair to the current
+// context's stack entry (stacks.[name].providers.[providerName].[key]) in the
+// config file, creating a stack named after the context when it has none.
 func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key, value string) error {
 	ctxName := l.resolvedContextName(ctx)
 	overrides := []config.Override{
@@ -448,14 +464,21 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 		return fmt.Errorf("context %q not found", loaded.CurrentContext)
 	}
 
-	if curCtx.Providers == nil {
-		curCtx.Providers = make(map[string]map[string]string)
+	stack := curCtx.StackEntry
+	if stack == nil {
+		loaded.SetStack(curCtx.Name, config.StackConfig{})
+		curCtx.Stack = curCtx.Name
+		loaded.Resolve()
+		stack = curCtx.StackEntry
 	}
-	if curCtx.Providers[providerName] == nil {
-		curCtx.Providers[providerName] = make(map[string]string)
+
+	if stack.Providers == nil {
+		stack.Providers = make(map[string]map[string]string)
 	}
-	curCtx.Providers[providerName][key] = value
-	loaded.SetContext(loaded.CurrentContext, false, *curCtx)
+	if stack.Providers[providerName] == nil {
+		stack.Providers[providerName] = make(map[string]string)
+	}
+	stack.Providers[providerName][key] = value
 
 	return config.Write(ctx, l.configSource(), loaded)
 }

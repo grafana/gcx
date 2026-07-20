@@ -77,10 +77,10 @@ func LoadContextAndConfig(ctx context.Context, loader ConfigLoader) (*config.Con
 //
 // Resolution order:
 //  1. Explicit -d/--datasource flag.
-//  2. Context config via datasources.<kind> (or legacy default-*-datasource keys).
+//  2. Context config via datasources.<kind> .
 //  3. Auto-discovery via /api/datasources when Grafana exposes a single matching
 //     datasource kind, or a canonical Grafana Cloud datasource name for the
-//     configured stack slug (from cloud.stack, GRAFANA_CLOUD_STACK, or
+//     configured stack slug (from the stack slug, GRAFANA_CLOUD_STACK, or
 //     grafana.server-derived cloud context).
 func ResolveDatasource(ctx context.Context, flagValue string, cfgCtx *config.Context, restCfg config.NamespacedRESTConfig, kind string) (DatasourceResolution, error) {
 	if uid, err := ResolveDatasourceFlag(flagValue, cfgCtx, kind); err == nil {
@@ -93,7 +93,7 @@ func ResolveDatasource(ctx context.Context, flagValue string, cfgCtx *config.Con
 }
 
 // ResolveAndSaveDatasource resolves a datasource UID and best-effort persists it
-// to config when the resolver inferred it from cloud.stack.
+// to config when the resolver inferred it from the stack slug.
 func ResolveAndSaveDatasource(ctx context.Context, saver DatasourceSaver, flagValue string, cfgCtx *config.Context, restCfg config.NamespacedRESTConfig, kind string) (string, error) {
 	resolved, err := ResolveDatasource(ctx, flagValue, cfgCtx, restCfg, kind)
 	if err != nil {
@@ -248,7 +248,7 @@ func discoverDatasourceUID(ctx context.Context, restCfg config.NamespacedRESTCon
 	}
 
 	if stackSlug == "" {
-		return DatasourceResolution{}, fmt.Errorf("multiple %s datasources found (%s): use -d flag or set datasources.%s in config; set cloud.stack or grafana.server to enable auto-discovery", kind, formatDatasourceChoices(matches), kind)
+		return DatasourceResolution{}, fmt.Errorf("multiple %s datasources found (%s): use -d flag or set datasources.%s in config; set the stack slug (gcx config set slug <slug>) or grafana.server to enable auto-discovery", kind, formatDatasourceChoices(matches), kind)
 	}
 
 	if canonical := canonicalCloudDatasource(matches, kind, stackSlug); canonical != nil {
@@ -266,7 +266,6 @@ func configuredCloudStack(cfgCtx *config.Context) string {
 	}
 
 	var fallback config.Context
-	fallback.Cloud = &config.CloudConfig{}
 	fallback.Grafana = &config.GrafanaConfig{}
 	_ = config.ParseEnvIntoContext(&fallback)
 	return strings.TrimSpace(fallback.ResolveStackSlug())

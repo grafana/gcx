@@ -156,8 +156,8 @@ func Validate(ctx context.Context, opts Options, restCfg config.NamespacedRESTCo
 		// grafana-dev.com), falling back to grafana.com. Validating an ops/dev
 		// CAP token against prod grafana.com otherwise 401s.
 		gcomCtx := &config.Context{
-			Grafana: &config.GrafanaConfig{Server: opts.Server},
-			Cloud:   &config.CloudConfig{APIUrl: opts.CloudAPIURL},
+			Grafana:    &config.GrafanaConfig{Server: opts.Server},
+			CloudEntry: &config.CloudEntry{APIUrl: opts.CloudAPIURL},
 		}
 		gcomC, err := cloud.NewGCOMClient(gcomCtx.ResolveCloudAPIURL(), opts.CloudToken)
 		if err != nil {

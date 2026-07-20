@@ -65,9 +65,22 @@ type Store interface {
 	Delete(key string) error
 }
 
-// AccountKey returns the keychain account string for a context/field pair.
-func AccountKey(context string, field Field) string {
-	return context + ":" + string(field)
+// AccountKey returns the keychain account string for an owner/field pair.
+// Owners are "stack:<name>" or "cloud:<name>" keys (see StackOwner and
+// CloudOwner); bare owner strings are legacy per-context keys, kept resolvable
+// so configs migrated from the legacy format keep working.
+func AccountKey(owner string, field Field) string {
+	return owner + ":" + string(field)
+}
+
+// StackOwner returns the keychain owner key for a named stack entry.
+func StackOwner(name string) string {
+	return "stack:" + name
+}
+
+// CloudOwner returns the keychain owner key for a named cloud auth entry.
+func CloudOwner(name string) string {
+	return "cloud:" + name
 }
 
 // FormatSentinel returns the YAML sentinel value that represents a keychain-

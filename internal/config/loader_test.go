@@ -151,7 +151,8 @@ this-field-is-invalid: []`
 func TestLoad_withProviders(t *testing.T) {
 	req := require.New(t)
 
-	configYAML := `contexts:
+	configYAML := `version: 1
+stacks:
   default:
     grafana:
       server: http://localhost:3000/
@@ -162,6 +163,9 @@ func TestLoad_withProviders(t *testing.T) {
         url: https://slo.example.com
       oncall:
         token: oncall-token
+contexts:
+  default:
+    stack: default
 current-context: default
 `
 	configFile := testutils.CreateTempFile(t, configYAML)

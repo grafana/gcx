@@ -759,7 +759,7 @@ func computeCheckStatus(success *float64, sensitivity string) string {
 
 // resolveDataSourceUID resolves the Prometheus datasource UID from:
 // 1. Explicit flag value (highest priority).
-// 2. Shared config resolver: datasources.prometheus → default-prometheus-datasource.
+// 2. Shared config resolver: datasources.prometheus.
 // 3. SM provider cache: providers.synth.sm-metrics-datasource-uid.
 // 4. Auto-discover via SM plugin settings — result saved to SM cache for next run.
 func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.StatusLoader) (string, error) {
@@ -770,13 +770,13 @@ func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.Stat
 	cfg, err := loader.LoadConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf(
-			"loading config: %w; use --datasource-uid flag or set default-prometheus-datasource in config", err)
+			"loading config: %w; use --datasource-uid flag or set datasources.prometheus in config", err)
 	}
 
 	curCtx := cfg.GetCurrentContext()
 	if curCtx == nil {
 		return "", errors.New(
-			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
+			"datasource UID is required: use --datasource-uid flag or set datasources.prometheus in config")
 	}
 
 	// Tier 2: shared config resolver — covers datasources.prometheus (new section)
@@ -796,7 +796,7 @@ func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.Stat
 	restCfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf(
-			"loading REST config: %w; use --datasource-uid flag or set default-prometheus-datasource in config", err)
+			"loading REST config: %w; use --datasource-uid flag or set datasources.prometheus in config", err)
 	}
 	uid, err := discoverPrometheusDatasource(ctx, curCtx, restCfg)
 	if err != nil {
@@ -818,7 +818,7 @@ func discoverPrometheusDatasource(ctx context.Context, curCtx *config.Context, r
 	dsName, err := smMetricsDatasourceName(ctx, curCtx)
 	if err != nil {
 		return "", fmt.Errorf(
-			"could not auto-discover SM metrics datasource: %w; use --datasource-uid or set default-prometheus-datasource in config",
+			"could not auto-discover SM metrics datasource: %w; use --datasource-uid or set datasources.prometheus in config",
 			err)
 	}
 
@@ -826,12 +826,12 @@ func discoverPrometheusDatasource(ctx context.Context, curCtx *config.Context, r
 	dsClient, err := datasources.NewClient(restCfg)
 	if err != nil {
 		return "", errors.New(
-			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
+			"datasource UID is required: use --datasource-uid flag or set datasources.prometheus in config")
 	}
 	ds, err := dsClient.GetByName(ctx, dsName)
 	if err != nil {
 		return "", fmt.Errorf(
-			"SM metrics datasource %q not found in Grafana: %w; use --datasource-uid or set default-prometheus-datasource in config",
+			"SM metrics datasource %q not found in Grafana: %w; use --datasource-uid or set datasources.prometheus in config",
 			dsName, err)
 	}
 

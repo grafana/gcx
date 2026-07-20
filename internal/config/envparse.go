@@ -32,15 +32,39 @@ func CleanupAfterEnvParse(ctx *Context) {
 	}
 }
 
-// ParseEnvIntoContext is a convenience that combines PrepareForEnvParse,
-// parseEnvTags, and CleanupAfterEnvParse into a single call.
+// ParseEnvIntoContext is a convenience that combines the cloud-entry env
+// override, PrepareForEnvParse, parseEnvTags, and CleanupAfterEnvParse into a
+// single call.
 func ParseEnvIntoContext(ctx *Context) error {
+	applyCloudEnvOverride(ctx)
 	PrepareForEnvParse(ctx)
 	if err := parseEnvTags(ctx); err != nil {
 		return err
 	}
 	CleanupAfterEnvParse(ctx)
+	if slug, ok := os.LookupEnv("GRAFANA_CLOUD_STACK"); ok {
+		ctx.envStackSlug = slug
+	}
 	return nil
+}
+
+// applyCloudEnvOverride synthesizes an ephemeral cloud entry when any
+// GRAFANA_CLOUD_* auth variable is set, starting from a copy of the entry the
+// context references (if any). The copy keeps env values out of the shared
+// named entry, which other contexts reference and Write would persist.
+func applyCloudEnvOverride(ctx *Context) {
+	_, hasToken := os.LookupEnv("GRAFANA_CLOUD_TOKEN")
+	_, hasAPIURL := os.LookupEnv("GRAFANA_CLOUD_API_URL")
+	_, hasOAuthURL := os.LookupEnv("GRAFANA_CLOUD_OAUTH_URL")
+	if !hasToken && !hasAPIURL && !hasOAuthURL {
+		return
+	}
+	detached := CloudEntry{}
+	if ctx.CloudEntry != nil {
+		detached = *ctx.CloudEntry
+	}
+	// parseEnvTags fills the env-tagged fields on the detached copy.
+	ctx.CloudEntry = &detached
 }
 
 // parseEnvTags walks the struct fields of v (which must be a pointer to a struct)

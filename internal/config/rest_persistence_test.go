@@ -46,22 +46,34 @@ func TestResolveTokenPersistenceSource_PicksHighestSourceWithOAuthFields(t *test
 	localFile := filepath.Join(dir, "local.yaml")
 
 	require.NoError(t, os.WriteFile(systemFile, []byte(`
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       oauth-token: gat_sys
+contexts:
+  default:
+    stack: default
 `), 0o600))
 	require.NoError(t, os.WriteFile(userFile, []byte(`
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       oauth-token: gat_user
+contexts:
+  default:
+    stack: default
 `), 0o600))
 	require.NoError(t, os.WriteFile(localFile, []byte(`
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       oauth-token: gat_local
+contexts:
+  default:
+    stack: default
 `), 0o600))
 
 	got := config.ResolveTokenPersistenceSource(
@@ -131,7 +143,8 @@ func TestWireTokenPersistence_ExplicitModeWritesToExplicitSource(t *testing.T) {
 	localFile := filepath.Join(dir, "local.yaml")
 
 	writeTestConfigFile(t, explicitFile, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: "`+srv.URL+`"
@@ -141,20 +154,31 @@ contexts:
       oauth-token-expires-at: "2020-01-01T00:00:00Z"
       oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
       stack-id: 1
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 	writeTestConfigFile(t, userFile, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       oauth-token: gat_user
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 	writeTestConfigFile(t, localFile, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       oauth-token: gat_local
+contexts:
+  default:
+    stack: default
 `)
 
 	restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), config.Context{
@@ -220,7 +244,8 @@ func TestWireTokenPersistence_WritesAfterContextCancelled(t *testing.T) {
 	dir := t.TempDir()
 	explicitFile := filepath.Join(dir, "explicit.yaml")
 	writeTestConfigFile(t, explicitFile, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
@@ -230,6 +255,9 @@ contexts:
       oauth-token-expires-at: "2020-01-01T00:00:00Z"
       oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
       stack-id: 1
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 
@@ -300,7 +328,8 @@ func TestWireTokenPersistence_ConcurrentRefreshesSerializeViaFileLock(t *testing
 	dir := t.TempDir()
 	file := filepath.Join(dir, "config.yaml")
 	writeTestConfigFile(t, file, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: "`+srv.URL+`"
@@ -310,6 +339,9 @@ contexts:
       oauth-token-expires-at: "2020-01-01T00:00:00Z"
       oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
       stack-id: 1
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 
@@ -389,7 +421,8 @@ func TestWireTokenPersistence_RoundTripAcrossInvocations(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "config.yaml")
 	writeTestConfigFile(t, file, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: "`+srv.URL+`"
@@ -399,6 +432,9 @@ contexts:
       oauth-token-expires-at: "2020-01-01T00:00:00Z"
       oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
       stack-id: 1
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 

@@ -76,7 +76,7 @@ Cloud resources like stacks and access policies.
 By default, opens a browser for interactive OAuth2 authentication.
 
 EXPERIMENTAL: interactive OAuth login is an experimental flow that stores an
-OAuth-issued token as the context's cloud.token. Some commands that talk to
+OAuth-issued token as the cloud entry's token. Some commands that talk to
 grafana.com do not yet work with an OAuth token. For full functionality, pass
 a Cloud Access Policy token via --cloud-token instead.
 
@@ -93,11 +93,11 @@ https://grafana.com: --oauth-url is used only for the login flow here, while
 			// explicitly, carry over whatever the current context already has so
 			// a plain `gcx cloud login` doesn't wipe a previously set value.
 			cur := currentCloudContext(cmd.Context(), configOpts)
-			if !cmd.Flags().Changed("oauth-url") && cur != nil && cur.Cloud != nil && cur.Cloud.OAuthUrl != "" {
-				opts.oauthURL = cur.Cloud.OAuthUrl
+			if !cmd.Flags().Changed("oauth-url") && cur != nil && cur.CloudEntry != nil && cur.CloudEntry.OAuthUrl != "" {
+				opts.oauthURL = cur.CloudEntry.OAuthUrl
 			}
-			if !cmd.Flags().Changed("api-url") && cur != nil && cur.Cloud != nil && cur.Cloud.APIUrl != "" {
-				opts.apiURL = cur.Cloud.APIUrl
+			if !cmd.Flags().Changed("api-url") && cur != nil && cur.CloudEntry != nil && cur.CloudEntry.APIUrl != "" {
+				opts.apiURL = cur.CloudEntry.APIUrl
 			}
 			// Normalize whichever values won (flag, carry-over, or default)
 			// so a bare host (e.g. "grafana.example.com") gets an https:// scheme
@@ -131,22 +131,22 @@ func currentCloudContext(ctx context.Context, configOpts *cmdconfig.Options) *co
 }
 
 func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts) error {
-	cloud := &config.CloudConfig{
+	entry := &config.CloudEntry{
 		Token:    opts.cloudToken,
 		OAuthUrl: opts.oauthURL,
 		APIUrl:   opts.apiURL,
 	}
-	contextName, err := config.SaveCloudConfig(ctx, configOpts.ConfigSource(), configOpts.Context, cloud)
+	contextName, entryName, err := config.SaveCloudConfig(ctx, configOpts.ConfigSource(), configOpts.Context, entry)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Token saved to context %q\n", contextName)
+	fmt.Fprintf(os.Stderr, "Token saved to cloud entry %q (context %q)\n", entryName, contextName)
 	fmt.Fprintln(os.Stderr, "Cloud token saved.")
 	return nil
 }
 
 func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts) error {
-	fmt.Fprintln(os.Stderr, "Warning: interactive OAuth login is experimental. It stores an OAuth-issued token as the context's cloud.token.")
+	fmt.Fprintln(os.Stderr, "Warning: interactive OAuth login is experimental. It stores an OAuth-issued token as the cloud entry's token.")
 	fmt.Fprintln(os.Stderr, "Some commands that talk to grafana.com do not yet work with an OAuth token. For full functionality, use --cloud-token with a Cloud Access Policy token.")
 
 	flow := auth.NewGCOMFlow(auth.GCOMOptions{
@@ -172,15 +172,15 @@ func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *log
 	fmt.Fprintf(os.Stderr, "Authenticated as %s (%s)\n", result.Info.Login, result.Info.Email)
 	fmt.Fprintf(os.Stderr, "Scopes: %s\n", result.Scope)
 
-	cloud := &config.CloudConfig{
+	entry := &config.CloudEntry{
 		Token:    result.AccessToken,
 		OAuthUrl: opts.oauthURL,
 		APIUrl:   opts.apiURL,
 	}
-	contextName, err := config.SaveCloudConfig(ctx, configOpts.ConfigSource(), configOpts.Context, cloud)
+	contextName, entryName, err := config.SaveCloudConfig(ctx, configOpts.ConfigSource(), configOpts.Context, entry)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Token saved to context %q\n", contextName)
+	fmt.Fprintf(os.Stderr, "Token saved to cloud entry %q (context %q)\n", entryName, contextName)
 	return nil
 }

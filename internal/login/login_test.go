@@ -98,11 +98,14 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				t.Helper()
 				ctx := cfg.Contexts["mystack"]
 				require.NotNil(t, ctx)
+				assert.Equal(t, "mystack", ctx.Stack, "context must reference a stack named after itself")
+				assert.Equal(t, "grafana-com", ctx.Cloud, "context must reference the default cloud entry")
 				assert.Equal(t, "gat_test", ctx.Grafana.OAuthToken)
 				assert.Equal(t, "oauth", ctx.Grafana.AuthMethod)
-				require.NotNil(t, ctx.Cloud)
-				assert.Equal(t, "cap-token", ctx.Cloud.Token)
-				assert.Equal(t, "mystack", ctx.Cloud.Stack) // slug derived from *.grafana.net URL
+				require.NotNil(t, ctx.CloudEntry)
+				assert.Equal(t, "cap-token", ctx.CloudEntry.Token)
+				require.NotNil(t, ctx.StackEntry)
+				assert.Equal(t, "mystack", ctx.StackEntry.Slug) // slug derived from *.grafana.net URL
 			},
 		},
 		{
@@ -133,10 +136,11 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				t.Helper()
 				ctx := cfg.Contexts["ops-stack"]
 				require.NotNil(t, ctx)
-				require.NotNil(t, ctx.Cloud)
-				assert.Equal(t, "gcom-oauth-token", ctx.Cloud.Token)
-				assert.Equal(t, "https://grafana-ops.com", ctx.Cloud.OAuthUrl, "OAuth token must record its GCOM origin")
-				assert.Equal(t, "https://grafana-ops.com", ctx.Cloud.APIUrl, "APIUrl defaults to the same GCOM root")
+				assert.Equal(t, "grafana-ops-com", ctx.Cloud, "cloud entry must be named after the GCOM host")
+				require.NotNil(t, ctx.CloudEntry)
+				assert.Equal(t, "gcom-oauth-token", ctx.CloudEntry.Token)
+				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.OAuthUrl, "OAuth token must record its GCOM origin")
+				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.APIUrl, "APIUrl defaults to the same GCOM root")
 			},
 		},
 		{
@@ -169,9 +173,11 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				t.Helper()
 				ctx := cfg.Contexts["mystack"]
 				require.NotNil(t, ctx)
-				require.NotNil(t, ctx.Cloud)
-				assert.Equal(t, "mystack", ctx.Cloud.Stack, "stack slug must be persisted even without a CAP token")
-				assert.Empty(t, ctx.Cloud.Token, "no token was provided")
+				require.NotNil(t, ctx.StackEntry)
+				assert.Equal(t, "mystack", ctx.StackEntry.Slug, "stack slug must be persisted even without a CAP token")
+				if ctx.CloudEntry != nil {
+					assert.Empty(t, ctx.CloudEntry.Token, "no token was provided")
+				}
 			},
 		},
 		{
@@ -179,21 +185,17 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "cloud_oauth_skip_cap_reauth_updates_stack",
 			opts: func(dir string) login.Options {
 				src := configSource(dir)
-				path, _ := src()
-				seed := config.Config{
-					CurrentContext: "mystack",
-					Contexts: map[string]*config.Context{
-						"mystack": {
-							Grafana: &config.GrafanaConfig{
-								Server:     "https://mystack.grafana.net",
-								OAuthToken: "old-token",
-								AuthMethod: "oauth",
-							},
-							Cloud: &config.CloudConfig{}, // no Stack set
-						},
+				seed := config.Config{}
+				seed.SetStack("mystack", config.StackConfig{
+					// no Slug set
+					Grafana: &config.GrafanaConfig{
+						Server:     "https://mystack.grafana.net",
+						OAuthToken: "old-token",
+						AuthMethod: "oauth",
 					},
-				}
-				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), seed))
+				})
+				seed.SetContext("mystack", true, config.Context{Stack: "mystack"})
+				require.NoError(t, config.Write(context.Background(), src, seed))
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:   "https://mystack.grafana.net",
@@ -214,8 +216,8 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				t.Helper()
 				ctx := cfg.Contexts["mystack"]
 				require.NotNil(t, ctx)
-				require.NotNil(t, ctx.Cloud)
-				assert.Equal(t, "mystack", ctx.Cloud.Stack, "re-auth must update stack slug")
+				require.NotNil(t, ctx.StackEntry)
+				assert.Equal(t, "mystack", ctx.StackEntry.Slug, "re-auth must update stack slug")
 			},
 		},
 		{
@@ -223,21 +225,17 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "cloud_oauth_skip_cap_preserves_existing_token",
 			opts: func(dir string) login.Options {
 				src := configSource(dir)
-				path, _ := src()
-				seed := config.Config{
-					CurrentContext: "mystack",
-					Contexts: map[string]*config.Context{
-						"mystack": {
-							Grafana: &config.GrafanaConfig{
-								Server:     "https://mystack.grafana.net",
-								OAuthToken: "old-token",
-								AuthMethod: "oauth",
-							},
-							Cloud: &config.CloudConfig{Token: "existing-cap-token"},
-						},
+				seed := config.Config{}
+				seed.SetStack("mystack", config.StackConfig{
+					Grafana: &config.GrafanaConfig{
+						Server:     "https://mystack.grafana.net",
+						OAuthToken: "old-token",
+						AuthMethod: "oauth",
 					},
-				}
-				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), seed))
+				})
+				seed.SetCloudEntry("grafana-com", config.CloudEntry{Token: "existing-cap-token"})
+				seed.SetContext("mystack", true, config.Context{Stack: "mystack", Cloud: "grafana-com"})
+				require.NoError(t, config.Write(context.Background(), src, seed))
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:   "https://mystack.grafana.net",
@@ -258,8 +256,8 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				t.Helper()
 				ctx := cfg.Contexts["mystack"]
 				require.NotNil(t, ctx)
-				require.NotNil(t, ctx.Cloud)
-				assert.Equal(t, "existing-cap-token", ctx.Cloud.Token, "OAuth-only re-auth must not wipe a stored CAP token")
+				require.NotNil(t, ctx.CloudEntry)
+				assert.Equal(t, "existing-cap-token", ctx.CloudEntry.Token, "OAuth-only re-auth must not wipe a stored CAP token")
 			},
 		},
 		{
@@ -472,23 +470,20 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			// AC-012: Legacy config (no AuthMethod) loads and re-auths, preserves other fields
 			name: "legacy_config_reauth_preserves_fields",
 			opts: func(dir string) login.Options {
-				// Pre-populate config with a legacy context (no AuthMethod) that has OrgID set
+				// Pre-populate config with a context whose stack has no AuthMethod
+				// (legacy pre-auth-method config) and OrgID set
 				src := configSource(dir)
-				path, _ := src()
-				legacyCfg := config.Config{
-					Contexts: map[string]*config.Context{
-						"grafana-example-com": {
-							Grafana: &config.GrafanaConfig{
-								Server:   "https://grafana.example.com",
-								APIToken: "old-token",
-								// AuthMethod intentionally absent (legacy)
-								OrgID: 42,
-							},
-						},
+				legacyCfg := config.Config{}
+				legacyCfg.SetStack("grafana-example-com", config.StackConfig{
+					Grafana: &config.GrafanaConfig{
+						Server:   "https://grafana.example.com",
+						APIToken: "old-token",
+						// AuthMethod intentionally absent (legacy)
+						OrgID: 42,
 					},
-					CurrentContext: "grafana-example-com",
-				}
-				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), legacyCfg))
+				})
+				legacyCfg.SetContext("grafana-example-com", true, config.Context{Stack: "grafana-example-com"})
+				require.NoError(t, config.Write(context.Background(), src, legacyCfg))
 
 				return login.Options{
 					Inputs: login.Inputs{
@@ -516,21 +511,17 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "reauth_explicit_orgid_updates_existing",
 			opts: func(dir string) login.Options {
 				src := configSource(dir)
-				path, _ := src()
-				existingCfg := config.Config{
-					Contexts: map[string]*config.Context{
-						"grafana-example-com": {
-							Grafana: &config.GrafanaConfig{
-								Server:     "https://grafana.example.com",
-								APIToken:   "old-token",
-								AuthMethod: "token",
-								OrgID:      1,
-							},
-						},
+				existingCfg := config.Config{}
+				existingCfg.SetStack("grafana-example-com", config.StackConfig{
+					Grafana: &config.GrafanaConfig{
+						Server:     "https://grafana.example.com",
+						APIToken:   "old-token",
+						AuthMethod: "token",
+						OrgID:      1,
 					},
-					CurrentContext: "grafana-example-com",
-				}
-				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), existingCfg))
+				})
+				existingCfg.SetContext("grafana-example-com", true, config.Context{Stack: "grafana-example-com"})
+				require.NoError(t, config.Write(context.Background(), src, existingCfg))
 
 				return login.Options{
 					Inputs: login.Inputs{
@@ -740,19 +731,15 @@ func TestPersist_ServerMismatch_EmitsClarification(t *testing.T) {
 	dir := t.TempDir()
 
 	// Seed an existing context with a different server.
-	seed := config.Config{
-		CurrentContext: "mystack",
-		Contexts: map[string]*config.Context{
-			"mystack": {
-				Name: "mystack",
-				Grafana: &config.GrafanaConfig{
-					Server:     "https://mystack.grafana.net",
-					APIToken:   "old-token",
-					AuthMethod: "token",
-				},
-			},
+	seed := config.Config{}
+	seed.SetStack("mystack", config.StackConfig{
+		Grafana: &config.GrafanaConfig{
+			Server:     "https://mystack.grafana.net",
+			APIToken:   "old-token",
+			AuthMethod: "token",
 		},
-	}
+	})
+	seed.SetContext("mystack", true, config.Context{Stack: "mystack"})
 	if err := config.Write(context.Background(), configSource(dir), seed); err != nil {
 		t.Fatalf("seed config: %v", err)
 	}
@@ -797,20 +784,16 @@ func TestPersist_ServerMismatch_EmitsClarification(t *testing.T) {
 func TestPersist_ServerMismatch_AllowOverrideBypasses(t *testing.T) {
 	dir := t.TempDir()
 
-	seed := config.Config{
-		CurrentContext: "mystack",
-		Contexts: map[string]*config.Context{
-			"mystack": {
-				Name: "mystack",
-				Grafana: &config.GrafanaConfig{
-					Server:     "https://mystack.grafana.net",
-					APIToken:   "old-token",
-					AuthMethod: "token",
-					OrgID:      42, // non-auth field we expect to survive re-auth
-				},
-			},
+	seed := config.Config{}
+	seed.SetStack("mystack", config.StackConfig{
+		Grafana: &config.GrafanaConfig{
+			Server:     "https://mystack.grafana.net",
+			APIToken:   "old-token",
+			AuthMethod: "token",
+			OrgID:      42, // non-auth field we expect to survive re-auth
 		},
-	}
+	})
+	seed.SetContext("mystack", true, config.Context{Stack: "mystack"})
 	if err := config.Write(context.Background(), configSource(dir), seed); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -854,19 +837,15 @@ func TestPersist_ServerMismatch_AllowOverrideBypasses(t *testing.T) {
 func TestPersist_ServerMismatch_YesDoesNotBypass(t *testing.T) {
 	dir := t.TempDir()
 
-	seed := config.Config{
-		CurrentContext: "mystack",
-		Contexts: map[string]*config.Context{
-			"mystack": {
-				Name: "mystack",
-				Grafana: &config.GrafanaConfig{
-					Server:     "https://mystack.grafana.net",
-					APIToken:   "old-token",
-					AuthMethod: "token",
-				},
-			},
+	seed := config.Config{}
+	seed.SetStack("mystack", config.StackConfig{
+		Grafana: &config.GrafanaConfig{
+			Server:     "https://mystack.grafana.net",
+			APIToken:   "old-token",
+			AuthMethod: "token",
 		},
-	}
+	})
+	seed.SetContext("mystack", true, config.Context{Stack: "mystack"})
 	if err := config.Write(context.Background(), configSource(dir), seed); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -986,8 +965,8 @@ func TestRun_OptionalCloudTokenRejected_WarnsAndPersists(t *testing.T) {
 	cfg, err := config.Load(context.Background(), configSource(dir))
 	require.NoError(t, err)
 	require.NotNil(t, cfg.Contexts["mystack"])
-	require.NotNil(t, cfg.Contexts["mystack"].Cloud)
-	assert.Equal(t, "glc_bad", cfg.Contexts["mystack"].Cloud.Token)
+	require.NotNil(t, cfg.Contexts["mystack"].CloudEntry)
+	assert.Equal(t, "glc_bad", cfg.Contexts["mystack"].CloudEntry.Token)
 }
 
 func TestRun_ForceSave_BypassesValidation(t *testing.T) {
@@ -1145,23 +1124,20 @@ func TestRun_ReauthPreservesTLS(t *testing.T) {
 	dir := t.TempDir()
 
 	// Seed config with TLS settings
-	seed := config.Config{
-		CurrentContext: "grafana-example-com",
-		Contexts: map[string]*config.Context{
-			"grafana-example-com": {
-				Grafana: &config.GrafanaConfig{
-					Server:   "https://grafana.example.com",
-					APIToken: "old-token",
-					OrgID:    42,
-					TLS: &config.TLS{
-						CertData:   []byte("cert-pem"),
-						KeyData:    []byte("key-pem"),
-						ServerName: "custom-sni.example.com",
-					},
-				},
+	seed := config.Config{}
+	seed.SetStack("grafana-example-com", config.StackConfig{
+		Grafana: &config.GrafanaConfig{
+			Server:   "https://grafana.example.com",
+			APIToken: "old-token",
+			OrgID:    42,
+			TLS: &config.TLS{
+				CertData:   []byte("cert-pem"),
+				KeyData:    []byte("key-pem"),
+				ServerName: "custom-sni.example.com",
 			},
 		},
-	}
+	})
+	seed.SetContext("grafana-example-com", true, config.Context{Stack: "grafana-example-com"})
 	require.NoError(t, config.Write(context.Background(), configSource(dir), seed))
 
 	// Re-auth with TLS carried through (simulating what the CLI does)

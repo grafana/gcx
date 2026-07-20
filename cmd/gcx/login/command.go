@@ -308,8 +308,8 @@ func askForInput(ctx context.Context, e *login.ErrNeedInput, opts *login.Options
 		if sourceCtx.Grafana != nil {
 			existingGrafanaToken = sourceCtx.Grafana.APIToken
 		}
-		if sourceCtx.Cloud != nil {
-			existingCloudToken = sourceCtx.Cloud.Token
+		if sourceCtx.CloudEntry != nil {
+			existingCloudToken = sourceCtx.CloudEntry.Token
 		}
 	}
 
@@ -737,8 +737,8 @@ func resolveNonInteractiveTokens(grafanaToken, cloudToken string, sourceCtx *con
 	if grafanaToken == "" && sourceCtx.Grafana != nil {
 		grafanaToken = sourceCtx.Grafana.APIToken
 	}
-	if cloudToken == "" && sourceCtx.Cloud != nil {
-		cloudToken = sourceCtx.Cloud.Token
+	if cloudToken == "" && sourceCtx.CloudEntry != nil {
+		cloudToken = sourceCtx.CloudEntry.Token
 	}
 	return grafanaToken, cloudToken
 }

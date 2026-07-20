@@ -18,10 +18,13 @@ func TestParseEnvIntoContext_StringFields(t *testing.T) {
 
 func TestParseEnvIntoContext_CloudFields(t *testing.T) {
 	t.Setenv("GRAFANA_CLOUD_STACK", "mystack")
+	t.Setenv("GRAFANA_CLOUD_TOKEN", "env-token")
 
-	ctx := config.Context{Cloud: &config.CloudConfig{}}
+	var ctx config.Context
 	require.NoError(t, config.ParseEnvIntoContext(&ctx))
-	assert.Equal(t, "mystack", ctx.Cloud.Stack)
+	assert.Equal(t, "mystack", ctx.ResolveStackSlug())
+	require.NotNil(t, ctx.CloudEntry)
+	assert.Equal(t, "env-token", ctx.CloudEntry.Token)
 }
 
 func TestParseEnvIntoContext_Int64Fields(t *testing.T) {

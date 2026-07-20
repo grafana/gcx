@@ -13,9 +13,53 @@ import "maps"
 func MergeConfigs(base, over Config) Config {
 	result := base
 
+	if over.Version > result.Version {
+		result.Version = over.Version
+	}
+
 	// Scalar: current-context — higher layer wins if non-empty.
 	if over.CurrentContext != "" {
 		result.CurrentContext = over.CurrentContext
+	}
+
+	// Map: stacks — merge by key, field-level within an entry.
+	if over.Stacks != nil {
+		if result.Stacks == nil {
+			result.Stacks = make(map[string]*StackConfig)
+		}
+		for name, overStack := range over.Stacks {
+			if baseStack, ok := result.Stacks[name]; ok && baseStack != nil && overStack != nil {
+				merged := mergeStackConfigs(baseStack, overStack)
+				result.Stacks[name] = &merged
+			} else {
+				result.Stacks[name] = overStack
+			}
+		}
+	}
+
+	// Map: cloud entries — merge by key, field-level within an entry.
+	if over.Cloud != nil {
+		if result.Cloud == nil {
+			result.Cloud = make(map[string]*CloudEntry)
+		}
+		for name, overEntry := range over.Cloud {
+			if baseEntry, ok := result.Cloud[name]; ok && baseEntry != nil && overEntry != nil {
+				merged := mergeCloudEntries(baseEntry, overEntry)
+				result.Cloud[name] = &merged
+			} else {
+				result.Cloud[name] = overEntry
+			}
+		}
+	}
+
+	// Global resources: last definition wins (see mergeResourcesConfig).
+	if over.Resources != nil {
+		if result.Resources == nil {
+			result.Resources = over.Resources
+		} else {
+			merged := mergeResourcesConfig(result.Resources, over.Resources)
+			result.Resources = &merged
+		}
 	}
 
 	// Map: contexts — merge by key.
@@ -42,6 +86,10 @@ func MergeConfigs(base, over Config) Config {
 			result.Diagnostics = &merged
 		}
 	}
+
+	// Re-wire resolved views: merged contexts may reference stacks or cloud
+	// entries contributed by either layer.
+	result.Resolve()
 
 	return result
 }
@@ -70,6 +118,31 @@ func mergeContexts(base, over *Context) *Context {
 
 	result := *base // shallow copy
 
+	if over.Stack != "" {
+		result.Stack = over.Stack
+	}
+	if over.Cloud != "" {
+		result.Cloud = over.Cloud
+	}
+
+	// Datasources map: merge by key.
+	if over.Datasources != nil {
+		if result.Datasources == nil {
+			result.Datasources = make(map[string]string)
+		}
+		maps.Copy(result.Datasources, over.Datasources)
+	}
+
+	return &result
+}
+
+func mergeStackConfigs(base, over *StackConfig) StackConfig {
+	result := *base
+
+	if over.Slug != "" {
+		result.Slug = over.Slug
+	}
+
 	// Grafana config: field-level merge.
 	if over.Grafana != nil {
 		if result.Grafana == nil {
@@ -77,16 +150,6 @@ func mergeContexts(base, over *Context) *Context {
 		} else {
 			merged := mergeGrafanaConfig(result.Grafana, over.Grafana)
 			result.Grafana = &merged
-		}
-	}
-
-	// Cloud config: field-level merge.
-	if over.Cloud != nil {
-		if result.Cloud == nil {
-			result.Cloud = over.Cloud
-		} else {
-			merged := mergeCloudConfig(result.Cloud, over.Cloud)
-			result.Cloud = &merged
 		}
 	}
 
@@ -107,14 +170,6 @@ func mergeContexts(base, over *Context) *Context {
 		}
 	}
 
-	// Datasources map: merge by key.
-	if over.Datasources != nil {
-		if result.Datasources == nil {
-			result.Datasources = make(map[string]string)
-		}
-		maps.Copy(result.Datasources, over.Datasources)
-	}
-
 	// Resources config: last definition wins. Assume-server-dry-run weakens the
 	// dry-run guard, so a higher layer must be able to narrow (or clear, via an
 	// explicit []) what a lower layer asserts — a union could only ever widen it.
@@ -127,18 +182,33 @@ func mergeContexts(base, over *Context) *Context {
 		}
 	}
 
-	// Named datasource overrides.
-	if over.DefaultPrometheusDatasource != "" {
-		result.DefaultPrometheusDatasource = over.DefaultPrometheusDatasource
-	}
-	if over.DefaultLokiDatasource != "" {
-		result.DefaultLokiDatasource = over.DefaultLokiDatasource
-	}
-	if over.DefaultPyroscopeDatasource != "" {
-		result.DefaultPyroscopeDatasource = over.DefaultPyroscopeDatasource
-	}
+	return result
+}
 
-	return &result
+func mergeCloudEntries(base, over *CloudEntry) CloudEntry {
+	result := *base
+	if over.Token != "" {
+		result.Token = over.Token
+	}
+	if over.OAuthToken != "" {
+		result.OAuthToken = over.OAuthToken
+	}
+	if over.OAuthTokenExpiresAt != "" {
+		result.OAuthTokenExpiresAt = over.OAuthTokenExpiresAt
+	}
+	if over.OAuthUrl != "" {
+		result.OAuthUrl = over.OAuthUrl
+	}
+	if over.APIUrl != "" {
+		result.APIUrl = over.APIUrl
+	}
+	if over.Orgs != nil {
+		result.Orgs = over.Orgs
+	}
+	if over.Stacks != nil {
+		result.Stacks = over.Stacks
+	}
+	return result
 }
 
 func mergeResourcesConfig(base, over *ResourcesConfig) ResourcesConfig {
@@ -187,23 +257,6 @@ func mergeGrafanaConfig(base, over *GrafanaConfig) GrafanaConfig {
 	}
 	if over.ProxyEndpoint != "" {
 		result.ProxyEndpoint = over.ProxyEndpoint
-	}
-	return result
-}
-
-func mergeCloudConfig(base, over *CloudConfig) CloudConfig {
-	result := *base
-	if over.Token != "" {
-		result.Token = over.Token
-	}
-	if over.Stack != "" {
-		result.Stack = over.Stack
-	}
-	if over.OAuthUrl != "" {
-		result.OAuthUrl = over.OAuthUrl
-	}
-	if over.APIUrl != "" {
-		result.APIUrl = over.APIUrl
 	}
 	return result
 }

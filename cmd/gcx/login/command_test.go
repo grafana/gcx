@@ -105,8 +105,8 @@ func TestResolveNonInteractiveTokens(t *testing.T) {
 	t.Parallel()
 
 	ctxWithTokens := &config.Context{
-		Grafana: &config.GrafanaConfig{APIToken: "glsa_env"},
-		Cloud:   &config.CloudConfig{Token: "glc_env"},
+		Grafana:    &config.GrafanaConfig{APIToken: "glsa_env"},
+		CloudEntry: &config.CloudEntry{Token: "glc_env"},
 	}
 
 	tests := []struct {

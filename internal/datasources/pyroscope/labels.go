@@ -29,7 +29,7 @@ func (opts *pyroscopeLabelsOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
-	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-pyroscope-datasource is configured)")
+	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
 	opts.SetupTimeFlags(flags)
 }

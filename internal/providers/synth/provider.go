@@ -178,7 +178,7 @@ type configLoader struct {
 //
 // SM token resolution priority (highest first):
 //  1. GRAFANA_PROVIDER_SYNTH_SM_TOKEN env var / providers.synth.sm-token in config
-//  2. Auto-discovery via SM register/install API — requires cloud.token + stack info from GCOM
+//  2. Auto-discovery via SM register/install API — requires a cloud token + stack info from GCOM
 //  3. Error with actionable guidance
 //
 // When auto-discovery succeeds, values are persisted to config so subsequent
