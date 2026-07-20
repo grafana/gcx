@@ -8,7 +8,7 @@ Unset a single value in a configuration file.
 
 PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
 
-A bare path (e.g. "cloud.token") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context.
+A bare path is resolved against the current context: "datasources.prometheus" targets the context itself, while stack-owned fields ("grafana.server", "providers.slo.org-id", "slug") resolve through the context's stack reference to "stacks.<name>.<path>". Use a fully qualified path (starting with "contexts.", "stacks.", or "cloud.") to target a specific entry.
 
 ```
 gcx config unset PROPERTY_NAME [flags]
@@ -21,14 +21,14 @@ gcx config unset PROPERTY_NAME [flags]
 	# Unset the "foo" context
 	gcx config unset contexts.foo
 
-	# Unset the "insecure-skip-tls-verify" flag in the current context
+	# Unset the "insecure-skip-tls-verify" flag in the current context's stack
 	gcx config unset grafana.insecure-skip-tls-verify
 
-	# Unset the "insecure-skip-tls-verify" flag in the "dev-instance" context
-	gcx config unset contexts.dev-instance.grafana.insecure-skip-tls-verify
+	# Unset the "insecure-skip-tls-verify" flag on the "dev-instance" stack
+	gcx config unset stacks.dev-instance.grafana.insecure-skip-tls-verify
 
-	# Unset a value in the local config layer
-	gcx config unset --file local contexts.prod.cloud.token
+	# Unset a cloud entry's token in the local config layer
+	gcx config unset --file local cloud.grafana-com.token
 ```
 
 ### Options

@@ -55,7 +55,7 @@ gcx login my-grafana --server https://your-instance.grafana.net
 
 Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role.
 
-For on-premises instances, gcx defaults the organization ID to 1 if you do not specify one — the common case for single-tenant Grafana OSS. If you need a different org ID, set it with `gcx config set contexts.my-grafana.grafana.org-id N` after login.
+For on-premises instances, gcx defaults the organization ID to 1 if you do not specify one — the common case for single-tenant Grafana OSS. If you need a different org ID, set it with `gcx config set grafana.org-id N` after login (this writes to the current context's stack entry).
 
 ### Grafana Cloud product APIs
 
@@ -102,13 +102,15 @@ gcx login --context my-stack
 # press Enter to skip.
 ```
 
-`gcx` derives the Cloud stack slug from `--server` when the hostname matches a standard `*.grafana.net` pattern. For custom domains (such as `*.cloud.example.grafana.com`), set it explicitly:
+`gcx` derives the Cloud stack slug from `--server` when the hostname matches a standard `*.grafana.net` pattern. For custom domains (such as `*.cloud.example.grafana.com`), set it explicitly on the stack entry:
 
 ```bash
-gcx config set contexts.my-stack.cloud.stack your-stack-slug
+gcx config set stacks.my-stack.slug your-stack-slug
 ```
 
-You do not need to set `cloud.api-url` for `grafana.com`; gcx defaults to `https://grafana.com`. Set it only when you need a non-default Grafana Cloud API endpoint.
+(`gcx config set slug your-stack-slug` does the same for the current context's stack.)
+
+You do not need to set `cloud.<entry>.api-url` for `grafana.com`; gcx defaults to `https://grafana.com`. Set it only when you need a non-default Grafana Cloud API endpoint.
 
 ### Environment variables for CI and agents
 
@@ -162,7 +164,7 @@ Secrets are redacted in the output. See [configuration reference](configuration/
 
 A short vocabulary so the troubleshooting entries below make sense. For the internal design, see the [login system architecture](../architecture/login-system.md) and [authentication subsystem](../architecture/auth-system.md) docs.
 
-**Contexts.** A context is a named bundle of server URL, credentials, and related settings stored in your gcx config file. Commands run against the *current* context unless you pass `--context` to target another one. The model and on-disk format mirror `kubectl` kubeconfig. See [configuration and context system](../architecture/config-system.md) for the full layout.
+**Contexts.** A context binds together a named *stack entry* (server URL, Grafana credentials, provider config) and, optionally, a named *cloud entry* (grafana.com credentials, shareable across contexts) in your gcx config file. `gcx login` creates a stack named after the context plus the binding; `gcx cloud login` creates or reuses a cloud entry and binds it. Commands run against the *current* context unless you pass `--context` to target another one. The model and on-disk format mirror `kubectl` kubeconfig. See [configuration and context system](../architecture/config-system.md) for the full layout.
 
 **Cloud vs on-premises.** gcx detects whether `--server` points at Grafana Cloud or an on-premises instance. The hostname is matched against known Cloud suffixes first (no network call); loopback and RFC1918 addresses are classified as on-premises; anything else is probed with a short HTTP request. The classification drives which auth methods appear in the prompt.
 
@@ -170,19 +172,19 @@ A short vocabulary so the troubleshooting entries below make sense. For the inte
 
 **Interactive, `--yes`, and env-var modes.** Interactive mode opens prompts for anything you did not pass as a flag. `--yes` disables optional prompts and makes `gcx login` fail loudly if a required field is missing — the mode to use in CI. Environment variables (`GRAFANA_SERVER`, `GRAFANA_TOKEN`, `GRAFANA_CLOUD_TOKEN`, `GRAFANA_CLOUD_STACK`) skip `gcx login` entirely and resolve on each command invocation.
 
-**Credential storage.** Tokens persist to the gcx config file under the context. `gcx config view` redacts secret fields when it prints. Do not commit the config file to version control.
+**Credential storage.** Grafana tokens persist under the context's stack entry; Cloud Access Policy tokens under the referenced cloud entry. `gcx config view` redacts secret fields when it prints. Do not commit the config file to version control.
 
 ## Troubleshooting
 
 Each entry pairs the error you see with what it means and how to fix it.
 
-1. **`missing contexts.X.grafana.org-id or contexts.X.grafana.stack-id`**
-    - *Means:* gcx cannot determine which organization (on-prem) or stack (Cloud) the context targets.
-    - *Fix:* `gcx config set contexts.X.grafana.org-id 1` for on-prem, or `gcx config set contexts.X.grafana.stack-id N` for Cloud. Issue [#545](https://github.com/grafana/gcx/issues/545) tracks auto-healing this.
+1. **`missing stacks.X.grafana.org-id or stacks.X.grafana.stack-id`**
+    - *Means:* gcx cannot determine which organization (on-prem) or stack (Cloud) the context's stack targets.
+    - *Fix:* `gcx config set stacks.X.grafana.org-id 1` for on-prem, or `gcx config set stacks.X.grafana.stack-id N` for Cloud. Issue [#545](https://github.com/grafana/gcx/issues/545) tracks auto-healing this.
 
-2. **`cloud stack is not configured: set cloud.stack in config or GRAFANA_CLOUD_STACK env var`**
+2. **`cloud stack is not configured: set the stack's slug (gcx config set slug <slug>) or GRAFANA_CLOUD_STACK env var`**
     - *Means:* a Cloud product API command ran against a context without a resolvable stack slug.
-    - *Fix:* `gcx config set contexts.X.cloud.stack your-stack-slug`, or export `GRAFANA_CLOUD_STACK` in the current shell. Issue [#545](https://github.com/grafana/gcx/issues/545) tracks auto-healing this.
+    - *Fix:* `gcx config set slug your-stack-slug` (writes to the current context's stack entry), or export `GRAFANA_CLOUD_STACK` in the current shell. Issue [#545](https://github.com/grafana/gcx/issues/545) tracks auto-healing this.
 
 3. **OAuth: browser did not open, or token refresh failed**
     - *Means:* gcx tried to open a browser for OAuth but the system command returned an error, or the OAuth refresh flow failed.

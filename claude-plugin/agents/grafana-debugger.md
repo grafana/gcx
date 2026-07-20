@@ -61,13 +61,14 @@ connection error, guide the user to configure gcx before proceeding.
 Direct them to the `setup-gcx` skill, or walk through these steps
 manually:
 
-1. Set the server URL:
+1. Set the server URL and bind a context to the stack:
    ```bash
-   gcx config set contexts.<name>.grafana.server <url>
+   gcx config set stacks.<name>.grafana.server <url>
+   gcx config set contexts.<name>.stack <name>
    ```
 2. Set the service account token:
    ```bash
-   gcx config set contexts.<name>.grafana.token <token>
+   gcx config set stacks.<name>.grafana.token <token>
    ```
 3. Activate the context:
    ```bash
@@ -491,9 +492,9 @@ Error: request failed: 403 Forbidden
    gcx config current-context
    gcx config use-context <context-name>
    ```
-3. Update the token if expired:
+3. Update the token if expired (writes to the current context's stack):
    ```bash
-   gcx config set contexts.<name>.grafana.token <new-token>
+   gcx config set grafana.token <new-token>
    ```
 
 ### Empty Results

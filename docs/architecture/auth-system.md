@@ -7,7 +7,7 @@ Grafana service account tokens, mTLS client certificates, and Grafana Cloud
 Access Policy tokens — and each targets a different API surface. The
 authentication subsystem spans package boundaries: OAuth mechanics live in
 `internal/auth/`, token storage lives in `internal/config/` as fields on
-`GrafanaConfig` and `CloudConfig`, TLS certificate settings live in
+`GrafanaConfig` and `CloudEntry`, TLS certificate settings live in
 `GrafanaConfig.TLS`, and token/cert attachment to HTTP clients happens in
 `internal/config/rest.go`. This document covers all four methods end to end.
 
@@ -42,7 +42,7 @@ graph LR
 | OAuth PKCE | Grafana API, K8s `/apis` | Browser flow via `gcx login` | `GrafanaConfig.OAuthToken`, `OAuthRefreshToken`, `OAuthTokenExpiresAt`, `OAuthRefreshExpiresAt`, `ProxyEndpoint` | Automatic via `RefreshTransport` | Transparent |
 | Service account token | Grafana API, K8s `/apis` | Grafana UI → Administration → Service accounts | `GrafanaConfig.APIToken` | None (static) | Manual (rotate in Grafana UI) |
 | mTLS client certificate | Grafana API, K8s `/apis` | Identity-aware proxy (e.g. Teleport) | `GrafanaConfig.TLS.CertFile`, `KeyFile`, `CAFile` (or `CertData`, `KeyData`, `CAData`) | External (proxy manages cert lifecycle) | External (e.g. `tsh apps login`) |
-| Cloud Access Policy token | GCOM, Cloud product APIs | Grafana Cloud UI → Security → Access policies | `CloudConfig.Token` | None (static) | Manual (rotate in Cloud UI) |
+| Cloud Access Policy token | GCOM, Cloud product APIs | Grafana Cloud UI → Security → Access policies | `CloudEntry.Token` | None (static) | Manual (rotate in Cloud UI) |
 
 ---
 
@@ -79,9 +79,10 @@ Environment variables `GRAFANA_TLS_CERT_FILE`, `GRAFANA_TLS_KEY_FILE`, and
 
 ```bash
 # Via gcx config
-gcx config set contexts.myctx.grafana.server https://grafana.teleport.example.com
-gcx config set contexts.myctx.grafana.tls.cert-file "$(tsh apps config grafana -f cert)"
-gcx config set contexts.myctx.grafana.tls.key-file "$(tsh apps config grafana -f key)"
+gcx config set stacks.myctx.grafana.server https://grafana.teleport.example.com
+gcx config set stacks.myctx.grafana.tls.cert-file "$(tsh apps config grafana -f cert)"
+gcx config set stacks.myctx.grafana.tls.key-file "$(tsh apps config grafana -f key)"
+gcx config set contexts.myctx.stack myctx
 
 # Login detects mTLS as the auth method
 gcx login --yes
@@ -113,7 +114,7 @@ Cloud. Users provision them in the Cloud UI under Security → Access policies;
 the token carries the scope of the policy (metrics read, logs write, IRM
 admin, etc.). Tokens are prefixed `glc_`.
 
-gcx stores them in `CloudConfig.Token` (`datapolicy:"secret"`). They are
+gcx stores them in `CloudEntry.Token` (`datapolicy:"secret"`). They are
 attached to two different API surfaces: the GCOM API (via the
 `internal/cloud/` client) and Cloud product APIs (via product-specific REST
 clients for synth, k6, IRM, fleet, and others).
@@ -272,7 +273,7 @@ internal/auth/
                       TokenLocker, TokenReloader, DoRefresh
 
 internal/config/
-  types.go            APIToken (SA token), CloudConfig.Token (CAP token),
+  types.go            APIToken (SA token), CloudEntry.Token (CAP token),
                       OAuth* fields, ProxyEndpoint
   rest.go             Bearer attachment, WrapTransport wiring,
                       NewNamespacedRESTConfig, WireTokenPersistence,

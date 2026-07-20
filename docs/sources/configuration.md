@@ -46,32 +46,34 @@ Run `gcx config check` to display the configuration file currently in use.
 
 ## Define contexts
 
-`gcx` supports multiple contexts so you can switch between instances. By default, it uses the `default` context.
+`gcx` supports multiple contexts so you can switch between instances. A context references a named stack entry, which holds the Grafana connection details. By default, `gcx` uses the `default` context.
 
 To configure the `default` context:
 
 ```shell
-gcx config set contexts.default.grafana.server http://localhost:3000
+gcx config set stacks.default.grafana.server http://localhost:3000
+gcx config set contexts.default.stack default
 
 # Set org-id when using OSS/Enterprise - skip when targeting Grafana Cloud
-gcx config set contexts.default.grafana.org-id 1
+gcx config set stacks.default.grafana.org-id 1
 
 # Authenticate with a service account token
-gcx config set contexts.default.grafana.token service-account-token
+gcx config set stacks.default.grafana.token service-account-token
 
 # Or alternatively, use basic authentication
-gcx config set contexts.default.grafana.user admin
-gcx config set contexts.default.grafana.password admin
+gcx config set stacks.default.grafana.user admin
+gcx config set stacks.default.grafana.password admin
 ```
 
 To create another context, use the same pattern:
 
 ```shell
-gcx config set contexts.staging.grafana.server https://staging.grafana.example
-gcx config set contexts.staging.grafana.org-id 1
+gcx config set stacks.staging.grafana.server https://staging.grafana.example
+gcx config set stacks.staging.grafana.org-id 1
+gcx config set contexts.staging.stack staging
 ```
 
-Note that in these examples, `default` and `staging` are the context names.
+Note that in these examples, `default` and `staging` are the context and stack names.
 
 ## Useful commands
 

@@ -51,4 +51,3 @@ gcx profiles list-profile-types [flags]
 ### SEE ALSO
 
 * [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
-

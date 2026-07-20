@@ -14,7 +14,7 @@ Cloud resources like stacks and access policies.
 By default, opens a browser for interactive OAuth2 authentication.
 
 EXPERIMENTAL: interactive OAuth login is an experimental flow that stores an
-OAuth-issued token as the context's cloud.token. Some commands that talk to
+OAuth-issued token as the cloud entry's token. Some commands that talk to
 grafana.com do not yet work with an OAuth token. For full functionality, pass
 a Cloud Access Policy token via --cloud-token instead.
 

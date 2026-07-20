@@ -40,14 +40,10 @@ OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
 login`. It is used only during login. Optional: defaults to
 "https://grafana.com".
 
-## `GRAFANA_CLOUD_STACK`
-
-Stack is the Grafana Cloud stack slug (e.g. "mystack").
-Optional: if not set, the slug may be derived from Grafana.Server.
-
 ## `GRAFANA_CLOUD_TOKEN`
 
-Token is a Grafana Cloud API token used to authenticate against GCOM.
+Token is a Grafana Cloud access policy token used to authenticate
+against GCOM.
 
 ## `GRAFANA_ORG_ID`
 

@@ -289,23 +289,26 @@ clarification affirmatively.
 
 ## Context Resolution and Persistence
 
-`persistContext` (login.go:400) loads the current config (tolerating
-`os.ErrNotExist`), inserts or updates the context, and writes the file
+`persistContext` (login.go) loads the current config (tolerating
+`os.ErrNotExist`), inserts or updates the context — creating a stack entry
+named after the context, plus the `stack:` binding — and writes the file
 back. Two paths diverge based on whether the context already exists:
 
-**New-context path.** `cfg.SetContext(name, current=true, tempCtx)` adds
-the fresh `Context` with all resolved fields and marks it current.
+**New-context path.** A fresh stack entry and `Context` binding are added
+and marked current; the stack's `slug` is populated when resolved.
 `resolveGrafanaAuth` defaults `GrafanaConfig.OrgID` to 1 for fresh on-prem
-logins (login.go:356) so the later
+logins so the later
 `GrafanaConfig.validateNamespace` does not attempt `/bootdata` stack
 discovery against an OSS instance that cannot answer.
 
-**Re-auth path.** `mergeAuthIntoExisting` (login.go:452) copies only the
+**Re-auth path.** `mergeAuthIntoExisting` (login.go) copies only the
 auth-bearing fields — `Server`, `AuthMethod`, `APIToken`, `OAuthToken`,
 `OAuthRefreshToken`, `OAuthTokenExpiresAt`, `OAuthRefreshExpiresAt`,
-`ProxyEndpoint`, and the `Cloud.Token` / `Cloud.APIUrl` pair — onto the
-existing context. User-set values such as `OrgID=42`, custom datasource
-defaults, or provider-specific tokens survive untouched.
+`ProxyEndpoint` — onto the context's stack entry (creating it for legacy
+detached contexts), and routes incoming cloud auth through
+`EnsureCloudEntry` to a named cloud entry. User-set values such as
+`OrgID=42`, custom datasource defaults, or provider-specific tokens
+survive untouched.
 
 **Server-mismatch guard.** When the existing context targets a different
 server than the incoming one and neither `opts.Yes` nor

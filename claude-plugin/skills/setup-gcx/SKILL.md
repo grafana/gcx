@@ -42,9 +42,10 @@ gcx --version
 
 gcx uses a context-based configuration model inspired by kubectl's
 kubeconfig. A single YAML file (default: `~/.config/gcx/config.yaml`)
-stores named contexts. Each context points to one Grafana instance and holds
-the server URL, authentication credentials, and namespace identifiers. One
-context is active at a time; all commands operate against it unless overridden.
+stores named `stacks` (server URL, credentials, provider config) and named
+`contexts` that reference a stack by name (`contexts.<name>.stack`). One
+context is active at a time; all commands operate against it unless
+overridden. Legacy per-context configs are migrated automatically on load.
 
 Use `gcx config view` to inspect the current configuration at any time.
 Use `gcx config check` to validate that the active context is correct
@@ -57,14 +58,16 @@ and can reach the server.
 Use this path when connecting to a Grafana Cloud instance
 (URLs ending in `.grafana.net`).
 
-### Step 1: Create a context
+### Step 1: Create a stack and context
 
 ```bash
-gcx config set contexts.cloud.grafana.server https://myorg.grafana.net
+gcx config set stacks.cloud.grafana.server https://myorg.grafana.net
+gcx config set contexts.cloud.stack cloud
 ```
 
-Replace `cloud` with any name you prefer for this context (e.g., `prod`,
-`myorg-cloud`). Replace the server URL with your Grafana Cloud URL.
+Replace `cloud` with any name you prefer (e.g., `prod`, `myorg-cloud`).
+Replace the server URL with your Grafana Cloud URL. The first command creates
+the stack entry; the second creates a context pointing at it.
 
 ### Step 2: Authenticate
 
@@ -83,7 +86,7 @@ skip them when using this option.
 **Option A-2: Service account token**
 
 ```bash
-gcx config set contexts.cloud.grafana.token glsa_XXXXXXXXXXXXXXXX
+gcx config set stacks.cloud.grafana.token glsa_XXXXXXXXXXXXXXXX
 ```
 
 Obtain a service account token from **Administration > Service accounts** in
@@ -121,10 +124,11 @@ If the discovered stack ID conflicts with a manually configured
 
 Use this path when connecting to a self-hosted Grafana instance.
 
-### Step 1: Create a context
+### Step 1: Create a stack and context
 
 ```bash
-gcx config set contexts.onprem.grafana.server https://grafana.example.com
+gcx config set stacks.onprem.grafana.server https://grafana.example.com
+gcx config set contexts.onprem.stack onprem
 ```
 
 Replace `onprem` with a name that identifies this environment (e.g.,
@@ -135,14 +139,14 @@ Replace `onprem` with a name that identifies this environment (e.g.,
 **Option B-1: API token (recommended)**
 
 ```bash
-gcx config set contexts.onprem.grafana.token glsa_XXXXXXXXXXXXXXXX
+gcx config set stacks.onprem.grafana.token glsa_XXXXXXXXXXXXXXXX
 ```
 
 **Option B-2: Username and password**
 
 ```bash
-gcx config set contexts.onprem.grafana.user admin
-gcx config set contexts.onprem.grafana.password mysecretpassword
+gcx config set stacks.onprem.grafana.user admin
+gcx config set stacks.onprem.grafana.password mysecretpassword
 ```
 
 Use Option B-1 when service accounts are available. Use Option B-2 for
@@ -154,7 +158,7 @@ On-premise Grafana uses an org ID to identify the namespace for API calls.
 Set it to the numeric ID of the organization (default org is 1):
 
 ```bash
-gcx config set contexts.onprem.grafana.org-id 1
+gcx config set stacks.onprem.grafana.org-id 1
 ```
 
 To find the org ID: in Grafana, go to **Administration > Organizations** and
@@ -177,10 +181,10 @@ certificate or a custom CA, configure TLS:
 
 ```bash
 # Skip TLS verification (development only -- do not use in production)
-gcx config set contexts.onprem.grafana.tls.insecure-skip-verify true
+gcx config set stacks.onprem.grafana.tls.insecure-skip-verify true
 
 # Supply a custom CA certificate (base64-encoded PEM)
-gcx config set contexts.onprem.grafana.tls.ca-data <base64-encoded-pem>
+gcx config set stacks.onprem.grafana.tls.ca-data <base64-encoded-pem>
 ```
 
 ---
@@ -256,10 +260,10 @@ Locate the `uid` field for each datasource. Example output:
 
 ```bash
 # Set the default Prometheus datasource
-gcx config set contexts.cloud.default-prometheus-datasource prometheus-uid-abc123
+gcx config set contexts.cloud.datasources.prometheus prometheus-uid-abc123
 
 # Set the default Loki datasource
-gcx config set contexts.cloud.default-loki-datasource loki-uid-def456
+gcx config set contexts.cloud.datasources.loki loki-uid-def456
 ```
 
 Replace `cloud` with your context name and the UID values with those from the
@@ -318,7 +322,7 @@ The token or credentials are invalid or expired.
 
 ```bash
 # Replace with a fresh token
-gcx config set contexts.<name>.grafana.token glsa_NEW_TOKEN
+gcx config set stacks.<name>.grafana.token glsa_NEW_TOKEN
 ```
 
 Verify the token has not expired and has the correct permissions for the
@@ -350,7 +354,7 @@ The server URL is unreachable.
    certificate:
 
    ```bash
-   gcx config set contexts.<name>.grafana.tls.insecure-skip-verify true
+   gcx config set stacks.<name>.grafana.tls.insecure-skip-verify true
    ```
 
    Use `insecure-skip-verify` only for development; supply a CA certificate in
@@ -369,7 +373,7 @@ If you see a "mismatched stack ID" error, a configured `grafana.stack-id`
 differs from the auto-discovered value. Resolve by unsetting the manual value:
 
 ```bash
-gcx config unset contexts.<name>.grafana.stack-id
+gcx config unset stacks.<name>.grafana.stack-id
 ```
 
 If you see a "missing namespace" error and auto-discovery is failing (e.g.,
@@ -377,10 +381,10 @@ the server does not expose `/bootdata`), set the namespace manually:
 
 ```bash
 # On-premise
-gcx config set contexts.<name>.grafana.org-id 1
+gcx config set stacks.<name>.grafana.org-id 1
 
 # Grafana Cloud (if auto-discovery is unavailable)
-gcx config set contexts.<name>.grafana.stack-id 12345
+gcx config set stacks.<name>.grafana.stack-id 12345
 ```
 
 ---
@@ -388,9 +392,10 @@ gcx config set contexts.<name>.grafana.stack-id 12345
 ## Complete Example: Grafana Cloud with a Service Account Token
 
 ```bash
-# 1. Set server and token
-gcx config set contexts.mycloud.grafana.server https://myorg.grafana.net
-gcx config set contexts.mycloud.grafana.token glsa_XXXXXXXXXXXXXXXX
+# 1. Set server and token on a stack, and bind a context to it
+gcx config set stacks.mycloud.grafana.server https://myorg.grafana.net
+gcx config set stacks.mycloud.grafana.token glsa_XXXXXXXXXXXXXXXX
+gcx config set contexts.mycloud.stack mycloud
 
 # 2. Activate the context
 gcx config use-context mycloud
@@ -400,8 +405,8 @@ gcx config check
 
 # 4. Set default datasources (after listing available ones)
 gcx datasources list -o json
-gcx config set contexts.mycloud.default-prometheus-datasource <prometheus-uid>
-gcx config set contexts.mycloud.default-loki-datasource <loki-uid>
+gcx config set contexts.mycloud.datasources.prometheus <prometheus-uid>
+gcx config set contexts.mycloud.datasources.loki <loki-uid>
 
 # 5. Test a resource listing
 gcx resources get dashboards -o json

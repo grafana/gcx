@@ -103,7 +103,7 @@ import "fmt"
 func (p *SLOProvider) Validate(cfg map[string]string) error {
     if cfg["token"] == "" {
         return fmt.Errorf("slo provider: token is required; "+
-            "set it with: gcx config set contexts.<ctx>.providers.slo.token <value>")
+            "set it with: gcx config set providers.slo.token <value>")
     }
     return nil
 }
@@ -391,12 +391,16 @@ This self-registration pattern (via `init()`) is handled by Go's import system â
 
 ### YAML Config
 
-Provider config lives in the `providers` map within a context:
+Provider config lives in the `providers` map on a stack entry
+(`stacks.<name>.providers.<provider>`); contexts reach it through their
+`stack:` reference. `ConfigLoader.SaveProviderConfig` persists keys there,
+creating the stack entry if the context has none.
 
 ```yaml
 # ~/.config/gcx/config.yaml
+version: 1
 current-context: prod
-contexts:
+stacks:
   prod:
     grafana:
       server: https://grafana.example.com
@@ -407,13 +411,18 @@ contexts:
         url: https://slo.example.com
       oncall:
         token: glsa_...
+contexts:
+  prod:
+    stack: prod
 ```
 
-Set individual keys with the config command (dotted-path notation):
+Set individual keys with the config command (dotted-path notation). Bare
+`providers.*` paths resolve through the current context's stack; the
+fully-qualified form targets a stack by name:
 
 ```bash
-gcx config set contexts.prod.providers.slo.token glsa_abc123
-gcx config set contexts.prod.providers.slo.url https://slo.example.com
+gcx config set providers.slo.token glsa_abc123
+gcx config set stacks.prod.providers.slo.url https://slo.example.com
 ```
 
 ### Environment Variables

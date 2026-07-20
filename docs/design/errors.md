@@ -45,7 +45,7 @@ Suggestions must be commands the user can run — not vague advice:
 // Good:
 Suggestions: []string{
     "Review your configuration: gcx config view",
-    "Set your token: gcx config set contexts.<ctx>.grafana.token <value>",
+    "Set your token: gcx config set grafana.token <value>",
 }
 
 // Bad:
@@ -87,7 +87,7 @@ is ordered before the generic fallback.
 - HTTP 403 → summary: `"Authorization failed"`
 
 Both produce `DetailedError` with `ExitAuthFailure` exit code and actionable suggestions
-pointing at `gcx config set cloud.token` and `gcx login`.
+pointing at `gcx cloud login` and `gcx login`.
 
 The converter is enabled by `fleet.HTTPError` — a typed error returned by all non-2xx
 responses in `internal/providers/instrumentation/client.go`.

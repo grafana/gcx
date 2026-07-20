@@ -54,4 +54,3 @@ gcx datasources pyroscope list-profile-types [flags]
 ### SEE ALSO
 
 * [gcx datasources pyroscope](gcx_datasources_pyroscope.md)	 - Query Pyroscope datasources
-

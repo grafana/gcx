@@ -54,7 +54,7 @@ Error: failed to list resources: 403 Forbidden — user does not have permission
 4. If the token is known to be expired, update it with `gcx config set`:
 
    ```bash
-   gcx config set contexts.<context-name>.grafana.token <new-token>
+   gcx config set grafana.token <new-token>
    ```
 
 5. Retry the failing command after the context is corrected. For example:
