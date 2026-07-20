@@ -49,6 +49,9 @@
 
 ## Unreleased
 
+- Added `gcx instrumentation explain <id>` and `gcx instrumentation explain list` for looking up finding explanations bundled with `otel-checker` (bumped to v0.3.0).
+- `gcx instrumentation check` now surfaces an `EXPLAIN_ID` column in table output (and `explain_id` field in JSON), feedable directly into `gcx instrumentation explain`.
+
 ## v0.4.1 (2026-06-23)
 
 - **Breaking:** `--log-http-payload` has been renamed to `--insecure-log-http-payload`. The old flag name now exits with an error naming the replacement. Payload-dump behavior is unchanged — credentials, cookies, OAuth refresh tokens, and request bodies still appear in the dump when the flag is set. A startup warning is now printed to stderr when the flag is active.
