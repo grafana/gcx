@@ -197,7 +197,7 @@ func newCreateCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.ErrOrStderr(), "Evaluator %s created", created.Spec.EvaluatorID)
+			cmdio.Success(cmd.ErrOrStderr(), "Evaluator %s upserted", created.Spec.EvaluatorID)
 			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
 		},
 	}
