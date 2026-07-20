@@ -58,7 +58,7 @@ the `agento11y` skill and to `gcx agento11y <sub> --help` rather than restating 
   token. `gcx` owns Cloud auth (via `gcx login`). Prerequisite: `gcx` installed and authenticated;
   if it isn't, say so and stop.
 - **Confirm the target stack before any WRITE (Step 0 + Step 5).** Reads run freely once you've
-  shown the context; writes (create/update evaluators, rules, guards) need an explicit yes on the
+  shown the context; writes (upsert evaluators, create/update rules and guards) need an explicit yes on the
   target stack. `gcx` may be pointed at the wrong stack, and this skill creates tenant-level
   objects.
 - **Check before recommending.** Always list what already exists first
@@ -117,7 +117,7 @@ from the traffic; read it from the code.
 **Traffic**, via `gcx` — this tells you what *does* go wrong:
 
 1. Find the agent as Agent Observability sees it: `gcx agento11y agents list` (and `agents get` /
-   versions) to get the exact `agent_name` — this is the `match.agent_name` you'll target. (Tip:
+   `agents list-versions`) to get the exact `agent_name` — this is the `match.agent_name` you'll target. (Tip:
    `agents list` prints a leading hint line before the JSON; set `GCX_AGENT_MODE=true` or skip
    that line if you parse it.)
 2. Sample recent conversations: `gcx agento11y conversations search --filters 'agent = "<name>"'`
