@@ -152,7 +152,6 @@ func newTemplatesUpsertCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 The provisioning API uses a single PUT endpoint keyed by template name,
 so the same command handles both create and update.`,
-		Aliases: []string{"create", "update", "apply"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
