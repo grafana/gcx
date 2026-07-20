@@ -4,7 +4,7 @@ description: >
   Inspects and manages Grafana Agent Observability resources via gcx:
   conversations, generations, evaluators, rules, scores, and templates.
   Use when the user wants to list or search conversations, inspect generations,
-  manage evaluators (create, test, delete), set up evaluation rules, check scores,
+  manage evaluators (upsert, test, delete), set up evaluation rules, check scores,
   or browse evaluator templates. Trigger on phrases like "list conversations",
   "search generations", "what did the agent do", "debug LLM conversation",
   "create evaluator", "set up evaluation rule", "test evaluator", "check scores",
@@ -28,12 +28,12 @@ All commands live under `gcx agento11y`. Use `gcx agento11y <subcommand> --help`
 |-------|---------|
 | `conversations` | List, get, search conversations |
 | `generations` | Get a single generation, list its scores |
-| `agents` | List agents, get details, view versions |
+| `agents` | List agents, get details, list version history (`list-versions`) |
 | `evaluators` | List, get, upsert, delete, test evaluators |
 | `rules` | List, get, create, update, delete evaluation rules |
 | `templates` | List, get built-in evaluator templates |
 | `judge` | List judge providers and models |
-| `experiments` | List, get, create, update, cancel runs; inspect scores and reports |
+| `experiments` | List, get, create, update, cancel runs; `list-scores` and `report` |
 
 Delete commands (`evaluators delete`, `rules delete`) require `--force` to skip confirmation in agent mode (there is no `-f` shorthand on delete). List first to confirm the target ID:
 
