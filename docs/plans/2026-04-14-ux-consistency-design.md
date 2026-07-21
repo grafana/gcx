@@ -763,7 +763,10 @@ Rules:
   them. Users use `resources push slos -p ./slos/` instead.
 - **No `apply` on CRUD resources.** The upsert semantic belongs in
   `resources push`. Provider `create` intentionally fails on duplicate as
-  a safety guard.
+  a safety guard. *(2026-07-21 note: superseded in part — ADR §3/D6 keeps a
+  first-class provider `upsert` for the direct create-or-update workflow,
+  e.g. `alert templates upsert`, `kg entities upsert`; `resources push`
+  remains the manifest path.)*
 - **`create -f` and `update ID -f` behave identically across all
   providers.** Same flag (`-f`), same file format (K8s envelope YAML/JSON),
   same error behavior. A user who knows `gcx slo definitions create -f`

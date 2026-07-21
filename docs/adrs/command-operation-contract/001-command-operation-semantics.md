@@ -170,8 +170,8 @@ a collection.
   observed evidence recorded during classification — it is never the
   definition. `alert templates upsert` is kept under this definition; its
   live `create`/`update`/`apply` aliases misrepresent the semantics and
-  are **proposed for removal** (awaiting maintainer approval, decision D6)
-  in the alert provider's migration batch.
+  were **removed** (decision D6, maintainer-approved 2026-07-20; executed
+  in PR #1010) in the alert provider's migration batch.
 - `pull` is the manifest counterpart of `push` (remote → local files).
 
 **Generic resource-tier exception (protocol family).** The Kubernetes-style
@@ -192,9 +192,10 @@ they are not violations: the shorthand set is closed and governed. This
 resolves the tension between the "last word identifies the action" rule
 and the ratified signal-tier command set.
 
-**`profile-types` → `list-types` (decided).** `profile-types` was never in
-the closed shorthand set. Per maintainer feedback (2026-07-17) it is
-renamed to **`list-types`** — the compound spelling of `list` under the
+**`profile-types` → `list-profile-types` (decided).** `profile-types` was
+never in the closed shorthand set. Per maintainer feedback (2026-07-17) it
+is renamed — respelled **`list-profile-types`** in review of the pilot PR
+(2026-07-21) to keep the subject explicit — the compound spelling of `list` under the
 `list-<subject>` rule (§8): profile types are a discovery/catalog facet of
 the datasource (scoped by `--datasource`, not independently addressable).
 The rename covers **both** mount points of its one shared builder
@@ -207,7 +208,7 @@ naming guide's vocabulary table.
 datasource reads best-effort persist an auto-discovered datasource UID to
 configuration (`ResolveAndSaveDatasource` in
 `internal/datasources/query/resolve.go`, called from e.g.
-`internal/datasources/pyroscope/profile_types.go` and
+`internal/datasources/pyroscope/list_profile_types.go` and
 `internal/datasources/prometheus/labels.go`), which changes future target
 resolution. This ADR takes no position on changing that behavior — any
 pure-resolver/configuration refactor is separate, out-of-scope work, not
