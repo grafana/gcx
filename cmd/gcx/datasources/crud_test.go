@@ -236,7 +236,7 @@ func TestHealthHealthy(t *testing.T) {
 	cfg := newConfigFileForServer(t, server.URL)
 
 	stdout, err := executeDatasourceCommand(t,
-		[]string{"datasources", "status", "--config", cfg, "ok", "-o", "json"})
+		[]string{"datasources", "health", "--config", cfg, "ok", "-o", "json"})
 	require.NoError(t, err)
 	assert.Contains(t, strings.ToUpper(stdout), "OK")
 }

@@ -1,4 +1,4 @@
-## gcx datasources status
+## gcx datasources health
 
 Check the health of one or more datasources
 
@@ -15,7 +15,7 @@ Exit codes distinguish resource failure from command failure:
   1/2/3 - the check could not run (operational, usage, or auth failure)
 
 ```
-gcx datasources status [UID] [flags]
+gcx datasources health [UID] [flags]
 ```
 
 ### Examples
@@ -23,13 +23,13 @@ gcx datasources status [UID] [flags]
 ```
 
 	# Check a single datasource
-	gcx datasources status my-ds-uid
+	gcx datasources health my-ds-uid
 
 	# Check all datasources
-	gcx datasources status
+	gcx datasources health
 
 	# Check all datasources of a given type
-	gcx datasources status --type grafana-sentry-datasource
+	gcx datasources health --type grafana-sentry-datasource
 ```
 
 ### Options
@@ -37,7 +37,7 @@ gcx datasources status [UID] [flags]
 ```
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
-  -h, --help             help for status
+  -h, --help             help for health
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string    Output format. One of: agents, json, table, yaml (default "table")
