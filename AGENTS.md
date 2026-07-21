@@ -116,7 +116,7 @@ internal/
 │   │   └── rmw/        Read-modify-write helper with optimistic-lock guard (ConflictError)
 │   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents; rich K8s-envelope types for AlertGroup/Alert in rich.go, ADR-019)
 │   ├── k6/         k6 Cloud provider (projects, tests, runs, envvars)
-│   ├── kg/         Knowledge Graph (Asserts) provider
+│   ├── kg/         Knowledge Graph (Asserts) provider (rules, entities, insights, diagnose, quality reports)
 │   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
 │   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
 │   ├── appo11y/    App Observability provider (overrides, settings — singleton resources; services discovery via target_info)

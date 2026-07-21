@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -72,6 +73,32 @@ type DiagnoseResult struct {
 
 	Checks  []CheckResult   `json:"checks"`
 	Summary DiagnoseSummary `json:"summary"`
+
+	// Quality is the aggregate instrumentation-quality summary derived from
+	// the entity quality reports, when available. Nil when quality reports are
+	// not available on the stack. The per-check verdict also appears in Checks
+	// as "Instrumentation quality".
+	Quality *QualityCheckSummary `json:"quality,omitempty"`
+}
+
+// QualityCheckSummary is the aggregate instrumentation-quality signal folded
+// into a diagnose run: how many services have reports, how many are below a
+// perfect score, the distribution, and the most common failing checks.
+type QualityCheckSummary struct {
+	TotalServices   int                `json:"totalServices"`
+	BelowPerfect    int                `json:"belowPerfect"`
+	MedianQuality   int                `json:"medianQuality"`
+	WorstQuality    int                `json:"worstQuality"`
+	TopFailedChecks []FailedCheckCount `json:"topFailedChecks,omitempty"`
+	// Sampled is true when the stack has more reports than the diagnose cap
+	// and the aggregate reflects only the first qualityDiagnoseMaxReports.
+	Sampled bool `json:"sampled,omitempty"`
+}
+
+// FailedCheckCount is a failing quality-check ID and how many services fail it.
+type FailedCheckCount struct {
+	ID    string `json:"id"`
+	Count int    `json:"count"`
 }
 
 func (r *DiagnoseResult) computeSummary() {
@@ -347,6 +374,18 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 		return nil
 	})
 
+	// Check 4b: Instrumentation quality. Uses the KG client, so it runs
+	// regardless of Prometheus availability. Degrades to a skip when quality
+	// reports are unavailable; never fails the run.
+	g.Go(func() error {
+		c, summary := checkQuality(ctx, client, scope)
+		mu.Lock()
+		result.Checks = append(result.Checks, c)
+		result.Quality = summary
+		mu.Unlock()
+		return nil
+	})
+
 	// Check 5–9: Metric checks (skip if no Prometheus client).
 	if promClient != nil && datasourceUID != "" {
 		for _, mc := range metricChecks(scope.env, scope.namespace) {
@@ -451,6 +490,9 @@ func checkOrder(name string) int {
 	}
 	if name == "Trace context propagation" {
 		return 9
+	}
+	if name == "Instrumentation quality" {
+		return 13
 	}
 	return 50
 }
@@ -1097,6 +1139,151 @@ func checkTracePropagation(ctx context.Context, client *prometheus.Client, datas
 
 // ---------------------------------------------------------------------------
 // Text codec for human-readable output
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Instrumentation quality check
+// ---------------------------------------------------------------------------
+
+const (
+	// qualityDiagnosePageSize is the page size used when paging quality
+	// reports during a diagnose run.
+	qualityDiagnosePageSize = 100
+	// qualityDiagnoseMaxReports bounds how many reports diagnose aggregates,
+	// so the check stays fast on very large stacks. When exceeded, the
+	// aggregate is marked Sampled.
+	qualityDiagnoseMaxReports = 500
+	// qualityDiagnoseTopN is how many of the most common failing checks the
+	// summary surfaces.
+	qualityDiagnoseTopN = 5
+)
+
+// checkQuality aggregates the entity quality reports for the diagnose scope
+// into a single check result plus a structured summary. It degrades to a skip
+// (never a failure) when quality reports are unavailable or empty.
+func checkQuality(ctx context.Context, client *Client, scope *scopeFlags) (CheckResult, *QualityCheckSummary) {
+	const name = "Instrumentation quality"
+
+	var items []QualityReportListItem
+	sampled := false
+	for page := 0; ; page++ {
+		p, err := client.ListQualityReports(ctx, QualityReportQuery{
+			Type:      defaultQualityEntityType,
+			Env:       scope.env,
+			Namespace: scope.namespace,
+			Site:      scope.site,
+			Page:      page,
+			PageSize:  qualityDiagnosePageSize,
+		})
+		if err != nil {
+			var apiErr *APIError
+			if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+				return CheckResult{
+					Name:   name,
+					Status: CheckSkip,
+					Detail: "Quality reports unavailable on this stack.",
+				}, nil
+			}
+			return CheckResult{
+				Name:   name,
+				Status: CheckSkip,
+				Detail: fmt.Sprintf("Could not fetch quality reports: %v", err),
+			}, nil
+		}
+		items = append(items, p.Content...)
+		if len(items) >= qualityDiagnoseMaxReports {
+			items = items[:qualityDiagnoseMaxReports]
+			sampled = !p.Last
+			break
+		}
+		if p.Last || len(p.Content) == 0 {
+			break
+		}
+	}
+
+	if len(items) == 0 {
+		return CheckResult{
+			Name:   name,
+			Status: CheckSkip,
+			Detail: "No quality reports found for this scope.",
+		}, nil
+	}
+
+	qualities := make([]int, len(items))
+	below := 0
+	counts := map[string]int{}
+	for i, it := range items {
+		qualities[i] = it.QualityPercent
+		if it.QualityPercent < 100 {
+			below++
+		}
+		for _, id := range it.FailedCheckIDs {
+			counts[id]++
+		}
+	}
+	sort.Ints(qualities)
+
+	summary := &QualityCheckSummary{
+		TotalServices:   len(items),
+		BelowPerfect:    below,
+		MedianQuality:   qualities[len(qualities)/2],
+		WorstQuality:    qualities[0],
+		TopFailedChecks: topFailedChecks(counts, qualityDiagnoseTopN),
+		Sampled:         sampled,
+	}
+
+	status := CheckPass
+	if below > 0 {
+		status = CheckWarn
+	}
+
+	detail := fmt.Sprintf("%d services, median %d%%, worst %d%%", summary.TotalServices, summary.MedianQuality, summary.WorstQuality)
+	if summary.BelowPerfect > 0 {
+		detail += fmt.Sprintf(" (%d below 100%%)", summary.BelowPerfect)
+	}
+	if len(summary.TopFailedChecks) > 0 {
+		parts := make([]string, 0, len(summary.TopFailedChecks))
+		for _, fc := range summary.TopFailedChecks {
+			parts = append(parts, fmt.Sprintf("%s (%d)", fc.ID, fc.Count))
+		}
+		detail += "; top gaps: " + strings.Join(parts, ", ")
+	}
+	if sampled {
+		detail += fmt.Sprintf(" [sampled first %d]", qualityDiagnoseMaxReports)
+	}
+
+	rec := ""
+	if status == CheckWarn {
+		rec = "Run 'gcx kg quality list --sort asc' to rank the worst-instrumented services, and 'gcx kg quality get <service> --env <env>' for per-check remediation."
+	}
+
+	return CheckResult{Name: name, Status: status, Detail: detail, Recommendation: rec}, summary
+}
+
+// topFailedChecks returns the n most common failing check IDs, ordered by
+// count descending and then ID ascending for stable output.
+func topFailedChecks(counts map[string]int, n int) []FailedCheckCount {
+	if len(counts) == 0 {
+		return nil
+	}
+	out := make([]FailedCheckCount, 0, len(counts))
+	for id, c := range counts {
+		out = append(out, FailedCheckCount{ID: id, Count: c})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].ID < out[j].ID
+	})
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Output codec
 // ---------------------------------------------------------------------------
 
 // DiagnoseTableCodec renders DiagnoseResult as a human-readable table.

@@ -30,6 +30,7 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg model-rules](gcx_kg_model-rules.md)	 - Manage model rules in the Knowledge Graph.
 * [gcx kg open](gcx_kg_open.md)	 - Open the Knowledge Graph app in the browser.
 * [gcx kg prom-rules](gcx_kg_prom-rules.md)	 - Manage Knowledge Graph Custom Prometheus rules.
+* [gcx kg quality](gcx_kg_quality.md)	 - Inspect Knowledge Graph entity quality reports.
 * [gcx kg relabel-rules](gcx_kg_relabel-rules.md)	 - Inspect Mimir relabel rules used by the Knowledge Graph.
 * [gcx kg relationships](gcx_kg_relationships.md)	 - Manage custom Knowledge Graph relationships [experimental].
 * [gcx kg status](gcx_kg_status.md)	 - Show Knowledge Graph stack status.
