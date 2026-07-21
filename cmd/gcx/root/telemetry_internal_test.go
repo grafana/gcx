@@ -85,6 +85,8 @@ func TestRecordTelemetryInfo_HelpResolvesTarget(t *testing.T) {
 }
 
 func TestFallbackTelemetryInfo(t *testing.T) {
+	flagFailure.Store(nil)
+	t.Cleanup(func() { flagFailure.Store(nil) })
 	rootCmd, get, _ := telemetryTestTree()
 	get.Flags().Bool("help", false, "")
 
@@ -95,12 +97,14 @@ func TestFallbackTelemetryInfo(t *testing.T) {
 	assert.True(t, info.Help)
 	assert.Equal(t, "resources get", info.Command)
 
-	// `gcx resources bogus` fails with exit code 2, but Find still resolves
-	// it to the "resources" group - the same thing bare `gcx resources` (a
-	// help view) resolves to. The exit code is the only difference between
-	// them, so the failure must be suppressed rather than counted as help.
+	// `gcx resources bogus` fails with exit code 2: an unknown-command parse
+	// failure under the resources group (#578).
 	info = FallbackTelemetryInfo(rootCmd, []string{"resources", "bogus"}, 2)
-	assert.True(t, info.Suppress)
+	assert.False(t, info.Suppress)
+	require.NotNil(t, info.ParseError)
+	assert.Equal(t, parseErrorUnknownCommand, info.ParseError.Kind)
+	assert.Equal(t, "resources", info.ParseError.Parent)
+	assert.Equal(t, "bogus", info.ParseError.Token)
 
 	// Non-runnable command group: cobra prints help before the hooks run.
 	info = FallbackTelemetryInfo(rootCmd, []string{"resources"}, 0)
@@ -108,7 +112,8 @@ func TestFallbackTelemetryInfo(t *testing.T) {
 	assert.True(t, info.Help)
 	assert.Equal(t, "resources", info.Command)
 
-	// Unknown commands are parse failures, suppressed until parse capture.
+	// Unknown command with a zero exit means cobra answered the invocation
+	// itself; there is no parse failure to record.
 	info = FallbackTelemetryInfo(rootCmd, []string{"resourcse", "get"}, 0)
 	assert.True(t, info.Suppress)
 

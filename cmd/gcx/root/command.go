@@ -226,7 +226,9 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		},
 	}
 
-	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		// Record the failure for the parse_error usage event (#578).
+		recordFlagFailure(cmd, err)
 		if strings.Contains(err.Error(), "--log-http-payload") && strings.Contains(err.Error(), "flag has been renamed") {
 			return errors.New("--log-http-payload has been renamed; use --insecure-log-http-payload instead")
 		}
