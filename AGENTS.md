@@ -72,7 +72,7 @@ cmd/gcx/
   root/         CLI root (logging, global flags)
   login/        Unified login command (token + OAuth PKCE, interactive prompts)
   config/       Config management (set, use-context, view, check)
-  resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
+  resources/    Resource commands (get, list-types, list-examples, push, pull, delete, edit, validate)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
   cloud/        Cloud platform command group (mounts gcx cloud stacks)

@@ -60,7 +60,7 @@ gcx --version
 
 # 2. Grafana context is configured and working
 gcx config view
-gcx --context=<ctx> resources schemas | head -5
+gcx --context=<ctx> resources list-types | head -5
 
 # 3. gcx uses the same context (or configure separately)
 gcx --context=<ctx> health
@@ -81,7 +81,7 @@ Before starting a port, answer these questions:
 
 ```
 [ ] 1. Is this resource already on K8s API?
-      Run: gcx --context=ops resources schemas | grep -i {resource}
+      Run: gcx --context=ops resources list-types | grep -i {resource}
       If YES → no provider needed, it works via dynamic discovery.
 
 [ ] 2. What's the gcx source?
@@ -317,9 +317,9 @@ gcx --context=$CTX {resource} {subcommand} -o json | jq length
 
 # --- Schema + example ---
 echo "=== Schema ==="
-gcx --context=$CTX resources schemas -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
+gcx --context=$CTX resources list-types -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
 echo "=== Example ==="
-gcx --context=$CTX resources examples {alias} | head -10
+gcx --context=$CTX resources list-examples {alias} | head -10
 
 # --- Output format check ---
 echo "=== Output formats ==="
@@ -434,7 +434,7 @@ that only surfaced during smoke testing:
   `testrun` sub-tree groups CRD-related operations together.
 - **gcx `schema` / `example` subcommands**: gcx exposes per-resource `schema`
   and `example` subcommands under each resource group. gcx covers these
-  via `resources schemas` and `resources examples` at the global level.
+  via `resources list-types` and `resources list-examples` at the global level.
   These are NOT missing — the coverage is different but equivalent.
 
 ### Multi-Resource Providers (OnCall pattern)
@@ -480,8 +480,8 @@ that only surfaced during smoke testing:
   `[]{"key": k, "value": v}` on the wire. `ID` is `string` in Go but `int64` on wire.
   Internal `toAPI()`/`fromAPI()` handles both conversions.
 - **Sourcemaps are sub-resources** (require parent app-id for all operations).
-  Per CONSTITUTION § Sub-resources, they use alternative verbs (`show-sourcemaps`,
-  `apply-sourcemap`, `remove-sourcemap`) and are NOT adapter-registered.
+  Per CONSTITUTION § Sub-resources, they use alternative verbs (`list-sourcemaps`,
+  `apply-sourcemap`, `delete-sourcemap`) and are NOT adapter-registered.
 - **Sourcemaps plugin endpoint returns 500** on dev/ops instances as of 2026-04-02.
   This is a Faro plugin bug, not a gcx code issue. The request is correctly
   constructed (verified via `-vvv` debug logging).

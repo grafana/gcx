@@ -24,8 +24,8 @@ gcx resources get dashboards
 If the app folder already exists, capture its UID and skip creation. Skip any dashboard that already exists in the folder by title.
 
 **Step 1 - create folder** (needed before dashboards):
-Folders don't ship a `resources examples` template. Check the server's schema
-(`gcx resources schemas folders`) and write a minimal manifest — `metadata.name`
+Folders don't ship a `resources list-examples` template. Check the server's schema
+(`gcx resources list-types folders`) and write a minimal manifest — `metadata.name`
 (a stable slug) plus `spec.title` is enough. Then push:
 ```bash
 gcx resources push -p folder.yaml --dry-run
@@ -43,8 +43,8 @@ Generate dashboards covering:
 - k6 load test results
 
 Each agent:
-1. Starts from the live schema (`gcx resources schemas dashboards`) — dashboards
-   don't ship a `resources examples` template. Set the target folder via the
+1. Starts from the live schema (`gcx resources list-types dashboards`) — dashboards
+   don't ship a `resources list-examples` template. Set the target folder via the
    `grafana.app/folder` metadata annotation (the folder UID captured in Step 1).
    The `create-dashboard` skill covers authoring in depth if it is available.
 2. Customizes the dashboard spec with appropriate panels and queries
@@ -72,8 +72,8 @@ gcx traces adaptive --help
 
 - **Agent A** - adaptive metrics:
   Discover the adaptive-metrics commands (`gcx metrics adaptive --help`).
-  Review recommendations with the user (the recommendations group uses
-  `show`/`diff`, not `list`), sync rules if approved, then confirm they were
+  Review recommendations with the user (`gcx metrics adaptive recommendations list`,
+  with `diff` to preview changes), sync rules if approved, then confirm they were
   applied.
 
 - **Agent B** - adaptive logs:

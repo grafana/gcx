@@ -1,4 +1,4 @@
-## gcx appo11y services labels
+## gcx appo11y services list-labels
 
 Discover the labels (and values) available to --filter and --group-by for a service.
 
@@ -21,7 +21,7 @@ which is what the RED commands filter and group on. Note:
     resource attributes under .service.labels.
 
 ```
-gcx appo11y services labels <service> [--namespace ns] [flags]
+gcx appo11y services list-labels <service> [--namespace ns] [flags]
 ```
 
 ### Examples
@@ -29,13 +29,13 @@ gcx appo11y services labels <service> [--namespace ns] [flags]
 ```
 
   # What can I filter/group checkoutservice by?
-  gcx appo11y services labels checkoutservice
+  gcx appo11y services list-labels checkoutservice
 
   # Which clusters does it run in? (values to feed --filter/--group-by)
-  gcx appo11y services labels checkoutservice --label k8s_cluster_name
+  gcx appo11y services list-labels checkoutservice --label k8s_cluster_name
 
   # JSON for scripting
-  gcx appo11y services labels checkoutservice -o json
+  gcx appo11y services list-labels checkoutservice -o json
 ```
 
 ### Options
@@ -43,7 +43,7 @@ gcx appo11y services labels <service> [--namespace ns] [flags]
 ```
   -d, --datasource string     Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
       --filter stringArray    Restrict discovery to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable)
-  -h, --help                  help for labels
+  -h, --help                  help for list-labels
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --label string          Show the distinct values of a single label instead of the label summary (e.g. --label k8s_cluster_name)

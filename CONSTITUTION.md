@@ -41,7 +41,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   > **Exception:** The dashboards commands-only provider (`internal/providers/dashboards/`) calls the K8s dynamic client directly. This is the one documented exception — see ADR 016 (`docs/adrs/dashboards-provider/001-dashboards-provider-design.md`) for rationale and scope.
 - **Schema/Example on Registration structs:** Every `adapter.Registration` struct (populated
   via `TypedRegistrations()`) must include a non-nil `Schema` field. These power the
-  `schemas` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`
+  `resources list-types` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`
   does not propagate schema or example. The `Example` field MAY be nil for read-only
   resources (those without Create/Update support) since examples serve as templates for
   writable operations.

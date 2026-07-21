@@ -1,34 +1,23 @@
-## gcx cloud stacks create
+## gcx metrics adaptive recommendations list
 
-Create a new Grafana Cloud stack.
-
-### Synopsis
-
-Create a new Grafana Cloud stack.
-
-This provisions new infrastructure and may incur costs. The stack name, slug,
-and region cannot be changed after creation - double-check before running.
-Use --dry-run to preview the request first.
+List metric recommendations.
 
 ```
-gcx cloud stacks create [flags]
+gcx metrics adaptive recommendations list [flags]
 ```
 
 ### Options
 
 ```
-      --delete-protection    Enable delete protection
-      --description string   Short description
-      --dry-run              Preview the request without executing it
-  -h, --help                 help for create
+      --action stringArray   Filter by action: add, update, remove, keep (repeatable)
+  -h, --help                 help for list
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --labels strings       Labels in key=value format (may be repeated)
-      --name string          Stack name (required)
-  -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
-      --region string        Region slug (e.g. us, eu). Use 'gcx cloud stacks list-regions' to list.
-      --slug string          Stack slug / subdomain (required)
-      --url string           Custom domain URL
+  -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
+      --reverse              Reverse the default sort order
+      --segment string       Segment ID
+      --sort string          Sort by: metric, savings, series-before, series-after, action (default "metric")
+      --top int              Limit to top N results (0 = all)
 ```
 
 ### Options inherited from parent commands
@@ -45,5 +34,5 @@ gcx cloud stacks create [flags]
 
 ### SEE ALSO
 
-* [gcx cloud stacks](gcx_cloud_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
+* [gcx metrics adaptive recommendations](gcx_metrics_adaptive_recommendations.md)	 - Manage metric recommendations.
 

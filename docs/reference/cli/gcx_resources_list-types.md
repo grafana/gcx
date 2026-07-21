@@ -1,4 +1,4 @@
-## gcx resources schemas
+## gcx resources list-types
 
 List available Grafana API resource types
 
@@ -7,27 +7,27 @@ List available Grafana API resource types
 List available Grafana API resource types and their schemas by querying a live Grafana instance. Requires a connection to Grafana. Use --no-schema to skip OpenAPI spec fetching for faster results. Optionally filter by a resource selector.
 
 ```
-gcx resources schemas [RESOURCE_SELECTOR] [flags]
+gcx resources list-types [RESOURCE_SELECTOR] [flags]
 ```
 
 ### Examples
 
 ```
 
-	gcx resources schemas
-	gcx resources schemas -o wide
-	gcx resources schemas -o json
-	gcx resources schemas -o yaml
-	gcx resources schemas -o json --no-schema
-	gcx resources schemas incidents
-	gcx resources schemas incidents.v1alpha1.incident.ext.grafana.app -o json
+	gcx resources list-types
+	gcx resources list-types -o wide
+	gcx resources list-types -o json
+	gcx resources list-types -o yaml
+	gcx resources list-types -o json --no-schema
+	gcx resources list-types incidents
+	gcx resources list-types incidents.v1alpha1.incident.ext.grafana.app -o json
 
 ```
 
 ### Options
 
 ```
-  -h, --help            help for schemas
+  -h, --help            help for list-types
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --no-schema       Skip fetching OpenAPI spec schemas (faster, omits schema info and unlistable resource types)

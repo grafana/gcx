@@ -22,7 +22,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | `gcx agent-card` | A2A-compliant agent card generation | **Missing** |
 | `gcx commands` | List all commands and schemas (LLM-friendly) | **Exists** (`gcx commands --flat -o json`, with `--validate` for live checks) |
 | `gcx help-tree` | Compact command tree for LLM/scripting | **Exists** (`gcx help-tree`) |
-| `gcx api-resources` | List all known resource types | **Partially exists** (`gcx commands` includes `resource_types` section; `resources schemas` covers K8s types) |
+| `gcx api-resources` | List all known resource types | **Partially exists** (`gcx commands` includes `resource_types` section; `resources list-types` covers K8s types) |
 | `gcx explain` | Field-level docs for resource types | **Missing** |
 | `gcx doctor` | Validate API endpoint availability | **Missing** |
 | `gcx lifecycle` | End-to-end lifecycle tests | **Missing** |
@@ -111,7 +111,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | `create -f` | Yes (--folder-uid, --folder-name) | Via `resources push` |
 | `update <uid> -f` | Yes (--folder-uid, --folder-name) | Via `resources push` |
 | `delete <uid>` | Yes | Via `resources delete` |
-| `versions list <uid>` | Yes (--limit) | **Missing** |
+| `versions list <uid>` | Yes (--limit) | **Exists** (`gcx dashboards list-versions <name>`, --limit) |
 | `render <uid>` | Yes (panel, width, height, from, to, theme) | `dashboards snapshot` (exists, similar flags) |
 
 ### Datasources
@@ -196,9 +196,9 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 
 | Old Command | Description | Status in gcx |
 |-------------|-------------|---------------|
-| `gcx adaptive-logs exemptions/patterns` | Log reduction/sampling | **Exists** (`gcx logs adaptive exemptions` CRUD, `gcx logs adaptive patterns show\|stats`, `gcx logs adaptive segments` CRUD) |
-| `gcx adaptive-metrics rules/recommendations` | Cardinality reduction | **Exists** (`gcx metrics adaptive rules show\|sync`, `gcx metrics adaptive recommendations show\|apply`) |
-| `gcx adaptive-traces policies/recommendations/insights/tenants` | Trace sampling | **Partially exists** (`gcx traces adaptive policies` CRUD, `gcx traces adaptive recommendations show\|apply\|dismiss`; insights/tenants **missing**) |
+| `gcx adaptive-logs exemptions/patterns` | Log reduction/sampling | **Exists** (`gcx logs adaptive exemptions` CRUD, `gcx logs adaptive patterns list\|stats`, `gcx logs adaptive segments` CRUD) |
+| `gcx adaptive-metrics rules/recommendations` | Cardinality reduction | **Exists** (`gcx metrics adaptive rules show\|sync`, `gcx metrics adaptive recommendations list\|apply`) |
+| `gcx adaptive-traces policies/recommendations/insights/tenants` | Trace sampling | **Partially exists** (`gcx traces adaptive policies` CRUD, `gcx traces adaptive recommendations list\|apply\|dismiss`; insights/tenants **missing**) |
 | `gcx adaptive-profiles list/sync` | Profile sampling | **Stub** (`gcx profiles adaptive` exists but no subcommands listed) |
 | `gcx recording-rules prometheus/loki` | Recording rules management | **Partially exists** (RecordingRule K8s resource type available via `gcx resources get\|pull\|push`; no dedicated command) |
 
@@ -207,7 +207,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | Old Command | Description | Status in gcx |
 |-------------|-------------|---------------|
 | `gcx connections jobs` | Metric endpoint connections | **K8s tier** (Connection, Job resources: `gcx resources get connections\|jobs`) |
-| `gcx frontend sourcemaps` | RUM source map management | **Exists** (`gcx frontend apps` full CRUD + `apply-sourcemap\|remove-sourcemap\|show-sourcemaps`) |
+| `gcx frontend sourcemaps` | RUM source map management | **Exists** (`gcx frontend apps` full CRUD + `apply-sourcemap\|delete-sourcemap\|list-sourcemaps`) |
 | `gcx integrations` | Telemetry integrations CRUD | **Missing** |
 | `gcx app-o11y settings/overrides` | Application Observability | **Exists** (`gcx appo11y settings get\|update`, `gcx appo11y overrides get\|update`) |
 | `gcx alloy` | Alloy configuration CRUD | **Partially exists** (`gcx fleet pipelines\|collectors` CRUD; `gcx setup instrumentation status\|discover\|show\|apply`) |
@@ -234,7 +234,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | `gcx scim` | SCIM resource CRUD | **Missing** |
 | `gcx securevalues` | Unified Storage secure values | **K8s tier** (SecureValue, Keeper resources: `gcx resources get securevalues\|keepers`) |
 | `gcx cloud-migrations` | Cloud migration CRUD | **Missing** |
-| `gcx stack-regions` | List available regions | **Exists** (`gcx stacks regions`) |
+| `gcx stack-regions` | List available regions | **Exists** (`gcx cloud stacks list-regions`) |
 | `gcx labels` | GOPS labels CRUD | **Missing** |
 | `gcx assistant tunnel/auth/prompt/credentials/agents/rotate` | Assistant/AI management | **Partially exists** (`gcx assistant prompt` with streaming A2A; tunnel/auth/credentials/agents/rotate **missing**) |
 

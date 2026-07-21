@@ -1,23 +1,20 @@
-## gcx metrics adaptive recommendations show
+## gcx dashboards list-versions
 
-Show metric recommendations.
+List dashboard version history
 
 ```
-gcx metrics adaptive recommendations show [flags]
+gcx dashboards list-versions <name> [flags]
 ```
 
 ### Options
 
 ```
-      --action stringArray   Filter by action: add, update, remove, keep (repeatable)
-  -h, --help                 help for show
+      --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
+  -h, --help                 help for list-versions
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
-      --reverse              Reverse the default sort order
-      --segment string       Segment ID
-      --sort string          Sort by: metric, savings, series-before, series-after, action (default "metric")
-      --top int              Limit to top N results (0 = all)
+      --limit int            Maximum number of revisions to return (0 = all)
+  -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -34,5 +31,5 @@ gcx metrics adaptive recommendations show [flags]
 
 ### SEE ALSO
 
-* [gcx metrics adaptive recommendations](gcx_metrics_adaptive_recommendations.md)	 - Manage metric recommendations.
+* [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
 

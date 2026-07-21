@@ -276,7 +276,7 @@
       <div class="line"><span class="c-bin">gcx</span> <span class="c-cmd">fleet</span> <span class="c-kw">collectors list</span></div>
       <div class="line"><span class="c-bin">gcx</span> <span class="c-cmd">fleet</span> <span class="c-kw">pipelines get</span> <span class="c-val">prod</span></div>
       <div class="line"><span class="c-bin">gcx</span> <span class="c-cmd">fleet</span> <span class="c-kw">pipelines create</span> <span class="c-flag">-f</span> <span class="c-val">pipeline.yaml</span></div>
-      <div class="line"><span class="c-bin">gcx</span> <span class="c-cmd">fleet</span> <span class="c-kw">tenant limits</span></div>
+      <div class="line"><span class="c-bin">gcx</span> <span class="c-cmd">fleet</span> <span class="c-kw">tenant get-limits</span></div>
     </div>
   </div>
 
@@ -322,8 +322,8 @@
     <span class="badge badge-orange">Cost Control</span>
     <h2><span class="accent">Adaptive</span> Telemetry</h2>
     <div class="code-block">
-      <div class="line"><span class="c-bin">gcx</span> <span class="c-cmd">metrics</span> <span class="c-kw">adaptive recommendations show</span></div>
-      <div class="line"><span class="c-bin">gcx</span> <span class="c-cmd">logs</span> <span class="c-kw">adaptive patterns show</span></div>
+      <div class="line"><span class="c-bin">gcx</span> <span class="c-cmd">metrics</span> <span class="c-kw">adaptive recommendations list</span></div>
+      <div class="line"><span class="c-bin">gcx</span> <span class="c-cmd">logs</span> <span class="c-kw">adaptive patterns list</span></div>
       <div class="line"><span class="c-bin">gcx</span> <span class="c-cmd">traces</span> <span class="c-kw">adaptive policies list</span></div>
     </div>
   </div>
@@ -333,7 +333,7 @@
     <h2><span class="accent">Agent-Ready</span> Platform</h2>
     <ul class="feature-list">
       <li>JSON output everywhere (<code>-o json</code>)</li>
-      <li>Self-describing CLI (<code>gcx resources schemas</code>)</li>
+      <li>Self-describing CLI (<code>gcx resources list-types</code>)</li>
       <li>AI investigation workflows</li>
       <li>SLO management &amp; profiling</li>
     </ul>

@@ -1,4 +1,4 @@
-## gcx dev lint rules
+## gcx dev lint list-rules
 
 List available linter rules
 
@@ -7,7 +7,7 @@ List available linter rules
 List all built-in and custom linter rules with their name, description, resource type, and category. Use --rules to include custom rules from a directory.
 
 ```
-gcx dev lint rules [flags]
+gcx dev lint list-rules [flags]
 ```
 
 ### Examples
@@ -16,18 +16,18 @@ gcx dev lint rules [flags]
 
 	# List built-in rules:
 
-	gcx dev lint rules
+	gcx dev lint list-rules
 
 	# List built-in and custom rules:
 
-	gcx dev lint rules -r ./custom-rules
+	gcx dev lint list-rules -r ./custom-rules
 
 ```
 
 ### Options
 
 ```
-  -h, --help                help for rules
+  -h, --help                help for list-rules
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, yaml (default "yaml")

@@ -35,7 +35,7 @@ gcx (root)
 │   ├── delete [SELECTOR]...
 │   ├── edit   SELECTOR
 │   ├── get    [SELECTOR]...
-│   ├── schemas              [formerly "list"; --no-schema flag to skip OpenAPI fetch]
+│   ├── list-types           [formerly "schemas"; --no-schema flag to skip OpenAPI fetch]
 │   ├── pull   [SELECTOR]...
 │   ├── push   [SELECTOR]...
 │   └── validate [SELECTOR]...
@@ -49,7 +49,8 @@ gcx (root)
 │   ├── update NAME          Update an existing dashboard
 │   ├── delete NAME...       Delete one or more dashboards
 │   ├── search               Full-text search (title, tag, folder) via dashboard.grafana.app/search
-│   ├── versions NAME        List version history for a dashboard
+│   ├── list-versions NAME   List version history for a dashboard
+│   ├── versions             Dashboard version history group
 │   │   └── restore NAME     Restore a dashboard to a previous version
 │   └── snapshot UID...      Render dashboard/panel PNG snapshots via Image Renderer
 │
@@ -69,7 +70,7 @@ gcx (root)
 │   │   ├── query            EXPR   [--from] [--to] [--step] [--since] [-o]
 │   │   ├── labels           [--label/-l NAME]
 │   │   └── series           [SELECTOR] [--match SELECTOR]... [--from] [--to] [--since]
-│   └── adaptive             Adaptive Metrics (rules show/sync, recommendations show/apply)
+│   └── adaptive             Adaptive Metrics (rules list/get/create/update/delete, recommendations list/diff/apply)
 │
 ├── logs                     [internal/providers/logs/provider.go] (registered via providers.Register)
 │   ├── query                [DATASOURCE_UID] EXPR   [--from] [--to] [--since] [--limit] [-o]
@@ -262,7 +263,7 @@ cmd/gcx/
 ├── resources/
 │   ├── command.go           resources group (wires configOpts to all subcommands)
 │   ├── get.go               resources get
-│   ├── schemas.go           resources schemas
+│   ├── schemas.go           resources list-types
 │   ├── pull.go              resources pull
 │   ├── push.go              resources push
 │   ├── delete.go            resources delete
@@ -290,10 +291,10 @@ cmd/gcx/
 │   │   └── apps/            namespace-level Beyla app instrumentation (list, get, configure, remove, wait)
 │   └── services/            service-level workload inclusion/exclusion (list, get, include, exclude, clear)
 ├── linter/
-│   ├── command.go           lint subgroup (run, new, rules, test subcommands; mounted under dev lint)
+│   ├── command.go           lint subgroup (run, new, list-rules, test subcommands; mounted under dev lint)
 │   ├── lint.go              dev lint run — lint resources against configured rules  [Use: "run"]
 │   ├── new.go               dev lint new — scaffold a new linter rule
-│   ├── rules.go             dev lint rules — list available linter rules
+│   ├── rules.go             dev lint list-rules — list available linter rules
 │   └── test.go              dev lint test — run rule test suite
 ├── dev/
 │   ├── command.go           dev group (generate, import, scaffold, lint, serve subcommands)

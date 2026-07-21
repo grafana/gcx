@@ -100,27 +100,27 @@ var commandAnnotations = map[string]annotation{
 	"gcx datasources cloudwatch list-accounts":   {Cost: "small", Hint: "gcx datasources cloudwatch list-accounts -d UID --region us-east-1 -o json"},
 
 	// dev
-	"gcx dev generate":   {Cost: "small"},
-	"gcx dev import":     {Cost: "medium", Hint: "dashboards -p ./dashboards"},
-	"gcx dev scaffold":   {Cost: "small"},
-	"gcx dev serve":      {Cost: "small"},
-	"gcx dev lint new":   {Cost: "small"},
-	"gcx dev lint rules": {Cost: "small"},
-	"gcx dev lint run":   {Cost: "medium", Hint: "./dashboards -o compact"},
-	"gcx dev lint test":  {Cost: "medium", Hint: "./rules --run TestName"},
+	"gcx dev generate":        {Cost: "small"},
+	"gcx dev import":          {Cost: "medium", Hint: "dashboards -p ./dashboards"},
+	"gcx dev scaffold":        {Cost: "small"},
+	"gcx dev serve":           {Cost: "small"},
+	"gcx dev lint new":        {Cost: "small"},
+	"gcx dev lint list-rules": {Cost: "small"},
+	"gcx dev lint run":        {Cost: "medium", Hint: "./dashboards -o compact"},
+	"gcx dev lint test":       {Cost: "medium", Hint: "./rules --run TestName"},
 
 	// providers
 	"gcx providers list": {Cost: "small"},
 
 	// resources
-	"gcx resources delete":   {Cost: "small"},
-	"gcx resources edit":     {Cost: "small"},
-	"gcx resources examples": {Cost: "small", Hint: "Docs: " + docs.DashboardJSONModel},
-	"gcx resources get":      {Cost: "large", Hint: "dashboards/my-uid -o json"},
-	"gcx resources pull":     {Cost: "large", Hint: "dashboards -p ./dashboards | Docs: " + docs.DashboardJSONModel},
-	"gcx resources push":     {Cost: "medium", Hint: "-p ./dashboards --dry-run | Docs: " + docs.DashboardJSONModel},
-	"gcx resources schemas":  {Cost: "small"},
-	"gcx resources validate": {Cost: "medium", Hint: "-p ./dashboards | Docs: " + docs.DashboardJSONModel},
+	"gcx resources delete":        {Cost: "small"},
+	"gcx resources edit":          {Cost: "small"},
+	"gcx resources list-examples": {Cost: "small", Hint: "Docs: " + docs.DashboardJSONModel},
+	"gcx resources get":           {Cost: "large", Hint: "dashboards/my-uid -o json"},
+	"gcx resources pull":          {Cost: "large", Hint: "dashboards -p ./dashboards | Docs: " + docs.DashboardJSONModel},
+	"gcx resources push":          {Cost: "medium", Hint: "-p ./dashboards --dry-run | Docs: " + docs.DashboardJSONModel},
+	"gcx resources list-types":    {Cost: "small"},
+	"gcx resources validate":      {Cost: "medium", Hint: "-p ./dashboards | Docs: " + docs.DashboardJSONModel},
 
 	// setup
 	"gcx setup status": {Cost: "small"},
@@ -171,7 +171,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx dashboards update":           {Cost: "small", Hint: "<name> -f <manifest.yaml>"},
 	"gcx dashboards delete":           {Cost: "small"},
 	"gcx dashboards search":           {Cost: "medium", Hint: "<query> -o json"},
-	"gcx dashboards versions list":    {Cost: "small", Hint: "<name> -o json"},
+	"gcx dashboards list-versions":    {Cost: "small", Hint: "<name> -o json"},
 	"gcx dashboards versions restore": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
@@ -220,8 +220,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx frontend apps delete":           {Cost: "small"},
 	"gcx frontend apps get":              {Cost: "small"},
 	"gcx frontend apps list":             {Cost: "small"},
-	"gcx frontend apps remove-sourcemap": {Cost: "small"},
-	"gcx frontend apps show-sourcemaps":  {Cost: "small"},
+	"gcx frontend apps delete-sourcemap": {Cost: "small"},
+	"gcx frontend apps list-sourcemaps":  {Cost: "small"},
 	"gcx frontend apps update":           {Cost: "small"},
 
 	// -----------------------------------------------------------------------
@@ -237,7 +237,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx fleet pipelines get":     {Cost: "small"},
 	"gcx fleet pipelines list":    {Cost: "small"},
 	"gcx fleet pipelines update":  {Cost: "small"},
-	"gcx fleet tenant limits":     {Cost: "small"},
+	"gcx fleet tenant get-limits": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// IRM Incidents
@@ -346,7 +346,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx logs adaptive exemptions delete": {Cost: "small"},
 	"gcx logs adaptive exemptions list":   {Cost: "small"},
 	"gcx logs adaptive exemptions update": {Cost: "small"},
-	"gcx logs adaptive patterns show":     {Cost: "small"},
+	"gcx logs adaptive patterns list":     {Cost: "small"},
 	"gcx logs adaptive patterns stats":    {Cost: "small"},
 	"gcx logs adaptive segments create":   {Cost: "small"},
 	"gcx logs adaptive segments delete":   {Cost: "small"},
@@ -363,7 +363,7 @@ var commandAnnotations = map[string]annotation{
 	// Metrics adaptive
 	"gcx metrics adaptive recommendations apply": {Cost: "small"},
 	"gcx metrics adaptive recommendations diff":  {Cost: "medium", Hint: "<metric> -o json"},
-	"gcx metrics adaptive recommendations show":  {Cost: "small", Hint: "Docs: " + docs.AdaptiveMetrics},
+	"gcx metrics adaptive recommendations list":  {Cost: "small", Hint: "Docs: " + docs.AdaptiveMetrics},
 	"gcx metrics adaptive rules create":          {Cost: "small"},
 	"gcx metrics adaptive rules delete":          {Cost: "small"},
 	"gcx metrics adaptive rules get":             {Cost: "small"},
@@ -594,7 +594,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx synthetic-monitoring probes delete":      {Cost: "small"},
 	"gcx synthetic-monitoring probes deploy":      {Cost: "small"},
 	"gcx synthetic-monitoring probes list":        {Cost: "small"},
-	"gcx synthetic-monitoring probes token-reset": {Cost: "small"},
+	"gcx synthetic-monitoring probes reset-token": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Traces provider
@@ -612,7 +612,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx traces adaptive policies update":         {Cost: "small"},
 	"gcx traces adaptive recommendations apply":   {Cost: "small"},
 	"gcx traces adaptive recommendations dismiss": {Cost: "small"},
-	"gcx traces adaptive recommendations show":    {Cost: "small", Hint: "Docs: " + docs.AdaptiveTraces},
+	"gcx traces adaptive recommendations list":    {Cost: "small", Hint: "Docs: " + docs.AdaptiveTraces},
 }
 
 // ApplyAnnotations walks the command tree and applies agent annotations from

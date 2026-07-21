@@ -1,15 +1,25 @@
-## gcx synthetic-monitoring probes token-reset
+## gcx frontend apps delete-sourcemap
 
-Reset the auth token of a Synthetic Monitoring probe.
+Delete sourcemap bundles from a Frontend Observability app.
 
 ```
-gcx synthetic-monitoring probes token-reset ID [flags]
+gcx frontend apps delete-sourcemap <app-name> <bundle-id> [bundle-id...] [flags]
+```
+
+### Examples
+
+```
+  # Delete a single sourcemap bundle.
+  gcx frontend apps delete-sourcemap my-web-app-42 1234567890-abc12
+
+  # Delete multiple bundles at once.
+  gcx frontend apps delete-sourcemap my-web-app-42 bundle-1 bundle-2 bundle-3
 ```
 
 ### Options
 
 ```
-  -h, --help   help for token-reset
+  -h, --help   help for delete-sourcemap
 ```
 
 ### Options inherited from parent commands
@@ -26,5 +36,5 @@ gcx synthetic-monitoring probes token-reset ID [flags]
 
 ### SEE ALSO
 
-* [gcx synthetic-monitoring probes](gcx_synthetic-monitoring_probes.md)	 - Manage Synthetic Monitoring probes.
+* [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
 

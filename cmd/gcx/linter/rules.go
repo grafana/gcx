@@ -28,22 +28,22 @@ func (opts *rulesOpts) setup(flags *pflag.FlagSet) {
 	flags.StringArrayVarP(&opts.rules, "rules", "r", nil, "Path to custom rules.")
 }
 
-func rulesCmd() *cobra.Command {
+func listRulesCmd() *cobra.Command {
 	opts := rulesOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "rules",
+		Use:   "list-rules",
 		Args:  cobra.NoArgs,
 		Short: "List available linter rules",
 		Long:  "List all built-in and custom linter rules with their name, description, resource type, and category. Use --rules to include custom rules from a directory.",
 		Example: `
 	# List built-in rules:
 
-	gcx dev lint rules
+	gcx dev lint list-rules
 
 	# List built-in and custom rules:
 
-	gcx dev lint rules -r ./custom-rules
+	gcx dev lint list-rules -r ./custom-rules
 `,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.validate(); err != nil {

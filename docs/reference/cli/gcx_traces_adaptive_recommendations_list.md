@@ -1,36 +1,18 @@
-## gcx resources examples
+## gcx traces adaptive recommendations list
 
-List example manifests for resource types
-
-### Synopsis
-
-List example manifests for provider-backed resource types. Without arguments, lists all resources that have examples. With a selector, shows examples for matching resources.
+List Adaptive Traces recommendations.
 
 ```
-gcx resources examples [RESOURCE_SELECTOR] [flags]
-```
-
-### Examples
-
-```
-
-	gcx resources examples
-	gcx resources examples -o wide
-	gcx resources examples -o json
-	gcx resources examples -o yaml
-	gcx resources examples incidents
-	gcx resources examples incidents -o json
-	gcx resources examples slo -o yaml
-
+gcx traces adaptive recommendations list [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for examples
+  -h, --help            help for list
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, text, wide, yaml (default "text")
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -38,7 +20,7 @@ gcx resources examples [RESOURCE_SELECTOR] [flags]
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
-      --context string              Name of the context to use
+      --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
@@ -47,5 +29,5 @@ gcx resources examples [RESOURCE_SELECTOR] [flags]
 
 ### SEE ALSO
 
-* [gcx resources](gcx_resources.md)	 - Manipulate Grafana resources
+* [gcx traces adaptive recommendations](gcx_traces_adaptive_recommendations.md)	 - Manage Adaptive Traces recommendations.
 

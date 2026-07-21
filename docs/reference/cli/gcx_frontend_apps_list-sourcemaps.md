@@ -1,25 +1,32 @@
-## gcx frontend apps remove-sourcemap
+## gcx frontend apps list-sourcemaps
 
-Remove sourcemap bundles from a Frontend Observability app.
+List sourcemaps for a Frontend Observability app.
 
 ```
-gcx frontend apps remove-sourcemap <app-name> <bundle-id> [bundle-id...] [flags]
+gcx frontend apps list-sourcemaps <app-name> [flags]
 ```
 
 ### Examples
 
 ```
-  # Remove a single sourcemap bundle.
-  gcx frontend apps remove-sourcemap my-web-app-42 1234567890-abc12
+  # List all sourcemaps for an app.
+  gcx frontend apps list-sourcemaps my-web-app-42
 
-  # Remove multiple bundles at once.
-  gcx frontend apps remove-sourcemap my-web-app-42 bundle-1 bundle-2 bundle-3
+  # List the first 10 sourcemaps.
+  gcx frontend apps list-sourcemaps my-web-app-42 --limit 10
+
+  # Output as JSON.
+  gcx frontend apps list-sourcemaps my-web-app-42 -o json
 ```
 
 ### Options
 
 ```
-  -h, --help   help for remove-sourcemap
+  -h, --help            help for list-sourcemaps
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of sourcemaps to return (0 for all)
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

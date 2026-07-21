@@ -1,20 +1,15 @@
-## gcx dashboards versions list
+## gcx synthetic-monitoring probes reset-token
 
-List dashboard version history
+Reset the auth token of a Synthetic Monitoring probe.
 
 ```
-gcx dashboards versions list <name> [flags]
+gcx synthetic-monitoring probes reset-token ID [flags]
 ```
 
 ### Options
 
 ```
-      --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
-  -h, --help                 help for list
-      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int            Maximum number of revisions to return (0 = all)
-  -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
+  -h, --help   help for reset-token
 ```
 
 ### Options inherited from parent commands
@@ -31,5 +26,5 @@ gcx dashboards versions list <name> [flags]
 
 ### SEE ALSO
 
-* [gcx dashboards versions](gcx_dashboards_versions.md)	 - Manage dashboard version history
+* [gcx synthetic-monitoring probes](gcx_synthetic-monitoring_probes.md)	 - Manage Synthetic Monitoring probes.
 

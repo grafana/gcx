@@ -1,15 +1,15 @@
-## gcx logs adaptive patterns show
+## gcx logs adaptive patterns list
 
-Show adaptive log pattern recommendations.
+List adaptive log pattern recommendations.
 
 ```
-gcx logs adaptive patterns show [flags]
+gcx logs adaptive patterns list [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help             help for show
+  -h, --help             help for list
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")

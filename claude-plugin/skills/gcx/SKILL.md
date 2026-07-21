@@ -33,8 +33,8 @@ gcx <group> <subcommand> --help    # exact flags and args
 
 **Build payloads:**
 ```bash
-gcx resources schemas <kind>        # JSON schema for a resource type
-gcx resources examples <kind>       # example manifest
+gcx resources list-types <kind>     # resource types + JSON schema for a type
+gcx resources list-examples <kind>  # example manifest
 ```
 
 Only fall back to `gcx commands --flat -o json` when you need structured metadata
@@ -105,7 +105,7 @@ asks for speed.
 
 1. **Verify context** — confirm which environment is targeted
 2. **Read current state** — list or get the resource first
-3. **Build from template** — use schemas/examples output, not hand-crafted payloads
+3. **Build from template** — use list-types/list-examples output, not hand-crafted payloads
 4. **Preview** — use `--dry-run` where available before applying
 5. **Apply** — create, update, or delete
 6. **Verify** — re-read the resource to confirm the change landed
@@ -128,8 +128,8 @@ The `gcx resources` group handles CRUD for Grafana's K8s-tier resources:
 - `delete` — remove resources
 - `edit` — edit resources interactively
 - `validate` — validate local files against a live instance
-- `schemas` — discover available resource types and their schemas
-- `examples` — get example manifests for resource types
+- `list-types` — discover available resource types and their schemas
+- `list-examples` — list example manifests for resource types
 
 All resource commands accept selectors: `gcx resources get dashboards`,
 `gcx resources get dashboards/my-dash`, `gcx resources get dashboards folders`.

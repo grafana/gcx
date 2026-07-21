@@ -36,22 +36,22 @@ func (opts *schemasOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-func schemasCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts := &schemasOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "schemas [RESOURCE_SELECTOR]",
+		Use:   "list-types [RESOURCE_SELECTOR]",
 		Args:  cobra.MaximumNArgs(1),
 		Short: "List available Grafana API resource types",
 		Long:  "List available Grafana API resource types and their schemas by querying a live Grafana instance. Requires a connection to Grafana. Use --no-schema to skip OpenAPI spec fetching for faster results. Optionally filter by a resource selector.",
 		Example: `
-	gcx resources schemas
-	gcx resources schemas -o wide
-	gcx resources schemas -o json
-	gcx resources schemas -o yaml
-	gcx resources schemas -o json --no-schema
-	gcx resources schemas incidents
-	gcx resources schemas incidents.v1alpha1.incident.ext.grafana.app -o json
+	gcx resources list-types
+	gcx resources list-types -o wide
+	gcx resources list-types -o json
+	gcx resources list-types -o yaml
+	gcx resources list-types -o json --no-schema
+	gcx resources list-types incidents
+	gcx resources list-types incidents.v1alpha1.incident.ext.grafana.app -o json
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

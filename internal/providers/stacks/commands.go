@@ -141,7 +141,7 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Name, "name", "", "Stack name (required)")
 	flags.StringVar(&o.Slug, "slug", "", "Stack slug / subdomain (required)")
-	flags.StringVar(&o.Region, "region", "", "Region slug (e.g. us, eu). Use 'gcx cloud stacks regions' to list.")
+	flags.StringVar(&o.Region, "region", "", "Region slug (e.g. us, eu). Use 'gcx cloud stacks list-regions' to list.")
 	flags.StringVar(&o.Description, "description", "", "Short description")
 	flags.StringSliceVar(&o.Labels, "labels", nil, "Labels in key=value format (may be repeated)")
 	flags.StringVar(&o.URL, "url", "", "Custom domain URL")
@@ -403,7 +403,7 @@ func confirmStackDelete(cmd *cobra.Command, slug string, force bool) error {
 }
 
 // ---------------------------------------------------------------------------
-// regions
+// list-regions
 // ---------------------------------------------------------------------------
 
 type regionsOpts struct {
@@ -416,10 +416,10 @@ func (o *regionsOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newRegionsCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newListRegionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &regionsOpts{}
 	cmd := &cobra.Command{
-		Use:   "regions",
+		Use:   "list-regions",
 		Short: "List available regions for stack creation.",
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "stacks:read",

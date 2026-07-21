@@ -1,32 +1,18 @@
-## gcx frontend apps show-sourcemaps
+## gcx fleet tenant get-limits
 
-Show sourcemaps for a Frontend Observability app.
-
-```
-gcx frontend apps show-sourcemaps <app-name> [flags]
-```
-
-### Examples
+Get tenant limits.
 
 ```
-  # List all sourcemaps for an app.
-  gcx frontend apps show-sourcemaps my-web-app-42
-
-  # List the first 10 sourcemaps.
-  gcx frontend apps show-sourcemaps my-web-app-42 --limit 10
-
-  # Output as JSON.
-  gcx frontend apps show-sourcemaps my-web-app-42 -o json
+gcx fleet tenant get-limits [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for show-sourcemaps
+  -h, --help            help for get-limits
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of sourcemaps to return (0 for all)
-  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
@@ -43,5 +29,5 @@ gcx frontend apps show-sourcemaps <app-name> [flags]
 
 ### SEE ALSO
 
-* [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
+* [gcx fleet tenant](gcx_fleet_tenant.md)	 - Fleet Management tenant settings.
 
