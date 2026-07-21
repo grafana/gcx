@@ -16,7 +16,8 @@ description: >
   Recommends changes citing file:line and, only with explicit confirmation, applies minimal
   diffs that don't change app behavior. Pulls SDK reference from sigil-sdk's llms.txt rather
   than restating it, and hands off to `agento11y-test-starter` once data flows. It does NOT
-  set up evaluations, rules, or guards (that is `agento11y-test-starter` / `agento11y-prod-setup`);
+  write test suites or set up tenant evaluations, rules, or guards — offline test suites are
+  `agento11y-test-starter`, tenant eval rules + guards are `agento11y-prod-setup`;
   does NOT install coding-agent telemetry plugins (that is llms.txt "Path A"); does NOT mint
   or store credentials or invent endpoints. Trigger on phrases like "instrument my app",
   "send my agent's traces to Grafana", "set up AI observability for my app", "my generations
@@ -88,8 +89,8 @@ the flow and the decision logic. A minimal fallback lives in
   stop and report what's checked and what remains — don't loop forever.
 - **Field-name traps:** `cache_write_input_tokens`, NOT `cache_creation_input_tokens`. `agent_version`
   maps to the `gen_ai.agent.version` label and is required for per-version Performance charts.
-- **Out of scope:** evaluations / rules / guards → `agento11y-test-starter` (offline) and
-  `agento11y-prod-setup` (production). Coding-agent telemetry plugins (Claude Code, Cursor, …) →
+- **Out of scope:** offline test suites → `agento11y-test-starter`; tenant eval rules + guards on
+  real traffic → `agento11y-prod-setup`. Coding-agent telemetry plugins (Claude Code, Cursor, …) →
   llms.txt "Path A". Any control-plane write.
 - **If a required input is missing** (entrypoint, framework, endpoint, gcx auth), ask — don't guess.
 
@@ -256,9 +257,11 @@ Only after the developer confirms a diff. Bounded to ~3–4 iterations.
 ## Step 6 — Hand off
 
 Once generations land and metrics populate, instrumentation is done — that's the prerequisite for
-everything else. Point the developer at the next step: `agento11y-test-starter` to decide **what to
-evaluate** offline before shipping, and `agento11y-prod-setup` to set up online eval rules and guards
-once there's real traffic.
+everything else. Point the developer at the next step: `agento11y-test-starter` to build an
+**offline test suite** for the agent (useful before shipping *and* for regression-testing new
+versions once it's live), and `agento11y-prod-setup` to set up **online eval rules + guards** on
+real traffic once it's deployed. The split is offline test suite vs online rules/guards — not
+before-traffic vs after-traffic.
 
 ## Note — keeping this skill in sync
 
