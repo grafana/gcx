@@ -76,7 +76,7 @@ Use JSON/YAML for programmatic work and table/wide output for human summaries.
 | Loki label values | `gcx datasources loki labels -d <uid> --label <label>` |
 | Tempo attribute names | `gcx datasources tempo labels -d <uid>` |
 | Tempo attribute values | `gcx datasources tempo labels -d <uid> -l resource.service.name --llm -o json` |
-| Pyroscope profile types | `gcx datasources pyroscope profile-types -d <uid>` |
+| Pyroscope profile types | `gcx datasources pyroscope list-profile-types -d <uid>` |
 | Pyroscope label values | `gcx datasources pyroscope labels -d <uid> --label service_name` |
 | Other datasource types | Check `gcx datasources <type> --help` for dedicated subcommands before using `gcx api` |
 | List dashboards | `gcx dashboards list -o wide` |

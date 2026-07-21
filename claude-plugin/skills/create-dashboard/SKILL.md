@@ -127,7 +127,7 @@ gcx datasources list -o json
 | Prometheus | `gcx datasources prometheus labels -d <uid> --label __name__` | `gcx datasources prometheus labels -d <uid> --label <label>` |
 | Loki | `gcx datasources loki labels -d <uid>` | `gcx datasources loki labels -d <uid> --label <label>` |
 | Tempo | `gcx datasources tempo labels -d <uid>` | `gcx datasources tempo labels -d <uid> -l <attr> --llm -o json [--scope span\|resource] [-q '<traceql>']` |
-| Pyroscope | `gcx datasources pyroscope profile-types -d <uid>` then `labels -d <uid>` | `gcx datasources pyroscope labels -d <uid> --label <label>` |
+| Pyroscope | `gcx datasources pyroscope list-profile-types -d <uid>` then `labels -d <uid>` | `gcx datasources pyroscope labels -d <uid> --label <label>` |
 
 Prometheus also has `gcx datasources prometheus metadata -d <uid>` for metric type and help text.
 For Prometheus scoped label lookups, fall back to `gcx api "/api/datasources/proxy/uid/<uid>/api/v1/label/<label>/values?match[]=<selector>"` — use the datasource `uid` from `gcx datasources list`; the list output has no numeric id.

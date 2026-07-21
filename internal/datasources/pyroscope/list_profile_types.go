@@ -32,19 +32,23 @@ func (opts *profileTypesOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-func ProfileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
+func ListProfileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &profileTypesOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "profile-types",
-		Short: "List available profile types",
-		Long:  "List available profile types from a Pyroscope datasource.",
+		Use:        "list-profile-types",
+		SuggestFor: []string{"profile-types"},
+		Short:      "List available profile types",
+		Long: "List available profile types from a Pyroscope datasource.\n\n" +
+			"If gcx auto-discovers the datasource from your Grafana Cloud stack, " +
+			"the discovered datasource UID may be saved to your gcx configuration " +
+			"for future commands.",
 		Example: `
 	# List profile types (use datasource UID, not name)
-	gcx datasources pyroscope profile-types -d UID
+	gcx datasources pyroscope list-profile-types -d UID
 
 	# Output as JSON
-	gcx datasources pyroscope profile-types -d UID -o json`,
+	gcx datasources pyroscope list-profile-types -d UID -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -81,7 +85,7 @@ func ProfileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources pyroscope profile-types -d UID -o json",
+		agent.AnnotationLLMHint:   "gcx datasources pyroscope list-profile-types -d UID -o json",
 	}
 
 	opts.setup(cmd.Flags())

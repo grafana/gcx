@@ -182,7 +182,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | `gcx metrics query/range` | PromQL queries (standalone) | **Exists** (`gcx metrics query`, `gcx metrics labels`, `gcx metrics metadata`) |
 | `gcx logs query` | LogQL queries (standalone) | **Exists** (`gcx logs query`, `gcx logs labels`, `gcx logs series`) |
 | `gcx traces query/search` | TraceQL queries (standalone) | **Exists** (`gcx traces search`, `gcx traces get`, `gcx traces tags`, `gcx traces tag-values`, `gcx traces metrics`) |
-| `gcx profiles types/flamegraph/series/label-values` | Pyroscope queries (standalone) | **Exists** (`gcx profiles query`, `gcx profiles labels`, `gcx profiles profile-types`, `gcx profiles series`) |
+| `gcx profiles types/flamegraph/series/label-values` | Pyroscope queries (standalone) | **Exists** (`gcx profiles query`, `gcx profiles labels`, `gcx profiles list-profile-types`, `gcx profiles series`) |
 | `gcx telemetry status` | Pipeline health and ingest rate | **Missing** |
 | `gcx telemetry cardinality` | Metric cardinality analysis | **Missing** |
 | `gcx telemetry diff` | Before/after cardinality comparison | **Missing** |

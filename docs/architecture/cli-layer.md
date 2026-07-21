@@ -84,7 +84,7 @@ gcx (root)
 ├── profiles                 [internal/providers/profiles/provider.go] (registered via providers.Register)
 │   ├── query                [DATASOURCE_UID] EXPR --profile-type TYPE [--from] [--to] [--since] [--max-nodes] [--profile-id UUID]... [--span-id ID]... [--trace-id ID]... [--stacktrace-selector FN]... [-o]
 │   ├── labels               [--datasource/-d UID] [--label/-l NAME]
-│   ├── profile-types        [--datasource/-d UID]
+│   ├── list-profile-types   [--datasource/-d UID]
 │   ├── series               [DATASOURCE_UID] EXPR --profile-type TYPE [--top] [--group-by] [--limit]
 │   └── adaptive             (stub — "not yet available")
 │
