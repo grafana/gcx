@@ -432,10 +432,10 @@ func newAnnotateCommand(loader *providers.ConfigLoader) *cobra.Command {
 }
 
 func parseAnnotationTags(raw []string) (map[string]string, error) {
-	if len(raw) == 0 {
-		return nil, nil
-	}
 	tags := make(map[string]string, len(raw))
+	if len(raw) == 0 {
+		return tags, nil
+	}
 	for _, t := range raw {
 		k, v, ok := strings.Cut(t, "=")
 		if !ok {
@@ -452,10 +452,10 @@ func parseAnnotationTags(raw []string) (map[string]string, error) {
 }
 
 func parseAnnotationMetadata(raw string) (map[string]any, error) {
+	metadata := map[string]any{}
 	if strings.TrimSpace(raw) == "" {
-		return nil, nil
+		return metadata, nil
 	}
-	var metadata map[string]any
 	if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
 		return nil, fmt.Errorf("invalid --metadata-json: %w", err)
 	}

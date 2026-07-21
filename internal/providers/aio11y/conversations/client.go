@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 )
@@ -53,7 +54,7 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (*SearchResponse
 func (c *Client) ListAnnotations(ctx context.Context, conversationID string, limit int, cursor string) (*ConversationAnnotationsResponse, error) {
 	query := url.Values{}
 	if limit > 0 {
-		query.Set("limit", fmt.Sprintf("%d", limit))
+		query.Set("limit", strconv.Itoa(limit))
 	}
 	if cursor != "" {
 		query.Set("cursor", cursor)
