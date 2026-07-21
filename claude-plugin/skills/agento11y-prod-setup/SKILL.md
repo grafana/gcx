@@ -19,7 +19,7 @@ allowed-tools: Bash, Read, Write, Edit
 
 # Agent Observability — production evals & guards setup
 
-The production counterpart to `agento11y-eval-starter` (which runs pre-ship, on code alone,
+The production counterpart to `agento11y-test-starter` (which runs pre-ship, on code alone,
 producing an offline test suite). This skill runs **after** ship, when the agent has real
 traffic, and sets up the two production surfaces the starter deliberately leaves out:
 
@@ -65,7 +65,7 @@ the `agento11y` skill and to `gcx agento11y <sub> --help` rather than restating 
   (`gcx agento11y evaluators list`, `rules list`, `guards list`) and never recommend a duplicate.
   Compare by **semantic equivalence**, not just id/name — see Step 2.
 - This skill **does** create tenant-level objects — that is its job, the one thing that separates
-  it from `agento11y-eval-starter`. But every creation is **explicit and confirmed**: show the exact
+  it from `agento11y-test-starter`. But every creation is **explicit and confirmed**: show the exact
   YAML, get a yes, then create it with the matching `gcx agento11y` command. A yes for one object
   is not a yes for the next.
 - New guards are always drafted **`enabled: false`** and **`action_on_fail: "warn"`** — even
@@ -107,7 +107,7 @@ sign the active context is not their prod stack.)
 
 Two evidence sources. Do both; every later recommendation cites one of them.
 
-**Code** (as `agento11y-eval-starter` Step 1). Find and record file:line for: the entrypoint, the
+**Code** (as `agento11y-test-starter` Step 1). Find and record file:line for: the entrypoint, the
 system prompt, the tool/function definitions, and how it handles user data. This tells you what
 *could* go wrong. **The code is the authoritative source for the system prompt and tools** —
 content capture is often off in production, so the ingested traffic frequently has an empty
@@ -135,7 +135,7 @@ anything. Fewer than that and you risk overfitting one odd conversation into a p
 guard: if the window is thin, either stop and say so, or proceed but mark every recommendation
 **low-confidence** and lean on drafts (disabled guards, low `sample_rate`) rather than anything
 that intervenes. A recommendation from a single conversation is a hypothesis, not a rule. If the
-agent has essentially no traffic, stop — this is the wrong skill; `agento11y-eval-starter` (offline
+agent has essentially no traffic, stop — this is the wrong skill; `agento11y-test-starter` (offline
 suite) is the right one until traffic exists.
 
 ## Step 2 — Inventory what already exists
@@ -162,11 +162,11 @@ surface by whether you want to watch or to stop.
 
 | If, in code or traffic, the agent… | Surface | Shape (prefer a predefined template) |
 | --- | --- | --- |
-| gives answers whose quality can drift | online **rule** | fork `sigil.helpfulness` / `sigil.relevance` (`llm_judge`) over `user_visible_turn` |
-| does RAG / cites sources | online **rule** | fork `sigil.groundedness` (`llm_judge`) |
-| must emit JSON / a fixed shape | online **rule** | fork `sigil.json_valid` (`json_schema`) |
+| gives answers whose quality can drift | online **rule** | fork `template.helpfulness` / `template.relevance` (`llm_judge`) over `user_visible_turn` |
+| does RAG / cites sources | online **rule** | fork `template.groundedness` (`llm_judge`) |
+| must emit JSON / a fixed shape | online **rule** | fork `template.json_valid` (`json_schema`) |
 | over-refuses or drifts off-topic | online **rule** | `regex` / `llm_judge` on `all_assistant_generations` |
-| public-facing text | online **rule** | fork `sigil.toxicity` / `sigil.pii` (`llm_judge`) |
+| public-facing text | online **rule** | fork `template.toxicity` / `template.pii` (`llm_judge`) |
 | echoes user data with PII/secrets | **guard** | `transform` (regex → `[REDACTED:...]`) |
 | can call dangerous tools (shell, delete, write) | **guard** | `tool_filter` with `blocked_names` globs (e.g. `Bash(*rm*)`) |
 | is subject to prompt-injection / hard policy | **guard** | `llm_judge` evaluator; draft `warn`, later promotable to `deny` |
@@ -319,4 +319,4 @@ Output, in this order:
    - Inspect everything in Agent Observability (rules/guards/evaluators pages, the conversation
      Quality view) or via the `gcx agento11y` list and get commands.
 4. A one-line pointer back: for pre-ship offline evaluation of a new agent or version,
-   `agento11y-eval-starter` is the counterpart; for control-plane mechanics, the `agento11y` skill.
+   `agento11y-test-starter` is the counterpart; for control-plane mechanics, the `agento11y` skill.

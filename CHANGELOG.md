@@ -1,3 +1,29 @@
+## v0.5.0 (2026-07-21)
+
+- Register the Assistant as a first-class provider, moving `mcp-servers` into the resources pipeline
+- **Breaking:** rename the `aio11y` command tree and skills to `agento11y`
+- **Breaking:** rename the `agento11y-eval-starter` skill to `agento11y-test-starter`
+- Add `agento11y-instrument` skill (setup → instrument → verify loop)
+- Add `agento11y-prod-setup` skill for production evals and guards
+- Bundle the `agento11y-test-starter` starter skill
+- **Breaking:** remove the `explore-datasources` skill
+- Retune skill descriptions and fix API drift in aio11y, SLO, and Synthetics guidance
+- Export anonymous usage events as flat JSON over HTTP when telemetry is enabled
+- Add profiles span and trace selectors; include trace IDs in exemplars
+- Fix profiles `--top` totals to exclude the pre-window boundary point
+- Add KG `prom-rules schema` command and `--dry-run` to suppressions create
+- Route KG write API through the Asserts plugin proxy
+- Fix KG entity/relationship deletes to use the collection-path API
+- Support Dashboard V2 in the resource linter
+- Descend into single-key list envelopes for `--json` discovery and selection
+- Include an output-shape hint in `--jq` runtime errors
+- Request full cloud scopes in the `login cloud` followup flow
+- Derive SDK imports for generated `dev import` code from actual usage
+- Disclose per-product Grafana Cloud costs in docs and help text
+- Clarify gcx works with OSS and Enterprise, not just Cloud
+- Mark the traces `--llm` flag experimental and document its Accept header
+
+
 ## v0.4.4 (2026-07-10)
 
 - Add full CRUD lifecycle for datasources (create, update, delete, health, schemas)
