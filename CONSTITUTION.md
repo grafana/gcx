@@ -123,10 +123,14 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   does not obey standard list/get/create/update/delete semantics (e.g.,
   composite keys, scope-required lookups, query-only endpoints), do not
   register it as an adapter. Keep it in the provider command tree only, but
-  use alternative verbs (`show`, `describe`, `search`) — never `get`, `list`,
-  `create`, `update`, `delete`. This avoids user confusion: adapter verbs
-  (`resources get`) and provider verbs should not overlap for resources that
-  behave differently across the two paths.
+  use alternative verbs (`show`, `describe`, `search`) or an
+  `<operation>-<subject>` compound that honestly describes the behavior
+  (e.g. `list-profile-types`, `list-tables` for commands that genuinely
+  enumerate a collection) — never bare `get`, `list`, `create`, `update`,
+  `delete`. This avoids user confusion: adapter verbs (`resources get`) and
+  provider verbs should not overlap for resources that behave differently
+  across the two paths; a compound such as `list-profile-types` does not
+  collide with any adapter verb.
 - **Sub-resources nest under their parent command.** If a resource cannot
   be listed or addressed without a parent ID (e.g. alerts require an
   alert group), it is a sub-resource. Sub-resources must not be registered as standalone typed
