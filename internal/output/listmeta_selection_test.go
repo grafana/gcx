@@ -169,3 +169,151 @@ func TestSingleKeyEnvelopeWithUnrelatedSecondKey(t *testing.T) {
 	assert.Contains(t, result, "uid")
 	assert.Nil(t, result["uid"])
 }
+
+// dynamicEnvelope builds the map-shaped equivalent of a truncated list
+// envelope — what a command would produce if it assembled its output as
+// map[string]any instead of a typed struct. The reserved list_meta entry is
+// the producer's opt-in to the envelope treatment on this fast path.
+func dynamicEnvelope(itemsKey string) map[string]any {
+	return map[string]any{
+		itemsKey: []any{
+			map[string]any{"uid": "ds-01", "name": "Datasource 01", "type": "prometheus"},
+		},
+		"list_meta": map[string]any{
+			"truncated": true,
+			"returned":  float64(1),
+		},
+	}
+}
+
+// TestFieldSelectionOnDynamicMapItemsEnvelope covers the direct map[string]any
+// fast path in the codec's type switch, which bypasses the marshal step: an
+// items-keyed map with a reserved list_meta entry must select per item and
+// re-attach the metadata, exactly like the typed-struct path.
+func TestFieldSelectionOnDynamicMapItemsEnvelope(t *testing.T) {
+	out := encodeWithJSONFlag(t, "uid", dynamicEnvelope("items"))
+
+	var result struct {
+		UID      any              `json:"uid"`
+		Items    []map[string]any `json:"items"`
+		ListMeta *cmdio.ListMeta  `json:"list_meta"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Nil(t, result.UID, "envelope must not be treated as a single object")
+	require.Len(t, result.Items, 1)
+	assert.Equal(t, "ds-01", result.Items[0]["uid"])
+	require.NotNil(t, result.ListMeta, "list_meta must survive selection on dynamic map envelopes")
+	assert.True(t, result.ListMeta.Truncated)
+}
+
+// TestFieldSelectionOnDynamicMapSingleKeyEnvelope is the provider-envelope
+// variant of the direct-map fast path.
+func TestFieldSelectionOnDynamicMapSingleKeyEnvelope(t *testing.T) {
+	out := encodeWithJSONFlag(t, "uid", dynamicEnvelope("datasources"))
+
+	var result struct {
+		UID         any              `json:"uid"`
+		Datasources []map[string]any `json:"datasources"`
+		ListMeta    *cmdio.ListMeta  `json:"list_meta"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Nil(t, result.UID)
+	require.Len(t, result.Datasources, 1)
+	assert.Equal(t, "ds-01", result.Datasources[0]["uid"])
+	require.NotNil(t, result.ListMeta)
+	assert.True(t, result.ListMeta.Truncated)
+}
+
+// TestFieldSelectionOnDynamicMapWithoutListMeta pins the pre-reservation
+// behavior of the direct-map fast path: WITHOUT the reserved entry, even an
+// items-shaped map keeps whole-object selection. Raw passthrough payloads
+// (gcx api) must not change behavior because a response happens to be
+// items-shaped.
+func TestFieldSelectionOnDynamicMapWithoutListMeta(t *testing.T) {
+	env := map[string]any{
+		"items": []any{map[string]any{"uid": "a"}},
+	}
+	out := encodeWithJSONFlag(t, "uid", env)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Contains(t, result, "uid")
+	assert.Nil(t, result["uid"], "whole-object selection is the pinned behavior for maps without list_meta")
+}
+
+// TestFieldSelectionOnDynamicMapNonReservedListMeta: a list_meta key whose
+// value is not an object (or null) is genuine payload data, not the reserved
+// entry — the map keeps whole-object selection (consistent with
+// isListMetaEntry's scoping).
+func TestFieldSelectionOnDynamicMapNonReservedListMeta(t *testing.T) {
+	env := map[string]any{
+		"items":     []any{map[string]any{"uid": "a"}},
+		"list_meta": "not-an-object",
+	}
+	out := encodeWithJSONFlag(t, "uid", env)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Contains(t, result, "uid")
+	assert.Nil(t, result["uid"])
+}
+
+// TestDiscoveryOnDynamicMapEnvelope covers the direct-map fast path in
+// discovery: an envelope map with the reserved entry must discover item
+// fields only — never the wrapper key or list_meta.* paths.
+func TestDiscoveryOnDynamicMapEnvelope(t *testing.T) {
+	for _, key := range []string{"items", "datasources"} {
+		out := encodeWithJSONFlag(t, "list", dynamicEnvelope(key))
+
+		fields := strings.Fields(out)
+		assert.Contains(t, fields, "uid")
+		assert.Contains(t, fields, "name")
+		assert.NotContains(t, fields, key, "wrapper key %q must not be listed", key)
+		for _, f := range fields {
+			assert.False(t, strings.HasPrefix(f, "list_meta"),
+				"reserved truncation metadata must be excluded from discovery, got %q", f)
+		}
+	}
+}
+
+// TestDiscoveryOnDynamicMapWithoutListMeta pins the pre-reservation discovery
+// behavior for plain maps: their own fields are listed as-is.
+func TestDiscoveryOnDynamicMapWithoutListMeta(t *testing.T) {
+	out := encodeWithJSONFlag(t, "list", map[string]any{"foo": "bar", "count": float64(2)})
+
+	fields := strings.Fields(out)
+	assert.Contains(t, fields, "foo")
+	assert.Contains(t, fields, "count")
+}
+
+// TestDiscoveryOnEmptyDynamicMapEnvelope pins the empty-envelope decision for
+// dynamic maps: unlike a typed struct there is no element type to reflect on,
+// so discovery degrades to the envelope's own keys — but the reserved
+// list_meta entry must never surface as discoverable fields.
+func TestDiscoveryOnEmptyDynamicMapEnvelope(t *testing.T) {
+	env := map[string]any{
+		"datasources": []any{},
+		"list_meta":   map[string]any{"truncated": true, "returned": float64(0)},
+	}
+	out := encodeWithJSONFlag(t, "list", env)
+
+	fields := strings.Fields(out)
+	assert.Contains(t, fields, "datasources", "reduced result: the envelope key is all that is known")
+	for _, f := range fields {
+		assert.False(t, strings.HasPrefix(f, "list_meta"),
+			"reserved truncation metadata must be excluded from discovery, got %q", f)
+	}
+}
+
+// TestDiscoveryOnDynamicMapNonReservedListMeta: a non-object list_meta value
+// is genuine data and stays discoverable — the reservation only claims the
+// object-valued shape.
+func TestDiscoveryOnDynamicMapNonReservedListMeta(t *testing.T) {
+	out := encodeWithJSONFlag(t, "list", map[string]any{
+		"items":     []any{map[string]any{"uid": "a"}},
+		"list_meta": "not-an-object",
+	})
+
+	fields := strings.Fields(out)
+	assert.Contains(t, fields, "list_meta", "non-reserved shape keeps pre-reservation discovery")
+}

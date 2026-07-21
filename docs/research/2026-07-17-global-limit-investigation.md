@@ -253,6 +253,10 @@ Needs per-command decisions:
    where truncation is applied below the command layer and no envelope
    exists. Either the adapter layer returns `(items, truncated bool)` or the
    resources-get pipeline grows its own contract; out of Track C scope.
+   The `--json` selection/discovery paths for `unstructured.UnstructuredList`
+   likewise do not carry `list_meta` yet — deliberate, since no producer
+   attaches it to unstructured lists; wire it up together with this
+   migration.
 3. **Capped-source binder variant** — a `BindListLimitCapped(..., cap)` with
    wording like "0 means as many as the safety cap (N) allows" would let
    capped sources join the binder; deferred until a second capped source

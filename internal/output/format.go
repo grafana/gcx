@@ -298,6 +298,14 @@ func marshalToSampleMap(value any) (map[string]any, error) {
 		}
 		return nil, errors.New("cannot discover fields from empty UnstructuredList")
 	case map[string]any:
+		// A dynamic map carrying the reserved list_meta entry is a list
+		// envelope: sample item fields exactly like the marshalled-struct
+		// path, so list_meta.* paths are never listed. All other maps stay
+		// as-is — raw passthrough payloads (e.g. gcx api responses) keep
+		// discovering their own fields.
+		if hasListMetaEntry(v) {
+			return sampleFromObject(v, value), nil
+		}
 		return v, nil
 	}
 
@@ -391,7 +399,27 @@ func sampleFromObject(m map[string]any, value any) map[string]any {
 			return nullFieldMap(fields)
 		}
 	}
-	return m
+	// Not an envelope shape (or an empty dynamic envelope with no element
+	// type to reflect on): sample the object itself, minus the reserved
+	// truncation-metadata entry — list_meta.* paths are never discoverable.
+	return withoutListMetaEntry(m)
+}
+
+// withoutListMetaEntry returns m without its reserved truncation-metadata
+// entry (see isListMetaEntry). Returns m unchanged when no reserved entry is
+// present.
+func withoutListMetaEntry(m map[string]any) map[string]any {
+	if !hasListMetaEntry(m) {
+		return m
+	}
+	out := make(map[string]any, len(m)-1)
+	for k, v := range m {
+		if isListMetaEntry(k, v) {
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // nullFieldMap builds a discovery sample map whose keys are the given field
