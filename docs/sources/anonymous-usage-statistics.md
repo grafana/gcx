@@ -8,39 +8,32 @@ labels:
 weight: 4
 ---
 
-# Anonymous usage statistics
+# gcx usage collection to help support Anonymization 
 
-`gcx` can report anonymous, non-sensitive usage statistics about how the CLI itself is used to Grafana Labs. This data helps the team understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so development effort goes where it matters.
+`gcx` reports anonymous usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
 
-The statistics describe only the *shape* of usage — the command path, the names of flags you set, and a categorized outcome. They never include the *content* of what you did: no argument values, no flag values, no resource names, and nothing about your data. See [Server-side enrichment](#server-side-enrichment) for what the receiving service derives from the connection itself.
+The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values and flag values are never sent. Some server-side enrichment is also performed on the usage statistics exported \- see [Server-side enrichment](#server-side-enrichment) for details.
 
-{{< admonition type="note" >}}
-Usage statistics reporting is currently **disabled by default**. If it becomes enabled by default in a future release, that change will be announced in the release notes, and the opt-out controls described on this page will continue to work.
-{{< /admonition >}}
+{{\< admonition type="note" \>}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usagre reporting.{{\< /admonition \>}}
 
 ## Anonymity
 
-The reports are anonymous:
+The only identifier is a \`device\_id\` field: a randomly generated UUID created on first use and stored at `$XDG_STATE_HOME/gcx/device-id`. It identifies an installation of `gcx`, not a person. It's random, not derived from your hardware or account.
 
-- The only identifier is a **device ID**: a randomly generated UUID created on first use and stored at `$XDG_STATE_HOME/gcx/device-id`. It identifies an installation of `gcx`, not a person. It's random, never derived from your hardware or account, and never linked to a Grafana or GitHub identity.
-- Deleting the device ID file resets it: the next invocation generates a fresh random ID with no connection to the old one.
-- If the state directory isn't writable, `gcx` uses a throwaway ID for that invocation only and marks it as not persisted, so those IDs can be excluded from installation counts.
-- The data improves `gcx` only. It's never used for billing, entitlements, or auditing.
+## What is collected fields
 
-## What is collected
-
-Each invocation of `gcx` emits at most one event with the following fields:
+Each gcx event contains the following properties:
 
 | Field | Description | Example |
-|-------|-------------|---------|
+| :---- | :---- | :---- |
 | `service` | Always `gcx`, identifying the reporting product. | `gcx` |
-| `version` | The `gcx` version. | `0.4.1` |
+| `version` | The version of `gcx`. | `0.4.1` |
 | `os` | Operating system. | `linux`, `darwin`, `windows` |
 | `arch` | CPU architecture. | `amd64`, `arm64` |
 | `device_id` | The random per-installation ID described in [Anonymity](#anonymity). | UUID |
 | `device_id_persisted` | Whether the device ID was read from or saved to disk. `false` means a throwaway ID was used for this invocation. | `true` |
-| `command` | The resolved command path only — never its arguments. | `dashboards push` |
-| `flags` | The **names** of the flags you set, sorted — never their values. | `dry-run,folder` |
+| `command` | The resolved command path only, no arguments are sent. | `dashboards push` |
+| `flags` | The **names** of the flags you set, sorted. No flag values are sent. | `dry-run,folder` |
 | `provider` | The resource provider the command belongs to. | `dashboards` |
 | `outcome` | How the invocation ended: `ok`, `runtime_error`, `parse_error`, or `help`. | `ok` |
 | `exit_code` | The process exit code. | `0` |
@@ -54,45 +47,35 @@ Each invocation of `gcx` emits at most one event with the following fields:
 | `target_kind` | Whether the target Grafana is `cloud` or `self-managed`. Deliberately coarse — never the URL, hostname, or stack slug. | `cloud` |
 | `output_format` | The output format the command used. | `table`, `json` |
 
-When the invocation fails to parse — an unknown command, unknown flag, or invalid arguments — these additional fields are set. They capture what was *attempted* so the team can find gaps between what people expect and what exists:
+When the invocation fails to parse, these additional fields are set. They capture what was attempted so the team can understand the differences between what users expect and what exists:
 
 | Field | Description | Example |
-|-------|-------------|---------|
+| :---- | :---- | :---- |
 | `parse_error_kind` | The kind of parse failure: `unknown_command`, `unknown_flag`, or `invalid_args`. | `unknown_command` |
 | `parse_error_parent` | The deepest valid command reached before the failure. | `dashboards` |
-| `parse_error_token` | The first unknown token — the guess. It's only sent if it looks like a command name (short, lowercase, no digits, not a URL, IP address, or UUID); otherwise it's replaced with `<redacted>`. | `serch` |
+| `parse_error_token` | The first unknown toke. It's only sent if it looks like a command name (short, lowercase, no digits, not a URL, IP address, or UUID); otherwise it's replaced with `<redacted>`. | `serch` |
 | `attempted_command` | The parent command plus the unknown token, truncated at the unknown token so no later arguments are included. | `dashboards serch` |
-| `parse_error_flags` | The **names** of unknown flags — never their values. | `verbsoe` |
+| `parse_error_flags` | The **names** of unknown flags. No flag values are sent. | `verbsoe` |
 | `parse_error_nearest` | The nearest real command or flag name, if one is close. | `search` |
 | `parse_error_distance` | The edit distance to the nearest real name, or `-1` if there is no near match. | `2` |
-
-## What is never collected
-
-The following are deliberately never collected, and this is enforced by tests:
-
-- Argument values and flag values
-- Resource names, UIDs, or query bodies
-- Hostnames, server URLs, and Grafana Cloud stack slugs
-- Tokens, credentials, or file paths
-- Error messages and stack traces
 
 ## Invocations that report nothing
 
 Some invocations never emit an event:
 
-- **Shell completion** — the completion machinery runs on every tab-press and carries no usage signal.
-- **`gcx version`**
-- **The `gcx telemetry` command itself** — the command that controls reporting doesn't report on itself.
+- **Shell completion** — the completion machinery runs on every tab-press and carries no usage signal.  
+- **`gcx version`**  
+- **The `gcx telemetry` command itself** — the command that controls reporting doesn't report on itself.  
 - **Cancelled invocations** — pressing Ctrl-C emits nothing.
 
 ## Server-side enrichment
 
 Reports are received by Grafana's usage-stats service, the same service that receives anonymous usage reports from Grafana, Loki, Tempo, and Mimir. On receipt, the service adds two pieces of information derived from the connection:
 
-- A coarse **geographic region** (for example, a country or subdivision), taken from headers added by the CDN edge.
+- A coarse **geographic region** (for example, a country or subdivision), taken from headers added by the CDN edge.  
 - The **network organization name** from a whois lookup of the connecting IP address. For CLI traffic this typically resolves to your ISP or employer's network.
 
-The connecting IP address is processed server-side to derive these values (including being sent to a whois service) and appears in the service's operational logs, traces, and caches; it is not included in the stored usage event itself.
+The connecting IP address is not stored in the usage event.
 
 ## Inspect what would be sent
 
@@ -104,21 +87,21 @@ GCX_TELEMETRY=log gcx dashboards list
 
 ## Opt out
 
-You can control usage statistics reporting three ways. Precedence, highest first:
+You can control usage statistics reporting three ways:
 
 1. **`GCX_TELEMETRY` environment variable** — set to `enabled`, `disabled`, or `log`. Takes precedence over everything else:
 
-   ```shell
-   export GCX_TELEMETRY=disabled
-   ```
+```shell
+export GCX_TELEMETRY=disabled
+```
 
-1. **`DO_NOT_TRACK` environment variable** — set to `1` or `true` to disable reporting, following the cross-tool [DO_NOT_TRACK](https://consoledonottrack.com/) convention. Overridden by `GCX_TELEMETRY`.
+2. **`DO_NOT_TRACK` environment variable** — set to `1` or `true` to disable reporting, following the cross-tool [DO\_NOT\_TRACK](https://consoledonottrack.com/) convention. Overridden by `GCX_TELEMETRY`.  
+     
+3. **Configuration file** — add a top-level `diagnostics` block to your `gcx` configuration file, with `telemetry` set to `enabled`, `disabled`, or `log`:
 
-1. **Configuration file** — add a top-level `diagnostics` block to your `gcx` configuration file, with `telemetry` set to `enabled`, `disabled`, or `log`:
+```
+diagnostics:
+  telemetry: disabled
+```
 
-   ```yaml
-   diagnostics:
-     telemetry: disabled
-   ```
-
-Opting out disables reporting entirely — no event is constructed and nothing is sent.
+Opting out disables reporting entirely \- no event is constructed and nothing is sent.
