@@ -6,7 +6,7 @@
 - Add `agento11y-instrument` skill (setup → instrument → verify loop)
 - Add `agento11y-prod-setup` skill for production evals and guards
 - Bundle the `agento11y-test-starter` starter skill
-- Remove the `explore-datasources` skill
+- **Breaking:** remove the `explore-datasources` skill
 - Retune skill descriptions and fix API drift in aio11y, SLO, and Synthetics guidance
 - Export anonymous usage events as flat JSON over HTTP when telemetry is enabled
 - Add profiles span and trace selectors; include trace IDs in exemplars
