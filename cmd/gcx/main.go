@@ -58,7 +58,7 @@ func main() {
 	// prefer sticking to err != nil format, than optimizing for calling exitWith
 	// once
 	if err := root.ValidateArgs(cmd, os.Args[1:]); err != nil {
-		exitWith(cmd, start, reportError(err, boolFlags, subCmds))
+		exitWith(cmd, start, err, reportError(err, boolFlags, subCmds))
 	}
 
 	err := cmd.ExecuteContext(ctx)
@@ -68,13 +68,15 @@ func main() {
 		os.Exit(gcxerrors.ExitCancelled)
 	}
 
-	exitWith(cmd, start, reportError(err, boolFlags, subCmds))
+	exitWith(cmd, start, err, reportError(err, boolFlags, subCmds))
 }
 
 // exitWith emits the usage event for this invocation, then exits. Every
-// invocation ends here, except the cancellation fast path above.
-func exitWith(cmd *cobra.Command, start time.Time, exitCode int) {
-	emitUsageEvent(cmd, start, exitCode)
+// invocation ends here, except the cancellation fast path above. err is what
+// the invocation failed with, if anything; exitCode is what the process
+// reports for it.
+func exitWith(cmd *cobra.Command, start time.Time, err error, exitCode int) {
+	emitUsageEvent(cmd, start, err, exitCode)
 	os.Exit(exitCode)
 }
 

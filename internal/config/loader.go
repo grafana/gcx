@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -640,11 +641,19 @@ func diagnosticsSourcePaths(ctx context.Context) []string {
 }
 
 // readDiagnostics decodes a config file and returns only its diagnostics block.
-// It parses into the full Config (the codec rejects unknown fields, so a partial
-// struct will not do) but deliberately skips keychain resolution, plaintext
-// migration, and the config auto-creation that Load performs. Missing or
-// malformed files yield (nil, err).
 func readDiagnostics(path string) (*DiagnosticsConfig, error) {
+	cfg, err := readConfigFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return cfg.Diagnostics, nil
+}
+
+// readConfigFile decodes a config file into the full Config (the codec rejects
+// unknown fields, so a partial struct will not do) but deliberately skips the
+// keychain resolution, plaintext migration, and config auto-creation that Load
+// performs. Missing or malformed files yield (nil, err).
+func readConfigFile(path string) (*Config, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -654,7 +663,38 @@ func readDiagnostics(path string) (*DiagnosticsConfig, error) {
 	if err := codec.Decode(bytes.NewBuffer(contents), &cfg); err != nil {
 		return nil, err
 	}
-	return cfg.Diagnostics, nil
+	return &cfg, nil
+}
+
+// LoadContextNames returns the lowercased context names and Cloud stack slugs
+// from the layered config. Like LoadDiagnostics it never probes the OS
+// keychain and never auto-creates a config file: it exists so the telemetry
+// parse-failure filter can redact tokens that name the user's own contexts or
+// stacks without prompting or touching secrets.
+func LoadContextNames(ctx context.Context) []string {
+	seen := map[string]bool{}
+	var names []string
+	add := func(s string) {
+		s = strings.ToLower(s)
+		if s == "" || seen[s] {
+			return
+		}
+		seen[s] = true
+		names = append(names, s)
+	}
+	for _, path := range diagnosticsSourcePaths(ctx) {
+		cfg, err := readConfigFile(path)
+		if err != nil {
+			continue
+		}
+		for name, c := range cfg.Contexts {
+			add(name)
+			if c != nil && c.Cloud != nil {
+				add(c.Cloud.Stack)
+			}
+		}
+	}
+	return names
 }
 
 func annotateErrorWithSource(filename string, contents []byte, err error) error {

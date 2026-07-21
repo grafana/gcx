@@ -3,8 +3,11 @@ package root
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,10 +40,14 @@ func parseFailureTestTree() *cobra.Command {
 }
 
 // TestParseFailureTelemetryInfo_GoldenPII is the golden PII test required by
-// the #578 design: it pins down exactly what leaves the process for each parse
-// failure shape - truncation of attempted_command, the command-shape filter,
-// and distance preservation for redacted tokens.
+// the usage-stats design: it pins down exactly what leaves the process for
+// each parse failure shape - truncation of attempted_command, the
+// command-shape filter, and distance preservation for redacted tokens.
 func TestParseFailureTelemetryInfo_GoldenPII(t *testing.T) {
+	// Point config discovery at an empty dir so a real user config (whose
+	// context names are redacted) can never change what these cases emit.
+	t.Setenv(config.ConfigFileEnvVar, filepath.Join(t.TempDir(), "no-config.yaml"))
+
 	tests := []struct {
 		name     string
 		args     []string
@@ -157,10 +164,7 @@ func TestParseFailureTelemetryInfo_GoldenPII(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			flagFailure.Store(nil)
-			t.Cleanup(func() { flagFailure.Store(nil) })
-
-			info := parseFailureTelemetryInfo(parseFailureTestTree(), tt.args)
+			info := parseFailureTelemetryInfo(parseFailureTestTree(), tt.args, nil)
 
 			if tt.suppress {
 				assert.True(t, info.Suppress)
@@ -177,6 +181,29 @@ func TestParseFailureTelemetryInfo_GoldenPII(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A token naming one of the user's own contexts or Cloud stacks is
+// command-shaped but identifying - it reaches command position when arguments
+// are misplaced - so it must be redacted even though the shape filter passes
+// it.
+func TestParseFailureRedactsConfiguredNames(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := "contexts:\n  acme-corp:\n    cloud:\n      stack: acme-prod\ncurrent-context: acme-corp\n"
+	require.NoError(t, os.WriteFile(cfgPath, []byte(cfg), 0o600))
+	t.Setenv(config.ConfigFileEnvVar, cfgPath)
+
+	for _, token := range []string{"acme-corp", "acme-prod"} {
+		info := parseFailureTelemetryInfo(parseFailureTestTree(), []string{token, "dashboards"}, nil)
+		require.NotNil(t, info.ParseError, token)
+		assert.Equal(t, redactedToken, info.ParseError.Token, token)
+		assert.NotContains(t, fmt.Sprintf("%+v", *info.ParseError), token)
+	}
+
+	// An unrelated guess with the same shape still comes through raw.
+	info := parseFailureTelemetryInfo(parseFailureTestTree(), []string{"deploy"}, nil)
+	require.NotNil(t, info.ParseError)
+	assert.Equal(t, "deploy", info.ParseError.Token)
 }
 
 func TestFlagFailureTelemetryInfo(t *testing.T) {
@@ -241,7 +268,7 @@ func TestFlagFailureTelemetryInfo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			info := flagFailureTelemetryInfo(&flagFailureRecord{cmd: tt.cmd, err: tt.err})
+			info := flagFailureTelemetryInfo(&flagParseError{cmd: tt.cmd, err: tt.err})
 
 			if tt.suppress {
 				assert.True(t, info.Suppress)

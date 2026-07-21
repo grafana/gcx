@@ -1,23 +1,21 @@
 package root
 
-// Parse-failure capture (#578): classify invocations cobra rejected before any
-// hook ran (unknown command, unknown flag, argument validation) into an
-// anonymous usage event. Privacy invariant: only command-shaped tokens and
-// flag names are ever recorded, never argument or flag values.
-
 import (
+	"context"
+	"errors"
 	"math"
 	"net"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
-	"sync/atomic"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-// ParseFailure kinds.
+// Categories of parse failure.
 const (
 	parseErrorUnknownCommand = "unknown_command"
 	parseErrorUnknownFlag    = "unknown_flag"
@@ -27,46 +25,41 @@ const (
 // redactedToken replaces tokens that fail the command-shape filter.
 const redactedToken = "<redacted>"
 
-// suggestionsMinimumDistance mirrors cobra's default SuggestionsMinimumDistance;
-// cobra only assigns it lazily while rendering an unknown-command error.
-const suggestionsMinimumDistance = 2
+// suggestionsMaxDistance is the largest Levenshtein distance at which we count a real
+// command or flag as a near match. It mirrors cobra's default
+// for the (weirdly named) SuggestionsMinimumDistance field.
+const suggestionsMaxDistance = 2
 
-// ParseFailure describes a failed command-line parse for the usage event
-// (#578). Token and Flags carry shape-filtered names only, never values.
+// ParseFailure describes a failed command line parse for reporting in a usage event.
 type ParseFailure struct {
-	Kind      string // unknown_command, unknown_flag or invalid_args
-	Parent    string // deepest valid command path reached; "" is the root
-	Token     string // first unknown token; redactedToken if it fails the shape filter
+	Kind      string
+	Parent    string // deepest valid command path reached
+	Token     string // first unknown token. redactedToken if it fails the shape filter
 	Attempted string // Parent plus Token, truncated at the unknown token
-	Flags     string // unknown flag names only, never values
-	Nearest   string // nearest real command or flag; "" if no near match
-	Distance  int    // Levenshtein distance to Nearest; -1 if no near match
+	Flags     string // unknown flag names only
+	Nearest   string // nearest real command or flag. "" if no near match
+	Distance  int    // Levenshtein distance to Nearest. -1 if no near match
 }
 
-// flagFailure records the command and error from cobra's flag-error hook so a
-// failed parse can be classified as an unknown flag. pflag aborts at the first
-// bad flag, so at most one failure is seen per invocation.
-//
-//nolint:gochecknoglobals // written once per process from the flag-error hook.
-var flagFailure atomic.Pointer[flagFailureRecord]
-
-type flagFailureRecord struct {
+// flagParseError wraps the error from cobra's flag-error hook with the
+// command that failed, so the exit path can classify the parse failure for
+// the usage event from the returned error itself. It renders exactly as the
+// wrapped error, so user-facing output is unchanged.
+type flagParseError struct {
 	cmd *cobra.Command
 	err error
 }
 
-func recordFlagFailure(cmd *cobra.Command, err error) {
-	if cmd == nil || err == nil {
-		return
-	}
-	flagFailure.CompareAndSwap(nil, &flagFailureRecord{cmd: cmd, err: err})
-}
+func (e *flagParseError) Error() string { return e.err.Error() }
+func (e *flagParseError) Unwrap() error { return e.err }
 
 // parseFailureTelemetryInfo classifies a failed parse into telemetry info. It
 // runs only when PersistentPreRun never recorded an event and the exit code is
 // nonzero, which means cobra rejected the invocation before any hook ran.
-func parseFailureTelemetryInfo(rootCmd *cobra.Command, args []string) *TelemetryInfo {
-	if ff := flagFailure.Load(); ff != nil {
+// err is what ExecuteContext returned for this invocation.
+func parseFailureTelemetryInfo(rootCmd *cobra.Command, args []string, err error) *TelemetryInfo {
+	var ff *flagParseError
+	if errors.As(err, &ff) {
 		return flagFailureTelemetryInfo(ff)
 	}
 
@@ -83,6 +76,9 @@ func parseFailureTelemetryInfo(rootCmd *cobra.Command, args []string) *Telemetry
 		pf.Kind = parseErrorUnknownCommand
 		pf.Nearest, pf.Distance = nearestCommand(parent, token)
 		pf.Token = filterCommandToken(token)
+		if pf.Token != redactedToken && isConfiguredName(pf.Token) {
+			pf.Token = redactedToken
+		}
 		pf.Attempted = strings.TrimSpace(parentPath + " " + pf.Token)
 	} else {
 		// Runnable commands take argument values, which must never be
@@ -94,7 +90,7 @@ func parseFailureTelemetryInfo(rootCmd *cobra.Command, args []string) *Telemetry
 	return &TelemetryInfo{Command: parentPath, ParseError: pf}
 }
 
-func flagFailureTelemetryInfo(ff *flagFailureRecord) *TelemetryInfo {
+func flagFailureTelemetryInfo(ff *flagParseError) *TelemetryInfo {
 	if telemetrySuppressed(ff.cmd) {
 		return &TelemetryInfo{Suppress: true}
 	}
@@ -201,7 +197,7 @@ func findSubcommand(cmd *cobra.Command, name string) *cobra.Command {
 // or prefix match) and ranking the result by distance.
 func nearestCommand(parent *cobra.Command, token string) (string, int) {
 	if parent.SuggestionsMinimumDistance <= 0 {
-		parent.SuggestionsMinimumDistance = suggestionsMinimumDistance
+		parent.SuggestionsMinimumDistance = suggestionsMaxDistance
 	}
 	return nearestString(token, parent.SuggestionsFor(token))
 }
@@ -217,7 +213,7 @@ func nearestFlag(cmd *cobra.Command, name string) (string, int) {
 				return
 			}
 			seen[f.Name] = true
-			byDistance := levenshtein(strings.ToLower(name), strings.ToLower(f.Name)) <= suggestionsMinimumDistance
+			byDistance := levenshtein(strings.ToLower(name), strings.ToLower(f.Name)) <= suggestionsMaxDistance
 			byPrefix := strings.HasPrefix(strings.ToLower(f.Name), strings.ToLower(name))
 			if byDistance || byPrefix {
 				near = append(near, f.Name)
@@ -276,7 +272,7 @@ const maxTokenLength = 20
 // command name.
 const maxTokenEntropy = 3.7
 
-// filterCommandToken applies the command-shape filter (#578): the raw token is
+// filterCommandToken applies the command-shape filter: the raw token is
 // emitted only when it plausibly is a command name. Everything else (values,
 // paths, URLs, IPs, UUIDs, random identifiers) is replaced with redactedToken.
 // Callers compute the fuzzy distance from the raw token before filtering, so
@@ -299,6 +295,16 @@ func filterCommandToken(token string) string {
 func looksLikeURL(token string) bool {
 	u, err := url.Parse(token)
 	return err == nil && u.Scheme != "" && u.Host != ""
+}
+
+// isConfiguredName reports whether the token names one of the user's own
+// contexts or Cloud stacks. Those are command-shaped but identifying - they
+// reach command position when arguments are misplaced (`gcx prod-stack
+// resources get`) - so they are redacted even though the shape filter passes
+// them. The config read is keychain-free and only happens for tokens that
+// survived the shape filter.
+func isConfiguredName(token string) bool {
+	return slices.Contains(config.LoadContextNames(context.Background()), token)
 }
 
 // shannonEntropy returns the entropy of the token in bits per character.
