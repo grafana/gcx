@@ -399,7 +399,8 @@ per context.
 Config.Cloud map[string]*CloudEntry
   └── "grafana-com"
       ├── Token       — Cloud Access Policy token for GCOM (secret)
-      ├── OAuthToken / OAuthTokenExpiresAt — from `gcx cloud login` (no refresh token; re-login on expiry)
+      ├── OAuthToken  — from `gcx cloud login` (no refresh token; re-login on expiry)
+      ├── OAuthTokenExpiresAt — set only when the token response reports a lifetime (GCOM doesn't today) or by hand; when set, expiry errors name `gcx cloud login` instead of a 401
       ├── APIUrl      — GCOM base URL (default: "https://grafana.com")
       ├── OAuthUrl    — OAuth login base URL (default: "https://grafana.com")
       ├── Orgs        — grafana.com org slugs, populated at login
