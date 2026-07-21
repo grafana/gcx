@@ -22,7 +22,7 @@ The only identifier is a \`device\_id\` field: a randomly generated UUID created
 
 ## Understand which data is collected
 
-Each gcx event contains the following properties:
+Each `gcx` event contains the following properties:
 
 | Field | Description | Example |
 | :---- | :---- | :---- |
