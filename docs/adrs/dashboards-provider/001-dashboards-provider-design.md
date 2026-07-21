@@ -1,5 +1,11 @@
 # Dashboards provider: CRUD shorthands, search, and version history
 
+> **Amendment (2026-07-21, #387 naming batch):** `versions list` shipped as
+> designed and was later renamed to `dashboards list-versions` (versions have
+> no ID of their own; the positional is the dashboard name). The `versions`
+> group now holds only `restore`; the two-child grouping rationale below is
+> the historical decision record.
+
 **Created**: 2026-04-21
 **Status**: accepted (research complete — see [Research Findings](#research-findings))
 **Bead**: none

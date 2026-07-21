@@ -221,7 +221,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 
 | Old Command | Description | Status in gcx |
 |-------------|-------------|---------------|
-| `gcx stacks list/get/create/update/delete/pause/resume` | Stack management | **Exists** (`gcx stacks list\|get\|create\|update\|delete\|list-regions`; pause/resume not yet implemented) |
+| `gcx stacks list/get/create/update/delete/pause/resume` | Stack management | **Exists** (`gcx cloud stacks list\|get\|create\|update\|delete\|list-regions`; pause/resume not yet implemented) |
 | `gcx access-policies` CRUD | Cloud access policy management | **Missing** |
 | `gcx credentials` | Bootstrap telemetry credentials | **Missing** |
 | `gcx invites` CRUD | Org invite management | **Missing** |
@@ -490,7 +490,7 @@ Old CLI annotates every command with structured metadata:
 1. **`init` bootstrap flow** -- Users can't onboard without this
 2. **Global `--output` / `-o`** -- Consistent output formatting everywhere
 3. **`--dry-run --diff`** -- Essential for safe operations
-4. ~~**`stacks` management**~~ -- **DONE** (`gcx stacks list|get|create|update|delete|list-regions`; pause/resume pending)
+4. ~~**`stacks` management**~~ -- **DONE** (`gcx cloud stacks list|get|create|update|delete|list-regions`; pause/resume pending)
 5. **`access-policies`** -- Can't manage IAM
 
 ### P1 -- High Priority (frequent user workflows)
