@@ -243,12 +243,12 @@ var commandAnnotations = map[string]annotation{
 	// IRM Incidents
 	// -----------------------------------------------------------------------
 	"gcx irm incidents activity add":    {Cost: "small"},
-	"gcx irm incidents activity list":   {Cost: "small"},
 	"gcx irm incidents close":           {Cost: "small"},
-	"gcx irm incidents contexts list":   {Cost: "small"},
 	"gcx irm incidents create":          {Cost: "small"},
 	"gcx irm incidents get":             {Cost: "small"},
 	"gcx irm incidents list":            {Cost: "small"},
+	"gcx irm incidents list-activity":   {Cost: "small"},
+	"gcx irm incidents list-contexts":   {Cost: "small"},
 	"gcx irm incidents open":            {Cost: "small"},
 	"gcx irm incidents severities list": {Cost: "small"},
 
@@ -459,9 +459,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm oncall routes update":                  {Cost: "small", Hint: "<id> -f route.yaml"},
 	"gcx irm oncall schedules create":               {Cost: "small", Hint: "-f schedule.yaml"},
 	"gcx irm oncall schedules delete":               {Cost: "small"},
-	"gcx irm oncall schedules final-shifts":         {Cost: "medium", Hint: "<schedule-id> --start 2024-01-01 --end 2024-01-31 -o json"},
 	"gcx irm oncall schedules get":                  {Cost: "small"},
 	"gcx irm oncall schedules list":                 {Cost: "small"},
+	"gcx irm oncall schedules list-final-shifts":    {Cost: "medium", Hint: "<schedule-id> --start 2024-01-01 --end 2024-01-31 -o json"},
 	"gcx irm oncall schedules update":               {Cost: "small", Hint: "<id> -f schedule.yaml"},
 	"gcx irm oncall shift-swaps create":             {Cost: "small", Hint: "-f swap.yaml"},
 	"gcx irm oncall shift-swaps delete":             {Cost: "small"},

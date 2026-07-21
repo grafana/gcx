@@ -1,11 +1,20 @@
-## gcx irm incidents contexts
+## gcx irm oncall schedules list-final-shifts
 
-Manage incident contexts (linked alert groups, dashboards, etc.).
+List final shifts for a schedule.
+
+```
+gcx irm oncall schedules list-final-shifts <schedule-id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for contexts
+      --end string      End date (YYYY-MM-DD) (default "YYYY-MM-DD")
+  -h, --help            help for list-final-shifts
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+      --start string    Start date (YYYY-MM-DD) (default "YYYY-MM-DD")
 ```
 
 ### Options inherited from parent commands
@@ -22,6 +31,5 @@ Manage incident contexts (linked alert groups, dashboards, etc.).
 
 ### SEE ALSO
 
-* [gcx irm incidents](gcx_irm_incidents.md)	 - Manage incidents.
-* [gcx irm incidents contexts list](gcx_irm_incidents_contexts_list.md)	 - List contexts attached to an incident.
+* [gcx irm oncall schedules](gcx_irm_oncall_schedules.md)	 - Manage OnCall schedules.
 

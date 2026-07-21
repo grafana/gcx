@@ -1,16 +1,16 @@
-## gcx irm incidents contexts list
+## gcx irm incidents list-contexts
 
 List contexts attached to an incident.
 
 ```
-gcx irm incidents contexts list <incident-id> [flags]
+gcx irm incidents list-contexts <incident-id> [flags]
 ```
 
 ### Options
 
 ```
       --alert-group-id string   Filter by linked alert group ID
-  -h, --help                    help for list
+  -h, --help                    help for list-contexts
       --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int               Maximum number of contexts to return (0 = server default)
@@ -33,5 +33,5 @@ gcx irm incidents contexts list <incident-id> [flags]
 
 ### SEE ALSO
 
-* [gcx irm incidents contexts](gcx_irm_incidents_contexts.md)	 - Manage incident contexts (linked alert groups, dashboards, etc.).
+* [gcx irm incidents](gcx_irm_incidents.md)	 - Manage incidents.
 

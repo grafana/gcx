@@ -1050,7 +1050,7 @@ func fetchAlertsRichConcurrent(ctx context.Context, c RichAlertGroupReader, ids 
 // `alert-groups` goes through newActionVerbCommand against a verbConfig.)
 
 // ---------------------------------------------------------------------------
-// final-shifts command (mounted under schedules)
+// list-final-shifts command (mounted under schedules)
 // ---------------------------------------------------------------------------
 
 type finalShiftsOpts struct {
@@ -1072,10 +1072,14 @@ func (o *finalShiftsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.End, "end", o.End, "End date (YYYY-MM-DD)")
 }
 
-func newScheduleFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command {
+// newScheduleListFinalShiftsCommand builds `schedules list-final-shifts
+// <schedule-id>`: a parent-scoped collection addressed by the schedule's ID
+// whose members have no ID of their own, so it takes the operation-subject
+// compound spelling.
+func newScheduleListFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command {
 	opts := &finalShiftsOpts{}
 	cmd := &cobra.Command{
-		Use:   "final-shifts <schedule-id>",
+		Use:   "list-final-shifts <schedule-id>",
 		Short: "List final shifts for a schedule.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

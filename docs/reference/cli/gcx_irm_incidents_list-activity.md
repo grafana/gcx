@@ -1,15 +1,15 @@
-## gcx irm incidents activity list
+## gcx irm incidents list-activity
 
 List activity items for an incident.
 
 ```
-gcx irm incidents activity list <incident-id> [flags]
+gcx irm incidents list-activity <incident-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for list
+  -h, --help            help for list-activity
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int       Maximum number of activity items to return (default 50)
@@ -30,5 +30,5 @@ gcx irm incidents activity list <incident-id> [flags]
 
 ### SEE ALSO
 
-* [gcx irm incidents activity](gcx_irm_incidents_activity.md)	 - Manage incident activity timeline.
+* [gcx irm incidents](gcx_irm_incidents.md)	 - Manage incidents.
 

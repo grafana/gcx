@@ -244,7 +244,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 
 | Feature | Old CLI | New gcx |
 |---------|---------|---------|
-| Incidents CRUD | Full (list with --query, --from, --to, --lookback) | Provider: list, get, create, close, open, activity, severities |
+| Incidents CRUD | Full (list with --query, --from, --to, --lookback) | Provider: list, get, create, close, open, list-activity, list-contexts, activity add, severities |
 | OnCall integrations | Full CRUD | Provider: Full CRUD (exists) |
 | OnCall escalation-chains | Full CRUD | Provider: exists |
 | OnCall schedules | Full CRUD | Provider: exists |
