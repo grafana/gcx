@@ -838,7 +838,7 @@ gcx <signal> metrics EXPR -d <datasource-uid> --since <duration>
 | Limit | `--limit` (normalize default across signals) |
 
 Signal-specific extensions (e.g., `traces get TRACE_ID`, `profiles
-profile-types`) are documented as official pattern extensions.
+list-profile-types`) are documented as official pattern extensions.
 
 ---
 
@@ -981,7 +981,7 @@ Framework only — individual provider setups are Area 7.
 | Fix `-o wide` crash on profiles query | Add missing codec case |
 | Normalize `--limit` defaults | Shared default or documented rationale |
 | Document adaptive sub-tree divergence | `docs/design/` |
-| Document signal-specific extensions | traces get, profile-types |
+| Document signal-specific extensions | traces get, list-profile-types |
 
 **Existing issues**: #425 (partial)
 

@@ -88,13 +88,14 @@ reliably deduced from `--from`/`--to` presence, and the response shape (vector
 vs matrix) is the same structure. The other signals have genuinely different
 response shapes between their primary query and time-series query.
 
-> **Shipped rename (decided 2026-07-17, respelled in review 2026-07-21).**
+> **Approved rename (implemented by PR #1009; decided 2026-07-17,
+> respelled in review 2026-07-21).**
 > `profile-types` is renamed to `list-profile-types` — at both mounts of
 > its shared builder (`profiles list-profile-types` and
 > `datasources pyroscope list-profile-types`) — under the
 > [Command Operation Semantics ADR](../command-operation-contract/001-command-operation-semantics.md)
-> §4 (rollout decision D4c), carried by PR #1009. The diagram above shows
-> the renamed surface.
+> §4 (rollout decision D4c). The diagram above shows the post-#1009
+> surface.
 
 **Rejected:** Single `query` command with auto-detect regex for search vs metrics
 (original design). Each query type has different response shapes, different
