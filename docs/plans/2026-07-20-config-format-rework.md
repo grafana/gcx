@@ -154,10 +154,13 @@ excluded — migration only writes refs to entries it creates).
   create/update stack entry + context binding; populate `slug` when resolved
 - `gcx cloud login` (`cmd/gcx/cloud/command.go`, `internal/config/cloud_login.go`):
   create/update a cloud entry, bind it to the current context
-- `gcx config set/unset` (`internal/config/editor.go`, `path.go`): new dot-path
-  grammar for `stacks.<name>.*` / `cloud.<name>.*`; context-relative bare paths
-  resolve through the refs (e.g. `grafana.server` on current context → its stack);
-  legacy paths get a clear error naming the new path, no aliases
+- `gcx config set/unset` (`internal/config/editor.go`, `path.go`): paths are
+  LITERAL — they name the exact location in the file, starting from a
+  top-level section; nothing resolves against the current context. Bare and
+  legacy paths error with the absolute path spelled out (computed from the
+  current context, copy-pasteable). Initially implemented with
+  ownership-routed bare paths; replaced with literal paths after review
+  (resolved question 13)
 - `SaveProviderConfig`/`SaveDatasourceUID` (`internal/providers/configloader.go:364-461`):
   providers → stack entry, datasource UIDs → context
 - OAuth refresh persistence (`internal/config/rest.go` WireTokenPersistence):
@@ -268,6 +271,12 @@ discovery) is the cut line — the format lands intact without it.
    "run `gcx cloud login`". Setting one credential clears the other (an entry
    holds one credential). Legacy configs migrated OAuth tokens as `token`
    (indistinguishable from CAPs); the next `gcx cloud login` moves them
+13. `gcx config set` paths are literal (the path you type is the path in the
+   file); no bare-path routing through the context's stack ref. Routing was a
+   mini-DSL to learn and made `grafana.server` silently edit a stack other
+   contexts share; literal paths are self-documenting against `config view`.
+   Bare/legacy paths error with the exact absolute path, computed from the
+   current context
 12. `orgs`/`stacks` dropped from the v1 cloud entry: they were a snapshot of
    what discovery saw at login, not authoritative config, and the empty
    `/api/orgs` response is ambiguous (stack realm vs missing scope vs error) —

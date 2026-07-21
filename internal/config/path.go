@@ -18,57 +18,63 @@ var cloudEntryFields = map[string]bool{
 	"api-url":                true,
 }
 
-// legacyContextFieldHints maps removed legacy per-context paths to their new
-// homes, for clear errors on old muscle memory.
+// legacyDatasourceFieldHints maps removed legacy per-context fields to their
+// datasources-map key, for clear errors on old muscle memory.
 //
 //nolint:gochecknoglobals // constant-like lookup list; never mutated.
-var legacyContextFieldHints = map[string]string{
-	"default-prometheus-datasource": "datasources.prometheus",
-	"default-loki-datasource":       "datasources.loki",
-	"default-pyroscope-datasource":  "datasources.pyroscope",
-	"default-tempo-datasource":      "datasources.tempo",
+var legacyDatasourceFieldHints = map[string]string{
+	"default-prometheus-datasource": "prometheus",
+	"default-loki-datasource":       "loki",
+	"default-pyroscope-datasource":  "pyroscope",
+	"default-tempo-datasource":      "tempo",
 }
 
-// ResolveContextPath rewrites a bare config path to a fully qualified one:
-// paths that already target a top-level Config field are returned unchanged,
-// stack-owned fields ("grafana.server", "providers.slo.x", "slug") resolve
-// through the current context's stack reference, and the remaining bare paths
-// ("datasources.prometheus", "stack", "cloud") qualify against the current
-// context. Legacy paths that no longer exist get an error naming the new path.
-func ResolveContextPath(cfg Config, path string) (string, error) {
+// ValidateConfigPath checks a `gcx config set`/`unset` path. Paths are
+// literal: they name the exact location in the config file, starting from a
+// top-level section ("stacks.", "cloud.", "contexts.", ...). Bare paths are
+// not routed anywhere — they error with the absolute path spelled out,
+// computed from the current context where possible so the fix is
+// copy-pasteable. Returns the path unchanged when valid.
+func ValidateConfigPath(cfg Config, path string) (string, error) {
 	first, rest, _ := strings.Cut(path, ".")
 	switch first {
 	case "contexts", "current-context", "stacks", "resources", "diagnostics", "version":
 		return path, nil
 	case "cloud":
-		if rest == "" {
-			// Bare `cloud` sets the current context's cloud reference.
-			break
-		}
-		if sub, _, _ := strings.Cut(rest, "."); cloudEntryFields[sub] {
-			return "", fmt.Errorf("legacy path %q: cloud credentials now live in named entries; use cloud.<entry>.%s%s", path, rest, cloudEntryHint(cfg))
+		if sub, _, _ := strings.Cut(rest, "."); rest == "" || cloudEntryFields[sub] {
+			return "", fmt.Errorf("path %q: cloud credentials live in named entries; use cloud.<entry>.%s%s", path, rest, cloudEntryHint(cfg))
 		}
 		return path, nil
 	}
 
-	if hint, ok := legacyContextFieldHints[first]; ok {
-		return "", fmt.Errorf("legacy path %q was removed; use %s", path, hint)
-	}
+	// Bare paths: name the absolute location instead of guessing.
+	ctxName, stackName := currentNames(cfg)
 
-	if cfg.CurrentContext == "" {
-		return "", fmt.Errorf("no current context set; use a fully qualified path (e.g. contexts.<name>.%s) or set one with: gcx config use-context <name>", path)
+	if kind, ok := legacyDatasourceFieldHints[first]; ok {
+		return "", fmt.Errorf("path %q was removed; use contexts.%s.datasources.%s", path, ctxName, kind)
 	}
 
 	switch first {
 	case "grafana", "providers", "slug":
-		cur := cfg.Contexts[cfg.CurrentContext]
-		if cur == nil || cur.Stack == "" {
-			return "", fmt.Errorf("current context references no stack; use a fully qualified path (stacks.<name>.%s) or run `gcx login`", path)
-		}
-		return "stacks." + cur.Stack + "." + path, nil
+		return "", fmt.Errorf("paths are literal; this field lives on a stack entry: use stacks.%s.%s", stackName, path)
+	case "datasources", "stack":
+		return "", fmt.Errorf("paths are literal; this field lives on a context: use contexts.%s.%s", ctxName, path)
 	}
 
-	return "contexts." + cfg.CurrentContext + "." + path, nil
+	return "", fmt.Errorf("unknown path %q: paths start from a top-level section (stacks.<name>., cloud.<entry>., contexts.<name>., resources., current-context)", path)
+}
+
+// currentNames returns the current context name and its stack name for use in
+// path suggestions, falling back to placeholders when unset.
+func currentNames(cfg Config) (string, string) {
+	ctxName, stackName := "<name>", "<name>"
+	if cfg.CurrentContext != "" {
+		ctxName = cfg.CurrentContext
+		if cur := cfg.Contexts[cfg.CurrentContext]; cur != nil && cur.Stack != "" {
+			stackName = cur.Stack
+		}
+	}
+	return ctxName, stackName
 }
 
 // cloudEntryHint names an example cloud entry for error messages: the current

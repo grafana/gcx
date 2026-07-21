@@ -30,7 +30,7 @@ func ResolveDatasourceFlag(flagValue string, cfgCtx *config.Context, kind string
 		}
 	}
 
-	return "", fmt.Errorf("datasource UID is required: use -d flag or set datasources.%s in config", kind)
+	return "", fmt.Errorf("datasource UID is required: use -d flag or set contexts.<name>.datasources.%s in config", kind)
 }
 
 // DatasourceResolution describes the outcome of datasource resolution.
@@ -231,31 +231,31 @@ func GetDatasourceType(ctx context.Context, cfg config.NamespacedRESTConfig, uid
 func discoverDatasourceUID(ctx context.Context, restCfg config.NamespacedRESTConfig, kind, stackSlug string) (DatasourceResolution, error) {
 	dsClient, err := datasources.NewClient(restCfg)
 	if err != nil {
-		return DatasourceResolution{}, fmt.Errorf("could not auto-discover %s datasource: failed to create datasource client: %w; use -d flag or set datasources.%s in config", kind, err, kind)
+		return DatasourceResolution{}, fmt.Errorf("could not auto-discover %s datasource: failed to create datasource client: %w; use -d flag or set contexts.<name>.datasources.%s in config", kind, err, kind)
 	}
 
 	allDatasources, err := dsClient.List(ctx)
 	if err != nil {
-		return DatasourceResolution{}, fmt.Errorf("could not auto-discover %s datasource: %w; use -d flag or set datasources.%s in config", kind, err, kind)
+		return DatasourceResolution{}, fmt.Errorf("could not auto-discover %s datasource: %w; use -d flag or set contexts.<name>.datasources.%s in config", kind, err, kind)
 	}
 
 	matches := matchingDatasources(allDatasources, kind)
 	switch len(matches) {
 	case 0:
-		return DatasourceResolution{}, fmt.Errorf("no %s datasource found in Grafana: use -d flag or set datasources.%s in config", kind, kind)
+		return DatasourceResolution{}, fmt.Errorf("no %s datasource found in Grafana: use -d flag or set contexts.<name>.datasources.%s in config", kind, kind)
 	case 1:
 		return DatasourceResolution{UID: matches[0].UID, Type: matches[0].Type}, nil
 	}
 
 	if stackSlug == "" {
-		return DatasourceResolution{}, fmt.Errorf("multiple %s datasources found (%s): use -d flag or set datasources.%s in config; set the stack slug (gcx config set slug <slug>) or grafana.server to enable auto-discovery", kind, formatDatasourceChoices(matches), kind)
+		return DatasourceResolution{}, fmt.Errorf("multiple %s datasources found (%s): use -d flag or set contexts.<name>.datasources.%s in config; set the stack slug (gcx config set stacks.<name>.slug <slug>) or grafana.server to enable auto-discovery", kind, formatDatasourceChoices(matches), kind)
 	}
 
 	if canonical := canonicalCloudDatasource(matches, kind, stackSlug); canonical != nil {
 		return DatasourceResolution{UID: canonical.UID, Type: canonical.Type, Persist: true}, nil
 	}
 
-	return DatasourceResolution{}, fmt.Errorf("multiple %s datasources found (%s): use -d flag or set datasources.%s in config", kind, formatDatasourceChoices(matches), kind)
+	return DatasourceResolution{}, fmt.Errorf("multiple %s datasources found (%s): use -d flag or set contexts.<name>.datasources.%s in config", kind, formatDatasourceChoices(matches), kind)
 }
 
 func configuredCloudStack(cfgCtx *config.Context) string {

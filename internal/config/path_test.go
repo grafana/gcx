@@ -8,120 +8,84 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveContextPath(t *testing.T) {
-	withStack := config.Config{
-		CurrentContext: "dev",
-		Contexts: map[string]*config.Context{
-			"dev": {Stack: "dev-stack"},
-		},
+func TestValidateConfigPath(t *testing.T) {
+	cfg := config.Config{
 		Stacks: map[string]*config.StackConfig{
-			"dev-stack": {},
+			"dev": {Grafana: &config.GrafanaConfig{Server: "https://dev.grafana.net"}},
 		},
+		Cloud: map[string]*config.CloudEntry{
+			"grafana-com": {Token: "tok"},
+		},
+		Contexts: map[string]*config.Context{
+			"dev": {Stack: "dev", Cloud: "grafana-com"},
+		},
+		CurrentContext: "dev",
 	}
+	cfg.Resolve()
 
-	testCases := []struct {
-		name    string
-		cfg     config.Config
-		path    string
-		want    string
-		wantErr string
-	}{
-		{
-			name: "bare datasources path resolves under current context",
-			cfg:  config.Config{CurrentContext: "dev"},
-			path: "datasources.prometheus",
-			want: "contexts.dev.datasources.prometheus",
-		},
-		{
-			name: "bare stack ref resolves under current context",
-			cfg:  config.Config{CurrentContext: "dev"},
-			path: "stack",
-			want: "contexts.dev.stack",
-		},
-		{
-			name: "bare cloud ref resolves under current context",
-			cfg:  config.Config{CurrentContext: "dev"},
-			path: "cloud",
-			want: "contexts.dev.cloud",
-		},
-		{
-			name: "bare grafana path resolves under current context's stack",
-			cfg:  withStack,
-			path: "grafana.tls.insecure-skip-verify",
-			want: "stacks.dev-stack.grafana.tls.insecure-skip-verify",
-		},
-		{
-			name: "bare providers path resolves under current context's stack",
-			cfg:  withStack,
-			path: "providers.slo.token",
-			want: "stacks.dev-stack.providers.slo.token",
-		},
-		{
-			name: "bare slug resolves under current context's stack",
-			cfg:  withStack,
-			path: "slug",
-			want: "stacks.dev-stack.slug",
-		},
-		{
-			name: "contexts prefix is left alone",
-			cfg:  config.Config{CurrentContext: "dev"},
-			path: "contexts.other.datasources.loki",
-			want: "contexts.other.datasources.loki",
-		},
-		{
-			name: "stacks prefix is left alone",
-			cfg:  config.Config{CurrentContext: "dev"},
-			path: "stacks.other.grafana.server",
-			want: "stacks.other.grafana.server",
-		},
-		{
-			name: "qualified cloud entry path is left alone",
-			cfg:  config.Config{CurrentContext: "dev"},
-			path: "cloud.grafana-com.token",
-			want: "cloud.grafana-com.token",
-		},
-		{
-			name: "current-context is left alone",
-			cfg:  config.Config{CurrentContext: "dev"},
-			path: "current-context",
-			want: "current-context",
-		},
-		{
-			name:    "bare cloud entry field errors with a hint",
-			cfg:     config.Config{CurrentContext: "dev"},
-			path:    "cloud.token",
-			wantErr: "cloud credentials now live in named entries",
-		},
-		{
-			name:    "legacy default datasource path errors with the new path",
-			cfg:     config.Config{CurrentContext: "dev"},
-			path:    "default-prometheus-datasource",
-			wantErr: "use datasources.prometheus",
-		},
-		{
-			name:    "bare path with no current context errors",
-			cfg:     config.Config{},
-			path:    "datasources.prometheus",
-			wantErr: "no current context set",
-		},
-		{
-			name:    "bare grafana path with no stack ref errors",
-			cfg:     config.Config{CurrentContext: "dev", Contexts: map[string]*config.Context{"dev": {}}},
-			path:    "grafana.server",
-			wantErr: "current context references no stack",
-		},
+	valid := []string{
+		"stacks.dev.grafana.server",
+		"stacks.dev.slug",
+		"stacks.dev.providers.slo.org-id",
+		"cloud.grafana-com.token",
+		"cloud.grafana-com.api-url",
+		"contexts.dev.stack",
+		"contexts.dev.cloud",
+		"contexts.dev.datasources.prometheus",
+		"current-context",
+		"resources.assume-server-dry-run",
+		"diagnostics.telemetry",
+		"version",
 	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := config.ResolveContextPath(tc.cfg, tc.path)
-			if tc.wantErr != "" {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tc.wantErr)
-				return
-			}
+	for _, path := range valid {
+		t.Run("valid/"+path, func(t *testing.T) {
+			got, err := config.ValidateConfigPath(cfg, path)
 			require.NoError(t, err)
-			assert.Equal(t, tc.want, got)
+			assert.Equal(t, path, got, "valid paths pass through unchanged")
 		})
 	}
+
+	invalid := []struct {
+		path string
+		hint string
+	}{
+		// Bare stack-owned paths are not routed; the error names the exact
+		// absolute location using the current context's stack.
+		{"grafana.server", "stacks.dev.grafana.server"},
+		{"providers.slo.org-id", "stacks.dev.providers.slo.org-id"},
+		{"slug", "stacks.dev.slug"},
+		// Bare context-owned paths likewise.
+		{"datasources.prometheus", "contexts.dev.datasources.prometheus"},
+		{"stack", "contexts.dev.stack"},
+		// Legacy datasource fields point at the datasources map.
+		{"default-prometheus-datasource", "contexts.dev.datasources.prometheus"},
+		{"default-loki-datasource", "contexts.dev.datasources.loki"},
+		// cloud.<field> would silently create an entry named after the field.
+		{"cloud.token", "cloud.<entry>.token"},
+		{"cloud.oauth-token", "cloud.<entry>.oauth-token"},
+		// Bare `cloud` (the old context-ref path) is ambiguous with the
+		// top-level map.
+		{"cloud", "cloud.<entry>."},
+		// Unknown paths get the general grammar.
+		{"nonsense.path", "top-level section"},
+	}
+	for _, tc := range invalid {
+		t.Run("invalid/"+tc.path, func(t *testing.T) {
+			_, err := config.ValidateConfigPath(cfg, tc.path)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.hint)
+		})
+	}
+
+	t.Run("cloud error names the bound entry", func(t *testing.T) {
+		_, err := config.ValidateConfigPath(cfg, "cloud.token")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cloud.grafana-com")
+	})
+
+	t.Run("no current context uses placeholders", func(t *testing.T) {
+		_, err := config.ValidateConfigPath(config.Config{}, "grafana.server")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "stacks.<name>.grafana.server")
+	})
 }

@@ -8,7 +8,7 @@ Unset a single value in a configuration file.
 
 PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
 
-A bare path is resolved against the current context: "datasources.prometheus" targets the context itself, while stack-owned fields ("grafana.server", "providers.slo.org-id", "slug") resolve through the context's stack reference to "stacks.<name>.<path>". Use a fully qualified path (starting with "contexts.", "stacks.", or "cloud.") to target a specific entry.
+Paths are literal: they name the exact location in the configuration file, starting from a top-level section ("stacks.<name>.", "cloud.<entry>.", "contexts.<name>.", "resources.", "current-context"). Nothing is resolved against the current context - the path you type is the path you see in "gcx config view".
 
 ```
 gcx config unset PROPERTY_NAME [flags]
@@ -20,9 +20,6 @@ gcx config unset PROPERTY_NAME [flags]
 
 	# Unset the "foo" context
 	gcx config unset contexts.foo
-
-	# Unset the "insecure-skip-tls-verify" flag in the current context's stack
-	gcx config unset grafana.insecure-skip-tls-verify
 
 	# Unset the "insecure-skip-tls-verify" flag on the "dev-instance" stack
 	gcx config unset stacks.dev-instance.grafana.insecure-skip-tls-verify

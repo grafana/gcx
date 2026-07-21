@@ -430,7 +430,7 @@ current-context: dev`),
 	viewCmd.Run(t)
 }
 
-func Test_SetCommand_barePathResolvesAgainstCurrentContext(t *testing.T) {
+func Test_SetCommand_barePathsErrorWithAbsolutePath(t *testing.T) {
 	cfg := `contexts:
   dev:
     stack: dev
@@ -438,25 +438,44 @@ current-context: dev`
 
 	configFile := testutils.CreateTempFile(t, cfg)
 
-	// Stack-owned bare paths resolve through the current context's stack.
+	// Paths are literal: bare paths are never routed, and the error spells
+	// out the exact absolute path using the current context.
 	setGrafanaServer := testutils.CommandTestCase{
 		Cmd:     config.Command(),
 		Command: []string{"set", "--config", configFile, "grafana.server", "https://grafana-dev.example"},
 		Assertions: []testutils.CommandAssertion{
-			testutils.CommandSuccess(),
+			testutils.CommandErrorContains("use stacks.dev.grafana.server"),
 		},
 	}
 	setGrafanaServer.Run(t)
 
-	// Context-owned bare paths resolve against the current context.
 	setDatasource := testutils.CommandTestCase{
 		Cmd:     config.Command(),
 		Command: []string{"set", "--config", configFile, "datasources.prometheus", "prom-uid"},
 		Assertions: []testutils.CommandAssertion{
-			testutils.CommandSuccess(),
+			testutils.CommandErrorContains("use contexts.dev.datasources.prometheus"),
 		},
 	}
 	setDatasource.Run(t)
+
+	// The literal forms work and land exactly where they say.
+	setAbsolute := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"set", "--config", configFile, "stacks.dev.grafana.server", "https://grafana-dev.example"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+		},
+	}
+	setAbsolute.Run(t)
+
+	setDatasourceAbsolute := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"set", "--config", configFile, "contexts.dev.datasources.prometheus", "prom-uid"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+		},
+	}
+	setDatasourceAbsolute.Run(t)
 
 	viewCmd := testutils.CommandTestCase{
 		Cmd:     config.Command(),
@@ -474,14 +493,14 @@ current-context: dev`
 	viewCmd.Run(t)
 }
 
-func Test_SetCommand_barePathWithoutCurrentContextErrors(t *testing.T) {
+func Test_SetCommand_barePathWithoutCurrentContextUsesPlaceholder(t *testing.T) {
 	configFile := testutils.CreateTempFile(t, `contexts: {}`)
 
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
 		Command: []string{"set", "--config", configFile, "datasources.prometheus", "prom-uid"},
 		Assertions: []testutils.CommandAssertion{
-			testutils.CommandErrorContains("no current context set"),
+			testutils.CommandErrorContains("use contexts.<name>.datasources.prometheus"),
 		},
 	}
 	testCase.Run(t)
@@ -496,7 +515,7 @@ contexts:
 		Cmd:     config.Command(),
 		Command: []string{"set", "--config", configFile, "cloud.token", "glc_abc123"},
 		Assertions: []testutils.CommandAssertion{
-			testutils.CommandErrorContains("cloud credentials now live in named entries; use cloud.<entry>.token"),
+			testutils.CommandErrorContains("cloud credentials live in named entries; use cloud.<entry>.token"),
 		},
 	}
 	testCase.Run(t)

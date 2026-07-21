@@ -494,7 +494,7 @@ Error: request failed: 403 Forbidden
    ```
 3. Update the token if expired (writes to the current context's stack):
    ```bash
-   gcx config set grafana.token <new-token>
+   gcx config set stacks.<name>.grafana.token <new-token>
    ```
 
 ### Empty Results

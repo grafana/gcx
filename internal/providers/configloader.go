@@ -265,7 +265,7 @@ func missingCloudAuthError(cfg *config.Config, curCtx *config.Context) error {
 	}
 	if len(cfg.Cloud) == 1 {
 		for name := range cfg.Cloud {
-			return fmt.Errorf("context has no cloud auth: bind the existing entry with `gcx config set cloud %s`, or run `gcx cloud login`", name)
+			return fmt.Errorf("context has no cloud auth: bind the existing entry with `gcx config set contexts.%s.cloud %s`, or run `gcx cloud login`", curCtx.Name, name)
 		}
 	}
 	return errors.New("context has no cloud auth: run `gcx cloud login`, or set GRAFANA_CLOUD_TOKEN")
@@ -304,7 +304,7 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 
 	slug := base.curCtx.ResolveStackSlug()
 	if slug == "" {
-		return CloudRESTConfig{}, errors.New("cloud stack is not configured: set the stack's slug (gcx config set slug <slug>) or GRAFANA_CLOUD_STACK env var")
+		return CloudRESTConfig{}, errors.New("cloud stack is not configured: set the stack's slug (gcx config set stacks.<name>.slug <slug>) or GRAFANA_CLOUD_STACK env var")
 	}
 
 	stack, err := base.client.GetStack(ctx, slug)

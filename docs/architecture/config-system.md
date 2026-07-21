@@ -480,24 +480,25 @@ func UnsetValue[V any](input *V, path string) error
 
 Path format: dot-separated YAML tag names.
 
-Before traversal, `config set`/`unset` rewrite bare paths through
-`ResolveContextPath` (`internal/config/path.go`): `grafana.*`, `providers.*`,
-and `slug` resolve through the current context's stack (`stacks.<name>.*`);
-`datasources.*`, `stack`, and bare `cloud` qualify against the current context
-(`contexts.<name>.*`); `cloud.<entry>.<field>` is absolute. Removed legacy
-paths get a pointed error naming the new one (`cloud.token` → "use
-cloud.<entry>.token"; `default-prometheus-datasource` →
-`datasources.prometheus`).
+Before traversal, `config set`/`unset` validate paths through
+`ValidateConfigPath` (`internal/config/path.go`). Paths are LITERAL: they
+name the exact location in the file, starting from a top-level section
+(`stacks.<name>.`, `cloud.<entry>.`, `contexts.<name>.`, `resources.`,
+`current-context`). Nothing is routed against the current context — the path
+you type is the path `gcx config view` shows. Bare and removed legacy paths
+error with the absolute path spelled out, computed from the current context
+so the fix is copy-pasteable (`grafana.server` → "use
+stacks.dev.grafana.server"; `cloud.token` → "use cloud.<entry>.token";
+`default-prometheus-datasource` → `contexts.dev.datasources.prometheus`).
 
 Examples:
 ```bash
 gcx config set current-context production
-gcx config set grafana.server https://grafana.example.com   # → stacks.<current stack>.grafana.server
 gcx config set stacks.dev.grafana.server https://grafana-dev.example.com
 gcx config set stacks.dev.grafana.org-id 1
 gcx config set stacks.dev.grafana.tls.insecure-skip-verify true
-gcx config set datasources.prometheus my-prom-uid            # → contexts.<current>.datasources.prometheus
-gcx config set cloud.grafana-com.token glc_xxxx              # absolute cloud-entry path
+gcx config set contexts.dev.datasources.prometheus my-prom-uid
+gcx config set cloud.grafana-com.token glc_xxxx
 gcx config set contexts.dev.stack dev                        # context → stack binding
 
 gcx config unset contexts.prod          # removes entire context entry
@@ -701,7 +702,7 @@ variable reference.
 | `internal/config/types.go` | All config struct definitions, `Resolve`, `Minify`, `Validate` |
 | `internal/config/loader.go` | `Load`, `Write`, `StandardLocation`, `ExplicitConfigFile` |
 | `internal/config/migrate.go` | Legacy-format detection and auto-migration |
-| `internal/config/path.go` | `ResolveContextPath` — bare `config set` path grammar |
+| `internal/config/path.go` | `ValidateConfigPath` — literal `config set` path validation + hints |
 | `internal/config/envparse.go` | `ParseEnvIntoContext` — env var overrides, ephemeral cloud entry |
 | `internal/config/keychain.go` | Keychain sentinel resolution and reconcile (`stack:`/`cloud:` owners) |
 | `internal/config/editor.go` | `SetValue`, `UnsetValue` — reflection-based path traversal |

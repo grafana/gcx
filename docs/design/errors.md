@@ -45,7 +45,7 @@ Suggestions must be commands the user can run — not vague advice:
 // Good:
 Suggestions: []string{
     "Review your configuration: gcx config view",
-    "Set your token: gcx config set grafana.token <value>",
+    "Set your token: gcx config set stacks.<name>.grafana.token <value>",
 }
 
 // Bad:

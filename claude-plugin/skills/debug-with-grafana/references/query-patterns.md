@@ -38,10 +38,10 @@ Avoid repeating the datasource UID argument:
 
 ```bash
 # Set default Prometheus datasource (current context)
-gcx config set datasources.prometheus <uid>
+gcx config set contexts.<name>.datasources.prometheus <uid>
 
 # Set default Loki datasource
-gcx config set datasources.loki <uid>
+gcx config set contexts.<name>.datasources.loki <uid>
 
 # Now queries work without specifying a UID
 gcx metrics query 'up'

@@ -908,7 +908,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Details: msg,
 			Parent:  err,
 			Suggestions: []string{
-				"Set manually: gcx config set providers.synth.sm-url https://synthetic-monitoring-api-<region>.grafana.net",
+				"Set manually: gcx config set stacks.<name>.providers.synth.sm-url https://synthetic-monitoring-api-<region>.grafana.net",
 				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_URL=<URL>",
 				"Auto-discovery requires grafana.server in the current context",
 				"Check config: gcx config view",
@@ -926,7 +926,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Details: msg,
 			Suggestions: []string{
 				"Ensure your cloud token's access policy includes these scopes: stacks:read, metrics:write, logs:write, traces:write",
-				"Or set the SM token directly: gcx config set providers.synth.sm-token <TOKEN>",
+				"Or set the SM token directly: gcx config set stacks.<name>.providers.synth.sm-token <TOKEN>",
 				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
 			},
 			DocsLink: docs.AccessPolicies,
@@ -940,7 +940,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Details: msg,
 			Parent:  err,
 			Suggestions: []string{
-				"Set it: gcx config set providers.synth.sm-token <TOKEN>",
+				"Set it: gcx config set stacks.<name>.providers.synth.sm-token <TOKEN>",
 				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
 				"Auto-discovery requires cloud auth (gcx cloud login) and a stack slug on the current context",
 				"Check config: gcx config view",
@@ -976,7 +976,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Details: msg,
 			Parent:  err,
 			Suggestions: []string{
-				"Set the stack's slug in your config: gcx config set slug <STACK_SLUG>",
+				"Set the stack's slug in your config: gcx config set stacks.<name>.slug <STACK_SLUG>",
 				"Or set GRAFANA_CLOUD_STACK environment variable",
 			},
 		}, true

@@ -139,7 +139,7 @@ func TestResolveDatasource(t *testing.T) {
 		_, err := dsquery.ResolveDatasource(context.Background(), "", nil, restCfg, "tempo")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "multiple tempo datasources found")
-		assert.Contains(t, err.Error(), "set the stack slug (gcx config set slug <slug>) or grafana.server to enable auto-discovery")
+		assert.Contains(t, err.Error(), "set the stack slug (gcx config set stacks.<name>.slug <slug>) or grafana.server to enable auto-discovery")
 		assert.Contains(t, err.Error(), "traces-a (tempo-1)")
 		assert.Contains(t, err.Error(), "traces-b (tempo-2)")
 	})

@@ -100,10 +100,10 @@ contexts:
 Use `gcx config set <path> <value>` to write individual fields. Paths use dot-separated YAML
 tag names. Missing stack, cloud, or context entries are created automatically.
 
-Bare paths resolve through the current context: `grafana.*`, `providers.*`, and `slug` target
-the current context's **stack entry** (which other contexts may share); `datasources.*`, `stack`,
-and bare `cloud` target the context itself. `cloud.<entry>.<field>` is absolute. Legacy paths
-(`cloud.token`, `default-prometheus-datasource`, ...) error with the new path.
+Paths are literal: they name the exact location in the file, starting from a top-level section
+(`stacks.<name>.`, `cloud.<entry>.`, `contexts.<name>.`, `resources.`, `current-context`).
+Nothing resolves against the current context. Bare and legacy paths (`grafana.server`,
+`cloud.token`, `default-prometheus-datasource`, ...) error with the absolute path spelled out.
 
 ### Grafana Connection
 
@@ -151,7 +151,6 @@ gcx config set stacks.production.grafana.tls.insecure-skip-verify true
 gcx config set contexts.production.stack production
 gcx config set contexts.production.datasources.prometheus <uid>
 gcx config set cloud.grafana-com.token glc_xxxx
-gcx config set grafana.token glsa_xxxx       # bare path: current context's stack
 gcx config unset stacks.production.grafana.password
 ```
 

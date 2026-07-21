@@ -8,7 +8,7 @@ Set a single value in a configuration file.
 
 PROPERTY_NAME is a dot-delimited reference to the value to set. It can either represent a field or a map entry.
 
-A bare path is resolved against the current context: "datasources.prometheus" targets the context itself, while stack-owned fields ("grafana.server", "providers.slo.org-id", "slug") resolve through the context's stack reference to "stacks.<name>.<path>". Use a fully qualified path (starting with "contexts.", "stacks.", or "cloud.") to target a specific entry.
+Paths are literal: they name the exact location in the configuration file, starting from a top-level section ("stacks.<name>.", "cloud.<entry>.", "contexts.<name>.", "resources.", "current-context"). Nothing is resolved against the current context - the path you type is the path you see in "gcx config view".
 
 PROPERTY_VALUE is the new value to set.
 
@@ -20,14 +20,14 @@ gcx config set PROPERTY_NAME PROPERTY_VALUE [flags]
 
 ```
 
-	# Set the "server" field on the current context's stack to "https://grafana-dev.example"
-	gcx config set grafana.server https://grafana-dev.example
-
-	# Set the "server" field on the "dev-instance" stack to "https://grafana-dev.example"
+	# Set the "server" field on the "dev-instance" stack
 	gcx config set stacks.dev-instance.grafana.server https://grafana-dev.example
 
-	# Disable the validation of the server's SSL certificate in the current context's stack
-	gcx config set grafana.insecure-skip-tls-verify true
+	# Disable the validation of the server's SSL certificate on a stack
+	gcx config set stacks.dev-instance.grafana.insecure-skip-tls-verify true
+
+	# Set the default prometheus datasource for a context
+	gcx config set contexts.dev.datasources.prometheus my-prom-uid
 
 	# Set a cloud entry's token in the local config layer
 	gcx config set --file local cloud.grafana-com.token my-token

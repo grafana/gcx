@@ -55,7 +55,7 @@ gcx login my-grafana --server https://your-instance.grafana.net
 
 Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role.
 
-For on-premises instances, gcx defaults the organization ID to 1 if you do not specify one — the common case for single-tenant Grafana OSS. If you need a different org ID, set it with `gcx config set grafana.org-id N` after login (this writes to the current context's stack entry).
+For on-premises instances, gcx defaults the organization ID to 1 if you do not specify one — the common case for single-tenant Grafana OSS. If you need a different org ID, set it with `gcx config set stacks.<name>.grafana.org-id N` after login (on the context's stack entry).
 
 ### Grafana Cloud product APIs
 
@@ -108,7 +108,7 @@ gcx login --context my-stack
 gcx config set stacks.my-stack.slug your-stack-slug
 ```
 
-(`gcx config set slug your-stack-slug` does the same for the current context's stack.)
+(`gcx config set stacks.<name>.slug your-stack-slug` does the same on the stack entry.)
 
 You do not need to set `cloud.<entry>.api-url` for `grafana.com`; gcx defaults to `https://grafana.com`. Set it only when you need a non-default Grafana Cloud API endpoint.
 
@@ -182,9 +182,9 @@ Each entry pairs the error you see with what it means and how to fix it.
     - *Means:* gcx cannot determine which organization (on-prem) or stack (Cloud) the context's stack targets.
     - *Fix:* `gcx config set stacks.X.grafana.org-id 1` for on-prem, or `gcx config set stacks.X.grafana.stack-id N` for Cloud. Issue [#545](https://github.com/grafana/gcx/issues/545) tracks auto-healing this.
 
-2. **`cloud stack is not configured: set the stack's slug (gcx config set slug <slug>) or GRAFANA_CLOUD_STACK env var`**
+2. **`cloud stack is not configured: set the stack's slug (gcx config set stacks.<name>.slug <slug>) or GRAFANA_CLOUD_STACK env var`**
     - *Means:* a Cloud product API command ran against a context without a resolvable stack slug.
-    - *Fix:* `gcx config set slug your-stack-slug` (writes to the current context's stack entry), or export `GRAFANA_CLOUD_STACK` in the current shell. Issue [#545](https://github.com/grafana/gcx/issues/545) tracks auto-healing this.
+    - *Fix:* `gcx config set stacks.<name>.slug your-stack-slug`, or export `GRAFANA_CLOUD_STACK` in the current shell. Issue [#545](https://github.com/grafana/gcx/issues/545) tracks auto-healing this.
 
 3. **OAuth: browser did not open, or token refresh failed**
     - *Means:* gcx tried to open a browser for OAuth but the system command returned an error, or the OAuth refresh flow failed.

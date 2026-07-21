@@ -103,7 +103,7 @@ import "fmt"
 func (p *SLOProvider) Validate(cfg map[string]string) error {
     if cfg["token"] == "" {
         return fmt.Errorf("slo provider: token is required; "+
-            "set it with: gcx config set providers.slo.token <value>")
+            "set it with: gcx config set stacks.<name>.providers.slo.token <value>")
     }
     return nil
 }
@@ -421,7 +421,7 @@ Set individual keys with the config command (dotted-path notation). Bare
 fully-qualified form targets a stack by name:
 
 ```bash
-gcx config set providers.slo.token glsa_abc123
+gcx config set stacks.mystack.providers.slo.token glsa_abc123
 gcx config set stacks.prod.providers.slo.url https://slo.example.com
 ```
 
