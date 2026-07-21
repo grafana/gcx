@@ -367,7 +367,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 		ContextName:    contextName,
 		AuthMethod:     authMethod,
 		IsCloud:        target == TargetCloud,
-		HasCloudToken:  cloudEntry != nil && cloudEntry.Token != "",
+		HasCloudToken:  cloudEntry != nil && (cloudEntry.Token != "" || cloudEntry.OAuthToken != ""),
 		GrafanaVersion: grafanaVersion,
 		StackSlug:      resolveStackSlug(opts.Server),
 	}, nil
@@ -530,23 +530,26 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudEntry, string, 
 	}
 }
 
-// cloudEntryForToken builds the cloud auth entry for a Cloud target that has a
-// resolved token. For an OAuth or kept (already-trusted) token it records the
-// GCOM endpoint for this stack env, matching `gcx cloud login`; without this a
+// cloudEntryForToken builds the cloud auth entry for a Cloud target that has
+// a resolved token. OAuth-issued tokens land in the oauth-token field, pasted
+// CAP tokens in the token field. For an OAuth token it also records the GCOM
+// endpoint for this stack env, matching `gcx cloud login`; without this a
 // later `gcx cloud login` on an ops/dev context would default to prod
 // grafana.com. A freshly pasted CAP token carries no such origin, so its API
 // URL is left to auto-derivation at use time.
 func cloudEntryForToken(opts Options) *config.CloudEntry {
-	entry := &config.CloudEntry{
-		Token:  opts.CloudToken,
-		APIUrl: opts.CloudAPIURL,
-	}
-	if root, ok := config.GCOMRootFromServerURL(opts.Server); ok && opts.CloudTokenFromOAuth {
-		entry.OAuthUrl = root
-		if entry.APIUrl == "" {
-			entry.APIUrl = root
+	entry := &config.CloudEntry{APIUrl: opts.CloudAPIURL}
+	if opts.CloudTokenFromOAuth {
+		entry.OAuthToken = opts.CloudToken
+		if root, ok := config.GCOMRootFromServerURL(opts.Server); ok {
+			entry.OAuthUrl = root
+			if entry.APIUrl == "" {
+				entry.APIUrl = root
+			}
 		}
+		return entry
 	}
+	entry.Token = opts.CloudToken
 	return entry
 }
 

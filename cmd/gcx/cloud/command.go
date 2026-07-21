@@ -76,9 +76,10 @@ Cloud resources like stacks and access policies.
 By default, opens a browser for interactive OAuth2 authentication.
 
 EXPERIMENTAL: interactive OAuth login is an experimental flow that stores an
-OAuth-issued token as the cloud entry's token. Some commands that talk to
-grafana.com do not yet work with an OAuth token. For full functionality, pass
-a Cloud Access Policy token via --cloud-token instead.
+OAuth-issued token in the cloud entry's oauth-token field. Some commands that
+talk to grafana.com do not yet work with an OAuth token, and the token cannot
+be refreshed - when it expires, run this command again. For full
+functionality, pass a Cloud Access Policy token via --cloud-token instead.
 
 For non-interactive use (CI/CD, scripts), pass a Cloud Access Policy token
 directly via --cloud-token.
@@ -146,7 +147,7 @@ func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *log
 }
 
 func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts) error {
-	fmt.Fprintln(os.Stderr, "Warning: interactive OAuth login is experimental. It stores an OAuth-issued token as the cloud entry's token.")
+	fmt.Fprintln(os.Stderr, "Warning: interactive OAuth login is experimental. It stores an OAuth-issued token in the cloud entry's oauth-token field.")
 	fmt.Fprintln(os.Stderr, "Some commands that talk to grafana.com do not yet work with an OAuth token. For full functionality, use --cloud-token with a Cloud Access Policy token.")
 
 	flow := auth.NewGCOMFlow(auth.GCOMOptions{
@@ -173,9 +174,10 @@ func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *log
 	fmt.Fprintf(os.Stderr, "Scopes: %s\n", result.Scope)
 
 	entry := &config.CloudEntry{
-		Token:    result.AccessToken,
-		OAuthUrl: opts.oauthURL,
-		APIUrl:   opts.apiURL,
+		OAuthToken:          result.AccessToken,
+		OAuthTokenExpiresAt: result.ExpiresAt,
+		OAuthUrl:            opts.oauthURL,
+		APIUrl:              opts.apiURL,
 	}
 	contextName, entryName, err := config.SaveCloudConfig(ctx, configOpts.ConfigSource(), configOpts.Context, entry)
 	if err != nil {

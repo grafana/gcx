@@ -10,18 +10,23 @@ import (
 
 // MergeCloudInto applies non-empty fields from incoming onto existing,
 // allocating existing if nil. It returns the merged entry.
+//
+// An entry holds one credential: setting a token clears the OAuth fields and
+// vice versa, so switching auth methods leaves no stale credential behind
+// (mirroring how gcx login switches Grafana auth methods).
 func MergeCloudInto(existing, incoming *CloudEntry) *CloudEntry {
 	if existing == nil {
 		existing = &CloudEntry{}
 	}
 	if incoming.Token != "" {
 		existing.Token = incoming.Token
+		existing.OAuthToken = ""
+		existing.OAuthTokenExpiresAt = ""
 	}
 	if incoming.OAuthToken != "" {
 		existing.OAuthToken = incoming.OAuthToken
-	}
-	if incoming.OAuthTokenExpiresAt != "" {
 		existing.OAuthTokenExpiresAt = incoming.OAuthTokenExpiresAt
+		existing.Token = ""
 	}
 	if incoming.OAuthUrl != "" {
 		existing.OAuthUrl = incoming.OAuthUrl

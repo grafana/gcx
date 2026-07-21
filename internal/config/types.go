@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/credentials"
 )
@@ -298,6 +299,27 @@ type CloudEntry struct {
 	// including stacks created later — login must not auto-fill it for
 	// org-realm tokens.
 	Stacks []string `json:"stacks,omitempty" yaml:"stacks,omitempty"`
+}
+
+// ResolveToken returns the credential to authenticate GCOM calls with: the
+// access policy token when set, else the OAuth token. An expired OAuth token
+// yields an error naming the fix — the grafana.com OAuth flow issues no
+// refresh token, so re-running the login is the only recovery. An empty
+// return with nil error means the entry holds no credential.
+func (entry *CloudEntry) ResolveToken() (string, error) {
+	if entry.Token != "" {
+		return entry.Token, nil
+	}
+	if entry.OAuthToken == "" {
+		return "", nil
+	}
+	if entry.OAuthTokenExpiresAt != "" {
+		if expiry, err := time.Parse(time.RFC3339, entry.OAuthTokenExpiresAt); err == nil && time.Now().After(expiry) {
+			return "", fmt.Errorf("cloud OAuth token for entry %q expired at %s: run `gcx cloud login` to re-authenticate",
+				entry.Name, entry.OAuthTokenExpiresAt)
+		}
+	}
+	return entry.OAuthToken, nil
 }
 
 // Context binds a stack and (optionally) a cloud auth entry together with

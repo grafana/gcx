@@ -56,6 +56,8 @@ Add `version: 1` at the top level to mark the file as migrated.
 
 Name the `cloud` entries however you like - contexts reference them by name. When several contexts carried the same cloud token, point them all at one shared entry; that deduplication is the main reason for the new layout.
 
+If your legacy `cloud.token` held a token from the experimental OAuth sign-in rather than an access policy token, it migrates into `token` all the same (the two are indistinguishable in the legacy format). The next `gcx cloud login` stores it correctly in the entry's `oauth-token` field.
+
 ### Example
 
 A legacy configuration:

@@ -242,6 +242,12 @@ discovery) is the cut line — the format lands intact without it.
 7. context→stack migration strictly 1:1, no stack dedup
 9. stack/cloud entries merge atomically across layers (top layer wins wholesale);
    contexts keep field-level merge — see decisions table for the security rationale
+11. OAuth-issued cloud tokens live in `oauth-token` (+`oauth-token-expires-at`
+   when the flow reports a lifetime), CAP tokens in `token`; readers prefer
+   `token`, fall back to `oauth-token`, and an expired OAuth token errors with
+   "run `gcx cloud login`". Setting one credential clears the other (an entry
+   holds one credential). Legacy configs migrated OAuth tokens as `token`
+   (indistinguishable from CAPs); the next `gcx cloud login` moves them
 10. migration covers every file the loader touches (all discovered layers, explicit
    files on use); the shadowed duplicate user config and `.gcx.yaml` in unvisited
    directories migrate on first use; the diagnostics pre-read is legacy-aware

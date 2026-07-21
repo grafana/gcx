@@ -229,11 +229,16 @@ func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 
 	curCtx := loaded.GetCurrentContext()
 
-	if curCtx.CloudEntry == nil || curCtx.CloudEntry.Token == "" {
+	if curCtx.CloudEntry == nil {
 		return cloudBase{}, missingCloudAuthError(&loaded, curCtx)
 	}
-
-	token := curCtx.CloudEntry.Token
+	token, err := curCtx.CloudEntry.ResolveToken()
+	if err != nil {
+		return cloudBase{}, err
+	}
+	if token == "" {
+		return cloudBase{}, missingCloudAuthError(&loaded, curCtx)
+	}
 	apiURL := curCtx.ResolveCloudAPIURL()
 
 	client, err := cloud.NewGCOMClient(apiURL, token)

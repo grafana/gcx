@@ -138,7 +138,8 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				require.NotNil(t, ctx)
 				assert.Equal(t, "grafana-ops-com", ctx.Cloud, "cloud entry must be named after the GCOM host")
 				require.NotNil(t, ctx.CloudEntry)
-				assert.Equal(t, "gcom-oauth-token", ctx.CloudEntry.Token)
+				assert.Equal(t, "gcom-oauth-token", ctx.CloudEntry.OAuthToken, "OAuth-issued tokens land in oauth-token, not token")
+				assert.Empty(t, ctx.CloudEntry.Token)
 				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.OAuthUrl, "OAuth token must record its GCOM origin")
 				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.APIUrl, "APIUrl defaults to the same GCOM root")
 			},
