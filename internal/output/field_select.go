@@ -106,13 +106,19 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 
 	case map[string]any:
 		// A dynamic map is treated as a list envelope only when it carries
-		// the reserved list_meta entry — attaching the reserved key is the
-		// producer's opt-in to the contract. All other maps keep whole-object
-		// selection, so raw passthrough payloads (e.g. gcx api responses that
-		// happen to be items-shaped) are unaffected.
-		if hasListMetaEntry(v) {
-			if out, ok := c.envelopeFieldSelection(v); ok {
-				return c.json.Encode(dst, out)
+		// the reserved list_meta key — attaching the key is the producer's
+		// opt-in to the contract. The map may hold native Go values (a
+		// *ListMeta, a []map[string]any or typed item slice), so envelope
+		// handling runs on a JSON-normalized copy; the key-presence check
+		// happens before normalization so native metadata values opt in too,
+		// and the reserved shape is validated after. Maps without the key —
+		// raw passthrough payloads (e.g. gcx api responses that happen to be
+		// items-shaped) — keep whole-object selection on the original value.
+		if _, ok := v[ListMetaKey]; ok {
+			if m, err := toMap(v); err == nil && hasListMetaEntry(m) {
+				if out, ok := c.envelopeFieldSelection(m); ok {
+					return c.json.Encode(dst, out)
+				}
 			}
 		}
 		return c.json.Encode(dst, extractFields(v, c.fields))

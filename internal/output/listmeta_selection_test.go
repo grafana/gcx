@@ -317,3 +317,101 @@ func TestDiscoveryOnDynamicMapNonReservedListMeta(t *testing.T) {
 	fields := strings.Fields(out)
 	assert.Contains(t, fields, "list_meta", "non-reserved shape keeps pre-reservation discovery")
 }
+
+// nativeEnvelope builds a dynamic envelope the way a Go producer naturally
+// would — a *ListMeta value and a native []map[string]any items slice, NOT
+// the JSON-decoded representation ([]any + map[string]any) that dynamicEnvelope
+// uses. Envelope handling must JSON-normalize these before selection.
+func nativeEnvelope(itemsKey string) map[string]any {
+	return map[string]any{
+		itemsKey: []map[string]any{
+			{"uid": "ds-01", "name": "Datasource 01", "type": "prometheus"},
+		},
+		"list_meta": &cmdio.ListMeta{Truncated: true, Returned: 1},
+	}
+}
+
+// TestFieldSelectionOnNativeMapEnvelope: native Go values (a *ListMeta, a
+// []map[string]any slice) must get the same envelope treatment as the
+// JSON-decoded representation — the key-presence gate fires before
+// normalization, so a native metadata value opts in too.
+func TestFieldSelectionOnNativeMapEnvelope(t *testing.T) {
+	for _, key := range []string{"items", "datasources"} {
+		out := encodeWithJSONFlag(t, "uid", nativeEnvelope(key))
+
+		var result map[string]any
+		require.NoError(t, json.Unmarshal([]byte(out), &result))
+		assert.NotContains(t, result, "uid", "envelope must not be treated as a single object")
+
+		items, ok := result[key].([]any)
+		require.True(t, ok, "wrapper key %q must survive selection, got %v", key, result)
+		require.Len(t, items, 1, "the native item row must not be dropped")
+		row, ok := items[0].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "ds-01", row["uid"])
+
+		meta, ok := result["list_meta"].(map[string]any)
+		require.True(t, ok, "native *ListMeta must be re-attached as the normalized object")
+		assert.Equal(t, true, meta["truncated"])
+	}
+}
+
+// TestFieldSelectionOnHybridMapEnvelope pins the row-dropping regression: a
+// JSON-decoded list_meta object alongside a NATIVE []map[string]any items
+// slice passed the reserved-key gate but toSliceOfMaps (which only accepts
+// []any) returned no rows — selection emitted {"items": [], "list_meta": ...},
+// silently discarding data. Normalizing the whole map fixes the slice too.
+func TestFieldSelectionOnHybridMapEnvelope(t *testing.T) {
+	env := map[string]any{
+		"items":     []map[string]any{{"uid": "ds-01"}},
+		"list_meta": map[string]any{"truncated": true, "returned": float64(1)},
+	}
+	out := encodeWithJSONFlag(t, "uid", env)
+
+	var result struct {
+		Items    []map[string]any `json:"items"`
+		ListMeta *cmdio.ListMeta  `json:"list_meta"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Len(t, result.Items, 1, "native items slice must not be silently dropped")
+	assert.Equal(t, "ds-01", result.Items[0]["uid"])
+	require.NotNil(t, result.ListMeta)
+	assert.True(t, result.ListMeta.Truncated)
+}
+
+// TestFieldSelectionOnNativeTypedItemsEnvelope: a typed item slice (what a
+// command holding []Row naturally has in hand) is normalized like any other
+// native value.
+func TestFieldSelectionOnNativeTypedItemsEnvelope(t *testing.T) {
+	env := map[string]any{
+		"datasources": []dsRow{{UID: "ds-01", Name: "n", Type: "prometheus"}},
+		"list_meta":   &cmdio.ListMeta{Truncated: true, Returned: 1},
+	}
+	out := encodeWithJSONFlag(t, "uid", env)
+
+	var result struct {
+		Datasources []map[string]any `json:"datasources"`
+		ListMeta    *cmdio.ListMeta  `json:"list_meta"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Len(t, result.Datasources, 1)
+	assert.Equal(t, "ds-01", result.Datasources[0]["uid"])
+	require.NotNil(t, result.ListMeta)
+}
+
+// TestDiscoveryOnNativeMapEnvelope: discovery must normalize native values
+// the same way — item fields listed, never the wrapper key or list_meta.*.
+func TestDiscoveryOnNativeMapEnvelope(t *testing.T) {
+	for _, key := range []string{"items", "datasources"} {
+		out := encodeWithJSONFlag(t, "list", nativeEnvelope(key))
+
+		fields := strings.Fields(out)
+		assert.Contains(t, fields, "uid")
+		assert.Contains(t, fields, "name")
+		assert.NotContains(t, fields, key, "wrapper key %q must not be listed", key)
+		for _, f := range fields {
+			assert.False(t, strings.HasPrefix(f, "list_meta"),
+				"reserved truncation metadata must be excluded from discovery, got %q", f)
+		}
+	}
+}

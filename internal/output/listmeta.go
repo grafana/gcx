@@ -19,6 +19,12 @@ import (
 //   - a single-key list envelope is still recognized as such when the
 //     reserved key rides alongside it.
 //
+// These guarantees cover typed envelope structs and dynamic map[string]any
+// envelopes (whose values may be native Go types — they are JSON-normalized
+// before envelope handling). unstructured.UnstructuredList output does not
+// participate in the contract yet: no producer attaches truncation metadata
+// to unstructured lists (see docs/design/output.md § 15.5).
+//
 // Commands must attach the metadata with exactly this key and `omitempty`:
 //
 //	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`

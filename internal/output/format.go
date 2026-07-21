@@ -298,13 +298,18 @@ func marshalToSampleMap(value any) (map[string]any, error) {
 		}
 		return nil, errors.New("cannot discover fields from empty UnstructuredList")
 	case map[string]any:
-		// A dynamic map carrying the reserved list_meta entry is a list
+		// A dynamic map carrying the reserved list_meta key is a list
 		// envelope: sample item fields exactly like the marshalled-struct
-		// path, so list_meta.* paths are never listed. All other maps stay
-		// as-is — raw passthrough payloads (e.g. gcx api responses) keep
-		// discovering their own fields.
-		if hasListMetaEntry(v) {
-			return sampleFromObject(v, value), nil
+		// path, so list_meta.* paths are never listed. The map may hold
+		// native Go values (a *ListMeta, typed item slices), so sampling
+		// runs on a JSON-normalized copy, with the reserved shape validated
+		// after normalization. All other maps stay as-is — raw passthrough
+		// payloads (e.g. gcx api responses) keep discovering their own
+		// fields.
+		if _, ok := v[ListMetaKey]; ok {
+			if m, err := toMap(v); err == nil && hasListMetaEntry(m) {
+				return sampleFromObject(m, value), nil
+			}
 		}
 		return v, nil
 	}
