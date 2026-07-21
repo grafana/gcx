@@ -14,9 +14,9 @@ const firstRunNoticeFileName = "telemetry-notice-shown"
 
 // firstRunNotice is the one-time message telling interactive users that
 // anonymous usage stats are on and how to opt out.
-const firstRunNotice = `gcx collects anonymous usage statistics: command paths, flag names, and outcomes - never argument values, resource names, or hosts.
-Opt out: set GCX_TELEMETRY=disabled, or diagnostics.telemetry: disabled in the gcx config file.
-Details: ` + docs.AnonymousUsageStats + "\n"
+const firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect potentially identifiable or sensitive information like argument or flag values or resource names.
+You can opt out by setting GCX_TELEMETRY=disabled, or putting diagnostics.telemetry: disabled in your gcx config file.
+Find out more at ` + docs.AnonymousUsageStats + "\n"
 
 // FirstRunNoticePath returns the flag file that records the notice was shown.
 func FirstRunNoticePath() string {
