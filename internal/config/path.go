@@ -16,8 +16,6 @@ var cloudEntryFields = map[string]bool{
 	"oauth-token-expires-at": true,
 	"oauth-url":              true,
 	"api-url":                true,
-	"orgs":                   true,
-	"stacks":                 true,
 }
 
 // legacyContextFieldHints maps removed legacy per-context paths to their new

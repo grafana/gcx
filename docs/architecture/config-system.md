@@ -51,9 +51,7 @@ Config
 │       ├── OAuthToken           ""          // datapolicy:"secret" — from `gcx cloud login`
 │       ├── OAuthTokenExpiresAt  ""          // RFC3339
 │       ├── APIUrl               ""          // optional, default https://grafana.com
-│       ├── OAuthUrl             ""          // optional, default https://grafana.com
-│       ├── Orgs                 []string    // grafana.com org slugs, populated at login
-│       └── Stacks               []string    // CAP stack realm = grafana.com slugs, NOT local stack keys
+│       └── OAuthUrl             ""          // optional, default https://grafana.com
 └── Contexts        map[string]*Context
     ├── "production"
     │   ├── Stack        "production"    // name ref into Stacks (required for Grafana access)
@@ -135,8 +133,6 @@ cloud:
   grafana-com:
     token: "glc_xxxx"             # Cloud Access Policy token
     api-url: https://grafana.com  # optional, default https://grafana.com
-    orgs: [myorg]                 # populated at login
-    # stacks: [slug1]             # CAP stack realm (grafana.com slugs); absent = whole org(s)
 
 contexts:
   production:
@@ -402,9 +398,7 @@ Config.Cloud map[string]*CloudEntry
       ├── OAuthToken  — from `gcx cloud login` (no refresh token; re-login on expiry)
       ├── OAuthTokenExpiresAt — set only when the token response reports a lifetime (GCOM doesn't today) or by hand; when set, expiry errors name `gcx cloud login` instead of a 401
       ├── APIUrl      — GCOM base URL (default: "https://grafana.com")
-      ├── OAuthUrl    — OAuth login base URL (default: "https://grafana.com")
-      ├── Orgs        — grafana.com org slugs, populated at login
-      └── Stacks      — CAP stack realm (grafana.com slugs, NOT local stack keys); absent = whole org(s)
+      └── OAuthUrl    — OAuth login base URL (default: "https://grafana.com")
 ```
 
 The binding is optional: a context without a `cloud:` ref passes validation,

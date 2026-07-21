@@ -35,8 +35,6 @@ cloud:
     token: "..."              # or oauth-token + oauth-token-expires-at
     api-url: https://grafana-ops.com    # optional, default grafana.com
     oauth-url: https://grafana-ops.com
-    orgs: [daf1]              # populated at login (realm discovery)
-    stacks: [dafstack1]       # CAP stack realm = grafana.com slugs, NOT local stack keys
 
 contexts:
   ops:
@@ -49,8 +47,8 @@ Key rules (details in the issue comment):
 
 - cloud binding is explicit and optional; dangling ref = validation error;
   missing ref = runtime error on cloud-dependent ops, with a recovery hint
-- `cloud.<name>.stacks` is the CAP realm (grafana.com slugs); absent = whole org;
-  login must not auto-fill it for org-realm tokens
+- ~~`cloud.<name>.stacks` is the CAP realm~~ dropped from v1 (see resolved
+  question 12): what a credential can see is runtime discovery, not config
 - legacy `default-*-datasource` fields dropped (breaking format change anyway)
 - `current-context`, `diagnostics`, `telemetry` unchanged
 
@@ -163,13 +161,26 @@ excluded — migration only writes refs to entries it creates).
 - OAuth refresh persistence (`internal/config/rest.go` WireTokenPersistence):
   write refreshed tokens into the stack entry
 
-### 5. Cloud realm discovery at login (`internal/cloud`, `cmd/gcx/cloud`)
+### 5. Runtime realm discovery + org-ambiguity guard (`internal/cloud`, PR 3)
 
-- add org-unscoped `ListInstances` to `internal/cloud` GCOM client
-- realm detection per the issue comment: `/api/orgs` non-empty → org realm
-  (write `orgs`, omit `stacks`); empty → stack realm (write both from instances);
-  OAuth → orgs derived from instances
-- store `oauth-token-expires-at`; expiry error says "run `gcx cloud login`"
+Redesigned after the [#890 discussion](https://github.com/grafana/gcx/issues/890#issuecomment-5029465359)
+(empty-response ambiguity) and #949 (stack create silently landing in the
+account's default org):
+
+- no login auto-fill and no realm fields in config — what a credential can
+  see is checked at runtime, when an operation needs it
+- discovery is tri-state: `discovered` / `unknown-forbidden` (403, missing
+  scope, OAuth-rejected route) / `unknown-error` (transient). The realm is
+  NEVER inferred from an empty or failed response
+- org-ambiguous GCOM mutations (e.g. stack create) refuse and require
+  `--org` when discovery returns more than one org or unknown — gcx must not
+  let grafana.com pick a default org it cannot see (#949)
+- add org-unscoped `ListInstances` to `internal/cloud` for the discovery call
+- any caching goes to the XDG state dir with a timestamp (stack-id cache
+  precedent), never into the config file
+- (done in PR 1) `oauth-token-expires-at` read with a "run `gcx cloud login`"
+  expiry error; GCOM doesn't report a lifetime today so the field is
+  populated only defensively or by hand
 
 ### 6. Runtime errors for missing cloud binding
 
@@ -196,7 +207,7 @@ excluded — migration only writes refs to entries it creates).
 1. **PR 1**: types + loader + migration + merge + env overrides + tests (steps 1-3) —
    everything reads/writes the new format, all commands keep working
 2. **PR 2**: write paths + config set grammar + runtime errors (steps 4, 6)
-3. **PR 3**: realm discovery at cloud login (step 5)
+3. **PR 3**: runtime realm discovery + org-ambiguity mutation guard (step 5)
 
 Docs/reference regen ride along with each PR (CI enforces drift).
 
@@ -234,7 +245,8 @@ discovery) is the cut line — the format lands intact without it.
 
 1. migration UX: silent auto-migrate on load + `.legacy.bak` backup + one-line notice
 2. migration dedups identical cloud configs into one entry
-3. realm discovery (step 5) is in scope, as its own PR (PR 3)
+3. realm discovery (step 5) is in scope, as its own PR (PR 3) — later redesigned
+   as runtime discovery + mutation guard, see resolved question 12
 4. explicit version field: yes — new format is `version: 1`, legacy format stays
    unversioned and is detected by shape
 5. migrated cloud entries named from api-url host; collision → suffix first context name
@@ -248,6 +260,13 @@ discovery) is the cut line — the format lands intact without it.
    "run `gcx cloud login`". Setting one credential clears the other (an entry
    holds one credential). Legacy configs migrated OAuth tokens as `token`
    (indistinguishable from CAPs); the next `gcx cloud login` moves them
+12. `orgs`/`stacks` dropped from the v1 cloud entry: they were a snapshot of
+   what discovery saw at login, not authoritative config, and the empty
+   `/api/orgs` response is ambiguous (stack realm vs missing scope vs error) —
+   auto-filling `stacks` on it could freeze a snapshot for an org-realm token.
+   Config holds user assertions only; discovery is runtime with an explicit
+   unknown state (PR 3), and #949-style org-ambiguous mutations get a guard
+   instead of a cache
 10. migration covers every file the loader touches (all discovered layers, explicit
    files on use); the shadowed duplicate user config and `.gcx.yaml` in unvisited
    directories migrate on first use; the diagnostics pre-read is legacy-aware

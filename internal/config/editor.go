@@ -157,8 +157,8 @@ func updateValue(input reflect.Value, path []string, value string, unset bool) e
 			return fmt.Errorf("more steps after slice: %s", strings.Join(path, "."))
 		}
 
-		// String slices (orgs, stacks, assume-server-dry-run) take
-		// comma-separated values; byte slices (TLS data) take raw bytes.
+		// String slices (assume-server-dry-run) take comma-separated
+		// values; byte slices (TLS data) take raw bytes.
 		if actualInput.Type().Elem().Kind() == reflect.String {
 			if unset {
 				actualInput.Set(reflect.Zero(actualInput.Type()))

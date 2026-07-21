@@ -144,21 +144,6 @@ cloud:
     # (stacks, regions, access policies, etc.). Every client talking to GCOM
     # uses it. Optional: defaults to "https://grafana.com".
     api-url: string
-    # Orgs lists the grafana.com org slugs this entry's credential can see.
-    # Populated at login; user-editable as a fallback.
-    orgs: 
-      - string
-      - ...
-      
-    # Stacks lists the grafana.com stack slugs in the credential's realm, for
-    # stack-realm access policy tokens. These are grafana.com slugs, NOT keys
-    # into the local stacks map. Absent means the realm is the whole org(s),
-    # including stacks created later — login must not auto-fill it for
-    # org-realm tokens.
-    stacks: 
-      - string
-      - ...
-      
 # Resources holds global settings for the `gcx resources` commands,
 # applying to all stacks. Merged (union) with each stack's Resources.
 resources: 

@@ -288,17 +288,6 @@ type CloudEntry struct {
 	// (stacks, regions, access policies, etc.). Every client talking to GCOM
 	// uses it. Optional: defaults to "https://grafana.com".
 	APIUrl string `env:"GRAFANA_CLOUD_API_URL" json:"api-url,omitempty" yaml:"api-url,omitempty"`
-
-	// Orgs lists the grafana.com org slugs this entry's credential can see.
-	// Populated at login; user-editable as a fallback.
-	Orgs []string `json:"orgs,omitempty" yaml:"orgs,omitempty"`
-
-	// Stacks lists the grafana.com stack slugs in the credential's realm, for
-	// stack-realm access policy tokens. These are grafana.com slugs, NOT keys
-	// into the local stacks map. Absent means the realm is the whole org(s),
-	// including stacks created later — login must not auto-fill it for
-	// org-realm tokens.
-	Stacks []string `json:"stacks,omitempty" yaml:"stacks,omitempty"`
 }
 
 // ResolveToken returns the credential to authenticate GCOM calls with: the
