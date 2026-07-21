@@ -17,4 +17,5 @@ New commands and providers **must comply with all rules documented here**.
 | [provider-checklist.md](provider-checklist.md) | Provider UX compliance (architecture patterns in [patterns.md](../architecture/patterns.md)) |
 | [help-text.md](help-text.md) | Command descriptions, examples format |
 | [naming.md](naming.md) | Resource kinds, file naming, config keys, flags |
+| [naming-conventions-guide.md](naming-conventions-guide.md) | Plain-English command naming guide (verbs, addressability) - companion to the proposed ADR in [#994](https://github.com/grafana/gcx/pull/994) |
 | [environment-variables.md](environment-variables.md) | Canonical environment variable reference |
