@@ -104,4 +104,4 @@ diagnostics:
   telemetry: disabled
 ```
 
-Opting out disables reporting entirely \- no event is constructed and nothing is sent.
+Opting out disables reporting entirely. No event is constructed and nothing is sent.
