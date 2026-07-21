@@ -9,7 +9,7 @@ Before implementing features or commands, read:
 - [CONSTITUTION.md](CONSTITUTION.md) — invariants you must not violate
 - [docs/design/](docs/design/) — prescriptive UX implementation rules (output, errors, agent mode, naming, …)
 
-New to gcx and naming a command? Start with the plain-English
+Naming a command? Start with the
 [command naming conventions guide](docs/design/naming-conventions-guide.md).
 
 ## Issue Tracking

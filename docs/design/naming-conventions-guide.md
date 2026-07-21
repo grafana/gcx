@@ -1,9 +1,8 @@
-# Command Naming Conventions: A Plain-English Guide
+# Command Naming Conventions
 
-> A beginner-friendly companion for naming gcx commands. The prescriptive rules
-> for resource kinds, files, config keys, and flags live in [naming.md](naming.md);
-> this guide explains how to *name commands* - which verb to use and where a
-> command sits in the tree.
+> How to name gcx commands - which verb to use and where a command sits in
+> the tree. The prescriptive rules for resource kinds, files, config keys,
+> and flags live in [naming.md](naming.md).
 
 **Status**: this summarizes a *proposed* convention from the draft ADR in
 [PR #994](https://github.com/grafana/gcx/pull/994) ("command operation semantics
