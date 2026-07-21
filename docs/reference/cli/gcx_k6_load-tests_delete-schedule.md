@@ -1,15 +1,15 @@
-## gcx k6 schedules delete
+## gcx k6 load-tests delete-schedule
 
 Delete the schedule for a k6 load test.
 
 ```
-gcx k6 schedules delete <load-test-id> [flags]
+gcx k6 load-tests delete-schedule <load-test-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for delete
+  -h, --help   help for delete-schedule
 ```
 
 ### Options inherited from parent commands
@@ -26,5 +26,5 @@ gcx k6 schedules delete <load-test-id> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 schedules](gcx_k6_schedules.md)	 - Manage k6 Cloud schedules.
+* [gcx k6 load-tests](gcx_k6_load-tests.md)	 - Manage k6 Cloud load tests.
 

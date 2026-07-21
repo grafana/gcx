@@ -1,16 +1,16 @@
-## gcx k6 load-zones allowed-load-zones update
+## gcx k6 load-zones update-allowed-projects
 
-Update load zones allowed for a project.
+Replace the set of projects allowed to use a load zone.
 
 ```
-gcx k6 load-zones allowed-load-zones update <project-id> [flags]
+gcx k6 load-zones update-allowed-projects <load-zone-id> [flags]
 ```
 
 ### Options
 
 ```
-  -f, --filename string   File containing load zone IDs (JSON array)
-  -h, --help              help for update
+  -f, --filename string   File containing the complete replacement set of project IDs (JSON array)
+  -h, --help              help for update-allowed-projects
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +27,5 @@ gcx k6 load-zones allowed-load-zones update <project-id> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 load-zones allowed-load-zones](gcx_k6_load-zones_allowed-load-zones.md)	 - Manage load zones allowed for a project.
+* [gcx k6 load-zones](gcx_k6_load-zones.md)	 - Manage k6 private load zones.
 

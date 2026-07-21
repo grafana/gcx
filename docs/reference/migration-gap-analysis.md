@@ -277,9 +277,9 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | SM install-probes | Install command | **Missing** |
 | k6 projects | Full CRUD | Provider: exists |
 | k6 tests | Full CRUD | Provider: exists |
-| k6 schedules | Full CRUD | Provider: exists (`gcx k6 schedules` CRUD) |
+| k6 schedules | Full CRUD | Provider: exists (`gcx k6 schedules` create\|get\|list\|update; delete via `gcx k6 load-tests delete-schedule`) |
 | k6 env-vars | Full CRUD | Provider: exists (`gcx k6 env-vars` CRUD) |
-| k6 load-zones | Manage zones | Provider: exists (`gcx k6 load-zones` CRUD + `allowed-load-zones\|allowed-projects`) |
+| k6 load-zones | Manage zones | Provider: exists (`gcx k6 load-zones` CRUD + `list\|update-allowed-projects`; project side: `gcx k6 projects list\|update-allowed-load-zones`) |
 | k6 testrun | Run tests (CRD) | Provider: exists (`gcx k6 test-run emit\|status\|runs`) |
 | k6 token | Exchange AP token for k6 token | Provider: `auth` command exists (`gcx k6 auth token`) |
 

@@ -1,15 +1,15 @@
-## gcx k6 load-zones allowed-projects list
+## gcx k6 projects list-allowed-load-zones
 
-List projects allowed to use a load zone.
+List load zones allowed for a project.
 
 ```
-gcx k6 load-zones allowed-projects list <load-zone-id> [flags]
+gcx k6 projects list-allowed-load-zones <project-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for list
+  -h, --help            help for list-allowed-load-zones
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
@@ -29,5 +29,5 @@ gcx k6 load-zones allowed-projects list <load-zone-id> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 load-zones allowed-projects](gcx_k6_load-zones_allowed-projects.md)	 - Manage projects allowed to use a load zone.
+* [gcx k6 projects](gcx_k6_projects.md)	 - Manage k6 Cloud projects.
 

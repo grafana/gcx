@@ -1,16 +1,18 @@
-## gcx k6 load-zones allowed-projects update
+## gcx k6 load-zones list-allowed-projects
 
-Update projects allowed to use a load zone.
+List projects allowed to use a load zone.
 
 ```
-gcx k6 load-zones allowed-projects update <load-zone-id> [flags]
+gcx k6 load-zones list-allowed-projects <load-zone-id> [flags]
 ```
 
 ### Options
 
 ```
-  -f, --filename string   File containing project IDs (JSON array)
-  -h, --help              help for update
+  -h, --help            help for list-allowed-projects
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +29,5 @@ gcx k6 load-zones allowed-projects update <load-zone-id> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 load-zones allowed-projects](gcx_k6_load-zones_allowed-projects.md)	 - Manage projects allowed to use a load zone.
+* [gcx k6 load-zones](gcx_k6_load-zones.md)	 - Manage k6 private load zones.
 
