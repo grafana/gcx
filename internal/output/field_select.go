@@ -135,18 +135,23 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 			for i, item := range items {
 				extracted[i] = extractFields(item, c.fields)
 			}
-			return c.json.Encode(dst, listFieldSelectionOutput(extracted, paginationMetadataFromObjectMap(m)))
+			out := listFieldSelectionOutput(extracted, paginationMetadataFromObjectMap(m))
+			attachListMetaEntry(out, m)
+			return c.json.Encode(dst, out)
 		}
 
-		// Single-key list envelope (e.g. {"datasources": [...]}): apply field
-		// selection per item and preserve the wrapper key. No pagination
-		// metadata by construction (the envelope has exactly one key).
+		// Single-key list envelope (e.g. {"datasources": [...]}, optionally
+		// with a reserved list_meta sibling): apply field selection per item
+		// and preserve the wrapper key. Truncation metadata is re-attached so
+		// the signal survives field selection.
 		if key, items, ok := singleKeyItems(m); ok {
 			extracted := make([]map[string]any, len(items))
 			for i, item := range items {
 				extracted[i] = extractFields(item, c.fields)
 			}
-			return c.json.Encode(dst, map[string]any{key: extracted})
+			out := map[string]any{key: extracted}
+			attachListMetaEntry(out, m)
+			return c.json.Encode(dst, out)
 		}
 
 		return c.json.Encode(dst, extractFields(m, c.fields))
@@ -232,6 +237,15 @@ func listFieldSelectionOutput(items []map[string]any, metadata map[string]any) m
 	return out
 }
 
+// attachListMetaEntry copies the reserved ListMetaKey truncation-metadata
+// object from the source envelope into the field-selection output, so a
+// truncated page stays machine-legible under --json field selection.
+func attachListMetaEntry(out, src map[string]any) {
+	if lm, ok := src[ListMetaKey].(map[string]any); ok {
+		out[ListMetaKey] = lm
+	}
+}
+
 func paginationMetadataFromUnstructuredList(list unstructured.UnstructuredList) map[string]any {
 	metadata := make(map[string]any, 3)
 	if token := list.GetContinue(); token != "" {
@@ -277,15 +291,20 @@ func paginationMetadataValuePresent(value any) bool {
 }
 
 // singleKeyItems reports whether m is a single-key list envelope: exactly one
-// key whose value is an array of objects (or an empty array). Provider list
-// commands wrap their items under such keys (e.g. {"datasources": [...]}).
+// key whose value is an array of objects (or an empty array), optionally
+// accompanied by the reserved ListMetaKey truncation-metadata object.
+// Provider list commands wrap their items under such keys (e.g.
+// {"datasources": [...]} or {"datasources": [...], "list_meta": {...}}).
 // Callers must check the k8s "items" shape first — that path carries
 // pagination metadata and a fixed output shape.
 func singleKeyItems(m map[string]any) (string, []map[string]any, bool) {
-	if len(m) != 1 {
+	if nonListMetaKeyCount(m) != 1 {
 		return "", nil, false
 	}
 	for key, raw := range m {
+		if isListMetaEntry(key, raw) {
+			continue
+		}
 		arr, ok := raw.([]any)
 		if !ok {
 			return "", nil, false
@@ -298,6 +317,36 @@ func singleKeyItems(m map[string]any) (string, []map[string]any, bool) {
 		return key, items, true
 	}
 	return "", nil, false
+}
+
+// nonListMetaKeyCount counts m's keys excluding a reserved ListMetaKey entry
+// (see isListMetaEntry). Used to recognize list envelopes regardless of
+// whether truncation metadata rides alongside the items key.
+func nonListMetaKeyCount(m map[string]any) int {
+	n := 0
+	for key, val := range m {
+		if isListMetaEntry(key, val) {
+			continue
+		}
+		n++
+	}
+	return n
+}
+
+// isListMetaEntry reports whether the key/value pair is the reserved
+// truncation-metadata sibling: the ListMetaKey key holding an object (or an
+// explicit null). Any other value shape under the key is not treated as
+// metadata, so unrelated payloads that happen to use the name keep their
+// pre-reservation behavior.
+func isListMetaEntry(key string, val any) bool {
+	if key != ListMetaKey {
+		return false
+	}
+	if val == nil {
+		return true
+	}
+	_, ok := val.(map[string]any)
+	return ok
 }
 
 // toSliceOfMaps converts an any value to []map[string]any. Values that are

@@ -47,6 +47,7 @@ type Options struct {
 	jsonFieldValidator  func(fields []string) error // optional; invoked before field extraction when --json is used
 	jqQuery             *gojq.Query                 // compiled --jq query; nil when flag not set
 	jsonFieldsHintShown bool
+	listLimit           *int // registered by BindListLimit; Validate enforces >= 0
 }
 
 // SetJSONFieldValidator registers an optional validator invoked before field
@@ -101,6 +102,10 @@ func (opts *Options) Validate() error {
 	codec := opts.codecFor(opts.OutputFormat)
 	if codec == nil {
 		return fmt.Errorf("unknown output format '%s'. Valid formats are: %s", opts.OutputFormat, strings.Join(opts.allowedCodecs(), ", "))
+	}
+
+	if opts.listLimit != nil && *opts.listLimit < 0 {
+		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 means all results are returned)", *opts.listLimit)
 	}
 
 	if err := opts.applyJSONFlag(); err != nil {
@@ -363,6 +368,10 @@ func reflectFields(t reflect.Type) []string {
 // from a marshaled object: the first element of an "items" array or of a
 // single-key list envelope (e.g. {"datasources": [...]}), reflected item
 // fields for an envelope with no rows, or the object itself.
+//
+// The reserved ListMetaKey ("list_meta") truncation-metadata sibling is
+// transparent to discovery: envelopes are recognized with or without it, the
+// sample is always an item, and list_meta.* paths are never listed.
 func sampleFromObject(m map[string]any, value any) map[string]any {
 	// If the object has an "items" array, use the first element.
 	if raw, ok := m["items"]; ok {
@@ -370,14 +379,14 @@ func sampleFromObject(m map[string]any, value any) map[string]any {
 			return items[0]
 		}
 	}
-	// Single-key list envelope: sample the first item so discovery lists
-	// item-level fields.
+	// Single-key list envelope (optionally with a list_meta sibling): sample
+	// the first item so discovery lists item-level fields.
 	if _, items, ok := singleKeyItems(m); ok && len(items) > 0 {
 		return items[0]
 	}
 	// Single-key envelope with no rows (empty or nil slice): reflect on the
 	// wrapper struct's sole slice field so discovery still works.
-	if len(m) == 1 {
+	if nonListMetaKeyCount(m) == 1 {
 		if fields := reflectSingleSliceField(reflect.TypeOf(value)); len(fields) > 0 {
 			return nullFieldMap(fields)
 		}
@@ -400,7 +409,9 @@ func nullFieldMap(fields []string) map[string]any {
 // a struct's sole exported field, which must be a slice of structs. Returns
 // nil unless t (after pointer unwrapping) is a struct with exactly one
 // exported non-json:"-" field of slice kind. Used to discover item fields of
-// an empty single-key list envelope.
+// an empty single-key list envelope. A field carrying the reserved
+// ListMetaKey json tag (truncation metadata) does not count against the
+// single-field shape.
 func reflectSingleSliceField(t reflect.Type) []string {
 	if t == nil {
 		return nil
@@ -416,6 +427,9 @@ func reflectSingleSliceField(t reflect.Type) []string {
 	exported := 0
 	for f := range t.Fields() {
 		if !f.IsExported() || f.Tag.Get("json") == "-" {
+			continue
+		}
+		if name, _, _ := strings.Cut(f.Tag.Get("json"), ","); name == ListMetaKey {
 			continue
 		}
 		exported++
