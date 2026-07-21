@@ -81,7 +81,11 @@ server-side and may change. If the write API is not enabled on your stack, the
 server returns an error explaining how to request access.
 
 Identity is (type, name, scope) + domain; re-running with the same identity
-updates the entity. Scope is optional but identity-significant.`,
+updates the entity. Scope is optional but identity-significant.
+
+With -f, the input may be a single object or a YAML/JSON array. Array entries
+are processed in order as independent upserts: the operation is not atomic,
+and entries already written stay written if a later entry fails.`,
 		Example: `  gcx kg entities upsert --domain myapp --type Service --name checkout --scope env=prod --ttl 1h
   gcx kg entities upsert -f entity.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -376,7 +380,11 @@ func newRelationshipsCreateCommand(loader RESTConfigLoader) *cobra.Command {
 Both endpoints must already exist.
 
 Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change.`,
+server-side and may change.
+
+With -f, the input may be a single object or a YAML/JSON array. Array entries
+are processed in order as independent upserts: the operation is not atomic,
+and entries already written stay written if a later entry fails.`,
 		Example: `  gcx kg relationships upsert --type CALLS --domain myapp \
     --from myapp/Service/checkout --to myapp/Service/cart --to-scope env=prod --ttl 1h
   gcx kg relationships upsert -f rel.yaml`,

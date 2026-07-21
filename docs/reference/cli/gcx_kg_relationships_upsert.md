@@ -10,6 +10,10 @@ Both endpoints must already exist.
 Experimental: this command uses the Knowledge Graph write API, which is gated
 server-side and may change.
 
+With -f, the input may be a single object or a YAML/JSON array. Array entries
+are processed in order as independent upserts: the operation is not atomic,
+and entries already written stay written if a later entry fails.
+
 ```
 gcx kg relationships upsert [flags]
 ```

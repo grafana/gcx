@@ -13,6 +13,10 @@ server returns an error explaining how to request access.
 Identity is (type, name, scope) + domain; re-running with the same identity
 updates the entity. Scope is optional but identity-significant.
 
+With -f, the input may be a single object or a YAML/JSON array. Array entries
+are processed in order as independent upserts: the operation is not atomic,
+and entries already written stay written if a later entry fails.
+
 ```
 gcx kg entities upsert [flags]
 ```
