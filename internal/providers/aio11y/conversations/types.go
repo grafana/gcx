@@ -40,6 +40,50 @@ type SearchResult struct {
 // nested objects (model is an object, input/output vary by provider).
 type ConversationDetail map[string]any
 
+// ConversationAnnotation is an annotation event attached to a conversation.
+type ConversationAnnotation struct {
+	AnnotationID   string            `json:"annotation_id"`
+	ConversationID string            `json:"conversation_id"`
+	GenerationID   string            `json:"generation_id,omitempty"`
+	AnnotationType string            `json:"annotation_type"`
+	Body           string            `json:"body,omitempty"`
+	Tags           map[string]string `json:"tags,omitempty"`
+	Metadata       map[string]any    `json:"metadata,omitempty"`
+	OperatorID     string            `json:"operator_id"`
+	OperatorLogin  string            `json:"operator_login,omitempty"`
+	OperatorName   string            `json:"operator_name,omitempty"`
+	CreatedAt      time.Time         `json:"created_at"`
+}
+
+// ConversationAnnotationsResponse is the paginated annotation list response.
+type ConversationAnnotationsResponse struct {
+	Items      []ConversationAnnotation `json:"items"`
+	NextCursor string                   `json:"next_cursor,omitempty"`
+}
+
+// CreateAnnotationRequest is the request body for POST /query/conversations/{id}/annotations.
+type CreateAnnotationRequest struct {
+	AnnotationID   string            `json:"annotation_id"`
+	AnnotationType string            `json:"annotation_type"`
+	Body           string            `json:"body"`
+	Tags           map[string]string `json:"tags,omitempty"`
+	Metadata       map[string]any    `json:"metadata,omitempty"`
+	GenerationID   string            `json:"generation_id,omitempty"`
+}
+
+// CreateAnnotationResponse is the response from creating a conversation annotation.
+type CreateAnnotationResponse struct {
+	Annotation ConversationAnnotation `json:"annotation"`
+	Summary    AnnotationSummary      `json:"summary"`
+}
+
+// AnnotationSummary holds conversation annotation aggregates.
+type AnnotationSummary struct {
+	AnnotationCount      int       `json:"annotation_count"`
+	LatestAnnotationType string    `json:"latest_annotation_type,omitempty"`
+	LatestAnnotatedAt    time.Time `json:"latest_annotated_at"`
+}
+
 // RatingSummary holds conversation rating aggregates.
 type RatingSummary struct {
 	TotalCount   int    `json:"total_count"`

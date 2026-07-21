@@ -1,11 +1,20 @@
-## gcx agento11y conversations
+## gcx agento11y conversations list-annotations
 
-Query Agent Observability conversations.
+List annotations for a conversation.
+
+```
+gcx agento11y conversations list-annotations <conversation-id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for conversations
+      --cursor string   Pagination cursor from a previous response
+  -h, --help            help for list-annotations
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Number of annotations to request (default 50)
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -22,10 +31,5 @@ Query Agent Observability conversations.
 
 ### SEE ALSO
 
-* [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
-* [gcx agento11y conversations annotate](gcx_agento11y_conversations_annotate.md)	 - Annotate a conversation.
-* [gcx agento11y conversations get](gcx_agento11y_conversations_get.md)	 - Get a single conversation with all generations.
-* [gcx agento11y conversations list](gcx_agento11y_conversations_list.md)	 - List conversations.
-* [gcx agento11y conversations list-annotations](gcx_agento11y_conversations_list-annotations.md)	 - List annotations for a conversation.
-* [gcx agento11y conversations search](gcx_agento11y_conversations_search.md)	 - Search conversations with filters.
+* [gcx agento11y conversations](gcx_agento11y_conversations.md)	 - Query Agent Observability conversations.
 
