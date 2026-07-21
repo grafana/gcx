@@ -16,7 +16,7 @@ The statistics describe only the *shape* of usage, including command path, and f
 
 {{\< admonition type="note" \>}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usagre reporting.{{\< /admonition \>}}
 
-## Anonymity
+## How anonymity is guaranteed
 
 The only identifier is a \`device\_id\` field: a randomly generated UUID created on first use and stored at `$XDG_STATE_HOME/gcx/device-id`. It identifies an installation of `gcx`, not a person. It's random, not derived from your hardware or account.
 
