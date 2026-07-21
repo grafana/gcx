@@ -220,7 +220,7 @@ func newDeleteSourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Removed %d sourcemap(s) from app %s", len(bundleIDs), appID)
+			cmdio.Success(cmd.OutOrStdout(), "Deleted %d sourcemap(s) from app %s", len(bundleIDs), appID)
 			return nil
 		},
 	}
