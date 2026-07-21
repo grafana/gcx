@@ -4,11 +4,6 @@
 > the tree. The prescriptive rules for resource kinds, files, config keys,
 > and flags live in [naming.md](naming.md).
 
-**Status**: this summarizes a *proposed* convention from the draft ADR in
-[PR #994](https://github.com/grafana/gcx/pull/994) ("command operation semantics
-and pre-GA naming convergence"). Once that ADR is accepted, it is the
-authoritative source - if this guide and the ADR disagree, the ADR wins.
-
 ## Behavior determines the name
 
 A command is named for what the *user* experiences: what it acts on, whether
@@ -17,8 +12,7 @@ it changes anything. It is never named for the HTTP method, the API path, or
 how it is wired internally.
 
 A read-one is `get` whether the backend uses GET, POST, or three calls under
-the hood. And when a provider migrates from `/api` to `/apis`, its command
-names must not change - users never agreed to depend on the transport.
+the hood.
 
 ## The CRUD verbs
 
@@ -33,14 +27,11 @@ names must not change - users never agreed to depend on the transport.
 Two create-or-update verbs exist, distinguished by workflow, not transport:
 
 - `upsert` - one invocation creates the thing if absent, updates it if
-  present. Never split a true upsert into fake `create`/`update` commands:
+  present. Do not split a true upsert into fake `create`/`update` commands:
   that falsely promises existence checks and invites read-then-write races.
 - `push` / `pull` - the manifest (GitOps) workflow: `push` applies local
   manifest files to the remote, `pull` writes remote resources to local files.
   This is a different workflow from `upsert`, not a synonym.
-
-`patch` is reserved for APIs that take an explicit patch document. "The update
-is partial" is not enough - most resource updates are.
 
 One documented exception: `gcx resources get` takes kubectl-style selectors
 (`dashboards`, `dashboards/foo,bar`) and may return one item or many.
@@ -61,13 +52,12 @@ or `report` based on what they actually output.
 
 When CRUD would lie, use a domain verb: you `close` an incident or
 `acknowledge` an alert - you don't "update" it closed. Domain verbs like
-`resolve`, `silence`, and `escalate` must each have an entry with a written
-definition in the allowed-operation registry (a proposed mechanism that ships
-last in the rollout - see the ADR §6 and §10).
+`resolve`, `silence`, and `escalate` must each be registered in the
+allowed-operation registry with a written definition of what they mean.
 
 ## Where does a list command live? (the addressability rule)
 
-This is the most important rule (ADR §8): choosing between
+This is the most important rule: choosing between
 `gcx <area> things list` and `gcx <area> list-things`.
 
 **If a thing has its own ID** - you can fetch exactly one with it - it gets
@@ -91,7 +81,7 @@ The test is "does it have its own ID?", never "how many verbs does it have?".
 
 The heuristic: **the type of ID you pass commands the nesting**. A worked
 example with two kinds of ID in one command - `collections add-conversations
-<collection-id> <saved-id>...` (proposed in PR #1013): the first positional is
+<collection-id> <saved-id>...`: the first positional is
 the collection's ID, so the command nests under `collections`; the
 saved-conversation IDs are payload being added, not the addressed subject.
 
