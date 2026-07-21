@@ -118,3 +118,23 @@ func TestExportSwallowsFailures(t *testing.T) {
 	t.Setenv(envEndpoint, "://not a url")
 	Export(testEvent())
 }
+
+// exportTimeout is the ceiling on how long telemetry can hold up CLI exit: a
+// receiver that accepts the request and never replies must not block Export
+// past it.
+func TestExportReturnsPromptlyWhenReceiverHangs(t *testing.T) {
+	// Hold every response until the test ends. Released before server.Close()
+	// (defers run LIFO) so Close's wait for in-flight handlers can finish.
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		<-release
+	}))
+	defer server.Close()
+	defer close(release)
+	t.Setenv(envEndpoint, server.URL)
+
+	start := time.Now()
+	Export(testEvent())
+	// Generous slack over exportTimeout to avoid flakes on loaded machines.
+	assert.Less(t, time.Since(start), 3*exportTimeout)
+}
