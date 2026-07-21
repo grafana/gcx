@@ -6,17 +6,24 @@ Manage Knowledge Graph entities.
 
 Manage Knowledge Graph entities.
 
+Prefer 'list' for listing and for basic lookups (an entity's identity and
+properties — the labels used to build PromQL/Loki queries); it is cheap and is
+the right choice even when you already know the exact entity. Use 'inspect'
+only for root-cause analysis — it is heavy and can return large output, so
+don't reach for it just to read properties.
+
 Pick the read verb by what you start with:
 
+  list       Default for listing and basic lookups: an entity's identity, scope,
+             and properties. Filter to one known entity with
+             '--property name=<name>'. Cheap — use this for plain lookups.
   correlate  You have a firing alert (its labels) but not the entity → find
              which entity the alert hangs off. The "I have an alert, which
              entity is it?" entry point.
-  list       You know the entity type (and maybe scope) → cheap identity +
-             properties lookup (the labels used to build PromQL/Loki queries).
-             The default for listing or basic lookups.
-  inspect    You know the specific entity → heavy root-cause view: insight
-             timeline + related entities. Don't use it just to read properties.
-  query      You want arbitrary Cypher over the graph.
+  inspect    Root-cause analysis only — heavy: insight timeline + related
+             entities. Don't use it just to read an entity's properties (use
+             'list'); reach for it only when you need the RCA view.
+  query      Arbitrary Cypher over the graph.
 
 ### Options
 
