@@ -199,7 +199,7 @@ not supporting here.
 ### Adapter registry change
 
 The `instrumentation` provider's `Registrations()` returns an empty slice —
-no GVK is registered, no schema is exposed via `gcx resources schemas`, no
+no GVK is registered, no schema is exposed via `gcx resources list-types`, no
 kind is accepted by `gcx resources push`. The `wire/wire.go` bootstrap
 still registers the command tree but skips the adapter pipeline. Schema
 files in `observability/instrumentation/` (`cluster.yaml`, `apps.yaml`)
@@ -301,7 +301,7 @@ framework. ADR #014 marked superseded.
   matching what Beyla actually surfaces.
 - **No false promises.** Removing `gcx resources` integration eliminates
   B-531-01 (round-trip parity) and the "uniform pipeline" narrative that
-  PR-531's docs leaned on. Schema files are deleted; `gcx resources schemas`
+  PR-531's docs leaned on. Schema files are deleted; `gcx resources list-types`
   no longer advertises kinds we cannot honor.
 - **Improved error messages.** Optimistic-lock errors name the conflicting
   namespace and the change detected (B-531-04 fix).

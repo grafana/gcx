@@ -88,7 +88,7 @@ gcx dashboards create -f FILE
 gcx dashboards update <name> -f FILE
 gcx dashboards delete <name> [--yes]
 gcx dashboards search <query> [--folder UID]... [--tag TAG]... [--limit N] [--sort KEY] [--deleted]
-gcx dashboards versions list <name> [--limit N]
+gcx dashboards list-versions <name> [--limit N]
 gcx dashboards versions restore <name> <version> [--yes] [--message MSG]
 gcx dashboards snapshot <name>                      # already exists — moved, not replaced
 ```
@@ -391,7 +391,7 @@ the commit message and author.
 CLI:
 
 ```
-gcx dashboards versions list <name> [--limit N]
+gcx dashboards list-versions <name> [--limit N]
 ```
 
 Revisions listed in descending order by generation. Default columns:

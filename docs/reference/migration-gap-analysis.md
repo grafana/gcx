@@ -308,7 +308,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | jq filter | `--jq` flag for post-processing | **Missing** |
 | `--open` flag | Open resource in browser | **Missing** on most commands |
 | Resource URL generation | Deep-link to Grafana UI | **Missing** |
-| Schema/example per resource | `schema`, `example` subcommands on every resource | `resources schemas/examples` (centralized) |
+| Schema/example per resource | `schema`, `example` subcommands on every resource | `resources list-types/list-examples` (centralized) |
 | Manifest-based CRUD | K8s-style YAML with apiVersion/kind | **Exists** (resources system) |
 | Interactive prompts | `cmdutil/prompt.go` | **Missing** |
 | Time range parsing | `now-7d`, RFC3339, relative | **Exists** in query commands |
@@ -373,7 +373,7 @@ The old CLI has a deeply layered system for helping LLM/agent consumers discover
 - Uses Go's `jsonschema` reflection -- always in sync with code
 - Schema includes `$defs` with all nested type definitions
 - Wrapped in K8s-style manifest envelope (apiVersion, kind, metadata, spec)
-- **gcx status: PARTIALLY EXISTS** -- `resources schemas` fetches OpenAPI schemas from server, but:
+- **gcx status: PARTIALLY EXISTS** -- `resources list-types` fetches OpenAPI schemas from server, but:
   - Not per-resource subcommand (centralized only)
   - Provider-backed resources use hand-written schemas in Registration structs
   - No Go type reflection -- schemas are manually maintained JSON blobs
@@ -382,7 +382,7 @@ The old CLI has a deeply layered system for helping LLM/agent consumers discover
 - Every resource type has an `example` subcommand with realistic field values
 - Respects `-o` format (json, yaml, text)
 - Can include API reference URL
-- **gcx status: PARTIALLY EXISTS** -- `resources examples` lists provider examples, but:
+- **gcx status: PARTIALLY EXISTS** -- `resources list-examples` lists provider examples, but:
   - Not per-resource subcommand (centralized only)
   - Examples are hand-written JSON in provider Registration structs
   - K8s-tier resources don't have examples
@@ -431,7 +431,7 @@ Old CLI annotates every command with structured metadata:
 #### Layer 10: `gcx api-resources` -- Resource Type Registry
 - Lists all known resource types with NAME, APIVERSION, KIND
 - Quick scan of available surface area
-- **gcx status: PARTIALLY EXISTS** -- `resources schemas` covers this but with more ceremony (requires server connection for K8s resources)
+- **gcx status: PARTIALLY EXISTS** -- `resources list-types` covers this but with more ceremony (requires server connection for K8s resources)
 
 ### What New gcx Has That Old CLI Doesn't
 
@@ -452,8 +452,8 @@ Old CLI annotates every command with structured metadata:
 | Command catalog with metadata | `commands` (token_cost, llm_hint, permissions) | **Exists** (`gcx commands --flat -o json` with token_cost, llm_hint, resource_types) | **CLOSED** |
 | Token-efficient tree | `help-tree` (depth, subtree, tips) | **Exists** (`gcx help-tree`) | **CLOSED** |
 | A2A agent card | `agent-card` (skills, auth, capabilities) | **Missing** | **MEDIUM** |
-| Per-resource schema | `<resource> schema` (auto-generated from Go types) | `resources schemas` (centralized, server-fetched) | **LOW** (different approach) |
-| Per-resource example | `<resource> example` | `resources examples` (centralized) | **LOW** (different approach) |
+| Per-resource schema | `<resource> schema` (auto-generated from Go types) | `resources list-types` (centralized, server-fetched) | **LOW** (different approach) |
+| Per-resource example | `<resource> example` | `resources list-examples` (centralized) | **LOW** (different approach) |
 | Field-level docs | `explain resource.field.path` | **Missing** | **MEDIUM** |
 | Token cost annotation | Every command annotated | **Exists** (visible in `gcx commands` output, e.g. assistant prompt has `token_cost: "large"`) | **CLOSED** |
 | LLM hint annotation | Large commands hint scoping args | **Exists** (visible in `gcx commands` output, e.g. `llm_hint` on assistant prompt) | **CLOSED** |
