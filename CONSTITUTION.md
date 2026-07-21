@@ -34,10 +34,13 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   `ResourceAdapter` must implement `ResourceIdentity` (`GetResourceName() string` and
   `SetResourceName(string)`). `TypedCRUD` uses `GetResourceName()` for name extraction
   and `SetResourceName()` for name restoration — no function pointers.
-- **TypedCRUD for provider commands:** Provider CRUD commands must use `TypedCRUD[T]`
-  typed methods (`List`, `Get`, `Create`, `Update`, `Delete`) for data access, not raw
-  API clients. This ensures bug fixes to CRUD logic apply to both provider commands and
-  the `resources` pipeline automatically.
+- **TypedCRUD for adapter-backed provider commands:** Provider CRUD commands for
+  resources exposed through both the provider tree and a registered adapter must use
+  `TypedCRUD[T]` typed methods (`List`, `Get`, `Create`, `Update`, `Delete`) for data
+  access, not raw API clients. This ensures bug fixes to CRUD logic apply to both
+  provider commands and the `resources` pipeline automatically. Provider-only
+  commands with no adapter registration use their product clients directly — they
+  are not required to construct an adapter merely to spell an honest `list` or `get`.
   > **Exception:** The dashboards commands-only provider (`internal/providers/dashboards/`) calls the K8s dynamic client directly. This is the one documented exception — see ADR 016 (`docs/adrs/dashboards-provider/001-dashboards-provider-design.md`) for rationale and scope.
 - **Schema/Example on Registration structs:** Every `adapter.Registration` struct (populated
   via `TypedRegistrations()`) must include a non-nil `Schema` field. These power the
@@ -64,7 +67,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
 - **Extension commands nest under their resource type.** Domain-specific
   operations (`status`, `timeline`, `acknowledge`) live alongside CRUD verbs,
   never as top-level commands. Extensions must not duplicate CRUD semantics —
-  if it can be done with list/get/push/pull/delete, it is not an extension.
+  if it can be done with list/get/create/update/upsert/push/pull/delete, it is not an extension.
 - **Positional arguments are the subject, flags are modifiers.** The thing
   being acted on (resource selectors, UIDs, expressions, file paths) is
   positional. How to act on it (output format, concurrency, dry-run, filters)
@@ -138,6 +141,12 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   as verbs under the parent command: `$PARENT $VERB-$CHILD $PARENT_ID`
   (e.g. `alert-groups list-alerts <id>`). Get-by-ID may still have a
   standalone adapter if the API supports direct ID lookup without a parent.
+- **Adapter registration does not determine the operation.** A genuine
+  read-one uses `get` and a genuine enumeration uses `list`, whether or not
+  the resource is adapter-registered. Provider-only commands whose behavior
+  does not match entity semantics must use an honest query, view, or domain
+  operation, or an `<operation>-<subject>` compound — nonstandard behavior
+  is never disguised as CRUD.
 - **Typed resource trajectory.** Provider domain types implement
   `ResourceIdentity` for self-describing identity and are wrapped by
   `TypedObject[T]` (embedded `metav1.ObjectMeta` + `TypeMeta` + `Spec T`)
