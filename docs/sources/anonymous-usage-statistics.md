@@ -8,7 +8,7 @@ labels:
 weight: 4
 ---
 
-# gcx usage collection to help support Anonymization 
+# Understand anonymous gcx usage collection 
 
 `gcx` reports anonymous usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
 
