@@ -1,9 +1,9 @@
-## gcx kg summary
+## gcx kg stats
 
-Show a summary of entities and active insights, broken down by type, severity, and insight name.
+Show entity and active-insight counts, broken down by type, severity, and insight name.
 
 ```
-gcx kg summary [flags]
+gcx kg stats [flags]
 ```
 
 ### Options
@@ -11,7 +11,7 @@ gcx kg summary [flags]
 ```
       --env string         Environment scope
       --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help               help for summary
+  -h, --help               help for stats
       --jq string          jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --namespace string   Namespace scope

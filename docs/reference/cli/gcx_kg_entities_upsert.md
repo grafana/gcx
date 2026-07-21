@@ -1,4 +1,4 @@
-## gcx kg entities create
+## gcx kg entities upsert
 
 Create or update a custom entity (upsert) [experimental].
 
@@ -14,14 +14,14 @@ Identity is (type, name, scope) + domain; re-running with the same identity
 updates the entity. Scope is optional but identity-significant.
 
 ```
-gcx kg entities create [flags]
+gcx kg entities upsert [flags]
 ```
 
 ### Examples
 
 ```
-  gcx kg entities create --domain myapp --type Service --name checkout --scope env=prod --ttl 1h
-  gcx kg entities create -f entity.yaml
+  gcx kg entities upsert --domain myapp --type Service --name checkout --scope env=prod --ttl 1h
+  gcx kg entities upsert -f entity.yaml
 ```
 
 ### Options
@@ -29,7 +29,7 @@ gcx kg entities create [flags]
 ```
       --domain string             Writable domain slug — a specific application domain such as 'irm' (required; 'kg' is reserved)
   -f, --file string               Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags
-  -h, --help                      help for create
+  -h, --help                      help for upsert
       --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string               Entity name (required)

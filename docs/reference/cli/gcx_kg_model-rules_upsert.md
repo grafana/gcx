@@ -1,16 +1,16 @@
-## gcx kg prom-rules create
+## gcx kg model-rules upsert
 
-Upload Knowledge Graph Custom Prometheus rules from a YAML file.
+Upload model rules from a YAML file.
 
 ```
-gcx kg prom-rules create [flags]
+gcx kg model-rules upsert [flags]
 ```
 
 ### Options
 
 ```
   -f, --file string   Input file (YAML)
-  -h, --help          help for create
+  -h, --help          help for upsert
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +27,5 @@ gcx kg prom-rules create [flags]
 
 ### SEE ALSO
 
-* [gcx kg prom-rules](gcx_kg_prom-rules.md)	 - Manage Knowledge Graph Custom Prometheus rules.
+* [gcx kg model-rules](gcx_kg_model-rules.md)	 - Manage model rules in the Knowledge Graph.
 

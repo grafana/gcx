@@ -522,7 +522,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 
 	var createFile string
 	createCmd := &cobra.Command{
-		Use:   "create",
+		Use:   "upsert",
 		Short: "Upload Knowledge Graph Custom Prometheus rules from a YAML file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			data, err := readFileOrStdin(cmd, createFile)
@@ -726,7 +726,7 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 
 	var fileFlag string
 	createCmd := &cobra.Command{
-		Use:   "create",
+		Use:   "upsert",
 		Short: "Upload model rules from a YAML file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			data, err := readFileOrStdin(cmd, fileFlag)
@@ -948,18 +948,24 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 
 	createOpts := &suppressionsCreateOpts{}
 	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Create or update one or more suppressions from a YAML file or stdin.",
-		Example: `  gcx kg suppressions create -f suppressions.yaml
+		Use:   "push",
+		Short: "Push (create or update) one or more suppressions from a YAML file or stdin.",
+		Long: `Push (create or update) one or more suppressions from a YAML file or stdin.
+
+Applies the entries in the input file, creating each suppression when absent or
+updating it when present. Remote suppressions absent from the file are never
+deleted. Use --dry-run to validate against the backend and preview the diff,
+scoped to the entries in the input file, without uploading.`,
+		Example: `  gcx kg suppressions push -f suppressions.yaml
 
   # Validate against the backend and preview the diff without uploading:
-  gcx kg suppressions create -f suppressions.yaml --dry-run
+  gcx kg suppressions push -f suppressions.yaml --dry-run
 
   echo 'disabledAlertConfigs:
     - name: my-suppression
       matchLabels:
         alertname: ErrorRatioBreach
-        job: my-service' | gcx kg suppressions create`,
+        job: my-service' | gcx kg suppressions push`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if createOpts.DryRun {
 				if err := createOpts.IO.Validate(); err != nil {
@@ -1050,27 +1056,27 @@ func (o *suppressionsCreateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-// SuppressionChange describes one entry-level change `create` would apply in a
+// SuppressionChange describes one entry-level change `push` would apply in a
 // dry-run. Action is one of:
-//   - "add"    — present locally, absent remotely; `create` will add it.
-//   - "modify" — present in both but differing; `create` will update it.
+//   - "add"    — present locally, absent remotely; `push` will add it.
+//   - "modify" — present in both but differing; `push` will update it.
 //
-// The dry-run is scoped to the entries in the input file. `create` is
+// The dry-run is scoped to the entries in the input file. `push` is
 // upsert-only — it never deletes — so remote entries absent from the file are
 // not reported and not shown in the diff, keeping the output focused on what
-// `create` will actually do.
+// `push` will actually do.
 type SuppressionChange struct {
 	Name   string `json:"name" yaml:"name"`
 	Action string `json:"action" yaml:"action"`
 }
 
-// SuppressionsDryRunResult is the structured result of `suppressions create
+// SuppressionsDryRunResult is the structured result of `suppressions push
 // --dry-run`. It is rendered as a unified diff in the default text format and as
 // this struct under -o json/yaml (and the agents format) so consumers do not
 // have to parse diff text. Reaching this result implies validation passed.
 //
 // Both Changes and Diff are scoped to the input file's entries: Changed reports
-// whether `create` would add or modify anything.
+// whether `push` would add or modify anything.
 type SuppressionsDryRunResult struct {
 	Valid   bool                `json:"valid" yaml:"valid"`
 	Changed bool                `json:"changed" yaml:"changed"`
@@ -1079,7 +1085,7 @@ type SuppressionsDryRunResult struct {
 }
 
 // runSuppressionsDryRun validates the parsed suppressions against the backend's
-// server-side validator and, if valid, reports what `create` would add or modify
+// server-side validator and, if valid, reports what `push` would add or modify
 // versus the current remote configuration. It never writes. A diagnostic banner
 // goes to stderr; the result (unified diff in text mode, structured object under
 // -o json/yaml) goes to stdout so pipe consumers receive clean input.
@@ -1109,12 +1115,12 @@ func runSuppressionsDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Cl
 // buildSuppressionsDryRunResult compares the input file's entries against their
 // remote counterparts (matched by name), producing per-entry add/modify changes
 // and a canonical-YAML unified diff scoped to those entries. Remote entries
-// absent from the file are ignored — `create` is upsert-only and never deletes,
+// absent from the file are ignored — `push` is upsert-only and never deletes,
 // so surfacing them would only add noise.
 //
 // System-managed fields (see forDiff) are excluded from both the comparison and
 // the diff: they are populated by the backend, not the user, so showing them as
-// added/removed would misrepresent what `create` actually changes.
+// added/removed would misrepresent what `push` actually changes.
 func buildSuppressionsDryRunResult(remote, local *Suppressions) (SuppressionsDryRunResult, error) {
 	remoteByName := make(map[string]Suppression, len(remote.DisabledAlertConfigs))
 	for _, s := range remote.DisabledAlertConfigs {
@@ -2063,7 +2069,7 @@ func rcaWorkbenchURL(host, entityType, name string, scope map[string]string, sta
 }
 
 // ---------------------------------------------------------------------------
-// Summary command
+// Stats command
 // ---------------------------------------------------------------------------
 
 func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
@@ -2073,8 +2079,8 @@ func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 	)
 	ioOpts := &summaryOpts{}
 	cmd := &cobra.Command{
-		Use:   "summary",
-		Short: "Show a summary of entities and active insights, broken down by type, severity, and insight name.",
+		Use:   "stats",
+		Short: "Show entity and active-insight counts, broken down by type, severity, and insight name.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
