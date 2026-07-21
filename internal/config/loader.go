@@ -654,15 +654,24 @@ func diagnosticsSourcePaths(ctx context.Context) []string {
 // readDiagnostics decodes a config file and returns only its diagnostics block.
 // It parses into the full Config (the codec rejects unknown fields, so a partial
 // struct will not do) but deliberately skips keychain resolution, plaintext
-// migration, and the config auto-creation that Load performs. Missing or
-// malformed files yield (nil, err).
+// migration, and the config auto-creation that Load performs. Legacy-format
+// files are read through the legacy struct (never migrated here) so settings
+// like `telemetry: disabled` are honoured even on the run that performs the
+// migration. Missing or malformed files yield (nil, err).
 func readDiagnostics(path string) (*DiagnosticsConfig, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var cfg Config
 	codec := &format.YAMLCodec{BytesAsBase64: true}
+	if isLegacyConfig(contents) {
+		var lc legacyConfig
+		if err := codec.Decode(bytes.NewBuffer(contents), &lc); err != nil {
+			return nil, err
+		}
+		return lc.Diagnostics, nil
+	}
+	var cfg Config
 	if err := codec.Decode(bytes.NewBuffer(contents), &cfg); err != nil {
 		return nil, err
 	}

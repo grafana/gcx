@@ -188,6 +188,27 @@ current-context: default
 `
 ```
 
+### Layer Merging
+
+`LoadLayered` merges discovered files in priority order (system → user →
+local). Merge semantics differ by section, and the distinction is a security
+boundary:
+
+- **`stacks` and `cloud` entries are atomic**: a same-named entry in a higher
+  layer replaces the lower layer's entry wholesale, never field-by-field.
+  This guarantees a credential and its destination (`server`, `api-url`)
+  always come from the same file — a repo-local `.gcx.yaml` cannot graft its
+  own destination onto an entry whose token lives in the user config. A
+  hostile layer can only shadow an entry (breaking it), not combine with it.
+  kubeconfig takes named entries wholesale for the same reason.
+- **`contexts` merge field-by-field**: they carry name references and
+  datasource defaults, no secrets or destinations, so a local layer can
+  overlay a `cloud:` binding or a datasource default onto a user-layer
+  context. References can only select whole entries, never mix their fields.
+- **global `resources` and `diagnostics`** keep field-level layering
+  (a higher layer can narrow dry-run assertions or override a single
+  diagnostics field).
+
 ### Load Function Signature
 
 ```go

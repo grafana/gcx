@@ -22,34 +22,25 @@ func MergeConfigs(base, over Config) Config {
 		result.CurrentContext = over.CurrentContext
 	}
 
-	// Map: stacks — merge by key, field-level within an entry.
+	// Maps: stacks and cloud entries are ATOMIC across layers — a same-named
+	// entry in a higher layer replaces the lower layer's entry wholesale,
+	// never field-by-field. This guarantees a credential and its destination
+	// (server, api-url) always come from the same file: a repo-local layer
+	// cannot graft its own destination onto an entry whose token lives in the
+	// user config. A hostile layer can only shadow an entry (breaking it),
+	// not combine with it.
 	if over.Stacks != nil {
 		if result.Stacks == nil {
 			result.Stacks = make(map[string]*StackConfig)
 		}
-		for name, overStack := range over.Stacks {
-			if baseStack, ok := result.Stacks[name]; ok && baseStack != nil && overStack != nil {
-				merged := mergeStackConfigs(baseStack, overStack)
-				result.Stacks[name] = &merged
-			} else {
-				result.Stacks[name] = overStack
-			}
-		}
+		maps.Copy(result.Stacks, over.Stacks)
 	}
 
-	// Map: cloud entries — merge by key, field-level within an entry.
 	if over.Cloud != nil {
 		if result.Cloud == nil {
 			result.Cloud = make(map[string]*CloudEntry)
 		}
-		for name, overEntry := range over.Cloud {
-			if baseEntry, ok := result.Cloud[name]; ok && baseEntry != nil && overEntry != nil {
-				merged := mergeCloudEntries(baseEntry, overEntry)
-				result.Cloud[name] = &merged
-			} else {
-				result.Cloud[name] = overEntry
-			}
-		}
+		maps.Copy(result.Cloud, over.Cloud)
 	}
 
 	// Global resources: last definition wins (see mergeResourcesConfig).
@@ -136,127 +127,10 @@ func mergeContexts(base, over *Context) *Context {
 	return &result
 }
 
-func mergeStackConfigs(base, over *StackConfig) StackConfig {
-	result := *base
-
-	if over.Slug != "" {
-		result.Slug = over.Slug
-	}
-
-	// Grafana config: field-level merge.
-	if over.Grafana != nil {
-		if result.Grafana == nil {
-			result.Grafana = over.Grafana
-		} else {
-			merged := mergeGrafanaConfig(result.Grafana, over.Grafana)
-			result.Grafana = &merged
-		}
-	}
-
-	// Providers map: merge by key (string→map[string]string).
-	if over.Providers != nil {
-		if result.Providers == nil {
-			result.Providers = make(map[string]map[string]string)
-		}
-		for k, v := range over.Providers {
-			if baseV, ok := result.Providers[k]; ok {
-				merged := make(map[string]string, len(baseV)+len(v))
-				maps.Copy(merged, baseV)
-				maps.Copy(merged, v)
-				result.Providers[k] = merged
-			} else {
-				result.Providers[k] = v
-			}
-		}
-	}
-
-	// Resources config: last definition wins. Assume-server-dry-run weakens the
-	// dry-run guard, so a higher layer must be able to narrow (or clear, via an
-	// explicit []) what a lower layer asserts — a union could only ever widen it.
-	if over.Resources != nil {
-		if result.Resources == nil {
-			result.Resources = over.Resources
-		} else {
-			merged := mergeResourcesConfig(result.Resources, over.Resources)
-			result.Resources = &merged
-		}
-	}
-
-	return result
-}
-
-func mergeCloudEntries(base, over *CloudEntry) CloudEntry {
-	result := *base
-	if over.Token != "" {
-		result.Token = over.Token
-	}
-	if over.OAuthToken != "" {
-		result.OAuthToken = over.OAuthToken
-	}
-	if over.OAuthTokenExpiresAt != "" {
-		result.OAuthTokenExpiresAt = over.OAuthTokenExpiresAt
-	}
-	if over.OAuthUrl != "" {
-		result.OAuthUrl = over.OAuthUrl
-	}
-	if over.APIUrl != "" {
-		result.APIUrl = over.APIUrl
-	}
-	if over.Orgs != nil {
-		result.Orgs = over.Orgs
-	}
-	if over.Stacks != nil {
-		result.Stacks = over.Stacks
-	}
-	return result
-}
-
 func mergeResourcesConfig(base, over *ResourcesConfig) ResourcesConfig {
 	result := *base
 	if over.AssumeServerDryRun != nil {
 		result.AssumeServerDryRun = over.AssumeServerDryRun
-	}
-	return result
-}
-
-func mergeGrafanaConfig(base, over *GrafanaConfig) GrafanaConfig {
-	result := *base
-	if over.Server != "" {
-		result.Server = over.Server
-	}
-	if over.User != "" {
-		result.User = over.User
-	}
-	if over.Password != "" {
-		result.Password = over.Password
-	}
-	if over.APIToken != "" {
-		result.APIToken = over.APIToken
-	}
-	if over.OrgID != 0 {
-		result.OrgID = over.OrgID
-	}
-	if over.StackID != 0 {
-		result.StackID = over.StackID
-	}
-	if over.TLS != nil {
-		t := *over.TLS
-		result.TLS = &t
-	}
-	if over.OAuthToken != "" {
-		result.OAuthToken = over.OAuthToken
-	}
-	if over.OAuthRefreshToken != "" {
-		result.OAuthRefreshToken = over.OAuthRefreshToken
-	}
-	if over.OAuthTokenExpiresAt != "" {
-		result.OAuthTokenExpiresAt = over.OAuthTokenExpiresAt
-	}
-	if over.OAuthRefreshExpiresAt != "" {
-		result.OAuthRefreshExpiresAt = over.OAuthRefreshExpiresAt
-	}
-	if over.ProxyEndpoint != "" {
-		result.ProxyEndpoint = over.ProxyEndpoint
 	}
 	return result
 }

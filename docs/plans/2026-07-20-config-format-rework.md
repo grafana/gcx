@@ -68,6 +68,8 @@ Key rules (details in the issue comment):
 | No legacy `gcx config set` path aliases | breaking format change anyway; old paths fail with an error naming the new path (e.g. `cloud.token` → "use cloud.<entry>.token"). No dual grammar to maintain |
 | New keychain key scheme: `stack:<name>:<field>` and `cloud:<name>:<field>` | today's `AccountKey` is `<context>:<field>` (`internal/credentials/credentials.go:69`); secrets move homes, so migration must write new entries and delete old ones or sentinels dangle |
 | Env overrides synthesize an ephemeral cloud entry | `GRAFANA_CLOUD_TOKEN` et al. win over whatever the context references; entry never persisted |
+| Stack and cloud entries are atomic across layers (same name → highest-priority layer wins wholesale, no field merge) | field-merging same-named entries lets a repo-local `.gcx.yaml` contribute a `server`/`api-url` to an entry whose token lives in the user config — routing a personal credential to a repo-chosen destination (from [#890 discussion](https://github.com/grafana/gcx/issues/890#issuecomment-5029465359)). Wholesale entries give the invariant that a credential and its destination always come from the same file; a hostile repo layer can only shadow (break), not exfiltrate. Migration's predictable entry names (`grafana-com`) made the old field-merge behaviour targetable. Kubeconfig takes named entries wholesale for the same reason. Contexts stay field-merged: they carry refs and datasource defaults, no secrets or destinations, and refs can only select whole entries |
+| Write paths materialize the full entry in the write layer | with atomic entries, writing a partial stack into a layer that lacks it would shadow a lower layer's fuller entry wholesale; `SaveProviderConfig` copies the effective stack entry into the target file when creating it there |
 
 ## Work breakdown
 
@@ -238,6 +240,12 @@ discovery) is the cut line — the format lands intact without it.
 5. migrated cloud entries named from api-url host; collision → suffix first context name
 6. no legacy `gcx config set` path aliases — clear error pointing at the new path
 7. context→stack migration strictly 1:1, no stack dedup
+9. stack/cloud entries merge atomically across layers (top layer wins wholesale);
+   contexts keep field-level merge — see decisions table for the security rationale
+10. migration covers every file the loader touches (all discovered layers, explicit
+   files on use); the shadowed duplicate user config and `.gcx.yaml` in unvisited
+   directories migrate on first use; the diagnostics pre-read is legacy-aware
+   (read-only) so `telemetry: disabled` in a not-yet-migrated file is honoured
 8. migration deletes nothing: file replaced atomically behind a write-once backup,
    keychain copy-only (legacy keys keep the backup restorable, exempt from
    staleness GC); new bytes self-verified by decode-back + validation invariant

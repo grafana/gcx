@@ -148,7 +148,7 @@ func (opts *Options) LoadGrafanaConfigWithContext(ctx context.Context) (config.N
 	if err != nil {
 		return config.NamespacedRESTConfig{}, nil, err
 	}
-	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext, cfg.Sources)
+	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext, current.Stack, cfg.Sources)
 
 	return restCfg, current, nil
 }
@@ -437,7 +437,7 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(err.Error()))
 		return nil
 	}
-	restCfg.WireTokenPersistence(cmd.Context(), source, gCtx.Name, cfg.Sources)
+	restCfg.WireTokenPersistence(cmd.Context(), source, gCtx.Name, gCtx.Stack, cfg.Sources)
 
 	if _, err := discovery.NewDefaultRegistry(cmd.Context(), restCfg); err != nil {
 		cmdio.Error(stdout, "Connectivity: %s", cmdio.Red(summarizeError(err)))

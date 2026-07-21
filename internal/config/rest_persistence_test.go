@@ -91,7 +91,7 @@ contexts:
 	assert.Equal(t, localFile, path)
 }
 
-func TestResolveTokenPersistenceSource_FallsBackToUserWhenContextNotFound(t *testing.T) {
+func TestResolveTokenPersistenceSource_FallsBackToUserWhenStackNotFound(t *testing.T) {
 	dir := t.TempDir()
 	userFile := filepath.Join(dir, "user.yaml")
 	localFile := filepath.Join(dir, "local.yaml")
@@ -196,6 +196,7 @@ contexts:
 		t.Context(),
 		config.ExplicitConfigFile(explicitFile),
 		"default",
+		"default",
 		[]config.ConfigSource{
 			{Path: explicitFile, Type: "explicit"},
 			{Path: userFile, Type: "user"},
@@ -277,6 +278,7 @@ current-context: default
 		ctx,
 		config.ExplicitConfigFile(explicitFile),
 		"default",
+		"default",
 		[]config.ConfigSource{{Path: explicitFile, Type: "explicit"}},
 	)
 	cancel()
@@ -352,6 +354,7 @@ current-context: default
 		rc.WireTokenPersistence(
 			t.Context(),
 			config.ExplicitConfigFile(file),
+			"default",
 			"default",
 			[]config.ConfigSource{{Path: file, Type: "explicit"}},
 		)
@@ -445,6 +448,7 @@ current-context: default
 		rc.WireTokenPersistence(
 			t.Context(),
 			config.ExplicitConfigFile(file),
+			"default",
 			"default",
 			[]config.ConfigSource{{Path: file, Type: "explicit"}},
 		)

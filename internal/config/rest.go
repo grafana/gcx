@@ -53,11 +53,21 @@ func (n *NamespacedRESTConfig) SetOnRefresh(fn auth.TokenRefresher) {
 // file, reload it so concurrent gcx invocations don't both consume the same
 // rotating refresh token, and write rotated tokens back after a successful
 // refresh. No-op if the config is not using OAuth proxy mode.
-func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source Source, contextName string, sources []ConfigSource) {
+//
+// Tokens live on stack entries and stack entries are atomic across config
+// layers, so persistence targets the layer that owns the effective stack
+// entry — writing a partial oauth-only entry into another layer would shadow
+// the owning layer's entry wholesale. stackName is the context's stack ref;
+// when empty it defaults to contextName (the stack-named-after-context
+// convention used by login).
+func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source Source, contextName, stackName string, sources []ConfigSource) {
 	if n.oauthTransport == nil {
 		return
 	}
-	persistSource := ResolveTokenPersistenceSource(ctx, source, contextName, sources)
+	if stackName == "" {
+		stackName = contextName
+	}
+	persistSource := ResolveTokenPersistenceSource(ctx, source, stackName, sources)
 	// Persistence runs inside an HTTP RoundTrip whose request context may be
 	// cancelled the moment the caller has what it needs. Use a context
 	// detached from that cancellation so Load/Write always complete.
@@ -82,15 +92,15 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		if err != nil {
 			return auth.StoredTokens{}, false, err
 		}
-		c := fresh.Contexts[contextName]
-		if c == nil || c.Grafana == nil || c.Grafana.OAuthRefreshToken == "" {
+		s := fresh.Stacks[stackName]
+		if s == nil || s.Grafana == nil || s.Grafana.OAuthRefreshToken == "" {
 			return auth.StoredTokens{}, false, nil
 		}
 		return auth.StoredTokens{
-			Token:            c.Grafana.OAuthToken,
-			RefreshToken:     c.Grafana.OAuthRefreshToken,
-			ExpiresAt:        parseRFC3339OrZero(c.Grafana.OAuthTokenExpiresAt),
-			RefreshExpiresAt: parseRFC3339OrZero(c.Grafana.OAuthRefreshExpiresAt),
+			Token:            s.Grafana.OAuthToken,
+			RefreshToken:     s.Grafana.OAuthRefreshToken,
+			ExpiresAt:        parseRFC3339OrZero(s.Grafana.OAuthTokenExpiresAt),
+			RefreshExpiresAt: parseRFC3339OrZero(s.Grafana.OAuthRefreshExpiresAt),
 		}, true, nil
 	}
 
@@ -100,24 +110,16 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 			return err
 		}
 
-		c := fresh.Contexts[contextName]
-		if c == nil {
-			fresh.SetContext(contextName, false, Context{})
-			c = fresh.Contexts[contextName]
+		if fresh.Stacks[stackName] == nil {
+			fresh.SetStack(stackName, StackConfig{})
 		}
-		// Tokens live on the stack entry; a detached Grafana config on the
-		// context would not be persisted. Create the stack when missing.
-		if c.StackEntry == nil {
-			fresh.SetStack(contextName, StackConfig{})
-			c.Stack = contextName
-			fresh.Resolve()
-		}
-		if c.StackEntry.Grafana == nil {
-			c.StackEntry.Grafana = &GrafanaConfig{}
+		s := fresh.Stacks[stackName]
+		if s.Grafana == nil {
+			s.Grafana = &GrafanaConfig{}
 			fresh.Resolve()
 		}
 
-		g := c.StackEntry.Grafana
+		g := s.Grafana
 		g.OAuthToken = token
 		g.OAuthRefreshToken = refreshToken
 		g.OAuthTokenExpiresAt = expiresAt
@@ -126,10 +128,15 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 	})
 }
 
-// ResolveTokenPersistenceSource picks the best config file to persist rotated OAuth tokens.
-// It returns a Source pointing to the highest-priority file that already contains OAuth fields
-// for the given context, falling back to the user-level config or the provided fallback.
-func ResolveTokenPersistenceSource(ctx context.Context, fallback Source, contextName string, sources []ConfigSource) Source {
+// ResolveTokenPersistenceSource picks the best config file to persist rotated
+// OAuth tokens. It returns a Source pointing to the highest-priority file
+// whose stacks map defines an entry with OAuth fields for the given stack,
+// then the highest file defining the stack at all, falling back to the
+// user-level config or the provided fallback. Matching on the stack (not the
+// context) keeps writes in the layer that owns the effective entry: stack
+// entries are atomic across layers, so a partial entry written elsewhere
+// would shadow the owner wholesale.
+func ResolveTokenPersistenceSource(ctx context.Context, fallback Source, stackName string, sources []ConfigSource) Source {
 	if len(sources) == 0 {
 		return fallback
 	}
@@ -141,14 +148,14 @@ func ResolveTokenPersistenceSource(ctx context.Context, fallback Source, context
 		}
 	}
 
-	if src, ok := pickHighestSourceForContext(ctx, sources, contextName, contextHasOAuthFields); ok {
+	if src, ok := pickHighestSourceForStack(ctx, sources, stackName, stackHasOAuthFields); ok {
 		return ExplicitConfigFile(src.Path)
 	}
-	if src, ok := pickHighestSourceForContext(ctx, sources, contextName, contextExists); ok {
+	if src, ok := pickHighestSourceForStack(ctx, sources, stackName, stackExists); ok {
 		return ExplicitConfigFile(src.Path)
 	}
 
-	// No source has the context; default to user layer when available.
+	// No source has the stack; default to user layer when available.
 	for _, src := range slices.Backward(sources) {
 		if src.Type == "user" {
 			return ExplicitConfigFile(src.Path)
@@ -158,29 +165,29 @@ func ResolveTokenPersistenceSource(ctx context.Context, fallback Source, context
 	return fallback
 }
 
-func pickHighestSourceForContext(ctx context.Context, sources []ConfigSource, contextName string, match func(*Context) bool) (ConfigSource, bool) {
+func pickHighestSourceForStack(ctx context.Context, sources []ConfigSource, stackName string, match func(*StackConfig) bool) (ConfigSource, bool) {
 	// DiscoverSources returns low→high precedence, so scan in reverse.
 	for _, src := range slices.Backward(sources) {
 		cfg, err := Load(ctx, ExplicitConfigFile(src.Path))
 		if err != nil {
 			continue
 		}
-		if c := cfg.Contexts[contextName]; c != nil && match(c) {
+		if s := cfg.Stacks[stackName]; s != nil && match(s) {
 			return src, true
 		}
 	}
 	return ConfigSource{}, false
 }
 
-func contextExists(c *Context) bool {
-	return c != nil
+func stackExists(s *StackConfig) bool {
+	return s != nil
 }
 
-func contextHasOAuthFields(c *Context) bool {
-	if c == nil || c.Grafana == nil {
+func stackHasOAuthFields(s *StackConfig) bool {
+	if s == nil || s.Grafana == nil {
 		return false
 	}
-	g := c.Grafana
+	g := s.Grafana
 	return g.OAuthToken != "" ||
 		g.OAuthRefreshToken != "" ||
 		g.OAuthTokenExpiresAt != "" ||

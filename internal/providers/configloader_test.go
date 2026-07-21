@@ -572,16 +572,21 @@ contexts:
     stack: default
 current-context: default
 `)
+	// Stack entries are atomic across layers: the local layer's entry is the
+	// effective one wholesale, so it carries the full connection config, not
+	// just the oauth fields.
 	writeFile(t, localFile, `
 version: 1
 stacks:
   default:
     grafana:
+      server: "`+srv.URL+`"
       proxy-endpoint: "`+srv.URL+`"
       oauth-token: gat_local_old
       oauth-refresh-token: gar_local_old
       oauth-token-expires-at: "2020-01-01T00:00:00Z"
       oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 123
 contexts:
   default:
     stack: default
@@ -612,7 +617,7 @@ contexts:
 	assert.NotContains(t, userContents, "gar_refreshed_local")
 }
 
-func TestLoadGrafanaConfig_PersistsRefreshToHighestContextLayer(t *testing.T) {
+func TestLoadGrafanaConfig_PersistsRefreshToStackOwningLayer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/cli/v1/auth/refresh":
@@ -665,16 +670,17 @@ contexts:
     stack: default
 current-context: default
 `)
+	// The local layer contributes only a thin context binding; the user layer
+	// owns the stack entry. Stack entries are atomic across layers, so
+	// refreshed tokens must land in the user file — writing them to the local
+	// file would create a partial entry shadowing the user layer's stack.
 	writeFile(t, localFile, `
 version: 1
-stacks:
-  default:
-    grafana:
-      server: "`+srv.URL+`"
-      proxy-endpoint: "`+srv.URL+`"
 contexts:
   default:
     stack: default
+    datasources:
+      prometheus: local-prom
 `)
 
 	loader := &providers.ConfigLoader{}
@@ -692,14 +698,14 @@ contexts:
 	userRaw, err := os.ReadFile(userFile)
 	require.NoError(t, err)
 	userContents := string(userRaw)
-	assert.NotContains(t, userContents, "gat_refreshed_local_ctx")
-	assert.NotContains(t, userContents, "gar_refreshed_local_ctx")
+	assert.Contains(t, userContents, "gat_refreshed_local_ctx")
+	assert.Contains(t, userContents, "gar_refreshed_local_ctx")
 
 	localRaw, err := os.ReadFile(localFile)
 	require.NoError(t, err)
 	localContents := string(localRaw)
-	assert.Contains(t, localContents, "gat_refreshed_local_ctx")
-	assert.Contains(t, localContents, "gar_refreshed_local_ctx")
+	assert.NotContains(t, localContents, "gat_refreshed_local_ctx")
+	assert.NotContains(t, localContents, "gar_refreshed_local_ctx")
 }
 
 // TestConfigLoader_LoadGrafanaConfig_BackwardCompat verifies AC-4: LoadGrafanaConfig

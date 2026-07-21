@@ -67,7 +67,10 @@ func TestMergeConfigs(t *testing.T) {
 			},
 		},
 		{
-			name: "higher layer overrides field within same stack",
+			// Same-named entries are atomic: the higher layer's stack replaces
+			// the lower one wholesale, so the lower layer's token cannot be
+			// combined with a higher layer's server.
+			name: "same-named stack replaces wholesale",
 			base: config.Config{
 				Stacks: map[string]*config.StackConfig{
 					"prod": {Grafana: &config.GrafanaConfig{Server: "https://old.grafana.net", APIToken: "old-token"}},
@@ -80,12 +83,12 @@ func TestMergeConfigs(t *testing.T) {
 			},
 			want: config.Config{
 				Stacks: map[string]*config.StackConfig{
-					"prod": {Grafana: &config.GrafanaConfig{Server: "https://new.grafana.net", APIToken: "old-token"}},
+					"prod": {Grafana: &config.GrafanaConfig{Server: "https://new.grafana.net", APIToken: ""}},
 				},
 			},
 		},
 		{
-			name: "cloud entries merge by key with field-level override",
+			name: "same-named cloud entry replaces wholesale",
 			base: config.Config{
 				Cloud: map[string]*config.CloudEntry{
 					"grafana-com": {Token: "old-token", APIUrl: "https://grafana.com"},
@@ -98,7 +101,7 @@ func TestMergeConfigs(t *testing.T) {
 			},
 			want: config.Config{
 				Cloud: map[string]*config.CloudEntry{
-					"grafana-com": {Token: "new-token", APIUrl: "https://grafana.com"},
+					"grafana-com": {Token: "new-token", APIUrl: ""},
 				},
 			},
 		},
@@ -113,9 +116,7 @@ func TestMergeConfigs(t *testing.T) {
 				require.True(t, ok, "missing stack %q", name)
 				require.NotNil(t, gotStack.Grafana)
 				assert.Equal(t, wantStack.Grafana.Server, gotStack.Grafana.Server)
-				if wantStack.Grafana.APIToken != "" {
-					assert.Equal(t, wantStack.Grafana.APIToken, gotStack.Grafana.APIToken)
-				}
+				assert.Equal(t, wantStack.Grafana.APIToken, gotStack.Grafana.APIToken)
 			}
 			for name, wantEntry := range tt.want.Cloud {
 				gotEntry, ok := got.Cloud[name]
@@ -154,11 +155,15 @@ current-context: prod
 
 	userFile := filepath.Join(userDir, "gcx", "config.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(userFile), 0o755))
+	// Stack entries are atomic across layers, so the user layer supplies a
+	// complete replacement for prod (a partial entry would shadow the system
+	// layer's server, by design).
 	require.NoError(t, os.WriteFile(userFile, []byte(`
 version: 1
 stacks:
   prod:
     grafana:
+      server: https://prod.grafana.net
       token: user-token
   staging:
     grafana:
@@ -193,7 +198,8 @@ contexts:
 	merged := config.MergeConfigs(sysCfg, usrCfg)
 	merged = config.MergeConfigs(merged, lclCfg)
 
-	// prod context should have: server from system, token from user, cloud from local.
+	// prod context should have: the user layer's stack entry wholesale
+	// (atomic entries — it replaces the system layer's), cloud from local.
 	prodCtx := merged.Contexts["prod"]
 	require.NotNil(t, prodCtx)
 	require.NotNil(t, prodCtx.Grafana)
@@ -226,7 +232,10 @@ func TestMergeConfigs_DiagnosticsLayering(t *testing.T) {
 	assert.True(t, merged.Diagnostics.AgentInvocationLog)
 }
 
-func TestMergeStacks_AssumeServerDryRunLastWins(t *testing.T) {
+func TestMergeGlobalResources_AssumeServerDryRunLastWins(t *testing.T) {
+	// The global resources block keeps field-level layering: dry-run
+	// assertions weaken the guard, so a higher layer must be able to narrow
+	// (or clear, via an explicit []) what a lower layer asserts.
 	tests := []struct {
 		name string
 		base []string
@@ -254,89 +263,48 @@ func TestMergeStacks_AssumeServerDryRunLastWins(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			base := config.Config{Stacks: map[string]*config.StackConfig{
-				"stk": {Resources: &config.ResourcesConfig{AssumeServerDryRun: tt.base}},
-			}}
-			over := config.Config{Stacks: map[string]*config.StackConfig{
-				"stk": {Resources: &config.ResourcesConfig{AssumeServerDryRun: tt.over}},
-			}}
+			base := config.Config{Resources: &config.ResourcesConfig{AssumeServerDryRun: tt.base}}
+			over := config.Config{}
+			if tt.over != nil || tt.name == "explicit empty list clears lower layer's assertions" {
+				over.Resources = &config.ResourcesConfig{AssumeServerDryRun: tt.over}
+			}
 
 			merged := config.MergeConfigs(base, over)
 
-			require.NotNil(t, merged.Stacks["stk"].Resources)
-			assert.Equal(t, tt.want, merged.Stacks["stk"].Resources.AssumeServerDryRun)
+			require.NotNil(t, merged.Resources)
+			assert.Equal(t, tt.want, merged.Resources.AssumeServerDryRun)
 		})
 	}
 }
 
-func TestMergeGrafanaConfig_OAuthAndProxyFields(t *testing.T) {
-	tests := []struct {
-		name string
-		base config.GrafanaConfig
-		over config.GrafanaConfig
-		want config.GrafanaConfig
-	}{
-		{
-			name: "overlay OAuthToken wins",
-			base: config.GrafanaConfig{OAuthToken: "old"},
-			over: config.GrafanaConfig{OAuthToken: "new"},
-			want: config.GrafanaConfig{OAuthToken: "new"},
-		},
-		{
-			name: "overlay OAuthRefreshToken and OAuthRefreshExpiresAt win",
-			base: config.GrafanaConfig{OAuthRefreshToken: "old-refresh", OAuthRefreshExpiresAt: "2026-01-01T00:00:00Z"},
-			over: config.GrafanaConfig{OAuthRefreshToken: "new-refresh", OAuthRefreshExpiresAt: "2027-01-01T00:00:00Z"},
-			want: config.GrafanaConfig{OAuthRefreshToken: "new-refresh", OAuthRefreshExpiresAt: "2027-01-01T00:00:00Z"},
-		},
-		{
-			name: "overlay ProxyEndpoint wins",
-			base: config.GrafanaConfig{ProxyEndpoint: "http://old.proxy"},
-			over: config.GrafanaConfig{ProxyEndpoint: "http://new.proxy"},
-			want: config.GrafanaConfig{ProxyEndpoint: "http://new.proxy"},
-		},
-		{
-			name: "zero overlay preserves base values for all five fields",
-			base: config.GrafanaConfig{
-				OAuthToken:            "tok",
-				OAuthRefreshToken:     "rtok",
-				OAuthTokenExpiresAt:   "2026-01-01T00:00:00Z",
-				OAuthRefreshExpiresAt: "2026-06-01T00:00:00Z",
-				ProxyEndpoint:         "http://proxy",
+func TestMergeStacks_EntriesAreAtomic(t *testing.T) {
+	// Same-named stacks never merge field-by-field: OAuth credentials from a
+	// lower layer must not survive into a higher layer's entry, and a higher
+	// layer's partial entry shadows the lower one wholesale.
+	base := config.Config{Stacks: map[string]*config.StackConfig{
+		"stk": {
+			Grafana: &config.GrafanaConfig{
+				Server:            "https://user.grafana.net",
+				OAuthToken:        "tok",
+				OAuthRefreshToken: "rtok",
+				ProxyEndpoint:     "http://proxy",
 			},
-			over: config.GrafanaConfig{},
-			want: config.GrafanaConfig{
-				OAuthToken:            "tok",
-				OAuthRefreshToken:     "rtok",
-				OAuthTokenExpiresAt:   "2026-01-01T00:00:00Z",
-				OAuthRefreshExpiresAt: "2026-06-01T00:00:00Z",
-				ProxyEndpoint:         "http://proxy",
-			},
+			Resources: &config.ResourcesConfig{AssumeServerDryRun: []string{"a.grp"}},
 		},
-		{
-			name: "overlay OAuthTokenExpiresAt wins",
-			base: config.GrafanaConfig{OAuthTokenExpiresAt: "2026-01-01T00:00:00Z"},
-			over: config.GrafanaConfig{OAuthTokenExpiresAt: "2027-01-01T00:00:00Z"},
-			want: config.GrafanaConfig{OAuthTokenExpiresAt: "2027-01-01T00:00:00Z"},
-		},
-	}
+	}}
+	over := config.Config{Stacks: map[string]*config.StackConfig{
+		"stk": {Grafana: &config.GrafanaConfig{Server: "https://other.grafana.net"}},
+	}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			base := config.Config{Stacks: map[string]*config.StackConfig{
-				"stk": {Grafana: &tt.base},
-			}}
-			over := config.Config{Stacks: map[string]*config.StackConfig{
-				"stk": {Grafana: &tt.over},
-			}}
-			got := config.MergeConfigs(base, over)
-			gotGrafana := got.Stacks["stk"].Grafana
-			assert.Equal(t, tt.want.OAuthToken, gotGrafana.OAuthToken)
-			assert.Equal(t, tt.want.OAuthRefreshToken, gotGrafana.OAuthRefreshToken)
-			assert.Equal(t, tt.want.OAuthTokenExpiresAt, gotGrafana.OAuthTokenExpiresAt)
-			assert.Equal(t, tt.want.OAuthRefreshExpiresAt, gotGrafana.OAuthRefreshExpiresAt)
-			assert.Equal(t, tt.want.ProxyEndpoint, gotGrafana.ProxyEndpoint)
-		})
-	}
+	merged := config.MergeConfigs(base, over)
+
+	got := merged.Stacks["stk"]
+	require.NotNil(t, got.Grafana)
+	assert.Equal(t, "https://other.grafana.net", got.Grafana.Server)
+	assert.Empty(t, got.Grafana.OAuthToken)
+	assert.Empty(t, got.Grafana.OAuthRefreshToken)
+	assert.Empty(t, got.Grafana.ProxyEndpoint)
+	assert.Nil(t, got.Resources)
 }
 
 func TestMergeConfigs_DiagnosticsOverride(t *testing.T) {

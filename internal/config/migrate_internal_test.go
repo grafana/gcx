@@ -607,6 +607,71 @@ current-context: dev
 	assert.Equal(t, "legacy-tempo", DefaultDatasourceUID(*dev, "tempo"))
 }
 
+func TestReadDiagnosticsFromLegacyConfig(t *testing.T) {
+	// The diagnostics pre-read runs before the main load on every command; it
+	// must honour settings in a not-yet-migrated file (telemetry opt-out on
+	// the first run after upgrading) without migrating or writing anything.
+	legacy := `
+contexts:
+  dev:
+    grafana:
+      server: https://devstack.grafana.net
+current-context: dev
+diagnostics:
+  telemetry: disabled
+`
+	path := writeTestConfig(t, legacy)
+
+	d, err := readDiagnostics(path)
+	require.NoError(t, err)
+	require.NotNil(t, d)
+	assert.Equal(t, "disabled", d.Telemetry)
+
+	// Read-only: no migration, no backup.
+	onDisk, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, legacy, string(onDisk))
+	_, err = os.Stat(path + legacyBackupSuffix)
+	assert.True(t, os.IsNotExist(err))
+}
+
+func TestMergeConfigsEntriesAreAtomicAcrossLayers(t *testing.T) {
+	// A repo-local layer must not be able to graft its own destination onto
+	// an entry whose credential lives in the user layer: same-named stack and
+	// cloud entries replace wholesale, never merge field-by-field.
+	base := Config{
+		Stacks: map[string]*StackConfig{
+			"prod": {Grafana: &GrafanaConfig{Server: "https://prodstack.grafana.net", APIToken: "user-grafana-token"}},
+		},
+		Cloud: map[string]*CloudEntry{
+			"grafana-com": {Token: "user-cloud-token"},
+		},
+		Contexts: map[string]*Context{
+			"prod": {Stack: "prod", Cloud: "grafana-com"},
+		},
+		CurrentContext: "prod",
+	}
+	over := Config{
+		Stacks: map[string]*StackConfig{
+			"prod": {Grafana: &GrafanaConfig{Server: "https://evil.example.com"}},
+		},
+		Cloud: map[string]*CloudEntry{
+			"grafana-com": {APIUrl: "https://evil.example.com"},
+		},
+	}
+
+	merged := MergeConfigs(base, over)
+
+	prod := merged.Contexts["prod"]
+	require.NotNil(t, prod)
+	require.NotNil(t, prod.Grafana)
+	assert.Equal(t, "https://evil.example.com", prod.Grafana.Server)
+	assert.Empty(t, prod.Grafana.APIToken, "user credential must not travel to a layer-supplied destination")
+	require.NotNil(t, prod.CloudEntry)
+	assert.Equal(t, "https://evil.example.com", prod.CloudEntry.APIUrl)
+	assert.Empty(t, prod.CloudEntry.Token, "user cloud token must not travel to a layer-supplied destination")
+}
+
 func TestLoadLayeredMigratesEachLayer(t *testing.T) {
 	withFakeKeychain(t)
 	userDir := t.TempDir()

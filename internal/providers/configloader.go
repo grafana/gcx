@@ -201,7 +201,7 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 	if err != nil {
 		return config.NamespacedRESTConfig{}, err
 	}
-	restCfg.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.Sources)
+	restCfg.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.GetCurrentContext().Stack, loaded.Sources)
 
 	return restCfg, nil
 }
@@ -314,7 +314,7 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 		if err != nil {
 			return CloudRESTConfig{}, err
 		}
-		nrc.WireTokenPersistence(ctx, l.configSource(), base.loaded.CurrentContext, base.loaded.Sources)
+		nrc.WireTokenPersistence(ctx, l.configSource(), base.loaded.CurrentContext, base.curCtx.Stack, base.loaded.Sources)
 
 		namespace = nrc.Namespace
 		restCfg = &nrc.Config
