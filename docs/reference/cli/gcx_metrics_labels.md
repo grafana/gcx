@@ -20,6 +20,15 @@ gcx metrics labels [flags]
   # Get values for a specific label
   gcx metrics labels -d UID --label job
 
+  # List labels present on a metric
+  gcx metrics labels -d UID --metric http_requests_total
+
+  # Get values a label takes on a metric
+  gcx metrics labels -d UID --metric http_requests_total --label job
+
+  # Scope with an arbitrary series selector
+  gcx metrics labels -d UID --match '{job="api"}'
+
   # Output as JSON
   gcx metrics labels -d UID -o json
 ```
@@ -32,6 +41,8 @@ gcx metrics labels [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -l, --label string        Get values for this label (omit to list all labels)
+      --match stringArray   Series selector(s) to scope results; repeatable
+  -m, --metric string       Scope results to this metric (shorthand for --match METRIC)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
 ```
 
