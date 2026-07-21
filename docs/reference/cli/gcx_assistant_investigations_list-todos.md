@@ -1,15 +1,15 @@
-## gcx assistant investigations todos
+## gcx assistant investigations list-todos
 
-Show agent tasks for an investigation.
+List agent tasks for an investigation.
 
 ```
-gcx assistant investigations todos <id> [flags]
+gcx assistant investigations list-todos <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for todos
+  -h, --help            help for list-todos
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")

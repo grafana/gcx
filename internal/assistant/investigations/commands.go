@@ -454,7 +454,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- todos ---
+// --- list-todos ---
 
 type todosOpts struct {
 	IO cmdio.Options
@@ -471,8 +471,8 @@ func (o *todosOpts) setup(flags *pflag.FlagSet) {
 func newTodosCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &todosOpts{}
 	cmd := &cobra.Command{
-		Use:   "todos <id>",
-		Short: "Show agent tasks for an investigation.",
+		Use:   "list-todos <id>",
+		Short: "List agent tasks for an investigation.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -581,7 +581,7 @@ func newReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- document ---
+// --- get-document ---
 
 type documentOpts struct {
 	IO cmdio.Options
@@ -595,7 +595,7 @@ func (o *documentOpts) setup(flags *pflag.FlagSet) {
 func newDocumentCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &documentOpts{}
 	cmd := &cobra.Command{
-		Use:   "document <investigation-id> <document-id>",
+		Use:   "get-document <investigation-id> <document-id>",
 		Short: "Fetch a specific investigation document.",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -617,7 +617,7 @@ func newDocumentCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- approvals ---
+// --- list-approvals ---
 
 type approvalsOpts struct {
 	IO cmdio.Options
@@ -633,7 +633,7 @@ func (o *approvalsOpts) setup(flags *pflag.FlagSet) {
 func newApprovalsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &approvalsOpts{}
 	cmd := &cobra.Command{
-		Use:   "approvals <id>",
+		Use:   "list-approvals <id>",
 		Short: "List approval requests for an investigation.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

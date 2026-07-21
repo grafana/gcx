@@ -111,7 +111,7 @@ func Narrative(messages []ChatThreadMessage) string {
 }
 
 // ToolCall is a single tool_use block paired with its matching tool_result.
-// Used by the `tools` subcommand. Result keeps the original part list so
+// Used by the `list-tool-calls` subcommand. Result keeps the original part list so
 // `-o json` is lossless; the table codec joins parts for display.
 type ToolCall struct {
 	ID         string           `json:"id"`

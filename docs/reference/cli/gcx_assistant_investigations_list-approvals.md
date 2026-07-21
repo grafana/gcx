@@ -1,22 +1,17 @@
-## gcx assistant investigations tools
+## gcx assistant investigations list-approvals
 
-List tool calls made during a v2 investigation.
-
-### Synopsis
-
-List every tool call the agent made during a v2 investigation, paired with its result. Use --name to filter (e.g. search_skills, prometheus_query_handler).
+List approval requests for an investigation.
 
 ```
-gcx assistant investigations tools <id> [flags]
+gcx assistant investigations list-approvals <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for tools
+  -h, --help            help for list-approvals
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --name string     Filter to tool calls with this name (e.g. search_skills, prometheus_query_handler)
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 

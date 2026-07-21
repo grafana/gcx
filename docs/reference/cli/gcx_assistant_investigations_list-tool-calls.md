@@ -1,24 +1,23 @@
-## gcx assistant investigations chat
+## gcx assistant investigations list-tool-calls
 
-Show the chat thread for a v2 investigation.
+List tool calls made during a v2 investigation.
 
 ### Synopsis
 
-Stream the chat thread that backs a v2 investigation: assistant prose, tool calls (search_skills, prometheus_query_handler, loki_query_handler_investigator, tempo_query_handler, ...), and tool results. The legacy report/timeline/todos endpoints return empty stubs on v2 — this command is the substantive view.
+List every tool call the agent made during a v2 investigation, paired with its result. Use --name to filter (e.g. search_skills, prometheus_query_handler).
 
 ```
-gcx assistant investigations chat <id> [flags]
+gcx assistant investigations list-tool-calls <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help             help for chat
-      --include-hidden   Include hidden system messages
-      --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")
-      --role string      Filter messages by role (user|assistant|tool)
+  -h, --help            help for list-tool-calls
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --name string     Filter to tool calls with this name (e.g. search_skills, prometheus_query_handler)
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

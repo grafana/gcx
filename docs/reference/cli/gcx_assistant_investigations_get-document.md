@@ -1,18 +1,18 @@
-## gcx assistant investigations approvals
+## gcx assistant investigations get-document
 
-List approval requests for an investigation.
+Fetch a specific investigation document.
 
 ```
-gcx assistant investigations approvals <id> [flags]
+gcx assistant investigations get-document <investigation-id> <document-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for approvals
+  -h, --help            help for get-document
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
