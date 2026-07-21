@@ -227,10 +227,13 @@ func TestCorrelate_JSONOutput(t *testing.T) {
 	cmd.SetErr(&bytes.Buffer{})
 
 	require.NoError(t, cmd.Execute())
-	var decoded kg.AlertInspectionResponse
+	// Output is a bare entities array (parity with 'entities list'), not the
+	// full graph envelope.
+	assert.NotContains(t, stdout.String(), "timeCriteria", "envelope must not be emitted")
+	var decoded []kg.GraphEntity
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &decoded))
-	require.Len(t, decoded.Data.Entities, 1)
-	assert.Equal(t, "ad", decoded.Data.Entities[0].Name)
+	require.Len(t, decoded, 1)
+	assert.Equal(t, "ad", decoded[0].Name)
 }
 
 func TestCorrelate_NoInput_Errors(t *testing.T) {

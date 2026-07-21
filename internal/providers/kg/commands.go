@@ -2401,7 +2401,10 @@ here — the backend fallback is unreliable today; use alert labels instead.`,
 			if len(resp.Data.Entities) == 0 {
 				fmt.Fprintln(cmd.ErrOrStderr(), "no entities correlated for the given alert(s)")
 			}
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), resp)
+			// Return the bare entities slice (like 'entities list') rather than
+			// the full graph envelope — agents only need the entities, and the
+			// envelope's edges/paging fields are noise for this command.
+			return ioOpts.IO.Encode(cmd.OutOrStdout(), resp.Data.Entities)
 		},
 	}
 	cmd.Flags().StringArrayVar(&alertLabelsRaw, "alert-labels", nil, "Firing alert label set as comma-separated key=value pairs; one flag per alert (repeatable)")
@@ -2482,19 +2485,19 @@ func parseAlertmanagerLabels(data []byte) ([]map[string]string, error) {
 	return nil, errors.New(`no alert labels found in input: expected an Alertmanager envelope {"alerts":[{"labels":{...}}]} or a bare array [{"labels":{...}}]`)
 }
 
-// AlertCorrelateTableCodec renders an AlertInspectionResponse as a table of the
-// correlated entities and their connected-entity impact counts.
+// AlertCorrelateTableCodec renders the correlated entities as a table with
+// their connected-entity impact counts.
 type AlertCorrelateTableCodec struct{}
 
 func (c *AlertCorrelateTableCodec) Format() format.Format { return "table" }
 
 func (c *AlertCorrelateTableCodec) Encode(w io.Writer, v any) error {
-	resp, ok := v.(*AlertInspectionResponse)
+	entities, ok := v.([]GraphEntity)
 	if !ok {
-		return errors.New("invalid data type for table codec: expected *AlertInspectionResponse")
+		return errors.New("invalid data type for table codec: expected []GraphEntity")
 	}
 	t := style.NewTable("TYPE", "NAME", "SCOPE", "CONNECTED")
-	for _, e := range resp.Data.Entities {
+	for _, e := range entities {
 		var scopeParts []string
 		for k, val := range e.Scope {
 			scopeParts = append(scopeParts, fmt.Sprintf("%s=%s", k, val))
