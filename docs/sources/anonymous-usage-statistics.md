@@ -20,7 +20,7 @@ The statistics describe only the *shape* of usage, including command path, and f
 
 The only identifier is a \`device\_id\` field: a randomly generated UUID created on first use and stored at `$XDG_STATE_HOME/gcx/device-id`. It identifies an installation of `gcx`, not a person. It's random, not derived from your hardware or account.
 
-## What is collected fields
+## Understand which data is collected
 
 Each gcx event contains the following properties:
 
