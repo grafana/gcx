@@ -258,7 +258,7 @@ server-side and may change.`,
 			}
 			if err := client.DeleteEntity(cmd.Context(), domain, et, n, scope); err != nil {
 				if asNotFound(err) {
-					return fmt.Errorf("%w\nhint: scope is part of identity — verify --scope and --domain match the values used at create", err)
+					return fmt.Errorf("%w\nhint: scope is part of identity — verify --scope and --domain match the values used at upsert", err)
 				}
 				return err
 			}
@@ -554,7 +554,7 @@ server-side and may change.`,
 			}
 			if err := client.DeleteRelationship(cmd.Context(), relType, fromRef, toRef); err != nil {
 				if asNotFound(err) {
-					return fmt.Errorf("%w\nhint: refs are part of identity — verify --from/--to (incl. scope) match the values used at create", err)
+					return fmt.Errorf("%w\nhint: refs are part of identity — verify --from/--to (incl. scope) match the values used at upsert", err)
 				}
 				return err
 			}
