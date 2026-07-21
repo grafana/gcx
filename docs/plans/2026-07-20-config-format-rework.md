@@ -178,6 +178,12 @@ account's default org):
 - add org-unscoped `ListInstances` to `internal/cloud` for the discovery call
 - any caching goes to the XDG state dir with a timestamp (stack-id cache
   precedent), never into the config file
+- prerequisite before building: confirm with the GCOM owners that the
+  unscoped `/api/instances` (and `/api/orgs`, if used) behaviour is a stable
+  contract — accepted token types, server-side realm filtering, and error
+  shapes. The tri-state guard depends on distinguishing 403-forbidden from a
+  legitimate empty 200; today that's verified against the route
+  implementation, not a documented contract
 - (done in PR 1) `oauth-token-expires-at` read with a "run `gcx cloud login`"
   expiry error; GCOM doesn't report a lifetime today so the field is
   populated only defensively or by hand
