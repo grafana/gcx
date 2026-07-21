@@ -73,8 +73,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
 - **Extension commands nest under their resource type.** Domain-specific
   operations (`status`, `timeline`, `acknowledge`) live alongside CRUD verbs,
   never as top-level commands. Extensions must not duplicate CRUD semantics —
-  if it can be done with list/get/create/update/delete/push/pull, it is not
-  an extension.
+  if it can be done with list/get/create/update/upsert/push/pull/delete, it is not an extension.
 - **Positional arguments are the subject, flags are modifiers.** The thing
   being acted on (resource selectors, UIDs, expressions, file paths) is
   positional. How to act on it (output format, concurrency, dry-run, filters)
