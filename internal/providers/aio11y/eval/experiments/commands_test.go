@@ -16,7 +16,7 @@ func TestCommands_HasExpectedLeaves(t *testing.T) {
 	cmd := experiments.Commands(nil)
 	require.Equal(t, "experiments", cmd.Name())
 
-	for _, sub := range []string{"list", "get", "create", "update", "cancel", "scores", "report", "list-trials", "test-suites", "trials"} {
+	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "list-trials", "test-suites", "trials"} {
 		c, _, err := cmd.Find([]string{sub})
 		require.NoError(t, err, "subcommand %q must exist", sub)
 		require.NotNil(t, c)
@@ -37,12 +37,12 @@ func TestCommands_HasExpectedNestedExperimentLeaves(t *testing.T) {
 		{"test-suites", "cases", "list"},
 		{"test-suites", "cases", "get"},
 		{"test-suites", "cases", "upsert"},
-		{"test-suites", "cases", "patch"},
+		{"test-suites", "cases", "update"},
 		{"test-suites", "cases", "delete"},
 		{"trials", "get"},
 		{"trials", "create"},
 		{"trials", "update"},
-		{"trials", "get-scores"},
+		{"trials", "list-scores"},
 		{"trials", "list-artifacts"},
 	} {
 		c, _, err := cmd.Find(path)
@@ -175,7 +175,7 @@ func TestCancelCommand_AbortsWithoutForce(t *testing.T) {
 
 func TestScoresCommand_RequiresArg(t *testing.T) {
 	cmd := experiments.Commands(nil)
-	cmd.SetArgs([]string{"scores"})
+	cmd.SetArgs([]string{"list-scores"})
 
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
@@ -214,7 +214,7 @@ func TestCasesListCommand_RequiresSuiteAndVersionWithSuggestion(t *testing.T) {
 
 func TestReportCommand_RequiresArg(t *testing.T) {
 	cmd := experiments.Commands(nil)
-	cmd.SetArgs([]string{"report"})
+	cmd.SetArgs([]string{"get-report"})
 
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)

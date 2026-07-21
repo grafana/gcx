@@ -1,19 +1,19 @@
-## gcx agento11y experiments trials get-scores
+## gcx agento11y experiments test-suites cases update
 
-List scores for a test case trial.
+Update a test case from a JSON or YAML file.
 
 ```
-gcx agento11y experiments trials get-scores <trial-id> [flags]
+gcx agento11y experiments test-suites cases update <suite-id> <version> <test-case-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get-scores
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of scores to return (0 for no limit) (default 50)
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+  -f, --filename string   File containing the test case patch payload (use - for stdin)
+  -h, --help              help for update
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +30,5 @@ gcx agento11y experiments trials get-scores <trial-id> [flags]
 
 ### SEE ALSO
 
-* [gcx agento11y experiments trials](gcx_agento11y_experiments_trials.md)	 - Manage experiment test case trials.
+* [gcx agento11y experiments test-suites cases](gcx_agento11y_experiments_test-suites_cases.md)	 - Manage test cases in a suite version.
 

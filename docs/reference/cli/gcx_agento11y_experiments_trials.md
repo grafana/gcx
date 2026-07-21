@@ -25,7 +25,7 @@ Manage experiment test case trials.
 * [gcx agento11y experiments](gcx_agento11y_experiments.md)	 - Manage eval experiment runs.
 * [gcx agento11y experiments trials create](gcx_agento11y_experiments_trials_create.md)	 - Create or upsert a test case trial from a JSON or YAML file.
 * [gcx agento11y experiments trials get](gcx_agento11y_experiments_trials_get.md)	 - Get a single test case trial.
-* [gcx agento11y experiments trials get-scores](gcx_agento11y_experiments_trials_get-scores.md)	 - List scores for a test case trial.
 * [gcx agento11y experiments trials list-artifacts](gcx_agento11y_experiments_trials_list-artifacts.md)	 - List artifacts for a test case trial.
-* [gcx agento11y experiments trials update](gcx_agento11y_experiments_trials_update.md)	 - Patch a test case trial from a JSON or YAML file.
+* [gcx agento11y experiments trials list-scores](gcx_agento11y_experiments_trials_list-scores.md)	 - List scores for a test case trial.
+* [gcx agento11y experiments trials update](gcx_agento11y_experiments_trials_update.md)	 - Update a test case trial from a JSON or YAML file.
 

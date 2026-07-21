@@ -1,6 +1,6 @@
 ## gcx agento11y experiments trials update
 
-Patch a test case trial from a JSON or YAML file.
+Update a test case trial from a JSON or YAML file.
 
 ```
 gcx agento11y experiments trials update <trial-id> [flags]

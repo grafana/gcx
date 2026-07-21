@@ -26,6 +26,6 @@ Manage test cases in a suite version.
 * [gcx agento11y experiments test-suites cases delete](gcx_agento11y_experiments_test-suites_cases_delete.md)	 - Delete a test case from a mutable suite version.
 * [gcx agento11y experiments test-suites cases get](gcx_agento11y_experiments_test-suites_cases_get.md)	 - Get a single test case.
 * [gcx agento11y experiments test-suites cases list](gcx_agento11y_experiments_test-suites_cases_list.md)	 - List test cases in a suite version.
-* [gcx agento11y experiments test-suites cases patch](gcx_agento11y_experiments_test-suites_cases_patch.md)	 - Patch a test case from a JSON or YAML file.
+* [gcx agento11y experiments test-suites cases update](gcx_agento11y_experiments_test-suites_cases_update.md)	 - Update a test case from a JSON or YAML file.
 * [gcx agento11y experiments test-suites cases upsert](gcx_agento11y_experiments_test-suites_cases_upsert.md)	 - Create or replace a test case from a JSON or YAML file.
 

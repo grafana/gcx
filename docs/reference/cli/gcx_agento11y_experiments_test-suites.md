@@ -27,6 +27,6 @@ Manage experiment test suites.
 * [gcx agento11y experiments test-suites create](gcx_agento11y_experiments_test-suites_create.md)	 - Create a test suite.
 * [gcx agento11y experiments test-suites get](gcx_agento11y_experiments_test-suites_get.md)	 - Get a single test suite.
 * [gcx agento11y experiments test-suites list](gcx_agento11y_experiments_test-suites_list.md)	 - List test suites.
-* [gcx agento11y experiments test-suites update](gcx_agento11y_experiments_test-suites_update.md)	 - Patch a test suite.
+* [gcx agento11y experiments test-suites update](gcx_agento11y_experiments_test-suites_update.md)	 - Update a test suite.
 * [gcx agento11y experiments test-suites versions](gcx_agento11y_experiments_test-suites_versions.md)	 - Manage test suite versions.
 

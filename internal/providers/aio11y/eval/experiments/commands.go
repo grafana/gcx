@@ -41,8 +41,8 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newCreateCommand(loader),
 		newUpdateCommand(loader),
 		newCancelCommand(loader),
-		newScoresCommand(loader),
-		newReportCommand(loader),
+		newListScoresCommand(loader),
+		newGetReportCommand(loader),
 		newListTrialsCommand(loader),
 		newTestSuitesCommand(loader),
 		newTrialsCommand(loader),
@@ -265,7 +265,7 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &updateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <run-id>",
-		Short: "Patch an experiment's mutable fields.",
+		Short: "Update an experiment's mutable fields.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -349,7 +349,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- scores ---
+// --- list-scores ---
 
 type scoresOpts struct {
 	IO    cmdio.Options
@@ -364,10 +364,10 @@ func (o *scoresOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of scores to return (0 for no limit)")
 }
 
-func newScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newListScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &scoresOpts{}
 	cmd := &cobra.Command{
-		Use:   "scores <run-id>",
+		Use:   "list-scores <run-id>",
 		Short: "List scores produced by an experiment.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -390,7 +390,7 @@ func newScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- report ---
+// --- get-report ---
 
 type reportOpts struct {
 	IO cmdio.Options
@@ -402,11 +402,11 @@ func (o *reportOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newReportCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newGetReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &reportOpts{}
 	cmd := &cobra.Command{
-		Use:   "report <run-id>",
-		Short: "Fetch the aggregate report for an experiment.",
+		Use:   "get-report <run-id>",
+		Short: "Get the aggregate report for an experiment.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -588,7 +588,7 @@ func newSuitesUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &suiteUpdateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <suite-id>",
-		Short: "Patch a test suite.",
+		Short: "Update a test suite.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -709,7 +709,7 @@ func newSuiteCasesCommand(loader *providers.ConfigLoader) *cobra.Command {
 		newCasesListCommand(loader),
 		newCasesGetCommand(loader),
 		newCasesUpsertCommand(loader),
-		newCasesPatchCommand(loader),
+		newCasesUpdateCommand(loader),
 		newCasesDeleteCommand(loader),
 	)
 	return cmd
@@ -826,11 +826,11 @@ func newCasesUpsertCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newCasesPatchCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newCasesUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &fileOpts{}
 	cmd := &cobra.Command{
-		Use:   "patch <suite-id> <version> <test-case-id>",
-		Short: "Patch a test case from a JSON or YAML file.",
+		Use:   "update <suite-id> <version> <test-case-id>",
+		Short: "Update a test case from a JSON or YAML file.",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -848,7 +848,7 @@ func newCasesPatchCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cmdio.Success(cmd.ErrOrStderr(), "Test case %s patched", out.TestCaseID)
+			cmdio.Success(cmd.ErrOrStderr(), "Test case %s updated", out.TestCaseID)
 			return opts.IO.Encode(cmd.OutOrStdout(), out)
 		},
 	}
@@ -905,7 +905,7 @@ func newTrialsCommand(loader *providers.ConfigLoader) *cobra.Command {
 		newTrialsGetCommand(loader),
 		newTrialsCreateCommand(loader),
 		newTrialsUpdateCommand(loader),
-		newTrialGetScoresCommand(loader),
+		newTrialListScoresCommand(loader),
 		newTrialListArtifactsCommand(loader),
 	)
 	return cmd
@@ -1028,7 +1028,7 @@ func newTrialsUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return newTrialMutationCommand[UpdateTrialRequest](
 		loader,
 		"update <trial-id>",
-		"Patch a test case trial from a JSON or YAML file.",
+		"Update a test case trial from a JSON or YAML file.",
 		"File containing the trial patch payload (use - for stdin)",
 		"updated",
 		func(ctx context.Context, client *Client, trialID string, req *UpdateTrialRequest) (*TestCaseTrial, error) {
@@ -1037,10 +1037,10 @@ func newTrialsUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	)
 }
 
-func newTrialGetScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newTrialListScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &scoresOpts{}
 	cmd := &cobra.Command{
-		Use:   "get-scores <trial-id>",
+		Use:   "list-scores <trial-id>",
 		Short: "List scores for a test case trial.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -1,6 +1,6 @@
 ## gcx agento11y experiments test-suites update
 
-Patch a test suite.
+Update a test suite.
 
 ```
 gcx agento11y experiments test-suites update <suite-id> [flags]

@@ -1,19 +1,18 @@
-## gcx agento11y experiments scores
+## gcx agento11y experiments get-report
 
-List scores produced by an experiment.
+Get the aggregate report for an experiment.
 
 ```
-gcx agento11y experiments scores <run-id> [flags]
+gcx agento11y experiments get-report <run-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for scores
+  -h, --help            help for get-report
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of scores to return (0 for no limit) (default 50)
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands
