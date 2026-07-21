@@ -121,6 +121,85 @@ func TestClient_Search(t *testing.T) {
 	assert.Equal(t, "page2", resp.NextCursor)
 }
 
+func TestClient_ListAnnotations(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Contains(t, r.URL.Path, "/query/conversations/conv-123/annotations")
+		assert.Equal(t, "25", r.URL.Query().Get("limit"))
+		assert.Equal(t, "42", r.URL.Query().Get("cursor"))
+
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(w, conversations.ConversationAnnotationsResponse{
+			Items: []conversations.ConversationAnnotation{
+				{
+					AnnotationID:   "ann-1",
+					ConversationID: "conv-123",
+					AnnotationType: "NOTE",
+					Body:           "Needs review",
+					OperatorID:     "alice",
+					CreatedAt:      now,
+				},
+			},
+			NextCursor: "99",
+		})
+	}))
+
+	resp, err := client.ListAnnotations(context.Background(), "conv-123", 25, "42")
+	require.NoError(t, err)
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, "ann-1", resp.Items[0].AnnotationID)
+	assert.Equal(t, "99", resp.NextCursor)
+}
+
+func TestClient_CreateAnnotation(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Contains(t, r.URL.Path, "/query/conversations/conv-123/annotations")
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Empty(t, r.Header.Get("X-Sigil-Operator-Id"))
+
+		var req conversations.CreateAnnotationRequest
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&req)) {
+			http.Error(w, "bad request body", http.StatusBadRequest)
+			return
+		}
+		assert.Equal(t, "ann-1", req.AnnotationID)
+		assert.Equal(t, "TRIAGE_STATUS", req.AnnotationType)
+		assert.Equal(t, "Escalated", req.Body)
+		assert.Equal(t, "needs_review", req.Tags["status"])
+		assert.Equal(t, "cli", req.Metadata["source"])
+		assert.Equal(t, "gen-1", req.GenerationID)
+
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(w, conversations.CreateAnnotationResponse{
+			Annotation: conversations.ConversationAnnotation{
+				AnnotationID:   req.AnnotationID,
+				ConversationID: "conv-123",
+				AnnotationType: req.AnnotationType,
+				Body:           req.Body,
+				Tags:           req.Tags,
+				Metadata:       req.Metadata,
+				GenerationID:   req.GenerationID,
+				OperatorID:     "alice",
+			},
+			Summary: conversations.AnnotationSummary{AnnotationCount: 1, LatestAnnotationType: req.AnnotationType},
+		})
+	}))
+
+	resp, err := client.CreateAnnotation(context.Background(), "conv-123", conversations.CreateAnnotationRequest{
+		AnnotationID:   "ann-1",
+		AnnotationType: "TRIAGE_STATUS",
+		Body:           "Escalated",
+		Tags:           map[string]string{"status": "needs_review"},
+		Metadata:       map[string]any{"source": "cli"},
+		GenerationID:   "gen-1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "ann-1", resp.Annotation.AnnotationID)
+	assert.Equal(t, 1, resp.Summary.AnnotationCount)
+}
+
 func TestClient_Get_NotFound(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)

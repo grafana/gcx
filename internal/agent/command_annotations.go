@@ -504,9 +504,11 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y agents list":     {Cost: "small"},
 	"gcx agento11y agents versions": {Cost: "small"},
 
-	"gcx agento11y conversations get":    {Cost: "medium", Hint: "<conversation-id> -o json"},
-	"gcx agento11y conversations list":   {Cost: "small"},
-	"gcx agento11y conversations search": {Cost: "medium", Hint: "--from 2024-01-01 --to 2024-01-31 -o json"},
+	"gcx agento11y conversations annotate":         {Cost: "small"},
+	"gcx agento11y conversations get":              {Cost: "medium", Hint: "<conversation-id> -o json"},
+	"gcx agento11y conversations list":             {Cost: "small"},
+	"gcx agento11y conversations list-annotations": {Cost: "small"},
+	"gcx agento11y conversations search":           {Cost: "medium", Hint: "--from 2024-01-01 --to 2024-01-31 -o json"},
 
 	"gcx agento11y evaluators create": {Cost: "small"},
 	"gcx agento11y evaluators delete": {Cost: "small"},
