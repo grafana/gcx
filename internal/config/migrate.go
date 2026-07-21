@@ -16,6 +16,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/credentials"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
@@ -579,30 +580,28 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	cfg.Source = filename
 
 	if err := verifyLegacyMigration(&lc, cfg, secrets); err != nil {
-		return Config{}, fmt.Errorf(
-			"config migration self-check failed (%w); the legacy config file %s was left untouched — please report this at https://github.com/grafana/gcx/issues",
-			err, filename)
+		return Config{}, migrationFailedError("config migration self-check failed", err, filename)
 	}
 
 	// Round-trip the converted config through the codec to prove the bytes we
 	// are about to persist decode back into an equivalent config.
 	var encoded bytes.Buffer
 	if err := codec.Encode(&encoded, cfg); err != nil {
-		return Config{}, fmt.Errorf("config migration failed to encode the converted config: %w; the legacy config file %s was left untouched", err, filename)
+		return Config{}, migrationFailedError("config migration failed to encode the converted config", err, filename)
 	}
 	var back Config
 	if err := codec.Decode(bytes.NewReader(encoded.Bytes()), &back); err != nil {
-		return Config{}, fmt.Errorf("config migration produced an unreadable config: %w; the legacy config file %s was left untouched", err, filename)
+		return Config{}, migrationFailedError("config migration produced an unreadable config", err, filename)
 	}
 	back.Resolve()
 	if err := verifyLegacyMigration(&lc, &back, secrets); err != nil {
-		return Config{}, fmt.Errorf(
-			"config migration round-trip check failed (%w); the legacy config file %s was left untouched — please report this at https://github.com/grafana/gcx/issues",
-			err, filename)
+		return Config{}, migrationFailedError("config migration round-trip check failed", err, filename)
 	}
 
 	if !backupOK {
-		log.Warn("running with in-memory config migration; the config file was not modified", "file", filename)
+		log.Warn("running with in-memory config migration; the config file was not modified",
+			"file", filename,
+			"guide", docs.ConfigMigration)
 		return *cfg, nil
 	}
 
@@ -614,16 +613,26 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	if err := Write(ctx, source, *cfg); err != nil {
 		log.Warn("could not persist migrated config; running with in-memory migration",
 			"file", filename,
-			"error", err.Error())
+			"error", err.Error(),
+			"guide", docs.ConfigMigration)
 		return *cfg, nil
 	}
 
 	log.Info("migrated config to the current format", "file", filename, "backup", filename+legacyBackupSuffix)
 	if !agent.IsAgentMode() {
-		fmt.Fprintf(os.Stderr, "Migrated %s to the new config format (backup: %s)\n",
-			filename, filename+legacyBackupSuffix)
+		fmt.Fprintf(os.Stderr, "Migrated %s to the new config format (backup: %s)\nWhat changed: %s\n",
+			filename, filename+legacyBackupSuffix, docs.ConfigMigration)
 	}
 	return *cfg, nil
+}
+
+// migrationFailedError wraps a migration failure with the two things the user
+// needs: confidence that their file was not modified, and the manual
+// migration guide.
+func migrationFailedError(summary string, err error, filename string) error {
+	return fmt.Errorf(
+		"%s (%w); the legacy config file %s was left untouched — migrate it manually (%s) and report this at https://github.com/grafana/gcx/issues",
+		summary, err, filename, docs.ConfigMigration)
 }
 
 // configLayerKey carries the config layer type ("system", "user", "local")

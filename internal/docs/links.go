@@ -75,6 +75,12 @@ const (
 
 	// IRMInvoice documents how Grafana IRM is billed per monthly active user.
 	IRMInvoice = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice.md"
+
+	// ConfigMigration documents migrating a legacy (unversioned) gcx config
+	// to the version 1 stacks/cloud/contexts format, including the manual
+	// field mapping. Referenced by the loader's automatic migration on both
+	// success and failure.
+	ConfigMigration = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/migrate-configuration.md"
 )
 
 // All returns every documentation URL in the registry. Used by the

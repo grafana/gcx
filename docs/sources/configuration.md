@@ -12,7 +12,7 @@ weight: 3
 
 You can configure `gcx` with a configuration file or using environment variables.
 
-- A configuration file can store multiple contexts, which makes it easier to switch between Grafana instances. Check the [configuration file reference documentation](https://github.com/grafana/gcx/tree/main/docs/reference/configuration/index.md) for details on all available configuration options.
+- A configuration file can store multiple contexts, which makes it easier to switch between Grafana instances. Check the [configuration file reference documentation](https://github.com/grafana/gcx/tree/main/docs/reference/configuration/index.md) for details on all available configuration options. If you have a configuration file from an older `gcx` version, refer to [Migrate your gcx configuration](../migrate-configuration/) - `gcx` migrates it automatically, and the guide covers the manual mapping.
 - Environment variables describe a single context, so they work best in CI environments. Refer to [Configure `gcx` with environment variables ](#configure-gcx-with-environment-variables) for more information. 
 
 ## Choose an authentication method
