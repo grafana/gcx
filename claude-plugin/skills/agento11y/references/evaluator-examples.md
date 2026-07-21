@@ -70,7 +70,7 @@ directly valid `create` input.
 Scores via a configured judge model. The `user_prompt` must inject the
 content being judged with template variables — `{{assistant_response}}` for
 the reply, `{{latest_user_message}}` for the user turn (the convention the
-built-in `sigil.*` judge templates use); without them the judge never sees
+built-in `template.*` judge templates use); without them the judge never sees
 the generation. Pick `provider`/`model` from what the stack actually has:
 
 ```bash

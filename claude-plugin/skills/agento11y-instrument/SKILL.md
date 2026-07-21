@@ -15,8 +15,9 @@ description: >
   completeness, SYNC vs STREAM, parent_generation_ids DAG links, and workflow-step coverage.
   Recommends changes citing file:line and, only with explicit confirmation, applies minimal
   diffs that don't change app behavior. Pulls SDK reference from sigil-sdk's llms.txt rather
-  than restating it, and hands off to `agento11y-eval-starter` once data flows. It does NOT
-  set up evaluations, rules, or guards (that is `agento11y-eval-starter` / `agento11y-prod-setup`);
+  than restating it, and hands off to `agento11y-test-starter` once data flows. It does NOT
+  write test suites or set up tenant evaluations, rules, or guards — offline test suites are
+  `agento11y-test-starter`, tenant eval rules + guards are `agento11y-prod-setup`;
   does NOT install coding-agent telemetry plugins (that is llms.txt "Path A"); does NOT mint
   or store credentials or invent endpoints. Trigger on phrases like "instrument my app",
   "send my agent's traces to Grafana", "set up AI observability for my app", "my generations
@@ -88,8 +89,8 @@ the flow and the decision logic. A minimal fallback lives in
   stop and report what's checked and what remains — don't loop forever.
 - **Field-name traps:** `cache_write_input_tokens`, NOT `cache_creation_input_tokens`. `agent_version`
   maps to the `gen_ai.agent.version` label and is required for per-version Performance charts.
-- **Out of scope:** evaluations / rules / guards → `agento11y-eval-starter` (offline) and
-  `agento11y-prod-setup` (production). Coding-agent telemetry plugins (Claude Code, Cursor, …) →
+- **Out of scope:** offline test suites → `agento11y-test-starter`; tenant eval rules + guards on
+  real traffic → `agento11y-prod-setup`. Coding-agent telemetry plugins (Claude Code, Cursor, …) →
   llms.txt "Path A". Any control-plane write.
 - **If a required input is missing** (entrypoint, framework, endpoint, gcx auth), ask — don't guess.
 
@@ -122,7 +123,11 @@ that and verify against the local instance instead. The rest of this step is the
    (`https://<stack>.grafana.net/plugins/grafana-sigil-app`), or the OTLP endpoint from an Alloy /
    OTel collector the deployment runs. Point the developer there for the endpoint(s) + token and ask
    them to paste the values, or set them as env vars — **never invent a URL or mint a token.**
-   See llms.txt "Credentials" for exactly which values the page emits and how they map to the env vars.
+   When they create the token via "Create a token in Cloud Access Policies", tell them the scopes:
+   **`sigil:write`, `metrics:write`, `traces:write`, `logs:write`**. UI heads-up: `sigil` is not in
+   the default resource list — add it via **"Add scope"** (then tick Write); the scope is still
+   `sigil:*` (the Cloud resource keeps the old name). See llms.txt "Credentials" for how each value
+   maps to the env vars.
 
    > Two different tokens — don't confuse them. gcx logs in with its own OAuth token (`gat_`) and
    > refreshes it automatically; that is what authenticates the `gcx` commands here. It is **not** the
@@ -143,8 +148,9 @@ Find and read, recording `file:line` for each:
 1. The generation entrypoint(s) — where the model is invoked.
 2. How the LLM client is constructed (which provider: OpenAI / Anthropic / Gemini / other).
 3. The app bootstrap / init — where an OTel `TracerProvider` / `MeterProvider` would be created.
-4. Any existing Agent Observability SDK imports (`sigil_sdk` / `@grafana/sigil-sdk-js` / the Go
-   `sigil` package) or `AGENTO11Y_*` usage.
+4. Any existing Agent Observability SDK imports (`agento11y` / `@grafana/agento11y` / the Go
+   `agento11y` package — or the legacy `sigil_sdk` / `@grafana/sigil-sdk-js` / Go `sigil` names in
+   older code) or `AGENTO11Y_*` usage.
 
 Detect:
 - **Language** — from the manifest / extensions (`pyproject.toml`/`.py`, `package.json`/`.ts`,
@@ -226,7 +232,7 @@ Only after the developer confirms a diff. Bounded to ~3–4 iterations.
      (both `--from`/`--to` required, RFC3339) then `gcx agento11y conversations get <conversation-id>`
      or `gcx agento11y generations get <generation-id>` — tokens, finish reason, and cost populated.
      This proves generation ingest + `set_result` are wired. **It does NOT prove OTel is wired.**
-   - **Local-dev target:** gcx can't read a local instance — confirm the app printed no `sigil:`
+   - **Local-dev target:** gcx can't read a local instance — confirm the app printed no `agento11y:`
      export errors and check the local instance / its UI for the new conversation.
 
    **Channel B — OTel spans/metrics** (the TracerProvider/MeterProvider → OTLP exporter →
@@ -246,14 +252,16 @@ Only after the developer confirms a diff. Bounded to ~3–4 iterations.
      → back to checklist #1. Do not report OTel as wired on the strength of `generations get` alone.
 4. If a signal is missing, diagnose the next gap from what the checks showed, propose the fix, and
    loop back to step 1. After ~3–4 iterations without full signal, stop and report exactly what
-   lands, what doesn't, and what to check next (app stderr for `sigil:` warnings, credentials).
+   lands, what doesn't, and what to check next (app stderr for `agento11y:` warnings, credentials).
 
 ## Step 6 — Hand off
 
 Once generations land and metrics populate, instrumentation is done — that's the prerequisite for
-everything else. Point the developer at the next step: `agento11y-eval-starter` to decide **what to
-evaluate** offline before shipping, and `agento11y-prod-setup` to set up online eval rules and guards
-once there's real traffic.
+everything else. Point the developer at the next step: `agento11y-test-starter` to build an
+**offline test suite** for the agent (useful before shipping *and* for regression-testing new
+versions once it's live), and `agento11y-prod-setup` to set up **online eval rules + guards** on
+real traffic once it's deployed. The split is offline test suite vs online rules/guards — not
+before-traffic vs after-traffic.
 
 ## Note — keeping this skill in sync
 
