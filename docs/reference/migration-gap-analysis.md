@@ -197,7 +197,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | Old Command | Description | Status in gcx |
 |-------------|-------------|---------------|
 | `gcx adaptive-logs exemptions/patterns` | Log reduction/sampling | **Exists** (`gcx logs adaptive exemptions` CRUD, `gcx logs adaptive patterns list\|stats`, `gcx logs adaptive segments` CRUD) |
-| `gcx adaptive-metrics rules/recommendations` | Cardinality reduction | **Exists** (`gcx metrics adaptive rules show\|sync`, `gcx metrics adaptive recommendations list\|apply`) |
+| `gcx adaptive-metrics rules/recommendations` | Cardinality reduction | **Exists** (`gcx metrics adaptive rules list\|get\|create\|update\|delete`, `gcx metrics adaptive recommendations list\|apply`) |
 | `gcx adaptive-traces policies/recommendations/insights/tenants` | Trace sampling | **Partially exists** (`gcx traces adaptive policies` CRUD, `gcx traces adaptive recommendations list\|apply\|dismiss`; insights/tenants **missing**) |
 | `gcx adaptive-profiles list/sync` | Profile sampling | **Stub** (`gcx profiles adaptive` exists but no subcommands listed) |
 | `gcx recording-rules prometheus/loki` | Recording rules management | **Partially exists** (RecordingRule K8s resource type available via `gcx resources get\|pull\|push`; no dedicated command) |
@@ -221,7 +221,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 
 | Old Command | Description | Status in gcx |
 |-------------|-------------|---------------|
-| `gcx stacks list/get/create/update/delete/pause/resume` | Stack management | **Exists** (`gcx stacks list\|get\|create\|update\|delete\|regions`; pause/resume not yet implemented) |
+| `gcx stacks list/get/create/update/delete/pause/resume` | Stack management | **Exists** (`gcx stacks list\|get\|create\|update\|delete\|list-regions`; pause/resume not yet implemented) |
 | `gcx access-policies` CRUD | Cloud access policy management | **Missing** |
 | `gcx credentials` | Bootstrap telemetry credentials | **Missing** |
 | `gcx invites` CRUD | Org invite management | **Missing** |
@@ -490,7 +490,7 @@ Old CLI annotates every command with structured metadata:
 1. **`init` bootstrap flow** -- Users can't onboard without this
 2. **Global `--output` / `-o`** -- Consistent output formatting everywhere
 3. **`--dry-run --diff`** -- Essential for safe operations
-4. ~~**`stacks` management**~~ -- **DONE** (`gcx stacks list|get|create|update|delete|regions`; pause/resume pending)
+4. ~~**`stacks` management**~~ -- **DONE** (`gcx stacks list|get|create|update|delete|list-regions`; pause/resume pending)
 5. **`access-policies`** -- Can't manage IAM
 
 ### P1 -- High Priority (frequent user workflows)

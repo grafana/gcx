@@ -480,8 +480,9 @@ that only surfaced during smoke testing:
   `[]{"key": k, "value": v}` on the wire. `ID` is `string` in Go but `int64` on wire.
   Internal `toAPI()`/`fromAPI()` handles both conversions.
 - **Sourcemaps are sub-resources** (require parent app-id for all operations).
-  Per CONSTITUTION § Sub-resources, they use alternative verbs (`list-sourcemaps`,
-  `apply-sourcemap`, `delete-sourcemap`) and are NOT adapter-registered.
+  Per CONSTITUTION § Sub-resources, they use `<operation>-<subject>` compounds
+  addressed by the parent's ID (`list-sourcemaps`, `apply-sourcemap`,
+  `delete-sourcemap`) and are NOT adapter-registered.
 - **Sourcemaps plugin endpoint returns 500** on dev/ops instances as of 2026-04-02.
   This is a Faro plugin bug, not a gcx code issue. The request is correctly
   constructed (verified via `-vvv` debug logging).

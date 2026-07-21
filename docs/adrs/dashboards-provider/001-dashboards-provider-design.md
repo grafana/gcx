@@ -140,7 +140,7 @@ Delete}` directly — **not** `remote.Pusher`/`Puller`. Pusher/Puller
 implement upsert/batch semantics for the declarative `gcx resources push`
 pipeline, which is incompatible with the fail-fast Contract 5 semantics
 of imperative commands (`create` must 409 on duplicate; `update` must
-404 on missing). `versions list` and `versions restore` are also pure
+404 on missing). `list-versions` and `versions restore` are also pure
 K8s LIST + GET + UPDATE via `NamespacedClient` — see the wire-protocol
 subsections below. Only `search` (and, transitively, nothing else —
 `list` does not expose `--folder`) needs a purpose-built thin HTTP
@@ -238,7 +238,7 @@ CRUD + search + snapshot surface.
   `schemaVersion` as a separate column.
 
 - **Contract 2 (envelope)** — `get -o yaml|json`, `list -o yaml|json`,
-  `search -o yaml|json`, and `versions list -o yaml|json` all produce
+  `search -o yaml|json`, and `list-versions -o yaml|json` all produce
   the standard `apiVersion / kind / metadata / spec` envelope. `spec`
   is the raw dashboard JSON. The one exception is `search`, where the
   server returns `DashboardHit` items (not full Dashboard objects);
@@ -432,7 +432,7 @@ gcx dashboards versions restore <name> <version> [--yes] [--message MSG]
 
 - `<name>` is the dashboard slug-id (`metadata.name`).
 - `<version>` is the integer `metadata.generation` returned by
-  `versions list`.
+  `list-versions`.
 - Prompts on stderr unless `--yes` is set (Contract 7).
 - `--message MSG` overrides the default annotation value
   `"Restored from version N"`.
