@@ -24,6 +24,10 @@ Telemetry controls anonymous usage telemetry for this invocation:
 nothing). Takes precedence over DO_NOT_TRACK and the
 `diagnostics.telemetry` config field.
 
+## `GCX_TELEMETRY_ENDPOINT`
+
+Endpoint overrides the URL usage telemetry is sent to.
+
 ## `GRAFANA_CLOUD_API_URL`
 
 APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls

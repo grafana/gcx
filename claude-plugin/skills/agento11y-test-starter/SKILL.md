@@ -1,22 +1,29 @@
 ---
-name: agento11y-eval-starter
+name: agento11y-test-starter
 description: >
-  Use early in an AI-agent project — before ship, before real traffic — to decide which
-  evaluations to set up and to scaffold a starter experiment. Reads the agent's own code (system
-  prompt, tools, task), recommends specific evaluators with reasons that cite real lines, and writes
-  a labeled draft test suite as an Agent Observability suite YAML. It also assesses how runnable the agent is: for
-  an easily-invoked agent it generates a runner stub (run_experiment.py) with one hole to fill and
-  can optionally run it (only with permission, only against the endpoint the developer configured);
-  for agents that need a harness or a full runtime it points to the existing eval infra instead of
-  emitting a runner that can't call the agent. It never creates tenant-level evaluators, rules, or
-  guards.
+  Use early in an AI-agent project — before ship, before real traffic — to build a starter
+  test suite for the agent and run it offline. Reads the agent's own code (system prompt, tools,
+  task), writes a labeled draft suite of test cases (happy/edge/adversarial) grounded in real
+  lines, and recommends how to score each case (the evaluators/judges the offline runner uses).
+  Assesses how runnable the agent is: for an easily-invoked agent it generates a runner stub
+  (run_experiment.py) with two holes to fill and can optionally run it (only with permission, only
+  against the endpoint the developer configured); for agents needing a harness or full runtime it
+  points to the existing eval infra. It runs OFFLINE and never creates tenant-level evaluators,
+  rules, or guards — that is `agento11y-prod-setup`, for a deployed agent with real traffic.
+  Trigger on phrases like "how do I test my agent before shipping", "write test cases for my
+  agent", "set up tests for my agent", "check my agent before prod", "I have no traffic yet, how
+  do I evaluate it", "test my agent offline".
 ---
 
-# agento11y eval starter
+# agento11y test starter
 
-Help a developer who has an AI agent but no evaluation set up yet. The hard part isn't
-running an experiment — it's knowing **what to evaluate** and having **cases to test
-against** before there's any traffic. Answer both, grounded in the agent's actual code.
+Help a developer test an AI agent **before it ships** — while there is no real traffic yet. The
+hard part isn't running the test — it's having **cases to test against** and knowing **how to
+score them**, grounded in the agent's actual code.
+
+> Scope: this is the **pre-production, offline** skill — it writes test cases and a local runner,
+> and never touches the tenant. Once the agent is deployed and has real traffic, setting up online
+> eval rules + guards on that traffic is a different skill, `agento11y-prod-setup`.
 
 Always produce:
 
@@ -26,7 +33,7 @@ Always produce:
 Then, depending on how runnable the agent is (Step 1):
 
 3. For an easily-invoked agent, a **runner stub** (`run_experiment.py`) that wires the suite
-   to the SDK with one hole to fill — and optionally run it (Step 6), only with permission.
+   to the SDK with two holes to fill — and optionally run it (Step 6), only with permission.
    For an agent that needs a harness or full runtime, point to the existing eval infra instead
    of a runner that can't actually call it.
 
@@ -41,6 +48,19 @@ agent has a clean function seam or needs a harness / full stack. For deeper run-
 > (`python/skills/agento11y-experiments/`), not in this gcx bundle yet — install it from there for
 > now. Consolidating it into the gcx bundle is pending.
 
+## Prerequisites
+
+The generated runner imports the Agent Observability SDK. Install it in the agent's environment
+before running (Step 6):
+
+- **Python:** `pip install agento11y python-dotenv` (the experiments API lives in
+  `agento11y.experiments`; the runner uses `python-dotenv` to load the agent's `.env`, and it is
+  not a dependency of `agento11y`)
+- **Go:** add `github.com/grafana/agento11y/go`
+
+Only needed to *run* the suite (Step 6). Reading the agent, recommending evaluators, and writing
+the suite YAML (Steps 1–5) need nothing installed.
+
 ## Rules
 
 - Do not create, enable, or modify evaluators, rules, or guards in any Agent Observability tenant. No
@@ -48,13 +68,19 @@ agent has a clean function seam or needs a harness / full stack. For deeper run-
   does not create tenant-level evaluators/rules/guards — but only do it via Step 6.)
 - Do not rewrite the agent's prompt, optimize, or redeploy.
 - Never run the experiment without asking first (Step 6). Never run against a target the
-  developer did not configure — use their `AGENTO11Y_ENDPOINT` + credentials (Grafana Cloud); if
-  they are not set, ask for them, do not invent an endpoint.
-- Never mint, generate, or store credentials. The developer owns their Grafana Cloud
-  ingestion token; read it from the environment or ask them to paste it — do not create one.
+  developer did not configure — use their `AGENTO11Y_ENDPOINT` and `AGENTO11Y_AUTH_TOKEN`; if the
+  endpoint isn't set, ask for it, do not invent one.
+- Never mint, generate, or store credentials. The developer owns the Grafana Cloud ingestion
+  token; read it from the environment or ask them to paste it — do not create one.
 - Never present the generated cases as validated. They are a draft to review and extend.
-- Agent Observability is a Grafana Cloud product. Do not hardcode or assume any endpoint (no `localhost`);
-  the developer supplies their Cloud endpoint and token.
+- **The `llm_judge` uses the LLM provider the agent already uses — don't add a new one.** If the
+  agent calls OpenAI, the judge calls OpenAI; if Anthropic, Anthropic. Do NOT default the judge to
+  `litellm` (or any other provider SDK) when the app doesn't already depend on it — that adds a
+  dependency and a second provider just for scoring. Reuse the agent's existing client/SDK.
+- **The target is Grafana Cloud.** Publishing scores needs `AGENTO11Y_ENDPOINT` **and**
+  `AGENTO11Y_AUTH_TOKEN` (the ingestion key from the Connection page) — the SDK raises before
+  making any request if the token is empty, so both are always required. Read the endpoint from an
+  existing `AGENTO11Y_ENDPOINT` / `.env` / sibling app; never invent one or mint a token.
 - If a required input is missing (entrypoint, prompt, tools), ask the developer — don't guess.
 
 ## Step 1 — Read the agent
@@ -65,6 +91,19 @@ Find and read these in the target repo, and record the file path and line range 
 2. The system prompt / instructions.
 3. The tool / function definitions the agent can call.
 4. One or two real user requests and what a correct answer looks like.
+5. **The LLM provider and the model** — two distinct things; read them off how the client is
+   constructed and cite the line:
+   - **Provider** (who serves the LLM) → which SDK/client the judge reuses: e.g.
+     `from openai import OpenAI` → OpenAI; `from anthropic import Anthropic` → Anthropic.
+   - **Model** (the specific id, e.g. `gpt-4o-mini`, `claude-sonnet-5`) → the `MODEL_NAME` the runner uses.
+   State both explicitly, and have the judge use the **same provider** as the agent (never a
+   different one). If you can't tell from the code, ask; don't default to a provider the app doesn't use.
+   - **Do NOT assume where the provider API key lives.** The app already loads it *somehow* — an env
+     var, a `.env` (`load_dotenv()`), a secret manager, an explicit `client(api_key=...)`. The
+     runner should reuse the **same mechanism** (it already calls `load_dotenv()`, and provider SDKs
+     read their standard env var themselves). Don't hardcode a key, and don't tell the developer to
+     "set `OPENAI_API_KEY`" as if that's the only way — if the run can't find the key, ask them how
+     their app loads it and mirror that.
 
 Every recommendation must cite one of these locations.
 
@@ -124,7 +163,7 @@ Evaluator ids are yours to choose — pick clear, stable ids. Be concrete about 
 each one means, because it is not an Agent Observability control-plane action here: in the offline SDK flow
 an evaluator is **code the developer writes in the runner** (Step 4). An `llm_judge` is a
 function that calls a model and returns a score; a `deterministic` one is a plain code check.
-`sigil.Evaluator(evaluator_id=..., kind=...)` is only the label attached to the score, not the
+`agento11y.Evaluator(evaluator_id=..., kind=...)` is only the label attached to the score, not the
 logic. (Forking a predefined template is a separate online-eval path, not needed here.)
 
 This skill targets the **offline** phase: run these evaluators as offline experiments against
@@ -160,7 +199,7 @@ as a harness case in its notes, or leave it out.
 ```yaml
 # STARTER DRAFT — review before use. Generated from your agent code (<file:line refs>).
 # NOT validated. Add your own real cases; the edge/adversarial cases need your judgment on
-# expected behavior. Loads with sigil TestSuite.from_yaml(...).
+# expected behavior. Loads with agento11y.TestSuite.from_yaml(...).
 suite_id: <agent>-starter
 name: <Agent> starter suite
 version: 1.0.0
@@ -213,7 +252,7 @@ What you generate depends on the runnability you assessed in Step 1:
 
 Also branch on **language** (the experiments SDK is Python/Go only):
 
-- **Python or Go agent** → native runner (`run_experiment.py`, or the Go `sigil` package).
+- **Python or Go agent** → native runner (`run_experiment.py`, or the Go `agento11y` package).
 - **TS / Java / .NET agent** → there is no experiments SDK in that language. Deliver
   recommendations + YAML (they are language-neutral), and be honest about the run path: the
   runner must be Python or Go calling the agent across a process boundary (e.g. a Python
@@ -224,25 +263,32 @@ Also branch on **language** (the experiments SDK is Python/Go only):
 For an **easy Python/Go** agent, write `evals/run_experiment.py`. It must:
 
 - Load the suite with `TestSuite.from_yaml(...)`.
-- Open an experiment (`sigil.experiment(...)`) and one `trial` per case.
-- Call the agent through a single clearly-marked function `run_agent(case)` — **this is the
-  one hole the developer fills**; wire it to the real entrypoint you found in Step 1.
+- Open an experiment (`agento11y.experiment(...)`) and one `trial` per case.
+- Call the agent through a single clearly-marked function `run_agent(case)` — **the first of the
+  two holes the developer fills**; wire it to the real entrypoint you found in Step 1.
 - Include ONE recommended evaluator sketched end-to-end (prefer an `llm_judge` — a real model
   call that returns a JSON `{score, passed, explanation}`), so they see the shape and can copy
-  it for the others. Reference the rest by name in a comment; do not stub all of them.
+  it for the others. Reference the rest by name in a comment; do not stub all of them. **The
+  judge's model call must use the provider the agent already uses** (reuse its OpenAI/Anthropic
+  client or SDK) — do not pull in `litellm` or another provider just for the judge. The one model
+  call inside the judge is **the second hole** — leave it as an explicit `NotImplementedError` so a
+  developer who only fills `run_agent` gets a clear "fill the judge call" error, not a `NameError`
+  on an undefined helper.
 - Record I/O (`trial.record_io(...)`) and emit `trial.final_score(...)` with the evaluator.
 
 Keep the header verbatim, and be honest in it about what still needs doing:
 
 ```python
 #!/usr/bin/env python3
-"""STARTER RUNNER — generated by agento11y-eval-starter, review before use.
+"""STARTER RUNNER — generated by agento11y-test-starter, review before use.
 
 Runs <agent> over evals/<agent>-starter.yaml as an Agent Observability experiment and publishes scores.
 
-You still need to: (1) fill run_agent(case) to call YOUR agent; (2) tune the sketched
-judge; (3) set real credentials — AGENTO11Y_ENDPOINT + AGENTO11Y_AUTH_TOKEN for your Grafana Cloud
-stack. The SDK stores scores; it does not run the agent or the judge.
+You still need to: (1) fill run_agent(case) to call YOUR agent (first hole); (2) fill the model
+call inside judge_<evaluator> using the agent's own provider client, then tune it (second hole);
+(3) set real credentials — `AGENTO11Y_ENDPOINT` and `AGENTO11Y_AUTH_TOKEN` (your Grafana Cloud
+ingestion key) and the agent's provider key. The SDK stores scores; it does not run the agent or
+the judge.
 
 Set AGENTO11Y_INGEST_ACTOR to a stable value: the run and its trials must share one actor, or
 trial creation fails with "401: experiment is owned by another actor".
@@ -253,33 +299,82 @@ trial creation fails with "401: experiment is owned by another actor".
 import json, os, time
 from pathlib import Path
 from dotenv import load_dotenv
-from sigil_sdk import experiments as sigil
+from agento11y import experiments as agento11y
 
 load_dotenv()
 SUITE = Path(__file__).parent / "<agent>-starter.yaml"
 
 
-def run_agent(case: sigil.TestCase) -> str:
-    """THE ONE HOLE YOU FILL — call your agent for this case, return its output text."""
+def run_agent(case: agento11y.TestCase) -> str:
+    """FIRST HOLE YOU FILL — call your agent for this case, return its output text."""
     raise NotImplementedError("wire this to your agent entrypoint (see Step 1 refs)")
 
 
 def judge_<evaluator>(case_input, output) -> tuple[float, bool, str]:
-    """Sketched llm_judge — a model call returning (score 0-1, passed, explanation). Tune it."""
-    import litellm
-    prompt = f"Grade <what this evaluator checks>. Return JSON {{\"score\":0-1,\"passed\":bool,\"explanation\":\"...\"}}.\n\nInput:\n{case_input}\n\nOutput:\n{output}"
+    """Sketched llm_judge — a model call returning (score 0-1, passed, explanation). Tune it.
+
+    Uses the SAME provider client the agent uses (imported below from the agent module) — do NOT
+    swap in litellm or another provider. Adapt the call to your provider's API.
+
+    IMPORTANT for grounding/relevance judges: the judge must SEE what the agent saw. If the agent
+    retrieves context (RAG), re-run its retriever here and put the passages in the prompt —
+    otherwise the judge marks correct, cited answers as "unverifiable" and scores them low. Import
+    the agent's own retriever (e.g. `from agent import retrieve`) and include its output.
+    """
+    prompt = (
+        'Grade <what this evaluator checks>. Reply with ONLY a JSON object, no prose, no markdown '
+        'fences, explanation LAST and short: {"score": <0-1 float>, "passed": <bool>, "explanation": "<one sentence>"}.\n\n'
+        # For a grounding judge, prepend the retrieved context here:
+        # f"CONTEXT:\n{retrieved_passages}\n\n"
+        f"Input:\n{case_input}\n\nOutput:\n{output}"
+    )
     model = os.getenv("GRADER_MODEL") or os.getenv("MODEL_NAME")  # a LIVE model id; no default (dead ids 404)
-    text = litellm.completion(model=model, messages=[{"role": "user", "content": prompt}],
-                              temperature=0, max_tokens=300).choices[0].message.content or "{}"
-    s, e = text.find("{"), text.rfind("}")
-    d = json.loads(text[s:e + 1]) if s >= 0 else {}
+    # SECOND HOLE YOU FILL — call the model using the SAME client the agent uses (do NOT add a new
+    # provider). Import it from the agent module and make ONE call that returns the reply text into
+    # `text`. Give it enough max_tokens (~600) that the JSON verdict is never truncated mid-object.
+    #   Anthropic: from agent import client
+    #     text = client.messages.create(model=model, max_tokens=600,
+    #                                    messages=[{"role": "user", "content": prompt}]).content[0].text
+    #   OpenAI:    from agent import client
+    #     text = client.chat.completions.create(model=model, max_tokens=600,
+    #                                            messages=[{"role": "user", "content": prompt}]).choices[0].message.content
+    raise NotImplementedError("call the agent's provider client here and assign the reply to `text`")
+    d = _parse_judge_json(text)
     score = max(0.0, min(1.0, float(d.get("score", 0.0))))
     return score, bool(d.get("passed", score >= 0.6)), str(d.get("explanation", ""))
 
 
+def _parse_judge_json(text: str) -> dict:
+    """Robustly pull the JSON verdict out of a model reply (handles prose / ```json fences)."""
+    if not text:
+        return {}
+    t = text.strip()
+    if "```" in t:  # strip a ```json ... ``` fence if present
+        t = t.split("```")[1].removeprefix("json").strip() if t.count("```") >= 2 else t
+    try:
+        return json.loads(t)
+    except json.JSONDecodeError:
+        pass
+    # Fallback: scan for the first balanced {...} object rather than first-brace/last-brace.
+    depth = 0; start = -1
+    for i, ch in enumerate(t):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                try:
+                    return json.loads(t[start:i + 1])
+                except json.JSONDecodeError:
+                    start = -1
+    return {}  # unparseable → caller treats as score 0; investigate the raw reply
+
+
 def main() -> None:
-    suite = sigil.TestSuite.from_yaml(str(SUITE))
-    verifier = sigil.Evaluator(evaluator_id="<evaluator>", version="draft-0", kind="llm_judge")
+    suite = agento11y.TestSuite.from_yaml(str(SUITE))
+    verifier = agento11y.Evaluator(evaluator_id="<evaluator>", version="draft-0", kind="llm_judge")
     candidate = {
         "agent_name": "<agent>",
         # Always send a declared agent_version. Without it Agent Observability auto-derives a version from
@@ -290,7 +385,7 @@ def main() -> None:
         "git_sha": os.getenv("GIT_SHA", ""),
         "model_name": os.getenv("MODEL_NAME", ""),
     }
-    with sigil.experiment(name="<agent> starter", experiment_id=f"<agent>-starter-{int(time.time())}",
+    with agento11y.experiment(name="<agent> starter", experiment_id=f"<agent>-starter-{int(time.time())}",
                           suite=suite, candidate=candidate, tags=["starter"],
                           actor=os.getenv("AGENTO11Y_INGEST_ACTOR", "ingest:sdk/python")) as exp:
         for case in suite.test_cases:
@@ -321,9 +416,11 @@ Output, in this order:
 2. The paths to the two written files (`evals/<agent>-starter.yaml` and
    `evals/run_experiment.py`), and a one-line reminder to review the edge/adversarial cases
    and add real ones.
-3. The three things they still do to run it: fill `run_agent(case)`, tune the sketched judge
-   (and add the other recommended evaluators the same way), and set credentials
-   (`AGENTO11Y_ENDPOINT` + `AGENTO11Y_AUTH_TOKEN`). State the boundary explicitly: this skill only
+3. The three things they still do to run it: fill `run_agent(case)` (first hole); fill the judge's
+   model call using the agent's own provider client, then tune it and add the other recommended
+   evaluators the same way (second hole); and set credentials (`AGENTO11Y_ENDPOINT` +
+   `AGENTO11Y_AUTH_TOKEN` + the provider key).
+   State the boundary explicitly: this skill only
    bootstraps the first run; for anything past that — binding an already-instrumented agent's
    real generations, auditable LLM-judge grading, cross-process verifiers, repeated-sampling
    metrics — the `agento11y-experiments` skill is the reference.
@@ -343,12 +440,20 @@ If they accept:
 
 1. Help fill `run_agent(case)` — wire it to the real entrypoint from Step 1, so the runner
    actually calls their agent.
-2. Preflight the environment and stop with a clear ask if anything is missing:
-   - `AGENTO11Y_ENDPOINT` + `AGENTO11Y_AUTH_TOKEN`. If either is unset, ask the developer for it
-     proactively — `AGENTO11Y_AUTH_TOKEN` is their Grafana Cloud ingestion API key (Cloud portal →
-     stack → API keys), `AGENTO11Y_ENDPOINT` their stack endpoint. **Never mint, generate, or
-     fabricate a token yourself, and never invent an endpoint** — the developer owns the
-     credential and supplies it; you only read it from the environment or ask for it.
+2. Preflight the environment and stop with a clear ask if anything is missing. **When you ask, tell
+   the developer exactly where each value is** — for a Cloud stack they all live on the plugin
+   **Connection page**, `https://<your-stack>.grafana.net/plugins/grafana-sigil-app`:
+   - `AGENTO11Y_ENDPOINT` = the **API URL** on that page. If unset, ask — never invent one.
+   - `AGENTO11Y_AUTH_TENANT_ID` = the **Instance ID** on that page.
+   - `AGENTO11Y_AUTH_TOKEN` — always required (the SDK raises before any request if it is empty).
+     The developer creates it via **"Create a token in Cloud Access Policies"** on the Connection page. Tell them
+     the exact scopes: **`sigil:write`, `metrics:write`, `traces:write`, `logs:write`**. Heads-up on
+     the UI: `sigil` is **not** in the default resource list — they must add it via **"Add scope"**
+     (then tick Write); `metrics`/`traces`/`logs` are already listed (tick Write). The scope is still
+     `sigil:*` (the Cloud resource keeps the old name). **Never mint or fabricate a token** — the
+     developer creates and supplies it; you only read it from the environment or ask.
+   - The **provider API key from Step 1** (e.g. `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`) — name the
+     exact env var, since both the agent and the judge need it. Ask for it; never mint it.
    - `MODEL_NAME` is a live model (dead model ids fail with a 404 not_found).
    - A stable `AGENTO11Y_INGEST_ACTOR` so run and trials share one actor (else `401: owned by
      another actor`).
@@ -360,5 +465,10 @@ If they accept:
    Start with 1–2 cases as a smoke run before the full suite.
 4. Show the per-case scores and the `exp.url`, and note this published one experiment's
    scores (no tenant evaluators/rules/guards were created).
+5. **Don't oversell a clean sweep.** If every case passes on the first run, say so honestly: that
+   usually means the suite isn't hard enough to discriminate yet, not that the agent is flawless.
+   Nudge toward (a) wiring the recommended **deterministic** evaluators (they catch contract
+   violations an `llm_judge` forgives — e.g. an exact-string check vs a paraphrase), and (b) adding
+   a case that actually stresses the agent's likely real failure mode.
 
 If they decline, stop after the summary.
