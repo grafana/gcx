@@ -25,7 +25,7 @@ gcx assistant investigations create [flags]
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string        Output format. One of: agents, json, yaml (default "yaml")
-      --profile-id string    Runner profile ID (v2 only; list with 'gcx assistant investigations profiles')
+      --profile-id string    Runner profile ID (v2 only; list with 'gcx assistant investigations list-profiles')
       --team strings         Team name to scope the investigation to (repeatable, v2 only)
       --title string         Investigation title
 ```

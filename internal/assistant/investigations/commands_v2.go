@@ -258,7 +258,7 @@ func newShareCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- profiles ---
+// --- list-profiles ---
 
 type profilesOpts struct{ IO cmdio.Options }
 
@@ -269,10 +269,10 @@ func (o *profilesOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newProfilesCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newListProfilesCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &profilesOpts{}
 	cmd := &cobra.Command{
-		Use:   "profiles",
+		Use:   "list-profiles",
 		Short: "List available agent profiles for v2 investigations.",
 		Long: "List agent profiles for v2 investigations. Profile IDs are the values for " +
 			"`create --profile-id`. Without the tenant feature flag " +

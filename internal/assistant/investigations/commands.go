@@ -83,7 +83,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newPauseCommand(loader),
 		newResumeCommand(loader),
 		newModeCommand(loader),
-		newProfilesCommand(loader),
+		newListProfilesCommand(loader),
 		newShareCommand(loader),
 		newRegenerateReportCommand(loader),
 		newChatCommand(loader),
@@ -319,7 +319,7 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Instruction, "instruction", "", "Investigation instruction (required on v2-enabled stacks)")
 	flags.StringVar(&o.Description, "description", "", "Investigation description (legacy alias of --instruction)")
 	flags.StringSliceVar(&o.Teams, "team", nil, "Team name to scope the investigation to (repeatable, v2 only)")
-	flags.StringVar(&o.ProfileID, "profile-id", "", "Runner profile ID (v2 only; list with 'gcx assistant investigations profiles')")
+	flags.StringVar(&o.ProfileID, "profile-id", "", "Runner profile ID (v2 only; list with 'gcx assistant investigations list-profiles')")
 }
 
 func (o *createOpts) captureSetFlags(flags *pflag.FlagSet) {

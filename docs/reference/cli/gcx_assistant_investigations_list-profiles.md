@@ -1,4 +1,4 @@
-## gcx assistant investigations profiles
+## gcx assistant investigations list-profiles
 
 List available agent profiles for v2 investigations.
 
@@ -7,13 +7,13 @@ List available agent profiles for v2 investigations.
 List agent profiles for v2 investigations. Profile IDs are the values for `create --profile-id`. Without the tenant feature flag assistant.lodestone-allow-profile-selection, only the default profile is listed and create rejects non-default IDs.
 
 ```
-gcx assistant investigations profiles [flags]
+gcx assistant investigations list-profiles [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for profiles
+  -h, --help            help for list-profiles
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
