@@ -37,7 +37,7 @@ type Env struct {
 	// Telemetry controls anonymous usage telemetry for this invocation:
 	// "enabled", "disabled", or "log" (print the event to stderr and send
 	// nothing). Telemetry is enabled by default. Takes precedence over
-	// DO_NOT_TRACK and the `diagnostics.telemetry` config field.
+	// the `diagnostics.telemetry` config field.
 	Telemetry string `env:"GCX_TELEMETRY"`
 
 	// DoNotTrack disables anonymous usage telemetry when set to "1" or

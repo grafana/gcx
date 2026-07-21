@@ -193,7 +193,7 @@ diagnostics:
   log-dir: string
   # Telemetry controls anonymous usage telemetry: "enabled", "disabled",
   # or "log" (prints to stderr). Enabled by default. Overridden by the
-  # GCX_TELEMETRY and DO_NOT_TRACK environment variables.
+  # GCX_TELEMETRY environment variable.
   telemetry: string
 
 ```
