@@ -50,6 +50,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/prometheus/common v0.69.0
 	github.com/zalando/go-keyring v0.2.8
+	go.opentelemetry.io/proto/otlp v1.10.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	sigs.k8s.io/yaml v1.6.0
 )

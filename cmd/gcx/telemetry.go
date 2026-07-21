@@ -40,14 +40,13 @@ func emitUsageEvent(cmd *cobra.Command, start time.Time, exitCode int) {
 		return
 	}
 
-	mode := telemetry.ResolveMode(diagnosticsTelemetryValue)
-	if mode != telemetry.ModeLog {
-		// TODO: We'll handle ModeEnabled in a followup PR
-		return
-	}
-
-	if data, err := json.Marshal(buildUsageEvent(info, start, exitCode)); err == nil {
-		fmt.Fprintln(os.Stderr, string(data))
+	switch telemetry.ResolveMode(diagnosticsTelemetryValue) {
+	case telemetry.ModeLog:
+		if data, err := json.Marshal(buildUsageEvent(info, start, exitCode)); err == nil {
+			fmt.Fprintln(os.Stderr, string(data))
+		}
+	case telemetry.ModeEnabled:
+		telemetry.Export(buildUsageEvent(info, start, exitCode), start)
 	}
 }
 
@@ -68,8 +67,8 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		IsAgent: agent.IsAgentMode(),
 		Agent:   agent.Name(),
 		// TargetKind needs the resolved config context; resolving it requires
-		// a keychain-free context loader, which lands with the OTLP export
-		// stage. Empty until then.
+		// a keychain-free context loader, which is still a follow-up. Empty
+		// until then.
 	}
 
 	// The provider is the top-level command, the first segment of the path.
