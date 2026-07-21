@@ -9,8 +9,8 @@
 > sign-off in issue #1030. The corrections were first implemented and
 > adversarially reviewed on an internal feasibility branch, then extracted
 > onto main; a related list-truncation contract ("Track C") explored on
-> that branch has **not** landed and is referenced below only as a
-> proposal.
+> that branch is tracked separately as issue #1031 / PR #1033 and is
+> referenced below only as a proposal.
 
 ## 1. Purpose
 
@@ -81,7 +81,8 @@ is a paginated backend page truncated client-side with
 `adapter.TruncateSlice`, and the `>=` trigger fires even when the page is
 exactly `--limit` long — it does not prove truncation, so no stronger
 machine-readable claim would be honest here. Migrating kg search to a
-proven-truncation envelope is part of the proposed (unlanded) Track C work.
+proven-truncation envelope is part of the proposed Track C work
+(issue #1031 / PR #1033).
 
 The sibling per-type pagination hint in `searchByTypes` (same defect
 class: typed on a TTY, invisible as JSONL) was converted the same way. TTY
@@ -255,7 +256,13 @@ successful non-agent stdout payload.
    `.agents` files with display/spill envelopes; `edit -o agents` always
    failed, but only after the user finished editing. The usage menus no
    longer advertise `agents` for these two commands (implemented via
-   `Options.HideFormat`; see §6.3).
+   `Options.HideFormat`; see §6.3). The rejections are typed
+   `fail.UsageError` → exit 2 per the DESIGN.md taxonomy (as are the
+   §4.9/§5.3 `--json`/`--jq` rejections). Note the pre-existing repo-wide
+   gap left untouched: the shared `Options.Validate()` errors (unknown
+   `-o` format, `--json`/`-o` conflicts) and pull's `--path is required`
+   all exit 1 today — reclassifying those is an existing-behavior change
+   across every command, out of scope here.
 2. **Agent-mode default for `pull`/`edit` is now `json`** (was `agents`).
    Non-agent default unchanged (`json` before and after).
 3. **`resources edit` now runs `Validate()` and rejects `--json`/`--jq`
@@ -300,8 +307,8 @@ implemented**, for three reasons:
    `TestEmitListPaginationHintStructuredOutput` asserts empty output for
    json/yaml/agents) — overriding a considered, tested decision without an
    owner nod is what this section is for.
-2. The proposed Track C list-truncation contract (feasibility work, not
-   landed) queues `dashboards list` for a per-command decision: converge it
+2. The proposed Track C list-truncation contract (issue #1031 / PR #1033)
+   queues `dashboards list` for a per-command decision: converge it
    on a machine-readable truncation envelope with the cursor command in a
    `continue` field. Un-gating the legacy ad-hoc hint now would be churn
    ahead of that sanctioned fix.
@@ -379,7 +386,8 @@ the largest coherence gap found and is squarely ADR territory.
 
 ### 7.5 `cloud stacks` internal split
 
-`internal/providers/stacks/commands.go`: list/create/update/regions default
+`internal/providers/stacks/commands.go`: list/create/update/list-regions
+(`regions` before the #387 naming train, PR #1019) default
 `table` (lines 32/140/234/415) but get defaults `yaml` (line 85). A mutation
 (`create`/`update`) defaulting to a *table* while `get` shows yaml means the
 create → inspect loop changes shape mid-flow. Small fix, but it is an
@@ -427,13 +435,19 @@ different menu). Left as a finding.
 
 ### 7.10 `resources pull` on-disk default: json (shipped) vs yaml (designed)
 
-§14's original text wanted yaml as the on-disk default. The implementation
-has always defaulted to json, and §4.4 pinned that (unchanged) default.
-Switching to yaml is a one-line change but breaks every workflow that
-assumes `.json` files from a bare `gcx resources pull` (including
-`push`-side globbing and any user tooling). **Question:** converge on yaml
-(K8s-manifest convention, matches `resources get`'s yaml-ish leanings in
-7.1(b)) or ratify json? Needs an owner call plus a migration note either way.
+§14's original text wanted yaml as the on-disk default — and so does
+`CONSTITUTION.md` § Push/Pull Philosophy ("`pull` … writes a consistent
+format (default: YAML)"), which the compliance hierarchy treats as a hard
+invariant. The implementation has always defaulted to json, and §4.4 pinned
+that (unchanged) default, so the shipped behavior violates the Constitution
+as written and has since the flag existed. Switching to yaml is a one-line
+change but breaks every workflow that assumes `.json` files from a bare
+`gcx resources pull` (including `push`-side globbing and any user tooling).
+**Question:** converge on yaml (K8s-manifest convention, matches
+`resources get`'s yaml-ish leanings in 7.1(b)) or ratify json and amend the
+Constitution? Needs an owner call plus a migration note either way; until
+then §14 knowingly documents behavior that conflicts with the Constitution
+text.
 
 ### 7.11 `alert groups status`: status exists only in the table codec
 
@@ -451,6 +465,7 @@ Owner decision.
 | Doc claim | Reality | Status |
 |---|---|---|
 | §14: pull has `--format`, default yaml | `-o`, default json | **Fixed** (doc rewritten, §4.6); yaml-default intent → 7.10 |
+| CONSTITUTION § Push/Pull Philosophy: pull default YAML | default json, always has been | DECISION NEEDED (7.10 — ratify json + amend, or migrate to yaml) |
 | §1.3: list/get default `text` | 131 table / 40 json / 49 yaml / 27 text | DECISION NEEDED (7.7) |
 | §1.3: push/pull/delete "status messages only" | pull has data-bearing `-o`; IRM has MutationResult | DECISION NEEDED (7.4) |
 | §1.4: status messages → stdout | 109 stdout vs 63 stderr | DECISION NEEDED (7.8) |

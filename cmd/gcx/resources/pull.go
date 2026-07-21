@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/local"
@@ -67,9 +68,10 @@ func (opts *pullOpts) Validate() error {
 
 	// The agents codec is a display codec: it writes compact JSON and, above
 	// the spill threshold, a spill-summary envelope instead of the payload.
-	// Neither belongs in a resource file on disk.
+	// Neither belongs in a resource file on disk. UsageError classifies the
+	// rejection as invalid usage (exit 2, DESIGN.md taxonomy).
 	if opts.IO.OutputFormat == "agents" {
-		return errors.New("output format 'agents' cannot be used with pull: it writes display envelopes, not resource content. Use -o json or -o yaml")
+		return &fail.UsageError{Message: "output format 'agents' cannot be used with pull: it writes display envelopes, not resource content. Use -o json or -o yaml"}
 	}
 
 	// --json (field selection/discovery) and --jq (transformation) shape the
@@ -80,10 +82,10 @@ func (opts *pullOpts) Validate() error {
 	// the edit rejections.
 	if opts.flags != nil {
 		if f := opts.flags.Lookup("json"); f != nil && f.Changed {
-			return errors.New("--json cannot be used with pull: field-selected output cannot round-trip as a resource file. Use -o json or -o yaml")
+			return &fail.UsageError{Message: "--json cannot be used with pull: field-selected output cannot round-trip as a resource file. Use -o json or -o yaml"}
 		}
 		if f := opts.flags.Lookup("jq"); f != nil && f.Changed {
-			return errors.New("--jq cannot be used with pull: transformed output cannot round-trip as a resource file. Use -o json or -o yaml")
+			return &fail.UsageError{Message: "--jq cannot be used with pull: transformed output cannot round-trip as a resource file. Use -o json or -o yaml"}
 		}
 	}
 

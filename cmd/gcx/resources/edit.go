@@ -2,10 +2,10 @@ package resources
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
@@ -55,8 +55,10 @@ func (opts *editOpts) Validate() error {
 	// The agents display codec cannot round-trip: the FSReader has no
 	// "agents" decoder, so the edited buffer could never be read back —
 	// the command would fail only after the user finished editing.
+	// UsageError classifies the rejection as invalid usage (exit 2,
+	// DESIGN.md taxonomy).
 	if opts.IO.OutputFormat == "agents" {
-		return errors.New("output format 'agents' cannot be used with edit: the edited file could not be read back. Use -o json or -o yaml")
+		return &fail.UsageError{Message: "output format 'agents' cannot be used with edit: the edited file could not be read back. Use -o json or -o yaml"}
 	}
 
 	// --json (field selection/discovery) and --jq (transformation) shape
@@ -66,10 +68,10 @@ func (opts *editOpts) Validate() error {
 	// rejection above.
 	if opts.flags != nil {
 		if f := opts.flags.Lookup("json"); f != nil && f.Changed {
-			return errors.New("--json cannot be used with edit: field-selected output cannot round-trip through the editor. Use -o json or -o yaml")
+			return &fail.UsageError{Message: "--json cannot be used with edit: field-selected output cannot round-trip through the editor. Use -o json or -o yaml"}
 		}
 		if f := opts.flags.Lookup("jq"); f != nil && f.Changed {
-			return errors.New("--jq cannot be used with edit: transformed output cannot round-trip through the editor. Use -o json or -o yaml")
+			return &fail.UsageError{Message: "--jq cannot be used with edit: transformed output cannot round-trip through the editor. Use -o json or -o yaml"}
 		}
 	}
 

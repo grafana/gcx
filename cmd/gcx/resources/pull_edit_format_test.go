@@ -1,13 +1,34 @@
 package resources_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/pflag"
 )
+
+// assertUsageErrorExitCode pins the DESIGN.md exit-code taxonomy for the new
+// pull/edit rejections: they are usage errors (bad flag combinations), so the
+// error must classify through cmd/gcx/fail as exit 2, not the generic exit 1.
+func assertUsageErrorExitCode(t *testing.T, err error) {
+	t.Helper()
+	usageErr := &fail.UsageError{}
+	if !errors.As(err, &usageErr) {
+		t.Fatalf("Validate() error = %T, want *fail.UsageError", err)
+	}
+	detailed := fail.ErrorToDetailedError(err)
+	if detailed.ExitCode == nil {
+		t.Fatal("converted DetailedError has no ExitCode, want 2 (usage error)")
+	}
+	if *detailed.ExitCode != gcxerrors.ExitUsageError {
+		t.Fatalf("converted exit code = %d, want %d (usage error)", *detailed.ExitCode, gcxerrors.ExitUsageError)
+	}
+}
 
 // The pull and edit commands use OutputFormat as the on-disk file extension,
 // the encoder, and (for edit) the round-trip decode format. Their default must
@@ -122,6 +143,7 @@ func TestPullAndEditRejectAgentsOutputFormat(t *testing.T) {
 			if !strings.Contains(err.Error(), "agents") {
 				t.Fatalf("Validate() error = %q, want mention of 'agents'", err.Error())
 			}
+			assertUsageErrorExitCode(t, err)
 		})
 	}
 }
@@ -176,6 +198,7 @@ func TestPullAndEditRejectJSONAndJQ(t *testing.T) {
 				if !strings.Contains(err.Error(), "round-trip") {
 					t.Fatalf("Validate() error = %q, want round-trip rationale", err.Error())
 				}
+				assertUsageErrorExitCode(t, err)
 			})
 		}
 	}

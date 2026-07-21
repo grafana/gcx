@@ -291,9 +291,11 @@ spill-summary envelopes for large resources). `resources pull` and
 same reason.
 
 > **Doc/code divergence (open):** this section originally specified a
-> dedicated `--format` flag with a `yaml` default. The implementation ships
-> the standard `-o` flag with a `json` default. Whether the on-disk default
-> should converge on `yaml` is an open decision recorded in the #387
-> output-format audit
-> (`docs/research/2026-07-17-output-format-consistency-audit.md`) and
-> presented for sign-off in issue #1030.
+> dedicated `--format` flag with a `yaml` default, and
+> `CONSTITUTION.md` § Push/Pull Philosophy still says pull writes YAML by
+> default. The implementation ships the standard `-o` flag with a `json`
+> default and always has. This section describes the shipped behavior;
+> whether to ratify `json` (and amend the Constitution) or migrate the
+> default to `yaml` is an open decision recorded in the #387 output-format
+> audit (`docs/research/2026-07-17-output-format-consistency-audit.md`)
+> and presented for sign-off in issue #1030.
