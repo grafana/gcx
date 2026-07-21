@@ -112,28 +112,27 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 
 ## Provider Architecture
 
-- **Dual CRUD access paths are permanent.** Provider commands
-  (`slo definitions list`) are ergonomic shorthands with domain-rich table
-  output. Generic commands (`resources get slos.v1alpha1.slo.ext.grafana.app`)
-  serve the push/pull pipeline and cross-resource operations. Neither path
-  is deprecated; both are first-class.
-- **JSON/YAML output is identical between both paths.** This is enforced
-  structurally: provider CRUD commands must use their registered
-  `ResourceAdapter` (via TypedCRUD) for data access, not raw API clients.
-  Table/wide codecs may diverge — provider tables show domain-specific
-  columns, generic tables show resource-management columns.
-- **Provider-only resources must not mimic adapter verbs.** If a resource
-  does not obey standard list/get/create/update/delete semantics (e.g.,
-  composite keys, scope-required lookups, query-only endpoints), do not
-  register it as an adapter. Keep it in the provider command tree only, but
-  use alternative verbs (`show`, `describe`, `search`) or an
+- **Dual CRUD access paths are permanent for adapter-backed resources.**
+  Provider commands (`slo definitions list`) are ergonomic shorthands with
+  domain-rich table output. Generic commands
+  (`resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull
+  pipeline and cross-resource operations. Neither path is deprecated; both
+  are first-class.
+- **For dual-path resources, JSON/YAML output is identical between both
+  paths.** This is enforced structurally: provider CRUD commands must use
+  their registered `ResourceAdapter` (via TypedCRUD) for data access, not raw
+  API clients. Table/wide codecs may diverge — provider tables show
+  domain-specific columns, generic tables show resource-management columns.
+- **Provider-only commands use behavior-based operations.** Adapter
+  registration does not determine the operation: a genuine read-one uses
+  `get` and a genuine enumeration uses `list`, whether or not the resource is
+  adapter-registered. Commands whose behavior does not match entity semantics
+  use an honest query, view, or domain operation, or an
   `<operation>-<subject>` compound that honestly describes the behavior
   (e.g. `list-profile-types`, `list-tables` for commands that genuinely
-  enumerate a collection) — never bare `get`, `list`, `create`, `update`,
-  `delete`. This avoids user confusion: adapter verbs (`resources get`) and
-  provider verbs should not overlap for resources that behave differently
-  across the two paths; a compound such as `list-profile-types` does not
-  collide with any adapter verb.
+  enumerate a collection — a compound collides with no adapter verb).
+  Nonstandard behavior is never disguised
+  as CRUD, and an adapter must not be created solely to unlock a CRUD verb.
 - **Sub-resources nest under their parent command.** If a resource cannot
   be listed or addressed without a parent ID (e.g. alerts require an
   alert group), it is a sub-resource. Sub-resources must not be registered as standalone typed
@@ -141,19 +140,14 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   as verbs under the parent command: `$PARENT $VERB-$CHILD $PARENT_ID`
   (e.g. `alert-groups list-alerts <id>`). Get-by-ID may still have a
   standalone adapter if the API supports direct ID lookup without a parent.
-- **Adapter registration does not determine the operation.** A genuine
-  read-one uses `get` and a genuine enumeration uses `list`, whether or not
-  the resource is adapter-registered. Provider-only commands whose behavior
-  does not match entity semantics must use an honest query, view, or domain
-  operation, or an `<operation>-<subject>` compound — nonstandard behavior
-  is never disguised as CRUD.
-- **Typed resource trajectory.** Provider domain types implement
+- **Typed resource trajectory.** Adapter-backed provider domain types implement
   `ResourceIdentity` for self-describing identity and are wrapped by
   `TypedObject[T]` (embedded `metav1.ObjectMeta` + `TypeMeta` + `Spec T`)
   for K8s metadata compliance. `TypedCRUD[T]` provides both typed methods
   (returning `TypedObject[T]`) and unstructured methods (via `AsAdapter()`).
-  New providers must implement `ResourceIdentity` on domain types and use
-  `TypedCRUD` for both CLI commands and adapter registration.
+  New adapter-backed provider resources must implement `ResourceIdentity` on
+  domain types and use `TypedCRUD` for both CLI commands and adapter
+  registration.
 
 ## Dependency Rules
 
