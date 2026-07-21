@@ -39,6 +39,12 @@ func (opts *editOpts) setup(flags *pflag.FlagSet) {
 	// Bind all the flags
 	opts.IO.BindFlags(flags)
 	opts.flags = flags
+
+	// Validate rejects every use of --json/--jq (below), so hide both from
+	// help — advertising flags the command always refuses is the same
+	// dishonesty as advertising the rejected agents format.
+	_ = flags.MarkHidden("json")
+	_ = flags.MarkHidden("jq")
 }
 
 func (opts *editOpts) Validate() error {

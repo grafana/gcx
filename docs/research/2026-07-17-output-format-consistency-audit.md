@@ -211,7 +211,9 @@ the truncation notice.
 
 **Now:** the RunE output tail is extracted into `writeGetOutput`, and the
 `emitGetTruncationHint` helper fires on every output path including field
-selection (hint after encode, before the captured error is returned). Test:
+selection (after a successful encode only, matching the non-field-select
+path — no "showing first N items" claim when the output actually failed).
+Test:
 `TestGetTruncationHint` in
 `cmd/gcx/resources/get_truncation_hint_test.go` (JSONL hint in agent mode,
 `hint: ` line on a TTY, silence when not truncated, plain-output
@@ -228,9 +230,18 @@ flags were dropped.
 **Now:** pull's `Validate()` rejects both flags upfront with round-trip
 errors exactly mirroring the edit rejections (§5 item 3): a field-selected
 or jq-transformed document is not the resource and cannot round-trip as an
-on-disk resource file that push reads back. Test:
-`TestPullAndEditRejectJSONAndJQ` in
-`cmd/gcx/resources/pull_edit_format_test.go` (covers both commands).
+on-disk resource file that push reads back. Since every use is rejected,
+both flags are also hidden from pull/edit help (`pflag.MarkHidden`) — the
+same honesty rule as hiding the rejected `agents` format (§6.3). And
+because pull/edit pin their default (§4.4), the agent-mode Encode nudge
+that recommends `--json`/`--jq` is suppressed for pinned-default commands —
+a command must not recommend flags its own validation refuses (the nudge
+targets stdout consumers; pinned commands encode into files or editor
+buffers). Tests: `TestPullAndEditRejectJSONAndJQ` and
+`TestPullAndEditDoNotAdvertiseAgentsFormat` in
+`cmd/gcx/resources/pull_edit_format_test.go` (cover both commands),
+`TestEncode_AgentModeHint` in `internal/output/format_test.go` (pinned
+suppression case).
 
 ---
 
@@ -258,7 +269,9 @@ successful non-agent stdout payload.
    rejections from §4.9 too).
 4. **`resources pull` now rejects `--json`/`--jq` outright** (new
    validation error, §4.9). Previously both flags were advertised but
-   silently ignored — pull encodes via `opts.IO.Codec()` directly.
+   silently ignored — pull encodes via `opts.IO.Codec()` directly. Both
+   flags are hidden from pull/edit help, and the agent-mode Encode nudge
+   recommending them is suppressed for pinned-default commands (§4.9).
 5. **Agent-mode hints became JSONL** for `kg entities list` (both hints) and
    `resources get` truncation; `resources get`'s TTY notice gained the
    `hint: ` prefix. The kg `--limit` hint also moved from process stderr to

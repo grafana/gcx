@@ -202,5 +202,17 @@ func TestPullAndEditDoNotAdvertiseAgentsFormat(t *testing.T) {
 				t.Errorf("%s -o usage missing %q: %q", name, want, usage)
 			}
 		}
+
+		// --json/--jq are rejected on every use (TestPullAndEditRejectJSONAndJQ),
+		// so help must not advertise them either.
+		for _, rejected := range []string{"json", "jq"} {
+			f := flags.Lookup(rejected)
+			if f == nil {
+				t.Fatalf("%s --%s flag not bound", name, rejected)
+			}
+			if !f.Hidden {
+				t.Errorf("%s --%s is always rejected but still advertised in help", name, rejected)
+			}
+		}
 	}
 }

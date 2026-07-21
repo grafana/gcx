@@ -293,11 +293,14 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
 	// --json field1,field2: use FieldSelectCodec for output. The truncation
 	// hint must fire on this path too — field-selected output is truncated by
-	// the same per-resource-type limit as every other mode.
+	// the same per-resource-type limit as every other mode — but, as on the
+	// path below, only after a successful encode.
 	if len(opts.IO.JSONFields) > 0 {
-		err := writeFieldSelect(stdout, opts, res, output)
+		if err := writeFieldSelect(stdout, opts, res, output); err != nil {
+			return err
+		}
 		emitGetTruncationHint(stderr, opts, res)
-		return err
+		return nil
 	}
 
 	var encodeErr error

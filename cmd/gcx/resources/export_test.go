@@ -42,7 +42,9 @@ func NewGetOptsForTest(flags *pflag.FlagSet) *getOpts {
 }
 
 // WriteGetOutputForTest exposes the unexported writeGetOutput (the RunE
-// output tail: encode + truncation hint + partial-failure error).
+// output tail: encode + truncation hint; the partial-failure error fires on
+// the non-field-select path, while the --json field-select path delegates
+// partial-failure handling to writeFieldSelect).
 func WriteGetOutputForTest(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
 	return writeGetOutput(stdout, stderr, opts, res, output)
 }

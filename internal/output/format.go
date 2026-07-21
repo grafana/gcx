@@ -253,11 +253,15 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 	// not realize --jq exists for transformation (group_by, filter, count).
 	// Suppressed when --jq is already in use (caller already has the more
 	// powerful tool) or when --json list is requested (discovery output is
-	// not a transformation target). Emitted once per invocation to stderr
-	// (never pollutes stdout) as JSONL {"class":"hint",...} via emitHint
-	// (FR-104). Suppressed outside agent mode to avoid noise on TTYs.
+	// not a transformation target). Also suppressed for pinned-default
+	// (file-writing) commands: their encode fills a file or editor buffer,
+	// not stdout, and they reject --json/--jq — recommending those flags
+	// would contradict the command's own validation. Emitted once per
+	// invocation to stderr (never pollutes stdout) as JSONL
+	// {"class":"hint",...} via emitHint (FR-104). Suppressed outside agent
+	// mode to avoid noise on TTYs.
 	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
-	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && !opts.JSONDiscovery && opts.jqQuery == nil {
+	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && !opts.JSONDiscovery && opts.jqQuery == nil && !opts.defaultFormatPinned {
 		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter
 		if w == nil {

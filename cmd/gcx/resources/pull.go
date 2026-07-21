@@ -44,6 +44,12 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 	opts.flags = flags
 
+	// Validate rejects every use of --json/--jq (below), so hide both from
+	// help — advertising flags the command always refuses is the same
+	// dishonesty as advertising the rejected agents format.
+	_ = flags.MarkHidden("json")
+	_ = flags.MarkHidden("jq")
+
 	bindOnErrorFlag(flags, &opts.OnError)
 	flags.StringVarP(&opts.Path, "path", "p", defaultResourcesPath, "Path on disk in which the resources will be written")
 	flags.BoolVar(
