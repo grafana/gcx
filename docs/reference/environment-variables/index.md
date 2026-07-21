@@ -21,8 +21,8 @@ disables the notifier (NO_COLOR convention).
 
 Telemetry controls anonymous usage telemetry for this invocation:
 "enabled", "disabled", or "log" (print the event to stderr and send
-nothing). Takes precedence over DO_NOT_TRACK and the
-`diagnostics.telemetry` config field.
+nothing). Telemetry is enabled by default. Takes precedence over
+DO_NOT_TRACK and the `diagnostics.telemetry` config field.
 
 ## `GCX_TELEMETRY_ENDPOINT`
 

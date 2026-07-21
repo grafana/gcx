@@ -19,8 +19,8 @@ func TestResolveMode(t *testing.T) {
 		want        Mode
 	}{
 		{
-			name: "no env, no config: built-in default",
-			want: defaultMode,
+			name: "no env, no config: enabled by default",
+			want: ModeEnabled,
 		},
 		{
 			name: "GCX_TELEMETRY=enabled",
@@ -82,7 +82,7 @@ func TestResolveMode(t *testing.T) {
 		{
 			name:        "unrecognised config value falls through to default",
 			configValue: "on",
-			want:        defaultMode,
+			want:        ModeEnabled,
 		},
 	}
 
