@@ -80,6 +80,17 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 	event.CIProvider, event.IsCI = telemetry.DetectCI()
 
 	switch {
+	case info.ParseError != nil:
+		pe := info.ParseError
+		event.Outcome = telemetry.OutcomeParseError
+		event.ErrorKind = agentlog.KindFromExitCode(exitCode)
+		event.ParseErrorKind = pe.Kind
+		event.ParseErrorParent = pe.Parent
+		event.ParseErrorToken = pe.Token
+		event.AttemptedCommand = pe.Attempted
+		event.ParseErrorFlags = pe.Flags
+		event.ParseErrorNearest = pe.Nearest
+		event.ParseErrorDistance = pe.Distance
 	case info.Help && exitCode == 0:
 		event.Outcome = telemetry.OutcomeHelp
 	case exitCode == 0:
