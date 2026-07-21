@@ -19,6 +19,8 @@ type labelsOpts struct {
 	IO         cmdio.Options
 	Datasource string
 	Label      string
+	Metric     string
+	Match      []string
 }
 
 func (opts *labelsOpts) setup(flags *pflag.FlagSet) {
@@ -28,6 +30,18 @@ func (opts *labelsOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-prometheus-datasource is configured)")
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
+	flags.StringVarP(&opts.Metric, "metric", "m", "", "Scope results to this metric (shorthand for --match METRIC)")
+	flags.StringArrayVar(&opts.Match, "match", nil, "Series selector(s) to scope results; repeatable")
+}
+
+// selectors combines --match selectors with the --metric shorthand. A bare
+// metric name is itself a valid series selector for the match[] parameter.
+func (opts *labelsOpts) selectors() []string {
+	match := append([]string{}, opts.Match...)
+	if opts.Metric != "" {
+		match = append(match, opts.Metric)
+	}
+	return match
 }
 
 func (opts *labelsOpts) Validate() error {
@@ -53,6 +67,15 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 
 	# Get values for a specific label
 	gcx datasources prometheus labels -d UID --label job
+
+	# List labels present on a metric
+	gcx datasources prometheus labels -d UID --metric http_requests_total
+
+	# Get values a label takes on a metric
+	gcx datasources prometheus labels -d UID --metric http_requests_total --label job
+
+	# Scope with an arbitrary series selector
+	gcx datasources prometheus labels -d UID --match '{job="api"}'
 
 	# Output as JSON
 	gcx datasources prometheus labels -d UID -o json`,
@@ -84,7 +107,7 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 			}
 
 			if opts.Label != "" {
-				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label)
+				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label, opts.selectors())
 				if err != nil {
 					return fmt.Errorf("failed to get label values: %w", err)
 				}
@@ -96,7 +119,7 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 			}
 
-			resp, err := client.Labels(ctx, datasourceUID)
+			resp, err := client.Labels(ctx, datasourceUID, opts.selectors())
 			if err != nil {
 				return fmt.Errorf("failed to get labels: %w", err)
 			}
