@@ -18,8 +18,8 @@ recorded verbatim.
 
 | Current | Target | Basis |
 |---|---|---|
-| `gcx profiles profile-types` | `gcx profiles list-types` | §8 case (a): discovery/catalog facet scoped by `--datasource`; profile types have no ID-addressed read-one |
-| `gcx datasources pyroscope profile-types` | `gcx datasources pyroscope list-types` | Same shared builder at its second mount |
+| `gcx profiles profile-types` | `gcx profiles list-profile-types` | §8 case (a): discovery/catalog facet scoped by `--datasource`; profile types have no ID-addressed read-one |
+| `gcx datasources pyroscope profile-types` | `gcx datasources pyroscope list-profile-types` | Same shared builder at its second mount |
 
 ## Executed in wave 1
 
@@ -54,10 +54,10 @@ recorded verbatim.
 | `gcx datasources influxdb tag-values` | rename | `gcx datasources influxdb list-tag-values` |
 
 - **`gcx datasources athena describe-table`** — Fails §5's materially-different-output test for describe (plain []string of names, nothing schema-like) and §8 conditions 1+2 approve the compound: columns are a non-addressable parent-scoped facet reached via the table's identity, matching the ratified athena list-* family and the rollout plan's explicit Athena ≈ list-columns hint.
-- **`gcx datasources influxdb field-keys`** — ADR §8 condition 1 (via §4's closed shorthand set excluding field-keys): a datasource-scoped value enumeration with no ID of its own and no get anywhere takes the list-&lt;subject&gt; compound, exactly parallel to the ratified clickhouse/cloudwatch/athena list-* family and D4c profile-types→list-types.
-- **`gcx datasources influxdb measurements`** — ADR §8 list-&lt;subject&gt; condition 1: measurements are a --datasource-scoped discovery/catalog facet with no ID of their own (no read-one; --measurement on siblings is a filter flag) and outside the closed §4 shorthand set, so the compound spelling of list applies, parallel to ratified cloudwatch/athena/clickhouse list-* and decided D4c profile-types→list-types.
-- **`gcx datasources influxdb tag-keys`** — Tag keys are ID-less, datasource-scoped discovery values (SHOW TAG KEYS → []string; no read-one exists) → ADR §8 list-&lt;subject&gt; condition 1, exactly parallel to the ratified cloudwatch/athena/clickhouse list-* family and the decided profile-types→list-types rename (§4/D4c); tag-keys is outside the closed §4 shorthand set.
-- **`gcx datasources influxdb tag-values`** — Tag values are not independently addressable (no ID, no get anywhere; --key is the parent tag key's flag-supplied identity), so ADR §8's list-&lt;subject&gt; compound applies — same shape as the ratified cloudwatch/athena/clickhouse list-* family and D4c list-types.
+- **`gcx datasources influxdb field-keys`** — ADR §8 condition 1 (via §4's closed shorthand set excluding field-keys): a datasource-scoped value enumeration with no ID of its own and no get anywhere takes the list-&lt;subject&gt; compound, exactly parallel to the ratified clickhouse/cloudwatch/athena list-* family and D4c profile-types→list-profile-types.
+- **`gcx datasources influxdb measurements`** — ADR §8 list-&lt;subject&gt; condition 1: measurements are a --datasource-scoped discovery/catalog facet with no ID of their own (no read-one; --measurement on siblings is a filter flag) and outside the closed §4 shorthand set, so the compound spelling of list applies, parallel to ratified cloudwatch/athena/clickhouse list-* and decided D4c profile-types→list-profile-types.
+- **`gcx datasources influxdb tag-keys`** — Tag keys are ID-less, datasource-scoped discovery values (SHOW TAG KEYS → []string; no read-one exists) → ADR §8 list-&lt;subject&gt; condition 1, exactly parallel to the ratified cloudwatch/athena/clickhouse list-* family and the decided profile-types→list-profile-types rename (§4/D4c); tag-keys is outside the closed §4 shorthand set.
+- **`gcx datasources influxdb tag-values`** — Tag values are not independently addressable (no ID, no get anywhere; --key is the parent tag key's flag-supplied identity), so ADR §8's list-&lt;subject&gt; compound applies — same shape as the ratified cloudwatch/athena/clickhouse list-* family and D4c list-profile-types.
 
 ## Wave 2 (this PR series)
 
@@ -125,7 +125,7 @@ recorded verbatim.
 |---|---|---|
 | `gcx dev lint rules` | rename | `gcx dev lint list-rules` |
 
-- **`gcx dev lint rules`** — ADR §8 case (1): linter rules are a discovery/catalog facet with no fetch-one by rule name anywhere in CLI or engine (rule names are only --disable/--enable filter values), so the list-<subject> compound applies — same shape as decided D4c profile-types→list-types.
+- **`gcx dev lint rules`** — ADR §8 case (1): linter rules are a discovery/catalog facet with no fetch-one by rule name anywhere in CLI or engine (rule names are only --disable/--enable filter values), so the list-<subject> compound applies — same shape as decided D4c profile-types→list-profile-types.
 
 ### frontend — tail sweep (wave 2)
 
@@ -141,7 +141,7 @@ recorded verbatim.
 |---|---|---|
 | `gcx resources examples` | rename | `gcx resources list-examples` |
 
-- **`gcx resources examples`** — ADR §8 situation 1: example manifests are a discovery/catalog facet with no ID of their own (keyed by the resource type's GVK; the optional selector is a parent-type filter, and no example read-one exists), so the compound spelling of `list` applies — consistent with D4c profile-types→list-types and the ratified list-* family.
+- **`gcx resources examples`** — ADR §8 situation 1: example manifests are a discovery/catalog facet with no ID of their own (keyed by the resource type's GVK; the optional selector is a parent-type filter, and no example read-one exists), so the compound spelling of `list` applies — consistent with D4c profile-types→list-profile-types and the ratified list-* family.
 
 ## Non-members, for the record
 
