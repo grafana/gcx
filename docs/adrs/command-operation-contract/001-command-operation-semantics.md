@@ -149,11 +149,16 @@ a collection.
 - `upsert` and `push` are both create-or-update operations, distinguished
   by **user workflow**, never by transport, backend implementation, or
   atomicity:
-  - `upsert` is the **direct single-entity** workflow: one invocation
-    creates the subject when absent or updates/replaces it when present,
-    without requiring the caller to choose create versus update.
-    Splitting a true upsert into `create`/`update` is rejected: it would
-    falsely promise existence checks and introduce read-then-write races.
+  - `upsert` is the **direct create-or-update** workflow: the caller
+    supplies one or more explicit subjects, and the invocation creates
+    each subject when absent or updates/replaces it when present, without
+    requiring the caller to choose create versus update. Multi-subject
+    input is processed independently per subject and MAY be non-atomic
+    (owner decision 2026-07-21, prompted by `kg entities|relationships
+    upsert -f` accepting one object or an array). Cardinality alone never
+    distinguishes `upsert` from `push` — the workflow does. Splitting a
+    true upsert into `create`/`update` is rejected: it would falsely
+    promise existence checks and introduce read-then-write races.
   - `push` is the **manifest (GitOps) apply** workflow: it takes selected
     local manifests, potentially covering many resources, and creates or
     updates each supplied resource (per the
