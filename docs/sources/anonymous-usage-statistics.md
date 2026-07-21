@@ -89,7 +89,7 @@ GCX_TELEMETRY=log gcx dashboards list
 
 You can control usage statistics reporting three ways:
 
-1. **`GCX_TELEMETRY` environment variable** — set to `enabled`, `disabled`, or `log`. Takes precedence over everything else:
+1. **`GCX_TELEMETRY` environment variable**: Set to `enabled`, `disabled`, or `log`. Takes precedence over everything else:
 
 ```shell
 export GCX_TELEMETRY=disabled
