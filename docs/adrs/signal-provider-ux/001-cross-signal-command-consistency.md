@@ -5,6 +5,13 @@
 **Bead**: none
 **Supersedes**: none
 
+<!-- Ratification of this ADR (its command surface shipped in April 2026)
+     is PROPOSED to be bundled with the Command Operation Semantics
+     decision (D4 in the rollout plan): both would flip to accepted in the
+     same acceptance commit once maintainers approve the decision table in
+     docs/plans/2026-07-16-command-operation-contract-rollout.md. That
+     bundling itself still awaits maintainer approval. -->
+
 ## Context
 
 gcx has four signal providers (metrics, logs, profiles, traces) that grew
@@ -80,6 +87,15 @@ gcx metrics                       gcx logs                        gcx profiles  
 reliably deduced from `--from`/`--to` presence, and the response shape (vector
 vs matrix) is the same structure. The other signals have genuinely different
 response shapes between their primary query and time-series query.
+
+> **Approved rename (implemented by PR #1009; decided 2026-07-17,
+> respelled in review 2026-07-21).**
+> `profile-types` is renamed to `list-profile-types` — at both mounts of
+> its shared builder (`profiles list-profile-types` and
+> `datasources pyroscope list-profile-types`) — under the
+> [Command Operation Semantics ADR](../command-operation-contract/001-command-operation-semantics.md)
+> §4 (rollout decision D4c). The diagram above shows the post-#1009
+> surface.
 
 **Rejected:** Single `query` command with auto-detect regex for search vs metrics
 (original design). Each query type has different response shapes, different
@@ -157,6 +173,15 @@ only in what the API returns: a single data point vs a time series.
 ### 6. Aliases and clean breaks
 
 We are pre-GA -- no deprecated aliases, just clean renames where needed.
+
+> **Scoped amendment (pending acceptance).** Once the
+> [Command Operation Semantics ADR](../command-operation-contract/001-command-operation-semantics.md)
+> is accepted, its §11 supersedes this section **for future renames**:
+> noncanonical paths are renamed or removed during v1 development with no
+> compatibility forwarders (v1.0.0 is the clean boundary; migration
+> support is the v1 migration guide's old→new table and updated published
+> documentation). The renames already executed under this ADR are
+> unaffected.
 
 **Traces aliases (non-deprecated, kept permanently):**
 

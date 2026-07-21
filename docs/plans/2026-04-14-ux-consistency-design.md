@@ -564,19 +564,22 @@ they're removed.
 
 ### Singleton resources use `show`, not `get`
 
-Resources with no ID and no list (e.g., `appo11y overrides`, `appo11y
-settings`) use `show` to distinguish from the adapter `get` which implies
-"by ID." This is codified as the **singleton rule** in the verb taxonomy.
+> **Superseded.** The singleton rule changed during ratification: under the
+> [Command Operation Semantics ADR](../adrs/command-operation-contract/001-command-operation-semantics.md),
+> a no-argument read of a singleton is `get` with singleton *addressing* —
+> `show` is not a canonical operation. `appo11y overrides get` /
+> `settings get` are therefore already canonical.
 
 ### New verb taxonomy rules
 
-Three rules added to `docs/design/naming.md`:
-
-1. **Singleton rule**: Resources with no ID and no list use `show`
-2. **`open` disambiguation**: `browse` for browser navigation, explicit
-   state verbs (`activate`/`close`) for lifecycle changes
-3. **`show`/`list`/`get` decision tree**: `get` = by ID (adapter or not),
-   `list` = collection, `show` = singleton or aggregate view
+> **Correction (2026-07-16).** This section previously claimed three rules
+> were "added to `docs/design/naming.md`" — they never were (documentation
+> drift). The verb taxonomy is defined by the
+> [Command Operation Semantics ADR](../adrs/command-operation-contract/001-command-operation-semantics.md)
+> and summarized in [naming.md §9.7](../design/naming.md). Outcomes differ
+> from the original sketch: singleton reads are `get` (not `show`); `show`
+> is not canonical; the `open`/`browse` disambiguation remains an open
+> classification question rather than a ratified rule.
 
 ---
 
@@ -760,7 +763,10 @@ Rules:
   them. Users use `resources push slos -p ./slos/` instead.
 - **No `apply` on CRUD resources.** The upsert semantic belongs in
   `resources push`. Provider `create` intentionally fails on duplicate as
-  a safety guard.
+  a safety guard. *(2026-07-21 note: superseded in part — ADR §3/D6 keeps a
+  first-class provider `upsert` for the direct create-or-update workflow,
+  e.g. `alert templates upsert`, `kg entities upsert`; `resources push`
+  remains the manifest path.)*
 - **`create -f` and `update ID -f` behave identically across all
   providers.** Same flag (`-f`), same file format (K8s envelope YAML/JSON),
   same error behavior. A user who knows `gcx slo definitions create -f`
@@ -832,7 +838,7 @@ gcx <signal> metrics EXPR -d <datasource-uid> --since <duration>
 | Limit | `--limit` (normalize default across signals) |
 
 Signal-specific extensions (e.g., `traces get TRACE_ID`, `profiles
-profile-types`) are documented as official pattern extensions.
+list-profile-types`) are documented as official pattern extensions.
 
 ---
 
@@ -975,7 +981,7 @@ Framework only — individual provider setups are Area 7.
 | Fix `-o wide` crash on profiles query | Add missing codec case |
 | Normalize `--limit` defaults | Shared default or documented rationale |
 | Document adaptive sub-tree divergence | `docs/design/` |
-| Document signal-specific extensions | traces get, profile-types |
+| Document signal-specific extensions | traces get, list-profile-types |
 
 **Existing issues**: #425 (partial)
 

@@ -48,27 +48,54 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
 
 ## CLI Grammar
 
-- **Command structure follows `$AREA $NOUN $VERB`.** Resource and provider
-  commands use `gcx {area} {resource-type} {verb}` (e.g.
+- **Command structure follows `$AREA $NOUN $VERB` by default.** Resource
+  and provider commands use `gcx {area} {resource-type} {verb}` (e.g.
   `gcx slo definitions list`, `gcx resources get`,
-  `gcx logs query`). Tooling commands (`dev`, `config`)
+  `gcx logs query`; approved surface shorthands and protocol-family
+  exceptions are governed by the operation-semantics ADR). Tooling commands
+  (`dev`, `config`)
   may use `$AREA $VERB` when there is no meaningful noun — these operate on
-  the project or CLI itself, not on Grafana resources. Bare top-level
-  verbs (single-token commands) are permitted only for two narrow
+  the project or CLI itself, not on Grafana resources. Single-token
+  top-level commands are permitted only for three narrow
   categories: (1) foundational bootstrapping that precedes any area or
-  resource context — `gcx login`, `gcx setup`; and (2) CLI-meta commands
-  that report on the binary itself rather than on Grafana — `gcx version`
-  and Cobra-provided `help`/`completion`. This is an explicit, closed
+  resource context — `gcx login`, `gcx setup`; (2) CLI-meta commands
+  that report on the binary itself rather than on Grafana — `gcx version`,
+  `gcx commands`, `gcx help-tree`, and Cobra-provided `help`/`completion`;
+  and (3) the raw API escape hatch — `gcx api` (see the
+  [operation-semantics ADR](docs/adrs/command-operation-contract/001-command-operation-semantics.md)
+  for its safety note: depending on method and body it can mutate or
+  delete arbitrary API objects, and it must never be presented — in help
+  text, catalog metadata, or agent annotations — as
+  read-only). This is an explicit, closed
   enumeration — any new top-level command must follow `$AREA $NOUN $VERB`
-  or `$AREA $VERB`; it does not qualify as a bare verb by analogy.
+  or `$AREA $VERB`; it does not qualify as a single-token top-level
+  command by analogy.
 - **Extension commands nest under their resource type.** Domain-specific
   operations (`status`, `timeline`, `acknowledge`) live alongside CRUD verbs,
   never as top-level commands. Extensions must not duplicate CRUD semantics —
-  if it can be done with list/get/push/pull/delete, it is not an extension.
+  if it can be done with list/get/create/update/upsert/push/pull/delete, it is not an extension.
 - **Positional arguments are the subject, flags are modifiers.** The thing
   being acted on (resource selectors, UIDs, expressions, file paths) is
   positional. How to act on it (output format, concurrency, dry-run, filters)
-  is a flag.
+  is a flag. Commands whose identity is genuinely supplied through flags
+  state that explicitly in their help text and are reviewed against the
+  operation-semantics rubric rather than left to convention.
+- **New or modified runnable commands conform to the accepted operation
+  semantics.** The final path token is an approved operation, an
+  `<operation>-<subject>` compound of one, or an approved
+  shorthand/protocol exception from the governed vocabulary (see
+  [ADR: Command Operation Semantics](docs/adrs/command-operation-contract/001-command-operation-semantics.md)
+  and [docs/design/naming.md §9.7](docs/design/naming.md)). During the
+  transition this is checked in ordinary PR review against the rubric;
+  the allowed-operation registry and its lexical CI check land in a
+  follow-up implementation PR and become the executable check then.
+  Existing deviations are resolved through the pre-v1
+  inventory-and-classification batches and must be eliminated before
+  v1.0.0 — every gcx-owned active runnable command, including hidden
+  runnable commands; aliases on runnable commands are validated as
+  alternate terminal tokens, while group aliases are path prefixes,
+  inventoried and dispositioned in the classification worksheet. The
+  single-token top-level enumeration above remains closed.
 
 ## Dual-Purpose Design
 
@@ -119,18 +146,20 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   `ResourceAdapter` (via TypedCRUD) for data access, not raw API clients.
   Table/wide codecs may diverge — provider tables show domain-specific
   columns, generic tables show resource-management columns.
-- **Provider-only resources must not mimic adapter verbs.** If a resource
-  does not obey standard list/get/create/update/delete semantics (e.g.,
-  composite keys, scope-required lookups, query-only endpoints), do not
-  register it as an adapter. Keep it in the provider command tree only, but
-  use alternative verbs (`show`, `describe`, `search`) or an
-  `<operation>-<subject>` compound that honestly describes the behavior
-  (e.g. `list-profile-types`, `list-tables` for commands that genuinely
-  enumerate a collection) — never bare `get`, `list`, `create`, `update`,
-  `delete`. This avoids user confusion: adapter verbs (`resources get`) and
-  provider verbs should not overlap for resources that behave differently
-  across the two paths; a compound such as `list-profile-types` does not
-  collide with any adapter verb.
+- **Command operations follow the operation semantics.** A command's
+  operation is determined by its user-visible subject, addressability,
+  result cardinality, and side effects — never by HTTP method, API path or
+  version, adapter registration, or transport (see
+  [ADR: Command Operation Semantics](docs/adrs/command-operation-contract/001-command-operation-semantics.md)).
+  A genuine read-one is `get` and a genuine enumeration is `list`
+  regardless of whether the resource is adapter-registered. Resources that
+  do not obey entity semantics use the appropriate query/view/domain
+  operation from the governed vocabulary or an `<operation>-<subject>`
+  compound that honestly describes the behavior (e.g. `list-profile-types`,
+  `list-tables`) — not `get`/`list` in disguise, and not ad-hoc synonyms.
+  Adapter verbs (`resources get`) and provider
+  commands still must not overlap for resources that behave differently
+  across the two paths.
 - **Sub-resources nest under their parent command.** If a resource cannot
   be listed or addressed without a parent ID (e.g. alerts require an
   alert group), it is a sub-resource. Sub-resources must not be registered as standalone typed
@@ -138,6 +167,9 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   as verbs under the parent command: `$PARENT $VERB-$CHILD $PARENT_ID`
   (e.g. `alert-groups list-alerts <id>`). Get-by-ID may still have a
   standalone adapter if the API supports direct ID lookup without a parent.
+  Addressability rules for selector, optional, variadic, and flag-supplied
+  identities are defined in the
+  [operation-semantics ADR](docs/adrs/command-operation-contract/001-command-operation-semantics.md).
 - **Typed resource trajectory.** Provider domain types implement
   `ResourceIdentity` for self-describing identity and are wrapped by
   `TypedObject[T]` (embedded `metav1.ObjectMeta` + `TypeMeta` + `Spec T`)

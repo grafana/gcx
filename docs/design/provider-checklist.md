@@ -20,9 +20,10 @@ UX requirements. All items are unless marked otherwise.
 
 ### UX Compliance
 
+- [ ] Every new command's final path token is an approved operation, an `<operation>-<subject>` compound of one, or an approved shorthand/protocol exception per [naming.md §9.7](naming.md), and the name is reviewed against the operation-semantics rubric (what it does, what it acts on, what identity it takes, what it returns, whether it can change or destroy anything). The allowed-operation registry's lexical CI check is forthcoming (registry implementation PR) — until then this is a PR-review check. The exemption table below maps onto the vocabulary: operational views → view operations; query/search → query operations; singleton config reads → `get` on a singleton
 - [ ] All data-display commands support `-o json/yaml` (inherited from `io.Options`)
 - [ ] List/get commands register a `text` table codec as default format
-- [ ] List/get commands register a `wide` codec showing additional detail columns
+- [ ] List/get commands register a `wide` codec **when genuinely useful additional detail columns exist** — not mandated for every command (explicit maintainer feedback; a `wide` view identical to `text` is noise)
 - [ ] Error messages include actionable suggestions with exact CLI commands
 - [ ] No `os.Exit()` calls in command code — return errors, let `handleError` exit
 - [ ] Status messages use `cmdio.Success/Warning/Error/Info`
