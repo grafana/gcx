@@ -48,6 +48,8 @@ Run `gcx config check` to display the configuration file currently in use.
 
 `gcx` supports multiple contexts so you can switch between instances. A context references a named stack entry, which holds the Grafana connection details. By default, `gcx` uses the `default` context.
 
+A stack entry holds one credential alongside its server. To use two identities against the same stack - for example a personal token and a CI token, or read-only and admin - define two stack entries and a context for each.
+
 To configure the `default` context:
 
 ```shell

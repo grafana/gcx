@@ -65,6 +65,40 @@ func TestSaveCloudConfigPreservesStack(t *testing.T) {
 	}
 }
 
+func TestSaveCloudConfigCollisionDoesNotReplaceSharedEntry(t *testing.T) {
+	// Two different CAPs against the same host: a login from a context with
+	// no cloud binding must not quietly replace the host-named entry other
+	// contexts share — it gets a context-suffixed entry instead. A login with
+	// the SAME credential still dedups onto the shared entry.
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	source := config.ExplicitConfigFile(path)
+
+	seed := config.Config{}
+	seed.SetStack("prod", config.StackConfig{})
+	seed.SetCloudEntry("grafana-com", config.CloudEntry{Token: "org-wide-cap"})
+	seed.SetContext("prod", true, config.Context{Stack: "prod", Cloud: "grafana-com"})
+	seed.SetContext("ci", false, config.Context{})
+	require.NoError(t, config.Write(ctx, source, seed))
+
+	// Different credential → suffixed entry, shared entry untouched.
+	_, entryName, err := config.SaveCloudConfig(ctx, source, "ci", &config.CloudEntry{Token: "stack-scoped-cap"})
+	require.NoError(t, err)
+	assert.Equal(t, "grafana-com-ci", entryName)
+
+	got, err := config.Load(ctx, source)
+	require.NoError(t, err)
+	got.ResolveContext("prod")
+	assert.Equal(t, "org-wide-cap", got.Contexts["prod"].CloudEntry.Token,
+		"shared entry must not be replaced by another context's login")
+	assert.Equal(t, "stack-scoped-cap", got.Contexts["ci"].CloudEntry.Token)
+
+	// Same credential from yet another context → dedups onto the shared entry.
+	_, entryName, err = config.SaveCloudConfig(ctx, source, "other", &config.CloudEntry{Token: "org-wide-cap"})
+	require.NoError(t, err)
+	assert.Equal(t, "grafana-com", entryName)
+}
+
 func TestMergeCloudIntoSwitchingAuthMethodClearsTheOther(t *testing.T) {
 	// An entry holds one credential: an OAuth login over a CAP-token entry
 	// clears the CAP token (and vice versa), so a stale credential never

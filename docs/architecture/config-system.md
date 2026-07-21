@@ -85,6 +85,11 @@ Unlike kubectl, a stack entry pairs server and Grafana auth (they are genuinely
 per-stack), while grafana.com credentials — which typically cover a whole org —
 live in reusable cloud entries.
 
+One credential per stack entry is the intended v1 model: using two identities
+against the same stack (human vs CI, read-only vs admin) means defining two
+stack entries. A future version can add credential indirection on stack
+entries without breaking v1 files.
+
 ---
 
 ## Annotated Config File Example

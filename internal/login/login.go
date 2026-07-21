@@ -673,7 +673,7 @@ func mergeAuthIntoExisting(cfg *config.Config, existing *config.Context, incomin
 
 	// Update the cloud entry if the incoming context carries cloud auth.
 	if incoming.CloudEntry != nil {
-		existing.Cloud = cfg.EnsureCloudEntry(existing.Cloud, *incoming.CloudEntry)
+		existing.Cloud = cfg.EnsureCloudEntry(existing.Cloud, *incoming.CloudEntry, existing.Name)
 	}
 
 	cfg.Resolve()

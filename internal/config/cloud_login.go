@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 
+	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/gcxerrors"
 )
 
@@ -40,13 +41,42 @@ func MergeCloudInto(existing, incoming *CloudEntry) *CloudEntry {
 // EnsureCloudEntry merges entry into the named entry when existingRef is set,
 // otherwise into an entry named after the entry's API URL host, and returns
 // the entry name used. The caller binds the returned name to a context.
-func (config *Config) EnsureCloudEntry(existingRef string, entry CloudEntry) string {
+//
+// When the host-named entry already exists with a different credential (e.g.
+// an org-wide CAP is bound to other contexts and this login carries a
+// stack-scoped one), the new entry is suffixed with the context name instead
+// of quietly replacing the shared credential — the same collision convention
+// migration uses. Same-credential logins still dedup onto the shared entry.
+func (config *Config) EnsureCloudEntry(existingRef string, entry CloudEntry, contextName string) string {
 	name := existingRef
 	if name == "" {
 		name = cloudEntryName(entry.APIUrl)
+		if existing := config.Cloud[name]; existing != nil && !sameCloudCredential(existing, &entry, config.keychainStore) {
+			name += "-" + contextName
+		}
 	}
 	config.SetCloudEntry(name, *MergeCloudInto(config.Cloud[name], &entry))
 	return name
+}
+
+// sameCloudCredential reports whether incoming carries the same credential as
+// existing. The existing entry may hold unresolved keychain sentinels (it can
+// be referenced only by non-current contexts, which resolve lazily), so those
+// are resolved for the comparison. Unresolvable values compare as different —
+// failing toward a new entry rather than replacing a shared credential.
+func sameCloudCredential(existing, incoming *CloudEntry, store credentials.Store) bool {
+	if store != nil {
+		resolved := *existing
+		resolveSentinelsForOwner(cloudOwner(existing.Name, &resolved), store)
+		existing = &resolved
+	}
+	if incoming.Token != "" {
+		return existing.Token == incoming.Token
+	}
+	if incoming.OAuthToken != "" {
+		return existing.OAuthToken == incoming.OAuthToken
+	}
+	return false
 }
 
 // ResolveContextName picks the context to operate on: the explicit override when
@@ -91,7 +121,7 @@ func SaveCloudConfig(ctx context.Context, source Source, contextOverride string,
 
 	// Merge the incoming auth fields onto the existing entry so
 	// re-authenticating refreshes credentials without dropping other fields.
-	entryName := cfg.EnsureCloudEntry(curCtx.Cloud, *entry)
+	entryName := cfg.EnsureCloudEntry(curCtx.Cloud, *entry, contextName)
 	curCtx.Cloud = entryName
 	cfg.Resolve()
 
