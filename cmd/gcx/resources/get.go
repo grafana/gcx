@@ -277,53 +277,75 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return deeplink.Open(url)
 			}
 
-			// --json field1,field2: use FieldSelectCodec for output.
-			if len(opts.IO.JSONFields) > 0 {
-				return writeFieldSelect(cmd.OutOrStdout(), opts, res, output)
-			}
-
-			var encodeErr error
-			if opts.IO.OutputFormat != "text" && opts.IO.OutputFormat != "wide" {
-				// Avoid printing a list of results if a single resource is being pulled,
-				// and we are not using the table output format.
-				if res.IsSingleTarget && len(output.Items) == 1 {
-					encodeErr = opts.IO.Encode(cmd.OutOrStdout(), output.Items[0].Object)
-				} else {
-					// For JSON / YAML output we don't want to have "object" keys in the output,
-					// so use the custom printItems type instead.
-					formatted := printItems{
-						Items: make([]map[string]any, len(output.Items)),
-					}
-					for i, item := range output.Items {
-						formatted.Items[i] = item.Object
-					}
-					encodeErr = opts.IO.Encode(cmd.OutOrStdout(), formatted)
-				}
-			} else {
-				encodeErr = opts.IO.Encode(cmd.OutOrStdout(), output)
-			}
-
-			if encodeErr != nil {
-				return encodeErr
-			}
-
-			if res.PullSummary.IsTruncated() {
-				fmt.Fprintf(cmd.ErrOrStderr(),
-					"Showing first %d items per resource type. Use --limit=0 to fetch all.\n",
-					opts.Limit)
-			}
-
-			if opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0 {
-				return fmt.Errorf("%d resource(s) failed to get", res.PullSummary.FailedCount())
-			}
-
-			return nil
+			return writeGetOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, res, output)
 		},
 	}
 
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+// writeGetOutput renders the fetched resources to stdout in the resolved
+// output mode (--json field selection, single object, list envelope, or
+// table) and surfaces the truncation hint on stderr. Split from RunE so the
+// output path is testable without a live server.
+func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
+	// --json field1,field2: use FieldSelectCodec for output. The truncation
+	// hint must fire on this path too — field-selected output is truncated by
+	// the same per-resource-type limit as every other mode.
+	if len(opts.IO.JSONFields) > 0 {
+		err := writeFieldSelect(stdout, opts, res, output)
+		emitGetTruncationHint(stderr, opts, res)
+		return err
+	}
+
+	var encodeErr error
+	if opts.IO.OutputFormat != "text" && opts.IO.OutputFormat != "wide" {
+		// Avoid printing a list of results if a single resource is being pulled,
+		// and we are not using the table output format.
+		if res.IsSingleTarget && len(output.Items) == 1 {
+			encodeErr = opts.IO.Encode(stdout, output.Items[0].Object)
+		} else {
+			// For JSON / YAML output we don't want to have "object" keys in the output,
+			// so use the custom printItems type instead.
+			formatted := printItems{
+				Items: make([]map[string]any, len(output.Items)),
+			}
+			for i, item := range output.Items {
+				formatted.Items[i] = item.Object
+			}
+			encodeErr = opts.IO.Encode(stdout, formatted)
+		}
+	} else {
+		encodeErr = opts.IO.Encode(stdout, output)
+	}
+
+	if encodeErr != nil {
+		return encodeErr
+	}
+
+	emitGetTruncationHint(stderr, opts, res)
+
+	if opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0 {
+		return fmt.Errorf("%d resource(s) failed to get", res.PullSummary.FailedCount())
+	}
+
+	return nil
+}
+
+// emitGetTruncationHint surfaces the per-resource-type truncation hint on
+// stderr. K8s per-resource-type paging: the limit applies to each resource
+// type independently, so this is not a list_meta envelope case — a typed
+// hint keeps it agent-legible (JSONL {"class":"hint"} in agent mode,
+// "hint: ..." on a TTY).
+func emitGetTruncationHint(stderr io.Writer, opts *getOpts, res *FetchResponse) {
+	if res == nil || res.PullSummary == nil || !res.PullSummary.IsTruncated() {
+		return
+	}
+	cmdio.EmitHint(stderr,
+		fmt.Sprintf("showing first %d items per resource type; use --limit=0 to fetch all", opts.Limit),
+		"")
 }
 
 // writeFieldSelect handles --json field1,field2 output for the get command.

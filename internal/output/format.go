@@ -43,6 +43,8 @@ type Options struct {
 
 	customCodecs        map[string]format.Codec
 	defaultFormat       string
+	defaultFormatPinned bool
+	hiddenFormats       map[string]bool // formats removed from the advertised menu (see HideFormat)
 	flags               *pflag.FlagSet
 	jsonFieldValidator  func(fields []string) error // optional; invoked before field extraction when --json is used
 	jqQuery             *gojq.Query                 // compiled --jq query; nil when flag not set
@@ -72,6 +74,35 @@ func (opts *Options) DefaultFormat(name string) {
 	opts.defaultFormat = name
 }
 
+// PinDefaultFormat sets the command's default output format and exempts it
+// from the agent-mode "agents" default override applied in BindFlags.
+//
+// File-writing commands (resources pull, resources edit) must use this:
+// their OutputFormat doubles as the on-disk file extension and the encoder,
+// so silently flipping the default to the agents codec in agent mode would
+// write `<name>.agents` files — and, for payloads above the spill threshold,
+// write a spill-summary envelope instead of the resource content. An explicit
+// -o flag from the user still wins over the pinned default.
+func (opts *Options) PinDefaultFormat(name string) {
+	opts.defaultFormat = name
+	opts.defaultFormatPinned = true
+}
+
+// HideFormat removes a format name from the advertised format menu — the
+// -o usage string built by BindFlags and the "Valid formats are: ..."
+// error listings — without unregistering the codec. Resolution is
+// unaffected: an explicit -o <name> still reaches the codec, so the
+// command's own Validate keeps owning the rejection with a
+// context-specific error. Used by commands that reject a built-in display
+// codec (resources pull and edit reject `agents`), so the menu never
+// advertises a format the command will refuse. Call before BindFlags.
+func (opts *Options) HideFormat(name string) {
+	if opts.hiddenFormats == nil {
+		opts.hiddenFormats = make(map[string]bool)
+	}
+	opts.hiddenFormats[name] = true
+}
+
 func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	defaultFormat := "json"
 	if opts.defaultFormat != "" {
@@ -79,8 +110,10 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	}
 
 	// Agent mode: override any per-command default with the agents codec.
-	// Explicit -o flag from user still takes precedence (via cobra flag parsing).
-	if agent.IsAgentMode() {
+	// Explicit -o flag from user still takes precedence (via cobra flag
+	// parsing). Commands whose default was pinned via PinDefaultFormat
+	// (file-writing commands) are exempt from the override.
+	if agent.IsAgentMode() && !opts.defaultFormatPinned {
 		defaultFormat = string(agentsFormat)
 	}
 
@@ -459,6 +492,13 @@ func (opts *Options) allowedCodecs() []string {
 	}
 	for name := range opts.customCodecs {
 		all[name] = struct{}{}
+	}
+
+	// Drop menu-hidden formats (see HideFormat). Custom codecs registered
+	// under a hidden name stay hidden too — the command asked for the name
+	// to disappear from the menu, whatever backs it.
+	for name := range opts.hiddenFormats {
+		delete(all, name)
 	}
 
 	allowedCodecs := slices.Collect(maps.Keys(all))

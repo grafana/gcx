@@ -32,10 +32,9 @@ type listOpts struct {
 
 func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 	o.Resource = resource
-	// Default codec name for CRUD list/get/list-alerts. The alert-groups
-	// command tree defaults to `text` (table); other OnCall resources
-	// continue to default to `table` per the existing convention.
-	defaultFmt := "table"
+	// Every OnCall resource command built here defaults to the `table`
+	// codec; the switch below registers the matching table/wide codecs per
+	// resource type.
 	switch resource {
 	case "integrations":
 		o.IO.RegisterCustomCodec("table", &integrationTableCodec{})
@@ -58,11 +57,8 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 		o.IO.RegisterCustomCodec("table", &webhookTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &webhookTableCodec{Wide: true})
 	case "alert-groups":
-		// alert-groups list registers a `table` codec — uniform with the
-		// CRUD-data-command default model in CONSTITUTION/DESIGN.
 		o.IO.RegisterCustomCodec("table", &alertGroupTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &alertGroupTableCodec{Wide: true})
-		defaultFmt = "table"
 	case "users":
 		o.IO.RegisterCustomCodec("table", &userTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &userTableCodec{Wide: true})
@@ -73,11 +69,9 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 	case "slack-channels":
 		o.IO.RegisterCustomCodec("table", &slackChannelTableCodec{})
 	case "alerts":
-		// Same table-codec default applies to `alert-groups list-alerts <group-id>`,
-		// which dispatches via the "alerts" case here.
+		// `alert-groups list-alerts <group-id>` dispatches via this case.
 		o.IO.RegisterCustomCodec("table", &alertTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &alertTableCodec{Wide: true})
-		defaultFmt = "table"
 	case "organizations":
 		o.IO.RegisterCustomCodec("table", &organizationTableCodec{})
 	case "resolution-notes":
@@ -87,7 +81,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 		o.IO.RegisterCustomCodec("table", &shiftSwapTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &shiftSwapTableCodec{Wide: true})
 	}
-	o.IO.DefaultFormat(defaultFmt)
+	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 

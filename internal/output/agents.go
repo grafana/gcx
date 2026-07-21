@@ -95,10 +95,15 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 		s.TotalItems = &n
 	}
 
-	fmt.Fprintf(c.errWriter,
-		"hint: response too large for stdout (%d bytes) — read %s for full data, or use -o json to force inline\n",
-		len(payload), f.Name(),
-	)
+	// Typed hint diagnostic: on a TTY this renders the familiar
+	// "hint: ..." line; in agent mode it must be a JSONL
+	// {"class":"hint",...} record so the stderr stream stays
+	// machine-parseable (FR-104). The command argument is empty because the
+	// summary already embeds the spill file path.
+	emitHint(c.errWriter,
+		fmt.Sprintf("response too large for stdout (%d bytes) — read %s for full data, or use -o json to force inline",
+			len(payload), f.Name()),
+		"")
 
 	out := json.NewEncoder(dst)
 	out.SetEscapeHTML(false)

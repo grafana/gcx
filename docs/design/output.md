@@ -274,9 +274,26 @@ When agent mode is active:
 
 ## 14. Pull Format Consistency
 
-`pull` accepts a `--format` flag (values: `yaml`, `json`; default: `yaml`)
-that enforces consistent file format on disk. All pulled files use the
-specified format regardless of the server's response format.
+`resources pull` uses the standard `-o/--output` flag (values: `json`,
+`yaml`; default: `json`) to enforce a consistent file format on disk. All
+pulled files use the specified format regardless of the server's response
+format.
 
-Files are written as `plural.version.group/name.{ext}` where `{ext}`
-matches the chosen format (`.yaml` or `.json`).
+Files are written as `plural.version.group/name.{ext}` where `{ext}` is the
+chosen format name (`.json` or `.yaml`).
+
+Because the output format doubles as the on-disk file extension and the
+encoder, file-writing commands pin their default with
+`Options.PinDefaultFormat`: agent mode must not flip their default to the
+`agents` display codec (which would write `<name>.agents` files containing
+spill-summary envelopes for large resources). `resources pull` and
+`resources edit` reject an explicit `-o agents` at validation time for the
+same reason.
+
+> **Doc/code divergence (open):** this section originally specified a
+> dedicated `--format` flag with a `yaml` default. The implementation ships
+> the standard `-o` flag with a `json` default. Whether the on-disk default
+> should converge on `yaml` is an open decision recorded in the #387
+> output-format audit
+> (`docs/research/2026-07-17-output-format-consistency-audit.md`) and
+> presented for sign-off in issue #1030.
