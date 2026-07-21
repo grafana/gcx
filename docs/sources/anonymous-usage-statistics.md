@@ -97,7 +97,7 @@ export GCX_TELEMETRY=disabled
 
 2. **`DO_NOT_TRACK` environment variable**:  Set to `1` or `true` to disable reporting, following the cross-tool [DO\_NOT\_TRACK](https://consoledonottrack.com/) convention. Overridden by `GCX_TELEMETRY`.  
      
-3. **Configuration file** — add a top-level `diagnostics` block to your `gcx` configuration file, with `telemetry` set to `enabled`, `disabled`, or `log`:
+3. **Configuration file**: Add a top-level `diagnostics` block to your `gcx` configuration file, with `telemetry` set to `enabled`, `disabled`, or `log`:
 
 ```
 diagnostics:
