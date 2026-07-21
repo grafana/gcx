@@ -40,7 +40,14 @@ func emitUsageEvent(cmd *cobra.Command, start time.Time, exitCode int) {
 		return
 	}
 
-	switch telemetry.ResolveMode(diagnosticsTelemetryValue) {
+	mode := telemetry.ResolveMode(diagnosticsTelemetryValue)
+
+	// One-time opt-out notice for interactive users; the command's own output
+	// has already been written by this point.
+	_, isCI := telemetry.DetectCI()
+	telemetry.MaybeShowFirstRunNotice(os.Stderr, mode, terminal.StdoutIsTerminal(), isCI, agent.IsAgentMode())
+
+	switch mode {
 	case telemetry.ModeLog:
 		if data, err := json.Marshal(buildUsageEvent(info, start, exitCode)); err == nil {
 			fmt.Fprintln(os.Stderr, string(data))

@@ -90,6 +90,11 @@ const (
 	// field mapping. Referenced by the loader's automatic migration on both
 	// success and failure.
 	ConfigMigration = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/migrate-configuration.md"
+
+	// AnonymousUsageStats documents gcx's anonymous usage statistics: what is
+	// collected and how to opt out. Referenced by the first-run telemetry
+	// notice.
+	AnonymousUsageStats = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics.md"
 )
 
 // All returns every documentation URL in the registry. Used by the
@@ -114,5 +119,6 @@ func All() []string {
 		SyntheticMonitoringInvoice,
 		PerformanceTestingInvoice,
 		IRMInvoice,
+		AnonymousUsageStats,
 	}
 }
