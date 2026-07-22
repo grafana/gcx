@@ -296,11 +296,15 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 	// the same per-resource-type limit as every other mode — but, as on the
 	// path below, only after a successful encode.
 	if len(opts.IO.JSONFields) > 0 {
-		if err := writeFieldSelect(stdout, opts, res, output); err != nil {
-			return err
+		err := writeFieldSelect(stdout, stderr, opts, res, output)
+		// The truncation hint fires whenever the document was written
+		// successfully — including the partial-failure case, which returns
+		// an EmittedError precisely because the document is complete.
+		var emitted *gcxerrors.EmittedError
+		if err == nil || errors.As(err, &emitted) {
+			emitGetTruncationHint(stderr, opts, res)
 		}
-		emitGetTruncationHint(stderr, opts, res)
-		return nil
+		return err
 	}
 
 	var encodeErr error
@@ -331,10 +335,22 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 	emitGetTruncationHint(stderr, opts, res)
 
 	if opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0 {
-		return fmt.Errorf("%d resource(s) failed to get", res.PullSummary.FailedCount())
+		return partialGetFailure(stderr, res)
 	}
 
 	return nil
+}
+
+// partialGetFailure reports a partial fetch after the result document was
+// already written: a typed stderr diagnostic (JSONL in agent mode, prose on
+// a TTY) plus an EmittedError so the process exits ExitPartialFailure
+// without a second stdout document. Previously this path returned a bare
+// error — exit 1 instead of the taxonomy's 4, and a duplicate error JSON
+// appended to stdout in agent mode.
+func partialGetFailure(stderr io.Writer, res *FetchResponse) error {
+	summary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
+	cmdio.EmitWarn(stderr, summary)
+	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(summary))
 }
 
 // emitGetTruncationHint surfaces the per-resource-type truncation hint on
@@ -354,12 +370,16 @@ func emitGetTruncationHint(stderr io.Writer, opts *getOpts, res *FetchResponse) 
 // writeFieldSelect handles --json field1,field2 output for the get command.
 // It uses FieldSelectCodec to emit only selected fields, and emits a combined
 // {"items": [...], "error": {...}} envelope (FR-012) on partial failure in agent mode.
-func writeFieldSelect(out io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
+func writeFieldSelect(out, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
 	codec := cmdio.NewFieldSelectCodec(opts.IO.JSONFields)
 	hasPartialFailure := opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0
 
 	// FR-012: when agent mode is active and there are partial failures,
 	// write a single combined {"items": [...], "error": {...}} envelope.
+	// The envelope is the complete result document, so the process exit
+	// code (ExitPartialFailure) travels via EmittedError — previously this
+	// path returned nil and the process exited 0 despite the embedded
+	// exitCode 4.
 	if hasPartialFailure && agent.IsAgentMode() {
 		itemMaps := make([]map[string]any, len(output.Items))
 		for i, item := range output.Items {
@@ -367,7 +387,10 @@ func writeFieldSelect(out io.Writer, opts *getOpts, res *FetchResponse, output u
 		}
 		errSummary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
 		detErr := gcxerrors.DetailedError{Summary: errSummary}
-		return detErr.WriteJSONWithItems(out, gcxerrors.ExitPartialFailure, itemMaps)
+		if err := detErr.WriteJSONWithItems(out, gcxerrors.ExitPartialFailure, itemMaps); err != nil {
+			return err
+		}
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(errSummary))
 	}
 
 	var encodeErr error
@@ -380,7 +403,7 @@ func writeFieldSelect(out io.Writer, opts *getOpts, res *FetchResponse, output u
 		return encodeErr
 	}
 	if hasPartialFailure {
-		return fmt.Errorf("%d resource(s) failed to get", res.PullSummary.FailedCount())
+		return partialGetFailure(stderr, res)
 	}
 	return nil
 }

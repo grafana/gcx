@@ -2,11 +2,15 @@ package resources
 
 import (
 	"errors"
+	"io"
+	"path/filepath"
+	"sort"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/process"
 	"github.com/grafana/gcx/internal/resources/remote"
@@ -184,11 +188,26 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
+			// Collect written files per kind directory for the receipt:
+			// individual paths would make the receipt grow with the pull
+			// size, so it stays one bounded entry per kind.
+			type dirGroup struct {
+				kind  string
+				count int
+			}
+			written := map[string]*dirGroup{}
 			writer := local.FSWriter{
 				Path:        opts.Path,
 				Namer:       local.GroupResourcesByKind(opts.IO.OutputFormat, local.PluralsFromFilters(res.Filters)),
 				Encoder:     codec,
 				StopOnError: opts.OnError.StopOnError(),
+				OnWritten: func(path string, resource *resources.Resource) {
+					dir := filepath.Dir(path)
+					if written[dir] == nil {
+						written[dir] = &dirGroup{kind: resource.Kind()}
+					}
+					written[dir].count++
+				},
 			}
 
 			if err := writer.Write(ctx, &res.Resources); err != nil {
@@ -197,22 +216,64 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			pullSummary := res.PullSummary
 
-			printer := cmdio.Success
-			if pullSummary.FailedCount() != 0 {
-				printer = cmdio.Warning
-				if pullSummary.SuccessCount() == 0 {
-					printer = cmdio.Error
+			receipt := cmdio.NewArtifactReceipt("pulled", opts.IO.OutputFormat)
+			receipt.Dir = opts.Path
+			receipt.Summary = cmdio.MutationSummary{
+				Succeeded: pullSummary.SuccessCount(),
+				Failed:    pullSummary.FailedCount(),
+				Skipped:   pullSummary.SkippedCount(),
+			}
+			dirs := make([]string, 0, len(written))
+			for dir := range written {
+				dirs = append(dirs, dir)
+			}
+			sort.Strings(dirs)
+			for _, dir := range dirs {
+				receipt.Files = append(receipt.Files, cmdio.ArtifactFile{
+					Path:  dir,
+					Kind:  written[dir].kind,
+					Count: written[dir].count,
+				})
+			}
+			for _, failure := range pullSummary.Failures() {
+				target := cmdio.MutationTarget{}
+				if failure.Resource != nil {
+					target.Kind = failure.Resource.Kind()
+					target.Name = failure.Resource.Name()
 				}
+				msg := ""
+				if failure.Error != nil {
+					msg = failure.Error.Error()
+				}
+				receipt.Failures = append(receipt.Failures, cmdio.MutationFailure{Target: target, Error: msg})
 			}
 
-			if skipped := pullSummary.SkippedCount(); skipped > 0 {
-				printer(cmd.OutOrStdout(), "%d resources pulled, %d errors (%d resource types skipped — not listable)", pullSummary.SuccessCount(), pullSummary.FailedCount(), skipped)
-			} else {
-				printer(cmd.OutOrStdout(), "%d resources pulled, %d errors", pullSummary.SuccessCount(), pullSummary.FailedCount())
+			emitErr := cmdio.EmitArtifactResult(cmd.OutOrStdout(), receipt, func(w io.Writer) error {
+				printer := cmdio.Success
+				if pullSummary.FailedCount() != 0 {
+					printer = cmdio.Warning
+					if pullSummary.SuccessCount() == 0 {
+						printer = cmdio.Error
+					}
+				}
+
+				if skipped := pullSummary.SkippedCount(); skipped > 0 {
+					printer(w, "%d resources pulled, %d errors (%d resource types skipped — not listable)", pullSummary.SuccessCount(), pullSummary.FailedCount(), skipped)
+				} else {
+					printer(w, "%d resources pulled, %d errors", pullSummary.SuccessCount(), pullSummary.FailedCount())
+				}
+				return nil
+			})
+			if emitErr != nil {
+				return emitErr
 			}
 
 			if opts.OnError.FailOnErrors() && pullSummary.FailedCount() > 0 {
-				return gcxerrors.NewPartialFailureError("pull", pullSummary.SuccessCount()+pullSummary.FailedCount(), pullSummary.FailedCount())
+				// The receipt (with enumerated failures) is already on
+				// stdout — EmittedError carries exit 4 without a second
+				// error document.
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+					gcxerrors.NewPartialFailureError("pull", pullSummary.SuccessCount()+pullSummary.FailedCount(), pullSummary.FailedCount()))
 			}
 
 			return nil

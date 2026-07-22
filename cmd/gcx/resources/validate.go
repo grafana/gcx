@@ -139,7 +139,11 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
-				return gcxerrors.NewPartialFailureError("validate", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
+				// The validation document (with per-file failures) is already
+				// on stdout — EmittedError carries the exit code without
+				// letting reportError append a second error document.
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+					gcxerrors.NewPartialFailureError("validate", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount()))
 			}
 
 			return nil
