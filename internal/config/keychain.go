@@ -1080,13 +1080,39 @@ func enforceRuntimeCredentialBindings(cfg *Config) error {
 }
 
 func validateLocalExternalTLSCredentials(cfg *Config) error {
-	for name, stack := range cfg.Stacks {
-		if stack == nil || stack.sourceLayer != "local" || stack.Grafana == nil || stack.Grafana.TLS == nil {
-			continue
+	seen := map[*StackConfig]bool{}
+	validate := func(name string, stack *StackConfig) error {
+		if stack == nil || seen[stack] {
+			return nil
+		}
+		seen[stack] = true
+		if stack.sourceLayer != "local" || stack.Grafana == nil || stack.Grafana.TLS == nil {
+			return nil
 		}
 		tlsConfig := stack.Grafana.TLS
 		if tlsConfig.CertFile != "" || tlsConfig.KeyFile != "" {
 			return fmt.Errorf("repository-local stack %q cannot select external TLS client credential files; use --config %s to authorize this file explicitly", name, cfg.Source)
+		}
+		return nil
+	}
+	for name, stack := range cfg.Stacks {
+		if err := validate(name, stack); err != nil {
+			return err
+		}
+	}
+	// ParseEnvIntoContext detaches the selected runtime stack from Config.Stacks.
+	// Inspect resolved views as well so process-local TLS overrides retain the
+	// same repository trust boundary after that isolation step.
+	for name, ctx := range cfg.Contexts {
+		if ctx == nil {
+			continue
+		}
+		stackName := ctx.Stack
+		if stackName == "" {
+			stackName = name
+		}
+		if err := validate(stackName, ctx.StackEntry); err != nil {
+			return err
 		}
 	}
 	return nil

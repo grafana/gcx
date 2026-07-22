@@ -417,8 +417,8 @@ type Context struct {
 
 	// Resolved views, populated by Config.Resolve after decode, merge, or any
 	// structural mutation. Not part of the on-disk schema. Grafana and
-	// Providers share pointers with the stack entry, so mutations through them
-	// are visible on the stack (and vice versa).
+	// Providers initially share pointers with the stack entry; ParseEnvIntoContext
+	// detaches the selected context before applying process-local overrides.
 	StackEntry *StackConfig                 `json:"-" yaml:"-"`
 	CloudEntry *CloudEntry                  `json:"-" yaml:"-"`
 	Grafana    *GrafanaConfig               `json:"-" yaml:"-"`
@@ -1051,7 +1051,7 @@ func Minify(config Config) (Config, error) {
 	cur := config.Contexts[config.CurrentContext]
 	if cur != nil {
 		minified.Contexts[config.CurrentContext] = cur
-		if stack := config.Stacks[cur.Stack]; cur.Stack != "" && stack != nil {
+		if stack := stackForMinifiedContext(config, cur); stack != nil {
 			minified.Stacks = map[string]*StackConfig{cur.Stack: stack}
 		}
 		if entry := config.Cloud[cur.Cloud]; cur.Cloud != "" && entry != nil {
@@ -1060,4 +1060,17 @@ func Minify(config Config) (Config, error) {
 	}
 
 	return minified, nil
+}
+
+func stackForMinifiedContext(config Config, cur *Context) *StackConfig {
+	if cur.Stack == "" {
+		return nil
+	}
+	// Prefer the resolved runtime view: ParseEnvIntoContext detaches it from
+	// Config.Stacks so selected-context overrides cannot leak into a sibling,
+	// while `config view --minify` still displays the effective configuration.
+	if cur.StackEntry != nil {
+		return cur.StackEntry
+	}
+	return config.Stacks[cur.Stack]
 }

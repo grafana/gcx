@@ -71,7 +71,12 @@ func TestRuntimeOnlyOAuthDestinationChecksBeforeAndAfterFlow(t *testing.T) {
 				},
 			},
 		})
-		require.ErrorContains(t, err, "runtime-only Grafana proxy/TLS settings")
+		require.ErrorContains(t, err, "GRAFANA_PROXY_ENDPOINT conflicts with the proxy endpoint selected by the OAuth issuer")
+		var destinationErr *RuntimeOnlyBearerDestinationError
+		require.ErrorAs(t, err, &destinationErr)
+		assert.True(t, destinationErr.OAuthIssuerProxyMismatch)
+		assert.Equal(t, "https://runtime-proxy.example.invalid", destinationErr.RuntimeProxyEndpoint)
+		assert.Equal(t, "https://issuer-proxy.example.invalid", destinationErr.OAuthIssuerProxyEndpoint)
 		assert.Zero(t, validateCalls, "resolved mismatch must fail before presenting the OAuth credential")
 	})
 

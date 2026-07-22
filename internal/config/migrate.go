@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/goccy/go-yaml"
@@ -697,7 +698,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 		}
 	}
 	if !canPersist {
-		reason := "layered migration is read-only; migrate each layer explicitly"
+		reason := layeredMigrationReadOnlyReason
 		if !migrationPersistenceSuppressed(ctx) && lockErr == nil {
 			reason = "timed out"
 		} else if !migrationPersistenceSuppressed(ctx) && lockErr != nil {
@@ -822,6 +823,10 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 }
 
 func warnInMemoryMigration(ctx context.Context, filename, reason string) {
+	if collector := inMemoryMigrationWarningCollectorFromContext(ctx); collector != nil {
+		collector.add(filename, reason)
+		return
+	}
 	const message = "running with in-memory config migration; the config file was not modified; config and credential writes remain blocked until migration can be persisted"
 	if writer := warningWriterFromCtx(ctx); writer != nil {
 		fmt.Fprintf(writer, "Warning: %s: %s; reason: %s (%s)\n", message, filename, reason, docs.ConfigMigration)
@@ -949,6 +954,47 @@ type explicitLegacyMigrationConsent struct {
 
 type migrationPersistenceKey struct{}
 
+const layeredMigrationReadOnlyReason = "layered migration is read-only; migrate each layer explicitly"
+
+type inMemoryMigrationWarning struct {
+	filename string
+	reason   string
+}
+
+// inMemoryMigrationWarningCollector lets a layered load collapse its nested
+// per-source diagnostics into one warning without discarding an exceptional
+// blocker discovered while producing a source's in-memory view.
+type inMemoryMigrationWarningCollector struct {
+	mu       sync.Mutex
+	warnings []inMemoryMigrationWarning
+}
+
+func (c *inMemoryMigrationWarningCollector) add(filename, reason string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.warnings = append(c.warnings, inMemoryMigrationWarning{filename: filename, reason: reason})
+}
+
+func (c *inMemoryMigrationWarningCollector) exceptionalWarnings() []inMemoryMigrationWarning {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	warnings := make([]inMemoryMigrationWarning, 0, len(c.warnings))
+	for _, warning := range c.warnings {
+		if warning.reason != layeredMigrationReadOnlyReason {
+			warnings = append(warnings, warning)
+		}
+	}
+	return warnings
+}
+
+type migrationWarningCollectorKey struct{}
+
 type configSnapshotKey struct{}
 
 type configSnapshot struct {
@@ -992,6 +1038,15 @@ func withMigrationPersistenceSuppressed(ctx context.Context) context.Context {
 func migrationPersistenceSuppressed(ctx context.Context) bool {
 	suppressed, _ := ctx.Value(migrationPersistenceKey{}).(bool)
 	return suppressed
+}
+
+func withInMemoryMigrationWarningCollector(ctx context.Context, collector *inMemoryMigrationWarningCollector) context.Context {
+	return context.WithValue(ctx, migrationWarningCollectorKey{}, collector)
+}
+
+func inMemoryMigrationWarningCollectorFromContext(ctx context.Context) *inMemoryMigrationWarningCollector {
+	collector, _ := ctx.Value(migrationWarningCollectorKey{}).(*inMemoryMigrationWarningCollector)
+	return collector
 }
 
 func withConfigSnapshot(ctx context.Context, path string, contents []byte) context.Context {

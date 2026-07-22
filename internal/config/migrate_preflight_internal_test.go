@@ -2,10 +2,14 @@ package config
 
 import (
 	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/credentials"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -194,6 +198,175 @@ contexts:
 	_, statErr := os.Stat(fixture.user + legacyBackupSuffix)
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 	_, statErr = os.Stat(fixture.local + legacyBackupSuffix)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestLoadLayeredConsolidatesLegacyMigrationWarning(t *testing.T) {
+	withFakeKeychain(t)
+	fixture := newLayeredMigrationFixture(t)
+	writeLayeredMigrationFixture(t, fixture.user, `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+current-context: prod
+`)
+	writeLayeredMigrationFixture(t, fixture.local, `
+contexts:
+  staging:
+    grafana:
+      server: https://staging.example
+`)
+
+	var warnings bytes.Buffer
+	ctx := ContextWithWarningWriter(t.Context(), &warnings)
+	cfg, err := LoadLayered(ctx, "")
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Contexts["prod"])
+	require.NotNil(t, cfg.Contexts["staging"])
+
+	output := warnings.String()
+	assert.Equal(t, 1, strings.Count(output, "Warning:"), output)
+	assert.Contains(t, output, "layered configuration migration is incomplete")
+	assert.Contains(t, output, fixture.user)
+	assert.Contains(t, output, "gcx config set --file user version 1")
+	assert.Contains(t, output, "gcx config edit user")
+	assert.Contains(t, output, fixture.local)
+	assert.Contains(t, output, "gcx config set --file local version 1")
+	assert.Contains(t, output, "gcx config edit local")
+	assert.NotContains(t, output, "running with in-memory config migration")
+
+	for _, path := range []string{fixture.user, fixture.local} {
+		onDisk, readErr := os.ReadFile(path)
+		require.NoError(t, readErr)
+		assert.True(t, isLegacyConfig(onDisk), path)
+		_, statErr := os.Stat(path + legacyBackupSuffix)
+		require.ErrorIs(t, statErr, os.ErrNotExist)
+	}
+}
+
+func TestLoadLayeredConsolidatesLegacyMigrationWarningThroughLogger(t *testing.T) {
+	withFakeKeychain(t)
+	fixture := newLayeredMigrationFixture(t)
+	writeLayeredMigrationFixture(t, fixture.user, `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+current-context: prod
+`)
+	writeLayeredMigrationFixture(t, fixture.local, `
+contexts:
+  staging:
+    grafana:
+      server: https://staging.example
+`)
+
+	var logs bytes.Buffer
+	logger := logging.NewSLogLogger(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	ctx := logging.Context(t.Context(), logger)
+	_, err := LoadLayered(ctx, "")
+	require.NoError(t, err)
+
+	output := logs.String()
+	assert.Equal(t, 1, strings.Count(output, "level=WARN"), output)
+	assert.Contains(t, output, "layered configuration migration is incomplete")
+	assert.Contains(t, output, "gcx config set --file user version 1")
+	assert.Contains(t, output, "gcx config edit user")
+	assert.Contains(t, output, "gcx config set --file local version 1")
+	assert.Contains(t, output, "gcx config edit local")
+	assert.NotContains(t, output, "running with in-memory config migration")
+}
+
+func TestLoadLayeredConsolidatedWarningPreservesCredentialStoreBlocker(t *testing.T) {
+	store := withFakeKeychain(t)
+	store.getErr = credentials.ErrUnavailable
+	fixture := newLayeredMigrationFixture(t)
+	writeLayeredMigrationFixture(t, fixture.user, `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+      token: keychain:gcx:prod:grafana-token
+current-context: prod
+`)
+	writeLayeredMigrationFixture(t, fixture.local, `
+contexts:
+  staging:
+    grafana:
+      server: https://staging.example
+`)
+
+	var warnings bytes.Buffer
+	ctx := ContextWithWarningWriter(t.Context(), &warnings)
+	_, err := LoadLayered(ctx, "")
+	require.NoError(t, err)
+
+	output := warnings.String()
+	assert.Equal(t, 1, strings.Count(output, "Warning:"), output)
+	assert.Contains(t, output, "layered configuration migration is incomplete")
+	assert.Contains(t, output, "gcx config set --file user version 1")
+	assert.Contains(t, output, "gcx config edit user")
+	assert.Contains(t, output, "a legacy credential could not be read from the credential store")
+	assert.Contains(t, output, fixture.user)
+	assert.NotContains(t, output, layeredMigrationReadOnlyReason)
+
+	for _, path := range []string{fixture.user, fixture.local} {
+		onDisk, readErr := os.ReadFile(path)
+		require.NoError(t, readErr)
+		assert.True(t, isLegacyConfig(onDisk), path)
+		_, statErr := os.Stat(path + legacyBackupSuffix)
+		require.ErrorIs(t, statErr, os.ErrNotExist)
+	}
+}
+
+func TestLoadLayeredMixedSchemaWarningNamesOnlyLegacySources(t *testing.T) {
+	withFakeKeychain(t)
+	fixture := newLayeredMigrationFixture(t)
+	writeLayeredMigrationFixture(t, fixture.user, `
+version: 1
+stacks:
+  dev:
+    grafana:
+      server: https://dev.example
+contexts:
+  dev:
+    stack: dev
+current-context: dev
+`)
+	writeLayeredMigrationFixture(t, fixture.local, `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+`)
+
+	userBefore, err := os.ReadFile(fixture.user)
+	require.NoError(t, err)
+	localBefore, err := os.ReadFile(fixture.local)
+	require.NoError(t, err)
+	var warnings bytes.Buffer
+	ctx := ContextWithWarningWriter(t.Context(), &warnings)
+	cfg, err := LoadLayered(ctx, "")
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Contexts["dev"])
+	require.NotNil(t, cfg.Contexts["prod"])
+
+	output := warnings.String()
+	assert.Equal(t, 1, strings.Count(output, "Warning:"), output)
+	assert.NotContains(t, output, fixture.user)
+	assert.NotContains(t, output, "gcx config set --file user version 1")
+	assert.Contains(t, output, fixture.local)
+	assert.Contains(t, output, "gcx config set --file local version 1")
+	assert.Contains(t, output, "gcx config edit local")
+
+	userAfter, readErr := os.ReadFile(fixture.user)
+	require.NoError(t, readErr)
+	assert.Equal(t, userBefore, userAfter)
+	localAfter, readErr := os.ReadFile(fixture.local)
+	require.NoError(t, readErr)
+	assert.Equal(t, localBefore, localAfter)
+	_, statErr := os.Stat(fixture.local + legacyBackupSuffix)
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
 

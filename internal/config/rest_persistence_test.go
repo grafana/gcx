@@ -879,6 +879,91 @@ current-context: default
 	assert.Equal(t, "Bearer gat_final", protectedAuthorization.Load())
 }
 
+func TestWireTokenPersistence_BlankExpiriesRemainUsableAcrossInvocations(t *testing.T) {
+	_ = withFakeStore(t)
+	var refreshCalls, protectedCalls atomic.Int32
+	var protectedAuthorizations []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/cli/v1/auth/refresh" {
+			if refreshCalls.Add(1) > 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_rotated",
+					"expires_at":         "  \t",
+					"refresh_token":      "gar_rotated",
+					"refresh_expires_at": " \t ",
+				},
+			})
+			return
+		}
+		protectedCalls.Add(1)
+		protectedAuthorizations = append(protectedAuthorizations, r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "config.yaml")
+	writeTestConfigFile(t, file, `
+version: 1
+stacks:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      proxy-endpoint: "`+srv.URL+`"
+      oauth-token: gat_old
+      oauth-refresh-token: gar_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 1
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+
+	newClient := func() (*http.Client, config.Config) {
+		cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(file))
+		require.NoError(t, err)
+		restCfg, err := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
+		require.NoError(t, err)
+		restCfg.WireTokenPersistence(
+			t.Context(),
+			config.ExplicitConfigFile(file),
+			"default",
+			"default",
+			[]config.ConfigSource{{Path: file, Type: "explicit"}},
+		)
+		return &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}, cfg
+	}
+	request := func(client *http.Client) {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/protected", nil)
+		require.NoError(t, err)
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+	}
+
+	first, _ := newClient()
+	request(first)
+	assert.Equal(t, int32(1), refreshCalls.Load())
+	assert.Equal(t, int32(1), protectedCalls.Load())
+
+	second, persisted := newClient()
+	assert.Equal(t, "gat_rotated", persisted.Contexts["default"].Grafana.OAuthToken)
+	assert.Equal(t, "gar_rotated", persisted.Contexts["default"].Grafana.OAuthRefreshToken)
+	assert.Empty(t, persisted.Contexts["default"].Grafana.OAuthTokenExpiresAt)
+	assert.Empty(t, persisted.Contexts["default"].Grafana.OAuthRefreshExpiresAt)
+	request(second)
+
+	assert.Equal(t, int32(1), refreshCalls.Load(), "fresh invocation must not immediately refresh an unknown-expiry token")
+	assert.Equal(t, int32(2), protectedCalls.Load())
+	assert.Equal(t, []string{"Bearer gat_rotated", "Bearer gat_rotated"}, protectedAuthorizations)
+}
+
 // Bug 2 — Two concurrent gcx invocations must not both consume the same
 // refresh token. The first to acquire the lock refreshes; the second should
 // observe the freshly-written tokens on disk and adopt them without calling

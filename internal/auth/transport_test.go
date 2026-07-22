@@ -735,14 +735,126 @@ func TestRefreshTransport_CallsOnRefreshCallback(t *testing.T) {
 	}
 }
 
-func TestRefreshTransport_PersistsRotatedGenerationThenBlocksOnUnparseableExpiries(t *testing.T) {
+func TestRefreshTransport_BlankExpiriesPersistUsableGenerationAcrossTransports(t *testing.T) {
+	tests := []struct {
+		name             string
+		expiresAt        string
+		refreshExpiresAt string
+	}{
+		{name: "both blank"},
+		{name: "both whitespace", expiresAt: "  \t", refreshExpiresAt: " \t "},
+		{name: "access expiry blank", refreshExpiresAt: "2099-02-01T00:00:00Z"},
+		{name: "refresh expiry blank", expiresAt: "2099-01-01T00:00:00Z"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var refreshCalls, protectedCalls, persistCalls, secondLockCalls atomic.Int32
+			var persistedToken, persistedRefresh, persistedExpires, persistedRefreshExpires string
+			var protectedAuthorizations []string
+			base := testRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path == "/api/cli/v1/auth/refresh" {
+					call := refreshCalls.Add(1)
+					body := fmt.Sprintf(
+						`{"data":{"token":"gat_new_%d","expires_at":%q,"refresh_token":"gar_new_%d","refresh_expires_at":%q}}`,
+						call,
+						tt.expiresAt,
+						call,
+						tt.refreshExpiresAt,
+					)
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: req}, nil
+				}
+				protectedCalls.Add(1)
+				protectedAuthorizations = append(protectedAuthorizations, req.Header.Get("Authorization"))
+				return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Header: make(http.Header), Request: req}, nil
+			})
+			persist := func(previousRefreshToken, token, refreshToken, expiresAt, refreshExpiresAt string) error {
+				persistCalls.Add(1)
+				assert.Equal(t, "gar_old", previousRefreshToken)
+				persistedToken = token
+				persistedRefresh = refreshToken
+				persistedExpires = expiresAt
+				persistedRefreshExpires = refreshExpiresAt
+				return nil
+			}
+			first := &auth.RefreshTransport{
+				Base:          base,
+				ProxyEndpoint: "https://proxy.invalid",
+				Token:         "gat_old",
+				RefreshToken:  "gar_old",
+				ExpiresAt:     time.Now().Add(time.Minute),
+				OnRefresh:     persist,
+			}
+			request := func(transport *auth.RefreshTransport) error {
+				req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://proxy.invalid/protected", nil)
+				require.NoError(t, err)
+				resp, err := transport.RoundTrip(req)
+				if resp != nil {
+					require.NoError(t, resp.Body.Close())
+				}
+				return err
+			}
+
+			require.NoError(t, request(first))
+			assert.Equal(t, "gat_new_1", persistedToken)
+			assert.Equal(t, "gar_new_1", persistedRefresh)
+			if strings.TrimSpace(tt.expiresAt) == "" {
+				assert.Empty(t, persistedExpires)
+			} else {
+				assert.Equal(t, tt.expiresAt, persistedExpires)
+			}
+			if strings.TrimSpace(tt.refreshExpiresAt) == "" {
+				assert.Empty(t, persistedRefreshExpires)
+			} else {
+				assert.Equal(t, tt.refreshExpiresAt, persistedRefreshExpires)
+			}
+			assert.Equal(t, int32(1), refreshCalls.Load())
+			assert.Equal(t, int32(1), persistCalls.Load())
+			assert.Equal(t, []string{"Bearer gat_new_1"}, protectedAuthorizations)
+
+			parsePersisted := func(value string) time.Time {
+				if value == "" {
+					return time.Time{}
+				}
+				parsed, err := time.Parse(time.RFC3339, value)
+				require.NoError(t, err)
+				return parsed
+			}
+			// Reconstruct the transport exactly as a fresh gcx process does from
+			// the persisted strings. Unknown expiry must not immediately consume
+			// the newly rotated refresh generation again.
+			second := &auth.RefreshTransport{
+				Base:             base,
+				ProxyEndpoint:    "https://proxy.invalid",
+				Token:            persistedToken,
+				RefreshToken:     persistedRefresh,
+				ExpiresAt:        parsePersisted(persistedExpires),
+				RefreshExpiresAt: parsePersisted(persistedRefreshExpires),
+				Lock: func(context.Context) (func(), error) {
+					secondLockCalls.Add(1)
+					return func() {}, nil
+				},
+				OnRefresh: func(_, _, _, _, _ string) error {
+					t.Fatal("fresh transport unexpectedly refreshed the persisted generation")
+					return nil
+				},
+			}
+			require.NoError(t, request(second))
+			assert.Equal(t, int32(1), refreshCalls.Load())
+			assert.Equal(t, int32(1), persistCalls.Load())
+			assert.Zero(t, secondLockCalls.Load(), "usable unknown-expiry token must not enter the refresh transaction")
+			assert.Equal(t, []string{"Bearer gat_new_1", "Bearer gat_new_1"}, protectedAuthorizations)
+		})
+	}
+}
+
+func TestRefreshTransport_PersistsRotatedGenerationThenBlocksOnMalformedExpiries(t *testing.T) {
 	var refreshCalls, protectedCalls, persistCalls atomic.Int32
 	var persistedToken, persistedRefresh, persistedExpires, persistedRefreshExpires string
 	transport := &auth.RefreshTransport{
 		Base: testRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			if req.URL.Path == "/api/cli/v1/auth/refresh" {
 				refreshCalls.Add(1)
-				body := `{"data":{"token":"gat_new","expires_at":"","refresh_token":"gar_new","refresh_expires_at":""}}`
+				body := `{"data":{"token":"gat_new","expires_at":"not-rfc3339","refresh_token":"gar_new","refresh_expires_at":"also-not-rfc3339"}}`
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: req}, nil
 			}
 			protectedCalls.Add(1)

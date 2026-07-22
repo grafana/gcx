@@ -1084,6 +1084,10 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 	if err := preflightLayeredSources(sources, &hasLegacyLayer); err != nil {
 		return Config{}, err
 	}
+	var migrationWarnings *inMemoryMigrationWarningCollector
+	if hasLegacyLayer && len(sources) > 1 {
+		migrationWarnings = &inMemoryMigrationWarningCollector{}
+	}
 
 	// Load and merge in priority order (system → user → local).
 	var merged Config
@@ -1091,6 +1095,7 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 		loadCtx := withConfigLayer(ctx, src.Type)
 		if hasLegacyLayer && len(sources) > 1 && isLegacyConfig(src.snapshot) {
 			loadCtx = withMigrationPersistenceSuppressed(loadCtx)
+			loadCtx = withInMemoryMigrationWarningCollector(loadCtx, migrationWarnings)
 		}
 		if src.snapshot != nil {
 			loadCtx = withConfigSnapshot(loadCtx, src.Path, src.snapshot)
@@ -1115,6 +1120,13 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 		} else {
 			merged = MergeConfigs(merged, loaded)
 		}
+	}
+	if hasLegacyLayer && len(sources) > 1 {
+		warnIncompleteLayeredMigration(
+			ctx,
+			remainingLegacySourceSnapshots(sources, "", true),
+			migrationWarnings.exceptionalWarnings(),
+		)
 	}
 
 	merged.Sources = sources
@@ -1204,7 +1216,7 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 				cfg, err := Load(loadCtx, src)
 				if err == nil && targetWasLegacy {
 					remaining := remainingLegacySourceSnapshots(sources, fileType, cfg.migrationDeferred)
-					warnIncompleteLayeredMigration(ctx, remaining)
+					warnIncompleteLayeredMigration(ctx, remaining, nil)
 				}
 				return cfg, src, err
 			}
@@ -1237,6 +1249,15 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 	}
 }
 
+// CanInitializeMissingSource reports whether err is the initial ENOENT from
+// loading cfg's selected source. Callers with constructive intent may proceed
+// from this state: Write will use cfg's private absent-source marker to install
+// the first document without replacement. A later ENOENT after a source was
+// successfully read (for example during migration) deliberately returns false.
+func CanInitializeMissingSource(cfg Config, err error) bool {
+	return errors.Is(err, os.ErrNotExist) && cfg.expectSourceAbsent && !cfg.hasSourceRevision
+}
+
 func remainingLegacySourceSnapshots(sources []ConfigSource, migratedLayer string, migrationDeferred bool) []ConfigSource {
 	remaining := make([]ConfigSource, 0, len(sources))
 	for _, source := range sources {
@@ -1251,14 +1272,20 @@ func remainingLegacySourceSnapshots(sources []ConfigSource, migratedLayer string
 	return remaining
 }
 
-func warnIncompleteLayeredMigration(ctx context.Context, remaining []ConfigSource) {
+func warnIncompleteLayeredMigration(ctx context.Context, remaining []ConfigSource, warnings []inMemoryMigrationWarning) {
 	if len(remaining) == 0 {
 		return
 	}
 	steps := layeredMigrationSteps(remaining)
 	const message = "layered configuration migration is incomplete; finish every remaining legacy layer"
 	if writer := warningWriterFromCtx(ctx); writer != nil {
-		fmt.Fprintf(writer, "Warning: %s:\n%s\n", message, steps)
+		fmt.Fprintf(writer, "Warning: %s:\n%s", message, steps)
+		writeExceptionalMigrationWarnings(writer, warnings)
+		fmt.Fprintln(writer)
+		return
+	}
+	if blockers := formatExceptionalMigrationWarnings(warnings); blockers != "" {
+		logging.FromContext(ctx).Warn(message, "steps", steps, "blockers", blockers)
 		return
 	}
 	logging.FromContext(ctx).Warn(message, "steps", steps)

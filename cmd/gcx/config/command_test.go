@@ -579,6 +579,66 @@ current-context: dev`),
 	viewCmd.Run(t)
 }
 
+func Test_SetCommand_initializesMissingExplicitConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "new-config.yaml")
+	cmd := config.Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"set", "--config", path, "stacks.fresh.grafana.server", "https://grafana.example.invalid"})
+	require.NoError(t, cmd.ExecuteContext(t.Context()))
+
+	loaded, err := internalconfig.Load(t.Context(), internalconfig.ExplicitConfigFile(path))
+	require.NoError(t, err)
+	require.EqualValues(t, internalconfig.ConfigVersion, loaded.Version)
+	require.Equal(t, "https://grafana.example.invalid", loaded.Stacks["fresh"].Grafana.Server)
+}
+
+func Test_SetCommand_missingExplicitSupportDoesNotWeakenExistingFileValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		contents string
+		want     string
+	}{
+		{name: "malformed YAML", contents: "version: [\n", want: "sequence end token"},
+		{name: "unsupported version", contents: "version: 999\ncontexts: {}\n", want: "unsupported config version"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			original := []byte(tt.contents)
+			require.NoError(t, os.WriteFile(path, original, 0o600))
+
+			cmd := config.Command()
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{"set", "--config", path, "stacks.fresh.grafana.server", "https://grafana.example.invalid"})
+			err := cmd.ExecuteContext(t.Context())
+			require.Error(t, err)
+			require.ErrorContains(t, err, tt.want)
+			after, readErr := os.ReadFile(path)
+			require.NoError(t, readErr)
+			require.Equal(t, original, after)
+		})
+	}
+}
+
+func Test_UnsetCommand_missingExplicitConfigStillErrors(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing-config.yaml")
+	cmd := config.Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"unset", "--config", path, "stacks.fresh.grafana.server"})
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.NoFileExists(t, path)
+}
+
 func Test_SetCommand_barePathsErrorWithAbsolutePath(t *testing.T) {
 	cfg := `contexts:
   dev:

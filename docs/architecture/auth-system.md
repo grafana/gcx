@@ -244,7 +244,7 @@ that endpoint (see OAuth proxy routing below). Exact implementation lives in
 
 | Method | Lifecycle |
 |---|---|
-| OAuth PKCE | Dynamic. The `gat_` access token has a short expiry; the `gar_` refresh token has a longer one. `RefreshTransport` renews the access token when a request sees credentials inside the 5-minute refresh threshold (`refreshThreshold` in `internal/auth/transport.go`), and the successful refresh generation is persisted back to the config file. An access token with neither refresh token nor known expiry is used as an opaque bearer until the server rejects it. |
+| OAuth PKCE | Dynamic. The `gat_` access token has a short expiry; the `gar_` refresh token has a longer one. `RefreshTransport` renews the access token when a request sees credentials inside the 5-minute refresh threshold (`refreshThreshold` in `internal/auth/transport.go`), and the successful refresh generation is persisted back to the config file. An access token with no issuer-reported expiry is used as an opaque bearer without an immediate proactive refresh. |
 | Service account token | Static. Lives until manually rotated in the Grafana UI. gcx treats it as an opaque bearer credential. |
 | Cloud Access Policy token | Static. Lives until manually rotated in the Grafana Cloud UI. |
 | Grafana Cloud OAuth | Dynamic but not refreshable. gcx retains issuer-reported expiry and scopes; after expiry, re-run `gcx cloud login` or the Cloud step in `gcx login`. |
@@ -296,16 +296,16 @@ a later persistence retry. The pending record is process-local, so a process
 crash after server-side rotation but before durable persistence can still
 require re-authentication.
 
-HTTP 200 is not sufficient evidence of a valid refresh. gcx validates the
-access token, a nonempty refresh token, and both expiry timestamps before a
-protected request can proceed. Returning the same nonempty refresh token is a
-supported non-rotating response. A malformed response with no usable refresh
-generation blocks that transport without retrying the consumed token. If a
-nonempty generation is present alongside another validation error, gcx first
-persists a forced-stale recovery generation and then returns the validation
-error. A later process can retry safely; the process that observed the
-malformed response remains blocked so it cannot accidentally send an invalid
-access token or refresh twice.
+HTTP 200 is not sufficient evidence of a valid refresh. gcx requires nonempty
+access and refresh tokens. Expiry timestamps are optional; a blank timestamp is
+persisted as unknown, while every nonblank timestamp must be valid RFC3339.
+Returning the same nonempty refresh token is a supported non-rotating response.
+A malformed response with no usable refresh generation blocks that transport
+without retrying the consumed token. If a nonempty generation is present
+alongside another validation error, gcx first persists a forced-stale recovery
+generation and then returns the validation error. A later process can retry
+safely; the process that observed the malformed response remains blocked so it
+cannot accidentally send an invalid access token or refresh twice.
 
 ---
 

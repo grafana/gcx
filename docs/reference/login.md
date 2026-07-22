@@ -222,10 +222,22 @@ or connectivity validation is running, persistence stops and the fresh
 credential is not written. An explicit `--config` selection pins only that
 chosen file.
 
-When a login uses `GRAFANA_TLS_*`, gcx warns that those runtime TLS paths were
-not saved. Keep supplying them, or persist the reviewed TLS paths explicitly.
-An `auth-method: mtls` context without both a client certificate and private
-key fails before its next network request.
+For a pure mTLS login, `GRAFANA_TLS_*` paths remain runtime-only and gcx warns
+that they were not saved. Keep supplying them, or persist the reviewed paths
+explicitly. An `auth-method: mtls` context without both a client certificate
+and private key fails before its next network request.
+
+Token and OAuth credentials are destination-bound. If a bearer login depends
+on runtime-only `GRAFANA_TLS_*` or `GRAFANA_PROXY_ENDPOINT` settings, gcx stops
+before presenting or saving the credential and prints exact `gcx config set`
+commands for the selected config, stack, and context. Those commands can also
+initialize a deliberately selected, not-yet-created `--config` file. Persist
+the reviewed settings and retry, or unset overrides that were not intended.
+If a context or stack map key contains a dot, the dot-path grammar cannot name
+it safely; gcx instead reports the exact fields and directs you to the selected
+file with `gcx config edit --config ...`. If an OAuth issuer selects a proxy
+different from `GRAFANA_PROXY_ENDPOINT`, persisting the override cannot repair
+the conflict, so gcx tells you to unset that environment variable and retry.
 
 **Switch which context is current:**
 

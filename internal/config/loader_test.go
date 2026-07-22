@@ -406,6 +406,17 @@ func TestLoadForWrite_explicitFile(t *testing.T) {
 	require.Equal(t, userPath, filename)
 }
 
+func TestCanInitializeMissingSourceOnlyAcceptsInitialAbsentTarget(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "new-config.yaml")
+	cfg, _, err := config.LoadForWrite(t.Context(), path, "")
+	require.ErrorIs(t, err, os.ErrNotExist)
+	assert.True(t, config.CanInitializeMissingSource(cfg, err))
+
+	lateReadErr := &os.PathError{Op: "read", Path: path, Err: os.ErrNotExist}
+	assert.False(t, config.CanInitializeMissingSource(config.Config{}, lateReadErr),
+		"an unrelated or post-read ENOENT must not authorize constructive initialization")
+}
+
 func TestLoadForWrite_fileType_targetsNamedLayer(t *testing.T) {
 	userDir, workDir := isolatedLoaderEnv(t)
 	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),

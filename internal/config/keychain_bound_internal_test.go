@@ -1465,8 +1465,10 @@ func TestBoundCredentialTLSAndUsernameOverridesClearStoredSecrets(t *testing.T) 
 			return ParseEnvIntoContext(cfg.Contexts["default"])
 		})
 		require.NoError(t, err)
-		assert.Empty(t, loaded.Stacks["default"].Grafana.Password)
-		assert.Equal(t, "api-token", loaded.Stacks["default"].Grafana.APIToken)
+		assert.Empty(t, loaded.Contexts["default"].Grafana.Password)
+		assert.Equal(t, "api-token", loaded.Contexts["default"].Grafana.APIToken)
+		assert.Equal(t, "password", loaded.Stacks["default"].Grafana.Password,
+			"runtime rejection must not mutate the persisted stack view")
 	})
 
 	t.Run("CA file", func(t *testing.T) {
@@ -1477,8 +1479,12 @@ func TestBoundCredentialTLSAndUsernameOverridesClearStoredSecrets(t *testing.T) 
 			return ParseEnvIntoContext(cfg.Contexts["default"])
 		})
 		require.NoError(t, err)
-		assert.Empty(t, loaded.Stacks["default"].Grafana.APIToken)
-		assert.Empty(t, loaded.Stacks["default"].Grafana.Password)
+		assert.Empty(t, loaded.Contexts["default"].Grafana.APIToken)
+		assert.Empty(t, loaded.Contexts["default"].Grafana.Password)
+		assert.Equal(t, "api-token", loaded.Stacks["default"].Grafana.APIToken,
+			"runtime rejection must not mutate the persisted stack view")
+		assert.Equal(t, "password", loaded.Stacks["default"].Grafana.Password,
+			"runtime rejection must not mutate the persisted stack view")
 	})
 }
 

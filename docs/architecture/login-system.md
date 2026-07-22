@@ -378,6 +378,16 @@ the TLS/proxy state that persistence would retain. OAuth performs the same
 check again after the issuer supplies its proxy endpoint. A mismatch fails
 before the bearer credential is presented or saved, avoiding a successful
 login whose new keychain generation would be rejected by the next process.
+The CLI reports the exact literal `gcx config set --config ...` commands needed
+to persist the server, proxy/TLS fields, and context-to-stack binding. An
+explicitly selected missing config file is initialized by those commands, so a
+fresh setup has an executable recovery path rather than an error-only dead end.
+An existing context-to-stack binding is not rewritten. Because literal
+dot-paths cannot address map keys that themselves contain `.`, those names use
+an editor-based fallback that reports every field/value without emitting an
+invalid command. A post-flow OAuth issuer/proxy conflict is not recoverable by
+persisting the runtime override; that typed case instructs the user to unset
+`GRAFANA_PROXY_ENDPOINT` and retry.
 Pure mTLS login can continue with runtime-only transport settings because it
 does not persist a bearer credential; the command warns on success. A later
 invocation without a persisted or runtime client certificate and private key

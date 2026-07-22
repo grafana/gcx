@@ -65,8 +65,9 @@ Config
 
 `Config.Resolve()` wires each context's resolved view from its name refs after
 decode, merge, or mutation: `Context.StackEntry`/`.CloudEntry` plus the
-`.Grafana`/`.Providers` pointers shared with the stack entry (mutations through
-them are visible on the stack). Dangling refs leave nil pointers, which
+`.Grafana`/`.Providers` pointers initially shared with the stack entry.
+`ParseEnvIntoContext` deep-clones the selected context's runtime stack view
+before applying process-local overrides. Dangling refs leave nil pointers, which
 `Context.Validate` reports.
 
 Source files:
@@ -317,7 +318,13 @@ with independently converted v1 layers under the new atomic-entry rules. A
 semantic change or unsafe mixed-schema overlap fails before any config, backup,
 or keychain mutation. Multi-source legacy loads convert only in memory; users
 then migrate each layer explicitly, because persisting one layer while another
-can still fail would not be transactional.
+can still fail would not be transactional. The layered loader emits one
+consolidated warning per load with the exact
+`gcx config set --file <layer> version 1` migration command and
+`gcx config edit <layer>` recovery command for every legacy source. If a layer
+also hits an exceptional blocker while producing its in-memory view (for
+example, an unavailable credential store), that per-file reason is retained in
+the same consolidated warning.
 
 A single-source migration is serialized by canonical source identity. It first
 creates a write-once, mode-0600 `<file>.legacy.bak` containing the exact raw
@@ -347,13 +354,14 @@ A read-only source migrates in memory with a warning on every invocation.
 > environment variable reference (core + provider + planned variables).
 
 Environment variables are applied as an `Override` function after context
-selection (`config.ParseEnvIntoContext`, `internal/config/envparse.go`). They
-patch the **selected context's runtime view** in-place: `GRAFANA_*` variables
-write into the resolved `GrafanaConfig` (shared with the stack entry in that
-in-memory load only),
-while the `GRAFANA_CLOUD_*` auth variables synthesize an **ephemeral cloud
-entry** — a detached copy of whatever entry the context references, so env
-values never leak into the shared named entry or get persisted by `Write`.
+selection (`config.ParseEnvIntoContext`, `internal/config/envparse.go`). Before
+parsing them, gcx deep-clones the **selected context's runtime stack view**
+(including Grafana, TLS, and nested provider maps) while retaining its persisted
+owner/source identity and credential-rejection evidence. `GRAFANA_*` and later
+`GRAFANA_PROVIDER_*` overlays therefore cannot leak into sibling contexts that
+reference the same stack, mutate `Config.Stacks`, or get persisted by `Write`.
+The `GRAFANA_CLOUD_*` auth variables likewise synthesize an **ephemeral cloud
+entry** — a detached copy of whatever entry the context references.
 `GRAFANA_CLOUD_STACK` overrides the stack slug without mutating the shared
 stack config.
 
@@ -656,6 +664,13 @@ Editing a named `stacks.<name>.*` entry affects every context that references
 that stack. Editing a named `cloud.<entry>.*` entry likewise affects every
 context that references it. Config paths are literal; there is no implicit edit
 through a context reference.
+
+`config set --config <path>` may initialize a missing explicit file, but only
+when the loader proves the source was absent on its initial read. The resulting
+config carries an absent-source revision marker, and `Write` installs it without
+replacement; an unrelated or later `ENOENT` never authorizes creation. Map keys
+containing `.` cannot be represented by this dot-path grammar and must be
+changed with `gcx config edit`.
 
 Destination edits invalidate only credentials that could otherwise be sent to
 the old destination. Changing `stacks.<name>.grafana.server` or

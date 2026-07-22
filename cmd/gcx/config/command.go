@@ -839,9 +839,14 @@ PROPERTY_VALUE is the new value to set.`,
 	gcx config set --file local cloud.grafana-com.token my-token`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
-			if err != nil {
+			if err != nil && (configOpts.ConfigFile == "" || !config.CanInitializeMissingSource(cfg, err)) {
 				return err
 			}
+			// A missing explicit --config path is a deliberate new write target.
+			// LoadForWrite's returned Config retains its absent-source revision,
+			// so Write atomically installs the first document without replacing a
+			// file created concurrently. Other mutators keep treating ENOENT as an
+			// error; only `config set` has constructive intent.
 
 			path, err := config.ValidateConfigPath(cfg, args[0])
 			if err != nil {

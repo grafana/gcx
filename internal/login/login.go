@@ -248,6 +248,30 @@ func (e *ErrNeedClarification) Error() string {
 	return fmt.Sprintf("clarification needed for %s: %s", e.Field, e.Question)
 }
 
+// RuntimeOnlyBearerDestinationError is returned when a token or OAuth login
+// would use proxy/TLS destination settings that are present only in the process
+// environment. Saving the credential without those settings would create a
+// context whose next invocation rejects its own destination-bound credential.
+//
+// The CLI turns this UI-free sentinel into exact persistence commands for the
+// selected config owner and stack.
+type RuntimeOnlyBearerDestinationError struct {
+	// OAuthIssuerProxyMismatch identifies the post-OAuth case where the issuer
+	// selected a proxy endpoint different from GRAFANA_PROXY_ENDPOINT. Persisting
+	// the environment value cannot repair that conflict; the caller must remove
+	// the override and let the issuer-selected endpoint become authoritative.
+	OAuthIssuerProxyMismatch bool
+	RuntimeProxyEndpoint     string
+	OAuthIssuerProxyEndpoint string
+}
+
+func (e *RuntimeOnlyBearerDestinationError) Error() string {
+	if e.OAuthIssuerProxyMismatch {
+		return "GRAFANA_PROXY_ENDPOINT conflicts with the proxy endpoint selected by the OAuth issuer; unset the environment override and retry"
+	}
+	return "runtime-only Grafana proxy/TLS settings cannot be used to save a token or OAuth credential; persist GRAFANA_PROXY_ENDPOINT and GRAFANA_TLS_* settings in the selected config, or unset the overrides and retry"
+}
+
 // AuthFlow is the interface implemented by auth.Flow (and test stubs).
 // It exists so internal/login can reference the flow without importing a
 // concrete browser-dependent type, and without depending on cmd/.
@@ -297,9 +321,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 
 	// Normalize: missing scheme → default to https. Users who meant http://
 	// must pass the full URL explicitly; defaulting to https is safer.
-	if opts.Server != "" && !strings.HasPrefix(opts.Server, "http://") && !strings.HasPrefix(opts.Server, "https://") {
-		opts.Server = "https://" + opts.Server
-	}
+	opts.Server = NormalizeServerURL(opts.Server)
 	if err := validateRuntimeOnlyBearerDestination(*opts, ""); err != nil {
 		return Result{}, err
 	}
@@ -519,9 +541,30 @@ func validateRuntimeOnlyBearerDestination(opts Options, authMethod string, resol
 	if config.GrafanaBearerCredentialDestinationMatches(durable, runtime) {
 		return nil
 	}
-	return errors.New(
-		"runtime-only Grafana proxy/TLS settings cannot be used to save a token or OAuth credential; persist GRAFANA_PROXY_ENDPOINT and GRAFANA_TLS_* settings in the selected config, or unset the overrides and retry",
-	)
+	if authMethod == "oauth" && resolvedDestination != nil && opts.PreserveStoredProxyEndpoint {
+		proxyAligned := *durable
+		proxyAligned.ProxyEndpoint = runtime.ProxyEndpoint
+		if config.GrafanaBearerCredentialDestinationMatches(&proxyAligned, runtime) {
+			return &RuntimeOnlyBearerDestinationError{
+				OAuthIssuerProxyMismatch: true,
+				RuntimeProxyEndpoint:     runtime.ProxyEndpoint,
+				OAuthIssuerProxyEndpoint: durable.ProxyEndpoint,
+			}
+		}
+	}
+	return &RuntimeOnlyBearerDestinationError{}
+}
+
+// NormalizeServerURL trims surrounding whitespace and defaults a schemeless
+// Grafana server to HTTPS. An explicit HTTP scheme is retained: callers that
+// deliberately connect without TLS must continue to say so.
+func NormalizeServerURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	lower := strings.ToLower(raw)
+	if raw != "" && !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+		return "https://" + raw
+	}
+	return raw
 }
 
 // detectTarget calls DetectFn or falls back to the real DetectTarget.
@@ -836,8 +879,8 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 	// --yes alone does not bypass this guard; changing which server a context
 	// targets is a potentially destructive operation that requires an explicit signal.
 	if existing != nil && existing.Grafana != nil && tempCtx.Grafana != nil {
-		oldServer := existing.Grafana.Server
-		newServer := tempCtx.Grafana.Server
+		oldServer := NormalizeServerURL(existing.Grafana.Server)
+		newServer := NormalizeServerURL(tempCtx.Grafana.Server)
 		if oldServer != "" && newServer != "" && oldServer != newServer &&
 			!opts.AllowOverride {
 			return &ErrNeedClarification{

@@ -180,6 +180,10 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	default:
 		contextName = flags.Config.Context
 	}
+	// Canonicalize an explicit --server before it participates in context-name
+	// inference. A bare host means HTTPS, so it must select the same context as
+	// the equivalent persisted https:// URL.
+	flags.Server = login.NormalizeServerURL(flags.Server)
 
 	cfg, sourceCtx, contextName, err := loadLoginSourceContext(ctx, flags, contextName)
 	if err != nil {
@@ -385,7 +389,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		return err
 	}
 
-	return runLoginLoop(
+	err = runLoginLoop(
 		cmd,
 		flags,
 		&opts,
@@ -395,6 +399,11 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		autoLocalTarget,
 		runtimeDestinationFromEnvironment,
 	)
+	var runtimeOnlyDestination *login.RuntimeOnlyBearerDestinationError
+	if errors.As(err, &runtimeOnlyDestination) {
+		return runtimeOnlyBearerDestinationError(mutationTarget, persistedSourceCtx, &opts, runtimeOnlyDestination)
+	}
+	return err
 }
 
 func autoLocalFreshCredentialError(target config.ConfigSource) error {
@@ -417,7 +426,8 @@ func enforceAutoLocalCredentialPolicy(opts *login.Options, sourceCtx *config.Con
 	}
 	if opts.GrafanaToken != "" {
 		if sourceCtx == nil || sourceCtx.Grafana == nil || sourceCtx.Grafana.APIToken == "" ||
-			opts.GrafanaToken != sourceCtx.Grafana.APIToken || opts.Server != sourceCtx.Grafana.Server {
+			opts.GrafanaToken != sourceCtx.Grafana.APIToken ||
+			login.NormalizeServerURL(opts.Server) != login.NormalizeServerURL(sourceCtx.Grafana.Server) {
 			return autoLocalFreshCredentialError(target)
 		}
 	}
@@ -512,20 +522,215 @@ func shouldWarnRuntimeOnlyDestination(changed bool, result login.Result) bool {
 	return changed && result.AuthMethod == "mtls"
 }
 
+type destinationRecoveryCommand struct {
+	ConfigFile string
+	Path       string
+	Value      string
+}
+
+func (command destinationRecoveryCommand) args() []string {
+	return []string{"set", "--config", command.ConfigFile, command.Path, command.Value}
+}
+
+func (command destinationRecoveryCommand) String() string {
+	return "gcx config set --config " + shellQuote(command.ConfigFile) + " " +
+		shellQuote(command.Path) + " " + shellQuote(command.Value)
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func runtimeOnlyBearerDestinationError(
+	target config.ConfigSource,
+	persisted *config.Context,
+	opts *login.Options,
+	cause *login.RuntimeOnlyBearerDestinationError,
+) error {
+	if cause.OAuthIssuerProxyMismatch {
+		return gcxerrors.DetailedError{
+			Summary: "GRAFANA_PROXY_ENDPOINT conflicts with the OAuth login destination",
+			Details: fmt.Sprintf(
+				"The OAuth issuer selected proxy endpoint %q, but this process forced %q through GRAFANA_PROXY_ENDPOINT. Persisting the environment value would not resolve that conflict, so gcx stopped before presenting or saving the OAuth credential.",
+				cause.OAuthIssuerProxyEndpoint, cause.RuntimeProxyEndpoint,
+			),
+			Parent: cause,
+			Suggestions: []string{
+				"Unset the conflicting override: unset GRAFANA_PROXY_ENDPOINT",
+				"Then rerun the same gcx login --oauth command",
+			},
+		}
+	}
+	commands, environmentKeys := runtimeOnlyDestinationRecoveryCommands(target.Path, persisted, opts)
+	if runtimeOnlyDestinationRecoveryNeedsEditor(persisted, opts) {
+		return runtimeOnlyDestinationEditorRecoveryError(target.Path, persisted, opts, environmentKeys, cause)
+	}
+	suggestions := make([]string, 0, len(commands)+2)
+	for _, command := range commands {
+		suggestions = append(suggestions, command.String())
+	}
+	suggestions = append(suggestions,
+		"Then rerun the same gcx login command",
+		"Or unset the listed GRAFANA_* overrides and retry if they were not intended for this context",
+	)
+
+	contextName := opts.ContextName
+	if contextName == "" {
+		contextName = config.ContextNameFromServerURL(opts.Server)
+	}
+	return gcxerrors.DetailedError{
+		Summary: "Login destination settings must be persisted before saving this credential",
+		Details: fmt.Sprintf(
+			"Context %q uses runtime-only destination settings from %s. gcx stopped before presenting or saving the token because the next process would reject a credential bound to settings that are absent from config. Run these commands to persist the exact server, proxy/TLS settings, and context binding, then retry login.",
+			contextName, strings.Join(environmentKeys, ", "),
+		),
+		Parent:      cause,
+		Suggestions: suggestions,
+	}
+}
+
+func runtimeOnlyDestinationRecoveryCommands(
+	configFile string,
+	persisted *config.Context,
+	opts *login.Options,
+) ([]destinationRecoveryCommand, []string) {
+	contextName, stackName, needsContextBinding := runtimeOnlyDestinationRecoveryNames(persisted, opts)
+
+	prefix := "stacks." + stackName + ".grafana."
+	commands := []destinationRecoveryCommand{{
+		ConfigFile: configFile,
+		Path:       prefix + "server",
+		Value:      opts.Server,
+	}}
+	environmentKeys := make([]string, 0, 4)
+	if _, ok := os.LookupEnv("GRAFANA_PROXY_ENDPOINT"); ok {
+		environmentKeys = append(environmentKeys, "GRAFANA_PROXY_ENDPOINT")
+		commands = append(commands, destinationRecoveryCommand{
+			ConfigFile: configFile,
+			Path:       prefix + "proxy-endpoint",
+			Value:      opts.RuntimeProxyEndpoint,
+		})
+	}
+
+	tlsValues := map[string]string{}
+	if opts.TLS != nil {
+		tlsValues = map[string]string{
+			"GRAFANA_TLS_CERT_FILE": opts.TLS.CertFile,
+			"GRAFANA_TLS_KEY_FILE":  opts.TLS.KeyFile,
+			"GRAFANA_TLS_CA_FILE":   opts.TLS.CAFile,
+		}
+	}
+	for _, field := range []struct {
+		EnvKey string
+		Path   string
+	}{
+		{EnvKey: "GRAFANA_TLS_CERT_FILE", Path: "tls.cert-file"},
+		{EnvKey: "GRAFANA_TLS_KEY_FILE", Path: "tls.key-file"},
+		{EnvKey: "GRAFANA_TLS_CA_FILE", Path: "tls.ca-file"},
+	} {
+		if _, ok := os.LookupEnv(field.EnvKey); !ok {
+			continue
+		}
+		environmentKeys = append(environmentKeys, field.EnvKey)
+		commands = append(commands, destinationRecoveryCommand{
+			ConfigFile: configFile,
+			Path:       prefix + field.Path,
+			Value:      tlsValues[field.EnvKey],
+		})
+	}
+	if needsContextBinding {
+		commands = append(commands, destinationRecoveryCommand{
+			ConfigFile: configFile,
+			Path:       "contexts." + contextName + ".stack",
+			Value:      stackName,
+		})
+	}
+	return commands, environmentKeys
+}
+
+func runtimeOnlyDestinationRecoveryNames(persisted *config.Context, opts *login.Options) (string, string, bool) {
+	contextName := opts.ContextName
+	if contextName == "" {
+		contextName = config.ContextNameFromServerURL(opts.Server)
+	}
+	stackName := contextName
+	if persisted != nil && persisted.Stack != "" {
+		stackName = persisted.Stack
+	}
+	needsContextBinding := persisted == nil || persisted.Stack == ""
+	return contextName, stackName, needsContextBinding
+}
+
+func runtimeOnlyDestinationRecoveryNeedsEditor(persisted *config.Context, opts *login.Options) bool {
+	contextName, stackName, needsContextBinding := runtimeOnlyDestinationRecoveryNames(persisted, opts)
+	return strings.Contains(stackName, ".") || (needsContextBinding && strings.Contains(contextName, "."))
+}
+
+func runtimeOnlyDestinationEditorRecoveryError(
+	configFile string,
+	persisted *config.Context,
+	opts *login.Options,
+	environmentKeys []string,
+	cause *login.RuntimeOnlyBearerDestinationError,
+) error {
+	contextName, stackName, needsContextBinding := runtimeOnlyDestinationRecoveryNames(persisted, opts)
+	fields := []string{fmt.Sprintf("stack key %q: grafana.server=%q", stackName, opts.Server)}
+	if _, ok := os.LookupEnv("GRAFANA_PROXY_ENDPOINT"); ok {
+		fields = append(fields, fmt.Sprintf("grafana.proxy-endpoint=%q", opts.RuntimeProxyEndpoint))
+	}
+	if opts.TLS != nil {
+		for _, field := range []struct {
+			EnvKey string
+			Name   string
+			Value  string
+		}{
+			{EnvKey: "GRAFANA_TLS_CERT_FILE", Name: "grafana.tls.cert-file", Value: opts.TLS.CertFile},
+			{EnvKey: "GRAFANA_TLS_KEY_FILE", Name: "grafana.tls.key-file", Value: opts.TLS.KeyFile},
+			{EnvKey: "GRAFANA_TLS_CA_FILE", Name: "grafana.tls.ca-file", Value: opts.TLS.CAFile},
+		} {
+			if _, ok := os.LookupEnv(field.EnvKey); ok {
+				fields = append(fields, fmt.Sprintf("%s=%q", field.Name, field.Value))
+			}
+		}
+	}
+	if needsContextBinding {
+		fields = append(fields, fmt.Sprintf("context key %q: stack=%q", contextName, stackName))
+	}
+
+	return gcxerrors.DetailedError{
+		Summary: "Login destination settings require editor-based recovery",
+		Details: fmt.Sprintf(
+			"Context or stack names containing dots cannot be addressed by gcx config set's literal dot-path grammar. Runtime-only settings from %s were not persisted. In the selected config, persist these values: %s.",
+			strings.Join(environmentKeys, ", "), strings.Join(fields, "; "),
+		),
+		Parent: cause,
+		Suggestions: []string{
+			"If the explicit config does not exist yet, initialize it: gcx config set --config " + shellQuote(configFile) + " version '1'",
+			"Open the selected config: gcx config edit --config " + shellQuote(configFile),
+			"Then rerun the same gcx login command",
+			"Or unset the listed GRAFANA_* overrides and retry if they were not intended for this context",
+		},
+	}
+}
+
 func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName string) (config.Config, *config.Context, string, error) {
-	cfg, err := flags.Config.LoadConfigTolerant(ctx)
+	// Select from the persisted view before applying GRAFANA_* overlays. Applying
+	// an unnamed GRAFANA_SERVER to the current context first can reject that
+	// context's stored credential (or make it appear to be the mutation target)
+	// before we have inferred the server-derived context the user actually chose.
+	cfg, err := config.LoadLayered(ctx, flags.Config.ConfigFile)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return config.Config{}, nil, contextName, err
 	}
-	sourceCtx, resolvedName := resolveSourceContext(cfg, contextName, flags.Server)
-	if sourceCtx == nil || resolvedName == cfg.CurrentContext {
+	selectionServer := requestedLoginServer(flags.Server, nil)
+	sourceCtx, resolvedName := resolveSourceContext(cfg, contextName, selectionServer)
+	if sourceCtx == nil {
 		return cfg, sourceCtx, resolvedName, nil
 	}
 
-	// A positional/derived context is selected outside config.Options. Reload
-	// with that context selected before environment overrides so deferred
-	// keychain resolution and runtime credentials apply to the actual target,
-	// not whichever context happened to be current in the file.
+	// Reload with the inferred context selected before environment overrides so
+	// deferred keychain resolution and runtime credentials apply to the actual
+	// target, not whichever context happened to be current in the file.
 	selected := flags.Config
 	selected.Context = resolvedName
 	cfg, err = selected.LoadConfigTolerant(ctx)
@@ -567,13 +772,13 @@ func credentialProvided(flagValue, envKey string) bool {
 
 func requestedLoginServer(flagServer string, sourceCtx *config.Context) string {
 	if flagServer != "" {
-		return flagServer
+		return login.NormalizeServerURL(flagServer)
 	}
 	if envServer := strings.TrimSpace(os.Getenv("GRAFANA_SERVER")); envServer != "" {
-		return envServer
+		return login.NormalizeServerURL(envServer)
 	}
 	if sourceCtx != nil && sourceCtx.Grafana != nil {
-		return sourceCtx.Grafana.Server
+		return login.NormalizeServerURL(sourceCtx.Grafana.Server)
 	}
 	return ""
 }
@@ -619,15 +824,20 @@ func storedGrafanaProxyEndpoint(sourceCtx *config.Context) string {
 }
 
 func preflightServerOverride(opts *login.Options, sourceCtx *config.Context, interactive bool) error {
+	requestedServer := login.NormalizeServerURL(opts.Server)
+	persistedServer := ""
+	if sourceCtx != nil && sourceCtx.Grafana != nil {
+		persistedServer = login.NormalizeServerURL(sourceCtx.Grafana.Server)
+	}
 	if opts.AllowOverride || sourceCtx == nil || sourceCtx.Grafana == nil ||
-		opts.Server == "" || sourceCtx.Grafana.Server == "" || opts.Server == sourceCtx.Grafana.Server {
+		requestedServer == "" || persistedServer == "" || requestedServer == persistedServer {
 		return nil
 	}
 	need := &login.ErrNeedClarification{
 		Field: "allow-override",
 		Question: fmt.Sprintf(
 			"Context %q already exists with server %s.\nOverride with %s?",
-			opts.ContextName, sourceCtx.Grafana.Server, opts.Server,
+			opts.ContextName, sourceCtx.Grafana.Server, requestedServer,
 		),
 		Choices: []string{"yes", "no"},
 	}
@@ -1268,6 +1478,7 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 // `gcx login --server <new>` doesn't clobber the unrelated current context.
 // With neither name nor server, falls back to the current context.
 func resolveSourceContext(cfg config.Config, contextName, server string) (*config.Context, string) {
+	server = login.NormalizeServerURL(server)
 	switch {
 	case contextName != "":
 		return cfg.Contexts[contextName], contextName

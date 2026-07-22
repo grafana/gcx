@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"reflect"
@@ -84,6 +85,25 @@ func layeredMigrationSteps(sources []ConfigSource) string {
 		fmt.Fprintf(&b, "    repair:  gcx config edit %s", source.Type)
 	}
 	return b.String()
+}
+
+func writeExceptionalMigrationWarnings(writer io.Writer, warnings []inMemoryMigrationWarning) {
+	if len(warnings) == 0 {
+		return
+	}
+	fmt.Fprint(writer, "\n  blockers discovered while loading the legacy sources:")
+	for _, warning := range warnings {
+		fmt.Fprintf(writer, "\n  %s\n    reason: %s", warning.filename, warning.reason)
+	}
+}
+
+func formatExceptionalMigrationWarnings(warnings []inMemoryMigrationWarning) string {
+	if len(warnings) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	writeExceptionalMigrationWarnings(&b, warnings)
+	return strings.TrimPrefix(b.String(), "\n")
 }
 
 func remainingLegacySources(layers []migrationLayer) []ConfigSource {

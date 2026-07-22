@@ -142,10 +142,12 @@ func (t *RefreshTransport) base() http.RoundTripper {
 	return http.DefaultTransport
 }
 
-// adoptFreshStoredTokens reloads tokens from disk and, if they're both fresh
+// adoptFreshStoredTokens reloads tokens from disk and, if they're both usable
 // and different from what we hold in memory, adopts them and returns true.
 // A different but near-expiry token is still adopted and returns false so the
-// network refresh uses the latest persisted refresh token.
+// network refresh uses the latest persisted refresh token. A zero access-token
+// expiry means the issuer did not provide one; that token is usable without a
+// proactive refresh.
 func (t *RefreshTransport) adoptFreshStoredTokens() (bool, error) {
 	if t.Reload == nil {
 		return false, nil
@@ -166,7 +168,7 @@ func (t *RefreshTransport) adoptFreshStoredTokens() (bool, error) {
 	t.RefreshToken = stored.RefreshToken
 	t.ExpiresAt = stored.ExpiresAt
 	t.RefreshExpiresAt = stored.RefreshExpiresAt
-	return stored.Token != "" && time.Until(stored.ExpiresAt) > refreshThreshold, nil
+	return stored.Token != "" && (stored.ExpiresAt.IsZero() || time.Until(stored.ExpiresAt) > refreshThreshold), nil
 }
 
 func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
@@ -178,7 +180,7 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 	}
 
 	if t.pending == nil {
-		if t.Token != "" && ((t.ExpiresAt.IsZero() && t.RefreshToken == "") || time.Until(t.ExpiresAt) > refreshThreshold) {
+		if t.Token != "" && (t.ExpiresAt.IsZero() || time.Until(t.ExpiresAt) > refreshThreshold) {
 			t.mu.Unlock()
 			return nil
 		}
@@ -318,8 +320,8 @@ func (t *RefreshTransport) refreshAndPersist(req *http.Request) error {
 	// boundary in either case.
 	t.mu.Lock()
 	persistedToken := result.Token
-	persistedExpiresAt := result.ExpiresAt
-	persistedRefreshExpiresAt := result.RefreshExpiresAt
+	persistedExpiresAt := canonicalOptionalExpiry(result.ExpiresAt)
+	persistedRefreshExpiresAt := canonicalOptionalExpiry(result.RefreshExpiresAt)
 	if validationErr != nil {
 		// Preserve the replacement refresh generation even if another required
 		// field is invalid. A stale access expiry forces the next process to
@@ -378,11 +380,11 @@ func validateRefreshResult(result RefreshResult) (time.Time, time.Time, error) {
 	if strings.TrimSpace(result.RefreshToken) == "" {
 		invalid = append(invalid, "refresh_token")
 	}
-	expiresAt, err := time.Parse(time.RFC3339, result.ExpiresAt)
+	expiresAt, err := parseOptionalExpiry(result.ExpiresAt)
 	if err != nil {
 		invalid = append(invalid, "expires_at")
 	}
-	refreshExpiresAt, err := time.Parse(time.RFC3339, result.RefreshExpiresAt)
+	refreshExpiresAt, err := parseOptionalExpiry(result.RefreshExpiresAt)
 	if err != nil {
 		invalid = append(invalid, "refresh_expires_at")
 	}
@@ -390,6 +392,24 @@ func validateRefreshResult(result RefreshResult) (time.Time, time.Time, error) {
 		return expiresAt, refreshExpiresAt, fmt.Errorf("%w: missing or malformed %s", ErrInvalidRefreshResponse, strings.Join(invalid, ", "))
 	}
 	return expiresAt, refreshExpiresAt, nil
+}
+
+// parseOptionalExpiry treats a blank issuer timestamp as unknown. OAuth token
+// responses may omit expiry metadata; the credential is still usable when both
+// token generations are present. A nonblank malformed timestamp remains an
+// invalid response rather than being confused with an omitted value.
+func parseOptionalExpiry(value string) (time.Time, error) {
+	if strings.TrimSpace(value) == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse(time.RFC3339, value)
+}
+
+func canonicalOptionalExpiry(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return value
 }
 
 func (t *RefreshTransport) persistPendingRefresh() error {
@@ -409,10 +429,13 @@ func (t *RefreshTransport) persistPendingRefresh() error {
 		if errors.Is(err, ErrTokenGenerationChanged) {
 			// A deliberate re-login or a newer refresh won the compare-and-swap.
 			// Drop only this obsolete pending generation and force the next call
-			// through Reload so it can adopt the persisted winner.
+			// through Reload so it can adopt the persisted winner. Clearing the
+			// obsolete access token is the force-reload signal; a zero expiry alone
+			// means a valid token whose issuer omitted expiry metadata.
 			t.mu.Lock()
 			if t.pending == pending {
 				t.pending = nil
+				t.Token = ""
 				t.ExpiresAt = time.Time{}
 			}
 			t.mu.Unlock()
