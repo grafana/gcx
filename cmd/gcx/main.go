@@ -108,6 +108,26 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 		return 0
 	}
 
+	// A command that has already written its complete result document —
+	// including its error content — signals it with EmittedError. Honor the
+	// carried exit code and write nothing more: a second document on stdout
+	// would corrupt the exactly-one-JSON-value contract machine consumers
+	// rely on, and a stderr rendering would duplicate the in-band error.
+	var emitted *gcxerrors.EmittedError
+	if errors.As(err, &emitted) {
+		if agent.IsAgentMode() && agentlog.IsEnabled() {
+			_ = agentlog.Append(agentlog.Entry{
+				Timestamp: time.Now(),
+				Version:   appversion.Get(),
+				Args:      agentlog.StripArgValues(os.Args[1:], boolFlags, subCmds),
+				ErrorKind: agentlog.KindFromExitCode(emitted.Code),
+				Error:     truncate(emitted.Error(), 200),
+				ExitCode:  emitted.Code,
+			})
+		}
+		return emitted.Code
+	}
+
 	detailedErr := fail.ErrorToDetailedError(err)
 	if detailedErr == nil {
 		return 1

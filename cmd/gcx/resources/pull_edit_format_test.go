@@ -204,6 +204,54 @@ func TestPullAndEditRejectJSONAndJQ(t *testing.T) {
 	}
 }
 
+// TestPullAndEditRejectionOrdering: the typed exit-2 rejections must fire
+// before the shared IO.Validate, whose errors are untyped (exit 1 today,
+// repo-wide). A mixed invocation like `pull -o yaml --json x` must classify
+// exactly like a solo `--json x` — this was the known exit-code ordering
+// defect in the original #1032 extraction.
+func TestPullAndEditRejectionOrdering(t *testing.T) {
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	validators := map[string]func(flags *pflag.FlagSet) func() error{
+		"pull": func(flags *pflag.FlagSet) func() error {
+			return resources.NewPullOptsForTest(flags).Validate
+		},
+		"edit": func(flags *pflag.FlagSet) func() error {
+			return resources.NewEditOptsForTest(flags).Validate
+		},
+	}
+
+	mixedCases := []struct {
+		name string
+		set  map[string]string
+	}{
+		{name: "-o yaml with --json", set: map[string]string{"output": "yaml", "json": "metadata.name"}},
+		{name: "-o yaml with --jq", set: map[string]string{"output": "yaml", "jq": ".metadata"}},
+		{name: "unknown -o with --json", set: map[string]string{"output": "bogus", "json": "metadata.name"}},
+	}
+
+	for cmdName, newValidate := range validators {
+		for _, tc := range mixedCases {
+			t.Run(cmdName+" "+tc.name, func(t *testing.T) {
+				flags := pflag.NewFlagSet(cmdName, pflag.ContinueOnError)
+				validate := newValidate(flags)
+				for flag, value := range tc.set {
+					if err := flags.Set(flag, value); err != nil {
+						t.Fatalf("set --%s: %v", flag, err)
+					}
+				}
+
+				err := validate()
+				if err == nil {
+					t.Fatal("Validate() = nil, want typed rejection error")
+				}
+				assertUsageErrorExitCode(t, err)
+			})
+		}
+	}
+}
+
 // TestPullAndEditDoNotAdvertiseAgentsFormat: both commands reject -o agents
 // at validation time, so their -o usage menu must not advertise it.
 func TestPullAndEditDoNotAdvertiseAgentsFormat(t *testing.T) {

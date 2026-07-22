@@ -107,7 +107,9 @@ func shallowFieldPaths(sample map[string]any) ([]string, int) {
 }
 
 // JQCodec applies a jq expression to a value and writes each yielded result
-// as pretty-printed JSON on its own line (NDJSON shape, matching real jq).
+// as pretty-printed JSON, one result per encoder call (matching real jq's
+// default output: sequential values, each pretty-printed — nested results
+// span multiple physical lines, so the stream is NOT line-delimited NDJSON).
 //
 // JQCodec intentionally bypasses the agents codec's spill-to-tempfile behavior:
 // a caller using --jq wants the transformed results in-stream, not a "spilled

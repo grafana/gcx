@@ -48,10 +48,10 @@ func (opts *editOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (opts *editOpts) Validate() error {
-	if err := opts.IO.Validate(); err != nil {
-		return err
-	}
-
+	// Typed exit-2 rejections run BEFORE the shared IO.Validate so mixed
+	// invalid invocations get the same exit code as solo ones (the shared
+	// errors are untyped exit 1 today, repo-wide).
+	//
 	// The agents display codec cannot round-trip: the FSReader has no
 	// "agents" decoder, so the edited buffer could never be read back —
 	// the command would fail only after the user finished editing.
@@ -75,7 +75,7 @@ func (opts *editOpts) Validate() error {
 		}
 	}
 
-	return nil
+	return opts.IO.Validate()
 }
 
 func editCmd(configOpts *cmdconfig.Options) *cobra.Command {

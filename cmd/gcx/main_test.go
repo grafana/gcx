@@ -1,6 +1,52 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"fmt"
+	"testing"
+
+	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/gcxerrors"
+)
+
+// TestReportError_EmittedError pins the atomic-stdout-ownership contract:
+// a command that already wrote its complete result document returns an
+// EmittedError, and reportError must exit with the carried code without
+// writing a second document (the function returns before any output path).
+func TestReportError_EmittedError(t *testing.T) {
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	cases := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{
+			name: "partial failure code carried through wrapping",
+			err:  fmt.Errorf("push: %w", gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New("2 failed"))),
+			want: gcxerrors.ExitPartialFailure,
+		},
+		{
+			name: "general error code",
+			err:  gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, nil),
+			want: gcxerrors.ExitGeneralError,
+		},
+		{
+			name: "nil error still exits zero",
+			err:  nil,
+			want: 0,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := reportError(tc.err, nil, nil)
+			if got != tc.want {
+				t.Fatalf("reportError() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestParsePseudoVersion(t *testing.T) {
 	tests := []struct {

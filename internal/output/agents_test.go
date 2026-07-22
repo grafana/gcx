@@ -69,6 +69,26 @@ func TestAgentsCodec_AboveThreshold_Spills(t *testing.T) {
 	preview, ok := summary["preview_sample"].([]any)
 	require.True(t, ok, "preview must be an array")
 	assert.LessOrEqual(t, len(preview), 3)
+
+	// The receipt shape differs from the domain result, so it must carry
+	// collision-resistant discriminators a consumer can dispatch on.
+	assert.Equal(t, cmdio.SpillReferenceType, summary["type"])
+	assert.Equal(t, "1", summary["schema_version"])
+	assert.Equal(t, "json", summary["content_format"])
+}
+
+// TestAgentsCodec_BelowThreshold_NoDiscriminator pins the other side of the
+// threshold: an in-line payload is the domain result itself and must NOT be
+// wrapped or tagged.
+func TestAgentsCodec_BelowThreshold_NoDiscriminator(t *testing.T) {
+	codec := cmdio.NewAgentsCodecForTesting()
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, []map[string]any{{"name": "alpha"}}))
+
+	var value []map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &value))
+	assert.Equal(t, []map[string]any{{"name": "alpha"}}, value)
 }
 
 func TestAgentsCodec_NonSlice_OmitsItems(t *testing.T) {
@@ -107,9 +127,11 @@ func TestAgentsCodec_NonSlice_PreviewIsKeyNames(t *testing.T) {
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
 
-	// stdout must be much smaller than the full payload — the preview must
-	// not embed the full map values.
-	assert.Less(t, buf.Len(), 500, "spill envelope must not embed the full payload")
+	// stdout must be much smaller than the full 10KB payload — the preview
+	// must not embed the full map values. The cap allows the fixed receipt
+	// fields (type/schema_version/content_format discriminators, path,
+	// message) but nothing payload-proportional.
+	assert.Less(t, buf.Len(), 700, "spill envelope must not embed the full payload")
 
 	// Preview should be the sorted top-level key names, not the full value.
 	preview, ok := summary["preview_sample"].([]any)

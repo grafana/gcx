@@ -46,7 +46,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*gcxerrors.DetailedError, bool){
-		convertWaitTimeoutEmitted,          // Wait timeout already emitted fused envelope — suppress secondary output
+		convertEmittedError,                // Result already on stdout — never render a second envelope
 		convertUnknownFieldSelectionErrors, // --json unknown-field validation
 		convertJQRuntimeErrors,             // --jq runtime failures — includes output shape summary
 		convertPartialFailureErrors,
@@ -736,12 +736,17 @@ func convertLinterErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return nil, false
 }
 
-// convertWaitTimeoutEmitted suppresses the secondary DetailedError JSON envelope
-// when a wait command has already emitted a fused WaitResult (with Error populated)
-// to stdout. The secondary envelope would duplicate the error payload.
-// Returns (nil, true) so the caller exits 1 but writes no additional JSON.
-func convertWaitTimeoutEmitted(err error) (*gcxerrors.DetailedError, bool) {
-	if errors.Is(err, instrumentation.ErrWaitTimeoutEmitted) {
+// convertEmittedError suppresses the secondary DetailedError envelope for
+// commands that have already written their complete result document to
+// stdout (gcxerrors.EmittedError, e.g. wait's fused WaitResult or a fused
+// partial-failure envelope). The process exit code is honored by the
+// EmittedError short-circuit in reportError, which runs BEFORE conversion;
+// this converter is the safety net guaranteeing no other ErrorToDetailedError
+// caller can ever render an EmittedError as a second output document.
+// Returns (nil, true): no envelope.
+func convertEmittedError(err error) (*gcxerrors.DetailedError, bool) {
+	var emitted *gcxerrors.EmittedError
+	if errors.As(err, &emitted) {
 		return nil, true
 	}
 	return nil, false

@@ -62,10 +62,11 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (opts *pullOpts) Validate() error {
-	if err := opts.IO.Validate(); err != nil {
-		return err
-	}
-
+	// The pull-specific typed rejections run BEFORE the shared IO.Validate:
+	// the shared errors are untyped (exit 1 today, repo-wide), so a mixed
+	// invocation like `pull -o yaml --json x` must hit the typed exit-2
+	// rejection below, matching what a solo `--json x` gets.
+	//
 	// The agents codec is a display codec: it writes compact JSON and, above
 	// the spill threshold, a spill-summary envelope instead of the payload.
 	// Neither belongs in a resource file on disk. UsageError classifies the
@@ -87,6 +88,10 @@ func (opts *pullOpts) Validate() error {
 		if f := opts.flags.Lookup("jq"); f != nil && f.Changed {
 			return &fail.UsageError{Message: "--jq cannot be used with pull: transformed output cannot round-trip as a resource file. Use -o json or -o yaml"}
 		}
+	}
+
+	if err := opts.IO.Validate(); err != nil {
+		return err
 	}
 
 	if opts.Path == "" {

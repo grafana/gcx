@@ -94,9 +94,18 @@ responses in `internal/providers/instrumentation/client.go`.
 
 ### 4.4 In-Band Error Reporting
 
-When agent mode is active and a command fails, a JSON error object is written
-to **stdout** in addition to the existing stderr `DetailedError` output
-(NC-003 — in-band JSON is additive, not a replacement).
+When agent mode (or `--json`) is active and a command fails, a JSON error
+object is written to **stdout** and the human-formatted stderr rendering is
+suppressed — machine consumers get exactly one error document, on one
+stream. The stderr fallback appears only if the stdout write itself fails.
+(Historical note: the original NC-003 design made in-band JSON additive to
+the stderr output; the implementation intentionally converged on
+either/or in `reportError`, `cmd/gcx/main.go`.)
+
+The envelope carries collision-resistant discriminators:
+`{"type": "gcx.error", "schema_version": "1", "error": {...}}`. The fused
+partial-failure envelope uses `"type": "gcx.partial_result"` with `items`
+alongside `error`.
 
 **Error-only response** (command fails completely):
 
