@@ -1,6 +1,157 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	"github.com/grafana/gcx/cmd/gcx/root"
+	"github.com/grafana/gcx/internal/agent"
+)
+
+const configCheckProcessHelper = "GCX_CONFIG_CHECK_PROCESS_HELPER"
+
+func TestConfigCheckProcessExit(t *testing.T) {
+	invalidConfigPath := filepath.Join(t.TempDir(), "invalid-config.yaml")
+	contents := []byte("version: 1\ncontexts:\n  broken: {}\ncurrent-context: broken\n")
+	if err := os.WriteFile(invalidConfigPath, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	versionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/health":
+			_, _ = w.Write([]byte(`{"version":"11.6.0"}`))
+		case "/api":
+			_, _ = w.Write([]byte(`{"kind":"APIVersions","apiVersion":"v1","versions":[]}`))
+		case "/apis":
+			_, _ = w.Write([]byte(`{"kind":"APIGroupList","apiVersion":"v1","groups":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(versionServer.Close)
+	versionConfigPath := filepath.Join(t.TempDir(), "version-config.yaml")
+	versionConfig := fmt.Sprintf(`version: 1
+stacks:
+  old:
+    grafana:
+      server: %q
+      org-id: 1
+      auth-method: token
+contexts:
+  old:
+    stack: old
+current-context: old
+`, versionServer.URL)
+	if err := os.WriteFile(versionConfigPath, []byte(versionConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name          string
+		agentMode     string
+		configPath    string
+		grafanaServer string
+		grafanaToken  string
+		wantExitCode  int
+		wantOutput    string
+	}{
+		{name: "human invalid config", agentMode: "false", configPath: invalidConfigPath, wantExitCode: 1, wantOutput: "context references no stack"},
+		{name: "agent invalid config", agentMode: "true", configPath: invalidConfigPath, wantExitCode: 1, wantOutput: "context references no stack"},
+		{name: "human incompatible version", agentMode: "false", configPath: versionConfigPath, grafanaServer: versionServer.URL, grafanaToken: "test-token", wantExitCode: 6, wantOutput: "gcx requires Grafana 12.0.0 or later"},
+		{name: "agent incompatible version", agentMode: "true", configPath: versionConfigPath, grafanaServer: versionServer.URL, grafanaToken: "test-token", wantExitCode: 6, wantOutput: "gcx requires Grafana 12.0.0 or later"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			// Re-exec the trusted current test binary to verify the actual process exit path.
+			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestConfigCheckProcessHelper$") //nolint:gosec
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			cmd.Env = append(os.Environ(),
+				configCheckProcessHelper+"=1",
+				"GCX_CONFIG_CHECK_PATH="+tc.configPath,
+				"GCX_AGENT_MODE="+tc.agentMode,
+				"GCX_TELEMETRY=disabled",
+				"NO_COLOR=1",
+				"HOME="+t.TempDir(),
+				"XDG_CONFIG_HOME="+t.TempDir(),
+				"XDG_CONFIG_DIRS="+t.TempDir(),
+				"XDG_CACHE_HOME="+t.TempDir(),
+				"XDG_STATE_HOME="+t.TempDir(),
+				"GRAFANA_SERVER="+tc.grafanaServer,
+				"GRAFANA_USER=",
+				"GRAFANA_PASSWORD=",
+				"GRAFANA_TOKEN="+tc.grafanaToken,
+				"GRAFANA_PROXY_ENDPOINT=",
+				"GRAFANA_ORG_ID=",
+				"GRAFANA_STACK_ID=",
+			)
+
+			err := cmd.Run()
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				t.Fatalf("expected process failure, got %v; stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+			}
+			if exitErr.ExitCode() != tc.wantExitCode {
+				t.Fatalf("exit code = %d, want %d; stdout=%q stderr=%q", exitErr.ExitCode(), tc.wantExitCode, stdout.String(), stderr.String())
+			}
+			assertConfigCheckProcessOutput(t, tc.agentMode == "true", tc.wantOutput, stdout.Bytes(), stderr.Bytes())
+		})
+	}
+}
+
+func assertConfigCheckProcessOutput(t *testing.T, agentMode bool, wantOutput string, stdout, stderr []byte) {
+	t.Helper()
+	if agentMode {
+		if !json.Valid(stdout) || !bytes.Contains(stdout, []byte(`"error":`)) {
+			t.Fatalf("agent stdout is not one in-band JSON error document: %q", stdout)
+		}
+		if !bytes.Contains(stdout, []byte(wantOutput)) {
+			t.Fatalf("agent error details missing %q: %q", wantOutput, stdout)
+		}
+		if !bytes.Contains(stderr, []byte("Configuration:")) || !bytes.Contains(stderr, []byte("Connectivity:")) {
+			t.Fatalf("complete diagnostic report missing from agent stderr: %q", stderr)
+		}
+		return
+	}
+
+	if !bytes.Contains(stdout, []byte("Configuration:")) || !bytes.Contains(stdout, []byte("Connectivity:")) {
+		t.Fatalf("complete diagnostic report missing from stdout: %q", stdout)
+	}
+	if !bytes.Contains(stdout, []byte(wantOutput)) {
+		t.Fatalf("diagnostic output missing %q: %q", wantOutput, stdout)
+	}
+	if len(stderr) != 0 {
+		t.Fatalf("secondary human error written to stderr: %q", stderr)
+	}
+	if bytes.Contains(stdout, []byte(`"error":`)) {
+		t.Fatalf("unexpected JSON error appended to human output: %q", stdout)
+	}
+}
+
+func TestConfigCheckProcessHelper(_ *testing.T) {
+	if os.Getenv(configCheckProcessHelper) != "1" {
+		return
+	}
+
+	agent.ResetForTesting()
+	os.Args = []string{"gcx", "config", "check", "--config", os.Getenv("GCX_CONFIG_CHECK_PATH")}
+	preParseAgentFlag()
+	cmd := root.Command("test")
+	err := cmd.ExecuteContext(context.Background())
+	os.Exit(reportError(err, collectBoolFlags(cmd), collectSubCmds(cmd)))
+}
 
 func TestParsePseudoVersion(t *testing.T) {
 	tests := []struct {

@@ -1,7 +1,7 @@
 package config
 
 import (
-	"context"
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -197,9 +197,134 @@ contexts:
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
+func TestMixedLayerPartialOverlapRequiresManualRepair(t *testing.T) {
+	withFakeKeychain(t)
+	fixture := newLayeredMigrationFixture(t)
+	user := `
+version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.example
+contexts:
+  prod:
+    stack: prod
+current-context: prod
+`
+	local := `
+contexts:
+  prod:
+    grafana:
+      org-id: 42
+`
+	writeLayeredMigrationFixture(t, fixture.user, user)
+	writeLayeredMigrationFixture(t, fixture.local, local)
+
+	_, err := LoadLayered(t.Context(), "")
+	var incomplete *layeredMigrationIncompleteError
+	require.ErrorAs(t, err, &incomplete)
+	assert.False(t, incomplete.targetedMigrationAllowed)
+	assert.NotContains(t, err.Error(), "gcx config set")
+	assert.Contains(t, err.Error(), "manual consolidation")
+	assert.Contains(t, err.Error(), "gcx config edit local")
+
+	_, _, err = LoadForWrite(t.Context(), "", "local")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "gcx config set")
+	gotUser, readErr := os.ReadFile(fixture.user)
+	require.NoError(t, readErr)
+	gotLocal, readErr := os.ReadFile(fixture.local)
+	require.NoError(t, readErr)
+	assert.Equal(t, user, string(gotUser))
+	assert.Equal(t, local, string(gotLocal))
+	_, statErr := os.Stat(fixture.local + legacyBackupSuffix)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestMixedLayerStaleBackupDoesNotAuthorizeTargetedMigration(t *testing.T) {
+	withFakeKeychain(t)
+	fixture := newLayeredMigrationFixture(t)
+	user := `
+version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://current.example
+contexts:
+  prod:
+    stack: prod
+current-context: prod
+`
+	local := `
+contexts:
+  prod:
+    grafana:
+      org-id: 42
+`
+	staleBackup := `
+contexts:
+  prod:
+    grafana:
+      server: https://stale.example
+current-context: prod
+`
+	writeLayeredMigrationFixture(t, fixture.user, user)
+	writeLayeredMigrationFixture(t, fixture.local, local)
+	require.NoError(t, os.WriteFile(fixture.user+legacyBackupSuffix, []byte(staleBackup), 0o600))
+
+	_, err := LoadLayered(t.Context(), "")
+	var incomplete *layeredMigrationIncompleteError
+	require.ErrorAs(t, err, &incomplete)
+	assert.False(t, incomplete.targetedMigrationAllowed)
+	assert.NotContains(t, err.Error(), "gcx config set")
+	assert.Contains(t, err.Error(), "gcx config edit local")
+
+	_, _, err = LoadForWrite(t.Context(), "", "local")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "gcx config set")
+	gotUser, readErr := os.ReadFile(fixture.user)
+	require.NoError(t, readErr)
+	gotLocal, readErr := os.ReadFile(fixture.local)
+	require.NoError(t, readErr)
+	assert.Equal(t, user, string(gotUser))
+	assert.Equal(t, local, string(gotLocal))
+	_, statErr := os.Stat(fixture.local + legacyBackupSuffix)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestMixedNonOverlappingLayerRetainsTargetedMigration(t *testing.T) {
+	withFakeKeychain(t)
+	fixture := newLayeredMigrationFixture(t)
+	writeLayeredMigrationFixture(t, fixture.user, `
+version: 1
+stacks:
+  dev:
+    grafana:
+      server: https://dev.example
+contexts:
+  dev:
+    stack: dev
+current-context: dev
+`)
+	writeLayeredMigrationFixture(t, fixture.local, `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+`)
+
+	_, _, err := LoadForWrite(t.Context(), "", "local")
+	require.NoError(t, err)
+	onDisk, readErr := os.ReadFile(fixture.local)
+	require.NoError(t, readErr)
+	assert.False(t, isLegacyConfig(onDisk))
+}
+
 func TestInterruptedLayeredMigrationNamesAndCompletesEveryRemainingLayer(t *testing.T) {
 	withFakeKeychain(t)
 	fixture := newLayeredMigrationFixture(t)
+	var warnings bytes.Buffer
+	ctx := ContextWithWarningWriter(t.Context(), &warnings)
 	legacy := `
 contexts:
   prod:
@@ -214,8 +339,10 @@ current-context: prod
 	// The first explicit step is safe, but necessarily leaves two legacy
 	// documents. The command warns (via the same step formatter asserted below)
 	// and ordinary loads return a typed, actionable recovery error.
-	_, _, err := LoadForWrite(t.Context(), "", "user")
+	_, _, err := LoadForWrite(ctx, "", "user")
 	require.NoError(t, err)
+	assert.Contains(t, warnings.String(), "layered configuration migration is incomplete")
+	assert.Contains(t, warnings.String(), "gcx config set --file system version 1")
 	userBytes, readErr := os.ReadFile(fixture.user)
 	require.NoError(t, readErr)
 	assert.False(t, isLegacyConfig(userBytes))
@@ -224,9 +351,10 @@ current-context: prod
 	require.NoError(t, readErr)
 	localBefore, readErr := os.ReadFile(fixture.local)
 	require.NoError(t, readErr)
-	_, err = LoadLayered(t.Context(), "")
+	_, err = LoadLayered(ctx, "")
 	var incomplete *layeredMigrationIncompleteError
 	require.ErrorAs(t, err, &incomplete)
+	assert.True(t, incomplete.targetedMigrationAllowed)
 	assert.Contains(t, err.Error(), fixture.system)
 	assert.Contains(t, err.Error(), "gcx config set --file system version 1")
 	assert.Contains(t, err.Error(), "gcx config edit system")
@@ -242,9 +370,11 @@ current-context: prod
 
 	// Targeted writes are the only exception to the incomplete-state error, so
 	// every named remaining step can finish in any layer order.
-	_, _, err = LoadForWrite(context.Background(), "", "system")
+	warnings.Reset()
+	_, _, err = LoadForWrite(ctx, "", "system")
 	require.NoError(t, err)
-	_, _, err = LoadForWrite(context.Background(), "", "local")
+	assert.Contains(t, warnings.String(), "gcx config set --file local version 1")
+	_, _, err = LoadForWrite(ctx, "", "local")
 	require.NoError(t, err)
 	loaded, err := LoadLayered(t.Context(), "")
 	require.NoError(t, err)

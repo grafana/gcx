@@ -298,6 +298,53 @@ func stackSecretDestination(stack *StackConfig, field credentials.Field) string 
 	return "grafana|" + grafanaDestination
 }
 
+// GrafanaBearerCredentialDestinationMatches reports whether two Grafana
+// configurations authorize bearer credentials for the same normalized
+// server, proxy, and TLS destination. OAuth and service-account tokens share
+// this destination shape; Basic auth additionally binds the username and must
+// not use this helper.
+//
+// Evaluating the destination captures any file-backed TLS material exactly as
+// the keychain binding does. Callers can therefore use this before network or
+// persistence without reimplementing the security-critical fingerprint rules.
+func GrafanaBearerCredentialDestinationMatches(left, right *GrafanaConfig) bool {
+	if left == nil || right == nil {
+		return false
+	}
+	leftStack := &StackConfig{Grafana: left}
+	rightStack := &StackConfig{Grafana: right}
+	return stackSecretDestination(leftStack, credentials.FieldGrafanaToken) ==
+		stackSecretDestination(rightStack, credentials.FieldGrafanaToken)
+}
+
+// GrafanaTokenBindingMatches reports whether a stored service-account token's
+// complete source/owner/field/destination binding matches the effective login
+// destination. requestedServer is the CLI-selected server after flag and
+// environment precedence; the effective context supplies proxy and TLS state.
+// A missing or unbound context fails closed.
+func GrafanaTokenBindingMatches(stored, effective *Context, requestedServer string) bool {
+	storedBinding, ok := grafanaTokenBinding(stored, "")
+	if !ok {
+		return false
+	}
+	effectiveBinding, ok := grafanaTokenBinding(effective, requestedServer)
+	return ok && storedBinding == effectiveBinding
+}
+
+func grafanaTokenBinding(context *Context, serverOverride string) (credentials.Binding, bool) {
+	if context == nil || context.StackEntry == nil || context.Grafana == nil {
+		return credentials.Binding{}, false
+	}
+	stack := *context.StackEntry
+	grafana := *context.Grafana
+	if serverOverride != "" {
+		grafana.Server = serverOverride
+	}
+	stack.Grafana = &grafana
+	binding := stackOwner(context.stackName(), &stack).binding(credentials.FieldGrafanaToken)
+	return binding, binding.Valid()
+}
+
 func grafanaServerDestination(stack *StackConfig) string {
 	if stack == nil || stack.Grafana == nil {
 		return ""

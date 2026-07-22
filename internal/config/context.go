@@ -1,6 +1,9 @@
 package config
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // configContextKey is a private key type for storing the Grafana config context
 // name in a Go context.Context. Using a named type prevents collisions with
@@ -13,6 +16,12 @@ type configContextKey struct{}
 // immutable hand-off between the command that owns --config and every lazy
 // provider loader it invokes.
 type configFileContextKey struct{}
+
+// warningWriterContextKey carries the command's diagnostic stream into the
+// config library. Keeping the writer request-scoped avoids process-global
+// output while allowing operational warnings that must be visible at the
+// default log level to stay on stderr rather than corrupting command output.
+type warningWriterContextKey struct{}
 
 // ContextWithName attaches the Grafana config context name to a Go context.
 // Use this before invoking provider adapter factories so they can select the
@@ -49,4 +58,19 @@ func ConfigFileFromCtx(ctx context.Context) string {
 		return path
 	}
 	return ""
+}
+
+// ContextWithWarningWriter attaches the command's diagnostic stream to ctx.
+// Config loading uses it only for actionable warnings that must be visible at
+// the default log level. A nil writer leaves the context unchanged.
+func ContextWithWarningWriter(ctx context.Context, writer io.Writer) context.Context {
+	if writer == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, warningWriterContextKey{}, writer)
+}
+
+func warningWriterFromCtx(ctx context.Context) io.Writer {
+	writer, _ := ctx.Value(warningWriterContextKey{}).(io.Writer)
+	return writer
 }

@@ -98,9 +98,19 @@ type Inputs struct {
 	TLS *config.TLS
 	// PreserveStoredTLS keeps process-environment TLS overrides runtime-only.
 	// Detection and validation use TLS, while persistence restores StoredTLS.
-	// Programmatic callers retain the historical behavior unless they opt in.
+	// A token/OAuth login fails before network use when that would create a
+	// credential that the next invocation cannot resolve. Programmatic callers
+	// retain the historical behavior unless they opt in.
 	PreserveStoredTLS bool
 	StoredTLS         *config.TLS
+	// PreserveStoredProxyEndpoint is the proxy equivalent for an ephemeral
+	// GRAFANA_PROXY_ENDPOINT override. RuntimeProxyEndpoint is the effective
+	// override and StoredProxyEndpoint is the durable value. Bearer logins fail
+	// closed when the two destinations differ; non-bearer mTLS remains usable
+	// with runtime-only transport settings.
+	PreserveStoredProxyEndpoint bool
+	RuntimeProxyEndpoint        string
+	StoredProxyEndpoint         string
 
 	// Writer receives human-facing OAuth progress output. When nil, the
 	// internal/login package discards writes (NC-001: the package is UI-free
@@ -290,6 +300,9 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	if opts.Server != "" && !strings.HasPrefix(opts.Server, "http://") && !strings.HasPrefix(opts.Server, "https://") {
 		opts.Server = "https://" + opts.Server
 	}
+	if err := validateRuntimeOnlyBearerDestination(*opts, ""); err != nil {
+		return Result{}, err
+	}
 
 	// Step 2: detect target (using TLS-aware client when mTLS is configured)
 	target := opts.Target
@@ -322,6 +335,9 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	// Step 3: Grafana auth
 	authMethod, grafanaCfg, err := resolveGrafanaAuth(ctx, *opts, target)
 	if err != nil {
+		return Result{}, err
+	}
+	if err := validateRuntimeOnlyBearerDestination(*opts, authMethod, grafanaCfg); err != nil {
 		return Result{}, err
 	}
 
@@ -421,6 +437,9 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	if opts.PreserveStoredTLS && tempCtx.Grafana != nil {
 		tempCtx.Grafana.TLS = opts.StoredTLS
 	}
+	if opts.PreserveStoredProxyEndpoint && authMethod != "oauth" && tempCtx.Grafana != nil {
+		tempCtx.Grafana.ProxyEndpoint = opts.StoredProxyEndpoint
+	}
 
 	// Step 7: Persist to config (write only after all validation passes)
 	if err := persistContext(ctx, *opts, contextName, tempCtx, stackSlug); err != nil {
@@ -436,6 +455,73 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 		GrafanaVersion: grafanaVersion,
 		StackSlug:      resolveStackSlug(opts.Server),
 	}, nil
+}
+
+// validateRuntimeOnlyBearerDestination prevents a successful login from
+// persisting a token/OAuth credential against a different destination than the
+// runtime-only proxy/TLS settings that authorized the invocation. Without this
+// gate the next process would apply the same environment, reject the new
+// keychain generation as destination-mismatched, and leave a seemingly
+// successful login unusable.
+//
+// Before authMethod is resolved, explicit token/OAuth intent is enough to
+// reject known mismatches before target detection or a browser flow. After
+// OAuth resolves, the second call also compares the issuer-provided proxy that
+// will actually be persisted.
+func validateRuntimeOnlyBearerDestination(opts Options, authMethod string, resolved ...*config.GrafanaConfig) error {
+	if authMethod == "" && opts.GrafanaToken == "" && !opts.UseOAuth {
+		return nil
+	}
+	if authMethod != "" && authMethod != "token" && authMethod != "oauth" {
+		return nil
+	}
+
+	server := opts.Server
+	var resolvedDestination *config.GrafanaConfig
+	if len(resolved) > 0 {
+		resolvedDestination = resolved[0]
+	}
+	if resolvedDestination != nil && resolvedDestination.Server != "" {
+		server = resolvedDestination.Server
+	}
+	durable := &config.GrafanaConfig{Server: server}
+	runtime := &config.GrafanaConfig{Server: server}
+
+	if opts.PreserveStoredTLS {
+		durable.TLS = opts.StoredTLS
+		runtime.TLS = opts.TLS
+	} else {
+		durable.TLS = opts.TLS
+		runtime.TLS = opts.TLS
+	}
+	if opts.PreserveStoredProxyEndpoint {
+		runtime.ProxyEndpoint = opts.RuntimeProxyEndpoint
+		switch {
+		case authMethod == "oauth" && resolvedDestination != nil:
+			durable.ProxyEndpoint = resolvedDestination.ProxyEndpoint
+		case authMethod == "" && opts.UseOAuth && opts.GrafanaToken == "":
+			// OAuth supplies and persists its own proxy endpoint. Before the
+			// browser flow returns, defer this component to the post-auth check;
+			// TLS is already fully knowable and remains enforced here.
+			durable.ProxyEndpoint = opts.RuntimeProxyEndpoint
+		default:
+			durable.ProxyEndpoint = opts.StoredProxyEndpoint
+		}
+	} else {
+		proxyEndpoint := opts.RuntimeProxyEndpoint
+		if resolvedDestination != nil {
+			proxyEndpoint = resolvedDestination.ProxyEndpoint
+		}
+		durable.ProxyEndpoint = proxyEndpoint
+		runtime.ProxyEndpoint = proxyEndpoint
+	}
+
+	if config.GrafanaBearerCredentialDestinationMatches(durable, runtime) {
+		return nil
+	}
+	return errors.New(
+		"runtime-only Grafana proxy/TLS settings cannot be used to save a token or OAuth credential; persist GRAFANA_PROXY_ENDPOINT and GRAFANA_TLS_* settings in the selected config, or unset the overrides and retry",
+	)
 }
 
 // detectTarget calls DetectFn or falls back to the real DetectTarget.
@@ -502,9 +588,10 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 
 	authTLS := preAuthTLS(opts)
 	grafanaCfg := &config.GrafanaConfig{
-		Server: opts.Server,
-		OrgID:  int64(opts.OrgID),
-		TLS:    opts.TLS,
+		Server:        opts.Server,
+		ProxyEndpoint: opts.RuntimeProxyEndpoint,
+		OrgID:         int64(opts.OrgID),
+		TLS:           opts.TLS,
 	}
 
 	var method string

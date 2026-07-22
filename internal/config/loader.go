@@ -21,6 +21,7 @@ import (
 	"github.com/gofrs/flock"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/credentials"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/xdg"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -701,7 +702,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, autoMigrationOn
 	log := logging.FromContext(ctx)
 	log.Debug("Writing config", slog.String("filename", filename))
 	if cfg.migrationDeferred {
-		return 0, fmt.Errorf("legacy credential migration is deferred; retry after the keychain is available before writing %s", filename)
+		return 0, fmt.Errorf("legacy config migration is deferred; resolve the reported migration blocker before writing %s (%s)", filename, docs.ConfigMigration)
 	}
 	if err := validateConfigForWrite(filename, &cfg); err != nil {
 		return 0, err
@@ -1174,6 +1175,12 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 				if readErr != nil {
 					return Config{}, nil, readErr
 				}
+				// Freeze the target bytes selected for this write before inspecting
+				// their schema. If an older or concurrent process rewrites a v1 file
+				// back to legacy before Load runs, loading the snapshot prevents an
+				// un-preflighted migration; the eventual Write revision check rejects
+				// the intervening change.
+				loadCtx = withConfigSnapshot(loadCtx, s.Path, contents)
 				targetWasLegacy := isLegacyConfig(contents)
 				if targetWasLegacy && len(sources) > 1 {
 					preflightErr := preflightLayeredSources(sources)
@@ -1249,10 +1256,12 @@ func warnIncompleteLayeredMigration(ctx context.Context, remaining []ConfigSourc
 		return
 	}
 	steps := layeredMigrationSteps(remaining)
-	logging.FromContext(ctx).Warn("layered configuration migration is incomplete; finish every remaining legacy layer", "steps", steps)
-	if !agent.IsAgentMode() {
-		fmt.Fprintf(os.Stderr, "Warning: layered configuration migration is incomplete. Finish every remaining legacy layer:\n%s\n", steps)
+	const message = "layered configuration migration is incomplete; finish every remaining legacy layer"
+	if writer := warningWriterFromCtx(ctx); writer != nil {
+		fmt.Fprintf(writer, "Warning: %s:\n%s\n", message, steps)
+		return
 	}
+	logging.FromContext(ctx).Warn(message, "steps", steps)
 }
 
 // loadExplicit loads a single explicit config file, bypassing layered discovery.

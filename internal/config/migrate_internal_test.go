@@ -1,9 +1,12 @@
 package config
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/credentials"
@@ -739,7 +742,9 @@ current-context: dev
 `
 	path := writeTrustedUserTestConfig(t, legacy)
 
-	cfg, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
+	var warnings bytes.Buffer
+	ctx := ContextWithWarningWriter(withConfigLayer(context.Background(), "user"), &warnings)
+	cfg, err := Load(ctx, ExplicitConfigFile(path))
 	require.NoError(t, err)
 
 	assert.Equal(t, "plaintext-secret", cfg.Contexts["dev"].Grafana.APIToken)
@@ -750,8 +755,10 @@ current-context: dev
 	assert.Equal(t, legacy, string(onDisk), "transient failure must leave the retryable legacy source untouched")
 	_, statErr := os.Stat(path + legacyBackupSuffix)
 	require.ErrorIs(t, statErr, os.ErrNotExist)
+	assert.Contains(t, warnings.String(), "a legacy credential could not be read from the credential store")
 	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
-	require.ErrorContains(t, err, "legacy credential migration is deferred")
+	require.ErrorContains(t, err, "legacy config migration is deferred")
+	require.ErrorContains(t, err, "resolve the reported migration blocker")
 
 	// The unchanged legacy source retries and rekeys successfully once the
 	// keychain is available again.
@@ -781,7 +788,9 @@ current-context: dev
 	require.NoError(t, os.Chmod(dir, 0o500))
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
-	cfg, err := Load(context.Background(), ExplicitConfigFile(path))
+	var warnings bytes.Buffer
+	ctx := ContextWithWarningWriter(context.Background(), &warnings)
+	cfg, err := Load(ctx, ExplicitConfigFile(path))
 	require.NoError(t, err)
 
 	// In-memory migration: converted view, file untouched, no backup.
@@ -792,6 +801,9 @@ current-context: dev
 	assert.Equal(t, legacy, string(onDisk))
 	_, err = os.Stat(path + legacyBackupSuffix)
 	assert.True(t, os.IsNotExist(err))
+	assert.Contains(t, warnings.String(), "Warning: running with in-memory config migration")
+	assert.Contains(t, warnings.String(), path)
+	assert.Contains(t, warnings.String(), "config and credential writes remain blocked")
 }
 
 func TestMigrateLegacyConfigBackupIsWriteOnce(t *testing.T) {
@@ -839,7 +851,9 @@ current-context: dev
 	existingBackup := "# incomplete backup\n"
 	require.NoError(t, os.WriteFile(path+legacyBackupSuffix, []byte(existingBackup), 0o600))
 
-	cfg, err := Load(context.Background(), ExplicitConfigFile(path))
+	var warnings bytes.Buffer
+	ctx := ContextWithWarningWriter(context.Background(), &warnings)
+	cfg, err := Load(ctx, ExplicitConfigFile(path))
 	require.NoError(t, err)
 	assert.Equal(t, "https://devstack.grafana.net", cfg.Contexts["dev"].Grafana.Server)
 
@@ -849,6 +863,35 @@ current-context: dev
 	backup, err := os.ReadFile(path + legacyBackupSuffix)
 	require.NoError(t, err)
 	assert.Equal(t, existingBackup, string(backup))
+	assert.Contains(t, warnings.String(), "existing legacy config backup does not match the current source")
+}
+
+func TestMigrateLegacyConfigPersistFailureWarnsUnconditionally(t *testing.T) {
+	withFakeKeychain(t)
+	path := writeTestConfig(t, `
+contexts:
+  dev:
+    grafana:
+      server: https://devstack.grafana.net
+current-context: dev
+`)
+	before, err := os.ReadFile(path)
+	require.NoError(t, err)
+	originalRename := renameConfigFile
+	renameConfigFile = func(string, string) error { return errors.New("injected rename failure") }
+	t.Cleanup(func() { renameConfigFile = originalRename })
+
+	var warnings bytes.Buffer
+	ctx := ContextWithWarningWriter(context.Background(), &warnings)
+	cfg, err := Load(ctx, ExplicitConfigFile(path))
+	require.NoError(t, err)
+	assert.True(t, cfg.migrationDeferred)
+	assert.Contains(t, warnings.String(), "Warning: running with in-memory config migration")
+	assert.Contains(t, warnings.String(), "injected rename failure")
+	assert.Equal(t, 1, strings.Count(warnings.String(), "Warning:"), "the command diagnostic and structured logger must not duplicate the warning")
+	after, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	assert.Equal(t, before, after)
 }
 
 func TestMigrateLegacyConfigValidationEquivalence(t *testing.T) {

@@ -128,6 +128,11 @@ Use these commands to check the configuration:
 gcx config check
 ```
 
+The check covers every configured context before returning. It exits non-zero
+when the current context is invalid or any context fails configuration,
+authentication setup, connectivity, or Grafana version checks, so it is safe to
+use as a deployment or migration gate.
+
 List existing contexts:
 
 ```shell

@@ -680,6 +680,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	// already have completed the migration while this one was waiting.
 	canPersist := !migrationPersistenceSuppressed(ctx)
 	var lockErr error
+	deferredReason := ""
 	if canPersist {
 		lockPath, err := configLockFile(migrationPath, "write")
 		if err != nil {
@@ -702,7 +703,8 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 		} else if !migrationPersistenceSuppressed(ctx) && lockErr != nil {
 			reason = lockErr.Error()
 		}
-		log.Warn("could not lock config migration; running with in-memory migration",
+		deferredReason = reason
+		log.Debug("config migration persistence unavailable; using in-memory migration",
 			"file", filename, "error", reason, "guide", docs.ConfigMigration)
 	}
 
@@ -747,13 +749,14 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	}
 	if transientLegacyFailure {
 		canPersist = false
+		deferredReason = "a legacy credential could not be read from the credential store"
 	}
 
 	// The backup is an exact 0600 rollback copy. Plaintext is intentionally not
 	// pushed through predictable legacy account names: doing so could overwrite
 	// a credential owned by another config source. The converted v1 Write below
 	// stores plaintext under source-bound v2 account names.
-	backupOK := canPersist && writeLegacyBackup(filename, contents, codec, log)
+	backupOK, deferredReason := prepareLegacyBackup(canPersist, deferredReason, filename, contents, codec)
 
 	cfg := convertLegacyConfig(&lc, layerType, secrets)
 	cfg.Source = filename
@@ -782,9 +785,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	}
 
 	if !backupOK {
-		log.Warn("running with in-memory config migration; the config file was not modified",
-			"file", filename,
-			"guide", docs.ConfigMigration)
+		warnInMemoryMigration(ctx, filename, deferredReason)
 		return *cfg, nil
 	}
 
@@ -808,10 +809,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 			return *cfg, nil
 		}
 		cfg.migrationDeferred = true
-		log.Warn("could not persist migrated config; running with in-memory migration",
-			"file", filename,
-			"error", err.Error(),
-			"guide", docs.ConfigMigration)
+		warnInMemoryMigration(ctx, filename, err.Error())
 		return *cfg, nil
 	}
 
@@ -821,6 +819,26 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 			filename, filename+legacyBackupSuffix, docs.ConfigMigration)
 	}
 	return *cfg, nil
+}
+
+func warnInMemoryMigration(ctx context.Context, filename, reason string) {
+	const message = "running with in-memory config migration; the config file was not modified; config and credential writes remain blocked until migration can be persisted"
+	if writer := warningWriterFromCtx(ctx); writer != nil {
+		fmt.Fprintf(writer, "Warning: %s: %s; reason: %s (%s)\n", message, filename, reason, docs.ConfigMigration)
+		return
+	}
+	logging.FromContext(ctx).Warn(message, "file", filename, "error", reason, "guide", docs.ConfigMigration)
+}
+
+func prepareLegacyBackup(canPersist bool, deferredReason, filename string, contents []byte, codec *format.YAMLCodec) (bool, string) {
+	if !canPersist {
+		return false, deferredReason
+	}
+	backupOK, err := writeLegacyBackup(filename, contents, codec)
+	if err != nil {
+		return false, err.Error()
+	}
+	return backupOK, deferredReason
 }
 
 func trustedLegacyKeychainSource(ctx context.Context, layerType, filename string) bool {
@@ -993,19 +1011,21 @@ func configSnapshotFromContext(ctx context.Context, path string) ([]byte, bool) 
 // writeLegacyBackup writes an exact byte-for-byte copy next to the logical
 // config path, once: an existing backup is never overwritten (an old gcx binary
 // running concurrently can rewrite the file to the legacy format and trigger
-// re-migration, which must not clobber a known-good backup). Returns false
-// when no backup exists and one could not be written — the caller must not
-// replace the legacy file without the rollback safety.
-func writeLegacyBackup(filename string, contents []byte, codec *format.YAMLCodec, log logging.Logger) bool {
+// re-migration, which must not clobber a known-good backup). A false result
+// includes an actionable reason; the caller must not replace the legacy file
+// without rollback safety.
+func writeLegacyBackup(filename string, contents []byte, codec *format.YAMLCodec) (bool, error) {
 	backupPath := filename + legacyBackupSuffix
 
 	backup, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, configFilePermissions)
 	if errors.Is(err, os.ErrExist) {
-		return validateExistingLegacyBackup(backupPath, contents, codec, log)
+		if err := validateExistingLegacyBackup(backupPath, contents, codec); err != nil {
+			return false, err
+		}
+		return true, nil
 	}
 	if err != nil {
-		log.Warn("could not create legacy config backup", "file", backupPath, "error", err.Error())
-		return false
+		return false, fmt.Errorf("could not create legacy config backup %s: %w", backupPath, err)
 	}
 	complete := false
 	defer func() {
@@ -1015,77 +1035,61 @@ func writeLegacyBackup(filename string, contents []byte, codec *format.YAMLCodec
 		}
 	}()
 	if _, err := backup.Write(contents); err != nil {
-		log.Warn("could not write legacy config backup", "file", backupPath, "error", err.Error())
-		return false
+		return false, fmt.Errorf("could not write legacy config backup %s: %w", backupPath, err)
 	}
 	if err := backup.Sync(); err != nil {
-		log.Warn("could not sync legacy config backup", "file", backupPath, "error", err.Error())
-		return false
+		return false, fmt.Errorf("could not sync legacy config backup %s: %w", backupPath, err)
 	}
 	if err := backup.Close(); err != nil {
-		log.Warn("could not close legacy config backup", "file", backupPath, "error", err.Error())
-		return false
+		return false, fmt.Errorf("could not close legacy config backup %s: %w", backupPath, err)
 	}
 	if err := syncConfigDirectory(filepath.Dir(backupPath)); err != nil {
-		log.Warn("could not sync legacy config backup directory", "file", backupPath, "error", err.Error())
-		return false
+		return false, fmt.Errorf("could not sync legacy config backup directory for %s: %w", backupPath, err)
 	}
 	complete = true
-	return true
+	return true, nil
 }
 
 // validateExistingLegacyBackup refuses to treat an arbitrary, partial, or
 // symlinked path as rollback safety. A prior complete legacy backup is valid;
 // anything else leaves migration in memory and the original source untouched.
-func validateExistingLegacyBackup(path string, expected []byte, codec *format.YAMLCodec, log logging.Logger) bool {
+func validateExistingLegacyBackup(path string, expected []byte, codec *format.YAMLCodec) error {
 	info, err := os.Lstat(path)
 	if err != nil {
-		log.Warn("could not inspect existing legacy config backup", "file", path, "error", err.Error())
-		return false
+		return fmt.Errorf("could not inspect existing legacy config backup %s: %w", path, err)
 	}
 	if !info.Mode().IsRegular() {
-		log.Warn("existing legacy config backup is not a regular file", "file", path)
-		return false
+		return fmt.Errorf("existing legacy config backup is not a regular file: %s", path)
 	}
 	if info.Mode().Perm()&0o077 != 0 {
-		log.Warn("existing legacy config backup has insecure permissions", "file", path, "mode", info.Mode().Perm())
-		return false
+		return fmt.Errorf("existing legacy config backup has insecure permissions: %s (mode %s)", path, info.Mode().Perm())
 	}
 	contents, err := os.ReadFile(path)
 	if err != nil {
-		log.Warn("could not read existing legacy config backup", "file", path, "error", err.Error())
-		return false
+		return fmt.Errorf("could not read existing legacy config backup %s: %w", path, err)
 	}
 	if !bytes.Equal(contents, expected) {
-		log.Warn("existing legacy config backup does not match the current source; refusing to replace it", "file", path)
-		return false
+		return fmt.Errorf("existing legacy config backup does not match the current source; refusing to replace it: %s", path)
 	}
 	if version, present, _ := declaredConfigVersion(contents); present {
-		log.Warn("existing legacy config backup is versioned and cannot be used for rollback",
-			"file", path, "version", version)
-		return false
+		return fmt.Errorf("existing legacy config backup is versioned and cannot be used for rollback: %s (version %d)", path, version)
 	}
 	var shape map[string]any
 	if err := yaml.Unmarshal(contents, &shape); err != nil {
-		log.Warn("existing legacy config backup is invalid", "file", path, "error", err.Error())
-		return false
+		return fmt.Errorf("existing legacy config backup %s is invalid: %w", path, err)
 	}
 	if _, ok := shape["contexts"]; !ok {
-		log.Warn("existing legacy config backup has no contexts block", "file", path)
-		return false
+		return fmt.Errorf("existing legacy config backup has no contexts block: %s", path)
 	}
 	if _, current := shape["stacks"]; current {
-		log.Warn("existing legacy config backup uses the current schema", "file", path)
-		return false
+		return fmt.Errorf("existing legacy config backup uses the current schema: %s", path)
 	}
 	if _, current := shape["cloud"]; current {
-		log.Warn("existing legacy config backup uses the current schema", "file", path)
-		return false
+		return fmt.Errorf("existing legacy config backup uses the current schema: %s", path)
 	}
 	var legacy legacyConfig
 	if err := codec.Decode(bytes.NewReader(contents), &legacy); err != nil {
-		log.Warn("existing legacy config backup is invalid", "file", path, "error", err.Error())
-		return false
+		return fmt.Errorf("existing legacy config backup %s is invalid: %w", path, err)
 	}
-	return true
+	return nil
 }

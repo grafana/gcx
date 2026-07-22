@@ -882,6 +882,14 @@ func TestErrorToDetailedError_WaitTimeoutEmittedSuppressesEnvelope(t *testing.T)
 	assert.Nil(t, got, "ErrWaitTimeoutEmitted must suppress the DetailedError envelope (return nil)")
 }
 
+func TestErrorToDetailedError_AlreadyReportedSuppressesEnvelope(t *testing.T) {
+	err := fmt.Errorf("config check failed: %w", gcxerrors.ErrAlreadyReported)
+
+	got := fail.ErrorToDetailedError(err)
+
+	assert.Nil(t, got, "an already-rendered diagnostic must not produce a second error envelope")
+}
+
 func TestErrorToDetailedError_WaitTimeoutEmittedBeforeOtherConverters(t *testing.T) {
 	// Verify that the sentinel converter runs BEFORE other converters that might
 	// also match. Wrap ErrWaitTimeoutEmitted alongside a usage error; the

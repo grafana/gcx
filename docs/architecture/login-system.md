@@ -52,6 +52,8 @@ classDiagram
         UseCloudInstanceSelector
         TLS, StoredTLS
         PreserveStoredTLS
+        RuntimeProxyEndpoint, StoredProxyEndpoint
+        PreserveStoredProxyEndpoint
     }
     class Hooks {
         ConfigSource
@@ -369,14 +371,24 @@ settings. If that name belongs to another layer, login rejects the mutation
 instead of creating a shadow stack. An unbound Cloud name collision allocates a
 new isolated name because the context can safely bind that copy in its owner.
 
-**Environment-only mTLS.** A successful login may validate with
-`GRAFANA_TLS_*` paths, but those runtime paths are not persisted implicitly.
-The command warns on success. A later invocation without a persisted or runtime
-client certificate and private key fails before network use rather than
-degrading to an anonymous request.
+**Environment-only destinations.** `GRAFANA_TLS_*` and
+`GRAFANA_PROXY_ENDPOINT` remain runtime-only. Before target detection or
+credential validation, token login compares their effective destination with
+the TLS/proxy state that persistence would retain. OAuth performs the same
+check again after the issuer supplies its proxy endpoint. A mismatch fails
+before the bearer credential is presented or saved, avoiding a successful
+login whose new keychain generation would be rejected by the next process.
+Pure mTLS login can continue with runtime-only transport settings because it
+does not persist a bearer credential; the command warns on success. A later
+invocation without a persisted or runtime client certificate and private key
+fails before network use rather than degrading to an anonymous request.
 
-**Server-mismatch guard.** When the persisted context targets a different
-server from the requested one and `RetryState.AllowOverride` is not set,
+**Destination-mismatch guard.** Before a stored Grafana token is offered
+interactively or selected headlessly, login compares its complete
+source/owner/field/destination binding with the effective server, proxy, and
+TLS identity. A mismatch fails before target detection or validation can send
+the token. When the persisted context targets a different server from the
+requested one and `RetryState.AllowOverride` is not set,
 login raises `ErrNeedClarification{Field: "allow-override"}`. Non-interactive
 `--yes` does not bypass this destination change. The command performs the same
 check against the raw, non-environment-overridden context before authentication

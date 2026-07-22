@@ -810,11 +810,12 @@ func TestTrustedCAPIsPersistedAsCAP(t *testing.T) {
 		"CAP credentials must persist their resolved API destination")
 }
 
-func TestRuntimeTLSOverrideIsNotPersisted(t *testing.T) {
+func TestRuntimeTLSOverrideRejectsNonDurableBearerCredential(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	source := configSource(dir)
+	var validateCalls atomic.Int32
 	_, err := login.Run(context.Background(), &login.Options{
 		Inputs: login.Inputs{
 			Server:            "https://grafana.example.invalid",
@@ -827,17 +828,64 @@ func TestRuntimeTLSOverrideIsNotPersisted(t *testing.T) {
 		},
 		Hooks: login.Hooks{
 			ConfigSource: source,
-			ValidateFn:   noopValidate,
+			ValidateFn: func(context.Context, login.Options, config.NamespacedRESTConfig) (string, error) {
+				validateCalls.Add(1)
+				return "", nil
+			},
+		},
+	})
+	require.ErrorContains(t, err, "runtime-only Grafana proxy/TLS settings")
+	assert.Zero(t, validateCalls.Load(), "a non-durable credential must fail before validation")
+
+	_, err = config.Load(context.Background(), source)
+	require.ErrorIs(t, err, os.ErrNotExist, "failed login must not create a config")
+}
+
+func TestStoredProxyTokenReauthPreservesDestinationBinding(t *testing.T) {
+	t.Parallel()
+
+	const (
+		server = "https://grafana.example.invalid"
+		proxy  = "https://proxy.example.invalid"
+		token  = "stored-token"
+	)
+	source := configSource(t.TempDir())
+	seed := config.Config{}
+	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{
+		Server:        server,
+		ProxyEndpoint: proxy,
+		APIToken:      token,
+		AuthMethod:    "token",
+		OrgID:         1,
+	}})
+	seed.SetContext("default", true, config.Context{Stack: "default"})
+	require.NoError(t, config.Write(t.Context(), source, seed))
+
+	_, err := login.Run(t.Context(), &login.Options{
+		Inputs: login.Inputs{
+			Server:               server,
+			ContextName:          "default",
+			Target:               login.TargetOnPrem,
+			GrafanaToken:         token,
+			RuntimeProxyEndpoint: proxy,
+			PreserveStoredTLS:    true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: source,
+			ValidateFn: func(_ context.Context, opts login.Options, restCfg config.NamespacedRESTConfig) (string, error) {
+				assert.Equal(t, proxy, opts.RuntimeProxyEndpoint)
+				assert.Equal(t, server, restCfg.Host)
+				assert.Equal(t, token, restCfg.BearerToken)
+				return "12.0.0", nil
+			},
 		},
 	})
 	require.NoError(t, err)
 
-	cfg, err := config.Load(context.Background(), source)
+	persisted, err := config.Load(t.Context(), source)
 	require.NoError(t, err)
-	require.NotNil(t, cfg.Contexts["default"].Grafana.TLS)
-	assert.Equal(t, "stored.example.invalid", cfg.Contexts["default"].Grafana.TLS.ServerName)
-	assert.False(t, cfg.Contexts["default"].Grafana.TLS.Insecure,
-		"runtime-only TLS overrides must not be flattened into config")
+	assert.Equal(t, proxy, persisted.Contexts["default"].Grafana.ProxyEndpoint,
+		"token reauth must not silently clear a destination component covered by its binding")
 }
 
 func TestRuntimeOnlyMTLSFailsClosedOnNextInvocation(t *testing.T) {

@@ -1,9 +1,11 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -443,36 +445,92 @@ func checkCmd(configOpts *Options) *cobra.Command {
 			}
 
 			stdout := cmd.OutOrStdout()
-
-			cmdio.Success(stdout, "Configuration file: %s", cmdio.Green(cfg.Source))
-
-			switch {
-			case cfg.CurrentContext == "":
-				cmdio.Error(stdout, "Current context: %s", cmdio.Red("<undefined>"))
-			case !cfg.HasContext(cfg.CurrentContext):
-				cmdio.Error(stdout, "Current context: %s", cmdio.Red(config.ContextNotFound(cfg.CurrentContext).Error()))
-			default:
-				cmdio.Success(stdout, "Current context: %s", cmdio.Green(cfg.CurrentContext))
+			reportWriter := stdout
+			var agentReport bytes.Buffer
+			if agent.IsAgentMode() {
+				reportWriter = &agentReport
 			}
 
-			cmd.Println()
+			cmdio.Success(reportWriter, "Configuration file: %s", cmdio.Green(cfg.Source))
 
-			var checkErr error
+			failedChecks := 0
+			failureExitCodes := make(map[int]struct{})
+			recordFailure := func(err error) {
+				failedChecks++
+				exitCode := gcxerrors.ExitGeneralError
+				if err != nil {
+					detailedErr := fail.ErrorToDetailedError(err)
+					if detailedErr != nil && detailedErr.ExitCode != nil {
+						exitCode = *detailedErr.ExitCode
+					}
+				}
+				failureExitCodes[exitCode] = struct{}{}
+			}
+			switch {
+			case cfg.CurrentContext == "":
+				cmdio.Error(reportWriter, "Current context: %s", cmdio.Red("<undefined>"))
+				recordFailure(nil)
+			case !cfg.HasContext(cfg.CurrentContext):
+				cmdio.Error(reportWriter, "Current context: %s", cmdio.Red(config.ContextNotFound(cfg.CurrentContext).Error()))
+				recordFailure(nil)
+			default:
+				cmdio.Success(reportWriter, "Current context: %s", cmdio.Green(cfg.CurrentContext))
+			}
+
+			fmt.Fprintln(reportWriter)
+
 			for _, gCtx := range cfg.Contexts {
-				if err := checkContext(cmd, &cfg, gCtx, configOpts.ConfigSource()); err != nil {
-					checkErr = err
+				if err := cmd.Context().Err(); err != nil {
+					return err
+				}
+				if err := checkContext(cmd, &cfg, gCtx, configOpts.ConfigSource(), reportWriter); err != nil {
+					if ctxErr := cmd.Context().Err(); ctxErr != nil {
+						return ctxErr
+					}
+					if errors.Is(err, context.Canceled) {
+						return context.Canceled
+					}
+					recordFailure(err)
 				}
 			}
 
-			return checkErr
+			if failedChecks != 0 {
+				exitCode := gcxerrors.ExitGeneralError
+				if len(failureExitCodes) == 1 {
+					for code := range failureExitCodes {
+						exitCode = code
+					}
+				}
+				if agent.IsAgentMode() {
+					if _, err := cmd.ErrOrStderr().Write(agentReport.Bytes()); err != nil {
+						return fmt.Errorf("write configuration check report: %w", err)
+					}
+					return gcxerrors.DetailedError{
+						Summary:  "Configuration check failed",
+						Details:  strings.TrimSpace(agentReport.String()),
+						ExitCode: &exitCode,
+						Suggestions: []string{
+							"Review the failed contexts in the diagnostic report",
+							"Resolve the reported issues, then rerun: gcx config check",
+						},
+					}
+				}
+				return fmt.Errorf("%d configuration check(s) failed: %w", failedChecks, gcxerrors.NewAlreadyReportedError(exitCode))
+			}
+
+			if agent.IsAgentMode() {
+				if _, err := stdout.Write(agentReport.Bytes()); err != nil {
+					return fmt.Errorf("write configuration check report: %w", err)
+				}
+			}
+			return nil
 		},
 	}
 
 	return cmd
 }
 
-func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, source config.Source) error {
-	stdout := cmd.OutOrStdout()
+func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, source config.Source, stdout io.Writer) error {
 	title := "Context: "
 	titleLen := len(title) + len(gCtx.Name)
 	title += cmdio.Bold(gCtx.Name)
@@ -490,12 +548,12 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 			for _, suggestion := range detailedErr.Suggestions {
 				fmt.Fprintf(stdout, "  • %s\n", suggestion)
 			}
-			stdout.Write([]byte("\n"))
+			fmt.Fprintln(stdout)
 		}
 	}
 
-	cmd.Println(cmdio.Yellow(title))
-	cmd.Println(cmdio.Yellow(strings.Repeat("=", titleLen)))
+	fmt.Fprintln(stdout, cmdio.Yellow(title))
+	fmt.Fprintln(stdout, cmdio.Yellow(strings.Repeat("=", titleLen)))
 
 	// Load resolves only the current context eagerly. config check validates
 	// every context, so resolve this context's deferred keychain references
@@ -510,7 +568,7 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
 
 		printSuggestions(err)
-		return nil
+		return err
 	}
 
 	cmdio.Success(stdout, "Configuration: %s", cmdio.Green("valid"))
@@ -520,7 +578,9 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 		// Validate above uses the same selector, so this is defensive against a
 		// future validation/transport drift rather than an expected branch.
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(err.Error()))
-		return nil
+		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
+		return err
 	}
 	switch {
 	case gCtx.Grafana.AuthMethod == "":
@@ -540,7 +600,9 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 	restCfg, err := gCtx.ToRESTConfig(cmd.Context())
 	if err != nil {
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(err.Error()))
-		return nil
+		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
+		return err
 	}
 	restCfg.WireTokenPersistence(cmd.Context(), source, gCtx.Name, gCtx.Stack, cfg.Sources)
 
@@ -548,7 +610,7 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 		cmdio.Error(stdout, "Connectivity: %s", cmdio.Red(summarizeError(err)))
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
 		printSuggestions(err)
-		return nil
+		return err
 	}
 
 	cmdio.Success(stdout, "Connectivity: %s", cmdio.Green("online"))
@@ -556,7 +618,8 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 	version, raw, err := grafana.GetVersion(cmd.Context(), gCtx)
 	if err != nil {
 		cmdio.Error(stdout, "Grafana version: %s", cmdio.Red(summarizeError(err))+"\n")
-		return nil
+		printSuggestions(err)
+		return err
 	}
 
 	switch {
@@ -570,7 +633,10 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 	case version == nil:
 		cmdio.Warning(stdout, "Grafana version: %s\n", cmdio.Yellow("unparseable: "+raw))
 	case version.Major() < 12:
-		return &grafana.VersionIncompatibleError{Version: version}
+		err := &grafana.VersionIncompatibleError{Version: version}
+		cmdio.Error(stdout, "Grafana version: %s", cmdio.Red(err.Error())+"\n")
+		printSuggestions(err)
+		return err
 	default:
 		cmdio.Success(stdout, "Grafana version: %s", cmdio.Green(version.String())+"\n")
 	}

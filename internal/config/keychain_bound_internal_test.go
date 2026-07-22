@@ -230,6 +230,41 @@ func boundStackTestConfig(server, token string) Config {
 	}
 }
 
+func TestGrafanaTokenBindingMatchesCompleteAuthorityBoundary(t *testing.T) {
+	store := newBoundTestStore()
+	useBoundTestStore(t, store)
+	server := "https://example.invalid"
+	pathA := filepath.Join(t.TempDir(), "a.yaml")
+	pathB := filepath.Join(t.TempDir(), "b.yaml")
+	require.NoError(t, Write(t.Context(), ExplicitConfigFile(pathA), boundStackTestConfig(server, "token")))
+	require.NoError(t, Write(t.Context(), ExplicitConfigFile(pathB), boundStackTestConfig(server, "token")))
+
+	stored, err := Load(t.Context(), ExplicitConfigFile(pathA))
+	require.NoError(t, err)
+	effective, err := Load(t.Context(), ExplicitConfigFile(pathA))
+	require.NoError(t, err)
+	assert.True(t, GrafanaTokenBindingMatches(
+		stored.Contexts["default"],
+		effective.Contexts["default"],
+		server,
+	))
+
+	otherSource, err := Load(t.Context(), ExplicitConfigFile(pathB))
+	require.NoError(t, err)
+	assert.False(t, GrafanaTokenBindingMatches(
+		stored.Contexts["default"],
+		otherSource.Contexts["default"],
+		server,
+	), "an identical destination in another config file is a different credential authority")
+
+	effective.Contexts["default"].Grafana.ProxyEndpoint = "https://proxy.example.invalid"
+	assert.False(t, GrafanaTokenBindingMatches(
+		stored.Contexts["default"],
+		effective.Contexts["default"],
+		server,
+	), "proxy and TLS components must participate in the complete binding")
+}
+
 func boundStackTestBinding(t *testing.T, path, name, server string, field credentials.Field) credentials.Binding {
 	t.Helper()
 	source, err := canonicalConfigSource(path)

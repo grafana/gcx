@@ -46,6 +46,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*gcxerrors.DetailedError, bool){
+		convertAlreadyReported,             // Command already rendered a complete diagnostic report
 		convertWaitTimeoutEmitted,          // Wait timeout already emitted fused envelope — suppress secondary output
 		convertUnknownFieldSelectionErrors, // --json unknown-field validation
 		convertJQRuntimeErrors,             // --jq runtime failures — includes output shape summary
@@ -81,6 +82,17 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 	}
 
 	return fallbackDetailedError(err)
+}
+
+// convertAlreadyReported suppresses a secondary error envelope when a command
+// has already rendered its complete diagnostic report. Returning (nil, true)
+// preserves the non-zero process exit without duplicating human output or
+// appending JSON to machine-readable output.
+func convertAlreadyReported(err error) (*gcxerrors.DetailedError, bool) {
+	if errors.Is(err, gcxerrors.ErrAlreadyReported) {
+		return nil, true
+	}
+	return nil, false
 }
 
 func convertUsageErrors(err error) (*gcxerrors.DetailedError, bool) {

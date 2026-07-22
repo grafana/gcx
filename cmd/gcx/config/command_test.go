@@ -110,14 +110,19 @@ func writeUserConfig(t *testing.T, userDir, content string) string {
 // tree and returns the combined stdout/stderr plus error.
 func runConfigCmd(t *testing.T, args ...string) (string, error) {
 	t.Helper()
-	cmd := config.Command()
+	return runConfigCmdContext(t, t.Context(), args...)
+}
+
+func runConfigCmdContext(t *testing.T, ctx context.Context, args ...string) (string, error) {
+	t.Helper()
+	cmd := config.Command() //nolint:contextcheck // Cobra receives the caller's context through ExecuteContext below.
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 	buf := &bytes.Buffer{}
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
 	cmd.SetArgs(args)
-	err := cmd.Execute()
+	err := cmd.ExecuteContext(ctx)
 	return buf.String(), err
 }
 

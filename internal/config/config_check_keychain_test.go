@@ -13,6 +13,7 @@ import (
 	commandconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/credentials"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -125,7 +126,7 @@ current-context: current
 			}
 
 			output, err := runConfigCheck(t, path)
-			require.NoError(t, err)
+			require.ErrorIs(t, err, gcxerrors.ErrAlreadyReported)
 			if tc.wantRequests {
 				require.Positive(t, requests.Load())
 				headerMu.Lock()

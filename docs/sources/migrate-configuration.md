@@ -78,10 +78,15 @@ Before the first file changes, gcx preflights every participating layer. If
 independent conversion would change the effective configuration, the command
 stops with every source untouched. After each successful step, gcx prints the
 paths and exact `config set --file ... version 1` commands for all legacy layers
-that remain. If an interrupted sequence contains overlapping entry names,
-ordinary commands fail with those same deterministic completion commands rather
-than a generic load error. You can always open a remaining source without
-loading it by running the corresponding `gcx config edit <layer>` command.
+that remain. If an interrupted sequence contains overlapping entry names, gcx
+offers those completion commands only when the already-converted files still
+match their private migration backups and the original all-legacy set passes
+the semantic-equivalence preflight. An arbitrary version 1 file combined with
+an overlapping legacy layer receives manual `gcx config edit <layer>` guidance
+instead; gcx will not suggest or allow a per-layer conversion that could replace
+a complete entry with a partial one. You can always open a remaining source
+without loading it by running the corresponding `gcx config edit <layer>`
+command.
 
 Use `--file system` only when you own that layer and have permission to update
 it. If gcx reports a semantic conflict, move the partial values into one trusted
@@ -203,4 +208,6 @@ gcx config view
 gcx config check
 ```
 
-`gcx config view` shows the effective configuration with secrets redacted; `gcx config check` validates every context, including connectivity.
+`gcx config view` shows the effective configuration with secrets redacted;
+`gcx config check` validates every context, including connectivity, and exits
+non-zero if any check fails.

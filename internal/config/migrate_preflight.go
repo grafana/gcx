@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"maps"
+	"os"
 	"reflect"
 	"strings"
 
+	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
@@ -21,11 +23,12 @@ type migrationLayer struct {
 
 // layeredMigrationIncompleteError describes an interrupted (or manually
 // created) mixed-schema layered configuration. It is deliberately typed so a
-// targeted --file write may finish one of the remaining legacy layers while
-// ordinary loads still fail with deterministic recovery instructions.
+// proven interrupted migration may finish a remaining legacy layer while an
+// unproven overlap remains fail-closed with edit-only recovery instructions.
 type layeredMigrationIncompleteError struct {
-	cause     error
-	remaining []ConfigSource
+	cause                    error
+	remaining                []ConfigSource
+	targetedMigrationAllowed bool
 }
 
 func (e *layeredMigrationIncompleteError) Error() string {
@@ -34,20 +37,40 @@ func (e *layeredMigrationIncompleteError) Error() string {
 	if e.cause != nil {
 		fmt.Fprintf(&b, " (%v)", e.cause)
 	}
-	b.WriteString("; no additional config files or credentials were changed. Complete every remaining legacy layer:\n")
-	b.WriteString(layeredMigrationSteps(e.remaining))
+	if e.targetedMigrationAllowed {
+		b.WriteString("; no additional config files or credentials were changed. Complete every remaining legacy layer:\n")
+		b.WriteString(layeredMigrationSteps(e.remaining))
+		return b.String()
+	}
+	b.WriteString("; no config files or credentials were changed. The overlapping entries require manual consolidation; edit the remaining legacy layers directly, then retry:\n")
+	b.WriteString(layeredMigrationRepairSteps(e.remaining))
 	return b.String()
 }
 
 func (e *layeredMigrationIncompleteError) Unwrap() error { return e.cause }
 
 func (e *layeredMigrationIncompleteError) includesLayer(layerType string) bool {
+	if !e.targetedMigrationAllowed {
+		return false
+	}
 	for _, source := range e.remaining {
 		if source.Type == layerType {
 			return true
 		}
 	}
 	return false
+}
+
+func layeredMigrationRepairSteps(sources []ConfigSource) string {
+	var b strings.Builder
+	for i, source := range sources {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		fmt.Fprintf(&b, "  %s\n", source.Path)
+		fmt.Fprintf(&b, "    repair: gcx config edit %s", source.Type)
+	}
+	return b.String()
 }
 
 func layeredMigrationSteps(sources []ConfigSource) string {
@@ -124,9 +147,18 @@ func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error
 
 	if hasLegacy && !allLegacy {
 		if err := rejectMixedLayerEntryOverlap(layers); err != nil {
+			// A mixed state is recoverable with targeted per-layer migration only
+			// when every current layer is provably the output of this migrator and
+			// the original all-legacy set passed the same semantic-equivalence proof
+			// used before the first file changed. An arbitrary v1 file plus a partial
+			// legacy overlay must never receive a command that atomically shadows the
+			// complete entry below it.
+			reconstructed, reconstructErr := reconstructInterruptedLegacyLayers(layers)
+			allowTargeted := reconstructErr == nil && proveLayeredLegacyConversion(reconstructed) == nil
 			return &layeredMigrationIncompleteError{
-				cause:     err,
-				remaining: remainingLegacySources(layers),
+				cause:                    err,
+				remaining:                remainingLegacySources(layers),
+				targetedMigrationAllowed: allowTargeted,
 			}
 		}
 	}
@@ -134,6 +166,132 @@ func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error
 		return nil
 	}
 
+	if err := proveLayeredLegacyConversion(layers); err != nil {
+		paths := make([]string, 0, len(sources))
+		for _, source := range sources {
+			paths = append(paths, source.Path)
+		}
+		return fmt.Errorf(
+			"cannot safely auto-migrate layered legacy configuration (%w); no config files or credentials were changed; consolidate the overlapping context fields or migrate the files manually (%s): %s",
+			err, docs.ConfigMigration, strings.Join(paths, ", "))
+	}
+	return nil
+}
+
+// reconstructInterruptedLegacyLayers proves that a mixed configuration is an
+// interrupted migration rather than an arbitrary combination of current and
+// legacy files. Every current layer must have a secure legacy backup whose
+// conversion matches the current document apart from opaque credential values.
+func reconstructInterruptedLegacyLayers(layers []migrationLayer) ([]migrationLayer, error) {
+	reconstructed := make([]migrationLayer, 0, len(layers))
+	for _, layer := range layers {
+		if layer.legacy != nil {
+			reconstructed = append(reconstructed, layer)
+			continue
+		}
+		backupPath := layer.source.Path + legacyBackupSuffix
+		info, err := os.Lstat(backupPath)
+		if err != nil {
+			return nil, fmt.Errorf("inspect migration backup %s: %w", backupPath, err)
+		}
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+			return nil, fmt.Errorf("migration backup %s is not a private regular file", backupPath)
+		}
+		contents, err := os.ReadFile(backupPath)
+		if err != nil {
+			return nil, fmt.Errorf("read migration backup %s: %w", backupPath, err)
+		}
+		if err := validateDeclaredConfigVersion(backupPath, contents); err != nil || !isLegacyConfig(contents) {
+			return nil, fmt.Errorf("migration backup %s is not a valid legacy config", backupPath)
+		}
+		var legacy legacyConfig
+		codec := &format.YAMLCodec{BytesAsBase64: true}
+		if err := codec.Decode(bytes.NewReader(contents), &legacy); err != nil {
+			return nil, UnmarshalError{File: backupPath, Err: err}
+		}
+		converted := convertLegacyConfig(&legacy, layer.source.Type, nil)
+		matches, err := sameMigrationDocumentShape(converted, layer.current)
+		if err != nil {
+			return nil, err
+		}
+		if !matches {
+			return nil, fmt.Errorf("current config %s does not match its migration backup", layer.source.Path)
+		}
+		reconstructed = append(reconstructed, migrationLayer{
+			source:   layer.source,
+			contents: contents,
+			legacy:   &legacy,
+		})
+	}
+	return reconstructed, nil
+}
+
+func sameMigrationDocumentShape(expected, actual *Config) (bool, error) {
+	want, err := migrationDocumentShape(expected)
+	if err != nil {
+		return false, err
+	}
+	got, err := migrationDocumentShape(actual)
+	if err != nil {
+		return false, err
+	}
+	return reflect.DeepEqual(want, got), nil
+}
+
+func migrationDocumentShape(cfg *Config) (map[string]any, error) {
+	codec := &format.YAMLCodec{BytesAsBase64: true}
+	var encoded bytes.Buffer
+	if err := codec.Encode(&encoded, cfg); err != nil {
+		return nil, err
+	}
+	var clone Config
+	if err := codec.Decode(bytes.NewReader(encoded.Bytes()), &clone); err != nil {
+		return nil, err
+	}
+	for _, stack := range clone.Stacks {
+		if stack == nil {
+			continue
+		}
+		if stack.Grafana != nil {
+			stack.Grafana.APIToken = configuredCredentialMarker(stack.Grafana.APIToken)
+			stack.Grafana.Password = configuredCredentialMarker(stack.Grafana.Password)
+			stack.Grafana.OAuthToken = configuredCredentialMarker(stack.Grafana.OAuthToken)
+			stack.Grafana.OAuthRefreshToken = configuredCredentialMarker(stack.Grafana.OAuthRefreshToken)
+		}
+		if synth := stack.Providers["synth"]; synth != nil {
+			if value, ok := synth["sm-token"]; ok {
+				synth["sm-token"] = configuredCredentialMarker(value)
+			}
+		}
+	}
+	for _, entry := range clone.Cloud {
+		if entry == nil {
+			continue
+		}
+		entry.Token = configuredCredentialMarker(entry.Token)
+		entry.OAuthToken = configuredCredentialMarker(entry.OAuthToken)
+	}
+	encoded.Reset()
+	if err := codec.Encode(&encoded, &clone); err != nil {
+		return nil, err
+	}
+	var shape map[string]any
+	if err := yaml.Unmarshal(encoded.Bytes(), &shape); err != nil {
+		return nil, err
+	}
+	return shape, nil
+}
+
+func configuredCredentialMarker(value string) string {
+	if value == "" {
+		return ""
+	}
+	return "<configured>"
+}
+
+// proveLayeredLegacyConversion compares the accepted pre-v1 field-level merge
+// with independent conversion followed by v1 atomic-entry merge.
+func proveLayeredLegacyConversion(layers []migrationLayer) error {
 	// Decode fresh copies for the old-semantics merge. The merge helpers are
 	// intentionally small and may reuse/mutate nested maps; using the layer
 	// objects themselves would contaminate the independent-conversion side of
@@ -161,17 +319,7 @@ func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error
 			actual = MergeConfigs(actual, *converted)
 		}
 	}
-
-	if err := compareMigratedEffectiveViews(expected, &actual); err != nil {
-		paths := make([]string, 0, len(sources))
-		for _, source := range sources {
-			paths = append(paths, source.Path)
-		}
-		return fmt.Errorf(
-			"cannot safely auto-migrate layered legacy configuration (%w); no config files or credentials were changed; consolidate the overlapping context fields or migrate the files manually (%s): %s",
-			err, docs.ConfigMigration, strings.Join(paths, ", "))
-	}
-	return nil
+	return compareMigratedEffectiveViews(expected, &actual)
 }
 
 func validateLegacyLayerReferences(source ConfigSource, legacy *legacyConfig) error {
@@ -222,7 +370,7 @@ func rejectMixedLayerEntryOverlap(layers []migrationLayer) error {
 			if prior, exists := seen[key]; exists {
 				if prior.legacy || layer.legacy != nil {
 					return fmt.Errorf(
-						"cannot safely auto-migrate mixed layered configuration: stack entry %q overlaps between %s and %s; no config files or credentials were changed; migrate layers explicitly (%s)",
+						"cannot safely auto-migrate mixed layered configuration: stack entry %q overlaps between %s and %s; no config files or credentials were changed; recovery must be verified before any layer changes (%s)",
 						name, prior.path, layer.source.Path, docs.ConfigMigration,
 					)
 				}
@@ -234,7 +382,7 @@ func rejectMixedLayerEntryOverlap(layers []migrationLayer) error {
 			if prior, exists := seen[key]; exists {
 				if prior.legacy || layer.legacy != nil {
 					return fmt.Errorf(
-						"cannot safely auto-migrate mixed layered configuration: cloud entry %q overlaps between %s and %s; no config files or credentials were changed; migrate layers explicitly (%s)",
+						"cannot safely auto-migrate mixed layered configuration: cloud entry %q overlaps between %s and %s; no config files or credentials were changed; recovery must be verified before any layer changes (%s)",
 						name, prior.path, layer.source.Path, docs.ConfigMigration,
 					)
 				}

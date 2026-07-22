@@ -133,6 +133,7 @@ func TestResolveNonInteractiveTokens(t *testing.T) {
 		flagCloud      string
 		sourceCtx      *config.Context
 		interactive    bool
+		explicitOAuth  bool
 		wantToken      string
 		wantCloudToken string
 	}{
@@ -167,12 +168,24 @@ func TestResolveNonInteractiveTokens(t *testing.T) {
 			sourceCtx: &config.Context{Grafana: &config.GrafanaConfig{APIToken: "glsa_env"}},
 			wantToken: "glsa_env",
 		},
+		{
+			name:           "explicit_oauth_suppresses_stored_grafana_token",
+			sourceCtx:      ctxWithTokens,
+			explicitOAuth:  true,
+			wantCloudToken: "glc_env",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			gotToken, gotCloud := resolveNonInteractiveTokens(tt.flagToken, tt.flagCloud, tt.sourceCtx, tt.interactive)
+			gotToken, gotCloud := resolveNonInteractiveTokens(
+				tt.flagToken,
+				tt.flagCloud,
+				tt.sourceCtx,
+				tt.interactive,
+				tt.explicitOAuth,
+			)
 			assert.Equal(t, tt.wantToken, gotToken, "grafana token mismatch")
 			assert.Equal(t, tt.wantCloudToken, gotCloud, "cloud token mismatch")
 		})
@@ -183,9 +196,19 @@ func TestResolveNonInteractiveTokensUsesEnvForNewContext(t *testing.T) {
 	t.Setenv("GRAFANA_TOKEN", "new-context-grafana-token")
 	t.Setenv("GRAFANA_CLOUD_TOKEN", "new-context-cloud-token")
 
-	grafanaToken, cloudToken := resolveNonInteractiveTokens("", "", nil, false)
+	grafanaToken, cloudToken := resolveNonInteractiveTokens("", "", nil, false, false)
 	assert.Equal(t, "new-context-grafana-token", grafanaToken)
 	assert.Equal(t, "new-context-cloud-token", cloudToken)
+}
+
+func TestResolveNonInteractiveTokensExplicitOAuthIgnoresEnvironmentToken(t *testing.T) {
+	t.Setenv("GRAFANA_TOKEN", "environment-grafana-token")
+	t.Setenv("GRAFANA_CLOUD_TOKEN", "environment-cloud-token")
+
+	grafanaToken, cloudToken := resolveNonInteractiveTokens("", "", nil, false, true)
+
+	assert.Empty(t, grafanaToken)
+	assert.Equal(t, "environment-cloud-token", cloudToken)
 }
 
 func TestUseExistingCloudEntryPreservesCredentialKindAndMetadata(t *testing.T) {
@@ -382,15 +405,195 @@ func TestServerChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
 	assert.Zero(t, requests.Load(), "destination mismatch must fail before any server probe")
 }
 
-func TestExistingGrafanaTokenIsNotOfferedForDifferentServer(t *testing.T) {
-	t.Parallel()
-	sourceCtx := &config.Context{Grafana: &config.GrafanaConfig{
-		Server:   "https://old.example.invalid",
-		APIToken: "old-token",
-	}}
+func TestProxyOrTLSChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*testing.T, *config.GrafanaConfig)
+	}{
+		{
+			name: "proxy",
+			configure: func(t *testing.T, grafana *config.GrafanaConfig) {
+				t.Helper()
+				grafana.ProxyEndpoint = "https://stored-proxy.example.invalid"
+				t.Setenv("GRAFANA_PROXY_ENDPOINT", "https://runtime-proxy.example.invalid")
+			},
+		},
+		{
+			name: "TLS trust material",
+			configure: func(t *testing.T, grafana *config.GrafanaConfig) {
+				t.Helper()
+				storedCA := filepath.Join(t.TempDir(), "stored-ca.pem")
+				runtimeCA := filepath.Join(t.TempDir(), "runtime-ca.pem")
+				require.NoError(t, os.WriteFile(storedCA, []byte("stored CA"), 0o600))
+				require.NoError(t, os.WriteFile(runtimeCA, []byte("runtime CA"), 0o600))
+				grafana.TLS = &config.TLS{CAFile: storedCA}
+				t.Setenv("GRAFANA_TLS_CA_FILE", runtimeCA)
+			},
+		},
+	}
 
-	assert.Empty(t, existingGrafanaTokenForServer("https://new.example.invalid", sourceCtx))
-	assert.Equal(t, "old-token", existingGrafanaTokenForServer("https://old.example.invalid", sourceCtx))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GCX_AGENT_MODE", "false")
+			t.Setenv("GRAFANA_TOKEN", " \t ")
+			unsetEnvForTest(t, "GRAFANA_PROXY_ENDPOINT")
+			unsetEnvForTest(t, "GRAFANA_TLS_CERT_FILE")
+			unsetEnvForTest(t, "GRAFANA_TLS_KEY_FILE")
+			unsetEnvForTest(t, "GRAFANA_TLS_CA_FILE")
+			agent.ResetForTesting()
+			t.Cleanup(agent.ResetForTesting)
+
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				requests.Add(1)
+			}))
+			t.Cleanup(server.Close)
+
+			grafana := &config.GrafanaConfig{
+				Server:     server.URL,
+				APIToken:   "stored-token",
+				AuthMethod: "token",
+				OrgID:      1,
+			}
+			tt.configure(t, grafana)
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			seed := config.Config{}
+			seed.SetStack("default", config.StackConfig{Grafana: grafana})
+			seed.SetContext("default", true, config.Context{Stack: "default"})
+			require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+			before, err := os.ReadFile(path)
+			require.NoError(t, err)
+
+			cmd := Command()
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{"default", "--config", path, "--yes"})
+
+			err = cmd.ExecuteContext(t.Context())
+			require.ErrorContains(t, err, "Stored Grafana token cannot be reused")
+			assert.Zero(t, requests.Load(), "binding mismatch must fail before target detection or validation")
+			after, readErr := os.ReadFile(path)
+			require.NoError(t, readErr)
+			assert.Equal(t, before, after)
+		})
+	}
+}
+
+func TestRuntimeOnlyDestinationRejectsFreshTokenBeforeNonDurablePersistence(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*testing.T)
+	}{
+		{
+			name: "proxy",
+			configure: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("GRAFANA_PROXY_ENDPOINT", "https://runtime-proxy.example.invalid")
+			},
+		},
+		{
+			name: "TLS trust material",
+			configure: func(t *testing.T) {
+				t.Helper()
+				runtimeCA := filepath.Join(t.TempDir(), "runtime-ca.pem")
+				require.NoError(t, os.WriteFile(runtimeCA, []byte("runtime CA"), 0o600))
+				t.Setenv("GRAFANA_TLS_CA_FILE", runtimeCA)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GCX_AGENT_MODE", "false")
+			unsetEnvForTest(t, "GRAFANA_PROXY_ENDPOINT")
+			unsetEnvForTest(t, "GRAFANA_TLS_CERT_FILE")
+			unsetEnvForTest(t, "GRAFANA_TLS_KEY_FILE")
+			unsetEnvForTest(t, "GRAFANA_TLS_CA_FILE")
+			agent.ResetForTesting()
+			t.Cleanup(agent.ResetForTesting)
+			tt.configure(t)
+
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				requests.Add(1)
+			}))
+			t.Cleanup(server.Close)
+
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			seed := config.Config{}
+			seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{
+				Server: server.URL,
+				OrgID:  1,
+			}})
+			seed.SetContext("default", true, config.Context{Stack: "default"})
+			require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+			before, err := os.ReadFile(path)
+			require.NoError(t, err)
+
+			cmd := Command()
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{
+				"default",
+				"--config", path,
+				"--server", server.URL,
+				"--token", "fresh-token",
+				"--yes",
+			})
+
+			err = cmd.ExecuteContext(t.Context())
+			require.ErrorContains(t, err, "runtime-only Grafana proxy/TLS settings")
+			assert.Zero(t, requests.Load(), "a non-durable login must fail before any server probe")
+			after, readErr := os.ReadFile(path)
+			require.NoError(t, readErr)
+			assert.Equal(t, before, after, "failed login must not persist the fresh credential")
+
+			fresh, loadErr := config.Load(t.Context(), config.ExplicitConfigFile(path), func(cfg *config.Config) error {
+				return config.ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+			})
+			require.NoError(t, loadErr)
+			assert.Empty(t, fresh.Contexts["default"].Grafana.APIToken,
+				"a fresh process with the same runtime destination must not observe a broken persisted credential")
+		})
+	}
+}
+
+func TestExistingGrafanaTokenIsOfferedOnlyForMatchingCompleteBinding(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{
+		Server:        "https://old.example.invalid",
+		ProxyEndpoint: "https://proxy.example.invalid",
+		APIToken:      "old-token",
+	}})
+	seed.SetContext("default", true, config.Context{Stack: "default"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	stored, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+	effective, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+	assert.Equal(t, "old-token", existingGrafanaTokenForDestination(
+		"https://old.example.invalid",
+		stored.Contexts["default"],
+		effective.Contexts["default"],
+	))
+	assert.Empty(t, existingGrafanaTokenForDestination(
+		"https://new.example.invalid",
+		stored.Contexts["default"],
+		effective.Contexts["default"],
+	))
+
+	effective.Contexts["default"].Grafana.ProxyEndpoint = "https://other-proxy.example.invalid"
+	assert.Empty(t, existingGrafanaTokenForDestination(
+		"https://old.example.invalid",
+		stored.Contexts["default"],
+		effective.Contexts["default"],
+	), "interactive login must not offer a token after a proxy binding change")
 }
 
 func TestEnvironmentTokensCountAsExplicitCredentialIntent(t *testing.T) {
@@ -430,7 +633,7 @@ func TestWhitespaceEnvironmentTokensAreNotExplicitOrSelected(t *testing.T) {
 		Grafana:    &config.GrafanaConfig{APIToken: "stored-grafana-token"},
 		CloudEntry: &config.CloudEntry{Token: "stored-cloud-token"},
 	}
-	grafanaToken, cloudToken := resolveNonInteractiveTokens("", "", sourceCtx, false)
+	grafanaToken, cloudToken := resolveNonInteractiveTokens("", "", sourceCtx, false, false)
 	assert.Equal(t, "stored-grafana-token", grafanaToken)
 	assert.Equal(t, "stored-cloud-token", cloudToken)
 }
@@ -514,13 +717,18 @@ func TestLoginTLSFromEnvironmentSupportsNewContext(t *testing.T) {
 	assert.Equal(t, "/tmp/ca.crt", tlsConfig.CAFile)
 }
 
-func TestWarnRuntimeOnlyTLSExplainsThatLoginIsNotDurable(t *testing.T) {
+func TestWarnRuntimeOnlyDestinationExplainsThatLoginIsNotDurable(t *testing.T) {
 	var out bytes.Buffer
-	warnRuntimeOnlyTLS(&out)
+	warnRuntimeOnlyDestination(&out)
 
+	assert.Contains(t, out.String(), "GRAFANA_PROXY_ENDPOINT")
 	assert.Contains(t, out.String(), "GRAFANA_TLS_*")
-	assert.Contains(t, out.String(), "were not saved")
-	assert.Contains(t, out.String(), "Future commands must provide the same environment variables")
+	assert.Contains(t, out.String(), "were not written to config")
+	assert.Contains(t, out.String(), "Persist those settings")
+	assert.True(t, shouldWarnRuntimeOnlyDestination(true, internallogin.Result{AuthMethod: "mtls"}))
+	assert.False(t, shouldWarnRuntimeOnlyDestination(true, internallogin.Result{AuthMethod: "token"}),
+		"bearer mismatches are rejected instead of reaching the success advisory")
+	assert.False(t, shouldWarnRuntimeOnlyDestination(false, internallogin.Result{AuthMethod: "mtls"}))
 }
 
 func TestCloudLoginEndpointsUseCoherentEnvironmentIntent(t *testing.T) {
