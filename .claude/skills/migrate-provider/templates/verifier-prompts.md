@@ -49,7 +49,7 @@ Every TypedCRUD resource MUST be verified via the adapter path:
 
 ```bash
 # Registration visible:
-gcx --context=$CTX resources schemas -o json | jq 'to_entries[] | select(.key | test("{group}"))'
+gcx --context=$CTX resources list-types -o json | jq 'to_entries[] | select(.key | test("{group}"))'
 
 # Envelope + deserialization:
 gcx --context=$CTX resources get {alias} -o json | head -5

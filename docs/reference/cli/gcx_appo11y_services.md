@@ -24,8 +24,8 @@ Inspect Application Observability services discovered from telemetry
 
 * [gcx appo11y](gcx_appo11y.md)	 - Manage Grafana App Observability settings
 * [gcx appo11y services get](gcx_appo11y_services_get.md)	 - Inspect a single Application Observability service: metadata + RED snapshot.
-* [gcx appo11y services labels](gcx_appo11y_services_labels.md)	 - Discover the labels (and values) available to --filter and --group-by for a service.
 * [gcx appo11y services list](gcx_appo11y_services_list.md)	 - List Application Observability services discovered from target_info/traces_target_info telemetry.
+* [gcx appo11y services list-labels](gcx_appo11y_services_list-labels.md)	 - Discover the labels (and values) available to --filter and --group-by for a service.
 * [gcx appo11y services list-operations](gcx_appo11y_services_list-operations.md)	 - List a service's operations with per-operation RED (span_name × rate/errors/latency).
 * [gcx appo11y services map](gcx_appo11y_services_map.md)	 - Show a service's neighbourhood: who calls it (callers) and who it calls (callees).
 

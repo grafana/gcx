@@ -356,7 +356,7 @@ gcx
   +-- config             (--config, --context as persistent flags)
   |     +-- check, current-context, list-contexts, set, unset, use-context, view
   +-- resources          (--config, --context as persistent flags)
-  |     +-- get, schemas, pull, push, delete, edit, validate
+  |     +-- get, list-types, list-examples, pull, push, delete, edit, validate
   +-- datasources        (--config, --context as persistent flags)
   |     +-- get, list, prometheus, loki, pyroscope, tempo, generic
   |     (each kind subgroup exposes its own `query` subcommand)

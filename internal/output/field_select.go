@@ -105,6 +105,22 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 		return c.json.Encode(dst, extractFields(v.Object, c.fields))
 
 	case map[string]any:
+		// A dynamic map is treated as a list envelope only when it carries
+		// the reserved list_meta key — attaching the key is the producer's
+		// opt-in to the contract. The map may hold native Go values (a
+		// *ListMeta, a []map[string]any or typed item slice), so envelope
+		// handling runs on a JSON-normalized copy; the key-presence check
+		// happens before normalization so native metadata values opt in too,
+		// and the reserved shape is validated after. Maps without the key —
+		// raw passthrough payloads (e.g. gcx api responses that happen to be
+		// items-shaped) — keep whole-object selection on the original value.
+		if _, ok := v[ListMetaKey]; ok {
+			if m, err := toMap(v); err == nil && hasListMetaEntry(m) {
+				if out, ok := c.envelopeFieldSelection(m); ok {
+					return c.json.Encode(dst, out)
+				}
+			}
+		}
 		return c.json.Encode(dst, extractFields(v, c.fields))
 
 	default:
@@ -125,32 +141,50 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 			return c.json.Encode(dst, extracted)
 		}
 
-		// If the value serialized to an object with an "items" array treat it
-		// as a collection (covers the printItems struct used in get.go). Preserve
-		// pagination metadata from the list envelope even when item fields are
-		// selected, so callers can detect and fetch additional pages.
-		if raw, ok := m["items"]; ok {
-			items := toSliceOfMaps(raw)
-			extracted := make([]map[string]any, len(items))
-			for i, item := range items {
-				extracted[i] = extractFields(item, c.fields)
-			}
-			return c.json.Encode(dst, listFieldSelectionOutput(extracted, paginationMetadataFromObjectMap(m)))
-		}
-
-		// Single-key list envelope (e.g. {"datasources": [...]}): apply field
-		// selection per item and preserve the wrapper key. No pagination
-		// metadata by construction (the envelope has exactly one key).
-		if key, items, ok := singleKeyItems(m); ok {
-			extracted := make([]map[string]any, len(items))
-			for i, item := range items {
-				extracted[i] = extractFields(item, c.fields)
-			}
-			return c.json.Encode(dst, map[string]any{key: extracted})
+		if out, ok := c.envelopeFieldSelection(m); ok {
+			return c.json.Encode(dst, out)
 		}
 
 		return c.json.Encode(dst, extractFields(m, c.fields))
 	}
+}
+
+// envelopeFieldSelection applies per-item field selection when m is a list
+// envelope, returning the selected output and true. Two envelope shapes are
+// recognized:
+//
+//   - an "items"-keyed map (covers the printItems struct used in get.go and
+//     the k8s list shape) — pagination metadata from the envelope is
+//     preserved so callers can detect and fetch additional pages;
+//   - a single-key list envelope (e.g. {"datasources": [...]}), optionally
+//     with a reserved list_meta sibling.
+//
+// The reserved list_meta truncation-metadata entry is re-attached in both
+// cases so the signal survives field selection. Returns false for any other
+// shape (the caller falls back to whole-object selection).
+func (c *FieldSelectCodec) envelopeFieldSelection(m map[string]any) (map[string]any, bool) {
+	if raw, ok := m["items"]; ok {
+		items := toSliceOfMaps(raw)
+		extracted := make([]map[string]any, len(items))
+		for i, item := range items {
+			extracted[i] = extractFields(item, c.fields)
+		}
+		out := listFieldSelectionOutput(extracted, paginationMetadataFromObjectMap(m))
+		attachListMetaEntry(out, m)
+		return out, true
+	}
+
+	if key, items, ok := singleKeyItems(m); ok {
+		extracted := make([]map[string]any, len(items))
+		for i, item := range items {
+			extracted[i] = extractFields(item, c.fields)
+		}
+		out := map[string]any{key: extracted}
+		attachListMetaEntry(out, m)
+		return out, true
+	}
+
+	return nil, false
 }
 
 func (c *FieldSelectCodec) Decode(src goio.Reader, value any) error {
@@ -232,6 +266,15 @@ func listFieldSelectionOutput(items []map[string]any, metadata map[string]any) m
 	return out
 }
 
+// attachListMetaEntry copies the reserved ListMetaKey truncation-metadata
+// object from the source envelope into the field-selection output, so a
+// truncated page stays machine-legible under --json field selection.
+func attachListMetaEntry(out, src map[string]any) {
+	if lm, ok := src[ListMetaKey].(map[string]any); ok {
+		out[ListMetaKey] = lm
+	}
+}
+
 func paginationMetadataFromUnstructuredList(list unstructured.UnstructuredList) map[string]any {
 	metadata := make(map[string]any, 3)
 	if token := list.GetContinue(); token != "" {
@@ -277,15 +320,20 @@ func paginationMetadataValuePresent(value any) bool {
 }
 
 // singleKeyItems reports whether m is a single-key list envelope: exactly one
-// key whose value is an array of objects (or an empty array). Provider list
-// commands wrap their items under such keys (e.g. {"datasources": [...]}).
+// key whose value is an array of objects (or an empty array), optionally
+// accompanied by the reserved ListMetaKey truncation-metadata object.
+// Provider list commands wrap their items under such keys (e.g.
+// {"datasources": [...]} or {"datasources": [...], "list_meta": {...}}).
 // Callers must check the k8s "items" shape first — that path carries
 // pagination metadata and a fixed output shape.
 func singleKeyItems(m map[string]any) (string, []map[string]any, bool) {
-	if len(m) != 1 {
+	if nonListMetaKeyCount(m) != 1 {
 		return "", nil, false
 	}
 	for key, raw := range m {
+		if isListMetaEntry(key, raw) {
+			continue
+		}
 		arr, ok := raw.([]any)
 		if !ok {
 			return "", nil, false
@@ -298,6 +346,45 @@ func singleKeyItems(m map[string]any) (string, []map[string]any, bool) {
 		return key, items, true
 	}
 	return "", nil, false
+}
+
+// nonListMetaKeyCount counts m's keys excluding a reserved ListMetaKey entry
+// (see isListMetaEntry). Used to recognize list envelopes regardless of
+// whether truncation metadata rides alongside the items key.
+func nonListMetaKeyCount(m map[string]any) int {
+	n := 0
+	for key, val := range m {
+		if isListMetaEntry(key, val) {
+			continue
+		}
+		n++
+	}
+	return n
+}
+
+// isListMetaEntry reports whether the key/value pair is the reserved
+// truncation-metadata sibling: the ListMetaKey key holding an object (or an
+// explicit null). Any other value shape under the key is not treated as
+// metadata, so unrelated payloads that happen to use the name keep their
+// pre-reservation behavior.
+func isListMetaEntry(key string, val any) bool {
+	if key != ListMetaKey {
+		return false
+	}
+	if val == nil {
+		return true
+	}
+	_, ok := val.(map[string]any)
+	return ok
+}
+
+// hasListMetaEntry reports whether m carries the reserved truncation-metadata
+// sibling (see isListMetaEntry). Producers opt into the list-envelope
+// treatment of dynamic maps by attaching the reserved key; maps without it
+// keep their pre-reservation behavior.
+func hasListMetaEntry(m map[string]any) bool {
+	val, ok := m[ListMetaKey]
+	return ok && isListMetaEntry(ListMetaKey, val)
 }
 
 // toSliceOfMaps converts an any value to []map[string]any. Values that are

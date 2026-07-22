@@ -29,6 +29,6 @@ Use these values in the 'provider' and 'model' fields of an llm_judge evaluator 
 ### SEE ALSO
 
 * [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
-* [gcx agento11y judge models](gcx_agento11y_judge_models.md)	 - List available judge models.
-* [gcx agento11y judge providers](gcx_agento11y_judge_providers.md)	 - List available judge providers.
+* [gcx agento11y judge list-models](gcx_agento11y_judge_list-models.md)	 - List available judge models.
+* [gcx agento11y judge list-providers](gcx_agento11y_judge_list-providers.md)	 - List available judge providers.
 

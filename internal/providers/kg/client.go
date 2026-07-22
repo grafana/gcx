@@ -974,7 +974,7 @@ func (c *Client) UpsertEntity(ctx context.Context, req EntityWriteRequest) (*Ent
 // DeleteEntity deletes a custom entity identified by (domain, type, name, scope).
 // Identity travels as query params on the collection path (domain, type, name,
 // and optional scope[key]=value); there is no request body. Scope is
-// identity-significant and must match the value used at create.
+// identity-significant and must match the value used at upsert.
 func (c *Client) DeleteEntity(ctx context.Context, domain, entityType, name string, scope map[string]string) error {
 	path := fmt.Sprintf(kgEntitiesPathFmt, url.PathEscape(c.namespace))
 	q := url.Values{}

@@ -164,6 +164,8 @@ func newProjectsCommand(loader CloudConfigLoader) *cobra.Command {
 		newProjectsCreateCommand(loader),
 		newProjectsUpdateCommand(loader),
 		newProjectsDeleteCommand(loader),
+		newListAllowedLoadZonesCommand(loader),
+		newUpdateAllowedLoadZonesCommand(loader),
 	)
 	return cmd
 }
@@ -520,6 +522,7 @@ func newTestsCommand(loader CloudConfigLoader) *cobra.Command {
 		newTestsUpdateCommand(loader),
 		newTestsUpdateScriptCommand(loader),
 		newTestsDeleteCommand(loader),
+		newTestsDeleteScheduleCommand(loader),
 	)
 	return cmd
 }
@@ -841,15 +844,44 @@ func newTestsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
+// newTestsDeleteScheduleCommand deletes a load test's schedule. The schedule is
+// a singleton sub-resource addressed by the parent load test's ID, so the
+// command is an operation-subject compound under `load-tests` rather than a
+// leaf of the `schedules` group (whose siblings take a schedule's own ID).
+func newTestsDeleteScheduleCommand(loader CloudConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "delete-schedule <load-test-id>",
+		Short: "Delete the schedule for a k6 load test.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid load test ID: %w", err)
+			}
+			client, _, err := authenticatedClient(ctx, loader)
+			if err != nil {
+				return err
+			}
+			if err := client.DeleteScheduleByLoadTest(ctx, id); err != nil {
+				return err
+			}
+			cmdio.Success(cmd.OutOrStdout(), "Deleted schedule for load test %d", id)
+			return nil
+		},
+	}
+	return cmd
+}
+
 // ---------------------------------------------------------------------------
-// runs commands (backward-compat alias)
+// runs commands (backward-compat run-history surface; consolidation with the
+// test-run group is pending an operator decision)
 // ---------------------------------------------------------------------------
 
 func newRunsCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "runs",
-		Short:   "Manage k6 test runs.",
-		Aliases: []string{"run"},
+		Use:   "runs",
+		Short: "Manage k6 test runs.",
 	}
 	cmd.AddCommand(newRunsListCommand(loader))
 	return cmd
@@ -1248,7 +1280,6 @@ func newSchedulesCommand(loader CloudConfigLoader) *cobra.Command {
 		newSchedulesGetCommand(loader),
 		newSchedulesCreateCommand(loader),
 		newSchedulesUpdateCommand(loader),
-		newSchedulesDeleteCommand(loader),
 	)
 	return cmd
 }
@@ -1341,7 +1372,7 @@ func (o *schedulesGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newSchedulesGetCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newAllowedProjectsListCommand but different API calls.
+func newSchedulesGetCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newListAllowedProjectsCommand but different API calls.
 	opts := &schedulesGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id>",
@@ -1470,31 +1501,6 @@ func newSchedulesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newSchedulesDeleteCommand(loader CloudConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "delete <load-test-id>",
-		Short: "Delete the schedule for a k6 load test.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			id, err := strconv.Atoi(args[0])
-			if err != nil {
-				return fmt.Errorf("invalid load test ID: %w", err)
-			}
-			client, _, err := authenticatedClient(ctx, loader)
-			if err != nil {
-				return err
-			}
-			if err := client.DeleteScheduleByLoadTest(ctx, id); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted schedule for load test %d", id)
-			return nil
-		},
-	}
-	return cmd
-}
-
 // ---------------------------------------------------------------------------
 // load-zones commands
 // ---------------------------------------------------------------------------
@@ -1509,8 +1515,8 @@ func newLoadZonesCommand(loader CloudConfigLoader) *cobra.Command {
 		newLoadZonesListCommand(loader),
 		newLoadZonesCreateCommand(loader),
 		newLoadZonesDeleteCommand(loader),
-		newAllowedProjectsCommand(loader),
-		newAllowedLoadZonesCommand(loader),
+		newListAllowedProjectsCommand(loader),
+		newUpdateAllowedProjectsCommand(loader),
 	)
 	return cmd
 }
@@ -1655,7 +1661,12 @@ func newLoadZonesDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// allowed-projects sub-commands (under load-zones)
+// allowed-projects compounds (under load-zones)
+//
+// The allowed-projects membership set is addressed by the parent load zone's
+// ID and has no identity of its own, so the two commands are operation-subject
+// compounds directly under `load-zones` (list-allowed-projects /
+// update-allowed-projects) rather than a nested noun group.
 // ---------------------------------------------------------------------------
 
 // AllowedProjectTableCodec renders allowed projects as a tabular table.
@@ -1684,18 +1695,6 @@ func (c *AllowedProjectTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-func newAllowedProjectsCommand(loader CloudConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "allowed-projects",
-		Short: "Manage projects allowed to use a load zone.",
-	}
-	cmd.AddCommand(
-		newAllowedProjectsListCommand(loader),
-		newAllowedProjectsUpdateCommand(loader),
-	)
-	return cmd
-}
-
 type allowedProjectsListOpts struct {
 	IO cmdio.Options
 }
@@ -1706,10 +1705,10 @@ func (o *allowedProjectsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newAllowedProjectsListCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newAllowedLoadZonesListCommand but different API calls.
+func newListAllowedProjectsCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newListAllowedLoadZonesCommand but different API calls.
 	opts := &allowedProjectsListOpts{}
 	cmd := &cobra.Command{
-		Use:   "list <load-zone-id>",
+		Use:   "list-allowed-projects <load-zone-id>",
 		Short: "List projects allowed to use a load zone.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1741,14 +1740,14 @@ type allowedProjectsUpdateOpts struct {
 }
 
 func (o *allowedProjectsUpdateOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.File, "filename", "f", "", "File containing project IDs (JSON array)")
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the complete replacement set of project IDs (JSON array)")
 }
 
-func newAllowedProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newAllowedLoadZonesUpdateCommand but different API calls.
+func newUpdateAllowedProjectsCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newUpdateAllowedLoadZonesCommand but different API calls.
 	opts := &allowedProjectsUpdateOpts{}
 	cmd := &cobra.Command{
-		Use:   "update <load-zone-id>",
-		Short: "Update projects allowed to use a load zone.",
+		Use:   "update-allowed-projects <load-zone-id>",
+		Short: "Replace the set of projects allowed to use a load zone.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.File == "" {
@@ -1786,7 +1785,13 @@ func newAllowedProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command { 
 }
 
 // ---------------------------------------------------------------------------
-// allowed-load-zones sub-commands (under load-zones)
+// allowed-load-zones compounds (under projects)
+//
+// The allowed-load-zones membership set is addressed by the parent project's
+// ID and has no identity of its own, so the two commands are operation-subject
+// compounds directly under `projects` (list-allowed-load-zones /
+// update-allowed-load-zones) rather than a nested noun group under
+// `load-zones`.
 // ---------------------------------------------------------------------------
 
 // AllowedLoadZoneTableCodec renders allowed load zones as a tabular table.
@@ -1815,18 +1820,6 @@ func (c *AllowedLoadZoneTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-func newAllowedLoadZonesCommand(loader CloudConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "allowed-load-zones",
-		Short: "Manage load zones allowed for a project.",
-	}
-	cmd.AddCommand(
-		newAllowedLoadZonesListCommand(loader),
-		newAllowedLoadZonesUpdateCommand(loader),
-	)
-	return cmd
-}
-
 type allowedLoadZonesListOpts struct {
 	IO cmdio.Options
 }
@@ -1837,10 +1830,10 @@ func (o *allowedLoadZonesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newAllowedLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newAllowedProjectsListCommand but different API calls.
+func newListAllowedLoadZonesCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newListAllowedProjectsCommand but different API calls.
 	opts := &allowedLoadZonesListOpts{}
 	cmd := &cobra.Command{
-		Use:   "list <project-id>",
+		Use:   "list-allowed-load-zones <project-id>",
 		Short: "List load zones allowed for a project.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1872,14 +1865,14 @@ type allowedLoadZonesUpdateOpts struct {
 }
 
 func (o *allowedLoadZonesUpdateOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.File, "filename", "f", "", "File containing load zone IDs (JSON array)")
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the complete replacement set of load zone IDs (JSON array)")
 }
 
-func newAllowedLoadZonesUpdateCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newAllowedProjectsUpdateCommand but different API calls.
+func newUpdateAllowedLoadZonesCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newUpdateAllowedProjectsCommand but different API calls.
 	opts := &allowedLoadZonesUpdateOpts{}
 	cmd := &cobra.Command{
-		Use:   "update <project-id>",
-		Short: "Update load zones allowed for a project.",
+		Use:   "update-allowed-load-zones <project-id>",
+		Short: "Replace the set of load zones allowed for a project.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.File == "" {

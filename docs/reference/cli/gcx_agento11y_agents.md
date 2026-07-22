@@ -25,5 +25,5 @@ Query Agent Observability agent catalog.
 * [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
 * [gcx agento11y agents get](gcx_agento11y_agents_get.md)	 - Get a single agent definition.
 * [gcx agento11y agents list](gcx_agento11y_agents_list.md)	 - List agents.
-* [gcx agento11y agents versions](gcx_agento11y_agents_versions.md)	 - List version history for an agent.
+* [gcx agento11y agents list-versions](gcx_agento11y_agents_list-versions.md)	 - List version history for an agent.
 

@@ -26,7 +26,7 @@ gcx cloud stacks create [flags]
       --labels strings       Labels in key=value format (may be repeated)
       --name string          Stack name (required)
   -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
-      --region string        Region slug (e.g. us, eu). Use 'gcx cloud stacks regions' to list.
+      --region string        Region slug (e.g. us, eu). Use 'gcx cloud stacks list-regions' to list.
       --slug string          Stack slug / subdomain (required)
       --url string           Custom domain URL
 ```

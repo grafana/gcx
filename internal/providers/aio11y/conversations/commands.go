@@ -1,13 +1,16 @@
 package conversations
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -36,6 +39,8 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newListCommand(loader),
 		newGetCommand(loader),
 		newSearchCommand(loader),
+		newListAnnotationsCommand(loader),
+		newAnnotateCommand(loader),
 	)
 	return cmd
 }
@@ -291,6 +296,236 @@ func (c *SearchTableCodec) Encode(w io.Writer, v any) error {
 
 func (c *SearchTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
+}
+
+// --- annotations ---
+
+type annotationsListOpts struct {
+	IO     cmdio.Options
+	Limit  int
+	Cursor string
+}
+
+func (o *annotationsListOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &AnnotationsTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &AnnotationsTableCodec{Wide: true})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+	flags.IntVar(&o.Limit, "limit", 50, "Number of annotations to request")
+	flags.StringVar(&o.Cursor, "cursor", "", "Pagination cursor from a previous response")
+}
+
+func (o *annotationsListOpts) Validate() error {
+	if o.Limit <= 0 {
+		return errors.New("--limit must be greater than 0")
+	}
+	return o.IO.Validate()
+}
+
+func newListAnnotationsCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &annotationsListOpts{}
+	cmd := &cobra.Command{
+		Use:   "list-annotations <conversation-id>",
+		Short: "List annotations for a conversation.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			resp, err := client.ListAnnotations(cmd.Context(), args[0], opts.Limit, opts.Cursor)
+			if err != nil {
+				return err
+			}
+			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+				return opts.IO.Encode(cmd.OutOrStdout(), resp.Items)
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+type annotationsAddOpts struct {
+	IO             cmdio.Options
+	AnnotationID   string
+	AnnotationType string
+	Body           string
+	GenerationID   string
+	Tags           []string
+	MetadataJSON   string
+}
+
+func (o *annotationsAddOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
+	flags.StringVar(&o.AnnotationID, "annotation-id", "", "Annotation ID; generated when omitted")
+	flags.StringVar(&o.AnnotationType, "type", "NOTE", "Annotation type: NOTE, LABEL, TRIAGE_STATUS, ROOT_CAUSE, or FOLLOW_UP")
+	flags.StringVar(&o.Body, "body", "", "Annotation body")
+	flags.StringVar(&o.GenerationID, "generation-id", "", "Generation ID to attach the annotation to")
+	flags.StringArrayVar(&o.Tags, "tag", nil, "Tag in key=value form (repeatable)")
+	flags.StringVar(&o.MetadataJSON, "metadata-json", "", "Metadata object as JSON")
+}
+
+func (o *annotationsAddOpts) Validate() error {
+	if strings.TrimSpace(o.Body) == "" {
+		return errors.New("--body is required")
+	}
+	switch strings.TrimSpace(o.AnnotationType) {
+	case "NOTE", "LABEL", "TRIAGE_STATUS", "ROOT_CAUSE", "FOLLOW_UP":
+	default:
+		return errors.New("--type must be one of NOTE, LABEL, TRIAGE_STATUS, ROOT_CAUSE, or FOLLOW_UP")
+	}
+	return o.IO.Validate()
+}
+
+func newAnnotateCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &annotationsAddOpts{}
+	cmd := &cobra.Command{
+		Use:   "annotate <conversation-id>",
+		Short: "Annotate a conversation.",
+		Example: `  gcx agento11y conversations annotate conv-123 --body "Needs review"
+  gcx agento11y conversations annotate conv-123 --type TRIAGE_STATUS --body "Escalated" --tag status=needs_review`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			tags, err := parseAnnotationTags(opts.Tags)
+			if err != nil {
+				return err
+			}
+			metadata, err := parseAnnotationMetadata(opts.MetadataJSON)
+			if err != nil {
+				return err
+			}
+			annotationID := strings.TrimSpace(opts.AnnotationID)
+			if annotationID == "" {
+				annotationID = "ann-" + uuid.NewString()
+			}
+
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			resp, err := client.CreateAnnotation(cmd.Context(), args[0], CreateAnnotationRequest{
+				AnnotationID:   annotationID,
+				AnnotationType: strings.TrimSpace(opts.AnnotationType),
+				Body:           strings.TrimSpace(opts.Body),
+				Tags:           tags,
+				Metadata:       metadata,
+				GenerationID:   strings.TrimSpace(opts.GenerationID),
+			})
+			if err != nil {
+				return err
+			}
+			cmdio.Success(cmd.ErrOrStderr(), "Added annotation %s", resp.Annotation.AnnotationID)
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+func parseAnnotationTags(raw []string) (map[string]string, error) {
+	tags := make(map[string]string, len(raw))
+	if len(raw) == 0 {
+		return tags, nil
+	}
+	for _, t := range raw {
+		k, v, ok := strings.Cut(t, "=")
+		if !ok {
+			return nil, fmt.Errorf("invalid --tag %q: expected key=value", t)
+		}
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
+		if k == "" {
+			return nil, fmt.Errorf("invalid --tag %q: empty key", t)
+		}
+		tags[k] = v
+	}
+	return tags, nil
+}
+
+func parseAnnotationMetadata(raw string) (map[string]any, error) {
+	metadata := map[string]any{}
+	if strings.TrimSpace(raw) == "" {
+		return metadata, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+		return nil, fmt.Errorf("invalid --metadata-json: %w", err)
+	}
+	if metadata == nil {
+		return nil, errors.New("--metadata-json must be a JSON object")
+	}
+	return metadata, nil
+}
+
+// AnnotationsTableCodec renders conversation annotations.
+type AnnotationsTableCodec struct {
+	Wide bool
+}
+
+func (c *AnnotationsTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *AnnotationsTableCodec) Encode(w io.Writer, v any) error {
+	annotations, ok := v.([]ConversationAnnotation)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []ConversationAnnotation")
+	}
+
+	var t *style.TableBuilder
+	if c.Wide {
+		t = style.NewTable("ID", "TYPE", "BODY", "TAGS", "OPERATOR", "GENERATION", "CREATED")
+	} else {
+		t = style.NewTable("ID", "TYPE", "BODY", "OPERATOR", "CREATED")
+	}
+
+	for _, annotation := range annotations {
+		body := aio11yhttp.Truncate(annotation.Body, 56)
+		operator := firstNonEmpty(annotation.OperatorName, annotation.OperatorLogin, annotation.OperatorID, "-")
+		created := aio11yhttp.FormatTime(annotation.CreatedAt)
+		if c.Wide {
+			t.Row(annotation.AnnotationID, annotation.AnnotationType, body, formatTags(annotation.Tags), operator, firstNonEmpty(annotation.GenerationID, "-"), created)
+		} else {
+			t.Row(annotation.AnnotationID, annotation.AnnotationType, body, operator, created)
+		}
+	}
+	return t.Render(w)
+}
+
+func (c *AnnotationsTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+func formatTags(tags map[string]string) string {
+	if len(tags) == 0 {
+		return "-"
+	}
+	parts := make([]string, 0, len(tags))
+	for k, v := range tags {
+		parts = append(parts, k+"="+v)
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ", ")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func parseTimeRange(from, to string) (*SearchTimeRange, error) {
