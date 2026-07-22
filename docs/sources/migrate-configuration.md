@@ -45,7 +45,11 @@ To roll back, copy the backup over the configuration file:
 cp ~/.config/gcx/config.yaml.legacy.bak ~/.config/gcx/config.yaml
 ```
 
-If the configuration file isn't writable (for example, in a CI image), `gcx` migrates in memory on every run and leaves the file alone. Commands keep working; you'll see a warning until the file is migrated or replaced.
+If the configuration file isn't writable (for example, in a CI image), `gcx`
+migrates it in memory on every read and leaves the file alone. Read-only
+commands can use that in-memory view, but config or credential writes remain
+blocked until the file can be migrated or replaced. You will see a warning on
+each invocation.
 
 A file that explicitly declares any version other than `1` is not a legacy
 file. gcx rejects it before creating a backup, resolving a keychain reference,
@@ -69,6 +73,15 @@ version is a convenient no-op after the loader performs conversion:
 gcx config set --file user version 1
 gcx config set --file local version 1
 ```
+
+Before the first file changes, gcx preflights every participating layer. If
+independent conversion would change the effective configuration, the command
+stops with every source untouched. After each successful step, gcx prints the
+paths and exact `config set --file ... version 1` commands for all legacy layers
+that remain. If an interrupted sequence contains overlapping entry names,
+ordinary commands fail with those same deterministic completion commands rather
+than a generic load error. You can always open a remaining source without
+loading it by running the corresponding `gcx config edit <layer>` command.
 
 Use `--file system` only when you own that layer and have permission to update
 it. If gcx reports a semantic conflict, move the partial values into one trusted
@@ -158,12 +171,21 @@ current-context: prod
 
 If your legacy user file contains values like
 `keychain:gcx:prod:cloud-token`, let the controlled migrator move them. Legacy
-references are accepted only from the canonical, securely permissioned user
-source and only when the embedded owner and field exactly match their YAML
-location. System, repository, symlinked, arbitrary `--config`, and insecurely
-permissioned sources cannot use predictable legacy keychain names; replace
-those references with fresh credentials before migrating. Copying a legacy
-reference into a version 1 file never grants access to the secret.
+references are accepted from a securely permissioned standard user source, or
+from a file you deliberately select through `--config` or `GCX_CONFIG`. Explicit
+consent is bound to that file's resolved canonical identity and is created only
+by the high-level config loader; a library caller merely constructing an
+`ExplicitConfigFile` source does not grant authority. The selected file must be
+a regular file, must not be writable by group or others, and must be owned by
+the current user on platforms that expose file ownership. Symlinked home/XDG
+paths work because gcx compares resolved identities.
+
+Before any keychain lookup, the sentinel's embedded owner and field must exactly
+match its containing context and schema field. Auto-discovered system and
+repository sources remain untrusted and perform no legacy keychain lookup;
+select a file explicitly only when you trust it, or replace its references with
+fresh credentials before migrating. Copying a legacy reference into a version 1
+file never grants access to the secret.
 
 Version 1 keychain references are bound to the canonical config path, exact
 stack or Cloud owner kind/name, exact secret field, and normalized credential

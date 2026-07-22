@@ -19,6 +19,60 @@ type migrationLayer struct {
 	current  *Config
 }
 
+// layeredMigrationIncompleteError describes an interrupted (or manually
+// created) mixed-schema layered configuration. It is deliberately typed so a
+// targeted --file write may finish one of the remaining legacy layers while
+// ordinary loads still fail with deterministic recovery instructions.
+type layeredMigrationIncompleteError struct {
+	cause     error
+	remaining []ConfigSource
+}
+
+func (e *layeredMigrationIncompleteError) Error() string {
+	var b strings.Builder
+	b.WriteString("layered configuration migration is incomplete")
+	if e.cause != nil {
+		fmt.Fprintf(&b, " (%v)", e.cause)
+	}
+	b.WriteString("; no additional config files or credentials were changed. Complete every remaining legacy layer:\n")
+	b.WriteString(layeredMigrationSteps(e.remaining))
+	return b.String()
+}
+
+func (e *layeredMigrationIncompleteError) Unwrap() error { return e.cause }
+
+func (e *layeredMigrationIncompleteError) includesLayer(layerType string) bool {
+	for _, source := range e.remaining {
+		if source.Type == layerType {
+			return true
+		}
+	}
+	return false
+}
+
+func layeredMigrationSteps(sources []ConfigSource) string {
+	var b strings.Builder
+	for i, source := range sources {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		fmt.Fprintf(&b, "  %s\n", source.Path)
+		fmt.Fprintf(&b, "    migrate: gcx config set --file %s version 1\n", source.Type)
+		fmt.Fprintf(&b, "    repair:  gcx config edit %s", source.Type)
+	}
+	return b.String()
+}
+
+func remainingLegacySources(layers []migrationLayer) []ConfigSource {
+	remaining := make([]ConfigSource, 0, len(layers))
+	for _, layer := range layers {
+		if layer.legacy != nil {
+			remaining = append(remaining, layer.source)
+		}
+	}
+	return remaining
+}
+
 // preflightLayeredSources validates every discovered source before Load is
 // allowed to migrate or touch credentials. When all contributing files use the
 // legacy schema, it also proves that independent per-file conversion followed
@@ -70,7 +124,10 @@ func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error
 
 	if hasLegacy && !allLegacy {
 		if err := rejectMixedLayerEntryOverlap(layers); err != nil {
-			return err
+			return &layeredMigrationIncompleteError{
+				cause:     err,
+				remaining: remainingLegacySources(layers),
+			}
 		}
 	}
 	if !hasLegacy || !allLegacy || len(layers) < 2 {
@@ -118,7 +175,7 @@ func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error
 }
 
 func validateLegacyLayerReferences(source ConfigSource, legacy *legacyConfig) error {
-	trusted := trustedLegacyKeychainSource(source.Type, source.Path)
+	trusted := source.Type == "user" && trustedDiscoveredUserLegacySource(source.Path)
 	for name, legacyContext := range legacy.Contexts {
 		if legacyContext == nil {
 			continue
@@ -148,8 +205,9 @@ func validateLegacyLayerReferences(source ConfigSource, legacy *legacyConfig) er
 
 func rejectMixedLayerEntryOverlap(layers []migrationLayer) error {
 	type ownerSource struct {
-		kind string
-		path string
+		kind   string
+		path   string
+		legacy bool
 	}
 	seen := map[string]ownerSource{}
 	for _, layer := range layers {
@@ -162,22 +220,26 @@ func rejectMixedLayerEntryOverlap(layers []migrationLayer) error {
 		for name := range candidate.Stacks {
 			key := "stack\x00" + name
 			if prior, exists := seen[key]; exists {
-				return fmt.Errorf(
-					"cannot safely auto-migrate mixed layered configuration: stack entry %q overlaps between %s and %s; no config files or credentials were changed; migrate layers explicitly (%s)",
-					name, prior.path, layer.source.Path, docs.ConfigMigration,
-				)
+				if prior.legacy || layer.legacy != nil {
+					return fmt.Errorf(
+						"cannot safely auto-migrate mixed layered configuration: stack entry %q overlaps between %s and %s; no config files or credentials were changed; migrate layers explicitly (%s)",
+						name, prior.path, layer.source.Path, docs.ConfigMigration,
+					)
+				}
 			}
-			seen[key] = ownerSource{kind: "stack", path: layer.source.Path}
+			seen[key] = ownerSource{kind: "stack", path: layer.source.Path, legacy: layer.legacy != nil}
 		}
 		for name := range candidate.Cloud {
 			key := "cloud\x00" + name
 			if prior, exists := seen[key]; exists {
-				return fmt.Errorf(
-					"cannot safely auto-migrate mixed layered configuration: cloud entry %q overlaps between %s and %s; no config files or credentials were changed; migrate layers explicitly (%s)",
-					name, prior.path, layer.source.Path, docs.ConfigMigration,
-				)
+				if prior.legacy || layer.legacy != nil {
+					return fmt.Errorf(
+						"cannot safely auto-migrate mixed layered configuration: cloud entry %q overlaps between %s and %s; no config files or credentials were changed; migrate layers explicitly (%s)",
+						name, prior.path, layer.source.Path, docs.ConfigMigration,
+					)
+				}
 			}
-			seen[key] = ownerSource{kind: "cloud", path: layer.source.Path}
+			seen[key] = ownerSource{kind: "cloud", path: layer.source.Path, legacy: layer.legacy != nil}
 		}
 	}
 	return nil

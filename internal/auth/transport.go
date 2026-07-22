@@ -178,7 +178,7 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 	}
 
 	if t.pending == nil {
-		if t.Token != "" && time.Until(t.ExpiresAt) > refreshThreshold {
+		if t.Token != "" && ((t.ExpiresAt.IsZero() && t.RefreshToken == "") || time.Until(t.ExpiresAt) > refreshThreshold) {
 			t.mu.Unlock()
 			return nil
 		}
@@ -302,8 +302,8 @@ func (t *RefreshTransport) refreshAndPersist(req *http.Request) error {
 		}
 		return err
 	}
-	expiresAt, refreshExpiresAt, validationErr := validateRefreshResult(result, refreshToken)
-	hasReplacementRefresh := strings.TrimSpace(result.RefreshToken) != "" && result.RefreshToken != refreshToken
+	expiresAt, refreshExpiresAt, validationErr := validateRefreshResult(result)
+	hasReplacementRefresh := strings.TrimSpace(result.RefreshToken) != ""
 	if validationErr != nil && !hasReplacementRefresh {
 		// A 200 response may mean the old refresh token was consumed even when
 		// the response does not contain a replacement generation. Never retry or
@@ -312,9 +312,10 @@ func (t *RefreshTransport) refreshAndPersist(req *http.Request) error {
 		return validationErr
 	}
 
-	// A successful refresh response must never be dropped: the server has
-	// already consumed the old refresh token and rotated it, so retain both the
-	// new in-memory generation and an explicit pending-persistence record.
+	// A successful refresh response must never be dropped. Rotation-capable
+	// proxies return a new refresh generation; non-rotating proxies may return
+	// the existing one. Retain the response and persist it with the same CAS
+	// boundary in either case.
 	t.mu.Lock()
 	persistedToken := result.Token
 	persistedExpiresAt := result.ExpiresAt
@@ -369,12 +370,12 @@ func (t *RefreshTransport) blockConsumedGeneration(err error) {
 	t.blocked = err
 }
 
-func validateRefreshResult(result RefreshResult, previousRefreshToken string) (time.Time, time.Time, error) {
+func validateRefreshResult(result RefreshResult) (time.Time, time.Time, error) {
 	invalid := make([]string, 0, 4)
 	if strings.TrimSpace(result.Token) == "" {
 		invalid = append(invalid, "token")
 	}
-	if strings.TrimSpace(result.RefreshToken) == "" || result.RefreshToken == previousRefreshToken {
+	if strings.TrimSpace(result.RefreshToken) == "" {
 		invalid = append(invalid, "refresh_token")
 	}
 	expiresAt, err := time.Parse(time.RFC3339, result.ExpiresAt)

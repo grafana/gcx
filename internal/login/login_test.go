@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -46,6 +47,97 @@ func fixedDetect(tgt login.Target) func(ctx context.Context, server string) (log
 // configSource returns a Source backed by a temp file in dir.
 func configSource(dir string) config.Source {
 	return config.ExplicitConfigFile(filepath.Join(dir, "config.yaml"))
+}
+
+func TestRunRejectsNonTargetLayerChangeDuringAuthentication(t *testing.T) {
+	home := t.TempDir()
+	userDir := filepath.Join(home, ".config")
+	systemDir := t.TempDir()
+	workDir := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", userDir)
+	t.Setenv("XDG_CONFIG_DIRS", systemDir)
+	t.Setenv("GCX_CONFIG", "")
+	t.Chdir(workDir)
+
+	userPath := filepath.Join(userDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
+	userContents := []byte(`version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.example.invalid
+      token: old-token
+      auth-method: token
+      org-id: 1
+contexts:
+  prod:
+    stack: prod
+current-context: prod
+`)
+	require.NoError(t, os.WriteFile(userPath, userContents, 0o600))
+	localPath := filepath.Join(workDir, config.LocalConfigFileName)
+	localContents := []byte(`version: 1
+contexts:
+  prod:
+    datasources:
+      prometheus: local-prom
+`)
+	require.NoError(t, os.WriteFile(localPath, localContents, 0o600))
+
+	effective, err := config.LoadLayered(t.Context(), "")
+	require.NoError(t, err)
+	var userSource config.ConfigSource
+	for _, source := range effective.Sources {
+		if source.Type == "user" {
+			userSource = source
+			break
+		}
+	}
+	require.NotEmpty(t, userSource.Path)
+	mutationCtx := config.ContextWithConfigSource(t.Context(), userSource)
+	persisted, err := config.Load(mutationCtx, config.ExplicitConfigFile(userPath))
+	require.NoError(t, err)
+	guard, err := persisted.NewLoginMutationGuard("prod", config.LoginMutationUnified).WithDiscoverySnapshot(&effective)
+	require.NoError(t, err)
+
+	changedLocal := []byte(`version: 1
+cloud:
+  grafana-com:
+    token: attacker-controlled
+    oauth-url: https://attacker.invalid
+    api-url: https://attacker.invalid
+contexts:
+  prod:
+    cloud: grafana-com
+`)
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://prod.example.invalid",
+			ContextName:  "prod",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "fresh-token",
+		},
+		Hooks: login.Hooks{
+			ConfigSource:       config.ExplicitConfigFile(userPath),
+			LoginMutationGuard: guard,
+			ValidateFn: func(context.Context, login.Options, config.NamespacedRESTConfig) (string, error) {
+				require.NoError(t, os.WriteFile(localPath, changedLocal, 0o600))
+				return "12.0.0", nil
+			},
+		},
+	}
+
+	_, err = login.Run(mutationCtx, &opts)
+	require.ErrorContains(t, err, "Configuration changed during authentication")
+	require.ErrorContains(t, err, localPath)
+	userAfter, readErr := os.ReadFile(userPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, userContents, userAfter)
+	localAfter, readErr := os.ReadFile(localPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, changedLocal, localAfter)
+	assert.NotContains(t, string(userAfter), "fresh-token")
 }
 
 func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexity is inherent to spec-required coverage
@@ -696,6 +788,7 @@ func TestTrustedCAPIsPersistedAsCAP(t *testing.T) {
 					ExpiresAt:        "2030-01-01T00:00:00Z",
 					RefreshExpiresAt: "2030-06-01T00:00:00Z",
 					InstanceEndpoint: "https://mystack.grafana-ops.net",
+					APIEndpoint:      "https://assistant.grafana-ops.net",
 				}}
 			},
 			ValidateFn: noopValidate,
@@ -745,6 +838,40 @@ func TestRuntimeTLSOverrideIsNotPersisted(t *testing.T) {
 	assert.Equal(t, "stored.example.invalid", cfg.Contexts["default"].Grafana.TLS.ServerName)
 	assert.False(t, cfg.Contexts["default"].Grafana.TLS.Insecure,
 		"runtime-only TLS overrides must not be flattened into config")
+}
+
+func TestRuntimeOnlyMTLSFailsClosedOnNextInvocation(t *testing.T) {
+	dir := t.TempDir()
+	source := configSource(dir)
+	_, err := login.Run(context.Background(), &login.Options{
+		Inputs: login.Inputs{
+			Server:      "https://grafana.example.invalid",
+			ContextName: "default",
+			Target:      login.TargetOnPrem,
+			TLS: &config.TLS{
+				CertData: []byte("runtime-certificate"),
+				KeyData:  []byte("runtime-private-key"),
+			},
+			PreserveStoredTLS: true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: source,
+			ValidateFn:   noopValidate,
+		},
+	})
+	require.NoError(t, err)
+
+	cfg, err := config.Load(context.Background(), source)
+	require.NoError(t, err)
+	ctx := cfg.Contexts["default"]
+	require.NotNil(t, ctx)
+	require.NotNil(t, ctx.Grafana)
+	assert.Equal(t, "mtls", ctx.Grafana.AuthMethod)
+	assert.Nil(t, ctx.Grafana.TLS, "runtime-only certificate material must not be persisted")
+
+	_, err = ctx.ToRESTConfig(context.Background())
+	require.ErrorContains(t, err, `auth-method "mtls" requires both a TLS client certificate and private key`)
+	require.ErrorContains(t, err, "GRAFANA_TLS_CERT_FILE")
 }
 
 // TestRunAgentModeMissingServer verifies that even in agent mode, Run returns
@@ -1040,6 +1167,46 @@ func TestPersist_ServerMismatch_AllowOverrideBypasses(t *testing.T) {
 	if got.OrgID != 42 {
 		t.Errorf("OrgID = %d, want 42 (non-auth field preserved)", got.OrgID)
 	}
+}
+
+func TestPersist_UnboundContextSameNamedStackStillRequiresServerOverride(t *testing.T) {
+	dir := t.TempDir()
+	seed := config.Config{}
+	seed.SetStack("prod", config.StackConfig{
+		Slug: "preserve-me",
+		Grafana: &config.GrafanaConfig{
+			Server:     "https://old.example.invalid",
+			APIToken:   "old-token",
+			AuthMethod: "token",
+		},
+		Providers: map[string]map[string]string{"synth": {"sm-url": "https://sm.example.invalid"}},
+	})
+	seed.SetContext("prod", true, config.Context{})
+	require.NoError(t, config.Write(t.Context(), configSource(dir), seed))
+	rawBefore, err := os.ReadFile(filepath.Join(dir, "config.yaml"))
+	require.NoError(t, err)
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://new.example.invalid",
+			ContextName:  "prod",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "fresh-token",
+			Yes:          true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn:   noopValidate,
+		},
+	}
+
+	_, err = login.Run(t.Context(), &opts)
+	var clarification *login.ErrNeedClarification
+	require.ErrorAs(t, err, &clarification)
+	assert.Equal(t, "allow-override", clarification.Field)
+	rawAfter, readErr := os.ReadFile(filepath.Join(dir, "config.yaml"))
+	require.NoError(t, readErr)
+	assert.Equal(t, rawBefore, rawAfter)
 }
 
 func TestPersist_ServerMismatch_YesDoesNotBypass(t *testing.T) {

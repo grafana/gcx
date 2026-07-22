@@ -50,6 +50,38 @@ graph LR
 
 ---
 
+## Grafana auth selection
+
+For versioned contexts, `GrafanaConfig.AuthMethod` is authoritative unless a
+non-blank `GRAFANA_TOKEN` supplies a complete service-account credential for
+the current invocation. That environment override selects token mode only in
+the resolved runtime context; it does not rewrite the persisted `auth-method`.
+Otherwise exactly the persisted method is attached to requests: OAuth does not
+reuse a stale service account token, token and Basic modes do not reuse stale
+OAuth fields, and an explicit non-mTLS method does not present a stale client
+certificate. Server trust settings such as CA data, SNI, and
+`insecure-skip-verify` still apply.
+
+`GRAFANA_PASSWORD` can replace the password of a context already selecting
+Basic authentication, but it does not select Basic mode by itself. A password
+without a deliberate user/method selection is not a complete credential and
+must not let ambient process state override OAuth, token, or mTLS.
+
+Legacy contexts with no `auth-method` retain compatibility inference in this
+order: OAuth proxy, service-account token, Basic, then mTLS or anonymous. A
+partial or rejected higher-priority credential is evidence that authentication
+was configured, so it fails before network use rather than falling through to a
+lower-priority or empty credential. OAuth requires a proxy endpoint plus an
+access or refresh token; refresh-only OAuth is valid. Explicit token, Basic,
+and mTLS modes require their complete selected credential material.
+
+All Grafana request paths use the same selector and selected TLS view. Bespoke
+clients must call `Context.EffectiveGrafanaAuthMethod` and
+`Context.EffectiveGrafanaTLS`, or reuse `Context.ToRESTConfig`; they must not
+inspect populated credential fields to invent their own precedence.
+
+---
+
 ## Service account tokens
 
 Service account tokens are static bearer credentials issued by a Grafana
@@ -59,7 +91,7 @@ or custom role). Tokens are prefixed `glsa_`.
 
 gcx stores them in `GrafanaConfig.APIToken` (`datapolicy:"secret"`, redacted
 in `gcx config view`). The REST config builder in `internal/config/rest.go`
-sets them as `rest.Config.BearerToken` when no OAuth credentials are present.
+sets them as `rest.Config.BearerToken` when token auth is selected.
 
 Rotation is manual: rotate in the Grafana UI, then update the context with
 `gcx login --context X --token glsa_new_token`.
@@ -212,7 +244,7 @@ that endpoint (see OAuth proxy routing below). Exact implementation lives in
 
 | Method | Lifecycle |
 |---|---|
-| OAuth PKCE | Dynamic. The `gat_` access token has a short expiry; the `gar_` refresh token has a longer one. `RefreshTransport` renews the access token when a request sees credentials inside the 5-minute refresh threshold (`refreshThreshold` in `internal/auth/transport.go`), and refresh-token rotation on successful refresh is persisted back to the config file. |
+| OAuth PKCE | Dynamic. The `gat_` access token has a short expiry; the `gar_` refresh token has a longer one. `RefreshTransport` renews the access token when a request sees credentials inside the 5-minute refresh threshold (`refreshThreshold` in `internal/auth/transport.go`), and the successful refresh generation is persisted back to the config file. An access token with neither refresh token nor known expiry is used as an opaque bearer until the server rejects it. |
 | Service account token | Static. Lives until manually rotated in the Grafana UI. gcx treats it as an opaque bearer credential. |
 | Cloud Access Policy token | Static. Lives until manually rotated in the Grafana Cloud UI. |
 | Grafana Cloud OAuth | Dynamic but not refreshable. gcx retains issuer-reported expiry and scopes; after expiry, re-run `gcx cloud login` or the Cloud step in `gcx login`. |
@@ -246,9 +278,11 @@ cancellation cannot abandon a refresh that has already consumed and rotated
 the server-side refresh token. Cancellation is still honored before the lock
 and network request begin.
 
-A successful rotating-token response is not exposed to protected requests
-until persistence succeeds. If persistence fails, the process retains one
-pending generation and retries that write without issuing a second refresh.
+A successful refresh response is not exposed to protected requests until
+persistence succeeds. Rotation-capable issuers may return a new refresh token;
+non-rotating issuers may return the same generation. If persistence fails, the
+process retains one pending generation and retries that write without issuing
+a second refresh.
 Persistence compares the previous refresh token with the current on-disk
 generation, treats an identical already-written generation as success, and
 never overwrites a newer login or refresh. Before either reload or persistence,
@@ -263,15 +297,15 @@ crash after server-side rotation but before durable persistence can still
 require re-authentication.
 
 HTTP 200 is not sufficient evidence of a valid refresh. gcx validates the
-access token, replacement refresh token, and both expiry timestamps before a
-protected request can proceed. A malformed response with no replacement
-refresh generation blocks that transport without retrying the consumed token.
-If a nonempty refresh token different from the consumed generation is present,
-gcx first persists a forced-stale recovery generation and then returns the
-validation error. A later process can use that replacement generation to retry
-safely; an absent or repeated old token is not a replacement. The process that
-observed the malformed response remains blocked so it cannot accidentally send
-an invalid access token or refresh twice.
+access token, a nonempty refresh token, and both expiry timestamps before a
+protected request can proceed. Returning the same nonempty refresh token is a
+supported non-rotating response. A malformed response with no usable refresh
+generation blocks that transport without retrying the consumed token. If a
+nonempty generation is present alongside another validation error, gcx first
+persists a forced-stale recovery generation and then returns the validation
+error. A later process can retry safely; the process that observed the
+malformed response remains blocked so it cannot accidentally send an invalid
+access token or refresh twice.
 
 ---
 

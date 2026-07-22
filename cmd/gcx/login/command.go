@@ -144,6 +144,8 @@ Auth sources (for non-interactive use):
   gcx login --yes prod --token glsa_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Token = strings.TrimSpace(opts.Token)
+			opts.CloudToken = strings.TrimSpace(opts.CloudToken)
 			if err := opts.Validate(args); err != nil {
 				return err
 			}
@@ -156,21 +158,17 @@ Auth sources (for non-interactive use):
 	return cmd
 }
 
-//nolint:gocyclo // Login deliberately keeps trust preflight, auth selection, and retry setup in one auditable flow.
+//nolint:gocyclo,maintidx // Login deliberately keeps trust preflight, auth selection, and retry setup in one auditable flow.
 func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	ctx := cmd.Context()
-	mutationTarget, err := flags.Config.MutationConfigTarget()
+	preflightTarget, targetIsDeterministic, err := flags.Config.PreflightLoginMutationTarget()
 	if err != nil {
 		return err
 	}
-	var autoLocalTarget *config.ConfigSource
-	if mutationTarget.Type == "local" {
-		target := mutationTarget
-		autoLocalTarget = &target
-		if flags.OAuth || credentialProvided(flags.Token, "GRAFANA_TOKEN") ||
-			credentialProvided(flags.CloudToken, "GRAFANA_CLOUD_TOKEN") {
-			return autoLocalFreshCredentialError(target)
-		}
+	if targetIsDeterministic && preflightTarget.Type == "local" &&
+		(flags.OAuth || credentialProvided(flags.Token, "GRAFANA_TOKEN") ||
+			credentialProvided(flags.CloudToken, "GRAFANA_CLOUD_TOKEN")) {
+		return autoLocalFreshCredentialError(preflightTarget)
 	}
 
 	// Positional arg takes precedence; --context flag is compat.
@@ -187,17 +185,52 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if err != nil {
 		return err
 	}
-	flags.Server = requestedLoginServer(flags.Server, sourceCtx)
-	mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
-	ctx = flags.Config.MutationConfigContext(ctx)
-	cmd.SetContext(ctx)
-	persistedSourceCtx, err := loadPersistedLoginSourceContext(ctx, mutationSource, contextName)
+	mutationTarget, err := flags.Config.PlanLoginMutation(cfg, contextName, config.LoginMutationUnified)
 	if err != nil {
 		return err
+	}
+	var autoLocalTarget *config.ConfigSource
+	if mutationTarget.Type == "local" {
+		target := mutationTarget
+		autoLocalTarget = &target
+		if flags.OAuth || credentialProvided(flags.Token, "GRAFANA_TOKEN") ||
+			credentialProvided(flags.CloudToken, "GRAFANA_CLOUD_TOKEN") {
+			return autoLocalFreshCredentialError(target)
+		}
+	}
+	flags.Server = requestedLoginServer(flags.Server, sourceCtx)
+	mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
+	ctx = flags.Config.LoginMutationContext(ctx, mutationTarget)
+	cmd.SetContext(ctx)
+	persistedSourceConfig, persistedSourceCtx, err := loadPersistedLoginSource(ctx, mutationSource, contextName)
+	if err != nil {
+		return err
+	}
+	if len(cfg.Sources) > 1 {
+		if err := config.VerifyLoginMutationBindings(
+			mutationTarget,
+			contextName,
+			sourceCtx,
+			persistedSourceCtx,
+			config.LoginMutationUnified,
+		); err != nil {
+			return err
+		}
 	}
 	credentialSourceCtx := persistedSourceCtx
 	if credentialSourceCtx == nil {
 		credentialSourceCtx = sourceCtx
+	}
+	cloudMutationSafety, err := cfg.LoginCloudMutationSafety(contextName, mutationTarget)
+	if err != nil {
+		return err
+	}
+	loginMutationGuard := persistedSourceConfig.NewLoginMutationGuard(contextName, config.LoginMutationUnified)
+	if mutationTarget.Type != "explicit" {
+		loginMutationGuard, err = loginMutationGuard.WithDiscoverySnapshot(&cfg)
+		if err != nil {
+			return err
+		}
 	}
 
 	printModeHeader(cmd, cfg, contextName, sourceCtx)
@@ -209,14 +242,14 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	cloudTokenExplicit := credentialProvided(flags.CloudToken, "GRAFANA_CLOUD_TOKEN")
 
 	// Non-interactive callers (agent mode, --yes, piped stdin, CI) can't answer
-	// the auth prompt, so fall back to credentials already resolved into the
-	// source context. LoadConfigTolerant applies the GRAFANA_TOKEN /
-	// GRAFANA_CLOUD_TOKEN env overrides onto the current context, so this is what
-	// lets a headless `gcx login` consume those env vars the same way every other
-	// command does (and reuse a previously stored token on re-auth). Interactive
+	// the auth prompt, so fall back to credentials resolved from the selected
+	// raw owner. resolveNonInteractiveTokens reads GRAFANA_TOKEN /
+	// GRAFANA_CLOUD_TOKEN directly before considering that stored context, so a
+	// headless login still consumes explicit runtime credentials without ever
+	// copying a resolved credential out of the merged layered view. Interactive
 	// callers keep the prompt flow — which offers "keep existing token" and
 	// auth-method switching — so we leave their flags untouched.
-	flags.Token, flags.CloudToken = resolveNonInteractiveTokens(flags.Token, flags.CloudToken, sourceCtx, isInteractive)
+	flags.Token, flags.CloudToken = resolveNonInteractiveTokens(flags.Token, flags.CloudToken, credentialSourceCtx, isInteractive)
 	storedGrafanaTokenBlocked := storedGrafanaTokenDestinationChanged(flags.Server, persistedSourceCtx, isInteractive, grafanaTokenExplicit)
 	if storedGrafanaTokenBlocked {
 		// Never present a credential loaded for one server to another server. A
@@ -254,10 +287,12 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			)
 		}
 	}
+	envTLS := loginTLSFromEnvironment()
+	runtimeTLSFromEnvironment := envTLS != nil
 	runtimeTLS := storedTLS
 	if sourceCtx != nil && sourceCtx.Grafana != nil {
 		runtimeTLS = sourceCtx.Grafana.TLS
-	} else if envTLS := loginTLSFromEnvironment(); envTLS != nil {
+	} else if envTLS != nil {
 		runtimeTLS = envTLS
 	}
 
@@ -265,26 +300,38 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if err != nil {
 		return err
 	}
+	var existingGrafanaAuthMethod string
+	if credentialSourceCtx != nil && credentialSourceCtx.Grafana != nil {
+		// This is only a pre-auth transport safety hint. Interactive login may
+		// select a different final method later, but target detection must not
+		// present a stale client certificate merely because the prompt has not
+		// run yet. Persisted explicit mTLS remains the sole method that keeps the
+		// existing client identity on that probe.
+		existingGrafanaAuthMethod = credentialSourceCtx.Grafana.AuthMethod
+	}
 
 	opts := login.Options{
 		Inputs: login.Inputs{
-			Server:            flags.Server,
-			ContextName:       contextName,
-			GrafanaToken:      flags.Token,
-			CloudToken:        flags.CloudToken,
-			CloudAPIURL:       cloudAPIURL,
-			CloudOAuthURL:     cloudOAuthURL,
-			UseOAuth:          flags.OAuth,
-			OAuthCallbackPort: flags.OAuthCallbackPort,
-			Yes:               flags.Yes,
-			OrgID:             flags.OrgID,
-			Writer:            cmd.ErrOrStderr(),
-			TLS:               runtimeTLS,
-			PreserveStoredTLS: true,
-			StoredTLS:         storedTLS,
+			Server:                    flags.Server,
+			ContextName:               contextName,
+			GrafanaToken:              flags.Token,
+			ExistingGrafanaAuthMethod: existingGrafanaAuthMethod,
+			CloudToken:                flags.CloudToken,
+			CloudAPIURL:               cloudAPIURL,
+			CloudOAuthURL:             cloudOAuthURL,
+			UseOAuth:                  flags.OAuth,
+			OAuthCallbackPort:         flags.OAuthCallbackPort,
+			Yes:                       flags.Yes,
+			OrgID:                     flags.OrgID,
+			Writer:                    cmd.ErrOrStderr(),
+			TLS:                       runtimeTLS,
+			PreserveStoredTLS:         true,
+			StoredTLS:                 storedTLS,
 		},
 		Hooks: login.Hooks{
-			ConfigSource: mutationSource,
+			ConfigSource:        mutationSource,
+			CloudMutationSafety: cloudMutationSafety,
+			LoginMutationGuard:  loginMutationGuard,
 			NewAuthFlow: func(server string, ao internalauth.Options) login.AuthFlow {
 				return internalauth.NewFlow(server, ao)
 			},
@@ -311,7 +358,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		return err
 	}
 
-	return runLoginLoop(cmd, flags, &opts, credentialSourceCtx, isInteractive, autoLocalTarget)
+	return runLoginLoop(cmd, flags, &opts, credentialSourceCtx, isInteractive, autoLocalTarget, runtimeTLSFromEnvironment)
 }
 
 func autoLocalFreshCredentialError(target config.ConfigSource) error {
@@ -362,6 +409,7 @@ func runLoginLoop(
 	credentialSourceCtx *config.Context,
 	isInteractive bool,
 	autoLocalTarget *config.ConfigSource,
+	runtimeTLSFromEnvironment bool,
 ) error {
 	for {
 		if autoLocalTarget != nil {
@@ -371,6 +419,9 @@ func runLoginLoop(
 		}
 		result, err := login.Run(cmd.Context(), opts)
 		if err == nil {
+			if runtimeTLSFromEnvironment {
+				warnRuntimeOnlyTLS(cmd.ErrOrStderr())
+			}
 			// Use opts.Server (the canonical runtime value mutated by
 			// interactive prompts / retries) rather than flags.Server, which
 			// can be empty on first-time setup when the user typed the URL
@@ -416,6 +467,10 @@ func runLoginLoop(
 	}
 }
 
+func warnRuntimeOnlyTLS(w io.Writer) {
+	fmt.Fprintln(w, "Warning: TLS settings from GRAFANA_TLS_* were used for this login but were not saved. Future commands must provide the same environment variables or explicitly persist the TLS paths in the selected config.")
+}
+
 func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName string) (config.Config, *config.Context, string, error) {
 	cfg, err := flags.Config.LoadConfigTolerant(ctx)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -439,29 +494,34 @@ func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName s
 	return cfg, cfg.Contexts[resolvedName], resolvedName, nil
 }
 
-func loadPersistedLoginSourceContext(ctx context.Context, source config.Source, contextName string) (*config.Context, error) {
+func loadPersistedLoginSource(ctx context.Context, source config.Source, contextName string) (config.Config, *config.Context, error) {
 	cfg, err := config.Load(ctx, source)
 	if errors.Is(err, os.ErrNotExist) {
 		// A new explicit --config path is a valid login target; persistContext
 		// creates it after authentication succeeds.
-		return nil, nil //nolint:nilnil // nil context intentionally means no persisted context yet.
+		return cfg, nil, nil // nil context intentionally means no persisted context yet.
 	}
 	if err != nil {
-		return nil, err
+		return config.Config{}, nil, err
 	}
 	// LoadLayered resolves only its effective current context. Resolve the
 	// selected target explicitly before reading credentials so a non-current
 	// context never exposes a deferred keychain reference to the login flow.
 	cfg.ResolveContext(contextName)
-	return cfg.Contexts[contextName], nil
+	return cfg, cfg.Contexts[contextName], nil
+}
+
+func loadPersistedLoginSourceContext(ctx context.Context, source config.Source, contextName string) (*config.Context, error) {
+	_, persisted, err := loadPersistedLoginSource(ctx, source, contextName)
+	return persisted, err
 }
 
 func credentialProvided(flagValue, envKey string) bool {
-	if flagValue != "" {
+	if strings.TrimSpace(flagValue) != "" {
 		return true
 	}
 	envValue, ok := os.LookupEnv(envKey)
-	return ok && envValue != ""
+	return ok && !config.IsBlankCredentialEnvironmentOverride(envKey, envValue)
 }
 
 func requestedLoginServer(flagServer string, sourceCtx *config.Context) string {
@@ -574,7 +634,8 @@ func reuseNonInteractiveCloudCredential(opts *login.Options, tokenExplicit bool,
 	if cloudEndpointRequestDiffers(opts, sourceCtx.CloudEntry, sourceServer) {
 		return cloudDestinationChangeAuthError(opts, sourceCtx.CloudEntry, sourceServer)
 	}
-	_, tokenFromEnv := os.LookupEnv("GRAFANA_CLOUD_TOKEN")
+	envToken, tokenFromEnv := os.LookupEnv("GRAFANA_CLOUD_TOKEN")
+	tokenFromEnv = tokenFromEnv && !config.IsBlankCredentialEnvironmentOverride("GRAFANA_CLOUD_TOKEN", envToken)
 	useExistingCloudEntry(opts, sourceCtx.CloudEntry, !tokenFromEnv, sourceServer)
 	return nil
 }
@@ -1151,19 +1212,21 @@ func resolveSourceContext(cfg config.Config, contextName, server string) (*confi
 // offers a "keep existing token" affordance, so pre-filling here would skip the
 // menu. Explicitly-passed flags always win over the context value.
 func resolveNonInteractiveTokens(grafanaToken, cloudToken string, sourceCtx *config.Context, interactive bool) (string, string) {
+	grafanaToken = strings.TrimSpace(grafanaToken)
+	cloudToken = strings.TrimSpace(cloudToken)
 	if interactive {
 		return grafanaToken, cloudToken
 	}
 	if grafanaToken == "" {
-		if envToken, ok := os.LookupEnv("GRAFANA_TOKEN"); ok && envToken != "" {
-			grafanaToken = envToken
+		if envToken, ok := os.LookupEnv("GRAFANA_TOKEN"); ok && !config.IsBlankCredentialEnvironmentOverride("GRAFANA_TOKEN", envToken) {
+			grafanaToken = strings.TrimSpace(envToken)
 		} else if sourceCtx != nil && sourceCtx.Grafana != nil {
 			grafanaToken = sourceCtx.Grafana.APIToken
 		}
 	}
 	if cloudToken == "" {
-		if envToken, ok := os.LookupEnv("GRAFANA_CLOUD_TOKEN"); ok && envToken != "" {
-			cloudToken = envToken
+		if envToken, ok := os.LookupEnv("GRAFANA_CLOUD_TOKEN"); ok && !config.IsBlankCredentialEnvironmentOverride("GRAFANA_CLOUD_TOKEN", envToken) {
+			cloudToken = strings.TrimSpace(envToken)
 		} else if sourceCtx != nil && sourceCtx.CloudEntry != nil {
 			cloudToken = sourceCtx.CloudEntry.Token
 		}

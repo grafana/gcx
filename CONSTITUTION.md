@@ -19,15 +19,8 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   pre-generated Go types. Dynamic discovery at runtime, not compile-time.
 - **Folder-before-dashboard ordering:** Push pipeline does topological sort — folders are
   pushed level-by-level before any other resources.
-- **Config follows the kubeconfig trust pattern:** Named stacks pair each Grafana destination
-  with its authentication, named Cloud entries pair Grafana Cloud endpoints with their
-  authentication, and thin contexts bind those entries. Credential-bearing entries are atomic
-  across config layers. Environment and flag overrides have highest runtime precedence but must
-  never be persisted implicitly or combined with destinations from an auto-discovered repository
-  config. Fresh credentials may be written to such a file only after the user selects it
-  explicitly. Keychain references are trusted only when their canonical
-  source file, exact owner kind and name, exact secret field, and normalized destination all
-  match.
+- **Config follows kubeconfig pattern:** Named contexts with server/auth/namespace. Environment
+  variable overrides follow the same precedence rules as kubectl.
 - **Processor pipeline is composable:** Resource transformations use the `Processor` interface
   (`Process(*Resource) error`). Processors compose into ordered slices at defined pipeline points.
 - **Format-agnostic data fetching:** Commands fetch all data regardless of `--output` format;

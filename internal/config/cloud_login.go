@@ -49,28 +49,62 @@ func MergeCloudInto(existing, incoming *CloudEntry) *CloudEntry {
 // by the target context is updated in place. Host-name and copy-on-write name
 // collisions are allocated safely, while exact matches are reused.
 func (config *Config) EnsureCloudEntry(existingRef string, entry CloudEntry, contextName string) string {
+	return config.EnsureCloudEntryWithSafety(existingRef, entry, contextName, CloudMutationSafety{})
+}
+
+// CloudMutationSafety carries evidence from the complete layered view into a
+// raw-owner write. A raw file cannot count contexts, distinguish foreign
+// same-named entries, or see name collisions contributed by other layers, so
+// login must preserve that evidence across the reload rather than infer safety
+// from the write target alone.
+type CloudMutationSafety struct {
+	SharedInEffectiveConfig bool
+	ReservedEntryNames      []string
+	ForeignEntryNames       []string
+}
+
+// EnsureCloudEntryWithSafety is EnsureCloudEntry with cross-layer sharing
+// evidence. When the current entry is referenced outside the raw owner, a
+// changed credential/destination is always written to a fresh name that is not
+// present anywhere in the effective layered configuration.
+func (config *Config) EnsureCloudEntryWithSafety(
+	existingRef string,
+	entry CloudEntry,
+	contextName string,
+	safety CloudMutationSafety,
+) string {
 	// The target may not be the file's current context, whose sentinels Load
 	// resolved eagerly. Resolve it before comparing or cloning its entry so a new
 	// entry never inherits a sentinel owned by a different name.
 	config.ResolveContext(contextName)
 
 	if existingRef == "" {
-		return config.ensureUnboundCloudEntry(entry, contextName)
+		return config.ensureUnboundCloudEntry(entry, contextName, safety)
 	}
-	return config.ensureBoundCloudEntry(existingRef, entry, contextName)
+	return config.ensureBoundCloudEntry(existingRef, entry, contextName, safety)
 }
 
-func (config *Config) ensureUnboundCloudEntry(entry CloudEntry, contextName string) string {
+func (config *Config) ensureUnboundCloudEntry(entry CloudEntry, contextName string, safety CloudMutationSafety) string {
 	base := cloudEntryName(entry.APIUrl)
+	if slices.Contains(safety.ForeignEntryNames, base) {
+		name := config.availableIsolatedCloudEntryName(base+"-"+contextName, &entry, safety.ReservedEntryNames)
+		config.setCloudAuthEntry(name, entry)
+		return name
+	}
 	if existing := config.Cloud[base]; existing != nil {
 		desired := mergedCloudEntry(existing, &entry)
 		if sameCloudEntry(existing, &desired, config.keychainStore) {
 			return base
 		}
-		name := config.availableCloudEntryName(base+"-"+contextName, &desired)
+		name := config.availableIsolatedCloudEntryName(base+"-"+contextName, &desired, safety.ReservedEntryNames)
 		if config.Cloud[name] == nil {
 			config.setCloudAuthEntry(name, desired)
 		}
+		return name
+	}
+	if slices.Contains(safety.ReservedEntryNames, base) {
+		name := config.availableIsolatedCloudEntryName(base+"-"+contextName, &entry, safety.ReservedEntryNames)
+		config.setCloudAuthEntry(name, entry)
 		return name
 	}
 
@@ -78,7 +112,12 @@ func (config *Config) ensureUnboundCloudEntry(entry CloudEntry, contextName stri
 	return base
 }
 
-func (config *Config) ensureBoundCloudEntry(existingRef string, entry CloudEntry, contextName string) string {
+func (config *Config) ensureBoundCloudEntry(
+	existingRef string,
+	entry CloudEntry,
+	contextName string,
+	safety CloudMutationSafety,
+) string {
 	existing := config.Cloud[existingRef]
 	if existing == nil {
 		config.setCloudAuthEntry(existingRef, entry)
@@ -88,6 +127,11 @@ func (config *Config) ensureBoundCloudEntry(existingRef string, entry CloudEntry
 	desired := mergedCloudEntry(existing, &entry)
 	if sameCloudEntry(existing, &desired, config.keychainStore) {
 		return existingRef
+	}
+	if safety.SharedInEffectiveConfig {
+		name := config.availableIsolatedCloudEntryName(existingRef+"-"+contextName, &desired, safety.ReservedEntryNames)
+		config.setCloudAuthEntry(name, desired)
+		return name
 	}
 	if config.cloudEntryRefCount(existingRef) <= 1 {
 		config.setCloudAuthEntry(existingRef, desired)
@@ -99,6 +143,22 @@ func (config *Config) ensureBoundCloudEntry(existingRef string, entry CloudEntry
 		config.setCloudAuthEntry(name, desired)
 	}
 	return name
+}
+
+func (config *Config) availableIsolatedCloudEntryName(base string, desired *CloudEntry, reserved []string) string {
+	for i := 1; ; i++ {
+		name := base
+		if i > 1 {
+			name = fmt.Sprintf("%s-%d", base, i)
+		}
+		if slices.Contains(reserved, name) {
+			continue
+		}
+		existing := config.Cloud[name]
+		if existing == nil || sameCloudEntry(existing, desired, config.keychainStore) {
+			return name
+		}
+	}
 }
 
 // setCloudAuthEntry records explicit set/unset intent for both mutually
@@ -188,7 +248,33 @@ func ResolveContextName(override string, cfg Config) string {
 // or one named after the API URL host otherwise, so re-authenticating
 // refreshes credentials in place. Returns the context and entry names.
 func SaveCloudConfig(ctx context.Context, source Source, contextOverride string, entry *CloudEntry) (string, string, error) {
-	cfg, err := Load(ctx, source)
+	return SaveCloudConfigWithSafety(ctx, source, contextOverride, entry, CloudMutationSafety{})
+}
+
+// SaveCloudConfigWithSafety preserves cross-layer shared-entry evidence while
+// loading and writing only the selected raw owner.
+func SaveCloudConfigWithSafety(
+	ctx context.Context,
+	source Source,
+	contextOverride string,
+	entry *CloudEntry,
+	safety CloudMutationSafety,
+) (string, string, error) {
+	return SaveCloudConfigGuarded(ctx, source, contextOverride, entry, safety, LoginMutationGuard{})
+}
+
+// SaveCloudConfigGuarded extends SaveCloudConfigWithSafety across the
+// authentication interval by rejecting a post-auth reload whose raw source no
+// longer matches the pre-auth revision.
+func SaveCloudConfigGuarded(
+	ctx context.Context,
+	source Source,
+	contextOverride string,
+	entry *CloudEntry,
+	safety CloudMutationSafety,
+	guard LoginMutationGuard,
+) (string, string, error) {
+	cfg, err := LoadLoginMutationGuarded(ctx, source, guard)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", "", &gcxerrors.DetailedError{
 			Summary: "Failed to load config",
@@ -211,9 +297,12 @@ func SaveCloudConfig(ctx context.Context, source Source, contextOverride string,
 
 	// Merge the incoming auth fields onto the existing entry so
 	// re-authenticating refreshes credentials without dropping other fields.
-	entryName := cfg.EnsureCloudEntry(curCtx.Cloud, *entry, contextName)
+	entryName := cfg.EnsureCloudEntryWithSafety(curCtx.Cloud, *entry, contextName, safety)
 	curCtx.Cloud = entryName
 	cfg.Resolve()
+	if err := guard.VerifyCurrentSources(); err != nil {
+		return "", "", err
+	}
 
 	if err := Write(ctx, source, cfg); err != nil {
 		return "", "", &gcxerrors.DetailedError{

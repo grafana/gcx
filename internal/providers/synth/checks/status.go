@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
-	"github.com/grafana/gcx/internal/httputils"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
@@ -28,6 +27,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
+	"k8s.io/client-go/rest"
 )
 
 // ---------------------------------------------------------------------------
@@ -798,7 +798,7 @@ func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.Stat
 		return "", fmt.Errorf(
 			"loading REST config: %w; use --datasource-uid flag or set contexts.<name>.datasources.prometheus in config", err)
 	}
-	uid, err := discoverPrometheusDatasource(ctx, curCtx, restCfg)
+	uid, err := discoverPrometheusDatasource(ctx, restCfg)
 	if err != nil {
 		return "", err
 	}
@@ -813,9 +813,9 @@ func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.Stat
 
 // discoverPrometheusDatasource queries the Grafana SM plugin settings to find the
 // Prometheus datasource configured for Synthetic Monitoring metrics.
-func discoverPrometheusDatasource(ctx context.Context, curCtx *config.Context, restCfg config.NamespacedRESTConfig) (string, error) {
+func discoverPrometheusDatasource(ctx context.Context, restCfg config.NamespacedRESTConfig) (string, error) {
 	// Query SM plugin settings for the metrics datasource name.
-	dsName, err := smMetricsDatasourceName(ctx, curCtx)
+	dsName, err := smMetricsDatasourceName(ctx, restCfg)
 	if err != nil {
 		return "", fmt.Errorf(
 			"could not auto-discover SM metrics datasource: %w; use --datasource-uid or set contexts.<name>.datasources.prometheus in config",
@@ -840,12 +840,13 @@ func discoverPrometheusDatasource(ctx context.Context, curCtx *config.Context, r
 
 // smMetricsDatasourceName queries the grafana-synthetic-monitoring-app plugin settings
 // and returns the configured metrics datasource name (jsonData.metrics.grafanaName).
-func smMetricsDatasourceName(ctx context.Context, grafanaCtx *config.Context) (string, error) {
-	if grafanaCtx.Grafana == nil {
-		return "", errors.New("grafana not configured in context")
+func smMetricsDatasourceName(ctx context.Context, restCfg config.NamespacedRESTConfig) (string, error) {
+	httpClient, err := rest.HTTPClientFor(&restCfg.Config)
+	if err != nil {
+		return "", fmt.Errorf("create Grafana client for SM plugin settings: %w", err)
 	}
 
-	url := strings.TrimRight(grafanaCtx.Grafana.Server, "/") +
+	url := strings.TrimRight(restCfg.Host, "/") +
 		"/api/plugins/grafana-synthetic-monitoring-app/settings"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -853,14 +854,7 @@ func smMetricsDatasourceName(ctx context.Context, grafanaCtx *config.Context) (s
 		return "", err
 	}
 
-	if grafanaCtx.Grafana.APIToken != "" {
-		req.Header.Set("Authorization", "Bearer "+grafanaCtx.Grafana.APIToken)
-	} else if grafanaCtx.Grafana.User != "" {
-		req.SetBasicAuth(grafanaCtx.Grafana.User, grafanaCtx.Grafana.Password)
-	}
-
-	client := httputils.NewDefaultClient(ctx)
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}

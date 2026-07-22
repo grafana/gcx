@@ -33,6 +33,111 @@ func TestConfigLoader_BindFlags_OnlyBindsConfig(t *testing.T) {
 	assert.Nil(t, flags.Lookup("context"), "BindFlags must NOT bind --context (it is a root-level global flag)")
 }
 
+func TestConfigLoader_ConfigFilePrecedence(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
+
+	writeProviderConfig := func(account string) string {
+		t.Helper()
+		return writeConfigFile(t, `
+version: 1
+stacks:
+  default:
+    providers:
+      routing:
+        account: `+account+`
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	}
+
+	envFile := writeProviderConfig("env")
+	contextFile := writeProviderConfig("context")
+	boundFile := writeProviderConfig("bound")
+	t.Setenv(internalconfig.ConfigFileEnvVar, envFile)
+
+	ctx := internalconfig.ContextWithConfigFile(context.Background(), contextFile)
+	loader := &providers.ConfigLoader{}
+	got, _, err := loader.LoadProviderConfig(ctx, "routing")
+	require.NoError(t, err)
+	assert.Equal(t, "context", got["account"])
+
+	loader.SetConfigFile(boundFile)
+	got, _, err = loader.LoadProviderConfig(ctx, "routing")
+	require.NoError(t, err)
+	assert.Equal(t, "bound", got["account"])
+}
+
+func TestConfigLoader_ContextConfigFileRoutesDirectSnapshot(t *testing.T) {
+	selectedFile := writeConfigFile(t, `
+version: 1
+stacks:
+  default:
+    providers:
+      synth:
+        sm-url: https://selected.sm.invalid
+        sm-token: selected-token
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	wrongFile := writeConfigFile(t, `
+version: 1
+stacks:
+  default:
+    providers:
+      synth:
+        sm-url: https://wrong.sm.invalid
+        sm-token: wrong-token
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	t.Setenv(internalconfig.ConfigFileEnvVar, wrongFile)
+
+	ctx := internalconfig.ContextWithConfigFile(context.Background(), selectedFile)
+	loader := &providers.ConfigLoader{}
+	snapshot, err := loader.LoadDirectProviderSnapshot(ctx, providers.DirectProviderPolicy{
+		ProviderName:  "synth",
+		EndpointKeys:  []string{"sm-url"},
+		CredentialEnv: "GRAFANA_PROVIDER_SYNTH_SM_TOKEN",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "https://selected.sm.invalid", snapshot.ProviderConfig["sm-url"])
+	assert.Equal(t, "selected-token", snapshot.ProviderConfig["sm-token"])
+}
+
+func TestConfigLoader_BlankProviderCredentialEnvironment(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+version: 1
+stacks:
+  default:
+    providers:
+      synth:
+        sm-token: stored-sm-token
+        sm-metrics-datasource-uid: stored-uid
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM_TOKEN", " \t\n ")
+	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM_METRICS_DATASOURCE_UID", "")
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+	got, _, err := loader.LoadProviderConfig(context.Background(), "synth")
+	require.NoError(t, err)
+	assert.Equal(t, "stored-sm-token", got["sm-token"])
+	assert.Empty(t, got["sm-metrics-datasource-uid"],
+		"blank non-secret provider environment values must retain their override semantics")
+}
+
 // newMockGCOMServer returns an httptest.Server that responds to any request
 // with the given StackInfo encoded as JSON.
 func newMockGCOMServer(t *testing.T, info cloud.StackInfo) *httptest.Server {
@@ -331,6 +436,36 @@ current-context: repository
 		})
 	}
 	assert.Zero(t, attackerRequests.Load())
+}
+
+func TestLoadDirectProviderSnapshot_RejectsAutoLocalEnvironmentCredentialBeforeNetwork(t *testing.T) {
+	_, _, workDir := isolateConfigSources(t)
+	localFile := filepath.Join(workDir, internalconfig.LocalConfigFileName)
+	writeFile(t, localFile, `
+version: 1
+stacks:
+  repository:
+    providers:
+      synth:
+        sm-url: https://repository.invalid
+contexts:
+  repository:
+    stack: repository
+current-context: repository
+`)
+	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM_TOKEN", "runtime-secret")
+
+	loader := &providers.ConfigLoader{}
+	_, err := loader.LoadDirectProviderSnapshot(t.Context(), providers.DirectProviderPolicy{
+		ProviderName:  "synth",
+		EndpointKeys:  []string{"sm-url"},
+		CredentialEnv: "GRAFANA_PROVIDER_SYNTH_SM_TOKEN",
+	})
+	require.Error(t, err)
+	var rejected internalconfig.CredentialRejectedError
+	require.ErrorAs(t, err, &rejected)
+	assert.Contains(t, err.Error(), "before network use")
+	assert.Contains(t, err.Error(), localFile)
 }
 
 func TestLoadDirectProviderSnapshot_EndpointEnvironmentRequiresMatchingCredential(t *testing.T) {
@@ -902,17 +1037,35 @@ contexts:
     stack: default
 current-context: default
 `)
+	wrongFile := writeConfigFile(t, `
+version: 1
+stacks:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      proxy-endpoint: "`+srv.URL+`"
+      oauth-token: gat_wrong_config
+      oauth-refresh-token: gar_wrong_config
+      oauth-token-expires-at: "2099-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-02-01T00:00:00Z"
+      stack-id: 456
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	t.Setenv(internalconfig.ConfigFileEnvVar, wrongFile)
 
 	loader := &providers.ConfigLoader{}
-	loader.SetConfigFile(cfgFile)
+	ctx := internalconfig.ContextWithConfigFile(context.Background(), cfgFile)
 
-	restCfg, err := loader.LoadGrafanaConfig(context.Background())
+	restCfg, err := loader.LoadGrafanaConfig(ctx)
 	require.NoError(t, err)
 
 	// Trigger a request through the REST config transport to force a refresh.
 	rt := restCfg.WrapTransport(http.DefaultTransport)
 	client := &http.Client{Transport: rt}
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/test", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/test", nil)
 	require.NoError(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
@@ -926,6 +1079,11 @@ current-context: default
 	assert.Contains(t, contents, "gar_refreshed")
 	assert.Contains(t, contents, "2099-01-01T00:00:00Z")
 	assert.Contains(t, contents, "2099-02-01T00:00:00Z")
+
+	wrongRaw, err := os.ReadFile(wrongFile)
+	require.NoError(t, err)
+	assert.Contains(t, string(wrongRaw), "gat_wrong_config")
+	assert.NotContains(t, string(wrongRaw), "gat_refreshed")
 }
 
 func TestLoadGrafanaConfig_PersistsRefreshToLocalOAuthLayer(t *testing.T) {

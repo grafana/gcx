@@ -1,14 +1,15 @@
 # ADR-001: Multi-File Config Layering (System/User/Local)
 
 **Created**: 2026-03-21
-**Status**: accepted (entry merge rules partially superseded by ADR-022)
+**Status**: accepted
 **Bead**: none
 **Supersedes**: none
 
-> **Amendment:** [ADR-022](../config-v1/001-versioned-split-config-and-secret-trust.md)
-> retains system/user/local discovery and explicit write targeting, but replaces
-> field-level merge for credential-bearing entries with atomic `stacks` and
-> `cloud` entries and adds a semantic preflight for layered legacy migration.
+> **Proposed amendment:** [ADR-022](../config-v1/001-versioned-split-config-and-secret-trust.md)
+> would retain system/user/local discovery and explicit write targeting, but
+> replace field-level merge for credential-bearing entries with atomic `stacks`
+> and `cloud` entries and add a semantic preflight for layered legacy migration.
+> The implementation follows that model while ratification remains pending.
 
 ## Context
 
@@ -21,7 +22,7 @@ gcx loads config from a single file — the first file found on the XDG search p
 
 This becomes a pain point as users work across multiple Grafana stacks and projects. The `--config` flag is a workaround but requires remembering the path and can't be automated.
 
-## Decision (as amended by ADR-022)
+## Decision (with the proposed ADR-022 model)
 
 ### Config Layering
 

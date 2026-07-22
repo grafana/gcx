@@ -1,14 +1,15 @@
 # ADR-001: CloudConfig in Context and GCOM Stack Discovery
 
 **Created**: 2026-03-21
-**Status**: accepted (config storage partially superseded by ADR-022)
+**Status**: accepted
 **Bead**: none
 **Supersedes**: none
 
-> **Amendment:** [ADR-022](../config-v1/001-versioned-split-config-and-secret-trust.md)
-> moves Grafana connection/provider data to named `stacks`, moves GCOM auth to
-> named `cloud` entries, and makes contexts thin bindings. The GCOM discovery
-> and shared `LoadCloudConfig` decisions below remain accepted.
+> **Proposed amendment:** [ADR-022](../config-v1/001-versioned-split-config-and-secret-trust.md)
+> would move Grafana connection/provider data to named `stacks`, move GCOM auth
+> to named `cloud` entries, and make contexts thin bindings. The implementation
+> follows that model while ratification remains pending. The GCOM discovery and
+> shared `LoadCloudConfig` decisions below remain accepted.
 
 ## Context
 
@@ -23,7 +24,7 @@ This created three problems:
 2. **No URL discovery** — users had to look up service URLs manually per-stack.
 3. **Naming inconsistency** — `LoadRESTConfig` was the only loader, but its name implied it was for REST APIs generically, when it specifically loads Grafana instance config.
 
-## Decision (as amended by ADR-022)
+## Decision (with the proposed ADR-022 model)
 
 ### 1. Use named stack and Cloud entries
 

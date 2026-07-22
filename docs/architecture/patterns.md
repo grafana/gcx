@@ -775,13 +775,14 @@ pre-filtered fetch.
 was used only by the local development server, not by the dynamic client path.
 
 **Resolution:** This is no longer accurate after the HTTP logging refactor.
-`httputils` is now the central HTTP client factory for all non-K8s client
-paths. Provider clients, the assistant client, and the dev server all use
-`httputils.NewDefaultClient(ctx)` or `httputils.NewClient(ClientOpts{...})`.
-The K8s dynamic client path chains `httputils.LoggingRoundTripper` via
-`rest.Config.WrapTransport` in `NewNamespacedRESTConfig`. The only HTTP path
-that does not touch httputils is the OpenAPI client (`grafana-openapi-client-go`),
-which manages its own transport.
+`httputils` is the central HTTP client factory for direct non-K8s paths, while
+Grafana-authenticated paths reuse the selected `rest.Config` transport. Provider
+clients and the assistant client use those two routes; the dev server now uses
+`rest.TransportFor` so it shares authoritative token/Basic/mTLS selection and
+TLS handling. The K8s dynamic client path chains
+`httputils.LoggingRoundTripper` via `rest.Config.WrapTransport` in
+`NewNamespacedRESTConfig`. The OpenAPI health client manages its own transport
+but consumes the same effective auth method and selected TLS view.
 
 ### 5. CI Drift Check Coverage
 

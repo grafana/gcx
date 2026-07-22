@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,6 +9,38 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type layeredMigrationFixture struct {
+	system string
+	user   string
+	local  string
+}
+
+func newLayeredMigrationFixture(t *testing.T) layeredMigrationFixture {
+	t.Helper()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	systemRoot := filepath.Join(root, "system")
+	work := filepath.Join(root, "work")
+	require.NoError(t, os.MkdirAll(home, 0o700))
+	require.NoError(t, os.MkdirAll(work, 0o700))
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CONFIG_DIRS", systemRoot)
+	t.Setenv(ConfigFileEnvVar, "")
+	t.Chdir(work)
+	return layeredMigrationFixture{
+		system: filepath.Join(systemRoot, StandardConfigFolder, StandardConfigFileName),
+		user:   filepath.Join(home, ".config", StandardConfigFolder, StandardConfigFileName),
+		local:  filepath.Join(work, LocalConfigFileName),
+	}
+}
+
+func writeLayeredMigrationFixture(t *testing.T, path, contents string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
+}
 
 func TestPreflightLayeredSourcesRejectsPartialLegacyStackOverlay(t *testing.T) {
 	userPath := filepath.Join(t.TempDir(), "config.yaml")
@@ -127,4 +160,93 @@ current-context: prod
 	assert.Equal(t, int64(999), versionErr.Version)
 	_, statErr := os.Stat(legacyPath + legacyBackupSuffix)
 	assert.True(t, os.IsNotExist(statErr))
+}
+
+func TestLoadForWritePreflightsAllLegacyLayersBeforeFirstSideEffect(t *testing.T) {
+	withFakeKeychain(t)
+	fixture := newLayeredMigrationFixture(t)
+	user := `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+      token: user-token
+current-context: prod
+`
+	local := `
+contexts:
+  prod:
+    providers:
+      slo:
+        org-id: "42"
+`
+	writeLayeredMigrationFixture(t, fixture.user, user)
+	writeLayeredMigrationFixture(t, fixture.local, local)
+
+	_, _, err := LoadForWrite(t.Context(), "", "user")
+	require.ErrorContains(t, err, "cannot safely auto-migrate layered legacy configuration")
+	gotUser, readErr := os.ReadFile(fixture.user)
+	require.NoError(t, readErr)
+	gotLocal, readErr := os.ReadFile(fixture.local)
+	require.NoError(t, readErr)
+	assert.Equal(t, user, string(gotUser))
+	assert.Equal(t, local, string(gotLocal))
+	_, statErr := os.Stat(fixture.user + legacyBackupSuffix)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	_, statErr = os.Stat(fixture.local + legacyBackupSuffix)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestInterruptedLayeredMigrationNamesAndCompletesEveryRemainingLayer(t *testing.T) {
+	withFakeKeychain(t)
+	fixture := newLayeredMigrationFixture(t)
+	legacy := `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+current-context: prod
+`
+	writeLayeredMigrationFixture(t, fixture.system, legacy)
+	writeLayeredMigrationFixture(t, fixture.user, legacy)
+	writeLayeredMigrationFixture(t, fixture.local, legacy)
+
+	// The first explicit step is safe, but necessarily leaves two legacy
+	// documents. The command warns (via the same step formatter asserted below)
+	// and ordinary loads return a typed, actionable recovery error.
+	_, _, err := LoadForWrite(t.Context(), "", "user")
+	require.NoError(t, err)
+	userBytes, readErr := os.ReadFile(fixture.user)
+	require.NoError(t, readErr)
+	assert.False(t, isLegacyConfig(userBytes))
+
+	systemBefore, readErr := os.ReadFile(fixture.system)
+	require.NoError(t, readErr)
+	localBefore, readErr := os.ReadFile(fixture.local)
+	require.NoError(t, readErr)
+	_, err = LoadLayered(t.Context(), "")
+	var incomplete *layeredMigrationIncompleteError
+	require.ErrorAs(t, err, &incomplete)
+	assert.Contains(t, err.Error(), fixture.system)
+	assert.Contains(t, err.Error(), "gcx config set --file system version 1")
+	assert.Contains(t, err.Error(), "gcx config edit system")
+	assert.Contains(t, err.Error(), fixture.local)
+	assert.Contains(t, err.Error(), "gcx config set --file local version 1")
+	assert.Contains(t, err.Error(), "gcx config edit local")
+	afterFailedLoad, readErr := os.ReadFile(fixture.system)
+	require.NoError(t, readErr)
+	assert.Equal(t, systemBefore, afterFailedLoad)
+	afterFailedLoad, readErr = os.ReadFile(fixture.local)
+	require.NoError(t, readErr)
+	assert.Equal(t, localBefore, afterFailedLoad)
+
+	// Targeted writes are the only exception to the incomplete-state error, so
+	// every named remaining step can finish in any layer order.
+	_, _, err = LoadForWrite(context.Background(), "", "system")
+	require.NoError(t, err)
+	_, _, err = LoadForWrite(context.Background(), "", "local")
+	require.NoError(t, err)
+	loaded, err := LoadLayered(t.Context(), "")
+	require.NoError(t, err)
+	assert.Equal(t, "https://prod.example", loaded.Contexts["prod"].Grafana.Server)
 }

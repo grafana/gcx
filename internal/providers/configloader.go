@@ -131,6 +131,18 @@ func (l *ConfigLoader) resolvedContextName(ctx context.Context) string {
 	return config.ContextNameFromCtx(ctx)
 }
 
+// resolvedConfigFile returns the single explicit config selection for this
+// operation. A loader-bound flag wins when a provider command owns --config;
+// otherwise resource adapter loaders inherit the parent resources command's
+// immutable context selection. An empty result retains GCX_CONFIG and layered
+// discovery in config.LoadLayered.
+func (l *ConfigLoader) resolvedConfigFile(ctx context.Context) string {
+	if l.configFile != "" {
+		return l.configFile
+	}
+	return config.ConfigFileFromCtx(ctx)
+}
+
 func contextSelectionOverride(ctxName string) config.Override {
 	return func(cfg *config.Config) error {
 		if ctxName == "" {
@@ -218,6 +230,9 @@ func envOverride(cfg *config.Config) error {
 		if !strings.HasPrefix(key, providerEnvPrefix) {
 			continue
 		}
+		if IsBlankProviderCredentialEnvironmentOverride(key, val) {
+			continue
+		}
 
 		suffix := key[len(providerEnvPrefix):]
 		nameParts := strings.SplitN(suffix, "_", 2)
@@ -248,6 +263,7 @@ func envOverride(cfg *config.Config) error {
 // cmd/gcx/config.Options.LoadGrafanaConfig.
 func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
 	ctxName := l.resolvedContextName(ctx)
+	configFile := l.resolvedConfigFile(ctx)
 	overrides := []config.Override{
 		contextSelectionOverride(ctxName),
 		envOverride,
@@ -257,7 +273,7 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 		},
 	}
 
-	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
+	loaded, err := config.LoadLayered(ctx, configFile, overrides...)
 	if err != nil {
 		return config.NamespacedRESTConfig{}, err
 	}
@@ -266,7 +282,7 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 	if err != nil {
 		return config.NamespacedRESTConfig{}, err
 	}
-	restCfg.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.GetCurrentContext().Stack, loaded.Sources)
+	restCfg.WireTokenPersistence(ctx, l.configSource(ctx), loaded.CurrentContext, loaded.GetCurrentContext().Stack, loaded.Sources)
 
 	return restCfg, nil
 }
@@ -287,7 +303,7 @@ func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 	ctxName := l.resolvedContextName(ctx)
 	overrides := []config.Override{contextSelectionOverride(ctxName), cloudEnvOverride}
 
-	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
+	loaded, err := config.LoadLayered(ctx, l.resolvedConfigFile(ctx), overrides...)
 	if err != nil {
 		return cloudBase{}, err
 	}
@@ -384,7 +400,7 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 		if err != nil {
 			return CloudRESTConfig{}, err
 		}
-		nrc.WireTokenPersistence(ctx, l.configSource(), base.loaded.CurrentContext, base.curCtx.Stack, base.loaded.Sources)
+		nrc.WireTokenPersistence(ctx, l.configSource(ctx), base.loaded.CurrentContext, base.curCtx.Stack, base.loaded.Sources)
 
 		namespace = nrc.Namespace
 		restCfg = &nrc.Config
@@ -401,9 +417,9 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 
 // configSource returns the config.Source to use for write-back operations.
 // Mirrors the resolution logic in config.LoadLayered.
-func (l *ConfigLoader) configSource() config.Source {
-	if l.configFile != "" {
-		return config.ExplicitConfigFile(l.configFile)
+func (l *ConfigLoader) configSource(ctx context.Context) config.Source {
+	if configFile := l.resolvedConfigFile(ctx); configFile != "" {
+		return config.ExplicitConfigFile(configFile)
 	}
 	return config.StandardLocation()
 }
@@ -419,7 +435,7 @@ func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName stri
 		contextMustExist,
 	}
 
-	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
+	loaded, err := config.LoadLayered(ctx, l.resolvedConfigFile(ctx), overrides...)
 	if err != nil {
 		return nil, "", err
 	}
@@ -458,7 +474,7 @@ func (l *ConfigLoader) LoadDirectProviderSnapshot(ctx context.Context, policy Di
 		envOverride,
 		contextMustExist,
 	}
-	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
+	loaded, err := config.LoadLayered(ctx, l.resolvedConfigFile(ctx), overrides...)
 	if err != nil {
 		return DirectProviderSnapshot{}, err
 	}
@@ -469,25 +485,30 @@ func (l *ConfigLoader) LoadDirectProviderSnapshot(ctx context.Context, policy Di
 
 	providerCfg := cloneProviderValues(curCtx.Providers[policy.ProviderName])
 	envEndpoints := make(map[string]bool, len(policy.EndpointKeys))
+	for _, key := range policy.EndpointKeys {
+		envKey := providerEnvironmentKey(policy.ProviderName, key)
+		_, fromEnv := os.LookupEnv(envKey)
+		envEndpoints[key] = fromEnv
+		if providerCfg[key] != "" && fromEnv && strings.TrimSpace(os.Getenv(policy.CredentialEnv)) == "" {
+			return DirectProviderSnapshot{}, fmt.Errorf(
+				"refusing provider endpoint %s from %s without a matching runtime credential: set %s too, or put the endpoint in an explicitly selected --config file",
+				key, envKey, policy.CredentialEnv,
+			)
+		}
+	}
+	if credentialKey := providerCredentialConfigKey(policy.ProviderName, policy.CredentialEnv); credentialKey != "" {
+		if err := curCtx.DirectProviderCredentialRejection(policy.ProviderName, credentialKey); err != nil {
+			return DirectProviderSnapshot{}, err
+		}
+	}
+
 	localPath := autoLocalSourcePath(loaded.Sources)
 	if policy.RejectAutoLocal && curCtx.StackFromAutoLocal() {
 		return DirectProviderSnapshot{}, untrustedAutoLocalProviderError(policy.ProviderName, localPath)
 	}
 	for _, key := range policy.EndpointKeys {
-		envKey := providerEnvironmentKey(policy.ProviderName, key)
-		_, fromEnv := os.LookupEnv(envKey)
-		envEndpoints[key] = fromEnv
-		if providerCfg[key] == "" {
-			continue
-		}
-		if curCtx.StackFromAutoLocal() {
+		if providerCfg[key] != "" && curCtx.StackFromAutoLocal() {
 			return DirectProviderSnapshot{}, untrustedAutoLocalProviderError(policy.ProviderName, localPath)
-		}
-		if fromEnv && strings.TrimSpace(os.Getenv(policy.CredentialEnv)) == "" {
-			return DirectProviderSnapshot{}, fmt.Errorf(
-				"refusing provider endpoint %s from %s without a matching runtime credential: set %s too, or put the endpoint in an explicitly selected --config file",
-				key, envKey, policy.CredentialEnv,
-			)
 		}
 	}
 
@@ -504,7 +525,7 @@ func (l *ConfigLoader) LoadDirectProviderSnapshot(ctx context.Context, policy Di
 		if err != nil {
 			return DirectProviderSnapshot{}, err
 		}
-		nrc.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, curCtx.Stack, loaded.Sources)
+		nrc.WireTokenPersistence(ctx, l.configSource(ctx), loaded.CurrentContext, curCtx.Stack, loaded.Sources)
 		namespace = nrc.Namespace
 		grafanaCfg = &nrc
 	}
@@ -528,6 +549,14 @@ func providerEnvironmentKey(providerName, key string) string {
 	provider := strings.ToUpper(strings.ReplaceAll(providerName, "-", "_"))
 	field := strings.ToUpper(strings.ReplaceAll(key, "-", "_"))
 	return "GRAFANA_PROVIDER_" + provider + "_" + field
+}
+
+func providerCredentialConfigKey(providerName, credentialEnv string) string {
+	prefix := "GRAFANA_PROVIDER_" + strings.ToUpper(strings.ReplaceAll(providerName, "-", "_")) + "_"
+	if !strings.HasPrefix(credentialEnv, prefix) {
+		return ""
+	}
+	return strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(credentialEnv, prefix), "_", "-"))
 }
 
 func autoLocalSourcePath(sources []config.ConfigSource) string {
@@ -596,7 +625,7 @@ func (l *ConfigLoader) resolveSnapshotCloudConfig(
 // overrides or changing current-context, so auto-discovery does not flatten a
 // layered config or persist env-derived values.
 func (l *ConfigLoader) SaveDatasourceUID(ctx context.Context, kind, uid string) error {
-	source, sourceInfo, err := l.writeBackSource("discovered datasource UID")
+	source, sourceInfo, err := l.writeBackSource(ctx, "discovered datasource UID")
 	if errors.Is(err, errNoConfigSource) {
 		logging.FromContext(ctx).Debug("no config file found; skipping datasource UID save",
 			slog.String("datasource_kind", kind),
@@ -641,13 +670,13 @@ func (l *ConfigLoader) SaveDatasourceUID(ctx context.Context, kind, uid string) 
 	return config.Write(writeCtx, source, loaded)
 }
 
-func (l *ConfigLoader) writeBackSource(description string) (config.Source, config.ConfigSource, error) {
-	return l.writeBackSourceWithPolicy(description, false)
+func (l *ConfigLoader) writeBackSource(ctx context.Context, description string) (config.Source, config.ConfigSource, error) {
+	return l.writeBackSourceWithPolicy(ctx, description, false)
 }
 
-func (l *ConfigLoader) writeBackSourceWithPolicy(description string, rejectAutoLocal bool) (config.Source, config.ConfigSource, error) {
-	if l.configFile != "" {
-		return config.ExplicitConfigFile(l.configFile), config.ConfigSource{Path: l.configFile, Type: "explicit"}, nil
+func (l *ConfigLoader) writeBackSourceWithPolicy(ctx context.Context, description string, rejectAutoLocal bool) (config.Source, config.ConfigSource, error) {
+	if configFile := l.resolvedConfigFile(ctx); configFile != "" {
+		return config.ExplicitConfigFile(configFile), config.ConfigSource{Path: configFile, Type: "explicit"}, nil
 	}
 	if envPath := os.Getenv(config.ConfigFileEnvVar); envPath != "" {
 		return config.ExplicitConfigFile(envPath), config.ConfigSource{Path: envPath, Type: "explicit"}, nil
@@ -680,7 +709,7 @@ func (l *ConfigLoader) writeBackSourceWithPolicy(description string, rejectAutoL
 // It deliberately does not load the layered/env-overridden read view: writing
 // that view would flatten layers and persist process-local environment values.
 func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key, value string) error {
-	source, sourceInfo, err := l.writeBackSourceWithPolicy("provider config", true)
+	source, sourceInfo, err := l.writeBackSourceWithPolicy(ctx, "provider config", true)
 	if errors.Is(err, errNoConfigSource) {
 		logging.FromContext(ctx).Debug("no config file found; skipping provider config save",
 			slog.String("provider", providerName),
@@ -754,7 +783,7 @@ func (l *ConfigLoader) LoadConfigTolerant(ctx context.Context, extraOverrides ..
 		envOverride,
 	)
 	overrides = append(overrides, extraOverrides...)
-	return config.LoadLayered(ctx, l.configFile, overrides...)
+	return config.LoadLayered(ctx, l.resolvedConfigFile(ctx), overrides...)
 }
 
 // LoadConfig loads and validates the raw config. It mirrors
@@ -771,10 +800,11 @@ func (l *ConfigLoader) LoadConfig(ctx context.Context) (config.Config, error) {
 }
 
 // ConfigSource returns the config.Source to use for write-back operations,
-// mirroring cmd/gcx/config.Options.ConfigSource. Used by the assistant A2A
-// path to re-read and persist refreshed OAuth tokens.
-func (l *ConfigLoader) ConfigSource() config.Source {
-	return l.configSource()
+// mirroring cmd/gcx/config.Options.ConfigSource. It honors an explicit config
+// file carried by ctx, so the assistant A2A path re-reads and persists refreshed
+// OAuth tokens to the same source it loaded.
+func (l *ConfigLoader) ConfigSource(ctx context.Context) config.Source {
+	return l.configSource(ctx)
 }
 
 // LoadFullConfig loads the full config from the config file, applying env var
@@ -787,7 +817,7 @@ func (l *ConfigLoader) LoadFullConfig(ctx context.Context) (*config.Config, erro
 		contextMustExist,
 	}
 
-	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
+	loaded, err := config.LoadLayered(ctx, l.resolvedConfigFile(ctx), overrides...)
 	if err != nil {
 		return nil, err
 	}

@@ -51,6 +51,34 @@ func TestRefreshTransport_ExpiredAccessWithoutRefreshFailsClosed(t *testing.T) {
 	assert.Zero(t, protectedCalls.Load())
 }
 
+func TestRefreshTransport_AccessTokenWithUnknownExpiryIsUsable(t *testing.T) {
+	var refreshCalls, protectedCalls atomic.Int32
+	var authorization string
+	transport := &auth.RefreshTransport{
+		Base: testRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path == "/api/cli/v1/auth/refresh" {
+				refreshCalls.Add(1)
+			} else {
+				protectedCalls.Add(1)
+				authorization = req.Header.Get("Authorization")
+			}
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: http.NoBody, Request: req}, nil
+		}),
+		ProxyEndpoint: "https://proxy.invalid",
+		Token:         "gat_unknown_expiry",
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://proxy.invalid/protected", nil)
+	require.NoError(t, err)
+
+	resp, err := transport.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+	assert.Zero(t, refreshCalls.Load())
+	assert.Equal(t, int32(1), protectedCalls.Load())
+	assert.Equal(t, "Bearer gat_unknown_expiry", authorization)
+}
+
 func TestRefreshTransport_LockAndReloadFailuresMakeNoHTTPCalls(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -811,7 +839,6 @@ func TestRefreshTransport_Malformed200WithoutRotatedRefreshBlocksPermanently(t *
 	}{
 		{name: "invalid JSON", body: `{"data":`},
 		{name: "empty refresh token", body: `{"data":{"token":"gat_new","expires_at":"2099-01-01T00:00:00Z","refresh_token":"","refresh_expires_at":"2099-02-01T00:00:00Z"}}`},
-		{name: "old refresh token repeated", body: `{"data":{"token":"gat_new","expires_at":"2099-01-01T00:00:00Z","refresh_token":"gar_old","refresh_expires_at":"2099-02-01T00:00:00Z"}}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -855,6 +882,44 @@ func TestRefreshTransport_Malformed200WithoutRotatedRefreshBlocksPermanently(t *
 			assert.Empty(t, transport.RefreshToken)
 		})
 	}
+}
+
+func TestRefreshTransport_NonRotatingRefreshTokenRemainsCompatible(t *testing.T) {
+	var refreshCalls, protectedCalls, persistCalls atomic.Int32
+	transport := &auth.RefreshTransport{
+		Base: testRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path == "/api/cli/v1/auth/refresh" {
+				refreshCalls.Add(1)
+				body := `{"data":{"token":"gat_new","expires_at":"2099-01-01T00:00:00Z","refresh_token":"gar_same","refresh_expires_at":"2099-02-01T00:00:00Z"}}`
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: req}, nil
+			}
+			protectedCalls.Add(1)
+			assert.Equal(t, "Bearer gat_new", req.Header.Get("Authorization"))
+			return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Header: make(http.Header), Request: req}, nil
+		}),
+		ProxyEndpoint: "https://proxy.invalid",
+		Token:         "gat_old",
+		RefreshToken:  "gar_same",
+		ExpiresAt:     time.Now().Add(time.Minute),
+		OnRefresh: func(previousRefreshToken, token, refreshToken, _, _ string) error {
+			persistCalls.Add(1)
+			assert.Equal(t, "gar_same", previousRefreshToken)
+			assert.Equal(t, "gar_same", refreshToken)
+			assert.Equal(t, "gat_new", token)
+			return nil
+		},
+	}
+
+	for range 2 {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://proxy.invalid/protected", nil)
+		require.NoError(t, err)
+		resp, err := transport.RoundTrip(req)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+	}
+	assert.Equal(t, int32(1), refreshCalls.Load())
+	assert.Equal(t, int32(1), persistCalls.Load())
+	assert.Equal(t, int32(2), protectedCalls.Load())
 }
 
 func TestRefreshTransport_ValidResponsePersistsAndReachesProtectedAPI(t *testing.T) {

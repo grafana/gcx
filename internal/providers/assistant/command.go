@@ -415,7 +415,10 @@ func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts 
 // ClientOptions for assistant prompt, including an HTTP client whose Timeout
 // matches streamTimeoutSeconds (see --timeout and SSE body reads).
 func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.ConfigLoader, streamTimeoutSeconds int, agentID string) (assistant.ClientOptions, error) {
-	cfg, err := configOpts.LoadConfig(ctx)
+	// Select the effective auth method before full context validation so an
+	// explicitly selected Basic or mTLS mode fails as unsupported without a
+	// namespace-discovery request. Supported bearer modes are validated below.
+	cfg, err := configOpts.LoadConfigTolerant(ctx)
 	if err != nil {
 		return assistant.ClientOptions{}, err
 	}
@@ -429,18 +432,25 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.Co
 	if grafana == nil {
 		return assistant.ClientOptions{}, fmt.Errorf("no grafana config in context %q", cfg.CurrentContext)
 	}
+	authMethod, err := curCtx.EffectiveGrafanaAuthMethod()
+	if err != nil {
+		return assistant.ClientOptions{}, err
+	}
 
-	switch {
-	case grafana.ProxyEndpoint != "" && grafana.OAuthToken != "":
+	switch authMethod {
+	case "oauth":
 		// OAuth path: direct API via ProxyEndpoint. Reuse the canonical REST
 		// refresh lifecycle so A2A requests get the same cross-process lock,
 		// owning-layer reload, keychain handling, and fail-closed persistence as
 		// every other OAuth consumer.
+		if err := curCtx.Validate(ctx); err != nil {
+			return assistant.ClientOptions{}, err
+		}
 		restCfg, err := curCtx.ToRESTConfig(ctx)
 		if err != nil {
 			return assistant.ClientOptions{}, err
 		}
-		restCfg.WireTokenPersistence(ctx, configOpts.ConfigSource(), cfg.CurrentContext, curCtx.Stack, cfg.Sources)
+		restCfg.WireTokenPersistence(ctx, configOpts.ConfigSource(ctx), cfg.CurrentContext, curCtx.Stack, cfg.Sources)
 		httpClient, err := newAssistantStreamingHTTPClientForRESTConfig(&restCfg.Config, streamTimeoutSeconds)
 		if err != nil {
 			return assistant.ClientOptions{}, fmt.Errorf("create assistant HTTP client: %w", err)
@@ -454,8 +464,11 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.Co
 			HTTPClient:     httpClient,
 		}, nil
 
-	case grafana.APIToken != "":
+	case "token":
 		// SA token path: plugin proxy through Grafana
+		if err := curCtx.Validate(ctx); err != nil {
+			return assistant.ClientOptions{}, err
+		}
 		restCfg, err := curCtx.ToRESTConfig(ctx)
 		if err != nil {
 			return assistant.ClientOptions{}, err
@@ -471,6 +484,11 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.Co
 			HTTPClient: httpClient,
 		}, nil
 
+	case "basic", "mtls":
+		return assistant.ClientOptions{}, fmt.Errorf(
+			"gcx assistant requires OAuth or token bearer authentication; selected auth-method %q is not supported",
+			authMethod,
+		)
 	default:
 		return assistant.ClientOptions{}, errors.New("no authentication configured; run 'gcx login' or set grafana.token in config")
 	}

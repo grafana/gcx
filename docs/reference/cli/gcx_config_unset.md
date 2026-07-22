@@ -21,8 +21,8 @@ gcx config unset PROPERTY_NAME [flags]
 	# Unset the "foo" context
 	gcx config unset contexts.foo
 
-	# Unset the "insecure-skip-tls-verify" flag on the "dev-instance" stack
-	gcx config unset stacks.dev-instance.grafana.insecure-skip-tls-verify
+	# Unset the "insecure-skip-verify" TLS setting on the "dev-instance" stack
+	gcx config unset stacks.dev-instance.grafana.tls.insecure-skip-verify
 
 	# Unset a cloud entry's token in the local config layer
 	gcx config unset --file local cloud.grafana-com.token

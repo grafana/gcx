@@ -343,7 +343,7 @@ func TestUseExistingCloudEntryEndpointChangeFailsClosed(t *testing.T) {
 
 func TestServerChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
-	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	t.Setenv("GRAFANA_TOKEN", " \t ")
 	agent.ResetForTesting()
 	t.Cleanup(agent.ResetForTesting)
 
@@ -417,6 +417,22 @@ func TestEnvironmentTokensCountAsExplicitCredentialIntent(t *testing.T) {
 	require.NoError(t, reuseNonInteractiveCloudCredential(&opts, true, sourceCtx, false))
 	assert.Equal(t, "fresh-cloud-token", opts.CloudToken)
 	assert.False(t, opts.CloudTokenTrusted, "environment credentials must still be validated")
+}
+
+func TestWhitespaceEnvironmentTokensAreNotExplicitOrSelected(t *testing.T) {
+	t.Setenv("GRAFANA_TOKEN", " \t ")
+	t.Setenv("GRAFANA_CLOUD_TOKEN", "\n ")
+	assert.False(t, credentialProvided("", "GRAFANA_TOKEN"))
+	assert.False(t, credentialProvided("", "GRAFANA_CLOUD_TOKEN"))
+	assert.False(t, credentialProvided(" \t", "GRAFANA_TOKEN"))
+
+	sourceCtx := &config.Context{
+		Grafana:    &config.GrafanaConfig{APIToken: "stored-grafana-token"},
+		CloudEntry: &config.CloudEntry{Token: "stored-cloud-token"},
+	}
+	grafanaToken, cloudToken := resolveNonInteractiveTokens("", "", sourceCtx, false)
+	assert.Equal(t, "stored-grafana-token", grafanaToken)
+	assert.Equal(t, "stored-cloud-token", cloudToken)
 }
 
 func TestLoadLoginSourceContextAppliesEnvToPositionalTarget(t *testing.T) {
@@ -498,6 +514,15 @@ func TestLoginTLSFromEnvironmentSupportsNewContext(t *testing.T) {
 	assert.Equal(t, "/tmp/ca.crt", tlsConfig.CAFile)
 }
 
+func TestWarnRuntimeOnlyTLSExplainsThatLoginIsNotDurable(t *testing.T) {
+	var out bytes.Buffer
+	warnRuntimeOnlyTLS(&out)
+
+	assert.Contains(t, out.String(), "GRAFANA_TLS_*")
+	assert.Contains(t, out.String(), "were not saved")
+	assert.Contains(t, out.String(), "Future commands must provide the same environment variables")
+}
+
 func TestCloudLoginEndpointsUseCoherentEnvironmentIntent(t *testing.T) {
 	stored := &config.Context{CloudEntry: &config.CloudEntry{
 		OAuthUrl: "https://grafana.com",
@@ -568,7 +593,7 @@ func TestLoginEnvironmentServerChangeRequiresPreflightConfirmation(t *testing.T)
 	require.ErrorContains(t, err, "--allow-server-override")
 }
 
-func TestLoginRejectsAmbiguousLayeredWriteBeforeNetwork(t *testing.T) {
+func TestLoginRejectsFreshCredentialForLayeredLocalOwnerBeforeNetwork(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	t.Setenv("HOME", t.TempDir())
 	userDir := t.TempDir()
@@ -597,7 +622,8 @@ current-context: default
 	userPath := filepath.Join(userDir, "gcx", "config.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
 	require.NoError(t, os.WriteFile(userPath, contents, 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(workDir, ".gcx.yaml"), contents, 0o600))
+	localPath := filepath.Join(workDir, ".gcx.yaml")
+	require.NoError(t, os.WriteFile(localPath, contents, 0o600))
 
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -619,9 +645,234 @@ current-context: default
 	})
 
 	err := cmd.ExecuteContext(t.Context())
-	require.ErrorContains(t, err, "write target is ambiguous")
-	require.ErrorContains(t, err, "--config <path>")
-	assert.Zero(t, requests.Load(), "ambiguous persistence must fail before authentication or validation")
+	require.ErrorContains(t, err, "auto-discovered repository config")
+	require.ErrorContains(t, err, "--config "+localPath)
+	assert.Zero(t, requests.Load(), "fresh credentials for a layered local owner must fail before authentication or validation")
+}
+
+func TestLoginRejectsDifferentGrafanaAndCloudOwnersBeforeNetwork(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("HOME", t.TempDir())
+	userDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", userDir)
+	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
+	t.Setenv("GCX_CONFIG", "")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_TOKEN")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	t.Cleanup(server.Close)
+
+	userPath := filepath.Join(userDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
+	userContents := fmt.Appendf(nil, `version: 1
+stacks:
+  prod:
+    grafana:
+      server: %s
+contexts:
+  prod:
+    stack: prod
+    cloud: grafana-com
+current-context: prod
+`, server.URL)
+	require.NoError(t, os.WriteFile(userPath, userContents, 0o600))
+	localPath := filepath.Join(workDir, config.LocalConfigFileName)
+	localContents := []byte(`version: 1
+cloud:
+  grafana-com:
+    oauth-url: https://grafana.com
+    api-url: https://grafana.com
+contexts:
+  prod:
+    stack: prod
+    cloud: grafana-com
+`)
+	require.NoError(t, os.WriteFile(localPath, localContents, 0o600))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{
+		"prod",
+		"--server", server.URL,
+		"--token", "fresh-grafana-token",
+		"--cloud-token", "fresh-cloud-token",
+		"--yes",
+	})
+
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "different files")
+	require.ErrorContains(t, err, userPath)
+	require.ErrorContains(t, err, localPath)
+	assert.Zero(t, requests.Load(), "split-owner login must fail before target detection or validation")
+	userAfter, readErr := os.ReadFile(userPath)
+	require.NoError(t, readErr)
+	localAfter, readErr := os.ReadFile(localPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, userContents, userAfter)
+	assert.Equal(t, localContents, localAfter)
+}
+
+func TestLoginRejectsSameNamedStackOutsideContextOwnerBeforeNetwork(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("HOME", t.TempDir())
+	userDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", userDir)
+	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
+	t.Setenv("GCX_CONFIG", "")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+
+	userPath := filepath.Join(userDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
+	userContents := []byte(`version: 1
+stacks:
+  prod:
+    slug: user-unreferenced
+    providers:
+      synth:
+        sm-url: https://user-sm.invalid
+contexts:
+  prod: {}
+current-context: prod
+`)
+	require.NoError(t, os.WriteFile(userPath, userContents, 0o600))
+	localPath := filepath.Join(workDir, config.LocalConfigFileName)
+	localContents := []byte(`version: 1
+stacks:
+  prod:
+    providers:
+      synth:
+        sm-url: https://attacker.invalid
+contexts:
+  unrelated: {}
+`)
+	require.NoError(t, os.WriteFile(localPath, localContents, 0o600))
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	t.Cleanup(server.Close)
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"prod", "--server", server.URL, "--token", "fresh-token", "--yes"})
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "Stack entry \"prod\" already exists outside the selected context owner")
+	require.ErrorContains(t, err, userPath)
+	assert.Zero(t, requests.Load())
+	userAfter, readErr := os.ReadFile(userPath)
+	require.NoError(t, readErr)
+	localAfter, readErr := os.ReadFile(localPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, userContents, userAfter)
+	assert.Equal(t, localContents, localAfter)
+}
+
+func TestLoginCopyOnWritesCloudEntrySharedByAnotherLayer(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("HOME", t.TempDir())
+	userDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", userDir)
+	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
+	t.Setenv("GCX_CONFIG", "")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_TOKEN")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/health":
+			_, _ = w.Write([]byte(`{"version":"12.0.0"}`))
+		case "/api":
+			_, _ = w.Write([]byte(`{"kind":"APIVersions","apiVersion":"v1","versions":[]}`))
+		case "/apis":
+			_, _ = w.Write([]byte(`{"kind":"APIGroupList","apiVersion":"v1","groups":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	userPath := filepath.Join(userDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
+	userContents := fmt.Appendf(nil, `version: 1
+stacks:
+  prod:
+    grafana:
+      server: %s
+      token: old-grafana-token
+      auth-method: token
+      org-id: 1
+cloud:
+  grafana-com:
+    token: old-shared-cap
+    oauth-url: %s
+    api-url: %s
+contexts:
+  prod:
+    stack: prod
+    cloud: grafana-com
+current-context: prod
+`, server.URL, server.URL, server.URL)
+	require.NoError(t, os.WriteFile(userPath, userContents, 0o600))
+	localPath := filepath.Join(workDir, config.LocalConfigFileName)
+	localContents := []byte(`version: 1
+contexts:
+  other:
+    cloud: grafana-com
+`)
+	require.NoError(t, os.WriteFile(localPath, localContents, 0o600))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{
+		"prod",
+		"--server", server.URL,
+		"--token", "fresh-grafana-token",
+		"--cloud-token", "fresh-cloud-cap",
+		"--cloud-api-url", server.URL,
+		"--cloud",
+		"--org-id", "1",
+		"--yes",
+	})
+	require.NoError(t, cmd.ExecuteContext(t.Context()))
+	assert.Positive(t, requests.Load())
+
+	localAfter, err := os.ReadFile(localPath)
+	require.NoError(t, err)
+	assert.Equal(t, localContents, localAfter)
+	userAfter, err := os.ReadFile(userPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(userAfter), "old-shared-cap", "the cross-layer shared entry must remain unchanged")
+	assert.Contains(t, string(userAfter), "fresh-cloud-cap")
+	assert.Contains(t, string(userAfter), "cloud: grafana-com-prod")
 }
 
 func TestLoginRejectsFreshCredentialsForAutoLocalBeforeNetwork(t *testing.T) {

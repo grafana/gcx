@@ -1144,10 +1144,12 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 //
 // explicitFile is the value of the --config flag; fileType is the value of
 // the --file flag. Both may be empty.
+//
+//nolint:nestif // Legacy-layer preflight and interrupted-migration recovery are one ordered, fail-before-write selection flow.
 func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, Source, error) {
 	if explicitFile != "" {
 		src := ExplicitConfigFile(explicitFile)
-		cfg, err := Load(ctx, src)
+		cfg, err := loadExplicit(ctx, explicitFile)
 		return cfg, src, err
 	}
 
@@ -1167,7 +1169,36 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 		for _, s := range sources {
 			if s.Type == fileType {
 				src := ExplicitConfigFile(s.Path)
-				cfg, err := Load(withConfigLayer(ctx, s.Type), src)
+				loadCtx := withConfigLayer(ctx, s.Type)
+				contents, readErr := readConfigSource(s)
+				if readErr != nil {
+					return Config{}, nil, readErr
+				}
+				targetWasLegacy := isLegacyConfig(contents)
+				if targetWasLegacy && len(sources) > 1 {
+					preflightErr := preflightLayeredSources(sources)
+					if preflightErr != nil {
+						var incomplete *layeredMigrationIncompleteError
+						if !errors.As(preflightErr, &incomplete) || !incomplete.includesLayer(fileType) {
+							return Config{}, nil, preflightErr
+						}
+						// A previous explicit step already migrated another layer.
+						// Let this targeted write finish one of the named remaining
+						// legacy layers; ordinary loads keep returning the typed error
+						// until every overlapping layer is complete.
+					}
+					for _, preflightSource := range sources {
+						if preflightSource.Type == fileType && preflightSource.snapshot != nil {
+							loadCtx = withConfigSnapshot(loadCtx, s.Path, preflightSource.snapshot) //nolint:fatcontext // One immutable snapshot is attached to the selected layer.
+							break
+						}
+					}
+				}
+				cfg, err := Load(loadCtx, src)
+				if err == nil && targetWasLegacy {
+					remaining := remainingLegacySourceSnapshots(sources, fileType, cfg.migrationDeferred)
+					warnIncompleteLayeredMigration(ctx, remaining)
+				}
 				return cfg, src, err
 			}
 		}
@@ -1199,8 +1230,44 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 	}
 }
 
+func remainingLegacySourceSnapshots(sources []ConfigSource, migratedLayer string, migrationDeferred bool) []ConfigSource {
+	remaining := make([]ConfigSource, 0, len(sources))
+	for _, source := range sources {
+		if !isLegacyConfig(source.snapshot) {
+			continue
+		}
+		if source.Type == migratedLayer && !migrationDeferred {
+			continue
+		}
+		remaining = append(remaining, source)
+	}
+	return remaining
+}
+
+func warnIncompleteLayeredMigration(ctx context.Context, remaining []ConfigSource) {
+	if len(remaining) == 0 {
+		return
+	}
+	steps := layeredMigrationSteps(remaining)
+	logging.FromContext(ctx).Warn("layered configuration migration is incomplete; finish every remaining legacy layer", "steps", steps)
+	if !agent.IsAgentMode() {
+		fmt.Fprintf(os.Stderr, "Warning: layered configuration migration is incomplete. Finish every remaining legacy layer:\n%s\n", steps)
+	}
+}
+
 // loadExplicit loads a single explicit config file, bypassing layered discovery.
 func loadExplicit(ctx context.Context, path string, overrides ...Override) (Config, error) {
+	// Reaching this function means the caller explicitly selected one document
+	// through --config or GCX_CONFIG. Preserve that provenance through legacy
+	// migration; constructing an ExplicitConfigFile Source and calling Load
+	// directly is only a path resolver and does not itself grant legacy-keychain
+	// authority.
+	var err error
+	ctx, err = withExplicitLegacyMigrationConsent(ctx, path)
+	if err != nil {
+		return Config{}, err
+	}
+	ctx = withConfigLayer(ctx, "explicit")
 	cfg, err := Load(ctx, ExplicitConfigFile(path), overrides...)
 	if err != nil {
 		return cfg, err

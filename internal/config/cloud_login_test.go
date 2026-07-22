@@ -157,6 +157,107 @@ func TestSaveCloudConfigSharedEntryUsesCopyOnWrite(t *testing.T) {
 	assert.Equal(t, "staging-cap", got.Contexts["staging"].CloudEntry.Token)
 }
 
+func TestSaveCloudConfigSafetyReservesEffectiveLayerNames(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	source := config.ExplicitConfigFile(path)
+
+	seed := config.Config{}
+	seed.SetCloudEntry("grafana-com", config.CloudEntry{
+		Token:    "shared-cap",
+		OAuthUrl: "https://grafana.com",
+		APIUrl:   "https://grafana.com",
+	})
+	seed.SetContext("prod", true, config.Context{Cloud: "grafana-com"})
+	require.NoError(t, config.Write(ctx, source, seed))
+
+	_, entryName, err := config.SaveCloudConfigWithSafety(
+		ctx,
+		source,
+		"prod",
+		&config.CloudEntry{
+			Token:    "prod-cap",
+			OAuthUrl: "https://grafana.com",
+			APIUrl:   "https://grafana.com",
+		},
+		config.CloudMutationSafety{
+			SharedInEffectiveConfig: true,
+			ReservedEntryNames:      []string{"grafana-com", "grafana-com-prod"},
+		},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "grafana-com-prod-2", entryName)
+
+	got, err := config.Load(ctx, source)
+	require.NoError(t, err)
+	assert.Equal(t, "shared-cap", got.Cloud["grafana-com"].Token)
+	assert.Equal(t, "prod-cap", got.Cloud[entryName].Token)
+	assert.Equal(t, entryName, got.Contexts["prod"].Cloud)
+}
+
+func TestSaveCloudConfigSafetyReservesUnboundEffectiveLayerName(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	source := config.ExplicitConfigFile(path)
+
+	seed := config.Config{}
+	seed.SetContext("prod", true, config.Context{})
+	require.NoError(t, config.Write(ctx, source, seed))
+
+	_, entryName, err := config.SaveCloudConfigWithSafety(
+		ctx,
+		source,
+		"prod",
+		&config.CloudEntry{
+			Token:    "prod-cap",
+			OAuthUrl: "https://grafana.com",
+			APIUrl:   "https://grafana.com",
+		},
+		config.CloudMutationSafety{ReservedEntryNames: []string{"grafana-com"}},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "grafana-com-prod", entryName)
+
+	got, err := config.Load(ctx, source)
+	require.NoError(t, err)
+	assert.Nil(t, got.Cloud["grafana-com"], "a name owned by another effective layer must not be shadowed")
+	assert.Equal(t, "prod-cap", got.Cloud[entryName].Token)
+	assert.Equal(t, entryName, got.Contexts["prod"].Cloud)
+}
+
+func TestSaveCloudConfigSafetyDoesNotReuseShadowedRawEntry(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	source := config.ExplicitConfigFile(path)
+
+	seed := config.Config{}
+	seed.SetCloudEntry("grafana-com", config.CloudEntry{
+		Token:    "same-cap",
+		OAuthUrl: "https://grafana.com",
+		APIUrl:   "https://grafana.com",
+	})
+	seed.SetContext("prod", true, config.Context{})
+	require.NoError(t, config.Write(ctx, source, seed))
+
+	_, entryName, err := config.SaveCloudConfigWithSafety(
+		ctx,
+		source,
+		"prod",
+		&config.CloudEntry{Token: "same-cap", OAuthUrl: "https://grafana.com", APIUrl: "https://grafana.com"},
+		config.CloudMutationSafety{
+			ReservedEntryNames: []string{"grafana-com"},
+			ForeignEntryNames:  []string{"grafana-com"},
+		},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "grafana-com-prod", entryName)
+
+	got, err := config.Load(ctx, source)
+	require.NoError(t, err)
+	assert.Equal(t, "same-cap", got.Cloud["grafana-com"].Token)
+	assert.Equal(t, entryName, got.Contexts["prod"].Cloud)
+}
+
 func TestSaveCloudConfigEndpointChangeUsesCopyOnWrite(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "config.yaml")

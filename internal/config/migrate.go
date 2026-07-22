@@ -9,10 +9,12 @@ import (
 	"maps"
 	"net/url"
 	"os"
+	"os/user"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -219,10 +221,13 @@ func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacy
 			case err == nil:
 				resolved[legacySecretKey{name, field}] = value
 			case errors.Is(err, credentials.ErrNotFound):
-				// A reachable keychain proved this exact legacy account is gone.
-				// Record an explicit empty value so conversion drops the dangling
-				// reference instead of stranding it in v1.
-				resolved[legacySecretKey{name, field}] = ""
+				// A reachable keychain proved this exact legacy account is gone, but
+				// the sentinel remains durable evidence that authentication was
+				// configured. Preserve it verbatim through conversion so the v1
+				// resolver quarantines it and consumers fail before falling through
+				// to anonymous or a lower-priority authentication method. Raw edit or
+				// re-authentication can then repair it explicitly.
+				continue
 			case errors.Is(err, credentials.ErrUnavailable):
 				transientFailure = true
 			case errors.Is(err, errLegacySentinelMismatch):
@@ -280,7 +285,7 @@ func convertLegacyConfig(lc *legacyConfig, layerType string, secrets map[legacyS
 	cfg := &Config{
 		Version:        ConfigVersion,
 		CurrentContext: lc.CurrentContext,
-		Diagnostics:    lc.Diagnostics,
+		Diagnostics:    cloneLegacyDiagnostics(lc.Diagnostics),
 	}
 
 	secretValue := func(ctxName string, field credentials.Field, raw string) string {
@@ -340,9 +345,9 @@ func convertLegacyStack(name string, lctx *legacyContext, secretValue func(strin
 
 	stack := &StackConfig{
 		Slug:      slug,
-		Grafana:   lctx.Grafana,
-		Providers: lctx.Providers,
-		Resources: lctx.Resources,
+		Grafana:   cloneLegacyGrafana(lctx.Grafana),
+		Providers: cloneLegacyProviders(lctx.Providers),
+		Resources: cloneLegacyResources(lctx.Resources),
 	}
 	if stack.Grafana != nil {
 		stack.Grafana.APIToken = secretValue(name, credentials.FieldGrafanaToken, stack.Grafana.APIToken)
@@ -356,6 +361,59 @@ func convertLegacyStack(name string, lctx *legacyContext, secretValue func(strin
 		}
 	}
 	return stack
+}
+
+func cloneLegacyDiagnostics(in *DiagnosticsConfig) *DiagnosticsConfig {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
+}
+
+func cloneLegacyGrafana(in *GrafanaConfig) *GrafanaConfig {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	if in.TLS != nil {
+		tlsCopy := *in.TLS
+		tlsCopy.CertData = slices.Clone(in.TLS.CertData)
+		tlsCopy.KeyData = slices.Clone(in.TLS.KeyData)
+		tlsCopy.CAData = slices.Clone(in.TLS.CAData)
+		tlsCopy.NextProtos = slices.Clone(in.TLS.NextProtos)
+		tlsCopy.credentialCertFile.contents = slices.Clone(in.TLS.credentialCertFile.contents)
+		tlsCopy.credentialKeyFile.contents = slices.Clone(in.TLS.credentialKeyFile.contents)
+		tlsCopy.credentialCAFile.contents = slices.Clone(in.TLS.credentialCAFile.contents)
+		out.TLS = &tlsCopy
+	}
+	return &out
+}
+
+func cloneLegacyProviders(in map[string]map[string]string) map[string]map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]map[string]string, len(in))
+	for provider, values := range in {
+		if values == nil {
+			out[provider] = nil
+			continue
+		}
+		valuesCopy := make(map[string]string, len(values))
+		maps.Copy(valuesCopy, values)
+		out[provider] = valuesCopy
+	}
+	return out
+}
+
+func cloneLegacyResources(in *ResourcesConfig) *ResourcesConfig {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.AssumeServerDryRun = slices.Clone(in.AssumeServerDryRun)
+	return &out
 }
 
 // ensureLegacyCloudEntry converts one legacy context's cloud credentials into
@@ -457,10 +515,23 @@ func verifyLegacyMigration(lc *legacyConfig, cfg *Config, secrets map[legacySecr
 		if newCtx.Cloud != "" && newCtx.CloudEntry == nil {
 			return fmt.Errorf("context %q: dangling cloud ref %q", name, newCtx.Cloud)
 		}
-		if !reflect.DeepEqual(lctx.Grafana, newCtx.Grafana) {
+		expectedGrafana := cloneLegacyGrafana(lctx.Grafana)
+		if expectedGrafana != nil {
+			expectedGrafana.APIToken = secretValue(name, credentials.FieldGrafanaToken, expectedGrafana.APIToken)
+			expectedGrafana.Password = secretValue(name, credentials.FieldGrafanaPassword, expectedGrafana.Password)
+			expectedGrafana.OAuthToken = secretValue(name, credentials.FieldOAuthToken, expectedGrafana.OAuthToken)
+			expectedGrafana.OAuthRefreshToken = secretValue(name, credentials.FieldOAuthRefreshToken, expectedGrafana.OAuthRefreshToken)
+		}
+		if !reflect.DeepEqual(expectedGrafana, newCtx.Grafana) {
 			return fmt.Errorf("context %q: grafana config differs after conversion", name)
 		}
-		if len(lctx.Providers) > 0 && !reflect.DeepEqual(lctx.Providers, newCtx.Providers) {
+		expectedProviders := cloneLegacyProviders(lctx.Providers)
+		if synth := expectedProviders["synth"]; synth != nil {
+			if raw, ok := synth["sm-token"]; ok {
+				synth["sm-token"] = secretValue(name, credentials.FieldSMToken, raw)
+			}
+		}
+		if len(lctx.Providers) > 0 && !reflect.DeepEqual(expectedProviders, newCtx.Providers) {
 			return fmt.Errorf("context %q: provider config differs after conversion", name)
 		}
 		if err := verifyLegacyCloud(name, lctx, newCtx, secretValue); err != nil {
@@ -552,23 +623,42 @@ func legacyDatasourceUID(lctx *legacyContext, kind string) string {
 }
 
 func sameStringSet(a, b []string) bool {
-	set := map[string]bool{}
+	left := make(map[string]struct{}, len(a))
 	for _, s := range a {
-		set[s] = true
+		left[s] = struct{}{}
 	}
+	right := make(map[string]struct{}, len(b))
 	for _, s := range b {
-		if !set[s] {
-			return false
-		}
-		delete(set, s)
+		right[s] = struct{}{}
 	}
-	// Remaining entries in a but not b are duplicates already counted.
-	for s := range set {
-		if !slices.Contains(b, s) {
+	if len(left) != len(right) {
+		return false
+	}
+	for s := range left {
+		if _, ok := right[s]; !ok {
 			return false
 		}
 	}
 	return true
+}
+
+func decodeLegacyMigrationInputs(codec *format.YAMLCodec, contents []byte) (legacyConfig, legacyConfig, error) {
+	var input legacyConfig
+	if err := codec.Decode(bytes.NewReader(contents), &input); err != nil {
+		return legacyConfig{}, legacyConfig{}, err
+	}
+	var baseline legacyConfig
+	if err := codec.Decode(bytes.NewReader(contents), &baseline); err != nil {
+		return legacyConfig{}, legacyConfig{}, err
+	}
+	return input, baseline, nil
+}
+
+func verifyLegacyConversion(input, baseline *legacyConfig, cfg *Config, secrets map[legacySecretKey]string) error {
+	if !reflect.DeepEqual(input, baseline) {
+		return errors.New("conversion mutated the independently decoded legacy input")
+	}
+	return verifyLegacyMigration(baseline, cfg, secrets)
 }
 
 // migrateLegacyConfig converts legacy config bytes to the current format and
@@ -639,9 +729,9 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 		return current, nil
 	}
 
-	lc := legacyConfig{}
 	codec := &format.YAMLCodec{BytesAsBase64: true}
-	if err := codec.Decode(bytes.NewBuffer(contents), &lc); err != nil {
+	lc, legacyBaseline, err := decodeLegacyMigrationInputs(codec, contents)
+	if err != nil {
 		return Config{}, UnmarshalError{File: filename, Err: err}
 	}
 
@@ -650,7 +740,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	// Auto-discovered repository, system, and arbitrary explicit configs cannot
 	// read predictable per-user legacy accounts. Compatibility is limited to the
 	// canonical discovered user config with secure write permissions.
-	allowLegacyGet := trustedLegacyKeychainSource(layerType, filename)
+	allowLegacyGet := trustedLegacyKeychainSource(ctx, layerType, filename)
 	secrets, transientLegacyFailure, err := collectLegacySecrets(&lc, store, allowLegacyGet)
 	if err != nil {
 		return Config{}, err
@@ -669,7 +759,10 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	cfg.Source = filename
 	cfg.migrationDeferred = !backupOK
 
-	if err := verifyLegacyMigration(&lc, cfg, secrets); err != nil {
+	// Verification uses a separately decoded, immutable baseline. Conversion
+	// must not be able to make its own self-check pass by aliasing and mutating
+	// the legacy Grafana/provider/resource nodes it is meant to compare against.
+	if err := verifyLegacyConversion(&lc, &legacyBaseline, cfg, secrets); err != nil {
 		return Config{}, migrationFailedError("config migration self-check failed", err, filename)
 	}
 
@@ -684,7 +777,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 		return Config{}, migrationFailedError("config migration produced an unreadable config", err, filename)
 	}
 	back.Resolve()
-	if err := verifyLegacyMigration(&lc, &back, secrets); err != nil {
+	if err := verifyLegacyMigration(&legacyBaseline, &back, secrets); err != nil {
 		return Config{}, migrationFailedError("config migration round-trip check failed", err, filename)
 	}
 
@@ -730,30 +823,90 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	return *cfg, nil
 }
 
-func trustedLegacyKeychainSource(layerType, filename string) bool {
-	if layerType != "user" {
+func trustedLegacyKeychainSource(ctx context.Context, layerType, filename string) bool {
+	if layerType == "explicit" {
+		canonical, ok := secureLegacyConfigIdentity(filename)
+		if !ok {
+			return false
+		}
+		consent, consented := ctx.Value(explicitLegacyMigrationConsentKey{}).(explicitLegacyMigrationConsent)
+		return consented && consent.sourceIdentity == canonical
+	}
+	return layerType == "user" && trustedDiscoveredUserLegacySource(filename)
+}
+
+func trustedDiscoveredUserLegacySource(filename string) bool {
+	canonical, ok := secureLegacyConfigIdentity(filename)
+	if !ok {
 		return false
 	}
-	info, err := os.Lstat(filename)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 {
-		return false
-	}
-	abs, err := filepath.Abs(filename)
-	if err != nil {
-		return false
-	}
-	abs = filepath.Clean(abs)
-	resolved, err := filepath.EvalSymlinks(abs)
-	if err != nil || filepath.Clean(resolved) != abs {
-		return false
-	}
+	// A discovered user source is trusted only when its resolved identity is one
+	// of the standard user locations. Resolve both sides so a symlinked HOME,
+	// XDG root, or config path does not strand credentials owned by that source.
 	for _, dir := range userConfigDirs() {
-		expected, err := filepath.Abs(userConfigFile(dir))
-		if err == nil && filepath.Clean(expected) == abs {
+		expected, err := canonicalConfigSource(userConfigFile(dir))
+		if err == nil && expected == canonical {
 			return true
 		}
 	}
 	return false
+}
+
+// secureLegacyConfigIdentity verifies the selected target rather than trusting
+// a lexical path. Legacy keychain account names are predictable, so the file
+// must be a stable regular file, owned by the current user where the platform
+// exposes ownership, and not writable by group or others.
+func secureLegacyConfigIdentity(filename string) (string, bool) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return "", false
+	}
+	defer func() { _ = file.Close() }()
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() || opened.Mode().Perm()&0o022 != 0 || !legacyConfigOwnedByCurrentUser(opened) {
+		return "", false
+	}
+	current, err := os.Stat(filename)
+	if err != nil || !os.SameFile(opened, current) {
+		return "", false
+	}
+	canonical, err := canonicalConfigSource(filename)
+	if err != nil {
+		return "", false
+	}
+	canonicalInfo, err := os.Stat(canonical)
+	if err != nil || !os.SameFile(opened, canonicalInfo) {
+		return "", false
+	}
+	return canonical, true
+}
+
+// legacyConfigOwnedByCurrentUser checks Unix-style FileInfo ownership when the
+// platform exposes a numeric Uid field. Platforms without that metadata retain
+// the regular-file and permission checks above.
+func legacyConfigOwnedByCurrentUser(info os.FileInfo) bool {
+	stat := reflect.ValueOf(info.Sys())
+	if !stat.IsValid() {
+		return true
+	}
+	if stat.Kind() == reflect.Pointer {
+		if stat.IsNil() {
+			return true
+		}
+		stat = stat.Elem()
+	}
+	if stat.Kind() != reflect.Struct {
+		return true
+	}
+	uid := stat.FieldByName("Uid")
+	if !uid.IsValid() || !uid.CanUint() {
+		return true
+	}
+	current, err := user.Current()
+	if err != nil {
+		return false
+	}
+	return current.Uid == strconv.FormatUint(uid.Uint(), 10)
 }
 
 // migrationFailedError wraps a migration failure with the two things the user
@@ -770,6 +923,12 @@ func migrationFailedError(summary string, err error, filename string) error {
 // layer. Migration reads it to qualify cloud entry names per layer.
 type configLayerKey struct{}
 
+type explicitLegacyMigrationConsentKey struct{}
+
+type explicitLegacyMigrationConsent struct {
+	sourceIdentity string
+}
+
 type migrationPersistenceKey struct{}
 
 type configSnapshotKey struct{}
@@ -777,6 +936,18 @@ type configSnapshotKey struct{}
 type configSnapshot struct {
 	path     string
 	contents []byte
+}
+
+// withExplicitLegacyMigrationConsent mints path-bound consent only for the
+// high-level explicit loader used by --config and GCX_CONFIG. The generic
+// ExplicitConfigFile Source remains a path resolver and cannot authorize reads
+// from predictable legacy keychain accounts.
+func withExplicitLegacyMigrationConsent(ctx context.Context, path string) (context.Context, error) {
+	identity, err := canonicalConfigSource(path)
+	if err != nil {
+		return ctx, err
+	}
+	return context.WithValue(ctx, explicitLegacyMigrationConsentKey{}, explicitLegacyMigrationConsent{sourceIdentity: identity}), nil
 }
 
 func withConfigLayer(ctx context.Context, layer string) context.Context {

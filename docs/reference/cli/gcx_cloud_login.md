@@ -34,7 +34,7 @@ gcx cloud login [flags]
 
 ```
   gcx cloud login
-	gcx cloud login --cloud-token glc_abc123
+  gcx cloud login --cloud-token glc_abc123
 ```
 
 ### Options

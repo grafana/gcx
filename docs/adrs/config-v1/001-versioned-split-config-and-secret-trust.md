@@ -1,8 +1,8 @@
 # ADR-022: Versioned Split Config and Source-Bound Secret Trust
 
 **Created**: 2026-07-21
-**Status**: accepted
-**Supersedes**: storage decisions in ADR-003; entry-merge decisions in ADR-004; config-schema decisions in the login-consolidation ADR
+**Status**: proposed
+**Proposes to supersede**: storage decisions in ADR-003; entry-merge decisions in ADR-004; config-schema decisions in the login-consolidation ADR
 
 ## Context
 

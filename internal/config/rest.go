@@ -319,6 +319,19 @@ func parseRFC3339OrZero(s string) time.Time {
 
 // NewNamespacedRESTConfig creates a new namespaced REST config.
 func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTConfig, error) {
+	if cfg.Grafana == nil {
+		return NamespacedRESTConfig{}, ValidationError{
+			Path:    fmt.Sprintf("$.contexts.'%s'", cfg.Name),
+			Message: "context references no stack with grafana config",
+		}
+	}
+	authSelection, err := cfg.validatedGrafanaAuthSelection()
+	if err != nil {
+		return NamespacedRESTConfig{}, err
+	}
+	selectedGrafana := *cfg.Grafana
+	selectedGrafana.TLS = cfg.Grafana.tlsForSelectedAuth(authSelection)
+
 	rcfg := rest.Config{
 		UserAgent:       version.UserAgent(),
 		Host:            strings.TrimSuffix(cfg.Grafana.Server, "/"),
@@ -329,29 +342,30 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		Burst: 100,
 	}
 
-	if cfg.Grafana.TLS != nil {
+	if selectedGrafana.TLS != nil {
+		resolvedTLS := *selectedGrafana.TLS
 		// Resolve file paths to data before passing to the k8s REST client.
-		if err := cfg.Grafana.TLS.ResolveFiles(); err != nil {
+		if err := resolvedTLS.ResolveFiles(); err != nil {
 			return NamespacedRESTConfig{}, fmt.Errorf("TLS configuration: %w", err)
 		}
 		// Kubernetes really is wonderful, huh.
 		// tl;dr it has its own TLSClientConfig,
 		// and it's not compatible with the one from the "crypto/tls" package.
 		rcfg.TLSClientConfig = rest.TLSClientConfig{
-			Insecure:   cfg.Grafana.TLS.Insecure,
-			ServerName: cfg.Grafana.TLS.ServerName,
-			CertData:   cfg.Grafana.TLS.CertData,
-			KeyData:    cfg.Grafana.TLS.KeyData,
-			CAData:     cfg.Grafana.TLS.CAData,
-			NextProtos: cfg.Grafana.TLS.NextProtos,
+			Insecure:   resolvedTLS.Insecure,
+			ServerName: resolvedTLS.ServerName,
+			CertData:   resolvedTLS.CertData,
+			KeyData:    resolvedTLS.KeyData,
+			CAData:     resolvedTLS.CAData,
+			NextProtos: resolvedTLS.NextProtos,
 		}
 	}
 
 	// Authentication
 	var oauthTransport *auth.RefreshTransport
 	var oauthCredentialBinding credentials.Binding
-	switch {
-	case cfg.Grafana.ProxyEndpoint != "" && (cfg.Grafana.OAuthToken != "" || cfg.Grafana.OAuthRefreshToken != ""):
+	switch authSelection.mode {
+	case grafanaAuthOAuth:
 		// OAuth proxy mode: route requests through the assistant backend proxy.
 		// The ProxyEndpoint may differ from Server (e.g. cloud routing through
 		// the assistant backend), so it is stored as a separate config field.
@@ -359,7 +373,9 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		// on rcfg to avoid client-go adding a redundant auth layer.
 		rcfg.Host = strings.TrimSuffix(cfg.Grafana.ProxyEndpoint, "/") + "/api/cli/v1/proxy"
 
-		// Zero time for ExpiresAt triggers an immediate refresh on first request.
+		// A zero expiry with a refresh token triggers renewal on first request.
+		// Access-only OAuth credentials with unknown expiry remain usable until
+		// the server rejects them, because there is no refresh path available.
 		expiresAt := parseRFC3339OrZero(cfg.Grafana.OAuthTokenExpiresAt)
 		refreshExpiresAt := parseRFC3339OrZero(cfg.Grafana.OAuthRefreshExpiresAt)
 		oauthTransport = &auth.RefreshTransport{
@@ -378,15 +394,15 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 			oauthTransport.Base = rt
 			return oauthTransport
 		}
-	case cfg.Grafana.APIToken != "":
+	case grafanaAuthToken:
 		rcfg.BearerToken = cfg.Grafana.APIToken
-	case cfg.Grafana.User != "":
+	case grafanaAuthBasic:
 		rcfg.Username = cfg.Grafana.User
 		rcfg.Password = cfg.Grafana.Password
 	}
 
 	// Namespace
-	namespace := resolveNamespace(ctx, *cfg.Grafana)
+	namespace := resolveNamespace(ctx, selectedGrafana)
 
 	// Wrap transport with debug logging so `-vvv` shows every HTTP request.
 	// When --insecure-log-http-payload is set, also add full request/response body dumps.

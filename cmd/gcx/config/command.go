@@ -93,6 +93,9 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 				if !strings.HasPrefix(key, providerEnvPrefix) {
 					continue
 				}
+				if providers.IsBlankProviderCredentialEnvironmentOverride(key, val) {
+					continue
+				}
 
 				suffix := key[len(providerEnvPrefix):]
 				nameParts := strings.SplitN(suffix, "_", 2)
@@ -456,7 +459,7 @@ func checkCmd(configOpts *Options) *cobra.Command {
 
 			var checkErr error
 			for _, gCtx := range cfg.Contexts {
-				if err := checkContext(cmd, cfg, gCtx, configOpts.ConfigSource()); err != nil {
+				if err := checkContext(cmd, &cfg, gCtx, configOpts.ConfigSource()); err != nil {
 					checkErr = err
 				}
 			}
@@ -468,7 +471,7 @@ func checkCmd(configOpts *Options) *cobra.Command {
 	return cmd
 }
 
-func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, source config.Source) error {
+func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, source config.Source) error {
 	stdout := cmd.OutOrStdout()
 	title := "Context: "
 	titleLen := len(title) + len(gCtx.Name)
@@ -494,6 +497,13 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	cmd.Println(cmdio.Yellow(title))
 	cmd.Println(cmdio.Yellow(strings.Repeat("=", titleLen)))
 
+	// Load resolves only the current context eagerly. config check validates
+	// every context, so resolve this context's deferred keychain references
+	// before validation can construct a namespace-discovery transport. Missing
+	// or foreign references become typed rejection evidence and are therefore
+	// reported with connectivity skipped instead of being sent upstream.
+	cfg.ResolveContext(gCtx.Name)
+
 	if err := gCtx.Validate(cmd.Context()); err != nil {
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(summarizeError(err)))
 		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
@@ -505,9 +515,18 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 
 	cmdio.Success(stdout, "Configuration: %s", cmdio.Green("valid"))
 
-	authMethod := gCtx.Grafana.AuthMethod
-	if authMethod == "" {
-		authMethod = gCtx.Grafana.InferredAuthMethod() + " (inferred)"
+	authMethod, err := gCtx.EffectiveGrafanaAuthMethod()
+	if err != nil {
+		// Validate above uses the same selector, so this is defensive against a
+		// future validation/transport drift rather than an expected branch.
+		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(err.Error()))
+		return nil
+	}
+	switch {
+	case gCtx.Grafana.AuthMethod == "":
+		authMethod += " (inferred)"
+	case !strings.EqualFold(authMethod, gCtx.Grafana.AuthMethod):
+		authMethod += " (environment override)"
 	}
 	cmdio.Info(stdout, "Auth method: %s", authMethod)
 
@@ -745,7 +764,7 @@ PROPERTY_VALUE is the new value to set.`,
 	gcx config set stacks.dev-instance.grafana.server https://grafana-dev.example
 
 	# Disable the validation of the server's SSL certificate on a stack
-	gcx config set stacks.dev-instance.grafana.insecure-skip-tls-verify true
+	gcx config set stacks.dev-instance.grafana.tls.insecure-skip-verify true
 
 	# Set the default prometheus datasource for a context
 	gcx config set contexts.dev.datasources.prometheus my-prom-uid
@@ -836,8 +855,8 @@ Paths are literal: they name the exact location in the configuration file, start
 	# Unset the "foo" context
 	gcx config unset contexts.foo
 
-	# Unset the "insecure-skip-tls-verify" flag on the "dev-instance" stack
-	gcx config unset stacks.dev-instance.grafana.insecure-skip-tls-verify
+	# Unset the "insecure-skip-verify" TLS setting on the "dev-instance" stack
+	gcx config unset stacks.dev-instance.grafana.tls.insecure-skip-verify
 
 	# Unset a cloud entry's token in the local config layer
 	gcx config unset --file local cloud.grafana-com.token`,

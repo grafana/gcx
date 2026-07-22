@@ -97,22 +97,43 @@ directly via --cloud-token.
 The OAuth and API endpoints default to https://grafana.com. Supplying only one
 of --oauth-url or --api-url selects that URL for both operations. Supplying
 both preserves the explicit OAuth-origin/API-destination pair.`,
-		Example: `  gcx cloud login
-	gcx cloud login --cloud-token glc_abc123`,
+		Example: "  gcx cloud login\n  gcx cloud login --cloud-token glc_abc123",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			mutationTarget, err := configOpts.MutationConfigTarget()
+			opts.cloudToken = strings.TrimSpace(opts.cloudToken)
+			preflightTarget, targetIsDeterministic, err := configOpts.PreflightLoginMutationTarget()
+			if err != nil {
+				return err
+			}
+			if targetIsDeterministic && preflightTarget.Type == "local" {
+				return autoLocalCloudCredentialError(preflightTarget)
+			}
+			cfg, effectiveCtx, contextName, err := currentCloudConfig(cmd.Context(), configOpts)
+			if err != nil {
+				return err
+			}
+			mutationTarget, err := configOpts.PlanLoginMutation(cfg, contextName, config.LoginMutationCloud)
 			if err != nil {
 				return err
 			}
 			if mutationTarget.Type == "local" {
 				return autoLocalCloudCredentialError(mutationTarget)
 			}
-			if opts.cloudToken == "" {
-				opts.cloudToken = strings.TrimSpace(os.Getenv("GRAFANA_CLOUD_TOKEN"))
-			}
-			cur, err := currentCloudContext(cmd.Context(), configOpts)
+			mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
+			mutationCtx := configOpts.LoginMutationContext(cmd.Context(), mutationTarget)
+			persistedConfig, cur, err := loadPersistedCloudConfig(mutationCtx, mutationSource, contextName)
 			if err != nil {
 				return err
+			}
+			if len(cfg.Sources) > 1 {
+				if err := config.VerifyLoginMutationBindings(
+					mutationTarget,
+					contextName,
+					effectiveCtx,
+					cur,
+					config.LoginMutationCloud,
+				); err != nil {
+					return err
+				}
 			}
 			oauthSelected := cmd.Flags().Changed("oauth-url")
 			apiSelected := cmd.Flags().Changed("api-url")
@@ -135,12 +156,21 @@ both preserves the explicit OAuth-origin/API-destination pair.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			mutationSource := configOpts.MutationConfigSource()
-			mutationCtx := configOpts.MutationConfigContext(cmd.Context())
-			if opts.cloudToken != "" {
-				return runTokenLogin(mutationCtx, configOpts, opts, mutationSource)
+			cloudSafety, err := cfg.LoginCloudMutationSafety(contextName, mutationTarget)
+			if err != nil {
+				return err
 			}
-			return runOAuthLogin(mutationCtx, configOpts, opts, mutationSource)
+			mutationGuard := persistedConfig.NewLoginMutationGuard(contextName, config.LoginMutationCloud)
+			if mutationTarget.Type != "explicit" {
+				mutationGuard, err = mutationGuard.WithDiscoverySnapshot(&cfg)
+				if err != nil {
+					return err
+				}
+			}
+			if opts.cloudToken != "" {
+				return runTokenLogin(mutationCtx, opts, mutationSource, contextName, cloudSafety, mutationGuard)
+			}
+			return runOAuthLogin(mutationCtx, opts, mutationSource, contextName, cloudSafety, mutationGuard)
 		},
 	}
 
@@ -164,28 +194,53 @@ func autoLocalCloudCredentialError(target config.ConfigSource) error {
 	}
 }
 
-// currentCloudContext loads the config and returns the target context. A
-// missing context is allowed for first login, but malformed or unsupported
-// configuration must fail before an OAuth listener or browser is started.
-func currentCloudContext(ctx context.Context, configOpts *cmdconfig.Options) (*config.Context, error) {
+// currentCloudConfig loads the effective config and returns the target context
+// name used for owner-aware mutation planning. A missing context is allowed for
+// first login, but malformed or unsupported configuration must fail before an
+// OAuth listener or browser is started.
+func currentCloudConfig(ctx context.Context, configOpts *cmdconfig.Options) (config.Config, *config.Context, string, error) {
 	cfg, err := configOpts.LoadConfigTolerant(ctx)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil //nolint:nilnil // A missing context is valid for a first Cloud login.
+		name := config.ResolveContextName(configOpts.Context, cfg)
+		return cfg, nil, name, nil
 	}
 	if err != nil {
-		return nil, err
+		return config.Config{}, nil, "", err
 	}
-	return cfg.Contexts[config.ResolveContextName(configOpts.Context, cfg)], nil
+	name := config.ResolveContextName(configOpts.Context, cfg)
+	return cfg, cfg.Contexts[name], name, nil
 }
 
-func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts, source config.Source) error {
+// loadPersistedCloudContext reloads only the selected owner. Endpoint and
+// credential decisions must not use a resolved view assembled from another
+// layer after mutation planning has chosen a raw destination.
+func loadPersistedCloudConfig(ctx context.Context, source config.Source, contextName string) (config.Config, *config.Context, error) {
+	cfg, err := config.Load(ctx, source)
+	if errors.Is(err, os.ErrNotExist) {
+		return cfg, nil, nil // A missing explicit file is a valid first login target.
+	}
+	if err != nil {
+		return config.Config{}, nil, err
+	}
+	cfg.ResolveContext(contextName)
+	return cfg, cfg.Contexts[contextName], nil
+}
+
+func runTokenLogin(
+	ctx context.Context,
+	opts *loginOpts,
+	source config.Source,
+	contextName string,
+	cloudSafety config.CloudMutationSafety,
+	mutationGuard config.LoginMutationGuard,
+) error {
 	oauthURL, apiURL := resolveCloudLoginEndpoints(opts.oauthURL, opts.apiURL)
 	entry := &config.CloudEntry{
 		Token:    opts.cloudToken,
 		OAuthUrl: oauthURL,
 		APIUrl:   apiURL,
 	}
-	contextName, entryName, err := config.SaveCloudConfig(ctx, source, configOpts.Context, entry)
+	contextName, entryName, err := config.SaveCloudConfigGuarded(ctx, source, contextName, entry, cloudSafety, mutationGuard)
 	if err != nil {
 		return err
 	}
@@ -194,7 +249,14 @@ func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *log
 	return nil
 }
 
-func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts, source config.Source) error {
+func runOAuthLogin(
+	ctx context.Context,
+	opts *loginOpts,
+	source config.Source,
+	contextName string,
+	cloudSafety config.CloudMutationSafety,
+	mutationGuard config.LoginMutationGuard,
+) error {
 	fmt.Fprintln(os.Stderr, "Warning: interactive OAuth login is experimental. It stores an OAuth-issued token in the cloud entry's oauth-token field.")
 	fmt.Fprintln(os.Stderr, "Some commands that talk to grafana.com do not yet work with an OAuth token. For full functionality, use --cloud-token with a Cloud Access Policy token.")
 
@@ -222,7 +284,7 @@ func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *log
 	fmt.Fprintf(os.Stderr, "Scopes: %s\n", result.Scope)
 
 	entry := cloudEntryFromOAuthResult(opts, result)
-	contextName, entryName, err := config.SaveCloudConfig(ctx, source, configOpts.Context, entry)
+	contextName, entryName, err := config.SaveCloudConfigGuarded(ctx, source, contextName, entry, cloudSafety, mutationGuard)
 	if err != nil {
 		return err
 	}

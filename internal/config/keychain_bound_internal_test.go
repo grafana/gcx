@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/credentials"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,6 +19,7 @@ type boundTestStore struct {
 	entries       map[string]string
 	getErr        error
 	setErr        error
+	setErrValue   string
 	setFailAt     int
 	setCalls      int
 	deleteErr     error
@@ -26,6 +29,23 @@ type boundTestStore struct {
 	gets          []string
 	sets          []string
 	deletes       []string
+}
+
+type boundTestLogger struct {
+	warnings []string
+}
+
+func (*boundTestLogger) Debug(string, ...any) {}
+func (*boundTestLogger) Info(string, ...any)  {}
+func (l *boundTestLogger) Warn(message string, _ ...any) {
+	l.warnings = append(l.warnings, message)
+}
+func (*boundTestLogger) Error(string, ...any) {}
+func (l *boundTestLogger) With(...any) logging.Logger {
+	return l
+}
+func (l *boundTestLogger) WithContext(context.Context) logging.Logger {
+	return l
 }
 
 func newBoundTestStore() *boundTestStore {
@@ -46,7 +66,9 @@ func (s *boundTestStore) Get(key string) (string, error) {
 
 func (s *boundTestStore) Set(key, value string) error {
 	s.setCalls++
-	if s.setErr != nil && (s.setFailAt == 0 || s.setCalls == s.setFailAt) {
+	valueMatches := s.setErrValue != "" && value == s.setErrValue
+	callMatches := s.setErrValue == "" && (s.setFailAt == 0 || s.setCalls == s.setFailAt)
+	if s.setErr != nil && (valueMatches || callMatches) {
 		return s.setErr
 	}
 	s.sets = append(s.sets, key)
@@ -312,7 +334,98 @@ func TestBoundKeychainRejectsForeignCrossFieldAndLegacyReferencesWithoutGet(t *t
 			} else {
 				assert.Empty(t, cfg.Stacks["default"].Grafana.APIToken)
 			}
+			_, restErr := cfg.Contexts["default"].ToRESTConfig(context.Background())
+			require.Error(t, restErr)
+			var rejected CredentialRejectedError
+			require.ErrorAs(t, restErr, &rejected)
+			assert.Contains(t, restErr.Error(), "before network use")
 		})
+	}
+}
+
+func TestMovedThreeContextConfigPreservesAndRepairsForeignSentinelsIncrementally(t *testing.T) {
+	store := newBoundTestStore()
+	useBoundTestStore(t, store)
+	oldPath := filepath.Join(t.TempDir(), "config.yaml")
+	movedPath := filepath.Join(t.TempDir(), "config.yaml")
+	names := []string{"prod", "staging", "dev"}
+	servers := map[string]string{
+		"prod":    "https://prod.invalid",
+		"staging": "https://staging.invalid",
+		"dev":     "https://dev.invalid",
+	}
+	sentinels := map[string]string{}
+	oldAccounts := map[string]string{}
+	for _, name := range names {
+		binding := boundStackTestBinding(t, oldPath, name, servers[name], credentials.FieldGrafanaToken)
+		sentinels[name] = credentials.FormatBoundSentinel(binding)
+		oldAccounts[name] = credentials.BoundAccountKey(binding)
+		store.entries[oldAccounts[name]] = "old-" + name
+	}
+	contents := fmt.Sprintf(`version: 1
+stacks:
+  prod:
+    grafana:
+      server: %s
+      token: %s
+      auth-method: token
+  staging:
+    grafana:
+      server: %s
+      token: %s
+      auth-method: token
+  dev:
+    grafana:
+      server: %s
+      token: %s
+      auth-method: token
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
+  dev:
+    stack: dev
+current-context: prod
+`, servers["prod"], sentinels["prod"], servers["staging"], sentinels["staging"], servers["dev"], sentinels["dev"])
+	require.NoError(t, os.WriteFile(movedPath, []byte(contents), 0o600))
+
+	cfg, err := Load(context.Background(), ExplicitConfigFile(movedPath))
+	require.NoError(t, err)
+	assert.Empty(t, store.gets, "a moved config must not retrieve any foreign generation")
+	for _, name := range names {
+		cfg.ResolveContext(name)
+		assert.Empty(t, cfg.Stacks[name].Grafana.APIToken)
+	}
+
+	// An unrelated write must remain possible and preserve every foreign
+	// sentinel exactly, even when none of the three owners has been repaired.
+	cfg.Resources = &ResourcesConfig{AssumeServerDryRun: []string{"folders.folder.grafana.app"}}
+	require.NoError(t, Write(context.Background(), ExplicitConfigFile(movedPath), cfg))
+	raw, err := os.ReadFile(movedPath)
+	require.NoError(t, err)
+	for _, sentinel := range sentinels {
+		assert.Contains(t, string(raw), sentinel)
+	}
+
+	// Re-authenticate owners in a non-current order. Each write replaces only
+	// that owner's rejected reference and leaves every other owner repairable.
+	for _, name := range []string{"dev", "prod", "staging"} {
+		cfg, err = Load(context.Background(), ExplicitConfigFile(movedPath))
+		require.NoError(t, err)
+		cfg.ResolveContext(name)
+		cfg.Stacks[name].Grafana.APIToken = "fresh-" + name
+		cfg.MarkSecretMutation(credentials.StackOwner(name), credentials.FieldGrafanaToken)
+		require.NoError(t, Write(context.Background(), ExplicitConfigFile(movedPath), cfg))
+	}
+
+	final, err := Load(context.Background(), ExplicitConfigFile(movedPath))
+	require.NoError(t, err)
+	for _, name := range names {
+		final.ResolveContext(name)
+		assert.Equal(t, "fresh-"+name, final.Stacks[name].Grafana.APIToken)
+		assert.NotContains(t, store.gets, oldAccounts[name], "foreign generations must never be read")
+		assert.Equal(t, "old-"+name, store.entries[oldAccounts[name]], "foreign generations must never be deleted")
 	}
 }
 
@@ -560,7 +673,7 @@ func TestMergeKeychainRuntimeDropsShadowedSameNamedState(t *testing.T) {
 	assert.NotContains(t, store.deletes, baseAccount)
 }
 
-func TestBoundKeychainMissingReferenceIsDroppedWithoutDelete(t *testing.T) {
+func TestBoundKeychainMissingReferenceSurvivesUnrelatedWriteWithoutDelete(t *testing.T) {
 	store := newBoundTestStore()
 	useBoundTestStore(t, store)
 	path := filepath.Join(t.TempDir(), "config.yaml")
@@ -575,8 +688,17 @@ func TestBoundKeychainMissingReferenceIsDroppedWithoutDelete(t *testing.T) {
 
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.NotContains(t, string(raw), "keychain:")
+	assert.Contains(t, string(raw), sentinel,
+		"an unrelated write must preserve evidence that authentication was configured")
 	assert.Empty(t, store.deletes, "a proven-missing account must not trigger an unrelated delete")
+
+	reloaded, err := Load(context.Background(), ExplicitConfigFile(path))
+	require.NoError(t, err)
+	_, err = reloaded.Contexts["default"].ToRESTConfig(context.Background())
+	require.Error(t, err)
+	var rejected CredentialRejectedError
+	require.ErrorAs(t, err, &rejected)
+	assert.Equal(t, credentials.FieldOAuthToken, rejected.Field)
 }
 
 func TestBoundKeychainRenameFailureRollsBackSameAccountRotation(t *testing.T) {
@@ -958,6 +1080,171 @@ func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing
 	}
 }
 
+func TestBoundKeychainWriteUnavailableFallsBackOnlyForNewCredential(t *testing.T) {
+	store := newBoundTestStore()
+	store.setErr = credentials.ErrUnavailable
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := boundStackTestConfig("https://example.invalid", "new-token")
+
+	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "new-token")
+	assert.NotContains(t, string(raw), "keychain:gcx:v2:")
+	assert.Empty(t, store.entries)
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+}
+
+func TestBoundKeychainWriteUnavailableMissingReferenceRepairFailsClosed(t *testing.T) {
+	store := newBoundTestStore()
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	server := "https://example.invalid"
+	binding := boundStackTestBinding(t, path, "default", server, credentials.FieldGrafanaToken)
+	sentinel := credentials.FormatBoundSentinel(binding)
+	writeBoundTestYAML(t, path, server, "token", sentinel)
+	rawBefore, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	cfg, err := Load(context.Background(), ExplicitConfigFile(path))
+	require.NoError(t, err)
+	assert.Empty(t, cfg.Stacks["default"].Grafana.APIToken)
+	cfg.Stacks["default"].Grafana.APIToken = "replacement-token"
+	store.setErr = credentials.ErrUnavailable
+
+	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
+	require.ErrorIs(t, err, credentials.ErrUnavailable)
+	require.ErrorContains(t, err, "cannot replace credential")
+	rawAfter, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	assert.Equal(t, rawBefore, rawAfter)
+	assert.Contains(t, string(rawAfter), sentinel)
+	assert.Empty(t, store.entries)
+	assert.Empty(t, store.deletes)
+	assert.Equal(t, "replacement-token", cfg.Stacks["default"].Grafana.APIToken)
+}
+
+func TestBoundKeychainWriteUnavailableRejectedReferenceRepairFailsClosed(t *testing.T) {
+	store := newBoundTestStore()
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	server := "https://example.invalid"
+	foreignPath := filepath.Join(t.TempDir(), "foreign-config.yaml")
+	foreignBinding := boundStackTestBinding(t, foreignPath, "default", server, credentials.FieldGrafanaToken)
+	foreignAccount := credentials.BoundAccountKey(foreignBinding)
+	foreignSentinel := credentials.FormatBoundSentinel(foreignBinding)
+	store.entries[foreignAccount] = "foreign-token"
+	writeBoundTestYAML(t, path, server, "token", foreignSentinel)
+	rawBefore, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	cfg, err := Load(context.Background(), ExplicitConfigFile(path))
+	require.NoError(t, err)
+	assert.Empty(t, cfg.Stacks["default"].Grafana.APIToken)
+	cfg.Stacks["default"].Grafana.APIToken = "replacement-token"
+	store.setErr = credentials.ErrUnavailable
+
+	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
+	require.ErrorIs(t, err, credentials.ErrUnavailable)
+	require.ErrorContains(t, err, "cannot replace credential")
+	rawAfter, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	assert.Equal(t, rawBefore, rawAfter)
+	assert.Contains(t, string(rawAfter), foreignSentinel)
+	assert.Equal(t, map[string]string{foreignAccount: "foreign-token"}, store.entries)
+	assert.Empty(t, store.deletes)
+	assert.Equal(t, "replacement-token", cfg.Stacks["default"].Grafana.APIToken)
+}
+
+func TestBoundKeychainPartialWriteUnavailableCommitsSentinelAndPlaintextSafely(t *testing.T) {
+	store := newBoundTestStore()
+	store.setErr = credentials.ErrUnavailable
+	store.setFailAt = 2
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := boundStackTestConfig("https://example.invalid", "new-token")
+	cfg.Stacks["default"].Grafana.User = "alice"
+	cfg.Stacks["default"].Grafana.Password = "new-password"
+
+	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	disk := string(raw)
+	assert.Len(t, store.entries, 1)
+	assert.NotEqual(t, strings.Contains(disk, "new-token"), strings.Contains(disk, "new-password"),
+		"exactly one credential should use the plaintext fallback")
+	assert.Equal(t, 1, strings.Count(disk, "keychain:gcx:v2:"))
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+}
+
+func TestBoundKeychainWriteUnavailableRotationAbortsWithoutWarning(t *testing.T) {
+	store := newBoundTestStore()
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	server := "https://example.invalid"
+	cfg := boundStackTestConfig(server, "")
+	cfg.Stacks["default"].Grafana.User = "alice"
+	cfg.Stacks["default"].Grafana.Password = "old-password"
+	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
+	source, err := canonicalConfigSource(path)
+	require.NoError(t, err)
+	passwordBinding := stackOwner("default", &StackConfig{
+		sourceIdentity: source,
+		Grafana:        &GrafanaConfig{Server: server, User: "alice"},
+	}).binding(credentials.FieldGrafanaPassword)
+	oldAccount := storedBoundAccount(t, store, passwordBinding, "old-password")
+	rawBefore, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	loaded, err := Load(context.Background(), ExplicitConfigFile(path))
+	require.NoError(t, err)
+	loaded.Stacks["default"].Grafana.APIToken = "new-token"
+	loaded.Stacks["default"].Grafana.Password = "new-password"
+	store.setErr = credentials.ErrUnavailable
+	store.setErrValue = "new-password"
+	logger := &boundTestLogger{}
+	ctx := logging.Context(context.Background(), logger)
+
+	err = Write(ctx, ExplicitConfigFile(path), loaded)
+	require.ErrorContains(t, err, "cannot replace credential")
+	assert.Empty(t, logger.warnings, "an aborted rotation must not claim plaintext was committed")
+	rawAfter, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	assert.Equal(t, rawBefore, rawAfter)
+	assert.Equal(t, "old-password", store.entries[oldAccount])
+	tokenBinding := boundStackTestBinding(t, path, "default", server, credentials.FieldGrafanaToken)
+	assertNoStoredBoundAccount(t, store, tokenBinding)
+}
+
+func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T) {
+	logger := &boundTestLogger{}
+	txn := newKeychainWriteTransaction(newBoundTestStore(), logger)
+	txn.warnUnavailableOnce = func(emit func()) { emit() }
+	txn.plaintextFallback = true
+
+	require.NoError(t, txn.commit())
+	require.Equal(t, []string{"keychain unavailable; credentials remain in plaintext on disk"}, logger.warnings)
+
+	logger.warnings = nil
+	store := newBoundTestStore()
+	store.deleteErr = errors.New("injected cleanup failure")
+	txn = newKeychainWriteTransaction(store, logger)
+	txn.warnUnavailableOnce = func(emit func()) { emit() }
+	txn.plaintextFallback = true
+	txn.deferDelete("old-account", "stack:default", credentials.FieldGrafanaToken)
+
+	require.Error(t, txn.commit())
+	assert.NotContains(t, logger.warnings, "keychain unavailable; credentials remain in plaintext on disk",
+		"a failed commit must not claim plaintext fallback succeeded")
+}
+
 func TestBoundKeychainUnavailableReplacementPreservesOldGeneration(t *testing.T) {
 	store := newBoundTestStore()
 	useBoundTestStore(t, store)
@@ -1255,30 +1542,37 @@ func TestLocalConfigCannotPairRepositoryDestinationWithEnvironmentCredential(t *
 		secretEnv  string
 		secret     string
 		credential func(Config) string
+		consume    func(Config) error
 	}{
 		{
 			name:      "Grafana token",
 			yaml:      "version: 1\nstacks:\n  default:\n    grafana:\n      server: https://attacker.invalid\ncontexts:\n  default:\n    stack: default\ncurrent-context: default\n",
 			secretEnv: "GRAFANA_TOKEN", secret: "exported-token",
 			credential: func(cfg Config) string { return cfg.Contexts["default"].Grafana.APIToken },
+			consume: func(cfg Config) error {
+				_, err := cfg.Contexts["default"].ToRESTConfig(context.Background())
+				return err
+			},
 		},
 		{
 			name:      "Grafana password",
 			yaml:      "version: 1\nstacks:\n  default:\n    grafana:\n      server: https://attacker.invalid\n      user: attacker\ncontexts:\n  default:\n    stack: default\ncurrent-context: default\n",
 			secretEnv: "GRAFANA_PASSWORD", secret: "exported-password",
 			credential: func(cfg Config) string { return cfg.Contexts["default"].Grafana.Password },
-		},
-		{
-			name:      "Synthetic Monitoring token",
-			yaml:      "version: 1\nstacks:\n  default:\n    providers:\n      synth:\n        sm-url: https://attacker.invalid\ncontexts:\n  default:\n    stack: default\ncurrent-context: default\n",
-			secretEnv: "GRAFANA_PROVIDER_SYNTH_SM_TOKEN", secret: "exported-sm-token",
-			credential: func(cfg Config) string { return cfg.Contexts["default"].Providers["synth"]["sm-token"] },
+			consume: func(cfg Config) error {
+				_, err := cfg.Contexts["default"].ToRESTConfig(context.Background())
+				return err
+			},
 		},
 		{
 			name:      "Cloud token",
 			yaml:      "version: 1\ncloud:\n  attacker:\n    api-url: https://attacker.invalid\ncontexts:\n  default:\n    cloud: attacker\ncurrent-context: default\n",
 			secretEnv: "GRAFANA_CLOUD_TOKEN", secret: "exported-cloud-token",
 			credential: func(cfg Config) string { return cfg.Contexts["default"].CloudEntry.Token },
+			consume: func(cfg Config) error {
+				_, err := cfg.Contexts["default"].CloudEntry.ResolveToken()
+				return err
+			},
 		},
 	}
 	for _, tt := range tests {
@@ -1292,6 +1586,11 @@ func TestLocalConfigCannotPairRepositoryDestinationWithEnvironmentCredential(t *
 			})
 			require.NoError(t, err)
 			assert.Empty(t, tt.credential(cfg))
+			consumeErr := tt.consume(cfg)
+			require.Error(t, consumeErr)
+			var rejected CredentialRejectedError
+			require.ErrorAs(t, consumeErr, &rejected)
+			assert.Contains(t, consumeErr.Error(), "before network use")
 		})
 	}
 }

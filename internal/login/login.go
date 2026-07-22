@@ -53,13 +53,19 @@ const (
 // All fields are directly populated from CLI flags or interactive prompts;
 // none carry internal state or injection hooks.
 type Inputs struct {
-	Server        string
-	ContextName   string
-	Target        Target
-	GrafanaToken  string
-	CloudToken    string
-	CloudAPIURL   string
-	CloudOAuthURL string
+	Server       string
+	ContextName  string
+	Target       Target
+	GrafanaToken string
+	// ExistingGrafanaAuthMethod records a previously persisted explicit auth
+	// method for pre-auth request safety. It never supplies a credential or
+	// selects the final login method; it only prevents target detection from
+	// presenting a stale client certificate when the existing method is known
+	// to be token, OAuth, or Basic.
+	ExistingGrafanaAuthMethod string
+	CloudToken                string
+	CloudAPIURL               string
+	CloudOAuthURL             string
 	// CloudCredentialKind controls which CloudEntry field receives CloudToken.
 	// It is deliberately independent from CloudTokenTrusted: credential type and
 	// validation policy are separate concerns. The zero value means CAP so
@@ -111,6 +117,17 @@ type Hooks struct {
 	// ConfigSource determines where the config file is read from and
 	// written to. Nil falls back to config.StandardLocation().
 	ConfigSource config.Source
+
+	// CloudMutationSafety carries shared-reference evidence from a complete
+	// layered read into the selected raw-owner write. Without it, reloading one
+	// file can undercount contexts in other layers and mutate their shared Cloud
+	// credential in place.
+	CloudMutationSafety config.CloudMutationSafety
+
+	// LoginMutationGuard pins the selected raw owner's pre-auth revision so the
+	// persistence reload cannot silently adopt a context changed during OAuth or
+	// connectivity validation.
+	LoginMutationGuard config.LoginMutationGuard
 
 	// NewAuthFlow constructs the OAuth PKCE flow. Must be non-nil when
 	// UseOAuth is true; otherwise Run returns an error. Callers typically
@@ -432,11 +449,26 @@ func detectTarget(ctx context.Context, opts Options) (Target, error) {
 	if opts.DetectFn != nil {
 		return opts.DetectFn(ctx, opts.Server)
 	}
-	client, err := tlsAwareClient(ctx, opts.TLS)
+	client, err := tlsAwareClient(ctx, preAuthTLS(opts))
 	if err != nil {
 		return TargetUnknown, fmt.Errorf("TLS configuration: %w", err)
 	}
 	return DetectTarget(ctx, opts.Server, client)
+}
+
+// preAuthTLS returns the TLS view authorized for requests that run before
+// login has built a fully resolved Context. Explicit token/OAuth intent, and a
+// persisted explicit non-mTLS method, retain CA/SNI/ALPN trust settings but do
+// not present a potentially stale client identity to the probed destination.
+func preAuthTLS(opts Options) *config.TLS {
+	if opts.TLS == nil {
+		return nil
+	}
+	method := strings.ToLower(strings.TrimSpace(opts.ExistingGrafanaAuthMethod))
+	if opts.GrafanaToken != "" || opts.UseOAuth || (method != "" && method != "mtls") {
+		return opts.TLS.ServerTrustOnly()
+	}
+	return opts.TLS
 }
 
 // tlsAwareClient returns a TLS-aware *http.Client when tlsCfg is non-nil and
@@ -468,6 +500,7 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		return opts.StagedContext.Grafana.AuthMethod, opts.StagedContext.Grafana, nil
 	}
 
+	authTLS := preAuthTLS(opts)
 	grafanaCfg := &config.GrafanaConfig{
 		Server: opts.Server,
 		OrgID:  int64(opts.OrgID),
@@ -480,16 +513,6 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		grafanaCfg.APIToken = opts.GrafanaToken
 		grafanaCfg.AuthMethod = "token"
 		method = "token"
-
-	case opts.TLS != nil && (len(opts.TLS.CertData) > 0 || opts.TLS.CertFile != ""):
-		// mTLS-only auth: the client certificate authenticates at the transport
-		// layer (e.g. Teleport proxy). No Grafana token or OAuth needed.
-		// Note: we check only for cert presence here, not cert+key pairing.
-		// TLS.ResolveFiles() enforces "both cert-file and key-file must be
-		// provided together" downstream, producing a clear error if the key
-		// is missing.
-		grafanaCfg.AuthMethod = "mtls"
-		method = "mtls"
 
 	case opts.UseOAuth:
 		if opts.NewAuthFlow == nil {
@@ -523,6 +546,16 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		// subsequent prompts (e.g. the optional Cloud API token). This runs
 		// once: retries hit the StagedContext cache above and skip OAuth.
 		announceOAuthLogin(w, result)
+
+	case authTLS != nil && (len(authTLS.CertData) > 0 || authTLS.CertFile != ""):
+		// mTLS-only auth: the client certificate authenticates at the transport
+		// layer (e.g. Teleport proxy). No Grafana token or OAuth needed.
+		// Note: we check only for cert presence here, not cert+key pairing.
+		// TLS.ResolveFiles() enforces "both cert-file and key-file must be
+		// provided together" downstream, producing a clear error if the key
+		// is missing.
+		grafanaCfg.AuthMethod = "mtls"
+		method = "mtls"
 
 	default:
 		return "", nil, &ErrNeedInput{Fields: []string{"grafana-auth"}}
@@ -688,7 +721,7 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 		source = config.StandardLocation()
 	}
 
-	cfg, err := config.Load(ctx, source)
+	cfg, err := config.LoadLoginMutationGuarded(ctx, source, opts.LoginMutationGuard)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -700,6 +733,14 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 	cfg.ResolveContext(contextName)
 
 	existing := cfg.Contexts[contextName]
+	// An unbound context may already have a same-named raw stack containing
+	// provider/resource settings. Bind and reuse that owned entry before the
+	// destination guard; replacing it with an empty stack would lose unrelated
+	// configuration and would bypass the existing-server confirmation.
+	if existing != nil && existing.Stack == "" && cfg.Stacks[existing.Name] != nil {
+		existing.Stack = existing.Name
+		cfg.Resolve()
+	}
 
 	// Server-mismatch guard: if the existing context points at a different
 	// server than the incoming one, require explicit confirmation before
@@ -730,7 +771,10 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 	} else {
 		cfg.CurrentContext = contextName // make current on success, same as new-context path
 	}
-	if err := mergeAuthIntoExisting(&cfg, existing, tempCtx, opts.OrgID, stackSlug); err != nil {
+	if err := mergeAuthIntoExisting(&cfg, existing, tempCtx, opts.OrgID, stackSlug, opts.CloudMutationSafety); err != nil {
+		return err
+	}
+	if err := opts.LoginMutationGuard.VerifyCurrentSources(); err != nil {
 		return err
 	}
 
@@ -744,7 +788,14 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 // stack and cloud entries, preserving all other user-configured fields
 // (OrgID, Datasources, Providers, etc.). Missing entries are created: the
 // stack named after the context, the cloud entry via EnsureCloudEntry.
-func mergeAuthIntoExisting(cfg *config.Config, existing *config.Context, incoming config.Context, explicitOrgID int, stackSlug string) error {
+func mergeAuthIntoExisting(
+	cfg *config.Config,
+	existing *config.Context,
+	incoming config.Context,
+	explicitOrgID int,
+	stackSlug string,
+	cloudSafety config.CloudMutationSafety,
+) error {
 	if incoming.Grafana != nil {
 		if err := mergeGrafanaAuthIntoStack(cfg, existing, incoming.Grafana, explicitOrgID, stackSlug); err != nil {
 			return err
@@ -753,7 +804,7 @@ func mergeAuthIntoExisting(cfg *config.Config, existing *config.Context, incomin
 
 	// Update the cloud entry if the incoming context carries cloud auth.
 	if incoming.CloudEntry != nil {
-		existing.Cloud = cfg.EnsureCloudEntry(existing.Cloud, *incoming.CloudEntry, existing.Name)
+		existing.Cloud = cfg.EnsureCloudEntryWithSafety(existing.Cloud, *incoming.CloudEntry, existing.Name, cloudSafety)
 	}
 
 	cfg.Resolve()
@@ -765,7 +816,9 @@ func mergeAuthIntoExisting(cfg *config.Config, existing *config.Context, incomin
 // none.
 func mergeGrafanaAuthIntoStack(cfg *config.Config, existing *config.Context, src *config.GrafanaConfig, explicitOrgID int, stackSlug string) error {
 	if existing.Stack == "" {
-		cfg.SetStack(existing.Name, config.StackConfig{})
+		if cfg.Stacks[existing.Name] == nil {
+			cfg.SetStack(existing.Name, config.StackConfig{})
+		}
 		existing.Stack = existing.Name
 		cfg.Resolve()
 	}

@@ -29,7 +29,8 @@ Config
 │   │   │   ├── Server    "https://grafana.example.com"
 │   │   │   ├── User      ""
 │   │   │   ├── Password  ""            // datapolicy:"secret"
-│   │   │   ├── APIToken  "glsa_..."    // datapolicy:"secret"  (takes precedence over User/Password)
+│   │   │   ├── APIToken  "glsa_..."    // datapolicy:"secret"
+│   │   │   ├── AuthMethod "token"       // authoritative: oauth, token, basic, or mtls
 │   │   │   ├── OrgID     0             // on-prem: org namespace
 │   │   │   ├── StackID   12345         // cloud: stack namespace
 │   │   │   └── TLS       *TLS
@@ -107,13 +108,12 @@ stacks:
   production:
     grafana:
       server: "https://grafana.example.com"
-      token: "glsa_xxxx"          # API token — takes precedence over user/password
+      auth-method: token           # only this Grafana auth credential is attached
+      token: "glsa_xxxx"
       org-id: 1                   # maps to namespace "org-1" in K8s API calls
       tls:
         insecure-skip-verify: false
         ca-data: <base64 PEM>     # custom CA bundle (base64-encoded in file)
-        cert-data: <base64 PEM>   # client cert (base64-encoded in file)
-        key-data: <base64 PEM>    # client key  (base64-encoded in file)
 
   # Grafana Cloud (uses stack-id as namespace)
   cloud-staging:
@@ -241,11 +241,15 @@ Loading steps (in `Load`):
 7. **Resolve keychain sentinels for the selected context**: only a v2 sentinel
    whose digest matches the source, exact owner/field, and normalized credential
    destination can trigger a keychain lookup. A copied, cross-field, legacy, or
-   destination-mismatched sentinel is cleared in memory without a lookup.
+   destination-mismatched sentinel is withheld in memory without a lookup and
+   recorded as rejected, so a credential consumer returns an actionable error
+   before constructing or sending a request.
    Non-current contexts resolve lazily through `Config.ResolveContext`. A missing
-   keychain item clears the reference; an unavailable keychain preserves the
-   original sentinel for an unchanged write. Under `go test`, the default store
-   is unavailable, so test binaries never prompt the OS keychain.
+   keychain item withholds the plaintext value in memory and records the missing
+   state; the original on-disk sentinel survives unrelated writes so the field
+   remains visibly configured and repairable. An unavailable keychain likewise
+   preserves the sentinel for an unchanged write. Under `go test`, the default
+   store is unavailable, so test binaries never prompt the OS keychain.
 8. **Migrate plaintext token-shaped secrets**: plaintext values in tracked stack
    and Cloud fields are staged under a newly generated bound account and the
    file is rewritten with
@@ -267,8 +271,9 @@ target source before encoding. Its keychain reconcile pass is mutation-aware:
 - **Preserve**: an unchanged sentinel whose backend was unavailable is written
   back verbatim without touching the store. Explicit set/unset intent overrides
   preservation, so stale load state cannot undo a mutation.
-- **Reject/rebind**: a foreign or destination-mismatched sentinel is never used
-  as authority. It remains non-resolvable until replaced with a new credential.
+- **Reject/rebind**: a foreign, missing, or destination-mismatched sentinel is
+  never used as authority. Its on-disk reference and rejection evidence survive
+  unrelated writes, while an explicit set/unset can repair or remove it.
 
 Credential writes are a staged transaction. A new or rotated value is written
 under a fresh random generation before the config is replaced. The new config
@@ -282,12 +287,17 @@ when every deleted old generation was restored successfully. If restoration is
 uncertain, gcx retains the durable new config and staged generations instead of
 creating an old-YAML-to-missing-keychain reference.
 
-When the keychain is unavailable, a brand-new credential with no prior
-generation may remain plaintext on disk with a one-time warning. Replacing or
-deleting an existing generation fails closed because silently continuing could
-orphan the only resolvable credential or leave an old credential active.
-Secret-less writes skip the keychain entirely (`hasSecretsToReconcile`), so
-they never probe the OS backend.
+When the keychain reports a narrowly classified unavailable backend, a
+brand-new credential with no prior keychain reference may remain plaintext on
+disk; gcx warns at most once per process. Known locked/unreachable native
+backend failures are normalized at write time as unavailable, not just during
+the initial read probe. Replacing or deleting an existing generation, replacing
+a missing or rejected sentinel, and value-size, policy, cancellation, or
+unknown backend failures all fail closed. Silently continuing in those cases
+could orphan the only resolvable credential, leave an old credential active, or
+downgrade a credential for an unrelated backend error. Secret-less writes skip
+the keychain entirely (`hasSecretsToReconcile`), so they never probe the OS
+backend.
 
 ---
 
@@ -321,9 +331,13 @@ values in the new v1 file and trusted legacy keychain values move to
 source/owner/field/destination-bound, generation-addressed accounts. Legacy
 accounts are never deleted, so an exact backup containing a legacy sentinel
 remains restorable. Predictable legacy sentinels are accepted only by the
-controlled migrator for the canonical, securely permissioned user source; they
-are not portable authority in ordinary v1 loading. A read-only source migrates
-in memory with a warning on every invocation.
+controlled migrator for the canonical, securely permissioned user source or a
+securely permissioned file deliberately selected through
+`--config`/`GCX_CONFIG`. Explicit consent is bound to that file's canonical
+identity; generic internal construction of an explicit source grants no
+authority. Symlinked home/XDG paths work through canonical identity
+comparison. These sentinels are not portable authority in ordinary v1 loading.
+A read-only source migrates in memory with a warning on every invocation.
 
 ---
 
@@ -367,16 +381,26 @@ Key behavior: env vars override the **selected context** only. They do not
 affect other contexts in the file. Write-back paths reload their raw target
 source, so the env-mutated runtime object is never persisted implicitly.
 
+Blank or whitespace-only credential environment values are treated as absent:
+they do not erase a stored credential and do not count as fresh authorization
+to rebind it. This applies to the core Grafana, Cloud, password, and Synthetic
+Monitoring credential variables and to registered provider keys declared
+`Secret`. Blank non-secret and unknown provider fields retain their ordinary
+override semantics.
+
 An auto-discovered repository `.gcx.yaml` is a lower trust boundary for
-external credentials. Runtime Grafana, Cloud, Synthetic Monitoring, and basic
-auth secrets are cleared before a client can use them when their destination
-comes from that local source. Login also rejects fresh flag-, prompt-, env-, or
-OAuth-derived credentials before network activity or persistence. To authorize
-the repository file, select it explicitly with `--config .gcx.yaml` or
-`GCX_CONFIG`; a server or endpoint flag alone is insufficient because local
-proxy and TLS settings still participate in the connection. Local plaintext or
-source-bound keychain credentials remain valid for their unchanged bound
-destination.
+external credentials. Fresh flag-, prompt-, environment-, or OAuth-derived
+Grafana, Cloud, Synthetic Monitoring, and basic-auth credentials are withheld
+and recorded as rejected when paired with a destination from that local
+source. Credential-consuming loaders surface that state as a pre-network error
+instead of silently falling back to anonymous or empty Basic authentication.
+To authorize the repository file, select it explicitly with
+`--config .gcx.yaml` or `GCX_CONFIG`; a server or endpoint flag alone is
+insufficient because local proxy and TLS settings still participate in the
+connection. Existing plaintext or source-bound keychain credentials may be
+reused only for their unchanged bound destination. Direct-provider routes may
+still require explicit selection before accepting repository-controlled
+endpoints.
 
 Provider-specific endpoint environment variables follow an additional pairing
 rule: changing a direct-auth destination requires the provider's corresponding
@@ -384,6 +408,12 @@ credential environment variable in the same invocation. Providers resolve the
 endpoint, Grafana auth, Cloud auth, and stack metadata from one loaded snapshot
 so separate loads cannot splice trust sources. Implicit provider cache or token
 write-back skips auto-discovered repository files.
+
+The `resources` command carries its explicit `--config` selection through the
+operation context. Lazy provider adapters consume that immutable selection for
+reads, destructive mutations, OAuth refresh persistence, and provider cache
+write-back. A zero-value adapter loader therefore cannot rediscover a different
+user or repository config midway through one command.
 
 ---
 
@@ -507,6 +537,13 @@ reference identifies another environment; incompatible referenced environments
 are rejected and must use separate entries. This prevents a
 credential authenticated against one issuer from later being presented to an
 unrelated API destination.
+
+That rejection is a raw-repair path, not an automatic mutation. The error names
+the owning source, every conflicting Cloud root, and the exact
+`gcx config edit <layer>` or `gcx config edit --config <path>` command that
+opens the file without loading it. Split the Cloud entry into one entry per
+environment and update the affected `contexts.<name>.cloud` bindings; gcx never
+guesses which destination should receive the credential.
 
 The binding is optional: a context without a `cloud:` ref passes validation,
 and cloud-dependent operations fail at runtime with a recovery hint
@@ -709,15 +746,27 @@ if !opts.Raw {
 
 Validation happens in two places:
 
-1. **Tolerant load** (`loadConfigTolerant`): used by `config view`, `config check`,
-   `config set`, `config unset`. No validation beyond YAML parsing. Allows the
-   user to work with partially-valid configs.
+1. **Tolerant or raw-target load**: `config view` and `config check` use
+   `LoadConfigTolerant`; `config set` and `config unset` use `LoadForWrite` to
+   load only the selected raw destination layer. These paths parse the schema
+   but do not require every context to be operational, so users can repair
+   partially valid configurations without flattening layered state.
 
 2. **Strict load** (`LoadConfig`): used by `resources` commands. Calls
    `ctx.Validate()` which enforces:
    - `stack`/`cloud` name refs must resolve to existing entries
    - the referenced stack's `GrafanaConfig` must be non-nil and non-empty
    - `Server` must be non-empty
+   - a credential withheld because its source, owner, field, or destination was
+     rejected cannot fall through to anonymous or incomplete authentication
+   - an explicit `auth-method` must be one of `oauth`, `token`, `basic`, or
+     `mtls`; it is authoritative over stale fields for other methods unless a
+     non-blank `GRAFANA_TOKEN` selects runtime-only token authentication for
+     this invocation (the derived selector is never persisted)
+   - the selected method must have complete material: OAuth needs its proxy and
+     an access or refresh token, token needs a non-empty service-account token,
+     explicit Basic needs user and password, and mTLS needs client certificate
+     and private key
    - Either `OrgID != 0`, discovery succeeds, or `StackID != 0`
 
    A missing `cloud` ref is *not* a validation error — cloud-dependent

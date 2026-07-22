@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"reflect"
 	"strconv"
@@ -45,7 +46,7 @@ func ParseEnvIntoContext(ctx *Context) error {
 		"GRAFANA_CLOUD_TOKEN":             credentials.FieldCloudToken,
 		"GRAFANA_PROVIDER_SYNTH_SM_TOKEN": credentials.FieldSMToken,
 	} {
-		if _, ok := os.LookupEnv(envKey); ok {
+		if value, ok := os.LookupEnv(envKey); ok && !IsBlankCredentialEnvironmentOverride(envKey, value) {
 			ctx.runtimeSecretOverrides[field] = true
 		}
 	}
@@ -66,7 +67,8 @@ func ParseEnvIntoContext(ctx *Context) error {
 // context references (if any). The copy keeps env values out of the shared
 // named entry, which other contexts reference and Write would persist.
 func applyCloudEnvOverride(ctx *Context) {
-	_, hasToken := os.LookupEnv("GRAFANA_CLOUD_TOKEN")
+	token, hasToken := os.LookupEnv("GRAFANA_CLOUD_TOKEN")
+	hasToken = hasToken && !IsBlankCredentialEnvironmentOverride("GRAFANA_CLOUD_TOKEN", token)
 	_, hasAPIURL := os.LookupEnv("GRAFANA_CLOUD_API_URL")
 	_, hasOAuthURL := os.LookupEnv("GRAFANA_CLOUD_OAUTH_URL")
 	if !hasToken && !hasAPIURL && !hasOAuthURL {
@@ -75,6 +77,7 @@ func applyCloudEnvOverride(ctx *Context) {
 	detached := CloudEntry{}
 	if ctx.CloudEntry != nil {
 		detached = *ctx.CloudEntry
+		detached.credentialRejections = maps.Clone(ctx.CloudEntry.credentialRejections)
 	}
 	// parseEnvTags fills the env-tagged fields on the detached copy.
 	ctx.CloudEntry = &detached
@@ -122,12 +125,36 @@ func walkStruct(sv reflect.Value) error {
 		if !ok {
 			continue
 		}
+		// Empty credential variables are conventionally used to clear inherited
+		// process state in CI. They are not a fresh credential and must not erase a
+		// stored value or authorize re-binding it to an overridden destination.
+		if IsBlankCredentialEnvironmentOverride(envKey, val) {
+			continue
+		}
 
 		if err := setField(fv, val, envKey); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// IsBlankCredentialEnvironmentOverride reports whether an environment value
+// is blank and its variable is a credential input. Blank credentials are often
+// used to clear inherited process state in CI; they must not erase a stored
+// credential or authorize binding that credential to another destination.
+// Non-credential variables retain their existing blank-value semantics.
+func IsBlankCredentialEnvironmentOverride(envKey, value string) bool {
+	return isCredentialEnvironmentVariable(envKey) && strings.TrimSpace(value) == ""
+}
+
+func isCredentialEnvironmentVariable(envKey string) bool {
+	switch envKey {
+	case "GRAFANA_TOKEN", "GRAFANA_PASSWORD", "GRAFANA_CLOUD_TOKEN", "GRAFANA_PROVIDER_SYNTH_SM_TOKEN":
+		return true
+	default:
+		return false
+	}
 }
 
 func setField(fv reflect.Value, val, envKey string) error {

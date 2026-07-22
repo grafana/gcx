@@ -299,6 +299,11 @@ type StackConfig struct {
 	sourceIdentity string `json:"-" yaml:"-"`
 	sourceLayer    string `json:"-" yaml:"-"`
 
+	// credentialRejections is runtime-only evidence that a configured secret
+	// was deliberately withheld. Consumers must fail before network use instead
+	// of silently degrading to anonymous or empty Basic authentication.
+	credentialRejections map[credentials.Field]CredentialRejectedError `json:"-" yaml:"-"`
+
 	// Slug is the Grafana Cloud stack slug (e.g. "mystack").
 	// Optional: if not set, the slug may be derived from Grafana.Server.
 	Slug string `json:"slug,omitempty" yaml:"slug,omitempty"`
@@ -326,6 +331,8 @@ type CloudEntry struct {
 	// entry. See StackConfig.sourceIdentity.
 	sourceIdentity string `json:"-" yaml:"-"`
 	sourceLayer    string `json:"-" yaml:"-"`
+
+	credentialRejections map[credentials.Field]CredentialRejectedError `json:"-" yaml:"-"`
 
 	// Token is a Grafana Cloud access policy token used to authenticate
 	// against GCOM.
@@ -365,8 +372,14 @@ type CloudEntry struct {
 // refresh token, so re-running the login is the only recovery. An empty
 // return with nil error means the entry holds no credential.
 func (entry *CloudEntry) ResolveToken() (string, error) {
+	if err := entry.credentialRejection(credentials.FieldCloudToken); err != nil {
+		return "", err
+	}
 	if entry.Token != "" {
 		return entry.Token, nil
+	}
+	if err := entry.credentialRejection(credentials.FieldOAuthToken); err != nil {
+		return "", err
 	}
 	if entry.OAuthToken == "" {
 		return "", nil
@@ -481,8 +494,15 @@ func (context *Context) Validate(ctx context.Context) error {
 			},
 		}
 	}
+	authSelection, err := context.selectGrafanaAuth()
+	if err != nil {
+		return err
+	}
+	if err := context.grafanaCredentialRejectionForMode(authSelection.mode); err != nil {
+		return err
+	}
 
-	return context.Grafana.Validate(ctx, context.stackName())
+	return context.Grafana.validateWithAuthSelection(ctx, context.stackName(), authSelection)
 }
 
 // stackName returns the name of the stack this context references, falling
@@ -735,8 +755,10 @@ type GrafanaConfig struct {
 	// OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
 	OAuthRefreshExpiresAt string `json:"oauth-refresh-expires-at,omitempty" yaml:"oauth-refresh-expires-at,omitempty"`
 
-	// AuthMethod is the authentication method stored by gcx login: "oauth", "token", "basic", or "mtls".
-	// Empty string is valid for legacy configs; readers should call InferredAuthMethod() in that case.
+	// AuthMethod selects "oauth", "token", "basic", or "mtls" when no complete
+	// runtime credential override supersedes it. Empty is valid for legacy configs
+	// and uses compatibility inference; consumers should use
+	// Context.EffectiveGrafanaAuthMethod instead of inspecting fields.
 	AuthMethod string `json:"auth-method,omitempty" yaml:"auth-method,omitempty"`
 
 	// OrgID specifies the organization targeted by this config.
@@ -796,6 +818,14 @@ func (grafana GrafanaConfig) stackIDMismatchError(contextName string, discovered
 }
 
 func (grafana GrafanaConfig) Validate(ctx context.Context, contextName string) error {
+	selection, err := selectGrafanaAuth(&grafana, nil, contextName)
+	if err != nil {
+		return err
+	}
+	return grafana.validateWithAuthSelection(ctx, contextName, selection)
+}
+
+func (grafana GrafanaConfig) validateWithAuthSelection(ctx context.Context, contextName string, selection grafanaAuthSelection) error {
 	if grafana.Server == "" {
 		return ValidationError{
 			Path:    fmt.Sprintf("$.stacks.'%s'.grafana", contextName),
@@ -806,20 +836,13 @@ func (grafana GrafanaConfig) Validate(ctx context.Context, contextName string) e
 		}
 	}
 
-	hasProxy := grafana.ProxyEndpoint != ""
-	hasOAuth := grafana.OAuthToken != ""
-	if hasProxy != hasOAuth {
-		return ValidationError{
-			Path:    fmt.Sprintf("$.stacks.'%s'.grafana", contextName),
-			Message: "incomplete OAuth config: proxy-endpoint and oauth-token must both be set",
-			Suggestions: []string{
-				"Run `gcx login` to complete the OAuth flow",
-				"Or remove partial OAuth fields from the config",
-			},
-		}
+	if err := grafana.validateSelectedAuth(selection, contextName); err != nil {
+		return err
 	}
 
-	if err := grafana.validateNamespace(ctx, contextName); err != nil {
+	selectedGrafana := grafana
+	selectedGrafana.TLS = grafana.tlsForSelectedAuth(selection)
+	if err := selectedGrafana.validateNamespace(ctx, contextName); err != nil {
 		return err
 	}
 
@@ -835,22 +858,11 @@ func (grafana GrafanaConfig) IsEmpty() bool {
 // from populated credential fields: OAuthToken => "oauth"; APIToken => "token";
 // User or Password => "basic"; TLS with client cert => "mtls"; no credentials => "unknown".
 func (grafana GrafanaConfig) InferredAuthMethod() string {
-	if grafana.AuthMethod != "" {
-		return grafana.AuthMethod
+	selection, err := selectGrafanaAuth(&grafana, nil, "")
+	if err != nil {
+		return strings.ToLower(strings.TrimSpace(grafana.AuthMethod))
 	}
-	if grafana.OAuthToken != "" {
-		return "oauth"
-	}
-	if grafana.APIToken != "" {
-		return "token"
-	}
-	if grafana.User != "" || grafana.Password != "" {
-		return "basic"
-	}
-	if grafana.TLS != nil && (len(grafana.TLS.CertData) > 0 || grafana.TLS.CertFile != "") {
-		return "mtls"
-	}
-	return "unknown"
+	return selection.mode.String()
 }
 
 // TLS contains settings to enable transport layer security.

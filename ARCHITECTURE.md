@@ -180,9 +180,13 @@ Multiple auth mechanisms for different tiers.
 | **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
 | **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-resolved Basic auth shared across signal providers; stale provider cache fields are not credential destinations |
 
-**Runtime precedence:** OAuth proxy > service-account token > user/password.
-Explicit flags override env vars override config file while credentials are
-being resolved. `httputils.NewDefaultClient(ctx)` must be used for APIs outside
+**Runtime selection:** an explicit `grafana.auth-method` (`oauth`, `token`,
+`basic`, or `mtls`) is authoritative, and stale fields for other methods are
+not attached to the request. Legacy entries without `auth-method` infer OAuth
+proxy > service-account token > user/password > mTLS/anonymous; partial or
+rejected higher-priority credentials fail before network use instead of falling
+through. Explicit flags override env vars override config file while credentials
+are being resolved. `httputils.NewDefaultClient(ctx)` must be used for APIs outside
 the Grafana server unless the provider uses the trust-checked
 `CloudRESTConfig.HTTPClient`/direct-provider snapshot path; a raw k8s transport
 can otherwise inject Grafana auth into the wrong request.
@@ -195,8 +199,8 @@ can otherwise inject Grafana auth into the wrong request.
 |-----|-------|--------|
 | [001](docs/adrs/legacy/001-query-under-datasources.md) | Move query under datasources with per-kind subcommands | accepted |
 | [002](docs/adrs/adapter-schema-example/001-align-examples-with-schemas-ux.md) | Align `resources examples` with `resources schemas` UX | accepted |
-| [003](docs/adrs/cloud-rest-config/001-cloud-config-and-gcom.md) | CloudConfig in Context and GCOM Stack Discovery | partially superseded by [022] |
-| [004](docs/adrs/config-layering/001-multi-file-config-layering.md) | Multi-File Config Layering (System/User/Local) | partially superseded by [022] |
+| [003](docs/adrs/cloud-rest-config/001-cloud-config-and-gcom.md) | CloudConfig in Context and GCOM Stack Discovery | accepted |
+| [004](docs/adrs/config-layering/001-multi-file-config-layering.md) | Multi-File Config Layering (System/User/Local) | accepted |
 | [005](docs/adrs/constitution-design-principles/001-codify-cli-design-principles.md) | Codify CLI Design Principles in CONSTITUTION.md and Design Guide | accepted |
 | [006](docs/adrs/conventional-commits/001-pr-title-enforcement.md) | Conventional Commits via PR Title Enforcement | accepted |
 | [007](docs/adrs/provider-consolidation/001-consolidation-strategy.md) | Provider Consolidation Strategy | accepted |
@@ -214,7 +218,7 @@ can otherwise inject Grafana auth into the wrong request.
 | [019](docs/adrs/oncall-alert-group-rich-shape/001-rich-shape-and-list-defaults.md) | Rich `AlertGroup` shape and actionable `alert-groups list` defaults | implemented |
 | [020](docs/adrs/sm-datasource-proxy/001-dual-mode-transport.md) | Synthetic Monitoring dual-mode transport: datasource proxy primary, direct SM API fallback | accepted |
 | [021](docs/adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) | Assistant provider + MCP servers as resources | proposed |
-| [022](docs/adrs/config-v1/001-versioned-split-config-and-secret-trust.md) | Versioned Split Config and Source-Bound Secret Trust | accepted |
+| [022](docs/adrs/config-v1/001-versioned-split-config-and-secret-trust.md) | Versioned Split Config and Source-Bound Secret Trust | proposed |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
@@ -273,7 +277,7 @@ See also: [docs/design/](docs/design/) for UX implementation guides, [docs/refer
 3. [provider-checklist.md](docs/design/provider-checklist.md) — UX compliance checklist
 
 **Debugging an authentication issue:**
-1. [config-system.md](docs/architecture/config-system.md) § "Auth Priority" — token vs user/password precedence
+1. [auth-system.md](docs/architecture/auth-system.md) § "Grafana auth selection" — authoritative methods and legacy precedence
 2. [client-api-layer.md](docs/architecture/client-api-layer.md) — how auth wires into `rest.Config`
 3. [config-system.md](docs/architecture/config-system.md) — env var override behavior
 

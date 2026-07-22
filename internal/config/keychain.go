@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/grafana/gcx/internal/credentials"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -122,6 +123,8 @@ type secretOwner struct {
 	fields      []credentials.Field
 	ref         func(field credentials.Field) (secretRef, bool)
 	destination func(field credentials.Field) string
+	reject      func(field credentials.Field, reason string)
+	clearReject func(field credentials.Field)
 }
 
 //nolint:gochecknoglobals // constant-like lookup lists; never mutated.
@@ -147,6 +150,8 @@ func stackOwner(name string, stack *StackConfig) secretOwner {
 		fields:      stackSecretFields,
 		ref:         func(field credentials.Field) (secretRef, bool) { return stackFieldRef(stack, field) },
 		destination: func(field credentials.Field) string { return stackSecretDestination(stack, field) },
+		reject:      stack.rejectCredential,
+		clearReject: stack.clearCredentialRejection,
 	}
 }
 
@@ -158,6 +163,8 @@ func cloudOwner(name string, entry *CloudEntry) secretOwner {
 		fields:      cloudSecretFields,
 		ref:         func(field credentials.Field) (secretRef, bool) { return cloudFieldRef(entry, field) },
 		destination: func(credentials.Field) string { return cloudSecretDestination(entry) },
+		reject:      entry.rejectCredential,
+		clearReject: entry.clearCredentialRejection,
 	}
 }
 
@@ -446,7 +453,7 @@ func (cfg *Config) materializeCloudCredentialDestinations() error {
 				roots[normalizeCredentialURL(root, "https://grafana.com")] = true
 			}
 			if len(roots) > 1 {
-				return fmt.Errorf("cloud credential entry %q is referenced by stacks in different Cloud environments; split it into one entry per environment", name)
+				return ambiguousCloudCredentialDestinationError(cfg, name, entry, roots)
 			}
 			entry.APIUrl = "https://grafana.com"
 			for root := range roots {
@@ -460,10 +467,53 @@ func (cfg *Config) materializeCloudCredentialDestinations() error {
 	return nil
 }
 
-// inventoryBoundSentinels records the account selected by every valid v2
-// reference without opening the keychain. Load resolves only the current
-// context eagerly, but deletion of an orphan or non-current owner must still
-// remove its exact generation after the config rename commits.
+func ambiguousCloudCredentialDestinationError(
+	cfg *Config,
+	name string,
+	entry *CloudEntry,
+	roots map[string]bool,
+) error {
+	environments := make([]string, 0, len(roots))
+	for root := range roots {
+		environments = append(environments, root)
+	}
+	slices.Sort(environments)
+
+	source := cfg.Source
+	if source == "" {
+		source = entry.sourceIdentity
+	}
+	repairCommand := "gcx config edit"
+	switch entry.sourceLayer {
+	case "system", "user", "local":
+		repairCommand += " " + entry.sourceLayer
+	default:
+		if source != "" {
+			repairCommand += " --config " + strconv.Quote(source)
+		}
+	}
+
+	return gcxerrors.DetailedError{
+		Summary: "Cloud credential destination is ambiguous",
+		Details: fmt.Sprintf(
+			"Cloud entry %q in %s is referenced by contexts in different Cloud environments: %s. gcx will not guess which destination may receive this credential.",
+			name,
+			source,
+			strings.Join(environments, ", "),
+		),
+		Suggestions: []string{
+			"Open the owning file without loading it: " + repairCommand,
+			fmt.Sprintf("Split cloud.%s into one entry per environment and update each context.cloud binding", name),
+		},
+	}
+}
+
+// inventoryBoundSentinels records every v2 reference without opening the
+// keychain. References bound to this exact source/owner/field/destination are
+// left for lazy resolution. Foreign references are cleared in memory and
+// quarantined as rejected for every owner, including non-current and orphaned
+// entries, so unrelated writes preserve them verbatim instead of becoming
+// impossible to repair.
 func inventoryBoundSentinels(cfg *Config) {
 	if cfg.keychainStates == nil {
 		cfg.keychainStates = keychainState{}
@@ -475,13 +525,21 @@ func inventoryBoundSentinels(cfg *Config) {
 				continue
 			}
 			sentinel := ref.get()
-			binding := owner.binding(field)
-			account, ok := credentials.AccountForBoundSentinel(sentinel, binding)
-			if !ok {
+			if !credentials.IsBoundSentinel(sentinel) {
 				continue
 			}
+			binding := owner.binding(field)
+			account, ok := credentials.AccountForBoundSentinel(sentinel, binding)
 			key := owner.stateKey(field)
 			if _, exists := cfg.keychainStates[key]; exists {
+				continue
+			}
+			if !ok {
+				ref.set("")
+				owner.reject(field, "the keychain reference does not match this config source, owner, field, and destination")
+				cfg.keychainStates[key] = keychainFieldState{
+					binding: binding, sentinel: sentinel, status: keychainStateRejected,
+				}
 				continue
 			}
 			cfg.keychainStates[key] = keychainFieldState{
@@ -832,6 +890,7 @@ func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keych
 		stateKey := owner.stateKey(field)
 		if !credentials.MatchesBoundSentinel(cur, binding) {
 			ref.set("")
+			owner.reject(field, "the keychain reference does not match this config source, owner, field, and destination")
 			preserve.mark(owner.key, field, cur)
 			states[stateKey] = keychainFieldState{
 				binding:  binding,
@@ -844,6 +903,7 @@ func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keych
 		account, ok := credentials.AccountForBoundSentinel(cur, binding)
 		if !ok {
 			ref.set("")
+			owner.reject(field, "the keychain reference is malformed for this credential binding")
 			preserve.mark(owner.key, field, cur)
 			states[stateKey] = keychainFieldState{binding: binding, sentinel: cur, status: keychainStateRejected}
 			continue
@@ -852,6 +912,7 @@ func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keych
 		if err != nil {
 			ref.set("")
 			if errors.Is(err, credentials.ErrNotFound) {
+				owner.reject(field, "the referenced keychain entry does not exist")
 				states[stateKey] = keychainFieldState{
 					binding:  binding,
 					account:  account,
@@ -860,6 +921,7 @@ func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keych
 				}
 				continue
 			}
+			owner.reject(field, "the OS keychain could not be read")
 			preserve.mark(owner.key, field, cur)
 			states[stateKey] = keychainFieldState{
 				binding:  binding,
@@ -870,6 +932,7 @@ func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keych
 			continue
 		}
 		ref.set(value)
+		owner.clearReject(field)
 		backed.mark(owner.key, field)
 		states[stateKey] = keychainFieldState{
 			binding:   binding,
@@ -938,6 +1001,7 @@ func enforceRuntimeCredentialBindings(cfg *Config) error {
 				}
 				if ownerComesFromLocalLayer(owner) && ctx.runtimeSecretOverrides[field] {
 					ref.set("")
+					owner.reject(field, "environment credentials cannot be combined with an auto-discovered repository destination")
 					processed[key] = true
 					continue
 				}
@@ -948,6 +1012,9 @@ func enforceRuntimeCredentialBindings(cfg *Config) error {
 					original = cfg.credentialOrigins[key]
 				}
 				if !original.binding.Valid() || original.binding == owner.binding(field) {
+					if ctx.runtimeSecretOverrides[field] {
+						owner.clearReject(field)
+					}
 					continue
 				}
 				processed[key] = true
@@ -955,6 +1022,9 @@ func enforceRuntimeCredentialBindings(cfg *Config) error {
 				explicit := ctx.runtimeSecretOverrides[field] || (current != "" && current != original.value)
 				if !explicit {
 					ref.set("")
+					owner.reject(field, "the credential destination changed after configuration overrides")
+				} else {
+					owner.clearReject(field)
 				}
 			}
 		}
@@ -1145,16 +1215,21 @@ func (e *keychainCommitError) Unwrap() error { return e.err }
 // file replacement and defers every destructive Delete until after it. A failed
 // encode, chmod, close, or rename rolls Sets back and leaves old accounts intact.
 type keychainWriteTransaction struct {
-	store   credentials.Store
-	log     logging.Logger
-	swaps   []keychainSwap
-	writes  []keychainStagedWrite
-	deletes []keychainPendingDelete
-	seenDel map[string]bool
+	store               credentials.Store
+	log                 logging.Logger
+	swaps               []keychainSwap
+	writes              []keychainStagedWrite
+	deletes             []keychainPendingDelete
+	seenDel             map[string]bool
+	plaintextFallback   bool
+	warnUnavailableOnce func(func())
 }
 
 func newKeychainWriteTransaction(store credentials.Store, log logging.Logger) *keychainWriteTransaction {
-	return &keychainWriteTransaction{store: store, log: log, seenDel: map[string]bool{}}
+	return &keychainWriteTransaction{
+		store: store, log: log, seenDel: map[string]bool{},
+		warnUnavailableOnce: credentials.WarnUnavailableOnce,
+	}
 }
 
 func (txn *keychainWriteTransaction) swap(ref secretRef, diskValue string) {
@@ -1186,12 +1261,7 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 		}
 		if errors.Is(err, credentials.ErrNotFound) {
 			if err := txn.store.Set(boundRef.Account, value); err != nil {
-				if errors.Is(err, credentials.ErrUnavailable) {
-					credentials.WarnUnavailableOnce(func() {
-						txn.log.Warn("keychain unavailable; credentials remain in plaintext on disk",
-							"hint", "install or unlock your OS keychain to enable encrypted credential storage")
-					})
-				} else {
+				if !errors.Is(err, credentials.ErrUnavailable) {
 					txn.log.Warn("could not write keychain entry",
 						"owner", owner,
 						"field", string(field),
@@ -1209,10 +1279,6 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 			return boundRef, true, nil
 		}
 		if errors.Is(err, credentials.ErrUnavailable) {
-			credentials.WarnUnavailableOnce(func() {
-				txn.log.Warn("keychain unavailable; credentials remain in plaintext on disk",
-					"hint", "install or unlock your OS keychain to enable encrypted credential storage")
-			})
 			return credentials.BoundReference{}, false, nil
 		} else {
 			txn.log.Warn("could not inspect keychain entry before write",
@@ -1293,6 +1359,12 @@ func (txn *keychainWriteTransaction) commit() error {
 		}
 		deleted = append(deleted, pending)
 	}
+	if txn.plaintextFallback {
+		txn.warnUnavailableOnce(func() {
+			txn.log.Warn("keychain unavailable; credentials remain in plaintext on disk",
+				"hint", "install or unlock your OS keychain to enable encrypted credential storage")
+		})
+	}
 	return nil
 }
 
@@ -1363,12 +1435,13 @@ func reconcileKeychain(cfg *Config, store credentials.Store, log logging.Logger)
 			case keychainStateBacked:
 				txn.swap(slot.ref, state.sentinel)
 				continue
-			case keychainStateUnresolved, keychainStatePreserved, keychainStateRejected:
+			case keychainStateUnresolved, keychainStatePreserved, keychainStateRejected, keychainStateMissing:
+				// A missing keychain generation is still durable evidence that this
+				// field was configured with a credential. Preserve that evidence until
+				// the user explicitly repairs or removes the field; dropping it during
+				// an unrelated write would let the next load fall through to anonymous
+				// or empty Basic authentication.
 				txn.swap(slot.ref, state.sentinel)
-				continue
-			case keychainStateMissing:
-				// A reachable keychain reported that the bound account does not
-				// exist. Drop the dangling reference on the next write.
 				continue
 			}
 		}
@@ -1392,11 +1465,12 @@ func reconcileKeychain(cfg *Config, store credentials.Store, log logging.Logger)
 			return nil, err
 		}
 		if !ok {
-			if slot.hasState && (state.status == keychainStateBacked || state.status == keychainStateUnresolved || state.status == keychainStatePreserved) {
+			if slot.hasState {
 				txn.restore()
 				txn.rollback()
-				return nil, fmt.Errorf("keychain unavailable; cannot replace credential %q field %q without preserving its existing generation", slot.owner.key, slot.field)
+				return nil, fmt.Errorf("cannot replace credential %q field %q while preserving its existing keychain reference: %w", slot.owner.key, slot.field, credentials.ErrUnavailable)
 			}
+			txn.plaintextFallback = true
 			continue
 		}
 		if slot.hasState && (state.status == keychainStateBacked || state.status == keychainStateUnresolved || state.status == keychainStatePreserved) &&

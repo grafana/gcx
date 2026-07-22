@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
+
+	"github.com/grafana/gcx/internal/credentials"
 )
 
 var ErrContextNotFound = errors.New("context not found")
@@ -37,6 +39,30 @@ func (e UnmarshalError) Error() string {
 type UnsupportedVersionError struct {
 	File    string
 	Version int64
+}
+
+// CredentialRejectedError reports that configuration expressed credential
+// intent, but gcx refused to resolve or use that value because its source or
+// destination could not be trusted. Credential-consuming commands surface this
+// before constructing a request; inspection and repair commands remain usable.
+type CredentialRejectedError struct {
+	Source string
+	Owner  string
+	Field  credentials.Field
+	Reason string
+}
+
+func (e CredentialRejectedError) Error() string {
+	message := fmt.Sprintf("configured credential %q field %q was rejected before network use", e.Owner, e.Field)
+	if e.Reason != "" {
+		message += ": " + e.Reason
+	}
+	if e.Source != "" {
+		message += fmt.Sprintf("; review the file and re-authenticate with --config %q", e.Source)
+	} else {
+		message += "; re-authenticate with an explicitly selected --config file"
+	}
+	return message
 }
 
 func (e UnsupportedVersionError) Error() string {

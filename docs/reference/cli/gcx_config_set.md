@@ -24,7 +24,7 @@ gcx config set PROPERTY_NAME PROPERTY_VALUE [flags]
 	gcx config set stacks.dev-instance.grafana.server https://grafana-dev.example
 
 	# Disable the validation of the server's SSL certificate on a stack
-	gcx config set stacks.dev-instance.grafana.insecure-skip-tls-verify true
+	gcx config set stacks.dev-instance.grafana.tls.insecure-skip-verify true
 
 	# Set the default prometheus datasource for a context
 	gcx config set contexts.dev.datasources.prometheus my-prom-uid

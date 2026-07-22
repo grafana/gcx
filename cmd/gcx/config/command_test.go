@@ -887,6 +887,30 @@ contexts:
     stack: default
 current-context: default`
 
+func TestLoadConfigTolerantBlankProviderCredentialEnvironment(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, `version: 1
+stacks:
+  default:
+    providers:
+      synth:
+        sm-token: stored-sm-token
+        sm-metrics-datasource-uid: stored-uid
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM_TOKEN", " \t\n ")
+	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM_METRICS_DATASOURCE_UID", "")
+
+	loaded, err := (&config.Options{ConfigFile: configFile}).LoadConfigTolerant(context.Background())
+	require.NoError(t, err)
+	providerConfig := loaded.GetCurrentContext().Providers["synth"]
+	require.Equal(t, "stored-sm-token", providerConfig["sm-token"])
+	require.Empty(t, providerConfig["sm-metrics-datasource-uid"],
+		"blank non-secret provider environment values must retain their override semantics")
+}
+
 func Test_ViewCommand_withProviderEnvVar(t *testing.T) {
 	configFile := testutils.CreateTempFile(t, stackBackedProviderConfig)
 

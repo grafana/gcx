@@ -39,11 +39,26 @@ When you run this:
 
 If OAuth does not suit your setup (corporate SSO restrictions, no browser available, etc.), pick "Service account token" at the prompt instead.
 
+The persisted `auth-method` is authoritative unless a non-blank
+`GRAFANA_TOKEN` selects service-account-token authentication for the current
+invocation. That runtime selector is never written back to the config. In all
+other cases gcx sends only the persisted method's credential even if an older
+field remains in a hand-edited config, and an explicit non-mTLS method does not
+present a stale client certificate. `GRAFANA_PASSWORD` can rotate a Basic
+context's password but does not switch another explicit method to Basic. Legacy
+contexts without `auth-method` retain OAuth → service-account token → Basic →
+mTLS/anonymous inference, but a partial or rejected higher-priority credential
+fails before any request instead of falling through. Repair the selected method
+with `gcx login`, or use `gcx config edit --config <path>` when the file cannot
+be loaded normally.
+
 ### Service account token
 
 Works for both Grafana Cloud and on-premises and is the recommended path for
 non-interactive use. Browser OAuth is Cloud-only; on-premises stacks can also
-use basic authentication or configured mTLS client certificates.
+use configured mTLS client certificates. Basic auth remains supported by
+manually configured contexts, but unified login does not offer a basic-auth
+prompt.
 
 **Non-interactive (recommended for automation):**
 
@@ -129,6 +144,10 @@ credential preserves its kind and metadata. OAuth has no refresh token; after
 expiry, run Cloud login again. Use a CAP when you need full command
 compatibility.
 
+`gcx cloud login` persists a CAP only when `--cloud-token` contains a nonblank
+value; it does not capture an ambient `GRAFANA_CLOUD_TOKEN`. Without a nonblank
+flag value it runs the OAuth flow.
+
 `gcx` derives the Cloud stack slug from `--server` when the hostname matches a standard `*.grafana.net` pattern. For custom domains (such as `*.cloud.example.grafana.com`), set it explicitly on the stack entry:
 
 ```bash
@@ -165,9 +184,15 @@ gcx resources get dashboards
 ```
 
 Environment variables take precedence over config-file values and are not
-persisted incidentally. If you invoke `gcx login`, explicit flags still win and
-the relevant environment inputs are used for the selected login target. You
-can instead run login once to persist credentials and then remove the env vars.
+persisted incidentally. If you invoke unified `gcx login`, explicit flags still
+win and the relevant environment inputs are used for the selected login target.
+Direct `gcx cloud login` intentionally ignores an ambient Cloud token; pass
+`--cloud-token` to persist one. You can instead run login once to persist
+credentials and then remove the env vars.
+
+Blank or whitespace-only credential variables are treated as unset. They do
+not erase a stored token or password and do not authorize moving a stored
+credential to an overridden destination.
 
 ### Re-authenticating and switching contexts
 
@@ -184,6 +209,23 @@ gcx login --context my-stack
 ```
 
 Re-authentication preserves user-set fields (`org-id`, `stack-id`, TLS settings, provider-specific tokens) and updates only auth-bearing fields. If you manually set `org-id: 42`, it stays at 42 after re-auth.
+
+With multiple config layers, gcx writes login results without an extra flag
+only when the existing entries and context bindings have one provable owner.
+If owners differ or a higher layer could shadow a rebind, the command stops
+before authentication and lists exact `--config` choices. Consolidate the
+bindings or explicitly select the intended file.
+
+For discovery-mode login, gcx also snapshots every participating config file
+before authentication. If any file changes, appears, or disappears while OAuth
+or connectivity validation is running, persistence stops and the fresh
+credential is not written. An explicit `--config` selection pins only that
+chosen file.
+
+When a login uses `GRAFANA_TLS_*`, gcx warns that those runtime TLS paths were
+not saved. Keep supplying them, or persist the reviewed TLS paths explicitly.
+An `auth-method: mtls` context without both a client certificate and private
+key fails before its next network request.
 
 **Switch which context is current:**
 
@@ -229,6 +271,12 @@ move there and YAML contains a source-, owner-, field-, and destination-bound
 sentinel instead. `gcx config view` redacts secret fields. Do not commit a
 credential-bearing config file to version control.
 
+If a known locked or unreachable keychain backend prevents storing a brand-new
+credential, gcx may keep that new value in the mode-`0600` config file and warns
+that it remains plaintext. It never silently downgrades a replacement,
+deletion, missing or rejected keychain reference, oversized value, or unknown
+backend failure to plaintext.
+
 ## Troubleshooting
 
 Each entry pairs the error you see with what it means and how to fix it.
@@ -259,7 +307,7 @@ Each entry pairs the error you see with what it means and how to fix it.
 
 7. **Health check or `/apis` connectivity failures**
     - *Means:* gcx could not reach the server during the validation pipeline — typically a wrong URL, DNS/proxy issue, or TLS mismatch.
-    - *Fix:* Verify the server URL is correct and reachable. Check any corporate proxies (`HTTPS_PROXY`) and TLS configuration (`--insecure-skip-verify` for development only).
+    - *Fix:* Verify the server URL is correct and reachable. Check any corporate proxies (`HTTPS_PROXY`) and TLS configuration. For a reviewed development-only config, set `stacks.<name>.grafana.tls.insecure-skip-verify`; there is no login flag that bypasses TLS verification.
 
 8. **`gcx assistant` commands fail with a service account token**
     - *Means:* `gcx assistant` commands (prompt, investigations) require OAuth, which is only available when you log in via the browser-based OAuth flow. Service account tokens are not supported.
@@ -267,11 +315,27 @@ Each entry pairs the error you see with what it means and how to fix it.
 
 9. **Flag vs env-var precedence confusion**
     - *Means:* both a CLI flag and an environment variable are set for the same field, and gcx behaves unexpectedly.
-    - *Fix:* Flags take precedence over env vars, which take precedence over config-file values. Run `gcx config view` to inspect the resolved config and spot the conflict.
+    - *Fix:* Flags take precedence over env vars, which take precedence over config-file values. For credential fields, blank or whitespace-only inputs are treated as unset rather than as an override. Run `gcx config view` to inspect the resolved config and spot the conflict.
 
 10. **Login refuses to replace an existing context's server**
     - *Means:* the selected context points at a different Grafana server. `--yes` does not authorize changing a credential destination, and gcx will not present the stored credential to the new server.
     - *Fix:* Verify the new URL, then pass `--allow-server-override` together with a fresh `--token`, a fresh `GRAFANA_TOKEN`, or a new OAuth flow. An interactive login can ask for the same explicit confirmation.
+
+11. **`Configuration write target is ambiguous`**
+    - *Means:* layered files do not prove one owner for every entry or context binding the login may update.
+    - *Fix:* Review the paths listed by the error and rerun with the intended `--config <path>`, or keep the target stack, Cloud entry, and context bindings together in one source.
+
+12. **A credential was `rejected before network use`**
+    - *Means:* a keychain reference was missing/foreign, a destination changed, or an environment credential was paired with an auto-discovered repository destination. gcx withheld it instead of sending an empty or misrouted credential.
+    - *Fix:* For an auto-discovered repository destination, review the file and rerun with its explicit `--config` path. Explicit selection does not make a missing, foreign, or destination-mismatched keychain sentinel valid; re-authenticate or replace/unset that field. Use the exact raw editor command named by the error, such as `gcx config edit user` or `gcx config edit --config "<path>"`; it remains available even when ordinary loading fails.
+
+13. **`Cloud credential destination is ambiguous`**
+    - *Means:* one credential-bearing Cloud entry has no explicit endpoint pair and is referenced by contexts in different Cloud environments. gcx will not guess which API destination may receive it.
+    - *Fix:* Run the exact raw `gcx config edit ...` command from the error, split the Cloud entry into one entry per environment, and update each `contexts.<name>.cloud` binding. Ordinary config loading remains blocked until the ambiguity is removed.
+
+14. **`Configuration changed during authentication`**
+    - *Means:* the selected owner or the discovered config source set changed while OAuth or connectivity validation was in progress. The freshly authenticated credential was not written.
+    - *Fix:* Review every changed file, then retry. If you intend to trust one document as authoritative, rerun with its explicit `--config <path>`.
 
 ## See also
 

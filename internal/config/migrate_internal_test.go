@@ -84,6 +84,20 @@ func storedFakeBoundAccount(t *testing.T, store *fakeKeychain, binding credentia
 	require.Len(t, matches, 1)
 }
 
+func assertOnlyAuthorizedLegacyGet(t *testing.T, store *fakeKeychain, legacyAccount string, binding credentials.Binding) {
+	t.Helper()
+	legacyGets := 0
+	for _, account := range store.gets {
+		if account == legacyAccount {
+			legacyGets++
+			continue
+		}
+		require.True(t, credentials.MatchesBoundAccount(account, binding),
+			"unexpected keychain account read: %s", account)
+	}
+	assert.Equal(t, 1, legacyGets, "the one-time migration must read the authorized predictable account exactly once")
+}
+
 func TestIsLegacyConfig(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -361,6 +375,84 @@ current-context: dev
 	assert.NotContains(t, string(rewritten), "keychain:gcx:stack:dev:grafana-token")
 }
 
+func TestMigrateLegacyMissingKeychainCredentialPreservesRejectionEvidence(t *testing.T) {
+	tests := map[string]struct {
+		legacyYAML    string
+		sentinel      string
+		rejectedField credentials.Field
+		assertContext func(*testing.T, *Context)
+	}{
+		"missing password cannot become empty Basic authentication": {
+			legacyYAML: `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+      user: admin
+      password: keychain:gcx:prod:grafana-password
+      org-id: 1
+current-context: prod
+`,
+			sentinel:      "keychain:gcx:prod:grafana-password",
+			rejectedField: credentials.FieldGrafanaPassword,
+			assertContext: func(t *testing.T, ctx *Context) {
+				t.Helper()
+				assert.Equal(t, "admin", ctx.Grafana.User)
+				assert.Empty(t, ctx.Grafana.Password)
+			},
+		},
+		"missing token cannot downgrade to valid Basic authentication": {
+			legacyYAML: `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+      token: keychain:gcx:prod:grafana-token
+      user: admin
+      password: valid-basic-password
+      org-id: 1
+current-context: prod
+`,
+			sentinel:      "keychain:gcx:prod:grafana-token",
+			rejectedField: credentials.FieldGrafanaToken,
+			assertContext: func(t *testing.T, ctx *Context) {
+				t.Helper()
+				assert.Equal(t, "admin", ctx.Grafana.User)
+				assert.Equal(t, "valid-basic-password", ctx.Grafana.Password)
+				assert.Empty(t, ctx.Grafana.APIToken)
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			withFakeKeychain(t)
+			path := writeTrustedUserTestConfig(t, test.legacyYAML)
+
+			cfg, err := Load(withConfigLayer(t.Context(), "user"), ExplicitConfigFile(path))
+			require.NoError(t, err)
+			ctx := cfg.Contexts["prod"]
+			require.NotNil(t, ctx)
+			require.NotNil(t, ctx.Grafana)
+			test.assertContext(t, ctx)
+
+			err = ctx.GrafanaCredentialRejection()
+			require.Error(t, err)
+			var rejected CredentialRejectedError
+			require.ErrorAs(t, err, &rejected)
+			assert.Equal(t, test.rejectedField, rejected.Field)
+
+			_, err = ctx.ToRESTConfig(t.Context())
+			require.ErrorAs(t, err, &rejected)
+
+			onDisk, err := os.ReadFile(path)
+			require.NoError(t, err)
+			assert.Contains(t, string(onDisk), "version: 1")
+			assert.Contains(t, string(onDisk), test.sentinel)
+		})
+	}
+}
+
 func TestMigrateLegacyConfigRejectsCrossOwnerAndCrossFieldSentinels(t *testing.T) {
 	store := withFakeKeychain(t)
 	store.entries["victim:grafana-token"] = "victim-token"
@@ -386,6 +478,152 @@ current-context: attacker
 	assert.Equal(t, before, rewritten)
 	assert.NotContains(t, string(rewritten), "victim-token")
 	assert.NotContains(t, string(rewritten), "attacker-token")
+}
+
+func TestMigrateExplicitLegacySentinelConsentIsPathBound(t *testing.T) {
+	tests := []struct {
+		name string
+		load func(*testing.T, context.Context, string) (Config, error)
+	}{
+		{
+			name: "config flag",
+			load: func(_ *testing.T, ctx context.Context, path string) (Config, error) {
+				return LoadLayered(ctx, path)
+			},
+		},
+		{
+			name: "GCX_CONFIG",
+			load: func(t *testing.T, ctx context.Context, path string) (Config, error) {
+				t.Helper()
+				t.Setenv(ConfigFileEnvVar, path)
+				return LoadLayered(ctx, "")
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			store := withFakeKeychain(t)
+			store.entries["prod:grafana-token"] = "prod-secret"
+			store.entries["other:grafana-token"] = "other-secret"
+			path := writeTestConfig(t, `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+      token: keychain:gcx:prod:grafana-token
+current-context: prod
+`)
+
+			cfg, err := tc.load(t, t.Context(), path)
+			require.NoError(t, err)
+			assert.Equal(t, "prod-secret", cfg.Contexts["prod"].Grafana.APIToken)
+			binding := stackOwner("prod", cfg.Stacks["prod"]).binding(credentials.FieldGrafanaToken)
+			assertOnlyAuthorizedLegacyGet(t, store, "prod:grafana-token", binding)
+		})
+	}
+}
+
+func TestMigrateExplicitLegacySentinelRejectsMismatchedOrInsecureSourceWithoutGet(t *testing.T) {
+	t.Run("mismatched owner", func(t *testing.T) {
+		store := withFakeKeychain(t)
+		store.entries["victim:grafana-token"] = "victim-secret"
+		path := writeTestConfig(t, `
+contexts:
+  attacker:
+    grafana:
+      server: https://attacker.example
+      token: keychain:gcx:victim:grafana-token
+current-context: attacker
+`)
+
+		_, err := LoadLayered(t.Context(), path)
+		require.ErrorContains(t, err, "invalid legacy keychain reference")
+		assert.Empty(t, store.gets)
+	})
+
+	t.Run("group writable", func(t *testing.T) {
+		store := withFakeKeychain(t)
+		store.entries["prod:grafana-token"] = "prod-secret"
+		path := writeTestConfig(t, `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+      token: keychain:gcx:prod:grafana-token
+current-context: prod
+`)
+		require.NoError(t, os.Chmod(path, 0o660))
+
+		_, err := LoadLayered(t.Context(), path)
+		require.ErrorContains(t, err, "untrusted config source")
+		assert.Empty(t, store.gets)
+	})
+
+	t.Run("generic direct load has no consent", func(t *testing.T) {
+		store := withFakeKeychain(t)
+		store.entries["prod:grafana-token"] = "prod-secret"
+		path := writeTestConfig(t, `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+      token: keychain:gcx:prod:grafana-token
+current-context: prod
+`)
+
+		_, err := Load(t.Context(), ExplicitConfigFile(path))
+		require.ErrorContains(t, err, "untrusted config source")
+		assert.Empty(t, store.gets)
+	})
+}
+
+func TestMigrateDiscoveredUserLegacySentinelThroughSymlinkedHome(t *testing.T) {
+	store := withFakeKeychain(t)
+	store.entries["prod:grafana-token"] = "prod-secret"
+	realHome := t.TempDir()
+	linkRoot := t.TempDir()
+	linkedHome := filepath.Join(linkRoot, "home")
+	require.NoError(t, os.Symlink(realHome, linkedHome))
+	t.Setenv("HOME", linkedHome)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(linkedHome, ".config"))
+	t.Setenv("XDG_CONFIG_DIRS", filepath.Join(linkRoot, "no-system"))
+	t.Setenv(ConfigFileEnvVar, "")
+	t.Chdir(t.TempDir())
+
+	path := filepath.Join(realHome, ".config", StandardConfigFolder, StandardConfigFileName)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(t, os.WriteFile(path, []byte(`
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+      token: keychain:gcx:prod:grafana-token
+current-context: prod
+`), 0o600))
+
+	cfg, err := LoadLayered(t.Context(), "")
+	require.NoError(t, err)
+	assert.Equal(t, "prod-secret", cfg.Contexts["prod"].Grafana.APIToken)
+	binding := stackOwner("prod", cfg.Stacks["prod"]).binding(credentials.FieldGrafanaToken)
+	assertOnlyAuthorizedLegacyGet(t, store, "prod:grafana-token", binding)
+}
+
+func TestMigrateAutoDiscoveredSystemLegacySentinelMakesNoGet(t *testing.T) {
+	store := withFakeKeychain(t)
+	store.entries["prod:grafana-token"] = "prod-secret"
+	path := writeTestConfig(t, `
+contexts:
+  prod:
+    grafana:
+      server: https://prod.example
+      token: keychain:gcx:prod:grafana-token
+current-context: prod
+`)
+
+	_, err := Load(withConfigLayer(t.Context(), "system"), ExplicitConfigFile(path))
+	require.ErrorContains(t, err, "untrusted config source")
+	assert.Empty(t, store.gets)
 }
 
 func TestMigrateLocalLegacySentinelCannotReadSameNamedAccount(t *testing.T) {

@@ -414,6 +414,14 @@ an auto-discovered repository `.gcx.yaml`; `SaveProviderConfig` returns
 without persistence. `--config` or `GCX_CONFIG` explicitly authorizes the same
 file.
 
+When a provider adapter is mounted under `gcx resources`, use the operation's
+`context.Context` for every `ConfigLoader` call. The resources parent carries
+its `--config` selection there, and zero-value loaders inherit it for direct
+provider snapshots, Grafana/Cloud reads, refresh persistence, and write-back.
+Do not start an independent discovery pass or discard that context in a lazy
+adapter factory; doing so can route a read or destructive mutation to another
+stack.
+
 ```yaml
 # ~/.config/gcx/config.yaml
 version: 1
@@ -463,7 +471,12 @@ export GRAFANA_PROVIDER_SLO_TOKEN=glsa_abc123
 export GRAFANA_PROVIDER_SLO_ORG_ID=42
 ```
 
-Env vars take precedence over YAML config values.
+Nonblank env vars take precedence over YAML config values. A blank or
+whitespace-only value for a registered `ConfigKey{Secret: true}` is treated as
+absent, so inherited CI state cannot erase a stored credential or authorize a
+destination change. The Synthetic Monitoring token receives the same treatment
+through its trust-bound credential field. Blank non-secret and unknown provider
+keys retain their existing override semantics.
 
 For a direct-auth endpoint, an endpoint environment override must be paired
 with the corresponding credential environment variable in the same invocation;
