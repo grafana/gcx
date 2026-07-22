@@ -63,17 +63,20 @@ func TestTableCodec_Format(t *testing.T) {
 	assert.Equal(t, "wide", string((&collections.TableCodec{Wide: true}).Format()))
 }
 
-func TestCommands_HasNestedConversations(t *testing.T) {
+func TestCommands_HasMembershipCompounds(t *testing.T) {
 	cmd := collections.Commands(nil)
-	convCmd, _, err := cmd.Find([]string{"conversations"})
-	require.NoError(t, err)
-	require.NotNil(t, convCmd)
-	require.Equal(t, "conversations", convCmd.Name())
 
-	for _, sub := range []string{"list", "add", "remove"} {
-		c, _, err := cmd.Find([]string{"conversations", sub})
+	for _, sub := range []string{"list-conversations", "add-conversations", "remove-conversation"} {
+		c, _, err := cmd.Find([]string{sub})
 		require.NoError(t, err, "subcommand %q must exist", sub)
 		require.NotNil(t, c)
+		require.Equal(t, sub, c.Name())
+	}
+
+	// The nested `conversations` noun group dissolved into the compounds
+	// above; it must not resolve anymore.
+	for _, c := range cmd.Commands() {
+		require.NotEqual(t, "conversations", c.Name())
 	}
 }
 
@@ -116,9 +119,9 @@ func TestUpdateCommand_RequiresAtLeastOneFlag(t *testing.T) {
 	assert.Contains(t, err.Error(), "at least one of --name or --description")
 }
 
-func TestConversationsAddCommand_NeedsTwoArgs(t *testing.T) {
+func TestAddConversationsCommand_NeedsTwoArgs(t *testing.T) {
 	cmd := collections.Commands(nil)
-	cmd.SetArgs([]string{"conversations", "add", "c-1"})
+	cmd.SetArgs([]string{"add-conversations", "c-1"})
 
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)

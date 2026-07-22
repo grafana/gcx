@@ -40,6 +40,6 @@ func (p *InstrumentationProvider) Validate(_ map[string]string) error { return n
 func (p *InstrumentationProvider) ConfigKeys() []providers.ConfigKey { return nil }
 
 // TypedRegistrations returns nil — no GVK is registered for instrumentation
-// kinds. gcx resources schemas/push/pull/delete will not include
+// kinds. gcx resources list-types/push/pull/delete will not include
 // any instrumentation resource types.
 func (p *InstrumentationProvider) TypedRegistrations() []adapter.Registration { return nil }

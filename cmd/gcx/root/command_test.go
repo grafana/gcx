@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	claudeplugin "github.com/grafana/gcx/claude-plugin"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
@@ -161,6 +162,29 @@ func TestValidateArgs_NestedGroupRejectsUnexpectedArgs(t *testing.T) {
 	require.ErrorContains(t, err, "Available Commands:")
 	require.ErrorContains(t, err, "show")
 	require.ErrorContains(t, err, "versions")
+}
+
+func TestValidateArgs_UnknownCommandIncludesSuggestForHint(t *testing.T) {
+	listProfileTypesCmd := &cobra.Command{
+		Use:        "list-profile-types",
+		SuggestFor: []string{"profile-types"},
+		Short:      "List available profile types.",
+		RunE:       func(_ *cobra.Command, _ []string) error { return nil },
+	}
+	profilesCmd := &cobra.Command{Use: "profiles", Short: "Query profiles."}
+	profilesCmd.AddCommand(listProfileTypesCmd)
+
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
+		&mockProvider{name: "profiles", commands: []*cobra.Command{profilesCmd}},
+	})
+
+	err := root.ValidateArgs(rootCmd, []string{"profiles", "profile-types"})
+	require.Error(t, err)
+	require.ErrorContains(t, err, `unknown command "profile-types" for "gcx profiles"`)
+
+	var usageErr *fail.UsageError
+	require.ErrorAs(t, err, &usageErr)
+	assert.Contains(t, usageErr.Suggestions, "Did you mean 'gcx profiles list-profile-types'?")
 }
 
 func TestValidateArgs_AllowsHelpAndCompletionCommands(t *testing.T) {

@@ -54,7 +54,7 @@ func (h *tracesHelper) recommendationsCommand() *cobra.Command {
 		Short: "Manage Adaptive Traces recommendations.",
 	}
 	cmd.AddCommand(
-		h.recommendationsShowCommand(),
+		h.recommendationsListCommand(),
 		h.recommendationsApplyCommand(),
 		h.recommendationsDismissCommand(),
 	)
@@ -62,25 +62,25 @@ func (h *tracesHelper) recommendationsCommand() *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// recommendations show
+// recommendations list
 // ---------------------------------------------------------------------------
 
-type recommendationsShowOpts struct {
+type recommendationsListOpts struct {
 	IO cmdio.Options
 }
 
-func (o *recommendationsShowOpts) setup(flags *pflag.FlagSet) {
+func (o *recommendationsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &recommendationTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &recommendationTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
-func (h *tracesHelper) recommendationsShowCommand() *cobra.Command {
-	opts := &recommendationsShowOpts{}
+func (h *tracesHelper) recommendationsListCommand() *cobra.Command {
+	opts := &recommendationsListOpts{}
 	cmd := &cobra.Command{
-		Use:   "show",
-		Short: "Show Adaptive Traces recommendations.",
+		Use:   "list",
+		Short: "List Adaptive Traces recommendations.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err

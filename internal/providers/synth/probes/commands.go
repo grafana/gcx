@@ -28,7 +28,7 @@ func Commands(loader smcfg.Loader) *cobra.Command {
 		newListCommand(loader),
 		newCreateCommand(loader),
 		newDeleteCommand(loader),
-		newTokenResetCommand(loader),
+		newResetTokenCommand(loader),
 		newDeployCommand(),
 	)
 	return cmd
@@ -252,7 +252,7 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// token-reset
+// reset-token
 // ---------------------------------------------------------------------------
 
 type tokenResetOpts struct{}
@@ -261,10 +261,10 @@ func (o *tokenResetOpts) setup(_ *pflag.FlagSet) {}
 
 func (o *tokenResetOpts) Validate() error { return nil }
 
-func newTokenResetCommand(loader smcfg.Loader) *cobra.Command {
+func newResetTokenCommand(loader smcfg.Loader) *cobra.Command {
 	opts := &tokenResetOpts{}
 	cmd := &cobra.Command{
-		Use:   "token-reset ID",
+		Use:   "reset-token ID",
 		Short: "Reset the auth token of a Synthetic Monitoring probe.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -451,7 +451,7 @@ func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
 		newCreateSubcommand(loader, "Create a schedule.", scheduleCRUDOpts()),
 		newUpdateSubcommand(loader, "Update a schedule by ID.", scheduleCRUDOpts()),
 		newDeleteSubcommand(loader, "Delete a schedule by ID.", "schedule", scheduleCRUDOpts()),
-		newScheduleFinalShiftsCommand(loader),
+		newScheduleListFinalShiftsCommand(loader),
 	)
 	return cmd
 }

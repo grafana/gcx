@@ -23,9 +23,9 @@ Manage evaluator definitions (LLM judge, regex, heuristic).
 ### SEE ALSO
 
 * [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
-* [gcx agento11y evaluators create](gcx_agento11y_evaluators_create.md)	 - Create or update an evaluator from a file.
 * [gcx agento11y evaluators delete](gcx_agento11y_evaluators_delete.md)	 - Delete evaluators.
 * [gcx agento11y evaluators get](gcx_agento11y_evaluators_get.md)	 - Get a single evaluator definition.
 * [gcx agento11y evaluators list](gcx_agento11y_evaluators_list.md)	 - List evaluator definitions.
 * [gcx agento11y evaluators test](gcx_agento11y_evaluators_test.md)	 - Run an evaluator against a generation without persisting results.
+* [gcx agento11y evaluators upsert](gcx_agento11y_evaluators_upsert.md)	 - Create or update an evaluator from a file.
 

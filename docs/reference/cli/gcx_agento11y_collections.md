@@ -23,10 +23,12 @@ Manage named groups of saved conversations.
 ### SEE ALSO
 
 * [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
-* [gcx agento11y collections conversations](gcx_agento11y_collections_conversations.md)	 - Manage saved conversations belonging to a collection.
+* [gcx agento11y collections add-conversations](gcx_agento11y_collections_add-conversations.md)	 - Add one or more saved conversations to a collection.
 * [gcx agento11y collections create](gcx_agento11y_collections_create.md)	 - Create a new collection.
 * [gcx agento11y collections delete](gcx_agento11y_collections_delete.md)	 - Delete collections.
 * [gcx agento11y collections get](gcx_agento11y_collections_get.md)	 - Get a single collection.
 * [gcx agento11y collections list](gcx_agento11y_collections_list.md)	 - List collections.
+* [gcx agento11y collections list-conversations](gcx_agento11y_collections_list-conversations.md)	 - List saved conversations belonging to a collection.
+* [gcx agento11y collections remove-conversation](gcx_agento11y_collections_remove-conversation.md)	 - Remove a single saved conversation from a collection.
 * [gcx agento11y collections update](gcx_agento11y_collections_update.md)	 - Patch a collection's name and/or description.
 

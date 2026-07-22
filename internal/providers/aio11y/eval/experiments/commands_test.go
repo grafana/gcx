@@ -173,7 +173,7 @@ func TestCancelCommand_AbortsWithoutForce(t *testing.T) {
 	}
 }
 
-func TestScoresCommand_RequiresArg(t *testing.T) {
+func TestListScoresCommand_RequiresArg(t *testing.T) {
 	cmd := experiments.Commands(nil)
 	cmd.SetArgs([]string{"list-scores"})
 

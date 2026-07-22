@@ -23,7 +23,7 @@ Manage alert suppressions in the Knowledge Graph.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg suppressions create](gcx_kg_suppressions_create.md)	 - Create or update one or more suppressions from a YAML file or stdin.
 * [gcx kg suppressions delete](gcx_kg_suppressions_delete.md)	 - Delete a suppression by name.
 * [gcx kg suppressions list](gcx_kg_suppressions_list.md)	 - List all alert suppressions.
+* [gcx kg suppressions upsert](gcx_kg_suppressions_upsert.md)	 - Upsert (create or update) one or more suppressions from a YAML file or stdin.
 

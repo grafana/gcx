@@ -159,3 +159,90 @@ func TestSearchTableCodec_WrongType(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected []SearchResult")
 }
+
+func TestAnnotationsTableCodec_Encode(t *testing.T) {
+	now := time.Date(2026, 4, 2, 18, 30, 0, 0, time.UTC)
+	items := []conversations.ConversationAnnotation{
+		{
+			AnnotationID:   "ann-1",
+			AnnotationType: "NOTE",
+			Body:           "Needs review",
+			Tags:           map[string]string{"status": "needs_review", "team": "sre"},
+			OperatorName:   "Alice",
+			GenerationID:   "gen-1",
+			CreatedAt:      now,
+		},
+	}
+
+	tests := []struct {
+		name string
+		wide bool
+		want []string
+	}{
+		{
+			name: "table format",
+			wide: false,
+			want: []string{"ID", "TYPE", "BODY", "OPERATOR", "CREATED", "ann-1", "NOTE", "Needs review", "Alice", "2026-04-02 18:30"},
+		},
+		{
+			name: "wide includes tags and generation",
+			wide: true,
+			want: []string{"TAGS", "GENERATION", "status=needs_review, team=sre", "gen-1"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			codec := &conversations.AnnotationsTableCodec{Wide: tc.wide}
+			var buf bytes.Buffer
+			require.NoError(t, codec.Encode(&buf, items))
+
+			output := buf.String()
+			for _, s := range tc.want {
+				assert.Contains(t, output, s)
+			}
+		})
+	}
+}
+
+func TestAnnotationsTableCodec_WrongType(t *testing.T) {
+	codec := &conversations.AnnotationsTableCodec{}
+	var buf bytes.Buffer
+	err := codec.Encode(&buf, "not-a-slice")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected []ConversationAnnotation")
+}
+
+func TestCommands_HasAnnotationCommands(t *testing.T) {
+	cmd := conversations.Commands(nil)
+
+	for _, sub := range []string{"list-annotations", "annotate"} {
+		c, _, err := cmd.Find([]string{sub})
+		require.NoError(t, err)
+		assert.Equal(t, sub, c.Name())
+	}
+}
+
+func TestAnnotateCommand_RequiresBody(t *testing.T) {
+	cmd := conversations.Commands(nil)
+	cmd.SetArgs([]string{"annotate", "conv-1"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--body is required")
+}
+
+func TestAnnotateCommand_RejectsInvalidTag(t *testing.T) {
+	cmd := conversations.Commands(nil)
+	cmd.SetArgs([]string{"annotate", "conv-1", "--body", "note", "--tag", "not-a-tag"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid --tag")
+}
+
+func TestAnnotateCommand_RejectsInvalidMetadataJSON(t *testing.T) {
+	cmd := conversations.Commands(nil)
+	cmd.SetArgs([]string{"annotate", "conv-1", "--body", "note", "--metadata-json", "[]"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid --metadata-json")
+}

@@ -34,7 +34,7 @@ Dynamic Client (k8s.io/client-go)   Create-or-update via /apis endpoint
 Grafana K8s API                      /apis/{group}/{version}/namespaces/{ns}/{plural}/{name}
 ```
 
-**Operations:** `get`, `push` (create-or-update, idempotent), `pull` (export to local YAML/JSON), `delete`, `edit` (single resource, `$EDITOR`), `validate` (local linting via Rego), `schemas` (discover types), `examples` (show sample manifests).
+**Operations:** `get`, `push` (create-or-update, idempotent), `pull` (export to local YAML/JSON), `delete`, `edit` (single resource, `$EDITOR`), `validate` (local linting via Rego), `list-types` (discover types), `list-examples` (show sample manifests).
 
 **Key abstractions** ([resource-model.md](docs/architecture/resource-model.md)): `Resource` wraps `unstructured.Unstructured` — no pre-generated Go types. `Selector` → `Filter` two-stage resolution keeps CLI ignorant of API details. `Processor` pipeline composes transformations at defined pipeline points. `Discovery` registry resolves plural names and short names to full GVKs at runtime.
 

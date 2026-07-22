@@ -34,6 +34,7 @@ func commands() []*cobra.Command {
 	dashCmd.AddCommand(newUpdateCommand(loader))
 	dashCmd.AddCommand(newDeleteCommand(loader))
 	dashCmd.AddCommand(search.Commands(loader))
+	dashCmd.AddCommand(versions.ListVersionsCommand(loader))
 	dashCmd.AddCommand(versions.Commands(loader))
 	dashCmd.AddCommand(snapshot.Commands(loader))
 

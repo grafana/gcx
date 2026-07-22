@@ -23,6 +23,6 @@ Manage custom Knowledge Graph relationships [experimental].
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg relationships create](gcx_kg_relationships_create.md)	 - Create or update a custom relationship (upsert) [experimental].
 * [gcx kg relationships delete](gcx_kg_relationships_delete.md)	 - Delete a custom relationship [experimental].
+* [gcx kg relationships upsert](gcx_kg_relationships_upsert.md)	 - Create or update a custom relationship (upsert) [experimental].
 
