@@ -41,9 +41,8 @@ func newChatCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Long: "List the chat thread that backs a v2 investigation: " +
 			"assistant prose, tool calls (search_skills, prometheus_query_handler, " +
 			"loki_query_handler_investigator, tempo_query_handler, ...), and tool " +
-			"results. The report/timeline/list-todos commands (backed by legacy " +
-			"v1 endpoints) return empty stubs on v2 — this command is the " +
-			"substantive view.",
+			"results. This is the substantive view of what the agent did; " +
+			"use `narrative` for the prose-only rendering.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {

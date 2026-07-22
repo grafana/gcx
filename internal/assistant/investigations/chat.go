@@ -17,9 +17,8 @@ const chatAllMessagesFmt = "/api/v1/chats/%s/all-messages"
 
 // ChatThreadMessage is one message in a Lodestone chat thread. The thread
 // interleaves user prompts, assistant prose, tool invocations, tool results,
-// and panel artifacts — all the substantive content lives here, not in the
-// legacy timeline/todos/report endpoints (which return empty stubs for
-// Lodestone).
+// and panel artifacts — all the substantive content of an investigation
+// lives here.
 type ChatThreadMessage struct {
 	ID        string             `json:"id"`
 	Role      string             `json:"role"`
