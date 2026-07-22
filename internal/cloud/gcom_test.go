@@ -486,8 +486,8 @@ func TestGCOMClient_DeleteStack_DeleteProtection(t *testing.T) {
 
 func TestGCOMClient_ListRegions_Success(t *testing.T) {
 	want := []cloud.Region{
-		{ID: 1, Slug: "us", Name: "GCP US Central", Description: "United States", Provider: "gcp", Status: "active"},
-		{ID: 2, Slug: "eu", Name: "GCP Belgium", Description: "Europe", Provider: "gcp", Status: "active"},
+		{ID: 1, Slug: "us", Name: "GCP US Central", Description: "United States", Provider: "gcp"},
+		{ID: 2, Slug: "eu", Name: "GCP Belgium", Description: "Europe", Provider: "gcp"},
 	}
 
 	var capturedPath string
@@ -506,8 +506,8 @@ func TestGCOMClient_ListRegions_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if capturedPath != "/api/stack-regions" {
-		t.Errorf("expected path /api/stack-regions, got %q", capturedPath)
+	if capturedPath != "/api/v1/stack-regions" {
+		t.Errorf("expected path /api/v1/stack-regions, got %q", capturedPath)
 	}
 	if len(got) != 2 {
 		t.Fatalf("expected 2 regions, got %d", len(got))

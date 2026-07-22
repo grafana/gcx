@@ -74,9 +74,9 @@ func (c *regionTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []cloud.Region")
 	}
 
-	tbl := style.NewTable("SLUG", "NAME", "DESCRIPTION", "PROVIDER", "STATUS")
+	tbl := style.NewTable("SLUG", "NAME", "DESCRIPTION", "PROVIDER")
 	for _, r := range regions {
-		tbl.Row(r.Slug, r.Name, r.Description, r.Provider, r.Status)
+		tbl.Row(r.Slug, r.Name, r.Description, r.Provider)
 	}
 	return tbl.Render(w)
 }

@@ -19,7 +19,7 @@ import (
 
 const (
 	instancesPath    = "/api/instances/"
-	stackRegionsPath = "/api/stack-regions"
+	stackRegionsPath = "/api/v1/stack-regions"
 	orgsPath         = "/api/orgs/"
 )
 
@@ -77,13 +77,10 @@ type StackInfo struct {
 // Region describes a Grafana Cloud stack region as returned by the GCOM API.
 type Region struct {
 	ID          int    `json:"id"`
-	Status      string `json:"status"`
 	Slug        string `json:"slug"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Provider    string `json:"provider"`
-	CreatedAt   string `json:"createdAt,omitempty"`
-	UpdatedAt   string `json:"updatedAt,omitempty"`
 }
 
 // CreateStackRequest is the request body for creating a new Grafana Cloud stack.
@@ -352,7 +349,7 @@ func (c *GCOMClient) DeleteStack(ctx context.Context, slug string) error {
 	return nil
 }
 
-// ListRegions calls GET /api/stack-regions on the GCOM API and returns
+// ListRegions calls GET /api/v1/stack-regions on the GCOM API and returns
 // the available regions for stack creation.
 func (c *GCOMClient) ListRegions(ctx context.Context) ([]Region, error) {
 	endpoint, err := c.buildURL(stackRegionsPath)
