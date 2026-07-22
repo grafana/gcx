@@ -5,7 +5,7 @@ Delete a custom entity [experimental].
 ### Synopsis
 
 Delete an API-origin entity. Scope is part of the entity's identity, so it must
-match the value used at create — omitting it targets the scope-less entity, and a
+match the value used at upsert — omitting it targets the scope-less entity, and a
 mismatch returns 404 (not found).
 
 Experimental: this command uses the Knowledge Graph write API, which is gated
@@ -22,7 +22,7 @@ gcx kg entities delete [Type--Name] [flags]
       --force                  Skip confirmation prompt
   -h, --help                   help for delete
       --name string            Entity name (or use positional Type--Name)
-      --scope stringToString   Scope as key=value (repeatable or comma-separated; must match create-time scope) (default [])
+      --scope stringToString   Scope as key=value (repeatable or comma-separated; must match upsert-time scope) (default [])
       --type string            Entity type (or use positional Type--Name)
 ```
 

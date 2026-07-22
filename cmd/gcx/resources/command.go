@@ -32,9 +32,9 @@ func Command() *cobra.Command {
 
 	cmd.AddCommand(deleteCmd(configOpts))
 	cmd.AddCommand(editCmd(configOpts))
-	cmd.AddCommand(examplesCmd(configOpts))
+	cmd.AddCommand(listExamplesCmd(configOpts))
 	cmd.AddCommand(getCmd(configOpts))
-	cmd.AddCommand(schemasCmd(configOpts))
+	cmd.AddCommand(listTypesCmd(configOpts))
 	cmd.AddCommand(pullCmd(configOpts))
 	cmd.AddCommand(pushCmd(configOpts))
 	cmd.AddCommand(validateCmd(configOpts))

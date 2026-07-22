@@ -55,23 +55,23 @@ func (h *logsHelper) patternsCommand() *cobra.Command {
 		Short: "Manage adaptive log patterns.",
 	}
 	cmd.AddCommand(
-		h.patternsShowCommand(),
+		h.patternsListCommand(),
 		h.patternsStatsCommand(),
 	)
 	return cmd
 }
 
 // ---------------------------------------------------------------------------
-// patterns show
+// patterns list
 // ---------------------------------------------------------------------------
 
-type patternsShowOpts struct {
+type patternsListOpts struct {
 	IO        cmdio.Options
 	SegmentID string
 	TopN      int
 }
 
-func (o *patternsShowOpts) setup(cmd *cobra.Command) {
+func (o *patternsListOpts) setup(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&o.SegmentID, "segment", "", "Only include patterns for this segment (ID column from patterns stats, or API map key / selector)")
 	cmd.Flags().IntVar(&o.TopN, "top", 10, "Table only: show top N patterns by volume; 0 shows all rows with no rollup")
 	o.IO.RegisterCustomCodec("table", &patternsTableCodec{wide: false, opts: o})
@@ -80,11 +80,11 @@ func (o *patternsShowOpts) setup(cmd *cobra.Command) {
 	o.IO.BindFlags(cmd.Flags())
 }
 
-func (h *logsHelper) patternsShowCommand() *cobra.Command {
-	opts := &patternsShowOpts{}
+func (h *logsHelper) patternsListCommand() *cobra.Command {
+	opts := &patternsListOpts{}
 	cmd := &cobra.Command{
-		Use:   "show",
-		Short: "Show adaptive log pattern recommendations.",
+		Use:   "list",
+		Short: "List adaptive log pattern recommendations.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -225,7 +225,7 @@ func (c *segmentStatsTableCodec) Decode(_ io.Reader, _ any) error {
 // patternsTableCodec renders LogRecommendations as a tabular table.
 type patternsTableCodec struct {
 	wide bool
-	opts *patternsShowOpts
+	opts *patternsListOpts
 }
 
 func (c *patternsTableCodec) Format() format.Format {
@@ -402,7 +402,7 @@ func segmentVolumeColumnWidth(stats []SegmentPatternStat) int {
 	return w
 }
 
-// patternColWidths holds precomputed byte widths for right-aligned numeric columns in patterns show.
+// patternColWidths holds precomputed byte widths for right-aligned numeric columns in patterns list.
 type patternColWidths struct {
 	volume     int
 	dropRate   int

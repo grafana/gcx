@@ -42,7 +42,9 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newCreateCommand(),
 		newUpdateCommand(loader),
 		newDeleteCommand(),
-		newConversationsCommand(loader),
+		newListConversationsCommand(loader),
+		newAddConversationsCommand(loader),
+		newRemoveConversationCommand(loader),
 	)
 	return cmd
 }
@@ -366,20 +368,12 @@ func newDeleteCommand() *cobra.Command {
 	return cmd
 }
 
-// --- conversations subgroup ---
-
-func newConversationsCommand(loader *providers.ConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "conversations",
-		Short: "Manage saved conversations belonging to a collection.",
-	}
-	cmd.AddCommand(
-		newConversationsListCommand(loader),
-		newConversationsAddCommand(loader),
-		newConversationsRemoveCommand(loader),
-	)
-	return cmd
-}
+// --- membership commands ---
+//
+// Collection membership is addressed by the parent collection's ID, so the
+// three commands are operation-subject compounds directly under `collections`
+// (list-conversations / add-conversations / remove-conversation) rather than
+// a nested noun group.
 
 type membersListOpts struct {
 	IO    cmdio.Options
@@ -394,10 +388,10 @@ func (o *membersListOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of saved conversations to return (0 for no limit)")
 }
 
-func newConversationsListCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newListConversationsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &membersListOpts{}
 	cmd := &cobra.Command{
-		Use:   "list <collection-id>",
+		Use:   "list-conversations <collection-id>",
 		Short: "List saved conversations belonging to a collection.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -419,9 +413,9 @@ func newConversationsListCommand(loader *providers.ConfigLoader) *cobra.Command 
 	return cmd
 }
 
-func newConversationsAddCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newAddConversationsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add <collection-id> <saved-id>...",
+		Use:   "add-conversations <collection-id> <saved-id>...",
 		Short: "Add one or more saved conversations to a collection.",
 		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -441,9 +435,9 @@ func newConversationsAddCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newConversationsRemoveCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newRemoveConversationCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "remove <collection-id> <saved-id>",
+		Use:   "remove-conversation <collection-id> <saved-id>",
 		Short: "Remove a single saved conversation from a collection.",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {

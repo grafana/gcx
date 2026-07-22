@@ -67,7 +67,7 @@ gcx profiles query [EXPR] [flags]
       --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
-      --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)
+      --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)
       --since string                  Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof)
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)

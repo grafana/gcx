@@ -449,7 +449,7 @@ const localSuppressionYAML = `disabledAlertConfigs:
       alertname: ErrorRatioBreach
 `
 
-func TestSuppressionsCreate_DryRun_Invalid(t *testing.T) {
+func TestSuppressionsUpsert_DryRun_Invalid(t *testing.T) {
 	writeHit := false
 	body := `{"message":"Invalid disabled alert configuration file","subErrors":[` +
 		`{"field":"disabledAlertConfigs[0].matchLabels","message":"Missing Assertion"}]}`
@@ -460,7 +460,7 @@ func TestSuppressionsCreate_DryRun_Invalid(t *testing.T) {
 	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
-	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run"})
+	cmd.SetArgs([]string{"upsert", "-f", "-", "--dry-run"})
 	cmd.SetIn(bytes.NewBufferString(localSuppressionYAML))
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -472,7 +472,7 @@ func TestSuppressionsCreate_DryRun_Invalid(t *testing.T) {
 	assert.False(t, writeHit, "dry-run must not write")
 }
 
-func TestSuppressionsCreate_DryRun_ValidWithChanges(t *testing.T) {
+func TestSuppressionsUpsert_DryRun_ValidWithChanges(t *testing.T) {
 	writeHit := false
 	// Remote has a different matchLabels value, so a diff is produced.
 	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
@@ -485,7 +485,7 @@ func TestSuppressionsCreate_DryRun_ValidWithChanges(t *testing.T) {
 	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
-	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run", "-o", "text"})
+	cmd.SetArgs([]string{"upsert", "-f", "-", "--dry-run", "-o", "text"})
 	cmd.SetIn(bytes.NewBufferString(localSuppressionYAML))
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -500,7 +500,7 @@ func TestSuppressionsCreate_DryRun_ValidWithChanges(t *testing.T) {
 	assert.False(t, writeHit, "dry-run must not write")
 }
 
-func TestSuppressionsCreate_DryRun_JSONOutput(t *testing.T) {
+func TestSuppressionsUpsert_DryRun_JSONOutput(t *testing.T) {
 	writeHit := false
 	// Remote has one differing entry (modify) and, alongside the local-only
 	// entry (add), a remote-only entry that must be ignored (scoped to inputs).
@@ -523,7 +523,7 @@ func TestSuppressionsCreate_DryRun_JSONOutput(t *testing.T) {
 	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
-	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run", "-o", "json"})
+	cmd.SetArgs([]string{"upsert", "-f", "-", "--dry-run", "-o", "json"})
 	cmd.SetIn(bytes.NewBufferString(localYAML))
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -533,9 +533,9 @@ func TestSuppressionsCreate_DryRun_JSONOutput(t *testing.T) {
 	var got kg.SuppressionsDryRunResult
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
 	assert.True(t, got.Valid)
-	assert.True(t, got.Changed, "add/modify present means create would change state")
+	assert.True(t, got.Changed, "add/modify present means upsert would change state")
 	// Scoped to the file's entries: modify (my-suppression), add (brand-new).
-	// The remote-only entry is ignored entirely — create never deletes.
+	// The remote-only entry is ignored entirely — upsert never deletes.
 	actions := map[string]string{}
 	for _, c := range got.Changes {
 		actions[c.Name] = c.Action
@@ -549,7 +549,7 @@ func TestSuppressionsCreate_DryRun_JSONOutput(t *testing.T) {
 	assert.False(t, writeHit, "dry-run must not write")
 }
 
-func TestSuppressionsCreate_DryRun_ValidNoChanges(t *testing.T) {
+func TestSuppressionsUpsert_DryRun_ValidNoChanges(t *testing.T) {
 	writeHit := false
 	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
 		{Name: "my-suppression", MatchLabels: map[string]string{"alertname": "ErrorRatioBreach"}},
@@ -561,7 +561,7 @@ func TestSuppressionsCreate_DryRun_ValidNoChanges(t *testing.T) {
 	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
-	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run", "-o", "text"})
+	cmd.SetArgs([]string{"upsert", "-f", "-", "--dry-run", "-o", "text"})
 	cmd.SetIn(bytes.NewBufferString(localSuppressionYAML))
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -575,7 +575,7 @@ func TestSuppressionsCreate_DryRun_ValidNoChanges(t *testing.T) {
 // When the file's entries all match remote but remote has extra entries, the
 // dry-run reports no changes: remote-only entries are ignored (scoped to inputs)
 // and produce neither a change nor a diff.
-func TestSuppressionsCreate_DryRun_RemoteOnlyIgnored(t *testing.T) {
+func TestSuppressionsUpsert_DryRun_RemoteOnlyIgnored(t *testing.T) {
 	writeHit := false
 	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
 		{Name: "my-suppression", MatchLabels: map[string]string{"alertname": "ErrorRatioBreach"}},
@@ -588,7 +588,7 @@ func TestSuppressionsCreate_DryRun_RemoteOnlyIgnored(t *testing.T) {
 	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
-	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run", "-o", "json"})
+	cmd.SetArgs([]string{"upsert", "-f", "-", "--dry-run", "-o", "json"})
 	// localSuppressionYAML contains only my-suppression, identical to remote.
 	cmd.SetIn(bytes.NewBufferString(localSuppressionYAML))
 	cmd.SetOut(&stdout)
@@ -599,7 +599,7 @@ func TestSuppressionsCreate_DryRun_RemoteOnlyIgnored(t *testing.T) {
 	var got kg.SuppressionsDryRunResult
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
 	assert.True(t, got.Valid)
-	assert.False(t, got.Changed, "create applies nothing when file entries match remote")
+	assert.False(t, got.Changed, "upsert applies nothing when file entries match remote")
 	assert.Empty(t, got.Changes, "remote-only entries are not reported")
 	assert.Empty(t, got.Diff, "no diff when the input entries match remote")
 	// changes serializes as [] (not null) when empty.
@@ -611,8 +611,8 @@ func TestSuppressionsCreate_DryRun_RemoteOnlyIgnored(t *testing.T) {
 // System-managed fields (managedBy) are populated by the backend, not the input
 // file, so an entry whose user fields match remote must report no change even
 // when remote carries a managedBy the file omits — otherwise the diff would show
-// a spurious removal for a field create does not touch.
-func TestSuppressionsCreate_DryRun_SystemFieldsIgnored(t *testing.T) {
+// a spurious removal for a field upsert does not touch.
+func TestSuppressionsUpsert_DryRun_SystemFieldsIgnored(t *testing.T) {
 	writeHit := false
 	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
 		{Name: "my-suppression", MatchLabels: map[string]string{"alertname": "ErrorRatioBreach"}, ManagedBy: "terraform"},
@@ -624,7 +624,7 @@ func TestSuppressionsCreate_DryRun_SystemFieldsIgnored(t *testing.T) {
 	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
-	cmd.SetArgs([]string{"create", "-f", "-", "--dry-run", "-o", "json"})
+	cmd.SetArgs([]string{"upsert", "-f", "-", "--dry-run", "-o", "json"})
 	// localSuppressionYAML has the same name/matchLabels but no managedBy.
 	cmd.SetIn(bytes.NewBufferString(localSuppressionYAML))
 	cmd.SetOut(&stdout)

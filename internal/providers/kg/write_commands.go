@@ -72,7 +72,7 @@ func (o *entityCreateOpts) setup(flags *pflag.FlagSet) {
 func newEntitiesCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &entityCreateOpts{}
 	cmd := &cobra.Command{
-		Use:   "create",
+		Use:   "upsert",
 		Short: "Create or update a custom entity (upsert) [experimental].",
 		Long: `Create or update an API-origin entity in a writable domain.
 
@@ -81,9 +81,13 @@ server-side and may change. If the write API is not enabled on your stack, the
 server returns an error explaining how to request access.
 
 Identity is (type, name, scope) + domain; re-running with the same identity
-updates the entity. Scope is optional but identity-significant.`,
-		Example: `  gcx kg entities create --domain myapp --type Service --name checkout --scope env=prod --ttl 1h
-  gcx kg entities create -f entity.yaml`,
+updates the entity. Scope is optional but identity-significant.
+
+With -f, the input may be a single object or a YAML/JSON array. Array entries
+are processed in order as independent upserts: the operation is not atomic,
+and entries already written stay written if a later entry fails.`,
+		Example: `  gcx kg entities upsert --domain myapp --type Service --name checkout --scope env=prod --ttl 1h
+  gcx kg entities upsert -f entity.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -220,7 +224,7 @@ func newEntitiesDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "delete [Type--Name]",
 		Short: "Delete a custom entity [experimental].",
 		Long: `Delete an API-origin entity. Scope is part of the entity's identity, so it must
-match the value used at create — omitting it targets the scope-less entity, and a
+match the value used at upsert — omitting it targets the scope-less entity, and a
 mismatch returns 404 (not found).
 
 Experimental: this command uses the Knowledge Graph write API, which is gated
@@ -258,7 +262,7 @@ server-side and may change.`,
 			}
 			if err := client.DeleteEntity(cmd.Context(), domain, et, n, scope); err != nil {
 				if asNotFound(err) {
-					return fmt.Errorf("%w\nhint: scope is part of identity — verify --scope and --domain match the values used at create", err)
+					return fmt.Errorf("%w\nhint: scope is part of identity — verify --scope and --domain match the values used at upsert", err)
 				}
 				return err
 			}
@@ -269,7 +273,7 @@ server-side and may change.`,
 	cmd.Flags().StringVar(&domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm' (required)")
 	cmd.Flags().StringVar(&entityType, "type", "", "Entity type (or use positional Type--Name)")
 	cmd.Flags().StringVar(&name, "name", "", "Entity name (or use positional Type--Name)")
-	cmd.Flags().StringToStringVar(&scope, "scope", nil, "Scope as key=value (repeatable or comma-separated; must match create-time scope)")
+	cmd.Flags().StringToStringVar(&scope, "scope", nil, "Scope as key=value (repeatable or comma-separated; must match upsert-time scope)")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
 	return cmd
 }
@@ -370,16 +374,20 @@ func (o *relCreateOpts) setup(flags *pflag.FlagSet) {
 func newRelationshipsCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &relCreateOpts{}
 	cmd := &cobra.Command{
-		Use:   "create",
+		Use:   "upsert",
 		Short: "Create or update a custom relationship (upsert) [experimental].",
 		Long: `Create or update an API-origin edge between two existing entities.
 Both endpoints must already exist.
 
 Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change.`,
-		Example: `  gcx kg relationships create --type CALLS --domain myapp \
+server-side and may change.
+
+With -f, the input may be a single object or a YAML/JSON array. Array entries
+are processed in order as independent upserts: the operation is not atomic,
+and entries already written stay written if a later entry fails.`,
+		Example: `  gcx kg relationships upsert --type CALLS --domain myapp \
     --from myapp/Service/checkout --to myapp/Service/cart --to-scope env=prod --ttl 1h
-  gcx kg relationships create -f rel.yaml`,
+  gcx kg relationships upsert -f rel.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -518,7 +526,7 @@ func newRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "delete",
 		Short: "Delete a custom relationship [experimental].",
 		Long: `Delete an API-origin edge of the given type between the from/to entities.
-The endpoint refs (incl. scope) must match the values used at create.
+The endpoint refs (incl. scope) must match the values used at upsert.
 
 Experimental: this command uses the Knowledge Graph write API, which is gated
 server-side and may change.`,
@@ -554,7 +562,7 @@ server-side and may change.`,
 			}
 			if err := client.DeleteRelationship(cmd.Context(), relType, fromRef, toRef); err != nil {
 				if asNotFound(err) {
-					return fmt.Errorf("%w\nhint: refs are part of identity — verify --from/--to (incl. scope) match the values used at create", err)
+					return fmt.Errorf("%w\nhint: refs are part of identity — verify --from/--to (incl. scope) match the values used at upsert", err)
 				}
 				return err
 			}

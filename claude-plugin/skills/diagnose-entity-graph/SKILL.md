@@ -88,7 +88,7 @@ the Asserts app onboarding flow.
 ## Step 2: Entity Counts and Scopes
 
 ```bash
-gcx kg summary --since 1h
+gcx kg stats --since 1h
 gcx kg meta scopes
 ```
 

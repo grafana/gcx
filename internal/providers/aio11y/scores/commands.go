@@ -21,19 +21,7 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 	return NewClient(base), nil
 }
 
-// Commands returns the scores command group.
-func Commands(loader *providers.ConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "scores",
-		Short: "View evaluation scores for generations.",
-	}
-	cmd.AddCommand(
-		newListCommand(loader),
-	)
-	return cmd
-}
-
-// --- list ---
+// --- list-scores ---
 
 type listOpts struct {
 	IO    cmdio.Options
@@ -48,10 +36,14 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of scores to return")
 }
 
-func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
+// NewListScoresCommand returns the `list-scores` leaf command, mounted under
+// `gcx agento11y generations`. Scores are addressed by the parent generation's
+// ID, so the command is an operation-subject compound under generations; the
+// command lives in this package alongside the scores client and table codec.
+func NewListScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
-		Use:   "list <generation-id>",
+		Use:   "list-scores <generation-id>",
 		Short: "List evaluation scores for a generation.",
 		Long:  `List evaluation scores produced by online rules for a generation.`,
 		Args:  cobra.ExactArgs(1),

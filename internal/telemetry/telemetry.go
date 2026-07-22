@@ -43,6 +43,9 @@ type Env struct {
 	// "true" (cross-tool DO_NOT_TRACK convention). Overridden by
 	// GCX_TELEMETRY.
 	DoNotTrack string `env:"DO_NOT_TRACK"`
+
+	// Endpoint overrides the URL usage telemetry is sent to.
+	Endpoint string `env:"GCX_TELEMETRY_ENDPOINT"`
 }
 
 // ResolveMode resolves the telemetry mode for this invocation. Precedence,
@@ -54,12 +57,13 @@ func ResolveMode(configValue func() string) Mode {
 	return resolveMode(os.Getenv, configValue)
 }
 
-// Env var names used by resolveMode. envConsistencyTest asserts they match
+// Env var names read by this package. envConsistencyTest asserts they match
 // the Env struct tags the docs generator reads, so the documented names
 // cannot drift from the resolved ones.
 const (
 	envTelemetry  = "GCX_TELEMETRY"
 	envDoNotTrack = "DO_NOT_TRACK"
+	envEndpoint   = "GCX_TELEMETRY_ENDPOINT"
 )
 
 func resolveMode(getenv func(string) string, configValue func() string) Mode {

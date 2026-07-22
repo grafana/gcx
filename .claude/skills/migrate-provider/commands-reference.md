@@ -110,7 +110,8 @@ func (p *Provider) Commands() []*cobra.Command {
         newCreateCommand(loader),
         newCloseCommand(loader),
         // Ancillary
-        newActivityCommand(loader),
+        newActivityCommand(loader),      // nested group for writes (activity add)
+        newListActivityCommand(loader),  // parent-scoped list compound (list-activity <id>)
         newSeveritiesCommand(loader),
         newOpenCommand(loader),
     )
@@ -120,9 +121,9 @@ func (p *Provider) Commands() []*cobra.Command {
 
 ### Common ancillary patterns
 
-**Activity/timeline** — nested subcommand group:
+**Activity/timeline** — parent-scoped list compound (activity items are addressed by the parent's ID, not their own), plus a nested group for writes:
 ```
-{provider} activity list <id> [--limit N]
+{provider} list-activity <id> [--limit N]
 {provider} activity add <id> --body "..."
 ```
 

@@ -34,14 +34,17 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   `ResourceAdapter` must implement `ResourceIdentity` (`GetResourceName() string` and
   `SetResourceName(string)`). `TypedCRUD` uses `GetResourceName()` for name extraction
   and `SetResourceName()` for name restoration — no function pointers.
-- **TypedCRUD for provider commands:** Provider CRUD commands must use `TypedCRUD[T]`
-  typed methods (`List`, `Get`, `Create`, `Update`, `Delete`) for data access, not raw
-  API clients. This ensures bug fixes to CRUD logic apply to both provider commands and
-  the `resources` pipeline automatically.
+- **TypedCRUD for adapter-backed provider commands:** Provider CRUD commands for
+  resources exposed through both the provider tree and a registered adapter must use
+  `TypedCRUD[T]` typed methods (`List`, `Get`, `Create`, `Update`, `Delete`) for data
+  access, not raw API clients. This ensures bug fixes to CRUD logic apply to both
+  provider commands and the `resources` pipeline automatically. Provider-only
+  commands with no adapter registration use their product clients directly — they
+  are not required to construct an adapter merely to spell an honest `list` or `get`.
   > **Exception:** The dashboards commands-only provider (`internal/providers/dashboards/`) calls the K8s dynamic client directly. This is the one documented exception — see ADR 016 (`docs/adrs/dashboards-provider/001-dashboards-provider-design.md`) for rationale and scope.
 - **Schema/Example on Registration structs:** Every `adapter.Registration` struct (populated
   via `TypedRegistrations()`) must include a non-nil `Schema` field. These power the
-  `schemas` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`
+  `resources list-types` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`
   does not propagate schema or example. The `Example` field MAY be nil for read-only
   resources (those without Create/Update support) since examples serve as templates for
   writable operations.
@@ -64,7 +67,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
 - **Extension commands nest under their resource type.** Domain-specific
   operations (`status`, `timeline`, `acknowledge`) live alongside CRUD verbs,
   never as top-level commands. Extensions must not duplicate CRUD semantics —
-  if it can be done with list/get/push/pull/delete, it is not an extension.
+  if it can be done with list/get/create/update/upsert/push/pull/delete, it is not an extension.
 - **Positional arguments are the subject, flags are modifiers.** The thing
   being acted on (resource selectors, UIDs, expressions, file paths) is
   positional. How to act on it (output format, concurrency, dry-run, filters)
@@ -109,24 +112,27 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 
 ## Provider Architecture
 
-- **Dual CRUD access paths are permanent.** Provider commands
-  (`slo definitions list`) are ergonomic shorthands with domain-rich table
-  output. Generic commands (`resources get slos.v1alpha1.slo.ext.grafana.app`)
-  serve the push/pull pipeline and cross-resource operations. Neither path
-  is deprecated; both are first-class.
-- **JSON/YAML output is identical between both paths.** This is enforced
-  structurally: provider CRUD commands must use their registered
-  `ResourceAdapter` (via TypedCRUD) for data access, not raw API clients.
-  Table/wide codecs may diverge — provider tables show domain-specific
-  columns, generic tables show resource-management columns.
-- **Provider-only resources must not mimic adapter verbs.** If a resource
-  does not obey standard list/get/create/update/delete semantics (e.g.,
-  composite keys, scope-required lookups, query-only endpoints), do not
-  register it as an adapter. Keep it in the provider command tree only, but
-  use alternative verbs (`show`, `describe`, `search`) — never `get`, `list`,
-  `create`, `update`, `delete`. This avoids user confusion: adapter verbs
-  (`resources get`) and provider verbs should not overlap for resources that
-  behave differently across the two paths.
+- **Dual CRUD access paths are permanent for adapter-backed resources.**
+  Provider commands (`slo definitions list`) are ergonomic shorthands with
+  domain-rich table output. Generic commands
+  (`resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull
+  pipeline and cross-resource operations. Neither path is deprecated; both
+  are first-class.
+- **For dual-path resources, JSON/YAML output is identical between both
+  paths.** This is enforced structurally: provider CRUD commands must use
+  their registered `ResourceAdapter` (via TypedCRUD) for data access, not raw
+  API clients. Table/wide codecs may diverge — provider tables show
+  domain-specific columns, generic tables show resource-management columns.
+- **Provider-only commands use behavior-based operations.** Adapter
+  registration does not determine the operation: a genuine read-one uses
+  `get` and a genuine enumeration uses `list`, whether or not the resource is
+  adapter-registered. Commands whose behavior does not match entity semantics
+  use an honest query, view, or domain operation, or an
+  `<operation>-<subject>` compound that honestly describes the behavior
+  (e.g. `list-profile-types`, `list-tables` for commands that genuinely
+  enumerate a collection — a compound collides with no adapter verb).
+  Nonstandard behavior is never disguised
+  as CRUD, and an adapter must not be created solely to unlock a CRUD verb.
 - **Sub-resources nest under their parent command.** If a resource cannot
   be listed or addressed without a parent ID (e.g. alerts require an
   alert group), it is a sub-resource. Sub-resources must not be registered as standalone typed
@@ -134,13 +140,14 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   as verbs under the parent command: `$PARENT $VERB-$CHILD $PARENT_ID`
   (e.g. `alert-groups list-alerts <id>`). Get-by-ID may still have a
   standalone adapter if the API supports direct ID lookup without a parent.
-- **Typed resource trajectory.** Provider domain types implement
+- **Typed resource trajectory.** Adapter-backed provider domain types implement
   `ResourceIdentity` for self-describing identity and are wrapped by
   `TypedObject[T]` (embedded `metav1.ObjectMeta` + `TypeMeta` + `Spec T`)
   for K8s metadata compliance. `TypedCRUD[T]` provides both typed methods
   (returning `TypedObject[T]`) and unstructured methods (via `AsAdapter()`).
-  New providers must implement `ResourceIdentity` on domain types and use
-  `TypedCRUD` for both CLI commands and adapter registration.
+  New adapter-backed provider resources must implement `ResourceIdentity` on
+  domain types and use `TypedCRUD` for both CLI commands and adapter
+  registration.
 
 ## Dependency Rules
 
