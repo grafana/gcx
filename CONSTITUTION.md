@@ -88,9 +88,12 @@ JSONL with a terminal success/error event; artifact, interactive, server,
 raw-passthrough, shell-source, and prose commands follow their declared
 protocol class (`cmd/gcx/root/testdata/output_classes.json`, enforced in
 CI). stderr is advisory diagnostics — an agent never needs to parse both
-streams to understand the outcome. gcx-owned envelope shapes (errors,
-spill receipts, mutation results, stream events) carry `type` and
-`schema_version` discriminators.
+streams to understand the outcome. gcx-owned envelope shapes introduced
+under this contract (errors, spill receipts, mutation results, stream
+events) carry `type` and `schema_version` discriminators; shapes that
+shipped before the contract (IRM OnCall action envelopes, instrumentation
+`MutationResult`, skills receipts) retain their locked forms until their
+own versioned migrations.
 
 See [agent-mode.md](docs/design/agent-mode.md) for
 agent mode detection, behavior changes, and opt-out mechanisms.

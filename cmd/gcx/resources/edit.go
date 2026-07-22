@@ -3,10 +3,13 @@ package resources
 import (
 	"bytes"
 	"fmt"
+	"os"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/local"
@@ -107,6 +110,23 @@ The edition will be cancelled if no changes are written to the file or if the fi
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			// Interactive-class contract: agent mode must never block on an
+			// interactive program. With no EDITOR/VISUAL configured the
+			// fallback editor (vi/notepad) would hang against piped stdio,
+			// so fail fast with the alternative. An explicitly configured
+			// EDITOR is honored — setting it to a non-interactive command
+			// is legitimate automation.
+			if agent.IsAgentMode() && os.Getenv("EDITOR") == "" && os.Getenv("VISUAL") == "" {
+				return gcxerrors.DetailedError{
+					Summary: "edit is interactive and no EDITOR is configured",
+					Details: "agent mode cannot drive the fallback editor (vi/notepad); it would block on a non-TTY pipe",
+					Suggestions: []string{
+						"Use 'gcx resources pull' to write the resource to disk, modify it, then 'gcx resources push'",
+						"Set EDITOR to a non-interactive command if scripted editing is intended",
+					},
+				}
 			}
 
 			ctx := cmd.Context()

@@ -196,6 +196,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				count int
 			}
 			written := map[string]*dirGroup{}
+			var writeFailures []cmdio.MutationFailure
 			writer := local.FSWriter{
 				Path:        opts.Path,
 				Namer:       local.GroupResourcesByKind(opts.IO.OutputFormat, local.PluralsFromFilters(res.Filters)),
@@ -208,6 +209,17 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 					}
 					written[dir].count++
 				},
+				// A fetched resource whose file write fails is a failed pull:
+				// without this the receipt would count it as succeeded and the
+				// command would exit 0 (the writer only logs skipped writes).
+				OnWriteError: func(resource *resources.Resource, err error) {
+					target := cmdio.MutationTarget{}
+					if resource != nil {
+						target.Kind = resource.Kind()
+						target.Name = resource.Name()
+					}
+					writeFailures = append(writeFailures, cmdio.MutationFailure{Target: target, Error: err.Error()})
+				},
 			}
 
 			if err := writer.Write(ctx, &res.Resources); err != nil {
@@ -219,8 +231,10 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			receipt := cmdio.NewArtifactReceipt("pulled", opts.IO.OutputFormat)
 			receipt.Dir = opts.Path
 			receipt.Summary = cmdio.MutationSummary{
-				Succeeded: pullSummary.SuccessCount(),
-				Failed:    pullSummary.FailedCount(),
+				// Succeeded means "on disk": fetched resources whose write
+				// failed move from succeeded to failed.
+				Succeeded: pullSummary.SuccessCount() - len(writeFailures),
+				Failed:    pullSummary.FailedCount() + len(writeFailures),
 				Skipped:   pullSummary.SkippedCount(),
 			}
 			dirs := make([]string, 0, len(written))
@@ -247,20 +261,25 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				}
 				receipt.Failures = append(receipt.Failures, cmdio.MutationFailure{Target: target, Error: msg})
 			}
+			receipt.Failures = append(receipt.Failures, writeFailures...)
 
 			emitErr := cmdio.EmitArtifactResult(cmd.OutOrStdout(), receipt, func(w io.Writer) error {
+				// Same line format as always, but the counts include file-
+				// write failures — previously a failed write still printed
+				// "0 errors" while the details went only to the warn log.
+				succeeded, failed := receipt.Summary.Succeeded, receipt.Summary.Failed
 				printer := cmdio.Success
-				if pullSummary.FailedCount() != 0 {
+				if failed != 0 {
 					printer = cmdio.Warning
-					if pullSummary.SuccessCount() == 0 {
+					if succeeded == 0 {
 						printer = cmdio.Error
 					}
 				}
 
 				if skipped := pullSummary.SkippedCount(); skipped > 0 {
-					printer(w, "%d resources pulled, %d errors (%d resource types skipped — not listable)", pullSummary.SuccessCount(), pullSummary.FailedCount(), skipped)
+					printer(w, "%d resources pulled, %d errors (%d resource types skipped — not listable)", succeeded, failed, skipped)
 				} else {
-					printer(w, "%d resources pulled, %d errors", pullSummary.SuccessCount(), pullSummary.FailedCount())
+					printer(w, "%d resources pulled, %d errors", succeeded, failed)
 				}
 				return nil
 			})
@@ -268,12 +287,13 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return emitErr
 			}
 
-			if opts.OnError.FailOnErrors() && pullSummary.FailedCount() > 0 {
-				// The receipt (with enumerated failures) is already on
-				// stdout — EmittedError carries exit 4 without a second
-				// error document.
+			totalFailed := pullSummary.FailedCount() + len(writeFailures)
+			if opts.OnError.FailOnErrors() && totalFailed > 0 {
+				// The receipt (with enumerated failures, including file-write
+				// failures) is already on stdout — EmittedError carries exit 4
+				// without a second error document.
 				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
-					gcxerrors.NewPartialFailureError("pull", pullSummary.SuccessCount()+pullSummary.FailedCount(), pullSummary.FailedCount()))
+					gcxerrors.NewPartialFailureError("pull", pullSummary.SuccessCount()+pullSummary.FailedCount(), totalFailed))
 			}
 
 			return nil

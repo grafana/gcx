@@ -110,13 +110,15 @@ alongside `error`.
 **Error-only response** (command fails completely):
 
 ```json
-{"error": {"summary": "Resource not found - code 404", "exitCode": 1}}
+{"type": "gcx.error", "schema_version": "1", "error": {"summary": "Resource not found - code 404", "exitCode": 1}}
 ```
 
 **Partial failure** (batch operation, some resources succeeded):
 
 ```json
 {
+  "type": "gcx.partial_result",
+  "schema_version": "1",
   "items": [...],
   "error": {"summary": "3 resources failed", "exitCode": 4, "details": "...", "suggestions": ["..."]}
 }
@@ -134,10 +136,16 @@ alongside `error`.
 
 **Guarantees:**
 - On success, no `error` key appears in stdout JSON (NC-004).
-- When agent mode is NOT active, no error JSON is written to stdout.
+- When neither agent mode nor `--json` is active, no error JSON is written
+  to stdout (an active `--json` routes the error document to stdout even on
+  a TTY — machine consumers asked for machine output).
 - The JSON is always valid — partial writes cannot corrupt it (NC-004).
+- A command that already emitted its complete result document (including
+  fused error content) returns `gcxerrors.EmittedError`; the reporter then
+  writes nothing further, so stdout never carries two documents.
 
-**Implementation:** `cmd/gcx/fail/json.go` (`DetailedError.WriteJSON`).
+**Implementation:** `internal/gcxerrors/json.go` (`DetailedError.WriteJSON`),
+`cmd/gcx/main.go` (`reportError`).
 Invoked from `handleError` in `cmd/gcx/main.go` when `agent.IsAgentMode()` is true.
 
 See [agent-mode.md](agent-mode.md) for the full agent mode specification.

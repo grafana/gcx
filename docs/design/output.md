@@ -56,7 +56,8 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 | `preview_sample` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes. Named `preview_sample` (not `preview`) to signal it is never the complete dataset |
 | `message` | yes | Human-readable guidance: references `spilled_to` path and opt-outs |
 
-**Override:** `-o json` forces full compact JSON to stdout regardless of size.
+**Override:** `-o json` forces the full document inline to stdout regardless
+of size (standard indented JSON — see the byte-identity note above).
 `-o text` renders the human table.
 
 **Threshold configuration:** `GCX_AGENT_SPILL_BYTES` (int, bytes; default

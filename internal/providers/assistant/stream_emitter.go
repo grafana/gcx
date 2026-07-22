@@ -30,14 +30,16 @@ import (
 // the terminal output was written, so the process exits non-zero without the
 // top-level reporter appending a second JSON document to stdout.
 
-// Discriminators for the agent-mode stream envelope.
+// Discriminators for the agent-mode stream envelope. The canonical values
+// live in internal/output (shared with the other stream-class commands, e.g.
+// instrumentation wait); these aliases keep the package's exported names.
 const (
 	// StreamEventType tags each streamed domain event line.
-	StreamEventType = "gcx.stream_event"
+	StreamEventType = cmdio.StreamEventType
 	// StreamEndType tags the terminal success/error line.
-	StreamEndType = "gcx.stream_end"
+	StreamEndType = cmdio.StreamEndType
 
-	streamSchemaVersion = "1"
+	streamSchemaVersion = cmdio.StreamSchemaVersion
 )
 
 // streamMode selects how prompt/dashboard render the A2A stream and its

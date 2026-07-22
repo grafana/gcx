@@ -71,6 +71,12 @@ type FSWriter struct {
 	// and the resource. Used by callers that report a receipt of written
 	// files. Write is sequential, so the callback needs no locking.
 	OnWritten func(path string, resource *resources.Resource)
+
+	// OnWriteError, when set, is invoked for each resource whose file write
+	// failed when StopOnError is false (with StopOnError the first error is
+	// returned instead). Without it, skipped writes are only logged — a
+	// receipt built solely from OnWritten would silently overstate success.
+	OnWriteError func(resource *resources.Resource, err error)
 	// Encoder to use when encoding resources.
 	Encoder format.Encoder
 	// Whether to stop writing resources upon encountering an error.
@@ -96,6 +102,9 @@ func (writer *FSWriter) Write(ctx context.Context, resources *resources.Resource
 				return err
 			}
 
+			if writer.OnWriteError != nil {
+				writer.OnWriteError(resource, err)
+			}
 			logger.Warn("could not write resource: skipping", slog.String("kind", resource.Kind()), logs.Err(err))
 		}
 	}
