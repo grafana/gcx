@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/savedconversations"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/templates"
 	"github.com/grafana/gcx/internal/providers/aio11y/generations"
-	"github.com/grafana/gcx/internal/providers/aio11y/scores"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
@@ -66,7 +65,7 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 	evaluatorsCmd := evaluators.Commands(loader)
 	evaluatorsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx agento11y evaluators list -o json; gcx agento11y evaluators get <id> -o yaml; gcx agento11y evaluators create -f def.yaml -o json; gcx agento11y evaluators test -e <id> -g <gen-id> -o json; gcx agento11y evaluators delete <id> --force`,
+		agent.AnnotationLLMHint:   `gcx agento11y evaluators list -o json; gcx agento11y evaluators get <id> -o yaml; gcx agento11y evaluators upsert -f def.yaml -o json; gcx agento11y evaluators test -e <id> -g <gen-id> -o json; gcx agento11y evaluators delete <id> --force`,
 	}
 
 	rulesCmd := rules.Commands()
@@ -84,25 +83,19 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 	templatesCmd := templates.Commands(loader)
 	templatesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx agento11y templates list -o json; gcx agento11y templates get <id> -o yaml; gcx agento11y templates versions <id> -o json; gcx agento11y templates list --scope global -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y templates list -o json; gcx agento11y templates get <id> -o yaml; gcx agento11y templates list-versions <id> -o json; gcx agento11y templates list --scope global -o json`,
 	}
 
 	generationsCmd := generations.Commands(loader)
 	generationsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx agento11y generations get <generation-id> -o json`,
-	}
-
-	scoresCmd := scores.Commands(loader)
-	scoresCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx agento11y scores list <generation-id> -o json; gcx agento11y scores list <generation-id> -o wide`,
+		agent.AnnotationLLMHint:   `gcx agento11y generations get <generation-id> -o json; gcx agento11y generations list-scores <generation-id> -o json; gcx agento11y generations list-scores <generation-id> -o wide`,
 	}
 
 	judgeCmd := judge.Commands(loader)
 	judgeCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx agento11y judge providers -o json; gcx agento11y judge models --provider openai -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y judge list-providers -o json; gcx agento11y judge list-models --provider openai -o json`,
 	}
 
 	savedConvsCmd := savedconversations.Commands(loader)
@@ -114,16 +107,16 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 	collectionsCmd := collections.Commands(loader)
 	collectionsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx agento11y collections list -o json; gcx agento11y collections get <id> -o yaml; gcx agento11y collections create --name '...' -o json; gcx agento11y collections update <id> --name '...' -o json; gcx agento11y collections delete <id> --force; gcx agento11y collections conversations list <id> -o json; gcx agento11y collections conversations add <id> <saved-id>; gcx agento11y collections conversations remove <id> <saved-id>`,
+		agent.AnnotationLLMHint:   `gcx agento11y collections list -o json; gcx agento11y collections get <id> -o yaml; gcx agento11y collections create --name '...' -o json; gcx agento11y collections update <id> --name '...' -o json; gcx agento11y collections delete <id> --force; gcx agento11y collections list-conversations <id> -o json; gcx agento11y collections add-conversations <id> <saved-id>; gcx agento11y collections remove-conversation <id> <saved-id>`,
 	}
 
 	experimentsCmd := experiments.Commands(loader)
 	experimentsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx agento11y experiments list -o json; gcx agento11y experiments get <run-id> -o yaml; gcx agento11y experiments update <run-id> --description '...' --tag nightly --tag support -o json; gcx agento11y experiments scores <run-id> -o json; gcx agento11y experiments report <run-id> -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y experiments list -o json; gcx agento11y experiments get <run-id> -o yaml; gcx agento11y experiments update <run-id> --description '...' --tag nightly --tag support -o json; gcx agento11y experiments list-scores <run-id> -o json; gcx agento11y experiments report <run-id> -o json`,
 	}
 
-	aio11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd)
+	aio11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, generationsCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd)
 
 	return []*cobra.Command{aio11yCmd}
 }

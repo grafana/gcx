@@ -75,10 +75,10 @@ func (o *labelsOpts) Validate(cmd *cobra.Command) error {
 	return nil
 }
 
-func newLabelsCommand() *cobra.Command {
+func newListLabelsCommand() *cobra.Command {
 	opts := &labelsOpts{}
 	cmd := &cobra.Command{
-		Use:   "labels <service> [--namespace ns]",
+		Use:   "list-labels <service> [--namespace ns]",
 		Short: "Discover the labels (and values) available to --filter and --group-by for a service.",
 		Long: `List the labels present on a service's span-metric series — the exact set
 that "gcx appo11y services get/list-operations --filter/--group-by" can
@@ -97,18 +97,18 @@ which is what the RED commands filter and group on. Note:
     resource attributes under .service.labels.`,
 		Example: `
   # What can I filter/group checkoutservice by?
-  gcx appo11y services labels checkoutservice
+  gcx appo11y services list-labels checkoutservice
 
   # Which clusters does it run in? (values to feed --filter/--group-by)
-  gcx appo11y services labels checkoutservice --label k8s_cluster_name
+  gcx appo11y services list-labels checkoutservice --label k8s_cluster_name
 
   # JSON for scripting
-  gcx appo11y services labels checkoutservice -o json`,
+  gcx appo11y services list-labels checkoutservice -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: runLabels(opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Discovery helper for 'gcx appo11y services' --filter/--group-by: lists the labels present on a service's span-metric series with each label's distinct-value count (cardinality). Use before --filter/--group-by to learn what dimensions exist. --label <name> lists that label's distinct values (the valid --filter values). Sourced from the span-metric calls series (what get/list-operations filter and group on); map uses the service-graph family whose labels may differ. Examples: gcx appo11y services labels <name> -o json; gcx appo11y services labels <name> --label k8s_cluster_name -o json`,
+			agent.AnnotationLLMHint:   `Discovery helper for 'gcx appo11y services' --filter/--group-by: lists the labels present on a service's span-metric series with each label's distinct-value count (cardinality). Use before --filter/--group-by to learn what dimensions exist. --label <name> lists that label's distinct values (the valid --filter values). Sourced from the span-metric calls series (what get/list-operations filter and group on); map uses the service-graph family whose labels may differ. Examples: gcx appo11y services list-labels <name> -o json; gcx appo11y services list-labels <name> --label k8s_cluster_name -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -252,7 +252,7 @@ func emitLabelsNoDataHint(stderr io.Writer, namespace, name, label string) {
 	if label != "" {
 		cmdio.EmitHint(stderr,
 			fmt.Sprintf("label %q not found on %q", label, svc),
-			"gcx appo11y services labels "+svc)
+			"gcx appo11y services list-labels "+svc)
 		return
 	}
 	cmdio.EmitHint(stderr,
@@ -275,13 +275,13 @@ func (c *labelsTableCodec) Format() format.Format {
 }
 
 func (c *labelsTableCodec) Decode(io.Reader, any) error {
-	return errors.New("services labels table codec does not support decoding")
+	return errors.New("services list-labels table codec does not support decoding")
 }
 
 func (c *labelsTableCodec) Encode(w io.Writer, v any) error {
 	resp, ok := v.(*ServiceLabelsResponse)
 	if !ok {
-		return fmt.Errorf("invalid data type for services labels table codec: %T", v)
+		return fmt.Errorf("invalid data type for services list-labels table codec: %T", v)
 	}
 
 	// --label drill-down: one column of values for the requested label.

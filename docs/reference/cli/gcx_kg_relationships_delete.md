@@ -5,7 +5,7 @@ Delete a custom relationship [experimental].
 ### Synopsis
 
 Delete an API-origin edge of the given type between the from/to entities.
-The endpoint refs (incl. scope) must match the values used at create.
+The endpoint refs (incl. scope) must match the values used at upsert.
 
 Experimental: this command uses the Knowledge Graph write API, which is gated
 server-side and may change.

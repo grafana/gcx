@@ -25,5 +25,5 @@ Manage metric recommendations.
 * [gcx metrics adaptive](gcx_metrics_adaptive.md)	 - Manage Adaptive Metrics resources
 * [gcx metrics adaptive recommendations apply](gcx_metrics_adaptive_recommendations_apply.md)	 - Apply specific or all recommendations as rules.
 * [gcx metrics adaptive recommendations diff](gcx_metrics_adaptive_recommendations_diff.md)	 - Show what applying recommendation(s) would change.
-* [gcx metrics adaptive recommendations show](gcx_metrics_adaptive_recommendations_show.md)	 - Show metric recommendations.
+* [gcx metrics adaptive recommendations list](gcx_metrics_adaptive_recommendations_list.md)	 - List metric recommendations.
 

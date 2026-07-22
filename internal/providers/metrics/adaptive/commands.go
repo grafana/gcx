@@ -93,8 +93,8 @@ func (o *recommendationsListOpts) setup(flags *pflag.FlagSet) {
 func (h *metricsHelper) recommendationsListCommand() *cobra.Command {
 	opts := &recommendationsListOpts{}
 	cmd := &cobra.Command{
-		Use:   "show",
-		Short: "Show metric recommendations.",
+		Use:   "list",
+		Short: "List metric recommendations.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -203,7 +203,7 @@ func (h *metricsHelper) recommendationsDiffCommand() *cobra.Command {
 			for _, metric := range args {
 				rec, ok := recsByMetric[metric]
 				if !ok {
-					return fmt.Errorf("no recommendation found for %s. Use 'recommendations show' to see available recommendations", metric)
+					return fmt.Errorf("no recommendation found for %s. Use 'recommendations list' to see available recommendations", metric)
 				}
 
 				entry := diffEntry{
@@ -366,7 +366,7 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 	for _, m := range metrics {
 		rec, ok := recsByMetric[m]
 		if !ok {
-			return fmt.Errorf("no recommendation found for %s. Use 'recommendations show' to see available recommendations", m)
+			return fmt.Errorf("no recommendation found for %s. Use 'recommendations list' to see available recommendations", m)
 		}
 		items = append(items, applyItem{rec: rec, action: rec.RecommendedAction})
 	}

@@ -23,6 +23,6 @@ Manage adaptive log patterns.
 ### SEE ALSO
 
 * [gcx logs adaptive](gcx_logs_adaptive.md)	 - Manage Adaptive Logs resources
-* [gcx logs adaptive patterns show](gcx_logs_adaptive_patterns_show.md)	 - Show adaptive log pattern recommendations.
+* [gcx logs adaptive patterns list](gcx_logs_adaptive_patterns_list.md)	 - List adaptive log pattern recommendations.
 * [gcx logs adaptive patterns stats](gcx_logs_adaptive_patterns_stats.md)	 - Summarize pattern volume aggregated by segment.
 

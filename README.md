@@ -231,7 +231,7 @@ $ gcx metrics query  'sum by (handler)(rate(grafana_http_request_duration_second
 
 ```bash
 # Grafana resources
-gcx resources schemas                           # discover available resource types
+gcx resources list-types                        # discover available resource types
 gcx dashboards list                             # list all dashboards
 gcx dashboards search "node exporter"           # full-text search by title/tag/folder
 gcx resources get folders                       # list all folders
@@ -369,9 +369,9 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |
 | **Agent Observability** | `gcx agento11y` | `agento11y conversations list`, `agento11y agents list`, `agento11y rules list` |
 | **Assistant** | `gcx assistant` | `assistant prompt`, `assistant investigations list`, `assistant mcp-servers list` |
-| **Adaptive Metrics** | `gcx metrics adaptive` | `metrics adaptive recommendations show`, `metrics adaptive rules list` |
-| **Adaptive Logs** | `gcx logs adaptive` | `logs adaptive patterns show`, `logs adaptive drop-rules list` |
-| **Adaptive Traces** | `gcx traces adaptive` | `traces adaptive recommendations show`, `traces adaptive policies list` |
+| **Adaptive Metrics** | `gcx metrics adaptive` | `metrics adaptive recommendations list`, `metrics adaptive rules list` |
+| **Adaptive Logs** | `gcx logs adaptive` | `logs adaptive patterns list`, `logs adaptive drop-rules list` |
+| **Adaptive Traces** | `gcx traces adaptive` | `traces adaptive recommendations list`, `traces adaptive policies list` |
 | **Profiles (Pyroscope)** | `gcx profiles` | `profiles query`, `profiles labels` |
 | **Traces (Tempo)** | `gcx traces` | `traces query`, `traces get`, `traces labels` |
 
@@ -440,7 +440,7 @@ gcx dev serve ./resources
 
 # Lint resources with built-in and custom Rego rules
 gcx dev lint run -p ./resources
-gcx dev lint rules                              # list available rules
+gcx dev lint list-rules                         # list available rules
 gcx dev lint new --resource dashboard --name my-rule  # create custom rule
 
 # Build and push

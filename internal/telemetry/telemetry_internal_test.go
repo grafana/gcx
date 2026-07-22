@@ -94,7 +94,7 @@ func TestResolveMode(t *testing.T) {
 	}
 }
 
-// The Env struct tags are what the docs generator publishes; resolveMode
+// The Env struct tags are what the docs generator publishes; the package
 // reads the constants. If they drift, the docs advertise a variable that
 // does nothing while the real one is undocumented.
 func TestEnvTagsMatchResolvedNames(t *testing.T) {
@@ -106,5 +106,6 @@ func TestEnvTagsMatchResolvedNames(t *testing.T) {
 	assert.Equal(t, map[string]string{
 		"Telemetry":  envTelemetry,
 		"DoNotTrack": envDoNotTrack,
+		"Endpoint":   envEndpoint,
 	}, tags)
 }

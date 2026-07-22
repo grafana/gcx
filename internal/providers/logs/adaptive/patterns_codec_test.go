@@ -19,7 +19,7 @@ func TestPatternsTableCodec_TopNAndRollup(t *testing.T) {
 		{Pattern: "top", Volume: 10000},
 	}
 
-	opts := &patternsShowOpts{TopN: 2}
+	opts := &patternsListOpts{TopN: 2}
 	codec := &patternsTableCodec{wide: false, opts: opts}
 
 	var buf bytes.Buffer
@@ -41,7 +41,7 @@ func TestPatternsTableCodec_TopZeroShowsAll(t *testing.T) {
 		{Pattern: "a", Volume: 1},
 		{Pattern: "b", Volume: 2},
 	}
-	opts := &patternsShowOpts{TopN: 0}
+	opts := &patternsListOpts{TopN: 0}
 	codec := &patternsTableCodec{wide: false, opts: opts}
 
 	var buf bytes.Buffer
@@ -110,7 +110,7 @@ func TestPatternsTableCodec_RecommendedRateAsterisk(t *testing.T) {
 		{Pattern: "match", Volume: 100, ConfiguredDropRate: 0, RecommendedDropRate: 50, IngestedLines: 10, QueriedLines: 1},
 	}
 
-	opts := &patternsShowOpts{TopN: 0}
+	opts := &patternsListOpts{TopN: 0}
 	codec := &patternsTableCodec{wide: false, opts: opts}
 
 	var buf bytes.Buffer

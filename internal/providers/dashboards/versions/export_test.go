@@ -14,9 +14,9 @@ func NewTestCommandDeps(client DashboardVersionsClient, desc resources.Descripto
 	return &commandDeps{client: client, desc: desc}
 }
 
-// NewTestListCommand exposes newListCommand for external test packages.
+// NewTestListCommand exposes newListVersionsCommand for external test packages.
 func NewTestListCommand(deps *commandDeps) *cobra.Command {
-	return newListCommand(deps)
+	return newListVersionsCommand(deps)
 }
 
 // NewTestRestoreCommand exposes newRestoreCommand for external test packages.
