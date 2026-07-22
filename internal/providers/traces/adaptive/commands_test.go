@@ -169,6 +169,105 @@ func TestPoliciesCreate_Integration(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// ReadConfigFromReader
+// ---------------------------------------------------------------------------
+
+func TestReadConfigFromReader(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    traces.Config
+		wantErr bool
+	}{
+		{
+			name:  "json",
+			input: `{"default_sampling_percentage":10,"feature_flags":{"recommendations_enabled":true}}`,
+			want: traces.Config{
+				"default_sampling_percentage": uint64(10),
+				"feature_flags":               map[string]any{"recommendations_enabled": true},
+			},
+		},
+		{
+			name: "yaml",
+			input: `default_sampling_percentage: 25
+feature_flags:
+  recommendations_enabled: false
+`,
+			want: traces.Config{
+				"default_sampling_percentage": uint64(25),
+				"feature_flags":               map[string]any{"recommendations_enabled": false},
+			},
+		},
+		{
+			name:    "empty input is rejected",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "invalid input",
+			input:   "<<<not valid>>>",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := traces.ReadConfigFromReader(strings.NewReader(tc.input))
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Integration-style: config show + set via test server
+// ---------------------------------------------------------------------------
+
+func TestConfig_Integration(t *testing.T) {
+	stored := traces.Config{"default_sampling_percentage": 10.0}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/adaptive-traces/api/v1/config", r.URL.Path)
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(stored)
+		case http.MethodPut:
+			var next traces.Config
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&next))
+			stored = next
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(stored)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+
+	client := traces.NewClient(srv.URL, 42, "test-token", srv.Client())
+
+	got, err := client.GetConfig(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, traces.Config{"default_sampling_percentage": 10.0}, got)
+
+	updated, err := client.UpdateConfig(t.Context(), traces.Config{
+		"default_sampling_percentage": 50.0,
+		"feature_flags":               map[string]any{"recommendations_enabled": true},
+	})
+	require.NoError(t, err)
+	assert.InDelta(t, 50.0, updated["default_sampling_percentage"], 1e-9)
+
+	// Confirm round-trip — fetched value reflects the update.
+	got, err = client.GetConfig(t.Context())
+	require.NoError(t, err)
+	assert.InDelta(t, 50.0, got["default_sampling_percentage"], 1e-9)
+}
+
+// ---------------------------------------------------------------------------
 // Integration-style: policies delete via test server
 // ---------------------------------------------------------------------------
 

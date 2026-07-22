@@ -1,11 +1,11 @@
-## gcx traces adaptive
+## gcx traces adaptive config
 
-Manage Adaptive Traces resources
+Manage the Adaptive Traces tenant configuration.
 
 ### Options
 
 ```
-  -h, --help   help for adaptive
+  -h, --help   help for config
 ```
 
 ### Options inherited from parent commands
@@ -22,8 +22,7 @@ Manage Adaptive Traces resources
 
 ### SEE ALSO
 
-* [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces
-* [gcx traces adaptive config](gcx_traces_adaptive_config.md)	 - Manage the Adaptive Traces tenant configuration.
-* [gcx traces adaptive policies](gcx_traces_adaptive_policies.md)	 - Manage Adaptive Traces sampling policies.
-* [gcx traces adaptive recommendations](gcx_traces_adaptive_recommendations.md)	 - Manage Adaptive Traces recommendations.
+* [gcx traces adaptive](gcx_traces_adaptive.md)	 - Manage Adaptive Traces resources
+* [gcx traces adaptive config set](gcx_traces_adaptive_config_set.md)	 - Replace the Adaptive Traces tenant configuration.
+* [gcx traces adaptive config show](gcx_traces_adaptive_config_show.md)	 - Show the Adaptive Traces tenant configuration.
 

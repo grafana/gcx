@@ -1,11 +1,25 @@
-## gcx traces adaptive
+## gcx traces adaptive config set
 
-Manage Adaptive Traces resources
+Replace the Adaptive Traces tenant configuration.
+
+### Synopsis
+
+Replace the Adaptive Traces tenant configuration with the contents of the supplied file. The API does not support partial patches — the entire payload is required and the existing document is overwritten.
+
+To avoid clobbering fields you did not intend to change, run `gcx traces adaptive config show` first, edit the returned document, and pass the full result back to `set`. Any field omitted from the payload is dropped, not preserved.
+
+```
+gcx traces adaptive config set [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for adaptive
+  -f, --filename string   File containing the full configuration payload (use - for stdin)
+      --force             Skip confirmation prompt
+  -h, --help              help for set
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
@@ -22,8 +36,5 @@ Manage Adaptive Traces resources
 
 ### SEE ALSO
 
-* [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces
 * [gcx traces adaptive config](gcx_traces_adaptive_config.md)	 - Manage the Adaptive Traces tenant configuration.
-* [gcx traces adaptive policies](gcx_traces_adaptive_policies.md)	 - Manage Adaptive Traces sampling policies.
-* [gcx traces adaptive recommendations](gcx_traces_adaptive_recommendations.md)	 - Manage Adaptive Traces recommendations.
 

@@ -18,6 +18,7 @@ const (
 	recommendationsPath      = "/adaptive-traces/api/v1/recommendations"
 	recommendationApplyFmt   = recommendationsPath + "/%s/apply"
 	recommendationDismissFmt = recommendationsPath + "/%s/dismiss"
+	configPath               = "/adaptive-traces/api/v1/config"
 )
 
 // Client is an HTTP client for the Adaptive Traces API.
@@ -199,6 +200,60 @@ func (c *Client) DismissRecommendation(ctx context.Context, id string) error {
 	}
 
 	return nil
+}
+
+// GetConfig returns the Adaptive Traces tenant configuration.
+func (c *Client) GetConfig(ctx context.Context) (Config, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, configPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("getting config: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("adaptive-traces: get config: %w", handleErrorResponse(resp))
+	}
+
+	var cfg Config
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("decoding config: %w", err)
+	}
+	if cfg == nil {
+		cfg = Config{}
+	}
+	return cfg, nil
+}
+
+// UpdateConfig replaces the Adaptive Traces tenant configuration. The API does
+// not support partial patches — the entire payload is required on every call.
+func (c *Client) UpdateConfig(ctx context.Context, cfg Config) (Config, error) {
+	body, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling config: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, http.MethodPut, configPath, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("updating config: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return nil, fmt.Errorf("adaptive-traces: update config: %w", handleErrorResponse(resp))
+	}
+
+	if resp.StatusCode == http.StatusNoContent {
+		return cfg, nil
+	}
+
+	var updated Config
+	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
+		return nil, fmt.Errorf("decoding updated config: %w", err)
+	}
+	if updated == nil {
+		updated = Config{}
+	}
+	return updated, nil
 }
 
 func (c *Client) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {

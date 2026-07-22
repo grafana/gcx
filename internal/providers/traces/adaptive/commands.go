@@ -28,6 +28,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	h := &tracesHelper{loader: loader}
 	cmd.AddCommand(h.policiesCommand())
 	cmd.AddCommand(h.recommendationsCommand())
+	cmd.AddCommand(h.configCommand())
 	return cmd
 }
 
@@ -604,4 +605,185 @@ func ReadPolicyFromReader(reader io.Reader) (*Policy, error) {
 	}
 
 	return &policy, nil
+}
+
+// ===========================================================================
+// config (singleton)
+// ===========================================================================
+
+func (h *tracesHelper) configCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Manage the Adaptive Traces tenant configuration.",
+	}
+	cmd.AddCommand(
+		h.configShowCommand(),
+		h.configSetCommand(),
+	)
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// config show
+// ---------------------------------------------------------------------------
+
+type configShowOpts struct {
+	IO cmdio.Options
+}
+
+func (o *configShowOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
+func (h *tracesHelper) configShowCommand() *cobra.Command {
+	opts := &configShowOpts{}
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "Show the Adaptive Traces tenant configuration.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			cfg, err := client.GetConfig(ctx)
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), cfg)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// config set
+// ---------------------------------------------------------------------------
+
+type configSetOpts struct {
+	IO    cmdio.Options
+	File  string
+	Force bool
+}
+
+func (o *configSetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the full configuration payload (use - for stdin)")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
+func (o *configSetOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return nil
+}
+
+func (h *tracesHelper) configSetCommand() *cobra.Command {
+	opts := &configSetOpts{}
+	cmd := &cobra.Command{
+		Use:   "set",
+		Short: "Replace the Adaptive Traces tenant configuration.",
+		Long: "Replace the Adaptive Traces tenant configuration with the contents of the " +
+			"supplied file. The API does not support partial patches — the entire payload is " +
+			"required and the existing document is overwritten.\n\n" +
+			"To avoid clobbering fields you did not intend to change, run `gcx traces adaptive " +
+			"config show` first, edit the returned document, and pass the full result back to " +
+			"`set`. Any field omitted from the payload is dropped, not preserved.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			cfg, err := readConfigFromFile(opts.File, cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+				"Replace the Adaptive Traces tenant configuration? This overwrites the entire existing document.")
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
+			}
+
+			ctx := cmd.Context()
+
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			updated, err := client.UpdateConfig(ctx, cfg)
+			if err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.ErrOrStderr(), "Replaced Adaptive Traces tenant configuration")
+			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// maxConfigFileSize is the maximum size of a config file (512 KB). The config
+// document holds a sampling percentage, feature flags, and a list of
+// user-defined condition rules — generous headroom for ~1.5k–2k condition
+// entries while still rejecting accidentally-piped large payloads early.
+const maxConfigFileSize = 512 << 10
+
+func readConfigFromFile(filePath string, stdin io.Reader) (Config, error) {
+	var reader io.Reader
+	if filePath == "-" {
+		reader = stdin
+	} else {
+		f, err := os.Open(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("opening file %s: %w", filePath, err)
+		}
+		defer f.Close()
+		reader = f
+	}
+
+	return ReadConfigFromReader(reader)
+}
+
+// ReadConfigFromReader decodes a Config from an io.Reader (YAML or JSON). Exported for testing.
+func ReadConfigFromReader(reader io.Reader) (Config, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, maxConfigFileSize))
+	if err != nil {
+		return nil, fmt.Errorf("reading input: %w", err)
+	}
+
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return nil, errors.New("config payload is empty")
+	}
+
+	var cfg Config
+	yamlCodec := format.NewYAMLCodec()
+	if err := yamlCodec.Decode(strings.NewReader(string(data)), &cfg); err != nil {
+		return nil, fmt.Errorf("decoding input: %w", err)
+	}
+	if cfg == nil {
+		cfg = Config{}
+	}
+	return cfg, nil
 }
