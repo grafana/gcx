@@ -72,7 +72,7 @@ cmd/gcx/
   root/         CLI root (logging, global flags)
   login/        Unified login command (token + OAuth PKCE, interactive prompts)
   config/       Config management (set, use-context, view, check)
-  resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
+  resources/    Resource commands (get, list-types, list-examples, push, pull, delete, edit, validate)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
   cloud/        Cloud platform command group (mounts gcx cloud stacks)
@@ -131,7 +131,7 @@ internal/
 ├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
 │   ├── clickhouse/  ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   ├── cloudwatch/  CloudWatch CLI commands (query, list-namespaces, list-metrics, list-dimensions, list-regions, list-accounts)
-│   ├── influxdb/  InfluxDB datasource command layer (query, field-keys, measurements)
+│   ├── influxdb/  InfluxDB datasource command layer (query, list-field-keys, list-measurements, list-tag-keys, list-tag-values)
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
 ├── query/       Datasource query clients
 │   ├── dataframe/   Shared Grafana data frame wire types for unified datasource query API responses

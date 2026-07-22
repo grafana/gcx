@@ -435,7 +435,7 @@ func queryErrorHelpCommand(apiErr *queryerror.APIError) string {
 		case "query":
 			return "gcx profiles query --help"
 		case "profile types query":
-			return "gcx profiles profile-types --help"
+			return "gcx profiles list-profile-types --help"
 		case "label names query", "label values query":
 			return "gcx profiles labels --help"
 		case "series query":
@@ -1397,7 +1397,7 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 			Suggestions: []string{
 				"Ensure your Cloud Access Policy includes the required stacks scopes:",
-				"  stacks:read   — for list, get, regions",
+				"  stacks:read   — for list, get, list-regions",
 				"  stacks:write  — for create, update",
 				"  stacks:delete — for delete",
 			},

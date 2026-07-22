@@ -130,7 +130,7 @@ func (o *versionsOpts) setup(flags *pflag.FlagSet) {
 func newVersionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &versionsOpts{}
 	cmd := &cobra.Command{
-		Use:   "versions <agent-name>",
+		Use:   "list-versions <agent-name>",
 		Short: "List version history for an agent.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

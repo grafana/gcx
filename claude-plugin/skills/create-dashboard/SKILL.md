@@ -127,7 +127,7 @@ gcx datasources list -o json
 | Prometheus | `gcx datasources prometheus labels -d <uid> --label __name__` | `gcx datasources prometheus labels -d <uid> --label <label>` |
 | Loki | `gcx datasources loki labels -d <uid>` | `gcx datasources loki labels -d <uid> --label <label>` |
 | Tempo | `gcx datasources tempo labels -d <uid>` | `gcx datasources tempo labels -d <uid> -l <attr> --llm -o json [--scope span\|resource] [-q '<traceql>']` |
-| Pyroscope | `gcx datasources pyroscope profile-types -d <uid>` then `labels -d <uid>` | `gcx datasources pyroscope labels -d <uid> --label <label>` |
+| Pyroscope | `gcx datasources pyroscope list-profile-types -d <uid>` then `labels -d <uid>` | `gcx datasources pyroscope labels -d <uid> --label <label>` |
 
 Prometheus also has `gcx datasources prometheus metadata -d <uid>` for metric type and help text.
 For Prometheus scoped label lookups, fall back to `gcx api "/api/datasources/proxy/uid/<uid>/api/v1/label/<label>/values?match[]=<selector>"` — use the datasource `uid` from `gcx datasources list`; the list output has no numeric id.
@@ -187,7 +187,7 @@ project. Run the project's normal generation/build command before pushing.
 Start from the live schema instead of guessing fields:
 
 ```bash
-gcx resources schemas dashboards -o json > /tmp/dashboard-schema.json
+gcx resources list-types dashboards -o json > /tmp/dashboard-schema.json
 ```
 
 Note: the server returns the schema of its *preferred* dashboard API version,
@@ -196,7 +196,7 @@ the template below uses the classic `v1beta1` shape (`panels`/`templating`).
 Both versions are accepted on push — just author consistently against one
 version and don't mix fields between them.
 
-`gcx resources examples` is useful for resource types that ship examples, but
+`gcx resources list-examples` is useful for resource types that ship examples, but
 current dashboard authoring should not depend on an example being available.
 
 Create a manifest such as `./resources/dashboards/<dashboard-name>.yaml`.

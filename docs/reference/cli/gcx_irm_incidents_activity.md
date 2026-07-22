@@ -24,5 +24,4 @@ Manage incident activity timeline.
 
 * [gcx irm incidents](gcx_irm_incidents.md)	 - Manage incidents.
 * [gcx irm incidents activity add](gcx_irm_incidents_activity_add.md)	 - Add a note to an incident's activity timeline.
-* [gcx irm incidents activity list](gcx_irm_incidents_activity_list.md)	 - List activity items for an incident.
 

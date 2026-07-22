@@ -342,5 +342,5 @@ func TestNewCommand(t *testing.T) {
 	for _, sub := range cmd.Commands() {
 		subNames = append(subNames, sub.Name())
 	}
-	assert.ElementsMatch(t, []string{"list", "get", "create", "update", "delete", "regions"}, subNames)
+	assert.ElementsMatch(t, []string{"list", "get", "create", "update", "delete", "list-regions"}, subNames)
 }

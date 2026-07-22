@@ -13,7 +13,7 @@ func Command() *cobra.Command {
 
 	cmd.AddCommand(lintCmd())
 	cmd.AddCommand(newCmd())
-	cmd.AddCommand(rulesCmd())
+	cmd.AddCommand(listRulesCmd())
 	cmd.AddCommand(testCmd())
 
 	return cmd

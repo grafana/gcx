@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -75,10 +76,19 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.IncludeChildGroups, "include-child-groups", false, "Include child groups (drops the is_root filter while keeping the status default)")
 }
 
-// Validate is a stub to satisfy the CONSTITUTION-required
-// opts/setup/Validate/constructor quartet. The flag set has no cross-field
-// invariants beyond what opts.IO.Validate() already enforces.
-func (o *alertGroupListOpts) Validate() error { return nil }
+// Validate rejects negative --limit values before any config or network work,
+// mirroring the shape of the shared BindListLimit validation
+// (internal/output/format.go) with capped-source wording: this command binds
+// --limit bespoke instead of using the binder because --limit 0 is bounded by
+// a client-side safety cap (alertGroupListHardCap), so neither the flag help
+// nor this error may promise "0 means all results are returned"
+// (docs/design/output.md § 15.1).
+func (o *alertGroupListOpts) Validate() error {
+	if o.Limit < 0 {
+		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 means as many results as the safety cap allows)", o.Limit)
+	}
+	return nil
+}
 
 // stateNameToInt translates a user-facing state name into the OnCall internal
 // API integer wire encoding. Accepted: firing|new, acknowledged|ack,
@@ -127,7 +137,8 @@ func newAlertGroupsCommand(loader OnCallConfigLoader) *cobra.Command {
 // alertGroupListFilters is the resolved set of filters applied to the
 // alertgroups list endpoint. Built from alertGroupListOpts after default
 // resolution; passed through both the OAuth-proxy path (listAlertGroupsRaw)
-// and the SA-token legacy path (listAlertGroupsLegacy).
+// and the alternate-implementation fallback (listAlertGroupsLegacy — e.g.
+// test doubles; not reachable via the production loader today).
 type alertGroupListFilters struct {
 	MaxAge             string
 	Statuses           []int
@@ -229,7 +240,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 				return listAlertGroupsLegacy(cmd, opts, filters, client, namespace)
 			}
 
-			rawItems, serverHasMore, err := reader.ListAlertGroupsRaw(cmd.Context(), filters, opts.Limit)
+			rawItems, pageInfo, err := reader.ListAlertGroupsRaw(cmd.Context(), filters, opts.Limit)
 			if err != nil {
 				return err
 			}
@@ -249,9 +260,28 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 				envs = append(envs, env)
 			}
 
+			// Truncation metadata: pageInfo.HasMore is true whenever the
+			// fetch stopped at the effective bound — the user's --limit or
+			// the runaway safety cap (alertGroupListHardCap) — with
+			// truncation evidence in hand (a next cursor, or a final page
+			// that overshot the bound). PagedListMeta honors it even at
+			// --limit 0 and records the cap when it was the binding ceiling,
+			// so a hard-capped "give me all" page is never reported as the
+			// complete set.
+			meta := cmdio.PagedListMeta(len(envs), opts.Limit, pageInfo.HasMore, alertGroupListHardCap)
+			// Drained-overshoot case: pagination ended, so the total was
+			// genuinely observed. Attach it when honest — always for a
+			// cap-bounded page (it carries no continuation), otherwise only
+			// when the full set is actually retrievable via --limit 0 (a
+			// total above the hard cap would make that continuation a lie).
+			if meta != nil && pageInfo.Total != nil && (meta.Cap > 0 || *pageInfo.Total <= alertGroupListHardCap) {
+				meta.Total = pageInfo.Total
+			}
+			meta = cmdio.AttachListMeta(meta, os.Args)
+
 			// List envelope MUST be `{"items": [...]}` (never bare
 			// array, never null). Empty result is `{"items": []}`.
-			if err := opts.IO.Encode(cmd.OutOrStdout(), alertGroupItemsEnvelope{Items: envs}); err != nil {
+			if err := opts.IO.Encode(cmd.OutOrStdout(), alertGroupItemsEnvelope{Items: envs, ListMeta: meta}); err != nil {
 				return err
 			}
 
@@ -271,13 +301,15 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 				emitNote(stderr, "default filter excludes resolved and child groups; pass --all or --include-child-groups to broaden")
 			}
 
-			// Hint emission (locked shape, D2 round 14): only when the user
-			// accepted truncation (--limit > 0), the result hit the limit
-			// exactly, AND the server confirmed more pages exist. Otherwise
-			// silent.
-			if opts.Limit > 0 && len(envs) == opts.Limit && serverHasMore {
-				emitAlertGroupListLimitHint(stderr, opts.Limit)
-			}
+			// Truncation hint: the standardized shape shared by all list
+			// commands (see docs/design/output.md § List Truncation
+			// Contract), emitted only when the metadata says the page is
+			// partial. Replaces the bespoke D2-round-14 doubled-limit hint —
+			// the shared helper suggests the same doubled limit for a
+			// user-bounded page, renders the argv-derived continuation from
+			// AttachListMeta (so filter flags survive), and switches to the
+			// "refine filters" variant when the safety cap was the bound.
+			cmdio.EmitListTruncationHint(stderr, meta)
 
 			// Filter-summary hint (D2 round 17): silent only when --all is
 			// passed AND no other filter flag is in effect (the "show me
@@ -297,21 +329,6 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
-}
-
-// emitAlertGroupListLimitHint surfaces the D2-round-14 truncation hint on
-// stderr when alert-groups list returns exactly `limit` rows AND the server
-// reported a non-empty `next` cursor. Format mirrors the locked shape and
-// surfaces a runnable command (a doubled-limit fetch
-// is a sensible next step that avoids committing to --limit 0):
-//
-//	TTY:    "hint: showing first N results: gcx irm oncall alert-groups list --limit M"
-//	agent:  {"class":"hint","summary":"showing first N results","command":"gcx irm oncall alert-groups list --limit M"}
-func emitAlertGroupListLimitHint(stderr io.Writer, limit int) {
-	suggested := limit * 2
-	emitHint(stderr,
-		fmt.Sprintf("showing first %d results", limit),
-		fmt.Sprintf("gcx irm oncall alert-groups list --limit %d", suggested))
 }
 
 // alertGroupListFilterMaxLen caps the rendered filter summary at a generous
@@ -468,7 +485,9 @@ func emitListAlertsLinkHints(stderr io.Writer, ruleUID string) {
 	emitHint(stderr, "see live instances", "gcx alert instances list --rule "+safe)
 }
 
-// listAlertGroupsLegacy is the SA-token-mode fallback that goes through the
+// listAlertGroupsLegacy is the alternate-implementation fallback (e.g. test
+// doubles; not reachable via the production loader today, which always
+// returns *OnCallClient — see config.go) that goes through the
 // public-API client (which doesn't return the rich shape). The public API
 // supports a smaller filter set than the internal API; unsupported filters
 // are passed through to the public client which silently ignores them, and
@@ -493,7 +512,11 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 		listOpts = append(listOpts, WithIntegrations(filters.Integrations...))
 	}
 	if opts.Limit > 0 {
-		listOpts = append(listOpts, WithLimit(opts.Limit))
+		// Over-fetch by one: the public API has no more-pages signal, so a
+		// spare item is the cheap proof that the page is partial — without
+		// draining the source just to count it. --limit 0 keeps draining
+		// fully on this path (no safety cap here) and stays metadata-free.
+		listOpts = append(listOpts, WithLimit(opts.Limit+1))
 	}
 
 	// Surface unsupported-filter warnings once at the command edge — the
@@ -525,6 +548,10 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	if err != nil {
 		return err
 	}
+	// A spare (limit+1) row proves more data exists; Total stays unknown —
+	// the source was not drained.
+	items, meta := cmdio.TruncatePagedList(items, opts.Limit)
+	meta = cmdio.AttachListMeta(meta, os.Args)
 	// SA-token mode doesn't get the rich shape (no internal API access). The
 	// envelope type is the same — most status fields stay empty (omitempty);
 	// only AlertsCount/Status (decoded) are populated from the public payload.
@@ -550,8 +577,13 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 		})
 	}
 	// Wrap in the items envelope on every list path, including the
-	// SA-token fallback.
-	return opts.IO.Encode(cmd.OutOrStdout(), alertGroupItemsEnvelope{Items: envs})
+	// alternate-implementation fallback (e.g. test doubles; not reachable
+	// via the production loader today).
+	if err := opts.IO.Encode(cmd.OutOrStdout(), alertGroupItemsEnvelope{Items: envs, ListMeta: meta}); err != nil {
+		return err
+	}
+	cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+	return nil
 }
 
 // alertGroupListHardCap bounds the maximum number of items returned by
@@ -564,25 +596,46 @@ const alertGroupListHardCap = 1000
 // fitting the default limit (50) into a single request.
 const alertGroupListPerPageMax = 100
 
+// alertGroupPageInfo reports how a paginated alert-group fetch ended.
+type alertGroupPageInfo struct {
+	// HasMore is true when items beyond the returned page exist: the fetch
+	// stopped at the effective bound (the caller's limit or the hard cap)
+	// with the server reporting a next cursor, or the in-hand items of the
+	// final page exceeded the bound and were trimmed.
+	HasMore bool
+	// Total is the observed size of the complete result set. It is set only
+	// when the source was fully drained (pagination ended with no next
+	// cursor) yet more items were in hand than the bound allowed — the one
+	// case where the loop actually observes the full count. Nil means
+	// unknown; never a guess.
+	Total *int
+}
+
 // listAlertGroupsRaw issues the paginated GET against alertgroups/?... and
-// returns the per-item raw JSON for downstream rich conversion plus a
-// `hasMore` flag indicating whether the server reported additional pages
-// when we stopped early due to the caller-supplied cap.
+// returns the per-item raw JSON for downstream rich conversion plus page
+// info describing how the fetch ended (see alertGroupPageInfo).
 //
 // limit semantics:
 //   - limit > 0  → fetch up to `limit` items; perpage=min(limit, perPageMax).
 //   - limit == 0 → fetch up to alertGroupListHardCap items; perpage=perPageMax.
 //
-// hasMore is true only when the result was truncated by `limit` AND the page
-// that triggered the stop reported a non-empty `next` cursor. It stays false
-// when the server's pagination naturally ends or when only the hardCap kicks
-// in (the latter is silent — `--limit 0` callers opted into "give me all").
-func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroupListFilters, limit int) ([]json.RawMessage, bool, error) {
+// HasMore is true whenever the fetch stopped at the effective bound — the
+// caller-supplied limit or the runaway hard cap — with truncation evidence
+// in hand: the stopping page reported a non-empty `next` cursor, or the
+// in-hand items exceeded the bound (a final overshooting page proves
+// truncation even without a cursor). It stays false only when the server's
+// pagination ends at or before the bound. Nothing is silenced here; each
+// caller decides how to surface the page info. The list command emits
+// list_meta plus stderr hints; resolveBulkTargets (oncall_actions.go)
+// currently discards it, so a hard-capped bulk-by-filter sweep is still
+// silent — tracked for a per-command decision in
+// docs/research/2026-07-17-global-limit-investigation.md § 6.
+func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroupListFilters, limit int) ([]json.RawMessage, alertGroupPageInfo, error) {
 	params := url.Values{}
 	if filters.MaxAge != "" {
 		dur, err := parseDuration(filters.MaxAge)
 		if err != nil {
-			return nil, false, fmt.Errorf("invalid --max-age value %q: %w", filters.MaxAge, err)
+			return nil, alertGroupPageInfo{}, fmt.Errorf("invalid --max-age value %q: %w", filters.MaxAge, err)
 		}
 		const layout = "2006-01-02T15:04:05"
 		start := time.Now().UTC().Add(-dur).Format(layout)
@@ -634,29 +687,29 @@ func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroup
 	}
 
 	var (
-		out           []json.RawMessage
-		next          = path
-		serverHasMore bool
+		out  []json.RawMessage
+		next = path
+		info alertGroupPageInfo
 	)
 	for next != "" {
 		resp, err := c.DoRequest(ctx, http.MethodGet, next, nil)
 		if err != nil {
-			return nil, false, fmt.Errorf("irm: list alert groups: %w", err)
+			return nil, alertGroupPageInfo{}, fmt.Errorf("irm: list alert groups: %w", err)
 		}
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			return nil, false, err
+			return nil, alertGroupPageInfo{}, err
 		}
 		if resp.StatusCode != http.StatusOK {
-			return nil, false, fmt.Errorf("irm: list alert groups: HTTP %d: %s", resp.StatusCode, string(body))
+			return nil, alertGroupPageInfo{}, fmt.Errorf("irm: list alert groups: HTTP %d: %s", resp.StatusCode, string(body))
 		}
 		var page struct {
 			Results []json.RawMessage `json:"results"`
 			Next    *string           `json:"next"`
 		}
 		if err := json.Unmarshal(body, &page); err != nil {
-			return nil, false, fmt.Errorf("irm: decode alert groups: %w", err)
+			return nil, alertGroupPageInfo{}, fmt.Errorf("irm: decode alert groups: %w", err)
 		}
 		out = append(out, page.Results...)
 		pageNext := ""
@@ -664,8 +717,17 @@ func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroup
 			pageNext = *page.Next
 		}
 		if len(out) >= effectiveCap {
+			// Truncation evidence comes from either signal: the stopping page
+			// reported a next cursor, or the final page overshot the bound and
+			// in-hand items are about to be dropped. Evaluate BEFORE trimming.
+			info.HasMore = pageNext != "" || len(out) > effectiveCap
+			if pageNext == "" && len(out) > effectiveCap {
+				// Pagination ended naturally, so the source was fully drained
+				// and the total is genuinely observed — not a guess.
+				total := len(out)
+				info.Total = &total
+			}
 			out = out[:effectiveCap]
-			serverHasMore = pageNext != ""
 			break
 		}
 		if pageNext == "" {
@@ -673,16 +735,14 @@ func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroup
 		}
 		np, err := ExtractNextPath(pageNext)
 		if err != nil {
-			return nil, false, err
+			return nil, alertGroupPageInfo{}, err
 		}
 		next = np
 	}
 
-	// serverHasMore is true only when the cap (caller-supplied or hardCap)
-	// truncated us AND the server reported a non-empty `next` cursor on the
-	// page we stopped on. The caller decides whether to surface a hint based
-	// on its own --limit semantics.
-	return out, serverHasMore, nil
+	// The caller decides how to surface the page info (list_meta + hints)
+	// based on its own --limit semantics.
+	return out, info, nil
 }
 
 func parseDuration(s string) (time.Duration, error) {
@@ -1050,7 +1110,7 @@ func fetchAlertsRichConcurrent(ctx context.Context, c RichAlertGroupReader, ids 
 // `alert-groups` goes through newActionVerbCommand against a verbConfig.)
 
 // ---------------------------------------------------------------------------
-// final-shifts command (mounted under schedules)
+// list-final-shifts command (mounted under schedules)
 // ---------------------------------------------------------------------------
 
 type finalShiftsOpts struct {
@@ -1072,10 +1132,14 @@ func (o *finalShiftsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.End, "end", o.End, "End date (YYYY-MM-DD)")
 }
 
-func newScheduleFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command {
+// newScheduleListFinalShiftsCommand builds `schedules list-final-shifts
+// <schedule-id>`: a parent-scoped collection addressed by the schedule's ID
+// whose members have no ID of their own, so it takes the operation-subject
+// compound spelling.
+func newScheduleListFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command {
 	opts := &finalShiftsOpts{}
 	cmd := &cobra.Command{
-		Use:   "final-shifts <schedule-id>",
+		Use:   "list-final-shifts <schedule-id>",
 		Short: "List final shifts for a schedule.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1427,6 +1491,10 @@ type alertEnvelope struct {
 // `internal/output/format.go::marshalToSampleMap`).
 type alertGroupItemsEnvelope struct {
 	Items []alertGroupEnvelope `json:"items" yaml:"items"`
+	// ListMeta is attached only when the output is a truncated page, so
+	// agents cannot mistake a page for the complete set. Reserved key —
+	// see docs/design/output.md § List Truncation Contract.
+	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }
 
 // alertItemsEnvelope is the list envelope for `alert-groups list-alerts`.

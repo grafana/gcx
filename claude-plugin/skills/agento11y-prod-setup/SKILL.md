@@ -58,7 +58,7 @@ the `agento11y` skill and to `gcx agento11y <sub> --help` rather than restating 
   token. `gcx` owns Cloud auth (via `gcx login`). Prerequisite: `gcx` installed and authenticated;
   if it isn't, say so and stop.
 - **Confirm the target stack before any WRITE (Step 0 + Step 5).** Reads run freely once you've
-  shown the context; writes (create/update evaluators, rules, guards) need an explicit yes on the
+  shown the context; writes (upsert evaluators, create/update rules and guards) need an explicit yes on the
   target stack. `gcx` may be pointed at the wrong stack, and this skill creates tenant-level
   objects.
 - **Check before recommending.** Always list what already exists first
@@ -117,7 +117,7 @@ from the traffic; read it from the code.
 **Traffic**, via `gcx` — this tells you what *does* go wrong:
 
 1. Find the agent as Agent Observability sees it: `gcx agento11y agents list` (and `agents get` /
-   versions) to get the exact `agent_name` — this is the `match.agent_name` you'll target. (Tip:
+   `agents list-versions`) to get the exact `agent_name` — this is the `match.agent_name` you'll target. (Tip:
    `agents list` prints a leading hint line before the JSON; set `GCX_AGENT_MODE=true` or skip
    that line if you parse it.)
 2. Sample recent conversations: `gcx agento11y conversations search --filters 'agent = "<name>"'`
@@ -208,9 +208,10 @@ committed artifacts**: they exist so the developer can review a diff before you 
 their source of truth after apply is the stack, not the repo. Add `agento11y-prod/` to `.gitignore`
 (or write under the OS temp dir) so they aren't accidentally committed — they hold the applied
 config redundantly and can carry regexes/prompts the repo shouldn't own. They are exactly what
-you'll pass to `gcx agento11y <kind> create -f`. Use the **top-level-fields** YAML shape that the
-`create -f` commands expect (not the `apiVersion/kind/spec` manifest that the `get -o yaml`
-commands emit — don't round-trip get output into create).
+you'll pass to `gcx agento11y <kind> create -f` (for evaluators: `upsert -f`). Use the
+**top-level-fields** YAML shape that the `create -f`/`upsert -f` commands expect (not the
+`apiVersion/kind/spec` manifest that the `get -o yaml` commands emit — don't round-trip get
+output into create).
 
 **Rules and evaluators**: follow the `agento11y` skill's input format exactly. Start an evaluator
 from a template (`gcx agento11y templates get <id> -o yaml`), give it your own `evaluator_id`, and
@@ -261,7 +262,7 @@ rate in warn mode (Step 6). This skill never drafts an enabled `deny` guard.
 
 ## Step 5 — Confirm, then apply with `gcx`
 
-> **`create`/`update` write to the stack — never run them before the developer's explicit yes
+> **`upsert`/`create`/`update` write to the stack — never run them before the developer's explicit yes
 > (step 2).** The one thing you CAN run before the yes is `evaluators test -f <request>.yaml`,
 > which tests a judge config **without persisting it** (pass `kind`, `config`, `output_keys`,
 > `generation_id` in the file — no evaluator need exist yet). Use it to tune the judge (step 1).
@@ -283,7 +284,7 @@ rule/guard referencing an evaluator needs it to exist first):
 2. **Confirm.** Restate the target stack from Step 0 (context name + server), show the exact YAML,
    and get an explicit yes for that object. A yes for one object is not a yes for the next. Nothing
    is written before this yes.
-3. **Apply** via gcx, only after the yes: `gcx agento11y evaluators create -f evaluators/<id>.yaml`,
+3. **Apply** via gcx, only after the yes: `gcx agento11y evaluators upsert -f evaluators/<id>.yaml`,
    then `gcx agento11y rules create -f rules/<id>.yaml`, then
    `gcx agento11y guards create -f guards/<id>.yaml`. Evaluators are create-or-update (same id
    updates). Pass `--context <name>` on every call if the confirmed stack isn't the default

@@ -489,7 +489,6 @@ func NewActivityCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "Manage incident activity timeline.",
 	}
 	cmd.AddCommand(
-		newActivityListCommand(loader),
 		newActivityAddCommand(loader),
 	)
 	return cmd
@@ -507,10 +506,15 @@ func (o *activityListOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of activity items to return")
 }
 
-func newActivityListCommand(loader GrafanaConfigLoader) *cobra.Command {
+// NewListActivityCommand builds `incidents list-activity <incident-id>`.
+// Activity items are addressed by the parent incident's ID (they have no
+// independently addressable ID of their own), so the collection is an
+// operation-subject compound directly under `incidents` rather than a
+// nested noun group.
+func NewListActivityCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &activityListOpts{}
 	cmd := &cobra.Command{
-		Use:   "list <incident-id>",
+		Use:   "list-activity <incident-id>",
 		Short: "List activity items for an incident.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -718,18 +722,8 @@ func (c *SeverityTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // ---------------------------------------------------------------------------
-// contexts commands
+// list-contexts command
 // ---------------------------------------------------------------------------
-
-func NewContextsCommand(loader GrafanaConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:     "contexts",
-		Short:   "Manage incident contexts (linked alert groups, dashboards, etc.).",
-		Aliases: []string{"context", "ctx"},
-	}
-	cmd.AddCommand(newContextsListCommand(loader))
-	return cmd
-}
 
 type contextsListOpts struct {
 	IO           cmdio.Options
@@ -750,10 +744,15 @@ func (o *contextsListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.AlertGroupID, "alert-group-id", "", "Filter by linked alert group ID")
 }
 
-func newContextsListCommand(loader GrafanaConfigLoader) *cobra.Command {
+// NewListContextsCommand builds `incidents list-contexts <incident-id>`.
+// Contexts are addressed by the parent incident's ID (there is no read-one
+// or ContextID addressing in the exposed surface), so the collection is an
+// operation-subject compound directly under `incidents` rather than a
+// nested noun group.
+func NewListContextsCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &contextsListOpts{}
 	cmd := &cobra.Command{
-		Use:   "list <incident-id>",
+		Use:   "list-contexts <incident-id>",
 		Short: "List contexts attached to an incident.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

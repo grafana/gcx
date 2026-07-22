@@ -67,13 +67,13 @@ gcx providers list
 ```bash
 gcx resources get dashboards -o wide --no-truncate
 gcx resources get folders --no-truncate
-gcx resources schemas
+gcx resources list-types
 ```
 
 Dashboards are K8s resources — listable, pushable, validateable. The `URL`
 column in `-o wide` gives a direct deep link for every dashboard. `gcx
-resources schemas` reveals the full type catalog including any plugin-installed
-types (e.g. Adaptive Logs `DropRule`). `gcx resources examples <Kind>` produces
+resources list-types` reveals the full type catalog including any plugin-installed
+types (e.g. Adaptive Logs `DropRule`). `gcx resources list-examples <Kind>` produces
 a ready-to-push template for provider-registered kinds (try `slos` or
 `DropRule`) — core kinds like dashboards and folders don't ship examples, so
 don't demo it on those.

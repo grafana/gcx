@@ -771,19 +771,19 @@ func (o *collectorWriteOpts) Validate() error {
 func (h *fleetHelper) tenantCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tenant",
-		Short: "Manage Fleet Management tenant settings.",
+		Short: "Fleet Management tenant settings.",
 	}
 
-	cmd.AddCommand(h.newTenantLimitsCommand())
+	cmd.AddCommand(h.newTenantGetLimitsCommand())
 
 	return cmd
 }
 
-func (h *fleetHelper) newTenantLimitsCommand() *cobra.Command {
+func (h *fleetHelper) newTenantGetLimitsCommand() *cobra.Command {
 	opts := &tenantLimitsOpts{}
 	cmd := &cobra.Command{
-		Use:   "limits",
-		Short: "Show tenant limits.",
+		Use:   "get-limits",
+		Short: "Get tenant limits.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err

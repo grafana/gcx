@@ -35,7 +35,7 @@ For each journey `J`, launch an agent that:
   (the SLO spec's `alerting` section with fast-burn/slow-burn rules) — the SLO
   plugin then generates and manages the burn-rate alert rules server-side.
   Do not hand-author AlertRule manifests: there is no
-  `gcx resources examples AlertRule` template, and gcx's alert provider is
+  `gcx resources list-examples AlertRule` template, and gcx's alert provider is
   read-only for rules, so `gcx resources push` cannot create them.
 - Creates the SLO: `gcx slo definitions push slo-J.yaml --dry-run` then `gcx slo definitions push slo-J.yaml`. List SLOs to confirm.
 - Confirms the generated burn-rate rules appeared: `gcx alert rules list`.
