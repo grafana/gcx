@@ -324,7 +324,7 @@ func newDeleteSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
-			result := cmdio.NewSingleMutation("delete", cmdio.MutationTarget{Kind: kind, ID: id})
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: kind, ID: id})
 			changed := true
 			result.Changed = &changed
 			return do.IO.Encode(cmd.OutOrStdout(), result)

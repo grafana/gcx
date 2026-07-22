@@ -141,7 +141,7 @@ func TestIncidentsCloseOutputContract(t *testing.T) {
 
 			if tc.wantJSON {
 				doc := decodeOneJSONValue(t, stdout)
-				if doc["type"] != "gcx.mutation" || doc["schema_version"] != "1" || doc["action"] != "close" {
+				if doc["type"] != "gcx.mutation" || doc["schema_version"] != "1" || doc["action"] != "closed" {
 					t.Errorf("unexpected result envelope: %v", doc)
 				}
 				target, _ := doc["target"].(map[string]any)

@@ -108,7 +108,7 @@ func TestOnCallCRUDDeleteOutputContract(t *testing.T) {
 			wantJSON: map[string]any{
 				"type":           "gcx.mutation",
 				"schema_version": "1",
-				"action":         "delete",
+				"action":         "deleted",
 				"changed":        true,
 			},
 			wantIDs: func(f *fakeDeleteAPI) []string { return f.deletedRoutes },
@@ -118,7 +118,7 @@ func TestOnCallCRUDDeleteOutputContract(t *testing.T) {
 			args: []string{"delete", "R42", "--force", "-o", "json"},
 			wantJSON: map[string]any{
 				"type":   "gcx.mutation",
-				"action": "delete",
+				"action": "deleted",
 			},
 			wantIDs: func(f *fakeDeleteAPI) []string { return f.deletedRoutes },
 		},

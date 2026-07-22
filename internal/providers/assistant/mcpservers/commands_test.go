@@ -37,6 +37,10 @@ func TestCreateOptsValidateRequiresNameAndURL(t *testing.T) {
 }
 
 func TestListOptsDefaultFormatAndAliases(t *testing.T) {
+	// The human default is resolved at flag-binding time; pin ambient
+	// agent-mode detection (e.g. CLAUDECODE=1) off before setup.
+	setAgentModeMCP(t, false)
+
 	opts := &listOpts{}
 	flags := pflag.NewFlagSet("list", pflag.ContinueOnError)
 	opts.setup(flags)
@@ -236,6 +240,10 @@ func TestRunListNoHintWhenPageIsShort(t *testing.T) {
 // an empty-stdout success would be indistinguishable from a completed delete
 // for a piping consumer.
 func TestDeletePromptsAndAbortsWithoutConfigLoad(t *testing.T) {
+	// The interactive [y/N] prompt only renders outside agent mode; pin
+	// ambient agent-mode detection (e.g. CLAUDECODE=1) off.
+	setAgentModeMCP(t, false)
+
 	cmd := newDeleteCommand(&providers.ConfigLoader{})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
@@ -281,6 +289,10 @@ func TestDeleteAgentModeRequiresForce(t *testing.T) {
 }
 
 func TestMaybeOpenAuthURLWarnsWhenBrowserOpenFails(t *testing.T) {
+	// The browser-open path is gated off in agent mode; pin ambient
+	// agent-mode detection (e.g. CLAUDECODE=1) off to test the human path.
+	setAgentModeMCP(t, false)
+
 	origOpenURL := openURL
 	openURL = func(string) error {
 		return errors.New("browser unavailable")

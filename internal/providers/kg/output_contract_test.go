@@ -49,6 +49,16 @@ func setAgentMode(t *testing.T) {
 	t.Cleanup(func() { agent.SetFlag(false) })
 }
 
+// pinHumanMode forces agent-mode detection off for the duration of the test
+// so ambient env detection (e.g. CLAUDECODE=1 when the suite runs inside an
+// agent harness) cannot flip output defaults; agent-mode subtests opt back in
+// via setAgentMode. Mirrors cmd/gcx/resources/pull_edit_format_test.go.
+func pinHumanMode(t *testing.T) {
+	t.Helper()
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+}
+
 // decodeSingleJSON asserts stdout holds exactly one JSON value followed by
 // EOF, and returns that value.
 func decodeSingleJSON(t *testing.T, out []byte) any {
@@ -98,6 +108,7 @@ const twoSuppressionsYAML = `disabledAlertConfigs:
 // one JSON document in agent mode, and explicit -o json/yaml override.
 func TestKgSingleMutations_OutputContract(t *testing.T) {
 	forceNoColor(t)
+	pinHumanMode(t)
 
 	tests := []struct {
 		name           string
@@ -224,6 +235,7 @@ func TestKgSingleMutations_OutputContract(t *testing.T) {
 // rejected before any request.
 func TestKgPromRulesDelete_ConfirmGuard(t *testing.T) {
 	forceNoColor(t)
+	pinHumanMode(t)
 
 	t.Run("interactive decline", func(t *testing.T) {
 		t.Setenv("GCX_AUTO_APPROVE", "0")
@@ -259,6 +271,7 @@ func TestKgPromRulesDelete_ConfirmGuard(t *testing.T) {
 // stderr (previously stdout) for the pre-existing ConfirmDestructive callers.
 func TestKgDeletePromptsOnStderr(t *testing.T) {
 	forceNoColor(t)
+	pinHumanMode(t)
 	t.Setenv("GCX_AUTO_APPROVE", "0")
 
 	tests := []struct {
@@ -325,6 +338,7 @@ func suppressionsUpsertHandler(okCount int) http.HandlerFunc {
 
 func TestKgSuppressionsUpsert_OutputContract(t *testing.T) {
 	forceNoColor(t)
+	pinHumanMode(t)
 
 	t.Run("success human default", func(t *testing.T) {
 		server := httptest.NewServer(suppressionsUpsertHandler(2))
@@ -453,6 +467,7 @@ const twoEntitiesYAML = "- domain: myapp\n  type: Service\n  name: checkout\n" +
 
 func TestKgEntitiesUpsert_OutputContract(t *testing.T) {
 	forceNoColor(t)
+	pinHumanMode(t)
 
 	t.Run("single success human default stays the echoed object", func(t *testing.T) {
 		server := httptest.NewServer(entitiesUpsertHandler(1))
@@ -526,6 +541,7 @@ func TestKgEntitiesUpsert_OutputContract(t *testing.T) {
 
 func TestKgRelationshipsUpsert_OutputContract(t *testing.T) {
 	forceNoColor(t)
+	pinHumanMode(t)
 
 	relHandler := func(okCount int) http.HandlerFunc {
 		seen := 0
@@ -593,6 +609,7 @@ func TestKgRelationshipsUpsert_OutputContract(t *testing.T) {
 
 func TestKgRelabelRulesGet_NotConfigured(t *testing.T) {
 	forceNoColor(t)
+	pinHumanMode(t)
 
 	noContent := func() http.HandlerFunc {
 		return func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
@@ -640,6 +657,7 @@ func TestKgRelabelRulesGet_NotConfigured(t *testing.T) {
 
 func TestKgInsights_OutputContract(t *testing.T) {
 	forceNoColor(t)
+	pinHumanMode(t)
 
 	chartServer := func() *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -728,6 +746,7 @@ func TestKgInsights_OutputContract(t *testing.T) {
 
 func TestKgMetaAll_SectionErrorsInPayload(t *testing.T) {
 	forceNoColor(t)
+	pinHumanMode(t)
 
 	failAll := func() http.HandlerFunc {
 		return func(w http.ResponseWriter, _ *http.Request) {
@@ -772,6 +791,7 @@ func TestKgMetaAll_SectionErrorsInPayload(t *testing.T) {
 // ExitPartialFailure via EmittedError (never a second stdout document).
 func TestEncodeDiagnoseResult(t *testing.T) {
 	forceNoColor(t)
+	pinHumanMode(t)
 
 	newIO := func(t *testing.T) *cmdio.Options {
 		t.Helper()

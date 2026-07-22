@@ -351,7 +351,7 @@ func applyAllRecommendations(cmd *cobra.Command, client *Client, opts *recommend
 
 	stderr := cmd.ErrOrStderr()
 
-	result := cmdio.NewBatchMutation("apply")
+	result := cmdio.NewBatchMutation("applied")
 	result.Summary = cmdio.MutationSummary{
 		Succeeded: counts["add"] + counts["update"] + counts["remove"],
 		Skipped:   counts["keep"],
@@ -451,7 +451,7 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 					item.rec.CurrentSeriesCount, item.rec.RecommendedSeriesCount)
 			}
 		}
-		result := cmdio.NewBatchMutation("apply")
+		result := cmdio.NewBatchMutation("applied")
 		result.Summary = cmdio.MutationSummary{Succeeded: actionCount, Skipped: len(items) - actionCount}
 		result.DryRun = true
 		return opts.Encode(cmd.OutOrStdout(), result)
@@ -474,7 +474,7 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 		return fmt.Errorf("fetch rules ETag: %w", err)
 	}
 
-	result := cmdio.NewBatchMutation("apply")
+	result := cmdio.NewBatchMutation("applied")
 	var failed []string
 	for _, item := range items {
 		if item.action == "keep" {
@@ -501,14 +501,23 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 			len(failed), len(items), strings.Join(failed, ", "))
 	}
 
+	if result.Summary.Failed > 0 && result.Summary.Succeeded == 0 {
+		// Total failure: nothing was applied, so a success-shaped batch
+		// document would be misleading. Keep the classified single-error
+		// path — stdout must carry exactly one value (the reporter's
+		// error document).
+		return fmt.Errorf("failed to apply %d of %d recommendation(s): %s",
+			len(failed), len(items), strings.Join(failed, ", "))
+	}
+
 	if err := opts.Encode(cmd.OutOrStdout(), result); err != nil {
 		return err
 	}
 
 	if len(failed) > 0 {
-		// The result document (with enumerated failures) is already on
-		// stdout — EmittedError carries exit 4 without a second error
-		// document.
+		// Partial failure: the result document (with enumerated failures)
+		// is already on stdout — EmittedError carries exit 4 without a
+		// second error document.
 		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
 			gcxerrors.NewPartialFailureError("apply", len(items), len(failed)))
 	}
@@ -905,7 +914,7 @@ func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
 				cmdio.Success(stderr, "Deleted rule for %s.", metric)
 			}
 			changed := true
-			result := cmdio.NewSingleMutation("delete", cmdio.MutationTarget{Kind: "rule", Name: metric, Namespace: opts.Segment})
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "rule", Name: metric, Namespace: opts.Segment})
 			result.Changed = &changed
 			return opts.Encode(cmd.OutOrStdout(), result)
 		},
@@ -1464,7 +1473,7 @@ func (h *metricsHelper) segmentsDeleteCommand() *cobra.Command {
 
 			cmdio.Success(stderr, "Deleted segment %s.", id)
 			changed := true
-			result := cmdio.NewSingleMutation("delete", cmdio.MutationTarget{Kind: "segment", ID: id})
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "segment", ID: id})
 			result.Changed = &changed
 			return opts.Encode(cmd.OutOrStdout(), result)
 		},
@@ -1962,7 +1971,7 @@ func (h *metricsHelper) exemptionsDeleteCommand() *cobra.Command {
 				cmdio.Success(stderr, "Deleted exemption %s.", id)
 			}
 			changed := true
-			result := cmdio.NewSingleMutation("delete", cmdio.MutationTarget{Kind: "exemption", ID: id, Namespace: opts.Segment})
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "exemption", ID: id, Namespace: opts.Segment})
 			result.Changed = &changed
 			return opts.Encode(cmd.OutOrStdout(), result)
 		},

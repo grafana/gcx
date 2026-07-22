@@ -196,7 +196,7 @@ Use --dry-run to preview the request first.`,
 				// structured document while the default table codec keeps the
 				// classic human rendering.
 				return opts.IO.Encode(cmd.OutOrStdout(),
-					newDryRunPreview("create", http.MethodPost, instancesPath, req))
+					newDryRunPreview("created", http.MethodPost, instancesPath, req))
 			}
 
 			ctx := cmd.Context()
@@ -295,7 +295,7 @@ Use --dry-run to preview the request first.`,
 				// See create: the preview is the result and flows through the
 				// codec system.
 				return opts.IO.Encode(cmd.OutOrStdout(),
-					newDryRunPreview("update", http.MethodPost, instancesPath+"/"+slug, req))
+					newDryRunPreview("updated", http.MethodPost, instancesPath+"/"+slug, req))
 			}
 
 			ctx := cmd.Context()
@@ -360,7 +360,7 @@ Use --dry-run to preview the operation first.`,
 			}
 
 			slug := args[0]
-			result := cmdio.NewSingleMutation("delete", cmdio.MutationTarget{Kind: "stack", Name: slug})
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "stack", Name: slug})
 
 			if opts.DryRun {
 				result.DryRun = true

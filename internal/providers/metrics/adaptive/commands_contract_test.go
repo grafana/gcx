@@ -236,7 +236,7 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 			require.True(t, ok, "stdout document must be an object")
 			assert.Equal(t, "gcx.mutation_batch", doc["type"])
 			assert.Equal(t, "1", doc["schema_version"])
-			assert.Equal(t, "apply", doc["action"])
+			assert.Equal(t, "applied", doc["action"])
 
 			summary, ok := doc["summary"].(map[string]any)
 			require.True(t, ok, "document must carry a summary object")
@@ -258,6 +258,34 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 			} else {
 				assert.Nil(t, doc["dry_run"])
 			}
+		})
+	}
+}
+
+// TestRecommendationsApply_TotalFailure pins the total-failure contract:
+// when every recommendation fails to apply, the command keeps the classified
+// single-error path — no success-shaped batch document on stdout and no
+// EmittedError (the reporter owns the error document and the exit code).
+func TestRecommendationsApply_TotalFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		agentMode bool
+	}{
+		{name: "agent mode", agentMode: true},
+		{name: "human mode", agentMode: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			loader := newContractLoader(t, fakeMetricsAPI(applyRecsJSON, "metric_ok", "metric_bad"))
+			res := runAdaptiveCmd(t, loader, tc.agentMode,
+				"recommendations", "apply", "metric_ok", "metric_bad", "--force")
+
+			require.Error(t, res.err)
+			var emitted *gcxerrors.EmittedError
+			assert.NotErrorAs(t, res.err, &emitted,
+				"total failure must use the standard error path, not EmittedError")
+			assert.Empty(t, res.stdout,
+				"no success-shaped batch document when nothing was applied — the reporter owns the error document")
+			assert.Contains(t, res.err.Error(), "failed to apply 2 of 2 recommendation(s)")
 		})
 	}
 }
@@ -350,7 +378,7 @@ func TestAdaptiveDeletes_MutationDocContract(t *testing.T) {
 				require.True(t, ok, "stdout document must be an object")
 				assert.Equal(t, "gcx.mutation", doc["type"])
 				assert.Equal(t, "1", doc["schema_version"])
-				assert.Equal(t, "delete", doc["action"])
+				assert.Equal(t, "deleted", doc["action"])
 				assert.Equal(t, true, doc["changed"])
 
 				target, ok := doc["target"].(map[string]any)
@@ -377,7 +405,7 @@ func TestAdaptiveDeletes_MutationDocContract(t *testing.T) {
 				res := runAdaptiveCmd(t, loader, false, append(append([]string{}, forceArgs...), "-o", "yaml")...)
 				require.NoError(t, res.err, "stderr: %s", res.stderr)
 				assert.Contains(t, res.stdout, "type: gcx.mutation")
-				assert.Contains(t, res.stdout, "action: delete")
+				assert.Contains(t, res.stdout, "action: deleted")
 			})
 
 			t.Run("agent mode without --force is rejected before mutation", func(t *testing.T) {

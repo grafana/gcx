@@ -127,10 +127,11 @@ func TestTracesRecommendationsApplyDismiss_OutputContract(t *testing.T) {
 	verbs := []struct {
 		name         string
 		verb         string
+		wantAction   string
 		wantStderrIn string
 	}{
-		{name: "apply", verb: "apply", wantStderrIn: `Applied recommendation "r1"`},
-		{name: "dismiss", verb: "dismiss", wantStderrIn: `Dismissed recommendation "r1"`},
+		{name: "apply", verb: "apply", wantAction: "applied", wantStderrIn: `Applied recommendation "r1"`},
+		{name: "dismiss", verb: "dismiss", wantAction: "dismissed", wantStderrIn: `Dismissed recommendation "r1"`},
 	}
 
 	for _, tc := range verbs {
@@ -146,7 +147,7 @@ func TestTracesRecommendationsApplyDismiss_OutputContract(t *testing.T) {
 				require.True(t, ok, "stdout document must be an object")
 				assert.Equal(t, "gcx.mutation", doc["type"])
 				assert.Equal(t, "1", doc["schema_version"])
-				assert.Equal(t, tc.verb, doc["action"])
+				assert.Equal(t, tc.wantAction, doc["action"])
 				assert.Equal(t, true, doc["changed"])
 				target, ok := doc["target"].(map[string]any)
 				require.True(t, ok, "target must be an object")
@@ -209,7 +210,7 @@ func TestTracesPoliciesDelete_OutputContract(t *testing.T) {
 		require.True(t, ok, "stdout document must be an object")
 		assert.Equal(t, "gcx.mutation_batch", doc["type"])
 		assert.Equal(t, "1", doc["schema_version"])
-		assert.Equal(t, "delete", doc["action"])
+		assert.Equal(t, "deleted", doc["action"])
 		summary, ok := doc["summary"].(map[string]any)
 		require.True(t, ok, "summary must be an object")
 		assert.InDelta(t, 2, summary["succeeded"], 0)
@@ -242,6 +243,32 @@ func TestTracesPoliciesDelete_OutputContract(t *testing.T) {
 		require.True(t, ok, "failure target must be an object")
 		assert.Equal(t, "policy", target["kind"])
 		assert.Equal(t, "pbad", target["id"])
+	})
+
+	t.Run("agent total failure keeps the classified error path", func(t *testing.T) {
+		loader := newContractLoader(t, fakeTracesAPI("p1", "p2"))
+		res := runAdaptiveCmd(t, loader, true, "policies", "delete", "p1", "p2", "--force")
+
+		require.Error(t, res.err)
+		var emitted *gcxerrors.EmittedError
+		assert.NotErrorAs(t, res.err, &emitted,
+			"total failure must use the standard error path, not EmittedError")
+		assert.Empty(t, res.stdout,
+			"no success-shaped batch document when nothing was deleted — the reporter owns the error document")
+		assert.Contains(t, res.err.Error(), "p1")
+		assert.Contains(t, res.err.Error(), "p2")
+	})
+
+	t.Run("human total failure keeps the classified error path", func(t *testing.T) {
+		loader := newContractLoader(t, fakeTracesAPI("p1", "p2"))
+		res := runAdaptiveCmd(t, loader, false, "policies", "delete", "p1", "p2", "--force")
+
+		require.Error(t, res.err)
+		var emitted *gcxerrors.EmittedError
+		assert.NotErrorAs(t, res.err, &emitted)
+		assert.Empty(t, res.stdout)
+		assert.Contains(t, res.stderr, `Failed to delete policy "p1"`)
+		assert.Contains(t, res.stderr, `Failed to delete policy "p2"`)
 	})
 
 	t.Run("human default stdout stays empty with per-id prose on stderr", func(t *testing.T) {

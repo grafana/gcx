@@ -455,7 +455,7 @@ func NewCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to close incident %s: %w", id, err)
 			}
 
-			result := cmdio.NewSingleMutation("close", cmdio.MutationTarget{
+			result := cmdio.NewSingleMutation("closed", cmdio.MutationTarget{
 				Kind: "Incident",
 				ID:   updated.IncidentID,
 				Name: updated.Title,

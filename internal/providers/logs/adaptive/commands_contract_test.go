@@ -170,7 +170,7 @@ func TestLogsAdaptiveDeletes_OutputContract(t *testing.T) {
 				require.True(t, ok, "stdout document must be an object")
 				assert.Equal(t, "gcx.mutation", doc["type"])
 				assert.Equal(t, "1", doc["schema_version"])
-				assert.Equal(t, "delete", doc["action"])
+				assert.Equal(t, "deleted", doc["action"])
 				assert.Equal(t, true, doc["changed"])
 				target, ok := doc["target"].(map[string]any)
 				require.True(t, ok, "target must be an object")

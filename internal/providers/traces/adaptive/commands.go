@@ -208,7 +208,7 @@ func (h *tracesHelper) recommendationsApplyCommand() *cobra.Command {
 			}
 
 			id := args[0]
-			result := cmdio.NewSingleMutation("apply", cmdio.MutationTarget{Kind: "recommendation", ID: id})
+			result := cmdio.NewSingleMutation("applied", cmdio.MutationTarget{Kind: "recommendation", ID: id})
 
 			if opts.DryRun {
 				cmdio.Info(cmd.ErrOrStderr(), "[dry-run] Would apply recommendation %q", id)
@@ -285,7 +285,7 @@ func (h *tracesHelper) recommendationsDismissCommand() *cobra.Command {
 			}
 
 			id := args[0]
-			result := cmdio.NewSingleMutation("dismiss", cmdio.MutationTarget{Kind: "recommendation", ID: id})
+			result := cmdio.NewSingleMutation("dismissed", cmdio.MutationTarget{Kind: "recommendation", ID: id})
 
 			if opts.DryRun {
 				cmdio.Info(cmd.ErrOrStderr(), "[dry-run] Would dismiss recommendation %q", id)
@@ -632,7 +632,8 @@ func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
 				return err
 			}
 
-			result := cmdio.NewBatchMutation("delete")
+			result := cmdio.NewBatchMutation("deleted")
+			var errs []error
 			for _, id := range args {
 				if err := crud.Delete(ctx, id); err != nil {
 					cmdio.Error(cmd.ErrOrStderr(), "Failed to delete policy %q: %v", id, err)
@@ -641,10 +642,19 @@ func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
 						Target: cmdio.MutationTarget{Kind: "policy", ID: id},
 						Error:  err.Error(),
 					})
+					errs = append(errs, fmt.Errorf("deleting policy %q: %w", id, err))
 				} else {
 					cmdio.Success(cmd.ErrOrStderr(), "Deleted policy %q", id)
 					result.Summary.Succeeded++
 				}
+			}
+
+			if result.Summary.Failed > 0 && result.Summary.Succeeded == 0 {
+				// Total failure: nothing was deleted, so a success-shaped
+				// batch document would be misleading. Keep the classified
+				// single-error path — stdout must carry exactly one value
+				// (the reporter's error document).
+				return errors.Join(errs...)
 			}
 
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
@@ -652,9 +662,9 @@ func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
 			}
 
 			if result.Summary.Failed > 0 {
-				// The result document (with enumerated failures) is already
-				// on stdout — EmittedError carries exit 4 without a second
-				// error document.
+				// Partial failure: the result document (with enumerated
+				// failures) is already on stdout — EmittedError carries
+				// exit 4 without a second error document.
 				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
 					gcxerrors.NewPartialFailureError("delete", len(args), result.Summary.Failed))
 			}

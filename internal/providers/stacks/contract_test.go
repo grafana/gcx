@@ -212,7 +212,7 @@ func TestAgentMode_SingleJSONDocument(t *testing.T) {
 				require.True(t, ok, "dry-run preview should be a JSON object, got %T", doc)
 				assert.Equal(t, "gcx.stacks.dry_run", obj["type"])
 				assert.Equal(t, "1", obj["schema_version"])
-				assert.Equal(t, "create", obj["action"])
+				assert.Equal(t, "created", obj["action"])
 				assert.Equal(t, "POST", obj["method"])
 				assert.Equal(t, "/api/instances", obj["endpoint"])
 				assert.Equal(t, true, obj["dry_run"])
@@ -246,7 +246,7 @@ func TestAgentMode_SingleJSONDocument(t *testing.T) {
 				obj, ok := doc.(map[string]any)
 				require.True(t, ok, "dry-run preview should be a JSON object, got %T", doc)
 				assert.Equal(t, "gcx.stacks.dry_run", obj["type"])
-				assert.Equal(t, "update", obj["action"])
+				assert.Equal(t, "updated", obj["action"])
 				assert.Equal(t, "/api/instances/mystack", obj["endpoint"])
 				assert.Equal(t, true, obj["dry_run"])
 			},
@@ -265,7 +265,7 @@ func TestAgentMode_SingleJSONDocument(t *testing.T) {
 				require.True(t, ok, "delete result should be a JSON object, got %T", doc)
 				assert.Equal(t, "gcx.mutation", obj["type"])
 				assert.Equal(t, "1", obj["schema_version"])
-				assert.Equal(t, "delete", obj["action"])
+				assert.Equal(t, "deleted", obj["action"])
 				assert.Equal(t, true, obj["changed"])
 				target, ok := obj["target"].(map[string]any)
 				require.True(t, ok, "delete result must carry the target")
@@ -283,7 +283,7 @@ func TestAgentMode_SingleJSONDocument(t *testing.T) {
 				obj, ok := doc.(map[string]any)
 				require.True(t, ok, "delete dry-run result should be a JSON object, got %T", doc)
 				assert.Equal(t, "gcx.mutation", obj["type"])
-				assert.Equal(t, "delete", obj["action"])
+				assert.Equal(t, "deleted", obj["action"])
 				assert.Equal(t, true, obj["dry_run"])
 				assert.NotContains(t, obj, "changed", "dry-run cannot claim a state change")
 			},
@@ -386,7 +386,7 @@ func TestExplicitOutputOverride(t *testing.T) {
 		doc, ok := decodeSingleJSONDocument(t, stdout).(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "gcx.mutation", doc["type"])
-		assert.Equal(t, "delete", doc["action"])
+		assert.Equal(t, "deleted", doc["action"])
 	})
 
 	t.Run("delete --dry-run -o yaml emits structured document", func(t *testing.T) {
@@ -414,7 +414,7 @@ func TestExplicitOutputOverride(t *testing.T) {
 		doc, ok := decodeSingleJSONDocument(t, stdout).(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "gcx.stacks.dry_run", doc["type"])
-		assert.Equal(t, "create", doc["action"])
+		assert.Equal(t, "created", doc["action"])
 	})
 
 	t.Run("explicit -o yaml beats agents default in agent mode", func(t *testing.T) {

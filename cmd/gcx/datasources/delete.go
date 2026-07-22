@@ -127,7 +127,12 @@ Exit codes: 0 (all deleted), 4 (some deletions failed).`,
 				return err
 			}
 			if failed > 0 {
-				return gcxerrors.NewPartialFailureError("delete", len(args), failed)
+				// The per-UID results document is already on stdout (the
+				// documented contract: exit 4 covers any failed deletion).
+				// EmittedError carries the exit code without letting the
+				// reporter write a second error document.
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+					gcxerrors.NewPartialFailureError("delete", len(args), failed))
 			}
 			return nil
 		},

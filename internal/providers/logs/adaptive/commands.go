@@ -111,7 +111,7 @@ func adaptiveDeleteCommand(short, noun, kind string, del func(ctx context.Contex
 			}
 
 			changed := true
-			result := cmdio.NewSingleMutation("delete", cmdio.MutationTarget{Kind: kind, ID: args[0]})
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: kind, ID: args[0]})
 			result.Changed = &changed
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
