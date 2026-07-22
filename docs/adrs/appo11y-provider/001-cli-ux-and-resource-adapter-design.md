@@ -48,7 +48,7 @@ This gives dual access paths:
 - Provider: `gcx appo11y overrides get` / `gcx appo11y overrides update -f`
 - Generic: `gcx resources get overrides.v1alpha1.appo11y.ext.grafana.app/default`
 
-Schema and example are served by `resources schemas` / `resources examples`
+Schema and example are served by `resources list-types` / `resources list-examples`
 automatically via adapter registration. No provider-level schema/example
 commands.
 
@@ -135,8 +135,8 @@ gcx appo11y
 ```
 gcx resources get overrides.v1alpha1.appo11y.ext.grafana.app/default
 gcx resources get settings.v1alpha1.appo11y.ext.grafana.app/default
-gcx resources schemas    # includes Overrides + Settings
-gcx resources examples   # includes Overrides + Settings
+gcx resources list-types    # includes Overrides + Settings
+gcx resources list-examples   # includes Overrides + Settings
 ```
 
 ## Output Formats

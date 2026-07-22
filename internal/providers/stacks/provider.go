@@ -44,7 +44,7 @@ func NewCommand() *cobra.Command {
 		newCreateCommand(loader),
 		newUpdateCommand(loader),
 		newDeleteCommand(loader),
-		newRegionsCommand(loader),
+		newListRegionsCommand(loader),
 	)
 
 	return stacksCmd

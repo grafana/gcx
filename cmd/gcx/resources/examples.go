@@ -32,21 +32,21 @@ func (o *examplesOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-func examplesCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func listExamplesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts := &examplesOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "examples [RESOURCE_SELECTOR]",
+		Use:   "list-examples [RESOURCE_SELECTOR]",
 		Short: "List example manifests for resource types",
 		Long:  "List example manifests for provider-backed resource types. Without arguments, lists all resources that have examples. With a selector, shows examples for matching resources.",
 		Example: `
-	gcx resources examples
-	gcx resources examples -o wide
-	gcx resources examples -o json
-	gcx resources examples -o yaml
-	gcx resources examples incidents
-	gcx resources examples incidents -o json
-	gcx resources examples slo -o yaml
+	gcx resources list-examples
+	gcx resources list-examples -o wide
+	gcx resources list-examples -o json
+	gcx resources list-examples -o yaml
+	gcx resources list-examples incidents
+	gcx resources list-examples incidents -o json
+	gcx resources list-examples slo -o yaml
 `,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -136,7 +136,7 @@ func collectExamples(ctx context.Context, reg *discovery.Registry) (resources.De
 }
 
 // examplesToNested builds a nested group → version → []resource map for
-// JSON/YAML output, mirroring the structure used by the schemas command.
+// JSON/YAML output, mirroring the structure used by the list-types command.
 // Resources without examples are skipped.
 func examplesToNested(descs resources.Descriptors, examples map[schema.GroupVersionKind]json.RawMessage) map[string]any {
 	type versionMap = map[string][]map[string]any

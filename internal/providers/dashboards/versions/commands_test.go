@@ -1,6 +1,6 @@
 package versions_test
 
-// External test package for the versions command group.
+// External test package for the list-versions command and the versions command group.
 // Internal symbols (commandDeps, newListCommand, newRestoreCommand) are accessed
 // through the export_test.go shim (TestCommandDeps, TestListCommand, TestRestoreCommand).
 
@@ -94,8 +94,11 @@ func testDesc() resources.Descriptor {
 	}
 }
 
-// runVersionsCmd builds a minimal cobra parent with list+restore children and
-// executes with the given args. It returns stdout, stderr, and any error.
+// runVersionsCmd builds a minimal cobra parent with list-versions+restore
+// children and executes with the given args. It returns stdout, stderr, and
+// any error. (In production list-versions mounts under `dashboards` and
+// restore under `dashboards versions`; the flat harness keeps both reachable
+// with one parent.)
 func runVersionsCmd(
 	t *testing.T,
 	fc *fakeVersionsClient,
@@ -107,7 +110,7 @@ func runVersionsCmd(
 	deps := versions.NewTestCommandDeps(fc, testDesc())
 
 	parent := &cobra.Command{
-		Use:           "versions",
+		Use:           "dashboards",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -198,7 +201,7 @@ func updatedDashboard(newGeneration int64) *unstructured.Unstructured {
 }
 
 // ---------------------------------------------------------------------------
-// Tests: versions list
+// Tests: list-versions
 // ---------------------------------------------------------------------------
 
 func TestVersionsList_Selectors(t *testing.T) {
@@ -210,7 +213,7 @@ func TestVersionsList_Selectors(t *testing.T) {
 		},
 	}
 
-	_, _, err := runVersionsCmd(t, fc, []string{"list", "foo"}, "")
+	_, _, err := runVersionsCmd(t, fc, []string{"list-versions", "foo"}, "")
 	require.NoError(t, err)
 
 	assert.True(t, fc.listCalled, "List must be called")
@@ -226,7 +229,7 @@ func TestVersionsList_Selectors_DifferentName(t *testing.T) {
 		historyItems: nil,
 	}
 
-	_, _, err := runVersionsCmd(t, fc, []string{"list", "my-dashboard"}, "")
+	_, _, err := runVersionsCmd(t, fc, []string{"list-versions", "my-dashboard"}, "")
 	require.NoError(t, err)
 
 	assert.Equal(t, "metadata.name=my-dashboard", fc.capturedListOpts.FieldSelector,
@@ -246,7 +249,7 @@ func TestVersionsList_OutputColumns(t *testing.T) {
 
 	// Pass -o table explicitly: agent-mode env (CI/Claude Code) defaults to JSON,
 	// but this test is specifically verifying table rendering.
-	out, _, err := runVersionsCmd(t, fc, []string{"list", "-o", "table", "foo"}, "")
+	out, _, err := runVersionsCmd(t, fc, []string{"list-versions", "-o", "table", "foo"}, "")
 	require.NoError(t, err)
 
 	// Required columns must appear.
@@ -279,7 +282,7 @@ func TestVersionsList_MissingAnnotationsRenderEmpty(t *testing.T) {
 	}
 
 	// -o table: checking for <nil> vs empty is a table rendering concern.
-	out, _, err := runVersionsCmd(t, fc, []string{"list", "-o", "table", "foo"}, "")
+	out, _, err := runVersionsCmd(t, fc, []string{"list-versions", "-o", "table", "foo"}, "")
 	require.NoError(t, err)
 
 	assert.NotContains(t, out, "<nil>", "nil annotations must not render as <nil>")
@@ -300,7 +303,7 @@ func TestVersionsList_TimestampNotFromCreationTimestamp(t *testing.T) {
 
 	// Pass -o table explicitly so the annotation value (not creationTimestamp) appears in the
 	// TIMESTAMP column — agent-mode env defaults to JSON which would include both timestamps.
-	out, _, listErr := runVersionsCmd(t, fc, []string{"list", "-o", "table", "foo"}, "")
+	out, _, listErr := runVersionsCmd(t, fc, []string{"list-versions", "-o", "table", "foo"}, "")
 	require.NoError(t, listErr)
 
 	// The annotation timestamp must appear.
@@ -536,7 +539,7 @@ func TestVersionsRestore_ConfirmPromptProceed(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Tests: versions list codec
+// Tests: list-versions codec
 // ---------------------------------------------------------------------------
 
 func TestVersionsTableCodec_EmptyList(t *testing.T) {
@@ -546,7 +549,7 @@ func TestVersionsTableCodec_EmptyList(t *testing.T) {
 	}
 
 	// -o table: agent-mode env defaults to JSON; this test specifically checks table headers.
-	out, _, err := runVersionsCmd(t, fc, []string{"list", "-o", "table", "foo"}, "")
+	out, _, err := runVersionsCmd(t, fc, []string{"list-versions", "-o", "table", "foo"}, "")
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "VERSION")
@@ -562,7 +565,7 @@ func TestVersionsTableCodec_AnnotationValues(t *testing.T) {
 		},
 	}
 
-	out, _, err := runVersionsCmd(t, fc, []string{"list", "foo"}, "")
+	out, _, err := runVersionsCmd(t, fc, []string{"list-versions", "foo"}, "")
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "5")

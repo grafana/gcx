@@ -27,7 +27,7 @@ Manage eval experiment runs.
 * [gcx agento11y experiments create](gcx_agento11y_experiments_create.md)	 - Create a new experiment from a JSON or YAML file.
 * [gcx agento11y experiments get](gcx_agento11y_experiments_get.md)	 - Get a single experiment by run ID.
 * [gcx agento11y experiments list](gcx_agento11y_experiments_list.md)	 - List experiments.
+* [gcx agento11y experiments list-scores](gcx_agento11y_experiments_list-scores.md)	 - List scores produced by an experiment.
 * [gcx agento11y experiments report](gcx_agento11y_experiments_report.md)	 - Fetch the aggregate report for an experiment.
-* [gcx agento11y experiments scores](gcx_agento11y_experiments_scores.md)	 - List scores produced by an experiment.
 * [gcx agento11y experiments update](gcx_agento11y_experiments_update.md)	 - Patch an experiment's mutable fields.
 

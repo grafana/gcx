@@ -24,4 +24,5 @@ Inspect individual LLM generations.
 
 * [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
 * [gcx agento11y generations get](gcx_agento11y_generations_get.md)	 - Get a single generation by ID.
+* [gcx agento11y generations list-scores](gcx_agento11y_generations_list-scores.md)	 - List evaluation scores for a generation.
 

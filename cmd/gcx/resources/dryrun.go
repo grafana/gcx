@@ -17,7 +17,7 @@ const (
 
 // bindAssumeServerDryRunFlag registers the --assume-server-dry-run flag on the given flag
 // set. Only the mutating dry-run commands (push, delete, validate) bind it; it is not a
-// persistent flag on the resources group because it is meaningless for get/pull/schemas/etc.
+// persistent flag on the resources group because it is meaningless for get/pull/list-types/etc.
 func bindAssumeServerDryRunFlag(flags *pflag.FlagSet, target *[]string) {
 	flags.StringSliceVar(target, assumeServerDryRunFlag, nil, assumeServerDryRunUsage)
 }

@@ -116,4 +116,4 @@ user-facing fields. No external dependencies needed.
 
 **Example**: static `map[string]any` matching gcx's `Example{Resource}()`
 output. Include realistic field values — this is what users see when they
-run `gcx resources examples {alias}`.
+run `gcx resources list-examples {alias}`.

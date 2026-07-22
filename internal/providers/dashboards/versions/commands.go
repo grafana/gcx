@@ -1,4 +1,5 @@
-// Package versions provides the `gcx dashboards versions` command group.
+// Package versions provides the `gcx dashboards list-versions` command and
+// the `gcx dashboards versions` command group.
 package versions
 
 import (
@@ -72,7 +73,7 @@ func (d *commandDeps) resolve(ctx context.Context, apiVersion string) (Dashboard
 	return client, desc, nil
 }
 
-// Commands returns the versions subcommand group with list and restore children.
+// Commands returns the versions subcommand group with the restore child.
 func Commands(loader GrafanaConfigLoader) *cobra.Command {
 	deps := &commandDeps{loader: loader}
 
@@ -80,13 +81,21 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 		Use:   "versions",
 		Short: "Manage dashboard version history",
 	}
-	cmd.AddCommand(newListCommand(deps))
 	cmd.AddCommand(newRestoreCommand(deps))
 	return cmd
 }
 
+// ListVersionsCommand returns the `gcx dashboards list-versions` leaf command.
+// Versions are addressed by the parent dashboard's name (a version has no ID
+// of its own), so the command is an operation-subject compound mounted
+// directly under `dashboards`.
+func ListVersionsCommand(loader GrafanaConfigLoader) *cobra.Command {
+	deps := &commandDeps{loader: loader}
+	return newListVersionsCommand(deps)
+}
+
 // ---------------------------------------------------------------------------
-// versions list
+// dashboards list-versions
 // ---------------------------------------------------------------------------
 
 type versionsListOpts struct {
@@ -108,7 +117,7 @@ func (o *versionsListOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-// newListCommand returns the `dashboards versions list <name>` subcommand.
+// newListVersionsCommand returns the `dashboards list-versions <name>` command.
 //
 // It issues a K8s LIST with magic selectors:
 //
@@ -117,11 +126,11 @@ func (o *versionsListOpts) Validate() error {
 //
 // Results are sorted by descending metadata.generation before rendering.
 // Supports -o table (default), json, yaml via cmdio.Options.
-func newListCommand(deps *commandDeps) *cobra.Command {
+func newListVersionsCommand(deps *commandDeps) *cobra.Command {
 	opts := &versionsListOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "list <name>",
+		Use:   "list-versions <name>",
 		Short: "List dashboard version history",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

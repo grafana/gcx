@@ -351,7 +351,7 @@ func (o *scoresOpts) setup(flags *pflag.FlagSet) {
 func newScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &scoresOpts{}
 	cmd := &cobra.Command{
-		Use:   "scores <run-id>",
+		Use:   "list-scores <run-id>",
 		Short: "List scores produced by an experiment.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

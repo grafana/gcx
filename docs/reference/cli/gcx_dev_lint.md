@@ -27,8 +27,8 @@ Lint Grafana resources.
 ### SEE ALSO
 
 * [gcx dev](gcx_dev.md)	 - Manage Grafana resources as code
+* [gcx dev lint list-rules](gcx_dev_lint_list-rules.md)	 - List available linter rules
 * [gcx dev lint new](gcx_dev_lint_new.md)	 - Scaffold a new linter rule
-* [gcx dev lint rules](gcx_dev_lint_rules.md)	 - List available linter rules
 * [gcx dev lint run](gcx_dev_lint_run.md)	 - Lint Grafana resources
 * [gcx dev lint test](gcx_dev_lint_test.md)	 - Run linter rule tests
 

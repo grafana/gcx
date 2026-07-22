@@ -437,7 +437,7 @@ config pointing at `localhost:3000` with `admin/admin` credentials and `org-id: 
 **Usage pattern for manual integration testing:**
 ```bash
 mise run test-env-up
-gcx --config testdata/integration-test-config.yaml resources schemas
+gcx --config testdata/integration-test-config.yaml resources list-types
 mise run test-env-down
 ```
 
