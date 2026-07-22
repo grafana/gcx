@@ -320,7 +320,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg prom-rules list":      {Cost: "small"},
 	"gcx kg prom-rules schema":    {Cost: "small", Hint: "live JSON Schema for Custom Prometheus rules from backend — pipe to file for editor autocomplete, or validate prom-rules YAML before upsert"},
 	"gcx kg status":               {Cost: "small"},
-	"gcx kg suppressions push":    {Cost: "small", Hint: "-f suppressions.yaml (or pipe YAML via stdin) | push (create or update) one or more alert suppressions; never deletes remote entries absent from the file; add --dry-run to validate against the backend and preview the remote->local diff without uploading"},
+	"gcx kg suppressions upsert":  {Cost: "small", Hint: "-f suppressions.yaml (or pipe YAML via stdin) | upsert (create or update) one or more alert suppressions; never deletes remote entries absent from the file; add --dry-run to validate against the backend and preview the remote->local diff without uploading"},
 	"gcx kg suppressions delete":  {Cost: "small"},
 	"gcx kg suppressions list":    {Cost: "small"},
 	"gcx kg entities upsert":      {Cost: "small", Hint: "--domain <d> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
