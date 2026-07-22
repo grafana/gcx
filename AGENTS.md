@@ -159,7 +159,7 @@ internal/
 ├── testutils/   Shared test utilities
 ├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
 ├── grafana/     OpenAPI client (health checks, version detection)
-├── output/      Output codec registry (json, yaml, text, wide, agents — field selection, discovery, k8s unstructured handling, temp-file spill)
+├── output/      Output codec registry (json, yaml, text, wide, agents — field selection, discovery, k8s unstructured handling, temp-file spill) + agent output contract shapes (mutation result family, artifact receipt emitter, stream envelope discriminators)
 ├── format/      JSON/YAML codecs with format auto-detection
 ├── retry/       Retry transport (429, 502/503/504, transient connection errors — wraps all HTTP tiers)
 ├── httputils/   HTTP helpers (used by serve command's proxy)
