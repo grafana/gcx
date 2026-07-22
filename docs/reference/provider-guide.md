@@ -313,8 +313,16 @@ Both paths carry `LoggingRoundTripper` and respect `--insecure-log-http-payload`
 
 ### Direct construction (when CloudRESTConfig is unavailable)
 
-When the provider receives credentials directly (not via `LoadCloudConfig`),
-use `httputils.NewDefaultClient(ctx)` in the constructor:
+When a provider sends credentials to its own direct API, first load the
+destination and all Grafana/Cloud credentials with
+`ConfigLoader.LoadDirectProviderSnapshot`. Declare the provider endpoint keys,
+their corresponding runtime credential variable, and whether the path requires
+Grafana validation. This single-snapshot API rejects repository-local trust
+splicing and endpoint-only environment overrides before returning secrets or
+performing network I/O.
+
+After that trust check, when `CloudRESTConfig` is unavailable, use
+`httputils.NewDefaultClient(ctx)` in the constructor:
 
 ```go
 func NewClient(ctx context.Context, baseURL, token string) *Client {
@@ -394,7 +402,17 @@ This self-registration pattern (via `init()`) is handled by Go's import system â
 Provider config lives in the `providers` map on a stack entry
 (`stacks.<name>.providers.<provider>`); contexts reach it through their
 `stack:` reference. `ConfigLoader.SaveProviderConfig` persists keys there,
-creating the stack entry if the context has none.
+creating the stack entry if the context has none. It reloads and changes only
+the raw destination file, so values from environment overrides or other config
+layers are never flattened into that file. An explicit `--config` or
+`GCX_CONFIG` identifies the destination. Without one, write-back proceeds only
+when discovery found exactly one source; multiple sources require an explicit
+target and no source means there is nothing to persist.
+Derived provider tokens, endpoints, and caches are not written implicitly to
+an auto-discovered repository `.gcx.yaml`; `SaveProviderConfig` returns
+`ErrAutoLocalProviderWriteback` so best-effort cache callers can continue
+without persistence. `--config` or `GCX_CONFIG` explicitly authorizes the same
+file.
 
 ```yaml
 # ~/.config/gcx/config.yaml
@@ -416,9 +434,8 @@ contexts:
     stack: prod
 ```
 
-Set individual keys with the config command (dotted-path notation). Bare
-`providers.*` paths resolve through the current context's stack; the
-fully-qualified form targets a stack by name:
+Set individual keys with the config command using literal, fully-qualified
+dotted paths that target a stack by name:
 
 ```bash
 gcx config set stacks.mystack.providers.slo.token glsa_abc123
@@ -447,6 +464,12 @@ export GRAFANA_PROVIDER_SLO_ORG_ID=42
 ```
 
 Env vars take precedence over YAML config values.
+
+For a direct-auth endpoint, an endpoint environment override must be paired
+with the corresponding credential environment variable in the same invocation;
+it may not redirect a credential loaded from disk or the keychain. This pair
+does not authorize TLS or proxy settings from an auto-discovered repository
+stack, which still requires explicit `--config`/`GCX_CONFIG` selection.
 
 ---
 

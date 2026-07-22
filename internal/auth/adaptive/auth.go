@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/cloud"
@@ -22,64 +21,25 @@ type SignalAuth struct {
 	HTTPClient *http.Client
 }
 
-// getCachedSignalAuth attempts to retrieve cached signal auth from provider config.
-// Returns (SignalAuth, true, nil) if cached values are found and valid,
-// returns (empty, false, nil) on cache miss, or (empty, false, error) on actual errors.
-func getCachedSignalAuth(ctx context.Context, loader *providers.ConfigLoader, signal string) (SignalAuth, bool, error) {
-	provCfg, _, err := loader.LoadProviderConfig(ctx, "adaptive")
-	if err != nil {
-		// If cache is completely unavailable, treat as cache miss (proceed to GCOM).
-		return SignalAuth{}, false, nil //nolint:nilerr // Cache miss is not an error.
-	}
-	if provCfg == nil {
-		return SignalAuth{}, false, nil
-	}
-
-	cachedURL := provCfg[signal+"-tenant-url"]
-	cachedID := provCfg[signal+"-tenant-id"]
-	if cachedURL == "" || cachedID == "" {
-		return SignalAuth{}, false, nil
-	}
-
-	tenantID, parseErr := strconv.Atoi(cachedID)
-	if parseErr != nil {
-		// Corrupted cache entry; treat as cache miss.
-		return SignalAuth{}, false, nil //nolint:nilerr // Corrupted cache is a cache miss, not an error.
-	}
-
-	cloudCfg, cloudErr := loader.LoadCloudConfig(ctx)
-	if cloudErr != nil {
-		return SignalAuth{}, false, fmt.Errorf("adaptive-%s: failed to load cloud config for token: %w", signal, cloudErr)
-	}
-
-	httpClient, httpErr := cloudCfg.HTTPClient(ctx)
-	if httpErr != nil {
-		return SignalAuth{}, false, fmt.Errorf("adaptive-%s: failed to create HTTP client: %w", signal, httpErr)
-	}
-
-	return SignalAuth{
-		BaseURL:    strings.TrimRight(cachedURL, "/"),
-		TenantID:   tenantID,
-		APIToken:   cloudCfg.Token,
-		HTTPClient: httpClient,
-	}, true, nil
-}
-
 // ResolveSignalAuth resolves auth credentials for the given signal ("metrics", "logs", or "traces").
-// It checks cached provider config first, falling back to a GCOM lookup via LoadCloudConfig.
-// On GCOM lookup, it caches the resolved values for subsequent calls.
+// GCOM stack metadata is authoritative for the tenant URL and ID. Historical
+// provider cache fields are never trusted as credential destinations: they can
+// become stale when a context changes Cloud entry or stack slug. A runtime URL
+// override remains supported only when LoadDirectProviderSnapshot has paired it
+// with a GRAFANA_CLOUD_TOKEN supplied in the same invocation.
 func ResolveSignalAuth(ctx context.Context, loader *providers.ConfigLoader, signal string) (SignalAuth, error) {
-	// Check cached values first.
-	cached, found, err := getCachedSignalAuth(ctx, loader, signal)
+	endpointKey := signal + "-tenant-url"
+	snapshot, err := loader.LoadDirectProviderSnapshot(ctx, providers.DirectProviderPolicy{
+		ProviderName:    "adaptive",
+		EndpointKeys:    []string{endpointKey},
+		CredentialEnv:   "GRAFANA_CLOUD_TOKEN",
+		RejectAutoLocal: true,
+	})
 	if err != nil {
 		return SignalAuth{}, err
 	}
-	if found {
-		return cached, nil
-	}
 
-	// Cache miss — resolve via GCOM.
-	cloudCfg, err := loader.LoadCloudConfig(ctx)
+	cloudCfg, err := snapshot.ResolveCloudConfig(ctx)
 	if err != nil {
 		return SignalAuth{}, fmt.Errorf("adaptive-%s: failed to load cloud config: %w", signal, err)
 	}
@@ -88,15 +48,14 @@ func ResolveSignalAuth(ctx context.Context, loader *providers.ConfigLoader, sign
 	if err != nil {
 		return SignalAuth{}, err
 	}
+	if snapshot.EndpointOverriddenByEnvironment(endpointKey) {
+		baseURL = snapshot.ProviderConfig[endpointKey]
+	}
 
 	httpClient, err := cloudCfg.HTTPClient(ctx)
 	if err != nil {
 		return SignalAuth{}, fmt.Errorf("adaptive-%s: failed to create HTTP client: %w", signal, err)
 	}
-
-	// Cache resolved values for subsequent calls.
-	_ = loader.SaveProviderConfig(ctx, "adaptive", signal+"-tenant-id", strconv.Itoa(tenantID))
-	_ = loader.SaveProviderConfig(ctx, "adaptive", signal+"-tenant-url", baseURL)
 
 	return SignalAuth{
 		BaseURL:    strings.TrimRight(baseURL, "/"),

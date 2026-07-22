@@ -8,11 +8,20 @@ package login
 
 import (
 	"bytes"
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
+	internalauth "github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	internallogin "github.com/grafana/gcx/internal/login"
@@ -22,6 +31,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type stubCloudAuthFlow struct {
+	result *internalauth.GCOMResult
+	err    error
+}
+
+func (s *stubCloudAuthFlow) Run(_ context.Context) (*internalauth.GCOMResult, error) {
+	return s.result, s.err
+}
 
 // TestStructuredMissingFieldsError verifies that structuredMissingFieldsError
 // maps ErrNeedInput.Fields into a DetailedError whose suggestions mention
@@ -159,6 +177,581 @@ func TestResolveNonInteractiveTokens(t *testing.T) {
 			assert.Equal(t, tt.wantCloudToken, gotCloud, "cloud token mismatch")
 		})
 	}
+}
+
+func TestResolveNonInteractiveTokensUsesEnvForNewContext(t *testing.T) {
+	t.Setenv("GRAFANA_TOKEN", "new-context-grafana-token")
+	t.Setenv("GRAFANA_CLOUD_TOKEN", "new-context-cloud-token")
+
+	grafanaToken, cloudToken := resolveNonInteractiveTokens("", "", nil, false)
+	assert.Equal(t, "new-context-grafana-token", grafanaToken)
+	assert.Equal(t, "new-context-cloud-token", cloudToken)
+}
+
+func TestUseExistingCloudEntryPreservesCredentialKindAndMetadata(t *testing.T) {
+	t.Parallel()
+
+	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	tests := []struct {
+		name     string
+		entry    *config.CloudEntry
+		wantOK   bool
+		wantKind internallogin.CloudCredentialKind
+	}{
+		{
+			name: "CAP remains CAP",
+			entry: &config.CloudEntry{
+				Token:    "cap-token",
+				OAuthUrl: "https://grafana-ops.com",
+				APIUrl:   "https://grafana-ops.com",
+			},
+			wantOK:   true,
+			wantKind: internallogin.CloudCredentialCAP,
+		},
+		{
+			name: "OAuth preserves metadata",
+			entry: &config.CloudEntry{
+				OAuthToken:          "oauth-token",
+				OAuthTokenExpiresAt: future,
+				OAuthScopes:         []string{"stacks:read", "fleet-management:read"},
+				OAuthUrl:            "https://grafana-dev.com",
+				APIUrl:              "https://grafana-dev.com",
+			},
+			wantOK:   true,
+			wantKind: internallogin.CloudCredentialOAuth,
+		},
+		{
+			name: "expired OAuth cannot be kept",
+			entry: &config.CloudEntry{
+				OAuthToken:          "expired",
+				OAuthTokenExpiresAt: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339),
+			},
+			wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var opts internallogin.Options
+			got := useExistingCloudEntry(&opts, tt.entry, true, "")
+			assert.Equal(t, tt.wantOK, got)
+			if !tt.wantOK {
+				return
+			}
+			assert.Equal(t, tt.wantKind, opts.CloudCredentialKind)
+			assert.True(t, opts.CloudTokenTrusted)
+			wantToken, err := tt.entry.ResolveToken()
+			require.NoError(t, err)
+			assert.Equal(t, wantToken, opts.CloudToken)
+			assert.Equal(t, tt.entry.OAuthTokenExpiresAt, opts.CloudOAuthTokenExpiresAt)
+			assert.Equal(t, tt.entry.OAuthScopes, opts.CloudOAuthScopes)
+			assert.Equal(t, tt.entry.OAuthUrl, opts.CloudOAuthURL)
+			assert.Equal(t, tt.entry.APIUrl, opts.CloudAPIURL)
+		})
+	}
+}
+
+func TestRunCloudOAuthPersistsResponseMetadataAndEndpointIntent(t *testing.T) {
+	t.Parallel()
+
+	var gotFlowOpts internalauth.GCOMOptions
+	opts := internallogin.Options{
+		Inputs: internallogin.Inputs{
+			Server:      "https://custom.example.com",
+			CloudAPIURL: "https://grafana-ops.com",
+		},
+		Hooks: internallogin.Hooks{
+			NewCloudAuthFlow: func(flowOpts internalauth.GCOMOptions) internallogin.CloudAuthFlow {
+				gotFlowOpts = flowOpts
+				return &stubCloudAuthFlow{result: &internalauth.GCOMResult{
+					AccessToken: "oauth-token",
+					Scope:       "stacks:read fleet-management:read",
+					ExpiresAt:   "2030-01-01T00:00:00Z",
+				}}
+			},
+		},
+	}
+
+	require.NoError(t, runCloudOAuth(context.Background(), &opts))
+	assert.Equal(t, "https://grafana-ops.com", gotFlowOpts.GCOMURL)
+	assert.Equal(t, "https://grafana-ops.com", opts.CloudOAuthURL)
+	assert.Equal(t, "https://grafana-ops.com", opts.CloudAPIURL)
+	assert.Equal(t, internallogin.CloudCredentialOAuth, opts.CloudCredentialKind)
+	assert.True(t, opts.CloudTokenTrusted)
+	assert.Equal(t, "2030-01-01T00:00:00Z", opts.CloudOAuthTokenExpiresAt)
+	assert.Equal(t, []string{"stacks:read", "fleet-management:read"}, opts.CloudOAuthScopes)
+}
+
+func TestUseExistingCloudEntryEndpointChangeFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	t.Run("OAuth requires a fresh flow", func(t *testing.T) {
+		t.Parallel()
+		opts := internallogin.Options{Inputs: internallogin.Inputs{
+			Server:        "https://stack.grafana-ops.net",
+			CloudOAuthURL: "https://grafana-ops.com",
+			CloudAPIURL:   "https://grafana-ops.com",
+		}}
+		entry := &config.CloudEntry{
+			OAuthToken:          "dev-oauth-token",
+			OAuthTokenExpiresAt: future,
+			OAuthUrl:            "https://grafana-dev.com",
+			APIUrl:              "https://grafana-dev.com",
+		}
+
+		assert.False(t, useExistingCloudEntry(&opts, entry, true, "https://stack.grafana-dev.net"))
+		assert.Empty(t, opts.CloudToken)
+	})
+
+	t.Run("CAP also requires a fresh credential", func(t *testing.T) {
+		t.Parallel()
+		opts := internallogin.Options{Inputs: internallogin.Inputs{
+			Server:        "https://stack.grafana-ops.net",
+			CloudOAuthURL: "https://grafana-ops.com",
+			CloudAPIURL:   "https://grafana-ops.com",
+		}}
+		entry := &config.CloudEntry{
+			Token:    "prod-cap",
+			OAuthUrl: "https://grafana.com",
+			APIUrl:   "https://grafana.com",
+		}
+
+		assert.False(t, useExistingCloudEntry(&opts, entry, true, "https://stack.grafana.net"))
+		assert.Empty(t, opts.CloudToken)
+		assert.Equal(t, "https://grafana-ops.com", opts.CloudOAuthURL)
+		assert.Equal(t, "https://grafana-ops.com", opts.CloudAPIURL)
+	})
+
+	t.Run("server-derived endpoint change rejects legacy CAP", func(t *testing.T) {
+		t.Parallel()
+		opts := internallogin.Options{Inputs: internallogin.Inputs{
+			Server:     "https://stack.grafana-ops.net",
+			CloudToken: "copied-prod-cap",
+		}}
+		sourceCtx := &config.Context{
+			Grafana:    &config.GrafanaConfig{Server: "https://stack.grafana.net"},
+			CloudEntry: &config.CloudEntry{Token: "copied-prod-cap"},
+		}
+
+		err := reuseNonInteractiveCloudCredential(&opts, false, sourceCtx, false)
+		require.ErrorContains(t, err, "cannot be reused for different endpoints")
+		assert.Empty(t, opts.CloudToken, "the copied token must be cleared before validation")
+	})
+}
+
+func TestServerChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{
+		Server:     "https://old.example.invalid",
+		APIToken:   "stored-old-token",
+		AuthMethod: "token",
+		OrgID:      1,
+	}})
+	seed.SetContext("default", true, config.Context{Stack: "default"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	t.Cleanup(server.Close)
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{
+		"default",
+		"--config", path,
+		"--server", server.URL,
+		"--allow-server-override",
+		"--yes",
+	})
+
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "Stored Grafana token cannot be reused")
+	assert.Zero(t, requests.Load(), "destination mismatch must fail before any server probe")
+}
+
+func TestExistingGrafanaTokenIsNotOfferedForDifferentServer(t *testing.T) {
+	t.Parallel()
+	sourceCtx := &config.Context{Grafana: &config.GrafanaConfig{
+		Server:   "https://old.example.invalid",
+		APIToken: "old-token",
+	}}
+
+	assert.Empty(t, existingGrafanaTokenForServer("https://new.example.invalid", sourceCtx))
+	assert.Equal(t, "old-token", existingGrafanaTokenForServer("https://old.example.invalid", sourceCtx))
+}
+
+func TestEnvironmentTokensCountAsExplicitCredentialIntent(t *testing.T) {
+	t.Setenv("GRAFANA_TOKEN", "fresh-grafana-token")
+	t.Setenv("GRAFANA_CLOUD_TOKEN", "fresh-cloud-token")
+	assert.True(t, credentialProvided("", "GRAFANA_TOKEN"))
+	assert.True(t, credentialProvided("", "GRAFANA_CLOUD_TOKEN"))
+
+	opts := internallogin.Options{Inputs: internallogin.Inputs{
+		Server:        "https://stack.grafana-ops.net",
+		CloudToken:    "fresh-cloud-token",
+		CloudOAuthURL: "https://grafana-ops.com",
+		CloudAPIURL:   "https://grafana-ops.com",
+	}}
+	sourceCtx := &config.Context{
+		Grafana: &config.GrafanaConfig{Server: "https://stack.grafana.net"},
+		CloudEntry: &config.CloudEntry{
+			Token:    "fresh-cloud-token",
+			OAuthUrl: "https://grafana.com",
+			APIUrl:   "https://grafana.com",
+		},
+	}
+
+	require.NoError(t, reuseNonInteractiveCloudCredential(&opts, true, sourceCtx, false))
+	assert.Equal(t, "fresh-cloud-token", opts.CloudToken)
+	assert.False(t, opts.CloudTokenTrusted, "environment credentials must still be validated")
+}
+
+func TestLoadLoginSourceContextAppliesEnvToPositionalTarget(t *testing.T) {
+	t.Setenv("GRAFANA_TOKEN", "target-env-token")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("current", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "https://current.invalid", APIToken: "current-token"}})
+	seed.SetStack("target", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "https://target.invalid", APIToken: "target-token"}})
+	seed.SetContext("current", true, config.Context{Stack: "current"})
+	seed.SetContext("target", false, config.Context{Stack: "target"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	flags := &loginOpts{Config: configcmd.Options{ConfigFile: path}}
+	_, sourceCtx, name, err := loadLoginSourceContext(t.Context(), flags, "target")
+	require.NoError(t, err)
+	assert.Equal(t, "target", name)
+	require.NotNil(t, sourceCtx)
+	assert.Equal(t, "target-env-token", sourceCtx.Grafana.APIToken)
+}
+
+func TestPersistedLoginSourceContextIgnoresRuntimeEnvironmentOverrides(t *testing.T) {
+	t.Setenv("GRAFANA_SERVER", "https://runtime.invalid")
+	t.Setenv("GRAFANA_CLOUD_API_URL", "https://grafana-ops.com")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("target", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "https://stored.invalid"}})
+	seed.SetCloudEntry("grafana-com", config.CloudEntry{
+		OAuthUrl: "https://grafana.com",
+		APIUrl:   "https://grafana.com",
+	})
+	seed.SetContext("target", true, config.Context{Stack: "target", Cloud: "grafana-com"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	flags := &loginOpts{Config: configcmd.Options{ConfigFile: path}}
+	_, runtimeCtx, name, err := loadLoginSourceContext(t.Context(), flags, "target")
+	require.NoError(t, err)
+	require.Equal(t, "target", name)
+	require.NotNil(t, runtimeCtx)
+	assert.Equal(t, "https://runtime.invalid", runtimeCtx.Grafana.Server)
+	assert.Equal(t, "https://grafana-ops.com", runtimeCtx.CloudEntry.APIUrl)
+
+	persistedCtx, err := loadPersistedLoginSourceContext(t.Context(), config.ExplicitConfigFile(path), name)
+	require.NoError(t, err)
+	require.NotNil(t, persistedCtx)
+	assert.Equal(t, "https://stored.invalid", persistedCtx.Grafana.Server)
+	assert.Equal(t, "https://grafana.com", persistedCtx.CloudEntry.OAuthUrl)
+	assert.Equal(t, "https://grafana.com", persistedCtx.CloudEntry.APIUrl)
+}
+
+func TestLoadPersistedLoginSourceContextAllowsNewExplicitConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "new", "config.yaml")
+	persistedCtx, err := loadPersistedLoginSourceContext(
+		t.Context(),
+		config.ExplicitConfigFile(path),
+		"new-context",
+	)
+	require.NoError(t, err)
+	assert.Nil(t, persistedCtx)
+}
+
+func TestRequestedLoginServerUsesEnvironmentForNewContext(t *testing.T) {
+	t.Setenv("GRAFANA_SERVER", "https://new-context.example.invalid")
+	assert.Equal(t, "https://new-context.example.invalid", requestedLoginServer("", nil))
+	assert.Equal(t, "https://flag.example.invalid", requestedLoginServer("https://flag.example.invalid", nil),
+		"an explicit flag must win over the environment")
+}
+
+func TestLoginTLSFromEnvironmentSupportsNewContext(t *testing.T) {
+	t.Setenv("GRAFANA_TLS_CERT_FILE", "/tmp/client.crt")
+	t.Setenv("GRAFANA_TLS_KEY_FILE", "/tmp/client.key")
+	t.Setenv("GRAFANA_TLS_CA_FILE", "/tmp/ca.crt")
+
+	tlsConfig := loginTLSFromEnvironment()
+	require.NotNil(t, tlsConfig)
+	assert.Equal(t, "/tmp/client.crt", tlsConfig.CertFile)
+	assert.Equal(t, "/tmp/client.key", tlsConfig.KeyFile)
+	assert.Equal(t, "/tmp/ca.crt", tlsConfig.CAFile)
+}
+
+func TestCloudLoginEndpointsUseCoherentEnvironmentIntent(t *testing.T) {
+	stored := &config.Context{CloudEntry: &config.CloudEntry{
+		OAuthUrl: "https://grafana.com",
+		APIUrl:   "https://grafana.com",
+	}}
+
+	t.Run("new context API env selects both endpoints", func(t *testing.T) {
+		t.Setenv("GRAFANA_CLOUD_API_URL", "grafana-ops.com")
+		unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+		apiURL, oauthURL, err := cloudLoginEndpoints(&loginOpts{}, nil, false)
+		require.NoError(t, err)
+		assert.Equal(t, "https://grafana-ops.com", apiURL)
+		assert.Equal(t, "https://grafana-ops.com", oauthURL)
+	})
+
+	t.Run("existing context OAuth env replaces the stored pair", func(t *testing.T) {
+		unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
+		t.Setenv("GRAFANA_CLOUD_OAUTH_URL", "grafana-dev.com")
+		apiURL, oauthURL, err := cloudLoginEndpoints(&loginOpts{}, stored, false)
+		require.NoError(t, err)
+		assert.Equal(t, "https://grafana-dev.com", apiURL)
+		assert.Equal(t, "https://grafana-dev.com", oauthURL)
+	})
+
+	t.Run("two explicit env endpoints remain an exact pair", func(t *testing.T) {
+		t.Setenv("GRAFANA_CLOUD_API_URL", "https://grafana-ops.com")
+		t.Setenv("GRAFANA_CLOUD_OAUTH_URL", "https://grafana-dev.com")
+		apiURL, oauthURL, err := cloudLoginEndpoints(&loginOpts{}, stored, false)
+		require.NoError(t, err)
+		assert.Equal(t, "https://grafana-ops.com", apiURL)
+		assert.Equal(t, "https://grafana-dev.com", oauthURL)
+	})
+
+	t.Run("CLI endpoint wins and selects both", func(t *testing.T) {
+		t.Setenv("GRAFANA_CLOUD_API_URL", "https://grafana-ops.com")
+		t.Setenv("GRAFANA_CLOUD_OAUTH_URL", "https://grafana-dev.com")
+		apiURL, oauthURL, err := cloudLoginEndpoints(&loginOpts{CloudAPIURL: "https://explicit.invalid"}, stored, true)
+		require.NoError(t, err)
+		assert.Equal(t, "https://explicit.invalid", apiURL)
+		assert.Equal(t, "https://explicit.invalid", oauthURL)
+	})
+}
+
+func TestLoginEnvironmentServerChangeRequiresPreflightConfirmation(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GRAFANA_SERVER", "https://new.example.invalid")
+	t.Setenv("GRAFANA_TOKEN", "fresh-env-token")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "https://old.example.invalid"}})
+	seed.SetContext("default", true, config.Context{Stack: "default"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"default", "--config", path, "--yes"})
+
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "Login would overwrite an existing context")
+	require.ErrorContains(t, err, "--allow-server-override")
+}
+
+func TestLoginRejectsAmbiguousLayeredWriteBeforeNetwork(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("HOME", t.TempDir())
+	userDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", userDir)
+	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
+	t.Setenv("GCX_CONFIG", "")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+
+	contents := []byte(`version: 1
+stacks:
+  default:
+    grafana:
+      server: https://old.example.invalid
+      token: old-token
+      auth-method: token
+      org-id: 1
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	userPath := filepath.Join(userDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
+	require.NoError(t, os.WriteFile(userPath, contents, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, ".gcx.yaml"), contents, 0o600))
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	t.Cleanup(server.Close)
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{
+		"default",
+		"--server", server.URL,
+		"--token", "fresh-token",
+		"--allow-server-override",
+		"--yes",
+	})
+
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "write target is ambiguous")
+	require.ErrorContains(t, err, "--config <path>")
+	assert.Zero(t, requests.Load(), "ambiguous persistence must fail before authentication or validation")
+}
+
+func TestLoginRejectsFreshCredentialsForAutoLocalBeforeNetwork(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		args []string
+	}{
+		{name: "Grafana token flag", args: []string{"--token", "fresh-grafana-token"}},
+		{name: "Grafana token environment", env: "GRAFANA_TOKEN"},
+		{name: "Grafana OAuth", args: []string{"--oauth"}},
+		{name: "Cloud token flag", args: []string{"--cloud-token", "fresh-cloud-token"}},
+		{name: "Cloud token environment", env: "GRAFANA_CLOUD_TOKEN"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workDir := isolateAutoLocalLoginEnv(t)
+			if tt.env != "" {
+				t.Setenv(tt.env, "fresh-environment-token")
+			}
+
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				requests.Add(1)
+			}))
+			t.Cleanup(server.Close)
+
+			localPath := filepath.Join(workDir, config.LocalConfigFileName)
+			original := fmt.Appendf(nil, `version: 1
+stacks:
+  default:
+    grafana:
+      server: %s
+      proxy-endpoint: https://repository-proxy.invalid
+      tls:
+        insecure: true
+contexts:
+  default:
+    stack: default
+current-context: default
+`, server.URL)
+			require.NoError(t, os.WriteFile(localPath, original, 0o600))
+
+			cmd := Command()
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			args := []string{"default", "--server", server.URL, "--yes"}
+			args = append(args, tt.args...)
+			cmd.SetArgs(args)
+
+			err := cmd.ExecuteContext(t.Context())
+			require.ErrorContains(t, err, "auto-discovered repository config")
+			require.ErrorContains(t, err, "--config "+localPath)
+			assert.Zero(t, requests.Load(), "fresh credentials must fail before target detection or validation")
+			raw, readErr := os.ReadFile(localPath)
+			require.NoError(t, readErr)
+			assert.Equal(t, original, raw)
+		})
+	}
+}
+
+func TestAutoLocalCredentialPolicyAllowsOnlyBoundKeep(t *testing.T) {
+	t.Parallel()
+	target := config.ConfigSource{Path: "/repo/.gcx.yaml", Type: "local"}
+	sourceCtx := &config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:   "https://stack.grafana.net",
+			APIToken: "stored-grafana-token",
+		},
+		CloudEntry: &config.CloudEntry{
+			Token:    "stored-cloud-token",
+			OAuthUrl: "https://grafana.com",
+			APIUrl:   "https://grafana.com",
+		},
+	}
+	keep := &internallogin.Options{Inputs: internallogin.Inputs{
+		Server:              "https://stack.grafana.net",
+		GrafanaToken:        "stored-grafana-token",
+		CloudToken:          "stored-cloud-token",
+		CloudOAuthURL:       "https://grafana.com",
+		CloudAPIURL:         "https://grafana.com",
+		CloudCredentialKind: internallogin.CloudCredentialCAP,
+	}}
+	require.NoError(t, enforceAutoLocalCredentialPolicy(keep, sourceCtx, target))
+
+	freshGrafana := *keep
+	freshGrafana.GrafanaToken = "fresh-grafana-token"
+	require.ErrorContains(t, enforceAutoLocalCredentialPolicy(&freshGrafana, sourceCtx, target), "auto-discovered repository config")
+
+	freshCloud := *keep
+	freshCloud.CloudToken = "fresh-cloud-token"
+	require.ErrorContains(t, enforceAutoLocalCredentialPolicy(&freshCloud, sourceCtx, target), "auto-discovered repository config")
+
+	freshOAuth := *keep
+	freshOAuth.GrafanaToken = ""
+	freshOAuth.UseOAuth = true
+	require.ErrorContains(t, enforceAutoLocalCredentialPolicy(&freshOAuth, sourceCtx, target), "auto-discovered repository config")
+}
+
+func isolateAutoLocalLoginEnv(t *testing.T) string {
+	t.Helper()
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
+	t.Setenv("GCX_CONFIG", "")
+	t.Setenv("GRAFANA_TOKEN", "")
+	t.Setenv("GRAFANA_CLOUD_TOKEN", "")
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+	return workDir
+}
+
+//nolint:usetesting // t.Setenv cannot represent an absent variable or restore it as absent.
+func unsetEnvForTest(t *testing.T, key string) {
+	t.Helper()
+	value, existed := os.LookupEnv(key)
+	require.NoError(t, os.Unsetenv(key))
+	t.Cleanup(func() {
+		if existed {
+			require.NoError(t, os.Setenv(key, value))
+			return
+		}
+		require.NoError(t, os.Unsetenv(key))
+	})
 }
 
 // TestDefaultOAuthFromContext verifies that a non-interactive re-auth of an

@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,8 +35,10 @@ type Config struct {
 	// this config. Populated by LoadLayered.
 	Sources []ConfigSource `json:"-" yaml:"-"`
 
-	// Version is the config format version. Absent on legacy configs, which the
-	// loader migrates to the current format automatically.
+	// Version is the config format version. Version 1 is the only declared
+	// version accepted by this release; unsupported versions are rejected before
+	// migration or credential access. The field is absent on legacy configs,
+	// which the loader migrates to the current format after a safety preflight.
 	Version int64 `json:"version,omitempty" yaml:"version,omitempty"`
 
 	// Stacks is a map of Grafana stack configurations (connection, providers,
@@ -78,6 +82,43 @@ type Config struct {
 	// be deferred for non-current contexts. Populated once by Load; nil when
 	// the keychain is not in use.
 	keychainStore credentials.Store `json:"-" yaml:"-"`
+
+	// sourceIdentity is the canonical identity of a single config document.
+	// Layered configs leave it empty; each stack/cloud entry retains its own
+	// sourceIdentity so credential references remain isolated after merging.
+	sourceIdentity string `json:"-" yaml:"-"`
+	sourceLayer    string `json:"-" yaml:"-"`
+
+	// sourceRevision is the SHA-256 of the exact bytes loaded from one config
+	// document. Write compares it under the canonical write lock before any
+	// keychain or filesystem mutation, preventing stale writers from restoring
+	// old credential generations or overwriting a newly upgraded schema.
+	sourceRevision    [32]byte `json:"-" yaml:"-"`
+	hasSourceRevision bool     `json:"-" yaml:"-"`
+	// expectSourceAbsent is set when Load resolved a source path but found no
+	// file. Write then installs the first document without replacement, so a
+	// file created by another process in the meantime is never overwritten.
+	expectSourceAbsent bool `json:"-" yaml:"-"`
+
+	// keychainStates records the exact bound account and original field state
+	// observed during load. It is entry/source scoped, unlike keychainFields,
+	// and is the authoritative state used by v2 reconciliation.
+	keychainStates keychainState `json:"-" yaml:"-"`
+
+	// secretMutations records explicit set/unset intent for cases where an
+	// unavailable credential is represented as an empty in-memory value and a
+	// plain value comparison cannot distinguish "unchanged" from "unset".
+	secretMutations secretMutationSet `json:"-" yaml:"-"`
+
+	// credentialOrigins snapshots plaintext secrets and their loaded destination
+	// so post-load environment/flag overrides cannot redirect them.
+	credentialOrigins credentialOriginSet `json:"-" yaml:"-"`
+
+	// migrationDeferred prevents a transiently unavailable trusted legacy
+	// sentinel from being stranded in v1, whose ordinary loader intentionally
+	// never resolves unbound references. The legacy source stays untouched and
+	// a later load retries migration when the keychain is available.
+	migrationDeferred bool `json:"-" yaml:"-"`
 }
 
 // DiagnosticsConfig controls optional local diagnostic features.
@@ -119,13 +160,13 @@ func (config *Config) ResolveContext(name string) {
 	if ctx == nil {
 		return
 	}
-	backed, preserve := resolveSentinelsForContext(ctx, config.keychainStore)
-	config.trackKeychainResults(backed, preserve)
+	backed, preserve, states := resolveSentinelsForContext(ctx, config.keychainStore)
+	config.trackKeychainResults(backed, preserve, states)
 }
 
 // trackKeychainResults merges sentinel-resolution results into the config's
 // keychain bookkeeping.
-func (config *Config) trackKeychainResults(backed keychainBacked, preserve keychainPreserved) {
+func (config *Config) trackKeychainResults(backed keychainBacked, preserve keychainPreserved, states keychainState) {
 	if len(backed) > 0 && config.keychainFields == nil {
 		config.keychainFields = keychainBacked{}
 	}
@@ -142,6 +183,10 @@ func (config *Config) trackKeychainResults(backed keychainBacked, preserve keych
 			config.keychainPreserve.mark(owner, field, sentinel)
 		}
 	}
+	if len(states) > 0 && config.keychainStates == nil {
+		config.keychainStates = keychainState{}
+	}
+	maps.Copy(config.keychainStates, states)
 }
 
 // SetContext adds a new context to the Grafana config.
@@ -164,6 +209,8 @@ func (config *Config) SetStack(name string, stack StackConfig) {
 	if config.Stacks == nil {
 		config.Stacks = make(map[string]*StackConfig)
 	}
+	stack.sourceIdentity = config.sourceIdentity
+	stack.sourceLayer = config.sourceLayer
 	config.Stacks[name] = &stack
 	config.Resolve()
 }
@@ -173,6 +220,8 @@ func (config *Config) SetCloudEntry(name string, entry CloudEntry) {
 	if config.Cloud == nil {
 		config.Cloud = make(map[string]*CloudEntry)
 	}
+	entry.sourceIdentity = config.sourceIdentity
+	entry.sourceLayer = config.sourceLayer
 	config.Cloud[name] = &entry
 	config.Resolve()
 }
@@ -244,6 +293,12 @@ func unionDryRun(global *ResourcesConfig, stack *StackConfig) []string {
 type StackConfig struct {
 	Name string `json:"-" yaml:"-"`
 
+	// sourceIdentity is the canonical config document that defined this atomic
+	// entry. Credential bindings include it, preventing a same-named entry in a
+	// different file from resolving or mutating this entry's keychain records.
+	sourceIdentity string `json:"-" yaml:"-"`
+	sourceLayer    string `json:"-" yaml:"-"`
+
 	// Slug is the Grafana Cloud stack slug (e.g. "mystack").
 	// Optional: if not set, the slug may be derived from Grafana.Server.
 	Slug string `json:"slug,omitempty" yaml:"slug,omitempty"`
@@ -267,6 +322,11 @@ type StackConfig struct {
 type CloudEntry struct {
 	Name string `json:"-" yaml:"-"`
 
+	// sourceIdentity is the canonical config document that defined this atomic
+	// entry. See StackConfig.sourceIdentity.
+	sourceIdentity string `json:"-" yaml:"-"`
+	sourceLayer    string `json:"-" yaml:"-"`
+
 	// Token is a Grafana Cloud access policy token used to authenticate
 	// against GCOM.
 	Token string `datapolicy:"secret" env:"GRAFANA_CLOUD_TOKEN" json:"token,omitempty" yaml:"token,omitempty"`
@@ -279,14 +339,23 @@ type CloudEntry struct {
 	// OAuthTokenExpiresAt is the OAuthToken expiration time in RFC3339 format.
 	OAuthTokenExpiresAt string `json:"oauth-token-expires-at,omitempty" yaml:"oauth-token-expires-at,omitempty"`
 
+	// OAuthScopes is the scope set granted by the OAuth token endpoint. It may
+	// differ from the requested set and is retained so re-auth/keep operations do
+	// not discard capability metadata.
+	OAuthScopes []string `json:"oauth-scopes,omitempty" yaml:"oauth-scopes,omitempty"`
+
 	// OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
-	// login`. It is used only during login. Optional: defaults to
-	// "https://grafana.com".
+	// login`. It is used only during login. Credential-bearing entries are
+	// materialized as a coherent OAuth/API pair: one explicit endpoint fills its
+	// missing peer; with neither set, gcx derives one unique referenced-stack
+	// Cloud environment or falls back to "https://grafana.com". Incompatible
+	// referenced environments are rejected and require separate entries.
 	OAuthUrl string `env:"GRAFANA_CLOUD_OAUTH_URL" json:"oauth-url,omitempty" yaml:"oauth-url,omitempty"`
 
 	// APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls
-	// (stacks, regions, access policies, etc.). Every client talking to GCOM
-	// uses it. Optional: defaults to "https://grafana.com".
+	// (stacks, regions, access policies, etc.). Every client talking to GCOM uses
+	// it. It is materialized together with OAuthUrl so authentication and later
+	// API calls stay in the same Cloud environment.
 	APIUrl string `env:"GRAFANA_CLOUD_API_URL" json:"api-url,omitempty" yaml:"api-url,omitempty"`
 }
 
@@ -303,7 +372,12 @@ func (entry *CloudEntry) ResolveToken() (string, error) {
 		return "", nil
 	}
 	if entry.OAuthTokenExpiresAt != "" {
-		if expiry, err := time.Parse(time.RFC3339, entry.OAuthTokenExpiresAt); err == nil && time.Now().After(expiry) {
+		expiry, err := time.Parse(time.RFC3339, entry.OAuthTokenExpiresAt)
+		if err != nil {
+			return "", fmt.Errorf("cloud OAuth token for entry %q has an invalid expiry %q: run `gcx cloud login` to re-authenticate",
+				entry.Name, entry.OAuthTokenExpiresAt)
+		}
+		if time.Now().After(expiry) {
 			return "", fmt.Errorf("cloud OAuth token for entry %q expired at %s: run `gcx cloud login` to re-authenticate",
 				entry.Name, entry.OAuthTokenExpiresAt)
 		}
@@ -345,6 +419,23 @@ type Context struct {
 	// (GRAFANA_CLOUD_STACK), applied by ParseEnvIntoContext. It wins over the
 	// stack entry's Slug without mutating the shared stack config.
 	envStackSlug string
+
+	// runtimeSecretOverrides records credentials explicitly supplied by the
+	// process environment. Post-override binding enforcement may retain those
+	// values when an endpoint changes; every keychain-resolved value is cleared.
+	runtimeSecretOverrides map[credentials.Field]bool
+}
+
+// StackFromAutoLocal reports whether the resolved stack entry came from an
+// auto-discovered repository .gcx.yaml layer. Explicit --config/GCX_CONFIG
+// selection of the same file is deliberately not considered auto-local: that
+// selection is the user's trust decision.
+//
+// Callers should use this narrow predicate instead of trying to reconstruct
+// provenance from Config.Sources or filesystem paths. The per-entry source
+// layer is immutable load metadata and survives layered merges.
+func (context *Context) StackFromAutoLocal() bool {
+	return context != nil && context.StackEntry != nil && context.StackEntry.sourceLayer == "local"
 }
 
 // ResourcesConfig holds settings for the `gcx resources` commands.
@@ -800,6 +891,22 @@ type TLS struct {
 	// To indicate to the server http/1.1 is preferred over http/2, set to ["http/1.1", "h2"] (though the server is free to ignore that preference).
 	// To use only http/1.1, set to ["http/1.1"].
 	NextProtos []string `json:"next-protos,omitempty" yaml:"next-protos,omitempty"`
+
+	// credentialFileSnapshots freeze the effective file-backed TLS identity
+	// observed while a credential binding is evaluated. ResolveFiles uses those
+	// captured bytes rather than re-reading the path, closing the load-to-request
+	// race where a CA or client-identity file changes after token resolution.
+	credentialFilesCaptured bool            `json:"-" yaml:"-"`
+	credentialCertFile      tlsFileSnapshot `json:"-" yaml:"-"`
+	credentialKeyFile       tlsFileSnapshot `json:"-" yaml:"-"`
+	credentialCAFile        tlsFileSnapshot `json:"-" yaml:"-"`
+}
+
+type tlsFileSnapshot struct {
+	path        string
+	fingerprint string
+	contents    []byte
+	err         error
 }
 
 // IsEmpty reports whether all TLS fields are at their zero values.
@@ -828,31 +935,49 @@ func tlsFileError(description, path string, err error) error {
 // the corresponding CertData, KeyData, and CAData fields. File-based fields
 // take precedence: if both CertFile and CertData are set, CertFile wins.
 func (cfg *TLS) ResolveFiles() error {
+	// Some runtime-only configurations have no persisted credential whose
+	// binding would have captured TLS material. Freeze their effective paths at
+	// transport construction as well, and recapture paths changed by overrides.
+	cfg.captureCredentialFileSnapshots()
 	if (cfg.CertFile != "") != (cfg.KeyFile != "") {
 		return errors.New("both cert-file and key-file must be provided together")
 	}
 	if cfg.CertFile != "" {
-		data, err := os.ReadFile(cfg.CertFile)
+		data, err := cfg.readCredentialTLSFile("client certificate", cfg.CertFile, cfg.credentialCertFile)
 		if err != nil {
-			return tlsFileError("client certificate", cfg.CertFile, err)
+			return err
 		}
 		cfg.CertData = data
 	}
 	if cfg.KeyFile != "" {
-		data, err := os.ReadFile(cfg.KeyFile)
+		data, err := cfg.readCredentialTLSFile("client key", cfg.KeyFile, cfg.credentialKeyFile)
 		if err != nil {
-			return tlsFileError("client key", cfg.KeyFile, err)
+			return err
 		}
 		cfg.KeyData = data
 	}
 	if cfg.CAFile != "" {
-		data, err := os.ReadFile(cfg.CAFile)
+		data, err := cfg.readCredentialTLSFile("CA certificate", cfg.CAFile, cfg.credentialCAFile)
 		if err != nil {
-			return tlsFileError("CA certificate", cfg.CAFile, err)
+			return err
 		}
 		cfg.CAData = data
 	}
 	return nil
+}
+
+func (cfg *TLS) readCredentialTLSFile(description, path string, captured tlsFileSnapshot) ([]byte, error) {
+	if cfg.credentialFilesCaptured && captured.path == path {
+		if captured.err != nil {
+			return nil, tlsFileError(description, path, captured.err)
+		}
+		return slices.Clone(captured.contents), nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, tlsFileError(description, path, err)
+	}
+	return data, nil
 }
 
 // ToStdTLSConfig converts the TLS configuration into a standard crypto/tls

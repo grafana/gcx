@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/auth"
@@ -22,6 +23,15 @@ type loginOpts struct {
 	apiURL     string
 	scopes     []string
 	cloudToken string
+}
+
+type gcomOAuthFlow interface {
+	Run(ctx context.Context) (*auth.GCOMResult, error)
+}
+
+//nolint:gochecknoglobals // narrow test seam that proves config preflight precedes OAuth side effects.
+var newGCOMOAuthFlow = func(opts auth.GCOMOptions) gcomOAuthFlow {
+	return auth.NewGCOMFlow(opts)
 }
 
 func (opts *loginOpts) bindFlags(flags *pflag.FlagSet) {
@@ -84,34 +94,53 @@ functionality, pass a Cloud Access Policy token via --cloud-token instead.
 For non-interactive use (CI/CD, scripts), pass a Cloud Access Policy token
 directly via --cloud-token.
 
-Two endpoints can be configured independently, both defaulting to
-https://grafana.com: --oauth-url is used only for the login flow here, while
---api-url is used by every command that talks to the Grafana Cloud API.`,
+The OAuth and API endpoints default to https://grafana.com. Supplying only one
+of --oauth-url or --api-url selects that URL for both operations. Supplying
+both preserves the explicit OAuth-origin/API-destination pair.`,
 		Example: `  gcx cloud login
-  gcx cloud login --cloud-token glsa_abc123`,
+	gcx cloud login --cloud-token glc_abc123`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Endpoint URLs are sticky across re-auth: when not passed
-			// explicitly, carry over whatever the current context already has so
-			// a plain `gcx cloud login` doesn't wipe a previously set value.
-			cur := currentCloudContext(cmd.Context(), configOpts)
-			if !cmd.Flags().Changed("oauth-url") && cur != nil && cur.CloudEntry != nil && cur.CloudEntry.OAuthUrl != "" {
-				opts.oauthURL = cur.CloudEntry.OAuthUrl
+			mutationTarget, err := configOpts.MutationConfigTarget()
+			if err != nil {
+				return err
 			}
-			if !cmd.Flags().Changed("api-url") && cur != nil && cur.CloudEntry != nil && cur.CloudEntry.APIUrl != "" {
-				opts.apiURL = cur.CloudEntry.APIUrl
+			if mutationTarget.Type == "local" {
+				return autoLocalCloudCredentialError(mutationTarget)
 			}
-			// Normalize whichever values won (flag, carry-over, or default)
-			// so a bare host (e.g. "grafana.example.com") gets an https:// scheme
-			// before it reaches the OAuth flow or is saved to config.
-			opts.oauthURL = config.NormalizeCloudURL(opts.oauthURL)
-			opts.apiURL = config.NormalizeCloudURL(opts.apiURL)
+			if opts.cloudToken == "" {
+				opts.cloudToken = strings.TrimSpace(os.Getenv("GRAFANA_CLOUD_TOKEN"))
+			}
+			cur, err := currentCloudContext(cmd.Context(), configOpts)
+			if err != nil {
+				return err
+			}
+			oauthSelected := cmd.Flags().Changed("oauth-url")
+			apiSelected := cmd.Flags().Changed("api-url")
+			// With no endpoint flags, endpoint environment variables are explicit
+			// runtime intent. Read them directly so new contexts do not lose them
+			// when config env parsing initially targets another context.
+			if !oauthSelected && !apiSelected {
+				if envOAuth := strings.TrimSpace(os.Getenv("GRAFANA_CLOUD_OAUTH_URL")); envOAuth != "" {
+					opts.oauthURL = envOAuth
+					oauthSelected = true
+				}
+				if envAPI := strings.TrimSpace(os.Getenv("GRAFANA_CLOUD_API_URL")); envAPI != "" {
+					opts.apiURL = envAPI
+					apiSelected = true
+				}
+			}
+			if err := selectCloudLoginEndpoints(opts, cur, oauthSelected, apiSelected); err != nil {
+				return err
+			}
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			mutationSource := configOpts.MutationConfigSource()
+			mutationCtx := configOpts.MutationConfigContext(cmd.Context())
 			if opts.cloudToken != "" {
-				return runTokenLogin(cmd.Context(), configOpts, opts)
+				return runTokenLogin(mutationCtx, configOpts, opts, mutationSource)
 			}
-			return runOAuthLogin(cmd.Context(), configOpts, opts)
+			return runOAuthLogin(mutationCtx, configOpts, opts, mutationSource)
 		},
 	}
 
@@ -121,23 +150,42 @@ https://grafana.com: --oauth-url is used only for the login flow here, while
 	return cmd
 }
 
-// currentCloudContext loads the config and returns the target context, or nil
-// if config can't be loaded or the context doesn't exist yet.
-func currentCloudContext(ctx context.Context, configOpts *cmdconfig.Options) *config.Context {
-	cfg, err := config.Load(ctx, configOpts.ConfigSource())
-	if err != nil {
-		return nil
+func autoLocalCloudCredentialError(target config.ConfigSource) error {
+	return gcxerrors.DetailedError{
+		Summary: "Refusing fresh credentials for an auto-discovered repository config",
+		Details: fmt.Sprintf(
+			"The repository config %s was discovered automatically. Its Cloud endpoints and routing are repository-controlled, so gcx will not start OAuth or save a fresh Cloud token until you explicitly trust that file.",
+			target.Path,
+		),
+		Suggestions: []string{
+			"Review the file, then rerun with --config " + target.Path,
+			fmt.Sprintf("Or set %s=%s after reviewing the file", config.ConfigFileEnvVar, target.Path),
+		},
 	}
-	return cfg.Contexts[config.ResolveContextName(configOpts.Context, cfg)]
 }
 
-func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts) error {
+// currentCloudContext loads the config and returns the target context. A
+// missing context is allowed for first login, but malformed or unsupported
+// configuration must fail before an OAuth listener or browser is started.
+func currentCloudContext(ctx context.Context, configOpts *cmdconfig.Options) (*config.Context, error) {
+	cfg, err := configOpts.LoadConfigTolerant(ctx)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil //nolint:nilnil // A missing context is valid for a first Cloud login.
+	}
+	if err != nil {
+		return nil, err
+	}
+	return cfg.Contexts[config.ResolveContextName(configOpts.Context, cfg)], nil
+}
+
+func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts, source config.Source) error {
+	oauthURL, apiURL := resolveCloudLoginEndpoints(opts.oauthURL, opts.apiURL)
 	entry := &config.CloudEntry{
 		Token:    opts.cloudToken,
-		OAuthUrl: opts.oauthURL,
-		APIUrl:   opts.apiURL,
+		OAuthUrl: oauthURL,
+		APIUrl:   apiURL,
 	}
-	contextName, entryName, err := config.SaveCloudConfig(ctx, configOpts.ConfigSource(), configOpts.Context, entry)
+	contextName, entryName, err := config.SaveCloudConfig(ctx, source, configOpts.Context, entry)
 	if err != nil {
 		return err
 	}
@@ -146,11 +194,11 @@ func runTokenLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *log
 	return nil
 }
 
-func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts) error {
+func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *loginOpts, source config.Source) error {
 	fmt.Fprintln(os.Stderr, "Warning: interactive OAuth login is experimental. It stores an OAuth-issued token in the cloud entry's oauth-token field.")
 	fmt.Fprintln(os.Stderr, "Some commands that talk to grafana.com do not yet work with an OAuth token. For full functionality, use --cloud-token with a Cloud Access Policy token.")
 
-	flow := auth.NewGCOMFlow(auth.GCOMOptions{
+	flow := newGCOMOAuthFlow(auth.GCOMOptions{
 		ClientID: defaultClientID,
 		GCOMURL:  opts.oauthURL,
 		Scopes:   opts.scopes,
@@ -173,16 +221,54 @@ func runOAuthLogin(ctx context.Context, configOpts *cmdconfig.Options, opts *log
 	fmt.Fprintf(os.Stderr, "Authenticated as %s (%s)\n", result.Info.Login, result.Info.Email)
 	fmt.Fprintf(os.Stderr, "Scopes: %s\n", result.Scope)
 
-	entry := &config.CloudEntry{
-		OAuthToken:          result.AccessToken,
-		OAuthTokenExpiresAt: result.ExpiresAt,
-		OAuthUrl:            opts.oauthURL,
-		APIUrl:              opts.apiURL,
-	}
-	contextName, entryName, err := config.SaveCloudConfig(ctx, configOpts.ConfigSource(), configOpts.Context, entry)
+	entry := cloudEntryFromOAuthResult(opts, result)
+	contextName, entryName, err := config.SaveCloudConfig(ctx, source, configOpts.Context, entry)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Token saved to cloud entry %q (context %q)\n", entryName, contextName)
+	return nil
+}
+
+func cloudEntryFromOAuthResult(opts *loginOpts, result *auth.GCOMResult) *config.CloudEntry {
+	oauthURL, apiURL := resolveCloudLoginEndpoints(opts.oauthURL, opts.apiURL)
+	return &config.CloudEntry{
+		OAuthToken:          result.AccessToken,
+		OAuthTokenExpiresAt: result.ExpiresAt,
+		OAuthScopes:         strings.Fields(result.Scope),
+		OAuthUrl:            oauthURL,
+		APIUrl:              apiURL,
+	}
+}
+
+func resolveCloudLoginEndpoints(oauthURL, apiURL string) (string, string) {
+	switch {
+	case oauthURL == "" && apiURL == "":
+		oauthURL, apiURL = "https://grafana.com", "https://grafana.com"
+	case oauthURL == "":
+		oauthURL = apiURL
+	case apiURL == "":
+		apiURL = oauthURL
+	}
+	return config.NormalizeCloudURL(oauthURL), config.NormalizeCloudURL(apiURL)
+}
+
+func selectCloudLoginEndpoints(opts *loginOpts, cur *config.Context, oauthSelected, apiSelected bool) error {
+	switch {
+	case oauthSelected && apiSelected:
+		// Both endpoints are deliberate. Preserve the exact normalized pair.
+	case oauthSelected && !apiSelected:
+		opts.apiURL = opts.oauthURL
+	case apiSelected && !oauthSelected:
+		opts.oauthURL = opts.apiURL
+	case !oauthSelected && !apiSelected:
+		// Endpoint URLs are sticky across re-auth. Materialize a legacy partial
+		// entry as a complete pair instead of combining it with flag defaults.
+		if cur != nil && cur.CloudEntry != nil {
+			opts.oauthURL = cur.CloudEntry.OAuthUrl
+			opts.apiURL = cur.CloudEntry.APIUrl
+		}
+	}
+	opts.oauthURL, opts.apiURL = resolveCloudLoginEndpoints(opts.oauthURL, opts.apiURL)
 	return nil
 }

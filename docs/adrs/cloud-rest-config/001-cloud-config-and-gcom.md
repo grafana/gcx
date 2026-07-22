@@ -1,9 +1,14 @@
 # ADR-001: CloudConfig in Context and GCOM Stack Discovery
 
 **Created**: 2026-03-21
-**Status**: accepted
+**Status**: accepted (config storage partially superseded by ADR-022)
 **Bead**: none
 **Supersedes**: none
+
+> **Amendment:** [ADR-022](../config-v1/001-versioned-split-config-and-secret-trust.md)
+> moves Grafana connection/provider data to named `stacks`, moves GCOM auth to
+> named `cloud` entries, and makes contexts thin bindings. The GCOM discovery
+> and shared `LoadCloudConfig` decisions below remain accepted.
 
 ## Context
 
@@ -18,27 +23,36 @@ This created three problems:
 2. **No URL discovery** — users had to look up service URLs manually per-stack.
 3. **Naming inconsistency** — `LoadRESTConfig` was the only loader, but its name implied it was for REST APIs generically, when it specifically loads Grafana instance config.
 
-## Decision
+## Decision (as amended by ADR-022)
 
-### 1. Add `CloudConfig` to `Context`
+### 1. Use named stack and Cloud entries
 
-Extend the `Context` struct with a `Cloud` field holding a Grafana Cloud access policy token, optional stack slug override, and optional GCOM API URL override:
+Contexts are thin bindings. They reference one named `StackConfig` for Grafana
+connection/provider data and one optional named `CloudEntry` for GCOM auth and
+environment endpoints:
 
 ```go
-type CloudConfig struct {
-    Token  string `env:"GRAFANA_CLOUD_TOKEN"   json:"token,omitempty"`
-    Stack  string `env:"GRAFANA_CLOUD_STACK"   json:"stack,omitempty"`
-    APIUrl string `env:"GRAFANA_CLOUD_API_URL" json:"api-url,omitempty"`
+type StackConfig struct {
+    Slug    string
+    Grafana *GrafanaConfig
+}
+
+type CloudEntry struct {
+    Token      string
+    OAuthToken string
+    OAuthUrl   string
+    APIUrl     string
 }
 
 type Context struct {
-    Grafana *GrafanaConfig `json:"grafana,omitempty"`
-    Cloud   *CloudConfig   `json:"cloud,omitempty"`  // NEW
-    // ...
+    Stack string
+    Cloud string
 }
 ```
 
-The stack slug is auto-derived from `grafana.server` when not set explicitly (e.g., `mystack` from `https://mystack.grafana.net`).
+The stack slug is stored on the stack entry and can be derived from
+`stacks.<name>.grafana.server` when absent. Cloud credentials and their OAuth/API
+environment live together in the referenced Cloud entry.
 
 ### 2. Add GCOM client in `internal/cloud/`
 
@@ -77,17 +91,22 @@ Fleet Management becomes the first provider to use `LoadCloudConfig`, removing i
 ## Consequences
 
 ### Positive
-- All cloud providers share a single auth primitive — one `cloud.token` config key, one set of env vars
+- All cloud providers share a single auth primitive — one referenced
+  `cloud.<name>` entry and one set of environment variables
 - Service URL discovery is automatic via GCOM — no manual URL lookup per stack
-- Fleet (and future providers) need zero custom config keys: just `cloud.token` + a stack slug
-- Config set UX is clean: `gcx config set contexts.mystack.cloud.token <token>`
-- Stack slug is derivable from `grafana.server` for users who already have Grafana config — no duplicate config needed
+- Fleet (and future providers) need zero custom credential keys: just a named
+  Cloud entry plus `stacks.<name>.slug`
+- Config set UX is explicit: `gcx config set cloud.grafana-com.token <token>`
+- Stack slug is derivable from `stacks.<name>.grafana.server` for users who
+  already have Grafana config — no duplicate config needed
 
 ### Negative
 - `LoadCloudConfig` makes a network call to GCOM on every invocation — adds ~100ms latency to cloud provider commands
-- Stack slug derivation only works for `*.grafana.net` and `*.grafana-dev.net` domains; self-hosted users must set `cloud.stack` explicitly
+- Stack slug derivation only works for recognized Grafana Cloud domains;
+  otherwise users set `stacks.<name>.slug` explicitly
 - Renaming `LoadRESTConfig` → `LoadGrafanaConfig` requires updating ~41 call sites
 
 ### Neutral
 - The `--config` flag and env var override patterns remain unchanged
-- GCOM API URL defaults to `https://grafana.com`; overridable per-context for dev/staging environments
+- GCOM API URL defaults to `https://grafana.com`; each named Cloud entry can
+  carry a coherent OAuth/API pair for development or operations environments

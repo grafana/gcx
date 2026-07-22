@@ -1,6 +1,10 @@
 # Logging In
 
-`gcx login` creates or re-authenticates a context — a named collection of a Grafana server URL, credentials, and related settings. It auto-detects whether the server is Grafana Cloud or on-premises and adjusts the prompt accordingly.
+`gcx login` creates or re-authenticates a context. The context binds a named
+stack entry containing the Grafana server and authentication and, optionally, a
+named Cloud entry containing Grafana Cloud platform authentication. The command
+auto-detects whether the server is Grafana Cloud or on-premises and adjusts the
+prompt accordingly.
 
 This page walks through the common login paths, the mental model behind them, and how to recover from the errors you are most likely to see. If you already know which path applies, jump to the decision tree below.
 
@@ -16,7 +20,9 @@ This page walks through the common login paths, the mental model behind them, an
 
 ### Grafana Cloud (interactive OAuth)
 
-The recommended flow for day-to-day use on a Cloud stack. Opens a browser for OAuth, then saves the access token, refresh token, and proxy endpoint to the named context and makes it current.
+The recommended flow for day-to-day use on a Cloud stack. It opens a browser
+for OAuth, saves the access token, refresh token, and proxy endpoint to the
+context's named stack entry, and makes the context current.
 
 ```bash
 gcx login my-stack --server https://my-stack.grafana.net
@@ -26,8 +32,8 @@ When you run this:
 
 1. gcx detects that `my-stack.grafana.net` is a Cloud host and presents an authentication-method prompt.
 2. OAuth is the first option. Pick it (or accept the default) and gcx opens your browser.
-3. Complete the OAuth flow in the browser; gcx receives the tokens on a local callback and writes them to the `my-stack` context.
-4. The prompt then asks whether to add a Cloud Access Policy token for Cloud product API access — see the [Grafana Cloud product APIs](#grafana-cloud-product-apis) section. Press Enter to skip.
+3. Complete the OAuth flow in the browser; gcx receives the tokens on a local callback and writes them to the stack entry bound by `my-stack`.
+4. The Cloud platform step can keep an existing CAP or unexpired Cloud OAuth credential, accept a new CAP, run the experimental direct Cloud OAuth flow, or skip Cloud functionality. See [Grafana Cloud product APIs](#grafana-cloud-product-apis).
 
 **Required role.** The OAuth consent step is gated by the `grafana-assistant-app.tokens.gcx:access` permission, granted by the **gcx User** role that the grafana-assistant-app plugin registers (available since plugin version 2.0.26). Grafana assigns the role automatically to users with the basic role Viewer or higher. The permission only allows minting gcx tokens for the requesting user; proxied requests run with the user's own identity and RBAC permissions. If the consent page shows a `Permission Required` error, see the [troubleshooting entry](#troubleshooting) below.
 
@@ -35,7 +41,9 @@ If OAuth does not suit your setup (corporate SSO restrictions, no browser availa
 
 ### Service account token
 
-Works for both Grafana Cloud and on-premises. Required for on-premises (OAuth is only available on Cloud). Also the recommended path for non-interactive use.
+Works for both Grafana Cloud and on-premises and is the recommended path for
+non-interactive use. Browser OAuth is Cloud-only; on-premises stacks can also
+use basic authentication or configured mTLS client certificates.
 
 **Non-interactive (recommended for automation):**
 
@@ -59,7 +67,13 @@ For on-premises instances, gcx defaults the organization ID to 1 if you do not s
 
 ### Grafana Cloud product APIs
 
-Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, `gcx fleet`, and other Cloud product surfaces require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) in addition to Grafana auth.
+Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, `gcx fleet`, and
+other Cloud product surfaces need a Grafana Cloud platform credential in
+addition to Grafana instance auth. A
+[Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/)
+has the widest compatibility and is recommended for automation. Direct Cloud
+OAuth is available interactively but remains experimental, and some Cloud
+product clients do not yet accept it.
 
 #### Where to create the token and which scopes to grant
 
@@ -82,7 +96,8 @@ Scope the access policy to what you manage. `stacks:read` is the required baseli
 
 The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, Fleet, IRM, SLO). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
 
-The interactive `gcx login` prompt links to this guidance when it asks for the Cloud Access Policy token.
+The interactive `gcx login` prompt links to this guidance when it offers Cloud
+authentication choices.
 
 **Provide it at login:**
 
@@ -94,13 +109,25 @@ gcx login my-stack \
   --yes
 ```
 
-**Add it later to an existing context by re-running `gcx login`:**
+**Add Cloud access later to an existing context by re-running `gcx login`:**
 
 ```bash
 gcx login --context my-stack
-# Follow the prompts; paste the Cloud Access Policy token when asked, or
-# press Enter to skip.
+# Follow the prompts to keep or replace the existing credential, run Cloud
+# OAuth, paste a Cloud Access Policy token, or skip.
 ```
+
+**Run direct Cloud OAuth:**
+
+```bash
+gcx cloud login --context my-stack
+```
+
+The OAuth result is stored separately from a CAP, together with its expiry,
+granted scopes, and exact OAuth/API endpoint pair. Keeping an existing
+credential preserves its kind and metadata. OAuth has no refresh token; after
+expiry, run Cloud login again. Use a CAP when you need full command
+compatibility.
 
 `gcx` derives the Cloud stack slug from `--server` when the hostname matches a standard `*.grafana.net` pattern. For custom domains (such as `*.cloud.example.grafana.com`), set it explicitly on the stack entry:
 
@@ -110,11 +137,20 @@ gcx config set stacks.my-stack.slug your-stack-slug
 
 (`gcx config set stacks.<name>.slug your-stack-slug` does the same on the stack entry.)
 
-You do not need to set `cloud.<entry>.api-url` for `grafana.com`; gcx defaults to `https://grafana.com`. Set it only when you need a non-default Grafana Cloud API endpoint.
+You do not need to set Cloud endpoints for `grafana.com`; gcx defaults to
+`https://grafana.com`. For a custom environment, the OAuth origin and API
+destination must remain coherent. Supplying only one endpoint to a login flow
+uses it for both operations; `gcx cloud login` accepts both `--oauth-url` and
+`--api-url` when a deployment deliberately uses a distinct pair. Editing a
+named entry's endpoint invalidates its existing credential, so authenticate
+again after the change.
 
 ### Environment variables for CI and agents
 
-For pipelines, agents, and other non-interactive environments, skip `gcx login` entirely and provide credentials via environment variables. gcx resolves them on every command invocation.
+For pipelines, agents, and other non-interactive environments, you can avoid a
+persistent login and provide credentials through environment variables. gcx
+resolves them on every command invocation and applies them only to the selected
+context's runtime view.
 
 ```bash
 export GRAFANA_SERVER="https://your-instance.grafana.net"
@@ -128,7 +164,10 @@ export GRAFANA_CLOUD_STACK="your-stack-slug"
 gcx resources get dashboards
 ```
 
-Environment variables take precedence over the config file when both are set. If you prefer, you can still run `gcx login` once to persist credentials to a named context and drop the env vars — the config-file path works for agents too.
+Environment variables take precedence over config-file values and are not
+persisted incidentally. If you invoke `gcx login`, explicit flags still win and
+the relevant environment inputs are used for the selected login target. You
+can instead run login once to persist credentials and then remove the env vars.
 
 ### Re-authenticating and switching contexts
 
@@ -168,11 +207,27 @@ A short vocabulary so the troubleshooting entries below make sense. For the inte
 
 **Cloud vs on-premises.** gcx detects whether `--server` points at Grafana Cloud or an on-premises instance. The hostname is matched against known Cloud suffixes first (no network call); loopback and RFC1918 addresses are classified as on-premises; anything else is probed with a short HTTP request. The classification drives which auth methods appear in the prompt.
 
-**Three auth methods, three API surfaces.** OAuth (browser-based, Cloud only) and service account tokens both authenticate to the Grafana API — dashboards, folders, datasources, alerts, and the K8s-compatible `/apis` endpoints. Cloud Access Policy tokens are a separate credential used for GCOM (stack management) and Cloud product APIs (Synthetic Monitoring, k6, IRM, SLO, Fleet, etc.). A Cloud context typically holds two tokens: one for Grafana, one for Cloud. An on-premises context holds only a service account token.
+**Two authentication tiers.** Grafana OAuth, service account tokens, basic auth,
+and mTLS authenticate to an individual Grafana instance — dashboards, folders,
+datasources, alerts, and the K8s-compatible `/apis` endpoints. A CAP or direct
+Cloud OAuth credential authenticates separately to GCOM and supported Cloud
+product APIs. A Cloud context therefore commonly binds one Grafana credential
+and one Cloud-platform credential; an on-premises context needs only Grafana
+authentication.
 
-**Interactive, `--yes`, and env-var modes.** Interactive mode opens prompts for anything you did not pass as a flag. `--yes` disables optional prompts and makes `gcx login` fail loudly if a required field is missing — the mode to use in CI. Environment variables (`GRAFANA_SERVER`, `GRAFANA_TOKEN`, `GRAFANA_CLOUD_TOKEN`, `GRAFANA_CLOUD_STACK`) skip `gcx login` entirely and resolve on each command invocation.
+**Interactive, `--yes`, and env-var modes.** Interactive mode opens prompts for
+anything you did not pass as a flag. `--yes` disables optional prompts and makes
+`gcx login` fail loudly if a required field is missing — the mode to use in CI.
+Environment variables can avoid persistent login and resolve on each command
+invocation; when login is invoked, its explicit flags take precedence over
+those inputs.
 
-**Credential storage.** Grafana tokens persist under the context's stack entry; Cloud Access Policy tokens under the referenced cloud entry. `gcx config view` redacts secret fields when it prints. Do not commit the config file to version control.
+**Credential storage.** Grafana credentials persist under the context's named
+stack entry; CAP and Cloud OAuth credentials occupy distinct fields on the
+referenced Cloud entry. When the OS keychain is available, token-shaped secrets
+move there and YAML contains a source-, owner-, field-, and destination-bound
+sentinel instead. `gcx config view` redacts secret fields. Do not commit a
+credential-bearing config file to version control.
 
 ## Troubleshooting
 
@@ -213,6 +268,10 @@ Each entry pairs the error you see with what it means and how to fix it.
 9. **Flag vs env-var precedence confusion**
     - *Means:* both a CLI flag and an environment variable are set for the same field, and gcx behaves unexpectedly.
     - *Fix:* Flags take precedence over env vars, which take precedence over config-file values. Run `gcx config view` to inspect the resolved config and spot the conflict.
+
+10. **Login refuses to replace an existing context's server**
+    - *Means:* the selected context points at a different Grafana server. `--yes` does not authorize changing a credential destination, and gcx will not present the stored credential to the new server.
+    - *Fix:* Verify the new URL, then pass `--allow-server-override` together with a fresh `--token`, a fresh `GRAFANA_TOKEN`, or a new OAuth flow. An interactive login can ask for the same explicit confirmation.
 
 ## See also
 

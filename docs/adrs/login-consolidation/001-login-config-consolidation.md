@@ -2,8 +2,13 @@
 
 **Created**: 2026-04-16
 **Accepted**: 2026-04-17
-**Status**: accepted
+**Status**: accepted (config schema partially superseded by ADR-022)
 **Supersedes**: none
+
+> **Amendment:** [ADR-022](../config-v1/001-versioned-split-config-and-secret-trust.md)
+> supersedes the config-storage details in this ADR. Login orchestration remains
+> accepted; it now writes named stack/Cloud entries and preserves the distinction
+> and metadata between CAP and OAuth Cloud credentials.
 
 <!-- Status lifecycle: proposed -> accepted -> deprecated | superseded -->
 
@@ -300,6 +305,10 @@ current release cadence). After that, `gcx auth` is removed and replaced with a 
 error: `"gcx auth" has been removed. Use "gcx login" instead.`
 
 ### 7. Config Schema Changes
+
+> This section records the original decision and is superseded by ADR-022. In
+> version 1, `GrafanaConfig` lives under a named stack, Cloud credentials live in
+> named `cloud` entries, and contexts contain references to those entries.
 
 One new field added to `GrafanaConfig`:
 

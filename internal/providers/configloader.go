@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"strings"
@@ -19,6 +20,70 @@ import (
 
 // errNoConfigSource indicates no config file exists to write to.
 var errNoConfigSource = errors.New("no config source available")
+
+// ErrAutoLocalProviderWriteback identifies an attempted implicit provider
+// cache write to an auto-discovered repository config. Callers that treat
+// cache persistence as best-effort may match this error and continue; explicit
+// --config/GCX_CONFIG selection of the same path remains writable.
+var ErrAutoLocalProviderWriteback = errors.New("provider cache write to auto-discovered local config is not allowed")
+
+// AutoLocalProviderWritebackError carries the exact file that was protected
+// from an implicit cache or credential write.
+type AutoLocalProviderWritebackError struct {
+	Path string
+}
+
+func (e AutoLocalProviderWritebackError) Error() string {
+	return fmt.Sprintf("%s: %s; re-run with --config %q to authorize this file explicitly", ErrAutoLocalProviderWriteback, e.Path, e.Path)
+}
+
+func (e AutoLocalProviderWritebackError) Unwrap() error {
+	return ErrAutoLocalProviderWriteback
+}
+
+// DirectProviderPolicy declares which provider values become outbound
+// credential destinations. Loading through this policy keeps the destination,
+// Grafana credential, and Cloud credential in one resolved config snapshot.
+type DirectProviderPolicy struct {
+	ProviderName string
+	EndpointKeys []string
+
+	// CredentialEnv is the environment variable that must accompany a
+	// GRAFANA_PROVIDER_* endpoint override. Supplying a destination alone never
+	// authorizes reusing a credential loaded from disk or the keychain.
+	CredentialEnv string
+
+	// RejectAutoLocal rejects the direct-auth path whenever its stack came from
+	// an auto-discovered repository config, including endpoints discovered via
+	// that stack's Grafana server. This is used by providers whose fallback
+	// discovery result will receive a separate Cloud credential.
+	RejectAutoLocal bool
+
+	// RequireGrafana validates and materializes Grafana auth before returning.
+	RequireGrafana bool
+}
+
+// DirectProviderSnapshot is a coherent, trust-checked view used by providers
+// that send bearer credentials to non-Grafana endpoints.
+type DirectProviderSnapshot struct {
+	ProviderConfig map[string]string
+	Namespace      string
+	GrafanaConfig  *config.NamespacedRESTConfig
+
+	// RuntimeEndpointOverrides records endpoint keys supplied through
+	// GRAFANA_PROVIDER_* for provider-specific cache invalidation (notably k6).
+	RuntimeEndpointOverrides map[string]bool
+
+	// ResolveCloudConfig derives GCOM stack metadata and Cloud auth from the
+	// exact same config snapshot. It performs no second config load.
+	ResolveCloudConfig func(context.Context) (CloudRESTConfig, error)
+}
+
+// EndpointOverriddenByEnvironment reports whether the endpoint key was
+// present in the process environment for this snapshot.
+func (s DirectProviderSnapshot) EndpointOverriddenByEnvironment(key string) bool {
+	return s.RuntimeEndpointOverrides[key]
+}
 
 // CloudRESTConfig holds the resolved Grafana Cloud configuration needed to
 // authenticate against cloud platform APIs.
@@ -375,6 +440,155 @@ func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName stri
 	return providerCfg, namespace, nil
 }
 
+// LoadDirectProviderSnapshot loads one provider's direct-API destination and
+// every credential it may use from one immutable layered-config snapshot. The
+// trust checks run before the snapshot (and therefore any credential) is
+// returned to provider code.
+func (l *ConfigLoader) LoadDirectProviderSnapshot(ctx context.Context, policy DirectProviderPolicy) (DirectProviderSnapshot, error) {
+	if policy.ProviderName == "" {
+		return DirectProviderSnapshot{}, errors.New("direct provider policy requires a provider name")
+	}
+	if len(policy.EndpointKeys) > 0 && strings.TrimSpace(policy.CredentialEnv) == "" {
+		return DirectProviderSnapshot{}, fmt.Errorf("direct provider policy for %s requires a runtime credential environment variable", policy.ProviderName)
+	}
+
+	ctxName := l.resolvedContextName(ctx)
+	overrides := []config.Override{
+		contextSelectionOverride(ctxName),
+		envOverride,
+		contextMustExist,
+	}
+	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
+	if err != nil {
+		return DirectProviderSnapshot{}, err
+	}
+	curCtx := loaded.GetCurrentContext()
+	if curCtx == nil {
+		return DirectProviderSnapshot{}, config.ContextNotFound(loaded.CurrentContext)
+	}
+
+	providerCfg := cloneProviderValues(curCtx.Providers[policy.ProviderName])
+	envEndpoints := make(map[string]bool, len(policy.EndpointKeys))
+	localPath := autoLocalSourcePath(loaded.Sources)
+	if policy.RejectAutoLocal && curCtx.StackFromAutoLocal() {
+		return DirectProviderSnapshot{}, untrustedAutoLocalProviderError(policy.ProviderName, localPath)
+	}
+	for _, key := range policy.EndpointKeys {
+		envKey := providerEnvironmentKey(policy.ProviderName, key)
+		_, fromEnv := os.LookupEnv(envKey)
+		envEndpoints[key] = fromEnv
+		if providerCfg[key] == "" {
+			continue
+		}
+		if curCtx.StackFromAutoLocal() {
+			return DirectProviderSnapshot{}, untrustedAutoLocalProviderError(policy.ProviderName, localPath)
+		}
+		if fromEnv && strings.TrimSpace(os.Getenv(policy.CredentialEnv)) == "" {
+			return DirectProviderSnapshot{}, fmt.Errorf(
+				"refusing provider endpoint %s from %s without a matching runtime credential: set %s too, or put the endpoint in an explicitly selected --config file",
+				key, envKey, policy.CredentialEnv,
+			)
+		}
+	}
+
+	if policy.RequireGrafana {
+		if err := curCtx.Validate(ctx); err != nil {
+			return DirectProviderSnapshot{}, err
+		}
+	}
+
+	namespace := "default"
+	var grafanaCfg *config.NamespacedRESTConfig
+	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
+		nrc, err := curCtx.ToRESTConfig(ctx)
+		if err != nil {
+			return DirectProviderSnapshot{}, err
+		}
+		nrc.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, curCtx.Stack, loaded.Sources)
+		namespace = nrc.Namespace
+		grafanaCfg = &nrc
+	}
+
+	return DirectProviderSnapshot{
+		ProviderConfig:           providerCfg,
+		Namespace:                namespace,
+		GrafanaConfig:            grafanaCfg,
+		RuntimeEndpointOverrides: envEndpoints,
+		ResolveCloudConfig: func(resolveCtx context.Context) (CloudRESTConfig, error) {
+			return l.resolveSnapshotCloudConfig(resolveCtx, loaded, curCtx, grafanaCfg)
+		},
+	}, nil
+}
+
+func cloneProviderValues(values map[string]string) map[string]string {
+	return maps.Clone(values)
+}
+
+func providerEnvironmentKey(providerName, key string) string {
+	provider := strings.ToUpper(strings.ReplaceAll(providerName, "-", "_"))
+	field := strings.ToUpper(strings.ReplaceAll(key, "-", "_"))
+	return "GRAFANA_PROVIDER_" + provider + "_" + field
+}
+
+func autoLocalSourcePath(sources []config.ConfigSource) string {
+	for _, source := range sources {
+		if source.Type == "local" {
+			return source.Path
+		}
+	}
+	return config.LocalConfigFileName
+}
+
+func untrustedAutoLocalProviderError(providerName, path string) error {
+	return fmt.Errorf(
+		"refusing direct %s authentication from auto-discovered repository config %s; re-run with --config %q to authorize that file explicitly",
+		providerName, path, path,
+	)
+}
+
+func (l *ConfigLoader) resolveSnapshotCloudConfig(
+	ctx context.Context,
+	loaded config.Config,
+	curCtx *config.Context,
+	grafanaCfg *config.NamespacedRESTConfig,
+) (CloudRESTConfig, error) {
+	if curCtx.CloudEntry == nil {
+		return CloudRESTConfig{}, missingCloudAuthError(&loaded, curCtx)
+	}
+	token, err := curCtx.CloudEntry.ResolveToken()
+	if err != nil {
+		return CloudRESTConfig{}, err
+	}
+	if token == "" {
+		return CloudRESTConfig{}, missingCloudAuthError(&loaded, curCtx)
+	}
+	client, err := cloud.NewGCOMClient(curCtx.ResolveCloudAPIURL(), token)
+	if err != nil {
+		return CloudRESTConfig{}, fmt.Errorf("failed to create GCOM client: %w", err)
+	}
+
+	slug := curCtx.ResolveStackSlug()
+	if slug == "" {
+		return CloudRESTConfig{}, errors.New("cloud stack is not configured: set the stack's slug (gcx config set stacks.<name>.slug <slug>) or GRAFANA_CLOUD_STACK env var")
+	}
+	stack, err := client.GetStack(ctx, slug)
+	if err != nil {
+		return CloudRESTConfig{}, fmt.Errorf("failed to get stack info for %q: %w", slug, err)
+	}
+
+	result := CloudRESTConfig{
+		Token:           token,
+		Stack:           stack,
+		Namespace:       "default",
+		ProviderConfigs: curCtx.Providers,
+	}
+	if grafanaCfg != nil {
+		result.Namespace = grafanaCfg.Namespace
+		result.RESTConfig = &grafanaCfg.Config
+	}
+	return result, nil
+}
+
 // SaveDatasourceUID persists a single datasource UID to
 // contexts.[context].datasources.[kind] in the underlying config file.
 //
@@ -382,7 +596,7 @@ func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName stri
 // overrides or changing current-context, so auto-discovery does not flatten a
 // layered config or persist env-derived values.
 func (l *ConfigLoader) SaveDatasourceUID(ctx context.Context, kind, uid string) error {
-	source, err := l.datasourceWriteSource()
+	source, sourceInfo, err := l.writeBackSource("discovered datasource UID")
 	if errors.Is(err, errNoConfigSource) {
 		logging.FromContext(ctx).Debug("no config file found; skipping datasource UID save",
 			slog.String("datasource_kind", kind),
@@ -394,7 +608,8 @@ func (l *ConfigLoader) SaveDatasourceUID(ctx context.Context, kind, uid string) 
 		return err
 	}
 
-	loaded, err := config.Load(ctx, source)
+	writeCtx := config.ContextWithConfigSource(ctx, sourceInfo)
+	loaded, err := config.Load(writeCtx, source)
 	if err != nil {
 		return err
 	}
@@ -423,50 +638,83 @@ func (l *ConfigLoader) SaveDatasourceUID(ctx context.Context, kind, uid string) 
 	curCtx.Datasources[kind] = uid
 	loaded.SetContext(ctxName, false, *curCtx)
 
-	return config.Write(ctx, source, loaded)
+	return config.Write(writeCtx, source, loaded)
 }
 
-func (l *ConfigLoader) datasourceWriteSource() (config.Source, error) {
+func (l *ConfigLoader) writeBackSource(description string) (config.Source, config.ConfigSource, error) {
+	return l.writeBackSourceWithPolicy(description, false)
+}
+
+func (l *ConfigLoader) writeBackSourceWithPolicy(description string, rejectAutoLocal bool) (config.Source, config.ConfigSource, error) {
 	if l.configFile != "" {
-		return config.ExplicitConfigFile(l.configFile), nil
+		return config.ExplicitConfigFile(l.configFile), config.ConfigSource{Path: l.configFile, Type: "explicit"}, nil
 	}
 	if envPath := os.Getenv(config.ConfigFileEnvVar); envPath != "" {
-		return config.ExplicitConfigFile(envPath), nil
+		return config.ExplicitConfigFile(envPath), config.ConfigSource{Path: envPath, Type: "explicit"}, nil
 	}
 
 	sources, err := config.DiscoverSources()
 	if err != nil {
-		return nil, err
+		return nil, config.ConfigSource{}, err
+	}
+	if rejectAutoLocal {
+		for _, sourceInfo := range sources {
+			if sourceInfo.Type == "local" {
+				return nil, config.ConfigSource{}, AutoLocalProviderWritebackError{Path: sourceInfo.Path}
+			}
+		}
 	}
 	if len(sources) > 1 {
-		return nil, errors.New("multiple config files loaded; refusing to auto-save discovered datasource UID without --config")
+		return nil, config.ConfigSource{}, fmt.Errorf("multiple config files loaded; refusing to auto-save %s without --config", description)
 	}
 	if len(sources) == 1 {
-		return config.ExplicitConfigFile(sources[0].Path), nil
+		return config.ExplicitConfigFile(sources[0].Path), sources[0], nil
 	}
 
-	return nil, errNoConfigSource
+	return nil, config.ConfigSource{}, errNoConfigSource
 }
 
-// SaveProviderConfig persists a single key-value pair to the current
-// context's stack entry (stacks.[name].providers.[providerName].[key]) in the
-// config file, creating a stack named after the context when it has none.
+// SaveProviderConfig persists a single key-value pair to the selected
+// context's stack entry (stacks.[name].providers.[providerName].[key]) in one
+// raw config file, creating a stack named after the context when it has none.
+// It deliberately does not load the layered/env-overridden read view: writing
+// that view would flatten layers and persist process-local environment values.
 func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key, value string) error {
-	ctxName := l.resolvedContextName(ctx)
-	overrides := []config.Override{
-		contextSelectionOverride(ctxName),
-		envOverride,
-		contextMustExist,
+	source, sourceInfo, err := l.writeBackSourceWithPolicy("provider config", true)
+	if errors.Is(err, errNoConfigSource) {
+		logging.FromContext(ctx).Debug("no config file found; skipping provider config save",
+			slog.String("provider", providerName),
+			slog.String("key", key),
+		)
+		return nil
 	}
-
-	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
+	if err != nil {
+		return err
+	}
+	writeCtx := config.ContextWithConfigSource(ctx, sourceInfo)
+	loaded, err := config.Load(writeCtx, source)
 	if err != nil {
 		return err
 	}
 
-	curCtx := loaded.GetCurrentContext()
+	ctxName := l.resolvedContextName(ctx)
+	if ctxName == "" {
+		ctxName = loaded.CurrentContext
+	}
+	if ctxName == "" && loaded.HasContext(config.DefaultContextName) {
+		ctxName = config.DefaultContextName
+	}
+	if !loaded.HasContext(ctxName) {
+		return config.ContextNotFound(ctxName)
+	}
+
+	// Load resolves keychain values eagerly only for current-context. Resolve an
+	// explicitly selected non-current context before mutating its stack so Write
+	// can round-trip any sentinels safely.
+	loaded.ResolveContext(ctxName)
+	curCtx := loaded.Contexts[ctxName]
 	if curCtx == nil {
-		return fmt.Errorf("context %q not found", loaded.CurrentContext)
+		return fmt.Errorf("context %q not found", ctxName)
 	}
 
 	stack := curCtx.StackEntry
@@ -477,6 +725,7 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 		stack = curCtx.StackEntry
 	}
 
+	finishMutation := loaded.PrepareSecretPathMutation("stacks." + curCtx.Stack + ".providers." + providerName + "." + key)
 	if stack.Providers == nil {
 		stack.Providers = make(map[string]map[string]string)
 	}
@@ -484,20 +733,27 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 		stack.Providers[providerName] = make(map[string]string)
 	}
 	stack.Providers[providerName][key] = value
+	if err := finishMutation(); err != nil {
+		return err
+	}
 
-	return config.Write(ctx, l.configSource(), loaded)
+	return config.Write(writeCtx, source, loaded)
 }
 
 // LoadConfigTolerant loads the raw config, applying env var overrides and the
 // resolved --context/--config flags, without validating the resulting context.
-// It mirrors cmd/gcx/config.Options.LoadConfigTolerant exactly (env override
-// first, then extra overrides, then context selection) so callers migrated off
-// cmdconfig.Options keep identical behavior. Used by the assistant A2A command
-// tree, which loads the raw context to read grafana.ProxyEndpoint/OAuthToken
-// directly for its OAuth-PKCE streaming transport.
+// It mirrors cmd/gcx/config.Options.LoadConfigTolerant exactly: context
+// selection first, then context-scoped env overrides, then any caller-supplied
+// overrides. Used by the assistant A2A command tree, which loads the raw
+// context to read grafana.ProxyEndpoint/OAuthToken directly for its OAuth-PKCE
+// streaming transport.
 func (l *ConfigLoader) LoadConfigTolerant(ctx context.Context, extraOverrides ...config.Override) (config.Config, error) {
-	overrides := append([]config.Override{envOverride}, extraOverrides...)
-	overrides = append(overrides, contextSelectionOverride(l.resolvedContextName(ctx)))
+	overrides := make([]config.Override, 0, 2+len(extraOverrides))
+	overrides = append(overrides,
+		contextSelectionOverride(l.resolvedContextName(ctx)),
+		envOverride,
+	)
+	overrides = append(overrides, extraOverrides...)
 	return config.LoadLayered(ctx, l.configFile, overrides...)
 }
 

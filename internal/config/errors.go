@@ -31,6 +31,19 @@ func (e UnmarshalError) Error() string {
 	return e.Err.Error()
 }
 
+// UnsupportedVersionError reports a config format version this build cannot
+// safely interpret. Version checks run before secret resolution, migration, or
+// any other write-side effect.
+type UnsupportedVersionError struct {
+	File    string
+	Version int64
+}
+
+func (e UnsupportedVersionError) Error() string {
+	return fmt.Sprintf("unsupported config version %d in %s; this gcx build supports version %d",
+		e.Version, e.File, ConfigVersion)
+}
+
 func ContextNotFound(name string) error {
 	return fmt.Errorf("invalid context \"%s\": %w", name, ErrContextNotFound)
 }

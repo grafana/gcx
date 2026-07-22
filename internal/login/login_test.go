@@ -9,7 +9,9 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/auth"
@@ -116,12 +118,15 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			opts: func(dir string) login.Options {
 				return login.Options{
 					Inputs: login.Inputs{
-						Server:              "https://ops.grafana-ops.net",
-						ContextName:         "ops-stack",
-						Target:              login.TargetCloud,
-						UseOAuth:            true,
-						CloudToken:          "gcom-oauth-token",
-						CloudTokenFromOAuth: true,
+						Server:                   "https://ops.grafana-ops.net",
+						ContextName:              "ops-stack",
+						Target:                   login.TargetCloud,
+						UseOAuth:                 true,
+						CloudToken:               "gcom-oauth-token",
+						CloudCredentialKind:      login.CloudCredentialOAuth,
+						CloudTokenTrusted:        true,
+						CloudOAuthTokenExpiresAt: "2030-01-01T00:00:00Z",
+						CloudOAuthScopes:         []string{"stacks:read", "fleet-management:read"},
 					},
 					Hooks: login.Hooks{
 						ConfigSource: configSource(dir),
@@ -140,6 +145,8 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				require.NotNil(t, ctx.CloudEntry)
 				assert.Equal(t, "gcom-oauth-token", ctx.CloudEntry.OAuthToken, "OAuth-issued tokens land in oauth-token, not token")
 				assert.Empty(t, ctx.CloudEntry.Token)
+				assert.Equal(t, "2030-01-01T00:00:00Z", ctx.CloudEntry.OAuthTokenExpiresAt)
+				assert.ElementsMatch(t, []string{"stacks:read", "fleet-management:read"}, ctx.CloudEntry.OAuthScopes)
 				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.OAuthUrl, "OAuth token must record its GCOM origin")
 				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.APIUrl, "APIUrl defaults to the same GCOM root")
 			},
@@ -610,6 +617,136 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 	}
 }
 
+func TestResolveCloudEndpoints(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		inputs    login.Inputs
+		wantOAuth string
+		wantAPI   string
+	}{
+		{
+			name:      "prod derived",
+			inputs:    login.Inputs{Server: "https://stack.grafana.net"},
+			wantOAuth: "https://grafana.com",
+			wantAPI:   "https://grafana.com",
+		},
+		{
+			name:      "dev derived",
+			inputs:    login.Inputs{Server: "https://stack.grafana-dev.net"},
+			wantOAuth: "https://grafana-dev.com",
+			wantAPI:   "https://grafana-dev.com",
+		},
+		{
+			name:      "ops derived",
+			inputs:    login.Inputs{Server: "https://stack.grafana-ops.net"},
+			wantOAuth: "https://grafana-ops.com",
+			wantAPI:   "https://grafana-ops.com",
+		},
+		{
+			name:      "API intent also selects OAuth origin",
+			inputs:    login.Inputs{Server: "https://custom.example", CloudAPIURL: "grafana-dev.com"},
+			wantOAuth: "https://grafana-dev.com",
+			wantAPI:   "https://grafana-dev.com",
+		},
+		{
+			name: "explicit distinct sticky endpoints remain distinct",
+			inputs: login.Inputs{
+				Server:        "https://custom.example",
+				CloudOAuthURL: "https://grafana-ops.com",
+				CloudAPIURL:   "https://grafana-dev.com",
+			},
+			wantOAuth: "https://grafana-ops.com",
+			wantAPI:   "https://grafana-dev.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			oauthURL, apiURL := login.ResolveCloudEndpoints(login.Options{Inputs: tt.inputs})
+			assert.Equal(t, tt.wantOAuth, oauthURL)
+			assert.Equal(t, tt.wantAPI, apiURL)
+		})
+	}
+}
+
+func TestTrustedCAPIsPersistedAsCAP(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	source := configSource(dir)
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:              "https://mystack.grafana-ops.net",
+			ContextName:         "mystack",
+			Target:              login.TargetCloud,
+			UseOAuth:            true,
+			CloudToken:          "kept-cap",
+			CloudCredentialKind: login.CloudCredentialCAP,
+			CloudTokenTrusted:   true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: source,
+			NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+				return &stubAuthFlow{result: &auth.Result{
+					Token:            "grafana-oauth-token",
+					RefreshToken:     "grafana-refresh-token",
+					ExpiresAt:        "2030-01-01T00:00:00Z",
+					RefreshExpiresAt: "2030-06-01T00:00:00Z",
+					InstanceEndpoint: "https://mystack.grafana-ops.net",
+				}}
+			},
+			ValidateFn: noopValidate,
+		},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+
+	cfg, err := config.Load(context.Background(), source)
+	require.NoError(t, err)
+	entry := cfg.Contexts["mystack"].CloudEntry
+	require.NotNil(t, entry)
+	assert.Equal(t, "kept-cap", entry.Token)
+	assert.Empty(t, entry.OAuthToken, "validation trust must not change the credential storage kind")
+	assert.Equal(t, "https://grafana-ops.com", entry.OAuthUrl,
+		"CAP credentials must persist their resolved Cloud origin")
+	assert.Equal(t, "https://grafana-ops.com", entry.APIUrl,
+		"CAP credentials must persist their resolved API destination")
+}
+
+func TestRuntimeTLSOverrideIsNotPersisted(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	source := configSource(dir)
+	_, err := login.Run(context.Background(), &login.Options{
+		Inputs: login.Inputs{
+			Server:            "https://grafana.example.invalid",
+			ContextName:       "default",
+			Target:            login.TargetOnPrem,
+			GrafanaToken:      "fresh-token",
+			TLS:               &config.TLS{Insecure: true},
+			PreserveStoredTLS: true,
+			StoredTLS:         &config.TLS{ServerName: "stored.example.invalid"},
+		},
+		Hooks: login.Hooks{
+			ConfigSource: source,
+			ValidateFn:   noopValidate,
+		},
+	})
+	require.NoError(t, err)
+
+	cfg, err := config.Load(context.Background(), source)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Contexts["default"].Grafana.TLS)
+	assert.Equal(t, "stored.example.invalid", cfg.Contexts["default"].Grafana.TLS.ServerName)
+	assert.False(t, cfg.Contexts["default"].Grafana.TLS.Insecure,
+		"runtime-only TLS overrides must not be flattened into config")
+}
+
 // TestRunAgentModeMissingServer verifies that even in agent mode, Run returns
 // ErrNeedInput when the server field is empty (AC-008: server is always required).
 func TestRunAgentModeMissingServer(t *testing.T) {
@@ -726,6 +863,76 @@ func TestRun_OAuthRunsOnceAcrossRetries(t *testing.T) {
 	if calls != 1 {
 		t.Errorf("AuthFlow.Run called %d times, expected exactly 1", calls)
 	}
+}
+
+func TestRun_PersistsOAuthRotationPerformedDuringValidation(t *testing.T) {
+	dir := t.TempDir()
+	var refreshCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/cli/v1/auth/refresh":
+			refreshCalls.Add(1)
+			var body struct {
+				RefreshToken string `json:"refresh_token"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode refresh request: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			assert.Equal(t, "gar_initial", body.RefreshToken)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_rotated",
+					"expires_at":         "2099-01-01T00:00:00Z",
+					"refresh_token":      "gar_rotated",
+					"refresh_expires_at": "2099-02-01T00:00:00Z",
+				},
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:      server.URL,
+			ContextName: "short-oauth",
+			UseOAuth:    true,
+			Target:      login.TargetOnPrem,
+			Yes:         true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+				return &stubAuthFlow{result: &auth.Result{
+					Token:            "gat_initial",
+					RefreshToken:     "gar_initial",
+					APIEndpoint:      server.URL,
+					ExpiresAt:        time.Now().Add(time.Minute).UTC().Format(time.RFC3339),
+					RefreshExpiresAt: "2099-01-01T00:00:00Z",
+				}}
+			},
+			ValidateFn: func(ctx context.Context, _ login.Options, restCfg config.NamespacedRESTConfig) (string, error) {
+				token, err := restCfg.FreshOAuthToken(ctx)
+				assert.Equal(t, "gat_rotated", token)
+				return "12.0.0", err
+			},
+		},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), refreshCalls.Load())
+
+	loaded, err := config.Load(context.Background(), configSource(dir))
+	require.NoError(t, err)
+	grafana := loaded.Contexts["short-oauth"].Grafana
+	require.Equal(t, "gat_rotated", grafana.OAuthToken)
+	require.Equal(t, "gar_rotated", grafana.OAuthRefreshToken)
+	require.Equal(t, "2099-01-01T00:00:00Z", grafana.OAuthTokenExpiresAt)
+	require.Equal(t, "2099-02-01T00:00:00Z", grafana.OAuthRefreshExpiresAt)
 }
 
 func TestPersist_ServerMismatch_EmitsClarification(t *testing.T) {

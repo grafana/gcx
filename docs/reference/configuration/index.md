@@ -2,20 +2,22 @@
 
 ```yaml
 # Config holds the information needed to connect to remote Grafana instances.
-# Version is the config format version. Absent on legacy configs, which the
-# loader migrates to the current format automatically.
+# Version is the config format version. Version 1 is the only declared
+# version accepted by this release; unsupported versions are rejected before
+# migration or credential access. The field is absent on legacy configs,
+# which the loader migrates to the current format after a safety preflight.
 version: int
 # Stacks is a map of Grafana stack configurations (connection, providers,
 # per-stack resource settings), indexed by name. Contexts reference stacks
 # by name via Context.Stack.
-stacks: 
+stacks:
   ${string}:
     # StackConfig holds the connection and provider configuration for a single
     # Grafana stack. Contexts reference stacks by name via Context.Stack.
     # Slug is the Grafana Cloud stack slug (e.g. "mystack").
     # Optional: if not set, the slug may be derived from Grafana.Server.
     slug: string
-    grafana: 
+    grafana:
       # Server is the address of the Grafana server (https://hostname:port/path).
       # Required.
       server: string
@@ -55,7 +57,7 @@ stacks:
       # See OrgID for on-prem Grafana instances.
       stack-id: int
       # TLS contains TLS-related configuration settings.
-      tls: 
+      tls:
         # TLS contains settings to enable transport layer security.
         # InsecureSkipTLSVerify disables the validation of the server's SSL certificate.
         # Enabling this will make your HTTPS connections insecure.
@@ -75,54 +77,55 @@ stacks:
         # CertData holds PEM-encoded bytes (typically read from a client certificate file).
         # Note: this value is base64-encoded in the config file and will be
         # automatically decoded.
-        cert-data: 
+        cert-data:
           - int
           - ...
-          
+
         # KeyData holds PEM-encoded bytes (typically read from a client certificate key file).
         # Note: this value is base64-encoded in the config file and will be
         # automatically decoded.
-        key-data: 
+        key-data:
           - int
           - ...
-          
+
         # CAData holds PEM-encoded bytes (typically read from a root certificates bundle).
         # Note: this value is base64-encoded in the config file and will be
         # automatically decoded.
-        ca-data: 
+        ca-data:
           - int
           - ...
-          
+
         # NextProtos is a list of supported application level protocols, in order of preference.
         # Used to populate tls.Config.NextProtos.
         # To indicate to the server http/1.1 is preferred over http/2, set to ["http/1.1", "h2"] (though the server is free to ignore that preference).
         # To use only http/1.1, set to ["http/1.1"].
-        next-protos: 
+        next-protos:
           - string
           - ...
-          
+
+
     # Providers holds per-provider configuration, indexed by provider name.
     # Each provider has a map of string key-value pairs.
     # Secret fields are selectively redacted by providers.RedactSecrets using
     # each provider's ConfigKey metadata.
-    providers: 
+    providers:
       ${string}:
         ${string}:
           string
     # Resources holds per-stack settings for the `gcx resources` commands,
     # merged (union) with the global Config.Resources.
-    resources: 
+    resources:
       # ResourcesConfig holds settings for the `gcx resources` commands.
       # AssumeServerDryRun lists resources ("<resource>.<group>", e.g.
       # "alertrules.rules.alerting.grafana.app") the user asserts honor server-side dry-run on
       # this stack, added to the built-in allowlist so --dry-run sends them to the server.
-      assume-server-dry-run: 
+      assume-server-dry-run:
         - string
         - ...
-        
+
 # Cloud is a map of named Grafana Cloud (GCOM) auth entries. Contexts
 # reference entries by name via Context.Cloud.
-cloud: 
+cloud:
   ${string}:
     # CloudEntry holds Grafana Cloud (GCOM) platform credentials and environment
     # configuration. Entries are named and referenced by contexts via
@@ -136,27 +139,38 @@ cloud:
     oauth-token: string
     # OAuthTokenExpiresAt is the OAuthToken expiration time in RFC3339 format.
     oauth-token-expires-at: string
+    # OAuthScopes is the scope set granted by the OAuth token endpoint. It may
+    # differ from the requested set and is retained so re-auth/keep operations do
+    # not discard capability metadata.
+    oauth-scopes:
+      - string
+      - ...
+
     # OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
-    # login`. It is used only during login. Optional: defaults to
-    # "https://grafana.com".
+    # login`. It is used only during login. Credential-bearing entries are
+    # materialized as a coherent OAuth/API pair: one explicit endpoint fills its
+    # missing peer; with neither set, gcx derives one unique referenced-stack
+    # Cloud environment or falls back to "https://grafana.com". Incompatible
+    # referenced environments are rejected and require separate entries.
     oauth-url: string
     # APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls
-    # (stacks, regions, access policies, etc.). Every client talking to GCOM
-    # uses it. Optional: defaults to "https://grafana.com".
+    # (stacks, regions, access policies, etc.). Every client talking to GCOM uses
+    # it. It is materialized together with OAuthUrl so authentication and later
+    # API calls stay in the same Cloud environment.
     api-url: string
 # Resources holds global settings for the `gcx resources` commands,
 # applying to all stacks. Merged (union) with each stack's Resources.
-resources: 
+resources:
   # ResourcesConfig holds settings for the `gcx resources` commands.
   # AssumeServerDryRun lists resources ("<resource>.<group>", e.g.
   # "alertrules.rules.alerting.grafana.app") the user asserts honor server-side dry-run on
   # this stack, added to the built-in allowlist so --dry-run sends them to the server.
-  assume-server-dry-run: 
+  assume-server-dry-run:
     - string
     - ...
-    
+
 # Contexts is a map of context configurations, indexed by name.
-contexts: 
+contexts:
   ${string}:
     # Context binds a stack and (optionally) a cloud auth entry together with
     # per-context defaults such as datasource UIDs.
@@ -168,23 +182,14 @@ contexts:
     cloud: string
     # Datasources holds per-kind default datasource UIDs, indexed by
     # datasource kind (e.g. "prometheus", "loki").
-    datasources: 
+    datasources:
       ${string}:
         string
-    # assumeServerDryRun is the resolved union of the global and per-stack
-    # assume-server-dry-run lists. Populated by Config.Resolve.
-    assumeServerDryRun: 
-      - string
-      - ...
-      
-    # envStackSlug is a process-environment override for the stack slug
-    # (GRAFANA_CLOUD_STACK), applied by ParseEnvIntoContext. It wins over the
-    # stack entry's Slug without mutating the shared stack config.
-    envStackSlug: string
+
 # CurrentContext is the name of the context currently in use.
 current-context: string
 # Diagnostics holds optional local diagnostic settings. All features are off by default.
-diagnostics: 
+diagnostics:
   # DiagnosticsConfig controls optional local diagnostic features.
   # AgentInvocationLog enables logging of failed agent-mode invocations to disk.
   # Off by default. When enabled, errors from agent-driven gcx calls are written

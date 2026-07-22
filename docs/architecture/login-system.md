@@ -44,7 +44,10 @@ classDiagram
     class Inputs {
         Server, ContextName
         Target, GrafanaToken
-        CloudToken, CloudAPIURL
+        CloudToken, CloudCredentialKind
+        CloudAPIURL, CloudOAuthURL
+        CloudTokenTrusted
+        CloudOAuthTokenExpiresAt, CloudOAuthScopes
         UseOAuth, Yes, Writer
         UseCloudInstanceSelector
         TLS
@@ -52,6 +55,7 @@ classDiagram
     class Hooks {
         ConfigSource
         NewAuthFlow
+        NewCloudAuthFlow
         ValidateFn
         DetectFn
     }
@@ -150,9 +154,11 @@ resolution and re-entry:
 5. **Context-name derivation** (login.go:234). Falls back to
    `config.ContextNameFromServerURL`, which returns the stack slug for known
    Grafana Cloud URLs and a hyphenated hostname otherwise.
-6. **Cloud auth resolution** (`resolveCloudAuth`, login.go:383). Only runs
-   for `TargetCloud`; a missing token yields an optional
-   `ErrNeedInput{cloud-token}` that the CLI may skip.
+6. **Cloud auth resolution** (`resolveCloudAuth`). Only runs for
+   `TargetCloud`; a missing credential yields an optional
+   `ErrNeedInput{cloud-token}`. The CLI can keep an existing CAP or unexpired
+   OAuth credential without changing its kind, paste a CAP, run direct GCOM
+   OAuth, or skip Cloud functionality.
 7. **Validation** (login.go:245). Delegated to `Validate` (see below); the
    CLI offers an escape hatch for interactive users when validation fails.
 8. **Persistence** (`persistContext`, login.go:414). Writes only after all
@@ -273,10 +279,11 @@ to disk.
    unparseable or suppressed version string (Grafana Cloud sometimes hides
    it from anonymous callers) bypasses the check rather than failing; the
    returned version reads `"unknown"` in that case (validate.go:62-84).
-4. **GCOM reachability.** Only when `Target == TargetCloud`, a cloud token
-   is supplied, and `resolveStackSlug` produced a non-empty slug.
+4. **GCOM reachability.** Only when `Target == TargetCloud`, an untrusted
+   Cloud token is supplied, and `resolveStackSlug` produced a non-empty slug.
    `cloud.GCOMClient.GetStack` confirms the slug is reachable with the
-   supplied token.
+   supplied token. Browser-issued and explicitly kept credentials are already
+   trusted and skip this typo-oriented CAP check.
 
 Tests inject each step via the `grafanaClient`, `discovery`, and
 `gcomClient` fields on the `validator` struct (validate.go:32). The
@@ -307,15 +314,31 @@ auth-bearing fields — `Server`, `AuthMethod`, `APIToken`, `OAuthToken`,
 `ProxyEndpoint` — onto the context's stack entry (creating it for legacy
 detached contexts), and routes incoming cloud auth through
 `EnsureCloudEntry` to a named cloud entry. User-set values such as
-`OrgID=42`, custom datasource defaults, or provider-specific tokens
-survive untouched.
+`OrgID=42` and custom datasource defaults survive untouched. Provider-specific
+tokens survive only while their bound destination is unchanged; changing the
+server, proxy, TLS identity, or basic-auth username clears affected credentials
+such as the Synthetic Monitoring token.
 
-**Server-mismatch guard.** When the existing context targets a different
-server than the incoming one and neither `opts.Yes` nor
-`RetryState.AllowOverride` is set, `persistContext` raises
-`ErrNeedClarification{Field: "allow-override"}`. The CLI's confirmation
-prompt sets `AllowOverride=true` on retry so the second call through
-reaches the merge.
+**Cloud credential and endpoint preservation.** CAP credentials persist in
+`CloudEntry.Token`; direct Cloud OAuth persists in `OAuthToken` with expiry,
+granted scopes, and the exact OAuth/API endpoint pair. Keeping an existing
+credential copies all of that metadata. A custom Cloud API endpoint is also
+used as the OAuth origin unless both endpoints are explicitly supplied, so
+authentication and later API calls cannot silently target different
+environments.
+
+**Shared Cloud entry isolation.** If more than one context references a Cloud
+entry and this login changes its credential, metadata, or endpoint, persistence
+creates a uniquely named copy and rebinds only the initiating context. An entry
+used only by that context can be updated in place; an exact tuple can be reused.
+
+**Server-mismatch guard.** When the persisted context targets a different
+server from the requested one and `RetryState.AllowOverride` is not set,
+login raises `ErrNeedClarification{Field: "allow-override"}`. Non-interactive
+`--yes` does not bypass this destination change. The command performs the same
+check against the raw, non-environment-overridden context before authentication
+or validation can present a stored credential; an interactive confirmation or
+explicit `--allow-server-override` sets `AllowOverride=true`.
 
 For the mechanics of how tokens subsequently reach HTTP clients — including
 the `ResolveTokenPersistenceSource` selection used by OAuth token rotation

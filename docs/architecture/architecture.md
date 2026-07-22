@@ -6,7 +6,7 @@
 
 - **gcx is a unified CLI for managing Grafana resources** operating in two tiers: (1) a K8s resource tier using Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources; (2) a Cloud provider tier with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, k6 Cloud, Knowledge Graph, IRM Incidents, Alerting) that use product-specific REST APIs.
 - **The architecture is a clean layered monolith** with strict separation: CLI wiring (`cmd/`) holds no business logic; all domain logic lives in `internal/` organized by feature (config, resources, server, providers).
-- **Context-based multi-environment configuration** follows the kubectl kubeconfig pattern, enabling management of multiple Grafana instances (dev, staging, prod, cloud) from a single config file.
+- **Context-based multi-environment configuration** follows the kubectl kubeconfig pattern, enabling management of multiple Grafana instances (dev, staging, prod, cloud) through layered system, user, and repository config files.
 - **A composable processor pipeline** transforms resources during push and pull, keeping I/O and transformation concerns decoupled.
 - **Pluggable provider system** enables extending the CLI with new Grafana Cloud products via a self-registering `Provider` interface, each contributing CLI commands, resource adapters, and product-specific configuration.
 - **Test coverage is moderate** (~40-50%) with no automated integration tests, despite a docker-compose environment being available. This is the most significant quality gap.
@@ -242,45 +242,63 @@ The `dev serve` command (formerly `resources serve`) starts a local HTTP server 
 
 ```
 Config
+  +-- Version: 1
   +-- CurrentContext: string
+  +-- Stacks: map[string]*StackConfig
+  |     +-- Slug
+  |     +-- Grafana: server + auth + org/stack ID + TLS
+  |     +-- Providers: map[string]map[string]string
+  |     +-- Resources
+  +-- Cloud: map[string]*CloudEntry
+  |     +-- token or OAuth token + metadata
+  |     +-- API and OAuth endpoints
   +-- Contexts: map[string]*Context
-        +-- Grafana: *GrafanaConfig
-              +-- Server, User, Password, APIToken
-              +-- OrgID (on-prem) / StackID (cloud)
-              +-- TLS (cert, key, CA, insecure flag)
-        +-- DefaultPrometheusDatasource (UID for query command default)
-        +-- DefaultLokiDatasource       (UID for query command default)
-        +-- Providers: map[string]map[string]string
-              (per-provider config, indexed by provider name)
+        +-- Stack: name reference
+        +-- Cloud: optional name reference
+        +-- Datasources: map[kind]UID
 ```
 
-This is a simplified kubeconfig: where kubectl separates clusters, users, and
-contexts into three reusable lists, gcx collapses everything into a single
-context entry. Simpler but means auth and server are always paired.
+Like kubeconfig, reusable destination/auth entries are separate from thin
+contexts. A gcx stack intentionally pairs one Grafana destination and its
+Grafana auth. A Cloud entry pairs a GCOM environment and its auth and may be
+shared by several contexts. Credential-bearing entries merge atomically across
+layers; contexts may merge reference/default fields.
 
 ### Loading Chain
 
 ```
---config flag  >  $GCX_CONFIG  >  $XDG_CONFIG_HOME  >  ~/.config  >  $XDG_CONFIG_DIRS
+--config: one explicit file
+otherwise: system -> user -> local discovery
      |
      v
-YAML file read + decode
+Reject unsupported declared versions
      |
      v
-Apply overrides (in order):
-  1. env.Parse(currentContext.Grafana)  -- GRAFANA_SERVER, GRAFANA_TOKEN, etc.
-  2. --context flag override            -- switch current context
-  3. Validator                          -- enforce server, namespace, auth present
+Preflight + migrate unversioned legacy files
      |
      v
-Config ready
+Atomic stack/Cloud merge + context field merge
+     |
+     v
+Select --context (or current-context)
+     |
+     v
+Apply environment overrides to the selected resolved view (ephemeral)
+     |
+     v
+Validate for the requested operation
 ```
 
 Two loading modes:
-- **Tolerant** (`loadConfigTolerant`): used by `config view`, `config set` -- no
-  validation beyond YAML parsing, allows working with partial configs
+- **Tolerant** (`loadConfigTolerant`): used by config editing commands --
+  validates file versions and context selection but allows incomplete entries
 - **Strict** (`LoadConfig`/`LoadGrafanaConfig`): used by `resources` commands --
   validates server URL, namespace, and credentials
+
+Keychain references are source-bound: the canonical config path, exact
+owner/field, and normalized destination must match before a secret is resolved.
+Write-back loads only its raw target file, so environment overrides and values
+from other layers are never flattened into that file.
 
 ### Namespace Semantics
 

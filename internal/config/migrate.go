@@ -3,17 +3,21 @@ package config
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"maps"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
+	"github.com/gofrs/flock"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/docs"
@@ -22,9 +26,8 @@ import (
 )
 
 // legacyBackupSuffix is appended to the config filename when the loader backs
-// up a legacy-format file before migrating it. The backup is write-once and
-// its keychain sentinels remain resolvable (legacy per-context entries are
-// never deleted), so restoring it fully rolls back the migration.
+// up a legacy-format file before migrating it. The backup is a write-once,
+// byte-for-byte 0600 copy, so restoring it fully rolls back the migration.
 const legacyBackupSuffix = ".legacy.bak"
 
 // legacyConfig mirrors the pre-versioned config format, where every context
@@ -178,11 +181,13 @@ func legacySecretRef(lctx *legacyContext, field credentials.Field) (secretRef, b
 }
 
 // collectLegacySecrets resolves every secret in a legacy config to plaintext
-// where possible: plaintext fields verbatim, sentinel fields via the account
-// key embedded in the sentinel. Unresolvable secrets are absent from the map;
-// conversion carries their sentinel strings through verbatim.
-func collectLegacySecrets(lc *legacyConfig, store credentials.Store) map[legacySecretKey]string {
+// where possible. Plaintext fields are always copied verbatim. Unbound legacy
+// sentinels are resolved only for a trusted migration source and only after the
+// reference matches its containing context and exact schema field. Repository-
+// local config is not trusted to select a process-global legacy account.
+func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacyGet bool) (map[legacySecretKey]string, bool, error) {
 	resolved := map[legacySecretKey]string{}
+	transientFailure := false
 	for name, lctx := range lc.Contexts {
 		if lctx == nil {
 			continue
@@ -200,54 +205,39 @@ func collectLegacySecrets(lc *legacyConfig, store credentials.Store) map[legacyS
 				resolved[legacySecretKey{name, field}] = cur
 				continue
 			}
-			owner, sentinelField, ok := credentials.ParseSentinel(cur)
-			if !ok {
-				continue
+			if !allowLegacyGet {
+				return nil, false, fmt.Errorf(
+					"legacy keychain reference for context %q field %q cannot be auto-migrated from an untrusted config source; no config files or credentials were changed; replace the reference with a credential or migrate it from the user config (%s)",
+					name, field, docs.ConfigMigration,
+				)
 			}
-			if value, err := store.Get(credentials.AccountKey(owner, sentinelField)); err == nil {
+			// Legacy references are unbound, so the containing context and exact
+			// schema field — not values embedded in YAML — are the authority for
+			// the one-time migration lookup.
+			value, err := resolveLegacySentinelForMigration(cur, name, field, store)
+			switch {
+			case err == nil:
 				resolved[legacySecretKey{name, field}] = value
+			case errors.Is(err, credentials.ErrNotFound):
+				// A reachable keychain proved this exact legacy account is gone.
+				// Record an explicit empty value so conversion drops the dangling
+				// reference instead of stranding it in v1.
+				resolved[legacySecretKey{name, field}] = ""
+			case errors.Is(err, credentials.ErrUnavailable):
+				transientFailure = true
+			case errors.Is(err, errLegacySentinelMismatch):
+				return nil, false, fmt.Errorf(
+					"invalid legacy keychain reference for context %q field %q: %w; no config files or credentials were changed (%s)",
+					name, field, err, docs.ConfigMigration,
+				)
+			default:
+				// Keychain backends can return platform-specific transient errors.
+				// Keep the legacy source untouched and retry on the next invocation.
+				transientFailure = true
 			}
 		}
 	}
-	return resolved
-}
-
-// sentinelizeLegacySecrets pushes plaintext secrets in a legacy config into
-// the keychain under their legacy per-context account keys, replacing the
-// in-memory values with sentinels. This mirrors what the legacy loader did on
-// every load, and runs before the backup is written so the backup never
-// retains plaintext secrets when a keychain is available.
-func sentinelizeLegacySecrets(lc *legacyConfig, store credentials.Store, log logging.Logger) {
-	for name, lctx := range lc.Contexts {
-		if lctx == nil {
-			continue
-		}
-		for _, field := range credentials.AllFields {
-			ref, ok := legacySecretRef(lctx, field)
-			if !ok {
-				continue
-			}
-			cur := ref.get()
-			if cur == "" || credentials.IsSentinel(cur) {
-				continue
-			}
-			if err := store.Set(credentials.AccountKey(name, field), cur); err != nil {
-				if errors.Is(err, credentials.ErrUnavailable) {
-					credentials.WarnUnavailableOnce(func() {
-						log.Warn("keychain unavailable; credentials remain in plaintext on disk",
-							"hint", "install or unlock your OS keychain to enable encrypted credential storage")
-					})
-					return
-				}
-				log.Warn("could not write keychain entry",
-					"context", name,
-					"field", string(field),
-					"error", err.Error())
-				continue
-			}
-			ref.set(credentials.FormatSentinel(name, field))
-		}
-	}
+	return resolved, transientFailure, nil
 }
 
 // cloudEntryName derives a cloud entry name from a GCOM API URL host
@@ -377,12 +367,26 @@ func ensureLegacyCloudEntry(cfg *Config, name string, lctx *legacyContext, suffi
 		return ""
 	}
 	token := secretValue(name, credentials.FieldCloudToken, lctx.Cloud.Token)
-	dedupKey := token + "\x00" + lctx.Cloud.APIUrl + "\x00" + lctx.Cloud.OAuthUrl
+	apiURL := lctx.Cloud.APIUrl
+	if apiURL == "" && lctx.Cloud.OAuthUrl != "" {
+		apiURL = lctx.Cloud.OAuthUrl
+	}
+	if apiURL == "" && lctx.Grafana != nil {
+		apiURL, _ = GCOMRootFromServerURL(lctx.Grafana.Server)
+	}
+	if apiURL == "" {
+		apiURL = "https://grafana.com"
+	}
+	oauthURL := lctx.Cloud.OAuthUrl
+	if oauthURL == "" {
+		oauthURL = apiURL
+	}
+	dedupKey := token + "\x00" + apiURL + "\x00" + oauthURL
 	if entryName, ok := entryNames[dedupKey]; ok {
 		return entryName
 	}
 
-	entryName := cloudEntryName(lctx.Cloud.APIUrl) + suffix
+	entryName := cloudEntryName(apiURL) + suffix
 	if _, taken := cfg.Cloud[entryName]; taken {
 		entryName += "-" + name
 	}
@@ -391,8 +395,8 @@ func ensureLegacyCloudEntry(cfg *Config, name string, lctx *legacyContext, suffi
 	}
 	cfg.Cloud[entryName] = &CloudEntry{
 		Token:    token,
-		APIUrl:   lctx.Cloud.APIUrl,
-		OAuthUrl: lctx.Cloud.OAuthUrl,
+		APIUrl:   apiURL,
+		OAuthUrl: oauthURL,
 	}
 	entryNames[dedupKey] = entryName
 	return entryName
@@ -494,8 +498,23 @@ func verifyLegacyCloud(name string, lctx *legacyContext, newCtx *Context, secret
 	if entry == nil {
 		return fmt.Errorf("context %q: cloud credentials missing after conversion", name)
 	}
+	expectedAPI := lctx.Cloud.APIUrl
+	if expectedAPI == "" && lctx.Cloud.OAuthUrl != "" {
+		expectedAPI = lctx.Cloud.OAuthUrl
+	}
+	if expectedAPI == "" && lctx.Grafana != nil {
+		expectedAPI, _ = GCOMRootFromServerURL(lctx.Grafana.Server)
+	}
+	if expectedAPI == "" {
+		expectedAPI = "https://grafana.com"
+	}
+	expectedOAuth := lctx.Cloud.OAuthUrl
+	if expectedOAuth == "" {
+		expectedOAuth = expectedAPI
+	}
 	if entry.Token != secretValue(name, credentials.FieldCloudToken, lctx.Cloud.Token) ||
-		entry.APIUrl != lctx.Cloud.APIUrl || entry.OAuthUrl != lctx.Cloud.OAuthUrl {
+		normalizeCredentialURL(entry.APIUrl, "https://grafana.com") != normalizeCredentialURL(expectedAPI, "https://grafana.com") ||
+		normalizeCredentialURL(entry.OAuthUrl, expectedAPI) != normalizeCredentialURL(expectedOAuth, expectedAPI) {
 		return fmt.Errorf("context %q: cloud entry differs after conversion", name)
 	}
 	return nil
@@ -561,6 +580,64 @@ func sameStringSet(a, b []string) bool {
 // load retries.
 func migrateLegacyConfig(ctx context.Context, source Source, filename string, contents []byte) (Config, error) {
 	log := logging.FromContext(ctx)
+	migrationPath, err := canonicalConfigSourceForLayer(filename, configLayerFromCtx(ctx))
+	if err != nil {
+		return Config{}, err
+	}
+
+	// Serialize migration for this source. The initial legacy-shape check happens
+	// before entering this function, so reread under the lock: another process may
+	// already have completed the migration while this one was waiting.
+	canPersist := !migrationPersistenceSuppressed(ctx)
+	var lockErr error
+	if canPersist {
+		lockPath, err := configLockFile(migrationPath, "write")
+		if err != nil {
+			return Config{}, err
+		}
+		lock := flock.New(lockPath)
+		lockCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		var locked bool
+		locked, lockErr = lock.TryLockContext(lockCtx, 100*time.Millisecond)
+		canPersist = lockErr == nil && locked
+		if locked {
+			defer func() { _ = lock.Unlock() }()
+		}
+	}
+	if !canPersist {
+		reason := "layered migration is read-only; migrate each layer explicitly"
+		if !migrationPersistenceSuppressed(ctx) && lockErr == nil {
+			reason = "timed out"
+		} else if !migrationPersistenceSuppressed(ctx) && lockErr != nil {
+			reason = lockErr.Error()
+		}
+		log.Warn("could not lock config migration; running with in-memory migration",
+			"file", filename, "error", reason, "guide", docs.ConfigMigration)
+	}
+
+	if canPersist {
+		freshContents, err := readConfigSource(ConfigSource{Path: filename, Type: configLayerFromCtx(ctx)})
+		if err != nil {
+			return Config{}, err
+		}
+		if snapshot, ok := configSnapshotFromContext(ctx, filename); ok && !bytes.Equal(freshContents, snapshot) {
+			return Config{}, fmt.Errorf("config %s changed after migration preflight; no config files or credentials were changed", filename)
+		}
+		contents = freshContents
+	}
+	if err := validateDeclaredConfigVersion(filename, contents); err != nil {
+		return Config{}, err
+	}
+	if !isLegacyConfig(contents) {
+		var current Config
+		codec := &format.YAMLCodec{BytesAsBase64: true}
+		if err := codec.Decode(bytes.NewReader(contents), &current); err != nil {
+			return Config{}, UnmarshalError{File: filename, Err: err}
+		}
+		current.Source = filename
+		return current, nil
+	}
 
 	lc := legacyConfig{}
 	codec := &format.YAMLCodec{BytesAsBase64: true}
@@ -569,15 +646,28 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	}
 
 	store := newLazyStore(keychainStoreFn)
-	secrets := collectLegacySecrets(&lc, store)
-	sentinelizeLegacySecrets(&lc, store, log)
+	layerType := configLayerFromCtx(ctx)
+	// Auto-discovered repository, system, and arbitrary explicit configs cannot
+	// read predictable per-user legacy accounts. Compatibility is limited to the
+	// canonical discovered user config with secure write permissions.
+	allowLegacyGet := trustedLegacyKeychainSource(layerType, filename)
+	secrets, transientLegacyFailure, err := collectLegacySecrets(&lc, store, allowLegacyGet)
+	if err != nil {
+		return Config{}, err
+	}
+	if transientLegacyFailure {
+		canPersist = false
+	}
 
-	// The backup must be written while lc still holds sentinels: conversion
-	// shares pointers with lc and resolves its secret fields to plaintext.
-	backupOK := writeLegacyBackup(filename, &lc, codec, log)
+	// The backup is an exact 0600 rollback copy. Plaintext is intentionally not
+	// pushed through predictable legacy account names: doing so could overwrite
+	// a credential owned by another config source. The converted v1 Write below
+	// stores plaintext under source-bound v2 account names.
+	backupOK := canPersist && writeLegacyBackup(filename, contents, codec, log)
 
-	cfg := convertLegacyConfig(&lc, configLayerFromCtx(ctx), secrets)
+	cfg := convertLegacyConfig(&lc, layerType, secrets)
 	cfg.Source = filename
+	cfg.migrationDeferred = !backupOK
 
 	if err := verifyLegacyMigration(&lc, cfg, secrets); err != nil {
 		return Config{}, migrationFailedError("config migration self-check failed", err, filename)
@@ -610,7 +700,21 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	// return value — the caller's plaintext-migration pass then skips fields
 	// this Write already re-keyed.
 	cfg.keychainFields = keychainBacked{}
-	if err := Write(ctx, source, *cfg); err != nil {
+	cfg.migrationDeferred = false
+	cfg.sourceLayer = layerType
+	cfg.bindSourceIdentity(migrationPath)
+	cfg.sourceRevision = sha256.Sum256(contents)
+	cfg.hasSourceRevision = true
+	if err := Write(withConfigWriteLockHeld(ctx), source, *cfg); err != nil {
+		var durabilityErr *configDurabilityError
+		if errors.As(err, &durabilityErr) {
+			log.Warn("migrated config was replaced but its directory durability barrier failed; old and new keychain generations were retained",
+				"file", filename,
+				"error", err.Error(),
+				"guide", docs.ConfigMigration)
+			return *cfg, nil
+		}
+		cfg.migrationDeferred = true
 		log.Warn("could not persist migrated config; running with in-memory migration",
 			"file", filename,
 			"error", err.Error(),
@@ -624,6 +728,32 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 			filename, filename+legacyBackupSuffix, docs.ConfigMigration)
 	}
 	return *cfg, nil
+}
+
+func trustedLegacyKeychainSource(layerType, filename string) bool {
+	if layerType != "user" {
+		return false
+	}
+	info, err := os.Lstat(filename)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 {
+		return false
+	}
+	abs, err := filepath.Abs(filename)
+	if err != nil {
+		return false
+	}
+	abs = filepath.Clean(abs)
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil || filepath.Clean(resolved) != abs {
+		return false
+	}
+	for _, dir := range userConfigDirs() {
+		expected, err := filepath.Abs(userConfigFile(dir))
+		if err == nil && filepath.Clean(expected) == abs {
+			return true
+		}
+	}
+	return false
 }
 
 // migrationFailedError wraps a migration failure with the two things the user
@@ -640,8 +770,25 @@ func migrationFailedError(summary string, err error, filename string) error {
 // layer. Migration reads it to qualify cloud entry names per layer.
 type configLayerKey struct{}
 
+type migrationPersistenceKey struct{}
+
+type configSnapshotKey struct{}
+
+type configSnapshot struct {
+	path     string
+	contents []byte
+}
+
 func withConfigLayer(ctx context.Context, layer string) context.Context {
 	return context.WithValue(ctx, configLayerKey{}, layer)
+}
+
+// ContextWithConfigSource preserves auto-discovery provenance across raw
+// mutation helpers that pass a Source separately. In particular, local
+// repository sources remain no-symlink even when a provider reloads them by
+// explicit path before writing.
+func ContextWithConfigSource(ctx context.Context, source ConfigSource) context.Context {
+	return withConfigLayer(ctx, source.Type)
 }
 
 func configLayerFromCtx(ctx context.Context) string {
@@ -649,24 +796,124 @@ func configLayerFromCtx(ctx context.Context) string {
 	return layer
 }
 
-// writeLegacyBackup writes the sentinelized legacy config next to the config
-// file, once: an existing backup is never overwritten (an old gcx binary
+func withMigrationPersistenceSuppressed(ctx context.Context) context.Context {
+	return context.WithValue(ctx, migrationPersistenceKey{}, true)
+}
+
+func migrationPersistenceSuppressed(ctx context.Context) bool {
+	suppressed, _ := ctx.Value(migrationPersistenceKey{}).(bool)
+	return suppressed
+}
+
+func withConfigSnapshot(ctx context.Context, path string, contents []byte) context.Context {
+	return context.WithValue(ctx, configSnapshotKey{}, configSnapshot{
+		path: path, contents: bytes.Clone(contents),
+	})
+}
+
+func configSnapshotFromContext(ctx context.Context, path string) ([]byte, bool) {
+	snapshot, ok := ctx.Value(configSnapshotKey{}).(configSnapshot)
+	if !ok || snapshot.path != path {
+		return nil, false
+	}
+	return bytes.Clone(snapshot.contents), true
+}
+
+// writeLegacyBackup writes an exact byte-for-byte copy next to the logical
+// config path, once: an existing backup is never overwritten (an old gcx binary
 // running concurrently can rewrite the file to the legacy format and trigger
 // re-migration, which must not clobber a known-good backup). Returns false
 // when no backup exists and one could not be written — the caller must not
 // replace the legacy file without the rollback safety.
-func writeLegacyBackup(filename string, lc *legacyConfig, codec *format.YAMLCodec, log logging.Logger) bool {
+func writeLegacyBackup(filename string, contents []byte, codec *format.YAMLCodec, log logging.Logger) bool {
 	backupPath := filename + legacyBackupSuffix
-	if _, err := os.Stat(backupPath); err == nil {
-		return true
+
+	backup, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, configFilePermissions)
+	if errors.Is(err, os.ErrExist) {
+		return validateExistingLegacyBackup(backupPath, contents, codec, log)
 	}
-	var buf bytes.Buffer
-	if err := codec.Encode(&buf, lc); err != nil {
-		log.Warn("could not encode legacy config backup", "error", err.Error())
+	if err != nil {
+		log.Warn("could not create legacy config backup", "file", backupPath, "error", err.Error())
 		return false
 	}
-	if err := os.WriteFile(backupPath, buf.Bytes(), configFilePermissions); err != nil {
+	complete := false
+	defer func() {
+		_ = backup.Close()
+		if !complete {
+			_ = os.Remove(backupPath)
+		}
+	}()
+	if _, err := backup.Write(contents); err != nil {
 		log.Warn("could not write legacy config backup", "file", backupPath, "error", err.Error())
+		return false
+	}
+	if err := backup.Sync(); err != nil {
+		log.Warn("could not sync legacy config backup", "file", backupPath, "error", err.Error())
+		return false
+	}
+	if err := backup.Close(); err != nil {
+		log.Warn("could not close legacy config backup", "file", backupPath, "error", err.Error())
+		return false
+	}
+	if err := syncConfigDirectory(filepath.Dir(backupPath)); err != nil {
+		log.Warn("could not sync legacy config backup directory", "file", backupPath, "error", err.Error())
+		return false
+	}
+	complete = true
+	return true
+}
+
+// validateExistingLegacyBackup refuses to treat an arbitrary, partial, or
+// symlinked path as rollback safety. A prior complete legacy backup is valid;
+// anything else leaves migration in memory and the original source untouched.
+func validateExistingLegacyBackup(path string, expected []byte, codec *format.YAMLCodec, log logging.Logger) bool {
+	info, err := os.Lstat(path)
+	if err != nil {
+		log.Warn("could not inspect existing legacy config backup", "file", path, "error", err.Error())
+		return false
+	}
+	if !info.Mode().IsRegular() {
+		log.Warn("existing legacy config backup is not a regular file", "file", path)
+		return false
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		log.Warn("existing legacy config backup has insecure permissions", "file", path, "mode", info.Mode().Perm())
+		return false
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		log.Warn("could not read existing legacy config backup", "file", path, "error", err.Error())
+		return false
+	}
+	if !bytes.Equal(contents, expected) {
+		log.Warn("existing legacy config backup does not match the current source; refusing to replace it", "file", path)
+		return false
+	}
+	if version, present, _ := declaredConfigVersion(contents); present {
+		log.Warn("existing legacy config backup is versioned and cannot be used for rollback",
+			"file", path, "version", version)
+		return false
+	}
+	var shape map[string]any
+	if err := yaml.Unmarshal(contents, &shape); err != nil {
+		log.Warn("existing legacy config backup is invalid", "file", path, "error", err.Error())
+		return false
+	}
+	if _, ok := shape["contexts"]; !ok {
+		log.Warn("existing legacy config backup has no contexts block", "file", path)
+		return false
+	}
+	if _, current := shape["stacks"]; current {
+		log.Warn("existing legacy config backup uses the current schema", "file", path)
+		return false
+	}
+	if _, current := shape["cloud"]; current {
+		log.Warn("existing legacy config backup uses the current schema", "file", path)
+		return false
+	}
+	var legacy legacyConfig
+	if err := codec.Decode(bytes.NewReader(contents), &legacy); err != nil {
+		log.Warn("existing legacy config backup is invalid", "file", path, "error", err.Error())
 		return false
 	}
 	return true

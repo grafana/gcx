@@ -28,6 +28,10 @@ import (
 type Options struct {
 	ConfigFile string
 	Context    string
+
+	mutationResolved bool
+	mutationTarget   config.ConfigSource
+	mutationErr      error
 }
 
 func (opts *Options) BindFlags(flags *pflag.FlagSet) {
@@ -42,7 +46,23 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 // This function should only be used by config-related commands, to allow the
 // user to iterate on the configuration until it becomes valid.
 func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...config.Override) (config.Config, error) {
-	overrides := append([]config.Override{
+	var overrides []config.Override
+
+	// Select the target context before applying context-scoped environment
+	// variables. Otherwise --context switches only after env values have already
+	// been written into the context named by current-context.
+	if opts.Context != "" {
+		overrides = append(overrides, func(cfg *config.Config) error {
+			if !cfg.HasContext(opts.Context) {
+				return config.ContextNotFound(opts.Context)
+			}
+
+			cfg.CurrentContext = opts.Context
+			return nil
+		})
+	}
+
+	overrides = append(overrides,
 		// If Grafana-related env variables are set, use them to configure the
 		// current context and Grafana config.
 		func(cfg *config.Config) error {
@@ -96,19 +116,8 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 
 			return nil
 		},
-	}, extraOverrides...)
-
-	// The current context is being overridden by a flag
-	if opts.Context != "" {
-		overrides = append(overrides, func(cfg *config.Config) error {
-			if !cfg.HasContext(opts.Context) {
-				return config.ContextNotFound(opts.Context)
-			}
-
-			cfg.CurrentContext = opts.Context
-			return nil
-		})
-	}
+	)
+	overrides = append(overrides, extraOverrides...)
 
 	return config.LoadLayered(ctx, opts.ConfigFile, overrides...)
 }
@@ -169,6 +178,84 @@ func (opts *Options) ConfigSource() config.Source {
 	return config.StandardLocation()
 }
 
+// MutationConfigSource resolves the single raw config document a mutating
+// command may safely rewrite. Layered reads can combine several documents, but
+// writing that merged view to an arbitrary user file can be shadowed by a local
+// layer or flatten unrelated layers. Explicit --config and GCX_CONFIG remain
+// authoritative; otherwise a sole discovered source is used and ambiguity is
+// rejected with guidance to choose one.
+func (opts *Options) MutationConfigSource() config.Source {
+	return func() (string, error) {
+		target, err := opts.resolveMutationConfigTarget()
+		return target.Path, err
+	}
+}
+
+// MutationConfigContext carries the sole discovered source's trust provenance
+// into raw login/provider mutations. Explicit --config and GCX_CONFIG paths
+// remain explicit user intent (including symlink support).
+func (opts *Options) MutationConfigContext(ctx context.Context) context.Context {
+	target, err := opts.resolveMutationConfigTarget()
+	if err != nil || target.Type == "explicit" || target.Type == "" {
+		return ctx
+	}
+	return config.ContextWithConfigSource(ctx, target)
+}
+
+// MutationConfigTarget returns the exact raw config document selected for a
+// mutation together with its discovery provenance. Credential-accepting
+// commands use the provenance to require an explicit --config/GCX_CONFIG trust
+// decision before handing a fresh secret to an auto-discovered repository
+// config.
+func (opts *Options) MutationConfigTarget() (config.ConfigSource, error) {
+	return opts.resolveMutationConfigTarget()
+}
+
+func (opts *Options) resolveMutationConfigTarget() (config.ConfigSource, error) {
+	if !opts.mutationResolved {
+		opts.mutationResolved = true
+		switch {
+		case opts.ConfigFile != "":
+			opts.mutationTarget = config.ConfigSource{Path: opts.ConfigFile, Type: "explicit"}
+			return opts.mutationTarget, nil
+		case os.Getenv(config.ConfigFileEnvVar) != "":
+			opts.mutationTarget = config.ConfigSource{Path: os.Getenv(config.ConfigFileEnvVar), Type: "explicit"}
+			return opts.mutationTarget, nil
+		}
+
+		sources, err := config.DiscoverSources()
+		if err != nil {
+			opts.mutationErr = fmt.Errorf("discover config write target: %w", err)
+			return opts.mutationTarget, opts.mutationErr
+		}
+		switch len(sources) {
+		case 0:
+			path, err := config.StandardLocation()()
+			if err != nil {
+				opts.mutationErr = err
+				return opts.mutationTarget, opts.mutationErr
+			}
+			opts.mutationTarget = config.ConfigSource{Path: path, Type: "user"}
+		case 1:
+			opts.mutationTarget = sources[0]
+		default:
+			paths := make([]string, 0, len(sources))
+			for _, source := range sources {
+				paths = append(paths, source.Path)
+			}
+			opts.mutationErr = gcxerrors.DetailedError{
+				Summary: "Configuration write target is ambiguous",
+				Details: "This command reads a layered configuration from multiple files and cannot safely choose one to update: " +
+					strings.Join(paths, ", "),
+				Suggestions: []string{
+					"Re-run with --config <path> to choose the file that should own the updated credentials",
+				},
+			}
+		}
+	}
+	return opts.mutationTarget, opts.mutationErr
+}
+
 func Command() *cobra.Command {
 	configOpts := &Options{}
 
@@ -177,16 +264,15 @@ func Command() *cobra.Command {
 		Short: "View or manipulate configuration settings",
 		Long: fmt.Sprintf(`View or manipulate configuration settings.
 
-The configuration file to load is chosen as follows:
+--config or $%[3]s selects one explicit file and bypasses layering.
+Otherwise gcx merges every existing source from lowest to highest priority:
 
-1. If the --config flag is set, then that file will be loaded. No other location will be considered.
-2. If the $%[3]s environment variable is set, then that file will be loaded. No other location will be considered.
-3. If the $XDG_CONFIG_HOME environment variable is set, then it will be used: $XDG_CONFIG_HOME/%[1]s/%[2]s
-   Example: /home/user/.config/%[1]s/%[2]s
-4. If the $HOME environment variable is set, then it will be used: $HOME/.config/%[1]s/%[2]s
-   Example: /home/user/.config/%[1]s/%[2]s
-5. If the $XDG_CONFIG_DIRS environment variable is set, then it will be used: $XDG_CONFIG_DIRS/%[1]s/%[2]s
-   Example: /etc/xdg/%[1]s/%[2]s
+1. System configuration: $XDG_CONFIG_DIRS/%[1]s/%[2]s (for example, /etc/xdg/%[1]s/%[2]s).
+2. User configuration: $HOME/.config/%[1]s/%[2]s, then the platform $XDG_CONFIG_HOME fallback.
+3. Repository configuration: .gcx.yaml in the current directory.
+
+Credential-bearing stack and Cloud entries are atomic across layers; contexts
+merge only their references and datasource defaults.
 `, config.StandardConfigFolder, config.StandardConfigFileName, config.ConfigFileEnvVar),
 	}
 
@@ -677,7 +763,7 @@ PROPERTY_VALUE is the new value to set.`,
 				return err
 			}
 
-			if err := config.SetValue(&cfg, path, args[1]); err != nil {
+			if err := setConfigValue(&cfg, path, args[1]); err != nil {
 				return err
 			}
 
@@ -688,6 +774,50 @@ PROPERTY_VALUE is the new value to set.`,
 	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
 
 	return cmd
+}
+
+func setConfigValue(cfg *config.Config, path, value string) error {
+	mutationPaths := []string{path}
+	clearPaths := []string{}
+	parts := strings.Split(path, ".")
+	if value != "" && len(parts) == 3 && parts[0] == "cloud" {
+		prefix := strings.Join(parts[:2], ".") + "."
+		switch parts[2] {
+		case "token":
+			mutationPaths = append(mutationPaths, prefix+"oauth-token")
+			clearPaths = append(clearPaths,
+				prefix+"oauth-token",
+				prefix+"oauth-token-expires-at",
+				prefix+"oauth-scopes",
+			)
+		case "oauth-token":
+			mutationPaths = append(mutationPaths, prefix+"token")
+			clearPaths = append(clearPaths,
+				prefix+"token",
+				prefix+"oauth-token-expires-at",
+				prefix+"oauth-scopes",
+			)
+		}
+	}
+
+	completeMutations := make([]func() error, 0, len(mutationPaths))
+	for _, mutationPath := range mutationPaths {
+		completeMutations = append(completeMutations, cfg.PrepareSecretPathMutation(mutationPath))
+	}
+	if err := config.SetValue(cfg, path, value); err != nil {
+		return err
+	}
+	for _, clearPath := range clearPaths {
+		if err := config.UnsetValue(cfg, clearPath); err != nil {
+			return err
+		}
+	}
+	for _, completeMutation := range completeMutations {
+		if err := completeMutation(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func unsetCmd(configOpts *Options) *cobra.Command {
@@ -722,7 +852,11 @@ Paths are literal: they name the exact location in the configuration file, start
 				return err
 			}
 
+			completeSecretMutation := cfg.PrepareSecretPathMutation(path)
 			if err := config.UnsetValue(&cfg, path); err != nil {
+				return err
+			}
+			if err := completeSecretMutation(); err != nil {
 				return err
 			}
 

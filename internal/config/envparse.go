@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/grafana/gcx/internal/credentials"
 )
 
 // PrepareForEnvParse initializes nested pointer fields on the Context so that
@@ -36,6 +38,17 @@ func CleanupAfterEnvParse(ctx *Context) {
 // override, PrepareForEnvParse, parseEnvTags, and CleanupAfterEnvParse into a
 // single call.
 func ParseEnvIntoContext(ctx *Context) error {
+	ctx.runtimeSecretOverrides = map[credentials.Field]bool{}
+	for envKey, field := range map[string]credentials.Field{
+		"GRAFANA_TOKEN":                   credentials.FieldGrafanaToken,
+		"GRAFANA_PASSWORD":                credentials.FieldGrafanaPassword,
+		"GRAFANA_CLOUD_TOKEN":             credentials.FieldCloudToken,
+		"GRAFANA_PROVIDER_SYNTH_SM_TOKEN": credentials.FieldSMToken,
+	} {
+		if _, ok := os.LookupEnv(envKey); ok {
+			ctx.runtimeSecretOverrides[field] = true
+		}
+	}
 	applyCloudEnvOverride(ctx)
 	PrepareForEnvParse(ctx)
 	if err := parseEnvTags(ctx); err != nil {

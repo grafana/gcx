@@ -41,11 +41,15 @@ gcx --version
 ## Configuration Model
 
 gcx uses a context-based configuration model inspired by kubectl's
-kubeconfig. A single YAML file (default: `~/.config/gcx/config.yaml`)
-stores named `stacks` (server URL, credentials, provider config) and named
-`contexts` that reference a stack by name (`contexts.<name>.stack`). One
-context is active at a time; all commands operate against it unless
-overridden. Legacy per-context configs are migrated automatically on load.
+kubeconfig. One or more layered YAML files (with the user file at
+`~/.config/gcx/config.yaml` by default)
+store named `stacks` (Grafana destination, credentials, provider config), named
+`cloud` entries (Grafana Cloud platform credentials and endpoints), and thin
+`contexts` that reference a stack and optional Cloud entry. One context is
+selected at a time; all commands operate against it unless overridden.
+Single-source legacy configs are migrated automatically after a safe preflight.
+When several layers participate, gcx converts them in memory and asks the user
+to migrate each layer explicitly rather than partially persisting the result.
 
 Use `gcx config view` to inspect the current configuration at any time.
 Use `gcx config check` to validate that the active context is correct
@@ -96,6 +100,21 @@ operations).
 
 The `grafana.token` field takes precedence over `grafana.user`/`grafana.password`
 when both are present.
+
+Grafana Cloud product APIs use a separate credential. A Cloud Access Policy
+token has the widest compatibility and can be supplied during unified login:
+
+```bash
+gcx login cloud --server https://myorg.grafana.net \
+  --token glsa_XXXXXXXXXXXXXXXX --cloud-token glc_XXXXXXXXXXXXXXXX --yes
+```
+
+For interactive use, the Cloud step of `gcx login` can keep an existing CAP or
+unexpired OAuth credential, accept a CAP, run the experimental direct Cloud
+OAuth flow, or skip. `gcx cloud login --context cloud` runs direct Cloud OAuth
+separately. OAuth retains expiry, granted scopes, and its coherent OAuth/API
+endpoint pair, but not every Cloud product command supports it yet; use a CAP
+for full compatibility.
 
 ### Step 3: Switch to the context
 
@@ -193,17 +212,38 @@ gcx config set stacks.onprem.grafana.tls.ca-data <base64-encoded-pem>
 
 Use this path when gcx runs in a CI/CD pipeline or another automated
 environment where writing a config file is impractical. Environment variables
-override the active context's fields at runtime without modifying the config
+override the selected context's fields at runtime without modifying the config
 file.
 
-| Environment Variable  | Overrides Field       | Description                          |
-|-----------------------|-----------------------|--------------------------------------|
-| `GRAFANA_SERVER`      | `grafana.server`      | Server URL                           |
-| `GRAFANA_TOKEN`       | `grafana.token`       | API token (takes precedence over user/pass) |
-| `GRAFANA_USER`        | `grafana.user`        | Username for basic auth              |
-| `GRAFANA_PASSWORD`    | `grafana.password`    | Password for basic auth              |
-| `GRAFANA_ORG_ID`      | `grafana.org-id`      | Org ID (on-premise namespace)        |
-| `GRAFANA_STACK_ID`    | `grafana.stack-id`    | Stack ID (Grafana Cloud namespace)   |
+| Environment Variable | Runtime override | Description |
+|----------------------|------------------|-------------|
+| `GRAFANA_SERVER` | selected stack's `grafana.server` | Server URL |
+| `GRAFANA_TOKEN` | selected stack's `grafana.token` | API token (takes precedence over user/pass) |
+| `GRAFANA_USER` | selected stack's `grafana.user` | Username for basic auth |
+| `GRAFANA_PASSWORD` | selected stack's `grafana.password` | Password for basic auth |
+| `GRAFANA_ORG_ID` | selected stack's `grafana.org-id` | Org ID (on-premise namespace) |
+| `GRAFANA_STACK_ID` | selected stack's `grafana.stack-id` | Stack ID (Grafana Cloud namespace) |
+| `GRAFANA_PROXY_ENDPOINT` | selected stack's OAuth proxy | Assistant proxy endpoint |
+| `GRAFANA_TLS_CERT_FILE` | selected stack's TLS cert file | mTLS client certificate |
+| `GRAFANA_TLS_KEY_FILE` | selected stack's TLS key file | mTLS client key |
+| `GRAFANA_TLS_CA_FILE` | selected stack's TLS CA file | Custom CA bundle |
+| `GRAFANA_CLOUD_TOKEN` | ephemeral Cloud entry | Cloud Access Policy token |
+| `GRAFANA_CLOUD_API_URL` | ephemeral Cloud entry | Cloud API endpoint |
+| `GRAFANA_CLOUD_OAUTH_URL` | ephemeral Cloud entry | Cloud OAuth endpoint |
+| `GRAFANA_CLOUD_STACK` | selected stack's slug | Cloud stack slug |
+
+When an endpoint override changes a credential destination, supply the
+corresponding credential variable in the same invocation. Login commands turn
+one supplied endpoint into a coherent OAuth/API pair; set both endpoint
+variables when a custom environment deliberately uses distinct origins.
+
+An auto-discovered repository `.gcx.yaml` cannot attach runtime or freshly
+prompted credentials, or external mTLS client key files, to destinations and
+transport settings supplied by that file. Review it and select it explicitly
+with `--config .gcx.yaml` or `GCX_CONFIG=.gcx.yaml` before login or direct
+provider authentication. Provider endpoint environment overrides also require
+their matching runtime credential and still do not authorize repository TLS or
+proxy settings.
 
 ### Example: GitHub Actions
 
@@ -216,8 +256,9 @@ file.
   run: gcx resources get dashboards -o json
 ```
 
-Environment variables apply to the **current context** only and do not
-modify the config file on disk.
+Environment variables apply to the **selected context** only and do not modify
+the config file on disk. `--context` selection happens before these overrides,
+and write-back paths never serialize the env-mutated runtime object.
 
 ### Config file location
 

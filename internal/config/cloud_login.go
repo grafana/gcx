@@ -3,7 +3,9 @@ package config
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"slices"
 
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -23,10 +25,12 @@ func MergeCloudInto(existing, incoming *CloudEntry) *CloudEntry {
 		existing.Token = incoming.Token
 		existing.OAuthToken = ""
 		existing.OAuthTokenExpiresAt = ""
+		existing.OAuthScopes = nil
 	}
 	if incoming.OAuthToken != "" {
 		existing.OAuthToken = incoming.OAuthToken
 		existing.OAuthTokenExpiresAt = incoming.OAuthTokenExpiresAt
+		existing.OAuthScopes = canonicalOAuthScopes(incoming.OAuthScopes)
 		existing.Token = ""
 	}
 	if incoming.OAuthUrl != "" {
@@ -38,45 +42,132 @@ func MergeCloudInto(existing, incoming *CloudEntry) *CloudEntry {
 	return existing
 }
 
-// EnsureCloudEntry merges entry into the named entry when existingRef is set,
-// otherwise into an entry named after the entry's API URL host, and returns
-// the entry name used. The caller binds the returned name to a context.
-//
-// When the host-named entry already exists with a different credential (e.g.
-// an org-wide CAP is bound to other contexts and this login carries a
-// stack-scoped one), the new entry is suffixed with the context name instead
-// of quietly replacing the shared credential — the same collision convention
-// migration uses. Same-credential logins still dedup onto the shared entry.
+// EnsureCloudEntry applies entry for contextName and returns the entry name the
+// context should bind. An entry referenced by multiple contexts is immutable by
+// default: changing any credential, OAuth metadata, or endpoint performs a
+// copy-on-write and leaves the shared entry untouched. An entry referenced only
+// by the target context is updated in place. Host-name and copy-on-write name
+// collisions are allocated safely, while exact matches are reused.
 func (config *Config) EnsureCloudEntry(existingRef string, entry CloudEntry, contextName string) string {
-	name := existingRef
-	if name == "" {
-		name = cloudEntryName(entry.APIUrl)
-		if existing := config.Cloud[name]; existing != nil && !sameCloudCredential(existing, &entry, config.keychainStore) {
-			name += "-" + contextName
-		}
+	// The target may not be the file's current context, whose sentinels Load
+	// resolved eagerly. Resolve it before comparing or cloning its entry so a new
+	// entry never inherits a sentinel owned by a different name.
+	config.ResolveContext(contextName)
+
+	if existingRef == "" {
+		return config.ensureUnboundCloudEntry(entry, contextName)
 	}
-	config.SetCloudEntry(name, *MergeCloudInto(config.Cloud[name], &entry))
+	return config.ensureBoundCloudEntry(existingRef, entry, contextName)
+}
+
+func (config *Config) ensureUnboundCloudEntry(entry CloudEntry, contextName string) string {
+	base := cloudEntryName(entry.APIUrl)
+	if existing := config.Cloud[base]; existing != nil {
+		desired := mergedCloudEntry(existing, &entry)
+		if sameCloudEntry(existing, &desired, config.keychainStore) {
+			return base
+		}
+		name := config.availableCloudEntryName(base+"-"+contextName, &desired)
+		if config.Cloud[name] == nil {
+			config.setCloudAuthEntry(name, desired)
+		}
+		return name
+	}
+
+	config.setCloudAuthEntry(base, entry)
+	return base
+}
+
+func (config *Config) ensureBoundCloudEntry(existingRef string, entry CloudEntry, contextName string) string {
+	existing := config.Cloud[existingRef]
+	if existing == nil {
+		config.setCloudAuthEntry(existingRef, entry)
+		return existingRef
+	}
+
+	desired := mergedCloudEntry(existing, &entry)
+	if sameCloudEntry(existing, &desired, config.keychainStore) {
+		return existingRef
+	}
+	if config.cloudEntryRefCount(existingRef) <= 1 {
+		config.setCloudAuthEntry(existingRef, desired)
+		return existingRef
+	}
+
+	name := config.availableCloudEntryName(existingRef+"-"+contextName, &desired)
+	if config.Cloud[name] == nil {
+		config.setCloudAuthEntry(name, desired)
+	}
 	return name
 }
 
-// sameCloudCredential reports whether incoming carries the same credential as
-// existing. The existing entry may hold unresolved keychain sentinels (it can
-// be referenced only by non-current contexts, which resolve lazily), so those
-// are resolved for the comparison. Unresolvable values compare as different —
-// failing toward a new entry rather than replacing a shared credential.
-func sameCloudCredential(existing, incoming *CloudEntry, store credentials.Store) bool {
+// setCloudAuthEntry records explicit set/unset intent for both mutually
+// exclusive credential fields. This matters when an unavailable keychain
+// reference was cleared in memory: value comparison alone cannot distinguish
+// an intentional auth switch from an untouched, temporarily unavailable value.
+func (config *Config) setCloudAuthEntry(name string, entry CloudEntry) {
+	entry.OAuthScopes = canonicalOAuthScopes(entry.OAuthScopes)
+	config.SetCloudEntry(name, entry)
+	owner := credentials.CloudOwner(name)
+	config.MarkSecretMutation(owner, credentials.FieldCloudToken)
+	config.MarkSecretMutation(owner, credentials.FieldOAuthToken)
+}
+
+func mergedCloudEntry(existing, incoming *CloudEntry) CloudEntry {
+	merged := *existing
+	merged.OAuthScopes = append([]string(nil), existing.OAuthScopes...)
+	return *MergeCloudInto(&merged, incoming)
+}
+
+// sameCloudEntry compares the complete credential/destination tuple. Existing
+// may still contain keychain sentinels, so compare against a resolved copy.
+// Resolution failures compare different, choosing isolation over mutation.
+func sameCloudEntry(existing, desired *CloudEntry, store credentials.Store) bool {
+	resolved := *existing
+	resolved.OAuthScopes = append([]string(nil), existing.OAuthScopes...)
 	if store != nil {
-		resolved := *existing
 		resolveSentinelsForOwner(cloudOwner(existing.Name, &resolved), store)
-		existing = &resolved
 	}
-	if incoming.Token != "" {
-		return existing.Token == incoming.Token
+	return resolved.Token == desired.Token &&
+		resolved.OAuthToken == desired.OAuthToken &&
+		resolved.OAuthTokenExpiresAt == desired.OAuthTokenExpiresAt &&
+		slices.Equal(canonicalOAuthScopes(resolved.OAuthScopes), canonicalOAuthScopes(desired.OAuthScopes)) &&
+		resolved.OAuthUrl == desired.OAuthUrl &&
+		resolved.APIUrl == desired.APIUrl
+}
+
+func canonicalOAuthScopes(scopes []string) []string {
+	if len(scopes) == 0 {
+		return nil
 	}
-	if incoming.OAuthToken != "" {
-		return existing.OAuthToken == incoming.OAuthToken
+	canonical := append([]string(nil), scopes...)
+	slices.Sort(canonical)
+	return slices.Compact(canonical)
+}
+
+func (config *Config) cloudEntryRefCount(name string) int {
+	count := 0
+	for _, cfgCtx := range config.Contexts {
+		if cfgCtx != nil && cfgCtx.Cloud == name {
+			count++
+		}
 	}
-	return false
+	return count
+}
+
+// availableCloudEntryName returns base when free, reuses it when it already
+// contains the desired tuple, or appends a numeric suffix until one is safe.
+func (config *Config) availableCloudEntryName(base string, desired *CloudEntry) string {
+	for i := 1; ; i++ {
+		name := base
+		if i > 1 {
+			name = fmt.Sprintf("%s-%d", base, i)
+		}
+		existing := config.Cloud[name]
+		if existing == nil || sameCloudEntry(existing, desired, config.keychainStore) {
+			return name
+		}
+	}
 }
 
 // ResolveContextName picks the context to operate on: the explicit override when
@@ -108,9 +199,8 @@ func SaveCloudConfig(ctx context.Context, source Source, contextOverride string,
 			},
 		}
 	}
-	if errors.Is(err, os.ErrNotExist) {
-		cfg = Config{}
-	}
+	// Keep the source-absent revision marker returned by Load. Write uses it to
+	// avoid replacing a config another process creates while login is running.
 
 	contextName := ResolveContextName(contextOverride, cfg)
 

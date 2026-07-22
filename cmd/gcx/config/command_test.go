@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"bytes"
+	"context"
 	"maps"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/config"
+	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/require"
 )
@@ -22,9 +24,67 @@ func isolatedConfigEnv(t *testing.T) (string, string) {
 	workDir := t.TempDir()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", userDir)
+	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")
 	t.Chdir(workDir)
 	return userDir, workDir
+}
+
+func TestMutationConfigSourceUsesSoleDiscoveredFile(t *testing.T) {
+	_, workDir := isolatedConfigEnv(t)
+	localPath := writeLocalConfig(t, workDir, "version: 1\ncontexts:\n  default: {}\ncurrent-context: default\n")
+
+	source := (&config.Options{}).MutationConfigSource()
+	got, err := source()
+	require.NoError(t, err)
+	require.Equal(t, localPath, got)
+	target, err := (&config.Options{}).MutationConfigTarget()
+	require.NoError(t, err)
+	require.Equal(t, localPath, target.Path)
+	require.Equal(t, "local", target.Type)
+}
+
+func TestMutationConfigSourceRejectsMultipleLayers(t *testing.T) {
+	userDir, workDir := isolatedConfigEnv(t)
+	userPath := writeUserConfig(t, userDir, "version: 1\ncontexts:\n  user: {}\ncurrent-context: user\n")
+	localPath := writeLocalConfig(t, workDir, "version: 1\ncontexts:\n  local: {}\ncurrent-context: local\n")
+
+	source := (&config.Options{}).MutationConfigSource()
+	_, err := source()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "write target is ambiguous")
+	require.ErrorContains(t, err, "--config <path>")
+	require.ErrorContains(t, err, userPath)
+	require.ErrorContains(t, err, localPath)
+}
+
+func TestMutationConfigSourceExplicitSelectionWins(t *testing.T) {
+	userDir, workDir := isolatedConfigEnv(t)
+	writeUserConfig(t, userDir, "version: 1\ncontexts:\n  user: {}\n")
+	writeLocalConfig(t, workDir, "version: 1\ncontexts:\n  local: {}\n")
+
+	t.Run("--config", func(t *testing.T) {
+		explicit := filepath.Join(t.TempDir(), "chosen.yaml")
+		source := (&config.Options{ConfigFile: explicit}).MutationConfigSource()
+		got, err := source()
+		require.NoError(t, err)
+		require.Equal(t, explicit, got)
+		target, err := (&config.Options{ConfigFile: explicit}).MutationConfigTarget()
+		require.NoError(t, err)
+		require.Equal(t, "explicit", target.Type)
+	})
+
+	t.Run("GCX_CONFIG", func(t *testing.T) {
+		envPath := filepath.Join(t.TempDir(), "from-env.yaml")
+		t.Setenv("GCX_CONFIG", envPath)
+		source := (&config.Options{}).MutationConfigSource()
+		got, err := source()
+		require.NoError(t, err)
+		require.Equal(t, envPath, got)
+		target, err := (&config.Options{}).MutationConfigTarget()
+		require.NoError(t, err)
+		require.Equal(t, "explicit", target.Type)
+	})
 }
 
 // writeLocalConfig creates a `.gcx.yaml` in workDir with the given content and
@@ -334,6 +394,90 @@ current-context: prod`),
 	testCase.Run(t)
 }
 
+func TestOptions_LoadConfigTolerant_ContextOverrideBeforeEnvVars(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, `version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.grafana.net
+      token: prod-token
+      org-id: 1
+  staging:
+    grafana:
+      server: https://staging.grafana.net
+      token: staging-token
+      org-id: 1
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
+current-context: prod`)
+	t.Setenv("GRAFANA_TOKEN", "env-token")
+
+	opts := &config.Options{ConfigFile: configFile, Context: "staging"}
+	cfg, err := opts.LoadConfigTolerant(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "staging", cfg.CurrentContext)
+	require.Equal(t, "env-token", cfg.Contexts["staging"].Grafana.APIToken)
+	require.Equal(t, "prod-token", cfg.Contexts["prod"].Grafana.APIToken)
+}
+
+func TestOptions_LoadConfig_ValidatesSelectedContext(t *testing.T) {
+	tests := []struct {
+		name       string
+		configYAML string
+		wantErr    string
+	}{
+		{
+			name: "valid selected context ignores invalid current context",
+			configYAML: `version: 1
+stacks:
+  staging:
+    grafana:
+      server: https://staging.grafana.net
+      org-id: 1
+contexts:
+  prod:
+    stack: missing
+  staging:
+    stack: staging
+current-context: prod`,
+		},
+		{
+			name: "invalid selected context is rejected",
+			configYAML: `version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.grafana.net
+      org-id: 1
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: missing
+current-context: prod`,
+			wantErr: `stack "missing" is not defined`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			configFile := testutils.CreateTempFile(t, tc.configYAML)
+			opts := &config.Options{ConfigFile: configFile, Context: "staging"}
+
+			cfg, err := opts.LoadConfig(context.Background())
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, "staging", cfg.CurrentContext)
+		})
+	}
+}
+
 func Test_ViewCommand_outputJson(t *testing.T) {
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
@@ -519,6 +663,70 @@ contexts:
 		},
 	}
 	testCase.Run(t)
+}
+
+func Test_SetCommand_CloudCredentialKindsAreMutuallyExclusive(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, `
+version: 1
+cloud:
+  shared:
+    oauth-token: old-oauth
+    oauth-token-expires-at: "2099-01-01T00:00:00Z"
+    oauth-scopes:
+      - stacks:read
+contexts:
+  default:
+    cloud: shared
+current-context: default
+`)
+
+	testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"set", "--config", configFile, "cloud.shared.token", "new-cap"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+		},
+	}.Run(t)
+
+	loaded, err := internalconfig.Load(context.Background(), internalconfig.ExplicitConfigFile(configFile))
+	require.NoError(t, err)
+	require.Equal(t, "new-cap", loaded.Cloud["shared"].Token)
+	require.Empty(t, loaded.Cloud["shared"].OAuthToken)
+	require.Empty(t, loaded.Cloud["shared"].OAuthTokenExpiresAt)
+	require.Empty(t, loaded.Cloud["shared"].OAuthScopes)
+
+	testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"set", "--config", configFile, "cloud.shared.oauth-token", "new-oauth"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+		},
+	}.Run(t)
+
+	loaded, err = internalconfig.Load(context.Background(), internalconfig.ExplicitConfigFile(configFile))
+	require.NoError(t, err)
+	require.Empty(t, loaded.Cloud["shared"].Token)
+	require.Equal(t, "new-oauth", loaded.Cloud["shared"].OAuthToken)
+
+	for _, command := range [][]string{
+		{"set", "--config", configFile, "cloud.shared.oauth-token-expires-at", "2020-01-01T00:00:00Z"},
+		{"set", "--config", configFile, "cloud.shared.oauth-scopes", "old:scope"},
+		{"set", "--config", configFile, "cloud.shared.oauth-token", "replacement-oauth"},
+	} {
+		testutils.CommandTestCase{
+			Cmd:     config.Command(),
+			Command: command,
+			Assertions: []testutils.CommandAssertion{
+				testutils.CommandSuccess(),
+			},
+		}.Run(t)
+	}
+
+	loaded, err = internalconfig.Load(context.Background(), internalconfig.ExplicitConfigFile(configFile))
+	require.NoError(t, err)
+	require.Equal(t, "replacement-oauth", loaded.Cloud["shared"].OAuthToken)
+	require.Empty(t, loaded.Cloud["shared"].OAuthTokenExpiresAt)
+	require.Empty(t, loaded.Cloud["shared"].OAuthScopes)
 }
 
 func Test_UnsetCommand(t *testing.T) {

@@ -14,6 +14,8 @@ import (
 // fakeKeychain is an in-memory credentials.Store for migration tests.
 type fakeKeychain struct {
 	entries map[string]string
+	gets    []string
+	getErr  error
 }
 
 func newFakeKeychain() *fakeKeychain {
@@ -21,6 +23,10 @@ func newFakeKeychain() *fakeKeychain {
 }
 
 func (f *fakeKeychain) Get(key string) (string, error) {
+	f.gets = append(f.gets, key)
+	if f.getErr != nil {
+		return "", f.getErr
+	}
 	v, ok := f.entries[key]
 	if !ok {
 		return "", credentials.ErrNotFound
@@ -53,6 +59,29 @@ func writeTestConfig(t *testing.T, contents string) string {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
 	return path
+}
+
+func writeTrustedUserTestConfig(t *testing.T, contents string) string {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	t.Setenv("HOME", root)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, ".config"))
+	path := filepath.Join(root, ".config", StandardConfigFolder, StandardConfigFileName)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
+	return path
+}
+
+func storedFakeBoundAccount(t *testing.T, store *fakeKeychain, binding credentials.Binding, value string) {
+	t.Helper()
+	var matches []string
+	for account, stored := range store.entries {
+		if credentials.MatchesBoundAccount(account, binding) && stored == value {
+			matches = append(matches, account)
+		}
+	}
+	require.Len(t, matches, 1)
 }
 
 func TestIsLegacyConfig(t *testing.T) {
@@ -203,7 +232,7 @@ func TestMigrateLegacyConfig(t *testing.T) {
 	withFakeKeychain(t)
 	path := writeTestConfig(t, legacyFullConfig)
 
-	cfg, err := Load(context.Background(), ExplicitConfigFile(path))
+	cfg, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
 	require.NoError(t, err)
 
 	// Contexts became thin references.
@@ -268,7 +297,7 @@ func TestMigrateLegacyConfig(t *testing.T) {
 
 func TestMigrateLegacyConfigEntryNameCollision(t *testing.T) {
 	withFakeKeychain(t)
-	path := writeTestConfig(t, `
+	path := writeTrustedUserTestConfig(t, `
 contexts:
   alpha:
     cloud:
@@ -279,7 +308,7 @@ contexts:
 current-context: alpha
 `)
 
-	cfg, err := Load(context.Background(), ExplicitConfigFile(path))
+	cfg, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
 	require.NoError(t, err)
 
 	// Two distinct tokens against the same host: the first (sorted) context
@@ -297,7 +326,7 @@ func TestMigrateLegacyConfigKeychainCopyOnly(t *testing.T) {
 	// migration: sentinels on disk, values under legacy per-context keys.
 	store.entries["dev:cloud-token"] = "secret-cloud"
 	store.entries["dev:grafana-token"] = "secret-grafana"
-	path := writeTestConfig(t, `
+	path := writeTrustedUserTestConfig(t, `
 contexts:
   dev:
     grafana:
@@ -308,28 +337,128 @@ contexts:
 current-context: dev
 `)
 
-	cfg, err := Load(context.Background(), ExplicitConfigFile(path))
+	cfg, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
 	require.NoError(t, err)
 
 	// In-memory view holds resolved plaintext.
 	assert.Equal(t, "secret-cloud", cfg.Contexts["dev"].CloudEntry.Token)
 	assert.Equal(t, "secret-grafana", cfg.Contexts["dev"].Grafana.APIToken)
 
-	// Values were copied to the canonical owner keys; the legacy keys survive
+	// Values were copied to source-bound owner keys; the legacy keys survive
 	// so the .legacy.bak sentinels stay resolvable.
-	assert.Equal(t, "secret-cloud", store.entries["cloud:grafana-com:cloud-token"])
-	assert.Equal(t, "secret-grafana", store.entries["stack:dev:grafana-token"])
+	stackBinding := stackOwner("dev", cfg.Stacks["dev"]).binding(credentials.FieldGrafanaToken)
+	cloudBinding := cloudOwner("grafana-com", cfg.Cloud["grafana-com"]).binding(credentials.FieldCloudToken)
+	storedFakeBoundAccount(t, store, cloudBinding, "secret-cloud")
+	storedFakeBoundAccount(t, store, stackBinding, "secret-grafana")
 	assert.Equal(t, "secret-cloud", store.entries["dev:cloud-token"])
 	assert.Equal(t, "secret-grafana", store.entries["dev:grafana-token"])
 
-	// The rewritten file references the canonical keys.
+	// The rewritten file contains only opaque source-bound references.
 	rewritten, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.Contains(t, string(rewritten), "keychain:gcx:cloud:grafana-com:cloud-token")
-	assert.Contains(t, string(rewritten), "keychain:gcx:stack:dev:grafana-token")
+	assert.Contains(t, string(rewritten), "keychain:gcx:v2:")
+	assert.NotContains(t, string(rewritten), "keychain:gcx:cloud:grafana-com:cloud-token")
+	assert.NotContains(t, string(rewritten), "keychain:gcx:stack:dev:grafana-token")
 }
 
-func TestMigrateLegacyConfigPlaintextSecretsNotInBackup(t *testing.T) {
+func TestMigrateLegacyConfigRejectsCrossOwnerAndCrossFieldSentinels(t *testing.T) {
+	store := withFakeKeychain(t)
+	store.entries["victim:grafana-token"] = "victim-token"
+	store.entries["attacker:grafana-token"] = "attacker-token"
+	path := writeTrustedUserTestConfig(t, `
+contexts:
+  attacker:
+    grafana:
+      server: https://attacker.invalid
+      token: keychain:gcx:victim:grafana-token
+      password: keychain:gcx:attacker:grafana-token
+current-context: attacker
+`)
+
+	before, err := os.ReadFile(path)
+	require.NoError(t, err)
+	_, err = Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
+	require.ErrorContains(t, err, "invalid legacy keychain reference")
+	assert.Empty(t, store.gets, "legacy YAML must not select another owner or field's keychain account")
+
+	rewritten, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, before, rewritten)
+	assert.NotContains(t, string(rewritten), "victim-token")
+	assert.NotContains(t, string(rewritten), "attacker-token")
+}
+
+func TestMigrateLocalLegacySentinelCannotReadSameNamedAccount(t *testing.T) {
+	store := withFakeKeychain(t)
+	store.entries["prod:grafana-token"] = "user-secret"
+	path := writeTestConfig(t, `
+contexts:
+  prod:
+    grafana:
+      server: https://attacker.invalid
+      token: keychain:gcx:prod:grafana-token
+current-context: prod
+`)
+	before, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	_, err = Load(withConfigLayer(context.Background(), "local"), ExplicitConfigFile(path))
+	require.ErrorContains(t, err, "untrusted config source")
+	assert.Empty(t, store.gets)
+	assert.Equal(t, "user-secret", store.entries["prod:grafana-token"])
+	after, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	assert.Equal(t, before, after)
+	_, statErr := os.Stat(path + legacyBackupSuffix)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestMigrateTrustedLexicalSymlinkCannotReadLegacyAccount(t *testing.T) {
+	store := withFakeKeychain(t)
+	store.entries["prod:grafana-token"] = "user-secret"
+	target := writeTestConfig(t, `
+contexts:
+  prod:
+    grafana:
+      server: https://repo.invalid
+      token: keychain:gcx:prod:grafana-token
+current-context: prod
+`)
+	link := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.Symlink(target, link))
+
+	_, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(link))
+	require.ErrorContains(t, err, "untrusted config source")
+	assert.Empty(t, store.gets)
+	assert.Equal(t, "user-secret", store.entries["prod:grafana-token"])
+}
+
+func TestMigrateLocalPlaintextDoesNotOverwriteSameNamedLegacyAccount(t *testing.T) {
+	store := withFakeKeychain(t)
+	store.entries["prod:grafana-token"] = "user-secret"
+	path := writeTestConfig(t, `
+contexts:
+  prod:
+    grafana:
+      server: https://repo.invalid
+      token: repo-token
+current-context: prod
+`)
+
+	cfg, err := Load(withConfigLayer(context.Background(), "local"), ExplicitConfigFile(path))
+	require.NoError(t, err)
+	assert.Equal(t, "repo-token", cfg.Contexts["prod"].Grafana.APIToken)
+	assert.Equal(t, "user-secret", store.entries["prod:grafana-token"])
+	assert.NotContains(t, store.gets, "prod:grafana-token")
+
+	binding := boundStackTestBinding(t, path, "prod", "https://repo.invalid", credentials.FieldGrafanaToken)
+	storedFakeBoundAccount(t, store, binding, "repo-token")
+	backup, err := os.ReadFile(path + legacyBackupSuffix)
+	require.NoError(t, err)
+	assert.Contains(t, string(backup), "repo-token")
+}
+
+func TestMigrateLegacyConfigPlaintextBackupDoesNotWriteLegacyAccount(t *testing.T) {
 	store := withFakeKeychain(t)
 	path := writeTestConfig(t, `
 contexts:
@@ -343,13 +472,14 @@ current-context: dev
 	_, err := Load(context.Background(), ExplicitConfigFile(path))
 	require.NoError(t, err)
 
-	// Plaintext was sentinelized under the legacy key before the backup was
-	// taken, so the backup carries a sentinel, not the secret.
+	// The exact 0600 rollback backup retains the original plaintext. Migration
+	// never writes predictable legacy account names, which could overwrite a
+	// credential owned by another config source.
 	backup, err := os.ReadFile(path + legacyBackupSuffix)
 	require.NoError(t, err)
-	assert.NotContains(t, string(backup), "plaintext-secret")
-	assert.Contains(t, string(backup), "keychain:gcx:dev:grafana-token")
-	assert.Equal(t, "plaintext-secret", store.entries["dev:grafana-token"])
+	assert.Contains(t, string(backup), "plaintext-secret")
+	_, hasLegacyAccount := store.entries["dev:grafana-token"]
+	assert.False(t, hasLegacyAccount)
 
 	rewritten, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -357,10 +487,9 @@ current-context: dev
 }
 
 func TestMigrateLegacyConfigKeychainUnavailable(t *testing.T) {
-	// The default test store reports ErrUnavailable for every operation,
-	// mirroring a headless box. Migration must still work: plaintext carries
-	// through, unresolvable sentinels are carried verbatim.
-	path := writeTestConfig(t, `
+	store := withFakeKeychain(t)
+	store.getErr = credentials.ErrUnavailable
+	legacy := `
 contexts:
   dev:
     grafana:
@@ -369,26 +498,34 @@ contexts:
     cloud:
       token: keychain:gcx:dev:cloud-token
 current-context: dev
-`)
+`
+	path := writeTrustedUserTestConfig(t, legacy)
 
-	cfg, err := Load(context.Background(), ExplicitConfigFile(path))
+	cfg, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
 	require.NoError(t, err)
 
 	assert.Equal(t, "plaintext-secret", cfg.Contexts["dev"].Grafana.APIToken)
+	assert.Empty(t, cfg.Contexts["dev"].CloudEntry.Token)
 
-	rewritten, err := os.ReadFile(path)
+	onDisk, err := os.ReadFile(path)
 	require.NoError(t, err)
-	// Plaintext stays plaintext (no keychain to move it into) and the legacy
-	// sentinel is preserved verbatim in its new home.
-	assert.Contains(t, string(rewritten), "plaintext-secret")
-	assert.Contains(t, string(rewritten), "keychain:gcx:dev:cloud-token")
+	assert.Equal(t, legacy, string(onDisk), "transient failure must leave the retryable legacy source untouched")
+	_, statErr := os.Stat(path + legacyBackupSuffix)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
+	require.ErrorContains(t, err, "legacy credential migration is deferred")
 
-	// The carried legacy sentinel resolves once the keychain comes back.
-	store := withFakeKeychain(t)
+	// The unchanged legacy source retries and rekeys successfully once the
+	// keychain is available again.
+	store.getErr = nil
 	store.entries["dev:cloud-token"] = "recovered"
-	recovered, err := Load(context.Background(), ExplicitConfigFile(path))
+	recovered, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
 	require.NoError(t, err)
 	assert.Equal(t, "recovered", recovered.Contexts["dev"].CloudEntry.Token)
+	rewritten, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(rewritten), "keychain:gcx:v2:")
+	assert.NotContains(t, string(rewritten), "keychain:gcx:dev:cloud-token")
 }
 
 func TestMigrateLegacyConfigReadOnlyFile(t *testing.T) {
@@ -428,7 +565,13 @@ contexts:
       server: https://devstack.grafana.net
 current-context: dev
 `)
-	existingBackup := "# pre-existing backup\n"
+	existingBackup := `
+contexts:
+  rollback:
+    grafana:
+      server: https://rollback.example
+current-context: rollback
+`
 	require.NoError(t, os.WriteFile(path+legacyBackupSuffix, []byte(existingBackup), 0o600))
 
 	_, err := Load(context.Background(), ExplicitConfigFile(path))
@@ -438,10 +581,36 @@ current-context: dev
 	require.NoError(t, err)
 	assert.Equal(t, existingBackup, string(backup))
 
-	// Migration still persisted despite skipping the backup write.
+	// A stale rollback file cannot authorize replacing a different current
+	// source: both files remain untouched for manual recovery.
 	rewritten, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.False(t, isLegacyConfig(rewritten))
+	assert.True(t, isLegacyConfig(rewritten))
+}
+
+func TestMigrateLegacyConfigInvalidExistingBackupLeavesSourceUntouched(t *testing.T) {
+	withFakeKeychain(t)
+	legacy := `
+contexts:
+  dev:
+    grafana:
+      server: https://devstack.grafana.net
+current-context: dev
+`
+	path := writeTestConfig(t, legacy)
+	existingBackup := "# incomplete backup\n"
+	require.NoError(t, os.WriteFile(path+legacyBackupSuffix, []byte(existingBackup), 0o600))
+
+	cfg, err := Load(context.Background(), ExplicitConfigFile(path))
+	require.NoError(t, err)
+	assert.Equal(t, "https://devstack.grafana.net", cfg.Contexts["dev"].Grafana.Server)
+
+	onDisk, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, legacy, string(onDisk), "invalid rollback safety must prevent persistence")
+	backup, err := os.ReadFile(path + legacyBackupSuffix)
+	require.NoError(t, err)
+	assert.Equal(t, existingBackup, string(backup))
 }
 
 func TestMigrateLegacyConfigValidationEquivalence(t *testing.T) {

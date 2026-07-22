@@ -1,12 +1,20 @@
 ---
 type: feature-plan
 title: "Config format rework: stacks / cloud / contexts split"
-status: draft
+status: implemented
 spec: https://github.com/grafana/gcx/issues/890#issuecomment-5004314096
 created: 2026-07-20
 ---
 
 # Config Format Rework (#890)
+
+The accepted architecture and security boundaries are recorded in
+[ADR-022](../adrs/config-v1/001-versioned-split-config-and-secret-trust.md).
+
+> **Historical implementation plan:** The security, backup, keychain,
+> layered-migration, and write-back details below were superseded by ADR-022
+> and the current architecture documentation. Do not treat those sections as
+> normative behavior.
 
 Restructure the gcx config from per-context everything into kubeconfig-style
 named sections: `stacks:` (Grafana connection + providers), `cloud:` (named

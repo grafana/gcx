@@ -5,13 +5,11 @@ import "maps"
 // MergeConfigs deep-merges two configs. Fields in `over` take precedence
 // over fields in `base`. Zero-value fields in `over` do not erase `base`.
 //
-// The keychain fields (keychainStore, keychainFields, keychainPreserve) are
-// carried over unchanged from `base`, so any resolved-field tracking on `over`
-// is dropped. This is safe: callers resolve the effective current context after
-// merging (see LoadLayered), and reconcileKeychain re-derives backing on write
-// from the sentinel/plaintext state of each field.
+// Runtime credential state is retained only for the atomic stack/cloud entries
+// that win the merge, including each entry's defining source identity.
 func MergeConfigs(base, over Config) Config {
 	result := base
+	result.migrationDeferred = base.migrationDeferred || over.migrationDeferred
 
 	if over.Version > result.Version {
 		result.Version = over.Version
@@ -81,6 +79,7 @@ func MergeConfigs(base, over Config) Config {
 	// Re-wire resolved views: merged contexts may reference stacks or cloud
 	// entries contributed by either layer.
 	result.Resolve()
+	mergeKeychainRuntime(&result, base, over)
 
 	return result
 }

@@ -102,10 +102,8 @@ func createConfigForType(typ string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if _, err := os.Stat(localPath); os.IsNotExist(err) {
-			if err := os.WriteFile(localPath, []byte(internalConfig.DefaultEmptyConfigFile), 0o600); err != nil {
-				return "", fmt.Errorf("failed to create %s: %w", localPath, err)
-			}
+		if err := internalConfig.CreateDefaultConfigFile(localPath); err != nil {
+			return "", fmt.Errorf("failed to create %s: %w", localPath, err)
 		}
 		return localPath, nil
 	case "user":

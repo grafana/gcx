@@ -180,9 +180,9 @@ current-context: default
 	req.Equal("https://slo.example.com", cfg.Contexts["default"].Providers["slo"]["url"])
 	req.Equal("oncall-token", cfg.Contexts["default"].Providers["oncall"]["token"])
 
-	// Round-trip: write and reload
-	tmpDir := t.TempDir()
-	roundTripFile := filepath.Join(tmpDir, "config-roundtrip.yaml")
+	// Round-trip in place. Credential-bearing entries are source-bound and
+	// ordinary Write intentionally refuses to export them to another file.
+	roundTripFile := configFile
 	err = config.Write(t.Context(), config.ExplicitConfigFile(roundTripFile), cfg)
 	req.NoError(err)
 

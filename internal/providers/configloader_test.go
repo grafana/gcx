@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/grafana/gcx/internal/cloud"
@@ -59,6 +60,19 @@ func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, []byte(strings.TrimSpace(content)+"\n"), 0o600))
+}
+
+func isolateConfigSources(t *testing.T) (string, string, string) {
+	t.Helper()
+	homeDir := t.TempDir()
+	xdgDir := t.TempDir()
+	workDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
+	t.Setenv(internalconfig.ConfigFileEnvVar, "")
+	t.Chdir(workDir)
+	return homeDir, xdgDir, workDir
 }
 
 func TestConfigLoader_LoadCloudConfig_MissingToken(t *testing.T) {
@@ -251,6 +265,182 @@ current-context: default
 	}
 }
 
+func TestLoadDirectProviderSnapshot_RejectsAutoLocalCredentialDestinationsBeforeNetwork(t *testing.T) {
+	homeDir, _, workDir := isolateConfigSources(t)
+	var attackerRequests atomic.Int32
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attackerRequests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(attacker.Close)
+
+	userFile := filepath.Join(homeDir, ".config", "gcx", "config.yaml")
+	writeFile(t, userFile, `
+version: 1
+stacks:
+  user-stack:
+    slug: victim-stack
+cloud:
+  grafana-com:
+    token: user-cloud-token
+    api-url: https://grafana.com
+    oauth-url: https://grafana.com
+contexts:
+  user:
+    stack: user-stack
+    cloud: grafana-com
+current-context: user
+`)
+	localFile := filepath.Join(workDir, internalconfig.LocalConfigFileName)
+	writeFile(t, localFile, `
+version: 1
+stacks:
+  repository:
+    slug: victim-stack
+    grafana:
+      server: https://repository.invalid
+      token: repository-token
+    providers:
+      faro:
+        faro-api-url: `+attacker.URL+`
+      synth:
+        sm-url: `+attacker.URL+`
+      adaptive:
+        logs-tenant-id: "123"
+      k6:
+        api-domain: `+attacker.URL+`
+contexts:
+  repository:
+    stack: repository
+    cloud: grafana-com
+current-context: repository
+`)
+
+	tests := []providers.DirectProviderPolicy{
+		{ProviderName: "faro", EndpointKeys: []string{"faro-api-url"}, CredentialEnv: "GRAFANA_CLOUD_TOKEN", RejectAutoLocal: true},
+		{ProviderName: "synth", EndpointKeys: []string{"sm-url"}, CredentialEnv: "GRAFANA_PROVIDER_SYNTH_SM_TOKEN", RejectAutoLocal: true},
+		{ProviderName: "adaptive", EndpointKeys: []string{"logs-tenant-url"}, CredentialEnv: "GRAFANA_CLOUD_TOKEN", RejectAutoLocal: true},
+		{ProviderName: "k6", EndpointKeys: []string{"api-domain"}, CredentialEnv: "GRAFANA_TOKEN", RequireGrafana: true},
+	}
+	for _, policy := range tests {
+		t.Run(policy.ProviderName, func(t *testing.T) {
+			loader := &providers.ConfigLoader{}
+			_, err := loader.LoadDirectProviderSnapshot(context.Background(), policy)
+			require.ErrorContains(t, err, "auto-discovered repository config")
+			assert.Contains(t, err.Error(), "--config")
+		})
+	}
+	assert.Zero(t, attackerRequests.Load())
+}
+
+func TestLoadDirectProviderSnapshot_EndpointEnvironmentRequiresMatchingCredential(t *testing.T) {
+	configFile := writeConfigFile(t, `
+version: 1
+stacks:
+  default:
+    slug: test-stack
+    grafana:
+      server: https://stack.grafana.net
+      token: stored-grafana-token
+      stack-id: 12345
+    providers:
+      faro:
+        faro-api-url: https://stored-faro.invalid
+      synth:
+        sm-url: https://stored-sm.invalid
+        sm-token: stored-sm-token
+      adaptive:
+        logs-tenant-url: https://stored-logs.invalid
+        logs-tenant-id: "123"
+      k6:
+        api-domain: https://stored-k6.invalid
+cloud:
+  grafana-com:
+    token: stored-cloud-token
+    api-url: https://grafana.com
+    oauth-url: https://grafana.com
+contexts:
+  default:
+    stack: default
+    cloud: grafana-com
+current-context: default
+`)
+	tests := []struct {
+		name          string
+		policy        providers.DirectProviderPolicy
+		endpointEnv   string
+		credentialEnv string
+	}{
+		{"faro", providers.DirectProviderPolicy{ProviderName: "faro", EndpointKeys: []string{"faro-api-url"}, CredentialEnv: "GRAFANA_CLOUD_TOKEN"}, "GRAFANA_PROVIDER_FARO_FARO_API_URL", "GRAFANA_CLOUD_TOKEN"},
+		{"synth", providers.DirectProviderPolicy{ProviderName: "synth", EndpointKeys: []string{"sm-url"}, CredentialEnv: "GRAFANA_PROVIDER_SYNTH_SM_TOKEN"}, "GRAFANA_PROVIDER_SYNTH_SM_URL", "GRAFANA_PROVIDER_SYNTH_SM_TOKEN"},
+		{"adaptive", providers.DirectProviderPolicy{ProviderName: "adaptive", EndpointKeys: []string{"logs-tenant-url"}, CredentialEnv: "GRAFANA_CLOUD_TOKEN"}, "GRAFANA_PROVIDER_ADAPTIVE_LOGS_TENANT_URL", "GRAFANA_CLOUD_TOKEN"},
+		{"k6", providers.DirectProviderPolicy{ProviderName: "k6", EndpointKeys: []string{"api-domain"}, CredentialEnv: "GRAFANA_TOKEN", RequireGrafana: true}, "GRAFANA_PROVIDER_K6_API_DOMAIN", "GRAFANA_TOKEN"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name+" rejects destination-only override", func(t *testing.T) {
+			t.Setenv(tt.endpointEnv, "https://attacker.invalid")
+			t.Setenv(tt.credentialEnv, "")
+			loader := &providers.ConfigLoader{}
+			loader.SetConfigFile(configFile)
+			_, err := loader.LoadDirectProviderSnapshot(context.Background(), tt.policy)
+			require.ErrorContains(t, err, "without a matching runtime credential")
+			assert.Contains(t, err.Error(), tt.credentialEnv)
+		})
+		t.Run(tt.name+" accepts paired runtime credential", func(t *testing.T) {
+			t.Setenv(tt.endpointEnv, "https://runtime-authorized.invalid")
+			t.Setenv(tt.credentialEnv, "runtime-token")
+			loader := &providers.ConfigLoader{}
+			loader.SetConfigFile(configFile)
+			snapshot, err := loader.LoadDirectProviderSnapshot(context.Background(), tt.policy)
+			require.NoError(t, err)
+			assert.True(t, snapshot.EndpointOverriddenByEnvironment(tt.policy.EndpointKeys[0]))
+			assert.Equal(t, "https://runtime-authorized.invalid", snapshot.ProviderConfig[tt.policy.EndpointKeys[0]])
+		})
+	}
+}
+
+func TestLoadDirectProviderSnapshot_EndpointPolicyFailsClosedWithoutCredentialEnvironment(t *testing.T) {
+	loader := &providers.ConfigLoader{}
+	_, err := loader.LoadDirectProviderSnapshot(context.Background(), providers.DirectProviderPolicy{
+		ProviderName: "future-provider",
+		EndpointKeys: []string{"api-url"},
+	})
+	require.ErrorContains(t, err, "requires a runtime credential environment variable")
+}
+
+func TestLoadDirectProviderSnapshot_ExplicitLocalConfigIsTrusted(t *testing.T) {
+	_, _, workDir := isolateConfigSources(t)
+	localFile := filepath.Join(workDir, internalconfig.LocalConfigFileName)
+	writeFile(t, localFile, `
+version: 1
+stacks:
+  default:
+    providers:
+      faro:
+        faro-api-url: https://explicit-faro.invalid
+cloud:
+  grafana-com:
+    token: explicit-cloud-token
+    api-url: https://grafana.com
+    oauth-url: https://grafana.com
+contexts:
+  default:
+    stack: default
+    cloud: grafana-com
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(localFile)
+	snapshot, err := loader.LoadDirectProviderSnapshot(context.Background(), providers.DirectProviderPolicy{
+		ProviderName:    "faro",
+		EndpointKeys:    []string{"faro-api-url"},
+		CredentialEnv:   "GRAFANA_CLOUD_TOKEN",
+		RejectAutoLocal: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "https://explicit-faro.invalid", snapshot.ProviderConfig["faro-api-url"])
+}
+
 // TestConfigLoader_LoadProviderConfig_Namespace verifies that namespace is returned.
 func TestConfigLoader_LoadProviderConfig_Namespace(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
@@ -431,6 +621,225 @@ current-context: default
 	assert.Equal(t, "uid-xyz", got["sm-metrics-datasource-uid"])
 	assert.Equal(t, "https://file.sm", got["sm-url"])
 	assert.Equal(t, "tok", got["sm-token"])
+}
+
+func TestConfigLoader_SaveProviderConfig_DestinationChangeClearsCredential(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+version: 1
+stacks:
+  default:
+    grafana:
+      server: https://grafana.invalid
+    providers:
+      synth:
+        sm-url: https://old-sm.invalid
+        sm-token: old-sm-token
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	require.NoError(t, loader.SaveProviderConfig(context.Background(), "synth", "sm-url", "https://new-sm.invalid"))
+	raw, err := os.ReadFile(cfgFile)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "https://new-sm.invalid")
+	assert.NotContains(t, string(raw), "old-sm-token")
+}
+
+func TestConfigLoader_SaveProviderConfig_DoesNotPersistEnvOverrides(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+version: 1
+stacks:
+  default:
+    grafana:
+      server: https://file.grafana.net
+      token: file-token
+      org-id: 1
+    providers:
+      synth:
+        sm-url: https://file.sm
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	t.Setenv("GRAFANA_SERVER", "https://env.grafana.net")
+	t.Setenv("GRAFANA_TOKEN", "env-token")
+	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM_URL", "https://env.sm")
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	require.NoError(t, loader.SaveProviderConfig(context.Background(), "synth", "cached-key", "cached-value"))
+
+	raw, err := internalconfig.Load(context.Background(), internalconfig.ExplicitConfigFile(cfgFile))
+	require.NoError(t, err)
+	stack := raw.Stacks["default"]
+	require.NotNil(t, stack)
+	require.NotNil(t, stack.Grafana)
+	assert.Equal(t, "https://file.grafana.net", stack.Grafana.Server)
+	assert.Equal(t, "file-token", stack.Grafana.APIToken)
+	require.NotNil(t, stack.Providers["synth"])
+	assert.Equal(t, "https://file.sm", stack.Providers["synth"]["sm-url"])
+	assert.Equal(t, "cached-value", stack.Providers["synth"]["cached-key"])
+}
+
+func TestConfigLoader_SaveProviderConfig_RefusesImplicitLocalSource(t *testing.T) {
+	homeDir, xdgDir, workDir := isolateConfigSources(t)
+	localFile := filepath.Join(workDir, internalconfig.LocalConfigFileName)
+	writeFile(t, localFile, `
+version: 1
+stacks:
+  default: {}
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	before, err := os.ReadFile(localFile)
+	require.NoError(t, err)
+
+	loader := &providers.ConfigLoader{}
+	err = loader.SaveProviderConfig(context.Background(), "synth", "cached-key", "cached-value")
+	require.ErrorIs(t, err, providers.ErrAutoLocalProviderWriteback)
+	var localErr providers.AutoLocalProviderWritebackError
+	require.ErrorAs(t, err, &localErr)
+	assert.Equal(t, localFile, localErr.Path)
+	after, err := os.ReadFile(localFile)
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+
+	for _, path := range []string{
+		filepath.Join(homeDir, ".config", "gcx", "config.yaml"),
+		filepath.Join(xdgDir, "gcx", "config.yaml"),
+	} {
+		_, statErr := os.Stat(path)
+		assert.True(t, os.IsNotExist(statErr), "provider save must not create %s", path)
+	}
+}
+
+func TestConfigLoader_SaveProviderConfig_ExplicitLocalSourceIsAuthorized(t *testing.T) {
+	_, _, workDir := isolateConfigSources(t)
+	localFile := filepath.Join(workDir, internalconfig.LocalConfigFileName)
+	writeFile(t, localFile, `
+version: 1
+stacks:
+  default: {}
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(localFile)
+	require.NoError(t, loader.SaveProviderConfig(context.Background(), "synth", "cached-key", "cached-value"))
+
+	raw, err := internalconfig.Load(context.Background(), internalconfig.ExplicitConfigFile(localFile))
+	require.NoError(t, err)
+	assert.Equal(t, "cached-value", raw.Stacks["default"].Providers["synth"]["cached-key"])
+}
+
+func TestConfigLoader_SaveProviderConfig_UsesGCXConfigSource(t *testing.T) {
+	homeDir, _, workDir := isolateConfigSources(t)
+	userFile := filepath.Join(homeDir, ".config", "gcx", "config.yaml")
+	localFile := filepath.Join(workDir, internalconfig.LocalConfigFileName)
+	explicitFile := filepath.Join(t.TempDir(), "explicit.yaml")
+	for _, path := range []string{userFile, localFile, explicitFile} {
+		writeFile(t, path, `
+version: 1
+stacks:
+  default: {}
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	}
+	t.Setenv(internalconfig.ConfigFileEnvVar, explicitFile)
+
+	loader := &providers.ConfigLoader{}
+	require.NoError(t, loader.SaveProviderConfig(context.Background(), "synth", "cached-key", "cached-value"))
+
+	for _, tc := range []struct {
+		path      string
+		wantValue string
+	}{
+		{path: userFile},
+		{path: localFile},
+		{path: explicitFile, wantValue: "cached-value"},
+	} {
+		raw, err := internalconfig.Load(context.Background(), internalconfig.ExplicitConfigFile(tc.path))
+		require.NoError(t, err)
+		assert.Equal(t, tc.wantValue, raw.Stacks["default"].Providers["synth"]["cached-key"])
+	}
+}
+
+func TestConfigLoader_SaveProviderConfig_SkipsWhenNoConfigExists(t *testing.T) {
+	homeDir, xdgDir, workDir := isolateConfigSources(t)
+
+	loader := &providers.ConfigLoader{}
+	require.NoError(t, loader.SaveProviderConfig(context.Background(), "synth", "cached-key", "cached-value"))
+
+	for _, path := range []string{
+		filepath.Join(homeDir, ".config", "gcx", "config.yaml"),
+		filepath.Join(xdgDir, "gcx", "config.yaml"),
+		filepath.Join(workDir, internalconfig.LocalConfigFileName),
+	} {
+		_, statErr := os.Stat(path)
+		assert.True(t, os.IsNotExist(statErr), "provider save must not create %s", path)
+	}
+}
+
+func TestConfigLoader_SaveProviderConfig_RefusesMultipleSources(t *testing.T) {
+	homeDir, _, workDir := isolateConfigSources(t)
+	userFile := filepath.Join(homeDir, ".config", "gcx", "config.yaml")
+	localFile := filepath.Join(workDir, internalconfig.LocalConfigFileName)
+	writeFile(t, userFile, `
+version: 1
+stacks:
+  default:
+    grafana:
+      server: https://user.grafana.net
+      token: user-token
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	writeFile(t, localFile, `
+version: 1
+stacks:
+  default:
+    providers:
+      synth:
+        sm-url: https://local.sm
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	userBefore, err := os.ReadFile(userFile)
+	require.NoError(t, err)
+	localBefore, err := os.ReadFile(localFile)
+	require.NoError(t, err)
+
+	loader := &providers.ConfigLoader{}
+	err = loader.SaveProviderConfig(context.Background(), "synth", "cached-key", "cached-value")
+	require.ErrorIs(t, err, providers.ErrAutoLocalProviderWriteback)
+	var localErr providers.AutoLocalProviderWritebackError
+	require.ErrorAs(t, err, &localErr)
+	assert.Equal(t, localFile, localErr.Path)
+
+	userAfter, err := os.ReadFile(userFile)
+	require.NoError(t, err)
+	localAfter, err := os.ReadFile(localFile)
+	require.NoError(t, err)
+	assert.Equal(t, userBefore, userAfter)
+	assert.Equal(t, localBefore, localAfter)
 }
 
 // TestConfigLoader_LoadFullConfig verifies AC-7: returns non-nil *config.Config.
@@ -789,7 +1198,7 @@ contexts:
     stack: staging
 current-context: prod
 `)
-	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM-TOKEN", "env-sm-token")
+	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM_TOKEN", "env-sm-token")
 
 	loader := &providers.ConfigLoader{}
 	loader.SetConfigFile(cfgFile)
@@ -798,12 +1207,116 @@ current-context: prod
 	err := loader.SaveProviderConfig(context.Background(), "synth", "extra-key", "extra-val")
 	require.NoError(t, err)
 
-	// Reload and verify the save targeted the staging context.
+	// Inspect the raw file: the save targeted staging without changing the
+	// persisted current-context or writing the environment-derived token.
+	raw, err := internalconfig.Load(context.Background(), internalconfig.ExplicitConfigFile(cfgFile))
+	require.NoError(t, err)
+	assert.Equal(t, "prod", raw.CurrentContext)
+	assert.Equal(t, "extra-val", raw.Stacks["staging"].Providers["synth"]["extra-key"])
+	assert.NotContains(t, raw.Stacks["staging"].Providers["synth"], "sm-token")
+	assert.NotContains(t, raw.Stacks["prod"].Providers["synth"], "extra-key")
+
+	// The read path still applies the env override to staging in memory.
 	got, _, err := loader.LoadProviderConfig(context.Background(), "synth")
 	require.NoError(t, err)
 	assert.Equal(t, "https://staging.sm", got["sm-url"])
 	assert.Equal(t, "extra-val", got["extra-key"])
 	assert.Equal(t, "env-sm-token", got["sm-token"])
+}
+
+func TestConfigLoader_LoadConfigTolerant_ContextOverrideBeforeEnvVars(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.grafana.net
+      token: prod-token
+      org-id: 1
+  staging:
+    grafana:
+      server: https://staging.grafana.net
+      token: staging-token
+      org-id: 1
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
+current-context: prod
+`)
+	t.Setenv("GRAFANA_TOKEN", "env-token")
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+	loader.SetContextName("staging")
+
+	cfg, err := loader.LoadConfigTolerant(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "staging", cfg.CurrentContext)
+	assert.Equal(t, "env-token", cfg.Contexts["staging"].Grafana.APIToken)
+	assert.Equal(t, "prod-token", cfg.Contexts["prod"].Grafana.APIToken)
+}
+
+func TestConfigLoader_LoadConfig_ValidatesSelectedContext(t *testing.T) {
+	tests := []struct {
+		name       string
+		configYAML string
+		wantErr    string
+	}{
+		{
+			name: "valid selected context ignores invalid current context",
+			configYAML: `
+version: 1
+stacks:
+  staging:
+    grafana:
+      server: https://staging.grafana.net
+      org-id: 1
+contexts:
+  prod:
+    stack: missing
+  staging:
+    stack: staging
+current-context: prod
+`,
+		},
+		{
+			name: "invalid selected context is rejected",
+			configYAML: `
+version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.grafana.net
+      org-id: 1
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: missing
+current-context: prod
+`,
+			wantErr: `stack "missing" is not defined`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgFile := writeConfigFile(t, tc.configYAML)
+			loader := &providers.ConfigLoader{}
+			loader.SetConfigFile(cfgFile)
+			loader.SetContextName("staging")
+
+			cfg, err := loader.LoadConfig(context.Background())
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, "staging", cfg.CurrentContext)
+		})
+	}
 }
 
 func TestConfigLoader_LoadFullConfig_ContextOverrideBeforeEnvVars(t *testing.T) {
