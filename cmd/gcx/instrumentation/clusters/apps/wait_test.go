@@ -2,14 +2,81 @@
 package apps
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
+	"github.com/spf13/cobra"
 )
+
+// pinAgentMode forces agent-mode detection on for the duration of the test.
+// agent.IsAgentMode() caches an init()-time value, so ResetForTesting() must
+// re-run env detection after t.Setenv (and again on cleanup).
+func pinAgentMode(t *testing.T) {
+	t.Helper()
+	t.Setenv("GCX_AGENT_MODE", "true")
+	agent.ResetForTesting()
+	t.Cleanup(func() { agent.ResetForTesting() })
+}
+
+// parseJSONLines fails the test unless every non-empty line of s is one JSON
+// object; it returns the parsed documents in order.
+func parseJSONLines(t *testing.T, s string) []map[string]any {
+	t.Helper()
+	var docs []map[string]any
+	for line := range strings.SplitSeq(strings.TrimSpace(s), "\n") {
+		if line == "" {
+			continue
+		}
+		var doc map[string]any
+		if err := json.Unmarshal([]byte(line), &doc); err != nil {
+			t.Fatalf("line must parse as JSON: %q: %v", line, err)
+		}
+		docs = append(docs, doc)
+	}
+	return docs
+}
+
+// requireStreamEnd asserts docs is exactly one typed terminal stream_end line
+// with the given outcome and returns it.
+func requireStreamEnd(t *testing.T, docs []map[string]any, wantOutcome string) map[string]any {
+	t.Helper()
+	if len(docs) != 1 {
+		t.Fatalf("stdout must carry exactly one terminal line, got %d: %v", len(docs), docs)
+	}
+	doc := docs[0]
+	if doc["type"] != cmdio.StreamEndType {
+		t.Errorf("terminal type: want %q, got %v", cmdio.StreamEndType, doc["type"])
+	}
+	if doc["schema_version"] != cmdio.StreamSchemaVersion {
+		t.Errorf("terminal schema_version: want %q, got %v", cmdio.StreamSchemaVersion, doc["schema_version"])
+	}
+	if doc["outcome"] != wantOutcome {
+		t.Errorf("terminal outcome: want %q, got %v", wantOutcome, doc["outcome"])
+	}
+	return doc
+}
+
+// failWriter fails every write with err — simulates ENOSPC/EIO on stdout.
+type failWriter struct{ err error }
+
+func (f failWriter) Write([]byte) (int, error) { return 0, f.err }
+
+// silenceCobra mirrors the production root command, which sets SilenceUsage
+// and SilenceErrors and renders errors itself — otherwise a bare test command
+// pollutes the captured stdout with cobra's usage text on error.
+func silenceCobra(cmd *cobra.Command) *cobra.Command {
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	return cmd
+}
 
 func TestPollNamespaceStatus(t *testing.T) {
 	tests := []struct {
@@ -139,11 +206,7 @@ func TestWaitCmd_Timeout(t *testing.T) {
 	// ErrWaitTimeoutEmitted (sentinel), not a plain "timed out" error string.
 	//
 	// Pin agent mode so JSON assertions are stable in CI (where CLAUDECODE is not set).
-	// agent.IsAgentMode() uses a cached init()-time value, so ResetForTesting() must
-	// be called after t.Setenv to re-run env detection.
-	t.Setenv("GCX_AGENT_MODE", "true")
-	agent.ResetForTesting()
-	t.Cleanup(func() { agent.ResetForTesting() }) // restore after test
+	pinAgentMode(t)
 
 	client := &fakeAppsClient{
 		discoverItems: []instrumentation.DiscoveryItem{
@@ -151,7 +214,7 @@ func TestWaitCmd_Timeout(t *testing.T) {
 		},
 	}
 
-	cmd := newWaitCmd(client, instrumentation.PromHeaders{})
+	cmd := silenceCobra(newWaitCmd(client))
 
 	// Use a very short timeout to keep the test fast.
 	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=100ms"})
@@ -171,17 +234,159 @@ func TestWaitCmd_Timeout(t *testing.T) {
 	if !errors.Is(err, instrumentation.ErrWaitTimeoutEmitted) {
 		t.Errorf("expected ErrWaitTimeoutEmitted sentinel, got: %v", err)
 	}
-	// stdout must have the fused WaitResult with outcome:timeout and error field.
-	stdoutStr := stdout.String()
-	if !strings.Contains(stdoutStr, `"outcome":"timeout"`) {
-		t.Errorf("stdout must contain outcome:timeout, got: %q", stdoutStr)
+	// stdout must have exactly one typed terminal line: the fused WaitResult
+	// with outcome:timeout and error field.
+	doc := requireStreamEnd(t, parseJSONLines(t, stdout.String()), "timeout")
+	if doc["error"] == nil {
+		t.Errorf("fused terminal must carry the error field, got: %v", doc)
 	}
-	if !strings.Contains(stdoutStr, `"error"`) {
-		t.Errorf("stdout must contain error field in fused envelope, got: %q", stdoutStr)
+	// Every stderr progress line is a typed, versioned stream event.
+	for i, d := range parseJSONLines(t, stderr.String()) {
+		if d["type"] != cmdio.StreamEventType {
+			t.Errorf("stderr line %d type: want %q, got %v", i, cmdio.StreamEventType, d["type"])
+		}
+		if d["schema_version"] != cmdio.StreamSchemaVersion {
+			t.Errorf("stderr line %d schema_version: want %q, got %v", i, cmdio.StreamSchemaVersion, d["schema_version"])
+		}
 	}
 	// Sanity: should not have run for more than 10 seconds.
 	if elapsed > 10*time.Second {
 		t.Errorf("test took too long: %v", elapsed)
+	}
+}
+
+func TestWaitCmd_AgentModeSuccessTyped(t *testing.T) {
+	// Agent-mode success: stdout is exactly one typed gcx.stream_end line.
+	pinAgentMode(t)
+
+	client := &fakeAppsClient{
+		discoverItems: []instrumentation.DiscoveryItem{
+			{ClusterName: "c1", Namespace: "grotshop", InstrumentationStatus: "INSTRUMENTATION_STATUS_INSTRUMENTED"},
+		},
+	}
+
+	cmd := silenceCobra(newWaitCmd(client))
+	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=5m"})
+
+	var stdout, stderr strings.Builder
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	doc := requireStreamEnd(t, parseJSONLines(t, stdout.String()), "success")
+	if doc["status"] != "INSTRUMENTATION_STATUS_INSTRUMENTED" {
+		t.Errorf("terminal status: got %v", doc["status"])
+	}
+}
+
+func TestWaitCmd_AgentModeErrorStatusEmitsTerminal(t *testing.T) {
+	// INSTRUMENTATION_ERROR in agent mode must emit exactly one typed
+	// gcx.stream_end line (outcome:error) and return an EmittedError so the
+	// reporter appends nothing more to stdout.
+	pinAgentMode(t)
+
+	client := &fakeAppsClient{
+		discoverItems: []instrumentation.DiscoveryItem{
+			{ClusterName: "c1", Namespace: "grotshop", InstrumentationStatus: "INSTRUMENTATION_STATUS_INSTRUMENTATION_ERROR"},
+		},
+	}
+
+	cmd := silenceCobra(newWaitCmd(client))
+	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=5m"})
+
+	var stdout, stderr strings.Builder
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error on INSTRUMENTATION_ERROR, got nil")
+	}
+	var emitted *gcxerrors.EmittedError
+	if !errors.As(err, &emitted) {
+		t.Fatalf("expected EmittedError after terminal write, got: %v", err)
+	}
+	if emitted.Code != gcxerrors.ExitGeneralError {
+		t.Errorf("exit code: want %d, got %d", gcxerrors.ExitGeneralError, emitted.Code)
+	}
+
+	doc := requireStreamEnd(t, parseJSONLines(t, stdout.String()), "error")
+	if doc["error"] == nil {
+		t.Errorf("fused terminal must carry the error field, got: %v", doc)
+	}
+}
+
+func TestWaitCmd_AgentModeCanceledEmitsTerminal(t *testing.T) {
+	// Context cancellation in agent mode must still emit the terminal
+	// gcx.stream_end line (outcome:canceled) and return an EmittedError with
+	// the cancellation exit code.
+	pinAgentMode(t)
+
+	client := &fakeAppsClient{
+		discoverItems: []instrumentation.DiscoveryItem{
+			{ClusterName: "c1", Namespace: "grotshop", InstrumentationStatus: "INSTRUMENTATION_STATUS_PENDING_INSTRUMENTATION"},
+		},
+	}
+
+	cmd := silenceCobra(newWaitCmd(client))
+	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=5m"})
+
+	var stdout, stderr strings.Builder
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := cmd.ExecuteContext(ctx)
+	if err == nil {
+		t.Fatal("expected error on cancellation, got nil")
+	}
+	var emitted *gcxerrors.EmittedError
+	if !errors.As(err, &emitted) {
+		t.Fatalf("expected EmittedError after terminal write, got: %v", err)
+	}
+	if emitted.Code != gcxerrors.ExitCancelled {
+		t.Errorf("exit code: want %d, got %d", gcxerrors.ExitCancelled, emitted.Code)
+	}
+
+	doc := requireStreamEnd(t, parseJSONLines(t, stdout.String()), "canceled")
+	if doc["error"] == nil {
+		t.Errorf("fused terminal must carry the error field, got: %v", doc)
+	}
+}
+
+func TestWaitCmd_TimeoutWriteFailureReturnsWriteError(t *testing.T) {
+	// When the fused terminal write fails (ENOSPC/EIO), the sentinel must NOT
+	// be returned — the write error itself surfaces.
+	pinAgentMode(t)
+
+	client := &fakeAppsClient{
+		discoverItems: []instrumentation.DiscoveryItem{
+			{ClusterName: "c1", Namespace: "grotshop", InstrumentationStatus: "INSTRUMENTATION_STATUS_PENDING_INSTRUMENTATION"},
+		},
+	}
+
+	cmd := silenceCobra(newWaitCmd(client))
+	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=50ms"})
+
+	writeErr := errors.New("no space left on device")
+	var stderr strings.Builder
+	cmd.SetOut(failWriter{err: writeErr})
+	cmd.SetErr(&stderr)
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if errors.Is(err, instrumentation.ErrWaitTimeoutEmitted) {
+		t.Errorf("sentinel must not be returned when the terminal write failed, got: %v", err)
+	}
+	if !errors.Is(err, writeErr) {
+		t.Errorf("the write error itself must surface, got: %v", err)
 	}
 }
 
@@ -193,7 +398,7 @@ func TestWaitCmd_ErrorStatus(t *testing.T) {
 		},
 	}
 
-	cmd := newWaitCmd(client, instrumentation.PromHeaders{})
+	cmd := silenceCobra(newWaitCmd(client))
 	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=5m"})
 
 	err := cmd.Execute()
@@ -214,7 +419,7 @@ func TestWaitCmd_Success(t *testing.T) {
 		},
 	}
 
-	cmd := newWaitCmd(client, instrumentation.PromHeaders{})
+	cmd := silenceCobra(newWaitCmd(client))
 	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=5m"})
 
 	var stdout, stderr strings.Builder

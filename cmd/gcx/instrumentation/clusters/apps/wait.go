@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instrOutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/spf13/cobra"
@@ -90,6 +91,59 @@ Exit non-zero when:
 
 			var lastRawStatus instrumentation.InstrumentationStatus
 
+			target := instrOutput.Target{Cluster: cluster, Namespace: namespace}
+
+			// finishTimeout emits the fused terminal timeout WaitResult. Only
+			// when that write lands intact may the ErrWaitTimeoutEmitted
+			// sentinel be returned (it suppresses the secondary error
+			// envelope); if the write itself failed the result was NOT
+			// emitted, so the write error must surface instead.
+			finishTimeout := func() error {
+				timeoutMsg := fmt.Sprintf("timed out after %s waiting for namespace %q in cluster %q%s",
+					timeout, namespace, cluster, probePipelineMsg(ctx, client, cluster))
+				result := instrOutput.WaitResult{
+					Outcome:   "timeout",
+					Target:    target,
+					Status:    string(lastRawStatus),
+					ElapsedMs: time.Since(start).Milliseconds(),
+					Error: &instrOutput.WaitError{
+						Summary:  fmt.Sprintf("timed out waiting for namespace %q in cluster %q", namespace, cluster),
+						Details:  timeoutMsg,
+						ExitCode: 1,
+					},
+				}
+				if emitErr := result.Emit(stdout, agentMode); emitErr != nil {
+					return fmt.Errorf("apps wait: emit timeout result: %w", emitErr)
+				}
+				return fmt.Errorf("apps wait: %w", instrumentation.ErrWaitTimeoutEmitted)
+			}
+
+			// finishCanceled (agent mode only) writes the terminal canceled
+			// stream_end line, then returns an EmittedError carrying the same
+			// exit code the human-mode cancellation path resolves to. On write
+			// failure the write error surfaces instead of the sentinel.
+			finishCanceled := func(cause error) error {
+				code := gcxerrors.ExitGeneralError
+				if errors.Is(cause, context.Canceled) {
+					code = gcxerrors.ExitCancelled
+				}
+				result := instrOutput.WaitResult{
+					Outcome:   "canceled",
+					Target:    target,
+					Status:    string(lastRawStatus),
+					ElapsedMs: time.Since(start).Milliseconds(),
+					Error: &instrOutput.WaitError{
+						Summary:  "wait canceled before reaching a stable status",
+						Details:  cause.Error(),
+						ExitCode: code,
+					},
+				}
+				if emitErr := result.Emit(stdout, true); emitErr != nil {
+					return fmt.Errorf("apps wait: emit canceled result: %w", emitErr)
+				}
+				return fmt.Errorf("apps wait: %w", gcxerrors.NewEmittedError(code, cause))
+			}
+
 			for {
 				// outcome is WaitOutcome; rawStatus is the wire string for logging.
 				outcome, rawStatus, pollErr := pollNamespaceStatus(ctx, client, promHeaders, cluster, namespace)
@@ -100,12 +154,33 @@ Exit non-zero when:
 
 				switch outcome {
 				case instrumentation.WaitError:
-					return fmt.Errorf("apps wait: namespace %q in cluster %q reached INSTRUMENTATION_ERROR", namespace, cluster)
+					// INSTRUMENTATION_ERROR must exit non-zero immediately.
+					// Agent mode gets the fused terminal stream_end line first;
+					// human mode keeps the plain error the reporter renders.
+					errStatus := fmt.Errorf("apps wait: namespace %q in cluster %q reached INSTRUMENTATION_ERROR", namespace, cluster)
+					if !agentMode {
+						return errStatus
+					}
+					result := instrOutput.WaitResult{
+						Outcome:   "error",
+						Target:    target,
+						Status:    string(rawStatus),
+						ElapsedMs: time.Since(start).Milliseconds(),
+						Error: &instrOutput.WaitError{
+							Summary:  fmt.Sprintf("namespace %q in cluster %q reached INSTRUMENTATION_ERROR", namespace, cluster),
+							Details:  fmt.Sprintf("namespace %q in cluster %q reported status %s", namespace, cluster, rawStatus),
+							ExitCode: gcxerrors.ExitGeneralError,
+						},
+					}
+					if emitErr := result.Emit(stdout, true); emitErr != nil {
+						return fmt.Errorf("apps wait: emit error result: %w", emitErr)
+					}
+					return fmt.Errorf("apps wait: %w", gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, errStatus))
 				case instrumentation.WaitPending:
 					// Emit per-poll progress to stderr.
 					progress := instrOutput.WaitProgress{
 						Event:     "waiting",
-						Target:    instrOutput.Target{Cluster: cluster, Namespace: namespace},
+						Target:    target,
 						Status:    string(rawStatus),
 						ElapsedMs: time.Since(start).Milliseconds(),
 					}
@@ -113,7 +188,7 @@ Exit non-zero when:
 				default: // WaitSuccess
 					result := instrOutput.WaitResult{
 						Outcome:   "success",
-						Target:    instrOutput.Target{Cluster: cluster, Namespace: namespace},
+						Target:    target,
 						Status:    string(rawStatus),
 						ElapsedMs: time.Since(start).Milliseconds(),
 					}
@@ -122,44 +197,19 @@ Exit non-zero when:
 
 				remaining := time.Until(deadline)
 				if remaining <= 0 {
-					// Emit fused WaitResult with Error field, then return sentinel.
-					timeoutMsg := fmt.Sprintf("timed out after %s waiting for namespace %q in cluster %q%s",
-						timeout, namespace, cluster, probePipelineMsg(ctx, client, cluster))
-					result := instrOutput.WaitResult{
-						Outcome:   "timeout",
-						Target:    instrOutput.Target{Cluster: cluster, Namespace: namespace},
-						Status:    string(lastRawStatus),
-						ElapsedMs: time.Since(start).Milliseconds(),
-						Error: &instrOutput.WaitError{
-							Summary:  fmt.Sprintf("timed out waiting for namespace %q in cluster %q", namespace, cluster),
-							Details:  timeoutMsg,
-							ExitCode: 1,
-						},
-					}
-					_ = result.Emit(stdout, agentMode)
-					return fmt.Errorf("apps wait: %w", instrumentation.ErrWaitTimeoutEmitted)
+					return finishTimeout()
 				}
 
 				select {
 				case <-ctx.Done():
+					// Agent mode still owes the stream its terminal event;
+					// human mode keeps the plain cancellation error.
+					if agentMode {
+						return finishCanceled(ctx.Err())
+					}
 					return ctx.Err()
 				case <-time.After(remaining):
-					// Emit fused WaitResult with Error field, then return sentinel.
-					timeoutMsg := fmt.Sprintf("timed out after %s waiting for namespace %q in cluster %q%s",
-						timeout, namespace, cluster, probePipelineMsg(ctx, client, cluster))
-					result := instrOutput.WaitResult{
-						Outcome:   "timeout",
-						Target:    instrOutput.Target{Cluster: cluster, Namespace: namespace},
-						Status:    string(lastRawStatus),
-						ElapsedMs: time.Since(start).Milliseconds(),
-						Error: &instrOutput.WaitError{
-							Summary:  fmt.Sprintf("timed out waiting for namespace %q in cluster %q", namespace, cluster),
-							Details:  timeoutMsg,
-							ExitCode: 1,
-						},
-					}
-					_ = result.Emit(stdout, agentMode)
-					return fmt.Errorf("apps wait: %w", instrumentation.ErrWaitTimeoutEmitted)
+					return finishTimeout()
 				case <-ticker.C:
 				}
 			}
@@ -170,11 +220,11 @@ Exit non-zero when:
 	return cmd
 }
 
-// newWaitCmd is a test-facing constructor that injects a pre-built appsClient
-// and PromHeaders. Production code uses makeWaitCmd(factoryFromLoader(loader)) instead.
-func newWaitCmd(client appsClient, promHeaders instrumentation.PromHeaders) *cobra.Command {
+// newWaitCmd is a test-facing constructor that injects a pre-built appsClient.
+// Production code uses makeWaitCmd(factoryFromLoader(loader)) instead.
+func newWaitCmd(client appsClient) *cobra.Command {
 	return makeWaitCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, instrumentation.PromHeaders, error) {
-		return client, instrumentation.BackendURLs{}, promHeaders, nil
+		return client, instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, nil
 	})
 }
 
