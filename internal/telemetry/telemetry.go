@@ -36,8 +36,9 @@ const defaultMode = ModeEnabled
 type Env struct {
 	// Telemetry controls anonymous usage telemetry for this invocation:
 	// "enabled", "disabled", or "log" (print the event to stderr and send
-	// nothing). Telemetry is enabled by default. Takes precedence over
-	// the `diagnostics.telemetry` config field.
+	// nothing). Telemetry is enabled by default. Any other non-empty value
+	// disables telemetry. Takes precedence over the `diagnostics.telemetry`
+	// config field.
 	Telemetry string `env:"GCX_TELEMETRY"`
 
 	// DoNotTrack disables anonymous usage telemetry when set to "1" or
@@ -51,9 +52,10 @@ type Env struct {
 
 // ResolveMode resolves the telemetry mode for this invocation. Precedence,
 // highest first: GCX_TELEMETRY, DO_NOT_TRACK, the diagnostics.telemetry
-// config value, the built-in default. Unrecognised values fall through to
-// the next level. configValue is a func so callers only pay the config-file
-// read when the environment doesn't already decide the mode.
+// config value, the built-in default. Empty values fall through to the next
+// level; unrecognised non-empty values resolve to disabled. configValue is a
+// func so callers only pay the config-file read when the environment doesn't
+// already decide the mode.
 func ResolveMode(configValue func() string) Mode {
 	return resolveMode(os.Getenv, configValue)
 }
@@ -81,12 +83,17 @@ func resolveMode(getenv func(string) string, configValue func() string) Mode {
 }
 
 func parseMode(s string) (Mode, bool) {
+	if s == "" {
+		return "", false
+	}
 	m := Mode(strings.ToLower(s))
 	switch m {
 	case ModeEnabled, ModeDisabled, ModeLog:
 		return m, true
 	default:
-		return "", false
+		// Unrecognised non-empty values fail toward privacy: with enabled as
+		// the default, a typo in an opt-out setting must not silently opt in.
+		return ModeDisabled, true
 	}
 }
 

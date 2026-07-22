@@ -17,7 +17,9 @@ func TestFirstRunNoticeShownOnceThenSuppressed(t *testing.T) {
 	maybeShowFirstRunNotice(&first, ModeEnabled, true, false, false, path)
 	assert.Equal(t, firstRunNotice, first.String())
 	assert.Contains(t, first.String(), "GCX_TELEMETRY=disabled")
-	assert.Contains(t, first.String(), "diagnostics.telemetry")
+	// The config opt-out must be paste-ready YAML, not an inline key that the
+	// strict config parser would reject verbatim.
+	assert.Contains(t, first.String(), "  diagnostics:\n    telemetry: disabled")
 	assert.Contains(t, first.String(), "https://grafana.com/docs/")
 	assert.NotContains(t, first.String(), "—", "notice must not contain em-dashes")
 
