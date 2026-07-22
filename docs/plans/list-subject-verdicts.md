@@ -47,13 +47,13 @@ recorded verbatim.
 
 | Current | Verdict | Target |
 |---|---|---|
-| `gcx datasources athena describe-table` | rename | `gcx datasources athena list-columns` |
+| `gcx datasources athena describe-table` | rename | ~~`gcx datasources athena list-columns`~~ **overridden: keep** (maintainer, #1014 review) |
 | `gcx datasources influxdb field-keys` | rename | `gcx datasources influxdb list-field-keys` |
 | `gcx datasources influxdb measurements` | rename | `gcx datasources influxdb list-measurements` |
 | `gcx datasources influxdb tag-keys` | rename | `gcx datasources influxdb list-tag-keys` |
 | `gcx datasources influxdb tag-values` | rename | `gcx datasources influxdb list-tag-values` |
 
-- **`gcx datasources athena describe-table`** — Fails §5's materially-different-output test for describe (plain []string of names, nothing schema-like) and §8 conditions 1+2 approve the compound: columns are a non-addressable parent-scoped facet reached via the table's identity, matching the ratified athena list-* family and the rollout plan's explicit Athena ≈ list-columns hint.
+- **`gcx datasources athena describe-table`** — *Outcome override (2026-07-22): the maintainer kept `describe-table` in #1014 review ("familiar from DB commands"); only the help-truth fix shipped. The adjudication below stands as the panel's record.* Fails §5's materially-different-output test for describe (plain []string of names, nothing schema-like) and §8 conditions 1+2 approve the compound: columns are a non-addressable parent-scoped facet reached via the table's identity, matching the ratified athena list-* family and the rollout plan's explicit Athena ≈ list-columns hint.
 - **`gcx datasources influxdb field-keys`** — ADR §8 condition 1 (via §4's closed shorthand set excluding field-keys): a datasource-scoped value enumeration with no ID of its own and no get anywhere takes the list-&lt;subject&gt; compound, exactly parallel to the ratified clickhouse/cloudwatch/athena list-* family and D4c profile-types→list-profile-types.
 - **`gcx datasources influxdb measurements`** — ADR §8 list-&lt;subject&gt; condition 1: measurements are a --datasource-scoped discovery/catalog facet with no ID of their own (no read-one; --measurement on siblings is a filter flag) and outside the closed §4 shorthand set, so the compound spelling of list applies, parallel to ratified cloudwatch/athena/clickhouse list-* and decided D4c profile-types→list-profile-types.
 - **`gcx datasources influxdb tag-keys`** — Tag keys are ID-less, datasource-scoped discovery values (SHOW TAG KEYS → []string; no read-one exists) → ADR §8 list-&lt;subject&gt; condition 1, exactly parallel to the ratified cloudwatch/athena/clickhouse list-* family and the decided profile-types→list-profile-types rename (§4/D4c); tag-keys is outside the closed §4 shorthand set.
@@ -65,8 +65,8 @@ recorded verbatim.
 
 | Current | Verdict | Target |
 |---|---|---|
-| `gcx assistant investigations approvals` | rename | `gcx assistant investigations list-approvals` |
-| `gcx assistant investigations todos` | rename | `gcx assistant investigations list-todos` |
+| `gcx assistant investigations approvals` | rename | `gcx assistant investigations list-approvals` (superseded by removal in #1016 — v1 stub on v2) |
+| `gcx assistant investigations todos` | rename | `gcx assistant investigations list-todos` (superseded by removal in #1016 — v1 stub on v2) |
 | `gcx assistant investigations tools` | rename | `gcx assistant investigations list-tool-calls` |
 
 - **`gcx assistant investigations approvals`** — ADR §8 case 2 (parent-scoped collection, positional is the investigation's ID, no fetch-one by approval ID anywhere) → compound spelling list-approvals, same shape as ratified alert-groups list-alerts.
