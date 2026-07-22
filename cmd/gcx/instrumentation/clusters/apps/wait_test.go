@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,15 @@ import (
 func pinAgentMode(t *testing.T) {
 	t.Helper()
 	t.Setenv("GCX_AGENT_MODE", "true")
+	agent.ResetForTesting()
+	t.Cleanup(func() { agent.ResetForTesting() })
+}
+
+// pinHumanMode forces agent-mode detection off (GCX_AGENT_MODE=false overrides
+// any ambient CLAUDECODE/CLAUDE_CODE detection) for the duration of the test.
+func pinHumanMode(t *testing.T) {
+	t.Helper()
+	t.Setenv("GCX_AGENT_MODE", "false")
 	agent.ResetForTesting()
 	t.Cleanup(func() { agent.ResetForTesting() })
 }
@@ -314,6 +324,125 @@ func TestWaitCmd_AgentModeErrorStatusEmitsTerminal(t *testing.T) {
 	}
 
 	doc := requireStreamEnd(t, parseJSONLines(t, stdout.String()), "error")
+	if doc["error"] == nil {
+		t.Errorf("fused terminal must carry the error field, got: %v", doc)
+	}
+}
+
+func TestWaitCmd_AgentModePollErrorRetriesTyped(t *testing.T) {
+	// A transient poll RPC failure must not abort the wait: the loop emits a
+	// typed poll_error stream event on stderr and keeps polling until the
+	// namespace reaches a stable state.
+	pinAgentMode(t)
+
+	client := &fakeAppsClient{
+		discoverErrs: []error{errors.New("transient RPC failure")},
+		discoverItems: []instrumentation.DiscoveryItem{
+			{ClusterName: "c1", Namespace: "grotshop", InstrumentationStatus: "INSTRUMENTATION_STATUS_INSTRUMENTED"},
+		},
+	}
+
+	cmd := silenceCobra(newWaitCmd(client))
+	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=5m"})
+
+	var stdout, stderr strings.Builder
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("transient poll error must not abort the wait, got: %v", err)
+	}
+
+	// The retried wait still terminates with the success stream_end line.
+	requireStreamEnd(t, parseJSONLines(t, stdout.String()), "success")
+
+	// stderr carries the typed poll_error event; every line stays a typed,
+	// versioned stream event.
+	var sawPollError bool
+	for i, d := range parseJSONLines(t, stderr.String()) {
+		if d["type"] != cmdio.StreamEventType {
+			t.Errorf("stderr line %d type: want %q, got %v", i, cmdio.StreamEventType, d["type"])
+		}
+		if d["schema_version"] != cmdio.StreamSchemaVersion {
+			t.Errorf("stderr line %d schema_version: want %q, got %v", i, cmdio.StreamSchemaVersion, d["schema_version"])
+		}
+		if d["event"] == "poll_error" {
+			sawPollError = true
+			errStr, _ := d["error"].(string)
+			if !strings.Contains(errStr, "transient RPC failure") {
+				t.Errorf("poll_error event error: want RPC failure text, got %v", d["error"])
+			}
+		}
+	}
+	if !sawPollError {
+		t.Error("stderr must carry the typed poll_error event")
+	}
+}
+
+func TestWaitCmd_HumanModePollErrorRetryLine(t *testing.T) {
+	// Human mode: the transient poll failure emits the retry line on stderr
+	// (byte-identical to the clusters wait sibling) and the wait still succeeds.
+	pinHumanMode(t)
+
+	client := &fakeAppsClient{
+		discoverErrs: []error{errors.New("transient RPC failure")},
+		discoverItems: []instrumentation.DiscoveryItem{
+			{ClusterName: "c1", Namespace: "grotshop", InstrumentationStatus: "INSTRUMENTATION_STATUS_INSTRUMENTED"},
+		},
+	}
+
+	cmd := silenceCobra(newWaitCmd(client))
+	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=5m"})
+
+	var stdout, stderr strings.Builder
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("transient poll error must not abort the wait, got: %v", err)
+	}
+
+	if want := "  poll error (retrying): transient RPC failure\n"; !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr must carry the human retry line %q, got: %q", want, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "INSTRUMENTED") {
+		t.Errorf("stdout should contain the success status, got: %q", stdout.String())
+	}
+}
+
+func TestWaitCmd_AgentModeCanceledMidPollEmitsTerminal(t *testing.T) {
+	// A cancellation arriving mid-poll surfaces as a poll error wrapping
+	// context.Canceled — it must route to the canceled gcx.stream_end
+	// terminal (with the cancellation exit code), not return a bare poll error.
+	pinAgentMode(t)
+
+	client := &fakeAppsClient{
+		discoverErr: fmt.Errorf("rpc: %w", context.Canceled),
+	}
+
+	cmd := silenceCobra(newWaitCmd(client))
+	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=5m"})
+
+	var stdout, stderr strings.Builder
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := cmd.ExecuteContext(ctx)
+	if err == nil {
+		t.Fatal("expected error on mid-poll cancellation, got nil")
+	}
+	var emitted *gcxerrors.EmittedError
+	if !errors.As(err, &emitted) {
+		t.Fatalf("expected EmittedError after terminal write, got: %v", err)
+	}
+	if emitted.Code != gcxerrors.ExitCancelled {
+		t.Errorf("exit code: want %d, got %d", gcxerrors.ExitCancelled, emitted.Code)
+	}
+
+	doc := requireStreamEnd(t, parseJSONLines(t, stdout.String()), "canceled")
 	if doc["error"] == nil {
 		t.Errorf("fused terminal must carry the error field, got: %v", doc)
 	}

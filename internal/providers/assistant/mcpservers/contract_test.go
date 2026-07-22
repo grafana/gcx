@@ -3,8 +3,10 @@ package mcpservers //nolint:testpackage
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -189,9 +191,11 @@ func newValidateFixtureClient(t *testing.T, validateHandler http.HandlerFunc) *a
 // TestRunCreateEmitsResultThenPartialFailureWhenOAuthCheckFails is the
 // exit-code-mismatch fix, end to end: the server IS created, the follow-up
 // OAuth requirement check fails, and the command must still emit the created
-// result document on stdout, then exit ExitPartialFailure via EmittedError
-// (typed stderr warning, no second stdout document). Previously it exited
-// non-zero with an empty stdout although the create had persisted.
+// result document on stdout — now carrying the failure summary in-band on
+// the document's `error` member, so a consumer reading only stdout sees why
+// the exit code is ExitPartialFailure — then exit via EmittedError (typed
+// stderr warning, no second stdout document). Previously it exited non-zero
+// with an empty stdout although the create had persisted.
 func TestRunCreateEmitsResultThenPartialFailureWhenOAuthCheckFails(t *testing.T) {
 	setAgentModeMCP(t, false)
 	client := newValidateFixtureClient(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -201,7 +205,7 @@ func TestRunCreateEmitsResultThenPartialFailureWhenOAuthCheckFails(t *testing.T)
 
 	var opened []string
 	origOpenURL := openURL
-	openURL = func(u string) error { opened = append(opened, u); return nil }
+	openURL = func(u string) (bool, error) { opened = append(opened, u); return true, nil }
 	t.Cleanup(func() { openURL = origOpenURL })
 
 	opts := &createOpts{}
@@ -226,14 +230,24 @@ func TestRunCreateEmitsResultThenPartialFailureWhenOAuthCheckFails(t *testing.T)
 	assert.Equal(t, "created", doc["operation"])
 	assert.NotContains(t, doc, "authUrl")
 
+	// The exit-4 reason is in-band: the document's error member carries the
+	// OAuth-check failure summary.
+	errMsg, ok := doc["error"].(string)
+	require.True(t, ok, "the OAuth-check failure must be in-band on the document: %s", out.String())
+	assert.Contains(t, errMsg, "MCP server created, but the OAuth requirement check failed")
+
 	assert.Contains(t, errOut.String(), "OAuth requirement check failed")
 	assert.Empty(t, opened, "no browser open when the OAuth check failed")
 }
 
 // TestFinishMutationAgentModeSkipsBrowserAndEmitsHint is the browser-gate
-// fix: when OAuth is required in agent mode, the browser must not launch;
-// the auth URL reaches the agent in-band (authUrl in the stdout document)
-// plus a typed stderr hint, and the command still succeeds.
+// contract on the unified path: the gate is the single shared deeplink guard
+// (deeplink.OpenWithStatus behind the openURL seam), not a bespoke agent
+// branch here. With the REAL guard in place (no stub), agent mode must not
+// launch a browser — the guard skips the exec, emits its typed hint on the
+// process stderr, and reports (opened=false, nil) — while the auth URL
+// reaches the agent in-band (authUrl in the stdout document) and the command
+// still succeeds.
 func TestFinishMutationAgentModeSkipsBrowserAndEmitsHint(t *testing.T) {
 	setAgentModeMCP(t, true)
 	client := newValidateFixtureClient(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -245,12 +259,15 @@ func TestFinishMutationAgentModeSkipsBrowserAndEmitsHint(t *testing.T) {
 		}
 	})
 
-	var opened []string
-	origOpenURL := openURL
-	openURL = func(u string) error { opened = append(opened, u); return nil }
-	t.Cleanup(func() { openURL = origOpenURL })
+	// Deliberately no openURL stub: the real deeplink guard is under test.
+	// Its typed hint goes to the process stderr, so capture os.Stderr.
+	origStderr := os.Stderr
+	r, w, pipeErr := os.Pipe()
+	require.NoError(t, pipeErr)
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = origStderr })
 
-	io := cmdio.Options{OutputFormat: "json"}
+	ioOpts := cmdio.Options{OutputFormat: "json"}
 	cmd := &cobra.Command{}
 	cmd.SetContext(t.Context())
 	var out, errOut bytes.Buffer
@@ -261,23 +278,44 @@ func TestFinishMutationAgentModeSkipsBrowserAndEmitsHint(t *testing.T) {
 		Operation: "created",
 		Server:    &assistantmcp.Server{ID: "srv-new", Name: "GitHub", Scope: "user"},
 	}
-	require.NoError(t, finishMutation(cmd, client, &io, result))
+	finishErr := finishMutation(cmd, client, &ioOpts, result)
 
-	assert.Empty(t, opened, "agent mode must never launch a browser")
+	require.NoError(t, w.Close())
+	os.Stderr = origStderr
+	captured, readErr := io.ReadAll(r)
+	require.NoError(t, readErr)
+
+	require.NoError(t, finishErr)
 
 	var doc map[string]any
 	require.NoError(t, json.Unmarshal(out.Bytes(), &doc))
 	assert.Equal(t, "https://example.com/oauth", doc["authUrl"], "the auth URL must reach the agent in-band")
+	assert.NotContains(t, doc, "error", "a successful mutation carries no in-band error")
 
+	// The deeplink guard skipped the launch: its typed hint (only emitted on
+	// the skip path — the launch path would have exec'd a browser) is the
+	// observable proof, JSONL {"class":"hint"} carrying the URL. Other agent
+	// hints (e.g. the codec's --jq hint) may share the stream, so scan lines.
 	var hint map[string]any
-	require.NoError(t, json.Unmarshal(errOut.Bytes(), &hint), "agent-mode stderr diagnostic must be JSONL: %s", errOut.String())
+	for line := range strings.Lines(string(captured)) {
+		var doc map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &doc), "agent-mode stderr diagnostics must be JSONL: %s", captured)
+		if s, _ := doc["summary"].(string); strings.Contains(s, "browser launch skipped in agent mode") {
+			hint = doc
+			break
+		}
+	}
+	require.NotNil(t, hint, "the deeplink skip hint must be on stderr: %s", captured)
 	assert.Equal(t, "hint", hint["class"])
-	assert.Contains(t, hint["summary"], "https://example.com/oauth")
+	assert.Equal(t, "https://example.com/oauth", hint["command"])
+
+	// No human "Opening ..." prose leaks onto the command stderr.
+	assert.NotContains(t, errOut.String(), "Opening OAuth authorization URL")
 }
 
 // TestFinishMutationHumanModeStillOpensBrowser guards the human default: the
-// OAuth URL keeps opening in a browser outside agent mode, with the same
-// stderr prose as before.
+// OAuth URL keeps opening in a browser outside agent mode (via the deeplink
+// seam), with the same stderr prose as before.
 func TestFinishMutationHumanModeStillOpensBrowser(t *testing.T) {
 	setAgentModeMCP(t, false)
 	client := newValidateFixtureClient(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -291,10 +329,10 @@ func TestFinishMutationHumanModeStillOpensBrowser(t *testing.T) {
 
 	var opened []string
 	origOpenURL := openURL
-	openURL = func(u string) error { opened = append(opened, u); return nil }
+	openURL = func(u string) (bool, error) { opened = append(opened, u); return true, nil }
 	t.Cleanup(func() { openURL = origOpenURL })
 
-	io := cmdio.Options{OutputFormat: "yaml"}
+	ioOpts := cmdio.Options{OutputFormat: "yaml"}
 	cmd := &cobra.Command{}
 	cmd.SetContext(t.Context())
 	var out, errOut bytes.Buffer
@@ -305,15 +343,17 @@ func TestFinishMutationHumanModeStillOpensBrowser(t *testing.T) {
 		Operation: "updated",
 		Server:    &assistantmcp.Server{ID: "srv-new", Name: "GitHub", Scope: "user"},
 	}
-	require.NoError(t, finishMutation(cmd, client, &io, result))
+	require.NoError(t, finishMutation(cmd, client, &ioOpts, result))
 
 	assert.Equal(t, []string{"https://example.com/oauth"}, opened)
 	assert.Contains(t, errOut.String(), "Opening OAuth authorization URL")
 	assert.Contains(t, out.String(), "operation: updated")
+	assert.NotContains(t, out.String(), "error:")
 }
 
 // TestFinishMutationUpdatePartialFailure covers the shared tail from the
-// update side: an updated result document followed by ExitPartialFailure when
+// update side: an updated result document — carrying the OAuth-check failure
+// summary in-band on its `error` member — followed by ExitPartialFailure when
 // the OAuth check errors.
 func TestFinishMutationUpdatePartialFailure(t *testing.T) {
 	setAgentModeMCP(t, false)
@@ -321,7 +361,7 @@ func TestFinishMutationUpdatePartialFailure(t *testing.T) {
 		http.Error(w, `{"error":"boom"}`, http.StatusInternalServerError)
 	})
 
-	io := cmdio.Options{OutputFormat: "json"}
+	ioOpts := cmdio.Options{OutputFormat: "json"}
 	cmd := &cobra.Command{}
 	cmd.SetContext(t.Context())
 	var out, errOut bytes.Buffer
@@ -332,7 +372,7 @@ func TestFinishMutationUpdatePartialFailure(t *testing.T) {
 		Operation: "updated",
 		Server:    &assistantmcp.Server{ID: "srv-new", Name: "GitHub", Scope: "user"},
 	}
-	err := finishMutation(cmd, client, &io, result)
+	err := finishMutation(cmd, client, &ioOpts, result)
 
 	var emitted *gcxerrors.EmittedError
 	require.ErrorAs(t, err, &emitted)
@@ -341,6 +381,9 @@ func TestFinishMutationUpdatePartialFailure(t *testing.T) {
 	var doc map[string]any
 	require.NoError(t, json.Unmarshal(out.Bytes(), &doc))
 	assert.Equal(t, "updated", doc["operation"])
+	errMsg, ok := doc["error"].(string)
+	require.True(t, ok, "the OAuth-check failure must be in-band on the document: %s", out.String())
+	assert.Contains(t, errMsg, "MCP server updated, but the OAuth requirement check failed")
 	assert.Contains(t, errOut.String(), "MCP server updated, but the OAuth requirement check failed")
 }
 
@@ -359,10 +402,10 @@ func TestFinishMutationNoOAuthNeededIsPlainSuccess(t *testing.T) {
 
 	var opened []string
 	origOpenURL := openURL
-	openURL = func(u string) error { opened = append(opened, u); return nil }
+	openURL = func(u string) (bool, error) { opened = append(opened, u); return true, nil }
 	t.Cleanup(func() { openURL = origOpenURL })
 
-	io := cmdio.Options{OutputFormat: "json"}
+	ioOpts := cmdio.Options{OutputFormat: "json"}
 	cmd := &cobra.Command{}
 	cmd.SetContext(t.Context())
 	var out bytes.Buffer
@@ -373,11 +416,12 @@ func TestFinishMutationNoOAuthNeededIsPlainSuccess(t *testing.T) {
 		Operation: "created",
 		Server:    &assistantmcp.Server{ID: "srv-new", Name: "GitHub", Scope: "user"},
 	}
-	require.NoError(t, finishMutation(cmd, client, &io, result))
+	require.NoError(t, finishMutation(cmd, client, &ioOpts, result))
 	assert.Empty(t, opened)
 
 	var doc map[string]any
 	require.NoError(t, json.Unmarshal(out.Bytes(), &doc))
 	assert.Equal(t, "created", doc["operation"])
 	assert.NotContains(t, doc, "authUrl")
+	assert.NotContains(t, doc, "error")
 }

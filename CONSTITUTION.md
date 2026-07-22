@@ -91,9 +91,10 @@ CI). stderr is advisory diagnostics — an agent never needs to parse both
 streams to understand the outcome. gcx-owned envelope shapes introduced
 under this contract (errors, spill receipts, mutation results, stream
 events) carry `type` and `schema_version` discriminators; shapes that
-shipped before the contract (IRM OnCall action envelopes, instrumentation
-`MutationResult`, skills receipts) retain their locked forms until their
-own versioned migrations.
+shipped before the contract (IRM OnCall action envelopes, skills receipts)
+retain their locked forms until their own versioned migrations.
+(Instrumentation `MutationResult` migrated with the contract: it carries
+the discriminators as additive fields.)
 
 See [agent-mode.md](docs/design/agent-mode.md) for
 agent mode detection, behavior changes, and opt-out mechanisms.

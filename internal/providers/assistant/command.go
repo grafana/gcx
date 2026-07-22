@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -235,6 +234,13 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 	// machine consumers.
 	em := newStreamEmitter(cmd.OutOrStdout(), errW, opts)
 
+	// The emitter cancels this context on the first stdout write failure
+	// (broken pipe): the SSE stream loop stops instead of draining events
+	// nobody can read, and em.finish returns the write error.
+	ctx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+	em.cancel = cancelStream
+
 	// Resolve context ID
 	contextID := opts.contextID
 	if opts.cont {
@@ -427,22 +433,28 @@ func parseRFC3339OrZero(s string) time.Time {
 
 // Output helpers
 
-func jsonLine(w io.Writer, data any) {
+// jsonLine writes data as one NDJSON line. Both the marshal and the write
+// error are returned: a stream line that never reached stdout must surface as
+// the command error instead of being swallowed (a swallowed terminal write
+// would let a failed gcx.stream_end still exit 0 or claim EmittedError).
+func jsonLine(w io.Writer, data any) error {
 	output, err := json.Marshal(data)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: Failed to marshal JSON: %v\n", err)
-		return
+		return fmt.Errorf("encoding JSON line: %w", err)
 	}
-	fmt.Fprintln(w, string(output))
+	_, err = fmt.Fprintln(w, string(output))
+	return err
 }
 
-func jsonPretty(w io.Writer, data any) {
+// jsonPretty writes data as one indented JSON document, returning marshal and
+// write errors for the same reason as jsonLine.
+func jsonPretty(w io.Writer, data any) error {
 	output, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: Failed to marshal JSON: %v\n", err)
-		return
+		return fmt.Errorf("encoding JSON document: %w", err)
 	}
-	fmt.Fprintln(w, string(output))
+	_, err = fmt.Fprintln(w, string(output))
+	return err
 }
 
 // sseLogger implements assistant.Logger using stderr.

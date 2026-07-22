@@ -1,12 +1,16 @@
 package output
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"time"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers/instrumentation"
 )
 
 // Agent-mode wait lines follow the shared stream envelope contract
@@ -200,4 +204,90 @@ func WaitResultForCluster(outcome, clusterName, status string, start time.Time) 
 		Status:    status,
 		ElapsedMs: time.Since(start).Milliseconds(),
 	}
+}
+
+// WaitTerminal fuses the terminal failure outcomes (timeout, error status,
+// cancellation) shared by the cluster-level (`clusters wait`) and
+// namespace-level (`clusters apps wait`) wait commands. It is parameterized by
+// target and error prefix so both commands emit their exact wire and human
+// lines through one implementation.
+type WaitTerminal struct {
+	// Target identifies what is being waited on (cluster, or cluster+namespace).
+	Target Target
+	// ErrPrefix is the command prefix wrapped around returned errors,
+	// e.g. "clusters wait" or "apps wait".
+	ErrPrefix string
+	// Start anchors ElapsedMs in the emitted terminal envelope.
+	Start time.Time
+	// Stdout receives the terminal WaitResult line.
+	Stdout io.Writer
+	// AgentMode selects the typed gcx.stream_end JSONL line over human text
+	// for the timeout outcome. The error/canceled finishers are agent-mode
+	// only and always emit the typed line.
+	AgentMode bool
+}
+
+// result builds the terminal WaitResult envelope for the given outcome.
+func (t WaitTerminal) result(outcome, status string, waitErr *WaitError) WaitResult {
+	return WaitResult{
+		Outcome:   outcome,
+		Target:    t.Target,
+		Status:    status,
+		ElapsedMs: time.Since(t.Start).Milliseconds(),
+		Error:     waitErr,
+	}
+}
+
+// FinishTimeout emits the fused terminal timeout WaitResult. Only when that
+// write lands intact may the ErrWaitTimeoutEmitted sentinel be returned (it
+// suppresses the secondary error envelope); if the write itself failed the
+// result was NOT emitted, so the write error must surface instead.
+func (t WaitTerminal) FinishTimeout(status, summary, details string) error {
+	result := t.result("timeout", status, &WaitError{
+		Summary:  summary,
+		Details:  details,
+		ExitCode: 1,
+	})
+	if emitErr := result.Emit(t.Stdout, t.AgentMode); emitErr != nil {
+		return fmt.Errorf("%s: emit timeout result: %w", t.ErrPrefix, emitErr)
+	}
+	return fmt.Errorf("%s: %w", t.ErrPrefix, instrumentation.ErrWaitTimeoutEmitted)
+}
+
+// FinishErrorStatus (agent mode only) writes the terminal error stream_end
+// line for a target that reached an error status, then returns an
+// EmittedError carrying the general error exit code so the reporter appends
+// nothing more to stdout. On write failure the write error surfaces instead
+// of the sentinel.
+func (t WaitTerminal) FinishErrorStatus(cause error, status, summary, details string) error {
+	result := t.result("error", status, &WaitError{
+		Summary:  summary,
+		Details:  details,
+		ExitCode: gcxerrors.ExitGeneralError,
+	})
+	if emitErr := result.Emit(t.Stdout, true); emitErr != nil {
+		return fmt.Errorf("%s: emit error result: %w", t.ErrPrefix, emitErr)
+	}
+	return fmt.Errorf("%s: %w", t.ErrPrefix, gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, cause))
+}
+
+// FinishCanceled (agent mode only) writes the terminal canceled stream_end
+// line, then returns an EmittedError carrying the same exit code the
+// human-mode cancellation path resolves to (ExitCancelled for
+// context.Canceled, general error otherwise). On write failure the write
+// error surfaces instead of the sentinel.
+func (t WaitTerminal) FinishCanceled(cause error, status, summary string) error {
+	code := gcxerrors.ExitGeneralError
+	if errors.Is(cause, context.Canceled) {
+		code = gcxerrors.ExitCancelled
+	}
+	result := t.result("canceled", status, &WaitError{
+		Summary:  summary,
+		Details:  cause.Error(),
+		ExitCode: code,
+	})
+	if emitErr := result.Emit(t.Stdout, true); emitErr != nil {
+		return fmt.Errorf("%s: emit canceled result: %w", t.ErrPrefix, emitErr)
+	}
+	return fmt.Errorf("%s: %w", t.ErrPrefix, gcxerrors.NewEmittedError(code, cause))
 }

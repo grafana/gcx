@@ -146,36 +146,39 @@ func runWait(
 
 	var lastStatus instrumentation.InstrumentationStatus
 
+	// terminal emits the fused terminal WaitResult failure envelopes (timeout,
+	// error status, cancellation) shared with `clusters apps wait`.
+	terminal := instrOutput.WaitTerminal{
+		Target:    instrOutput.Target{Cluster: clusterName},
+		ErrPrefix: "clusters wait",
+		Start:     start,
+		Stdout:    stdout,
+		AgentMode: opts.agentMode,
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			// Agent mode still owes the stream its terminal event; human mode
 			// keeps the plain cancellation error the reporter renders.
 			if opts.agentMode {
-				return emitCanceledResult(ctx.Err(), clusterName, string(lastStatus), start, stdout)
+				return terminal.FinishCanceled(ctx.Err(), string(lastStatus),
+					"wait canceled before reaching a terminal status")
 			}
 			return fmt.Errorf("clusters wait: %w", ctx.Err())
 		case <-timeoutCh:
 			// Emit the fused terminal WaitResult (with Error populated) to
-			// stdout. Only when that write lands intact may the
-			// ErrWaitTimeoutEmitted sentinel be returned (it suppresses the
-			// secondary error envelope); if the write itself failed the result
-			// was NOT emitted, so the write error must surface instead.
+			// stdout. FinishTimeout returns the ErrWaitTimeoutEmitted sentinel
+			// only when that write lands intact (it suppresses the secondary
+			// error envelope); if the write itself failed the result was NOT
+			// emitted, so the write error surfaces instead.
 			timeoutMsg := fmt.Sprintf(
 				"timeout after %s waiting for cluster %q to reach INSTRUMENTED — "+
 					"alloy-daemon may not have registered with Fleet Management yet; "+
 					"check 'helm status grafana-cloud -n monitoring' and 'kubectl logs -n monitoring -l app.kubernetes.io/name=alloy-daemon --context <ctx>'",
 				opts.Timeout, clusterName)
-			result := instrOutput.WaitResultForCluster("timeout", clusterName, string(lastStatus), start)
-			result.Error = &instrOutput.WaitError{
-				Summary:  fmt.Sprintf("timeout waiting for cluster %q", clusterName),
-				Details:  timeoutMsg,
-				ExitCode: 1,
-			}
-			if emitErr := result.Emit(stdout, opts.agentMode); emitErr != nil {
-				return fmt.Errorf("clusters wait: emit timeout result: %w", emitErr)
-			}
-			return fmt.Errorf("clusters wait: %w", instrumentation.ErrWaitTimeoutEmitted)
+			return terminal.FinishTimeout(string(lastStatus),
+				fmt.Sprintf("timeout waiting for cluster %q", clusterName), timeoutMsg)
 		case <-ticker.C:
 			clusters, err := monClient.RunK8sMonitoring(ctx)
 			if err != nil {
@@ -214,45 +217,15 @@ func runWait(
 				if !opts.agentMode {
 					return fmt.Errorf("clusters wait: %w", errInstrumentationError)
 				}
-				result := instrOutput.WaitResultForCluster("error", clusterName, string(current), start)
-				result.Error = &instrOutput.WaitError{
-					Summary:  errInstrumentationError.Error(),
-					Details:  fmt.Sprintf("cluster %q reported status %s", clusterName, current),
-					ExitCode: gcxerrors.ExitGeneralError,
-				}
-				if emitErr := result.Emit(stdout, true); emitErr != nil {
-					return fmt.Errorf("clusters wait: emit error result: %w", emitErr)
-				}
-				return fmt.Errorf("clusters wait: %w",
-					gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, errInstrumentationError))
+				return terminal.FinishErrorStatus(errInstrumentationError, string(current),
+					errInstrumentationError.Error(),
+					fmt.Sprintf("cluster %q reported status %s", clusterName, current))
 
 			default:
 				// WaitPending: continue polling (PENDING_INSTRUMENTATION, PENDING_UNINSTRUMENTATION, etc.).
 			}
 		}
 	}
-}
-
-// emitCanceledResult (agent mode only) writes the terminal canceled
-// stream_end line to stdout, then returns an EmittedError carrying the same
-// exit code the human-mode cancellation path resolves to (ExitCancelled for
-// context.Canceled, general error otherwise). If the terminal write failed,
-// the write error surfaces instead of the sentinel.
-func emitCanceledResult(cause error, clusterName, lastStatus string, start time.Time, stdout io.Writer) error {
-	code := gcxerrors.ExitGeneralError
-	if errors.Is(cause, context.Canceled) {
-		code = gcxerrors.ExitCancelled
-	}
-	result := instrOutput.WaitResultForCluster("canceled", clusterName, lastStatus, start)
-	result.Error = &instrOutput.WaitError{
-		Summary:  "wait canceled before reaching a terminal status",
-		Details:  cause.Error(),
-		ExitCode: code,
-	}
-	if emitErr := result.Emit(stdout, true); emitErr != nil {
-		return fmt.Errorf("clusters wait: emit canceled result: %w", emitErr)
-	}
-	return fmt.Errorf("clusters wait: %w", gcxerrors.NewEmittedError(code, cause))
 }
 
 // findClusterStatus returns the InstrumentationStatus for clusterName from the

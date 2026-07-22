@@ -63,8 +63,14 @@ func main() {
 
 	err := cmd.ExecuteContext(ctx)
 
-	// quick exit on context canceled
-	if errors.Is(err, context.Canceled) {
+	// Quick exit on context canceled — but never for an EmittedError: a
+	// command that already wrote its complete result document carries its
+	// own exit code, and its cause chain may legitimately wrap a canceled
+	// item error (e.g. a batch interrupted after partial success). The
+	// EmittedError contract (exit code agrees with the emitted document,
+	// agentlog/usage still recorded) outranks the cancellation fast path.
+	var emittedForCancel *gcxerrors.EmittedError
+	if errors.Is(err, context.Canceled) && !errors.As(err, &emittedForCancel) {
 		os.Exit(gcxerrors.ExitCancelled)
 	}
 

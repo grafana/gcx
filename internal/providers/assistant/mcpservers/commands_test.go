@@ -289,13 +289,14 @@ func TestDeleteAgentModeRequiresForce(t *testing.T) {
 }
 
 func TestMaybeOpenAuthURLWarnsWhenBrowserOpenFails(t *testing.T) {
-	// The browser-open path is gated off in agent mode; pin ambient
-	// agent-mode detection (e.g. CLAUDECODE=1) off to test the human path.
+	// The browser-open path is gated off in agent mode (by the shared
+	// deeplink guard behind the openURL seam); pin ambient agent-mode
+	// detection (e.g. CLAUDECODE=1) off to test the human path.
 	setAgentModeMCP(t, false)
 
 	origOpenURL := openURL
-	openURL = func(string) error {
-		return errors.New("browser unavailable")
+	openURL = func(string) (bool, error) {
+		return true, errors.New("browser unavailable")
 	}
 	t.Cleanup(func() { openURL = origOpenURL })
 

@@ -307,6 +307,28 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 		return err
 	}
 
+	// Agent-mode partial failure on a JSON-family format: fuse items and
+	// error into ONE gcx.partial_result document, exactly like the
+	// field-select path — the failure must be readable from stdout alone
+	// (Constitution: an agent never needs both streams). Non-JSON formats
+	// (explicit -o yaml/text/wide) keep their shape and surface the
+	// failure via the typed stderr diagnostic + exit 4 below.
+	hasPartialFailure := opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0
+	if hasPartialFailure && agent.IsAgentMode() &&
+		(opts.IO.OutputFormat == "agents" || opts.IO.OutputFormat == "json") {
+		itemMaps := make([]map[string]any, len(output.Items))
+		for i, item := range output.Items {
+			itemMaps[i] = item.Object
+		}
+		errSummary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
+		detErr := gcxerrors.DetailedError{Summary: errSummary}
+		if err := detErr.WriteJSONWithItems(stdout, gcxerrors.ExitPartialFailure, itemMaps); err != nil {
+			return err
+		}
+		emitGetTruncationHint(stderr, opts, res)
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(errSummary))
+	}
+
 	var encodeErr error
 	if opts.IO.OutputFormat != "text" && opts.IO.OutputFormat != "wide" {
 		// Avoid printing a list of results if a single resource is being pulled,

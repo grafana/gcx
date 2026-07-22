@@ -293,25 +293,20 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 				Probes:           []int64{},
 			}
 
-			if codec.Format() == "table" || codec.Format() == "wide" {
-				// Query status before rendering so we can merge it into the table.
-				var info checkStatusInfo
-				if opts.ShowStatus {
-					var err error
-					info, err = queryCheckStatus(ctx, loader, c.Job, c.Target, c.AlertSensitivity)
-					if err != nil {
-						// Diagnostic, not the result — stderr keeps it out
-						// of the stdout table.
-						cmdio.Warning(cmd.ErrOrStderr(), "could not retrieve execution status: %v", err)
-					}
+			// Pattern 13: --show-status always fetches the execution status,
+			// regardless of the output format — codecs control display, not
+			// data acquisition. A fetch failure is a diagnostic, not the
+			// result: stderr keeps it out of the stdout document/table.
+			var info checkStatusInfo
+			if opts.ShowStatus {
+				info, err = queryCheckStatus(ctx, loader, c.Job, c.Target, c.AlertSensitivity)
+				if err != nil {
+					cmdio.Warning(cmd.ErrOrStderr(), "could not retrieve execution status: %v", err)
 				}
-				return encodeGetTable(cmd.OutOrStdout(), c, info, codec.Format() == "wide")
 			}
 
-			// Status is only merged into the table renderings; be explicit
-			// instead of silently dropping the flag for structured formats.
-			if opts.ShowStatus {
-				cmdio.EmitWarn(cmd.ErrOrStderr(), fmt.Sprintf("--show-status only applies to table/wide output; ignored for %s", codec.Format()))
+			if codec.Format() == "table" || codec.Format() == "wide" {
+				return encodeGetTable(cmd.OutOrStdout(), c, info, codec.Format() == "wide")
 			}
 
 			// For yaml/json, use the typed object.
@@ -322,6 +317,17 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 			var obj unstructured.Unstructured
 			if err := json.Unmarshal(objData, &obj); err != nil {
 				return fmt.Errorf("unmarshaling to unstructured: %w", err)
+			}
+			// Merge the fetched status into the structured output as an
+			// optional top-level status member carrying the same data the
+			// table's STATUS/SUCCESS columns render. Absent when
+			// --show-status was not set or the status fetch failed.
+			if info.Status != "" {
+				status := map[string]any{"status": info.Status}
+				if info.Success != nil {
+					status["success"] = *info.Success
+				}
+				obj.Object["status"] = status
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
 		},

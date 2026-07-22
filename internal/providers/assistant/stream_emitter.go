@@ -61,6 +61,17 @@ type streamEmitter struct {
 	mode streamMode
 	w    io.Writer // stdout
 	errW io.Writer // stderr
+
+	// cancel aborts the underlying SSE stream on the first stdout write
+	// failure (e.g. a broken pipe): once stdout is gone there is no consumer
+	// left, so the stream loop must stop instead of draining events nobody
+	// can read. Set by runPrompt; optional.
+	cancel func()
+	// writeErr records the first stream-event write failure. finish returns
+	// it verbatim: an EmittedError may only be returned after the complete
+	// result was written successfully (see gcxerrors.EmittedError), and a
+	// broken stdout can carry no further terminal output.
+	writeErr error
 }
 
 // newStreamEmitter resolves the consumer mode from the explicit flags and
@@ -122,11 +133,28 @@ type streamEndError struct {
 func (e *streamEmitter) onEvent() func(assistant.StreamEvent) {
 	switch e.mode {
 	case modeJSONStream:
-		return func(ev assistant.StreamEvent) { jsonLine(e.w, ev) }
+		return func(ev assistant.StreamEvent) { e.writeEventLine(ev) }
 	case modeAgent:
-		return func(ev assistant.StreamEvent) { jsonLine(e.w, newAgentStreamEvent(ev)) }
+		return func(ev assistant.StreamEvent) { e.writeEventLine(newAgentStreamEvent(ev)) }
 	default:
 		return nil
+	}
+}
+
+// writeEventLine writes one non-terminal stream-event line. The first write
+// failure is recorded and aborts the stream via cancel — a broken pipe means
+// the consumer is gone, so continuing the loop would only discard events —
+// and every subsequent write is skipped so nothing more is attempted on the
+// dead stream. finish surfaces the recorded error as the command error.
+func (e *streamEmitter) writeEventLine(v any) {
+	if e.writeErr != nil {
+		return
+	}
+	if err := jsonLine(e.w, v); err != nil {
+		e.writeErr = err
+		if e.cancel != nil {
+			e.cancel()
+		}
 	}
 }
 
@@ -178,7 +206,16 @@ func (h agentDenyApprovalHandler) HandleApproval(req assistant.ApprovalRequest) 
 // finish renders the terminal outcome of the stream and returns the error
 // that carries the process exit code. Machine modes that already wrote their
 // terminal output return an EmittedError so nothing more lands on stdout.
+// When any stdout write failed — a streamed event line or the terminal line
+// itself — finish returns the write error instead: the EmittedError sentinel
+// may only report a complete, successfully written result.
 func (e *streamEmitter) finish(result assistant.StreamResult, timeoutSeconds int) error {
+	if e.writeErr != nil {
+		// The event stream broke mid-flight (recorded by writeEventLine).
+		// stdout is unusable, so no terminal line is attempted; the write
+		// error is the honest outcome and carries the non-zero exit.
+		return e.writeErr
+	}
 	switch {
 	case result.Completed:
 		return e.finishCompleted(result)
@@ -199,14 +236,17 @@ func (e *streamEmitter) finishCompleted(result assistant.StreamResult) error {
 	}
 	switch e.mode {
 	case modeJSONDoc:
-		jsonPretty(e.w, promptResult{
+		// A failed terminal write surfaces as the command error: the
+		// consumer never received the document, so exit 0 would lie.
+		return jsonPretty(e.w, promptResult{
 			TaskID:    result.TaskID,
 			ContextID: result.ContextID,
 			Status:    "completed",
 			Response:  result.Response,
 		})
 	case modeAgent:
-		e.end(nil)
+		// Same contract for the terminal gcx.stream_end line.
+		return e.end(nil)
 	case modeHuman:
 		cmdio.Success(e.errW, "Completed!")
 		fmt.Fprintln(e.w)
@@ -226,23 +266,20 @@ func (e *streamEmitter) finishTimedOut(result assistant.StreamResult, timeoutSec
 	err := fmt.Errorf("request timed out after %ds", timeoutSeconds)
 	switch e.mode {
 	case modeJSONStream:
-		jsonLine(e.w, assistant.StreamEvent{
+		return emittedAfter(jsonLine(e.w, assistant.StreamEvent{
 			Type:    "error",
 			Error:   err.Error(),
 			Timeout: timeoutSeconds,
-		})
-		return emittedFailure(err)
+		}), err)
 	case modeJSONDoc:
-		jsonPretty(e.w, promptResult{
+		return emittedAfter(jsonPretty(e.w, promptResult{
 			TaskID:    result.TaskID,
 			ContextID: result.ContextID,
 			Status:    "timeout",
 			Timeout:   timeoutSeconds,
-		})
-		return emittedFailure(err)
+		}), err)
 	case modeAgent:
-		e.end(&streamEndError{Reason: "timeout", Summary: err.Error(), ExitCode: gcxerrors.ExitGeneralError})
-		return emittedFailure(err)
+		return emittedAfter(e.end(&streamEndError{Reason: "timeout", Summary: err.Error(), ExitCode: gcxerrors.ExitGeneralError}), err)
 	case modeHuman:
 	}
 	cmdio.Warning(e.errW, "Request timed out after %ds. Task may still be processing.", timeoutSeconds)
@@ -257,25 +294,23 @@ func (e *streamEmitter) finishFailed(result assistant.StreamResult) error {
 	switch e.mode {
 	case modeJSONStream:
 		if !result.ErrorEventEmitted {
-			jsonLine(e.w, assistant.StreamEvent{
+			return emittedAfter(jsonLine(e.w, assistant.StreamEvent{
 				Type:      "error",
 				TaskID:    result.TaskID,
 				ContextID: result.ContextID,
 				Error:     result.ErrorMessage,
-			})
+			}), err)
 		}
 		return emittedFailure(err)
 	case modeJSONDoc:
-		jsonPretty(e.w, promptResult{
+		return emittedAfter(jsonPretty(e.w, promptResult{
 			TaskID:    result.TaskID,
 			ContextID: result.ContextID,
 			Status:    "failed",
 			Error:     result.ErrorMessage,
-		})
-		return emittedFailure(err)
+		}), err)
 	case modeAgent:
-		e.end(&streamEndError{Reason: "failed", Summary: err.Error(), ExitCode: gcxerrors.ExitGeneralError})
-		return emittedFailure(err)
+		return emittedAfter(e.end(&streamEndError{Reason: "failed", Summary: err.Error(), ExitCode: gcxerrors.ExitGeneralError}), err)
 	case modeHuman:
 	}
 	cmdio.Error(e.errW, "Request failed: %s", result.ErrorMessage)
@@ -290,15 +325,13 @@ func (e *streamEmitter) finishCanceled(result assistant.StreamResult) error {
 		// more belongs on stdout.
 		return emittedFailure(err)
 	case modeJSONDoc:
-		jsonPretty(e.w, promptResult{
+		return emittedAfter(jsonPretty(e.w, promptResult{
 			TaskID:    result.TaskID,
 			ContextID: result.ContextID,
 			Status:    "canceled",
-		})
-		return emittedFailure(err)
+		}), err)
 	case modeAgent:
-		e.end(&streamEndError{Reason: "canceled", Summary: err.Error(), ExitCode: gcxerrors.ExitGeneralError})
-		return emittedFailure(err)
+		return emittedAfter(e.end(&streamEndError{Reason: "canceled", Summary: err.Error(), ExitCode: gcxerrors.ExitGeneralError}), err)
 	case modeHuman:
 	}
 	cmdio.Warning(e.errW, "Request was canceled")
@@ -309,18 +342,15 @@ func (e *streamEmitter) finishUnknown(result assistant.StreamResult) error {
 	err := errors.New("request ended in unknown state")
 	switch e.mode {
 	case modeJSONStream:
-		jsonLine(e.w, assistant.StreamEvent{Type: "error", Error: "stream ended unexpectedly"})
-		return emittedFailure(err)
+		return emittedAfter(jsonLine(e.w, assistant.StreamEvent{Type: "error", Error: "stream ended unexpectedly"}), err)
 	case modeJSONDoc:
-		jsonPretty(e.w, promptResult{
+		return emittedAfter(jsonPretty(e.w, promptResult{
 			TaskID:    result.TaskID,
 			ContextID: result.ContextID,
 			Status:    "unknown",
-		})
-		return emittedFailure(err)
+		}), err)
 	case modeAgent:
-		e.end(&streamEndError{Reason: "unknown", Summary: "stream ended unexpectedly", ExitCode: gcxerrors.ExitGeneralError})
-		return emittedFailure(err)
+		return emittedAfter(e.end(&streamEndError{Reason: "unknown", Summary: "stream ended unexpectedly", ExitCode: gcxerrors.ExitGeneralError}), err)
 	case modeHuman:
 	}
 	cmdio.Warning(e.errW, "Request ended unexpectedly. The stream closed without a completion signal.")
@@ -331,8 +361,10 @@ func (e *streamEmitter) finishUnknown(result assistant.StreamResult) error {
 }
 
 // end writes the terminal gcx.stream_end line. endErr == nil means success.
-func (e *streamEmitter) end(endErr *streamEndError) {
-	jsonLine(e.w, streamEndEvent{
+// The write error is returned so a terminal line that never reached stdout
+// can neither exit 0 nor be misreported as already emitted.
+func (e *streamEmitter) end(endErr *streamEndError) error {
+	return jsonLine(e.w, streamEndEvent{
 		Type:          StreamEndType,
 		SchemaVersion: streamSchemaVersion,
 		OK:            endErr == nil,
@@ -346,4 +378,15 @@ func (e *streamEmitter) end(endErr *streamEndError) {
 // writes nothing more to stdout.
 func emittedFailure(cause error) error {
 	return gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, cause)
+}
+
+// emittedAfter guards the EmittedError contract on failure finishes: the
+// sentinel is returned only when the terminal write succeeded. A failed
+// write returns the write error itself — the result never reached stdout, so
+// claiming it was emitted would suppress the top-level error report.
+func emittedAfter(writeErr, cause error) error {
+	if writeErr != nil {
+		return writeErr
+	}
+	return emittedFailure(cause)
 }

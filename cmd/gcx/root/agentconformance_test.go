@@ -37,6 +37,18 @@ var (
 	errBuild  error     //nolint:gochecknoglobals
 )
 
+// TestMain removes the shared conformance binary after the package's tests
+// finish — sync.Once keeps it alive across subtests, so t.TempDir cleanup
+// cannot own it (see buildGcx), and without this every test run would leak
+// a full gcx binary in TMPDIR.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if buildPath != "" {
+		_ = os.RemoveAll(filepath.Dir(buildPath))
+	}
+	os.Exit(code)
+}
+
 // buildGcx builds the gcx binary once per test run — always fresh, never
 // trusting a stale bin/gcx.
 func buildGcx(t *testing.T) string {

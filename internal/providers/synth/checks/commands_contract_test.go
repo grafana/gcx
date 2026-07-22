@@ -36,10 +36,14 @@ import (
 
 // contractStatusLoader implements smcfg.StatusLoader for command-level tests:
 // SM API calls go direct to the fake server (empty proxy UID) and Grafana
-// REST calls (Prometheus queries) hit the same server.
+// REST calls (Prometheus queries) hit the same server. When
+// promDatasourceUID is set, LoadConfig resolves it as the default Prometheus
+// datasource so status queries succeed against the fake query endpoint;
+// when empty, datasource resolution fails and status fetches error out.
 type contractStatusLoader struct {
-	baseURL   string
-	namespace string
+	baseURL           string
+	namespace         string
+	promDatasourceUID string
 }
 
 func (l *contractStatusLoader) LoadSMConfig(_ context.Context) (string, string, string, error) {
@@ -55,7 +59,15 @@ func (l *contractStatusLoader) LoadGrafanaConfig(_ context.Context) (config.Name
 }
 
 func (l *contractStatusLoader) LoadConfig(_ context.Context) (*config.Config, error) {
-	return &config.Config{}, nil
+	if l.promDatasourceUID == "" {
+		return &config.Config{}, nil
+	}
+	return &config.Config{
+		CurrentContext: "test",
+		Contexts: map[string]*config.Context{
+			"test": {Datasources: map[string]string{"prometheus": l.promDatasourceUID}},
+		},
+	}, nil
 }
 
 func (l *contractStatusLoader) SaveMetricsDatasourceUID(_ context.Context, _ string) error {
@@ -159,6 +171,13 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 // mirroring the real CLI (BindFlags reads agent mode at construction time).
 func runChecks(t *testing.T, srvURL string, agentMode bool, stdin string, args ...string) (string, string, error) {
 	t.Helper()
+	return runChecksLoader(t, &contractStatusLoader{baseURL: srvURL, namespace: "default"}, agentMode, stdin, args...)
+}
+
+// runChecksLoader is runChecks with an explicit loader, for tests that need
+// non-default loader behavior (e.g. a resolvable Prometheus datasource).
+func runChecksLoader(t *testing.T, loader smcfg.StatusLoader, agentMode bool, stdin string, args ...string) (string, string, error) {
+	t.Helper()
 	prevNoColor := color.NoColor
 	color.NoColor = true
 	agent.SetFlag(agentMode)
@@ -167,7 +186,7 @@ func runChecks(t *testing.T, srvURL string, agentMode bool, stdin string, args .
 		color.NoColor = prevNoColor
 	})
 
-	root := checks.Commands(&contractStatusLoader{baseURL: srvURL, namespace: "default"})
+	root := checks.Commands(loader)
 	root.SilenceErrors = true
 	root.SilenceUsage = true
 	var stdout, stderr bytes.Buffer
@@ -448,14 +467,47 @@ func TestChecksGetDiagnosticsOnStderr(t *testing.T) {
 	}
 	srv := newCheckServer(t, st)
 
-	t.Run("structured format warns that --show-status is ignored", func(t *testing.T) {
+	t.Run("structured format carries fetched status in-band", func(t *testing.T) {
+		// Pattern 13: --show-status fetches regardless of output format. The
+		// fake query endpoint returns no series, so the computed status is
+		// NODATA — merged into the document as the top-level status member.
+		loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", promDatasourceUID: "test-uid"}
+		stdout, stderr, err := runChecksLoader(t, loader, false, "", "get", "web-check-1234", "-o", "json", "--show-status")
+		require.NoError(t, err)
+
+		doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "Check", doc["kind"])
+		status, ok := doc["status"].(map[string]any)
+		require.True(t, ok, "--show-status must merge the fetched status into the structured output: %s", stdout)
+		assert.Equal(t, "NODATA", status["status"])
+		assert.NotContains(t, status, "success", "success is omitted when the query returned no data")
+		assert.NotContains(t, stderr, "--show-status")
+	})
+
+	t.Run("structured format without --show-status has no status member", func(t *testing.T) {
+		loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", promDatasourceUID: "test-uid"}
+		stdout, _, err := runChecksLoader(t, loader, false, "", "get", "web-check-1234", "-o", "json")
+		require.NoError(t, err)
+
+		doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+		require.True(t, ok)
+		assert.NotContains(t, doc, "status")
+	})
+
+	t.Run("structured format status-query failure warning stays on stderr", func(t *testing.T) {
+		// The zero-value config carries no datasource, so the status fetch
+		// fails: the warning is a diagnostic on stderr and the document
+		// simply omits the status member — never a "flag ignored" skip.
 		stdout, stderr, err := runChecks(t, srv.URL, false, "", "get", "web-check-1234", "-o", "json", "--show-status")
 		require.NoError(t, err)
 
 		doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "Check", doc["kind"])
-		assert.Contains(t, stderr, "--show-status only applies to table/wide output; ignored for json")
+		assert.NotContains(t, doc, "status")
+		assert.Contains(t, stderr, "could not retrieve execution status")
+		assert.NotContains(t, stderr, "only applies to table/wide output")
 	})
 
 	t.Run("table status-query failure warning stays on stderr", func(t *testing.T) {

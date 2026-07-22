@@ -3,6 +3,7 @@ package assistant //nolint:testpackage // exercises the unexported stream emitte
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -381,6 +382,103 @@ func TestFinishJSONStreamFailureShapes(t *testing.T) {
 			[]string{`{"type":"error","error":"stream ended unexpectedly"}`, ""},
 			strings.Split(stdout.String(), "\n"))
 	})
+}
+
+// failingWriter fails every write with err, counting attempts.
+type failingWriter struct {
+	err    error
+	writes int
+}
+
+func (w *failingWriter) Write([]byte) (int, error) {
+	w.writes++
+	return 0, w.err
+}
+
+// requireBareWriteError asserts err is exactly the write failure — surfaced,
+// and NOT wrapped in the EmittedError sentinel (the terminal output never
+// reached stdout, so nothing was emitted).
+func requireBareWriteError(t *testing.T, err, writeErr error) {
+	t.Helper()
+	require.ErrorIs(t, err, writeErr, "the stdout write error must surface")
+	var emitted *gcxerrors.EmittedError
+	assert.NotErrorAs(t, err, &emitted, "EmittedError may only be returned after a successful terminal write")
+}
+
+// TestFinishTerminalWriteFailureSurfaces pins the terminal-write contract for
+// every machine mode: when the terminal stdout write fails, finish returns
+// the write error — never nil (which would exit 0 on a lost gcx.stream_end)
+// and never an EmittedError (which would claim the result reached stdout).
+func TestFinishTerminalWriteFailureSurfaces(t *testing.T) {
+	writeErr := errors.New("broken pipe")
+	completed := assistant.StreamResult{TaskID: "task-1", ContextID: "ctx-1", Completed: true, Response: "hi"}
+	failed := assistant.StreamResult{TaskID: "task-1", ContextID: "ctx-1", Failed: true, ErrorMessage: "boom"}
+
+	tests := []struct {
+		name      string
+		agentMode bool
+		opts      promptOpts
+		result    assistant.StreamResult
+	}{
+		{name: "agent completed stream_end", agentMode: true, result: completed},
+		{name: "agent failed stream_end", agentMode: true, result: failed},
+		{name: "json-doc completed document", opts: promptOpts{jsonOut: true, noStream: true}, result: completed},
+		{name: "json-doc failed document", opts: promptOpts{jsonOut: true, noStream: true}, result: failed},
+		{name: "json-stream failed error event", opts: promptOpts{jsonOut: true}, result: failed},
+		{name: "json-stream timeout error event", opts: promptOpts{jsonOut: true}, result: assistant.StreamResult{TimedOut: true}},
+		{name: "agent unknown stream_end", agentMode: true, result: assistant.StreamResult{}},
+		{name: "agent canceled stream_end", agentMode: true, result: assistant.StreamResult{Canceled: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setAgentMode(t, tt.agentMode)
+			t.Setenv("HOME", t.TempDir()) // keep SaveLastContextID away from the real home
+			em := newStreamEmitter(&failingWriter{err: writeErr}, &bytes.Buffer{}, &tt.opts)
+
+			err := em.finish(tt.result, 30)
+			requireBareWriteError(t, err, writeErr)
+		})
+	}
+}
+
+// TestStreamEventWriteFailureAbortsStream pins the non-terminal contract: a
+// failed stream-event write records the error, cancels the stream loop, stops
+// writing to the dead pipe, and finish surfaces the write error without an
+// EmittedError and without attempting a terminal line.
+func TestStreamEventWriteFailureAbortsStream(t *testing.T) {
+	writeErr := errors.New("broken pipe")
+
+	modes := []struct {
+		name      string
+		agentMode bool
+		opts      promptOpts
+	}{
+		{name: "agent JSONL", agentMode: true},
+		{name: "legacy --json NDJSON", opts: promptOpts{jsonOut: true}},
+	}
+	for _, tt := range modes {
+		t.Run(tt.name, func(t *testing.T) {
+			setAgentMode(t, tt.agentMode)
+			w := &failingWriter{err: writeErr}
+			em := newStreamEmitter(w, &bytes.Buffer{}, &tt.opts)
+			canceled := false
+			em.cancel = func() { canceled = true }
+
+			cb := em.onEvent()
+			require.NotNil(t, cb)
+			cb(assistant.StreamEvent{Type: "status", TaskID: "task-1", State: "working"})
+			assert.True(t, canceled, "the first write failure must abort the stream loop")
+
+			// Subsequent events must not touch the broken writer again.
+			cb(assistant.StreamEvent{Type: "message", TaskID: "task-1", Text: "hi"})
+			assert.Equal(t, 1, w.writes, "no further writes after the pipe broke")
+
+			// finish surfaces the recorded write error without writing more.
+			err := em.finish(assistant.StreamResult{Completed: true, Response: "hi"}, 30)
+			requireBareWriteError(t, err, writeErr)
+			assert.Equal(t, 1, w.writes, "finish must not attempt a terminal line on a broken stream")
+		})
+	}
 }
 
 func TestStreamEmitterNotice(t *testing.T) {

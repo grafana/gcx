@@ -94,9 +94,9 @@ func TestGetPartialFailure_AtomicStdout(t *testing.T) {
 				t.Fatalf("stdout must contain exactly one JSON value, second decode = %v\n%s", err, stdout.String())
 			}
 
-			// The agent-mode fused envelope must carry the partial-result
-			// discriminator and both items and error.
-			if tc.agentMode && tc.jsonField != "" {
+			// Every agent-mode JSON-family path — plain and field-select —
+			// fuses items and error into one gcx.partial_result document.
+			if tc.agentMode {
 				doc, ok := first.(map[string]any)
 				if !ok {
 					t.Fatalf("fused envelope is %T, want object", first)
@@ -115,7 +115,7 @@ func TestGetPartialFailure_AtomicStdout(t *testing.T) {
 			// Human/non-fused paths surface the failure count as a typed
 			// stderr diagnostic (advisory stream), not via a second stdout
 			// document.
-			if !tc.agentMode || tc.jsonField == "" {
+			if !tc.agentMode {
 				if !strings.Contains(stderr.String(), "failed to get") {
 					t.Fatalf("stderr = %q, want partial-failure diagnostic", stderr.String())
 				}

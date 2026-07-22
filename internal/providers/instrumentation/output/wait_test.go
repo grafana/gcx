@@ -2,10 +2,14 @@ package output_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -150,3 +154,86 @@ func TestWaitResult_EmitWriteFailurePropagates(t *testing.T) {
 type failWriter struct{ err error }
 
 func (f failWriter) Write([]byte) (int, error) { return 0, f.err }
+
+// terminalFor builds a WaitTerminal writing to w with the given agent mode.
+func terminalFor(w io.Writer, agentMode bool) output.WaitTerminal {
+	return output.WaitTerminal{
+		Target:    output.Target{Cluster: "prod-eu"},
+		ErrPrefix: "clusters wait",
+		Start:     time.Now(),
+		Stdout:    w,
+		AgentMode: agentMode,
+	}
+}
+
+func TestWaitTerminal_FinishTimeout(t *testing.T) {
+	var buf bytes.Buffer
+	err := terminalFor(&buf, true).FinishTimeout("PENDING", "timeout waiting for cluster \"prod-eu\"", "timeout after 5m0s")
+
+	require.ErrorIs(t, err, instrumentation.ErrWaitTimeoutEmitted,
+		"timeout must return the ErrWaitTimeoutEmitted sentinel once the write landed")
+	assert.Contains(t, err.Error(), "clusters wait:", "returned error must carry the command prefix")
+
+	line := buf.String()
+	assert.Contains(t, line, `"type":"gcx.stream_end"`)
+	assert.Contains(t, line, `"outcome":"timeout"`)
+	assert.Contains(t, line, `"exitCode":1`)
+
+	// Human mode keeps the plain timeout summary line.
+	var humanBuf bytes.Buffer
+	err = terminalFor(&humanBuf, false).FinishTimeout("PENDING", "summary", "details")
+	require.ErrorIs(t, err, instrumentation.ErrWaitTimeoutEmitted)
+	assert.Equal(t, "timeout: prod-eu still in PENDING\n", humanBuf.String())
+
+	// Write failure: the sentinel must NOT be returned — the write error surfaces.
+	writeErr := errors.New("no space left on device")
+	err = terminalFor(failWriter{err: writeErr}, true).FinishTimeout("PENDING", "summary", "details")
+	require.NotErrorIs(t, err, instrumentation.ErrWaitTimeoutEmitted)
+	require.ErrorIs(t, err, writeErr)
+}
+
+func TestWaitTerminal_FinishErrorStatus(t *testing.T) {
+	cause := errors.New("cluster reached INSTRUMENTATION_ERROR status")
+
+	var buf bytes.Buffer
+	err := terminalFor(&buf, true).FinishErrorStatus(cause, "K8S_MONITORING_STATUS_ERROR", cause.Error(), "details")
+
+	var emitted *gcxerrors.EmittedError
+	require.ErrorAs(t, err, &emitted, "error status must return an EmittedError after the terminal write")
+	assert.Equal(t, gcxerrors.ExitGeneralError, emitted.Code)
+	require.ErrorIs(t, err, cause, "the original cause must stay in the chain")
+
+	line := buf.String()
+	assert.Contains(t, line, `"type":"gcx.stream_end"`)
+	assert.Contains(t, line, `"outcome":"error"`)
+	assert.Contains(t, line, `"status":"K8S_MONITORING_STATUS_ERROR"`)
+
+	// Write failure surfaces instead of the sentinel.
+	writeErr := errors.New("no space left on device")
+	err = terminalFor(failWriter{err: writeErr}, true).FinishErrorStatus(cause, "S", "summary", "details")
+	require.NotErrorAs(t, err, &emitted)
+	require.ErrorIs(t, err, writeErr)
+}
+
+func TestWaitTerminal_FinishCanceled(t *testing.T) {
+	// context.Canceled resolves to the cancellation exit code.
+	var buf bytes.Buffer
+	err := terminalFor(&buf, true).FinishCanceled(context.Canceled, "PENDING", "wait canceled before reaching a terminal status")
+
+	var emitted *gcxerrors.EmittedError
+	require.ErrorAs(t, err, &emitted)
+	assert.Equal(t, gcxerrors.ExitCancelled, emitted.Code)
+	assert.Contains(t, buf.String(), `"outcome":"canceled"`)
+
+	// Any other cause resolves to the general error exit code.
+	var otherBuf bytes.Buffer
+	err = terminalFor(&otherBuf, true).FinishCanceled(errors.New("boom"), "PENDING", "summary")
+	require.ErrorAs(t, err, &emitted)
+	assert.Equal(t, gcxerrors.ExitGeneralError, emitted.Code)
+
+	// Write failure surfaces instead of the sentinel.
+	writeErr := errors.New("no space left on device")
+	err = terminalFor(failWriter{err: writeErr}, true).FinishCanceled(context.Canceled, "PENDING", "summary")
+	require.NotErrorAs(t, err, &emitted)
+	require.ErrorIs(t, err, writeErr)
+}
