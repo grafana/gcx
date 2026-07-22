@@ -271,9 +271,9 @@ func (o *evidenceOpts) setup(flags *pflag.FlagSet) {
 func newEvidenceCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &evidenceOpts{}
 	cmd := &cobra.Command{
-		Use:   "evidence <id>",
-		Short: "Show the panel evidence index for a v2 investigation.",
-		Long: "Show the panel evidence index for a v2 investigation — the canonical mapping from report citation keys (panel IDs like p3) to the tool and query that produced each panel. " +
+		Use:   "list-evidence <id>",
+		Short: "List panel evidence for a v2 investigation.",
+		Long: "List panel evidence for a v2 investigation — the canonical mapping from report citation keys (panel IDs like p3) to the tool and query that produced each panel. " +
 			"For raw chat-derived tool calls, use `gcx assistant investigations list-tool-calls` instead.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

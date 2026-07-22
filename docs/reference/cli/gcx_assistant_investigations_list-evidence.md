@@ -1,19 +1,19 @@
-## gcx assistant investigations evidence
+## gcx assistant investigations list-evidence
 
-Show the panel evidence index for a v2 investigation.
+List panel evidence for a v2 investigation.
 
 ### Synopsis
 
-Show the panel evidence index for a v2 investigation — the canonical mapping from report citation keys (panel IDs like p3) to the tool and query that produced each panel. For raw chat-derived tool calls, use `gcx assistant investigations list-tool-calls` instead.
+List panel evidence for a v2 investigation — the canonical mapping from report citation keys (panel IDs like p3) to the tool and query that produced each panel. For raw chat-derived tool calls, use `gcx assistant investigations list-tool-calls` instead.
 
 ```
-gcx assistant investigations evidence <id> [flags]
+gcx assistant investigations list-evidence <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for evidence
+  -h, --help            help for list-evidence
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
