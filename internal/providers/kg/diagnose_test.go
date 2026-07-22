@@ -465,7 +465,10 @@ func TestRunDiagnose_QualityCheckWarn(t *testing.T) {
 	require.NotNil(t, qualityCheck)
 	assert.Equal(t, kg.CheckWarn, qualityCheck.Status)
 	assert.Contains(t, qualityCheck.Detail, "3 services")
-	assert.NotEmpty(t, qualityCheck.Recommendation)
+	// The recommendation carries the diagnose scope through to the follow-up
+	// commands so they can be run as-is.
+	assert.Contains(t, qualityCheck.Recommendation, "gcx kg quality list --sort asc --env prod")
+	assert.Contains(t, qualityCheck.Recommendation, "gcx kg quality get <service> --env prod")
 
 	// The structured summary should be populated on the result.
 	require.NotNil(t, result.Quality)

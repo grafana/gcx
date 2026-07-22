@@ -83,15 +83,17 @@ type DiagnoseResult struct {
 
 // QualityCheckSummary is the aggregate instrumentation-quality signal folded
 // into a diagnose run: how many services have reports, how many are below a
-// perfect score, the distribution, and the most common failing checks.
+// perfect score, the single worst score, and the most common failing checks.
+// The aggregate is computed over the worst qualityDiagnoseTopServices services
+// (pulled worst-first); TotalServices is the true count across the scope.
 type QualityCheckSummary struct {
 	TotalServices   int                `json:"totalServices"`
 	BelowPerfect    int                `json:"belowPerfect"`
-	MedianQuality   int                `json:"medianQuality"`
 	WorstQuality    int                `json:"worstQuality"`
 	TopFailedChecks []FailedCheckCount `json:"topFailedChecks,omitempty"`
-	// Sampled is true when the stack has more reports than the diagnose cap
-	// and the aggregate reflects only the first qualityDiagnoseMaxReports.
+	// Sampled is true when there are more services than the worst-first window
+	// surfaced and it never reached a fully-instrumented service, so
+	// BelowPerfect and TopFailedChecks reflect only the worst services shown.
 	Sampled bool `json:"sampled,omitempty"`
 }
 
@@ -1146,13 +1148,12 @@ func checkTracePropagation(ctx context.Context, client *prometheus.Client, datas
 // ---------------------------------------------------------------------------
 
 const (
-	// qualityDiagnosePageSize is the page size used when paging quality
-	// reports during a diagnose run.
-	qualityDiagnosePageSize = 100
-	// qualityDiagnoseMaxReports bounds how many reports diagnose aggregates,
-	// so the check stays fast on very large stacks. When exceeded, the
-	// aggregate is marked Sampled.
-	qualityDiagnoseMaxReports = 500
+	// qualityDiagnoseTopServices bounds how many services diagnose pulls for
+	// the aggregate. Reports are fetched sorted worst-quality-first, so this
+	// window always captures the most-degraded services — where the
+	// remediation value is — regardless of how many services the stack has,
+	// in a single request rather than paging the whole population.
+	qualityDiagnoseTopServices = 50
 	// qualityDiagnoseTopN is how many of the most common failing checks the
 	// summary surfaces.
 	qualityDiagnoseTopN = 5
@@ -1161,46 +1162,39 @@ const (
 // checkQuality aggregates the entity quality reports for the diagnose scope
 // into a single check result plus a structured summary. It degrades to a skip
 // (never a failure) when quality reports are unavailable or empty.
+//
+// Reports are pulled worst-quality-first (a single page of the worst
+// qualityDiagnoseTopServices), so the aggregate focuses on the most-degraded
+// services even on stacks with thousands of services. The true service count
+// comes from the page envelope's TotalElements, independent of the window.
 func checkQuality(ctx context.Context, client *Client, scope *scopeFlags) (CheckResult, *QualityCheckSummary) {
 	const name = "Instrumentation quality"
 
-	var items []QualityReportListItem
-	sampled := false
-	for page := 0; ; page++ {
-		p, err := client.ListQualityReports(ctx, QualityReportQuery{
-			Type:      defaultQualityEntityType,
-			Env:       scope.env,
-			Namespace: scope.namespace,
-			Site:      scope.site,
-			Page:      page,
-			PageSize:  qualityDiagnosePageSize,
-		})
-		if err != nil {
-			var apiErr *APIError
-			if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-				return CheckResult{
-					Name:   name,
-					Status: CheckSkip,
-					Detail: "Quality reports unavailable on this stack.",
-				}, nil
-			}
+	page, err := client.ListQualityReports(ctx, QualityReportQuery{
+		Type:          defaultQualityEntityType,
+		Env:           scope.env,
+		Namespace:     scope.namespace,
+		Site:          scope.site,
+		SortDirection: "ASC", // worst quality first
+		PageSize:      qualityDiagnoseTopServices,
+	})
+	if err != nil {
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return CheckResult{
 				Name:   name,
 				Status: CheckSkip,
-				Detail: fmt.Sprintf("Could not fetch quality reports: %v", err),
+				Detail: "Quality reports unavailable on this stack.",
 			}, nil
 		}
-		items = append(items, p.Content...)
-		if len(items) >= qualityDiagnoseMaxReports {
-			items = items[:qualityDiagnoseMaxReports]
-			sampled = !p.Last
-			break
-		}
-		if p.Last || len(p.Content) == 0 {
-			break
-		}
+		return CheckResult{
+			Name:   name,
+			Status: CheckSkip,
+			Detail: fmt.Sprintf("Could not fetch quality reports: %v", err),
+		}, nil
 	}
 
+	items := page.Content
 	if len(items) == 0 {
 		return CheckResult{
 			Name:   name,
@@ -1209,27 +1203,38 @@ func checkQuality(ctx context.Context, client *Client, scope *scopeFlags) (Check
 		}, nil
 	}
 
-	qualities := make([]int, len(items))
 	below := 0
 	counts := map[string]int{}
-	for i, it := range items {
-		qualities[i] = it.QualityPercent
-		if it.QualityPercent < 100 {
+	worst := items[0].QualityPercent
+	sawPerfect := false
+	for _, it := range items {
+		if it.QualityPercent < worst {
+			worst = it.QualityPercent
+		}
+		if it.QualityPercent >= 100 {
+			sawPerfect = true
+		} else {
 			below++
 		}
 		for _, id := range it.FailedCheckIDs {
 			counts[id]++
 		}
 	}
-	sort.Ints(qualities)
+
+	// True service count comes from the page envelope; fall back to the window
+	// size if the backend omits it.
+	total := max(int(page.TotalElements), len(items))
+	// truncated: more services exist than we pulled, and the worst-first window
+	// never reached a fully-instrumented service — so more degraded services
+	// may lie beyond it and BelowPerfect/TopFailedChecks are lower bounds.
+	truncated := total > len(items) && !sawPerfect
 
 	summary := &QualityCheckSummary{
-		TotalServices:   len(items),
+		TotalServices:   total,
 		BelowPerfect:    below,
-		MedianQuality:   qualities[len(qualities)/2],
-		WorstQuality:    qualities[0],
+		WorstQuality:    worst,
 		TopFailedChecks: topFailedChecks(counts, qualityDiagnoseTopN),
-		Sampled:         sampled,
+		Sampled:         truncated,
 	}
 
 	status := CheckPass
@@ -1237,7 +1242,7 @@ func checkQuality(ctx context.Context, client *Client, scope *scopeFlags) (Check
 		status = CheckWarn
 	}
 
-	detail := fmt.Sprintf("%d services, median %d%%, worst %d%%", summary.TotalServices, summary.MedianQuality, summary.WorstQuality)
+	detail := fmt.Sprintf("%d services, worst %d%%", summary.TotalServices, summary.WorstQuality)
 	if summary.BelowPerfect > 0 {
 		detail += fmt.Sprintf(" (%d below 100%%)", summary.BelowPerfect)
 	}
@@ -1248,16 +1253,40 @@ func checkQuality(ctx context.Context, client *Client, scope *scopeFlags) (Check
 		}
 		detail += "; top gaps: " + strings.Join(parts, ", ")
 	}
-	if sampled {
-		detail += fmt.Sprintf(" [sampled first %d]", qualityDiagnoseMaxReports)
+	if truncated {
+		detail += fmt.Sprintf(" [worst %d of %d shown]", len(items), total)
 	}
 
 	rec := ""
 	if status == CheckWarn {
-		rec = "Run 'gcx kg quality list --sort asc' to rank the worst-instrumented services, and 'gcx kg quality get <service> --env <env>' for per-check remediation."
+		scopeArgs := diagnoseScopeArgs(scope)
+		rec = fmt.Sprintf(
+			"Run 'gcx kg quality list --sort asc%s' to rank the worst-instrumented services, and 'gcx kg quality get <service>%s' for per-check remediation.",
+			scopeArgs, scopeArgs,
+		)
 	}
 
 	return CheckResult{Name: name, Status: status, Detail: detail, Recommendation: rec}, summary
+}
+
+// diagnoseScopeArgs renders the diagnose scope as CLI flags for a hint, e.g.
+// " --env prod --namespace shop". --env is always present — both 'quality list'
+// and 'quality get' key off it — falling back to an "<env>" placeholder when
+// diagnose was run unscoped.
+func diagnoseScopeArgs(scope *scopeFlags) string {
+	env := scope.env
+	if env == "" {
+		env = "<env>"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, " --env %s", env)
+	if scope.namespace != "" {
+		fmt.Fprintf(&b, " --namespace %s", scope.namespace)
+	}
+	if scope.site != "" {
+		fmt.Fprintf(&b, " --site %s", scope.site)
+	}
+	return b.String()
 }
 
 // topFailedChecks returns the n most common failing check IDs, ordered by

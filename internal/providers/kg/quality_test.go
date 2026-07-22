@@ -156,12 +156,42 @@ func TestCheckQuality(t *testing.T) {
 				t.Helper()
 				assert.Equal(t, 3, s.TotalServices)
 				assert.Equal(t, 2, s.BelowPerfect)
-				assert.Equal(t, 80, s.MedianQuality)
 				assert.Equal(t, 60, s.WorstQuality)
+				assert.False(t, s.Sampled)
 				require.NotEmpty(t, s.TopFailedChecks)
 				// span-metrics (2) ranks ahead of service-logs (1).
 				assert.Equal(t, "span-metrics", s.TopFailedChecks[0].ID)
 				assert.Equal(t, 2, s.TopFailedChecks[0].Count)
+			},
+		},
+		{
+			name: "samples worst services when the population exceeds the window",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				// diagnose pulls the worst services first, one bounded page.
+				q := r.URL.Query()
+				assert.Equal(t, "ASC", q.Get("sortDirection"))
+				assert.Equal(t, "50", q.Get("pageSize"))
+				// Backend reports 120 total services but returns only the worst
+				// window; none reach 100%, so the aggregate is a lower bound.
+				writeJSON(w, kg.QualityReportPage{
+					Content: []kg.QualityReportListItem{
+						{EntityName: "a", EntityType: "Service", QualityPercent: 40, FailedCheckIDs: []string{"span-metrics"}},
+						{EntityName: "b", EntityType: "Service", QualityPercent: 55, FailedCheckIDs: []string{"span-metrics"}},
+					},
+					TotalElements: 120,
+					TotalPages:    60,
+					Last:          false,
+				})
+			},
+			wantStatus:  kg.CheckWarn,
+			wantSummary: true,
+			check: func(t *testing.T, s *kg.QualityCheckSummary) {
+				t.Helper()
+				// TotalServices reflects the true population, not the window.
+				assert.Equal(t, 120, s.TotalServices)
+				assert.Equal(t, 2, s.BelowPerfect)
+				assert.Equal(t, 40, s.WorstQuality)
+				assert.True(t, s.Sampled)
 			},
 		},
 		{
