@@ -1,5 +1,5 @@
 ---
-title: Anonymous usage statistics
+title: Usage statistics
 labels:
   products:
     - cloud
@@ -8,15 +8,15 @@ labels:
 weight: 4
 ---
 
-# Understand anonymous gcx usage collection 
+# Understand gcx usage statistics
 
-`gcx` reports anonymous usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
+`gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
 
 The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values and flag values are never sent. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
 
 {{< admonition type="note" >}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usage reporting.{{< /admonition >}}
 
-## How anonymity is guaranteed
+## Telemetry data and identifiers
 
 The only identifier is a `device_id` field: a randomly generated UUID created on first use and stored at `$XDG_STATE_HOME/gcx/device-id`. It identifies an installation of `gcx`, not a person. It's random, not derived from your hardware or account.
 
@@ -30,7 +30,7 @@ Each `gcx` event contains the following properties:
 | `version` | The version of `gcx`. | `0.4.1` |
 | `os` | Operating system. | `linux`, `darwin`, `windows` |
 | `arch` | CPU architecture. | `amd64`, `arm64` |
-| `device_id` | The random per-installation ID described in [Anonymity](#anonymity). | UUID |
+| `device_id` | The random per-installation ID described in [Telemetry data and identifiers](#telemetry-data-and-identifiers). | UUID |
 | `device_id_persisted` | Whether the device ID was read from or saved to disk. `false` means a throwaway ID was used for this invocation. | `true` |
 | `command` | The resolved command path only, no arguments are sent. | `dashboards push` |
 | `flags` | The **names** of the flags you set, sorted. No flag values are sent. | `dry-run,folder` |
@@ -70,7 +70,7 @@ Some invocations never emit an event:
 
 ## Server-side enrichment
 
-Reports are received by Grafana's usage-stats service, the same service that receives anonymous usage reports from Grafana, Loki, Tempo, and Mimir. On receipt, the service adds two pieces of information derived from the connection:
+Reports are received by Grafana's usage-stats service, the same service that receives usage reports from Grafana, Loki, Tempo, and Mimir. On receipt, the service adds two pieces of information derived from the connection:
 
 - A coarse **geographic region** (for example, a country or subdivision), taken from headers added by the CDN edge.  
 - The **network organization name** from a whois lookup of the connecting IP address. For CLI traffic this typically resolves to your ISP or employer's network.
