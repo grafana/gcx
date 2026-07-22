@@ -203,6 +203,7 @@ func TestAgentConformance_FailuresAreOneInBandErrorDocument(t *testing.T) {
 // cobra usage text, prose, or a second document on any of these paths
 // fails here by name.
 func TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("builds the gcx binary and executes every finite leaf; skipped with -short")
 	}
