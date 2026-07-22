@@ -42,7 +42,7 @@ gcx metrics labels [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -l, --label string        Get values for this label (omit to list all labels)
       --match stringArray   Series selector(s) to scope results; repeatable
-  -m, --metric string       Scope results to this metric (shorthand for --match METRIC)
+      --metric string       Scope results to this metric (shorthand for --match METRIC)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
 ```
 

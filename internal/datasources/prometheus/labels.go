@@ -30,7 +30,7 @@ func (opts *labelsOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-prometheus-datasource is configured)")
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
-	flags.StringVarP(&opts.Metric, "metric", "m", "", "Scope results to this metric (shorthand for --match METRIC)")
+	flags.StringVar(&opts.Metric, "metric", "", "Scope results to this metric (shorthand for --match METRIC)")
 	flags.StringArrayVar(&opts.Match, "match", nil, "Series selector(s) to scope results; repeatable")
 }
 
