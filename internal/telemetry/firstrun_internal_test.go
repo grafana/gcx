@@ -34,7 +34,7 @@ func TestFirstRunNoticeSuppressedWhenNotInteractive(t *testing.T) {
 		name                 string
 		isTTY, isCI, isAgent bool
 	}{
-		{name: "piped stdout", isTTY: false},
+		{name: "non-terminal stderr", isTTY: false},
 		{name: "CI environment", isTTY: true, isCI: true},
 		{name: "agent mode", isTTY: true, isAgent: true},
 	}
