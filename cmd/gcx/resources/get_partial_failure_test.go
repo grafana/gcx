@@ -115,7 +115,7 @@ func TestGetPartialFailure_AtomicStdout(t *testing.T) {
 			// Human/non-fused paths surface the failure count as a typed
 			// stderr diagnostic (advisory stream), not via a second stdout
 			// document.
-			if !(tc.agentMode && tc.jsonField != "") {
+			if !tc.agentMode || tc.jsonField == "" {
 				if !strings.Contains(stderr.String(), "failed to get") {
 					t.Fatalf("stderr = %q, want partial-failure diagnostic", stderr.String())
 				}

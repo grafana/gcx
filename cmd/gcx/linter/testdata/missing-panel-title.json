@@ -1,0 +1,44 @@
+{
+    "kind": "Dashboard",
+    "apiVersion": "dashboard.grafana.app/v1beta1",
+    "metadata": {
+        "name": "test-dashboard-missing-panel-title"
+    },
+    "spec": {
+        "panels": [
+            {
+                "id": 4,
+                "datasource": {
+                    "type": "prometheus",
+                    "uid": "grafanacloud-prom"
+                },
+                "fieldConfig": {
+                    "defaults": {
+                        "color": {
+                            "fixedColor": "green",
+                            "mode": "fixed"
+                        },
+                        "unit": "s"
+                    },
+                    "overrides": []
+                },
+                "options": {
+                    "colorMode": "value",
+                    "wideLayout": true
+                },
+                "targets": [
+                    {
+                        "expr": "time()-process_start_time_seconds{job=\"integrations/forgejo\"}",
+                        "format": "time_series",
+                        "instant": true,
+                        "legendFormat": "__auto",
+                        "range": false,
+                        "refId": "A"
+                    }
+                ],
+                "description": "panel description",
+                "type": "stat"
+            }
+        ]
+    }
+}

@@ -297,18 +297,24 @@ func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type createOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the Frontend Observability app manifest (use - for stdin)")
+	o.IO.RegisterCustomCodec("text", &successLineCodec{render: singleMutationLine(func(m cmdio.SingleMutation) string {
+		return fmt.Sprintf("Created Frontend Observability app %q (id=%s)", m.Target.Name, m.Target.ID)
+	})})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func (o *createOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
 	}
-	return nil
+	return o.IO.Validate()
 }
 
 func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
@@ -339,7 +345,7 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 
 			if len(app.ExtraLogLabels) > 0 || app.Settings != nil {
-				cmdio.Warning(cmd.ErrOrStderr(),
+				cmdio.EmitWarn(cmd.ErrOrStderr(),
 					"extraLogLabels and settings are ignored during creation (API limitation); use update to apply them")
 			}
 
@@ -352,8 +358,12 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 				return fmt.Errorf("creating faro app %q: %w", app.Name, err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Created Frontend Observability app %q (id=%s)", created.Spec.Name, created.Spec.ID)
-			return nil
+			result := cmdio.NewSingleMutation("created", cmdio.MutationTarget{
+				Kind: Kind,
+				Name: created.Spec.Name,
+				ID:   created.Spec.ID,
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -365,18 +375,24 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type updateOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the Frontend Observability app manifest (use - for stdin)")
+	o.IO.RegisterCustomCodec("text", &successLineCodec{render: singleMutationLine(func(m cmdio.SingleMutation) string {
+		return fmt.Sprintf("Updated Frontend Observability app %q (id=%s)", m.Target.Name, m.Target.ID)
+	})})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func (o *updateOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
 	}
-	return nil
+	return o.IO.Validate()
 }
 
 func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
@@ -414,8 +430,12 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 				return fmt.Errorf("updating faro app %q: %w", name, err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated Frontend Observability app %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
-			return nil
+			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{
+				Kind: Kind,
+				Name: updated.Spec.Name,
+				ID:   updated.Spec.ID,
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -426,9 +446,19 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 // delete command
 // ---------------------------------------------------------------------------
 
-type deleteOpts struct{}
+type deleteOpts struct {
+	IO cmdio.Options
+}
 
-func (o *deleteOpts) setup(_ *pflag.FlagSet) {}
+func (o *deleteOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", &successLineCodec{render: singleMutationLine(func(m cmdio.SingleMutation) string {
+		return fmt.Sprintf("Deleted Frontend Observability app %q", m.Target.Name)
+	})})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+func (o *deleteOpts) Validate() error { return o.IO.Validate() }
 
 func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
@@ -437,6 +467,10 @@ func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Delete a Frontend Observability app.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 			name := args[0]
 
@@ -449,8 +483,11 @@ func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 				return fmt.Errorf("deleting faro app %q: %w", name, err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Deleted Frontend Observability app %q", name)
-			return nil
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{
+				Kind: Kind,
+				Name: name,
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

@@ -224,8 +224,14 @@ Requires a Prometheus datasource containing SM metrics.`,
 			}
 
 			if len(filtered) == 0 {
-				cmdio.Info(cmd.OutOrStdout(), "No checks found.")
-				return nil
+				// Prose formats keep the historical notice; structured
+				// formats (json/yaml/agents) must still emit exactly one
+				// document, so the empty result set goes through the codec.
+				if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" || opts.IO.OutputFormat == "graph" {
+					cmdio.Info(cmd.OutOrStdout(), "No checks found.")
+					return nil
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), []CheckStatusResult{})
 			}
 
 			promClient, err := prometheus.NewClient(restCfg)
@@ -382,8 +388,10 @@ Requires a Prometheus datasource containing SM metrics.`,
 			var clamped bool
 			start, end, clamped, err = ParseCheckTimeRange(fromToSet, opts.From, opts.To, opts.Since, now, c.Created)
 			if clamped {
+				// Progress note, not the result — stderr keeps it out of the
+				// stdout document (and the graph/table rendering).
 				age := now.Sub(time.Unix(int64(c.Created), 0)).Round(time.Minute)
-				cmdio.Info(cmd.OutOrStdout(), "Check was created %s ago — window adjusted to match", age)
+				cmdio.Info(cmd.ErrOrStderr(), "Check was created %s ago — window adjusted to match", age)
 			}
 			if err != nil {
 				return err
@@ -427,8 +435,14 @@ Requires a Prometheus datasource containing SM metrics.`,
 			series := buildTimelineSeries(resp)
 
 			if len(series) == 0 {
-				cmdio.Info(cmd.OutOrStdout(), "No time-series data available for check %d.", id)
-				return nil
+				// Prose formats keep the historical notice; structured
+				// formats (json/yaml/agents) fall through and encode the
+				// (empty) payload so stdout still carries one document.
+				if opts.IO.OutputFormat == "graph" || opts.IO.OutputFormat == "table" {
+					cmdio.Info(cmd.OutOrStdout(), "No time-series data available for check %d.", id)
+					return nil
+				}
+				series = []TimelineSeries{}
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), CheckTimelinePayload{

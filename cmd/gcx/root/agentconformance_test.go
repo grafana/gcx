@@ -2,6 +2,7 @@ package root_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -33,7 +34,7 @@ import (
 var (
 	buildOnce sync.Once //nolint:gochecknoglobals // shared across subtests
 	buildPath string    //nolint:gochecknoglobals
-	buildErr  error     //nolint:gochecknoglobals
+	errBuild  error     //nolint:gochecknoglobals
 )
 
 // buildGcx builds the gcx binary once per test run — always fresh, never
@@ -41,9 +42,12 @@ var (
 func buildGcx(t *testing.T) string {
 	t.Helper()
 	buildOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "gcx-conformance-*")
+		// Not t.TempDir(): that directory is deleted when the first test to
+		// build finishes, while sync.Once keeps serving the path to later
+		// tests — they would run a vanished binary.
+		dir, err := os.MkdirTemp("", "gcx-conformance-*") //nolint:usetesting // see above
 		if err != nil {
-			buildErr = err
+			errBuild = err
 			return
 		}
 		bin := filepath.Join(dir, "gcx")
@@ -51,28 +55,29 @@ func buildGcx(t *testing.T) string {
 			bin += ".exe"
 		}
 		// Repo root is two levels up from cmd/gcx/root.
-		cmd := exec.Command("go", "build", "-buildvcs=false", "-o", bin, "../../../cmd/gcx/")
+		cmd := exec.CommandContext(context.Background(), "go", "build", "-buildvcs=false", "-o", bin, "../../../cmd/gcx/")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			buildErr = errors.New("building gcx: " + err.Error() + "\n" + string(out))
+			errBuild = errors.New("building gcx: " + err.Error() + "\n" + string(out))
 			return
 		}
 		buildPath = bin
 	})
-	if buildErr != nil {
-		t.Fatalf("%v", buildErr)
+	if errBuild != nil {
+		t.Fatalf("%v", errBuild)
 	}
 	return buildPath
 }
 
 // runGcx runs the built binary with agent mode enabled, an isolated HOME and
-// XDG environment, telemetry off, and stdin closed.
-func runGcx(t *testing.T, args ...string) (stdout, stderr string, exitCode int) {
+// XDG environment, telemetry off, and stdin closed. It returns stdout and the
+// exit code; stderr is captured only to keep it out of stdout.
+func runGcx(t *testing.T, args ...string) (string, int) {
 	t.Helper()
 	bin := buildGcx(t)
 
 	home := t.TempDir()
-	cmd := exec.Command(bin, args...)
+	cmd := exec.CommandContext(context.Background(), bin, args...)
 	cmd.Env = []string{
 		"HOME=" + home,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
@@ -95,7 +100,7 @@ func runGcx(t *testing.T, args ...string) (stdout, stderr string, exitCode int) 
 	} else if err != nil {
 		t.Fatalf("running gcx %v: %v", args, err)
 	}
-	return outBuf.String(), errBuf.String(), code
+	return outBuf.String(), code
 }
 
 // assertOneJSONValue decodes stdout and fails unless it holds exactly one
@@ -131,7 +136,7 @@ func TestAgentConformance_FiniteCommandsEmitOneJSONValue(t *testing.T) {
 	}
 	for _, tc := range successCases {
 		t.Run(tc.name, func(t *testing.T) {
-			stdout, _, code := runGcx(t, tc.args...)
+			stdout, code := runGcx(t, tc.args...)
 			if code != 0 {
 				t.Fatalf("exit code = %d, want 0\nstdout:\n%s", code, stdout)
 			}
@@ -149,7 +154,7 @@ func TestAgentConformance_FailuresAreOneInBandErrorDocument(t *testing.T) {
 	// the isolated HOME, so a server-dependent command fails fast. The
 	// contract: stdout still carries exactly one JSON value (the in-band
 	// error document with discriminators) and the exit code is non-zero.
-	stdout, _, code := runGcx(t, "datasources", "list")
+	stdout, code := runGcx(t, "datasources", "list")
 	if code == 0 {
 		t.Fatalf("expected non-zero exit code without a configured context\nstdout:\n%s", stdout)
 	}
@@ -165,7 +170,11 @@ func TestAgentConformance_FailuresAreOneInBandErrorDocument(t *testing.T) {
 	if !ok {
 		t.Fatal("error document missing error object")
 	}
-	if int(errField["exitCode"].(float64)) != code {
+	exitCode, ok := errField["exitCode"].(float64)
+	if !ok {
+		t.Fatalf("in-band exitCode = %v (%T), want number", errField["exitCode"], errField["exitCode"])
+	}
+	if int(exitCode) != code {
 		t.Fatalf("in-band exitCode %v disagrees with process exit code %d", errField["exitCode"], code)
 	}
 }
@@ -178,7 +187,7 @@ func TestAgentConformance_ExplicitOverrideWins(t *testing.T) {
 	// Explicit -o yaml must override the agent-mode agents default: the
 	// output must NOT parse as JSON (YAML mappings start with a key, not a
 	// brace) — pinning "explicit flags are authoritative".
-	stdout, _, code := runGcx(t, "providers", "list", "-o", "yaml")
+	stdout, code := runGcx(t, "providers", "list", "-o", "yaml")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout:\n%s", code, stdout)
 	}

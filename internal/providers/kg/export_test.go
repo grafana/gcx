@@ -2,8 +2,10 @@ package kg
 
 import (
 	"context"
+	"io"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/spf13/cobra"
 )
@@ -175,3 +177,32 @@ func DiscoverEntityScope(client *Client, entityType, name, domain string, startM
 	cmd.SetContext(context.Background())
 	return discoverEntityScope(cmd, client, entityType, name, domain, startMs, endMs)
 }
+
+// --- Agent output contract test entry points ---
+
+// NewRulesCommand exposes the prom-rules command group for tests.
+func NewRulesCommand(loader RESTConfigLoader) *cobra.Command { return newRulesCommand(loader) }
+
+// NewRelabelRulesCommand exposes the relabel-rules command group for tests.
+func NewRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
+	return newRelabelRulesCommand(loader)
+}
+
+// NewInsightsCommand exposes the insights command group for tests.
+func NewInsightsCommand(loader RESTConfigLoader) *cobra.Command {
+	return newAssertionsCommand(loader)
+}
+
+// NewDescribeAllCommand exposes `kg meta all` for tests.
+func NewDescribeAllCommand(loader RESTConfigLoader) *cobra.Command {
+	return newDescribeAllCmd(loader)
+}
+
+// EncodeDiagnoseResult wraps encodeDiagnoseResult for testing.
+func EncodeDiagnoseResult(w io.Writer, ioOpts *cmdio.Options, result any, failed, total int) error {
+	return encodeDiagnoseResult(w, ioOpts, result, failed, total)
+}
+
+// NewKGOpenLinkForTest wraps newKGOpenLink for encoding-level tests (the full
+// command is not executed in tests because it would launch a host browser).
+func NewKGOpenLinkForTest(url string) any { return newKGOpenLink(url) }

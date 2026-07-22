@@ -50,9 +50,10 @@ func (l *fakeLoader) LoadOnCallClient(_ context.Context) (OnCallAPI, string, err
 	return l.client, "stacks-test", nil
 }
 
-// runAck drives runAcknowledge with captured stdout/stderr and a no-op exit
-// function. Returns the captured streams, the returned error (if any), and
-// the captured exit code (-1 if not called).
+// runAck drives runAcknowledge with captured stdout/stderr. Returns the
+// captured streams, the exit code carried by a returned EmittedError (-1
+// when the runner returned nil or a non-emitted error), and the returned
+// error (if any).
 func runAck(t *testing.T, args []string, opts *alertGroupActionVerbOpts, fake *fakeOnCallAPI) (string, string, int, error) {
 	t.Helper()
 	stdout := &bytes.Buffer{}
@@ -69,13 +70,17 @@ func runAck(t *testing.T, args []string, opts *alertGroupActionVerbOpts, fake *f
 	opts.IO.OutputFormat = "json"
 	opts.IO.ErrWriter = stderr
 
-	exitCode := -1
-	prev := exitFuncForTesting
-	exitFuncForTesting = func(code int) { exitCode = code }
-	t.Cleanup(func() { exitFuncForTesting = prev })
-
 	loader := &fakeLoader{client: fake}
 	err := runActionVerb(cmd, args, opts, loader, acknowledgeVerb())
+
+	// Partial failures surface as an EmittedError sentinel (the result
+	// document is already on stdout); mirror the old exit-code capture by
+	// extracting the carried code.
+	exitCode := -1
+	var emitted *fail.EmittedError
+	if errors.As(err, &emitted) {
+		exitCode = emitted.Code
+	}
 	return stdout.String(), stderr.String(), exitCode, err
 }
 
@@ -242,9 +247,13 @@ func TestRunAcknowledge_SingleTarget_ApplyError(t *testing.T) {
 			return errors.New("backend boom")
 		},
 	}
-	stdout, _, exit, _ := runAck(t, []string{"IFAIL"}, &alertGroupActionVerbOpts{}, fake)
+	stdout, _, exit, err := runAck(t, []string{"IFAIL"}, &alertGroupActionVerbOpts{}, fake)
 	if exit != fail.ExitPartialFailure {
 		t.Errorf("expected exit %d (ExitPartialFailure); got %d", fail.ExitPartialFailure, exit)
+	}
+	var emitted *fail.EmittedError
+	if !errors.As(err, &emitted) {
+		t.Fatalf("expected *gcxerrors.EmittedError sentinel (result already on stdout); got %T: %v", err, err)
 	}
 
 	// Single-target failure path (Option A): {action, target, error} — NO `changed`.

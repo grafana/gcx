@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -181,9 +182,8 @@ func TestRunWith_ProducesTypedSnapshot(t *testing.T) {
 		map[string][]string{"Collector": {"exporter not specified"}},
 		map[string][]string{"Grafana Cloud": {"GRAFANA_CLOUD_INSTANCE_ID missing"}},
 	)
-	got, err := runWith(context.Background(), otelutils.Commands{Language: "go", Components: []string{"sdk"}},
-		func(_ context.Context, _ otelutils.Commands) *otelutils.Reporter { return want })
-	require.NoError(t, err)
+	got := runWith(context.Background(), otelutils.Commands{Language: "go", Components: []string{"sdk"}},
+		func(_ context.Context, _ otelutils.Commands) *otelutils.Reporter { return want }, io.Discard)
 	require.Len(t, got.Checks, 1)
 	require.Len(t, got.Warnings, 1)
 	require.Len(t, got.Errors, 1)
@@ -193,9 +193,8 @@ func TestRunWith_ProducesTypedSnapshot(t *testing.T) {
 }
 
 func TestRunWith_EmptyReporterReturnsNonNilSlices(t *testing.T) {
-	got, err := runWith(context.Background(), otelutils.Commands{},
-		func(_ context.Context, _ otelutils.Commands) *otelutils.Reporter { return &otelutils.Reporter{} })
-	require.NoError(t, err)
+	got := runWith(context.Background(), otelutils.Commands{},
+		func(_ context.Context, _ otelutils.Commands) *otelutils.Reporter { return &otelutils.Reporter{} }, io.Discard)
 	// F-AGENT-01: empty slices, never nil.
 	assert.NotNil(t, got.Checks)
 	assert.NotNil(t, got.Warnings)

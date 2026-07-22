@@ -164,7 +164,8 @@ func resolveDesired(o *opts, r *runner, current instrumentation.Cluster) (instru
 		return resolveInteractive(r, current)
 	default:
 		return instrumentation.Cluster{}, errors.New(
-			"setup: stdin is not a TTY; use --use-defaults for non-interactive mode")
+			"setup: interactive prompts are unavailable (stdin is not a TTY, or agent mode is active); " +
+				"use --use-defaults for non-interactive mode")
 	}
 }
 
