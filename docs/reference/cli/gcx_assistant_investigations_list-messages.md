@@ -1,18 +1,24 @@
-## gcx assistant investigations todos
+## gcx assistant investigations list-messages
 
-Show agent tasks for an investigation.
+List the chat thread messages for a v2 investigation.
+
+### Synopsis
+
+List the chat thread that backs a v2 investigation: assistant prose, tool calls (search_skills, prometheus_query_handler, loki_query_handler_investigator, tempo_query_handler, ...), and tool results. This is the substantive view of what the agent did; use `get-narrative` for the prose-only rendering.
 
 ```
-gcx assistant investigations todos <id> [flags]
+gcx assistant investigations list-messages <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for todos
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+  -h, --help             help for list-messages
+      --include-hidden   Include hidden system messages
+      --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")
+      --role string      Filter messages by role (user|assistant|tool)
 ```
 
 ### Options inherited from parent commands
