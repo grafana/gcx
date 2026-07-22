@@ -18,9 +18,15 @@ const firstRunNotice = `gcx collects anonymous usage statistics so we can make g
 You can opt out by setting GCX_TELEMETRY=disabled, or putting diagnostics.telemetry: disabled in your gcx config file.
 Find out more at ` + docs.AnonymousUsageStats + "\n"
 
-// FirstRunNoticePath returns the flag file that records the notice was shown.
+// FirstRunNoticePath returns the flag file that records the notice was shown,
+// or "" when no state home is known (HOME and XDG_STATE_HOME both unset), so
+// the flag file cannot land relative to the current directory.
 func FirstRunNoticePath() string {
-	return filepath.Join(xdg.StateHome(), "gcx", firstRunNoticeFileName)
+	stateHome := xdg.StateHome()
+	if stateHome == "" {
+		return ""
+	}
+	return filepath.Join(stateHome, "gcx", firstRunNoticeFileName)
 }
 
 // MaybeShowFirstRunNotice writes the one-time telemetry notice to w. It is
@@ -35,6 +41,11 @@ func MaybeShowFirstRunNotice(w io.Writer, mode Mode, isTTY, isCI, isAgent bool) 
 
 func maybeShowFirstRunNotice(w io.Writer, mode Mode, isTTY, isCI, isAgent bool, path string) {
 	if mode != ModeEnabled || !isTTY || isCI || isAgent {
+		return
+	}
+	// No known state home: without the flag file the notice would repeat on
+	// every invocation, so skip it, matching the unwritable-dir behaviour.
+	if path == "" {
 		return
 	}
 	if _, err := os.Stat(path); err == nil {

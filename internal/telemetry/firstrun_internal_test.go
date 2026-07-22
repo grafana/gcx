@@ -68,6 +68,16 @@ func TestFirstRunNoticeSuppressedWhenModeNotEnabled(t *testing.T) {
 	}
 }
 
+func TestFirstRunNoticeSkippedWhenStateHomeUnknown(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", "")
+	t.Setenv("HOME", "")
+	assert.Empty(t, FirstRunNoticePath(), "unknown state home must not yield a relative path")
+
+	var out strings.Builder
+	maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, FirstRunNoticePath())
+	assert.Empty(t, out.String(), "unknown state home must skip the notice, not repeat it")
+}
+
 func TestFirstRunNoticeSkippedWhenStateDirUnwritable(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("permission checks do not apply to root")
