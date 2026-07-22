@@ -20,6 +20,7 @@ Agent mode is detected via environment variables at `init()` time in
 | `CURSOR_AGENT` | Cursor | Truthy value activates agent mode |
 | `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |
 | `AMAZON_Q` | Amazon Q | Truthy value activates agent mode |
+| `OPENCODE` | opencode | Truthy value activates agent mode |
 
 The `--agent` persistent flag can also enable agent mode. `--agent=false`
 explicitly disables agent mode even when env vars are set.
@@ -84,11 +85,25 @@ Explicit flags override agent mode defaults:
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
 - `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400)
 
-### 6.4 Exempt Commands
+### 6.4 Output Protocol Classes
 
-Commands that produce non-data output are exempt from format switching:
-- `config set`, `config use-context` — confirmations only
-- `serve` — starts a long-running server
-- `push`, `pull` — output is status messages, not data
+Every runnable leaf command declares an output protocol class in
+`cmd/gcx/root/testdata/output_classes.json`, enforced by
+`TestConsistency_AllLeafCommandsHaveOutputClass` — a new command cannot
+land unclassified. When agent mode supplies the default (no explicit
+`-o`/`--json`/`--jq`):
+
+| Class | Agent-mode stdout contract |
+|-------|---------------------------|
+| `finite` | Exactly one JSON value — the result, or a fused/in-band error document — with the process exit code agreeing with the outcome. A command that has already written its complete document returns `gcxerrors.EmittedError` so the reporter never appends a second one. |
+| `artifact` | Files on disk are the real output; stdout carries exactly one JSON receipt (`gcx.artifact_receipt`: paths, format, counts, failures). The `-o` flag selects the FILE format and is pinned via `Options.PinDefaultFormat` (`resources pull`/`edit` — agent mode must never produce `.agents` resource files or spill envelopes as manifests). |
+| `stream` | Typed, versioned JSONL: every line independently parseable with a `type` discriminator, ending in a terminal success/error event. |
+| `interactive` | Drives a prompt, editor, or wizard — exempt from the JSON contract, but must never block on a prompt in agent mode (auto-approve gates or fail with an instructive error). |
+| `server` / `shell` / `prose` / `raw` | Long-running listeners, completion scripts, help prose, and byte passthrough — exempt, declared. |
+
+The conformance suite (`cmd/gcx/root/agentconformance_test.go`) builds a
+fresh binary and pins the finite contract end-to-end: one JSON value then
+EOF, in-band `gcx.error` document on failure with agreeing exit code,
+explicit `-o` overrides honored, stdin closed.
 
 See [environment-variables.md § Agent Mode Variables](environment-variables.md#agent-mode-variables) for the full variable reference.

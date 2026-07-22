@@ -26,7 +26,8 @@ The `agents` codec is optimised for AI-agent contexts. It emits compact JSON
 (no indentation, no HTML escaping) when the serialised payload is within the
 spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 
-**Below threshold** — output is compact JSON identical in content to `-o json`.
+**Below threshold** — output is compact JSON, content-equivalent to `-o json`
+(NOT byte-identical: `-o json` is indented, the agents codec is compact).
 
 **Above threshold** — the full payload is written to
 `$TMPDIR/gcx-results-<random>.json` and a short summary is printed to stdout:
