@@ -584,7 +584,7 @@ func buildModeProbeQuery(metric, job string, matchers []Matcher) (string, error)
 // buildSeriesSelector renders a Prometheus `/series` match selector for a
 // metric scoped to one service (job) plus any --filter matchers, e.g.
 // `traces_span_metrics_calls_total{job="billing/checkout",k8s_cluster_name="prod"}`.
-// Used by `services labels` to enumerate the label keys/values that
+// Used by `services list-labels` to enumerate the label keys/values that
 // --filter and --group-by can operate on. Values are escaped the same way
 // as the query builders (no injection).
 func buildSeriesSelector(metric, job string, matchers []Matcher) string {
@@ -605,7 +605,7 @@ func buildSeriesSelector(metric, job string, matchers []Matcher) string {
 	return b.String()
 }
 
-// LabelSummary is one row of `services labels`: a label present on the
+// LabelSummary is one row of `services list-labels`: a label present on the
 // service's series, its distinct-value count, and either a sample of
 // values (default view) or the full set (when a single label is
 // requested).
@@ -615,7 +615,7 @@ type LabelSummary struct {
 	Values      []string `json:"values,omitempty" yaml:"values,omitempty"`
 }
 
-// ServiceLabelsResponse is the `services labels` response: the queried
+// ServiceLabelsResponse is the `services list-labels` response: the queried
 // service, the metric whose series were inspected, and one entry per
 // discovered label (sorted by name).
 type ServiceLabelsResponse struct {

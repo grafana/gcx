@@ -155,7 +155,7 @@ func TestProviderCommands(t *testing.T) {
 	}
 
 	expectedCmds := []string{"list", "get", "create", "update", "delete",
-		"show-sourcemaps", "apply-sourcemap", "remove-sourcemap"}
+		"list-sourcemaps", "apply-sourcemap", "delete-sourcemap"}
 	for _, name := range expectedCmds {
 		assert.True(t, subCmds[name], "missing subcommand %q", name)
 	}

@@ -1,6 +1,6 @@
 {
   "name": "gcx",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Debug, explore, and instrument with Grafana using gcx CLI",
   "keywords": ["grafana", "observability", "monitoring", "prometheus", "loki", "dashboards"],
   "author": {

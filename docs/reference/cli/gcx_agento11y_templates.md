@@ -25,5 +25,5 @@ Browse reusable evaluator blueprints (global and tenant-scoped).
 * [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
 * [gcx agento11y templates get](gcx_agento11y_templates_get.md)	 - Get a single eval template.
 * [gcx agento11y templates list](gcx_agento11y_templates_list.md)	 - List eval templates.
-* [gcx agento11y templates versions](gcx_agento11y_templates_versions.md)	 - List version history for an eval template.
+* [gcx agento11y templates list-versions](gcx_agento11y_templates_list-versions.md)	 - List version history for an eval template.
 

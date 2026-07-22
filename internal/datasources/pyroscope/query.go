@@ -49,7 +49,7 @@ func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
 	opts.shared.Setup(flags, true)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
-	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)")
+	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)")
 	flags.Int64Var(&opts.MaxNodes, "max-nodes", 0, fmt.Sprintf("Maximum nodes in flame graph (default 0/unlimited for pprof output, %d for all other formats)", defaultMaxNodes))
 	flags.StringSliceVar(&opts.ProfileIDs, "profile-id", nil, "Drill down to specific profile UUIDs from exemplar queries (repeatable)")
 	flags.StringSliceVar(&opts.SpanIDs, "span-id", nil, "Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof)")

@@ -50,7 +50,7 @@ type ResolveByIDResponse struct {
 	ChatID          string `json:"chatId"`
 }
 
-// Message is a shared reply shape for pause/resume/regenerate-report.
+// Message is a shared reply shape for pause/resume.
 type Message struct {
 	Message string `json:"message,omitempty"`
 }

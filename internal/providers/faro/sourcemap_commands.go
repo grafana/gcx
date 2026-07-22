@@ -45,34 +45,34 @@ func (c *SourcemapTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // ---------------------------------------------------------------------------
-// show-sourcemaps command
+// list-sourcemaps command
 // ---------------------------------------------------------------------------
 
-type showSourcemapsOpts struct {
+type listSourcemapsOpts struct {
 	Limit int
 	IO    cmdio.Options
 }
 
-func (o *showSourcemapsOpts) setup(flags *pflag.FlagSet) {
+func (o *listSourcemapsOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", 0, "Maximum number of sourcemaps to return (0 for all)")
 	o.IO.RegisterCustomCodec("text", &SourcemapTableCodec{})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 }
 
-func newShowSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &showSourcemapsOpts{}
+func newListSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &listSourcemapsOpts{}
 	cmd := &cobra.Command{
-		Use:   "show-sourcemaps <app-name>",
-		Short: "Show sourcemaps for a Frontend Observability app.",
+		Use:   "list-sourcemaps <app-name>",
+		Short: "List sourcemaps for a Frontend Observability app.",
 		Example: `  # List all sourcemaps for an app.
-  gcx frontend apps show-sourcemaps my-web-app-42
+  gcx frontend apps list-sourcemaps my-web-app-42
 
   # List the first 10 sourcemaps.
-  gcx frontend apps show-sourcemaps my-web-app-42 --limit 10
+  gcx frontend apps list-sourcemaps my-web-app-42 --limit 10
 
   # Output as JSON.
-  gcx frontend apps show-sourcemaps my-web-app-42 -o json`,
+  gcx frontend apps list-sourcemaps my-web-app-42 -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -187,18 +187,18 @@ func newApplySourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// remove-sourcemap command
+// delete-sourcemap command
 // ---------------------------------------------------------------------------
 
-func newRemoveSourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newDeleteSourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "remove-sourcemap <app-name> <bundle-id> [bundle-id...]",
-		Short: "Remove sourcemap bundles from a Frontend Observability app.",
-		Example: `  # Remove a single sourcemap bundle.
-  gcx frontend apps remove-sourcemap my-web-app-42 1234567890-abc12
+		Use:   "delete-sourcemap <app-name> <bundle-id> [bundle-id...]",
+		Short: "Delete sourcemap bundles from a Frontend Observability app.",
+		Example: `  # Delete a single sourcemap bundle.
+  gcx frontend apps delete-sourcemap my-web-app-42 1234567890-abc12
 
-  # Remove multiple bundles at once.
-  gcx frontend apps remove-sourcemap my-web-app-42 bundle-1 bundle-2 bundle-3`,
+  # Delete multiple bundles at once.
+  gcx frontend apps delete-sourcemap my-web-app-42 bundle-1 bundle-2 bundle-3`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -220,7 +220,7 @@ func newRemoveSourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Removed %d sourcemap(s) from app %s", len(bundleIDs), appID)
+			cmdio.Success(cmd.OutOrStdout(), "Deleted %d sourcemap(s) from app %s", len(bundleIDs), appID)
 			return nil
 		},
 	}

@@ -116,7 +116,6 @@ func (o *resumeOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-//nolint:dupl // sibling v2 commands share the same boilerplate by design
 func newResumeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &resumeOpts{}
 	cmd := &cobra.Command{
@@ -275,7 +274,7 @@ func newEvidenceCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "evidence <id>",
 		Short: "Show the panel evidence index for a v2 investigation.",
 		Long: "Show the panel evidence index for a v2 investigation — the canonical mapping from report citation keys (panel IDs like p3) to the tool and query that produced each panel. " +
-			"For raw chat-derived tool calls, use `gcx assistant investigations tools` instead.",
+			"For raw chat-derived tool calls, use `gcx assistant investigations list-tool-calls` instead.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -348,43 +347,4 @@ func flattenWhitespace(s string) string {
 
 func (c *EvidenceTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
-}
-
-// --- regenerate-report ---
-
-type regenReportOpts struct{ IO cmdio.Options }
-
-func (o *regenReportOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-}
-
-//nolint:dupl // sibling v2 commands share the same boilerplate by design
-func newRegenerateReportCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &regenReportOpts{}
-	cmd := &cobra.Command{
-		Use:   "regenerate-report <id>",
-		Short: "Queue regeneration of a v2 investigation report.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			client, err := requireV2(cmd, loader)
-			if err != nil {
-				return err
-			}
-			chatID, err := resolveID(cmd.Context(), client, args[0])
-			if err != nil {
-				return err
-			}
-			msg, err := client.RegenerateReport(cmd.Context(), chatID)
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), msg)
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
 }

@@ -22,7 +22,6 @@ const (
 	v2ResumeFmt          = v2InvestigationsBase + "/%s/resume"
 	v2ModeFmt            = v2InvestigationsBase + "/%s/mode"
 	v2ShareFmt           = v2InvestigationsBase + "/%s/share"
-	v2ReportRegenFmt     = v2InvestigationsBase + "/%s/report/regenerate"
 	v2EvidenceFmt        = v2InvestigationsBase + "/%s/evidence"
 )
 
@@ -152,12 +151,6 @@ func (c *Client) Pause(ctx context.Context, id string) (*Message, error) {
 func (c *Client) Resume(ctx context.Context, id string) (*Message, error) {
 	path := fmt.Sprintf(v2ResumeFmt, url.PathEscape(id))
 	return assistanthttp.DoEnvelopeRequest[Message](c.base, ctx, http.MethodPost, path, nil, "resume investigation")
-}
-
-// RegenerateReport queues an asynchronous report regeneration.
-func (c *Client) RegenerateReport(ctx context.Context, id string) (*Message, error) {
-	path := fmt.Sprintf(v2ReportRegenFmt, url.PathEscape(id))
-	return assistanthttp.DoEnvelopeRequest[Message](c.base, ctx, http.MethodPost, path, nil, "regenerate investigation report")
 }
 
 // Evidence returns the panel evidence index for an investigation — the

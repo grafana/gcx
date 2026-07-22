@@ -34,23 +34,23 @@ func (opts *fieldKeysOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-// FieldKeysCmd returns the `field-keys` subcommand.
+// FieldKeysCmd returns the `list-field-keys` subcommand.
 func FieldKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &fieldKeysOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "field-keys",
+		Use:   "list-field-keys",
 		Short: "List field keys",
 		Long:  "List field keys from an InfluxDB datasource. Only supported in InfluxQL mode.",
 		Example: `
   # List all field keys (use datasource UID, not name)
-  gcx datasources influxdb field-keys -d UID
+  gcx datasources influxdb list-field-keys -d UID
 
   # Filter by measurement
-  gcx datasources influxdb field-keys -d UID --measurement cpu
+  gcx datasources influxdb list-field-keys -d UID --measurement cpu
 
   # Output as JSON
-  gcx datasources influxdb field-keys -d UID -o json`,
+  gcx datasources influxdb list-field-keys -d UID -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -74,7 +74,7 @@ func FieldKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			if modeStr != "InfluxQL" {
-				return fmt.Errorf("field-keys is only supported in InfluxQL mode (datasource is configured for %s mode)\n\nTo get fields from a Flux datasource, query directly:\n\n  from(bucket: \"<bucket>\") |> range(start: -5m) |> filter(fn: (r) => r._measurement == \"<measurement>\") |> keep(columns: [\"_field\"]) |> distinct(column: \"_field\")", modeStr)
+				return fmt.Errorf("list-field-keys is only supported in InfluxQL mode (datasource is configured for %s mode)\n\nTo get fields from a Flux datasource, query directly:\n\n  from(bucket: \"<bucket>\") |> range(start: -5m) |> filter(fn: (r) => r._measurement == \"<measurement>\") |> keep(columns: [\"_field\"]) |> distinct(column: \"_field\")", modeStr)
 			}
 
 			client, err := influxdb.NewClient(cfg)
@@ -93,7 +93,7 @@ func FieldKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources influxdb field-keys -d UID",
+		agent.AnnotationLLMHint:   "gcx datasources influxdb list-field-keys -d UID",
 	}
 
 	opts.setup(cmd.Flags())

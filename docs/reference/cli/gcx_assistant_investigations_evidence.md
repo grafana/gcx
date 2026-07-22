@@ -4,7 +4,7 @@ Show the panel evidence index for a v2 investigation.
 
 ### Synopsis
 
-Show the panel evidence index for a v2 investigation — the canonical mapping from report citation keys (panel IDs like p3) to the tool and query that produced each panel. For raw chat-derived tool calls, use `gcx assistant investigations tools` instead.
+Show the panel evidence index for a v2 investigation — the canonical mapping from report citation keys (panel IDs like p3) to the tool and query that produced each panel. For raw chat-derived tool calls, use `gcx assistant investigations list-tool-calls` instead.
 
 ```
 gcx assistant investigations evidence <id> [flags]
