@@ -10,9 +10,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Agent output contract conformance smoke test (docs/design/agent-mode.md):
@@ -189,6 +191,93 @@ func TestAgentConformance_FailuresAreOneInBandErrorDocument(t *testing.T) {
 	if int(exitCode) != code {
 		t.Fatalf("in-band exitCode %v disagrees with process exit code %d", errField["exitCode"], code)
 	}
+}
+
+// TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue sweeps EVERY leaf
+// command classified finite or artifact in testdata/output_classes.json:
+// each is executed with no arguments in a fully isolated environment (no
+// config, empty working directory, stdin closed, 20s timeout). Whether the
+// command succeeds offline or fails — missing config, missing required
+// args, usage error — the agent contract demands exactly one JSON value on
+// stdout. This is the all-commands empirical check: a command that prints
+// cobra usage text, prose, or a second document on any of these paths
+// fails here by name.
+func TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the gcx binary and executes every finite leaf; skipped with -short")
+	}
+
+	raw, err := os.ReadFile("testdata/output_classes.json")
+	if err != nil {
+		t.Fatalf("reading output class fixture: %v", err)
+	}
+	classes := map[string]string{}
+	if err := json.Unmarshal(raw, &classes); err != nil {
+		t.Fatalf("parsing output class fixture: %v", err)
+	}
+
+	bin := buildGcx(t)
+	for _, cmdPath := range sortedKeys(classes) {
+		class := classes[cmdPath]
+		if class != "finite" && class != "artifact" {
+			continue
+		}
+		args := strings.Fields(cmdPath)[1:] // drop the "gcx" prefix
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			t.Parallel()
+			stdout, timedOut := runGcxIsolated(t, bin, args)
+			if timedOut {
+				t.Fatal("command did not exit within the timeout — a prompt or editor survived agent mode")
+			}
+			if strings.TrimSpace(stdout) == "" {
+				t.Fatalf("stdout empty — finite commands must emit exactly one JSON value even on failure paths")
+			}
+			assertOneJSONValue(t, stdout)
+		})
+	}
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// runGcxIsolated executes the binary with agent mode on, no configuration,
+// an empty working directory, and a hard timeout. Returns stdout and
+// whether the run timed out.
+func runGcxIsolated(t *testing.T, bin string, args []string) (string, bool) {
+	t.Helper()
+	home := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Dir = t.TempDir() // no ./resources or other cwd pickups
+	cmd.Env = []string{
+		"HOME=" + home,
+		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
+		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
+		"PATH=" + os.Getenv("PATH"),
+		"GCX_AGENT_MODE=1",
+		"GCX_TELEMETRY=off",
+		"DO_NOT_TRACK=1",
+	}
+	cmd.Stdin = nil
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	if ctx.Err() != nil {
+		return outBuf.String(), true
+	}
+	var exitErr *exec.ExitError
+	if err != nil && !errors.As(err, &exitErr) {
+		t.Fatalf("running gcx %v: %v", args, err)
+	}
+	return outBuf.String(), false
 }
 
 func TestAgentConformance_ExplicitOverrideWins(t *testing.T) {
