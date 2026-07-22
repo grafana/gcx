@@ -26,11 +26,11 @@ Manage Grafana Assistant investigations.
 * [gcx assistant investigations cancel](gcx_assistant_investigations_cancel.md)	 - Cancel a running investigation.
 * [gcx assistant investigations create](gcx_assistant_investigations_create.md)	 - Create a new investigation.
 * [gcx assistant investigations get](gcx_assistant_investigations_get.md)	 - Get investigation detail.
+* [gcx assistant investigations get-narrative](gcx_assistant_investigations_get-narrative.md)	 - Show the assistant-authored prose for a v2 investigation.
 * [gcx assistant investigations list](gcx_assistant_investigations_list.md)	 - List investigations.
 * [gcx assistant investigations list-messages](gcx_assistant_investigations_list-messages.md)	 - List the chat thread messages for a v2 investigation.
 * [gcx assistant investigations list-tool-calls](gcx_assistant_investigations_list-tool-calls.md)	 - List tool calls made during a v2 investigation.
 * [gcx assistant investigations mode](gcx_assistant_investigations_mode.md)	 - Change autonomy mode of a v2 investigation.
-* [gcx assistant investigations narrative](gcx_assistant_investigations_narrative.md)	 - Show the assistant-authored prose for a v2 investigation.
 * [gcx assistant investigations pause](gcx_assistant_investigations_pause.md)	 - Pause a running v2 investigation.
 * [gcx assistant investigations resume](gcx_assistant_investigations_resume.md)	 - Resume a paused v2 investigation.
 * [gcx assistant investigations share](gcx_assistant_investigations_share.md)	 - Share a v2 investigation with additional teams.

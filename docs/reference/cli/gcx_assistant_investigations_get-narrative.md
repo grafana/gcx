@@ -1,4 +1,4 @@
-## gcx assistant investigations narrative
+## gcx assistant investigations get-narrative
 
 Show the assistant-authored prose for a v2 investigation.
 
@@ -7,13 +7,13 @@ Show the assistant-authored prose for a v2 investigation.
 Show just the assistant-authored prose from a v2 investigation's chat thread — the text a human would read in the workspace, with tool plumbing stripped.
 
 ```
-gcx assistant investigations narrative <id> [flags]
+gcx assistant investigations get-narrative <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for narrative
+  -h, --help            help for get-narrative
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")

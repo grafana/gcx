@@ -4,7 +4,7 @@ List the chat thread messages for a v2 investigation.
 
 ### Synopsis
 
-List the chat thread that backs a v2 investigation: assistant prose, tool calls (search_skills, prometheus_query_handler, loki_query_handler_investigator, tempo_query_handler, ...), and tool results. This is the substantive view of what the agent did; use `narrative` for the prose-only rendering.
+List the chat thread that backs a v2 investigation: assistant prose, tool calls (search_skills, prometheus_query_handler, loki_query_handler_investigator, tempo_query_handler, ...), and tool results. This is the substantive view of what the agent did; use `get-narrative` for the prose-only rendering.
 
 ```
 gcx assistant investigations list-messages <id> [flags]

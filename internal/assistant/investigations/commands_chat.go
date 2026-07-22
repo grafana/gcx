@@ -42,7 +42,7 @@ func newChatCommand(loader *providers.ConfigLoader) *cobra.Command {
 			"assistant prose, tool calls (search_skills, prometheus_query_handler, " +
 			"loki_query_handler_investigator, tempo_query_handler, ...), and tool " +
 			"results. This is the substantive view of what the agent did; " +
-			"use `narrative` for the prose-only rendering.",
+			"use `get-narrative` for the prose-only rendering.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -103,7 +103,7 @@ func (o *narrativeOpts) setup(flags *pflag.FlagSet) {
 func newNarrativeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &narrativeOpts{}
 	cmd := &cobra.Command{
-		Use:   "narrative <id>",
+		Use:   "get-narrative <id>",
 		Short: "Show the assistant-authored prose for a v2 investigation.",
 		Long:  "Show just the assistant-authored prose from a v2 investigation's chat thread — the text a human would read in the workspace, with tool plumbing stripped.",
 		Args:  cobra.ExactArgs(1),

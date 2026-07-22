@@ -210,7 +210,7 @@ gcx assistant investigations create --title="Checkout latency spike"
 
 # Monitor and read results
 gcx assistant investigations get <id>
-gcx assistant investigations narrative <id>
+gcx assistant investigations get-narrative <id>
 ```
 
 ### Recommended Workflow: Interleave Both
