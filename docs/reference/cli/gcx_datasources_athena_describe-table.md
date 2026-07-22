@@ -1,4 +1,4 @@
-## gcx datasources athena list-columns
+## gcx datasources athena describe-table
 
 List column names for an Athena table
 
@@ -7,7 +7,7 @@ List column names for an Athena table
 List the column names of the specified table. Only names are returned, not types or other schema details.
 
 ```
-gcx datasources athena list-columns TABLE [flags]
+gcx datasources athena describe-table TABLE [flags]
 ```
 
 ### Examples
@@ -15,13 +15,13 @@ gcx datasources athena list-columns TABLE [flags]
 ```
 
   # List columns for a table
-  gcx datasources athena list-columns my_table -d UID --database mydb
+  gcx datasources athena describe-table my_table -d UID --database mydb
 
   # With catalog and region
-  gcx datasources athena list-columns my_table -d UID --catalog AwsDataCatalog --database mydb --region us-east-1
+  gcx datasources athena describe-table my_table -d UID --catalog AwsDataCatalog --database mydb --region us-east-1
 
   # Output as JSON
-  gcx datasources athena list-columns my_table -d UID --database mydb -o json
+  gcx datasources athena describe-table my_table -d UID --database mydb -o json
 ```
 
 ### Options
@@ -30,7 +30,7 @@ gcx datasources athena list-columns TABLE [flags]
       --catalog string      Data catalog
       --database string     Database name
   -d, --datasource string   Datasource UID (required unless datasources.athena is configured)
-  -h, --help                help for list-columns
+  -h, --help                help for describe-table
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
