@@ -37,7 +37,7 @@ Each `gcx` event contains the following properties:
 | `provider` | The resource provider the command belongs to. | `dashboards` |
 | `outcome` | How the invocation ended: `ok`, `runtime_error`, `parse_error`, or `help`. | `ok` |
 | `exit_code` | The process exit code. | `0` |
-| `error_kind` | A coarse error category when the command failed, such as `auth` or `validation`. Never an error message. | `auth` |
+| `error_kind` | A coarse error category when the command failed: `usage_error`, `auth_failure`, `partial_failure`, `version_incompatible`, or `error`. Never an error message. | `auth_failure` |
 | `duration_ms` | Total invocation duration in milliseconds. | `1234` |
 | `is_tty` | Whether `gcx` ran attached to an interactive terminal. | `false` |
 | `is_ci` | Whether a CI environment was detected. | `true` |
@@ -65,7 +65,6 @@ Some invocations never emit an event:
 
 - **Shell completion** — the completion machinery runs on every tab-press and carries no usage signal.  
 - **`gcx version`**  
-- **The `gcx telemetry` command itself** — the command that controls reporting doesn't report on itself.  
 - **Cancelled invocations** — pressing Ctrl-C emits nothing.
 
 ## Server-side enrichment
