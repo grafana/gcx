@@ -21,6 +21,7 @@ func TestFirstRunNoticeShownOnceThenSuppressed(t *testing.T) {
 	// strict config parser would reject verbatim.
 	assert.Contains(t, first.String(), "  diagnostics:\n    telemetry: disabled")
 	assert.Contains(t, first.String(), "https://grafana.com/docs/")
+	assert.NotContains(t, first.String(), ".md", "notice must link the rendered page, not raw markdown")
 	assert.NotContains(t, first.String(), "—", "notice must not contain em-dashes")
 
 	_, err := os.Stat(path)

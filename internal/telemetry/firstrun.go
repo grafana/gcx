@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/xdg"
@@ -13,12 +14,16 @@ import (
 const firstRunNoticeFileName = "telemetry-notice-shown"
 
 // firstRunNotice is the one-time message telling interactive users that
-// anonymous usage stats are on and how to opt out.
-const firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect potentially identifiable or sensitive information like argument or flag values or resource names.
+// anonymous usage stats are on and how to opt out. The docs link is the
+// rendered page (trailing slash), not the raw-markdown .md URL the registry
+// serves to agents.
+//
+//nolint:gochecknoglobals // constant-like; var only because TrimSuffix is not const-able.
+var firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect potentially identifiable or sensitive information like argument or flag values or resource names.
 You can opt out by setting GCX_TELEMETRY=disabled, or adding to your gcx config file:
   diagnostics:
     telemetry: disabled
-Find out more at ` + docs.AnonymousUsageStats + "\n"
+Find out more at ` + strings.TrimSuffix(docs.AnonymousUsageStats, ".md") + "/\n"
 
 // FirstRunNoticePath returns the flag file that records the notice was shown,
 // or "" when no state home is known (HOME and XDG_STATE_HOME both unset), so
