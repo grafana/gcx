@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -220,6 +221,10 @@ func TestAgentsCodec_Spill_EmitsStderrHint(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
 	t.Setenv("TMPDIR", t.TempDir())
 
+	// TTY mode: the hint stays a plain "hint: ..." line.
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
 	var errBuf bytes.Buffer
 	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
 
@@ -228,11 +233,42 @@ func TestAgentsCodec_Spill_EmitsStderrHint(t *testing.T) {
 
 	hint := errBuf.String()
 	require.NotEmpty(t, hint, "spill must emit a hint to errWriter")
+	assert.True(t, strings.HasPrefix(hint, "hint: "), "TTY-mode hint must keep the hint: prefix, got %q", hint)
 
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
 	spillPath, _ := summary["spilled_to"].(string)
 	assert.Contains(t, hint, spillPath, "hint must reference the spill file path")
+}
+
+// TestAgentsCodec_Spill_AgentModeHintIsJSONL pins the stderr contract in agent
+// mode: diagnostics must be JSONL records with a typed class (FR-104), never
+// raw prose — a bare "hint: ..." line would break agent stderr parsing.
+func TestAgentsCodec_Spill_AgentModeHintIsJSONL(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
+	t.Setenv("TMPDIR", t.TempDir())
+
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	var errBuf bytes.Buffer
+	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, map[string]any{"name": "alpha"}))
+
+	line := strings.TrimSpace(errBuf.String())
+	require.NotEmpty(t, line, "spill must emit a hint to errWriter")
+
+	var event map[string]any
+	require.NoError(t, json.Unmarshal([]byte(line), &event), "agent-mode hint must be a JSONL record, got %q", line)
+	assert.Equal(t, "hint", event["class"])
+
+	var summary map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
+	spillPath, _ := summary["spilled_to"].(string)
+	sum, _ := event["summary"].(string)
+	assert.Contains(t, sum, spillPath, "hint summary must reference the spill file path")
 }
 
 func TestAgentsCodec_NoSpill_NoStderrHint(t *testing.T) {

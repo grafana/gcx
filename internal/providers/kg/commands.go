@@ -373,9 +373,10 @@ func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, enti
 			return nil, fmt.Errorf("search entity type %s: %w", et, err)
 		}
 		if page.MaxLimitHit || (!page.LastPage && len(page.Entities) > 0) {
-			fmt.Fprintf(cmd.ErrOrStderr(),
-				"hint: more results available for type %q (page %d returned %d) — use --page %d or narrow with --property/--namespace\n",
-				et, pageNum, len(page.Entities), pageNum+1)
+			cmdio.EmitHint(cmd.ErrOrStderr(),
+				fmt.Sprintf("more results available for type %q (page %d returned %d) — use --page %d or narrow with --property/--namespace",
+					et, pageNum, len(page.Entities), pageNum+1),
+				"")
 		}
 		allResults = append(allResults, page.Entities...)
 	}
@@ -1696,7 +1697,9 @@ analysis, use 'gcx kg entities inspect' instead.`,
 			}
 			results = adapter.TruncateSlice(results, listOpts.Limit)
 			if listOpts.Limit > 0 && int64(len(results)) >= listOpts.Limit {
-				fmt.Fprintf(os.Stderr, "hint: --limit of %d reached — results may be truncated; raise --limit or pass --limit 0 for all\n", listOpts.Limit)
+				cmdio.EmitHint(cmd.ErrOrStderr(),
+					fmt.Sprintf("--limit of %d reached — results may be truncated; raise --limit or pass --limit 0 for all", listOpts.Limit),
+					"")
 			}
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},

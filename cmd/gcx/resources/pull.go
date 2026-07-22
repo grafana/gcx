@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/local"
@@ -22,11 +23,33 @@ type pullOpts struct {
 	OnError        OnErrorMode
 	IncludeManaged bool
 	Path           string
+
+	// flags is the bound flag set, kept so Validate can reject flags that
+	// cannot round-trip as on-disk resource files (--json, --jq).
+	flags *pflag.FlagSet
 }
 
 func (opts *pullOpts) setup(flags *pflag.FlagSet) {
+	// OutputFormat doubles as the on-disk file extension and the encoder for
+	// pulled resources — pin the default so agent mode does not flip it to
+	// the agents codec (which would write `<name>.agents` files, with
+	// spill-summary envelopes instead of content for large resources).
+	// An explicit -o json|yaml from the user still wins.
+	opts.IO.PinDefaultFormat("json")
+
+	// Validate rejects -o agents (below), so never advertise it in the
+	// format menu (usage string and unknown-format error listings).
+	opts.IO.HideFormat("agents")
+
 	// Bind all the flags
 	opts.IO.BindFlags(flags)
+	opts.flags = flags
+
+	// Validate rejects every use of --json/--jq (below), so hide both from
+	// help — advertising flags the command always refuses is the same
+	// dishonesty as advertising the rejected agents format.
+	_ = flags.MarkHidden("json")
+	_ = flags.MarkHidden("jq")
 
 	bindOnErrorFlag(flags, &opts.OnError)
 	flags.StringVarP(&opts.Path, "path", "p", defaultResourcesPath, "Path on disk in which the resources will be written")
@@ -41,6 +64,29 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 func (opts *pullOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
+	}
+
+	// The agents codec is a display codec: it writes compact JSON and, above
+	// the spill threshold, a spill-summary envelope instead of the payload.
+	// Neither belongs in a resource file on disk. UsageError classifies the
+	// rejection as invalid usage (exit 2, DESIGN.md taxonomy).
+	if opts.IO.OutputFormat == "agents" {
+		return &fail.UsageError{Message: "output format 'agents' cannot be used with pull: it writes display envelopes, not resource content. Use -o json or -o yaml"}
+	}
+
+	// --json (field selection/discovery) and --jq (transformation) shape the
+	// encoded document, but pull writes resource files that push reads back —
+	// a field-selected or jq-transformed document is not the resource and
+	// cannot round-trip. pull encodes via opts.IO.Codec() directly, which
+	// would silently ignore both flags; reject upfront instead, mirroring
+	// the edit rejections.
+	if opts.flags != nil {
+		if f := opts.flags.Lookup("json"); f != nil && f.Changed {
+			return &fail.UsageError{Message: "--json cannot be used with pull: field-selected output cannot round-trip as a resource file. Use -o json or -o yaml"}
+		}
+		if f := opts.flags.Lookup("jq"); f != nil && f.Changed {
+			return &fail.UsageError{Message: "--jq cannot be used with pull: transformed output cannot round-trip as a resource file. Use -o json or -o yaml"}
+		}
 	}
 
 	if opts.Path == "" {
