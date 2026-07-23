@@ -58,8 +58,9 @@ same-named entry replaces the lower entry completely. This keeps a credential
 and its server or Cloud endpoint in the same trust source. Context references
 and datasource defaults may merge field-by-field.
 
-Keychain-backed credentials are tied to the canonical config file, exact owner
-kind and name, exact secret field, and normalized destination. Copying a config
+Credentials in the OS credential store (Keychain on macOS, Credential Manager
+on Windows, Secret Service on Linux) are tied to the canonical config file,
+exact owner kind and name, exact secret field, and normalized destination. Copying a config
 file does not make its stored credentials portable; authenticate the copied
 file separately.
 
