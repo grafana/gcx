@@ -16,6 +16,7 @@ type SearchRequest struct {
 	TimeField string
 	Start     time.Time
 	End       time.Time
+	StepMs    int64 // histogram interval hint; 0 uses the default
 }
 
 // AggsRequest represents a metric aggregation over a date histogram,

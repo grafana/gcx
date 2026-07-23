@@ -115,6 +115,18 @@ func TestSearch(t *testing.T) {
 		assert.Equal(t, "elasticsearch", ds["type"])
 	})
 
+	t.Run("custom --step is sent as intervalMs", func(t *testing.T) {
+		req := searchReq()
+		req.StepMs = 300_000
+		q := capture(t, func(c *elasticsearch.Client) error {
+			_, err := c.Search(context.Background(), "test-uid", req)
+			return err
+		})
+		intervalMs, ok := q["intervalMs"].(float64)
+		require.True(t, ok, "intervalMs must be a JSON number, got %T", q["intervalMs"])
+		assert.InDelta(t, 300_000, intervalMs, 0.5)
+	})
+
 	t.Run("error envelope returns typed API error", func(t *testing.T) {
 		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")

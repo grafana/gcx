@@ -56,7 +56,7 @@ func (c *Client) Search(ctx context.Context, dsUID string, req SearchRequest) (*
 		"type":     "raw_data",
 		"settings": map[string]any{"size": strconv.Itoa(req.Size)},
 	}
-	resp, err := c.runQuery(ctx, dsUID, "query", req.Query, req.TimeField, metric, nil, req.Start, req.End, 60_000)
+	resp, err := c.runQuery(ctx, dsUID, "query", req.Query, req.TimeField, metric, nil, req.Start, req.End, orDefaultStep(req.StepMs))
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (c *Client) Logs(ctx context.Context, dsUID string, req SearchRequest) (*qu
 		"type":     "logs",
 		"settings": map[string]any{"limit": strconv.Itoa(req.Size)},
 	}
-	resp, err := c.runQuery(ctx, dsUID, "logs", req.Query, req.TimeField, metric, nil, req.Start, req.End, 60_000)
+	resp, err := c.runQuery(ctx, dsUID, "logs", req.Query, req.TimeField, metric, nil, req.Start, req.End, orDefaultStep(req.StepMs))
 	if err != nil {
 		return nil, err
 	}
@@ -268,6 +268,16 @@ func intervalMsFor(start, end time.Time) int64 {
 		return minIntervalMs
 	}
 	return interval
+}
+
+// orDefaultStep returns the histogram interval to send: the caller's step
+// when set, otherwise a 60s default (intervalMs must always be present; its
+// absence causes "too many buckets" errors from Elasticsearch).
+func orDefaultStep(stepMs int64) int64 {
+	if stepMs > 0 {
+		return stepMs
+	}
+	return 60_000
 }
 
 func orDefault(v, def string) string {

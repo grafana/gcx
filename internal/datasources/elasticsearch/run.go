@@ -31,8 +31,10 @@ func (opts *searchOpts) Validate() error {
 	if err := opts.SharedOpts.Validate(); err != nil {
 		return err
 	}
-	if opts.Size <= 0 || opts.Size > maxSize {
+	if opts.Size <= 0 {
 		opts.Size = defaultSize
+	} else if opts.Size > maxSize {
+		opts.Size = maxSize
 	}
 	return nil
 }
@@ -103,7 +105,7 @@ func runSearch(cmd *cobra.Command, args []string, loader *providers.ConfigLoader
 	}
 
 	now := time.Now()
-	start, end, _, err := opts.ParseTimes(now)
+	start, end, step, err := opts.ParseTimes(now)
 	if err != nil {
 		return err
 	}
@@ -117,13 +119,17 @@ func runSearch(cmd *cobra.Command, args []string, loader *providers.ConfigLoader
 		return fmt.Errorf("failed to create client: %w", err)
 	}
 
-	resp, err := search(ctx, client, datasourceUID, elasticsearch.SearchRequest{
+	req := elasticsearch.SearchRequest{
 		Query:     expr,
 		Size:      size,
 		TimeField: timeField,
 		Start:     start,
 		End:       end,
-	})
+	}
+	if step > 0 {
+		req.StepMs = step.Milliseconds()
+	}
+	resp, err := search(ctx, client, datasourceUID, req)
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
 	}
