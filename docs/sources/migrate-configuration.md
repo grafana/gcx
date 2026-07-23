@@ -63,7 +63,7 @@ After each step, `gcx` re-prints the commands for whatever legacy files still ne
 
 Be aware that editing the `system` config file will edit the config for all users on your system.
 
-When all files are migrated, the warning will disappear. Confirm with everything is ok with [Verify the result](#verify-the-result).
+When all files are migrated, the warning will disappear. Confirm everything is ok with [Verify the result](#verify-the-result).
 
 ## How to consolidate overlapping layers
 
