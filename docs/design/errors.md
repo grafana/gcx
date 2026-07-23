@@ -145,8 +145,8 @@ alongside `error`.
   writes nothing further, so stdout never carries two documents.
 
 **Implementation:** `internal/gcxerrors/json.go` (`DetailedError.WriteJSON`),
-`cmd/gcx/main.go` (`reportError`).
-Invoked from `handleError` in `cmd/gcx/main.go` when `agent.IsAgentMode()` is true.
+invoked from `reportError` in `cmd/gcx/main.go` when `agent.IsAgentMode()` is
+true or `--json` is active.
 
 See [agent-mode.md](agent-mode.md) for the full agent mode specification.
 See [exit-codes.md](exit-codes.md) for exit code values referenced in `exitCode` fields.
