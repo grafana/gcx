@@ -42,23 +42,26 @@ func ValidateConfigPath(cfg Config, path string) (string, error) {
 		return path, nil
 	case "cloud":
 		if sub, _, _ := strings.Cut(rest, "."); rest == "" || cloudEntryFields[sub] {
-			return "", fmt.Errorf("path %q: cloud credentials live in named entries; use cloud.<entry>.%s%s", path, rest, cloudEntryHint(cfg))
+			return "", fmt.Errorf("invalid path %q: cloud credentials live in named entries; use cloud.<entry>.%s%s", path, rest, cloudEntryHint(cfg))
 		}
 		return path, nil
 	}
 
-	// Bare paths: name the absolute location instead of guessing.
+	// Bare paths: name the absolute location instead of guessing. Every error
+	// below follows the same "<problem>: <guidance>" shape — the CLI error
+	// renderer splits on the first colon into a summary line and a details
+	// block, so a stray or missing colon changes how the error presents.
 	ctxName, stackName := currentNames(cfg)
 
 	if kind, ok := legacyDatasourceFieldHints[first]; ok {
-		return "", fmt.Errorf("path %q was removed; use contexts.%s.datasources.%s", path, ctxName, kind)
+		return "", fmt.Errorf("legacy path %q was removed: use contexts.%s.datasources.%s", path, ctxName, kind)
 	}
 
 	switch first {
 	case "grafana", "providers", "slug":
-		return "", fmt.Errorf("paths are literal; this field lives on a stack entry: use stacks.%s.%s", stackName, path)
+		return "", fmt.Errorf("invalid path %q: paths are literal and this field lives on a stack entry; use stacks.%s.%s", path, stackName, path)
 	case "datasources", "stack":
-		return "", fmt.Errorf("paths are literal; this field lives on a context: use contexts.%s.%s", ctxName, path)
+		return "", fmt.Errorf("invalid path %q: paths are literal and this field lives on a context; use contexts.%s.%s", path, ctxName, path)
 	}
 
 	return "", fmt.Errorf("unknown path %q: paths start from a top-level section (stacks.<name>., cloud.<entry>., contexts.<name>., resources., current-context)", path)
