@@ -107,20 +107,27 @@ Within the dynamic client path, there are two specializations:
 
 ### 6. Context-Based Configuration
 
-Directly modeled after kubectl's kubeconfig pattern. Key design decisions:
+Directly modeled after kubectl's kubeconfig trust pattern. Key design decisions:
 
-- Named contexts in a single YAML file, one "current" at a time
-- Simplified model: gcx merges cluster+auth+user into a single context
-  (kubectl separates them into three lists for reuse)
-- Environment variables override the current context only, never mutate the file
+- Named stacks pair Grafana destinations with Grafana auth and provider config
+- Named Cloud entries pair GCOM endpoints with CAP or OAuth auth and are reusable
+- Thin named contexts bind a stack and optional Cloud entry; one is current
+- Credential-bearing entries are atomic across layers; contexts merge references
+- Environment variables override the selected context only and never mutate a file
+- Keychain credentials are bound to the canonical source file, exact owner,
+  field, and normalized destination; each persisted reference selects a random
+  generation
 - XDG Base Directory specification for file location
 - Reflection-based editor: `SetValue`/`UnsetValue` use YAML struct tags for
   path traversal, so adding a new config field requires zero registration code
 
-**Loading priority chain:**
-```
---config flag  >  $GCX_CONFIG  >  $XDG_CONFIG_HOME  >  ~/.config  >  $XDG_CONFIG_DIRS
-```
+**Loading modes:**
+
+- `--config`, or `$GCX_CONFIG` when no flag is supplied, selects exactly one
+  explicit file and bypasses layering.
+- Otherwise every discovered source is merged from system → user → repository
+  (`.gcx.yaml`). User discovery checks `$HOME/.config/gcx/config.yaml` before
+  the platform `$XDG_CONFIG_HOME` fallback.
 
 ---
 
@@ -213,8 +220,9 @@ applies a secure-by-default model:
 - Everything else (undeclared keys, unknown providers, `Secret=true`) → redacted
 
 **Config storage:** Provider configs live in
-`Context.Providers map[string]map[string]string`, indexed by provider
-name. Reflection-based editor picks them up via the `yaml:"providers"` tag.
+`StackConfig.Providers map[string]map[string]string`, indexed by provider name.
+Contexts reach provider settings through their `stack:` reference. Reflection-
+based editor picks them up via the `yaml:"providers"` tag.
 
 **Evidence:**
 - `internal/providers/provider.go`: `Provider` interface and `ConfigKey` type
@@ -223,7 +231,7 @@ name. Reflection-based editor picks them up via the `yaml:"providers"` tag.
 - `internal/providers/configloader.go`: Shared `ConfigLoader` struct — all providers use this instead of duplicating config loading logic. Provides `LoadGrafanaConfig`, `LoadCloudConfig`, `LoadProviderConfig` (provider-specific `map[string]string`), `SaveProviderConfig` (write-back), and `LoadFullConfig` (full `*config.Config`)
 - `internal/providers/alert/provider.go`: Second provider implementation (alert rules and groups)
 - `cmd/gcx/providers/command.go`: `providers list` command
-- `internal/config/types.go`: `Providers` field on `Context`
+- `internal/config/types.go`: `Providers` field on `StackConfig`
 - `internal/resources/adapter/register.go`: Global adapter registration pattern (self-registration via `Register()` and `AllRegistrations()`)
 
 ---
@@ -488,10 +496,32 @@ flag is owned by the root command and threaded to providers via
 | Method | Purpose | Used by |
 |--------|---------|---------|
 | `LoadGrafanaConfig(ctx)` | REST config for Grafana API calls | alert, fleet, incidents, kg, oncall, slo, synth |
-| `LoadCloudConfig(ctx)` | Cloud token + GCOM stack info | k6, fleet |
-| `LoadProviderConfig(ctx, name)` | Provider-specific `map[string]string` + namespace | synth, oncall, k6 |
-| `SaveProviderConfig(ctx, name, key, val)` | Write-back a single provider config key | synth (datasource UID) |
+| `LoadCloudConfig(ctx)` | Cloud token + GCOM stack info | fleet |
+| `LoadProviderConfig(ctx, name)` | Provider-specific `map[string]string` + namespace | synth helper paths |
+| `LoadDirectProviderSnapshot(ctx, policy)` | One trust-checked snapshot of direct endpoint, Grafana auth, and Cloud auth | synth, faro, k6, adaptive signal auth |
+| `SaveProviderConfig(ctx, name, key, val)` | Write-back a single provider config key | assistant capability cache, faro, k6, synth |
+| `SaveDatasourceUID(ctx, kind, uid)` | Write back a selected datasource UID | shared datasource query resolver |
 | `LoadFullConfig(ctx)` | Full `*config.Config` (for cross-cutting lookups) | synth (datasource discovery) |
+
+Read paths apply the explicitly selected context before environment overrides.
+Write-back paths are deliberately different: `SaveProviderConfig` and
+`SaveDatasourceUID` reload and modify only one raw destination file, never the
+merged or environment-overridden runtime object. An explicit `--config` or
+`GCX_CONFIG` is a valid destination. With discovery, auto-save proceeds only
+when exactly one source exists; it refuses an ambiguous multi-source write and
+quietly skips persistence when no source exists. Provider cache, endpoint, and
+token write-back also refuses any auto-discovered repository source; callers
+may treat `ErrAutoLocalProviderWriteback` as a non-fatal cache miss. Explicitly
+selecting that file authorizes the write.
+
+Direct-auth providers must use `LoadDirectProviderSnapshot`, not separate
+`LoadProviderConfig`, `LoadGrafanaConfig`, and `LoadCloudConfig` calls. The
+policy names every endpoint key and its matching runtime credential variable.
+The loader rejects endpoint-only environment overrides, auto-discovered local
+stacks, and all trust failures before returning a credential or allowing
+network access. The returned Cloud resolver closes over the same loaded
+snapshot, preventing a file or environment change between endpoint and
+credential resolution.
 
 Do not:
 - Import `cmd/gcx/config` from provider code (import cycle)
@@ -745,13 +775,14 @@ pre-filtered fetch.
 was used only by the local development server, not by the dynamic client path.
 
 **Resolution:** This is no longer accurate after the HTTP logging refactor.
-`httputils` is now the central HTTP client factory for all non-K8s client
-paths. Provider clients, the assistant client, and the dev server all use
-`httputils.NewDefaultClient(ctx)` or `httputils.NewClient(ClientOpts{...})`.
-The K8s dynamic client path chains `httputils.LoggingRoundTripper` via
-`rest.Config.WrapTransport` in `NewNamespacedRESTConfig`. The only HTTP path
-that does not touch httputils is the OpenAPI client (`grafana-openapi-client-go`),
-which manages its own transport.
+`httputils` is the central HTTP client factory for direct non-K8s paths, while
+Grafana-authenticated paths reuse the selected `rest.Config` transport. Provider
+clients and the assistant client use those two routes; the dev server now uses
+`rest.TransportFor` so it shares authoritative token/Basic/mTLS selection and
+TLS handling. The K8s dynamic client path chains
+`httputils.LoggingRoundTripper` via `rest.Config.WrapTransport` in
+`NewNamespacedRESTConfig`. The OpenAPI health client manages its own transport
+but consumes the same effective auth method and selected TLS view.
 
 ### 5. CI Drift Check Coverage
 

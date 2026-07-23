@@ -43,6 +43,17 @@ func TestDeviceIDRewritesCorruptFile(t *testing.T) {
 	assert.Equal(t, id+"\n", string(data), "corrupt file must be replaced with the fresh ID")
 }
 
+func TestDeviceIDEphemeralWhenStateHomeUnknown(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", "")
+	t.Setenv("HOME", "")
+	assert.Empty(t, telemetry.DeviceIDPath(), "unknown state home must not yield a relative path")
+
+	id, persisted := telemetry.DeviceID()
+	assert.False(t, persisted, "unknown state home must yield an ephemeral ID")
+	_, err := uuid.Parse(id)
+	require.NoError(t, err)
+}
+
 func TestDeviceIDEphemeralWhenStateDirUnwritable(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("permission checks do not apply to root")

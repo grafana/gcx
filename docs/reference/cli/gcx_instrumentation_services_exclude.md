@@ -30,7 +30,10 @@ gcx instrumentation services exclude <cluster> <namespace> <service> [flags]
 ### Options
 
 ```
-  -h, --help   help for exclude
+  -h, --help            help for exclude
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

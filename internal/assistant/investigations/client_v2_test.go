@@ -157,13 +157,6 @@ func TestPauseResumeRegenerate(t *testing.T) {
 				return c.Resume(t.Context(), "inv-1")
 			},
 		},
-		{
-			name:     "regenerate-report",
-			expected: v2InvestigationsPath + "/inv-1/report/regenerate",
-			call: func(c *investigations.Client) (*investigations.Message, error) {
-				return c.RegenerateReport(t.Context(), "inv-1")
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

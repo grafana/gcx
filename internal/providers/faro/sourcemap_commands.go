@@ -109,7 +109,37 @@ func newListSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
 // apply-sourcemap command
 // ---------------------------------------------------------------------------
 
+// Discriminators for the bespoke sourcemap result shapes. The mutation family
+// in internal/output has no slot for the app/bundle pair these commands act
+// on, so they carry their own collision-resistant type/schema_version fields.
+const (
+	sourcemapUploadResultType    = "gcx.faro.sourcemap_upload"
+	sourcemapDeleteResultType    = "gcx.faro.sourcemap_delete"
+	sourcemapResultSchemaVersion = "1"
+)
+
+// sourcemapUploadResult is the finite result of apply-sourcemap. It makes the
+// (possibly auto-generated) bundle ID machine-readable — previously it was
+// only recoverable from the prose success line.
+type sourcemapUploadResult struct {
+	Type          string `json:"type" yaml:"type"`
+	SchemaVersion string `json:"schema_version" yaml:"schema_version"`
+	Action        string `json:"action" yaml:"action"`
+	AppID         string `json:"app_id" yaml:"app_id"`
+	BundleID      string `json:"bundle_id" yaml:"bundle_id"`
+}
+
+// sourcemapUploadConfigLoader is the subset of *providers.ConfigLoader the
+// apply-sourcemap command needs: the trust-checked provider snapshot (config +
+// cloud credentials) and discovery-result caching.
+type sourcemapUploadConfigLoader interface {
+	RESTConfigLoader
+	LoadDirectProviderSnapshot(ctx context.Context, policy providers.DirectProviderPolicy) (providers.DirectProviderSnapshot, error)
+	SaveProviderConfig(ctx context.Context, providerName, key, value string) error
+}
+
 type applySourcemapOpts struct {
+	IO       cmdio.Options
 	File     string
 	BundleID string
 }
@@ -117,16 +147,25 @@ type applySourcemapOpts struct {
 func (o *applySourcemapOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "Path to the sourcemap file to upload")
 	flags.StringVar(&o.BundleID, "bundle-id", "", "Bundle ID (auto-generated if not set)")
+	o.IO.RegisterCustomCodec("text", &successLineCodec{render: func(v any) (string, error) {
+		r, ok := v.(sourcemapUploadResult)
+		if !ok {
+			return "", fmt.Errorf("invalid data type for text codec: expected sourcemapUploadResult, got %T", v)
+		}
+		return fmt.Sprintf("Uploaded sourcemap for app %s (bundle %s)", r.AppID, r.BundleID), nil
+	}})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func (o *applySourcemapOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
 	}
-	return nil
+	return o.IO.Validate()
 }
 
-func newApplySourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command {
 	opts := &applySourcemapOpts{}
 	cmd := &cobra.Command{
 		Use:   "apply-sourcemap <app-name>",
@@ -140,15 +179,24 @@ func newApplySourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
+			snapshot, err := loader.LoadDirectProviderSnapshot(ctx, providers.DirectProviderPolicy{
+				ProviderName:    "faro",
+				EndpointKeys:    []string{"faro-api-url"},
+				CredentialEnv:   "GRAFANA_CLOUD_TOKEN",
+				RejectAutoLocal: true,
+			})
+			if err != nil {
+				return err
+			}
 
 			// Resolve Faro API URL.
-			faroAPIURL, err := resolveFaroAPIURL(ctx, loader)
+			faroAPIURL, err := resolveFaroAPIURL(ctx, loader, snapshot)
 			if err != nil {
 				return err
 			}
 
 			// Load cloud config for stack ID and token.
-			cloudCfg, err := loader.LoadCloudConfig(ctx)
+			cloudCfg, err := snapshot.ResolveCloudConfig(ctx)
 			if err != nil {
 				return fmt.Errorf("cloud config required for sourcemap upload: %w", err)
 			}
@@ -178,8 +226,14 @@ func newApplySourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Uploaded sourcemap for app %s (bundle %s)", appID, bundleID)
-			return nil
+			result := sourcemapUploadResult{
+				Type:          sourcemapUploadResultType,
+				SchemaVersion: sourcemapResultSchemaVersion,
+				Action:        "uploaded",
+				AppID:         appID,
+				BundleID:      bundleID,
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -190,7 +244,38 @@ func newApplySourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
 // delete-sourcemap command
 // ---------------------------------------------------------------------------
 
-func newDeleteSourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
+// sourcemapDeleteResult is the finite result of delete-sourcemap. The batch
+// delete is a single all-or-nothing HTTP call, so a per-bundle outcome list
+// would be dishonest — the result carries the whole batch and one count.
+type sourcemapDeleteResult struct {
+	Type          string   `json:"type" yaml:"type"`
+	SchemaVersion string   `json:"schema_version" yaml:"schema_version"`
+	Action        string   `json:"action" yaml:"action"`
+	AppID         string   `json:"app_id" yaml:"app_id"`
+	BundleIDs     []string `json:"bundle_ids" yaml:"bundle_ids"`
+	Deleted       int      `json:"deleted" yaml:"deleted"`
+}
+
+type deleteSourcemapOpts struct {
+	IO cmdio.Options
+}
+
+func (o *deleteSourcemapOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", &successLineCodec{render: func(v any) (string, error) {
+		r, ok := v.(sourcemapDeleteResult)
+		if !ok {
+			return "", fmt.Errorf("invalid data type for text codec: expected sourcemapDeleteResult, got %T", v)
+		}
+		return fmt.Sprintf("Deleted %d sourcemap(s) from app %s", r.Deleted, r.AppID), nil
+	}})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+func (o *deleteSourcemapOpts) Validate() error { return o.IO.Validate() }
+
+func newDeleteSourcemapCommand(loader RESTConfigLoader) *cobra.Command {
+	opts := &deleteSourcemapOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete-sourcemap <app-name> <bundle-id> [bundle-id...]",
 		Short: "Delete sourcemap bundles from a Frontend Observability app.",
@@ -201,6 +286,10 @@ func newDeleteSourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
   gcx frontend apps delete-sourcemap my-web-app-42 bundle-1 bundle-2 bundle-3`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 
 			cfg, err := loader.LoadGrafanaConfig(ctx)
@@ -220,29 +309,35 @@ func newDeleteSourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Deleted %d sourcemap(s) from app %s", len(bundleIDs), appID)
-			return nil
+			result := sourcemapDeleteResult{
+				Type:          sourcemapDeleteResultType,
+				SchemaVersion: sourcemapResultSchemaVersion,
+				Action:        "deleted",
+				AppID:         appID,
+				BundleIDs:     bundleIDs,
+				Deleted:       len(bundleIDs),
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
 // resolveFaroAPIURL resolves the Faro API URL from provider config cache,
 // falling back to auto-discovery from plugin settings.
-func resolveFaroAPIURL(ctx context.Context, loader *providers.ConfigLoader) (string, error) {
-	// Check provider config cache first.
-	provCfg, _, err := loader.LoadProviderConfig(ctx, "faro")
-	if err == nil && provCfg != nil && provCfg["faro-api-url"] != "" {
-		return provCfg["faro-api-url"], nil
+func resolveFaroAPIURL(ctx context.Context, loader sourcemapUploadConfigLoader, snapshot providers.DirectProviderSnapshot) (string, error) {
+	// Check the trust-checked provider config cache first.
+	if snapshot.ProviderConfig != nil && snapshot.ProviderConfig["faro-api-url"] != "" {
+		return snapshot.ProviderConfig["faro-api-url"], nil
 	}
 
 	// Fall back to discovery from plugin settings.
-	grafanaCfg, err := loader.LoadGrafanaConfig(ctx)
-	if err != nil {
-		return "", fmt.Errorf("faro: grafana config required for API URL discovery: %w", err)
+	if snapshot.GrafanaConfig == nil {
+		return "", errors.New("faro: grafana config required for API URL discovery")
 	}
 
-	apiURL, err := DiscoverFaroAPIURL(ctx, grafanaCfg)
+	apiURL, err := DiscoverFaroAPIURL(ctx, *snapshot.GrafanaConfig)
 	if err != nil {
 		return "", fmt.Errorf("faro API URL not configured and discovery failed: %w\n\nSet providers.faro.faro-api-url in config or GRAFANA_PROVIDER_FARO_FARO_API_URL env var", err)
 	}

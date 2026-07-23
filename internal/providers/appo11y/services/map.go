@@ -186,7 +186,8 @@ func runMap(opts *mapOpts) func(*cobra.Command, []string) error {
 			return err
 		}
 		if notFound {
-			return fmt.Errorf("service %q has no service-graph edges in the requested window", jobLabel(namespace, name))
+			return notFoundEmitted(cmd.ErrOrStderr(),
+				fmt.Sprintf("service %q has no service-graph edges in the requested window", jobLabel(namespace, name)))
 		}
 		return nil
 	}

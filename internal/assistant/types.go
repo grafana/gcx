@@ -2,6 +2,7 @@
 package assistant
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -199,7 +200,10 @@ type StreamResult struct {
 }
 
 // TokenRefresher is called before each API request to ensure the token is fresh.
-type TokenRefresher func() (string, error)
+// The request context lets a refresh honor the caller's deadline while still
+// allowing the refresh implementation to detach an already-consumed rotating
+// token from cancellation during its bounded persistence transaction.
+type TokenRefresher func(context.Context) (string, error)
 
 // ClientOptions represents options for creating a Client.
 type ClientOptions struct {

@@ -460,22 +460,31 @@ func TestPrintHelmCommand_OrgSlug(t *testing.T) {
 			"empty slug must not produce bare // in URL")
 	})
 
-	t.Run("agent mode emits JSON envelope with all three fields", func(t *testing.T) {
+	t.Run("agent mode emits JSON envelope with discriminators and all three fields", func(t *testing.T) {
 		setAgentMode(t, true)
 
 		var buf bytes.Buffer
 		require.NoError(t, printHelmCommand(&buf, helmCmd, "igor-org"))
+		out := strings.TrimSpace(buf.String())
 
 		// Must parse as a single JSON object.
 		var env instroutput.SetupHelmEnvelope
-		require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &env),
+		require.NoError(t, json.Unmarshal([]byte(out), &env),
 			"agent mode output must be a single valid JSON object")
 
+		assert.Equal(t, instroutput.SetupHelmEnvelopeType, env.Type,
+			"type field must carry the collision-resistant discriminator")
+		assert.Equal(t, "1", env.SchemaVersion, "schema_version field must be versioned")
 		assert.Equal(t, helmCmd, env.HelmCommand, "helmCommand field must be the raw helm command")
 		assert.Equal(t, "https://grafana.com/orgs/igor-org/access-policies", env.AccessPoliciesURL,
 			"accessPoliciesURL field must contain the substituted URL")
 		assert.Equal(t, instroutput.SetupRequiredScopes, env.RequiredScopes,
 			"requiredScopes field must match SetupRequiredScopes constant")
+
+		// The discriminators must serialize first so agents can dispatch on a
+		// line prefix without parsing the full document.
+		assert.True(t, strings.HasPrefix(out, `{"type":"gcx.instrumentation.setup","schema_version":"1",`),
+			"discriminators must be the first fields on the line, got: %s", out)
 	})
 
 	t.Run("non-agent --print-helm-only regression: raw shell text", func(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/linter"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/local"
@@ -180,7 +181,20 @@ func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
 		return err
 	}
 
-	return opts.IO.Encode(cmd.OutOrStdout(), report)
+	if err := opts.IO.Encode(cmd.OutOrStdout(), report); err != nil {
+		return err
+	}
+
+	if report.Summary.NumViolations > 0 {
+		// The report (with enumerated violations) is already on stdout —
+		// EmittedError carries exit 4 without a second error document, so
+		// consumers can detect lint failures from the exit code instead of
+		// parsing the report body.
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+			gcxerrors.NewPartialFailureError("lint", report.Summary.FilesScanned, report.Summary.FilesFailed))
+	}
+
+	return nil
 }
 
 type reporterCodec struct {

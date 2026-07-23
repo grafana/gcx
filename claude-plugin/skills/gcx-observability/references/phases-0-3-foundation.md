@@ -20,8 +20,9 @@ Run `gcx config check` to verify the stack is initialized and authenticated. The
 If not configured: ask for the Grafana instance URL and an API token (service account with Admin role), then set up a context:
 
 ```bash
-gcx config set contexts.<name>.grafana.server <url>
-gcx config set contexts.<name>.grafana.token <token>
+gcx config set stacks.<name>.grafana.server <url>
+gcx config set stacks.<name>.grafana.token <token>
+gcx config set contexts.<name>.stack <name>
 gcx config use-context <name>
 gcx config check
 ```

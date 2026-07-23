@@ -44,14 +44,23 @@ classDiagram
     class Inputs {
         Server, ContextName
         Target, GrafanaToken
-        CloudToken, CloudAPIURL
+        CloudToken, CloudCredentialKind
+        CloudAPIURL, CloudOAuthURL
+        CloudTokenTrusted
+        CloudOAuthTokenExpiresAt, CloudOAuthScopes
         UseOAuth, Yes, Writer
         UseCloudInstanceSelector
-        TLS
+        TLS, StoredTLS
+        PreserveStoredTLS
+        RuntimeProxyEndpoint, StoredProxyEndpoint
+        PreserveStoredProxyEndpoint
     }
     class Hooks {
         ConfigSource
+        CloudMutationSafety
+        LoginMutationGuard
         NewAuthFlow
+        NewCloudAuthFlow
         ValidateFn
         DetectFn
     }
@@ -89,8 +98,10 @@ three semantic groupings:
 - `Hooks` holds injection seams for tests and alternative drivers:
   `ConfigSource` (where to read and write the config file), `NewAuthFlow`
   (OAuth factory), `ValidateFn` (connectivity validation override), and
-  `DetectFn` (target detection override). Each hook has a safe default when
-  left nil.
+  `DetectFn` (target detection override). CLI login also supplies
+  `CloudMutationSafety` from the complete layered view and a
+  `LoginMutationGuard` captured before authentication. Each hook has a safe
+  default when left nil.
 - `RetryState` carries cross-invocation plumbing. `StagedContext` is a
   partially-populated `config.Context` whose `Grafana` and `Cloud` sub-fields
   are populated step-by-step so that subsequent retries skip work (notably
@@ -150,9 +161,11 @@ resolution and re-entry:
 5. **Context-name derivation** (login.go:234). Falls back to
    `config.ContextNameFromServerURL`, which returns the stack slug for known
    Grafana Cloud URLs and a hyphenated hostname otherwise.
-6. **Cloud auth resolution** (`resolveCloudAuth`, login.go:383). Only runs
-   for `TargetCloud`; a missing token yields an optional
-   `ErrNeedInput{cloud-token}` that the CLI may skip.
+6. **Cloud auth resolution** (`resolveCloudAuth`). Only runs for
+   `TargetCloud`; a missing credential yields an optional
+   `ErrNeedInput{cloud-token}`. The CLI can keep an existing CAP or unexpired
+   OAuth credential without changing its kind, paste a CAP, run direct GCOM
+   OAuth, or skip Cloud functionality.
 7. **Validation** (login.go:245). Delegated to `Validate` (see below); the
    CLI offers an escape hatch for interactive users when validation fails.
 8. **Persistence** (`persistContext`, login.go:414). Writes only after all
@@ -273,10 +286,11 @@ to disk.
    unparseable or suppressed version string (Grafana Cloud sometimes hides
    it from anonymous callers) bypasses the check rather than failing; the
    returned version reads `"unknown"` in that case (validate.go:62-84).
-4. **GCOM reachability.** Only when `Target == TargetCloud`, a cloud token
-   is supplied, and `resolveStackSlug` produced a non-empty slug.
+4. **GCOM reachability.** Only when `Target == TargetCloud`, an untrusted
+   Cloud token is supplied, and `resolveStackSlug` produced a non-empty slug.
    `cloud.GCOMClient.GetStack` confirms the slug is reachable with the
-   supplied token.
+   supplied token. Browser-issued and explicitly kept credentials are already
+   trusted and skip this typo-oriented CAP check.
 
 Tests inject each step via the `grafanaClient`, `discovery`, and
 `gcomClient` fields on the `validator` struct (validate.go:32). The
@@ -289,30 +303,107 @@ clarification affirmatively.
 
 ## Context Resolution and Persistence
 
-`persistContext` (login.go:400) loads the current config (tolerating
-`os.ErrNotExist`), inserts or updates the context, and writes the file
+Before authentication starts, the CLI selects one raw owner for the login
+mutation. Explicit `--config`/`GCX_CONFIG` remains authoritative. With layered
+discovery, login proceeds without a flag only when the entries and context
+bindings that the selected operation may mutate prove one unambiguous,
+non-shadowed owner; otherwise it fails with exact `--config` choices. Cloud-only
+login may inherit a stack binding from another layer because it does not mutate
+that stack. Credentials are reloaded from the selected raw owner rather than
+copied out of the merged runtime view. Owner inference does not authorize an
+auto-discovered repository file: fresh credentials still require explicit
+selection of that file.
+
+The pre-authentication guard pins the raw owner's exact revision and, for
+discovery-mode login, snapshots the complete discovered source set. Immediately
+before persistence, gcx reloads the owner and verifies that no participating
+file changed and no source appeared or disappeared during OAuth or validation.
+Any mismatch aborts without writing the fresh credential. Explicit
+`--config`/`GCX_CONFIG` pins only the selected file because that document is the
+authoritative configuration boundary. Guarded reloads use the pinned raw bytes
+with migration persistence suppressed, so verification itself cannot create a
+backup, migrate a file, or mutate credentials.
+
+`persistContext` (login.go) loads the current config (tolerating
+`os.ErrNotExist`), inserts or updates the context — creating a stack entry
+named after the context, plus the `stack:` binding — and writes the file
 back. Two paths diverge based on whether the context already exists:
 
-**New-context path.** `cfg.SetContext(name, current=true, tempCtx)` adds
-the fresh `Context` with all resolved fields and marks it current.
+**New-context path.** A fresh stack entry and `Context` binding are added
+and marked current; the stack's `slug` is populated when resolved.
 `resolveGrafanaAuth` defaults `GrafanaConfig.OrgID` to 1 for fresh on-prem
-logins (login.go:356) so the later
+logins so the later
 `GrafanaConfig.validateNamespace` does not attempt `/bootdata` stack
 discovery against an OSS instance that cannot answer.
 
-**Re-auth path.** `mergeAuthIntoExisting` (login.go:452) copies only the
+**Re-auth path.** `mergeAuthIntoExisting` (login.go) copies only the
 auth-bearing fields — `Server`, `AuthMethod`, `APIToken`, `OAuthToken`,
 `OAuthRefreshToken`, `OAuthTokenExpiresAt`, `OAuthRefreshExpiresAt`,
-`ProxyEndpoint`, and the `Cloud.Token` / `Cloud.APIUrl` pair — onto the
-existing context. User-set values such as `OrgID=42`, custom datasource
-defaults, or provider-specific tokens survive untouched.
+`ProxyEndpoint` — onto the context's stack entry (creating it for legacy
+detached contexts), and routes incoming cloud auth through
+`EnsureCloudEntry` to a named cloud entry. User-set values such as
+`OrgID=42` and custom datasource defaults survive untouched. Provider-specific
+tokens survive only while their bound destination is unchanged; changing the
+server, proxy, TLS identity, or basic-auth username clears affected credentials
+such as the Synthetic Monitoring token.
 
-**Server-mismatch guard.** When the existing context targets a different
-server than the incoming one and neither `opts.Yes` nor
-`RetryState.AllowOverride` is set, `persistContext` raises
-`ErrNeedClarification{Field: "allow-override"}`. The CLI's confirmation
-prompt sets `AllowOverride=true` on retry so the second call through
-reaches the merge.
+**Cloud credential and endpoint preservation.** CAP credentials persist in
+`CloudEntry.Token`; direct Cloud OAuth persists in `OAuthToken` with expiry,
+granted scopes, and the exact OAuth/API endpoint pair. Keeping an existing
+credential copies all of that metadata. A custom Cloud API endpoint is also
+used as the OAuth origin unless both endpoints are explicitly supplied, so
+authentication and later API calls cannot silently target different
+environments.
+
+**Shared Cloud entry isolation.** If more than one effective layered context
+references a Cloud entry and this login changes its credential, metadata, or
+endpoint, persistence creates a uniquely named copy and rebinds only the
+initiating context. Sharing and name-collision evidence from the complete
+layered snapshot is carried into the raw-owner write, so reloading one file
+cannot undercount references in another layer. An entry used only by that
+context can be updated in place; an exact tuple in the selected owner can be
+reused. Same-named entries owned by another layer remain reserved rather than
+being copied or accidentally rebound.
+
+**Unbound-name collisions.** Unified login reuses a same-named stack already
+owned by the selected source without replacing its provider or resource
+settings. If that name belongs to another layer, login rejects the mutation
+instead of creating a shadow stack. An unbound Cloud name collision allocates a
+new isolated name because the context can safely bind that copy in its owner.
+
+**Environment-only destinations.** `GRAFANA_TLS_*` and
+`GRAFANA_PROXY_ENDPOINT` remain runtime-only. Before target detection or
+credential validation, token login compares their effective destination with
+the TLS/proxy state that persistence would retain. OAuth performs the same
+check again after the issuer supplies its proxy endpoint. A mismatch fails
+before the bearer credential is presented or saved, avoiding a successful
+login whose new keychain generation would be rejected by the next process.
+The CLI reports the exact literal `gcx config set --config ...` commands needed
+to persist the server, proxy/TLS fields, and context-to-stack binding. An
+explicitly selected missing config file is initialized by those commands, so a
+fresh setup has an executable recovery path rather than an error-only dead end.
+An existing context-to-stack binding is not rewritten. Because literal
+dot-paths cannot address map keys that themselves contain `.`, those names use
+an editor-based fallback that reports every field/value without emitting an
+invalid command. A post-flow OAuth issuer/proxy conflict is not recoverable by
+persisting the runtime override; that typed case instructs the user to unset
+`GRAFANA_PROXY_ENDPOINT` and retry.
+Pure mTLS login can continue with runtime-only transport settings because it
+does not persist a bearer credential; the command warns on success. A later
+invocation without a persisted or runtime client certificate and private key
+fails before network use rather than degrading to an anonymous request.
+
+**Destination-mismatch guard.** Before a stored Grafana token is offered
+interactively or selected headlessly, login compares its complete
+source/owner/field/destination binding with the effective server, proxy, and
+TLS identity. A mismatch fails before target detection or validation can send
+the token. When the persisted context targets a different server from the
+requested one and `RetryState.AllowOverride` is not set,
+login raises `ErrNeedClarification{Field: "allow-override"}`. Non-interactive
+`--yes` does not bypass this destination change. The command performs the same
+check against the raw, non-environment-overridden context before authentication
+or validation can present a stored credential; an interactive confirmation or
+explicit `--allow-server-override` sets `AllowOverride=true`.
 
 For the mechanics of how tokens subsequently reach HTTP clients — including
 the `ResolveTokenPersistenceSource` selection used by OAuth token rotation

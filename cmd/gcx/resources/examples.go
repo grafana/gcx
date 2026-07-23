@@ -103,7 +103,12 @@ func listExamplesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			switch opts.IO.OutputFormat {
-			case "json", "yaml":
+			case "json", "yaml", "agents":
+				// Structured formats get the examples payload. "agents" must
+				// be here: the agent-mode default previously fell into the
+				// tabular branch, which lists descriptors WITHOUT the example
+				// manifests — the command's entire payload was absent for
+				// agents.
 				return opts.IO.Encode(cmd.OutOrStdout(), examplesToNested(descs, examples))
 			default:
 				// text/wide: tabular output listing resources that have examples.

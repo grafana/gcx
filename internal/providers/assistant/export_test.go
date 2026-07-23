@@ -4,5 +4,7 @@ package assistant
 //
 //nolint:gochecknoglobals // Test-only exports for black-box test package.
 var (
-	NewAssistantStreamingHTTPClient = newAssistantStreamingHTTPClient
+	NewAssistantStreamingHTTPClient              = newAssistantStreamingHTTPClient
+	NewAssistantStreamingHTTPClientForRESTConfig = newAssistantStreamingHTTPClientForRESTConfig
+	ResolveAssistantClientOptions                = resolveAssistantClientOptions
 )

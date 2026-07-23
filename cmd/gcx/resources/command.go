@@ -13,9 +13,9 @@ func Command() *cobra.Command {
 		Use:   "resources",
 		Short: "Manipulate Grafana resources",
 		Long:  "Manipulate Grafana resources.",
-		// Inject --context into the Go context for all subcommands so provider
-		// adapter factories (SLO, Synth, etc.) can honour it when loading
-		// their own credentials.
+		// Inject --context and --config into the Go context for all subcommands
+		// so lazy provider adapter factories (SLO, Synth, etc.) use the same
+		// selected config snapshot as the resource command's Grafana client.
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Cobra v1.x does not chain PersistentPreRun hooks, so we must
 			// explicitly call the root hook to preserve terminal detection,
@@ -24,6 +24,7 @@ func Command() *cobra.Command {
 				root.PersistentPreRun(cmd, args)
 			}
 			ctx := config.ContextWithName(cmd.Context(), configOpts.Context)
+			ctx = config.ContextWithConfigFile(ctx, configOpts.ConfigFile)
 			cmd.SetContext(ctx)
 		},
 	}

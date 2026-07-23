@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/httputils"
@@ -22,6 +23,7 @@ type Client struct {
 	logger         Logger
 	tokenRefresher TokenRefresher
 	httpClient     *http.Client
+	tokenMu        sync.RWMutex
 }
 
 // New creates a new Client with the given options.
@@ -69,23 +71,39 @@ func (c *Client) ChatWithApproval(ctx context.Context, prompt string, opts Strea
 	c.logger.Info(fmt.Sprintf("Sending message (timeout: %ds)...", opts.Timeout))
 
 	promptWithContext := prompt + "\n" + FormatTimeContext()
+	token, err := c.freshToken(ctx)
+	if err != nil {
+		return StreamResult{Failed: true, ErrorMessage: fmt.Sprintf("refresh authentication token: %v", err)}
+	}
 
-	return StreamChatWithApproval(ctx, c.baseURL, c.freshToken(), c.agentID, promptWithContext, opts, c.logger, approvalHandler, c.httpClient)
+	return StreamChatWithApproval(ctx, c.baseURL, token, c.agentID, promptWithContext, opts, c.logger, approvalHandler, c.httpClient)
 }
 
 // GetChat fetches a single chat by ID.
 func (c *Client) GetChat(ctx context.Context, chatID string) (*Chat, error) {
-	return FetchChat(ctx, c.baseURL, c.freshToken(), chatID, c.httpClient)
+	token, err := c.freshToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("refresh authentication token: %w", err)
+	}
+	return FetchChat(ctx, c.baseURL, token, chatID, c.httpClient)
 }
 
 // GetChatMessages fetches all messages for a chat.
 func (c *Client) GetChatMessages(ctx context.Context, chatID string) ([]ChatMessage, error) {
-	return FetchChatMessages(ctx, c.baseURL, c.freshToken(), chatID, c.httpClient)
+	token, err := c.freshToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("refresh authentication token: %w", err)
+	}
+	return FetchChatMessages(ctx, c.baseURL, token, chatID, c.httpClient)
 }
 
 // ListChats lists the caller's chats, with optional filtering and pagination.
 func (c *Client) ListChats(ctx context.Context, opts ListChatsOptions) ([]Chat, error) {
-	return FetchChats(ctx, c.baseURL, c.freshToken(), opts, c.httpClient)
+	token, err := c.freshToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("refresh authentication token: %w", err)
+	}
+	return FetchChats(ctx, c.baseURL, token, opts, c.httpClient)
 }
 
 // ValidateCLIContext validates that contextID refers to an existing chat the caller can access.
@@ -128,17 +146,32 @@ func (c *Client) GetAgentID() string {
 	return c.agentID
 }
 
-// GetToken returns the current authentication token.
+// GetToken returns a synchronized snapshot of the current authentication
+// token. Network operations refresh explicitly through freshToken so refresh
+// failures cannot be hidden behind this accessor's string-only signature.
 func (c *Client) GetToken() string {
-	return c.freshToken()
+	return c.currentToken()
 }
 
-func (c *Client) freshToken() string {
+func (c *Client) freshToken(ctx context.Context) (string, error) {
 	if c.tokenRefresher != nil {
-		if newToken, err := c.tokenRefresher(); err == nil && newToken != "" {
+		newToken, err := c.tokenRefresher(ctx)
+		if err != nil {
+			return c.currentToken(), err
+		}
+		if newToken != "" {
+			c.tokenMu.Lock()
 			c.token = newToken
+			c.tokenMu.Unlock()
+			return newToken, nil
 		}
 	}
+	return c.currentToken(), nil
+}
+
+func (c *Client) currentToken() string {
+	c.tokenMu.RLock()
+	defer c.tokenMu.RUnlock()
 	return c.token
 }
 

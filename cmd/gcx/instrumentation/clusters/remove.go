@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/grafana/gcx/internal/fleet"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instoutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/spf13/cobra"
@@ -14,18 +15,23 @@ import (
 )
 
 type removeOpts struct {
+	IO  cmdio.Options
 	Yes bool
 }
 
 func (o *removeOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Yes, "yes", false, "Confirm the remove operation (required)")
+	// The remove result is a MutationResult document through the codec
+	// system: the default text codec prints the familiar one-liner; agent
+	// mode and explicit -o json/yaml get the structured document.
+	instoutput.BindMutationIO(&o.IO, flags)
 }
 
 func (o *removeOpts) Validate() error {
 	if !o.Yes {
 		return errors.New("clusters remove: --yes is required to confirm this destructive operation")
 	}
-	return nil
+	return o.IO.Validate()
 }
 
 func newRemoveCommand(loader fleet.ConfigLoader) *cobra.Command {
@@ -62,7 +68,7 @@ Requires --yes to confirm the destructive operation.`,
 			client := instrumentation.NewClient(r.Client)
 			backendURLs := instrumentation.BackendURLsFromStack(r.Stack)
 
-			return runRemove(ctx, client, clusterName, backendURLs, cmd.OutOrStdout())
+			return runRemove(ctx, &opts.IO, client, clusterName, backendURLs, cmd.OutOrStdout())
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -73,6 +79,7 @@ Requires --yes to confirm the destructive operation.`,
 // for testability with fake clients.
 func runRemove(
 	ctx context.Context,
+	outOpts *cmdio.Options,
 	client clusterClient,
 	clusterName string,
 	backendURLs instrumentation.BackendURLs,
@@ -88,9 +95,7 @@ func runRemove(
 	if err := client.SetK8SInstrumentation(ctx, clusterName, excluded, backendURLs); err != nil {
 		return fmt.Errorf("clusters remove: %w", err)
 	}
-	return instoutput.MutationResult{
-		Action:  "remove",
-		Target:  instoutput.Target{Cluster: clusterName},
-		Changed: true,
-	}.Emit(w)
+	result := instoutput.NewMutationResult("remove", instoutput.Target{Cluster: clusterName})
+	result.Changed = true
+	return outOpts.Encode(w, result)
 }

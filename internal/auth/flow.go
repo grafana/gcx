@@ -160,8 +160,10 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 	fmt.Fprintln(f.writer, "Check that this code matches what is shown in the browser before approving.")
 	fmt.Fprintln(f.writer)
 
-	if err := deeplink.Open(authURL); err != nil {
+	if opened, err := deeplink.OpenWithStatus(authURL); err != nil {
 		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
+	} else if !opened {
+		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
 	}
 
 	fmt.Fprintln(f.writer, "Waiting for authentication...")

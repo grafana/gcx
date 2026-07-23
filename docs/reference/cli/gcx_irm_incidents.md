@@ -25,10 +25,11 @@ Manage incidents.
 * [gcx irm](gcx_irm.md)	 - Manage Grafana IRM (OnCall + Incidents)
 * [gcx irm incidents activity](gcx_irm_incidents_activity.md)	 - Manage incident activity timeline.
 * [gcx irm incidents close](gcx_irm_incidents_close.md)	 - Close (resolve) an incident.
-* [gcx irm incidents contexts](gcx_irm_incidents_contexts.md)	 - Manage incident contexts (linked alert groups, dashboards, etc.).
 * [gcx irm incidents create](gcx_irm_incidents_create.md)	 - Create a new incident from a file.
 * [gcx irm incidents get](gcx_irm_incidents_get.md)	 - Get a single incident by ID.
 * [gcx irm incidents list](gcx_irm_incidents_list.md)	 - List incidents.
+* [gcx irm incidents list-activity](gcx_irm_incidents_list-activity.md)	 - List activity items for an incident.
+* [gcx irm incidents list-contexts](gcx_irm_incidents_list-contexts.md)	 - List contexts attached to an incident.
 * [gcx irm incidents open](gcx_irm_incidents_open.md)	 - Open an incident in the browser.
 * [gcx irm incidents severities](gcx_irm_incidents_severities.md)	 - Manage incident severity levels.
 

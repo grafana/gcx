@@ -424,6 +424,14 @@ type KGMetadataOutput struct {
 	Traces   []TraceDrilldownConfig   `json:"traceConfigs,omitempty"`
 	Profiles []ProfileDrilldownConfig `json:"profileConfigs,omitempty"`
 	Metrics  *AssertsMetricGuide      `json:"metricGuide,omitempty"`
+
+	// Errors reports sections that failed to load, keyed by section name
+	// (schema, scopes, logs, traces, profiles). `kg meta all` fetches
+	// sections best-effort: a failed section is omitted from the fields
+	// above and recorded here, so a stdout-only consumer can distinguish
+	// "failed to load" from "empty". Never set by the single-section
+	// commands, which fail outright instead.
+	Errors map[string]string `json:"errors,omitempty"`
 }
 
 // ModelRuleNames is the response shape for GET /v1/config/model-rules (ModelRuleNamesDto).

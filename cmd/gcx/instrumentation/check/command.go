@@ -10,8 +10,10 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/check/fixplan"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	otelchecks "github.com/grafana/otel-checker/checks"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -140,6 +142,13 @@ func (o *checkOpts) toCommands() otelutils.Commands {
 // Command returns the "gcx instrumentation check" cobra command. The loader
 // is used only when --fix-plan is set; check itself runs entirely locally.
 func Command(loader *providers.ConfigLoader) *cobra.Command {
+	return commandWith(loader, otelchecks.Run)
+}
+
+// commandWith builds the check command with an injectable checker. Production
+// code passes otelchecks.Run via Command; tests inject a fake to drive the
+// command end-to-end without touching real env vars.
+func commandWith(loader *providers.ConfigLoader,c checker) *cobra.Command {
 	opts := &checkOpts{}
 
 	cmd := &cobra.Command{
@@ -176,10 +185,7 @@ Powered by github.com/grafana/otel-checker.`,
 				return fmt.Errorf("instrumentation check: %w", err)
 			}
 
-			results, err := run(cmd.Context(), opts.toCommands())
-			if err != nil {
-				return fmt.Errorf("instrumentation check: %w", err)
-			}
+			results := runWith(cmd.Context(), opts.toCommands(), c, cmd.ErrOrStderr())
 
 			envelope := ResultsWithFixPlan{Results: results}
 
@@ -209,7 +215,15 @@ Powered by github.com/grafana/otel-checker.`,
 			}
 
 			if len(results.Errors) > 0 {
-				return fmt.Errorf("%d check(s) failed", len(results.Errors))
+				// The result document (with the failing checks enumerated) is
+				// already on stdout — EmittedError carries the exit code
+				// without a second error document. EmittedError also
+				// suppresses reportError's stderr rendering, so the failure
+				// count diagnostic the old bare error produced is emitted
+				// explicitly here.
+				summary := fmt.Sprintf("%d check(s) failed", len(results.Errors))
+				cmdio.EmitWarn(cmd.ErrOrStderr(), summary)
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(summary))
 			}
 			return nil
 		},

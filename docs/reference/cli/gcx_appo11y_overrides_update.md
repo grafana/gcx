@@ -9,8 +9,11 @@ gcx appo11y overrides update [flags]
 ### Options
 
 ```
-  -f, --file string   Path to the overrides file (JSON or YAML)
-  -h, --help          help for update
+  -f, --file string     Path to the overrides file (JSON or YAML)
+  -h, --help            help for update
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

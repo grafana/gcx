@@ -152,7 +152,6 @@ func newTemplatesUpsertCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 The provisioning API uses a single PUT endpoint keyed by template name,
 so the same command handles both create and update.`,
-		Aliases: []string{"create", "update", "apply"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -185,11 +184,20 @@ so the same command handles both create and update.`,
 }
 
 type templatesDeleteOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *templatesDeleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The delete result is a SingleMutation document through the codec
+	// system: the default text codec prints the familiar one-line success;
+	// agent mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{line: func(m cmdio.SingleMutation) string {
+		return "Deleted template " + m.Target.Name
+	}})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 //nolint:dupl // Similar structure to contact-points and mute-timings delete commands is intentional
@@ -200,8 +208,14 @@ func newTemplatesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "Delete a notification template by name.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			ctx := cmd.Context()
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			// The confirmation exchange is a diagnostic, not the result —
+			// stderr keeps the prompt and "Aborted." out of the stdout
+			// document.
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Delete notification template "+args[0]+"?")
 			if err != nil {
 				return err
@@ -220,8 +234,8 @@ func newTemplatesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err := client.DeleteTemplate(ctx, args[0]); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted template %s", args[0])
-			return nil
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "template", Name: args[0]})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
