@@ -227,9 +227,16 @@ func TestJSONDocModeUnchanged(t *testing.T) {
 // without appending a second document to stdout.
 func requireEmittedGeneralError(t *testing.T, err error) {
 	t.Helper()
+	requireEmittedCode(t, err, gcxerrors.ExitGeneralError)
+}
+
+// requireEmittedCode asserts err carries the already-emitted sentinel with
+// the given exit code.
+func requireEmittedCode(t *testing.T, err error, code int) {
+	t.Helper()
 	var emitted *gcxerrors.EmittedError
 	require.ErrorAs(t, err, &emitted)
-	assert.Equal(t, gcxerrors.ExitGeneralError, emitted.Code)
+	assert.Equal(t, code, emitted.Code)
 }
 
 // TestFinishFailureOutcomesPerMode is the terminal-outcome matrix: for every
@@ -240,16 +247,18 @@ func TestFinishFailureOutcomesPerMode(t *testing.T) {
 	result := assistant.StreamResult{TaskID: "task-1", ContextID: "ctx-1"}
 
 	outcomes := []struct {
-		name    string
-		result  assistant.StreamResult
-		reason  string
-		wantErr string
+		name          string
+		result        assistant.StreamResult
+		reason        string
+		wantErr       string
+		wantAgentCode int
 	}{
 		{
-			name:    "timeout",
-			result:  func() assistant.StreamResult { r := result; r.TimedOut = true; return r }(),
-			reason:  "timeout",
-			wantErr: "request timed out after 30s",
+			name:          "timeout",
+			result:        func() assistant.StreamResult { r := result; r.TimedOut = true; return r }(),
+			reason:        "timeout",
+			wantErr:       "request timed out after 30s",
+			wantAgentCode: gcxerrors.ExitGeneralError,
 		},
 		{
 			name: "failed",
@@ -259,20 +268,25 @@ func TestFinishFailureOutcomesPerMode(t *testing.T) {
 				r.ErrorMessage = "boom"
 				return r
 			}(),
-			reason:  "failed",
-			wantErr: "request failed: boom",
+			reason:        "failed",
+			wantErr:       "request failed: boom",
+			wantAgentCode: gcxerrors.ExitGeneralError,
 		},
 		{
-			name:    "canceled",
-			result:  func() assistant.StreamResult { r := result; r.Canceled = true; return r }(),
-			reason:  "canceled",
-			wantErr: "request was canceled",
+			// Cancellation carries ExitCancelled in agent mode, matching the
+			// repo-wide convention; the legacy --json modes keep exit 1.
+			name:          "canceled",
+			result:        func() assistant.StreamResult { r := result; r.Canceled = true; return r }(),
+			reason:        "canceled",
+			wantErr:       "request was canceled",
+			wantAgentCode: gcxerrors.ExitCancelled,
 		},
 		{
-			name:    "unknown",
-			result:  result,
-			reason:  "unknown",
-			wantErr: "request ended in unknown state",
+			name:          "unknown",
+			result:        result,
+			reason:        "unknown",
+			wantErr:       "request ended in unknown state",
+			wantAgentCode: gcxerrors.ExitGeneralError,
 		},
 	}
 
@@ -283,7 +297,7 @@ func TestFinishFailureOutcomesPerMode(t *testing.T) {
 			em := newStreamEmitter(&stdout, &stderr, &promptOpts{})
 
 			err := em.finish(oc.result, 30)
-			requireEmittedGeneralError(t, err)
+			requireEmittedCode(t, err, oc.wantAgentCode)
 			require.ErrorContains(t, err, oc.wantErr)
 
 			// Exactly one terminal JSON line on stdout.
@@ -298,7 +312,7 @@ func TestFinishFailureOutcomesPerMode(t *testing.T) {
 			require.True(t, ok, "terminal error object required: %s", lines[0])
 			assert.Equal(t, oc.reason, errObj["reason"])
 			assert.NotEmpty(t, errObj["summary"])
-			assert.InDelta(t, float64(gcxerrors.ExitGeneralError), errObj["exitCode"], 0)
+			assert.InDelta(t, float64(oc.wantAgentCode), errObj["exitCode"], 0)
 		})
 
 		t.Run("human/"+oc.name, func(t *testing.T) {

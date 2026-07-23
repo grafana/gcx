@@ -331,7 +331,14 @@ func (e *streamEmitter) finishCanceled(result assistant.StreamResult) error {
 			Status:    "canceled",
 		}), err)
 	case modeAgent:
-		return emittedAfter(e.end(&streamEndError{Reason: "canceled", Summary: err.Error(), ExitCode: gcxerrors.ExitGeneralError}), err)
+		// Cancellation carries ExitCancelled, matching the repo-wide
+		// convention (context cancellation, declined confirmation prompts) —
+		// not the general error code. The legacy --json modes above keep
+		// exit 1, the code they have always produced.
+		if writeErr := e.end(&streamEndError{Reason: "canceled", Summary: err.Error(), ExitCode: gcxerrors.ExitCancelled}); writeErr != nil {
+			return writeErr
+		}
+		return gcxerrors.NewEmittedError(gcxerrors.ExitCancelled, err)
 	case modeHuman:
 	}
 	cmdio.Warning(e.errW, "Request was canceled")
