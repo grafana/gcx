@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/collections"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,7 +64,7 @@ func TestTableCodec_Format(t *testing.T) {
 }
 
 func TestCommands_HasMembershipCompounds(t *testing.T) {
-	cmd := collections.Commands(&providers.ConfigLoader{})
+	cmd := collections.Commands(nil)
 
 	for _, sub := range []string{"list-conversations", "add-conversations", "remove-conversation"} {
 		c, _, err := cmd.Find([]string{sub})
@@ -82,7 +81,7 @@ func TestCommands_HasMembershipCompounds(t *testing.T) {
 }
 
 func TestCreateCommand_RejectsConflictingFlags(t *testing.T) {
-	cmd := collections.Commands(&providers.ConfigLoader{})
+	cmd := collections.Commands(nil)
 	cmd.SetArgs([]string{"create", "-f", "x.yaml", "--name", "x"})
 
 	var stdout, stderr bytes.Buffer
@@ -95,7 +94,7 @@ func TestCreateCommand_RejectsConflictingFlags(t *testing.T) {
 }
 
 func TestCreateCommand_RequiresInput(t *testing.T) {
-	cmd := collections.Commands(&providers.ConfigLoader{})
+	cmd := collections.Commands(nil)
 	cmd.SetArgs([]string{"create"})
 
 	var stdout, stderr bytes.Buffer
@@ -108,7 +107,7 @@ func TestCreateCommand_RequiresInput(t *testing.T) {
 }
 
 func TestUpdateCommand_RequiresAtLeastOneFlag(t *testing.T) {
-	cmd := collections.Commands(&providers.ConfigLoader{})
+	cmd := collections.Commands(nil)
 	cmd.SetArgs([]string{"update", "c-1"})
 
 	var stdout, stderr bytes.Buffer
@@ -121,7 +120,7 @@ func TestUpdateCommand_RequiresAtLeastOneFlag(t *testing.T) {
 }
 
 func TestAddConversationsCommand_NeedsTwoArgs(t *testing.T) {
-	cmd := collections.Commands(&providers.ConfigLoader{})
+	cmd := collections.Commands(nil)
 	cmd.SetArgs([]string{"add-conversations", "c-1"})
 
 	var stdout, stderr bytes.Buffer
@@ -134,7 +133,7 @@ func TestAddConversationsCommand_NeedsTwoArgs(t *testing.T) {
 }
 
 func TestDeleteCommand_AbortsWithoutForce(t *testing.T) {
-	cmd := collections.Commands(&providers.ConfigLoader{})
+	cmd := collections.Commands(nil)
 	cmd.SetArgs([]string{"delete", "c-1"})
 
 	var stdout, stderr bytes.Buffer

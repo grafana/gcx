@@ -22,8 +22,14 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// Commands returns the evaluators command group.
+// Commands returns the evaluators command group. A nil loader falls back to
+// a zero-value loader (default discovery + ctx threading), preserving the
+// behavior external callers relied on before the loader was threaded through
+// every subcommand.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
+	if loader == nil {
+		loader = &providers.ConfigLoader{}
+	}
 	cmd := &cobra.Command{
 		Use:   "evaluators",
 		Short: "Manage evaluator definitions (LLM judge, regex, heuristic).",

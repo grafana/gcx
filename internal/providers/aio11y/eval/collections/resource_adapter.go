@@ -58,14 +58,26 @@ func stripFields() []string {
 // a zero-value loader and inherit the selection (config file and context name)
 // threaded through ctx by the resources command.
 func NewTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) (*adapter.TypedCRUD[Collection], string, error) {
+	crud, _, err := newCRUDAndClient(ctx, loader)
+	if err != nil {
+		return nil, "", err
+	}
+	return crud, crud.Namespace, nil
+}
+
+// newCRUDAndClient builds the collections client and its envelope CRUD from a
+// single config load, so callers that need both (the update command routes its
+// PATCH through the client but renders via the CRUD) cannot end up with the
+// two halves pointing at different stacks.
+func newCRUDAndClient(ctx context.Context, loader *providers.ConfigLoader) (*adapter.TypedCRUD[Collection], *Client, error) {
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load REST config for Agent Observability collections: %w", err)
+		return nil, nil, fmt.Errorf("failed to load REST config for Agent Observability collections: %w", err)
 	}
 
 	base, err := aio11yhttp.NewClient(cfg)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create Agent Observability HTTP client: %w", err)
+		return nil, nil, fmt.Errorf("failed to create Agent Observability HTTP client: %w", err)
 	}
 	client := NewClient(base)
 
@@ -95,7 +107,7 @@ func NewTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) (*adapter
 		StripFields: stripFields(),
 		Descriptor:  StaticDescriptor(),
 	}
-	return crud, cfg.Namespace, nil
+	return crud, client, nil
 }
 
 // NewLazyFactory returns an adapter.Factory for Agent Observability collections.

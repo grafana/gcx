@@ -25,6 +25,9 @@ import (
 
 // Commands returns the guards command group.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
+	if loader == nil {
+		loader = &providers.ConfigLoader{}
+	}
 	cmd := &cobra.Command{
 		Use:   "guards",
 		Short: "Manage synchronous policy guards (hook rules) that evaluate generations on the request path.",

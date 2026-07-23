@@ -33,6 +33,9 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 
 // Commands returns the collections command group.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
+	if loader == nil {
+		loader = &providers.ConfigLoader{}
+	}
 	cmd := &cobra.Command{
 		Use:   "collections",
 		Short: "Manage named groups of saved conversations.",
@@ -298,15 +301,11 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx, loader)
+			crud, client, err := newCRUDAndClient(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client, err := newClient(cmd, loader)
-			if err != nil {
-				return err
-			}
 			updated, err := client.Update(ctx, args[0], req)
 			if err != nil {
 				return err
