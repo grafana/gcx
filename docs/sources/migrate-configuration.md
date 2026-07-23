@@ -47,6 +47,15 @@ commands work with that in-memory view, but anything that writes config or
 credentials fails until the file can be migrated or replaced. gcx prints a
 warning on each invocation.
 
+The same deferral happens when a legacy credential can't be read from the OS
+credential store at migration time - the warning ends with
+`reason: a legacy credential could not be read from the credential store`.
+This usually means the keychain was locked, a keychain prompt was dismissed,
+or gcx ran in a session without keychain access (SSH, CI). Persisting the
+migration then could strand references to credentials it couldn't re-store, so
+gcx waits. Unlock the keychain (or run from a desktop session) and run any gcx
+command to complete the migration.
+
 A file that declares any version other than `1` isn't a legacy file. gcx
 rejects it before creating a backup, reading the keychain, or making any other
 change. Don't edit the version number by hand - use a gcx release that
