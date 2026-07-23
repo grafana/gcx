@@ -135,10 +135,13 @@ func newGCOMHTTPError(status int, body []byte) *GCOMHTTPError {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	}
-	if err := json.Unmarshal(body, &parsed); err == nil {
-		httpErr.Code = parsed.Code
-		httpErr.Message = parsed.Message
-	}
+	// Keep whatever decoded even when Unmarshal reports an error: a type
+	// mismatch on one field (e.g. a numeric "code") still fills the others,
+	// and discarding a good Message over a bad Code would disable every
+	// message-led rendering downstream.
+	_ = json.Unmarshal(body, &parsed)
+	httpErr.Code = parsed.Code
+	httpErr.Message = parsed.Message
 	return httpErr
 }
 

@@ -215,6 +215,14 @@ func TestCreateCommand_DryRun_InvalidLabels(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `invalid label "noequalssign"`)
+
+	// Labels are validated in Validate() alongside name/slug, so a bad
+	// value is the same usage-error class with the same exit code.
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &detailed)
+	assert.Equal(t, "Invalid command usage", detailed.Summary)
+	require.NotNil(t, detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
 }
 
 func TestCreateCommand_DryRun_DoesNotCallAPI(t *testing.T) {

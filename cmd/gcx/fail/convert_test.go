@@ -760,12 +760,13 @@ func TestErrorToDetailedError_StacksConflict409(t *testing.T) {
 		notInSuggestion string
 	}{
 		{
-			name:           "create InvalidArgument with slug message",
-			wrap:           "failed to create stack",
-			httpErr:        &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"InvalidArgument","message":"Invalid slug my-gcx-eval specified"}`, Code: "InvalidArgument", Message: "Invalid slug my-gcx-eval specified"},
-			wantSummary:    "Invalid stack request",
-			wantExitUsage:  true,
-			wantSuggestion: "lowercase letters",
+			name:            "create InvalidArgument with slug message",
+			wrap:            "failed to create stack",
+			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"InvalidArgument","message":"Invalid slug my-gcx-eval specified"}`, Code: "InvalidArgument", Message: "Invalid slug my-gcx-eval specified"},
+			wantSummary:     "Invalid stack request",
+			wantExitUsage:   true,
+			wantSuggestion:  "Choose a different slug",
+			notInSuggestion: "lowercase letters",
 		},
 		{
 			name:            "create InvalidArgument with non-slug message",
@@ -773,8 +774,8 @@ func TestErrorToDetailedError_StacksConflict409(t *testing.T) {
 			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"InvalidArgument","message":"Invalid region narnia specified"}`, Code: "InvalidArgument", Message: "Invalid region narnia specified"},
 			wantSummary:     "Invalid stack request",
 			wantExitUsage:   true,
-			wantSuggestion:  "--name, --slug, and --region",
-			notInSuggestion: "lowercase letters",
+			wantSuggestion:  "--dry-run",
+			notInSuggestion: "Choose a different slug",
 		},
 		{
 			name:           "create Conflict code with duplicate-looking message",
@@ -791,25 +792,42 @@ func TestErrorToDetailedError_StacksConflict409(t *testing.T) {
 			wantSuggestion: "Choose a different slug",
 		},
 		{
-			name:            "create unknown nonempty code",
-			wrap:            "failed to create stack",
-			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"SomethingNew","message":"conflicting state"}`, Code: "SomethingNew", Message: "conflicting state"},
-			wantSummary:     "Resource conflict",
-			wantSuggestion:  "List existing stacks",
+			name:           "create unknown nonempty code keeps slug remediation",
+			wrap:           "failed to create stack",
+			httpErr:        &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"SomethingNew","message":"conflicting state"}`, Code: "SomethingNew", Message: "conflicting state"},
+			wantSummary:    "Resource conflict",
+			wantSuggestion: "Choose a different slug",
+		},
+		{
+			name:           "create non-JSON body keeps slug remediation",
+			wrap:           "failed to create stack",
+			httpErr:        &cloud.GCOMHTTPError{Status: 409, Body: `<html>bad gateway</html>`},
+			wantSummary:    "Resource conflict",
+			wantSuggestion: "Choose a different slug",
+		},
+		{
+			name:            "update InvalidArgument is a usage error too",
+			wrap:            "failed to update stack",
+			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"InvalidArgument","message":"Invalid name specified"}`, Code: "InvalidArgument", Message: "Invalid name specified"},
+			wantSummary:     "Invalid stack request",
+			wantExitUsage:   true,
+			wantSuggestion:  "--dry-run",
 			notInSuggestion: "Choose a different slug",
 		},
 		{
-			name:            "update InvalidArgument is never a stack-request error",
+			name:            "update conflict has no slug remediation",
 			wrap:            "failed to update stack",
-			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"InvalidArgument","message":"Invalid slug x specified"}`, Code: "InvalidArgument", Message: "Invalid slug x specified"},
+			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"Conflict","message":"conflict"}`, Code: "Conflict", Message: "conflict"},
 			wantSummary:     "Resource conflict",
-			notInSuggestion: "--name, --slug, and --region",
+			wantSuggestion:  "List existing stacks",
+			notInSuggestion: "--slug",
 		},
 		{
-			name:        "list InvalidArgument is never a stack-request error",
-			wrap:        "failed to list stacks",
-			httpErr:     &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"InvalidArgument","message":"Invalid arguments"}`, Code: "InvalidArgument", Message: "Invalid arguments"},
-			wantSummary: "Resource conflict",
+			name:            "list InvalidArgument stays a generic conflict",
+			wrap:            "failed to list stacks",
+			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"InvalidArgument","message":"Invalid arguments"}`, Code: "InvalidArgument", Message: "Invalid arguments"},
+			wantSummary:     "Resource conflict",
+			notInSuggestion: "--slug",
 		},
 		{
 			name:           "delete keeps delete-protection mapping",
@@ -860,7 +878,7 @@ func TestErrorToDetailedError_StacksAuthErrors(t *testing.T) {
 	} {
 		t.Run(tt.wantSummary, func(t *testing.T) {
 			err := fmt.Errorf("failed to create stack: %w",
-				&cloud.GCOMHTTPError{Status: tt.status, Body: "denied"})
+				&cloud.GCOMHTTPError{Status: tt.status, Body: `{"message":"token lacks stacks scopes"}`, Message: "token lacks stacks scopes"})
 
 			got := fail.ErrorToDetailedError(err)
 
@@ -868,6 +886,8 @@ func TestErrorToDetailedError_StacksAuthErrors(t *testing.T) {
 			assert.Equal(t, tt.wantSummary, got.Summary)
 			require.NotNil(t, got.ExitCode)
 			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+			assert.True(t, strings.HasPrefix(got.Details, "token lacks stacks scopes"),
+				"auth details must lead with GCOM's message, got %q", got.Details)
 		})
 	}
 }

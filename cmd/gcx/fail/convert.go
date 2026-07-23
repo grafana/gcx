@@ -1389,9 +1389,18 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return nil, false
 	}
 
+	// Operation dispatch keys on the wrap prefix, never Contains: the error
+	// text embeds the raw GCOM body, and server-controlled text must not be
+	// able to steer dispatch into another operation's branch.
+	isCreate := strings.HasPrefix(msg, "failed to create stack")
+	isUpdate := strings.HasPrefix(msg, "failed to update stack")
+
 	switch httpErr.Status {
 	case http.StatusConflict:
-		if strings.Contains(msg, "failed to delete stack") {
+		if strings.HasPrefix(msg, "failed to delete stack") {
+			// Unlike create/update, GCOM documents the delete 409
+			// exclusively: it means the stack has delete protection
+			// enabled.
 			return &gcxerrors.DetailedError{
 				Summary: "Stack has delete protection enabled",
 				Details: gcomErrorDetails(httpErr, msg),
@@ -1402,14 +1411,17 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 				},
 			}, true
 		}
-		if strings.Contains(msg, "failed to create stack") && httpErr.Code == "InvalidArgument" {
+		if (isCreate || isUpdate) && httpErr.Code == "InvalidArgument" {
 			suggestions := []string{
-				"Check the values passed to --name, --slug, and --region, then preview with --dry-run",
+				"Check the flag values passed to the command, then preview the request with --dry-run",
 			}
-			if strings.Contains(strings.ToLower(httpErr.Message), "slug") {
+			if isCreate && strings.Contains(strings.ToLower(httpErr.Message), "slug") {
+				// The client-side format gate already rejects anything
+				// outside [a-z0-9]+ before the request, so a slug the
+				// server still refuses needs a different slug, not a
+				// format lesson.
 				suggestions = []string{
-					"Stack slugs may only contain lowercase letters (a-z) and digits (0-9); the slug becomes <slug>.grafana.net",
-					"Retry with a lowercase alphanumeric slug, e.g. --slug mygcxeval",
+					"Choose a different slug with --slug — this one may be reserved, too long, or unavailable",
 				}
 			}
 			return &gcxerrors.DetailedError{
@@ -1424,12 +1436,14 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 		// GCOM's 409 on this API is an error class, not a duplicate-slug
 		// discriminator (the spec's ErrorConflict example message is the
 		// generic invalid-arguments text), so no branch may claim the slug
-		// is taken. A duplicate-looking message only selects suggestions.
+		// is taken. On create the likely conflict is still a slug
+		// collision, so the slug remediation is always offered there — the
+		// message text is server-controlled and possibly non-JSON, too
+		// fragile to gate a suggestion on.
 		suggestions := []string{
 			"List existing stacks: gcx cloud stacks list --org <org-slug>",
 		}
-		if m := strings.ToLower(httpErr.Message); strings.Contains(m, "taken") ||
-			strings.Contains(m, "already") || strings.Contains(m, "not available") {
+		if isCreate {
 			suggestions = []string{
 				"Choose a different slug with --slug",
 				"List existing stacks: gcx cloud stacks list --org <org-slug>",
@@ -1445,7 +1459,7 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 	case http.StatusForbidden:
 		return &gcxerrors.DetailedError{
 			Summary:  "Stacks: permission denied",
-			Details:  msg,
+			Details:  gcomErrorDetails(httpErr, msg),
 			Parent:   err,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 			Suggestions: []string{
@@ -1458,7 +1472,7 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 	case http.StatusUnauthorized:
 		return &gcxerrors.DetailedError{
 			Summary:  "Stacks: authentication failed",
-			Details:  msg,
+			Details:  gcomErrorDetails(httpErr, msg),
 			Parent:   err,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 			Suggestions: []string{

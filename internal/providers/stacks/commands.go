@@ -167,6 +167,16 @@ func (o *createOpts) Validate() error {
 			DocsLink: docs.CloudAPI,
 		}
 	}
+	if _, err := labelsFromFlag(o.Labels); err != nil {
+		return &gcxerrors.DetailedError{
+			Summary:  "Invalid command usage",
+			Details:  err.Error(),
+			ExitCode: new(gcxerrors.ExitUsageError),
+			Suggestions: []string{
+				"Pass labels as key=value, e.g. --labels env=prod --labels team=platform",
+			},
+		}
+	}
 	return o.IO.Validate()
 }
 

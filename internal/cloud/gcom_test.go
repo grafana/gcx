@@ -407,6 +407,12 @@ func TestGCOMClient_CreateStack_Conflict(t *testing.T) {
 			wantCode:    "",
 			wantMessage: "",
 		},
+		{
+			name:        "field type mismatch keeps the fields that decoded",
+			body:        `{"code":409,"message":"boom"}`,
+			wantCode:    "",
+			wantMessage: "boom",
+		},
 	}
 
 	for _, tt := range tests {
