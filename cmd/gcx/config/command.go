@@ -494,7 +494,7 @@ func checkCmd(configOpts *Options) *cobra.Command {
 			}
 
 			if checkErr != nil {
-				return checkErr
+				return reportCheckError(cmd.ErrOrStderr(), checkErr)
 			}
 
 			if hasIssues {
@@ -513,6 +513,28 @@ func checkCmd(configOpts *Options) *cobra.Command {
 	return cmd
 }
 
+// reportCheckError surfaces a context-check failure the prose report could
+// not carry itself (Grafana < 12). In agent mode the prose report is already
+// on stdout and reportError would append a gcx.error document after it on
+// the same stream — the exact mixed-output shape the hasIssues branch
+// avoids — so the failure becomes a typed stderr diagnostic + EmittedError.
+// Human mode keeps the reporter's rendering.
+func reportCheckError(stderr io.Writer, checkErr error) error {
+	if !agent.IsAgentMode() {
+		return checkErr
+	}
+	summary := checkErr.Error()
+	code := gcxerrors.ExitGeneralError
+	if detailed := fail.ErrorToDetailedError(checkErr); detailed != nil {
+		summary = fmt.Sprintf("%s: %s", detailed.Summary, checkErr.Error())
+		if detailed.ExitCode != nil {
+			code = *detailed.ExitCode
+		}
+	}
+	cmdio.EmitWarn(stderr, summary)
+	return gcxerrors.NewEmittedError(code, checkErr)
+}
+
 // checkContext prints the diagnostic report for one context. It returns
 // healthy=false when any error-level finding was reported (the prose already
 // carries the details and suggestions); the error return is reserved for
@@ -524,14 +546,19 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	title += cmdio.Bold(gCtx.Name)
 
 	summarizeError := func(err error) string {
+		// ErrorToDetailedError returns nil for chains carrying an
+		// EmittedError (result already on stdout — nothing to render).
 		detailedErr := fail.ErrorToDetailedError(err)
+		if detailedErr == nil {
+			return err.Error()
+		}
 
 		return fmt.Sprintf("%s: %s", detailedErr.Summary, err.Error())
 	}
 
 	printSuggestions := func(err error) {
 		detailedErr := fail.ErrorToDetailedError(err)
-		if len(detailedErr.Suggestions) != 0 {
+		if detailedErr != nil && len(detailedErr.Suggestions) != 0 {
 			cmdio.Info(stdout, "Suggestions:\n")
 			for _, suggestion := range detailedErr.Suggestions {
 				fmt.Fprintf(stdout, "  • %s\n", suggestion)
