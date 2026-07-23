@@ -1,5 +1,11 @@
 ---
-title: Migrate your gcx configuration labels: products: - cloud - enterprise - oss weight: 4
+title: Migrate your gcx configuration
+labels:
+  products:
+    - cloud
+    - enterprise
+    - oss
+weight: 4
 ---
 
 # Migrate your `gcx` configuration files to v1 format
