@@ -17,7 +17,108 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 )
 
-const configCheckProcessHelper = "GCX_CONFIG_CHECK_PROCESS_HELPER"
+const (
+	configCheckProcessHelper       = "GCX_CONFIG_CHECK_PROCESS_HELPER"
+	configSetFallbackProcessHelper = "GCX_CONFIG_SET_FALLBACK_PROCESS_HELPER"
+)
+
+func TestConfigSetPlaintextFallbackWarningProcess(t *testing.T) {
+	const token = "synthetic-plaintext-fallback-token"
+	const warning = "Warning: keychain unavailable; credentials remain in plaintext on disk; install or unlock your OS keychain to enable encrypted credential storage"
+
+	for _, agentMode := range []string{"false", "true"} {
+		t.Run("agent-mode="+agentMode, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.yaml")
+			contents := []byte(`version: 1
+stacks:
+  smoke:
+    grafana:
+      server: https://example.invalid
+      auth-method: token
+contexts:
+  smoke:
+    stack: smoke
+current-context: smoke
+`)
+			if err := os.WriteFile(configPath, contents, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestConfigSetPlaintextFallbackProcessHelper$") //nolint:gosec
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			cmd.Env = append(os.Environ(),
+				configSetFallbackProcessHelper+"=1",
+				"GCX_CONFIG_SET_FALLBACK_PATH="+configPath,
+				"GCX_CONFIG_SET_FALLBACK_TOKEN="+token,
+				"GCX_AGENT_MODE="+agentMode,
+				"GCX_TELEMETRY=disabled",
+				"GCX_NO_UPDATE_NOTIFIER=1",
+				"NO_COLOR=1",
+				"HOME="+t.TempDir(),
+				"XDG_CONFIG_HOME="+t.TempDir(),
+				"XDG_CONFIG_DIRS="+t.TempDir(),
+				"XDG_CACHE_HOME="+t.TempDir(),
+				"XDG_STATE_HOME="+t.TempDir(),
+				"GCX_CONFIG=",
+				"GRAFANA_SERVER=",
+				"GRAFANA_USER=",
+				"GRAFANA_PASSWORD=",
+				"GRAFANA_TOKEN=",
+				"GRAFANA_PROXY_ENDPOINT=",
+				"GRAFANA_ORG_ID=",
+				"GRAFANA_STACK_ID=",
+			)
+
+			if err := cmd.Run(); err != nil {
+				t.Fatalf("config set failed: %v; stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("config set wrote unexpected stdout: %q", stdout.String())
+			}
+			if got := bytes.Count(stderr.Bytes(), []byte(warning)); got != 1 {
+				t.Fatalf("plaintext fallback warning count = %d, want 1; stderr=%q", got, stderr.String())
+			}
+			if bytes.Contains(stdout.Bytes(), []byte(token)) || bytes.Contains(stderr.Bytes(), []byte(token)) {
+				t.Fatalf("plaintext token appeared in command output; stdout=%q stderr=%q", stdout.String(), stderr.String())
+			}
+
+			raw, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(raw, []byte(token)) || bytes.Contains(raw, []byte("keychain:gcx:v2:")) {
+				t.Fatalf("expected deliberate plaintext fallback without a sentinel: %q", raw)
+			}
+			info, err := os.Stat(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := info.Mode().Perm(); got != 0o600 {
+				t.Fatalf("config permissions = %o, want 600", got)
+			}
+		})
+	}
+}
+
+func TestConfigSetPlaintextFallbackProcessHelper(_ *testing.T) {
+	if os.Getenv(configSetFallbackProcessHelper) != "1" {
+		return
+	}
+
+	agent.ResetForTesting()
+	os.Args = []string{
+		"gcx", "config", "set",
+		"--config", os.Getenv("GCX_CONFIG_SET_FALLBACK_PATH"),
+		"stacks.smoke.grafana.token", os.Getenv("GCX_CONFIG_SET_FALLBACK_TOKEN"),
+	}
+	preParseAgentFlag()
+	cmd := root.Command("test")
+	err := cmd.ExecuteContext(context.Background())
+	os.Exit(reportError(err, collectBoolFlags(cmd), collectSubCmds(cmd)))
+}
 
 func TestConfigCheckProcessExit(t *testing.T) {
 	invalidConfigPath := filepath.Join(t.TempDir(), "invalid-config.yaml")

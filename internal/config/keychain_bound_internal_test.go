@@ -1260,11 +1260,20 @@ func TestBoundKeychainWriteUnavailableRotationAbortsWithoutWarning(t *testing.T)
 
 func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T) {
 	logger := &boundTestLogger{}
+	var warnings strings.Builder
 	txn := newKeychainWriteTransaction(newBoundTestStore(), logger)
 	txn.warnUnavailableOnce = func(emit func()) { emit() }
 	txn.plaintextFallback = true
 
-	require.NoError(t, txn.commit())
+	require.NoError(t, txn.commit(&warnings))
+	assert.Equal(t, "Warning: keychain unavailable; credentials remain in plaintext on disk; install or unlock your OS keychain to enable encrypted credential storage\n", warnings.String())
+	assert.Empty(t, logger.warnings, "the request-scoped warning must not be duplicated through structured logging")
+
+	txn = newKeychainWriteTransaction(newBoundTestStore(), logger)
+	txn.warnUnavailableOnce = func(emit func()) { emit() }
+	txn.plaintextFallback = true
+
+	require.NoError(t, txn.commit(nil))
 	require.Equal(t, []string{"keychain unavailable; credentials remain in plaintext on disk"}, logger.warnings)
 
 	logger.warnings = nil
@@ -1275,7 +1284,7 @@ func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T)
 	txn.plaintextFallback = true
 	txn.deferDelete("old-account", "stack:default", credentials.FieldGrafanaToken)
 
-	require.Error(t, txn.commit())
+	require.Error(t, txn.commit(nil))
 	assert.NotContains(t, logger.warnings, "keychain unavailable; credentials remain in plaintext on disk",
 		"a failed commit must not claim plaintext fallback succeeded")
 }

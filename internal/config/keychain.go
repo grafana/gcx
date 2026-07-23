@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"net/url"
@@ -1408,7 +1409,7 @@ func (txn *keychainWriteTransaction) preflightDeletes() error {
 }
 
 //nolint:nestif // Cleanup failure recovery must restore the failed deletion and every prior deletion in reverse order.
-func (txn *keychainWriteTransaction) commit() error {
+func (txn *keychainWriteTransaction) commit(warningWriter io.Writer) error {
 	deleted := make([]keychainPendingDelete, 0, len(txn.deletes))
 	for _, pending := range txn.deletes {
 		if err := deleteKeychainAccount(txn.store, pending.account, pending.owner, pending.field, txn.log); err != nil {
@@ -1434,8 +1435,13 @@ func (txn *keychainWriteTransaction) commit() error {
 	}
 	if txn.plaintextFallback {
 		txn.warnUnavailableOnce(func() {
-			txn.log.Warn("keychain unavailable; credentials remain in plaintext on disk",
-				"hint", "install or unlock your OS keychain to enable encrypted credential storage")
+			const message = "keychain unavailable; credentials remain in plaintext on disk"
+			const hint = "install or unlock your OS keychain to enable encrypted credential storage"
+			if warningWriter != nil {
+				fmt.Fprintf(warningWriter, "Warning: %s; %s\n", message, hint)
+				return
+			}
+			txn.log.Warn(message, "hint", hint)
 		})
 	}
 	return nil

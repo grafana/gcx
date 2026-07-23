@@ -831,7 +831,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, autoMigrationOn
 		return staged, &configDurabilityError{err: fmt.Errorf("sync config directory after rename: %w", err)}
 	}
 	if keychainTxn != nil {
-		if err := keychainTxn.commit(); err != nil {
+		if err := keychainTxn.commit(warningWriterFromCtx(ctx)); err != nil {
 			var commitErr *keychainCommitError
 			if errors.As(err, &commitErr) && !commitErr.rollbackComplete {
 				// The new config is already renamed and directory-synced. At least
