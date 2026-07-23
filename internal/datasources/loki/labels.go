@@ -26,7 +26,7 @@ func (opts *lokiLabelsOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
-	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-loki-datasource is configured)")
+	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
 }
 

@@ -594,7 +594,7 @@ func TestErrorToDetailedError_SMURLNotConfigured(t *testing.T) {
 	assert.Equal(t, "SM URL not configured", got.Summary)
 	assert.Contains(t, got.Details, "SM URL not configured")
 	require.Len(t, got.Suggestions, 4)
-	assert.Contains(t, got.Suggestions[0], "gcx config set providers.synth.sm-url")
+	assert.Contains(t, got.Suggestions[0], "gcx config set stacks.<name>.providers.synth.sm-url")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_PROVIDER_SYNTH_SM_URL")
 	assert.Contains(t, got.Suggestions[2], "grafana.server")
 	assert.Contains(t, got.Suggestions[3], "gcx config view")
@@ -610,9 +610,9 @@ func TestErrorToDetailedError_SMTokenNotConfigured(t *testing.T) {
 	assert.Equal(t, "SM token not configured", got.Summary)
 	assert.Contains(t, got.Details, "SM token not configured")
 	require.Len(t, got.Suggestions, 4)
-	assert.Contains(t, got.Suggestions[0], "gcx config set providers.synth.sm-token")
+	assert.Contains(t, got.Suggestions[0], "gcx config set stacks.<name>.providers.synth.sm-token")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_PROVIDER_SYNTH_SM_TOKEN")
-	assert.Contains(t, got.Suggestions[2], "cloud.token")
+	assert.Contains(t, got.Suggestions[2], "gcx cloud login")
 	assert.Contains(t, got.Suggestions[3], "gcx config view")
 }
 
@@ -659,7 +659,7 @@ func TestErrorToDetailedError_SMTokenRegisterInstallPermissionDenied(t *testing.
 			assert.Contains(t, got.Suggestions[0], "metrics:write")
 			assert.Contains(t, got.Suggestions[0], "logs:write")
 			assert.Contains(t, got.Suggestions[0], "traces:write")
-			assert.Contains(t, got.Suggestions[1], "gcx config set providers.synth.sm-token")
+			assert.Contains(t, got.Suggestions[1], "gcx config set stacks.<name>.providers.synth.sm-token")
 		})
 	}
 }
@@ -677,26 +677,35 @@ func TestErrorToDetailedError_SMTokenRegisterInstallGeneric400FallsThrough(t *te
 }
 
 func TestErrorToDetailedError_CloudTokenNotConfigured(t *testing.T) {
-	err := errors.New("cloud token is required: set cloud.token in config or GRAFANA_CLOUD_TOKEN env var")
+	err := errors.New("context has no cloud auth: run `gcx cloud login`, or set GRAFANA_CLOUD_TOKEN")
 
 	got := fail.ErrorToDetailedError(err)
 
 	require.NotNil(t, got)
 	assert.Equal(t, "Cloud credentials not configured", got.Summary)
 	require.Len(t, got.Suggestions, 2)
-	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.token")
+	assert.Contains(t, got.Suggestions[0], "gcx cloud login")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_TOKEN")
 }
 
+func TestErrorToDetailedError_CloudEntryTokenMissing(t *testing.T) {
+	err := errors.New(`cloud entry "grafana-com" has no token: run ` + "`gcx cloud login`" + `, or set cloud.grafana-com.token or GRAFANA_CLOUD_TOKEN`)
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Cloud credentials not configured", got.Summary)
+}
+
 func TestErrorToDetailedError_CloudStackNotConfigured(t *testing.T) {
-	err := errors.New("cloud stack is not configured: set cloud.stack in config or GRAFANA_CLOUD_STACK env var")
+	err := errors.New("cloud stack is not configured: set the stack's slug (gcx config set stacks.<name>.slug <slug>) or GRAFANA_CLOUD_STACK env var")
 
 	got := fail.ErrorToDetailedError(err)
 
 	require.NotNil(t, got)
 	assert.Equal(t, "Cloud stack not configured", got.Summary)
 	require.Len(t, got.Suggestions, 2)
-	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.stack")
+	assert.Contains(t, got.Suggestions[0], "gcx config set stacks.<name>.slug")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_STACK")
 }
 
@@ -871,6 +880,14 @@ func TestErrorToDetailedError_WaitTimeoutEmittedSuppressesEnvelope(t *testing.T)
 	// nil means "already handled; suppress secondary output" — matches
 	// the convertLinterErrors(ErrTestsFailed) precedent.
 	assert.Nil(t, got, "ErrWaitTimeoutEmitted must suppress the DetailedError envelope (return nil)")
+}
+
+func TestErrorToDetailedError_AlreadyReportedSuppressesEnvelope(t *testing.T) {
+	err := fmt.Errorf("config check failed: %w", gcxerrors.ErrAlreadyReported)
+
+	got := fail.ErrorToDetailedError(err)
+
+	assert.Nil(t, got, "an already-rendered diagnostic must not produce a second error envelope")
 }
 
 func TestErrorToDetailedError_WaitTimeoutEmittedBeforeOtherConverters(t *testing.T) {

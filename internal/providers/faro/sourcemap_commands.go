@@ -130,13 +130,12 @@ type sourcemapUploadResult struct {
 }
 
 // sourcemapUploadConfigLoader is the subset of *providers.ConfigLoader the
-// apply-sourcemap command needs: Faro API URL resolution (provider config +
-// discovery + caching) and cloud credentials for the upload itself.
+// apply-sourcemap command needs: the trust-checked provider snapshot (config +
+// cloud credentials) and discovery-result caching.
 type sourcemapUploadConfigLoader interface {
 	RESTConfigLoader
-	LoadProviderConfig(ctx context.Context, providerName string) (map[string]string, string, error)
+	LoadDirectProviderSnapshot(ctx context.Context, policy providers.DirectProviderPolicy) (providers.DirectProviderSnapshot, error)
 	SaveProviderConfig(ctx context.Context, providerName, key, value string) error
-	LoadCloudConfig(ctx context.Context) (providers.CloudRESTConfig, error)
 }
 
 type applySourcemapOpts struct {
@@ -180,15 +179,24 @@ func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command
 			}
 
 			ctx := cmd.Context()
+			snapshot, err := loader.LoadDirectProviderSnapshot(ctx, providers.DirectProviderPolicy{
+				ProviderName:    "faro",
+				EndpointKeys:    []string{"faro-api-url"},
+				CredentialEnv:   "GRAFANA_CLOUD_TOKEN",
+				RejectAutoLocal: true,
+			})
+			if err != nil {
+				return err
+			}
 
 			// Resolve Faro API URL.
-			faroAPIURL, err := resolveFaroAPIURL(ctx, loader)
+			faroAPIURL, err := resolveFaroAPIURL(ctx, loader, snapshot)
 			if err != nil {
 				return err
 			}
 
 			// Load cloud config for stack ID and token.
-			cloudCfg, err := loader.LoadCloudConfig(ctx)
+			cloudCfg, err := snapshot.ResolveCloudConfig(ctx)
 			if err != nil {
 				return fmt.Errorf("cloud config required for sourcemap upload: %w", err)
 			}
@@ -318,20 +326,18 @@ func newDeleteSourcemapCommand(loader RESTConfigLoader) *cobra.Command {
 
 // resolveFaroAPIURL resolves the Faro API URL from provider config cache,
 // falling back to auto-discovery from plugin settings.
-func resolveFaroAPIURL(ctx context.Context, loader sourcemapUploadConfigLoader) (string, error) {
-	// Check provider config cache first.
-	provCfg, _, err := loader.LoadProviderConfig(ctx, "faro")
-	if err == nil && provCfg != nil && provCfg["faro-api-url"] != "" {
-		return provCfg["faro-api-url"], nil
+func resolveFaroAPIURL(ctx context.Context, loader sourcemapUploadConfigLoader, snapshot providers.DirectProviderSnapshot) (string, error) {
+	// Check the trust-checked provider config cache first.
+	if snapshot.ProviderConfig != nil && snapshot.ProviderConfig["faro-api-url"] != "" {
+		return snapshot.ProviderConfig["faro-api-url"], nil
 	}
 
 	// Fall back to discovery from plugin settings.
-	grafanaCfg, err := loader.LoadGrafanaConfig(ctx)
-	if err != nil {
-		return "", fmt.Errorf("faro: grafana config required for API URL discovery: %w", err)
+	if snapshot.GrafanaConfig == nil {
+		return "", errors.New("faro: grafana config required for API URL discovery")
 	}
 
-	apiURL, err := DiscoverFaroAPIURL(ctx, grafanaCfg)
+	apiURL, err := DiscoverFaroAPIURL(ctx, *snapshot.GrafanaConfig)
 	if err != nil {
 		return "", fmt.Errorf("faro API URL not configured and discovery failed: %w\n\nSet providers.faro.faro-api-url in config or GRAFANA_PROVIDER_FARO_FARO_API_URL env var", err)
 	}

@@ -28,7 +28,7 @@ func (opts *profileTypesOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
-	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-pyroscope-datasource is configured)")
+	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	opts.SetupTimeFlags(flags)
 }
 

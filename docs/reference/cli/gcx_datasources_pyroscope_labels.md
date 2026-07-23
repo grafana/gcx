@@ -30,7 +30,7 @@ gcx datasources pyroscope labels [flags]
 ### Options
 
 ```
-  -d, --datasource string   Datasource UID (required unless default-pyroscope-datasource is configured)
+  -d, --datasource string   Datasource UID (required unless datasources.pyroscope is configured)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for labels
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.

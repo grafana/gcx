@@ -38,11 +38,18 @@ import (
 
 // newFakeK6Loader starts an httptest server that fakes every k6 Cloud API
 // endpoint the migrated commands touch, and returns a loader whose cached
-// auth points the DirectClient at it (no token-exchange round-trip).
+// auth points the DirectClient at it. The stack-bound cache may reject the
+// seeded tuple, so the token exchange is served too.
 func newFakeK6Loader(t *testing.T) *mockLoader {
 	t.Helper()
 
 	mux := http.NewServeMux()
+
+	// token exchange
+	mux.HandleFunc("PUT /v3/account/grafana-app/start", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"organization_id":"42","v3_grafana_token":"cached-v3"}`))
+	})
 
 	// projects
 	mux.HandleFunc("POST /cloud/v6/projects", func(w http.ResponseWriter, _ *http.Request) {

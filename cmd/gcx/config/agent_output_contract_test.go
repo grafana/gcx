@@ -130,8 +130,8 @@ func TestConfigCommands_AgentModeSingleJSONDocument(t *testing.T) {
 			name: "set",
 			args: func(t *testing.T) []string {
 				t.Helper()
-				configFile := testutils.CreateTempFile(t, "current-context: dev")
-				return []string{"set", "--config", configFile, "contexts.dev.grafana.server", "https://example.test"}
+				configFile := testutils.CreateTempFile(t, "version: 1\ncurrent-context: dev")
+				return []string{"set", "--config", configFile, "stacks.dev.grafana.server", "https://example.test"}
 			},
 			assert: func(t *testing.T, doc any) {
 				t.Helper()
@@ -139,7 +139,7 @@ func TestConfigCommands_AgentModeSingleJSONDocument(t *testing.T) {
 				require.Equal(t, "gcx.config.mutation", obj["type"])
 				require.Equal(t, "1", obj["schema_version"])
 				require.Equal(t, "set", obj["action"])
-				require.Equal(t, "contexts.dev.grafana.server", obj["property"])
+				require.Equal(t, "stacks.dev.grafana.server", obj["property"])
 				require.NotEmpty(t, obj["file"])
 			},
 		},
@@ -147,19 +147,20 @@ func TestConfigCommands_AgentModeSingleJSONDocument(t *testing.T) {
 			name: "unset",
 			args: func(t *testing.T) []string {
 				t.Helper()
-				configFile := testutils.CreateTempFile(t, `current-context: dev
-contexts:
+				configFile := testutils.CreateTempFile(t, `version: 1
+current-context: dev
+stacks:
   dev:
     grafana:
       server: https://example.test`)
-				return []string{"unset", "--config", configFile, "contexts.dev.grafana.server"}
+				return []string{"unset", "--config", configFile, "stacks.dev.grafana.server"}
 			},
 			assert: func(t *testing.T, doc any) {
 				t.Helper()
 				obj := asObject(t, doc)
 				require.Equal(t, "gcx.config.mutation", obj["type"])
 				require.Equal(t, "unset", obj["action"])
-				require.Equal(t, "contexts.dev.grafana.server", obj["property"])
+				require.Equal(t, "stacks.dev.grafana.server", obj["property"])
 			},
 		},
 		{
@@ -293,8 +294,8 @@ func TestConfigCommands_HumanDefaultByteIdentical(t *testing.T) {
 			name: "set prints nothing on success",
 			args: func(t *testing.T) []string {
 				t.Helper()
-				configFile := testutils.CreateTempFile(t, "current-context: dev")
-				return []string{"set", "--config", configFile, "contexts.dev.grafana.server", "https://example.test"}
+				configFile := testutils.CreateTempFile(t, "version: 1\ncurrent-context: dev")
+				return []string{"set", "--config", configFile, "stacks.dev.grafana.server", "https://example.test"}
 			},
 			expected: func(t *testing.T) string { t.Helper(); return "" },
 		},
@@ -302,12 +303,13 @@ func TestConfigCommands_HumanDefaultByteIdentical(t *testing.T) {
 			name: "unset prints nothing on success",
 			args: func(t *testing.T) []string {
 				t.Helper()
-				configFile := testutils.CreateTempFile(t, `current-context: dev
-contexts:
+				configFile := testutils.CreateTempFile(t, `version: 1
+current-context: dev
+stacks:
   dev:
     grafana:
       server: https://example.test`)
-				return []string{"unset", "--config", configFile, "contexts.dev.grafana.server"}
+				return []string{"unset", "--config", configFile, "stacks.dev.grafana.server"}
 			},
 			expected: func(t *testing.T) string { t.Helper(); return "" },
 		},
@@ -400,13 +402,13 @@ func TestConfigCommands_ExplicitOutputOverride(t *testing.T) {
 	})
 
 	t.Run("set -o yaml", func(t *testing.T) {
-		configFile := testutils.CreateTempFile(t, "current-context: dev")
+		configFile := testutils.CreateTempFile(t, "version: 1\ncurrent-context: dev")
 		setAgentMode(t, false)
 
-		stdout, err := runConfigCommand(t, "set", "--config", configFile, "contexts.dev.grafana.server", "https://example.test", "-o", "yaml")
+		stdout, err := runConfigCommand(t, "set", "--config", configFile, "stacks.dev.grafana.server", "https://example.test", "-o", "yaml")
 		require.NoError(t, err)
 		require.Contains(t, stdout, "action: set")
-		require.Contains(t, stdout, "property: contexts.dev.grafana.server")
+		require.Contains(t, stdout, "property: stacks.dev.grafana.server")
 	})
 
 	t.Run("path -o json stays a pretty-printed array", func(t *testing.T) {
@@ -432,13 +434,14 @@ func TestConfigCommands_ExplicitOutputOverride(t *testing.T) {
 
 // TestConfigCheck_ExitCodeAgreesWithFindings pins the separable exit-code fix
 // for `config check`: a context that fails validation must produce a non-zero
-// exit. The prose report is the command's complete output, so the error is an
-// EmittedError — reportError exits with the code without appending a second
-// (error) document to the stream.
+// exit. The prose report is the command's complete output, so the failure is
+// an AlreadyReportedError — reportError exits with the code without appending
+// a second (error) document to the stream.
 func TestConfigCheck_ExitCodeAgreesWithFindings(t *testing.T) {
-	configFile := testutils.CreateTempFile(t, `current-context: dev
+	configFile := testutils.CreateTempFile(t, `version: 1
 contexts:
-  dev: {}`)
+  dev: {}
+current-context: dev`)
 
 	testutils.CommandTestCase{
 		Cmd:     config.Command(),
@@ -446,11 +449,11 @@ contexts:
 		Assertions: []testutils.CommandAssertion{
 			func(t *testing.T, result testutils.CommandResult) {
 				t.Helper()
-				var emitted *gcxerrors.EmittedError
-				require.ErrorAs(t, result.Err, &emitted)
-				require.Equal(t, gcxerrors.ExitGeneralError, emitted.Code)
+				code, reported := gcxerrors.AlreadyReportedExitCode(result.Err)
+				require.True(t, reported, "check failure must carry the already-reported sentinel, got %v", result.Err)
+				require.Equal(t, gcxerrors.ExitGeneralError, code)
 				// The prose report still carries the finding and its context.
-				require.Contains(t, result.Stdout, "grafana config is required")
+				require.Contains(t, result.Stdout, "context references no stack")
 				require.Contains(t, result.Stdout, "Connectivity:")
 			},
 		},

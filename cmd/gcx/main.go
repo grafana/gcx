@@ -113,6 +113,9 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 	if err == nil {
 		return 0
 	}
+	if exitCode, ok := gcxerrors.AlreadyReportedExitCode(err); ok {
+		return exitCode
+	}
 
 	// A command that has already written its complete result document —
 	// including its error content — signals it with EmittedError. Honor the

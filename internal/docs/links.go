@@ -12,6 +12,15 @@
 // stack-agnostic (no stack slugs, regions, or org IDs).
 package docs
 
+import "strings"
+
+// HumanURL converts a registry link to the HTML rendering of the same page,
+// for messages shown only to humans (e.g. output gated on agent mode being
+// off), where the .md rendering is the wrong surface.
+func HumanURL(link string) string {
+	return strings.TrimSuffix(link, ".md") + "/"
+}
+
 const (
 	// ServiceAccounts documents creating a Grafana service-account token,
 	// the value passed to `gcx login --token`.
@@ -75,6 +84,12 @@ const (
 
 	// IRMInvoice documents how Grafana IRM is billed per monthly active user.
 	IRMInvoice = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice.md"
+
+	// ConfigMigration documents migrating a legacy (unversioned) gcx config
+	// to the version 1 stacks/cloud/contexts format, including the manual
+	// field mapping. Referenced by the loader's automatic migration on both
+	// success and failure.
+	ConfigMigration = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/migrate-configuration.md"
 )
 
 // All returns every documentation URL in the registry. Used by the

@@ -52,16 +52,18 @@ func (f *fakeConfigLoader) LoadGrafanaConfig(context.Context) (internalconfig.Na
 	}, nil
 }
 
-func (f *fakeConfigLoader) LoadProviderConfig(context.Context, string) (map[string]string, string, error) {
-	return map[string]string{"faro-api-url": f.faroAPIURL}, "", nil
+func (f *fakeConfigLoader) LoadDirectProviderSnapshot(context.Context, providers.DirectProviderPolicy) (providers.DirectProviderSnapshot, error) {
+	return providers.DirectProviderSnapshot{
+		ProviderConfig: map[string]string{"faro-api-url": f.faroAPIURL},
+		Namespace:      "stack-1",
+		ResolveCloudConfig: func(context.Context) (providers.CloudRESTConfig, error) {
+			return providers.CloudRESTConfig{Token: "tok", Stack: cloud.StackInfo{ID: 7}}, nil
+		},
+	}, nil
 }
 
 func (f *fakeConfigLoader) SaveProviderConfig(context.Context, string, string, string) error {
 	return nil
-}
-
-func (f *fakeConfigLoader) LoadCloudConfig(context.Context) (providers.CloudRESTConfig, error) {
-	return providers.CloudRESTConfig{Token: "tok", Stack: cloud.StackInfo{ID: 7}}, nil
 }
 
 // newFaroAPIServer serves the Faro plugin-proxy endpoints (app CRUD,
