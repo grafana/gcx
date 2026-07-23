@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
@@ -19,14 +20,16 @@ import (
 )
 
 // Commands returns the overrides command group with get and update subcommands.
-func Commands() *cobra.Command {
+// The loader carries the --config flag bound on the appo11y command; every
+// subcommand loads config through it so an explicit --config is honored.
+func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "overrides",
 		Short: "Manage App Observability metrics generator overrides.",
 	}
 	cmd.AddCommand(
-		newGetCommand(),
-		newUpdateCommand(),
+		newGetCommand(loader),
+		newUpdateCommand(loader),
 	)
 	return cmd
 }
@@ -46,7 +49,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand() *cobra.Command {
+func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get",
@@ -59,7 +62,7 @@ func newGetCommand() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx)
+			crud, cfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -171,7 +174,7 @@ func (o *updateOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-func newUpdateCommand() *cobra.Command {
+func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &updateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update",
@@ -189,7 +192,7 @@ func newUpdateCommand() *cobra.Command {
 				return fmt.Errorf("failed to parse overrides file: %w", err)
 			}
 
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}

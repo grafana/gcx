@@ -75,7 +75,7 @@ func (o *labelsOpts) Validate(cmd *cobra.Command) error {
 	return nil
 }
 
-func newListLabelsCommand() *cobra.Command {
+func newListLabelsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &labelsOpts{}
 	cmd := &cobra.Command{
 		Use:   "list-labels <service> [--namespace ns]",
@@ -105,7 +105,7 @@ which is what the RED commands filter and group on. Note:
   # JSON for scripting
   gcx appo11y services list-labels checkoutservice -o json`,
 		Args: cobra.ExactArgs(1),
-		RunE: runLabels(opts),
+		RunE: runLabels(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
 			agent.AnnotationLLMHint:   `Discovery helper for 'gcx appo11y services' --filter/--group-by: lists the labels present on a service's span-metric series with each label's distinct-value count (cardinality). Use before --filter/--group-by to learn what dimensions exist. --label <name> lists that label's distinct values (the valid --filter values). Sourced from the span-metric calls series (what get/list-operations filter and group on); map uses the service-graph family whose labels may differ. Examples: gcx appo11y services list-labels <name> -o json; gcx appo11y services list-labels <name> --label k8s_cluster_name -o json`,
@@ -115,7 +115,7 @@ which is what the RED commands filter and group on. Note:
 	return cmd
 }
 
-func runLabels(opts *labelsOpts) func(*cobra.Command, []string) error {
+func runLabels(loader *providers.ConfigLoader, opts *labelsOpts) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		if err := opts.Validate(cmd); err != nil {
 			return err
@@ -138,7 +138,6 @@ func runLabels(opts *labelsOpts) func(*cobra.Command, []string) error {
 		}
 
 		ctx := cmd.Context()
-		var loader providers.ConfigLoader
 
 		cfg, err := loader.LoadGrafanaConfig(ctx)
 		if err != nil {
@@ -152,7 +151,7 @@ func runLabels(opts *labelsOpts) func(*cobra.Command, []string) error {
 			cfgCtx = fullCfg.GetCurrentContext()
 		}
 
-		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, &loader, opts.Datasource, cfgCtx, cfg, "prometheus")
+		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
 			return err
 		}

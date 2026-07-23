@@ -191,7 +191,7 @@ func TestUpdateOpts_Validate(t *testing.T) {
 }
 
 func TestCommands_Structure(t *testing.T) {
-	cmd := Commands()
+	cmd := Commands(nil)
 	assert.Equal(t, "settings", cmd.Use)
 
 	subcommands := make(map[string]bool)
