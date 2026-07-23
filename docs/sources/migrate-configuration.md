@@ -8,99 +8,125 @@ labels:
 weight: 4
 ---
 
-# Migrate your `gcx` configuration files to v1
+# Migrate your `gcx` configuration files to v1 format
 
-In the old `gcx` configuration format, every context had its own `grafana` and `cloud` section. The `v1` format splits the file into three sections: `stacks` for Grafana connections, `cloud` for Grafana Cloud credentials that multiple contexts can reference, and `contexts` that reference the `grafana` and `cloud` sections.
+In the old `gcx` configuration format (anything without a `version` field), every context had its own `grafana` and `cloud` section. The `v1` format splits the file into three sections: `stacks` for Grafana connections, `cloud` for Grafana Cloud credentials that multiple contexts can reference, and `contexts` that reference both by name.
 
-`gcx` detects config files in the legacy format and migrates a single config file automatically. If your configuration is spread across several layered files, gcx converts them in memory and asks you to migrate each file yourself, to avoid a partial migration in the event that it encounters an error in a later file. There is one exception: layered files whose entries overlap in a way the new merge rules would change are not converted at all, and every command fails with instructions to consolidate them first. This guide covers all three paths, plus how to convert a file by hand.
+`gcx` migrates a single legacy configuration file automatically the first time it loads it - most users never need this page. If `gcx` printed a warning or error that linked here, your migration paused or stopped for one of a small set of reasons. Find the message you saw in [Why migration pauses or stops](#why-migration-pauses-or-stops) and follow the steps. The [field mapping](#map-a-legacy-configuration-to-version-1) at the end covers converting a file entirely by hand.
 
-## Automatic migration
+## Nothing is deleted
 
-When `gcx` loads a legacy configuration file, it:
+Whatever state your migration is in, nothing has been lost:
 
-1. Inspects every discovered config file and checks that converting each file on its own would produce the same effective configuration as before. If it wouldn't - for example, because two layers partially overlap in a way the new merge rules would change - migration stops before touching any file, and every command that loads the configuration fails with instructions to consolidate the overlapping layers.
-1. When there is a single file to migrate, it creates a backup in the same location with a `.legacy.bak` suffix. If a backup already exists, and the contents don't match the current intended backup, the migration stops. `gcx` will not overwrite or delete a backup - you can remove it yourself once you're happy with the migrated configuration.
-1. Converts each context into a stack entry with the same name, moves cloud credentials into shared `cloud` entries, and rewrites the contexts as references to both.
-1. Checks that the converted configuration means the same as the original before replacing the file. If that check fails, the file is left untouched and `gcx` reports an error.
+- A paused or stopped migration changes **nothing**: no file, no backup, no credential store entry. `gcx` keeps working from an in-memory conversion where it safely can.
+- A completed migration replaces the file only after checking the converted result means the same as the original, and keeps the original next to it as `<file>.legacy.bak`. `gcx` never overwrites or deletes that backup.
+- Credentials in the OS credential store (Keychain on macOS, Credential Manager on Windows, Secret Service on Linux) are copied into new entries; the old entries stay, so the backup remains fully usable.
 
-{{< admonition type="caution" >}}
-If your legacy file contained plaintext credentials, they remain in `<file>.legacy.bak` even after migration moves them into the OS credential store (Keychain on macOS, Credential Manager on Windows, Secret Service on Linux). `gcx` does not delete the backup. Remove it yourself once you're sure you won't roll back.
-{{< /admonition >}}
-
-Migration also never deletes credential store entries created by an older gcx.
-Credentials are copied into new entries and the old ones stay, so restoring
-the backup keeps working.
-
-### Roll back an automatic migration
-
-To roll back, copy the backup over the configuration file:
+To roll back a completed migration, copy the backup over the configuration file:
 
 ```bash
 cp ~/.config/gcx/config.yaml.legacy.bak ~/.config/gcx/config.yaml
 ```
 
-If the configuration file isn't writable (for example, its running in a CI image), `gcx`
-migrates it in memory on every read and leaves the file alone. Read-only
-commands work with that in-memory view, but anything that writes config or
-credentials will fail until the file can be migrated or replaced. `gcx` prints a
-warning on each invocation.
+{{< admonition type="caution" >}}
+The backup is an exact copy. If your legacy file contained plaintext
+credentials, they remain in `<file>.legacy.bak` even after migration moves
+them into the OS credential store. Remove the backup yourself once you're
+sure you won't roll back.
+{{< /admonition >}}
 
-`gcx` also prints a warning when a legacy credential can't be read from the OS
-credential store at migration time. The warning ends with
-`reason: a legacy credential could not be read from the credential store`.
-This usually means the credential store was locked, an unlock prompt was
-dismissed, or `gcx` ran in a session without credential store access (SSH, CI).
-Persisting the migration then could strand references to credentials it
-couldn't re-store, so `gcx` waits. Unlock your credential store (or run from a
-desktop session) and run any `gcx` command to complete the migration.
+## Why migration pauses or stops
 
-A file that declares any version other than `1` isn't a legacy file. gcx
-rejects it before creating a backup, reading the credential store, or making
-any other change. Don't edit the version number by hand - use a gcx release that
-supports the declared version.
+Match the message you saw:
 
-### Migrate layered files
+**"layered configuration migration is incomplete"** - your configuration is
+spread across several files (system, user, or a repository `.gcx.yaml`).
+`gcx` converts them in memory so commands keep working, but never rewrites
+several files behind your back: an error partway through would leave them in
+mixed formats without you knowing. Follow
+[Migrate layered files](#migrate-layered-files).
 
-Legacy gcx merged same-named contexts from different files field by field.
-Version 1 doesn't: a stack or Cloud entry in a higher-priority file completely
-replaces a same-named entry in a lower one, so one file can't mix its server
-with another file's credentials. If a user file defines a complete context and
-a repository file overrides only part of it, you may need to consolidate them
-by hand.
+**"cannot safely auto-migrate layered legacy configuration"** or **"the
+overlapping entries require manual consolidation"** - two of your files
+define overlapping pieces of the same entry, which the v1 merge rules would
+combine differently than the legacy rules did. `gcx` refuses to convert
+rather than silently change what your configuration means. Follow
+[Consolidate overlapping layers](#consolidate-overlapping-layers).
 
-When the preflight check passes for several files, gcx uses the converted
-result in memory but doesn't rewrite anything. Migrate the files one at a time,
-using `--file` to pick the layer. Setting `version` to `1` is a convenient way
-to trigger the write - the loader has already done the conversion:
+**"running with in-memory config migration ... reason: a legacy credential
+could not be read from the credential store"** - the credential store was
+locked, an unlock prompt was dismissed, or `gcx` ran in a session without
+credential store access (SSH, CI). Persisting the migration then could strand
+references to credentials it couldn't re-store, so `gcx` waits. Unlock your
+credential store (or run from a desktop session) and run any `gcx` command;
+the migration completes on its own.
+
+**"running with in-memory config migration"** with a permission-related
+reason - the configuration file or its directory isn't writable (common in CI
+images). Read-only commands keep working from the in-memory view; anything
+that writes configuration or credentials fails until the file is writable or
+replaced with a v1 file. Either fix the permissions and run any `gcx`
+command, or bake a migrated file into the image (see the
+[field mapping](#map-a-legacy-configuration-to-version-1)).
+
+**"existing legacy config backup does not match the current source"** - a
+previous migration left a `.legacy.bak` and the file has since been rewritten
+in the legacy format (for example by an older `gcx` version). `gcx` won't
+overwrite the earlier backup. Compare the two files, keep the one you trust,
+move the backup aside, and run any `gcx` command.
+
+**"unsupported config version"** - the file isn't legacy, it's from a newer
+format this `gcx` release doesn't support. Don't edit the version number by
+hand; upgrade `gcx` instead.
+
+**"config migration self-check failed"** - `gcx` converted the file, checked
+the result against the original, and found a difference, so it left the file
+untouched. This indicates a bug: [report it](https://github.com/grafana/gcx/issues)
+with the error text, and migrate by hand in the meantime.
+
+## Migrate layered files
+
+The warning lists one command per remaining legacy file. Run them one at a
+time - each command rewrites just that file in the v1 format and leaves a
+`.legacy.bak` backup next to it:
 
 ```bash
 gcx config set --file user version 1
 gcx config set --file local version 1
 ```
 
-Before the first file changes, gcx preflights every participating layer. If
-independent conversion would change the effective configuration, the command
-stops with every source untouched. After each successful step, gcx prints the
-paths and exact `config set --file ... version 1` commands for all legacy layers
-that remain. If an interrupted sequence contains overlapping entry names, gcx
-offers those completion commands only when the already-converted files still
-match their private migration backups and the original all-legacy set passes
-the semantic-equivalence preflight. An arbitrary version 1 file combined with
-an overlapping legacy layer receives manual `gcx config edit <layer>` guidance
-instead; gcx will not suggest or allow a per-layer conversion that could replace
-a complete entry with a partial one. You can always open a remaining source
-without loading it by running the corresponding `gcx config edit <layer>`
-command.
+After each step, `gcx` re-prints the commands for whatever legacy files
+remain, and refuses any per-file conversion that could replace a complete
+entry with a partial one. When it can't offer a safe command it tells you to
+edit the file instead. To inspect any file without loading it, run
+`gcx config edit <system|user|local>`.
 
-Only use `--file system` if you own that file and have permission to update
-it. If gcx reports a conflict, either move the overlapping values into one
-file or rename the repository-specific context, then retry. Nothing changes -
-no file, backup, or credential store entry - when the preflight check rejects
-a migration.
+Only run `--file system` if you own that file and have permission to change
+it. When all files are migrated, the warning disappears; confirm with
+[Verify the result](#verify-the-result).
+
+## Consolidate overlapping layers
+
+Legacy `gcx` merged same-named contexts from different files field by field.
+Version 1 doesn't: a stack or Cloud entry in a higher-priority file completely
+replaces a same-named entry in a lower one, so one file can never mix its
+server with another file's credentials. Files that relied on partial overrides
+need consolidating once, by hand:
+
+1. The error names the entries that overlap. Open each file with
+   `gcx config edit <system|user|local>` - this never loads or migrates
+   anything.
+1. Move the overriding fields into the file that owns the complete entry, or
+   rename the overriding entry (for example, give a repository-specific
+   context its own stack name) so nothing overlaps.
+1. Run any `gcx` command. The preflight re-checks; once nothing overlaps you
+   are directed to [Migrate layered files](#migrate-layered-files).
 
 ## Map a legacy configuration to version 1
 
-Every legacy field has exactly one new home:
+To convert a file by hand: copy the original somewhere safe, move each field
+to its new home using the table, add `version: 1` at the top, and
+[verify](#verify-the-result). Every legacy field has exactly one new home:
 
 | Legacy (per context)                          | Version 1                                                     |
 | --------------------------------------------- | ------------------------------------------------------------- |
@@ -117,8 +143,6 @@ Every legacy field has exactly one new home:
 | `contexts.<name>.default-pyroscope-datasource` | `contexts.<name>.datasources.pyroscope`                       |
 | `contexts.<name>.datasources.*`               | unchanged                                                      |
 | `current-context`, `diagnostics`              | unchanged                                                      |
-
-Add `version: 1` at the top of the file to mark it as migrated.
 
 Name the `cloud` entries whatever you like - contexts refer to them by name. If several contexts used the same cloud token, point them all at one shared entry. Sharing credentials like this is the main reason for the new layout.
 
@@ -182,10 +206,10 @@ If your legacy file contains values like `keychain:gcx:prod:cloud-token`,
 they are references to secrets in the OS credential store. Let the migration
 move them rather than copying the strings yourself.
 
-gcx only resolves legacy credential references from files it can trust: your
+`gcx` only resolves legacy credential references from files it can trust: your
 standard user config file, or a file you select yourself with `--config` or
 `GCX_CONFIG`. In both cases the file must be a regular file, owned by you, and
-not writable by group or others. Symlinked home or XDG paths are fine - gcx
+not writable by group or others. Symlinked home or XDG paths are fine - `gcx`
 compares the resolved locations. A reference is also only resolved when the
 context and field named inside it match where it actually appears in the file.
 
