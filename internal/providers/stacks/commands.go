@@ -167,7 +167,17 @@ func (o *createOpts) Validate() error {
 			DocsLink: docs.CloudAPI,
 		}
 	}
-	if _, err := labelsFromFlag(o.Labels); err != nil {
+	if err := validateLabels(o.Labels); err != nil {
+		return err
+	}
+	return o.IO.Validate()
+}
+
+// validateLabels wraps a malformed --labels value in the standard usage-error
+// shape so it fails with the same class and exit code as the other flag
+// mistakes on stacks commands.
+func validateLabels(labels []string) error {
+	if _, err := labelsFromFlag(labels); err != nil {
 		return &gcxerrors.DetailedError{
 			Summary:  "Invalid command usage",
 			Details:  err.Error(),
@@ -177,7 +187,7 @@ func (o *createOpts) Validate() error {
 			},
 		}
 	}
-	return o.IO.Validate()
+	return nil
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
@@ -278,6 +288,23 @@ type updateOpts struct {
 	DryRun             bool
 }
 
+func (o *updateOpts) Validate() error {
+	if o.DeleteProtection && o.NoDeleteProtection {
+		return &gcxerrors.DetailedError{
+			Summary:  "Invalid command usage",
+			Details:  "--delete-protection and --no-delete-protection are mutually exclusive",
+			ExitCode: new(gcxerrors.ExitUsageError),
+			Suggestions: []string{
+				"Pass only one of --delete-protection or --no-delete-protection",
+			},
+		}
+	}
+	if err := validateLabels(o.Labels); err != nil {
+		return err
+	}
+	return o.IO.Validate()
+}
+
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &stackTableCodec{})
 	o.IO.DefaultFormat("table")
@@ -306,11 +333,8 @@ Use --dry-run to preview the request first.`,
 			agent.AnnotationLLMHint:       "This command modifies a live Grafana Cloud stack. Changing the name or disabling delete protection can have downstream effects. Always confirm the intended changes with the user and prefer --dry-run first.",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
-			}
-			if opts.DeleteProtection && opts.NoDeleteProtection {
-				return errors.New("--delete-protection and --no-delete-protection are mutually exclusive")
 			}
 
 			labels, err := labelsFromFlag(opts.Labels)

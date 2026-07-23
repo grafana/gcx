@@ -246,7 +246,31 @@ func TestUpdateCommand_MutualExclusion(t *testing.T) {
 	}, "")
 
 	require.Error(t, err)
-	assert.Equal(t, "--delete-protection and --no-delete-protection are mutually exclusive", err.Error())
+
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &detailed)
+	assert.Equal(t, "Invalid command usage", detailed.Summary)
+	require.NotNil(t, detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+	assert.Contains(t, detailed.Details, "--delete-protection and --no-delete-protection are mutually exclusive")
+}
+
+func TestUpdateCommand_InvalidLabels(t *testing.T) {
+	// Update's flag mistakes are the same usage-error class as create's.
+	_, err := runCmd(t, stacks.NewTestUpdateCommand(), []string{
+		"update", "mystack",
+		"--labels", "noequalssign",
+		"--dry-run", "-o", "table",
+	}, "")
+
+	require.Error(t, err)
+
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &detailed)
+	assert.Equal(t, "Invalid command usage", detailed.Summary)
+	require.NotNil(t, detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+	assert.Contains(t, detailed.Details, `invalid label "noequalssign"`)
 }
 
 func TestUpdateCommand_RequiresArg(t *testing.T) {
