@@ -138,18 +138,26 @@ func (c *settingsTableCodec) Decode(_ io.Reader, _ any) error {
 // ---------------------------------------------------------------------------
 
 type updateOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "file", "f", "", "Path to the settings file (JSON or YAML)")
+	// The update receipt is a SingleMutation document through the codec
+	// system: the human text default renders the exact success line this
+	// command has always printed; agent mode and explicit -o json/yaml get
+	// the structured document.
+	o.IO.RegisterCustomCodec("text", &updateReceiptCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func (o *updateOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--file / -f is required")
 	}
-	return nil
+	return o.IO.Validate()
 }
 
 func newUpdateCommand() *cobra.Command {
@@ -208,10 +216,36 @@ func newUpdateCommand() *cobra.Command {
 				return fmt.Errorf("failed to update settings: %w", err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated App Observability plugin settings")
-			return nil
+			return writeUpdateReceipt(cmd.OutOrStdout(), opts)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// writeUpdateReceipt writes the update result document through the codec
+// system. Split from RunE so the output contract is testable without a live
+// plugin API.
+func writeUpdateReceipt(stdout io.Writer, opts *updateOpts) error {
+	result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: Kind, Name: "default"})
+	return opts.IO.Encode(stdout, result)
+}
+
+// updateReceiptCodec is the human "text" codec for the update receipt: it
+// renders exactly the one-line confirmation this command has always printed,
+// keeping default human stdout byte-identical to the pre-codec output.
+type updateReceiptCodec struct{}
+
+func (c *updateReceiptCodec) Format() format.Format { return "text" }
+
+func (c *updateReceiptCodec) Encode(w io.Writer, v any) error {
+	if _, ok := v.(cmdio.SingleMutation); !ok {
+		return errors.New("invalid data type for update receipt codec: expected SingleMutation")
+	}
+	cmdio.Success(w, "Updated App Observability plugin settings")
+	return nil
+}
+
+func (c *updateReceiptCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
 }

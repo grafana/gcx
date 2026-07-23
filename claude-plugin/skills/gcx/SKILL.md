@@ -209,8 +209,8 @@ gcx assistant prompt "Dig into the database connection issue" --continue
 gcx assistant investigations create --title="Checkout latency spike"
 
 # Monitor and read results
-gcx assistant investigations timeline <id>
-gcx assistant investigations report <id>
+gcx assistant investigations get <id>
+gcx assistant investigations get-narrative <id>
 ```
 
 ### Recommended Workflow: Interleave Both

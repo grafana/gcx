@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -16,6 +17,8 @@ import (
 )
 
 type pyroscopeLabelsOpts struct {
+	dsquery.TimeRangeOpts
+
 	IO         cmdio.Options
 	Datasource string
 	Label      string
@@ -26,12 +29,16 @@ func (opts *pyroscopeLabelsOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
-	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-pyroscope-datasource is configured)")
+	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
+	opts.SetupTimeFlags(flags)
 }
 
 func (opts *pyroscopeLabelsOpts) Validate() error {
-	return opts.IO.Validate()
+	if err := opts.IO.Validate(); err != nil {
+		return err
+	}
+	return opts.ValidateTimeRange()
 }
 
 func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
@@ -47,6 +54,9 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	# Get values for a specific label
 	gcx datasources pyroscope labels -d UID --label service_name
+
+	# Search a wider window than the default last hour
+	gcx datasources pyroscope labels -d UID --since 24h
 
 	# Output as JSON
 	gcx datasources pyroscope labels -d UID -o json`,
@@ -72,25 +82,41 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
+			start, end, err := opts.ParseTimeRange(time.Now())
+			if err != nil {
+				return err
+			}
+
 			if opts.Label != "" {
 				resp, err := client.LabelValues(ctx, datasourceUID, pyroscope.LabelValuesRequest{
-					Name: opts.Label,
+					Name:  opts.Label,
+					Start: start,
+					End:   end,
 				})
 				if err != nil {
 					return fmt.Errorf("failed to get label values: %w", err)
 				}
 
+				if len(resp.Names) == 0 {
+					emitEmptyWindowHint(cmd.ErrOrStderr(), fmt.Sprintf("values for label %q", opts.Label), start, end, opts.IsRange())
+				}
 				if opts.IO.OutputFormat == "table" {
 					return pyroscope.FormatLabelsTable(cmd.OutOrStdout(), resp.Names)
 				}
 				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 			}
 
-			resp, err := client.LabelNames(ctx, datasourceUID, pyroscope.LabelNamesRequest{})
+			resp, err := client.LabelNames(ctx, datasourceUID, pyroscope.LabelNamesRequest{
+				Start: start,
+				End:   end,
+			})
 			if err != nil {
 				return fmt.Errorf("failed to get labels: %w", err)
 			}
 
+			if len(resp.Names) == 0 {
+				emitEmptyWindowHint(cmd.ErrOrStderr(), "labels", start, end, opts.IsRange())
+			}
 			if opts.IO.OutputFormat == "table" {
 				return pyroscope.FormatLabelsTable(cmd.OutOrStdout(), resp.Names)
 			}
@@ -100,7 +126,7 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources pyroscope labels -d UID -o json",
+		agent.AnnotationLLMHint:   "gcx datasources pyroscope labels -d UID --since 1h -o json",
 	}
 
 	opts.setup(cmd.Flags())

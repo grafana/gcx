@@ -304,11 +304,5 @@ func runValidation(cmd *cobra.Command, cfgOpts *cmdconfig.Options, resourceTypes
 	if err != nil {
 		return err
 	}
-	if encErr := io.Encode(cmd.OutOrStdout(), result); encErr != nil {
-		return encErr
-	}
-	if len(result.Uncovered) > 0 {
-		return fmt.Errorf("%d resource types not covered by catalog", len(result.Uncovered))
-	}
-	return nil
+	return emitValidationResult(cmd.OutOrStdout(), io, result)
 }

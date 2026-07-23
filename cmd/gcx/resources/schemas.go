@@ -134,7 +134,11 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			switch opts.IO.OutputFormat {
-			case "json", "yaml":
+			case "json", "yaml", "agents":
+				// Structured formats get the full nested shape including the
+				// fetched schemas. "agents" must be here: the agent-mode
+				// default previously fell into the tabular branch, silently
+				// dropping every schema the command had just fetched.
 				return opts.IO.Encode(cmd.OutOrStdout(), descriptorsToNested(res, schemas))
 			default:
 				// text/table/wide: tabular output.

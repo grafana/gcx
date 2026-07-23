@@ -191,8 +191,12 @@ Use --dry-run to preview the request first.`,
 			}
 
 			if opts.DryRun {
-				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, instancesPath, req)
-				return nil
+				// The preview is the command's result: it goes through the
+				// codec so agent mode and explicit -o json/yaml receive one
+				// structured document while the default table codec keeps the
+				// classic human rendering.
+				return opts.IO.Encode(cmd.OutOrStdout(),
+					newDryRunPreview("created", http.MethodPost, instancesPath, req))
 			}
 
 			ctx := cmd.Context()
@@ -288,8 +292,10 @@ Use --dry-run to preview the request first.`,
 			slug := args[0]
 
 			if opts.DryRun {
-				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, instancesPath+"/"+slug, req)
-				return nil
+				// See create: the preview is the result and flows through the
+				// codec system.
+				return opts.IO.Encode(cmd.OutOrStdout(),
+					newDryRunPreview("updated", http.MethodPost, instancesPath+"/"+slug, req))
 			}
 
 			ctx := cmd.Context()
@@ -315,6 +321,7 @@ Use --dry-run to preview the request first.`,
 // ---------------------------------------------------------------------------
 
 type deleteOpts struct {
+	IO     cmdio.Options
 	Force  bool
 	DryRun bool
 }
@@ -322,6 +329,13 @@ type deleteOpts struct {
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview the operation without executing it")
+	// The delete result is a SingleMutation document through the codec
+	// system: the default text codec reproduces the familiar human lines
+	// (dry-run preview or styled success line); agent mode and explicit
+	// -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &deleteTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -341,12 +355,16 @@ Use --dry-run to preview the operation first.`,
 			agent.AnnotationLLMHint:       "This command permanently deletes a Grafana Cloud stack and all its data (dashboards, alerts, datasources, metrics, logs, traces). This action is irreversible. Always confirm with the user by name before executing. Prefer --dry-run first. Never run this command without explicit user confirmation.",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
 			slug := args[0]
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "stack", Name: slug})
 
 			if opts.DryRun {
-				fmt.Fprintf(cmd.OutOrStdout(), "Dry run: DELETE %s/%s\n", instancesPath, slug)
-				fmt.Fprintf(cmd.OutOrStdout(), "\nStack %q would be permanently deleted. No changes were made.\n", slug)
-				return nil
+				result.DryRun = true
+				return opts.IO.Encode(cmd.OutOrStdout(), result)
 			}
 
 			if err := confirmStackDelete(cmd, slug, opts.Force); err != nil {
@@ -363,8 +381,9 @@ Use --dry-run to preview the operation first.`,
 				return fmt.Errorf("failed to delete stack: %w", err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Stack %q deleted successfully.", slug)
-			return nil
+			changed := true
+			result.Changed = &changed
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

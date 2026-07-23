@@ -6,6 +6,8 @@ import (
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
+	instoutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
+	"github.com/spf13/pflag"
 )
 
 // RunList exposes the internal runList function for use in external test packages.
@@ -35,40 +37,62 @@ func RunGet(
 	return runGet(ctx, outOpts, client, cluster, namespace, service, promHeaders, out)
 }
 
+// NewMutationTestIO builds a cmdio.Options wired the same way the mutation
+// commands wire theirs (text codec default, structured value for agents and
+// -o json/yaml), for tests that drive the run* functions directly. args are
+// optional flag arguments (e.g. "-o", "yaml").
+func NewMutationTestIO(tb interface {
+	Fatalf(format string, args ...any)
+}, args ...string) *cmdio.Options {
+	opts := &cmdio.Options{ErrWriter: io.Discard}
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	instoutput.BindMutationIO(opts, flags)
+	if err := flags.Parse(args); err != nil {
+		tb.Fatalf("flag parse error: %v", err)
+	}
+	if err := opts.Validate(); err != nil {
+		tb.Fatalf("options validate error: %v", err)
+	}
+	return opts
+}
+
 // RunInclude exposes the internal runInclude function for use in external test packages.
 func RunInclude(
 	ctx context.Context,
+	outOpts *cmdio.Options,
 	client *instrumentation.Client,
 	cluster, namespace, service string,
 	urls instrumentation.BackendURLs,
 	promHeaders instrumentation.PromHeaders,
 	out io.Writer,
 ) error {
-	return runInclude(ctx, client, cluster, namespace, service, urls, promHeaders, out)
+	return runInclude(ctx, outOpts, client, cluster, namespace, service, urls, promHeaders, out)
 }
 
 // RunExclude exposes the internal runExclude function for use in external test packages.
 func RunExclude(
 	ctx context.Context,
+	outOpts *cmdio.Options,
 	client *instrumentation.Client,
 	cluster, namespace, service string,
 	urls instrumentation.BackendURLs,
 	promHeaders instrumentation.PromHeaders,
 	out io.Writer,
 ) error {
-	return runExclude(ctx, client, cluster, namespace, service, urls, promHeaders, out)
+	return runExclude(ctx, outOpts, client, cluster, namespace, service, urls, promHeaders, out)
 }
 
 // RunClear exposes the internal runClear function for use in external test packages.
 func RunClear(
 	ctx context.Context,
+	outOpts *cmdio.Options,
 	client *instrumentation.Client,
 	cluster, namespace, service string,
 	urls instrumentation.BackendURLs,
 	promHeaders instrumentation.PromHeaders,
 	out io.Writer,
 ) error {
-	return runClear(ctx, client, cluster, namespace, service, urls, promHeaders, out)
+	return runClear(ctx, outOpts, client, cluster, namespace, service, urls, promHeaders, out)
 }
 
 // ApplyIncludeMutation exposes applyIncludeMutation for unit tests.

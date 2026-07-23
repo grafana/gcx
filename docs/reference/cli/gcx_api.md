@@ -46,7 +46,7 @@ gcx api PATH [flags]
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -X, --method string        HTTP method (default: GET, or POST if -d is set)
-  -o, --output string        Output format for JSON responses. One of: json, yaml (default "json")
+  -o, --output string        Output format for JSON responses. One of: agents, json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands

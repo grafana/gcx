@@ -4,6 +4,8 @@ package assistant
 //
 //nolint:gochecknoglobals // Test-only exports for black-box test package.
 var (
-	NewAssistantStreamingHTTPClient = newAssistantStreamingHTTPClient
-	RequireGrafanaCloud             = requireGrafanaCloud
+	NewAssistantStreamingHTTPClient              = newAssistantStreamingHTTPClient
+	NewAssistantStreamingHTTPClientForRESTConfig = newAssistantStreamingHTTPClientForRESTConfig
+	RequireGrafanaCloud                          = requireGrafanaCloud
+	ResolveAssistantClientOptions                = resolveAssistantClientOptions
 )

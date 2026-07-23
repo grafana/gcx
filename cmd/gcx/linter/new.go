@@ -123,9 +123,23 @@ func scaffoldCustomRule(stdout io.Writer, opts newRuleOpts, resourceType string,
 		return err
 	}
 
-	cmdio.Success(stdout, "Rule written in %s", ruleFile)
+	// The command's real output is the pair of files on disk, and its
+	// -o/--output flag is the destination directory, not a stdout format —
+	// so the terminal result goes through the shared artifact-receipt
+	// protocol: agent mode gets one JSON receipt document, humans keep the
+	// exact Success line this command has always printed.
+	receipt := cmdio.NewArtifactReceipt("scaffolded", "rego")
+	receipt.Dir = ruleDir
+	receipt.Files = append(receipt.Files,
+		cmdio.ArtifactFile{Path: ruleFile, Kind: "rule"},
+		cmdio.ArtifactFile{Path: ruleTestFile, Kind: "test"},
+	)
+	receipt.Summary = cmdio.MutationSummary{Succeeded: len(receipt.Files)}
 
-	return nil
+	return cmdio.EmitArtifactResult(stdout, receipt, func(w io.Writer) error {
+		cmdio.Success(w, "Rule written in %s", ruleFile)
+		return nil
+	})
 }
 
 const customRuleTemplate = `# METADATA

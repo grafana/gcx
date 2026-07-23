@@ -151,7 +151,8 @@ this-field-is-invalid: []`
 func TestLoad_withProviders(t *testing.T) {
 	req := require.New(t)
 
-	configYAML := `contexts:
+	configYAML := `version: 1
+stacks:
   default:
     grafana:
       server: http://localhost:3000/
@@ -162,6 +163,9 @@ func TestLoad_withProviders(t *testing.T) {
         url: https://slo.example.com
       oncall:
         token: oncall-token
+contexts:
+  default:
+    stack: default
 current-context: default
 `
 	configFile := testutils.CreateTempFile(t, configYAML)
@@ -176,9 +180,9 @@ current-context: default
 	req.Equal("https://slo.example.com", cfg.Contexts["default"].Providers["slo"]["url"])
 	req.Equal("oncall-token", cfg.Contexts["default"].Providers["oncall"]["token"])
 
-	// Round-trip: write and reload
-	tmpDir := t.TempDir()
-	roundTripFile := filepath.Join(tmpDir, "config-roundtrip.yaml")
+	// Round-trip in place. Credential-bearing entries are source-bound and
+	// ordinary Write intentionally refuses to export them to another file.
+	roundTripFile := configFile
 	err = config.Write(t.Context(), config.ExplicitConfigFile(roundTripFile), cfg)
 	req.NoError(err)
 
@@ -400,6 +404,17 @@ func TestLoadForWrite_explicitFile(t *testing.T) {
 	filename, err := src()
 	require.NoError(t, err)
 	require.Equal(t, userPath, filename)
+}
+
+func TestCanInitializeMissingSourceOnlyAcceptsInitialAbsentTarget(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "new-config.yaml")
+	cfg, _, err := config.LoadForWrite(t.Context(), path, "")
+	require.ErrorIs(t, err, os.ErrNotExist)
+	assert.True(t, config.CanInitializeMissingSource(cfg, err))
+
+	lateReadErr := &os.PathError{Op: "read", Path: path, Err: os.ErrNotExist}
+	assert.False(t, config.CanInitializeMissingSource(config.Config{}, lateReadErr),
+		"an unrelated or post-read ENOENT must not authorize constructive initialization")
 }
 
 func TestLoadForWrite_fileType_targetsNamedLayer(t *testing.T) {

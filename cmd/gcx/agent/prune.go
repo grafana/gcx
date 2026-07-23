@@ -1,15 +1,22 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
+
+// pruneOlderThan is the fixed age threshold for spill file removal.
+const pruneOlderThan = 30 * time.Minute
 
 // PruneSpillFiles deletes gcx agent spill files in dir that are older than olderThan.
 // Returns the number of files deleted.
@@ -36,8 +43,51 @@ func PruneSpillFiles(dir string, olderThan time.Duration) (int, error) {
 	return deleted, nil
 }
 
+type pruneOpts struct {
+	IO cmdio.Options
+}
+
+func (o *pruneOpts) setup(flags *pflag.FlagSet) {
+	// The prune result is a BatchMutation document through the codec system:
+	// the default text codec prints the familiar one-line summary; agent mode
+	// and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &pruneTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+func (o *pruneOpts) Validate() error {
+	return o.IO.Validate()
+}
+
+// pruneTextCodec is the human "text" codec for the prune BatchMutation: it
+// reproduces the exact lines prune has always printed, so default human
+// stdout stays byte-identical to the pre-codec output.
+type pruneTextCodec struct{}
+
+func (c *pruneTextCodec) Format() format.Format { return "text" }
+
+func (c *pruneTextCodec) Decode(io.Reader, any) error {
+	return errors.New("prune text codec does not support decoding")
+}
+
+func (c *pruneTextCodec) Encode(w io.Writer, value any) error {
+	result, ok := value.(cmdio.BatchMutation)
+	if !ok {
+		return errors.New("invalid data type for prune text codec: expected BatchMutation")
+	}
+	if result.Summary.Succeeded == 0 {
+		_, err := fmt.Fprintln(w, "no spill files found older than 30 minutes")
+		return err
+	}
+	_, err := fmt.Fprintf(w, "removed %d spill file(s)\n", result.Summary.Succeeded)
+	return err
+}
+
 func pruneCommand() *cobra.Command {
-	return &cobra.Command{
+	opts := &pruneOpts{}
+
+	cmd := &cobra.Command{
 		Use:   "prune",
 		Short: "Remove gcx agent spill files older than 30 minutes",
 		Annotations: map[string]string{
@@ -47,16 +97,25 @@ func pruneCommand() *cobra.Command {
 
 These files are created when a command response exceeds the spill threshold (default 100 KiB). Run prune periodically to keep the temp directory clean, or call it at the end of an agent session.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			n, err := PruneSpillFiles(os.TempDir(), 30*time.Minute)
-			if err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
-			if n == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "no spill files found older than 30 minutes")
-			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "removed %d spill file(s)\n", n)
+
+			n, err := PruneSpillFiles(os.TempDir(), pruneOlderThan)
+			if err != nil {
+				// Nothing has been written to stdout yet — the standard
+				// error path (single fused error document in agent mode)
+				// is the honest one.
+				return err
 			}
-			return nil
+
+			result := cmdio.NewBatchMutation("pruned")
+			result.Summary = cmdio.MutationSummary{Succeeded: n}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
+
+	opts.setup(cmd.Flags())
+
+	return cmd
 }

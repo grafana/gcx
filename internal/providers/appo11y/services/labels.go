@@ -201,9 +201,11 @@ func runLabels(opts *labelsOpts) func(*cobra.Command, []string) error {
 		}
 		if notFound {
 			if opts.Label != "" {
-				return fmt.Errorf("label %q not found on %q in the requested window", opts.Label, jobLabel(namespace, name))
+				return notFoundEmitted(cmd.ErrOrStderr(),
+					fmt.Sprintf("label %q not found on %q in the requested window", opts.Label, jobLabel(namespace, name)))
 			}
-			return fmt.Errorf("no labels found for %q in the requested window", jobLabel(namespace, name))
+			return notFoundEmitted(cmd.ErrOrStderr(),
+				fmt.Sprintf("no labels found for %q in the requested window", jobLabel(namespace, name)))
 		}
 		return nil
 	}

@@ -21,7 +21,10 @@ gcx kg entities delete [Type--Name] [flags]
       --domain string          Writable domain slug — a specific application domain such as 'irm' (required)
       --force                  Skip confirmation prompt
   -h, --help                   help for delete
+      --jq string              jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string            Entity name (or use positional Type--Name)
+  -o, --output string          Output format. One of: agents, json, text, yaml (default "text")
       --scope stringToString   Scope as key=value (repeatable or comma-separated; must match upsert-time scope) (default [])
       --type string            Entity type (or use positional Type--Name)
 ```

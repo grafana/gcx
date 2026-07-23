@@ -1,6 +1,6 @@
 ## gcx agento11y experiments update
 
-Patch an experiment's mutable fields.
+Update an experiment's mutable fields.
 
 ```
 gcx agento11y experiments update <run-id> [flags]

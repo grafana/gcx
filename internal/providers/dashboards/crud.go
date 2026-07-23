@@ -13,6 +13,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/dashboards/descriptor"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -25,6 +26,99 @@ import (
 // Defined as a local interface so commands can be tested with a stub.
 type GrafanaConfigLoader interface {
 	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
+}
+
+// DashboardMutationClient is the subset of dynamic.NamespacedClient used by
+// the mutation commands (create, update, delete). Defined as a local
+// interface so the commands can be tested with a fake client and no real
+// K8s connectivity (same seam as versions.DashboardVersionsClient).
+type DashboardMutationClient interface {
+	Create(ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.CreateOptions) (*unstructured.Unstructured, error)
+	Update(ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error)
+	Delete(ctx context.Context, desc resources.Descriptor, name string, opts metav1.DeleteOptions) error
+}
+
+// mutationDeps holds either a real config loader (production path) or a
+// pre-built client+descriptor (test path). Tests set client+desc; production
+// sets loader.
+type mutationDeps struct {
+	loader GrafanaConfigLoader
+
+	// Test overrides: if client is non-nil, client+desc are used directly
+	// and loader is never called.
+	client DashboardMutationClient
+	desc   resources.Descriptor
+}
+
+// resolve returns a client and descriptor, either from the pre-built test
+// overrides or by calling descriptor.Resolve + dynamic.NewDefaultNamespacedClient.
+func (d *mutationDeps) resolve(ctx context.Context, apiVersion string) (DashboardMutationClient, resources.Descriptor, error) {
+	if d.client != nil {
+		return d.client, d.desc, nil
+	}
+
+	cfg, err := d.loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return nil, resources.Descriptor{}, err
+	}
+
+	desc, err := descriptor.Resolve(ctx, cfg, apiVersion)
+	if err != nil {
+		return nil, resources.Descriptor{}, err
+	}
+
+	client, err := dynamic.NewDefaultNamespacedClient(cfg)
+	if err != nil {
+		return nil, resources.Descriptor{}, err
+	}
+
+	return client, desc, nil
+}
+
+// singleMutationTextCodec is the human "text" codec for SingleMutation values
+// produced by the dashboard mutation commands. It renders exactly the
+// one-line receipt these commands have always printed
+// ("✔ dashboard %q created|updated|deleted"), so default human stdout stays
+// byte-identical to the pre-codec output. Agent mode (agents codec) and
+// explicit -o json/yaml get the structured document instead.
+type singleMutationTextCodec struct{}
+
+func (c *singleMutationTextCodec) Format() format.Format { return "text" }
+
+func (c *singleMutationTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *singleMutationTextCodec) Encode(w io.Writer, value any) error {
+	result, ok := value.(cmdio.SingleMutation)
+	if !ok {
+		return errors.New("invalid data type for mutation text codec: expected SingleMutation")
+	}
+
+	cmdio.Success(w, "dashboard %q %s", result.Target.Name, result.Action)
+	return nil
+}
+
+// newDashboardMutation builds the shared SingleMutation result for a
+// dashboard mutation. obj may be nil (delete has no returned object).
+//
+// Changed is set only where the command can actually tell: a successful
+// create or delete is always a real state change, while an update PUT may
+// have written an identical manifest — the server does not report no-ops, so
+// update leaves Changed nil (omitted).
+func newDashboardMutation(action string, desc resources.Descriptor, name string, obj *unstructured.Unstructured) cmdio.SingleMutation {
+	target := cmdio.MutationTarget{Kind: desc.Kind, Name: name}
+	if obj != nil {
+		target.UID = string(obj.GetUID())
+		target.Namespace = obj.GetNamespace()
+	}
+
+	result := cmdio.NewSingleMutation(action, target)
+	if action == "created" || action == "deleted" {
+		changed := true
+		result.Changed = &changed
+	}
+	return result
 }
 
 // ---------------------------------------------------------------------------
@@ -213,11 +307,19 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type createOpts struct {
+	IO         cmdio.Options
 	APIVersion string
 	Filename   string
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
+	// The create result is a SingleMutation document through the codec
+	// system: the default text codec prints the familiar one-line receipt;
+	// agent mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+
 	flags.StringVarP(&o.Filename, "filename", "f", "", "Path to JSON/YAML manifest file ('-' reads from stdin)")
 	flags.StringVar(&o.APIVersion, "api-version", "", "API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version")
 }
@@ -226,12 +328,16 @@ func (o *createOpts) Validate() error {
 	if o.Filename == "" {
 		return errors.New("--filename / -f is required")
 	}
-	return nil
+	return o.IO.Validate()
 }
 
 // newCreateCommand returns the `dashboards create` subcommand.
 // It reads a JSON or YAML manifest from a file (-f) or stdin.
 func newCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
+	return newCreateCommandWithDeps(&mutationDeps{loader: loader})
+}
+
+func newCreateCommandWithDeps(deps *mutationDeps) *cobra.Command {
 	opts := &createOpts{}
 
 	cmd := &cobra.Command{
@@ -243,7 +349,7 @@ func newCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			cfg, err := loader.LoadGrafanaConfig(ctx)
+			client, desc, err := deps.resolve(ctx, opts.APIVersion)
 			if err != nil {
 				return err
 			}
@@ -253,23 +359,13 @@ func newCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			desc, err := descriptor.Resolve(ctx, cfg, opts.APIVersion)
-			if err != nil {
-				return err
-			}
-
-			client, err := dynamic.NewDefaultNamespacedClient(cfg)
-			if err != nil {
-				return err
-			}
-
 			created, err := client.Create(ctx, desc, obj, metav1.CreateOptions{})
 			if err != nil {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "dashboard %q created", created.GetName())
-			return nil
+			result := newDashboardMutation("created", desc, created.GetName(), created)
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -284,11 +380,19 @@ func newCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type updateOpts struct {
+	IO         cmdio.Options
 	APIVersion string
 	Filename   string
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
+	// The update result is a SingleMutation document through the codec
+	// system: the default text codec prints the familiar one-line receipt;
+	// agent mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+
 	flags.StringVarP(&o.Filename, "filename", "f", "", "Path to JSON/YAML manifest file ('-' reads from stdin)")
 	flags.StringVar(&o.APIVersion, "api-version", "", "API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version")
 }
@@ -297,11 +401,15 @@ func (o *updateOpts) Validate() error {
 	if o.Filename == "" {
 		return errors.New("--filename / -f is required")
 	}
-	return nil
+	return o.IO.Validate()
 }
 
 // newUpdateCommand returns the `dashboards update <name>` subcommand.
 func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
+	return newUpdateCommandWithDeps(&mutationDeps{loader: loader})
+}
+
+func newUpdateCommandWithDeps(deps *mutationDeps) *cobra.Command {
 	opts := &updateOpts{}
 
 	cmd := &cobra.Command{
@@ -326,7 +434,7 @@ Recommended workflow:
 			}
 
 			ctx := cmd.Context()
-			cfg, err := loader.LoadGrafanaConfig(ctx)
+			client, desc, err := deps.resolve(ctx, opts.APIVersion)
 			if err != nil {
 				return err
 			}
@@ -339,23 +447,13 @@ Recommended workflow:
 			// Ensure the name in the manifest matches the CLI argument.
 			obj.SetName(args[0])
 
-			desc, err := descriptor.Resolve(ctx, cfg, opts.APIVersion)
-			if err != nil {
-				return err
-			}
-
-			client, err := dynamic.NewDefaultNamespacedClient(cfg)
-			if err != nil {
-				return err
-			}
-
 			updated, err := client.Update(ctx, desc, obj, metav1.UpdateOptions{})
 			if err != nil {
 				return wrapUpdateError(args[0], err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "dashboard %q updated", updated.GetName())
-			return nil
+			result := newDashboardMutation("updated", desc, updated.GetName(), updated)
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -370,22 +468,34 @@ Recommended workflow:
 // ---------------------------------------------------------------------------
 
 type deleteOpts struct {
+	IO         cmdio.Options
 	APIVersion string
 	Force      bool
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
+	// The delete result is a SingleMutation document through the codec
+	// system: the default text codec prints the familiar one-line receipt;
+	// agent mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 	flags.StringVar(&o.APIVersion, "api-version", "", "API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version")
 }
 
 func (o *deleteOpts) Validate() error {
-	return nil
+	return o.IO.Validate()
 }
 
 // newDeleteCommand returns the `dashboards delete <name>` subcommand.
-// It prompts for confirmation unless --yes / -y is passed.
+// It prompts for confirmation unless --force is passed.
 func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
+	return newDeleteCommandWithDeps(&mutationDeps{loader: loader})
+}
+
+func newDeleteCommandWithDeps(deps *mutationDeps) *cobra.Command {
 	opts := &deleteOpts{}
 
 	cmd := &cobra.Command{
@@ -400,7 +510,10 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			name := args[0]
 
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			// The prompt and the "Aborted." note are interaction
+			// diagnostics, not the result — stderr keeps them out of the
+			// stdout document (Constitution: stdout is the result).
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete dashboard %q?", name))
 			if err != nil {
 				return err
@@ -410,17 +523,7 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			cfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			desc, err := descriptor.Resolve(ctx, cfg, opts.APIVersion)
-			if err != nil {
-				return err
-			}
-
-			client, err := dynamic.NewDefaultNamespacedClient(cfg)
+			client, desc, err := deps.resolve(ctx, opts.APIVersion)
 			if err != nil {
 				return err
 			}
@@ -429,8 +532,8 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "dashboard %q deleted", name)
-			return nil
+			result := newDashboardMutation("deleted", desc, name, nil)
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 

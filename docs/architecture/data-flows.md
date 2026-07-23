@@ -628,9 +628,9 @@ Command: `gcx dev serve [DIR]...` (the serve command moved from `resources serve
 Startup sequence:
   ┌──────────────────────────────────────────────────────────┐
   │ 1. Build reverse proxy                                    │
-  │    httputil.ReverseProxy targeting Grafana server URL    │
-  │    Transport: httputils.NewTransport (handles TLS/auth)  │
-  │    Rewrite: injects auth headers, removes Origin         │
+  │    httputil.ReverseProxy targeting selected REST Host    │
+  │    Transport: rest.TransportFor (selected TLS/auth)      │
+  │    Rewrite: drops browser auth and Origin headers        │
   └──────────────────┬───────────────────────────────────────┘
                      │
   ┌──────────────────▼───────────────────────────────────────┐
@@ -690,6 +690,11 @@ Startup sequence:
   │    Browser receives message and navigates to new path    │
   └──────────────────────────────────────────────────────────┘
 ```
+
+The local proxy accepts token, Basic, and mTLS contexts. It rejects OAuth
+before startup because the server currently receives a resolved context rather
+than a source-aware persistence handle; refreshing a rotating token without
+durably updating its owning config could lock the user out.
 
 ### Dashboard Interception (DashboardProxy)
 
