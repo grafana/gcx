@@ -1394,7 +1394,7 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 		if strings.Contains(msg, "failed to delete stack") {
 			return &gcxerrors.DetailedError{
 				Summary: "Stack has delete protection enabled",
-				Details: msg,
+				Details: gcomErrorDetails(httpErr, msg),
 				Parent:  err,
 				Suggestions: []string{
 					"Disable delete protection first: gcx cloud stacks update <slug> --no-delete-protection",
@@ -1402,14 +1402,45 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 				},
 			}, true
 		}
-		return &gcxerrors.DetailedError{
-			Summary: "Stack slug already taken",
-			Details: msg,
-			Parent:  err,
-			Suggestions: []string{
+		if strings.Contains(msg, "failed to create stack") && httpErr.Code == "InvalidArgument" {
+			suggestions := []string{
+				"Check the values passed to --name, --slug, and --region, then preview with --dry-run",
+			}
+			if strings.Contains(strings.ToLower(httpErr.Message), "slug") {
+				suggestions = []string{
+					"Stack slugs may only contain lowercase letters (a-z) and digits (0-9); the slug becomes <slug>.grafana.net",
+					"Retry with a lowercase alphanumeric slug, e.g. --slug mygcxeval",
+				}
+			}
+			return &gcxerrors.DetailedError{
+				Summary:     "Invalid stack request",
+				Details:     gcomErrorDetails(httpErr, msg),
+				Parent:      err,
+				ExitCode:    new(gcxerrors.ExitUsageError),
+				Suggestions: suggestions,
+				DocsLink:    docs.CloudAPI,
+			}, true
+		}
+		// GCOM's 409 on this API is an error class, not a duplicate-slug
+		// discriminator (the spec's ErrorConflict example message is the
+		// generic invalid-arguments text), so no branch may claim the slug
+		// is taken. A duplicate-looking message only selects suggestions.
+		suggestions := []string{
+			"List existing stacks: gcx cloud stacks list --org <org-slug>",
+		}
+		if m := strings.ToLower(httpErr.Message); strings.Contains(m, "taken") ||
+			strings.Contains(m, "already") || strings.Contains(m, "not available") {
+			suggestions = []string{
 				"Choose a different slug with --slug",
 				"List existing stacks: gcx cloud stacks list --org <org-slug>",
-			},
+			}
+		}
+		return &gcxerrors.DetailedError{
+			Summary:     "Resource conflict",
+			Details:     gcomErrorDetails(httpErr, msg),
+			Parent:      err,
+			Suggestions: suggestions,
+			DocsLink:    docs.CloudAPI,
 		}, true
 	case http.StatusForbidden:
 		return &gcxerrors.DetailedError{
@@ -1438,6 +1469,15 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+// gcomErrorDetails leads with GCOM's parsed error message (when the response
+// body carried one) so the real cause reads before the raw wrapped error text.
+func gcomErrorDetails(httpErr *cloud.GCOMHTTPError, msg string) string {
+	if httpErr.Message == "" {
+		return msg
+	}
+	return httpErr.Message + "\n\n" + msg
 }
 
 func convertPartialFailureErrors(err error) (*gcxerrors.DetailedError, bool) {

@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/cloud"
+	"github.com/grafana/gcx/internal/docs"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/stacks"
 	"github.com/grafana/gcx/internal/testutils"
@@ -87,6 +89,73 @@ func TestCreateCommand_NameAndSlugRequired(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestCreateCommand_SlugValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		slug        string
+		nameFlag    string
+		wantDetails string
+	}{
+		{"hyphen (issue #950 repro)", "my-gcx-eval", "t", "lowercase"},
+		{"uppercase with hyphen", "My-Slug", "t", "lowercase"},
+		{"underscore", "my_slug", "t", "lowercase"},
+		{"dot", "my.slug", "t", "lowercase"},
+		{"space", "my slug", "t", "lowercase"},
+		{"all uppercase", "MYSLUG", "t", "lowercase"},
+		{"explicit empty slug hits required check", "", "t", "--name and --slug are required"},
+		{"explicit empty name hits required check", "myslug", "", "--name and --slug are required"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
+				"create", "--name", tt.nameFlag, "--slug", tt.slug,
+			}, "")
+			require.Error(t, err)
+
+			var detailed *gcxerrors.DetailedError
+			require.ErrorAs(t, err, &detailed)
+			assert.Equal(t, "Invalid command usage", detailed.Summary)
+			require.NotNil(t, detailed.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+			assert.Contains(t, detailed.Details, tt.wantDetails)
+			if tt.wantDetails == "lowercase" {
+				assert.Equal(t, docs.CloudAPI, detailed.DocsLink)
+				require.NotEmpty(t, detailed.Suggestions)
+				assert.Contains(t, detailed.Suggestions[0], "--slug mygcxeval")
+			}
+		})
+	}
+}
+
+func TestCreateCommand_SlugValidation_ValidSlugsPass(t *testing.T) {
+	// Valid slugs must clear validation; --dry-run keeps the command offline
+	// (no config loader, no API call).
+	for _, slug := range []string{"mygcxeval1", "123abc"} {
+		t.Run(slug, func(t *testing.T) {
+			out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
+				"create", "--name", "My Stack", "--slug", slug, "--dry-run", "-o", "table",
+			}, "")
+			require.NoError(t, err)
+			assert.Contains(t, out, "Dry run:")
+		})
+	}
+}
+
+func TestCreateCommand_DryRun_InvalidSlugRejected(t *testing.T) {
+	// Validation must run before the dry-run branch: an invalid slug fails
+	// and no preview is rendered (issue #950 item 3).
+	out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
+		"create", "--name", "t", "--slug", "my-gcx-eval", "--dry-run", "-o", "table",
+	}, "")
+	require.Error(t, err)
+	assert.NotContains(t, out, "Dry run:")
+
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &detailed)
+	assert.Equal(t, "Invalid command usage", detailed.Summary)
 }
 
 // ---------------------------------------------------------------------------
