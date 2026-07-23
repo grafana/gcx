@@ -41,7 +41,11 @@ func DefaultGCOMScopes() []string {
 type GCOMResult struct {
 	AccessToken string
 	Scope       string
-	Info        struct {
+	// ExpiresAt is the access token expiration time in RFC3339 format,
+	// derived from the token response's expires_in. Empty when the server
+	// does not report a lifetime.
+	ExpiresAt string
+	Info      struct {
 		Email string `json:"email"`
 		Login string `json:"login"`
 	}
@@ -188,6 +192,7 @@ func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Lis
 type gcomTokenResponse struct {
 	AccessToken string `json:"access_token"`
 	Scope       string `json:"scope"`
+	ExpiresIn   int64  `json:"expires_in"`
 	Info        struct {
 		Email string `json:"email"`
 		Login string `json:"login"`
@@ -254,9 +259,13 @@ func (f *GCOMFlow) exchangeGCOMToken(ctx context.Context, code, codeVerifier, re
 		return nil, errors.New("token response missing access_token")
 	}
 
-	return &GCOMResult{
+	result := &GCOMResult{
 		AccessToken: tokenResp.AccessToken,
 		Scope:       tokenResp.Scope,
 		Info:        tokenResp.Info,
-	}, nil
+	}
+	if tokenResp.ExpiresIn > 0 {
+		result.ExpiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second).UTC().Format(time.RFC3339)
+	}
+	return result, nil
 }

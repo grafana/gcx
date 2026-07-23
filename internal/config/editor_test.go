@@ -23,12 +23,12 @@ func Test_SetValue(t *testing.T) {
 			expectedOutput: config.Config{CurrentContext: "ctx-name"},
 		},
 		{
-			name:  "string in new context",
+			name:  "string in new stack",
 			input: config.Config{},
-			path:  "contexts.new.grafana.server",
+			path:  "stacks.new.grafana.server",
 			value: "url",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"new": {
 						Grafana: &config.GrafanaConfig{Server: "url"},
 					},
@@ -36,18 +36,18 @@ func Test_SetValue(t *testing.T) {
 			},
 		},
 		{
-			name: "string in existing context",
+			name: "string in existing stack",
 			input: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"existing": {
 						Grafana: &config.GrafanaConfig{Server: "url"},
 					},
 				},
 			},
-			path:  "contexts.existing.grafana.server",
+			path:  "stacks.existing.grafana.server",
 			value: "new-url",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"existing": {
 						Grafana: &config.GrafanaConfig{Server: "new-url"},
 					},
@@ -55,12 +55,12 @@ func Test_SetValue(t *testing.T) {
 			},
 		},
 		{
-			name:  "boolean in new context",
+			name:  "boolean in new stack",
 			input: config.Config{},
-			path:  "contexts.new.grafana.tls.insecure-skip-verify",
+			path:  "stacks.new.grafana.tls.insecure-skip-verify",
 			value: "true",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"new": {
 						Grafana: &config.GrafanaConfig{TLS: &config.TLS{Insecure: true}},
 					},
@@ -68,12 +68,12 @@ func Test_SetValue(t *testing.T) {
 			},
 		},
 		{
-			name:  "bytes in new context",
+			name:  "bytes in new stack",
 			input: config.Config{},
-			path:  "contexts.new.grafana.tls.cert-data",
+			path:  "stacks.new.grafana.tls.cert-data",
 			value: "foo bar baz",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"new": {
 						Grafana: &config.GrafanaConfig{TLS: &config.TLS{CertData: []byte("foo bar baz")}},
 					},
@@ -81,12 +81,12 @@ func Test_SetValue(t *testing.T) {
 			},
 		},
 		{
-			name:  "int64 in new context",
+			name:  "int64 in new stack",
 			input: config.Config{},
-			path:  "contexts.new.grafana.org-id",
+			path:  "stacks.new.grafana.org-id",
 			value: "1",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"new": {
 						Grafana: &config.GrafanaConfig{OrgID: 1},
 					},
@@ -94,12 +94,12 @@ func Test_SetValue(t *testing.T) {
 			},
 		},
 		{
-			name:  "provider key in new context",
+			name:  "provider key in new stack",
 			input: config.Config{},
-			path:  "contexts.default.providers.slo.token",
+			path:  "stacks.default.providers.slo.token",
 			value: "my-token",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": {"token": "my-token"},
@@ -111,7 +111,7 @@ func Test_SetValue(t *testing.T) {
 		{
 			name: "provider key with existing provider",
 			input: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": {"token": "old-token"},
@@ -119,10 +119,10 @@ func Test_SetValue(t *testing.T) {
 					},
 				},
 			},
-			path:  "contexts.default.providers.slo.url",
+			path:  "stacks.default.providers.slo.url",
 			value: "https://slo.example.com",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": {"token": "old-token", "url": "https://slo.example.com"},
@@ -134,7 +134,7 @@ func Test_SetValue(t *testing.T) {
 		{
 			name: "provider key with null provider map",
 			input: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": nil,
@@ -142,10 +142,10 @@ func Test_SetValue(t *testing.T) {
 					},
 				},
 			},
-			path:  "contexts.default.providers.slo.token",
+			path:  "stacks.default.providers.slo.token",
 			value: "my-token",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": {"token": "my-token"},
@@ -155,48 +155,53 @@ func Test_SetValue(t *testing.T) {
 			},
 		},
 		{
-			name:  "cloud token in new context",
+			name:  "token in new cloud entry",
 			input: config.Config{},
-			path:  "contexts.dev.cloud.token",
+			path:  "cloud.dev.token",
 			value: "my-token",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
-					"dev": {
-						Cloud: &config.CloudConfig{Token: "my-token"},
-					},
+				Cloud: map[string]*config.CloudEntry{
+					"dev": {Token: "my-token"},
 				},
 			},
 		},
 		{
-			name:  "cloud stack in new context",
+			name:  "slug in new stack",
 			input: config.Config{},
-			path:  "contexts.dev.cloud.stack",
+			path:  "stacks.dev.slug",
 			value: "mystack",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
-					"dev": {
-						Cloud: &config.CloudConfig{Stack: "mystack"},
-					},
+				Stacks: map[string]*config.StackConfig{
+					"dev": {Slug: "mystack"},
 				},
 			},
 		},
 		{
-			name:  "cloud api-url in new context",
+			name:  "stack ref in new context",
 			input: config.Config{},
-			path:  "contexts.dev.cloud.api-url",
-			value: "grafana-dev.com",
+			path:  "contexts.dev.stack",
+			value: "dev",
 			expectedOutput: config.Config{
 				Contexts: map[string]*config.Context{
-					"dev": {
-						Cloud: &config.CloudConfig{APIUrl: "grafana-dev.com"},
-					},
+					"dev": {Stack: "dev"},
+				},
+			},
+		},
+		{
+			name:  "api-url in new cloud entry",
+			input: config.Config{},
+			path:  "cloud.dev.api-url",
+			value: "grafana-dev.com",
+			expectedOutput: config.Config{
+				Cloud: map[string]*config.CloudEntry{
+					"dev": {APIUrl: "grafana-dev.com"},
 				},
 			},
 		},
 		{
 			name: "provider key creates new provider alongside existing",
 			input: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": {"token": "slo-token"},
@@ -204,10 +209,10 @@ func Test_SetValue(t *testing.T) {
 					},
 				},
 			},
-			path:  "contexts.default.providers.oncall.token",
+			path:  "stacks.default.providers.oncall.token",
 			value: "oncall-token",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo":    {"token": "slo-token"},
@@ -255,7 +260,7 @@ func Test_UnsetValue(t *testing.T) {
 		{
 			name: "map entry",
 			input: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"dev": {
 						Grafana: &config.GrafanaConfig{Server: "dev-url"},
 					},
@@ -264,9 +269,9 @@ func Test_UnsetValue(t *testing.T) {
 					},
 				},
 			},
-			path: "contexts.prod",
+			path: "stacks.prod",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"dev": {
 						Grafana: &config.GrafanaConfig{Server: "dev-url"},
 					},
@@ -274,17 +279,17 @@ func Test_UnsetValue(t *testing.T) {
 			},
 		},
 		{
-			name: "string in context",
+			name: "string in stack",
 			input: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"existing": {
 						Grafana: &config.GrafanaConfig{Server: "url", User: "user"},
 					},
 				},
 			},
-			path: "contexts.existing.grafana.user",
+			path: "stacks.existing.grafana.user",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"existing": {
 						Grafana: &config.GrafanaConfig{Server: "url"},
 					},
@@ -292,17 +297,17 @@ func Test_UnsetValue(t *testing.T) {
 			},
 		},
 		{
-			name: "boolean in new context",
+			name: "boolean in stack",
 			input: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"existing": {
 						Grafana: &config.GrafanaConfig{TLS: &config.TLS{Insecure: true}},
 					},
 				},
 			},
-			path: "contexts.existing.grafana.tls.insecure-skip-verify",
+			path: "stacks.existing.grafana.tls.insecure-skip-verify",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"existing": {
 						Grafana: &config.GrafanaConfig{TLS: &config.TLS{Insecure: false}},
 					},
@@ -312,7 +317,7 @@ func Test_UnsetValue(t *testing.T) {
 		{
 			name: "unset provider key",
 			input: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": {"token": "slo-token", "url": "https://slo.example.com"},
@@ -320,9 +325,9 @@ func Test_UnsetValue(t *testing.T) {
 					},
 				},
 			},
-			path: "contexts.default.providers.slo.url",
+			path: "stacks.default.providers.slo.url",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": {"token": "slo-token"},
@@ -334,7 +339,7 @@ func Test_UnsetValue(t *testing.T) {
 		{
 			name: "unset entire provider",
 			input: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo":    {"token": "slo-token"},
@@ -343,9 +348,9 @@ func Test_UnsetValue(t *testing.T) {
 					},
 				},
 			},
-			path: "contexts.default.providers.slo",
+			path: "stacks.default.providers.slo",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"oncall": {"token": "oncall-token"},
@@ -357,7 +362,7 @@ func Test_UnsetValue(t *testing.T) {
 		{
 			name: "unset provider key with null provider map is no-op",
 			input: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": nil,
@@ -365,9 +370,9 @@ func Test_UnsetValue(t *testing.T) {
 					},
 				},
 			},
-			path: "contexts.default.providers.slo.token",
+			path: "stacks.default.providers.slo.token",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": nil,
@@ -379,7 +384,7 @@ func Test_UnsetValue(t *testing.T) {
 		{
 			name: "unset non-existent nested provider key is no-op",
 			input: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": {"token": "slo-token"},
@@ -387,9 +392,9 @@ func Test_UnsetValue(t *testing.T) {
 					},
 				},
 			},
-			path: "contexts.default.providers.oncall.token",
+			path: "stacks.default.providers.oncall.token",
 			expectedOutput: config.Config{
-				Contexts: map[string]*config.Context{
+				Stacks: map[string]*config.StackConfig{
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": {"token": "slo-token"},

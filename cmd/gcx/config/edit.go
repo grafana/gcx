@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	internalConfig "github.com/grafana/gcx/internal/config"
-	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -28,71 +27,92 @@ If only one config file exists, it is opened directly.`,
 		Args:      cobra.MaximumNArgs(1),
 		ValidArgs: []string{"system", "user", "local"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := configOpts.loadConfigTolerantLayered(cmd.Context())
+			target, err := resolveRawEditTarget(configOpts.ConfigFile, args, create)
 			if err != nil {
-				// If config is unparseable (invalid YAML / unknown fields), fall back
-				// to opening the broken file directly so the user can fix it.
-				var unmarshalErr internalConfig.UnmarshalError
-				if !errors.As(err, &unmarshalErr) {
-					return err
-				}
-
-				fallbackPath, fbErr := editFallbackPath(unmarshalErr, args)
-				if fbErr != nil {
-					return fbErr
-				}
-
-				cmdio.Warning(cmd.OutOrStdout(),
-					"Configuration in %s could not be parsed; opening in editor so you can fix it.", fallbackPath)
-				return openInEditor(cmd.Context(), fallbackPath)
+				return err
 			}
-
-			sources := cfg.Sources
-			var target internalConfig.ConfigSource
-
-			switch {
-			case len(args) == 1:
-				typ := args[0]
-				if create {
-					// Create config file if missing.
-					path, createErr := createConfigForType(typ)
-					if createErr != nil {
-						return createErr
-					}
-					target = internalConfig.ConfigSource{Path: path, Type: typ}
-				} else {
-					found := false
-					for _, s := range sources {
-						if s.Type == typ {
-							target = s
-							found = true
-							break
-						}
-					}
-					if !found {
-						return fmt.Errorf("no %s config file found (use --create to create one)", typ)
-					}
-				}
-			case len(sources) == 1:
-				target = sources[0]
-			case len(sources) == 0:
-				return errors.New("no config files found; use 'gcx config edit user --create' to create one")
-			default:
-				var b strings.Builder
-				b.WriteString("multiple config files loaded; specify which to edit:\n")
-				for _, s := range sources {
-					fmt.Fprintf(&b, "  gcx config edit %s\n", s.Type)
-				}
-				return errors.New(b.String())
-			}
-
-			return openInEditor(cmd.Context(), target.Path)
+			return openInEditor(cmd.Context(), target)
 		},
 	}
 
 	cmd.Flags().BoolVar(&create, "create", false, "Create the config file if it doesn't exist")
 
 	return cmd
+}
+
+// resolveRawEditTarget selects the config document to edit without decoding it.
+// Editing is the recovery path for malformed YAML, unsupported future versions,
+// and semantic errors that prevent the ordinary loader from returning a Config.
+// It must therefore depend only on explicit selection and filesystem discovery.
+func resolveRawEditTarget(explicitFile string, args []string, create bool) (string, error) {
+	if explicitFile != "" {
+		if len(args) != 0 {
+			return "", errors.New("cannot combine --config with a config layer; remove the layer argument to edit the explicit file")
+		}
+		if err := ensureEditableConfigExists(explicitFile); err != nil {
+			return "", err
+		}
+		return explicitFile, nil
+	}
+
+	if len(args) == 1 {
+		typ := args[0]
+		if create {
+			return createConfigForType(typ)
+		}
+		// A named layer is an explicit repair choice and therefore wins over
+		// GCX_CONFIG. This lets users repair a discovered document even while
+		// their shell normally selects a separate explicit config.
+		sources, err := internalConfig.DiscoverSources()
+		if err != nil {
+			return "", err
+		}
+		for _, source := range sources {
+			if source.Type == typ {
+				return source.Path, nil
+			}
+		}
+		return "", fmt.Errorf("no %s config file found (use --create to create one)", typ)
+	}
+
+	// With no named layer, GCX_CONFIG is the same explicit-file bypass used by
+	// the ordinary loader. Do not fall through to discovery and accidentally
+	// open a different document.
+	if envFile := os.Getenv(internalConfig.ConfigFileEnvVar); envFile != "" {
+		if err := ensureEditableConfigExists(envFile); err != nil {
+			return "", err
+		}
+		return envFile, nil
+	}
+
+	sources, err := internalConfig.DiscoverSources()
+	if err != nil {
+		return "", err
+	}
+	switch len(sources) {
+	case 0:
+		return "", errors.New("no config files found; use 'gcx config edit user --create' to create one")
+	case 1:
+		return sources[0].Path, nil
+	default:
+		var b strings.Builder
+		b.WriteString("multiple config files loaded; specify which to edit:\n")
+		for _, source := range sources {
+			fmt.Fprintf(&b, "  gcx config edit %s\n", source.Type)
+		}
+		return "", errors.New(b.String())
+	}
+}
+
+func ensureEditableConfigExists(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("cannot edit config %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("cannot edit config %s: not a regular file", path)
+	}
+	return nil
 }
 
 func createConfigForType(typ string) (string, error) {
@@ -102,10 +122,8 @@ func createConfigForType(typ string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if _, err := os.Stat(localPath); os.IsNotExist(err) {
-			if err := os.WriteFile(localPath, []byte(internalConfig.DefaultEmptyConfigFile), 0o600); err != nil {
-				return "", fmt.Errorf("failed to create %s: %w", localPath, err)
-			}
+		if err := internalConfig.CreateDefaultConfigFile(localPath); err != nil {
+			return "", fmt.Errorf("failed to create %s: %w", localPath, err)
 		}
 		return localPath, nil
 	case "user":
@@ -119,30 +137,6 @@ func createConfigForType(typ string) (string, error) {
 	default:
 		return "", fmt.Errorf("cannot create %s config file; only 'local' and 'user' are supported with --create", typ)
 	}
-}
-
-// editFallbackPath determines which file to open when the config cannot be parsed.
-// If the user asked for a specific type, DiscoverSources finds it without parsing.
-// Otherwise the file reported in the UnmarshalError is used.
-func editFallbackPath(unmarshalErr internalConfig.UnmarshalError, args []string) (string, error) {
-	if len(args) == 1 {
-		sources, err := internalConfig.DiscoverSources()
-		if err != nil {
-			return "", err
-		}
-		for _, s := range sources {
-			if s.Type == args[0] {
-				return s.Path, nil
-			}
-		}
-		return "", fmt.Errorf("no %s config file found", args[0])
-	}
-
-	if unmarshalErr.File != "" {
-		return unmarshalErr.File, nil
-	}
-
-	return "", fmt.Errorf("could not determine which config file to edit: %w", unmarshalErr)
 }
 
 func openInEditor(ctx context.Context, path string) error {

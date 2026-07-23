@@ -25,6 +25,10 @@ cards:
       description: Configure `gcx` with the configuration file or using environment variables.
       href: configuration/
       height: 24
+    - title: Migrate your configuration
+      description: Move a legacy `gcx` configuration to the version 1 format.
+      href: migrate-configuration/
+      height: 24
   title_class: pt-0 lh-1
 hero:
   title: gcx CLI

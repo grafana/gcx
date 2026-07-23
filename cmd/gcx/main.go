@@ -107,6 +107,9 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 	if err == nil {
 		return 0
 	}
+	if exitCode, ok := gcxerrors.AlreadyReportedExitCode(err); ok {
+		return exitCode
+	}
 
 	detailedErr := fail.ErrorToDetailedError(err)
 	if detailedErr == nil {

@@ -9,13 +9,11 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant"
 	"github.com/grafana/gcx/internal/assistant/investigations"
-	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -24,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	mcpserverscmd "github.com/grafana/gcx/internal/providers/assistant/mcpservers"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/rest"
 )
 
 func requireGrafanaCloud(ctx *config.Context) error {
@@ -416,7 +415,10 @@ func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts 
 // ClientOptions for assistant prompt, including an HTTP client whose Timeout
 // matches streamTimeoutSeconds (see --timeout and SSE body reads).
 func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.ConfigLoader, streamTimeoutSeconds int, agentID string) (assistant.ClientOptions, error) {
-	cfg, err := configOpts.LoadConfig(ctx)
+	// Select the effective auth method before full context validation so an
+	// explicitly selected Basic or mTLS mode fails as unsupported without a
+	// namespace-discovery request. Supported bearer modes are validated below.
+	cfg, err := configOpts.LoadConfigTolerant(ctx)
 	if err != nil {
 		return assistant.ClientOptions{}, err
 	}
@@ -430,24 +432,51 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.Co
 	if grafana == nil {
 		return assistant.ClientOptions{}, fmt.Errorf("no grafana config in context %q", cfg.CurrentContext)
 	}
+	authMethod, err := curCtx.EffectiveGrafanaAuthMethod()
+	if err != nil {
+		return assistant.ClientOptions{}, err
+	}
 
-	httpClient := newAssistantStreamingHTTPClient(ctx, streamTimeoutSeconds)
-
-	switch {
-	case grafana.ProxyEndpoint != "" && grafana.OAuthToken != "":
-		// OAuth path: direct API via ProxyEndpoint
-		refresher := buildTokenRefresher(ctx, configOpts, cfg.CurrentContext, grafana)
+	switch authMethod {
+	case "oauth":
+		// OAuth path: direct API via ProxyEndpoint. Reuse the canonical REST
+		// refresh lifecycle so A2A requests get the same cross-process lock,
+		// owning-layer reload, keychain handling, and fail-closed persistence as
+		// every other OAuth consumer.
+		if err := curCtx.Validate(ctx); err != nil {
+			return assistant.ClientOptions{}, err
+		}
+		restCfg, err := curCtx.ToRESTConfig(ctx)
+		if err != nil {
+			return assistant.ClientOptions{}, err
+		}
+		restCfg.WireTokenPersistence(ctx, configOpts.ConfigSource(ctx), cfg.CurrentContext, curCtx.Stack, cfg.Sources)
+		httpClient, err := newAssistantStreamingHTTPClientForRESTConfig(&restCfg.Config, streamTimeoutSeconds)
+		if err != nil {
+			return assistant.ClientOptions{}, fmt.Errorf("create assistant HTTP client: %w", err)
+		}
 		return assistant.ClientOptions{
 			GrafanaURL:     grafana.Server,
 			Token:          grafana.OAuthToken,
 			APIEndpoint:    grafana.ProxyEndpoint,
 			AgentID:        agentID,
-			TokenRefresher: refresher,
+			TokenRefresher: restCfg.FreshOAuthToken,
 			HTTPClient:     httpClient,
 		}, nil
 
-	case grafana.APIToken != "":
+	case "token":
 		// SA token path: plugin proxy through Grafana
+		if err := curCtx.Validate(ctx); err != nil {
+			return assistant.ClientOptions{}, err
+		}
+		restCfg, err := curCtx.ToRESTConfig(ctx)
+		if err != nil {
+			return assistant.ClientOptions{}, err
+		}
+		httpClient, err := newAssistantStreamingHTTPClientForRESTConfig(&restCfg.Config, streamTimeoutSeconds)
+		if err != nil {
+			return assistant.ClientOptions{}, fmt.Errorf("create assistant HTTP client: %w", err)
+		}
 		return assistant.ClientOptions{
 			GrafanaURL: grafana.Server,
 			Token:      grafana.APIToken,
@@ -455,6 +484,11 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.Co
 			HTTPClient: httpClient,
 		}, nil
 
+	case "basic", "mtls":
+		return assistant.ClientOptions{}, fmt.Errorf(
+			"gcx assistant requires OAuth or token bearer authentication; selected auth-method %q is not supported",
+			authMethod,
+		)
 	default:
 		return assistant.ClientOptions{}, errors.New("no authentication configured; run 'gcx login' or set grafana.token in config")
 	}
@@ -480,82 +514,20 @@ func newAssistantStreamingHTTPClient(ctx context.Context, streamTimeoutSeconds i
 	return httputils.NewClient(httputils.ClientOpts{Timeout: d})
 }
 
-const refreshThreshold = 5 * time.Minute
-
-// buildTokenRefresher creates a TokenRefresher that uses gcx's auth refresh mechanism.
-func buildTokenRefresher(ctx context.Context, configOpts *providers.ConfigLoader, ctxName string, grafana *config.GrafanaConfig) assistant.TokenRefresher {
-	var mu sync.Mutex
-	token := grafana.OAuthToken
-	refreshToken := grafana.OAuthRefreshToken
-	expiresAt := parseRFC3339OrZero(grafana.OAuthTokenExpiresAt)
-	refreshExpiresAt := parseRFC3339OrZero(grafana.OAuthRefreshExpiresAt)
-	proxyEndpoint := grafana.ProxyEndpoint
-
-	return func() (string, error) {
-		mu.Lock()
-		defer mu.Unlock()
-
-		// Token still valid — return as-is
-		if time.Until(expiresAt) > refreshThreshold {
-			return token, nil
-		}
-
-		// Refresh token itself expired
-		if !refreshExpiresAt.IsZero() && time.Now().After(refreshExpiresAt) {
-			return "", auth.ErrRefreshTokenExpired
-		}
-
-		// Do the refresh
-		rr, err := auth.ProxyRefresh(ctx, proxyEndpoint, refreshToken)
-		if err != nil {
-			return token, err // return stale token on failure
-		}
-
-		// Update captured state
-		token = rr.Token
-		if rr.RefreshToken != "" {
-			refreshToken = rr.RefreshToken
-		}
-		if t, parseErr := time.Parse(time.RFC3339, rr.ExpiresAt); parseErr == nil {
-			expiresAt = t
-		}
-		if t, parseErr := time.Parse(time.RFC3339, rr.RefreshExpiresAt); parseErr == nil {
-			refreshExpiresAt = t
-		}
-
-		// Persist to config
-		persistRefreshedTokens(ctx, configOpts, ctxName, rr.Token, rr.RefreshToken, rr.ExpiresAt, rr.RefreshExpiresAt)
-
-		return token, nil
-	}
-}
-
-func persistRefreshedTokens(ctx context.Context, configOpts *providers.ConfigLoader, ctxName, token, refreshToken, expiresAt, refreshExpiresAt string) {
-	// Re-read from disk so env-sourced secrets (GRAFANA_TOKEN, etc.) are not persisted.
-	source := configOpts.ConfigSource()
-	raw, err := config.Load(ctx, source)
+// newAssistantStreamingHTTPClientForRESTConfig materializes the configured
+// REST transport so OAuth refreshes and A2A requests share its TLS settings.
+// Materializing WrapTransport also gives RefreshTransport the TLS-aware base
+// transport it needs for the refresh endpoint instead of http.DefaultTransport.
+func newAssistantStreamingHTTPClientForRESTConfig(cfg *rest.Config, streamTimeoutSeconds int) (*http.Client, error) {
+	client, err := rest.HTTPClientFor(cfg)
 	if err != nil {
-		return
+		return nil, err
 	}
-	curCtx := raw.Contexts[ctxName]
-	if curCtx == nil || curCtx.Grafana == nil {
-		return
+	if streamTimeoutSeconds <= 0 {
+		streamTimeoutSeconds = 300
 	}
-	curCtx.Grafana.OAuthToken = token
-	if refreshToken != "" {
-		curCtx.Grafana.OAuthRefreshToken = refreshToken
-	}
-	curCtx.Grafana.OAuthTokenExpiresAt = expiresAt
-	curCtx.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
-	_ = config.Write(ctx, source, raw)
-}
-
-func parseRFC3339OrZero(s string) time.Time {
-	if s == "" {
-		return time.Time{}
-	}
-	t, _ := time.Parse(time.RFC3339, s)
-	return t
+	client.Timeout = time.Duration(streamTimeoutSeconds) * time.Second
+	return client, nil
 }
 
 // Output helpers

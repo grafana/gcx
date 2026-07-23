@@ -333,7 +333,10 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 	restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
 
 	var callbackCalled bool
-	restCfg.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
+	restCfg.SetOnRefresh(func(previousRefreshToken, token, refreshToken, expiresAt, refreshExpiresAt string) error {
+		if previousRefreshToken != "gar_old" {
+			t.Fatalf("expected previous refresh token %q, got %q", "gar_old", previousRefreshToken)
+		}
 		callbackCalled = true
 		return nil
 	})
