@@ -105,6 +105,12 @@ Exit non-zero when:
 
 			var lastRawStatus instrumentation.InstrumentationStatus
 
+			// lastPollErr remembers a persistent poll failure (bad token, DNS)
+			// so the timeout terminal names the real cause instead of
+			// reporting a bare timeout with the cause buried in stderr retry
+			// lines. Cleared on any successful poll.
+			var lastPollErr error
+
 			target := instrOutput.Target{Cluster: cluster, Namespace: namespace}
 
 			// terminal emits the fused terminal WaitResult failure envelopes
@@ -123,6 +129,9 @@ Exit non-zero when:
 			finishTimeout := func() error {
 				timeoutMsg := fmt.Sprintf("timed out after %s waiting for namespace %q in cluster %q%s",
 					timeout, namespace, cluster, probePipelineMsg(ctx, client, cluster))
+				if lastPollErr != nil {
+					timeoutMsg = fmt.Sprintf("%s; last poll error: %v", timeoutMsg, lastPollErr)
+				}
 				return terminal.FinishTimeout(string(lastRawStatus),
 					fmt.Sprintf("timed out waiting for namespace %q in cluster %q", namespace, cluster),
 					timeoutMsg)
@@ -154,6 +163,7 @@ Exit non-zero when:
 					// Transient poll failure: emit the typed poll_error stream
 					// event (agent mode) or the human retry line, then keep
 					// polling until the deadline.
+					lastPollErr = pollErr
 					pe := instrOutput.WaitPollError{
 						Event:  "poll_error",
 						Target: target,
@@ -161,6 +171,7 @@ Exit non-zero when:
 					}
 					_ = pe.EmitTo(stderr, agentMode)
 				default:
+					lastPollErr = nil
 					lastRawStatus = rawStatus
 
 					switch outcome {

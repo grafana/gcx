@@ -634,3 +634,36 @@ func TestProbePipelineMsg(t *testing.T) {
 		})
 	}
 }
+
+func TestWaitCmd_TimeoutNamesPersistentPollError(t *testing.T) {
+	// A persistent poll failure (bad token, DNS) retries until the deadline;
+	// the timeout terminal must name the real cause instead of reporting a
+	// bare timeout with the cause buried in stderr retry lines.
+	pinAgentMode(t)
+
+	client := &fakeAppsClient{
+		discoverErr: errors.New("401 unauthorized"),
+	}
+
+	cmd := silenceCobra(newWaitCmd(client))
+	cmd.SetArgs([]string{"c1", "grotshop", "--timeout=100ms"})
+
+	var stdout, stderr strings.Builder
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	err := cmd.Execute()
+	if !errors.Is(err, instrumentation.ErrWaitTimeoutEmitted) {
+		t.Fatalf("expected ErrWaitTimeoutEmitted sentinel, got: %v", err)
+	}
+
+	doc := requireStreamEnd(t, parseJSONLines(t, stdout.String()), "timeout")
+	waitErr, ok := doc["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("fused terminal must carry the error field, got: %v", doc)
+	}
+	details, _ := waitErr["details"].(string)
+	if !strings.Contains(details, "last poll error") || !strings.Contains(details, "401 unauthorized") {
+		t.Errorf("timeout details must name the persistent poll error, got: %q", details)
+	}
+}

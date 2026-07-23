@@ -146,6 +146,12 @@ func runWait(
 
 	var lastStatus instrumentation.InstrumentationStatus
 
+	// lastPollErr remembers a persistent poll failure (bad token, DNS) so the
+	// timeout terminal names the real cause instead of reporting a bare
+	// timeout with the cause buried in stderr retry lines. Cleared on any
+	// successful poll.
+	var lastPollErr error
+
 	// terminal emits the fused terminal WaitResult failure envelopes (timeout,
 	// error status, cancellation) shared with `clusters apps wait`.
 	terminal := instrOutput.WaitTerminal{
@@ -177,11 +183,15 @@ func runWait(
 					"alloy-daemon may not have registered with Fleet Management yet; "+
 					"check 'helm status grafana-cloud -n monitoring' and 'kubectl logs -n monitoring -l app.kubernetes.io/name=alloy-daemon --context <ctx>'",
 				opts.Timeout, clusterName)
+			if lastPollErr != nil {
+				timeoutMsg = fmt.Sprintf("%s; last poll error: %v", timeoutMsg, lastPollErr)
+			}
 			return terminal.FinishTimeout(string(lastStatus),
 				fmt.Sprintf("timeout waiting for cluster %q", clusterName), timeoutMsg)
 		case <-ticker.C:
 			clusters, err := monClient.RunK8sMonitoring(ctx)
 			if err != nil {
+				lastPollErr = err
 				pollErr := instrOutput.WaitPollError{
 					Event:  "poll_error",
 					Target: instrOutput.Target{Cluster: clusterName},
@@ -191,6 +201,7 @@ func runWait(
 				continue
 			}
 
+			lastPollErr = nil
 			current := findClusterStatus(clusters, clusterName)
 			lastStatus = current
 
