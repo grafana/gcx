@@ -194,14 +194,18 @@ func TestAgentConformance_FailuresAreOneInBandErrorDocument(t *testing.T) {
 }
 
 // TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue sweeps EVERY leaf
-// command classified finite or artifact in testdata/output_classes.json:
-// each is executed with no arguments in a fully isolated environment (no
-// config, empty working directory, stdin closed, 20s timeout). Whether the
-// command succeeds offline or fails — missing config, missing required
-// args, usage error — the agent contract demands exactly one JSON value on
-// stdout. This is the all-commands empirical check: a command that prints
-// cobra usage text, prose, or a second document on any of these paths
-// fails here by name.
+// command classified finite, artifact or stream in
+// testdata/output_classes.json: each is executed with no arguments in a
+// fully isolated environment (no config, empty working directory, stdin
+// closed, 20s timeout). Whether the command succeeds offline or fails —
+// missing config, missing required args, usage error — the agent contract
+// demands finite/artifact stdout hold exactly one JSON value, and stream
+// stdout hold only JSON values (typed JSONL events or, pre-stream, one
+// fused error document) — never prose. Any in-band exitCode (gcx.error,
+// gcx.stream_end) must agree with the process exit code. This is the
+// all-commands empirical check: a command that prints cobra usage text,
+// prose, a second document, or a disagreeing exit code on any of these
+// paths fails here by name.
 func TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue(t *testing.T) {
 	t.Parallel()
 	if testing.Short() {
@@ -220,21 +224,74 @@ func TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue(t *testing.T) {
 	bin := buildGcx(t)
 	for _, cmdPath := range sortedKeys(classes) {
 		class := classes[cmdPath]
-		if class != "finite" && class != "artifact" {
+		if class != "finite" && class != "artifact" && class != "stream" {
 			continue
 		}
 		args := strings.Fields(cmdPath)[1:] // drop the "gcx" prefix
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
 			t.Parallel()
-			stdout, timedOut := runGcxIsolated(t, bin, args)
+			stdout, code, timedOut := runGcxIsolated(t, bin, args)
 			if timedOut {
 				t.Fatal("command did not exit within the timeout — a prompt or editor survived agent mode")
+			}
+			if class == "stream" {
+				assertExitCodeAgreement(t, assertOnlyJSONValues(t, stdout), code)
+				return
 			}
 			if strings.TrimSpace(stdout) == "" {
 				t.Fatalf("stdout empty — finite commands must emit exactly one JSON value even on failure paths")
 			}
-			assertOneJSONValue(t, stdout)
+			doc := assertOneJSONValue(t, stdout)
+			assertExitCodeAgreement(t, []any{doc}, code)
 		})
+	}
+}
+
+// assertOnlyJSONValues decodes stdout as a sequence of JSON values and fails
+// on anything that is not JSON. Empty stdout is allowed — a stream command
+// may legitimately write nothing before failing (the error document goes
+// through reportError only on non-emitted paths).
+func assertOnlyJSONValues(t *testing.T, stdout string) []any {
+	t.Helper()
+	var docs []any
+	dec := json.NewDecoder(strings.NewReader(stdout))
+	for {
+		var v any
+		err := dec.Decode(&v)
+		if errors.Is(err, io.EOF) {
+			return docs
+		}
+		if err != nil {
+			t.Fatalf("stdout holds a non-JSON value: %v\nstdout:\n%s", err, stdout)
+		}
+		docs = append(docs, v)
+	}
+}
+
+// assertExitCodeAgreement checks every in-band exit code (gcx.error and
+// gcx.stream_end documents) against the process exit code — the contract's
+// "the exit code agrees with the outcome" leg, per leaf.
+func assertExitCodeAgreement(t *testing.T, docs []any, code int) {
+	t.Helper()
+	for _, d := range docs {
+		obj, ok := d.(map[string]any)
+		if !ok {
+			continue
+		}
+		if obj["type"] != "gcx.error" && obj["type"] != "gcx.stream_end" {
+			continue
+		}
+		errObj, ok := obj["error"].(map[string]any)
+		if !ok {
+			continue
+		}
+		inBand, ok := errObj["exitCode"].(float64)
+		if !ok {
+			continue
+		}
+		if int(inBand) != code {
+			t.Fatalf("in-band exitCode %v disagrees with process exit code %d\ndocument: %v", inBand, code, obj)
+		}
 	}
 }
 
@@ -248,9 +305,9 @@ func sortedKeys(m map[string]string) []string {
 }
 
 // runGcxIsolated executes the binary with agent mode on, no configuration,
-// an empty working directory, and a hard timeout. Returns stdout and
-// whether the run timed out.
-func runGcxIsolated(t *testing.T, bin string, args []string) (string, bool) {
+// an empty working directory, and a hard timeout. Returns stdout, the exit
+// code, and whether the run timed out.
+func runGcxIsolated(t *testing.T, bin string, args []string) (string, int, bool) {
 	t.Helper()
 	home := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -272,13 +329,16 @@ func runGcxIsolated(t *testing.T, bin string, args []string) (string, bool) {
 	cmd.Stderr = &errBuf
 	err := cmd.Run()
 	if ctx.Err() != nil {
-		return outBuf.String(), true
+		return outBuf.String(), -1, true
 	}
+	code := 0
 	var exitErr *exec.ExitError
-	if err != nil && !errors.As(err, &exitErr) {
+	if errors.As(err, &exitErr) {
+		code = exitErr.ExitCode()
+	} else if err != nil {
 		t.Fatalf("running gcx %v: %v", args, err)
 	}
-	return outBuf.String(), false
+	return outBuf.String(), code, false
 }
 
 func TestAgentConformance_ExplicitOverrideWins(t *testing.T) {
