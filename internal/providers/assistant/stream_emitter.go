@@ -72,6 +72,9 @@ type streamEmitter struct {
 	// result was written successfully (see gcxerrors.EmittedError), and a
 	// broken stdout can carry no further terminal output.
 	writeErr error
+	// saveContextID persists the completed task's context ID for --continue.
+	// Defaults to assistant.SaveLastContextID; a test seam.
+	saveContextID func(string) error
 }
 
 // newStreamEmitter resolves the consumer mode from the explicit flags and
@@ -86,7 +89,7 @@ func newStreamEmitter(w, errW io.Writer, opts *promptOpts) *streamEmitter {
 	case agent.IsAgentMode():
 		mode = modeAgent
 	}
-	return &streamEmitter{mode: mode, w: w, errW: errW}
+	return &streamEmitter{mode: mode, w: w, errW: errW, saveContextID: assistant.SaveLastContextID}
 }
 
 // agentStreamEvent is one agent-mode JSONL line: the typed, versioned
@@ -210,6 +213,12 @@ func (h agentDenyApprovalHandler) HandleApproval(req assistant.ApprovalRequest) 
 // itself — finish returns the write error instead: the EmittedError sentinel
 // may only report a complete, successfully written result.
 func (e *streamEmitter) finish(result assistant.StreamResult, timeoutSeconds int) error {
+	// A completed task's context ID persists regardless of stdout health:
+	// --continue must keep working after a broken pipe — the conversation
+	// happened whether or not the consumer read the tail of the stream.
+	if result.Completed && result.ContextID != "" && e.saveContextID != nil {
+		_ = e.saveContextID(result.ContextID)
+	}
 	if e.writeErr != nil {
 		// The event stream broke mid-flight (recorded by writeEventLine).
 		// stdout is unusable, so no terminal line is attempted; the write
@@ -231,9 +240,6 @@ func (e *streamEmitter) finish(result assistant.StreamResult, timeoutSeconds int
 }
 
 func (e *streamEmitter) finishCompleted(result assistant.StreamResult) error {
-	if result.ContextID != "" {
-		_ = assistant.SaveLastContextID(result.ContextID)
-	}
 	switch e.mode {
 	case modeJSONDoc:
 		// A failed terminal write surfaces as the command error: the

@@ -547,3 +547,24 @@ func TestStreamEmitterNoticeEmptyIsSilent(t *testing.T) {
 	em.notice("")
 	assert.Empty(t, stderr.String())
 }
+
+// TestFinishPersistsContextIDDespiteWriteFailure pins that a completed task's
+// context ID survives a broken stdout: the conversation happened whether or
+// not the consumer read the tail of the stream, so --continue must keep
+// working after a broken pipe.
+func TestFinishPersistsContextIDDespiteWriteFailure(t *testing.T) {
+	setAgentMode(t, true)
+	var stdout, stderr bytes.Buffer
+	em := newStreamEmitter(&stdout, &stderr, &promptOpts{})
+
+	var saved string
+	em.saveContextID = func(id string) error { saved = id; return nil }
+	writeErr := errors.New("broken pipe")
+	em.writeErr = writeErr
+
+	err := em.finish(assistant.StreamResult{Completed: true, ContextID: "ctx-42"}, 30)
+
+	require.ErrorIs(t, err, writeErr, "the write error stays the honest outcome")
+	assert.Equal(t, "ctx-42", saved, "context ID must persist despite the write failure")
+	assert.Empty(t, stdout.String(), "broken stdout carries no further output")
+}
