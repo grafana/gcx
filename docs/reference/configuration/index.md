@@ -92,6 +92,44 @@ contexts:
           - string
           - ...
           
+      # Exec configures an external credential helper that mints the bearer
+      # token gcx sends. Used for Grafana instances behind an identity-aware
+      # proxy (Cloudflare Access, Google IAP, oauth2-proxy, Pomerium, ...) that
+      # verifies an IdP-minted token at the edge. Requires auth-method "exec".
+      # This is the kubeconfig client-go credential-plugin mechanism; the token
+      # is fetched at runtime and never stored in the config file.
+      exec: 
+        # ExecConfig configures an external command that prints a client credential
+        # (in the client.authentication.k8s.io ExecCredential format) which gcx sends
+        # as a bearer token. client-go runs the command, caches the token in memory,
+        # and re-runs the command when the token expires. No secret is stored on disk.
+        # Command is the executable to run. Required.
+        command: string
+        # Args are passed to the command when executing it. Optional.
+        args: 
+          - string
+          - ...
+          
+        # Env defines additional environment variables exposed to the command.
+        # These are unioned with the host environment. Optional.
+        env: 
+          -
+            # ExecEnvVar is a single environment variable exposed to the exec command.
+            name: string
+            # Value is redacted in `config view`: a credential helper's env may carry
+            # a client secret or static token. (The tag must sit on the struct field,
+            # not the parent slice — the redactor recurses into slice elements with
+            # the secret flag cleared, so a slice-level tag would be a no-op.)
+            value: string
+          - ...
+          
+        # InstallHint is shown to the user when the command cannot be found
+        # (e.g. "go install github.com/example/gcx-token-helper@latest"). Optional.
+        install-hint: string
+        # InteractiveMode controls the command's relationship with stdin: one of
+        # "Never", "IfAvailable", or "Always". Defaults to "IfAvailable" when
+        # empty. Optional.
+        interactive-mode: string
     cloud: 
       # CloudConfig holds Grafana Cloud platform credentials and configuration.
       # Token is a Grafana Cloud API token used to authenticate against GCOM.

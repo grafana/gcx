@@ -302,6 +302,112 @@ func TestNewNamespacedRESTConfig_OAuthProxySetsHost(t *testing.T) {
 	}
 }
 
+func TestNewNamespacedRESTConfig_ExecProvider(t *testing.T) {
+	ctx := config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:     "https://grafana.example.net",
+			OrgID:      1,
+			AuthMethod: "exec",
+			Exec: &config.ExecConfig{
+				Command:         "gcx-token-helper",
+				Args:            []string{"--audience", "grafana"},
+				Env:             []config.ExecEnvVar{{Name: "FOO", Value: "bar"}},
+				InstallHint:     "go install example.com/gcx-token-helper@latest",
+				InteractiveMode: "Never",
+			},
+		},
+	}
+
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ep := restCfg.ExecProvider
+	if ep == nil {
+		t.Fatal("expected ExecProvider to be set for exec auth")
+	}
+	if ep.APIVersion != "client.authentication.k8s.io/v1" {
+		t.Fatalf("expected stable v1 APIVersion, got %q", ep.APIVersion)
+	}
+	if ep.Command != "gcx-token-helper" {
+		t.Fatalf("expected command gcx-token-helper, got %q", ep.Command)
+	}
+	if len(ep.Args) != 2 || ep.Args[0] != "--audience" || ep.Args[1] != "grafana" {
+		t.Fatalf("unexpected args: %v", ep.Args)
+	}
+	if len(ep.Env) != 1 || ep.Env[0].Name != "FOO" || ep.Env[0].Value != "bar" {
+		t.Fatalf("unexpected env: %v", ep.Env)
+	}
+	if ep.InstallHint != "go install example.com/gcx-token-helper@latest" {
+		t.Fatalf("unexpected install hint: %q", ep.InstallHint)
+	}
+	if string(ep.InteractiveMode) != "Never" {
+		t.Fatalf("expected InteractiveMode Never, got %q", ep.InteractiveMode)
+	}
+	// No static bearer token should be set; the exec provider supplies it.
+	if restCfg.BearerToken != "" {
+		t.Fatalf("expected no static BearerToken, got %q", restCfg.BearerToken)
+	}
+}
+
+func TestNewNamespacedRESTConfig_ExecProviderDefaultInteractiveMode(t *testing.T) {
+	ctx := config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:     "https://grafana.example.net",
+			OrgID:      1,
+			AuthMethod: "exec",
+			Exec:       &config.ExecConfig{Command: "gcx-token-helper"},
+		},
+	}
+
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if restCfg.ExecProvider == nil {
+		t.Fatal("expected ExecProvider to be set")
+	}
+	if got := string(restCfg.ExecProvider.InteractiveMode); got != "IfAvailable" {
+		t.Fatalf("expected default InteractiveMode IfAvailable, got %q", got)
+	}
+}
+
+// TestNewNamespacedRESTConfig_ExecWinsOverStaleOAuthFields guards auth-method
+// precedence: an explicit `auth-method: exec` must route through the exec
+// provider even when stale OAuth proxy fields linger in the config (e.g. left
+// over from a prior `gcx login`, or merged in from a lower config layer). The
+// auth switch keys each arm on the effective method, so the OAuth arm must not
+// shadow exec on raw field presence alone.
+func TestNewNamespacedRESTConfig_ExecWinsOverStaleOAuthFields(t *testing.T) {
+	ctx := config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:     "https://grafana.example.net",
+			OrgID:      1,
+			AuthMethod: "exec",
+			Exec:       &config.ExecConfig{Command: "gcx-token-helper"},
+			// Stale OAuth fields that would otherwise match the OAuth arm.
+			ProxyEndpoint: "https://leftover.grafana.net/a/grafana-assistant-app",
+			OAuthToken:    "gat_stale-token",
+		},
+	}
+
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if restCfg.ExecProvider == nil {
+		t.Fatal("expected ExecProvider to be set; exec auth was shadowed by stale OAuth fields")
+	}
+	if restCfg.IsOAuthProxy() {
+		t.Fatal("expected exec auth, but config was routed through the OAuth proxy")
+	}
+	// Host must remain the plain server, not be rewritten to the OAuth proxy path.
+	if restCfg.Host != "https://grafana.example.net" {
+		t.Fatalf("expected Host to stay the server URL, got %q", restCfg.Host)
+	}
+}
+
 func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 	refreshServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/cli/v1/auth/refresh" {

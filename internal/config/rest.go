@@ -14,7 +14,36 @@ import (
 	"github.com/grafana/gcx/internal/retry"
 	"github.com/grafana/gcx/internal/version"
 	"k8s.io/client-go/rest"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
+
+// execCredentialAPIVersion pins the exec plugin to the stable ExecCredential
+// contract. The helper's printed ExecCredential MUST use the same apiVersion.
+const execCredentialAPIVersion = "client.authentication.k8s.io/v1"
+
+// execProviderConfig maps a gcx ExecConfig onto the client-go exec credential
+// plugin config. client-go owns the run/parse/cache/refresh loop from here.
+func execProviderConfig(e *ExecConfig) *clientcmdapi.ExecConfig {
+	env := make([]clientcmdapi.ExecEnvVar, 0, len(e.Env))
+	for _, v := range e.Env {
+		env = append(env, clientcmdapi.ExecEnvVar{Name: v.Name, Value: v.Value})
+	}
+	mode := clientcmdapi.IfAvailableExecInteractiveMode
+	switch e.InteractiveMode {
+	case "Never":
+		mode = clientcmdapi.NeverExecInteractiveMode
+	case "Always":
+		mode = clientcmdapi.AlwaysExecInteractiveMode
+	}
+	return &clientcmdapi.ExecConfig{
+		APIVersion:      execCredentialAPIVersion,
+		Command:         e.Command,
+		Args:            e.Args,
+		Env:             env,
+		InstallHint:     e.InstallHint,
+		InteractiveMode: mode,
+	}
+}
 
 // NamespacedRESTConfig is a REST config with a namespace.
 // TODO: move to app SDK?
@@ -225,6 +254,14 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	// Authentication
 	var oauthTransport *auth.RefreshTransport
 	switch {
+	case cfg.Grafana.InferredAuthMethod() == "exec" && cfg.Grafana.Exec != nil:
+		// Exec credential helper: client-go runs the command, parses the
+		// ExecCredential it prints, injects the token as a bearer header, and
+		// caches it in memory until expiry (re-running on refresh). Used for
+		// instances behind an identity-aware proxy that mints its own tokens.
+		// Gated on the effective method and placed first so an explicit
+		// auth-method: exec is honored even if stale OAuth/token fields linger.
+		rcfg.ExecProvider = execProviderConfig(cfg.Grafana.Exec)
 	case cfg.Grafana.ProxyEndpoint != "" && cfg.Grafana.OAuthToken != "":
 		// OAuth proxy mode: route requests through the assistant backend proxy.
 		// The ProxyEndpoint may differ from Server (e.g. cloud routing through
