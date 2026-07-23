@@ -119,7 +119,7 @@ gcx completion fish > ~/.config/fish/completions/gcx.fish  # fish
 gcx login my-stack --server https://my-stack.grafana.net
 ```
 
-Opens a browser for OAuth, then saves the access token, refresh token, and proxy endpoint to the `my-stack` context and makes it current. Best for day-to-day use on Cloud stacks. If OAuth doesn't suit your setup, pick "Service account token" at the prompt.
+Opens a browser for OAuth, then saves the access token, refresh token, and proxy endpoint to the `my-stack` context's named stack entry and makes the context current. Best for day-to-day use on Cloud stacks. If OAuth doesn't suit your setup, pick "Service account token" at the prompt.
 
 **Service account token (Cloud or on-premises, recommended for CI/automation):**
 
@@ -127,29 +127,51 @@ Opens a browser for OAuth, then saves the access token, refresh token, and proxy
 gcx login my-grafana --server https://your-instance.grafana.net --token glsa_xxx --yes
 ```
 
-Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role. Works for both Cloud and on-premises; this is the only auth method available for on-premises instances.
+Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role. It works for both Cloud and on-premises and is recommended for automation. On-premises stacks can also use basic authentication or configured mTLS client certificates.
 
 **Grafana Cloud product APIs (SLO, Synthetic Monitoring, IRM, etc.):**
 
-Cloud product commands require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) in addition to Grafana auth. Provide it at login:
+Cloud product commands need a separate Grafana Cloud platform credential in
+addition to Grafana instance auth. A
+[Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/)
+has the widest command compatibility and is recommended for automation. Provide
+one at login:
 
 ```bash
 gcx login my-stack --server https://my-stack.grafana.net --token glsa_xxx --cloud-token glc_xxx --yes
 ```
 
-Or add it later by re-running `gcx login` against the same context:
+Or add Cloud access later by re-running `gcx login` against the same context.
+The interactive Cloud step can keep the existing CAP or unexpired OAuth
+credential, accept a new CAP, run the experimental browser-based Cloud OAuth
+flow, or skip Cloud functionality:
 
 ```bash
-gcx login --context my-stack   # prompts for the Cloud Access Policy token; Enter to skip
+gcx login --context my-stack
 ```
+
+You can also run the Cloud OAuth flow directly:
+
+```bash
+gcx cloud login --context my-stack
+```
+
+Direct Cloud OAuth stores the OAuth token, expiry, granted scopes, and endpoint
+pair, but it is experimental and not every Cloud product command supports it
+yet. Use a CAP for full compatibility.
 
 `gcx` derives the Cloud stack slug from `--server` when possible. Set it explicitly only for custom domains where gcx cannot derive it:
 
 ```bash
-gcx config set contexts.my-stack.cloud.stack your-stack-slug
+gcx config set stacks.my-stack.slug your-stack-slug
 ```
 
-You do not need to set `cloud.api-url` for `grafana.com`; gcx defaults to `https://grafana.com`. Set `cloud.api-url` only when you need a non-default Grafana Cloud API endpoint.
+You do not need to set Cloud endpoints for `grafana.com`; gcx defaults to
+`https://grafana.com`. For a custom environment, authenticate and store a
+coherent OAuth/API destination pair: supplying one endpoint to a login command
+uses it for both operations unless you explicitly supply both to
+`gcx cloud login`. Changing a named entry's `api-url` or `oauth-url` invalidates
+its old credential, so re-authenticate after the edit.
 
 **Environment variables (CI/CD, agents):**
 
@@ -163,6 +185,15 @@ export GRAFANA_CLOUD_STACK="your-stack-slug"
 ```
 
 Env vars resolve at every command invocation, so you can run `gcx` commands directly without a prior `gcx login`.
+
+For safety, an auto-discovered repository `.gcx.yaml` cannot attach runtime
+tokens, prompted login credentials, or external mTLS keypairs to destinations
+the file supplies. If you intend that file to own credentials or direct
+provider endpoints, authorize it explicitly with `--config .gcx.yaml` or
+`GCX_CONFIG=.gcx.yaml`; a `--server` or endpoint flag alone is not sufficient.
+Provider-specific runtime endpoints are accepted only when their matching
+runtime credential is supplied in the same invocation; that pair does not
+authorize an auto-discovered repository stack's TLS or proxy configuration.
 
 **Verify:** `gcx config check`
 

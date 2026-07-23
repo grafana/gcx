@@ -37,11 +37,11 @@ DS_UID=$(gcx datasources list --type prometheus -o json 2>/dev/null | \
 Avoid repeating the datasource UID argument:
 
 ```bash
-# Set default Prometheus datasource
-gcx config set contexts.mystack.default-prometheus-datasource <uid>
+# Set default Prometheus datasource (current context)
+gcx config set contexts.<name>.datasources.prometheus <uid>
 
 # Set default Loki datasource
-gcx config set contexts.mystack.default-loki-datasource <uid>
+gcx config set contexts.<name>.datasources.loki <uid>
 
 # Now queries work without specifying a UID
 gcx metrics query 'up'

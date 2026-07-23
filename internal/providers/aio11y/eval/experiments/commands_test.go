@@ -2,6 +2,7 @@ package experiments_test
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -15,11 +16,39 @@ func TestCommands_HasExpectedLeaves(t *testing.T) {
 	cmd := experiments.Commands(nil)
 	require.Equal(t, "experiments", cmd.Name())
 
-	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "report"} {
+	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "list-trials", "test-suites", "trials"} {
 		c, _, err := cmd.Find([]string{sub})
 		require.NoError(t, err, "subcommand %q must exist", sub)
 		require.NotNil(t, c)
 		require.Equal(t, sub, c.Name())
+	}
+}
+
+func TestCommands_HasExpectedNestedExperimentLeaves(t *testing.T) {
+	cmd := experiments.Commands(nil)
+
+	for _, path := range [][]string{
+		{"test-suites", "list"},
+		{"test-suites", "get"},
+		{"test-suites", "create"},
+		{"test-suites", "update"},
+		{"test-suites", "versions", "create"},
+		{"test-suites", "versions", "publish"},
+		{"test-suites", "cases", "list"},
+		{"test-suites", "cases", "get"},
+		{"test-suites", "cases", "upsert"},
+		{"test-suites", "cases", "update"},
+		{"test-suites", "cases", "delete"},
+		{"trials", "get"},
+		{"trials", "create"},
+		{"trials", "update"},
+		{"trials", "list-scores"},
+		{"trials", "list-artifacts"},
+	} {
+		c, _, err := cmd.Find(path)
+		require.NoError(t, err, "subcommand path %q must exist", strings.Join(path, " "))
+		require.NotNil(t, c)
+		require.Equal(t, path[len(path)-1], c.Name())
 	}
 }
 
@@ -34,6 +63,36 @@ func TestCreateCommand_RequiresFilename(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--filename/-f is required")
+}
+
+func TestCreateCommand_FileRequiresName(t *testing.T) {
+	path := writeTempFile(t, "experiment-*.json", `{"run_id":"run-1"}`)
+
+	cmd := experiments.Commands(nil)
+	cmd.SetArgs([]string{"create", "-f", path})
+
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "name is required")
+}
+
+func TestSuitesCreateCommand_FileRequiresName(t *testing.T) {
+	path := writeTempFile(t, "suite-*.json", `{"suite_id":"suite-1"}`)
+
+	cmd := experiments.Commands(nil)
+	cmd.SetArgs([]string{"test-suites", "create", "-f", path})
+
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "name is required")
 }
 
 func TestUpdateCommand_RequiresMutableField(t *testing.T) {
@@ -127,9 +186,35 @@ func TestListScoresCommand_RequiresArg(t *testing.T) {
 	assert.Contains(t, err.Error(), "accepts 1 arg")
 }
 
+func TestTrialsListCommand_RequiresExperimentIDWithSuggestion(t *testing.T) {
+	cmd := experiments.Commands(nil)
+	cmd.SetArgs([]string{"list-trials"})
+
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected format: gcx agento11y experiments list-trials <run-id>")
+}
+
+func TestCasesListCommand_RequiresSuiteAndVersionWithSuggestion(t *testing.T) {
+	cmd := experiments.Commands(nil)
+	cmd.SetArgs([]string{"test-suites", "cases", "list"})
+
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected format: gcx agento11y experiments test-suites cases list <suite-id> <version>")
+}
+
 func TestReportCommand_RequiresArg(t *testing.T) {
 	cmd := experiments.Commands(nil)
-	cmd.SetArgs([]string{"report"})
+	cmd.SetArgs([]string{"get-report"})
 
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
@@ -172,7 +257,7 @@ func TestTableCodec_Encode(t *testing.T) {
 		{
 			name: "table format",
 			wide: false,
-			want: []string{"RUN-ID", "NAME", "STATUS", "COLLECTION-ID", "TAGS", "r-1", "exp-1", "running", "c-1", "support, prompt-v2"},
+			want: []string{"EXPERIMENT-ID", "NAME", "STATUS", "SUITE", "VERSION", "TAGS", "r-1", "exp-1", "running", "support, prompt-v2"},
 		},
 		{
 			name: "wide adds ERROR, COMPLETED, and DESCRIPTION",
@@ -308,4 +393,14 @@ func TestReportTextCodec_WrongType(t *testing.T) {
 	err := codec.Encode(&buf, "not-a-report")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected *ExperimentReport")
+}
+
+func writeTempFile(t *testing.T, pattern, contents string) string {
+	t.Helper()
+	file, err := os.CreateTemp(t.TempDir(), pattern)
+	require.NoError(t, err)
+	_, err = file.WriteString(contents)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+	return file.Name()
 }

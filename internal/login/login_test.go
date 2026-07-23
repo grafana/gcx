@@ -7,9 +7,12 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/auth"
@@ -44,6 +47,97 @@ func fixedDetect(tgt login.Target) func(ctx context.Context, server string) (log
 // configSource returns a Source backed by a temp file in dir.
 func configSource(dir string) config.Source {
 	return config.ExplicitConfigFile(filepath.Join(dir, "config.yaml"))
+}
+
+func TestRunRejectsNonTargetLayerChangeDuringAuthentication(t *testing.T) {
+	home := t.TempDir()
+	userDir := filepath.Join(home, ".config")
+	systemDir := t.TempDir()
+	workDir := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", userDir)
+	t.Setenv("XDG_CONFIG_DIRS", systemDir)
+	t.Setenv("GCX_CONFIG", "")
+	t.Chdir(workDir)
+
+	userPath := filepath.Join(userDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
+	userContents := []byte(`version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.example.invalid
+      token: old-token
+      auth-method: token
+      org-id: 1
+contexts:
+  prod:
+    stack: prod
+current-context: prod
+`)
+	require.NoError(t, os.WriteFile(userPath, userContents, 0o600))
+	localPath := filepath.Join(workDir, config.LocalConfigFileName)
+	localContents := []byte(`version: 1
+contexts:
+  prod:
+    datasources:
+      prometheus: local-prom
+`)
+	require.NoError(t, os.WriteFile(localPath, localContents, 0o600))
+
+	effective, err := config.LoadLayered(t.Context(), "")
+	require.NoError(t, err)
+	var userSource config.ConfigSource
+	for _, source := range effective.Sources {
+		if source.Type == "user" {
+			userSource = source
+			break
+		}
+	}
+	require.NotEmpty(t, userSource.Path)
+	mutationCtx := config.ContextWithConfigSource(t.Context(), userSource)
+	persisted, err := config.Load(mutationCtx, config.ExplicitConfigFile(userPath))
+	require.NoError(t, err)
+	guard, err := persisted.NewLoginMutationGuard("prod", config.LoginMutationUnified).WithDiscoverySnapshot(&effective)
+	require.NoError(t, err)
+
+	changedLocal := []byte(`version: 1
+cloud:
+  grafana-com:
+    token: attacker-controlled
+    oauth-url: https://attacker.invalid
+    api-url: https://attacker.invalid
+contexts:
+  prod:
+    cloud: grafana-com
+`)
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://prod.example.invalid",
+			ContextName:  "prod",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "fresh-token",
+		},
+		Hooks: login.Hooks{
+			ConfigSource:       config.ExplicitConfigFile(userPath),
+			LoginMutationGuard: guard,
+			ValidateFn: func(context.Context, login.Options, config.NamespacedRESTConfig) (string, error) {
+				require.NoError(t, os.WriteFile(localPath, changedLocal, 0o600))
+				return "12.0.0", nil
+			},
+		},
+	}
+
+	_, err = login.Run(mutationCtx, &opts)
+	require.ErrorContains(t, err, "Configuration changed during authentication")
+	require.ErrorContains(t, err, localPath)
+	userAfter, readErr := os.ReadFile(userPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, userContents, userAfter)
+	localAfter, readErr := os.ReadFile(localPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, changedLocal, localAfter)
+	assert.NotContains(t, string(userAfter), "fresh-token")
 }
 
 func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexity is inherent to spec-required coverage
@@ -98,11 +192,14 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				t.Helper()
 				ctx := cfg.Contexts["mystack"]
 				require.NotNil(t, ctx)
+				assert.Equal(t, "mystack", ctx.Stack, "context must reference a stack named after itself")
+				assert.Equal(t, "grafana-com", ctx.Cloud, "context must reference the default cloud entry")
 				assert.Equal(t, "gat_test", ctx.Grafana.OAuthToken)
 				assert.Equal(t, "oauth", ctx.Grafana.AuthMethod)
-				require.NotNil(t, ctx.Cloud)
-				assert.Equal(t, "cap-token", ctx.Cloud.Token)
-				assert.Equal(t, "mystack", ctx.Cloud.Stack) // slug derived from *.grafana.net URL
+				require.NotNil(t, ctx.CloudEntry)
+				assert.Equal(t, "cap-token", ctx.CloudEntry.Token)
+				require.NotNil(t, ctx.StackEntry)
+				assert.Equal(t, "mystack", ctx.StackEntry.Slug) // slug derived from *.grafana.net URL
 			},
 		},
 		{
@@ -113,12 +210,15 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			opts: func(dir string) login.Options {
 				return login.Options{
 					Inputs: login.Inputs{
-						Server:              "https://ops.grafana-ops.net",
-						ContextName:         "ops-stack",
-						Target:              login.TargetCloud,
-						UseOAuth:            true,
-						CloudToken:          "gcom-oauth-token",
-						CloudTokenFromOAuth: true,
+						Server:                   "https://ops.grafana-ops.net",
+						ContextName:              "ops-stack",
+						Target:                   login.TargetCloud,
+						UseOAuth:                 true,
+						CloudToken:               "gcom-oauth-token",
+						CloudCredentialKind:      login.CloudCredentialOAuth,
+						CloudTokenTrusted:        true,
+						CloudOAuthTokenExpiresAt: "2030-01-01T00:00:00Z",
+						CloudOAuthScopes:         []string{"stacks:read", "fleet-management:read"},
 					},
 					Hooks: login.Hooks{
 						ConfigSource: configSource(dir),
@@ -133,10 +233,14 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				t.Helper()
 				ctx := cfg.Contexts["ops-stack"]
 				require.NotNil(t, ctx)
-				require.NotNil(t, ctx.Cloud)
-				assert.Equal(t, "gcom-oauth-token", ctx.Cloud.Token)
-				assert.Equal(t, "https://grafana-ops.com", ctx.Cloud.OAuthUrl, "OAuth token must record its GCOM origin")
-				assert.Equal(t, "https://grafana-ops.com", ctx.Cloud.APIUrl, "APIUrl defaults to the same GCOM root")
+				assert.Equal(t, "grafana-ops-com", ctx.Cloud, "cloud entry must be named after the GCOM host")
+				require.NotNil(t, ctx.CloudEntry)
+				assert.Equal(t, "gcom-oauth-token", ctx.CloudEntry.OAuthToken, "OAuth-issued tokens land in oauth-token, not token")
+				assert.Empty(t, ctx.CloudEntry.Token)
+				assert.Equal(t, "2030-01-01T00:00:00Z", ctx.CloudEntry.OAuthTokenExpiresAt)
+				assert.ElementsMatch(t, []string{"stacks:read", "fleet-management:read"}, ctx.CloudEntry.OAuthScopes)
+				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.OAuthUrl, "OAuth token must record its GCOM origin")
+				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.APIUrl, "APIUrl defaults to the same GCOM root")
 			},
 		},
 		{
@@ -169,9 +273,11 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				t.Helper()
 				ctx := cfg.Contexts["mystack"]
 				require.NotNil(t, ctx)
-				require.NotNil(t, ctx.Cloud)
-				assert.Equal(t, "mystack", ctx.Cloud.Stack, "stack slug must be persisted even without a CAP token")
-				assert.Empty(t, ctx.Cloud.Token, "no token was provided")
+				require.NotNil(t, ctx.StackEntry)
+				assert.Equal(t, "mystack", ctx.StackEntry.Slug, "stack slug must be persisted even without a CAP token")
+				if ctx.CloudEntry != nil {
+					assert.Empty(t, ctx.CloudEntry.Token, "no token was provided")
+				}
 			},
 		},
 		{
@@ -179,21 +285,17 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "cloud_oauth_skip_cap_reauth_updates_stack",
 			opts: func(dir string) login.Options {
 				src := configSource(dir)
-				path, _ := src()
-				seed := config.Config{
-					CurrentContext: "mystack",
-					Contexts: map[string]*config.Context{
-						"mystack": {
-							Grafana: &config.GrafanaConfig{
-								Server:     "https://mystack.grafana.net",
-								OAuthToken: "old-token",
-								AuthMethod: "oauth",
-							},
-							Cloud: &config.CloudConfig{}, // no Stack set
-						},
+				seed := config.Config{}
+				seed.SetStack("mystack", config.StackConfig{
+					// no Slug set
+					Grafana: &config.GrafanaConfig{
+						Server:     "https://mystack.grafana.net",
+						OAuthToken: "old-token",
+						AuthMethod: "oauth",
 					},
-				}
-				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), seed))
+				})
+				seed.SetContext("mystack", true, config.Context{Stack: "mystack"})
+				require.NoError(t, config.Write(context.Background(), src, seed))
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:   "https://mystack.grafana.net",
@@ -214,8 +316,8 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				t.Helper()
 				ctx := cfg.Contexts["mystack"]
 				require.NotNil(t, ctx)
-				require.NotNil(t, ctx.Cloud)
-				assert.Equal(t, "mystack", ctx.Cloud.Stack, "re-auth must update stack slug")
+				require.NotNil(t, ctx.StackEntry)
+				assert.Equal(t, "mystack", ctx.StackEntry.Slug, "re-auth must update stack slug")
 			},
 		},
 		{
@@ -223,21 +325,17 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "cloud_oauth_skip_cap_preserves_existing_token",
 			opts: func(dir string) login.Options {
 				src := configSource(dir)
-				path, _ := src()
-				seed := config.Config{
-					CurrentContext: "mystack",
-					Contexts: map[string]*config.Context{
-						"mystack": {
-							Grafana: &config.GrafanaConfig{
-								Server:     "https://mystack.grafana.net",
-								OAuthToken: "old-token",
-								AuthMethod: "oauth",
-							},
-							Cloud: &config.CloudConfig{Token: "existing-cap-token"},
-						},
+				seed := config.Config{}
+				seed.SetStack("mystack", config.StackConfig{
+					Grafana: &config.GrafanaConfig{
+						Server:     "https://mystack.grafana.net",
+						OAuthToken: "old-token",
+						AuthMethod: "oauth",
 					},
-				}
-				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), seed))
+				})
+				seed.SetCloudEntry("grafana-com", config.CloudEntry{Token: "existing-cap-token"})
+				seed.SetContext("mystack", true, config.Context{Stack: "mystack", Cloud: "grafana-com"})
+				require.NoError(t, config.Write(context.Background(), src, seed))
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:   "https://mystack.grafana.net",
@@ -258,8 +356,8 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				t.Helper()
 				ctx := cfg.Contexts["mystack"]
 				require.NotNil(t, ctx)
-				require.NotNil(t, ctx.Cloud)
-				assert.Equal(t, "existing-cap-token", ctx.Cloud.Token, "OAuth-only re-auth must not wipe a stored CAP token")
+				require.NotNil(t, ctx.CloudEntry)
+				assert.Equal(t, "existing-cap-token", ctx.CloudEntry.Token, "OAuth-only re-auth must not wipe a stored CAP token")
 			},
 		},
 		{
@@ -472,23 +570,20 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			// AC-012: Legacy config (no AuthMethod) loads and re-auths, preserves other fields
 			name: "legacy_config_reauth_preserves_fields",
 			opts: func(dir string) login.Options {
-				// Pre-populate config with a legacy context (no AuthMethod) that has OrgID set
+				// Pre-populate config with a context whose stack has no AuthMethod
+				// (legacy pre-auth-method config) and OrgID set
 				src := configSource(dir)
-				path, _ := src()
-				legacyCfg := config.Config{
-					Contexts: map[string]*config.Context{
-						"grafana-example-com": {
-							Grafana: &config.GrafanaConfig{
-								Server:   "https://grafana.example.com",
-								APIToken: "old-token",
-								// AuthMethod intentionally absent (legacy)
-								OrgID: 42,
-							},
-						},
+				legacyCfg := config.Config{}
+				legacyCfg.SetStack("grafana-example-com", config.StackConfig{
+					Grafana: &config.GrafanaConfig{
+						Server:   "https://grafana.example.com",
+						APIToken: "old-token",
+						// AuthMethod intentionally absent (legacy)
+						OrgID: 42,
 					},
-					CurrentContext: "grafana-example-com",
-				}
-				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), legacyCfg))
+				})
+				legacyCfg.SetContext("grafana-example-com", true, config.Context{Stack: "grafana-example-com"})
+				require.NoError(t, config.Write(context.Background(), src, legacyCfg))
 
 				return login.Options{
 					Inputs: login.Inputs{
@@ -516,21 +611,17 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "reauth_explicit_orgid_updates_existing",
 			opts: func(dir string) login.Options {
 				src := configSource(dir)
-				path, _ := src()
-				existingCfg := config.Config{
-					Contexts: map[string]*config.Context{
-						"grafana-example-com": {
-							Grafana: &config.GrafanaConfig{
-								Server:     "https://grafana.example.com",
-								APIToken:   "old-token",
-								AuthMethod: "token",
-								OrgID:      1,
-							},
-						},
+				existingCfg := config.Config{}
+				existingCfg.SetStack("grafana-example-com", config.StackConfig{
+					Grafana: &config.GrafanaConfig{
+						Server:     "https://grafana.example.com",
+						APIToken:   "old-token",
+						AuthMethod: "token",
+						OrgID:      1,
 					},
-					CurrentContext: "grafana-example-com",
-				}
-				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), existingCfg))
+				})
+				existingCfg.SetContext("grafana-example-com", true, config.Context{Stack: "grafana-example-com"})
+				require.NoError(t, config.Write(context.Background(), src, existingCfg))
 
 				return login.Options{
 					Inputs: login.Inputs{
@@ -616,6 +707,219 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			}
 		})
 	}
+}
+
+func TestResolveCloudEndpoints(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		inputs    login.Inputs
+		wantOAuth string
+		wantAPI   string
+	}{
+		{
+			name:      "prod derived",
+			inputs:    login.Inputs{Server: "https://stack.grafana.net"},
+			wantOAuth: "https://grafana.com",
+			wantAPI:   "https://grafana.com",
+		},
+		{
+			name:      "dev derived",
+			inputs:    login.Inputs{Server: "https://stack.grafana-dev.net"},
+			wantOAuth: "https://grafana-dev.com",
+			wantAPI:   "https://grafana-dev.com",
+		},
+		{
+			name:      "ops derived",
+			inputs:    login.Inputs{Server: "https://stack.grafana-ops.net"},
+			wantOAuth: "https://grafana-ops.com",
+			wantAPI:   "https://grafana-ops.com",
+		},
+		{
+			name:      "API intent also selects OAuth origin",
+			inputs:    login.Inputs{Server: "https://custom.example", CloudAPIURL: "grafana-dev.com"},
+			wantOAuth: "https://grafana-dev.com",
+			wantAPI:   "https://grafana-dev.com",
+		},
+		{
+			name: "explicit distinct sticky endpoints remain distinct",
+			inputs: login.Inputs{
+				Server:        "https://custom.example",
+				CloudOAuthURL: "https://grafana-ops.com",
+				CloudAPIURL:   "https://grafana-dev.com",
+			},
+			wantOAuth: "https://grafana-ops.com",
+			wantAPI:   "https://grafana-dev.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			oauthURL, apiURL := login.ResolveCloudEndpoints(login.Options{Inputs: tt.inputs})
+			assert.Equal(t, tt.wantOAuth, oauthURL)
+			assert.Equal(t, tt.wantAPI, apiURL)
+		})
+	}
+}
+
+func TestTrustedCAPIsPersistedAsCAP(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	source := configSource(dir)
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:              "https://mystack.grafana-ops.net",
+			ContextName:         "mystack",
+			Target:              login.TargetCloud,
+			UseOAuth:            true,
+			CloudToken:          "kept-cap",
+			CloudCredentialKind: login.CloudCredentialCAP,
+			CloudTokenTrusted:   true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: source,
+			NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+				return &stubAuthFlow{result: &auth.Result{
+					Token:            "grafana-oauth-token",
+					RefreshToken:     "grafana-refresh-token",
+					ExpiresAt:        "2030-01-01T00:00:00Z",
+					RefreshExpiresAt: "2030-06-01T00:00:00Z",
+					InstanceEndpoint: "https://mystack.grafana-ops.net",
+					APIEndpoint:      "https://assistant.grafana-ops.net",
+				}}
+			},
+			ValidateFn: noopValidate,
+		},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+
+	cfg, err := config.Load(context.Background(), source)
+	require.NoError(t, err)
+	entry := cfg.Contexts["mystack"].CloudEntry
+	require.NotNil(t, entry)
+	assert.Equal(t, "kept-cap", entry.Token)
+	assert.Empty(t, entry.OAuthToken, "validation trust must not change the credential storage kind")
+	assert.Equal(t, "https://grafana-ops.com", entry.OAuthUrl,
+		"CAP credentials must persist their resolved Cloud origin")
+	assert.Equal(t, "https://grafana-ops.com", entry.APIUrl,
+		"CAP credentials must persist their resolved API destination")
+}
+
+func TestRuntimeTLSOverrideRejectsNonDurableBearerCredential(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	source := configSource(dir)
+	var validateCalls atomic.Int32
+	_, err := login.Run(context.Background(), &login.Options{
+		Inputs: login.Inputs{
+			Server:            "https://grafana.example.invalid",
+			ContextName:       "default",
+			Target:            login.TargetOnPrem,
+			GrafanaToken:      "fresh-token",
+			TLS:               &config.TLS{Insecure: true},
+			PreserveStoredTLS: true,
+			StoredTLS:         &config.TLS{ServerName: "stored.example.invalid"},
+		},
+		Hooks: login.Hooks{
+			ConfigSource: source,
+			ValidateFn: func(context.Context, login.Options, config.NamespacedRESTConfig) (string, error) {
+				validateCalls.Add(1)
+				return "", nil
+			},
+		},
+	})
+	require.ErrorContains(t, err, "runtime-only Grafana proxy/TLS settings")
+	assert.Zero(t, validateCalls.Load(), "a non-durable credential must fail before validation")
+
+	_, err = config.Load(context.Background(), source)
+	require.ErrorIs(t, err, os.ErrNotExist, "failed login must not create a config")
+}
+
+func TestStoredProxyTokenReauthPreservesDestinationBinding(t *testing.T) {
+	t.Parallel()
+
+	const (
+		server = "https://grafana.example.invalid"
+		proxy  = "https://proxy.example.invalid"
+		token  = "stored-token"
+	)
+	source := configSource(t.TempDir())
+	seed := config.Config{}
+	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{
+		Server:        server,
+		ProxyEndpoint: proxy,
+		APIToken:      token,
+		AuthMethod:    "token",
+		OrgID:         1,
+	}})
+	seed.SetContext("default", true, config.Context{Stack: "default"})
+	require.NoError(t, config.Write(t.Context(), source, seed))
+
+	_, err := login.Run(t.Context(), &login.Options{
+		Inputs: login.Inputs{
+			Server:               server,
+			ContextName:          "default",
+			Target:               login.TargetOnPrem,
+			GrafanaToken:         token,
+			RuntimeProxyEndpoint: proxy,
+			PreserveStoredTLS:    true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: source,
+			ValidateFn: func(_ context.Context, opts login.Options, restCfg config.NamespacedRESTConfig) (string, error) {
+				assert.Equal(t, proxy, opts.RuntimeProxyEndpoint)
+				assert.Equal(t, server, restCfg.Host)
+				assert.Equal(t, token, restCfg.BearerToken)
+				return "12.0.0", nil
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	persisted, err := config.Load(t.Context(), source)
+	require.NoError(t, err)
+	assert.Equal(t, proxy, persisted.Contexts["default"].Grafana.ProxyEndpoint,
+		"token reauth must not silently clear a destination component covered by its binding")
+}
+
+func TestRuntimeOnlyMTLSFailsClosedOnNextInvocation(t *testing.T) {
+	dir := t.TempDir()
+	source := configSource(dir)
+	_, err := login.Run(context.Background(), &login.Options{
+		Inputs: login.Inputs{
+			Server:      "https://grafana.example.invalid",
+			ContextName: "default",
+			Target:      login.TargetOnPrem,
+			TLS: &config.TLS{
+				CertData: []byte("runtime-certificate"),
+				KeyData:  []byte("runtime-private-key"),
+			},
+			PreserveStoredTLS: true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: source,
+			ValidateFn:   noopValidate,
+		},
+	})
+	require.NoError(t, err)
+
+	cfg, err := config.Load(context.Background(), source)
+	require.NoError(t, err)
+	ctx := cfg.Contexts["default"]
+	require.NotNil(t, ctx)
+	require.NotNil(t, ctx.Grafana)
+	assert.Equal(t, "mtls", ctx.Grafana.AuthMethod)
+	assert.Nil(t, ctx.Grafana.TLS, "runtime-only certificate material must not be persisted")
+
+	_, err = ctx.ToRESTConfig(context.Background())
+	require.ErrorContains(t, err, `auth-method "mtls" requires both a TLS client certificate and private key`)
+	require.ErrorContains(t, err, "GRAFANA_TLS_CERT_FILE")
 }
 
 // TestRunAgentModeMissingServer verifies that even in agent mode, Run returns
@@ -736,23 +1040,89 @@ func TestRun_OAuthRunsOnceAcrossRetries(t *testing.T) {
 	}
 }
 
+func TestRun_PersistsOAuthRotationPerformedDuringValidation(t *testing.T) {
+	dir := t.TempDir()
+	var refreshCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/cli/v1/auth/refresh":
+			refreshCalls.Add(1)
+			var body struct {
+				RefreshToken string `json:"refresh_token"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode refresh request: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			assert.Equal(t, "gar_initial", body.RefreshToken)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_rotated",
+					"expires_at":         "2099-01-01T00:00:00Z",
+					"refresh_token":      "gar_rotated",
+					"refresh_expires_at": "2099-02-01T00:00:00Z",
+				},
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:      server.URL,
+			ContextName: "short-oauth",
+			UseOAuth:    true,
+			Target:      login.TargetOnPrem,
+			Yes:         true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+				return &stubAuthFlow{result: &auth.Result{
+					Token:            "gat_initial",
+					RefreshToken:     "gar_initial",
+					APIEndpoint:      server.URL,
+					ExpiresAt:        time.Now().Add(time.Minute).UTC().Format(time.RFC3339),
+					RefreshExpiresAt: "2099-01-01T00:00:00Z",
+				}}
+			},
+			ValidateFn: func(ctx context.Context, _ login.Options, restCfg config.NamespacedRESTConfig) (string, error) {
+				token, err := restCfg.FreshOAuthToken(ctx)
+				assert.Equal(t, "gat_rotated", token)
+				return "12.0.0", err
+			},
+		},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), refreshCalls.Load())
+
+	loaded, err := config.Load(context.Background(), configSource(dir))
+	require.NoError(t, err)
+	grafana := loaded.Contexts["short-oauth"].Grafana
+	require.Equal(t, "gat_rotated", grafana.OAuthToken)
+	require.Equal(t, "gar_rotated", grafana.OAuthRefreshToken)
+	require.Equal(t, "2099-01-01T00:00:00Z", grafana.OAuthTokenExpiresAt)
+	require.Equal(t, "2099-02-01T00:00:00Z", grafana.OAuthRefreshExpiresAt)
+}
+
 func TestPersist_ServerMismatch_EmitsClarification(t *testing.T) {
 	dir := t.TempDir()
 
 	// Seed an existing context with a different server.
-	seed := config.Config{
-		CurrentContext: "mystack",
-		Contexts: map[string]*config.Context{
-			"mystack": {
-				Name: "mystack",
-				Grafana: &config.GrafanaConfig{
-					Server:     "https://mystack.grafana.net",
-					APIToken:   "old-token",
-					AuthMethod: "token",
-				},
-			},
+	seed := config.Config{}
+	seed.SetStack("mystack", config.StackConfig{
+		Grafana: &config.GrafanaConfig{
+			Server:     "https://mystack.grafana.net",
+			APIToken:   "old-token",
+			AuthMethod: "token",
 		},
-	}
+	})
+	seed.SetContext("mystack", true, config.Context{Stack: "mystack"})
 	if err := config.Write(context.Background(), configSource(dir), seed); err != nil {
 		t.Fatalf("seed config: %v", err)
 	}
@@ -797,20 +1167,16 @@ func TestPersist_ServerMismatch_EmitsClarification(t *testing.T) {
 func TestPersist_ServerMismatch_AllowOverrideBypasses(t *testing.T) {
 	dir := t.TempDir()
 
-	seed := config.Config{
-		CurrentContext: "mystack",
-		Contexts: map[string]*config.Context{
-			"mystack": {
-				Name: "mystack",
-				Grafana: &config.GrafanaConfig{
-					Server:     "https://mystack.grafana.net",
-					APIToken:   "old-token",
-					AuthMethod: "token",
-					OrgID:      42, // non-auth field we expect to survive re-auth
-				},
-			},
+	seed := config.Config{}
+	seed.SetStack("mystack", config.StackConfig{
+		Grafana: &config.GrafanaConfig{
+			Server:     "https://mystack.grafana.net",
+			APIToken:   "old-token",
+			AuthMethod: "token",
+			OrgID:      42, // non-auth field we expect to survive re-auth
 		},
-	}
+	})
+	seed.SetContext("mystack", true, config.Context{Stack: "mystack"})
 	if err := config.Write(context.Background(), configSource(dir), seed); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -851,22 +1217,58 @@ func TestPersist_ServerMismatch_AllowOverrideBypasses(t *testing.T) {
 	}
 }
 
+func TestPersist_UnboundContextSameNamedStackStillRequiresServerOverride(t *testing.T) {
+	dir := t.TempDir()
+	seed := config.Config{}
+	seed.SetStack("prod", config.StackConfig{
+		Slug: "preserve-me",
+		Grafana: &config.GrafanaConfig{
+			Server:     "https://old.example.invalid",
+			APIToken:   "old-token",
+			AuthMethod: "token",
+		},
+		Providers: map[string]map[string]string{"synth": {"sm-url": "https://sm.example.invalid"}},
+	})
+	seed.SetContext("prod", true, config.Context{})
+	require.NoError(t, config.Write(t.Context(), configSource(dir), seed))
+	rawBefore, err := os.ReadFile(filepath.Join(dir, "config.yaml"))
+	require.NoError(t, err)
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://new.example.invalid",
+			ContextName:  "prod",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "fresh-token",
+			Yes:          true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn:   noopValidate,
+		},
+	}
+
+	_, err = login.Run(t.Context(), &opts)
+	var clarification *login.ErrNeedClarification
+	require.ErrorAs(t, err, &clarification)
+	assert.Equal(t, "allow-override", clarification.Field)
+	rawAfter, readErr := os.ReadFile(filepath.Join(dir, "config.yaml"))
+	require.NoError(t, readErr)
+	assert.Equal(t, rawBefore, rawAfter)
+}
+
 func TestPersist_ServerMismatch_YesDoesNotBypass(t *testing.T) {
 	dir := t.TempDir()
 
-	seed := config.Config{
-		CurrentContext: "mystack",
-		Contexts: map[string]*config.Context{
-			"mystack": {
-				Name: "mystack",
-				Grafana: &config.GrafanaConfig{
-					Server:     "https://mystack.grafana.net",
-					APIToken:   "old-token",
-					AuthMethod: "token",
-				},
-			},
+	seed := config.Config{}
+	seed.SetStack("mystack", config.StackConfig{
+		Grafana: &config.GrafanaConfig{
+			Server:     "https://mystack.grafana.net",
+			APIToken:   "old-token",
+			AuthMethod: "token",
 		},
-	}
+	})
+	seed.SetContext("mystack", true, config.Context{Stack: "mystack"})
 	if err := config.Write(context.Background(), configSource(dir), seed); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -986,8 +1388,8 @@ func TestRun_OptionalCloudTokenRejected_WarnsAndPersists(t *testing.T) {
 	cfg, err := config.Load(context.Background(), configSource(dir))
 	require.NoError(t, err)
 	require.NotNil(t, cfg.Contexts["mystack"])
-	require.NotNil(t, cfg.Contexts["mystack"].Cloud)
-	assert.Equal(t, "glc_bad", cfg.Contexts["mystack"].Cloud.Token)
+	require.NotNil(t, cfg.Contexts["mystack"].CloudEntry)
+	assert.Equal(t, "glc_bad", cfg.Contexts["mystack"].CloudEntry.Token)
 }
 
 func TestRun_ForceSave_BypassesValidation(t *testing.T) {
@@ -1145,23 +1547,20 @@ func TestRun_ReauthPreservesTLS(t *testing.T) {
 	dir := t.TempDir()
 
 	// Seed config with TLS settings
-	seed := config.Config{
-		CurrentContext: "grafana-example-com",
-		Contexts: map[string]*config.Context{
-			"grafana-example-com": {
-				Grafana: &config.GrafanaConfig{
-					Server:   "https://grafana.example.com",
-					APIToken: "old-token",
-					OrgID:    42,
-					TLS: &config.TLS{
-						CertData:   []byte("cert-pem"),
-						KeyData:    []byte("key-pem"),
-						ServerName: "custom-sni.example.com",
-					},
-				},
+	seed := config.Config{}
+	seed.SetStack("grafana-example-com", config.StackConfig{
+		Grafana: &config.GrafanaConfig{
+			Server:   "https://grafana.example.com",
+			APIToken: "old-token",
+			OrgID:    42,
+			TLS: &config.TLS{
+				CertData:   []byte("cert-pem"),
+				KeyData:    []byte("key-pem"),
+				ServerName: "custom-sni.example.com",
 			},
 		},
-	}
+	})
+	seed.SetContext("grafana-example-com", true, config.Context{Stack: "grafana-example-com"})
 	require.NoError(t, config.Write(context.Background(), configSource(dir), seed))
 
 	// Re-auth with TLS carried through (simulating what the CLI does)

@@ -284,9 +284,10 @@ func TestDiscoverSMURL_OAuthProxyMode(t *testing.T) {
 	ctx := config.Context{
 		Name: "test",
 		Grafana: &config.GrafanaConfig{
-			Server:        "https://grafana.example.com",
-			ProxyEndpoint: proxy.URL,
-			OAuthToken:    "gat_test",
+			Server:              "https://grafana.example.com",
+			ProxyEndpoint:       proxy.URL,
+			OAuthToken:          "gat_test",
+			OAuthTokenExpiresAt: "2099-01-01T00:00:00Z",
 		},
 	}
 	restCfg, _ := config.NewNamespacedRESTConfig(context.Background(), ctx)

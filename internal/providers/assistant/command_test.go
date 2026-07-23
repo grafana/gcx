@@ -288,8 +288,8 @@ func TestRequireGrafanaCloud(t *testing.T) {
 		{
 			name: "cloud instance via explicit stack slug",
 			ctx: &config.Context{
-				Cloud:   &config.CloudConfig{Stack: "mystack"},
-				Grafana: &config.GrafanaConfig{Server: "https://custom.example.com"},
+				StackEntry: &config.StackConfig{Slug: "mystack"},
+				Grafana:    &config.GrafanaConfig{Server: "https://custom.example.com"},
 			},
 		},
 		{

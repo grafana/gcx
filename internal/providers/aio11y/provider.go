@@ -113,7 +113,7 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 	experimentsCmd := experiments.Commands(loader)
 	experimentsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx agento11y experiments list -o json; gcx agento11y experiments get <run-id> -o yaml; gcx agento11y experiments update <run-id> --description '...' --tag nightly --tag support -o json; gcx agento11y experiments list-scores <run-id> -o json; gcx agento11y experiments report <run-id> -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y experiments list -o json; gcx agento11y experiments get <run-id> -o yaml; gcx agento11y experiments update <run-id> --description '...' --tag nightly --tag support -o json; gcx agento11y experiments list-scores <run-id> -o json; gcx agento11y experiments get-report <run-id> -o json; gcx agento11y experiments test-suites list -o json; gcx agento11y experiments test-suites cases list <suite-id> <version> -o json; gcx agento11y experiments list-trials <run-id> -o json`,
 	}
 
 	aio11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, generationsCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd)

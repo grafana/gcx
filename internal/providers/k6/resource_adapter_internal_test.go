@@ -18,22 +18,23 @@ import (
 )
 
 type mockLoader struct {
-	cloudCfg    providers.CloudRESTConfig
-	grafanaCfg  config.NamespacedRESTConfig
-	providerCfg map[string]string
-	saved       map[string]string
+	cloudCfg     providers.CloudRESTConfig
+	grafanaCfg   config.NamespacedRESTConfig
+	providerCfg  map[string]string
+	envEndpoints map[string]bool
+	saved        map[string]string
 }
 
-func (m *mockLoader) LoadCloudConfig(_ context.Context) (providers.CloudRESTConfig, error) {
-	return m.cloudCfg, nil
-}
-
-func (m *mockLoader) LoadGrafanaConfig(_ context.Context) (config.NamespacedRESTConfig, error) {
-	return m.grafanaCfg, nil
-}
-
-func (m *mockLoader) LoadProviderConfig(_ context.Context, _ string) (map[string]string, string, error) {
-	return m.providerCfg, "", nil
+func (m *mockLoader) LoadDirectProviderSnapshot(_ context.Context, _ providers.DirectProviderPolicy) (providers.DirectProviderSnapshot, error) {
+	return providers.DirectProviderSnapshot{
+		ProviderConfig:           m.providerCfg,
+		Namespace:                m.cloudCfg.Namespace,
+		GrafanaConfig:            &m.grafanaCfg,
+		RuntimeEndpointOverrides: m.envEndpoints,
+		ResolveCloudConfig: func(context.Context) (providers.CloudRESTConfig, error) {
+			return m.cloudCfg, nil
+		},
+	}, nil
 }
 
 func (m *mockLoader) SaveProviderConfig(_ context.Context, _, key, value string) error {
@@ -75,6 +76,8 @@ func TestAuthenticatedClient_SATokenColdPath(t *testing.T) {
 	assert.Equal(t, "fresh-tok", tok)
 	assert.Equal(t, "fresh-tok", loader.saved[keyCachedToken])
 	assert.Equal(t, "999", loader.saved[keyCachedStackID])
+	assert.Equal(t, srv.URL, loader.saved[keyCachedDomain])
+	assert.Equal(t, cacheBinding("fresh-tok", 42, 999, srv.URL), loader.saved[keyCachedBinding])
 }
 
 func TestAuthenticatedClient_SATokenCachePath(t *testing.T) {
@@ -91,6 +94,8 @@ func TestAuthenticatedClient_SATokenCachePath(t *testing.T) {
 			keyCachedToken:   "cached-v3",
 			keyCachedOrgID:   "42",
 			keyCachedStackID: "999",
+			keyCachedDomain:  "http://unused-because-cache-hit",
+			keyCachedBinding: cacheBinding("cached-v3", 42, 999, "http://unused-because-cache-hit"),
 		},
 	}
 
@@ -100,6 +105,51 @@ func TestAuthenticatedClient_SATokenCachePath(t *testing.T) {
 	assert.Equal(t, "cached-v3", tok)
 	// No exchange should have happened — SaveProviderConfig must not have been called.
 	assert.Empty(t, loader.saved)
+}
+
+func TestAuthenticatedClient_RuntimeDomainOverrideBypassesStoredCache(t *testing.T) {
+	var startRequests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v3/account/grafana-app/start" {
+			t.Fatalf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+		startRequests.Add(1)
+		assert.Equal(t, "glsa_runtime", r.Header.Get("X-Grafana-Service-Token"))
+		assert.Equal(t, "999", r.Header.Get("X-Stack-Id"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"organization_id": "77", "v3_grafana_token": "runtime-v3",
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	loader := &mockLoader{
+		cloudCfg: providers.CloudRESTConfig{
+			Stack:     cloud.StackInfo{ID: 999},
+			Namespace: "stack-999",
+		},
+		grafanaCfg: config.NamespacedRESTConfig{
+			Config: rest.Config{BearerToken: "glsa_runtime"},
+		},
+		providerCfg: map[string]string{
+			"api-domain":     srv.URL,
+			keyCachedToken:   "stored-v3-must-not-be-used",
+			keyCachedOrgID:   "42",
+			keyCachedStackID: "999",
+			keyCachedDomain:  srv.URL,
+			keyCachedBinding: cacheBinding("stored-v3-must-not-be-used", 42, 999, srv.URL),
+		},
+		envEndpoints: map[string]bool{"api-domain": true},
+	}
+
+	client, _, err := authenticatedClient(context.Background(), loader)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), startRequests.Load(), "runtime destinations require a fresh exchange")
+	tok, _ := client.Token(context.Background())
+	assert.Equal(t, "runtime-v3", tok)
+	assert.Equal(t, "runtime-v3", loader.saved[keyCachedToken])
+	assert.Equal(t, srv.URL, loader.saved[keyCachedDomain])
+	assert.Equal(t, cacheBinding("runtime-v3", 77, 999, srv.URL), loader.saved[keyCachedBinding])
 }
 
 func TestAuthenticatedClient_SATokenMissingBearer(t *testing.T) {
@@ -158,6 +208,8 @@ func TestAuthenticatedClient_SATokenReauthOn401Chain(t *testing.T) {
 			keyCachedToken:   "stale-cached",
 			keyCachedOrgID:   "42",
 			keyCachedStackID: "999",
+			keyCachedDomain:  srv.URL,
+			keyCachedBinding: cacheBinding("stale-cached", 42, 999, srv.URL),
 		},
 	}
 
@@ -174,6 +226,8 @@ func TestAuthenticatedClient_SATokenReauthOn401Chain(t *testing.T) {
 	assert.Equal(t, "fresh-after-401", loader.saved[keyCachedToken])
 	assert.Equal(t, "55", loader.saved[keyCachedOrgID])
 	assert.Equal(t, "999", loader.saved[keyCachedStackID])
+	assert.Equal(t, srv.URL, loader.saved[keyCachedDomain])
+	assert.Equal(t, cacheBinding("fresh-after-401", 55, 999, srv.URL), loader.saved[keyCachedBinding])
 }
 
 // callListProjects is a tiny helper so the integration test doesn't need to

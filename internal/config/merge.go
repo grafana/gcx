@@ -5,17 +5,50 @@ import "maps"
 // MergeConfigs deep-merges two configs. Fields in `over` take precedence
 // over fields in `base`. Zero-value fields in `over` do not erase `base`.
 //
-// The keychain fields (keychainStore, keychainFields, keychainPreserve) are
-// carried over unchanged from `base`, so any resolved-field tracking on `over`
-// is dropped. This is safe: callers resolve the effective current context after
-// merging (see LoadLayered), and reconcileKeychain re-derives backing on write
-// from the sentinel/plaintext state of each field.
+// Runtime credential state is retained only for the atomic stack/cloud entries
+// that win the merge, including each entry's defining source identity.
 func MergeConfigs(base, over Config) Config {
 	result := base
+	result.migrationDeferred = base.migrationDeferred || over.migrationDeferred
+
+	if over.Version > result.Version {
+		result.Version = over.Version
+	}
 
 	// Scalar: current-context — higher layer wins if non-empty.
 	if over.CurrentContext != "" {
 		result.CurrentContext = over.CurrentContext
+	}
+
+	// Maps: stacks and cloud entries are ATOMIC across layers — a same-named
+	// entry in a higher layer replaces the lower layer's entry wholesale,
+	// never field-by-field. This guarantees a credential and its destination
+	// (server, api-url) always come from the same file: a repo-local layer
+	// cannot graft its own destination onto an entry whose token lives in the
+	// user config. A hostile layer can only shadow an entry (breaking it),
+	// not combine with it.
+	if over.Stacks != nil {
+		if result.Stacks == nil {
+			result.Stacks = make(map[string]*StackConfig)
+		}
+		maps.Copy(result.Stacks, over.Stacks)
+	}
+
+	if over.Cloud != nil {
+		if result.Cloud == nil {
+			result.Cloud = make(map[string]*CloudEntry)
+		}
+		maps.Copy(result.Cloud, over.Cloud)
+	}
+
+	// Global resources: last definition wins (see mergeResourcesConfig).
+	if over.Resources != nil {
+		if result.Resources == nil {
+			result.Resources = over.Resources
+		} else {
+			merged := mergeResourcesConfig(result.Resources, over.Resources)
+			result.Resources = &merged
+		}
 	}
 
 	// Map: contexts — merge by key.
@@ -42,6 +75,11 @@ func MergeConfigs(base, over Config) Config {
 			result.Diagnostics = &merged
 		}
 	}
+
+	// Re-wire resolved views: merged contexts may reference stacks or cloud
+	// entries contributed by either layer.
+	result.Resolve()
+	mergeKeychainRuntime(&result, base, over)
 
 	return result
 }
@@ -70,41 +108,11 @@ func mergeContexts(base, over *Context) *Context {
 
 	result := *base // shallow copy
 
-	// Grafana config: field-level merge.
-	if over.Grafana != nil {
-		if result.Grafana == nil {
-			result.Grafana = over.Grafana
-		} else {
-			merged := mergeGrafanaConfig(result.Grafana, over.Grafana)
-			result.Grafana = &merged
-		}
+	if over.Stack != "" {
+		result.Stack = over.Stack
 	}
-
-	// Cloud config: field-level merge.
-	if over.Cloud != nil {
-		if result.Cloud == nil {
-			result.Cloud = over.Cloud
-		} else {
-			merged := mergeCloudConfig(result.Cloud, over.Cloud)
-			result.Cloud = &merged
-		}
-	}
-
-	// Providers map: merge by key (string→map[string]string).
-	if over.Providers != nil {
-		if result.Providers == nil {
-			result.Providers = make(map[string]map[string]string)
-		}
-		for k, v := range over.Providers {
-			if baseV, ok := result.Providers[k]; ok {
-				merged := make(map[string]string, len(baseV)+len(v))
-				maps.Copy(merged, baseV)
-				maps.Copy(merged, v)
-				result.Providers[k] = merged
-			} else {
-				result.Providers[k] = v
-			}
-		}
+	if over.Cloud != "" {
+		result.Cloud = over.Cloud
 	}
 
 	// Datasources map: merge by key.
@@ -115,29 +123,6 @@ func mergeContexts(base, over *Context) *Context {
 		maps.Copy(result.Datasources, over.Datasources)
 	}
 
-	// Resources config: last definition wins. Assume-server-dry-run weakens the
-	// dry-run guard, so a higher layer must be able to narrow (or clear, via an
-	// explicit []) what a lower layer asserts — a union could only ever widen it.
-	if over.Resources != nil {
-		if result.Resources == nil {
-			result.Resources = over.Resources
-		} else {
-			merged := mergeResourcesConfig(result.Resources, over.Resources)
-			result.Resources = &merged
-		}
-	}
-
-	// Named datasource overrides.
-	if over.DefaultPrometheusDatasource != "" {
-		result.DefaultPrometheusDatasource = over.DefaultPrometheusDatasource
-	}
-	if over.DefaultLokiDatasource != "" {
-		result.DefaultLokiDatasource = over.DefaultLokiDatasource
-	}
-	if over.DefaultPyroscopeDatasource != "" {
-		result.DefaultPyroscopeDatasource = over.DefaultPyroscopeDatasource
-	}
-
 	return &result
 }
 
@@ -145,65 +130,6 @@ func mergeResourcesConfig(base, over *ResourcesConfig) ResourcesConfig {
 	result := *base
 	if over.AssumeServerDryRun != nil {
 		result.AssumeServerDryRun = over.AssumeServerDryRun
-	}
-	return result
-}
-
-func mergeGrafanaConfig(base, over *GrafanaConfig) GrafanaConfig {
-	result := *base
-	if over.Server != "" {
-		result.Server = over.Server
-	}
-	if over.User != "" {
-		result.User = over.User
-	}
-	if over.Password != "" {
-		result.Password = over.Password
-	}
-	if over.APIToken != "" {
-		result.APIToken = over.APIToken
-	}
-	if over.OrgID != 0 {
-		result.OrgID = over.OrgID
-	}
-	if over.StackID != 0 {
-		result.StackID = over.StackID
-	}
-	if over.TLS != nil {
-		t := *over.TLS
-		result.TLS = &t
-	}
-	if over.OAuthToken != "" {
-		result.OAuthToken = over.OAuthToken
-	}
-	if over.OAuthRefreshToken != "" {
-		result.OAuthRefreshToken = over.OAuthRefreshToken
-	}
-	if over.OAuthTokenExpiresAt != "" {
-		result.OAuthTokenExpiresAt = over.OAuthTokenExpiresAt
-	}
-	if over.OAuthRefreshExpiresAt != "" {
-		result.OAuthRefreshExpiresAt = over.OAuthRefreshExpiresAt
-	}
-	if over.ProxyEndpoint != "" {
-		result.ProxyEndpoint = over.ProxyEndpoint
-	}
-	return result
-}
-
-func mergeCloudConfig(base, over *CloudConfig) CloudConfig {
-	result := *base
-	if over.Token != "" {
-		result.Token = over.Token
-	}
-	if over.Stack != "" {
-		result.Stack = over.Stack
-	}
-	if over.OAuthUrl != "" {
-		result.OAuthUrl = over.OAuthUrl
-	}
-	if over.APIUrl != "" {
-		result.APIUrl = over.APIUrl
 	}
 	return result
 }
