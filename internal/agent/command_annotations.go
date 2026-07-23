@@ -553,7 +553,28 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y experiments update":      {Cost: "small"},
 	"gcx agento11y experiments cancel":      {Cost: "small"},
 	"gcx agento11y experiments list-scores": {Cost: "medium", Hint: "<run-id> --limit 50 -o json"},
-	"gcx agento11y experiments report":      {Cost: "medium", Hint: "<run-id> -o json"},
+	"gcx agento11y experiments get-report":  {Cost: "medium", Hint: "<run-id> -o json"},
+	"gcx agento11y experiments list-trials": {
+		Cost: "small",
+		Hint: "<run-id> -o json",
+	},
+
+	"gcx agento11y experiments test-suites list":             {Cost: "small"},
+	"gcx agento11y experiments test-suites get":              {Cost: "small", Hint: "<suite-id> -o yaml"},
+	"gcx agento11y experiments test-suites create":           {Cost: "small"},
+	"gcx agento11y experiments test-suites update":           {Cost: "small"},
+	"gcx agento11y experiments test-suites versions create":  {Cost: "small"},
+	"gcx agento11y experiments test-suites versions publish": {Cost: "small"},
+	"gcx agento11y experiments test-suites cases list":       {Cost: "small", Hint: "<suite-id> <version> -o json"},
+	"gcx agento11y experiments test-suites cases get":        {Cost: "small", Hint: "<suite-id> <version> <test-case-id> -o yaml"},
+	"gcx agento11y experiments test-suites cases upsert":     {Cost: "small"},
+	"gcx agento11y experiments test-suites cases update":     {Cost: "small"},
+	"gcx agento11y experiments test-suites cases delete":     {Cost: "small"},
+	"gcx agento11y experiments trials get":                   {Cost: "small", Hint: "<trial-id> -o yaml"},
+	"gcx agento11y experiments trials create":                {Cost: "small"},
+	"gcx agento11y experiments trials update":                {Cost: "small"},
+	"gcx agento11y experiments trials list-scores":           {Cost: "medium", Hint: "<trial-id> -o json"},
+	"gcx agento11y experiments trials list-artifacts":        {Cost: "small", Hint: "<trial-id> -o json"},
 
 	// -----------------------------------------------------------------------
 	// SLO provider

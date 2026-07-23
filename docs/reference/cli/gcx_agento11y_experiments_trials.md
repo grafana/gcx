@@ -1,21 +1,11 @@
-## gcx agento11y experiments update
+## gcx agento11y experiments trials
 
-Update an experiment's mutable fields.
-
-```
-gcx agento11y experiments update <run-id> [flags]
-```
+Manage experiment test case trials.
 
 ### Options
 
 ```
-  -h, --help                 help for update
-  -o, --output string        Output format. One of: agents, json, yaml (default "json")
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
-      --name string          New experiment name
-      --description string   New experiment description; pass an empty string to clear
-      --tag strings          Experiment tag (repeatable or comma-separated; replaces all tags)
+  -h, --help   help for trials
 ```
 
 ### Options inherited from parent commands
@@ -33,4 +23,9 @@ gcx agento11y experiments update <run-id> [flags]
 ### SEE ALSO
 
 * [gcx agento11y experiments](gcx_agento11y_experiments.md)	 - Manage eval experiment runs.
+* [gcx agento11y experiments trials create](gcx_agento11y_experiments_trials_create.md)	 - Create or upsert a test case trial from a JSON or YAML file.
+* [gcx agento11y experiments trials get](gcx_agento11y_experiments_trials_get.md)	 - Get a single test case trial.
+* [gcx agento11y experiments trials list-artifacts](gcx_agento11y_experiments_trials_list-artifacts.md)	 - List artifacts for a test case trial.
+* [gcx agento11y experiments trials list-scores](gcx_agento11y_experiments_trials_list-scores.md)	 - List scores for a test case trial.
+* [gcx agento11y experiments trials update](gcx_agento11y_experiments_trials_update.md)	 - Update a test case trial from a JSON or YAML file.
 

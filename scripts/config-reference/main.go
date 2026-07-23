@@ -178,17 +178,17 @@ func docs(typeDef reflect.Type, typesCommentsMap map[string]typeComments) string
 			if comments.Fields[field.Name] != "" {
 				buffer.WriteString(prefixLines(comments.Fields[field.Name], "# ") + "\n")
 			}
-			buffer.WriteString(yamlName + ": ")
-
 			if field.Type.Kind() == reflect.Pointer {
 				fieldKind = field.Type.Elem().Kind()
 			}
 
 			if fieldKind == reflect.Struct || fieldKind == reflect.Map || fieldKind == reflect.Slice {
+				buffer.WriteString(yamlName + ":")
 				buffer.WriteString(
 					"\n" + indent(docs(field.Type, typesCommentsMap), 2),
 				)
 			} else {
+				buffer.WriteString(yamlName + ": ")
 				buffer.WriteString(docs(field.Type, typesCommentsMap))
 			}
 
@@ -210,6 +210,8 @@ func prefixLines(input string, prefix string) string {
 	if input == "" {
 		return ""
 	}
+
+	input = strings.TrimRight(input, "\n")
 
 	return prefix + strings.ReplaceAll(input, "\n", "\n"+prefix)
 }

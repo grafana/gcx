@@ -1,21 +1,16 @@
-## gcx agento11y experiments update
+## gcx agento11y experiments test-suites cases delete
 
-Update an experiment's mutable fields.
+Delete a test case from a mutable suite version.
 
 ```
-gcx agento11y experiments update <run-id> [flags]
+gcx agento11y experiments test-suites cases delete <suite-id> <version> <test-case-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help                 help for update
-  -o, --output string        Output format. One of: agents, json, yaml (default "json")
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
-      --name string          New experiment name
-      --description string   New experiment description; pass an empty string to clear
-      --tag strings          Experiment tag (repeatable or comma-separated; replaces all tags)
+      --force   Skip confirmation prompt
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -32,5 +27,5 @@ gcx agento11y experiments update <run-id> [flags]
 
 ### SEE ALSO
 
-* [gcx agento11y experiments](gcx_agento11y_experiments.md)	 - Manage eval experiment runs.
+* [gcx agento11y experiments test-suites cases](gcx_agento11y_experiments_test-suites_cases.md)	 - Manage test cases in a suite version.
 

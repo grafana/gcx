@@ -1,21 +1,11 @@
-## gcx agento11y experiments update
+## gcx agento11y experiments test-suites versions
 
-Update an experiment's mutable fields.
-
-```
-gcx agento11y experiments update <run-id> [flags]
-```
+Manage test suite versions.
 
 ### Options
 
 ```
-  -h, --help                 help for update
-  -o, --output string        Output format. One of: agents, json, yaml (default "json")
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
-      --name string          New experiment name
-      --description string   New experiment description; pass an empty string to clear
-      --tag strings          Experiment tag (repeatable or comma-separated; replaces all tags)
+  -h, --help   help for versions
 ```
 
 ### Options inherited from parent commands
@@ -32,5 +22,7 @@ gcx agento11y experiments update <run-id> [flags]
 
 ### SEE ALSO
 
-* [gcx agento11y experiments](gcx_agento11y_experiments.md)	 - Manage eval experiment runs.
+* [gcx agento11y experiments test-suites](gcx_agento11y_experiments_test-suites.md)	 - Manage experiment test suites.
+* [gcx agento11y experiments test-suites versions create](gcx_agento11y_experiments_test-suites_versions_create.md)	 - Create a draft test suite version.
+* [gcx agento11y experiments test-suites versions publish](gcx_agento11y_experiments_test-suites_versions_publish.md)	 - Publish a draft test suite version.
 

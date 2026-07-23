@@ -1,21 +1,19 @@
-## gcx agento11y experiments update
+## gcx agento11y experiments trials create
 
-Update an experiment's mutable fields.
+Create or upsert a test case trial from a JSON or YAML file.
 
 ```
-gcx agento11y experiments update <run-id> [flags]
+gcx agento11y experiments trials create <run-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help                 help for update
-  -o, --output string        Output format. One of: agents, json, yaml (default "json")
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
-      --name string          New experiment name
-      --description string   New experiment description; pass an empty string to clear
-      --tag strings          Experiment tag (repeatable or comma-separated; replaces all tags)
+  -f, --filename string   File containing the trial payload (use - for stdin)
+  -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -32,5 +30,5 @@ gcx agento11y experiments update <run-id> [flags]
 
 ### SEE ALSO
 
-* [gcx agento11y experiments](gcx_agento11y_experiments.md)	 - Manage eval experiment runs.
+* [gcx agento11y experiments trials](gcx_agento11y_experiments_trials.md)	 - Manage experiment test case trials.
 

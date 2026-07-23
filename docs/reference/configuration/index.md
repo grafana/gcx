@@ -82,21 +82,18 @@ stacks:
         cert-data:
           - int
           - ...
-
         # KeyData holds PEM-encoded bytes (typically read from a client certificate key file).
         # Note: this value is base64-encoded in the config file and will be
         # automatically decoded.
         key-data:
           - int
           - ...
-
         # CAData holds PEM-encoded bytes (typically read from a root certificates bundle).
         # Note: this value is base64-encoded in the config file and will be
         # automatically decoded.
         ca-data:
           - int
           - ...
-
         # NextProtos is a list of supported application level protocols, in order of preference.
         # Used to populate tls.Config.NextProtos.
         # To indicate to the server http/1.1 is preferred over http/2, set to ["http/1.1", "h2"] (though the server is free to ignore that preference).
@@ -104,8 +101,6 @@ stacks:
         next-protos:
           - string
           - ...
-
-
     # Providers holds per-provider configuration, indexed by provider name.
     # Each provider has a map of string key-value pairs.
     # Secret fields are selectively redacted by providers.RedactSecrets using
@@ -124,7 +119,6 @@ stacks:
       assume-server-dry-run:
         - string
         - ...
-
 # Cloud is a map of named Grafana Cloud (GCOM) auth entries. Contexts
 # reference entries by name via Context.Cloud.
 cloud:
@@ -147,7 +141,6 @@ cloud:
     oauth-scopes:
       - string
       - ...
-
     # OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
     # login`. It is used only during login. Credential-bearing entries are
     # materialized as a coherent OAuth/API pair: one explicit endpoint fills its
@@ -170,7 +163,6 @@ resources:
   assume-server-dry-run:
     - string
     - ...
-
 # Contexts is a map of context configurations, indexed by name.
 contexts:
   ${string}:
@@ -187,7 +179,6 @@ contexts:
     datasources:
       ${string}:
         string
-
 # CurrentContext is the name of the context currently in use.
 current-context: string
 # Diagnostics holds optional local diagnostic settings. All features are off by default.
