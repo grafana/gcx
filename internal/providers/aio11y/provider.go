@@ -68,13 +68,13 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx agento11y evaluators list -o json; gcx agento11y evaluators get <id> -o yaml; gcx agento11y evaluators upsert -f def.yaml -o json; gcx agento11y evaluators test -e <id> -g <gen-id> -o json; gcx agento11y evaluators delete <id> --force`,
 	}
 
-	rulesCmd := rules.Commands()
+	rulesCmd := rules.Commands(loader)
 	rulesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
 		agent.AnnotationLLMHint:   `gcx agento11y rules list -o json; gcx agento11y rules get <id> -o yaml; gcx agento11y rules create -f rule.yaml -o json; gcx agento11y rules update <id> -f patch.yaml -o json; gcx agento11y rules delete <id> --force`,
 	}
 
-	guardsCmd := guards.Commands()
+	guardsCmd := guards.Commands(loader)
 	guardsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
 		agent.AnnotationLLMHint:   `gcx agento11y guards list -o json; gcx agento11y guards get <id> -o yaml; gcx agento11y guards create -f guard.yaml -o json; gcx agento11y guards update <id> -f guard.yaml -o json; gcx agento11y guards delete <id> --force`,

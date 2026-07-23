@@ -29,10 +29,10 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Manage evaluator definitions (LLM judge, regex, heuristic).",
 	}
 	cmd.AddCommand(
-		newListCommand(),
-		newGetCommand(),
-		newCreateCommand(),
-		newDeleteCommand(),
+		newListCommand(loader),
+		newGetCommand(loader),
+		newCreateCommand(loader),
+		newDeleteCommand(loader),
 		newTestCommand(loader),
 	)
 	return cmd
@@ -53,7 +53,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of evaluators to return (0 for no limit)")
 }
 
-func newListCommand() *cobra.Command {
+func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -64,7 +64,7 @@ func newListCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, namespace, err := NewTypedCRUD(ctx)
+			crud, namespace, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -109,7 +109,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand() *cobra.Command {
+func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <evaluator-id>",
@@ -121,7 +121,7 @@ func newGetCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, namespace, err := NewTypedCRUD(ctx)
+			crud, namespace, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -162,7 +162,7 @@ func (o *createOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-func newCreateCommand() *cobra.Command {
+func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:   "upsert",
@@ -187,7 +187,7 @@ func newCreateCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -224,7 +224,7 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newDeleteCommand() *cobra.Command {
+func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete ID...",
@@ -244,7 +244,7 @@ func newDeleteCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
