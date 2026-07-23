@@ -86,6 +86,11 @@ func (p *Provider) descriptor() signals.Descriptor {
 				TokenCost: "medium",
 				LLMHint:   `gcx metrics series -d abc123 '{__name__="up"}' --since 1h -o json`,
 			},
+			{
+				Build:     listCmd,
+				TokenCost: "small",
+				LLMHint:   `gcx metrics list -d abc123 --contains request -o json`,
+			},
 		},
 		ExtraCommands: []signals.CommandBuilder{BillingCommands, CardinalityCommands},
 		Adaptive: &signals.AdaptiveSpec{

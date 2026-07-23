@@ -210,6 +210,15 @@ func FormatLabelsTable(w io.Writer, resp *LabelsResponse) error {
 	return t.Render(w)
 }
 
+// FormatMetricNamesTable formats a LabelsResponse holding metric names as a table.
+func FormatMetricNamesTable(w io.Writer, resp *LabelsResponse) error {
+	t := style.NewTable("METRIC")
+	for _, name := range resp.Data {
+		t.Row(name)
+	}
+	return t.Render(w)
+}
+
 // FormatSeriesTable formats a SeriesResponse as a table. Each row is a single
 // series rendered in Prometheus selector syntax ({k="v",k2="v2"}) with labels
 // sorted for stability.
