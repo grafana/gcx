@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/grafana/gcx/cmd/gcx/instrumentation/check/fixplan"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -26,13 +28,20 @@ type checkOpts struct {
 
 	// Components is parsed from the positional argument; empty means "all".
 	Components []string
+
+	// Fix-plan flags. FixPlan gates the whole feature; the others are
+	// only meaningful when FixPlan is true.
+	FixPlan        bool
+	AgentID        string
+	PrintPrompt    bool
+	TimeoutSeconds int
 }
 
 func (o *checkOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.RegisterCustomCodec("table", &CheckTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &CheckTableCodec{Wide: true})
-	o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(otelutils.Results{}))
+	o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(ResultsWithFixPlan{}))
 	o.IO.BindFlags(flags)
 
 	flags.StringVar(&o.Language, "language", "",
@@ -48,6 +57,17 @@ func (o *checkOpts) setup(flags *pflag.FlagSet) {
 		"Path to the OpenTelemetry Collector config file.")
 	flags.BoolVar(&o.Debug, "debug", false,
 		"Print additional diagnostic output from the checker.")
+
+	flags.BoolVar(&o.FixPlan, "fix-plan", false,
+		"After running the checks, synthesize a single fix plan for every finding. "+
+			"Uses Grafana Assistant when the current context is a Grafana Cloud stack (billable); "+
+			"falls back to a local aggregation of the explanation docs otherwise.")
+	flags.StringVar(&o.AgentID, "agent-id", "",
+		"With --fix-plan: target a specific Grafana Assistant agent (defaults to the CLI agent).")
+	flags.BoolVar(&o.PrintPrompt, "print-prompt", false,
+		"With --fix-plan: build and print the Assistant prompt to stdout, then exit. Assistant is NOT called; no billing.")
+	flags.IntVar(&o.TimeoutSeconds, "assistant-timeout", 300,
+		"With --fix-plan: Grafana Assistant response timeout in seconds.")
 }
 
 // Validate finalizes opts after flag parsing and runs the otel-checker
@@ -57,6 +77,17 @@ func (o *checkOpts) setup(flags *pflag.FlagSet) {
 func (o *checkOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
+	}
+
+	if !o.FixPlan {
+		// Reject fix-plan sub-flags when the parent flag is off so users get
+		// a clear error rather than silently ignored flags.
+		if o.AgentID != "" {
+			return errors.New("--agent-id requires --fix-plan")
+		}
+		if o.PrintPrompt {
+			return errors.New("--print-prompt requires --fix-plan")
+		}
 	}
 
 	cmd := o.toCommands()
@@ -106,8 +137,9 @@ func (o *checkOpts) toCommands() otelutils.Commands {
 	}
 }
 
-// Command returns the "gcx instrumentation check" cobra command.
-func Command() *cobra.Command {
+// Command returns the "gcx instrumentation check" cobra command. The loader
+// is used only when --fix-plan is set; check itself runs entirely locally.
+func Command(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &checkOpts{}
 
 	cmd := &cobra.Command{
@@ -127,6 +159,11 @@ Checks performed:
 Components is an optional comma-separated list — defaults to all when omitted.
 Supported components: ` + strings.Join(otelutils.SupportedComponents, ", ") + `.
 
+Add --fix-plan to synthesize a single fix plan for every finding.
+When the current context is a Grafana Cloud stack, this uses Grafana Assistant
+(billable). Otherwise it falls back to a local aggregation of the explanation
+docs — no AI reasoning, but works offline and on OSS/Enterprise.
+
 Powered by github.com/grafana/otel-checker.`,
 		Args: cobra.MaximumNArgs(1),
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -144,7 +181,30 @@ Powered by github.com/grafana/otel-checker.`,
 				return fmt.Errorf("instrumentation check: %w", err)
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), results); err != nil {
+			envelope := ResultsWithFixPlan{Results: results}
+
+			if opts.FixPlan {
+				plan, err := fixplan.Generate(cmd.Context(), results, fixplan.Options{
+					Loader:          loader,
+					AgentID:         opts.AgentID,
+					TimeoutSeconds:  opts.TimeoutSeconds,
+					PrintPromptOnly: opts.PrintPrompt,
+				})
+				if err != nil {
+					return fmt.Errorf("instrumentation check: fix-plan: %w", err)
+				}
+				if !plan.Empty {
+					envelope.FixPlan = &FixPlanEnvelope{
+						Source:   string(plan.Source),
+						Content:  plan.Content,
+						DocsUsed: plan.DocsUsed,
+						Fallback: plan.Fallback,
+						Reason:   plan.Reason,
+					}
+				}
+			}
+
+			if err := opts.IO.Encode(cmd.OutOrStdout(), envelope); err != nil {
 				return fmt.Errorf("instrumentation check: %w", err)
 			}
 

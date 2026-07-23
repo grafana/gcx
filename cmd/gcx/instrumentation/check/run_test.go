@@ -241,7 +241,7 @@ func TestCheckTableCodec_WrongType(t *testing.T) {
 // Avoids actually running otel-checker (which would touch real env vars).
 
 func TestCommand_RejectsUnsupportedLanguage(t *testing.T) {
-	cmd := Command()
+	cmd := Command(nil)
 	cmd.SetArgs([]string{"sdk", "--language=rust"})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -252,7 +252,7 @@ func TestCommand_RejectsUnsupportedLanguage(t *testing.T) {
 }
 
 func TestCommand_RejectsMissingLanguage(t *testing.T) {
-	cmd := Command()
+	cmd := Command(nil)
 	cmd.SetArgs([]string{"sdk"})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -260,4 +260,73 @@ func TestCommand_RejectsMissingLanguage(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--language is required")
+}
+
+// ─── Fix-plan flag interactions ──────────────────────────────────────────────
+
+func TestCommand_FixPlanSubflagsRequireParent(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"agent-id alone", []string{"collector", "--agent-id=grafana_dashboarding"}, "--agent-id requires --fix-plan"},
+		{"print-prompt alone", []string{"collector", "--print-prompt"}, "--print-prompt requires --fix-plan"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := Command(nil)
+			cmd.SetArgs(tc.args)
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+// ─── ResultsWithFixPlan / codec envelope ─────────────────────────────────────
+
+func TestCheckTableCodec_RendersFixPlanBelowTable(t *testing.T) {
+	envelope := ResultsWithFixPlan{
+		Results: otelutils.Results{
+			Errors: []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no headers", ExplainID: "grafana-cloud.headers.missing-auth"}},
+		},
+		FixPlan: &FixPlanEnvelope{
+			Source:  "assistant",
+			Content: "# Fix plan\n\n1. Set the header.\n",
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&CheckTableCodec{}).Encode(&buf, envelope))
+
+	out := buf.String()
+	assert.Contains(t, out, "FAIL")
+	assert.Contains(t, out, "grafana-cloud.headers.missing-auth")
+	assert.Contains(t, out, "Fix plan")
+	// Plan follows the table (raw markdown since buf isn't a TTY).
+	assert.Less(t, strings.Index(out, "FAIL"), strings.Index(out, "Fix plan"),
+		"table must come before plan, got:\n%s", out)
+}
+
+func TestCheckTableCodec_LocalFallbackNoticePrinted(t *testing.T) {
+	envelope := ResultsWithFixPlan{
+		Results: otelutils.Results{
+			Errors: []otelutils.ComponentResult{{Component: "SDK", Message: "x", ExplainID: "y"}},
+		},
+		FixPlan: &FixPlanEnvelope{
+			Source:   "local",
+			Fallback: true,
+			Reason:   "not a Grafana Cloud stack",
+			Content:  "# Combined fix\n\nApply the sections.\n",
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&CheckTableCodec{}).Encode(&buf, envelope))
+	out := buf.String()
+	assert.Contains(t, out, "Grafana Assistant not available")
+	assert.Contains(t, out, "not a Grafana Cloud stack")
+	assert.Contains(t, out, "Combined fix")
 }

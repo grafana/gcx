@@ -104,7 +104,7 @@ internal/
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary, dry-run guard
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
-│   ├── assistant/  Assistant provider — owns the full `gcx assistant` command tree (command.go/conversation.go for prompt/dashboard/conversation A2A; `mcpservers/` subpackage for mcp-servers CRUD) built entirely within internal/ (no cmd/ import); all subcommands share one `providers.ConfigLoader`; `TypedRegistrations()` registers the MCPServer adapter (see `internal/assistant/mcpserver/`)
+│   ├── assistant/  Assistant provider — owns the full `gcx assistant` command tree (command.go/conversation.go for prompt/dashboard/conversation A2A; `mcpservers/` subpackage for mcp-servers CRUD) built entirely within internal/ (no cmd/ import); all subcommands share one `providers.ConfigLoader`; `TypedRegistrations()` registers the MCPServer adapter (see `internal/assistant/mcpserver/`); embed.go exports `RunPrompt`/`RequireGrafanaCloud` so other command trees (e.g. `instrumentation check --fix-plan`) can call Assistant without shelling out
 │   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
 │   ├── datasources/ Datasources provider — bridges /api/datasources into the resources pipeline via ResourceAdapter (no commands; managed via `gcx resources`)
 │   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`

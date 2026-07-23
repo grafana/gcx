@@ -18,6 +18,7 @@ gcx/
 │       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
 │       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, check, explain, clusters, services)
 │       │   ├── check/        #   otel-checker wrapper: local OTel setup validation
+│       │   │   └── fixplan/   #     --fix-plan orchestrator (Assistant / local fallback + prompt build)
 │       │   ├── clusters/     #   cluster-level subcommands (list, get, configure, remove, wait, apps subtree)
 │       │   ├── explain/      #   otel-checker doc registry lookup (show <id>, list)
 │       │   ├── services/     #   workload-level subcommands (list, get, include, exclude, clear)
@@ -64,7 +65,7 @@ gcx/
 │   │   │   ├── overrides/    # MetricsGeneratorConfig with ETag concurrency
 │   │   │   └── settings/     # PluginSettings
 │   │   ├── alert/            # Alert provider (rules and groups)
-│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/)
+│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/); exports RunPrompt for embedding Assistant calls in other command trees (used by `instrumentation check --fix-plan`)
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
 │   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint

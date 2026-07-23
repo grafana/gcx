@@ -123,12 +123,12 @@ Action-verb command tree for Grafana Cloud's Instrumentation Hub. Backed by flee
 
 - **`instrumentation setup <cluster>`** — End-to-end onboarding wizard; calls `SetupK8sDiscovery`, applies declared K8s monitoring config, prints a parameterized helm command
 - **`instrumentation status`** — Cross-cutting observed view across cluster → namespace → service hierarchy
-- **`instrumentation check [components]`** — Local OTel-instrumentation validation via the [otel-checker](https://github.com/grafana/otel-checker) library; runs entirely against the workstation's env vars, package manifests, and collector/Beyla/Alloy config. No Grafana stack calls
+- **`instrumentation check [components]`** — Local OTel-instrumentation validation via the [otel-checker](https://github.com/grafana/otel-checker) library; runs entirely against the workstation's env vars, package manifests, and collector/Beyla/Alloy config. No Grafana stack calls unless `--fix-plan` is set — that flag optionally hands the findings and their explanation docs to Grafana Assistant to synthesize one fix plan (billable), with a local aggregation fallback on OSS/Enterprise or when Assistant is unreachable
 - **`instrumentation explain <id>`** (+ **`list`**) — Lookup surface for the explanation docs bundled by otel-checker; IDs come from the `explain_id` field emitted by `check`
 - **`instrumentation clusters [list|get|configure|remove|wait]`** + nested **`apps`** — Declared-state read/write with tri-state flag semantics on `configure` and a per-namespace optimistic-lock guard
 - **`instrumentation services [list|get|include|exclude|clear]`** — Observed-state fleet sweep via `RunK8sDiscovery` with DWIM single-workload mutation
 
-Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider). `check` and `explain` are thin cmd/-only wrappers around the upstream `github.com/grafana/otel-checker/checks` and `.../checks/explain` packages — no provider glue. See ADR-018 for the design.
+Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider). `check` and `explain` are thin cmd/-only wrappers around the upstream `github.com/grafana/otel-checker/checks` and `.../checks/explain` packages — no provider glue. `check --fix-plan` embeds Grafana Assistant via `internal/providers/assistant.RunPrompt` (a public wrapper over the same auth resolution + streaming client used by `gcx assistant prompt`); the Assistant / local-fallback decision lives in `cmd/gcx/instrumentation/check/fixplan/`. See ADR-018 for the design.
 
 ### 7. Configuration
 

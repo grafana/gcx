@@ -146,7 +146,7 @@ var commandAnnotations = map[string]annotation{
 	// top-level single commands
 	"gcx instrumentation setup":        {Cost: "medium", Hint: "<cluster> --use-defaults -o json | Docs: " + docs.KubernetesMonitoring},
 	"gcx instrumentation status":       {Cost: "medium", Hint: "-o json | Docs: " + docs.KubernetesMonitoring},
-	"gcx instrumentation check":        {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds) — does not query any Grafana stack. [components] --language <lang> -o json"},
+	"gcx instrumentation check":        {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds) — does not query any Grafana stack. [components] --language <lang> -o json. Add --fix-plan to synthesize one fix plan for every finding: uses Grafana Assistant when the current context is Grafana Cloud (billable, see " + docs.AssistantPricing + "), otherwise falls back to a local aggregation of the explain docs. Use --print-prompt to preview the Assistant prompt without billing."},
 	"gcx instrumentation explain":      {Cost: "small", Hint: "Show a markdown explanation for an otel-checker finding by its explain ID (see the explain_id field in `gcx instrumentation check -o json` output). Use `gcx instrumentation explain list` to enumerate every registered ID."},
 	"gcx instrumentation explain list": {Cost: "medium", Hint: "-o json"},
 
