@@ -1,18 +1,12 @@
 ---
-title: Migrate your gcx configuration
-labels:
-  products:
-    - cloud
-    - enterprise
-    - oss
-weight: 4
+title: Migrate your gcx configuration labels: products: - cloud - enterprise - oss weight: 4
 ---
 
 # Migrate your `gcx` configuration files to v1 format
 
-In the old `gcx` configuration format (anything without a `version` field), every context had its own `grafana` and `cloud` section. The `v1` format splits the file into three sections: `stacks` for Grafana connections, `cloud` for Grafana Cloud credentials that multiple contexts can reference, and `contexts` that reference both by name.
+`gcx` is adjusting its configuration file format to make it easier to reuse credentials across contexts. The `v1` format splits the file into three sections: `stacks` for Grafana connections, `cloud` for Grafana Cloud credentials that multiple contexts can reference, and `contexts` that reference both by name.
 
-`gcx` migrates a single legacy configuration file automatically the first time it loads it - most users never need this page. If `gcx` printed a warning or error that linked here, your migration paused or stopped for one of a small set of reasons. Find the message you saw in [Why migration pauses or stops](#why-migration-pauses-or-stops) and follow the steps. The [field mapping](#map-a-legacy-configuration-to-version-1) at the end covers converting a file entirely by hand.
+`gcx` attempts to migrate a single legacy configuration file automatically the first time it loads it. If `gcx` printed a warning or error that linked here, your migration paused or stopped for one of a small set of reasons. Find the message you saw in [Why migration pauses or stops](#why-migration-pauses-or-stops) and follow the steps. The [field mapping](#map-a-legacy-configuration-to-version-1) at the end covers how to convert a config file manually.
 
 ## Nothing is deleted
 
@@ -29,104 +23,51 @@ cp ~/.config/gcx/config.yaml.legacy.bak ~/.config/gcx/config.yaml
 ```
 
 {{< admonition type="caution" >}}
-The backup is an exact copy. If your legacy file contained plaintext
-credentials, they remain in `<file>.legacy.bak` even after migration moves
-them into the OS credential store. Remove the backup yourself once you're
-sure you won't roll back.
+If your legacy file contained plaintext credentials, they remain in `<file>.legacy.bak` even after migration moves them into the OS credential store. Remove the backup yourself once you're sure you won't roll back.
 {{< /admonition >}}
 
 ## Why migration pauses or stops
 
 Match the message you saw:
 
-**"layered configuration migration is incomplete"** - your configuration is
-spread across several files (system, user, or a repository `.gcx.yaml`).
-`gcx` converts them in memory so commands keep working, but never rewrites
-several files behind your back: an error partway through would leave them in
-mixed formats without you knowing. Follow
-[Migrate layered files](#migrate-layered-files).
+**"layered configuration migration is incomplete"** - your configuration is spread across several files (system, user, or a repository `.gcx.yaml`). `gcx` converts them in memory so commands keep working, but never rewrites several files behind your back: an error partway through would leave them in mixed formats without you knowing. Follow [Migrate layered files](#migrate-layered-files).
 
-**"cannot safely auto-migrate layered legacy configuration"** or **"the
-overlapping entries require manual consolidation"** - two of your files
-define overlapping pieces of the same entry, which the v1 merge rules would
-combine differently than the legacy rules did. `gcx` refuses to convert
-rather than silently change what your configuration means. Follow
-[Consolidate overlapping layers](#consolidate-overlapping-layers).
+**"cannot safely auto-migrate layered legacy configuration"** or **"the overlapping entries require manual consolidation"** - two of your files define overlapping pieces of the same entry, which the v1 merge rules would combine differently than the legacy rules did. `gcx` refuses to convert rather than silently change what your configuration means. Follow [Consolidate overlapping layers](#consolidate-overlapping-layers).
 
-**"running with in-memory config migration ... reason: a legacy credential
-could not be read from the credential store"** - the credential store was
-locked, an unlock prompt was dismissed, or `gcx` ran in a session without
-credential store access (SSH, CI). Persisting the migration then could strand
-references to credentials it couldn't re-store, so `gcx` waits. Unlock your
-credential store (or run from a desktop session) and run any `gcx` command;
-the migration completes on its own.
+**"running with in-memory config migration ... reason: a legacy credential could not be read from the credential store"** - the credential store was locked, an unlock prompt was dismissed, or `gcx` ran in a session without credential store access (SSH, CI). Persisting the migration then could strand references to credentials it couldn't re-store, so `gcx` waits. Unlock your credential store (or run from a desktop session) and run any `gcx` command; the migration completes on its own.
 
-**"running with in-memory config migration"** with a permission-related
-reason - the configuration file or its directory isn't writable (common in CI
-images). Read-only commands keep working from the in-memory view; anything
-that writes configuration or credentials fails until the file is writable or
-replaced with a v1 file. Either fix the permissions and run any `gcx`
-command, or bake a migrated file into the image (see the
-[field mapping](#map-a-legacy-configuration-to-version-1)).
+**"running with in-memory config migration"** with a permission-related reason - the configuration file or its directory isn't writable (common in CI images). Read-only commands keep working from the in-memory view; anything that writes configuration or credentials fails until the file is writable or replaced with a v1 file. Either fix the permissions and run any `gcx` command, or bake a migrated file into the image (see the [field mapping](#map-a-legacy-configuration-to-version-1)).
 
-**"existing legacy config backup does not match the current source"** - a
-previous migration left a `.legacy.bak` and the file has since been rewritten
-in the legacy format (for example by an older `gcx` version). `gcx` won't
-overwrite the earlier backup. Compare the two files, keep the one you trust,
-move the backup aside, and run any `gcx` command.
+**"existing legacy config backup does not match the current source"** - a previous migration left a `.legacy.bak` and the file has since been rewritten in the legacy format (for example by an older `gcx` version). `gcx` won't overwrite the earlier backup. Compare the two files, keep the one you trust, move the backup aside, and run any `gcx` command.
 
-**"unsupported config version"** - the file isn't legacy, it's from a newer
-format this `gcx` release doesn't support. Don't edit the version number by
-hand; upgrade `gcx` instead.
+**"unsupported config version"** - the file isn't legacy, it's from a newer format this `gcx` release doesn't support. Don't edit the version number by hand; upgrade `gcx` instead.
 
-**"config migration self-check failed"** - `gcx` converted the file, checked
-the result against the original, and found a difference, so it left the file
-untouched. This indicates a bug: [report it](https://github.com/grafana/gcx/issues)
-with the error text, and migrate by hand in the meantime.
+**"config migration self-check failed"** - `gcx` converted the file, checked the result against the original, and found a difference, so it left the file untouched. This indicates a bug: [report it](https://github.com/grafana/gcx/issues) with the error text, and migrate by hand in the meantime.
 
 ## Migrate layered files
 
-The warning lists one command per remaining legacy file. Run them one at a
-time - each command rewrites just that file in the v1 format and leaves a
-`.legacy.bak` backup next to it:
+The warning lists one command per remaining legacy file. Run them one at a time - each command rewrites just that file in the v1 format and leaves a `.legacy.bak` backup next to it:
 
 ```bash
 gcx config set --file user version 1
 gcx config set --file local version 1
 ```
 
-After each step, `gcx` re-prints the commands for whatever legacy files
-remain, and refuses any per-file conversion that could replace a complete
-entry with a partial one. When it can't offer a safe command it tells you to
-edit the file instead. To inspect any file without loading it, run
-`gcx config edit <system|user|local>`.
+After each step, `gcx` re-prints the commands for whatever legacy files remain, and refuses any per-file conversion that could replace a complete entry with a partial one. When it can't offer a safe command it tells you to edit the file instead. To inspect any file without loading it, run `gcx config edit <system|user|local>`.
 
-Only run `--file system` if you own that file and have permission to change
-it. When all files are migrated, the warning disappears; confirm with
-[Verify the result](#verify-the-result).
+Only run `--file system` if you own that file and have permission to change it. When all files are migrated, the warning disappears; confirm with [Verify the result](#verify-the-result).
 
 ## Consolidate overlapping layers
 
-Legacy `gcx` merged same-named contexts from different files field by field.
-Version 1 doesn't: a stack or Cloud entry in a higher-priority file completely
-replaces a same-named entry in a lower one, so one file can never mix its
-server with another file's credentials. Files that relied on partial overrides
-need consolidating once, by hand:
+Legacy `gcx` merged same-named contexts from different files field by field. Version 1 doesn't: a stack or Cloud entry in a higher-priority file completely replaces a same-named entry in a lower one, so one file can never mix its server with another file's credentials. Files that relied on partial overrides need consolidating once, by hand:
 
-1. The error names the entries that overlap. Open each file with
-   `gcx config edit <system|user|local>` - this never loads or migrates
-   anything.
-1. Move the overriding fields into the file that owns the complete entry, or
-   rename the overriding entry (for example, give a repository-specific
-   context its own stack name) so nothing overlaps.
-1. Run any `gcx` command. The preflight re-checks; once nothing overlaps you
-   are directed to [Migrate layered files](#migrate-layered-files).
+1. The error names the entries that overlap. Open each file with `gcx config edit <system|user|local>` - this never loads or migrates anything.
+1. Move the overriding fields into the file that owns the complete entry, or rename the overriding entry (for example, give a repository-specific context its own stack name) so nothing overlaps.
+1. Run any `gcx` command. The preflight re-checks; once nothing overlaps you are directed to [Migrate layered files](#migrate-layered-files).
 
 ## Map a legacy configuration to version 1
 
-To convert a file by hand: copy the original somewhere safe, move each field
-to its new home using the table, add `version: 1` at the top, and
-[verify](#verify-the-result). Every legacy field has exactly one new home:
+To convert a file by hand: copy the original somewhere safe, move each field to its new home using the table, add `version: 1` at the top, and [verify](#verify-the-result). Every legacy field has exactly one new home:
 
 | Legacy (per context)                          | Version 1                                                     |
 | --------------------------------------------- | ------------------------------------------------------------- |
@@ -202,30 +143,13 @@ current-context: prod
 
 ### Credential references
 
-If your legacy file contains values like `keychain:gcx:prod:cloud-token`,
-they are references to secrets in the OS credential store. Let the migration
-move them rather than copying the strings yourself.
+If your legacy file contains values like `keychain:gcx:prod:cloud-token`, they are references to secrets in the OS credential store. Let the migration move them rather than copying the strings yourself.
 
-`gcx` only resolves legacy credential references from files it can trust: your
-standard user config file, or a file you select yourself with `--config` or
-`GCX_CONFIG`. In both cases the file must be a regular file, owned by you, and
-not writable by group or others. Symlinked home or XDG paths are fine - `gcx`
-compares the resolved locations. A reference is also only resolved when the
-context and field named inside it match where it actually appears in the file.
+`gcx` only resolves legacy credential references from files it can trust: your standard user config file, or a file you select yourself with `--config` or `GCX_CONFIG`. In both cases the file must be a regular file, owned by you, and not writable by group or others. Symlinked home or XDG paths are fine - `gcx` compares the resolved locations. A reference is also only resolved when the context and field named inside it match where it actually appears in the file.
 
-Config files discovered automatically in system directories or repositories
-are never trusted with legacy credential lookups. If a repository config
-contains credential references, select it explicitly with `--config` (only if
-you trust it), or replace the references with fresh credentials before
-migrating. Copying a legacy reference into a version 1 file never grants
-access to the secret.
+Config files discovered automatically in system directories or repositories are never trusted with legacy credential lookups. If a repository config contains credential references, select it explicitly with `--config` (only if you trust it), or replace the references with fresh credentials before migrating. Copying a legacy reference into a version 1 file never grants access to the secret.
 
-Version 1 credential references are tied to the config file's path, the exact
-stack or Cloud entry and field they belong to, and the credential's
-destination. Copying a version 1 config to a different path copies its
-structure but not access to its credentials - run `gcx login` or
-`gcx cloud login` for the copied file instead of copying reference strings by
-hand.
+Version 1 credential references are tied to the config file's path, the exact stack or Cloud entry and field they belong to, and the credential's destination. Copying a version 1 config to a different path copies its structure but not access to its credentials - run `gcx login` or `gcx cloud login` for the copied file instead of copying reference strings by hand.
 
 ## Verify the result
 
@@ -236,6 +160,4 @@ gcx config view
 gcx config check
 ```
 
-`gcx config view` shows the effective configuration with secrets redacted;
-`gcx config check` validates every context, including connectivity, and exits
-non-zero if any check fails.
+`gcx config view` shows the effective configuration with secrets redacted; `gcx config check` validates every context, including connectivity, and exits non-zero if any check fails.
