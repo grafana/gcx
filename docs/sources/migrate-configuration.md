@@ -8,36 +8,32 @@ labels:
 weight: 4
 ---
 
-# Migrate your `gcx` configuration
+# Migrate your `gcx` configuration files to v1
 
-`gcx` version 1 configuration files split the previous per-context layout into three sections: `stacks` for Grafana connections, `cloud` for Grafana Cloud credentials that several contexts can share, and `contexts` that bind the two together by name.
+In the old `gcx` configuration format, every context had its own `grafana` and `cloud` section. The `v1` format splits the file into three sections: `stacks` for Grafana connections, `cloud` for Grafana Cloud credentials that multiple contexts can reference, and `contexts` that tie the two together by name.
 
-For a single source, `gcx` detects the legacy format the first time it loads the
-file and migrates it automatically. When several config layers participate,
-gcx converts them in memory only and asks you to migrate each layer explicitly;
-that avoids committing one file before a later layer fails. This guide covers
-both paths and the manual mapping.
+`gcx` detects the legacy format and migrates a single config file automatically. If your configuration is spread across several layered files, `gcx` converts them in memory but asks you to migrate each file yourself, to avoid a partial migration in the event that it encounters an error in a later file. This guide covers both paths, plus how to convert a file by hand.
 
-## What the automatic migration does
+## Automatic migration steps
 
 When `gcx` loads a legacy configuration file, it:
 
-1. Reads an exact snapshot of every discovered system, user, and repository layer and verifies that converting the layers independently will preserve the effective legacy configuration. If a partial same-named overlay would change meaning under the new atomic entry rules, migration stops before changing any file.
-1. For a single-source migration, writes an exact, mode-0600 backup next to the logical configuration path with a `.legacy.bak` suffix. Backup creation is atomic and durable. An existing backup is accepted only when its bytes exactly match the legacy source being replaced. The backup is never overwritten or deleted - remove it yourself when you're happy with the migrated configuration.
+1. Takes a snapshot of every discovered config file and checks that converting each file on its own produces the same effective configuration as before. If it wouldn't - for example, because two layers partially overlap in a way the new merge rules would change - migration stops before touching any file, and every command that loads the configuration fails with instructions to consolidate the overlapping layers.
+1. When there is a single file to migrate, it creates a backup in the same location with a `.legacy.bak` suffix. If a backup already exists, and the contents don't match the current intended backup, the migration stops. `gcx` will not overwrite or delete a backup - you can remove it yourself once you're happy with the migrated configuration.
 1. Converts each context into a stack entry with the same name, moves cloud credentials into shared `cloud` entries, and rewrites the contexts as references to both.
-1. Verifies the converted configuration is equivalent to the original before replacing the file. If verification fails, the file is left untouched and `gcx` reports an error.
+1. Checks that the converted configuration means the same as the original before replacing the file. If that check fails, the file is left untouched and `gcx` reports an error.
 
 {{< admonition type="caution" >}}
-The backup is an exact copy, so a legacy file that contained plaintext
-credentials leaves those credentials in `<file>.legacy.bak` even after the new
-configuration moves them into the OS keychain. The backup stays mode `0600`,
-but gcx deliberately does not delete it. Remove it yourself after you are
-confident you will not roll back.
+The backup is an exact copy. If your legacy file contained plaintext
+credentials, they remain in `<file>.legacy.bak` even after migration moves
+them into the OS keychain. The backup keeps its `0600` permissions, but gcx
+deliberately never deletes it. Remove it yourself once you're sure you won't
+roll back.
 {{< /admonition >}}
 
-The migration never deletes legacy keychain entries. Credentials are copied to
-source- and destination-bound, generation-addressed entries; the old accounts
-remain so an exact backup containing legacy references stays restorable.
+Migration also never deletes keychain entries created by an older gcx.
+Credentials are copied into new entries and the old ones stay, so restoring
+the backup keeps working.
 
 To roll back, copy the backup over the configuration file:
 
@@ -45,29 +41,30 @@ To roll back, copy the backup over the configuration file:
 cp ~/.config/gcx/config.yaml.legacy.bak ~/.config/gcx/config.yaml
 ```
 
-If the configuration file isn't writable (for example, in a CI image), `gcx`
+If the configuration file isn't writable (for example, in a CI image), gcx
 migrates it in memory on every read and leaves the file alone. Read-only
-commands can use that in-memory view, but config or credential writes remain
-blocked until the file can be migrated or replaced. You will see a warning on
-each invocation.
+commands work with that in-memory view, but anything that writes config or
+credentials fails until the file can be migrated or replaced. gcx prints a
+warning on each invocation.
 
-A file that explicitly declares any version other than `1` is not a legacy
-file. gcx rejects it before creating a backup, resolving a keychain reference,
-or performing any other migration side effect. Use a gcx release that supports
-the declared version instead of editing the number by hand.
+A file that declares any version other than `1` isn't a legacy file. gcx
+rejects it before creating a backup, reading the keychain, or making any other
+change. Don't edit the version number by hand - use a gcx release that
+supports the declared version.
 
 ### Migrate layered files
 
-Legacy layers merged same-named contexts field-by-field. Version 1 deliberately
-replaces same-named stack and Cloud entries atomically so one config source
-cannot combine its destination with another source's credential. A legacy user
-file that contains a complete context plus a repository file that contains a
-partial overlay of that same context may therefore require manual consolidation.
+Legacy gcx merged same-named contexts from different files field by field.
+Version 1 doesn't: a stack or Cloud entry in a higher-priority file completely
+replaces a same-named entry in a lower one, so one file can't mix its server
+with another file's credentials. If a user file defines a complete context and
+a repository file overrides only part of it, you may need to consolidate them
+by hand.
 
-When preflight succeeds for several sources, gcx uses the converted result in
-memory but does not rewrite any layer. Migrate one discovered layer at a time
-with the config editor's explicit layer selector; setting the already-required
-version is a convenient no-op after the loader performs conversion:
+When the preflight check passes for several files, gcx uses the converted
+result in memory but doesn't rewrite anything. Migrate the files one at a time,
+using `--file` to pick the layer. Setting `version` to `1` is a convenient way
+to trigger the write - the loader has already done the conversion:
 
 ```bash
 gcx config set --file user version 1
@@ -88,10 +85,10 @@ a complete entry with a partial one. You can always open a remaining source
 without loading it by running the corresponding `gcx config edit <layer>`
 command.
 
-Use `--file system` only when you own that layer and have permission to update
-it. If gcx reports a semantic conflict, move the partial values into one trusted
-source or give the repository-specific context a distinct name, then retry. No
-source file, backup, or keychain entry is changed when preflight rejects the
+Only use `--file system` if you own that file and have permission to update
+it. If gcx reports a conflict, either move the overlapping values into one
+file or rename the repository-specific context, then retry. Nothing changes -
+no file, backup, or keychain entry - when the preflight check rejects a
 migration.
 
 ## Map a legacy configuration to version 1
@@ -114,11 +111,11 @@ Every legacy field has exactly one new home:
 | `contexts.<name>.datasources.*`               | unchanged                                                      |
 | `current-context`, `diagnostics`              | unchanged                                                      |
 
-Add `version: 1` at the top level to mark the file as migrated.
+Add `version: 1` at the top of the file to mark it as migrated.
 
-Name the `cloud` entries however you like - contexts reference them by name. When several contexts carried the same cloud token, point them all at one shared entry; that deduplication is the main reason for the new layout.
+Name the `cloud` entries whatever you like - contexts refer to them by name. If several contexts used the same cloud token, point them all at one shared entry. Sharing credentials like this is the main reason for the new layout.
 
-If your legacy `cloud.token` held a token from the experimental OAuth sign-in rather than an access policy token, it migrates into `token` all the same (the two are indistinguishable in the legacy format). The next `gcx cloud login` stores it correctly in the entry's `oauth-token` field.
+If your legacy `cloud.token` came from the experimental OAuth sign-in rather than an access policy, it still migrates into `token` - the legacy format can't tell the two apart. The next `gcx cloud login` stores it in the entry's `oauth-token` field.
 
 ### Example
 
@@ -174,30 +171,29 @@ current-context: prod
 
 ### Keychain references
 
-If your legacy user file contains values like
-`keychain:gcx:prod:cloud-token`, let the controlled migrator move them. Legacy
-references are accepted from a securely permissioned standard user source, or
-from a file you deliberately select through `--config` or `GCX_CONFIG`. Explicit
-consent is bound to that file's resolved canonical identity and is created only
-by the high-level config loader; a library caller merely constructing an
-`ExplicitConfigFile` source does not grant authority. The selected file must be
-a regular file, must not be writable by group or others, and must be owned by
-the current user on platforms that expose file ownership. Symlinked home/XDG
-paths work because gcx compares resolved identities.
+If your legacy file contains values like `keychain:gcx:prod:cloud-token`, let
+the migration move them rather than copying the strings yourself.
 
-Before any keychain lookup, the sentinel's embedded owner and field must exactly
-match its containing context and schema field. Auto-discovered system and
-repository sources remain untrusted and perform no legacy keychain lookup;
-select a file explicitly only when you trust it, or replace its references with
-fresh credentials before migrating. Copying a legacy reference into a version 1
-file never grants access to the secret.
+gcx only resolves legacy keychain references from files it can trust: your
+standard user config file, or a file you select yourself with `--config` or
+`GCX_CONFIG`. In both cases the file must be a regular file, owned by you, and
+not writable by group or others. Symlinked home or XDG paths are fine - gcx
+compares the resolved locations. A reference is also only resolved when the
+context and field named inside it match where it actually appears in the file.
 
-Version 1 keychain references are bound to the canonical config path, exact
-stack or Cloud owner kind/name, exact secret field, and normalized credential
-destination. Each reference also selects an opaque random generation. Copying
-a version 1 config to a different path therefore copies its structure but not
-its credential authority. Run `gcx login` or `gcx cloud login` for the copied
-file instead of manually copying sentinel strings.
+Config files discovered automatically in system directories or repositories
+are never trusted with legacy keychain lookups. If a repository config
+contains keychain references, select it explicitly with `--config` (only if
+you trust it), or replace the references with fresh credentials before
+migrating. Copying a legacy reference into a version 1 file never grants
+access to the secret.
+
+Version 1 keychain references are tied to the config file's path, the exact
+stack or Cloud entry and field they belong to, and the credential's
+destination. Copying a version 1 config to a different path copies its
+structure but not access to its credentials - run `gcx login` or
+`gcx cloud login` for the copied file instead of copying reference strings by
+hand.
 
 ## Verify the result
 

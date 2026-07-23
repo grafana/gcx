@@ -12,6 +12,15 @@
 // stack-agnostic (no stack slugs, regions, or org IDs).
 package docs
 
+import "strings"
+
+// HumanURL converts a registry link to the HTML rendering of the same page,
+// for messages shown only to humans (e.g. output gated on agent mode being
+// off), where the .md rendering is the wrong surface.
+func HumanURL(link string) string {
+	return strings.TrimSuffix(link, ".md") + "/"
+}
+
 const (
 	// ServiceAccounts documents creating a Grafana service-account token,
 	// the value passed to `gcx login --token`.

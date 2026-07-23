@@ -816,8 +816,8 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 
 	log.Info("migrated config to the current format", "file", filename, "backup", filename+legacyBackupSuffix)
 	if !agent.IsAgentMode() {
-		fmt.Fprintf(os.Stderr, "Migrated %s to the new config format (backup: %s)\nWhat changed: %s\n",
-			filename, filename+legacyBackupSuffix, docs.ConfigMigration)
+		fmt.Fprintf(os.Stderr, "Your gcx config file %s has been migrated to the new v1 format, with a backup of the old file at %s.\nRead about what changed here: %s\n",
+			filename, filename+legacyBackupSuffix, docs.HumanURL(docs.ConfigMigration))
 	}
 	return *cfg, nil
 }
