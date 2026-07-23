@@ -1,6 +1,7 @@
 package root
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -90,29 +91,39 @@ func TestFallbackTelemetryInfo(t *testing.T) {
 
 	// --help on a resolved command: recorded as help with the resolved path.
 	require.NoError(t, get.Flags().Set("help", "true"))
-	info := FallbackTelemetryInfo(rootCmd, []string{"resources", "get", "--help"}, 0)
+	info := FallbackTelemetryInfo(rootCmd, []string{"resources", "get", "--help"}, nil, 0)
 	assert.False(t, info.Suppress)
 	assert.True(t, info.Help)
 	assert.Equal(t, "resources get", info.Command)
 
-	// `gcx resources bogus` fails with exit code 2, but Find still resolves
-	// it to the "resources" group - the same thing bare `gcx resources` (a
-	// help view) resolves to. The exit code is the only difference between
-	// them, so the failure must be suppressed rather than counted as help.
-	info = FallbackTelemetryInfo(rootCmd, []string{"resources", "bogus"}, 2)
-	assert.True(t, info.Suppress)
+	// `gcx resources bogus` fails with exit code 2: an unknown-command parse
+	// failure under the resources group.
+	info = FallbackTelemetryInfo(rootCmd, []string{"resources", "bogus"}, errors.New(`unknown command "bogus" for "gcx resources"`), 2)
+	assert.False(t, info.Suppress)
+	require.NotNil(t, info.ParseError)
+	assert.Equal(t, parseErrorUnknownCommand, info.ParseError.Kind)
+	assert.Equal(t, "resources", info.ParseError.Parent)
+	assert.Equal(t, "bogus", info.ParseError.Token)
+
+	// A wrapped flag failure classifies from the error itself, not the args.
+	info = FallbackTelemetryInfo(rootCmd, []string{"resources", "get", "--frmat"}, &flagParseError{cmd: get, err: errors.New("unknown flag: --frmat")}, 2)
+	assert.False(t, info.Suppress)
+	require.NotNil(t, info.ParseError)
+	assert.Equal(t, parseErrorUnknownFlag, info.ParseError.Kind)
+	assert.Equal(t, "frmat", info.ParseError.Flags)
 
 	// Non-runnable command group: cobra prints help before the hooks run.
-	info = FallbackTelemetryInfo(rootCmd, []string{"resources"}, 0)
+	info = FallbackTelemetryInfo(rootCmd, []string{"resources"}, nil, 0)
 	assert.False(t, info.Suppress)
 	assert.True(t, info.Help)
 	assert.Equal(t, "resources", info.Command)
 
-	// Unknown commands are parse failures, suppressed until parse capture.
-	info = FallbackTelemetryInfo(rootCmd, []string{"resourcse", "get"}, 0)
+	// Unknown command with a zero exit means cobra answered the invocation
+	// itself; there is no parse failure to record.
+	info = FallbackTelemetryInfo(rootCmd, []string{"resourcse", "get"}, nil, 0)
 	assert.True(t, info.Suppress)
 
 	// Suppressed commands stay suppressed on the fallback path too.
-	info = FallbackTelemetryInfo(rootCmd, []string{"completion", "zsh", "--help"}, 0)
+	info = FallbackTelemetryInfo(rootCmd, []string{"completion", "zsh", "--help"}, nil, 0)
 	assert.True(t, info.Suppress)
 }

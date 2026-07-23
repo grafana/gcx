@@ -31,10 +31,10 @@ var diagnosticsConfig = sync.OnceValue(func() *internalconfig.DiagnosticsConfig 
 // emitUsageEvent builds and emits the anonymous usage event for this
 // invocation. It must never affect the command's exit code or prompt the user.
 // It must only be called once per invocation.
-func emitUsageEvent(cmd *cobra.Command, start time.Time, exitCode int) {
+func emitUsageEvent(cmd *cobra.Command, start time.Time, err error, exitCode int) {
 	info := root.CurrentTelemetryInfo()
 	if info == nil {
-		info = root.FallbackTelemetryInfo(cmd, os.Args[1:], exitCode)
+		info = root.FallbackTelemetryInfo(cmd, os.Args[1:], err, exitCode)
 	}
 	if info.Suppress {
 		return
@@ -80,6 +80,17 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 	event.CIProvider, event.IsCI = telemetry.DetectCI()
 
 	switch {
+	case info.ParseError != nil:
+		pe := info.ParseError
+		event.Outcome = telemetry.OutcomeParseError
+		event.ErrorKind = agentlog.KindFromExitCode(exitCode)
+		event.ParseErrorKind = pe.Kind
+		event.ParseErrorParent = pe.Parent
+		event.ParseErrorToken = pe.Token
+		event.AttemptedCommand = pe.Attempted
+		event.ParseErrorFlags = pe.Flags
+		event.ParseErrorNearest = pe.Nearest
+		event.ParseErrorDistance = pe.Distance
 	case info.Help && exitCode == 0:
 		event.Outcome = telemetry.OutcomeHelp
 	case exitCode == 0:

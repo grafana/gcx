@@ -16,8 +16,9 @@ type TelemetryInfo struct {
 	Command      string // command path without the root name, e.g. "resources get"
 	Flags        string // sorted, comma-separated names of the flags the user set
 	OutputFormat string
-	Help         bool // did the user call gcx help or use --help?
-	Suppress     bool // this event must not get emitted
+	Help         bool          // did the user call gcx help or use --help?
+	Suppress     bool          // this event must not get emitted
+	ParseError   *ParseFailure // set when the command line failed to parse
 }
 
 //nolint:gochecknoglobals // written once per process from PersistentPreRun.
@@ -57,10 +58,9 @@ func recordTelemetryInfo(cmd *cobra.Command, args []string) {
 // FallbackTelemetryInfo creates the usage-event info when PersistentPreRun
 // never ran, so nothing was recorded. That happens in two ways:
 //
-//   - The command line failed to parse (unknown command, unknown flag) and
-//     the exit code is nonzero. These return Suppress, so the caller emits
-//     no event. Recording parse failures as their own outcome is a TODO in
-//     #578.
+//   - The command line failed to parse (unknown command, unknown flag,
+//     invalid args) and the exit code is nonzero. These are classified into
+//     a parse_error outcome.
 //   - Cobra answered the invocation itself before any hooks could run:
 //     things like --help or --version, or a command with no action of its
 //     own (like `gcx` or `gcx resources`). The exit code is zero and
@@ -70,9 +70,9 @@ func recordTelemetryInfo(cmd *cobra.Command, args []string) {
 // For the zero-exit case, the command is re-resolved with Find and its flags
 // read as cobra parsed them. Scanning os.Args instead would misread forms
 // like --help=true.
-func FallbackTelemetryInfo(rootCmd *cobra.Command, args []string, exitCode int) *TelemetryInfo {
+func FallbackTelemetryInfo(rootCmd *cobra.Command, args []string, err error, exitCode int) *TelemetryInfo {
 	if exitCode != 0 {
-		return &TelemetryInfo{Suppress: true}
+		return parseFailureTelemetryInfo(rootCmd, args, err)
 	}
 	target, _, err := rootCmd.Find(args)
 	if err != nil {
