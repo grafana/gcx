@@ -148,7 +148,7 @@ func Command(loader *providers.ConfigLoader) *cobra.Command {
 // commandWith builds the check command with an injectable checker. Production
 // code passes otelchecks.Run via Command; tests inject a fake to drive the
 // command end-to-end without touching real env vars.
-func commandWith(loader *providers.ConfigLoader,c checker) *cobra.Command {
+func commandWith(loader *providers.ConfigLoader, c checker) *cobra.Command {
 	opts := &checkOpts{}
 
 	cmd := &cobra.Command{
