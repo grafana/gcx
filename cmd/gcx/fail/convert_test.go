@@ -1144,3 +1144,33 @@ func TestErrorToDetailedError_ValueTypedPreservesExitCode(t *testing.T) {
 		})
 	}
 }
+
+func TestErrorToDetailedError_EmittedErrorSuppressesEnvelope(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "bare EmittedError",
+			err:  gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New("2 failed")),
+		},
+		{
+			name: "wrapped EmittedError",
+			err:  fmt.Errorf("push: %w", gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, nil)),
+		},
+		{
+			name: "chain carrying both a DetailedError and an EmittedError",
+			err: &gcxerrors.DetailedError{
+				Summary: "outer",
+				Parent:  gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New("inner")),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Nil(t, fail.ErrorToDetailedError(tt.err),
+				"an EmittedError anywhere in the chain must suppress the secondary envelope")
+		})
+	}
+}

@@ -33,6 +33,14 @@ import (
 const reauthSuggestion = "Re-authenticate if needed: gcx login"
 
 func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
+	// An EmittedError anywhere in the chain means the complete result
+	// document is already on stdout — checked before DetailedError
+	// extraction so a chain carrying both can never render a second
+	// envelope.
+	if isEmittedError(err) {
+		return nil
+	}
+
 	// Match value-typed DetailedError returns (e.g. `return gcxerrors.DetailedError{...}`).
 	var val gcxerrors.DetailedError
 	if errors.As(err, &val) {
@@ -46,7 +54,6 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*gcxerrors.DetailedError, bool){
-		convertEmittedError,                // Result already on stdout — never render a second envelope
 		convertUnknownFieldSelectionErrors, // --json unknown-field validation
 		convertJQRuntimeErrors,             // --jq runtime failures — includes output shape summary
 		convertPartialFailureErrors,
@@ -736,20 +743,18 @@ func convertLinterErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return nil, false
 }
 
-// convertEmittedError suppresses the secondary DetailedError envelope for
-// commands that have already written their complete result document to
-// stdout (gcxerrors.EmittedError, e.g. wait's fused WaitResult or a fused
-// partial-failure envelope). The process exit code is honored by the
-// EmittedError short-circuit in reportError, which runs BEFORE conversion;
-// this converter is the safety net guaranteeing no other ErrorToDetailedError
-// caller can ever render an EmittedError as a second output document.
-// Returns (nil, true): no envelope.
-func convertEmittedError(err error) (*gcxerrors.DetailedError, bool) {
+// isEmittedError reports whether the chain carries a gcxerrors.EmittedError:
+// the command already wrote its complete result document to stdout (e.g.
+// wait's fused WaitResult or a fused partial-failure envelope), so
+// ErrorToDetailedError returns nil — no secondary envelope. The process exit
+// code is honored by the EmittedError short-circuit in reportError, which
+// runs BEFORE conversion; this check runs first in ErrorToDetailedError —
+// before DetailedError extraction — so no caller can ever render an
+// EmittedError as a second output document, even when the chain also
+// carries a DetailedError.
+func isEmittedError(err error) bool {
 	var emitted *gcxerrors.EmittedError
-	if errors.As(err, &emitted) {
-		return nil, true
-	}
-	return nil, false
+	return errors.As(err, &emitted)
 }
 
 func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
