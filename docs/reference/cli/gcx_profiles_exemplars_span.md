@@ -6,9 +6,9 @@ List span exemplars (profiles linked to trace spans)
 
 List span exemplars by calling SelectHeatmap with HEATMAP_QUERY_TYPE_SPAN.
 
-Each row is a span-linked profile sample identified by Span ID, which can be used to
-pivot to the associated trace in Tempo. Requires span-aware instrumentation upstream
-(e.g. otelpyroscope); without it the query returns an empty list.
+Each row is a span-linked profile sample identified by Span ID. When supplied by the
+server, Trace ID is also included for direct correlation with Tempo. Requires span-aware
+instrumentation upstream (e.g. otelpyroscope); without it the query returns an empty list.
 
 EXPR is the label selector (e.g. '{service_name="frontend"}').
 

@@ -20,6 +20,7 @@ Agent mode is detected via environment variables at `init()` time in
 | `CURSOR_AGENT` | Cursor | Truthy value activates agent mode |
 | `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |
 | `AMAZON_Q` | Amazon Q | Truthy value activates agent mode |
+| `OPENCODE` | opencode | Truthy value activates agent mode |
 
 The `--agent` persistent flag can also enable agent mode. `--agent=false`
 explicitly disables agent mode even when env vars are set.
@@ -84,11 +85,31 @@ Explicit flags override agent mode defaults:
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
 - `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400)
 
-### 6.4 Exempt Commands
+### 6.4 Output Protocol Classes
 
-Commands that produce non-data output are exempt from format switching:
-- `config set`, `config use-context` — confirmations only
-- `serve` — starts a long-running server
-- `push`, `pull` — output is status messages, not data
+Every runnable leaf command declares an output protocol class in
+`cmd/gcx/root/testdata/output_classes.json`, enforced by
+`TestConsistency_AllLeafCommandsHaveOutputClass` — a new command cannot
+land unclassified. When agent mode supplies the default (no explicit
+`-o`/`--json`/`--jq`):
+
+| Class | Agent-mode stdout contract |
+|-------|---------------------------|
+| `finite` | Exactly one JSON value — the result, or a fused/in-band error document — with the process exit code agreeing with the outcome. A command that has already written its complete document returns `gcxerrors.EmittedError` so the reporter never appends a second one. |
+| `artifact` | Files on disk are the real output; stdout carries exactly one JSON receipt (`gcx.artifact_receipt`: paths, format, counts, failures). Applies to the pull family (`resources pull`, `slo definitions/reports pull`). The `-o` flag selects the FILE format and is pinned via `Options.PinDefaultFormat` — agent mode must never produce `.agents` resource files or spill envelopes as manifests (`resources edit` shares the pin). Commands that write files as a side effect but answer with an ordinary result document (skills install, dev generate, config set) are class `finite`. |
+| `stream` | Typed, versioned JSONL: every line independently parseable with a `type` discriminator, ending in a terminal success/error event. |
+| `interactive` | Drives a prompt, editor, or wizard — exempt from the JSON contract, but must never block in agent mode: confirmation gates fail fast without `--force` (`CheckDestructiveBypass`), approval prompts are explicitly declined, and `resources edit` fails with an instructive error when no `EDITOR`/`VISUAL` is configured (an explicitly configured editor is honored — non-interactive editors are legitimate automation). Known gap: browser-OAuth login still blocks on its localhost callback in agent mode; use token auth in harnesses (follow-up). |
+| `server` / `shell` / `prose` / `raw` | Long-running listeners, completion scripts, help prose, and byte passthrough (`gcx api`, alert exports, kubectl-pipeable YAML emitters) — exempt, declared. |
+
+Explicit protocol-changing flags follow the flag, not the class: `--open`
+(browser deep link; in agent mode the URL arrives as a typed stderr hint and
+stdout may be empty), `-o pprof`/`-o raw` (binary/raw artifacts), and
+`--json list`/`--json ?` (plain field-per-line discovery output) are all
+explicit requests that override the declared default protocol.
+
+The conformance suite (`cmd/gcx/root/agentconformance_test.go`) builds a
+fresh binary and pins the finite contract end-to-end: one JSON value then
+EOF, in-band `gcx.error` document on failure with agreeing exit code,
+explicit `-o` overrides honored, stdin closed.
 
 See [environment-variables.md § Agent Mode Variables](environment-variables.md#agent-mode-variables) for the full variable reference.

@@ -74,7 +74,6 @@ canonical portable skill bundle.
 | `import-dashboards` | Import existing Grafana dashboards into Go builder code |
 | `create-dashboard` | Design and create dashboards with datasource discovery and snapshot-based visual iteration |
 | `manage-dashboards` | Operate existing dashboards: list, search, pull, push, validate, promote, restore, delete, and snapshot |
-| `explore-datasources` | Discover datasources, metrics, labels, and log streams |
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
 | `debug-with-grafana` | Run a structured diagnostic workflow across metrics, logs, and dashboards |
 | `diagnose-entity-graph` | Diagnose Knowledge Graph problems: missing entities, missing edges, broken trace context propagation, service-name collisions |
@@ -82,7 +81,10 @@ canonical portable skill bundle.
 | `slo-investigate` | Diagnose why a specific SLO is breaching or alerting |
 | `slo-manage` | Create, update, pull, push, and delete SLO definitions |
 | `slo-optimize` | Analyze SLO trends and recommend objective or alerting improvements |
-| `aio11y` | Browse conversations, manage evaluators and rules, set up online evaluation for LLM quality scoring (AI Observability) |
+| `agento11y` | Browse conversations, manage evaluators and rules, set up online evaluation for LLM quality scoring (Agent Observability) |
+| `agento11y-instrument` | Set up and instrument a developer's own LLM app to send generations to Agent Observability, verifying data lands via gcx |
+| `agento11y-prod-setup` | Set up production evaluation and guardrails (online eval rules + guards) for a deployed agent, grounded in its code and live traffic, applied via gcx with confirmation |
+| `agento11y-test-starter` | Build a starter offline test suite for an agent before it ships — test cases (Agent Observability suite YAML + runner stub) plus how to score them, grounded in the agent's own code |
 | `synth-check-status` | Check Synthetic Monitoring health, status, and trends |
 | `synth-investigate-check` | Diagnose why a Synthetic Monitoring check is failing |
 | `synth-manage-checks` | Create, update, pull, push, and delete Synthetic Monitoring checks |
@@ -139,5 +141,6 @@ production — with folder ordering handled automatically.
 **Exploring what data exists:**
 > "What Prometheus metrics are available for the payments service?"
 
-Claude will use `explore-datasources` to list metrics, filter by relevant
+Claude will use gcx datasource commands (`gcx datasources list`,
+`gcx datasources prometheus labels`) to list metrics, filter by relevant
 label selectors, and return sample queries you can use immediately.

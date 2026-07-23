@@ -40,7 +40,10 @@ gcx dashboards snapshot <name> [name...] [flags]
       --from string          Start time (relative like 'now-1h', RFC3339, Unix seconds, or Unix milliseconds)
       --height int           Height of the rendered image in pixels (default: -1/full-page for dashboard, 600 for panel)
   -h, --help                 help for snapshot
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --org-id int           Grafana organization number (default 1)
+  -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
       --output-dir string    Directory to write PNG files to (created if it does not exist) (default ".")
       --panel int            Panel number to render a single panel instead of the full dashboard
       --since string         Duration before now (e.g. '1h', '7d'); expands to --from now-{since} --to now; mutually exclusive with --from/--to

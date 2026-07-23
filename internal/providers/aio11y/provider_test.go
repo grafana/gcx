@@ -12,7 +12,7 @@ import (
 func TestAIO11yProvider_Interface(t *testing.T) {
 	p := &aio11y.AIO11yProvider{}
 
-	assert.Equal(t, "aio11y", p.Name())
+	assert.Equal(t, "agento11y", p.Name())
 	assert.NotEmpty(t, p.ShortDesc())
 	assert.NoError(t, p.Validate(nil))
 	assert.NoError(t, p.Validate(map[string]string{}))
@@ -25,7 +25,8 @@ func TestAIO11yProvider_Commands(t *testing.T) {
 	require.Len(t, cmds, 1)
 
 	aio11yCmd := cmds[0]
-	assert.Equal(t, "aio11y", aio11yCmd.Use)
+	assert.Equal(t, "agento11y", aio11yCmd.Use)
+	assert.Empty(t, aio11yCmd.Aliases)
 
 	subNames := commandNames(aio11yCmd)
 	for _, exp := range []string{"conversations", "agents", "evaluators", "rules", "guards"} {

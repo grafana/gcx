@@ -11,6 +11,9 @@ gcx k6 load-tests update-script <id> [flags]
 ```
   -f, --filename string   k6 script file to upload
   -h, --help              help for update-script
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

@@ -20,13 +20,13 @@ import (
 
 const pluginBasePath = "/api/plugins/grafana-sigil-app/resources"
 
-// Client is a base HTTP client for the AI Observability plugin API.
+// Client is a base HTTP client for the Agent Observability plugin API.
 type Client struct {
 	restConfig config.NamespacedRESTConfig
 	httpClient *http.Client
 }
 
-// NewClient creates a new AI Observability client from a Grafana REST config.
+// NewClient creates a new Agent Observability client from a Grafana REST config.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
@@ -45,7 +45,7 @@ type listResponse[T any] struct {
 	NextCursor string `json:"next_cursor,omitempty"`
 }
 
-// DoRequest builds and executes an HTTP request against the AI Observability plugin API.
+// DoRequest builds and executes an HTTP request against the Agent Observability plugin API.
 func (c *Client) DoRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.restConfig.Host+pluginBasePath+path, body)
 	if err != nil {

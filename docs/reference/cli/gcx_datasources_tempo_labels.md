@@ -11,6 +11,10 @@ When -l is omitted, returns all label names.
 
 Datasource is resolved from -d flag or datasources.tempo in your context.
 
+Experimental: --llm requests label values in a new LLM-friendly JSON format by
+sending the "Accept: application/vnd.grafana.llm" header. Datasources that do
+not support this format return the standard response.
+
 ```
 gcx datasources tempo labels [flags]
 ```
@@ -49,7 +53,7 @@ gcx datasources tempo labels [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -l, --label string        Get values for this label (omit to list all labels)
-      --llm                 Request LLM-friendly label values format (requires --label)
+      --llm                 [experimental] Request LLM-friendly label values format by sending the 'Accept: application/vnd.grafana.llm' header. Falls back to default JSON (requires --label)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
   -q, --query string        TraceQL query to filter labels
       --scope string        Tag scope filter (resource, span, event, link, instrumentation)

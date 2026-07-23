@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
@@ -30,7 +31,9 @@ func (opts *listOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Type, "type", "t", "", "Filter by datasource type (e.g., prometheus, loki)")
 	flags.StringVar(&opts.Name, "name", "", "Filter by datasource name (case-insensitive substring match)")
-	flags.IntVar(&opts.Limit, "limit", 50, "Maximum number of datasources to return")
+	// Cheaply complete source (no server-side limit exists), so the default
+	// is the full set; a default cap would only hide data.
+	opts.IO.BindListLimit(flags, &opts.Limit, "datasources", 0)
 }
 
 func (opts *listOpts) Validate() error {
@@ -109,13 +112,20 @@ func listCmd() *cobra.Command {
 				})
 			}
 
-			if opts.Limit > 0 && len(infos) > opts.Limit {
-				infos = infos[:opts.Limit]
-			}
+			// The full set is already in hand (the /api/datasources transport
+			// has no server-side limit), so the limit is purely a display trim
+			// and the observed total is exact. Truncation is machine-legible
+			// (list_meta in the envelope) and human-legible (stderr hint).
+			infos, meta := cmdio.TruncateCompleteList(infos, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			// Pattern 13: single shape for all formats. The table codec extracts
 			// .Datasources to render rows; JSON/YAML serialize the envelope.
-			return opts.IO.Encode(cmd.OutOrStdout(), &datasourceListResult{Datasources: infos})
+			if err := opts.IO.Encode(cmd.OutOrStdout(), &datasourceListResult{Datasources: infos, ListMeta: meta}); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 
@@ -139,6 +149,10 @@ type datasourceInfo struct {
 // extracts .Datasources to render rows (Pattern 13: format-agnostic data).
 type datasourceListResult struct {
 	Datasources []*datasourceInfo `json:"datasources" yaml:"datasources"`
+	// ListMeta is attached only when the output is a truncated page, so
+	// agents cannot mistake a page for the complete set. Reserved key —
+	// see docs/design/output.md § List Truncation Contract.
+	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }
 
 type datasourceTableCodec struct{}

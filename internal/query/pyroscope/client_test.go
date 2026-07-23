@@ -121,7 +121,7 @@ func TestClient_SelectSeries(t *testing.T) {
 							"value": 100,
 							"timestamp": "1000",
 							"exemplars": [
-								{"profileId": "p-1", "timestamp": "1100", "value": "5000", "spanId": "span-1"}
+								{"profileId": "p-1", "timestamp": "1100", "value": "5000", "spanId": "span-1", "traceId": "trace-1"}
 							]
 						}]
 					}]
@@ -201,13 +201,14 @@ func TestClient_SelectSeries(t *testing.T) {
 			assert.Len(t, resp.Series, tt.wantSeries)
 
 			// For the exemplars case, spot-check the decoded Exemplar payload:
-			// timestamp/value are json.Number, profileId/spanId propagate through.
+			// timestamp/value are json.Number; IDs propagate through.
 			if tt.name == "exemplarType forwarded and exemplars decoded" {
 				require.Len(t, resp.Series[0].Points, 1)
 				require.Len(t, resp.Series[0].Points[0].Exemplars, 1)
 				ex := resp.Series[0].Points[0].Exemplars[0]
 				assert.Equal(t, "p-1", ex.ProfileID)
 				assert.Equal(t, "span-1", ex.SpanID)
+				assert.Equal(t, "trace-1", ex.TraceID)
 				assert.Equal(t, int64(1100), ex.TimestampMs())
 				assert.Equal(t, int64(5000), ex.Int64Value())
 			}
@@ -219,9 +220,10 @@ func TestClient_Query_RequestFields(t *testing.T) {
 	emptyFlamegraph := `{"flamegraph":{"names":[],"levels":[],"total":"0","maxSelf":"0"}}`
 
 	tests := []struct {
-		name   string
-		req    pyroscope.QueryRequest
-		assert func(t *testing.T, body map[string]any)
+		name     string
+		req      pyroscope.QueryRequest
+		wantPath string
+		assert   func(t *testing.T, body map[string]any)
 	}{
 		{
 			name: "optional fields omitted when unset",
@@ -231,10 +233,35 @@ func TestClient_Query_RequestFields(t *testing.T) {
 			},
 			assert: func(t *testing.T, body map[string]any) {
 				t.Helper()
-				for _, k := range []string{"profileIdSelector", "stackTraceSelector", "maxNodes"} {
+				for _, k := range []string{"profileIdSelector", "spanSelector", "traceIdSelector", "stackTraceSelector", "maxNodes"} {
 					_, present := body[k]
 					assert.False(t, present, "%s should be omitted when unset", k)
 				}
+			},
+		},
+		{
+			name: "spanSelector forwarded to span profile endpoint",
+			req: pyroscope.QueryRequest{
+				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				LabelSelector: `{}`,
+				SpanIDs:       []string{"00f067aa0ba902b7", "5a4fe264a9c987fe"},
+			},
+			wantPath: "querier.v1.QuerierService/SelectMergeSpanProfile",
+			assert: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				assert.Equal(t, []any{"00f067aa0ba902b7", "5a4fe264a9c987fe"}, body["spanSelector"])
+			},
+		},
+		{
+			name: "traceIdSelector forwarded as JSON array",
+			req: pyroscope.QueryRequest{
+				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				LabelSelector: `{}`,
+				TraceIDs:      []string{"4bf92f3577b34da6a3ce929d0e0e4736", "7c9e66797425440de944be07fc1f90ae"},
+			},
+			assert: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				assert.Equal(t, []any{"4bf92f3577b34da6a3ce929d0e0e4736", "7c9e66797425440de944be07fc1f90ae"}, body["traceIdSelector"])
 			},
 		},
 		{
@@ -286,7 +313,11 @@ func TestClient_Query_RequestFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/SelectMergeStacktraces")
+				wantPath := tt.wantPath
+				if wantPath == "" {
+					wantPath = "querier.v1.QuerierService/SelectMergeStacktraces"
+				}
+				assert.Contains(t, r.URL.Path, wantPath)
 				var body map[string]any
 				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
 					return
@@ -395,6 +426,38 @@ func TestClient_Pprof(t *testing.T) {
 			wantGzip: true,
 		},
 		{
+			name: "trace_id_selector fields encoded when set",
+			req: pyroscope.PprofRequest{
+				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				LabelSelector: `{}`,
+				TraceIDs:      []string{"4bf92f3577b34da6a3ce929d0e0e4736", "7c9e66797425440de944be07fc1f90ae"},
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				b := body
+				var traceIDs []string
+				for len(b) > 0 {
+					num, typ, n := protowire.ConsumeTag(b)
+					b = b[n:]
+					if num == 8 && typ == protowire.BytesType {
+						v, n := protowire.ConsumeString(b)
+						b = b[n:]
+						traceIDs = append(traceIDs, v)
+					} else {
+						n := protowire.ConsumeFieldValue(num, typ, b)
+						if n < 0 {
+							break
+						}
+						b = b[n:]
+					}
+				}
+				assert.Equal(t, []string{"4bf92f3577b34da6a3ce929d0e0e4736", "7c9e66797425440de944be07fc1f90ae"}, traceIDs)
+				w.Header().Set("Content-Type", "application/proto")
+				_, _ = w.Write(fakeProfileProto)
+			},
+			wantGzip: true,
+		},
+		{
 			name: "server error is surfaced",
 			req: pyroscope.PprofRequest{
 				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
@@ -472,7 +535,7 @@ func TestClient_SelectHeatmap(t *testing.T) {
 						"slots": [{
 							"timestamp": "1500",
 							"exemplars": [
-								{"spanId": "span-abc", "timestamp": "1600", "value": "12345"}
+								{"spanId": "span-abc", "traceId": "trace-abc", "timestamp": "1600", "value": "12345"}
 							]
 						}]
 					}]
@@ -538,6 +601,7 @@ func TestClient_SelectHeatmap(t *testing.T) {
 				require.Len(t, resp.Series[0].Slots[0].Exemplars, 1)
 				ex := resp.Series[0].Slots[0].Exemplars[0]
 				assert.Equal(t, "span-abc", ex.SpanID)
+				assert.Equal(t, "trace-abc", ex.TraceID)
 				assert.Equal(t, int64(1600), ex.TimestampMs())
 				assert.Equal(t, int64(12345), ex.Int64Value())
 			}

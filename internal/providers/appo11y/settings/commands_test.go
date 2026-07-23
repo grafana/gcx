@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -156,24 +157,30 @@ func TestSettingsTableCodec_Decode_AlwaysErrors(t *testing.T) {
 func TestUpdateOpts_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		opts    updateOpts
+		file    string
 		wantErr bool
 	}{
 		{
 			name:    "file set",
-			opts:    updateOpts{File: "settings.yaml"},
+			file:    "settings.yaml",
 			wantErr: false,
 		},
 		{
 			name:    "file not set",
-			opts:    updateOpts{},
+			file:    "",
 			wantErr: true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.opts.Validate()
+			// Bind flags as the command does so the output-format default is
+			// populated before Validate (which now also validates IO).
+			opts := &updateOpts{}
+			opts.setup(pflag.NewFlagSet("update", pflag.ContinueOnError))
+			opts.File = tc.file
+
+			err := opts.Validate()
 			if tc.wantErr {
 				require.Error(t, err)
 			} else {

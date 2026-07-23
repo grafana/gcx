@@ -89,6 +89,51 @@ func TestStringifyAlertGroupListFilters(t *testing.T) {
 	}
 }
 
+// TestAlertGroupListOptsValidate covers the negative --limit rejection: it
+// must fire at validation time — before any config or network work — with the
+// capped-source wording (never "0 means all results are returned": --limit 0
+// on this command is bounded by alertGroupListHardCap).
+func TestAlertGroupListOptsValidate(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		limit   int
+		wantErr string // exact error message; empty means Validate must pass
+	}{
+		{
+			name:    "negative limit rejected",
+			limit:   -1,
+			wantErr: "invalid --limit -1: must be >= 0 (0 means as many results as the safety cap allows)",
+		},
+		{
+			name:    "large negative limit rejected",
+			limit:   -50,
+			wantErr: "invalid --limit -50: must be >= 0 (0 means as many results as the safety cap allows)",
+		},
+		{name: "zero limit accepted", limit: 0},
+		{name: "default limit accepted", limit: alertGroupListDefaultLimit},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			opts := &alertGroupListOpts{Limit: tc.limit}
+			err := opts.Validate()
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() = nil, want error %q", tc.wantErr)
+			}
+			if err.Error() != tc.wantErr {
+				t.Fatalf("Validate() error = %q, want %q", err.Error(), tc.wantErr)
+			}
+		})
+	}
+}
+
 // TestAlertGroupListHasExplicitFilter — silent-on-`--all` decision predicate.
 func TestAlertGroupListHasExplicitFilter(t *testing.T) {
 	t.Parallel()

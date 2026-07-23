@@ -36,6 +36,16 @@ gcx profiles query [EXPR] [flags]
     --profile-id 550e8400-e29b-41d4-a716-446655440000 \
     --profile-id 7c9e6679-7425-40de-944b-e07fc1f90ae7
 
+  # Restrict the query to one or more trace spans
+  gcx profiles query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
+    --span-id 00f067aa0ba902b7
+
+  # Restrict the query to samples from one or more traces
+  gcx profiles query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
+    --trace-id 4bf92f3577b34da6a3ce929d0e0e4736
+
   # Restrict the flamegraph to stacks rooted at a specific call site
   # (--stacktrace-selector is repeatable; pass it once per frame, root first)
   gcx profiles query '{service_name="my-go-service"}' \
@@ -57,11 +67,13 @@ gcx profiles query [EXPR] [flags]
       --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
-      --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)
+      --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)
       --since string                  Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof)
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)
       --step string                   Query step (e.g., '15s', '1m')
       --to string                     End time (RFC3339, Unix timestamp, or relative like 'now')
+      --trace-id strings              Only query samples with these 32-character hex trace IDs (repeatable)
 ```
 
 ### Options inherited from parent commands

@@ -7,9 +7,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	claudeplugin "github.com/grafana/gcx/claude-plugin"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
@@ -163,6 +165,29 @@ func TestValidateArgs_NestedGroupRejectsUnexpectedArgs(t *testing.T) {
 	require.ErrorContains(t, err, "versions")
 }
 
+func TestValidateArgs_UnknownCommandIncludesSuggestForHint(t *testing.T) {
+	listProfileTypesCmd := &cobra.Command{
+		Use:        "list-profile-types",
+		SuggestFor: []string{"profile-types"},
+		Short:      "List available profile types.",
+		RunE:       func(_ *cobra.Command, _ []string) error { return nil },
+	}
+	profilesCmd := &cobra.Command{Use: "profiles", Short: "Query profiles."}
+	profilesCmd.AddCommand(listProfileTypesCmd)
+
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
+		&mockProvider{name: "profiles", commands: []*cobra.Command{profilesCmd}},
+	})
+
+	err := root.ValidateArgs(rootCmd, []string{"profiles", "profile-types"})
+	require.Error(t, err)
+	require.ErrorContains(t, err, `unknown command "profile-types" for "gcx profiles"`)
+
+	var usageErr *fail.UsageError
+	require.ErrorAs(t, err, &usageErr)
+	assert.Contains(t, usageErr.Suggestions, "Did you mean 'gcx profiles list-profile-types'?")
+}
+
 func TestValidateArgs_AllowsHelpAndCompletionCommands(t *testing.T) {
 	rootCmd := root.NewCommandForTest("v0.0.0-test", nil)
 
@@ -232,6 +257,43 @@ func executeRootCommandForTest(args ...string) (string, string, error) {
 	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return stdout.String(), stderr.String(), err
+}
+
+func TestMigrationFallbackWarningUsesCommandStderrOnce(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+contexts:
+  dev:
+    grafana:
+      server: https://dev.example
+current-context: dev
+`), 0o600))
+	require.NoError(t, os.WriteFile(configPath+".legacy.bak", []byte("# invalid backup\n"), 0o600))
+
+	loadCmd := &cobra.Command{
+		Use: "migration-warning",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if _, err := internalconfig.Load(cmd.Context(), internalconfig.ExplicitConfigFile(configPath)); err != nil {
+				return err
+			}
+			_, err := cmd.OutOrStdout().Write([]byte("command output\n"))
+			return err
+		},
+	}
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
+		&mockProvider{name: "test", commands: []*cobra.Command{loadCmd}},
+	})
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	rootCmd.SetOut(stdout)
+	rootCmd.SetErr(stderr)
+	rootCmd.SetArgs([]string{"-v", "migration-warning"})
+
+	require.NoError(t, rootCmd.Execute())
+	assert.Equal(t, "command output\n", stdout.String())
+	assert.Contains(t, stderr.String(), "Warning: running with in-memory config migration")
+	assert.Equal(t, 1, strings.Count(stderr.String(), "Warning:"))
 }
 
 // buildContextFlagFixture wires a provider that mirrors the aio11y/appo11y

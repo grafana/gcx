@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strconv"
 
 	authlib "github.com/grafana/authlib/types"
-	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
@@ -63,21 +61,28 @@ func allResources() []resourceDef {
 
 // CloudConfigLoader is the subset of providers.ConfigLoader the k6 provider
 // consumes. The methods needed depend on the auth mode:
-//   - OAuth (plugin proxy): LoadGrafanaConfig only.
-//   - SA token (direct API): all four (LoadCloudConfig for stack ID,
-//     LoadProviderConfig + SaveProviderConfig for the cache).
+//   - OAuth (plugin proxy): the snapshot's Grafana config only.
+//   - SA token (direct API): the same snapshot's Cloud config, provider config,
+//     and SaveProviderConfig for the cache.
 type CloudConfigLoader interface {
-	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
-	LoadCloudConfig(ctx context.Context) (providers.CloudRESTConfig, error)
-	LoadProviderConfig(ctx context.Context, providerName string) (map[string]string, string, error)
+	LoadDirectProviderSnapshot(ctx context.Context, policy providers.DirectProviderPolicy) (providers.DirectProviderSnapshot, error)
 	SaveProviderConfig(ctx context.Context, providerName, key, value string) error
 }
 
 func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (API, string, error) {
-	restCfg, err := loader.LoadGrafanaConfig(ctx)
+	snapshot, err := loader.LoadDirectProviderSnapshot(ctx, providers.DirectProviderPolicy{
+		ProviderName:   "k6",
+		EndpointKeys:   []string{"api-domain"},
+		CredentialEnv:  "GRAFANA_TOKEN",
+		RequireGrafana: true,
+	})
 	if err != nil {
 		return nil, "", err
 	}
+	if snapshot.GrafanaConfig == nil {
+		return nil, "", errors.New("k6: Grafana configuration is required")
+	}
+	restCfg := *snapshot.GrafanaConfig
 
 	if restCfg.IsOAuthProxy() {
 		authClient, err := rest.HTTPClientFor(&restCfg.Config)
@@ -91,33 +96,27 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (API, st
 	}
 
 	// SA-token path: direct api.k6.io with /start exchange + cross-invocation cache.
-	cloudCfg, err := loader.LoadCloudConfig(ctx)
+	cloudCfg, err := snapshot.ResolveCloudConfig(ctx)
 	if err != nil {
 		return nil, "", fmt.Errorf("k6: load cloud config: %w", err)
 	}
-	providerCfg, _, providerCfgErr := loader.LoadProviderConfig(ctx, "k6")
-	if providerCfgErr != nil {
-		slog.DebugContext(ctx, "k6: could not load provider config, proceeding without cache", "error", providerCfgErr)
-	}
+	providerCfg := snapshot.ProviderConfig
 	domain := DefaultAPIDomain
 	if d := providerCfg["api-domain"]; d != "" {
 		domain = d
 	}
+	domain = normalizeAPIDomain(domain)
 	client := NewDirectClient(ctx, domain, httputils.NewDefaultClient(ctx))
 
 	exchange := func(ctx context.Context) (string, int, error) {
-		grafanaCfg, err := loader.LoadGrafanaConfig(ctx)
-		if err != nil {
-			return "", 0, fmt.Errorf("k6: load grafana config: %w", err)
-		}
-		if grafanaCfg.BearerToken == "" {
+		if restCfg.BearerToken == "" {
 			return "", 0, errors.New("k6: grafana.token is required (must be a glsa_* service-account token)")
 		}
-		if err := client.Authenticate(ctx, grafanaCfg.BearerToken, cloudCfg.Stack.ID); err != nil {
+		if err := client.Authenticate(ctx, restCfg.BearerToken, cloudCfg.Stack.ID); err != nil {
 			return "", 0, fmt.Errorf("k6: auth failed (PUT %s): %w -- ensure your token has k6 scopes", authPath, err)
 		}
 		tok, _ := client.Token(ctx)
-		persistCache(ctx, loader, tok, client.orgIDValue(), cloudCfg.Stack.ID)
+		persistCache(ctx, loader, tok, client.orgIDValue(), cloudCfg.Stack.ID, domain)
 		return tok, client.orgIDValue(), nil
 	}
 
@@ -126,9 +125,14 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (API, st
 		return exchange(ctx)
 	})
 
-	if cachedTok, cachedOrg, ok := loadCache(providerCfg, cloudCfg.Stack.ID); ok {
-		client.SetCachedAuth(cachedTok, cachedOrg, cloudCfg.Stack.ID)
-		return client, cloudCfg.Namespace, nil
+	// A runtime endpoint override is paired with an explicit Grafana token by
+	// the snapshot loader. Never send a stored v3 cache entry to that runtime
+	// destination; perform a fresh /start exchange instead.
+	if !snapshot.EndpointOverriddenByEnvironment("api-domain") {
+		if cachedTok, cachedOrg, ok := loadCache(providerCfg, cloudCfg.Stack.ID, domain); ok {
+			client.SetCachedAuth(cachedTok, cachedOrg, cloudCfg.Stack.ID)
+			return client, cloudCfg.Namespace, nil
+		}
 	}
 
 	if _, _, err := exchange(ctx); err != nil {

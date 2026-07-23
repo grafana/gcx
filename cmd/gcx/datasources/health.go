@@ -130,7 +130,13 @@ Exit codes distinguish resource failure from command failure:
 			}
 
 			if failed > 0 {
-				return gcxerrors.NewPartialFailureError("health-check", len(targets), failed)
+				// The per-datasource results document is already on stdout
+				// (the documented contract: exit 4 means the check ran and
+				// found unhealthy datasources). EmittedError carries the
+				// exit code without letting the reporter write a second
+				// error document.
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+					gcxerrors.NewPartialFailureError("health-check", len(targets), failed))
 			}
 			return nil
 		},

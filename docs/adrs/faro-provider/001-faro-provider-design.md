@@ -20,7 +20,7 @@ FaroApp, plus sourcemaps as a sub-resource of apps.
 
 **In scope (issue #89):** 5 CRUD commands on FaroApp (list, get, create,
 update, delete) with full TypedCRUD adapter registration. 3 sourcemap
-sub-resource commands (show-sourcemaps, apply-sourcemap, remove-sourcemap).
+sub-resource commands (list-sourcemaps, apply-sourcemap, delete-sourcemap).
 
 **Deferred:** `faro apps open` (browser link — no API calls, just URL
 construction + browser launch).
@@ -41,9 +41,9 @@ gcx frontend
     ├── create -f <file>
     ├── update [slug-id] -f <file> [--name <name>]
     ├── delete <slug-id>
-    ├── show-sourcemaps <slug-id>
+    ├── list-sourcemaps <slug-id>
     ├── apply-sourcemap <slug-id> -f <file>
-    └── remove-sourcemap <slug-id> <bundle-id>
+    └── delete-sourcemap <slug-id> <bundle-id>
 ```
 
 **Sourcemaps are sub-resources** (CONSTITUTION § Sub-resources): every

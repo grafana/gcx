@@ -2,6 +2,7 @@ package testutils
 
 import (
 	"os"
+	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
 )
@@ -23,4 +24,32 @@ func init() { //nolint:gochecknoinits
 	}
 
 	agent.ResetForTesting()
+}
+
+// SetAgentMode pins agent-mode detection for the duration of a test, so TTY
+// and agent-mode output shapes can be asserted deterministically even when
+// the test runs inside an agent harness (e.g. CLAUDECODE=1). The cleanup is
+// registered before t.Setenv so it runs after the env restore (LIFO),
+// re-detecting from the original environment. Incompatible with t.Parallel
+// (t.Setenv enforces this).
+func SetAgentMode(t *testing.T, enabled bool) {
+	t.Helper()
+	t.Cleanup(agent.ResetForTesting)
+	if enabled {
+		t.Setenv("GCX_AGENT_MODE", "true")
+	} else {
+		t.Setenv("GCX_AGENT_MODE", "false")
+	}
+	agent.ResetForTesting()
+}
+
+// PinArgv fixes os.Args for the duration of a test so behavior derived from
+// the real invocation argv (e.g. list truncation continuation commands) is
+// deterministic under `go test`. os.Args is process-global and the swap is
+// unsynchronized — do not combine with t.Parallel.
+func PinArgv(t *testing.T, argv ...string) {
+	t.Helper()
+	old := os.Args
+	os.Args = argv
+	t.Cleanup(func() { os.Args = old })
 }

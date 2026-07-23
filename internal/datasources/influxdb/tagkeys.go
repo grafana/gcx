@@ -34,23 +34,23 @@ func (opts *tagKeysOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-// TagKeysCmd returns the `tag-keys` subcommand.
+// TagKeysCmd returns the `list-tag-keys` subcommand.
 func TagKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &tagKeysOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "tag-keys",
+		Use:   "list-tag-keys",
 		Short: "List tag keys",
 		Long:  "List tag keys from an InfluxDB datasource. Only supported in InfluxQL mode.",
 		Example: `
   # List all tag keys (use datasource UID, not name)
-  gcx datasources influxdb tag-keys -d UID
+  gcx datasources influxdb list-tag-keys -d UID
 
   # Filter by measurement
-  gcx datasources influxdb tag-keys -d UID --measurement cpu
+  gcx datasources influxdb list-tag-keys -d UID --measurement cpu
 
   # Output as JSON
-  gcx datasources influxdb tag-keys -d UID -o json`,
+  gcx datasources influxdb list-tag-keys -d UID -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -74,7 +74,7 @@ func TagKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			if modeStr != "InfluxQL" {
-				return fmt.Errorf("tag-keys is only supported in InfluxQL mode (datasource is configured for %s mode)", modeStr)
+				return fmt.Errorf("list-tag-keys is only supported in InfluxQL mode (datasource is configured for %s mode)", modeStr)
 			}
 
 			client, err := influxdb.NewClient(cfg)
@@ -93,7 +93,7 @@ func TagKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources influxdb tag-keys -d UID",
+		agent.AnnotationLLMHint:   "gcx datasources influxdb list-tag-keys -d UID",
 	}
 
 	opts.setup(cmd.Flags())

@@ -4,9 +4,9 @@ package snapshot
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -17,6 +17,9 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/dashboards"
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -31,6 +34,7 @@ type GrafanaConfigLoader interface {
 }
 
 type snapshotOpts struct {
+	IO          cmdio.Options
 	Width       int
 	Height      int
 	Theme       string
@@ -46,6 +50,14 @@ type snapshotOpts struct {
 }
 
 func (opts *snapshotOpts) setup(flags *pflag.FlagSet) {
+	// The snapshot result is a snapshotReceipt document (files-on-disk
+	// receipt) through the codec system: the default table codec prints the
+	// familiar NAME/PANEL/FILE/SIZE table; agent mode and explicit
+	// -o json/yaml get the structured document with enumerated failures.
+	opts.IO.RegisterCustomCodec("table", &snapshotTableCodec{})
+	opts.IO.DefaultFormat("table")
+	opts.IO.BindFlags(flags)
+
 	flags.IntVar(&opts.Width, "width", 0, "Width of the rendered image in pixels (default: 1920 for dashboard, 800 for panel)")
 	flags.IntVar(&opts.Height, "height", 0, "Height of the rendered image in pixels (default: -1/full-page for dashboard, 600 for panel)")
 	flags.StringVar(&opts.Theme, "theme", "dark", "Grafana theme (light or dark)")
@@ -90,7 +102,68 @@ func (opts *snapshotOpts) Validate() error {
 		}
 	}
 
-	return nil
+	return opts.IO.Validate()
+}
+
+// snapshotReceipt is the finite result document for `dashboards snapshot`: a
+// files-on-disk receipt in the spirit of cmdio.ArtifactReceipt. It is a
+// bespoke shape (with the required collision-resistant discriminators)
+// because its per-file entries carry render metadata — panel, dimensions,
+// theme, render time — that the generic cmdio.ArtifactFile cannot express.
+type snapshotReceipt struct {
+	Type          string `json:"type" yaml:"type"`
+	SchemaVersion string `json:"schema_version" yaml:"schema_version"`
+	Action        string `json:"action" yaml:"action"`
+	Dir           string `json:"dir" yaml:"dir"`
+	// Format is the on-disk content format of the written files.
+	Format string `json:"format" yaml:"format"`
+	// Files enumerates the PNGs written, one entry per rendered target.
+	Files []dashboards.SnapshotResult `json:"files" yaml:"files"`
+	// Summary counts every requested target exactly once.
+	Summary cmdio.MutationSummary `json:"summary" yaml:"summary"`
+	// Failures is always present — [] when nothing failed — so consumers
+	// never need a nil check before ranging.
+	Failures []cmdio.MutationFailure `json:"failures" yaml:"failures"`
+}
+
+// Discriminator values for the snapshot receipt shape.
+const (
+	snapshotReceiptType          = "gcx.dashboards.snapshot"
+	snapshotReceiptSchemaVersion = "1"
+)
+
+// newSnapshotReceipt returns a snapshotReceipt with the discriminators set
+// and the always-serialized slices initialized.
+func newSnapshotReceipt(dir string) snapshotReceipt {
+	return snapshotReceipt{
+		Type:          snapshotReceiptType,
+		SchemaVersion: snapshotReceiptSchemaVersion,
+		Action:        "rendered",
+		Dir:           dir,
+		Format:        "png",
+		Files:         []dashboards.SnapshotResult{},
+		Failures:      []cmdio.MutationFailure{},
+	}
+}
+
+// snapshotTableCodec is the human "table" codec for snapshotReceipt values:
+// it renders exactly the NAME/PANEL/FILE/SIZE table of successful renders the
+// command has always printed, keeping default human stdout byte-identical.
+// Failures are enumerated in the structured formats and surfaced on stderr.
+type snapshotTableCodec struct{}
+
+func (c *snapshotTableCodec) Format() format.Format { return "table" }
+
+func (c *snapshotTableCodec) Decode(io.Reader, any) error {
+	return errors.New("table codec does not support decoding")
+}
+
+func (c *snapshotTableCodec) Encode(w io.Writer, value any) error {
+	receipt, ok := value.(snapshotReceipt)
+	if !ok {
+		return errors.New("invalid data type for snapshot table codec: expected snapshotReceipt")
+	}
+	return renderSnapshotTable(w, receipt.Files)
 }
 
 // Commands returns the snapshot cobra subcommand, wired to the given config loader.
@@ -227,30 +300,51 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 
 			_ = g.Wait()
 
-			// Collect successful results and render errors.
-			var successResults []dashboards.SnapshotResult
+			// Collect successful results and render errors into the receipt.
+			receipt := newSnapshotReceipt(opts.OutputDir)
 			var renderErrs []error
 			for i, r := range results {
 				if r.UID != "" {
-					successResults = append(successResults, r)
+					receipt.Files = append(receipt.Files, r)
 				}
 				if errs[i] != nil {
 					renderErrs = append(renderErrs, errs[i])
+					receipt.Failures = append(receipt.Failures, cmdio.MutationFailure{
+						Target: cmdio.MutationTarget{Kind: "Dashboard", Name: args[i]},
+						Error:  errs[i].Error(),
+					})
 				}
 			}
+			receipt.Summary = cmdio.MutationSummary{
+				Succeeded: len(receipt.Files),
+				Failed:    len(receipt.Failures),
+			}
 
-			// Output whatever succeeded before surfacing errors.
-			if agent.IsAgentMode() {
-				if err := json.NewEncoder(cmd.OutOrStdout()).Encode(successResults); err != nil {
-					return err
-				}
+			// Total failure: no receipt — a success-shaped document with
+			// zero files would be misleading, and exit 4 would misreport a
+			// complete failure as partial. The raw error takes the standard
+			// path (one gcx.error document in agent mode, exit 1), matching
+			// the batch cohort's zero-success convention.
+			if len(renderErrs) > 0 && len(receipt.Files) == 0 {
 				return errors.Join(renderErrs...)
 			}
 
-			if err := renderSnapshotTable(cmd.OutOrStdout(), successResults); err != nil {
+			if err := opts.IO.Encode(cmd.OutOrStdout(), receipt); err != nil {
 				return err
 			}
-			return errors.Join(renderErrs...)
+
+			if len(renderErrs) > 0 {
+				// The receipt (with enumerated failures) is already on
+				// stdout — surface the detail on stderr for humans (the
+				// table shows successes only) and carry exit 4 via
+				// EmittedError without a second stdout document.
+				for _, failure := range receipt.Failures {
+					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Error)
+				}
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+					errors.Join(renderErrs...))
+			}
+			return nil
 		},
 	}
 
@@ -258,7 +352,7 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func renderSnapshotTable(w interface{ Write(b []byte) (int, error) }, results []dashboards.SnapshotResult) error {
+func renderSnapshotTable(w io.Writer, results []dashboards.SnapshotResult) error {
 	t := style.NewTable("NAME", "PANEL", "FILE", "SIZE")
 
 	for _, r := range results {

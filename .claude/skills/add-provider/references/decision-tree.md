@@ -24,7 +24,7 @@ Does the product expose a K8s-compatible API via Grafana's /apis endpoint?
 ### Use `gcx resources` (NO provider needed) when:
 
 - The product registers K8s-style CRDs accessible via `/apis/{group}/{version}/...`
-- Resources appear in `gcx resources schemas`
+- Resources appear in `gcx resources list-types`
 - Standard CRUD operations work via the dynamic client
 - No product-specific auth beyond the Grafana service account token
 

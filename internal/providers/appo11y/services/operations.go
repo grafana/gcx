@@ -218,7 +218,8 @@ func runOperations(opts *operationsOpts) func(*cobra.Command, []string) error {
 			return err
 		}
 		if notFound {
-			return fmt.Errorf("service %q has no telemetry in the requested window", jobLabel(namespace, name))
+			return notFoundEmitted(cmd.ErrOrStderr(),
+				fmt.Sprintf("service %q has no telemetry in the requested window", jobLabel(namespace, name)))
 		}
 		return nil
 	}

@@ -67,14 +67,16 @@ gcx providers list
 ```bash
 gcx resources get dashboards -o wide --no-truncate
 gcx resources get folders --no-truncate
-gcx resources schemas
+gcx resources list-types
 ```
 
 Dashboards are K8s resources — listable, pushable, validateable. The `URL`
 column in `-o wide` gives a direct deep link for every dashboard. `gcx
-resources schemas` reveals the full type catalog including any plugin-installed
-types (e.g. Adaptive Logs `DropRule`). `gcx resources examples <Kind>` produces
-a ready-to-push template for any of them.
+resources list-types` reveals the full type catalog including any plugin-installed
+types (e.g. Adaptive Logs `DropRule`). `gcx resources list-examples <Kind>` produces
+a ready-to-push template for provider-registered kinds (try `slos` or
+`DropRule`) — core kinds like dashboards and folders don't ship examples, so
+don't demo it on those.
 
 ### Datasources
 
@@ -113,9 +115,8 @@ gcx assistant prompt "Which service owns checkout-latency?" --continue
 gcx assistant prompt "Summarize CPU on prod" --json
 
 gcx assistant investigations list
-gcx assistant investigations todos <id>
-gcx assistant investigations timeline <id>
-gcx assistant investigations report <id>
+gcx assistant investigations get <id>
+gcx assistant investigations get-narrative <id>
 ```
 
 `prompt` runs natural language against the stack's live data — the Assistant
@@ -124,8 +125,7 @@ threads follow-ups via a stored context ID. `--json` emits a structured event
 stream for agent tools (Claude Code, Cursor) or scripts.
 
 Investigations are autonomous multi-step LLM runs. The read-only views show
-plan (`todos`), chronological activity (`timeline`), and final findings
-(`report`). `--open` on `investigations get` deep-links into the Grafana UI.
+lifecycle state (`get`) and the assistant's findings as prose (`get-narrative`). `--open` on `investigations get` deep-links into the Grafana UI.
 
 If `investigations list` is empty, note it and skip the per-investigation
 views. Do not create one during the demo.
@@ -138,9 +138,12 @@ gcx alert instances list --state firing
 gcx alert rules list --no-truncate
 ```
 
-SLOs return SLI, error budget, and burn rate in one command — scriptable for
-release gates. Firing alerts include labels, annotations, and runbook URLs.
-Alert rules expose full PromQL, evaluation timing, and datasource UIDs.
+SLOs return SLI, error budget, and status in one command (add `-o wide` for
+burn rate) — scriptable for release gates. Firing alerts include labels,
+annotations, and runbook URLs. The rules list shows state and health at a
+glance; drill into a single rule with `gcx alert rules get <uid> -o json` when
+the audience wants the full PromQL, evaluation timing, or datasource UIDs —
+the list table doesn't carry those.
 
 ### Synthetic Monitoring
 
@@ -149,8 +152,9 @@ gcx synth checks list
 gcx synth probes list
 ```
 
-HTTP and browser checks from a global probe network — probes list shows
-regions, coordinates, and capabilities.
+HTTP and browser checks from a global probe network — the probes table shows
+each probe's region and online status; `-o json` adds coordinates and
+capabilities if the audience asks.
 
 ### IRM
 
@@ -162,8 +166,9 @@ Who's on-call right now. Pipeable into runbooks and automation.
 
 ### Cloud Provider Commands
 
-Require `cloud.token` and `cloud.stack`. Skip gracefully if not configured,
-and note what's needed.
+Require cloud auth (a `cloud:` entry bound to the context via `gcx cloud
+login`, or `GRAFANA_CLOUD_TOKEN`) and a resolvable stack slug. Skip gracefully
+if not configured, and note what's needed.
 
 ```bash
 gcx k6 load-tests list --no-truncate
@@ -184,8 +189,9 @@ and the commands used. Adapt the summary to what was interesting on this
 particular stack. Don't recite a fixed table.
 
 Close with: "One binary, one context, every Grafana Cloud product. All
-scriptable, all pipelineable — and with `--dry-run` on mutations for safe
-GitOps workflows."
+scriptable, all pipelineable — and with `--dry-run` on resource and SLO pushes
+for safe GitOps workflows." (Don't claim every mutation verb has `--dry-run`;
+the create commands for checks, schedules, and pipelines currently don't.)
 
 ---
 
@@ -195,7 +201,7 @@ GitOps workflows."
 |-----------|--------|
 | `config check` fails | Stop. Ask user to fix the context before continuing. |
 | Signal datasource not found | Skip that signal type, note it. |
-| `cloud.token` / `cloud.stack` missing | Skip k6 and fleet, note what's needed. |
+| Cloud auth or stack slug missing | Skip k6 and fleet, note what's needed. |
 | Assistant unavailable (self-hosted, OAuth missing, 403) | Skip assistant section, note Cloud + OAuth requirement. |
 | Auth scope missing (403) | Note the missing scope, skip, continue. |
 | Empty list (0 resources) | Report "none found" — not an error; continue. |

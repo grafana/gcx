@@ -228,6 +228,8 @@ func TestUpdateCommand_DryRun_DoesNotCallAPI(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDeleteCommand_DryRun(t *testing.T) {
+	setAgentMode(t, false) // dry-run default format is text only outside agent mode
+
 	out, err := runCmd(t, stacks.NewTestDeleteCommand(), []string{
 		"delete", "mystack", "--dry-run",
 	}, "")
@@ -342,5 +344,5 @@ func TestNewCommand(t *testing.T) {
 	for _, sub := range cmd.Commands() {
 		subNames = append(subNames, sub.Name())
 	}
-	assert.ElementsMatch(t, []string{"list", "get", "create", "update", "delete", "regions"}, subNames)
+	assert.ElementsMatch(t, []string{"list", "get", "create", "update", "delete", "list-regions"}, subNames)
 }

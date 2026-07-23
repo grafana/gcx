@@ -72,7 +72,7 @@ cmd/gcx/
   root/         CLI root (logging, global flags)
   login/        Unified login command (token + OAuth PKCE, interactive prompts)
   config/       Config management (set, use-context, view, check)
-  resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
+  resources/    Resource commands (get, list-types, list-examples, push, pull, delete, edit, validate)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
   cloud/        Cloud platform command group (mounts gcx cloud stacks)
@@ -90,7 +90,7 @@ internal/
 ├── auth/        OAuth PKCE flow, token refresh transport
 │   └── adaptive/  Shared adaptive telemetry auth (GCOM caching, Basic auth — used by signal providers)
 ├── login/       Login orchestration (target detection, auth resolution, connectivity validation, sentinel-retry flow)
-├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
+├── config/      Config types (versioned stacks/cloud/contexts split - contexts reference named stack + cloud entries), loader, editor, rest.Config builder, stack-id discovery, context name helpers; auto-migrates legacy per-context configs (shape-detected, delete-nothing, `.legacy.bak` backup) and plaintext token-shaped secrets into the OS keychain via internal/credentials
 ├── credentials/ OS-keychain backend (zalando/go-keyring) for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
 ├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
 ├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and instrumentation provider)
@@ -131,7 +131,7 @@ internal/
 ├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
 │   ├── clickhouse/  ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   ├── cloudwatch/  CloudWatch CLI commands (query, list-namespaces, list-metrics, list-dimensions, list-regions, list-accounts)
-│   ├── influxdb/  InfluxDB datasource command layer (query, field-keys, measurements)
+│   ├── influxdb/  InfluxDB datasource command layer (query, list-field-keys, list-measurements, list-tag-keys, list-tag-values)
 │   ├── mysql/  MySQL datasource commands (query, list-tables, describe-table)
 │   ├── postgres/  PostgreSQL datasource commands (query, list-tables, describe-table)
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
@@ -155,7 +155,7 @@ internal/
 │   ├── mcpservers/     MCP server integration HTTP client (offset-paginated list/get/create/update/delete, OAuth initiate/validate, user vs tenant scope headers)
 │   └── mcpserver/      MCPServer manifest domain type + `TypedCRUD[MCPServer]` adapter wiring (identity, natural key, schema/example) + per-header write-intent mapping (overwrite/preserve/remove, fromEnv/fromFile) — consumed by `internal/providers/assistant` (adapter registration + the mcp-servers CRUD commands, which route create/update/delete through this TypedCRUD)
 ├── agent/       Agent mode detection, command annotations, known-resource registry with operation hints
-├── agentlog/    Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
+├── agentlog/    Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into reportError in cmd/gcx/main.go)
 ├── style/       Terminal styling (Grafana Neon Dark theme, TableBuilder, ASCII banner, glamour help)
 ├── terminal/    TTY/pipe detection (IsPiped, NoTruncate, Detect) for output suppression
 ├── linter/      Linting engine (Rego rules, report aggregation, PromQL validator)
@@ -163,7 +163,7 @@ internal/
 ├── testutils/   Shared test utilities
 ├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
 ├── grafana/     OpenAPI client (health checks, version detection)
-├── output/      Output codec registry (json, yaml, text, wide, agents — field selection, discovery, k8s unstructured handling, temp-file spill)
+├── output/      Output codec registry (json, yaml, text, wide, agents — field selection, discovery, k8s unstructured handling, temp-file spill) + agent output contract shapes (mutation result family, artifact receipt emitter, stream envelope discriminators)
 ├── format/      JSON/YAML codecs with format auto-detection
 ├── retry/       Retry transport (429, 502/503/504, transient connection errors — wraps all HTTP tiers)
 ├── httputils/   HTTP helpers (used by serve command's proxy)
@@ -173,7 +173,7 @@ internal/
 ├── notifier/    Update notifications (skills + gcx version checks; XDG state, throttling, message rendering — wired into root PersistentPostRun)
 ├── skills/      Portable Agent Skills installer primitives (BundledSkillNames, Install, Update — extracted from cmd/gcx/skills)
 ├── strcase/     String case conversion (snake_case, kebab-case, PascalCase)
-├── telemetry/   Anonymous usage stats library (wide-event model, GCX_TELEMETRY/DO_NOT_TRACK mode resolution, device ID, CI detection — not yet wired into the CLI)
+├── telemetry/   Anonymous usage stats library (wide-event model, device ID, CI detection, flat-JSON HTTP export to usage-stats; wired into the CLI lifecycle via cmd/gcx/root PersistentPreRun + cmd/gcx exitWith)
 ├── xdg/         XDG Base Directory paths (config home, state home, config dirs)
 └── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
 ```

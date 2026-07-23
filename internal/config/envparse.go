@@ -2,10 +2,14 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/grafana/gcx/internal/credentials"
 )
 
 // PrepareForEnvParse initializes nested pointer fields on the Context so that
@@ -32,15 +36,119 @@ func CleanupAfterEnvParse(ctx *Context) {
 	}
 }
 
-// ParseEnvIntoContext is a convenience that combines PrepareForEnvParse,
-// parseEnvTags, and CleanupAfterEnvParse into a single call.
+// ParseEnvIntoContext is a convenience that combines the cloud-entry env
+// override, PrepareForEnvParse, parseEnvTags, and CleanupAfterEnvParse into a
+// single call.
 func ParseEnvIntoContext(ctx *Context) error {
+	detachStackRuntimeView(ctx)
+	ctx.runtimeSecretOverrides = map[credentials.Field]bool{}
+	for envKey, field := range map[string]credentials.Field{
+		"GRAFANA_TOKEN":                   credentials.FieldGrafanaToken,
+		"GRAFANA_PASSWORD":                credentials.FieldGrafanaPassword,
+		"GRAFANA_CLOUD_TOKEN":             credentials.FieldCloudToken,
+		"GRAFANA_PROVIDER_SYNTH_SM_TOKEN": credentials.FieldSMToken,
+	} {
+		if value, ok := os.LookupEnv(envKey); ok && !IsBlankCredentialEnvironmentOverride(envKey, value) {
+			ctx.runtimeSecretOverrides[field] = true
+		}
+	}
+	applyCloudEnvOverride(ctx)
 	PrepareForEnvParse(ctx)
 	if err := parseEnvTags(ctx); err != nil {
 		return err
 	}
 	CleanupAfterEnvParse(ctx)
+	if ctx.StackEntry != nil {
+		// PrepareForEnvParse may have created Grafana for a named stack that had
+		// no persisted Grafana block. Keep binding checks on the detached stack
+		// pointed at the effective runtime view.
+		ctx.StackEntry.Grafana = ctx.Grafana
+		ctx.StackEntry.Providers = ctx.Providers
+	}
+	if slug, ok := os.LookupEnv("GRAFANA_CLOUD_STACK"); ok {
+		ctx.envStackSlug = slug
+	}
 	return nil
+}
+
+// detachStackRuntimeView makes the selected context safe for process-local
+// overrides. Config.Resolve deliberately wires contexts that name the same
+// stack to shared pointers; mutating those pointers here would make an env
+// override for one context visible through every sibling context and through
+// Config.Stacks. Keep the stack's immutable identity and rejection evidence so
+// credential binding checks still use the persisted owner, but deep-clone every
+// nested value that runtime consumers may mutate.
+func detachStackRuntimeView(ctx *Context) {
+	if ctx == nil {
+		return
+	}
+
+	grafana := cloneRuntimeGrafana(ctx.Grafana)
+	providers := cloneRuntimeProviders(ctx.Providers)
+
+	if ctx.StackEntry != nil {
+		if providers == nil {
+			// Provider environment overlays run after this function and allocate
+			// nested maps through Context.Providers. Give the context and its
+			// detached stack one shared runtime-only root map so those values also
+			// participate in credential binding checks.
+			providers = map[string]map[string]string{}
+		}
+		detached := *ctx.StackEntry
+		detached.credentialRejections = maps.Clone(ctx.StackEntry.credentialRejections)
+		detached.Grafana = grafana
+		detached.Providers = providers
+		if ctx.StackEntry.Resources != nil {
+			resources := *ctx.StackEntry.Resources
+			resources.AssumeServerDryRun = slices.Clone(ctx.StackEntry.Resources.AssumeServerDryRun)
+			detached.Resources = &resources
+		}
+		ctx.StackEntry = &detached
+	}
+
+	ctx.Grafana = grafana
+	ctx.Providers = providers
+}
+
+func cloneRuntimeGrafana(source *GrafanaConfig) *GrafanaConfig {
+	if source == nil {
+		return nil
+	}
+	detached := *source
+	detached.TLS = source.TLS.clone()
+	return &detached
+}
+
+func cloneRuntimeProviders(source map[string]map[string]string) map[string]map[string]string {
+	if source == nil {
+		return nil
+	}
+	detached := make(map[string]map[string]string, len(source))
+	for provider, values := range source {
+		detached[provider] = maps.Clone(values)
+	}
+	return detached
+}
+
+// applyCloudEnvOverride synthesizes an ephemeral cloud entry when any
+// GRAFANA_CLOUD_* auth variable is set, starting from a copy of the entry the
+// context references (if any). The copy keeps env values out of the shared
+// named entry, which other contexts reference and Write would persist.
+func applyCloudEnvOverride(ctx *Context) {
+	token, hasToken := os.LookupEnv("GRAFANA_CLOUD_TOKEN")
+	hasToken = hasToken && !IsBlankCredentialEnvironmentOverride("GRAFANA_CLOUD_TOKEN", token)
+	_, hasAPIURL := os.LookupEnv("GRAFANA_CLOUD_API_URL")
+	_, hasOAuthURL := os.LookupEnv("GRAFANA_CLOUD_OAUTH_URL")
+	if !hasToken && !hasAPIURL && !hasOAuthURL {
+		return
+	}
+	detached := CloudEntry{}
+	if ctx.CloudEntry != nil {
+		detached = *ctx.CloudEntry
+		detached.credentialRejections = maps.Clone(ctx.CloudEntry.credentialRejections)
+	}
+	// parseEnvTags fills the env-tagged fields on the detached copy.
+	ctx.CloudEntry = &detached
 }
 
 // parseEnvTags walks the struct fields of v (which must be a pointer to a struct)
@@ -85,12 +193,36 @@ func walkStruct(sv reflect.Value) error {
 		if !ok {
 			continue
 		}
+		// Empty credential variables are conventionally used to clear inherited
+		// process state in CI. They are not a fresh credential and must not erase a
+		// stored value or authorize re-binding it to an overridden destination.
+		if IsBlankCredentialEnvironmentOverride(envKey, val) {
+			continue
+		}
 
 		if err := setField(fv, val, envKey); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// IsBlankCredentialEnvironmentOverride reports whether an environment value
+// is blank and its variable is a credential input. Blank credentials are often
+// used to clear inherited process state in CI; they must not erase a stored
+// credential or authorize binding that credential to another destination.
+// Non-credential variables retain their existing blank-value semantics.
+func IsBlankCredentialEnvironmentOverride(envKey, value string) bool {
+	return isCredentialEnvironmentVariable(envKey) && strings.TrimSpace(value) == ""
+}
+
+func isCredentialEnvironmentVariable(envKey string) bool {
+	switch envKey {
+	case "GRAFANA_TOKEN", "GRAFANA_PASSWORD", "GRAFANA_CLOUD_TOKEN", "GRAFANA_PROVIDER_SYNTH_SM_TOKEN":
+		return true
+	default:
+		return false
+	}
 }
 
 func setField(fv reflect.Value, val, envKey string) error {

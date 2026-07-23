@@ -14,7 +14,7 @@ gcx agent skills install [SKILL]... [flags]
 
 ```
   gcx agent skills install setup-gcx
-  gcx agent skills install setup-gcx debug-with-grafana explore-datasources
+  gcx agent skills install setup-gcx debug-with-grafana manage-dashboards
   gcx agent skills install --all
   gcx agent skills install --all --dry-run
   gcx agent skills install setup-gcx --force

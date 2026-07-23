@@ -7,7 +7,6 @@ import (
 )
 
 // QueryRequest represents a Pyroscope profile query request.
-// Field names mirror querier.v1.SelectMergeStacktracesRequest.
 type QueryRequest struct {
 	LabelSelector      string
 	ProfileTypeID      string
@@ -15,6 +14,8 @@ type QueryRequest struct {
 	End                time.Time
 	MaxNodes           int64
 	ProfileIDs         []string
+	SpanIDs            []string
+	TraceIDs           []string
 	StackTraceSelector *StackTraceSelector
 }
 
@@ -137,6 +138,7 @@ type Exemplar struct {
 	Timestamp json.Number `json:"timestamp"` // ms since epoch, encoded as string
 	ProfileID string      `json:"profileId,omitempty"`
 	SpanID    string      `json:"spanId,omitempty"`
+	TraceID   string      `json:"traceId,omitempty"`
 	Value     json.Number `json:"value"`
 	Labels    []LabelPair `json:"labels,omitempty"`
 }
@@ -185,7 +187,11 @@ type HeatmapSlot struct {
 
 // SelectSeriesResponse represents the response from a SelectSeries query.
 type SelectSeriesResponse struct {
-	Series []TimeSeries `json:"series"`
+	// StepSeconds is the bucket duration of the returned points. It is not
+	// part of the server response; the CLI sets it from the resolved step so
+	// consumers don't have to infer the bucket size from timestamp spacing.
+	StepSeconds float64      `json:"stepSeconds,omitempty"`
+	Series      []TimeSeries `json:"series"`
 }
 
 // TimeSeries represents a single time series with labels and data points.
@@ -234,6 +240,7 @@ type PprofRequest struct {
 	Start         time.Time
 	End           time.Time
 	MaxNodes      int64
+	TraceIDs      []string
 }
 
 // PprofWriteResult is the structured output emitted after writing a pprof binary to disk.
@@ -256,8 +263,14 @@ type TopSeriesEntry struct {
 }
 
 // AggregateTopSeries converts a SelectSeriesResponse into a ranked TopSeriesResponse
-// by summing all points per series and sorting by total descending.
-func AggregateTopSeries(resp *SelectSeriesResponse, profileType string, groupBy []string, limit int) *TopSeriesResponse {
+// by summing points per series and sorting by total descending.
+//
+// Points at or before startMs are excluded: SelectSeries widens the fetch range
+// backwards by one step so charts render a complete first bucket, which places a
+// boundary point at the window start aggregating (start-step, start] — data
+// entirely before the requested window. With step set to the full range (--top
+// mode), summing that point would add one whole extra window to every total.
+func AggregateTopSeries(resp *SelectSeriesResponse, profileType string, groupBy []string, limit int, startMs int64) *TopSeriesResponse {
 	type entry struct {
 		labels map[string]string
 		total  float64
@@ -267,6 +280,9 @@ func AggregateTopSeries(resp *SelectSeriesResponse, profileType string, groupBy 
 	for _, s := range resp.Series {
 		var total float64
 		for _, p := range s.Points {
+			if p.TimestampMs() <= startMs {
+				continue
+			}
 			total += p.FloatValue()
 		}
 		lbls := make(map[string]string, len(s.Labels))

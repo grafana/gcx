@@ -277,47 +277,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return deeplink.Open(url)
 			}
 
-			// --json field1,field2: use FieldSelectCodec for output.
-			if len(opts.IO.JSONFields) > 0 {
-				return writeFieldSelect(cmd.OutOrStdout(), opts, res, output)
-			}
-
-			var encodeErr error
-			if opts.IO.OutputFormat != "text" && opts.IO.OutputFormat != "wide" {
-				// Avoid printing a list of results if a single resource is being pulled,
-				// and we are not using the table output format.
-				if res.IsSingleTarget && len(output.Items) == 1 {
-					encodeErr = opts.IO.Encode(cmd.OutOrStdout(), output.Items[0].Object)
-				} else {
-					// For JSON / YAML output we don't want to have "object" keys in the output,
-					// so use the custom printItems type instead.
-					formatted := printItems{
-						Items: make([]map[string]any, len(output.Items)),
-					}
-					for i, item := range output.Items {
-						formatted.Items[i] = item.Object
-					}
-					encodeErr = opts.IO.Encode(cmd.OutOrStdout(), formatted)
-				}
-			} else {
-				encodeErr = opts.IO.Encode(cmd.OutOrStdout(), output)
-			}
-
-			if encodeErr != nil {
-				return encodeErr
-			}
-
-			if res.PullSummary.IsTruncated() {
-				fmt.Fprintf(cmd.ErrOrStderr(),
-					"Showing first %d items per resource type. Use --limit=0 to fetch all.\n",
-					opts.Limit)
-			}
-
-			if opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0 {
-				return fmt.Errorf("%d resource(s) failed to get", res.PullSummary.FailedCount())
-			}
-
-			return nil
+			return writeGetOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, res, output)
 		},
 	}
 
@@ -326,15 +286,126 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	return cmd
 }
 
+// writeGetOutput renders the fetched resources to stdout in the resolved
+// output mode (--json field selection, single object, list envelope, or
+// table) and surfaces the truncation hint on stderr. Split from RunE so the
+// output path is testable without a live server.
+func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
+	// --json field1,field2: use FieldSelectCodec for output. The truncation
+	// hint must fire on this path too — field-selected output is truncated by
+	// the same per-resource-type limit as every other mode — but, as on the
+	// path below, only after a successful encode.
+	if len(opts.IO.JSONFields) > 0 {
+		err := writeFieldSelect(stdout, stderr, opts, res, output)
+		// The truncation hint fires whenever the document was written
+		// successfully — including the partial-failure case, which returns
+		// an EmittedError precisely because the document is complete.
+		var emitted *gcxerrors.EmittedError
+		if err == nil || errors.As(err, &emitted) {
+			emitGetTruncationHint(stderr, opts, res)
+		}
+		return err
+	}
+
+	// Agent-mode partial failure on a JSON-family format: fuse items and
+	// error into ONE gcx.partial_result document, exactly like the
+	// field-select path — the failure must be readable from stdout alone
+	// (Constitution: an agent never needs both streams). Non-JSON formats
+	// (explicit -o yaml/text/wide) keep their shape and surface the
+	// failure via the typed stderr diagnostic + exit 4 below. An active
+	// --jq is treated the same way: the fused envelope would silently drop
+	// the user's transformation and change the document shape between
+	// success and partial-failure runs, so jq output keeps its shape and
+	// the failure travels via stderr + exit 4.
+	hasPartialFailure := opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0
+	if hasPartialFailure && agent.IsAgentMode() && !opts.IO.JQActive() &&
+		(opts.IO.OutputFormat == "agents" || opts.IO.OutputFormat == "json") {
+		itemMaps := make([]map[string]any, len(output.Items))
+		for i, item := range output.Items {
+			itemMaps[i] = item.Object
+		}
+		errSummary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
+		detErr := gcxerrors.DetailedError{Summary: errSummary}
+		if err := detErr.WriteJSONWithItems(stdout, gcxerrors.ExitPartialFailure, itemMaps); err != nil {
+			return err
+		}
+		emitGetTruncationHint(stderr, opts, res)
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(errSummary))
+	}
+
+	var encodeErr error
+	if opts.IO.OutputFormat != "text" && opts.IO.OutputFormat != "wide" {
+		// Avoid printing a list of results if a single resource is being pulled,
+		// and we are not using the table output format.
+		if res.IsSingleTarget && len(output.Items) == 1 {
+			encodeErr = opts.IO.Encode(stdout, output.Items[0].Object)
+		} else {
+			// For JSON / YAML output we don't want to have "object" keys in the output,
+			// so use the custom printItems type instead.
+			formatted := printItems{
+				Items: make([]map[string]any, len(output.Items)),
+			}
+			for i, item := range output.Items {
+				formatted.Items[i] = item.Object
+			}
+			encodeErr = opts.IO.Encode(stdout, formatted)
+		}
+	} else {
+		encodeErr = opts.IO.Encode(stdout, output)
+	}
+
+	if encodeErr != nil {
+		return encodeErr
+	}
+
+	emitGetTruncationHint(stderr, opts, res)
+
+	if opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0 {
+		return partialGetFailure(stderr, res)
+	}
+
+	return nil
+}
+
+// partialGetFailure reports a partial fetch after the result document was
+// already written: a typed stderr diagnostic (JSONL in agent mode, prose on
+// a TTY) plus an EmittedError so the process exits ExitPartialFailure
+// without a second stdout document. Previously this path returned a bare
+// error — exit 1 instead of the taxonomy's 4, and a duplicate error JSON
+// appended to stdout in agent mode.
+func partialGetFailure(stderr io.Writer, res *FetchResponse) error {
+	summary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
+	cmdio.EmitWarn(stderr, summary)
+	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(summary))
+}
+
+// emitGetTruncationHint surfaces the per-resource-type truncation hint on
+// stderr. K8s per-resource-type paging: the limit applies to each resource
+// type independently, so this is not a list_meta envelope case — a typed
+// hint keeps it agent-legible (JSONL {"class":"hint"} in agent mode,
+// "hint: ..." on a TTY).
+func emitGetTruncationHint(stderr io.Writer, opts *getOpts, res *FetchResponse) {
+	if res == nil || res.PullSummary == nil || !res.PullSummary.IsTruncated() {
+		return
+	}
+	cmdio.EmitHint(stderr,
+		fmt.Sprintf("showing first %d items per resource type; use --limit=0 to fetch all", opts.Limit),
+		"")
+}
+
 // writeFieldSelect handles --json field1,field2 output for the get command.
 // It uses FieldSelectCodec to emit only selected fields, and emits a combined
 // {"items": [...], "error": {...}} envelope (FR-012) on partial failure in agent mode.
-func writeFieldSelect(out io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
+func writeFieldSelect(out, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
 	codec := cmdio.NewFieldSelectCodec(opts.IO.JSONFields)
 	hasPartialFailure := opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0
 
 	// FR-012: when agent mode is active and there are partial failures,
 	// write a single combined {"items": [...], "error": {...}} envelope.
+	// The envelope is the complete result document, so the process exit
+	// code (ExitPartialFailure) travels via EmittedError — previously this
+	// path returned nil and the process exited 0 despite the embedded
+	// exitCode 4.
 	if hasPartialFailure && agent.IsAgentMode() {
 		itemMaps := make([]map[string]any, len(output.Items))
 		for i, item := range output.Items {
@@ -342,7 +413,10 @@ func writeFieldSelect(out io.Writer, opts *getOpts, res *FetchResponse, output u
 		}
 		errSummary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
 		detErr := gcxerrors.DetailedError{Summary: errSummary}
-		return detErr.WriteJSONWithItems(out, gcxerrors.ExitPartialFailure, itemMaps)
+		if err := detErr.WriteJSONWithItems(out, gcxerrors.ExitPartialFailure, itemMaps); err != nil {
+			return err
+		}
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(errSummary))
 	}
 
 	var encodeErr error
@@ -355,7 +429,7 @@ func writeFieldSelect(out io.Writer, opts *getOpts, res *FetchResponse, output u
 		return encodeErr
 	}
 	if hasPartialFailure {
-		return fmt.Errorf("%d resource(s) failed to get", res.PullSummary.FailedCount())
+		return partialGetFailure(stderr, res)
 	}
 	return nil
 }
