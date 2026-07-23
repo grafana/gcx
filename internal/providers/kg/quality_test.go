@@ -256,7 +256,17 @@ func TestQualityReportTableCodec_Encode(t *testing.T) {
 		FailedCheckIDs: []string{"span-metrics"},
 		ReportData: &kg.QualityReportData{
 			Results: []kg.QualityCheckResult{
-				{ID: "span-metrics", State: kg.QualityStateWarning, Title: "No request metrics found", Impact: "IMPORTANT"},
+				{
+					ID:          "span-metrics",
+					State:       kg.QualityStateWarning,
+					Title:       "No request metrics found",
+					Impact:      "IMPORTANT",
+					Description: "Emit RED span metrics to power service KPIs.",
+					DocURL:      "https://example.test/docs/span-metrics",
+					Reference:   &kg.QualityCheckReference{Title: "OTel Instrumentation Score", URL: "https://example.test/spec"},
+				},
+				// SUCCESS checks must not appear in the detail footer.
+				{ID: "deployment-env", State: kg.QualityStateSuccess, Title: "Deployment environment set", Description: "should not show"},
 			},
 		},
 	}
@@ -266,6 +276,14 @@ func TestQualityReportTableCodec_Encode(t *testing.T) {
 	assert.Contains(t, out, "80%")
 	assert.Contains(t, out, "span-metrics")
 	assert.Contains(t, out, "Failed checks: span-metrics")
+
+	// Detail footer surfaces the metadata the table columns can't hold.
+	assert.Contains(t, out, "Details:")
+	assert.Contains(t, out, "Emit RED span metrics to power service KPIs.")
+	assert.Contains(t, out, "docs: https://example.test/docs/span-metrics")
+	assert.Contains(t, out, "OTel Instrumentation Score (https://example.test/spec)")
+	// SUCCESS checks are excluded from the footer.
+	assert.NotContains(t, out, "should not show")
 
 	require.Error(t, codec.Encode(&bytes.Buffer{}, "not a report"))
 }

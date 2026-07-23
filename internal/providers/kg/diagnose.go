@@ -442,10 +442,38 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 
 	// Build the Orientation block from the data collected above.
 	orient := computeOrientation(orientationInput, scope)
-	orient.PipelineHealth = pipelineHealthFromSummary(result.Summary)
+	orient.PipelineHealth = pipelineHealthFromChecks(result.Checks)
 	result.Orientation = &orient
 
 	return result
+}
+
+// pipelineHealthFromChecks derives the Orientation health verdict from the
+// per-check results, excluding the instrumentation-quality check.
+//
+// Instrumentation debt is not a pipeline fault: virtually every real stack has
+// at least one service below 100%, so folding that WARN into the rollup would
+// flip PipelineHealth to Degraded almost everywhere and drown out genuine
+// pipeline problems — especially for agents keying off Orientation.PipelineHealth.
+// The quality check still surfaces its own WARN in the table and summary; it
+// just doesn't dominate the top-level verdict.
+func pipelineHealthFromChecks(checks []CheckResult) PipelineHealth {
+	var s DiagnoseSummary
+	for _, c := range checks {
+		if c.Name == qualityCheckName {
+			continue
+		}
+		s.Total++
+		switch c.Status {
+		case CheckPass:
+			s.Passed++
+		case CheckFail:
+			s.Failed++
+		case CheckWarn:
+			s.Warned++
+		}
+	}
+	return pipelineHealthFromSummary(s)
 }
 
 // pipelineHealthFromSummary derives the Orientation health verdict from
@@ -493,7 +521,7 @@ func checkOrder(name string) int {
 	if name == "Trace context propagation" {
 		return 9
 	}
-	if name == "Instrumentation quality" {
+	if name == qualityCheckName {
 		return 13
 	}
 	return 50
@@ -1148,6 +1176,10 @@ func checkTracePropagation(ctx context.Context, client *prometheus.Client, datas
 // ---------------------------------------------------------------------------
 
 const (
+	// qualityCheckName is the display name of the aggregate instrumentation-
+	// quality check. Shared so the check runner, sort ordering, and the
+	// pipeline-health rollup (which excludes it) all refer to the same string.
+	qualityCheckName = "Instrumentation quality"
 	// qualityDiagnoseTopServices bounds how many services diagnose pulls for
 	// the aggregate. Reports are fetched sorted worst-quality-first, so this
 	// window always captures the most-degraded services — where the
@@ -1168,7 +1200,7 @@ const (
 // services even on stacks with thousands of services. The true service count
 // comes from the page envelope's TotalElements, independent of the window.
 func checkQuality(ctx context.Context, client *Client, scope *scopeFlags) (CheckResult, *QualityCheckSummary) {
-	const name = "Instrumentation quality"
+	const name = qualityCheckName
 
 	page, err := client.ListQualityReports(ctx, QualityReportQuery{
 		Type:          defaultQualityEntityType,

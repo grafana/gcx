@@ -114,6 +114,12 @@ func PipelineHealthFromSummary(s DiagnoseSummary) PipelineHealth {
 	return pipelineHealthFromSummary(s)
 }
 
+// PipelineHealthFromChecks wraps the unexported pipelineHealthFromChecks
+// function for testing.
+func PipelineHealthFromChecks(checks []CheckResult) PipelineHealth {
+	return pipelineHealthFromChecks(checks)
+}
+
 // --- KG write-flag helper test entry points ---
 
 func ParseEntityRefToken(token string) (EntityRef, error) { return parseEntityRefToken(token) }

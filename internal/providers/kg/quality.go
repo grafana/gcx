@@ -274,7 +274,48 @@ func (c *QualityReportTableCodec) Encode(w io.Writer, v any) error {
 	if len(r.FailedCheckIDs) > 0 {
 		fmt.Fprintf(w, "\nFailed checks: %s\n", strings.Join(r.FailedCheckIDs, ", "))
 	}
+
+	// Detail footer: the table columns can't hold the description and
+	// remediation links without truncating, so print them as a block for each
+	// non-passing check. Query templates stay JSON/YAML-only.
+	writeQualityCheckDetails(w, r)
 	return nil
+}
+
+// writeQualityCheckDetails prints a description + doc/reference footer for each
+// non-SUCCESS check, giving the default table the actionable metadata that was
+// previously only reachable via -o json/yaml.
+func writeQualityCheckDetails(w io.Writer, r *QualityReport) {
+	if r.ReportData == nil {
+		return
+	}
+	printed := false
+	for _, chk := range r.ReportData.Results {
+		if chk.State == QualityStateSuccess {
+			continue
+		}
+		if chk.Description == "" && chk.DocURL == "" && chk.Reference == nil {
+			continue
+		}
+		if !printed {
+			fmt.Fprintln(w, "\nDetails:")
+			printed = true
+		}
+		fmt.Fprintf(w, "\n  %s — %s\n", chk.ID, chk.Title)
+		if chk.Description != "" {
+			fmt.Fprintf(w, "    %s\n", chk.Description)
+		}
+		if chk.DocURL != "" {
+			fmt.Fprintf(w, "    docs: %s\n", chk.DocURL)
+		}
+		if chk.Reference != nil && chk.Reference.URL != "" {
+			if chk.Reference.Title != "" {
+				fmt.Fprintf(w, "    ref:  %s (%s)\n", chk.Reference.Title, chk.Reference.URL)
+			} else {
+				fmt.Fprintf(w, "    ref:  %s\n", chk.Reference.URL)
+			}
+		}
+	}
 }
 
 func (c *QualityReportTableCodec) Decode(_ io.Reader, _ any) error {
