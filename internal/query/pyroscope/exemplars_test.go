@@ -31,7 +31,7 @@ func TestBuildProfileExemplarsResult(t *testing.T) {
 						Value:     num(1_000_000),
 						Timestamp: num(1500000),
 						Exemplars: []pyroscope.Exemplar{
-							{ProfileID: "p-1", Timestamp: num(1500100), Value: num(5_000_000), SpanID: "span-1"},
+							{ProfileID: "p-1", Timestamp: num(1500100), Value: num(5_000_000), SpanID: "span-1", TraceID: "trace-1"},
 							{ProfileID: "p-2", Timestamp: num(1500200), Value: num(10_000_000), SpanID: "span-2"},
 							{ProfileID: "p-3", Timestamp: num(1500300), Value: num(1_000_000), SpanID: "span-3"},
 						},
@@ -68,6 +68,7 @@ func TestBuildProfileExemplarsResult(t *testing.T) {
 		assert.Equal(t, int64(20_000_000), result.Exemplars[0].Value)
 		assert.Equal(t, "p-2", result.Exemplars[1].ProfileID)
 		assert.Equal(t, "p-1", result.Exemplars[2].ProfileID)
+		assert.Equal(t, "trace-1", result.Exemplars[2].TraceID)
 
 		// Internal labels filtered from merged labels.
 		for _, e := range result.Exemplars {
@@ -106,7 +107,7 @@ func TestBuildSpanExemplarsResult(t *testing.T) {
 					{
 						Timestamp: num(1500000),
 						Exemplars: []pyroscope.Exemplar{
-							{SpanID: "span-1", Timestamp: num(1500100), Value: num(5_000_000)},
+							{SpanID: "span-1", TraceID: "trace-1", Timestamp: num(1500100), Value: num(5_000_000)},
 							{SpanID: "", Timestamp: num(1500200), Value: num(50_000_000)}, // empty span, dropped
 							{SpanID: "span-3", Timestamp: num(1500300), Value: num(15_000_000)},
 						},
@@ -123,6 +124,7 @@ func TestBuildSpanExemplarsResult(t *testing.T) {
 		assert.Equal(t, "span-3", result.Exemplars[0].SpanID)
 		assert.Equal(t, int64(15_000_000), result.Exemplars[0].Value)
 		assert.Equal(t, "span-1", result.Exemplars[1].SpanID)
+		assert.Equal(t, "trace-1", result.Exemplars[1].TraceID)
 	})
 
 	t.Run("truncates to topN", func(t *testing.T) {
@@ -238,4 +240,46 @@ func TestFormatSpanExemplarsTable(t *testing.T) {
 		require.NoError(t, pyroscope.FormatSpanExemplarsTable(&buf, result, 3))
 		assert.Contains(t, buf.String(), "(no span exemplars)")
 	})
+
+	t.Run("includes trace id column when present", func(t *testing.T) {
+		var buf bytes.Buffer
+		result := &pyroscope.SpanExemplarsResult{
+			ProfileType: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+			Exemplars: []pyroscope.SpanExemplar{
+				{SpanID: "span-1", TraceID: "trace-1", Timestamp: time.UnixMilli(1700000000000).UTC(), Value: 1000},
+				{SpanID: "span-2", Timestamp: time.UnixMilli(1700000001000).UTC(), Value: 500},
+			},
+		}
+		require.NoError(t, pyroscope.FormatSpanExemplarsTable(&buf, result, 0))
+		out := buf.String()
+		assert.Contains(t, out, "TRACE ID")
+		assert.Contains(t, out, "trace-1")
+		assert.Contains(t, out, "span-2")
+	})
+
+	t.Run("omits trace id column when absent", func(t *testing.T) {
+		var buf bytes.Buffer
+		result := &pyroscope.SpanExemplarsResult{
+			ProfileType: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+			Exemplars: []pyroscope.SpanExemplar{
+				{SpanID: "span-1", Timestamp: time.UnixMilli(1700000000000).UTC(), Value: 1000},
+			},
+		}
+		require.NoError(t, pyroscope.FormatSpanExemplarsTable(&buf, result, 0))
+		assert.NotContains(t, buf.String(), "TRACE ID")
+	})
+}
+
+func TestExemplarResultsJSONIncludesTraceID(t *testing.T) {
+	profileJSON, err := json.Marshal(pyroscope.ProfileExemplarsResult{
+		Exemplars: []pyroscope.ProfileExemplar{{ProfileID: "p-1", TraceID: "trace-profile"}},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, string(profileJSON), `"traceId":"trace-profile"`)
+
+	spanJSON, err := json.Marshal(pyroscope.SpanExemplarsResult{
+		Exemplars: []pyroscope.SpanExemplar{{SpanID: "span-1", TraceID: "trace-span"}},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, string(spanJSON), `"traceId":"trace-span"`)
 }

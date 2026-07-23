@@ -15,7 +15,7 @@ gcx agent skills update [SKILL]... [flags]
 ```
   gcx agent skills update
   gcx agent skills update --dry-run
-  gcx agent skills update setup-gcx explore-datasources
+  gcx agent skills update setup-gcx debug-with-grafana
 ```
 
 ### Options

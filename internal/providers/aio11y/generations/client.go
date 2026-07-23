@@ -14,7 +14,7 @@ const (
 	generationByIDFmt = generationsPath + "/%s"
 )
 
-// Client is an HTTP client for AI Observability generation endpoints.
+// Client is an HTTP client for Agent Observability generation endpoints.
 type Client struct {
 	base *aio11yhttp.Client
 }

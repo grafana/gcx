@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// StaticDescriptor returns the resource descriptor for AI Observability collections.
+// StaticDescriptor returns the resource descriptor for Agent Observability collections.
 func StaticDescriptor() resources.Descriptor {
 	return resources.Descriptor{
 		GroupVersion: schema.GroupVersion{
@@ -46,7 +46,7 @@ func stripFields() []string {
 	}
 }
 
-// NewTypedCRUD creates a TypedCRUD for AI Observability collections.
+// NewTypedCRUD creates a TypedCRUD for Agent Observability collections.
 //
 // The collections API is *not* an upsert (unlike evaluators), so CreateFn and
 // UpdateFn dispatch to different HTTP endpoints (POST vs PATCH).
@@ -54,19 +54,19 @@ func stripFields() []string {
 // UpdateFn only sends the description when it is non-empty so that an absent
 // description in the pulled YAML — Collection.Description has `omitempty`, so
 // it round-trips as zero — does not clear the server-side value. To explicitly
-// clear a description, use `gcx aio11y collections update <id> --description ""`.
+// clear a description, use `gcx agento11y collections update <id> --description ""`.
 func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[Collection], string, error) {
 	var loader providers.ConfigLoader
 	loader.SetContextName(internalconfig.ContextNameFromCtx(ctx))
 
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load REST config for AI Observability collections: %w", err)
+		return nil, "", fmt.Errorf("failed to load REST config for Agent Observability collections: %w", err)
 	}
 
 	base, err := aio11yhttp.NewClient(cfg)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create AI Observability HTTP client: %w", err)
+		return nil, "", fmt.Errorf("failed to create Agent Observability HTTP client: %w", err)
 	}
 	client := NewClient(base)
 
@@ -99,7 +99,7 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[Collection], string, 
 	return crud, cfg.Namespace, nil
 }
 
-// NewLazyFactory returns an adapter.Factory for AI Observability collections.
+// NewLazyFactory returns an adapter.Factory for Agent Observability collections.
 func NewLazyFactory() adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		crud, _, err := NewTypedCRUD(ctx)

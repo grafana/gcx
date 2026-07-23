@@ -216,9 +216,12 @@ func newGroupsStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
 				}
 			}
 
-			if len(groups) == 0 {
-				cmdio.Info(cmd.OutOrStdout(), "No alert rule groups found.")
-				return nil
+			if groups == nil {
+				// Normalize so machine formats (json/yaml/agents) encode an
+				// empty list ([]), not null. The human empty-state line is
+				// owned by the table codec below — the command itself never
+				// writes prose to stdout.
+				groups = []RuleGroup{}
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), groups)
@@ -237,6 +240,14 @@ func (c *GroupsStatusTableCodec) Encode(w io.Writer, v any) error {
 	groups, ok := v.([]RuleGroup)
 	if !ok {
 		return errors.New("invalid data type for status table codec: expected []RuleGroup")
+	}
+
+	if len(groups) == 0 {
+		// Human empty state: the exact styled line the command has always
+		// printed. The check lives in the table codec so only human output
+		// gets prose — json/yaml/agents encode [] instead.
+		cmdio.Info(w, "No alert rule groups found.")
+		return nil
 	}
 
 	t := style.NewTable("GROUP", "RULES", "FIRING", "PENDING", "INACTIVE", "LAST_EVAL")

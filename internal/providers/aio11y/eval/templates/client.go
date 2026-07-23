@@ -16,7 +16,7 @@ const (
 	versionsPathFmt = basePath + "/%s/versions"
 )
 
-// Client is an HTTP client for AI Observability eval template endpoints.
+// Client is an HTTP client for Agent Observability eval template endpoints.
 type Client struct {
 	base *aio11yhttp.Client
 }

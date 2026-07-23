@@ -84,7 +84,7 @@ func newInstallCommand(source fs.FS) *cobra.Command {
 		Short: "Install bundled gcx skills into ~/.agents/skills",
 		Long:  "Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the entire bundle.",
 		Example: `  gcx agent skills install setup-gcx
-  gcx agent skills install setup-gcx debug-with-grafana explore-datasources
+  gcx agent skills install setup-gcx debug-with-grafana manage-dashboards
   gcx agent skills install --all
   gcx agent skills install --all --dry-run
   gcx agent skills install setup-gcx --force`,
@@ -223,7 +223,7 @@ func newUpdateCommand(source fs.FS) *cobra.Command {
 		Long:  "Update gcx-managed skills in a user-level .agents skills directory. With no skill names, gcx updates only bundled skills that are already installed locally.",
 		Example: `  gcx agent skills update
   gcx agent skills update --dry-run
-  gcx agent skills update setup-gcx explore-datasources`,
+  gcx agent skills update setup-gcx debug-with-grafana`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			names, err := skillops.BundledSkillNames(source)

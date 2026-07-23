@@ -39,7 +39,11 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 
 // Query executes a Pyroscope profile query against the specified datasource.
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
-	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/SelectMergeStacktraces")
+	resourcePath := "querier.v1.QuerierService/SelectMergeStacktraces"
+	if len(req.SpanIDs) > 0 {
+		resourcePath = "querier.v1.QuerierService/SelectMergeSpanProfile"
+	}
+	apiPath := c.buildResourcePath(datasourceUID, resourcePath)
 
 	start, end := DefaultTimeRange(req.Start, req.End)
 
@@ -54,11 +58,18 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	if req.MaxNodes > 0 {
 		bodyMap["maxNodes"] = strconv.FormatInt(req.MaxNodes, 10)
 	}
-	if len(req.ProfileIDs) > 0 {
-		bodyMap["profileIdSelector"] = req.ProfileIDs
-	}
-	if req.StackTraceSelector != nil {
-		bodyMap["stackTraceSelector"] = req.StackTraceSelector
+	if len(req.SpanIDs) > 0 {
+		bodyMap["spanSelector"] = req.SpanIDs
+	} else {
+		if len(req.ProfileIDs) > 0 {
+			bodyMap["profileIdSelector"] = req.ProfileIDs
+		}
+		if len(req.TraceIDs) > 0 {
+			bodyMap["traceIdSelector"] = req.TraceIDs
+		}
+		if req.StackTraceSelector != nil {
+			bodyMap["stackTraceSelector"] = req.StackTraceSelector
+		}
 	}
 
 	body, err := json.Marshal(bodyMap)
@@ -382,6 +393,7 @@ func (c *Client) Pprof(ctx context.Context, datasourceUID string, req PprofReque
 	//   3: start (int64, ms since epoch)
 	//   4: end (int64, ms since epoch)
 	//   5: max_nodes (int64, optional)
+	//   8: trace_id_selector (repeated string)
 	var msg []byte
 	msg = protowire.AppendTag(msg, 1, protowire.BytesType)
 	msg = protowire.AppendString(msg, req.ProfileTypeID)
@@ -394,6 +406,10 @@ func (c *Client) Pprof(ctx context.Context, datasourceUID string, req PprofReque
 	if req.MaxNodes > 0 {
 		msg = protowire.AppendTag(msg, 5, protowire.VarintType)
 		msg = protowire.AppendVarint(msg, uint64(req.MaxNodes))
+	}
+	for _, traceID := range req.TraceIDs {
+		msg = protowire.AppendTag(msg, 8, protowire.BytesType)
+		msg = protowire.AppendString(msg, traceID)
 	}
 
 	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/SelectMergeProfile")

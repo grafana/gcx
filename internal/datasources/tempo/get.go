@@ -31,7 +31,7 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
-	flags.BoolVar(&opts.LLM, "llm", false, "Request LLM-friendly trace format")
+	flags.BoolVar(&opts.LLM, "llm", false, "[experimental] Request LLM-friendly trace format by sending the 'Accept: application/vnd.grafana.llm' header. Falls back to default JSON")
 	opts.Share.Setup(flags, "retrieved trace")
 	opts.SetupTimeFlags(flags)
 }
@@ -55,7 +55,11 @@ TRACE_ID is the hex-encoded trace identifier to retrieve.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 Use --share-link to print a Grafana Explore URL for the trace, or --open to
 open it in your browser after retrieval succeeds. Share links require an
-explicit time range via --since or --from/--to.`,
+explicit time range via --since or --from/--to.
+
+Experimental: --llm requests the trace in a new LLM-friendly JSON format by
+sending the "Accept: application/vnd.grafana.llm" header. Datasources that do
+not support this format return the standard response.`,
 		Example: `
   # Get LLM-friendly output for agent analysis
   gcx datasources tempo get abc123def456 --llm -o json

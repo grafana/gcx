@@ -18,6 +18,7 @@ import (
 )
 
 type deleteOpts struct {
+	IO                 cmdio.Options
 	OnError            OnErrorMode
 	Force              bool
 	MaxConcurrent      int
@@ -35,6 +36,12 @@ func (opts *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVarP(&opts.Path, "path", "p", nil, "Path on disk containing the resources to delete")
 	flags.BoolVarP(&opts.Yes, "yes", "y", false, "Auto-approve destructive operations (automatically enables --force)")
 	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
+	// The delete result is a BatchMutation document through the codec
+	// system: the default text codec prints the familiar one-line summary;
+	// agent mode and explicit -o json/yaml get the structured document.
+	opts.IO.RegisterCustomCodec("text", &mutationSummaryCodec{})
+	opts.IO.DefaultFormat("text")
+	opts.IO.BindFlags(flags)
 }
 
 func (opts *deleteOpts) Validate(args []string) error {
@@ -44,6 +51,10 @@ func (opts *deleteOpts) Validate(args []string) error {
 
 	if len(args) == 0 && len(opts.Path) == 0 {
 		return errors.New("either --path or resource selectors need to be specified")
+	}
+
+	if err := opts.IO.Validate(); err != nil {
+		return err
 	}
 
 	return opts.OnError.Validate()
@@ -102,7 +113,9 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			if (opts.Yes || cliOpts.AutoApprove) && !opts.Force {
-				cmdio.Info(cmd.OutOrStdout(), "Auto-approval enabled: automatically setting --force")
+				// Diagnostic, not the result — stderr keeps it out of the
+				// stdout document (Constitution: stdout is the result).
+				cmdio.Info(cmd.ErrOrStderr(), "Auto-approval enabled: automatically setting --force")
 				opts.Force = true
 			}
 
@@ -148,7 +161,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			if opts.DryRun {
-				cmdio.Info(cmd.OutOrStdout(), "Dry-run mode enabled")
+				cmdio.Info(cmd.ErrOrStderr(), "Dry-run mode enabled")
 			}
 
 			// Delete!
@@ -168,15 +181,25 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			summary, err := deleter.Delete(ctx, req)
 			if err != nil {
 				if summary != nil {
-					cmdio.Warning(cmd.OutOrStdout(), "%d resources deleted, %d errors (aborted)", summary.SuccessCount(), summary.FailedCount())
+					// Hard abort: the returned error is the result document
+					// (reportError renders it); the progress note is a
+					// diagnostic and belongs on stderr.
+					cmdio.Warning(cmd.ErrOrStderr(), "%d resources deleted, %d errors (aborted)", summary.SuccessCount(), summary.FailedCount())
 				}
 				return err
 			}
 
-			writeMutationSummary(cmd.OutOrStdout(), "deleted", summary)
+			result := batchMutationFromSummary("deleted", summary, opts.DryRun)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+				return err
+			}
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
-				return gcxerrors.NewPartialFailureError("delete", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
+				// The result document (with enumerated failures) is already
+				// on stdout — the typed stderr diagnostic + EmittedError
+				// carry exit 4 without a second error document.
+				return partialBatchFailure(cmd.ErrOrStderr(), "delete",
+					summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
 			}
 
 			return nil

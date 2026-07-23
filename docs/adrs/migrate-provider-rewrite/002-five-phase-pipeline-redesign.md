@@ -119,7 +119,7 @@ otherwise the agent produces them manually following the same format:
 Smoke test design lives in `tasks.md` as verification tasks. Each `show`/`list`
 command gets a verification task requiring all four output formats (`-o json`,
 `-o table`, `-o wide`, `-o yaml`). Each adapter gets a verification task
-requiring `resources schemas` and `resources get` checks.
+requiring `resources list-types` and `resources get` checks.
 
 The `plan.md` MUST include an HTTP client reference section: endpoint table
 (method/path/purpose/notes), auth helper signature, client construction pattern.
@@ -166,7 +166,7 @@ Structured verification with mandatory smoke tests.
     ├── -o wide   (verify wide codec registered)
     └── -o yaml   (verify yaml round-trip)
 4C: Adapter smoke — MANDATORY for each TypedCRUD:
-    ├── resources schemas (verify registration visible)
+    ├── resources list-types (verify registration visible)
     └── resources get (verify envelope + deserialization)
 4D: Spec compliance — verify each AC from spec.md
 4E: Recipe update — status tracker entry + gotchas (mandatory)

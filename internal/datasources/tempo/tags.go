@@ -33,7 +33,7 @@ func (opts *labelsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
 	flags.StringVar(&opts.Scope, "scope", "", "Tag scope filter (resource, span, event, link, instrumentation)")
 	flags.StringVarP(&opts.Query, "query", "q", "", "TraceQL query to filter labels")
-	flags.BoolVar(&opts.LLM, "llm", false, "Request LLM-friendly label values format (requires --label)")
+	flags.BoolVar(&opts.LLM, "llm", false, "[experimental] Request LLM-friendly label values format by sending the 'Accept: application/vnd.grafana.llm' header. Falls back to default JSON (requires --label)")
 }
 
 func (opts *labelsOpts) Validate() error {
@@ -60,7 +60,11 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 When -l/--label is provided, returns values for that label.
 When -l is omitted, returns all label names.
 
-Datasource is resolved from -d flag or datasources.tempo in your context.`,
+Datasource is resolved from -d flag or datasources.tempo in your context.
+
+Experimental: --llm requests label values in a new LLM-friendly JSON format by
+sending the "Accept: application/vnd.grafana.llm" header. Datasources that do
+not support this format return the standard response.`,
 		Example: `
   # List all labels
   gcx datasources tempo labels -d UID

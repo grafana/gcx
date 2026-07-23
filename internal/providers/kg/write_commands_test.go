@@ -226,3 +226,56 @@ func TestRelationshipsDelete_DeclineSkips(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 	assert.False(t, called)
 }
+
+func TestEntitiesUpsert_ArrayPartialFailureKeepsEarlierWrites(t *testing.T) {
+	requests := 0
+	var firstBody kg.EntityWriteRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 1 {
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&firstBody))
+			w.WriteHeader(http.StatusCreated)
+			writeJSON(w, kg.EntityWriteResponse{Domain: "myapp", Type: "Service", Name: "checkout"})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	}))
+	defer server.Close()
+	cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server))
+	cmd.SetArgs([]string{"-f", "-", "-o", "json"})
+	cmd.SetIn(bytes.NewBufferString(
+		"- domain: myapp\n  type: Service\n  name: checkout\n" +
+			"- domain: myapp\n  type: Service\n  name: cart\n"))
+	require.Error(t, cmd.Execute(), "a failing later entry must fail the command")
+	assert.Equal(t, 2, requests, "the failing entry must be reached only after the first write was sent")
+	assert.Equal(t, "checkout", firstBody.Name, "array entries are processed in input order; the first write succeeded and is not rolled back")
+}
+
+func TestRelationshipsUpsert_ArrayPartialFailureKeepsEarlierWrites(t *testing.T) {
+	requests := 0
+	var firstBody kg.RelationshipWriteRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 1 {
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&firstBody))
+			writeJSON(w, kg.RelationshipWriteResponse{Type: "CALLS"})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	}))
+	defer server.Close()
+	cmd := kg.NewRelationshipsCreateCommand(writeLoaderFor(server))
+	cmd.SetArgs([]string{"-f", "-", "-o", "json"})
+	cmd.SetIn(bytes.NewBufferString(
+		"- domain: myapp\n  type: CALLS\n" +
+			"  from: {domain: myapp, type: Service, name: checkout}\n" +
+			"  to: {domain: myapp, type: Service, name: cart}\n" +
+			"- domain: myapp\n  type: CALLS\n" +
+			"  from: {domain: myapp, type: Service, name: cart}\n" +
+			"  to: {domain: myapp, type: Service, name: db}\n"))
+	require.Error(t, cmd.Execute(), "a failing later entry must fail the command")
+	assert.Equal(t, 2, requests, "the failing entry must be reached only after the first write was sent")
+	assert.Equal(t, "checkout", firstBody.From.Name, "array entries are processed in input order; the first write succeeded and is not rolled back")
+}

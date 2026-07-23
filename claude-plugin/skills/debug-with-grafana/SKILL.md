@@ -14,8 +14,7 @@ description: >
   cause", "did the rollout cause it", "which endpoint owns the most 5xx",
   "did retries pile up", or any request to analyse an earlier incident
   window using telemetry. For authoring dashboards use create-dashboard;
-  for listing datasources or dashboard inventory use explore-datasources
-  or manage-dashboards.
+  for dashboard inventory use manage-dashboards.
 ---
 
 # Debug with Grafana

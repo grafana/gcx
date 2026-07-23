@@ -32,7 +32,7 @@ func TestRunClear_RemovesOverride(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunClear(context.Background(), services.NewMutationTestIO(t), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.NoError(t, err, "clear must succeed")
 	assert.Equal(t, int64(1), ts.setAppCalled.Load(), "Set must be called once to remove the override")
 }
@@ -53,7 +53,7 @@ func TestRunClear_NoOp_NoOverride(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunClear(context.Background(), services.NewMutationTestIO(t), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.NoError(t, err, "clear with no override must be a no-op (exit 0)")
 	assert.Equal(t, int64(0), ts.setAppCalled.Load(), "no Set call when no override exists")
 }
@@ -72,7 +72,7 @@ func TestRunClear_NoOp_NamespaceNotFound(t *testing.T) {
 	srv := ts.start(t)
 	client := makeIncludeClient(t, srv.URL)
 
-	err := services.RunClear(context.Background(), client, "c1", "missing-ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
+	err := services.RunClear(context.Background(), services.NewMutationTestIO(t), client, "c1", "missing-ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
 	require.NoError(t, err, "clear on missing namespace must be a no-op")
 	assert.Equal(t, int64(0), ts.setAppCalled.Load(), "no Set call for missing namespace")
 }
@@ -119,12 +119,12 @@ func TestRunClear_Idempotent_TwoCalls(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	// First clear: removes the INCLUDED override.
-	err1 := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
+	err1 := services.RunClear(context.Background(), services.NewMutationTestIO(t), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
 	require.NoError(t, err1, "first clear must succeed")
 	assert.Equal(t, int64(1), ts.setAppCalled.Load(), "first clear must call Set once")
 
 	// Second clear: no override → no-op.
-	err2 := services.RunClear(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
+	err2 := services.RunClear(context.Background(), services.NewMutationTestIO(t), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
 	require.NoError(t, err2, "second clear must succeed (exit 0)")
 	assert.Equal(t, int64(1), ts.setAppCalled.Load(), "second clear must be a no-op (no additional Set)")
 }
@@ -153,7 +153,7 @@ func TestRunClear_WorkloadNotFound(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunClear(context.Background(), client, "prod-eu", "checkout", "nonexistent-svc",
+	err := services.RunClear(context.Background(), services.NewMutationTestIO(t), client, "prod-eu", "checkout", "nonexistent-svc",
 		instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Resource not found")

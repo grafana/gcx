@@ -14,6 +14,7 @@ import (
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -278,7 +279,8 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 				return err
 			}
 			if notFound {
-				return fmt.Errorf("service %q has no telemetry in the requested window (for group-by %s)", jobLabel(namespace, name), strings.Join(groupBy, ", "))
+				return notFoundEmitted(cmd.ErrOrStderr(),
+					fmt.Sprintf("service %q has no telemetry in the requested window (for group-by %s)", jobLabel(namespace, name), strings.Join(groupBy, ", ")))
 			}
 			return nil
 		}
@@ -298,7 +300,8 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 			// Align with other commands' "entity not-found" semantics:
 			// emit the snapshot (useful structure for agents) but signal
 			// failure via exit code so callers can branch on $?.
-			return fmt.Errorf("service %q has no telemetry in the requested window", jobLabel(namespace, name))
+			return notFoundEmitted(cmd.ErrOrStderr(),
+				fmt.Sprintf("service %q has no telemetry in the requested window", jobLabel(namespace, name)))
 		}
 		return nil
 	}
@@ -657,6 +660,18 @@ func selectMetadataService(metadata []Service, namespace, name string) Service {
 		return metadata[0]
 	}
 	return Service{Name: name, Namespace: namespace, Instrumented: false}
+}
+
+// notFoundEmitted converts a no-data outcome into the agent-contract error
+// shape AFTER the full result document was successfully written to stdout:
+// a typed stderr diagnostic (JSONL in agent mode, "warn: ..." on a TTY) plus
+// an EmittedError so the process still exits non-zero without reportError
+// appending a second stdout document. Previously these paths returned a bare
+// error, which corrupted agent-mode stdout with a duplicate error JSON after
+// the already-encoded result.
+func notFoundEmitted(stderr io.Writer, msg string) error {
+	cmdio.EmitWarn(stderr, msg)
+	return gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, errors.New(msg))
 }
 
 // emitNoDataHint surfaces a stderr line when neither target_info nor span

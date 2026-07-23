@@ -46,6 +46,16 @@ func (p *Provider) descriptor() signals.Descriptor {
     --profile-id 550e8400-e29b-41d4-a716-446655440000 \
     --profile-id 7c9e6679-7425-40de-944b-e07fc1f90ae7
 
+  # Restrict the query to one or more trace spans
+  gcx profiles query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
+    --span-id 00f067aa0ba902b7
+
+  # Restrict the query to samples from one or more traces
+  gcx profiles query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
+    --trace-id 4bf92f3577b34da6a3ce929d0e0e4736
+
   # Restrict the flamegraph to stacks rooted at a specific call site
   # (--stacktrace-selector is repeatable; pass it once per frame, root first)
   gcx profiles query '{service_name="my-go-service"}' \
@@ -67,15 +77,15 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx profiles labels -d UID -o json`,
 			},
 			{
-				Build:     dspyroscope.ProfileTypesCmd,
+				Build:     dspyroscope.ListProfileTypesCmd,
 				TokenCost: "small",
-				LLMHint:   "gcx profiles profile-types -d abc123 -o json",
+				LLMHint:   "gcx profiles list-profile-types -d abc123 -o json",
 				Example: `
   # List profile types (use datasource UID, not name)
-  gcx profiles profile-types -d UID
+  gcx profiles list-profile-types -d UID
 
   # Output as JSON
-  gcx profiles profile-types -d UID -o json`,
+  gcx profiles list-profile-types -d UID -o json`,
 			},
 			{
 				Build:     dspyroscope.MetricsCmd,

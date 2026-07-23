@@ -171,6 +171,93 @@ func TestEncode_JSONFields_ArbitrarySlice(t *testing.T) {
 	assert.NotContains(t, got[0], "extra")
 }
 
+func TestEncode_JSONFields_SingleKeyEnvelope(t *testing.T) {
+	// Provider list commands wrap their items under a single non-"items" key
+	// (e.g. {"datasources": [...]}). Field selection must descend into the
+	// array and preserve the wrapper key.
+	type item struct {
+		UID  string `json:"uid"`
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	type envelope struct {
+		Datasources []item `json:"datasources"`
+	}
+
+	tests := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{
+			name: "populated envelope selects per item and preserves wrapper key",
+			value: &envelope{Datasources: []item{
+				{UID: "a", Name: "prom", Type: "prometheus"},
+				{UID: "b", Name: "logs", Type: "loki"},
+			}},
+			want: `{"datasources":[{"uid":"a","name":"prom"},{"uid":"b","name":"logs"}]}`,
+		},
+		{
+			name:  "empty envelope preserves wrapper key with empty array",
+			value: &envelope{Datasources: []item{}},
+			want:  `{"datasources":[]}`,
+		},
+		{
+			name: "single-key scalar array is not an envelope",
+			value: struct {
+				Tags []string `json:"tags"`
+			}{Tags: []string{"a", "b"}},
+			want: `{"uid":null,"name":null}`,
+		},
+		{
+			name: "single-key object value is not an envelope",
+			value: struct {
+				Spec map[string]any `json:"spec"`
+			}{Spec: map[string]any{"uid": "x"}},
+			want: `{"uid":null,"name":null}`,
+		},
+		{
+			name: "multi-key object gets flat extraction",
+			value: struct {
+				UID   string `json:"uid"`
+				Name  string `json:"name"`
+				Other string `json:"other"`
+			}{UID: "a", Name: "n", Other: "o"},
+			want: `{"uid":"a","name":"n"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := optsWithJSONFields(t, []string{"uid", "name"})
+			var buf bytes.Buffer
+			require.NoError(t, opts.Encode(&buf, tt.value))
+			assert.JSONEq(t, tt.want, buf.String())
+		})
+	}
+}
+
+func TestEncode_JSONDiscovery_SingleKeyEnvelope(t *testing.T) {
+	// Discovery on a single-key list envelope must list item-level fields,
+	// not the wrapper key.
+	type item struct {
+		UID  string `json:"uid"`
+		Name string `json:"name"`
+	}
+	type envelope struct {
+		Datasources []item `json:"datasources"`
+	}
+
+	opts := optsWithJSONDiscovery(t)
+	var buf bytes.Buffer
+	require.NoError(t, opts.Encode(&buf, &envelope{Datasources: []item{{UID: "a", Name: "x"}}}))
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	assert.Contains(t, lines, "uid")
+	assert.Contains(t, lines, "name")
+	assert.NotContains(t, lines, "datasources")
+}
+
 func TestEncode_JSONDiscovery_PrintsFieldNames(t *testing.T) {
 	opts := optsWithJSONDiscovery(t)
 

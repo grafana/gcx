@@ -82,3 +82,72 @@ func TestRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestBoundCredentialBinding(t *testing.T) {
+	binding := credentials.Binding{
+		Source:      "/canonical/user/config.yaml",
+		Owner:       credentials.StackOwner("production"),
+		Field:       credentials.FieldGrafanaToken,
+		Destination: "grafana|server=https://prod.example|proxy=",
+	}
+	sentinel := credentials.FormatBoundSentinel(binding)
+	if !credentials.IsBoundSentinel(sentinel) {
+		t.Fatalf("FormatBoundSentinel produced invalid sentinel %q", sentinel)
+	}
+	if !credentials.MatchesBoundSentinel(sentinel, binding) {
+		t.Fatal("bound sentinel did not match its complete binding")
+	}
+	if _, _, ok := credentials.ParseSentinel(sentinel); ok {
+		t.Fatal("v2 bound sentinel must not be parsed as a legacy owner-selected reference")
+	}
+
+	changes := []credentials.Binding{
+		{Source: "/canonical/repo/.gcx.yaml", Owner: binding.Owner, Field: binding.Field, Destination: binding.Destination},
+		{Source: binding.Source, Owner: credentials.StackOwner("other"), Field: binding.Field, Destination: binding.Destination},
+		{Source: binding.Source, Owner: binding.Owner, Field: credentials.FieldGrafanaPassword, Destination: binding.Destination},
+		{Source: binding.Source, Owner: binding.Owner, Field: binding.Field, Destination: "grafana|server=https://other.example|proxy="},
+	}
+	for _, changed := range changes {
+		if credentials.BoundAccountKey(changed) == credentials.BoundAccountKey(binding) {
+			t.Errorf("binding change did not isolate account: %#v", changed)
+		}
+		if credentials.MatchesBoundSentinel(sentinel, changed) {
+			t.Errorf("sentinel matched changed binding: %#v", changed)
+		}
+	}
+}
+
+func TestNewBoundReferenceUsesUniqueGenerationsForSameBinding(t *testing.T) {
+	binding := credentials.Binding{
+		Source:      "/canonical/user/config.yaml",
+		Owner:       credentials.StackOwner("production"),
+		Field:       credentials.FieldGrafanaToken,
+		Destination: "grafana|server=https://prod.example|proxy=",
+	}
+	first, err := credentials.NewBoundReference(binding)
+	if err != nil {
+		t.Fatalf("first reference: %v", err)
+	}
+	second, err := credentials.NewBoundReference(binding)
+	if err != nil {
+		t.Fatalf("second reference: %v", err)
+	}
+	if first == second || first.Account == second.Account || first.Sentinel == second.Sentinel {
+		t.Fatalf("rotations reused a generation: first=%#v second=%#v", first, second)
+	}
+	for _, ref := range []credentials.BoundReference{first, second} {
+		if !credentials.MatchesBoundAccount(ref.Account, binding) || !credentials.MatchesBoundSentinel(ref.Sentinel, binding) {
+			t.Fatalf("generated reference does not match binding: %#v", ref)
+		}
+		account, ok := credentials.AccountForBoundSentinel(ref.Sentinel, binding)
+		if !ok || account != ref.Account {
+			t.Fatalf("sentinel selected %q, %t; want %q", account, ok, ref.Account)
+		}
+	}
+}
+
+func TestParseSentinelRejectsUnknownLegacyField(t *testing.T) {
+	if _, _, ok := credentials.ParseSentinel("keychain:gcx:production:not-a-secret-field"); ok {
+		t.Fatal("unknown legacy field must not be accepted")
+	}
+}

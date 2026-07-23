@@ -26,7 +26,7 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agents",
-		Short: "Query AI Observability agent catalog.",
+		Short: "Query Agent Observability agent catalog.",
 	}
 
 	cmd.AddCommand(
@@ -130,7 +130,7 @@ func (o *versionsOpts) setup(flags *pflag.FlagSet) {
 func newVersionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &versionsOpts{}
 	cmd := &cobra.Command{
-		Use:   "versions <agent-name>",
+		Use:   "list-versions <agent-name>",
 		Short: "List version history for an agent.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -76,7 +76,7 @@ Use JSON/YAML for programmatic work and table/wide output for human summaries.
 | Loki label values | `gcx datasources loki labels -d <uid> --label <label>` |
 | Tempo attribute names | `gcx datasources tempo labels -d <uid>` |
 | Tempo attribute values | `gcx datasources tempo labels -d <uid> -l resource.service.name --llm -o json` |
-| Pyroscope profile types | `gcx datasources pyroscope profile-types -d <uid>` |
+| Pyroscope profile types | `gcx datasources pyroscope list-profile-types -d <uid>` |
 | Pyroscope label values | `gcx datasources pyroscope labels -d <uid> --label service_name` |
 | Other datasource types | Check `gcx datasources <type> --help` for dedicated subcommands before using `gcx api` |
 | List dashboards | `gcx dashboards list -o wide` |
@@ -86,7 +86,7 @@ Use JSON/YAML for programmatic work and table/wide output for human summaries.
 | Update from finished file | `gcx dashboards update <dashboard-name> -f <dashboard.yaml>` |
 | Delete with confirmation | `gcx dashboards delete <dashboard-name>` |
 | Delete non-interactively | `gcx dashboards delete <dashboard-name> --force` |
-| Version history | `gcx dashboards versions list <dashboard-name>` |
+| Version history | `gcx dashboards list-versions <dashboard-name>` |
 | Restore version | `gcx dashboards versions restore <dashboard-name> <version> --message "<why>"` |
 | Pull dashboards/folders | `gcx resources pull dashboards folders -p <dir> -o yaml` |
 | Pull one dashboard | `gcx resources pull dashboards/<dashboard-name> -p <dir> -o yaml` |
@@ -95,7 +95,7 @@ Use JSON/YAML for programmatic work and table/wide output for human summaries.
 | Push local files | `gcx resources push -p <path>` |
 | Delete by selector | `gcx resources delete dashboards/<dashboard-name>` |
 | Edit in `$EDITOR` | `gcx resources edit dashboards/<dashboard-name> -o yaml` |
-| List resource kinds | `gcx resources schemas` |
+| List resource kinds | `gcx resources list-types` |
 
 `<dashboard-name>` is the dashboard resource name (`metadata.name`), which is
 also the value accepted by `gcx dashboards snapshot`.
@@ -128,7 +128,7 @@ Restore performs a read of historical content and writes a new current revision.
 Always include a message and verify afterwards:
 
 ```bash
-gcx dashboards versions list <dashboard-name> --limit 10
+gcx dashboards list-versions <dashboard-name> --limit 10
 gcx dashboards versions restore <dashboard-name> <version> \
   --message "Restore known-good dashboard after <reason>"
 gcx dashboards get <dashboard-name> -o json

@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// --- chat ---
+// --- list-messages ---
 
 type chatOpts struct {
 	IO     cmdio.Options
@@ -36,13 +36,13 @@ func (o *chatOpts) setup(flags *pflag.FlagSet) {
 func newChatCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &chatOpts{}
 	cmd := &cobra.Command{
-		Use:   "chat <id>",
-		Short: "Show the chat thread for a v2 investigation.",
-		Long: "Stream the chat thread that backs a v2 investigation: " +
+		Use:   "list-messages <id>",
+		Short: "List the chat thread messages for a v2 investigation.",
+		Long: "List the chat thread that backs a v2 investigation: " +
 			"assistant prose, tool calls (search_skills, prometheus_query_handler, " +
 			"loki_query_handler_investigator, tempo_query_handler, ...), and tool " +
-			"results. The legacy report/timeline/todos endpoints return empty stubs " +
-			"on v2 — this command is the substantive view.",
+			"results. This is the substantive view of what the agent did; " +
+			"use `get-narrative` for the prose-only rendering.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -92,10 +92,10 @@ type narrativeOpts struct{ IO cmdio.Options }
 func (o *narrativeOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &NarrativeCodec{})
 	o.IO.RegisterCustomCodec("wide", &NarrativeCodec{})
-	// In agent mode the default flips to "agents", which would JSON-quote the
-	// string. Override with the raw-markdown codec so coding agents and pagers
-	// see the prose directly.
-	o.IO.RegisterCustomCodec("agents", &NarrativeCodec{Format_: "agents"})
+	// No "agents" override: like every sibling investigations command, agent
+	// mode falls through to the standard agents codec, so the default agent
+	// output is exactly one JSON value (the narrative as a JSON string).
+	// Humans keep the raw markdown via the table/wide codecs.
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -103,7 +103,7 @@ func (o *narrativeOpts) setup(flags *pflag.FlagSet) {
 func newNarrativeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &narrativeOpts{}
 	cmd := &cobra.Command{
-		Use:   "narrative <id>",
+		Use:   "get-narrative <id>",
 		Short: "Show the assistant-authored prose for a v2 investigation.",
 		Long:  "Show just the assistant-authored prose from a v2 investigation's chat thread — the text a human would read in the workspace, with tool plumbing stripped.",
 		Args:  cobra.ExactArgs(1),
@@ -130,7 +130,7 @@ func newNarrativeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- tools ---
+// --- list-tool-calls ---
 
 type toolsOpts struct {
 	IO   cmdio.Options
@@ -148,7 +148,7 @@ func (o *toolsOpts) setup(flags *pflag.FlagSet) {
 func newToolsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &toolsOpts{}
 	cmd := &cobra.Command{
-		Use:   "tools <id>",
+		Use:   "list-tool-calls <id>",
 		Short: "List tool calls made during a v2 investigation.",
 		Long:  "List every tool call the agent made during a v2 investigation, paired with its result. Use --name to filter (e.g. search_skills, prometheus_query_handler).",
 		Args:  cobra.ExactArgs(1),
@@ -348,17 +348,12 @@ func compactJSON(raw json.RawMessage, wide bool) string {
 }
 
 // NarrativeCodec renders the narrative string raw, with a trailing newline.
-// JSON/YAML codecs handle the string natively; this codec is registered under
-// "table"/"wide" for terminal use and under "agents" so coding agents see raw
-// markdown instead of a JSON-quoted blob.
-type NarrativeCodec struct {
-	Format_ format.Format
-}
+// JSON/YAML/agents codecs handle the string natively (as a JSON/YAML string
+// value); this codec is registered under "table"/"wide" for terminal use so
+// humans read the markdown directly.
+type NarrativeCodec struct{}
 
 func (c NarrativeCodec) Format() format.Format {
-	if c.Format_ != "" {
-		return c.Format_
-	}
 	return "table"
 }
 

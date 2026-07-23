@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/spf13/cobra"
@@ -36,6 +37,8 @@ type pyroscopeQueryOpts struct {
 	ProfileType        string
 	MaxNodes           int64
 	ProfileIDs         []string
+	SpanIDs            []string
+	TraceIDs           []string
 	StacktraceSelector []string
 	PprofPath          string
 	PprofOverwrite     bool
@@ -47,9 +50,11 @@ func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
 	opts.shared.Setup(flags, true)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
-	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)")
+	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)")
 	flags.Int64Var(&opts.MaxNodes, "max-nodes", 0, fmt.Sprintf("Maximum nodes in flame graph (default 0/unlimited for pprof output, %d for all other formats)", defaultMaxNodes))
 	flags.StringSliceVar(&opts.ProfileIDs, "profile-id", nil, "Drill down to specific profile UUIDs from exemplar queries (repeatable)")
+	flags.StringSliceVar(&opts.SpanIDs, "span-id", nil, "Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof)")
+	flags.StringSliceVar(&opts.TraceIDs, "trace-id", nil, "Only query samples with these 32-character hex trace IDs (repeatable)")
 	flags.StringSliceVar(&opts.StacktraceSelector, "stacktrace-selector", nil, "Only query locations with these function names, starting from the root (repeatable)")
 	flags.StringVar(&opts.PprofPath, "pprof-path", "", "Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)")
 	flags.BoolVar(&opts.PprofOverwrite, "pprof-overwrite", false, "Overwrite the output file if it already exists (only with -o pprof)")
@@ -70,6 +75,31 @@ func (opts *pyroscopeQueryOpts) Validate(flags *pflag.FlagSet) error {
 	for _, id := range opts.ProfileIDs {
 		if !isUUID(id) {
 			return fmt.Errorf("--profile-id must be a valid UUID (got %q)", id)
+		}
+	}
+	if len(opts.SpanIDs) > 0 && len(opts.StacktraceSelector) > 0 {
+		return errors.New("--span-id and --stacktrace-selector cannot be used together")
+	}
+	if len(opts.SpanIDs) > 0 && len(opts.ProfileIDs) > 0 {
+		return errors.New("--span-id and --profile-id cannot be used together")
+	}
+	if len(opts.TraceIDs) > 0 && len(opts.SpanIDs) > 0 {
+		return errors.New("--trace-id and --span-id cannot be used together")
+	}
+	if len(opts.TraceIDs) > 0 && len(opts.ProfileIDs) > 0 {
+		return errors.New("--trace-id and --profile-id cannot be used together")
+	}
+	if len(opts.SpanIDs) > 0 && opts.shared.IO.OutputFormat == "pprof" {
+		return errors.New("--span-id is not supported with -o pprof")
+	}
+	for _, id := range opts.SpanIDs {
+		if !isHexID(id, 16) {
+			return fmt.Errorf("--span-id must be a 16-character hex span ID (got %q)", id)
+		}
+	}
+	for _, id := range opts.TraceIDs {
+		if !isHexID(id, 32) {
+			return fmt.Errorf("--trace-id must be a 32-character hex trace ID (got %q)", id)
 		}
 	}
 	return nil
@@ -127,6 +157,16 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
     --profile-id 550e8400-e29b-41d4-a716-446655440000 \
     --profile-id 7c9e6679-7425-40de-944b-e07fc1f90ae7
+
+  # Restrict the query to one or more trace spans
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
+    --span-id 00f067aa0ba902b7
+
+  # Restrict the query to samples from one or more traces
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
+    --trace-id 4bf92f3577b34da6a3ce929d0e0e4736
 
   # Restrict the flamegraph to stacks rooted at a specific call site
   # (--stacktrace-selector is repeatable; pass it once per frame, root first)
@@ -190,6 +230,7 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 					Start:         start,
 					End:           end,
 					MaxNodes:      opts.MaxNodes,
+					TraceIDs:      opts.TraceIDs,
 				})
 				if err != nil {
 					return fmt.Errorf("pprof fetch failed: %w", err)
@@ -198,7 +239,15 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 					return fmt.Errorf("writing pprof profile: %w", err)
 				}
 				result := &pyroscope.PprofWriteResult{Path: dest}
-				return pyroscope.FormatPprofWriteTable(cmd.OutOrStdout(), result)
+				// -o pprof is an artifact write: in agent mode the stdout
+				// confirmation is a JSON receipt, not a human table (shared
+				// artifact-command protocol, internal/output/artifact.go).
+				receipt := cmdio.NewArtifactReceipt("pprof-export", "pprof")
+				receipt.Files = append(receipt.Files, cmdio.ArtifactFile{Path: dest})
+				receipt.Summary = cmdio.MutationSummary{Succeeded: 1}
+				return cmdio.EmitArtifactResult(cmd.OutOrStdout(), receipt, func(w io.Writer) error {
+					return pyroscope.FormatPprofWriteTable(w, result)
+				})
 			}
 
 			req := pyroscope.QueryRequest{
@@ -208,6 +257,8 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				End:                end,
 				MaxNodes:           opts.resolveMaxNodes(cmd.Flags()),
 				ProfileIDs:         opts.ProfileIDs,
+				SpanIDs:            opts.SpanIDs,
+				TraceIDs:           opts.TraceIDs,
 				StackTraceSelector: opts.stackTraceSelector(),
 			}
 
@@ -245,6 +296,18 @@ func isUUID(s string) bool {
 				return false
 			}
 		} else if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+func isHexID(s string, length int) bool {
+	if len(s) != length {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return false
 		}
 	}

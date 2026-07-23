@@ -25,6 +25,7 @@ type ProfileExemplar struct {
 	Timestamp time.Time         `json:"timestamp"`
 	Value     int64             `json:"value"`
 	SpanID    string            `json:"spanId,omitempty"`
+	TraceID   string            `json:"traceId,omitempty"`
 	Labels    map[string]string `json:"labels,omitempty"`
 }
 
@@ -40,6 +41,7 @@ type SpanExemplarsResult struct {
 // SpanExemplar is a single flattened span-exemplar entry.
 type SpanExemplar struct {
 	SpanID    string            `json:"spanId"`
+	TraceID   string            `json:"traceId,omitempty"`
 	Timestamp time.Time         `json:"timestamp"`
 	Value     int64             `json:"value"`
 	Labels    map[string]string `json:"labels,omitempty"`
@@ -65,6 +67,7 @@ func BuildProfileExemplarsResult(resp *SelectSeriesResponse, from, to time.Time,
 					Timestamp: time.UnixMilli(ex.TimestampMs()).UTC(),
 					Value:     ex.Int64Value(),
 					SpanID:    ex.SpanID,
+					TraceID:   ex.TraceID,
 					Labels:    mergeLabels(seriesLabels, ex.Labels),
 				})
 			}
@@ -104,6 +107,7 @@ func BuildSpanExemplarsResult(resp *SelectHeatmapResponse, from, to time.Time, p
 				}
 				entries = append(entries, SpanExemplar{
 					SpanID:    ex.SpanID,
+					TraceID:   ex.TraceID,
 					Timestamp: time.UnixMilli(ex.TimestampMs()).UTC(),
 					Value:     ex.Int64Value(),
 					Labels:    mergeLabels(seriesLabels, ex.Labels),
@@ -234,7 +238,18 @@ func FormatSpanExemplarsTable(w io.Writer, result *SpanExemplarsResult, maxLabel
 	}
 	cols := TopCardinalityLabelNames(labelMaps, maxLabelCols)
 
-	headers := make([]string, 0, 3+len(cols))
+	hasTraceID := false
+	for _, e := range result.Exemplars {
+		if e.TraceID != "" {
+			hasTraceID = true
+			break
+		}
+	}
+
+	headers := make([]string, 0, 4+len(cols))
+	if hasTraceID {
+		headers = append(headers, "TRACE ID")
+	}
 	headers = append(headers, "SPAN ID", "TIMESTAMP", "VALUE ("+strings.ToUpper(unit)+")")
 	for _, c := range cols {
 		headers = append(headers, strings.ToUpper(c))
@@ -249,11 +264,15 @@ func FormatSpanExemplarsTable(w io.Writer, result *SpanExemplarsResult, maxLabel
 	}
 
 	for _, e := range result.Exemplars {
-		row := []string{
+		row := make([]string, 0, len(headers))
+		if hasTraceID {
+			row = append(row, e.TraceID)
+		}
+		row = append(row,
 			e.SpanID,
 			e.Timestamp.UTC().Format(time.RFC3339),
 			formatHumanValue(float64(e.Value), unit),
-		}
+		)
 		for _, c := range cols {
 			row = append(row, e.Labels[c])
 		}

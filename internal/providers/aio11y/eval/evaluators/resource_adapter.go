@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// StaticDescriptor returns the resource descriptor for AI Observability evaluators.
+// StaticDescriptor returns the resource descriptor for Agent Observability evaluators.
 func StaticDescriptor() resources.Descriptor {
 	return resources.Descriptor{
 		GroupVersion: schema.GroupVersion{
@@ -40,18 +40,18 @@ func evalStripFields() []string {
 	}
 }
 
-// NewTypedCRUD creates a TypedCRUD for AI Observability evaluators.
+// NewTypedCRUD creates a TypedCRUD for Agent Observability evaluators.
 func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[eval.EvaluatorDefinition], string, error) {
 	var loader providers.ConfigLoader
 
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load REST config for AI Observability evaluators: %w", err)
+		return nil, "", fmt.Errorf("failed to load REST config for Agent Observability evaluators: %w", err)
 	}
 
 	base, err := aio11yhttp.NewClient(cfg)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create AI Observability HTTP client: %w", err)
+		return nil, "", fmt.Errorf("failed to create Agent Observability HTTP client: %w", err)
 	}
 	client := NewClient(base)
 
@@ -75,7 +75,7 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[eval.EvaluatorDefinit
 	return crud, cfg.Namespace, nil
 }
 
-// NewLazyFactory returns an adapter.Factory for AI Observability evaluators.
+// NewLazyFactory returns an adapter.Factory for Agent Observability evaluators.
 func NewLazyFactory() adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		crud, _, err := NewTypedCRUD(ctx)

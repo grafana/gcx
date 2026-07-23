@@ -2,6 +2,8 @@ package irm
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -313,26 +315,70 @@ type Route struct {
 	FilteringLabels     any    `json:"filtering_labels,omitempty"`
 }
 
+// WebhookIntegrationFilter is the list of integration IDs that may trigger a
+// webhook. The public and older internal APIs return ID strings, while newer
+// Cloud IRM internal APIs expand each entry to an object containing id and
+// name. Normalize both response shapes to IDs so manifests and write requests
+// retain the portable string-array representation.
+type WebhookIntegrationFilter []string
+
+func (f *WebhookIntegrationFilter) UnmarshalJSON(data []byte) error {
+	var entries []json.RawMessage
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fmt.Errorf("decode webhook integration filter: %w", err)
+	}
+	if entries == nil {
+		*f = nil
+		return nil
+	}
+
+	filter := make(WebhookIntegrationFilter, 0, len(entries))
+	for i, entry := range entries {
+		var id string
+		if err := json.Unmarshal(entry, &id); err == nil {
+			if id == "" {
+				return fmt.Errorf("decode webhook integration filter entry %d: empty id", i)
+			}
+			filter = append(filter, id)
+			continue
+		}
+
+		var ref struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(entry, &ref); err != nil {
+			return fmt.Errorf("decode webhook integration filter entry %d: %w", i, err)
+		}
+		if ref.ID == "" {
+			return fmt.Errorf("decode webhook integration filter entry %d: missing id", i)
+		}
+		filter = append(filter, ref.ID)
+	}
+
+	*f = filter
+	return nil
+}
+
 //nolint:recvcheck
 type Webhook struct {
-	ID                  string   `json:"id,omitempty"`
-	Name                string   `json:"name"`
-	URL                 string   `json:"url,omitempty"`
-	HTTPMethod          string   `json:"http_method,omitempty"`
-	TriggerType         any      `json:"trigger_type,omitempty"`
-	IsWebhookEnabled    bool     `json:"is_webhook_enabled"`
-	IsLegacy            bool     `json:"is_legacy,omitempty"`
-	Team                any      `json:"team,omitempty"`
-	Data                string   `json:"data,omitempty"`
-	Username            string   `json:"username,omitempty"`
-	Password            string   `json:"password,omitempty"`
-	AuthorizationHeader string   `json:"authorization_header,omitempty"`
-	Headers             string   `json:"headers,omitempty"`
-	TriggerTemplate     string   `json:"trigger_template,omitempty"`
-	IntegrationFilter   []string `json:"integration_filter,omitempty"`
-	ForwardAll          bool     `json:"forward_all,omitempty"`
-	Preset              string   `json:"preset,omitempty"`
-	Labels              any      `json:"labels,omitempty"`
+	ID                  string                   `json:"id,omitempty"`
+	Name                string                   `json:"name"`
+	URL                 string                   `json:"url,omitempty"`
+	HTTPMethod          string                   `json:"http_method,omitempty"`
+	TriggerType         any                      `json:"trigger_type,omitempty"`
+	IsWebhookEnabled    bool                     `json:"is_webhook_enabled"`
+	IsLegacy            bool                     `json:"is_legacy,omitempty"`
+	Team                any                      `json:"team,omitempty"`
+	Data                string                   `json:"data,omitempty"`
+	Username            string                   `json:"username,omitempty"`
+	Password            string                   `json:"password,omitempty"`
+	AuthorizationHeader string                   `json:"authorization_header,omitempty"`
+	Headers             string                   `json:"headers,omitempty"`
+	TriggerTemplate     string                   `json:"trigger_template,omitempty"`
+	IntegrationFilter   WebhookIntegrationFilter `json:"integration_filter,omitempty"`
+	ForwardAll          bool                     `json:"forward_all,omitempty"`
+	Preset              string                   `json:"preset,omitempty"`
+	Labels              any                      `json:"labels,omitempty"`
 }
 
 //nolint:recvcheck

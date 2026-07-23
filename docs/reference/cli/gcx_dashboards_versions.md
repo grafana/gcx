@@ -23,6 +23,5 @@ Manage dashboard version history
 ### SEE ALSO
 
 * [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
-* [gcx dashboards versions list](gcx_dashboards_versions_list.md)	 - List dashboard version history
 * [gcx dashboards versions restore](gcx_dashboards_versions_restore.md)	 - Restore a dashboard to a previous version
 

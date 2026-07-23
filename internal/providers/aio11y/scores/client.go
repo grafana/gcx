@@ -11,7 +11,7 @@ import (
 
 const generationScoresPathFmt = "/query/generations/%s/scores"
 
-// Client is an HTTP client for AI Observability generation score endpoints.
+// Client is an HTTP client for Agent Observability generation score endpoints.
 type Client struct {
 	base *aio11yhttp.Client
 }

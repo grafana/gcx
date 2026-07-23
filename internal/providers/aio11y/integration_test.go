@@ -1,6 +1,6 @@
 package aio11y_test
 
-// Integration tests for the AI Observability provider pipeline.
+// Integration tests for the Agent Observability provider pipeline.
 // Each test spins up an httptest server mimicking the plugin API,
 // wires a real client, fetches data, then encodes through the real
 // table codec — verifying the full path from HTTP to rendered output.

@@ -19,7 +19,7 @@ const (
 // ErrNotFound wraps adapter.ErrNotFound so resource push can create missing hook rules.
 var ErrNotFound = fmt.Errorf("hook rule: %w", adapter.ErrNotFound)
 
-// Client is an HTTP client for AI Observability hook-rule (guard) endpoints.
+// Client is an HTTP client for Agent Observability hook-rule (guard) endpoints.
 type Client struct {
 	base *aio11yhttp.Client
 }
