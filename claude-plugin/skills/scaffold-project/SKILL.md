@@ -60,7 +60,7 @@ my-dashboards/
 ## Next Steps After Scaffolding
 
 1. `cd my-dashboards && go mod tidy`
-2. Configure gcx: `gcx config set grafana.server <URL>` and `gcx config set grafana.token <TOKEN>`
+2. Configure gcx: `gcx config set stacks.default.grafana.server <URL>`, `gcx config set stacks.default.grafana.token <TOKEN>`, and `gcx config set contexts.default.stack default`
 3. Edit `internal/dashboards/sample.go` or generate new stubs with `gcx dev generate`
 4. Push to Grafana: `gcx resources push`
 

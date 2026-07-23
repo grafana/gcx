@@ -40,6 +40,14 @@ func clientFromContextWithTLS(ctx *config.Context) (clientResult, error) {
 	if ctx.Grafana == nil {
 		return clientResult{}, errors.New("grafana not configured")
 	}
+	authMethod, err := ctx.EffectiveGrafanaAuthMethod()
+	if err != nil {
+		return clientResult{}, fmt.Errorf("grafana authentication: %w", err)
+	}
+	selectedTLS, err := ctx.EffectiveGrafanaTLS()
+	if err != nil {
+		return clientResult{}, fmt.Errorf("grafana TLS configuration: %w", err)
+	}
 
 	grafanaURL, err := url.Parse(ctx.Grafana.Server)
 	if err != nil {
@@ -56,19 +64,23 @@ func clientFromContextWithTLS(ctx *config.Context) (clientResult, error) {
 	}
 
 	var stdTLS *tls.Config
-	if ctx.Grafana.TLS != nil {
-		stdTLS, err = ctx.Grafana.TLS.ToStdTLSConfig()
+	if selectedTLS != nil {
+		stdTLS, err = selectedTLS.ToStdTLSConfig()
 		if err != nil {
 			return clientResult{}, fmt.Errorf("TLS configuration: %w", err)
 		}
 		cfg.TLSConfig = stdTLS
 	}
 
-	// Authentication
-	if ctx.Grafana.User != "" && ctx.Grafana.Password != "" {
+	// EffectiveGrafanaAuthMethod is the single selection authority. Attach only
+	// the selected HTTP credential so stale fields from a previous auth method
+	// cannot leak to the health endpoint. OAuth health probes are intentionally
+	// anonymous against the direct Grafana endpoint; mTLS authenticates at the
+	// transport layer and carries no Authorization header.
+	switch authMethod {
+	case "basic":
 		cfg.BasicAuth = url.UserPassword(ctx.Grafana.User, ctx.Grafana.Password)
-	}
-	if ctx.Grafana.APIToken != "" {
+	case "token":
 		cfg.APIKey = ctx.Grafana.APIToken
 	}
 	if ctx.Grafana.OrgID != 0 {

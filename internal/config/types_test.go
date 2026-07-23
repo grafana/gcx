@@ -123,7 +123,7 @@ func TestGrafanaConfig_Validate_MismatchedStackID(t *testing.T) {
 	err := cfg.Validate(context.Background(), "ctx")
 	req.Error(err)
 	req.ErrorContains(err, "mismatched")
-	req.ErrorContains(err, "contexts.ctx.grafana.stack-id")
+	req.ErrorContains(err, "stacks.ctx.grafana.stack-id")
 }
 
 func TestGrafanaConfig_Validate_MissingStackWhenBootdataUnavailable(t *testing.T) {
@@ -139,8 +139,8 @@ func TestGrafanaConfig_Validate_MissingStackWhenBootdataUnavailable(t *testing.T
 	err := cfg.Validate(context.Background(), "ctx")
 	req.Error(err)
 	req.ErrorContains(err, "missing")
-	req.ErrorContains(err, "contexts.ctx.grafana.org-id")
-	req.ErrorContains(err, "contexts.ctx.grafana.stack-id")
+	req.ErrorContains(err, "stacks.ctx.grafana.org-id")
+	req.ErrorContains(err, "stacks.ctx.grafana.stack-id")
 }
 
 func TestGrafanaConfig_Validate_BootdataUnavailableAndSuppliedStackId(t *testing.T) {
@@ -209,34 +209,32 @@ func TestMinify(t *testing.T) {
 	req := require.New(t)
 
 	cfg := config.Config{
+		Stacks: map[string]*config.StackConfig{
+			"dev":  {Grafana: &config.GrafanaConfig{Server: "dev-server"}},
+			"prod": {Grafana: &config.GrafanaConfig{Server: "prod-server"}},
+		},
+		Cloud: map[string]*config.CloudEntry{
+			"grafana-com": {Token: "cloud-token"},
+			"other":       {Token: "other-token"},
+		},
 		Contexts: map[string]*config.Context{
-			"dev": {
-				Grafana: &config.GrafanaConfig{
-					Server: "dev-server",
-				},
-			},
-			"prod": {
-				Grafana: &config.GrafanaConfig{
-					Server: "prod-server",
-				},
-			},
+			"dev":  {Stack: "dev", Cloud: "grafana-com"},
+			"prod": {Stack: "prod", Cloud: "other"},
 		},
 		CurrentContext: "dev",
 	}
+	cfg.Resolve()
 
 	minified, err := config.Minify(cfg)
 	req.NoError(err)
 
-	req.Equal(config.Config{
-		Contexts: map[string]*config.Context{
-			"dev": {
-				Grafana: &config.GrafanaConfig{
-					Server: "dev-server",
-				},
-			},
-		},
-		CurrentContext: "dev",
-	}, minified)
+	req.Equal("dev", minified.CurrentContext)
+	req.Len(minified.Contexts, 1)
+	req.Contains(minified.Contexts, "dev")
+	req.Len(minified.Stacks, 1)
+	req.Equal("dev-server", minified.Stacks["dev"].Grafana.Server)
+	req.Len(minified.Cloud, 1)
+	req.Equal("cloud-token", minified.Cloud["grafana-com"].Token)
 }
 
 func TestMinify_withNoCurrentContext(t *testing.T) {
@@ -270,15 +268,15 @@ func TestContext_ResolveStackSlug(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "explicit cloud.stack takes precedence over grafana.server derivation",
+			name: "explicit stack slug takes precedence over grafana.server derivation",
 			ctx: config.Context{
-				Cloud:   &config.CloudConfig{Stack: "explicit"},
-				Grafana: &config.GrafanaConfig{Server: "https://derived.grafana.net"},
+				StackEntry: &config.StackConfig{Slug: "explicit"},
+				Grafana:    &config.GrafanaConfig{Server: "https://derived.grafana.net"},
 			},
 			expected: "explicit",
 		},
 		{
-			name: "derive slug from grafana.net subdomain when no cloud.stack",
+			name: "derive slug from grafana.net subdomain when no explicit slug",
 			ctx: config.Context{
 				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana.net"},
 			},
@@ -304,10 +302,10 @@ func TestContext_ResolveStackSlug(t *testing.T) {
 			expected: "",
 		},
 		{
-			name: "empty cloud.stack falls back to grafana.server derivation",
+			name: "empty stack slug falls back to grafana.server derivation",
 			ctx: config.Context{
-				Cloud:   &config.CloudConfig{Stack: ""},
-				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana.net"},
+				StackEntry: &config.StackConfig{Slug: ""},
+				Grafana:    &config.GrafanaConfig{Server: "https://mystack.grafana.net"},
 			},
 			expected: "mystack",
 		},
@@ -328,8 +326,8 @@ func TestContext_IsCloud(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "explicit cloud.stack",
-			ctx:  config.Context{Cloud: &config.CloudConfig{Stack: "mystack"}},
+			name: "explicit stack slug",
+			ctx:  config.Context{StackEntry: &config.StackConfig{Slug: "mystack"}},
 			want: true,
 		},
 		{
@@ -501,16 +499,16 @@ func TestContext_ResolveCloudAPIURL(t *testing.T) {
 			expected: "https://grafana.com",
 		},
 		{
-			name: "cloud.oauth-url does not affect the API URL",
+			name: "cloud oauth-url does not affect the API URL",
 			ctx: config.Context{
-				Cloud: &config.CloudConfig{OAuthUrl: "https://grafana-dev.com"},
+				CloudEntry: &config.CloudEntry{OAuthUrl: "https://grafana-dev.com"},
 			},
 			expected: "https://grafana.com",
 		},
 		{
-			name: "empty cloud.api-url returns default grafana.com URL",
+			name: "empty cloud api-url returns default grafana.com URL",
 			ctx: config.Context{
-				Cloud: &config.CloudConfig{},
+				CloudEntry: &config.CloudEntry{},
 			},
 			expected: "https://grafana.com",
 		},
@@ -536,10 +534,10 @@ func TestContext_ResolveCloudAPIURL(t *testing.T) {
 			expected: "https://grafana-dev.com",
 		},
 		{
-			name: "explicit cloud.api-url wins over server-derived root",
+			name: "explicit cloud api-url wins over server-derived root",
 			ctx: config.Context{
-				Cloud:   &config.CloudConfig{APIUrl: "https://grafana.com"},
-				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-ops.net"},
+				CloudEntry: &config.CloudEntry{APIUrl: "https://grafana.com"},
+				Grafana:    &config.GrafanaConfig{Server: "https://mystack.grafana-ops.net"},
 			},
 			expected: "https://grafana.com",
 		},
@@ -551,23 +549,23 @@ func TestContext_ResolveCloudAPIURL(t *testing.T) {
 			expected: "https://grafana.com",
 		},
 		{
-			name: "custom cloud.api-url is prefixed with https://",
+			name: "custom cloud api-url is prefixed with https://",
 			ctx: config.Context{
-				Cloud: &config.CloudConfig{APIUrl: "grafana-dev.com"},
+				CloudEntry: &config.CloudEntry{APIUrl: "grafana-dev.com"},
 			},
 			expected: "https://grafana-dev.com",
 		},
 		{
-			name: "cloud.api-url with existing https:// scheme is not double-prefixed",
+			name: "cloud api-url with existing https:// scheme is not double-prefixed",
 			ctx: config.Context{
-				Cloud: &config.CloudConfig{APIUrl: "https://grafana-dev.com"},
+				CloudEntry: &config.CloudEntry{APIUrl: "https://grafana-dev.com"},
 			},
 			expected: "https://grafana-dev.com",
 		},
 		{
-			name: "cloud.api-url with http:// scheme is preserved",
+			name: "cloud api-url with http:// scheme is preserved",
 			ctx: config.Context{
-				Cloud: &config.CloudConfig{APIUrl: "http://localhost:3000"},
+				CloudEntry: &config.CloudEntry{APIUrl: "http://localhost:3000"},
 			},
 			expected: "http://localhost:3000",
 		},

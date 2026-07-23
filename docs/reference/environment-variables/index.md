@@ -31,23 +31,23 @@ Endpoint overrides the URL usage telemetry is sent to.
 ## `GRAFANA_CLOUD_API_URL`
 
 APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls
-(stacks, regions, access policies, etc.). Every client talking to GCOM
-uses it. Optional: defaults to "https://grafana.com".
+(stacks, regions, access policies, etc.). Every client talking to GCOM uses
+it. It is materialized together with OAuthUrl so authentication and later
+API calls stay in the same Cloud environment.
 
 ## `GRAFANA_CLOUD_OAUTH_URL`
 
 OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
-login`. It is used only during login. Optional: defaults to
-"https://grafana.com".
-
-## `GRAFANA_CLOUD_STACK`
-
-Stack is the Grafana Cloud stack slug (e.g. "mystack").
-Optional: if not set, the slug may be derived from Grafana.Server.
+login`. It is used only during login. Credential-bearing entries are
+materialized as a coherent OAuth/API pair: one explicit endpoint fills its
+missing peer; with neither set, gcx derives one unique referenced-stack
+Cloud environment or falls back to "https://grafana.com". Incompatible
+referenced environments are rejected and require separate entries.
 
 ## `GRAFANA_CLOUD_TOKEN`
 
-Token is a Grafana Cloud API token used to authenticate against GCOM.
+Token is a Grafana Cloud access policy token used to authenticate
+against GCOM.
 
 ## `GRAFANA_ORG_ID`
 

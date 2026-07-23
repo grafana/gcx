@@ -30,7 +30,7 @@ gcx datasources loki series [flags]
 ### Options
 
 ```
-  -d, --datasource string   Datasource UID (required unless default-loki-datasource is configured)
+  -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
   -h, --help                help for series
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields

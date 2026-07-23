@@ -2,10 +2,21 @@
 
 ```yaml
 # Config holds the information needed to connect to remote Grafana instances.
-# Contexts is a map of context configurations, indexed by name.
-contexts:
+# Version is the config format version. Version 1 is the only declared
+# version accepted by this release; unsupported versions are rejected before
+# migration or credential access. The field is absent on legacy configs,
+# which the loader migrates to the current format after a safety preflight.
+version: int
+# Stacks is a map of Grafana stack configurations (connection, providers,
+# per-stack resource settings), indexed by name. Contexts reference stacks
+# by name via Context.Stack.
+stacks:
   ${string}:
-    # Context holds the information required to connect to a remote Grafana instance.
+    # StackConfig holds the connection and provider configuration for a single
+    # Grafana stack. Contexts reference stacks by name via Context.Stack.
+    # Slug is the Grafana Cloud stack slug (e.g. "mystack").
+    # Optional: if not set, the slug may be derived from Grafana.Server.
+    slug: string
     grafana:
       # Server is the address of the Grafana server (https://hostname:port/path).
       # Required.
@@ -34,8 +45,10 @@ contexts:
       oauth-token-expires-at: string
       # OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
       oauth-refresh-expires-at: string
-      # AuthMethod is the authentication method stored by gcx login: "oauth", "token", "basic", or "mtls".
-      # Empty string is valid for legacy configs; readers should call InferredAuthMethod() in that case.
+      # AuthMethod selects "oauth", "token", "basic", or "mtls" when no complete
+      # runtime credential override supersedes it. Empty is valid for legacy configs
+      # and uses compatibility inference; consumers should use
+      # Context.EffectiveGrafanaAuthMethod instead of inspecting fields.
       auth-method: string
       # OrgID specifies the organization targeted by this config.
       # Note: required when targeting an on-prem Grafana instance.
@@ -88,34 +101,6 @@ contexts:
         next-protos:
           - string
           - ...
-    cloud:
-      # CloudConfig holds Grafana Cloud platform credentials and configuration.
-      # Token is a Grafana Cloud API token used to authenticate against GCOM.
-      token: string
-      # Stack is the Grafana Cloud stack slug (e.g. "mystack").
-      # Optional: if not set, the slug may be derived from Grafana.Server.
-      stack: string
-      # OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
-      # login`. It is used only during login. Optional: defaults to
-      # "https://grafana.com".
-      oauth-url: string
-      # APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls
-      # (stacks, regions, access policies, etc.). Every client talking to GCOM
-      # uses it. Optional: defaults to "https://grafana.com".
-      api-url: string
-    # DefaultPrometheusDatasource is the UID of the default Prometheus datasource to use for queries.
-    default-prometheus-datasource: string
-    # DefaultLokiDatasource is the UID of the default Loki datasource to use for queries.
-    default-loki-datasource: string
-    # DefaultPyroscopeDatasource is the UID of the default Pyroscope datasource to use for queries.
-    default-pyroscope-datasource: string
-    # DefaultTempoDatasource is the UID of the default Tempo datasource to use for queries.
-    default-tempo-datasource: string
-    # Datasources holds per-kind default datasource UIDs, indexed by datasource kind (e.g. "prometheus", "loki").
-    # Takes precedence over the legacy DefaultXxxDatasource fields when both are set.
-    datasources:
-      ${string}:
-        string
     # Providers holds per-provider configuration, indexed by provider name.
     # Each provider has a map of string key-value pairs.
     # Secret fields are selectively redacted by providers.RedactSecrets using
@@ -124,15 +109,76 @@ contexts:
       ${string}:
         ${string}:
           string
-    # Resources holds settings for the `gcx resources` commands in this context.
+    # Resources holds per-stack settings for the `gcx resources` commands,
+    # merged (union) with the global Config.Resources.
     resources:
-      # ResourcesConfig holds per-context settings for the `gcx resources` commands.
+      # ResourcesConfig holds settings for the `gcx resources` commands.
       # AssumeServerDryRun lists resources ("<resource>.<group>", e.g.
       # "alertrules.rules.alerting.grafana.app") the user asserts honor server-side dry-run on
       # this stack, added to the built-in allowlist so --dry-run sends them to the server.
       assume-server-dry-run:
         - string
         - ...
+# Cloud is a map of named Grafana Cloud (GCOM) auth entries. Contexts
+# reference entries by name via Context.Cloud.
+cloud:
+  ${string}:
+    # CloudEntry holds Grafana Cloud (GCOM) platform credentials and environment
+    # configuration. Entries are named and referenced by contexts via
+    # Context.Cloud; several contexts typically share one entry.
+    # Token is a Grafana Cloud access policy token used to authenticate
+    # against GCOM.
+    token: string
+    # OAuthToken is a grafana.com OAuth access token obtained via
+    # `gcx cloud login`. The grafana.com OAuth flow issues no refresh token;
+    # on expiry the user re-runs `gcx cloud login`.
+    oauth-token: string
+    # OAuthTokenExpiresAt is the OAuthToken expiration time in RFC3339 format.
+    oauth-token-expires-at: string
+    # OAuthScopes is the scope set granted by the OAuth token endpoint. It may
+    # differ from the requested set and is retained so re-auth/keep operations do
+    # not discard capability metadata.
+    oauth-scopes:
+      - string
+      - ...
+    # OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
+    # login`. It is used only during login. Credential-bearing entries are
+    # materialized as a coherent OAuth/API pair: one explicit endpoint fills its
+    # missing peer; with neither set, gcx derives one unique referenced-stack
+    # Cloud environment or falls back to "https://grafana.com". Incompatible
+    # referenced environments are rejected and require separate entries.
+    oauth-url: string
+    # APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls
+    # (stacks, regions, access policies, etc.). Every client talking to GCOM uses
+    # it. It is materialized together with OAuthUrl so authentication and later
+    # API calls stay in the same Cloud environment.
+    api-url: string
+# Resources holds global settings for the `gcx resources` commands,
+# applying to all stacks. Merged (union) with each stack's Resources.
+resources:
+  # ResourcesConfig holds settings for the `gcx resources` commands.
+  # AssumeServerDryRun lists resources ("<resource>.<group>", e.g.
+  # "alertrules.rules.alerting.grafana.app") the user asserts honor server-side dry-run on
+  # this stack, added to the built-in allowlist so --dry-run sends them to the server.
+  assume-server-dry-run:
+    - string
+    - ...
+# Contexts is a map of context configurations, indexed by name.
+contexts:
+  ${string}:
+    # Context binds a stack and (optionally) a cloud auth entry together with
+    # per-context defaults such as datasource UIDs.
+    # Stack names the entry in Config.Stacks this context targets.
+    stack: string
+    # Cloud names the entry in Config.Cloud providing GCOM auth for this
+    # context. Optional: without it, cloud-dependent operations fail at
+    # runtime with a hint, not at validation time.
+    cloud: string
+    # Datasources holds per-kind default datasource UIDs, indexed by
+    # datasource kind (e.g. "prometheus", "loki").
+    datasources:
+      ${string}:
+        string
 # CurrentContext is the name of the context currently in use.
 current-context: string
 # Diagnostics holds optional local diagnostic settings. All features are off by default.

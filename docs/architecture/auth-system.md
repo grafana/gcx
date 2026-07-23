@@ -2,14 +2,14 @@
 
 ## Overview
 
-gcx supports four authentication methods — browser-based OAuth (PKCE),
-Grafana service account tokens, mTLS client certificates, and Grafana Cloud
-Access Policy tokens — and each targets a different API surface. The
+gcx supports Grafana OAuth (PKCE), Grafana service account tokens, mTLS client
+certificates, Grafana Cloud Access Policy tokens, and direct Grafana Cloud
+OAuth. Each targets a specific API surface. The
 authentication subsystem spans package boundaries: OAuth mechanics live in
 `internal/auth/`, token storage lives in `internal/config/` as fields on
-`GrafanaConfig` and `CloudConfig`, TLS certificate settings live in
+`GrafanaConfig` and `CloudEntry`, TLS certificate settings live in
 `GrafanaConfig.TLS`, and token/cert attachment to HTTP clients happens in
-`internal/config/rest.go`. This document covers all four methods end to end.
+`internal/config/rest.go`. This document covers those methods end to end.
 
 ```mermaid
 graph LR
@@ -17,6 +17,7 @@ graph LR
     SA[Service account token<br/>glsa_...]
     mTLS[mTLS client certificate<br/>cert + key files]
     CAP[Cloud Access Policy token<br/>glc_...]
+    GCOMOAuth[Grafana Cloud OAuth<br/>browser PKCE]
 
     GrafanaAPI[Grafana API<br/>instance-scoped]
     K8sAPI[K8s /apis<br/>instance-scoped]
@@ -31,6 +32,8 @@ graph LR
     mTLS --> K8sAPI
     CAP --> GCOM
     CAP --> CloudProd
+    GCOMOAuth --> GCOM
+    GCOMOAuth -. supported clients only .-> CloudProd
 ```
 
 ---
@@ -42,7 +45,40 @@ graph LR
 | OAuth PKCE | Grafana API, K8s `/apis` | Browser flow via `gcx login` | `GrafanaConfig.OAuthToken`, `OAuthRefreshToken`, `OAuthTokenExpiresAt`, `OAuthRefreshExpiresAt`, `ProxyEndpoint` | Automatic via `RefreshTransport` | Transparent |
 | Service account token | Grafana API, K8s `/apis` | Grafana UI → Administration → Service accounts | `GrafanaConfig.APIToken` | None (static) | Manual (rotate in Grafana UI) |
 | mTLS client certificate | Grafana API, K8s `/apis` | Identity-aware proxy (e.g. Teleport) | `GrafanaConfig.TLS.CertFile`, `KeyFile`, `CAFile` (or `CertData`, `KeyData`, `CAData`) | External (proxy manages cert lifecycle) | External (e.g. `tsh apps login`) |
-| Cloud Access Policy token | GCOM, Cloud product APIs | Grafana Cloud UI → Security → Access policies | `CloudConfig.Token` | None (static) | Manual (rotate in Cloud UI) |
+| Cloud Access Policy token | GCOM, Cloud product APIs | Grafana Cloud UI → Security → Access policies | `CloudEntry.Token` | None (static) | Manual (rotate in Cloud UI) |
+| Grafana Cloud OAuth | GCOM and supported Cloud product clients (experimental; not full CAP parity) | Browser flow via `gcx cloud login` or the Cloud step in `gcx login` | `CloudEntry.OAuthToken`, `OAuthTokenExpiresAt`, `OAuthScopes`, `OAuthUrl`, `APIUrl` | None | Re-run Cloud login on expiry |
+
+---
+
+## Grafana auth selection
+
+For versioned contexts, `GrafanaConfig.AuthMethod` is authoritative unless a
+non-blank `GRAFANA_TOKEN` supplies a complete service-account credential for
+the current invocation. That environment override selects token mode only in
+the resolved runtime context; it does not rewrite the persisted `auth-method`.
+Otherwise exactly the persisted method is attached to requests: OAuth does not
+reuse a stale service account token, token and Basic modes do not reuse stale
+OAuth fields, and an explicit non-mTLS method does not present a stale client
+certificate. Server trust settings such as CA data, SNI, and
+`insecure-skip-verify` still apply.
+
+`GRAFANA_PASSWORD` can replace the password of a context already selecting
+Basic authentication, but it does not select Basic mode by itself. A password
+without a deliberate user/method selection is not a complete credential and
+must not let ambient process state override OAuth, token, or mTLS.
+
+Legacy contexts with no `auth-method` retain compatibility inference in this
+order: OAuth proxy, service-account token, Basic, then mTLS or anonymous. A
+partial or rejected higher-priority credential is evidence that authentication
+was configured, so it fails before network use rather than falling through to a
+lower-priority or empty credential. OAuth requires a proxy endpoint plus an
+access or refresh token; refresh-only OAuth is valid. Explicit token, Basic,
+and mTLS modes require their complete selected credential material.
+
+All Grafana request paths use the same selector and selected TLS view. Bespoke
+clients must call `Context.EffectiveGrafanaAuthMethod` and
+`Context.EffectiveGrafanaTLS`, or reuse `Context.ToRESTConfig`; they must not
+inspect populated credential fields to invent their own precedence.
 
 ---
 
@@ -55,7 +91,7 @@ or custom role). Tokens are prefixed `glsa_`.
 
 gcx stores them in `GrafanaConfig.APIToken` (`datapolicy:"secret"`, redacted
 in `gcx config view`). The REST config builder in `internal/config/rest.go`
-sets them as `rest.Config.BearerToken` when no OAuth credentials are present.
+sets them as `rest.Config.BearerToken` when token auth is selected.
 
 Rotation is manual: rotate in the Grafana UI, then update the context with
 `gcx login --context X --token glsa_new_token`.
@@ -79,9 +115,10 @@ Environment variables `GRAFANA_TLS_CERT_FILE`, `GRAFANA_TLS_KEY_FILE`, and
 
 ```bash
 # Via gcx config
-gcx config set contexts.myctx.grafana.server https://grafana.teleport.example.com
-gcx config set contexts.myctx.grafana.tls.cert-file "$(tsh apps config grafana -f cert)"
-gcx config set contexts.myctx.grafana.tls.key-file "$(tsh apps config grafana -f key)"
+gcx config set stacks.myctx.grafana.server https://grafana.teleport.example.com
+gcx config set stacks.myctx.grafana.tls.cert-file "$(tsh apps config grafana -f cert)"
+gcx config set stacks.myctx.grafana.tls.key-file "$(tsh apps config grafana -f key)"
+gcx config set contexts.myctx.stack myctx
 
 # Login detects mTLS as the auth method
 gcx login --yes
@@ -101,8 +138,13 @@ certificate paths. `mergeAuthIntoExisting` syncs TLS alongside other auth
 fields.
 
 Certificate lifecycle is managed externally (e.g. `tsh apps login grafana`
-refreshes short-lived certs). gcx reads the files at connection time, so
-refreshed certs take effect on the next command.
+refreshes short-lived certs). gcx captures the files while resolving the
+credential-bearing config and builds the transport from those captured bytes,
+so a path swap cannot change the certificate between trust validation and use;
+refreshed certs take effect on the next command. Because certificate and key
+files are external credentials, an auto-discovered repository `.gcx.yaml`
+cannot select them. Use `--config .gcx.yaml` or `GCX_CONFIG` to authorize that
+file explicitly.
 
 ---
 
@@ -113,13 +155,34 @@ Cloud. Users provision them in the Cloud UI under Security → Access policies;
 the token carries the scope of the policy (metrics read, logs write, IRM
 admin, etc.). Tokens are prefixed `glc_`.
 
-gcx stores them in `CloudConfig.Token` (`datapolicy:"secret"`). They are
+gcx stores them in `CloudEntry.Token` (`datapolicy:"secret"`). They are
 attached to two different API surfaces: the GCOM API (via the
 `internal/cloud/` client) and Cloud product APIs (via product-specific REST
 clients for synth, k6, IRM, fleet, and others).
 
 Rotation is manual: rotate the access policy in the Cloud UI, then update
 the context with `gcx login --context X --cloud-token glc_new_token`.
+
+## Grafana Cloud OAuth
+
+The Cloud login flow is a separate PKCE exchange from Grafana instance OAuth.
+It mints a GCOM credential and stores it in `CloudEntry.OAuthToken`, along with
+the issuer-provided expiry and granted scopes. The entry also stores both the
+OAuth origin and API destination. A unified login uses the same environment
+for both unless the caller explicitly supplies both endpoints, so a token is
+not minted against production and then saved for a development or operations
+environment.
+
+`CloudEntry.Token` and `CloudEntry.OAuthToken` are distinct credential kinds;
+setting one clears the other. Re-authentication that keeps an existing
+credential preserves its kind, expiry, scopes, and endpoints. Expired OAuth
+credentials cannot be kept and must be replaced through the browser flow.
+
+Unlike Grafana instance OAuth, direct Cloud OAuth has no refresh token. Cloud
+API loading checks `OAuthTokenExpiresAt` when present and tells the user to run
+`gcx cloud login` after expiry. The flow is experimental: GCOM and some Cloud
+product clients accept the resulting bearer token, but commands that have not
+yet gained OAuth support still require a CAP.
 
 ---
 
@@ -181,9 +244,10 @@ that endpoint (see OAuth proxy routing below). Exact implementation lives in
 
 | Method | Lifecycle |
 |---|---|
-| OAuth PKCE | Dynamic. The `gat_` access token has a short expiry; the `gar_` refresh token has a longer one. `RefreshTransport` renews the access token when a request sees credentials inside the 5-minute refresh threshold (`refreshThreshold` in `internal/auth/transport.go`), and refresh-token rotation on successful refresh is persisted back to the config file. |
+| OAuth PKCE | Dynamic. The `gat_` access token has a short expiry; the `gar_` refresh token has a longer one. `RefreshTransport` renews the access token when a request sees credentials inside the 5-minute refresh threshold (`refreshThreshold` in `internal/auth/transport.go`), and the successful refresh generation is persisted back to the config file. An access token with no issuer-reported expiry is used as an opaque bearer without an immediate proactive refresh. |
 | Service account token | Static. Lives until manually rotated in the Grafana UI. gcx treats it as an opaque bearer credential. |
 | Cloud Access Policy token | Static. Lives until manually rotated in the Grafana Cloud UI. |
+| Grafana Cloud OAuth | Dynamic but not refreshable. gcx retains issuer-reported expiry and scopes; after expiry, re-run `gcx cloud login` or the Cloud step in `gcx login`. |
 
 All token fields are tagged `datapolicy:"secret"` and redacted by
 `internal/secrets/` when `gcx config view` runs. See
@@ -205,13 +269,43 @@ logic. The transport also skips its own auth if the incoming request already
 carries an `Authorization` header, letting providers pass through BasicAuth
 credentials for datasource queries.
 
-Refresh itself is serialized in two layers. Within a single process, a
-`sync.Cond` funnels concurrent goroutines through one in-flight refresh.
+Refresh itself is serialized in two layers. Within a single process, all
+concurrent callers join one explicit in-flight refresh result.
 Across processes, a `TokenLocker` hook holds a file lock on the config file
 for the duration of the refresh. The network POST to `/api/cli/v1/auth/refresh`
 uses a context detached from the caller's request context so that a caller
 cancellation cannot abandon a refresh that has already consumed and rotated
-the server-side refresh token.
+the server-side refresh token. Cancellation is still honored before the lock
+and network request begin.
+
+A successful refresh response is not exposed to protected requests until
+persistence succeeds. Rotation-capable issuers may return a new refresh token;
+non-rotating issuers may return the same generation. If persistence fails, the
+process retains one pending generation and retries that write without issuing
+a second refresh.
+Persistence compares the previous refresh token with the current on-disk
+generation, treats an identical already-written generation as success, and
+never overwrites a newer login or refresh. Before either reload or persistence,
+it also compares the complete OAuth credential binding captured by the active
+transport: source, owner, field, server, proxy, TLS options, and the captured
+bytes of file-backed TLS material. A concurrent trust change therefore cannot
+adopt the rotated generation. If the unchanged bound keychain reference is
+temporarily unavailable or its account is missing, gcx cannot prove that
+another generation won: it fails closed and retains the pending generation for
+a later persistence retry. The pending record is process-local, so a process
+crash after server-side rotation but before durable persistence can still
+require re-authentication.
+
+HTTP 200 is not sufficient evidence of a valid refresh. gcx requires nonempty
+access and refresh tokens. Expiry timestamps are optional; a blank timestamp is
+persisted as unknown, while every nonblank timestamp must be valid RFC3339.
+Returning the same nonempty refresh token is a supported non-rotating response.
+A malformed response with no usable refresh generation blocks that transport
+without retrying the consumed token. If a nonempty generation is present
+alongside another validation error, gcx first persists a forced-stale recovery
+generation and then returns the validation error. A later process can retry
+safely; the process that observed the malformed response remains blocked so it
+cannot accidentally send an invalid access token or refresh twice.
 
 ---
 
@@ -268,12 +362,13 @@ sequenceDiagram
 internal/auth/
   flow.go             OAuth PKCE flow, callback server, exchange,
                       state/endpoint validation
+  gcom.go             Direct Grafana Cloud OAuth PKCE flow and response metadata
   transport.go        RefreshTransport, StoredTokens, TokenRefresher,
                       TokenLocker, TokenReloader, DoRefresh
 
 internal/config/
-  types.go            APIToken (SA token), CloudConfig.Token (CAP token),
-                      OAuth* fields, ProxyEndpoint
+  types.go            APIToken (SA token), CloudEntry CAP/OAuth fields,
+                      expiry/scopes, Grafana OAuth fields, ProxyEndpoint
   rest.go             Bearer attachment, WrapTransport wiring,
                       NewNamespacedRESTConfig, WireTokenPersistence,
                       ResolveTokenPersistenceSource

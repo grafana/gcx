@@ -89,6 +89,11 @@ the flow and the decision logic. A minimal fallback lives in
   stop and report what's checked and what remains — don't loop forever.
 - **Field-name traps:** `cache_write_input_tokens`, NOT `cache_creation_input_tokens`. `agent_version`
   maps to the `gen_ai.agent.version` label and is required for per-version Performance charts.
+  **`MessageRole` (Python SDK) has only `USER`, `ASSISTANT`, `TOOL` — there is no `SYSTEM` (or
+  `DEVELOPER`) member**; `MessageRole.SYSTEM` raises `AttributeError`. Fold the system prompt into the
+  `USER` message (or a `text_part`), and prefer the `user_text_message()` / `assistant_text_message()`
+  / `tool_result_message()` helpers over hand-building `Message(role=...)`. Always confirm enum members
+  and helper names against the installed package before running — do not assume from llms.txt.
 - **Out of scope:** offline test suites → `agento11y-test-starter`; tenant eval rules + guards on
   real traffic → `agento11y-prod-setup`. Coding-agent telemetry plugins (Claude Code, Cursor, …) →
   llms.txt "Path A". Any control-plane write.
@@ -101,6 +106,12 @@ The app needs, in its environment before the SDK starts:
 `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` (traces/metrics). First check what's
 already set (including any existing `.env`) — if all are present, skip to Step 1.
 
+> **When any value is missing, do NOT just list the variable names and ask — hand the developer the
+> exact place to get each one (link + clicks), every time.** The concrete sources are in point 3
+> below; surface them proactively. The most common failure of this skill is naming
+> `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_HEADERS` and leaving the developer to guess — the
+> answer is the stack OTLP tile + "Generate now", which precomputes both. Give that first.
+
 **First, decide the target.** Is the app aimed at **Grafana Cloud** or a **local dev instance**?
 Look at any existing endpoint in the env / `.env` / sibling apps. If it already points at
 `localhost` (a local Agent Observability instance), that's a local-dev target — keep it, and skip
@@ -110,8 +121,12 @@ that and verify against the local instance instead. The rest of this step is the
 
 **Cloud path — what gcx does for you (run these):**
 
-1. `gcx config current-context` — is there a working context? If not, `gcx login --oauth` (browser
-   OAuth, works for Cloud and in agent mode).
+1. `gcx config current-context` — is there a working context? If not, **just ask the developer to log
+   in to the stack they want the instrumentation to connect to** — e.g. "run `gcx login` against your
+   stack." Do not fabricate the login command yourself (don't guess the host or flags); let them run
+   their own login (the Agent Observability setup screen gives them the exact command, or they use
+   `gcx login`). Instrumentation itself needs no gcx login — only Step 5 verification does, so this
+   never blocks writing the code.
 2. `gcx cloud stacks list`, then `gcx cloud stacks get <stack-slug>` — identify the target stack and
    its URLs. This gives you the stack to point the developer at, and confirms which tenant the Step 5
    verification will read from.
@@ -119,15 +134,30 @@ that and verify against the local instance instead. The rest of this step is the
 **What still needs the Connection page (gcx cannot do these today):**
 
 3. gcx does **not** generate the Agent Observability OTLP gateway URL, and does **not** mint the
-   ingest / access-policy token. Both come from the plugin **Connection page**
-   (`https://<stack>.grafana.net/plugins/grafana-sigil-app`), or the OTLP endpoint from an Alloy /
-   OTel collector the deployment runs. Point the developer there for the endpoint(s) + token and ask
-   them to paste the values, or set them as env vars — **never invent a URL or mint a token.**
-   When they create the token via "Create a token in Cloud Access Policies", tell them the scopes:
+   ingest / access-policy token. **When you ask the developer for a value, always tell them exactly
+   where to get it — a link and the clicks — never just name the variable and wait.** The two channels
+   come from two different places:
+
+   **`OTEL_*` (traces/metrics) — easiest, let Cloud build them.** Send the developer to the stack's
+   OTLP tile: `https://grafana.com/orgs/<org-slug>/stacks/<stack-id>/otlp-info`. It already shows
+   `OTEL_EXPORTER_OTLP_ENDPOINT` and the Instance ID; under **Password / API Token → "Generate now"**
+   it mints a token and then fills an **Environment Variables** block with all `OTEL_*` vars — **the
+   base64 `OTEL_EXPORTER_OTLP_HEADERS` is precomputed**, ready to copy. No manual base64. (In Python,
+   the value uses `Basic%20…` — keep it as given.)
+
+   **`AGENTO11Y_*` (generation ingest) — the plugin Connection page.** `AGENTO11Y_ENDPOINT` and the
+   token come from `https://<stack>.grafana.net/plugins/grafana-sigil-app` → Connection tab. When the
+   developer creates the token via **"Create a token in Cloud Access Policies"**, tell them the scopes:
    **`sigil:write`, `metrics:write`, `traces:write`, `logs:write`**. UI heads-up: `sigil` is not in
    the default resource list — add it via **"Add scope"** (then tick Write); the scope is still
-   `sigil:*` (the Cloud resource keeps the old name). See llms.txt "Credentials" for how each value
-   maps to the env vars.
+   `sigil:*` (the Cloud resource keeps the old name). The same `glc_…` token works for both channels
+   if it has all four scopes. Also set `AGENTO11Y_PROTOCOL=http` and `AGENTO11Y_AUTH_MODE=basic` (see
+   references/instrumentation.md — the SDK defaults grpc/none give a 401).
+
+   Ask the developer to put the values in a gitignored `.env` (or export them) **themselves** — **do
+   not ask them to paste a secret token into the chat** (it is captured in the transcript). Instrument
+   the code to read from the environment and have them supply the values out-of-band. **Never invent a
+   URL or mint a token.**
 
    > Two different tokens — don't confuse them. gcx logs in with its own OAuth token (`gat_`) and
    > refreshes it automatically; that is what authenticates the `gcx` commands here. It is **not** the
@@ -190,9 +220,10 @@ the fetched llms.txt (locate it by its heading — do not trust line numbers, th
 | 1 | OTel TracerProvider **and** MeterProvider created before the SDK client (verify by construction + Performance view / OTLP POSTs — **not** via gcx, which can't see OTel; see Step 5) | spans/metrics go to no-op → all latency/token/cost metrics lost. The #1 failure. | "OTel setup (required)" |
 | 2 | Providers shut down after `shutdown()` | last batch of spans/metrics dropped on exit | "OTel setup (required)" |
 | 3 | `agent_name` + `agent_version` set on generations / handlers | per-version Performance charts break (join on `gen_ai.agent.version`) | "Sigil architecture and ingest model", "Telemetry fields to prioritize" |
-| 4 | `set_result`/`SetResult` includes response_id, response_model, finish/stop reason, full token usage (incl. `cache_read_input_tokens`, `cache_write_input_tokens`, `reasoning_tokens`) | charts/cost blank; wrong `cache_creation_input_tokens` name silently ignored | "Implementation rules", "Telemetry fields to prioritize" |
+| 4 | `set_result`/`SetResult` includes response_id, response_model, finish/stop reason, full token usage (incl. `cache_read_input_tokens`, `cache_write_input_tokens`, `reasoning_tokens`), **and `input`/`output` populated with `Message` objects** (system+user prompt in `input`, model reply in `output`) | charts/cost blank; wrong `cache_creation_input_tokens` name silently ignored; **empty `input`/`output` → the conversation thread shows "No messages in this turn" — tokens land but there is no visible prompt/response** | "Implementation rules", "Telemetry fields to prioritize" |
 | 5 | `rec.err()`/`Err()` checked after the recorder closes | SDK validation/enqueue errors are silent → generations never arrive, no signal | "Implementation rules" |
 | 6 | SYNC (non-stream) vs STREAM (stream) set correctly | streaming metrics (TTFT) corrupted | "Sigil architecture and ingest model", "Implementation rules" |
+| 6b | `operation_name` is a **recognized** value — `generateText` (SYNC default), `streamText` (STREAM default), `embeddings`, `execute_tool`, `framework_chain`, `framework_retriever`. Best: omit it and take the SDK default. Do **not** invent one like `"chat"` | the span reaches Tempo but the UI classifies `gen_ai.operation.name` as `unknown` → the conversation renders a synthetic generation node **with no attached span** → the trace does not show in the conversation and the "T" (trace) icon is absent, even though `trace_id`/`span_id` are set. Silent, like #1 | "Sigil architecture and ingest model", "Implementation rules" |
 | 7 | `parent_generation_ids` set on multi-agent / fan-in generations | no dependency DAG; upstream eval failures don't propagate | "Multi-agent dependency tracking" |
 | 8 | Workflow steps emitted for agentic pipelines with non-LLM nodes | execution graph invisible; node input/output state lost. Use the adapter if one exists, else `enqueue_workflow_step`; never both for one node (duplicates) | "Workflow step instrumentation (agentic pipelines)" |
 | 9 | Env vars are `AGENTO11Y_*` (not legacy `SIGIL_*`); client built config-free when env present | drift; duplicated config | "Environment" |
@@ -243,13 +274,23 @@ Only after the developer confirms a diff. Bounded to ~3–4 iterations.
    - **By construction (always do this):** confirm in the applied code that both a TracerProvider
      **and** a MeterProvider are created *before* the SDK client and shut down after it. This is
      static but reliable — a missing/late/no-op MeterProvider is exactly checklist #1.
-   - **At runtime, if you can observe it:** during the run, look for the app POSTing to the OTLP
-     endpoint (`/v1/metrics` and `/v1/traces` returning 2xx) — e.g. enable the OTel/urllib3 debug log
-     or watch the local collector. Metrics export on an interval, so allow a few seconds / a clean
-     shutdown flush.
-   - **In the UI:** the stack's **Performance / metrics** view populates from Channel B. If
-     conversations appear (Channel A) but Performance is empty, the MeterProvider is missing or no-op
-     → back to checklist #1. Do not report OTel as wired on the strength of `generations get` alone.
+   - **At runtime, if you can observe it:** run the **real app** (not an isolated probe script) with
+     the OTel/urllib3 debug log on, and confirm you see **both** `POST …/v1/traces → 2xx` **and**
+     `POST …/v1/metrics → 2xx`. The SDK emits spans automatically from `start_generation`/`end` (one
+     traces POST per generation) and metrics on an interval — a clean shutdown flush surfaces both.
+     **Traces and metrics are separate exports: seeing only `/v1/metrics` does NOT mean traces work,
+     and vice-versa. Never claim "traces/metrics verified" from a probe that only exercised one of
+     them** — that is the exact trap that reports Channel B as done when half of it was never sent. If
+     you write a throwaway verification script, it must build the TracerProvider **and** MeterProvider
+     and record a real generation, or just instrument the app and read its debug output.
+   - **In the UI:** the stack's **Performance / metrics** view populates from metrics; **traces** land
+     in the stack's **Tempo** (Explore → Tempo, filter by `service.name`). If conversations appear
+     (Channel A) but Performance is empty, the MeterProvider is missing or no-op → back to checklist
+     #1. Do not report OTel as wired on the strength of `generations get` alone, nor on metrics alone.
+   - **Trace shows in Tempo but NOT inside the conversation (no "T" icon):** the span is landing but
+     `gen_ai.operation.name` is an unrecognized value (e.g. `"chat"`) → the UI classifies it as
+     `unknown` and can't attach it to the conversation node. This is checklist #6b — fix
+     `operation_name` to a recognized value (or omit it for the default) and re-run.
 4. If a signal is missing, diagnose the next gap from what the checks showed, propose the fix, and
    loop back to step 1. After ~3–4 iterations without full signal, stop and report exactly what
    lands, what doesn't, and what to check next (app stderr for `agento11y:` warnings, credentials).
