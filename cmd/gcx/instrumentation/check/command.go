@@ -157,9 +157,13 @@ Powered by github.com/grafana/otel-checker.`,
 			if len(results.Errors) > 0 {
 				// The result document (with the failing checks enumerated) is
 				// already on stdout — EmittedError carries the exit code
-				// without a second error document.
-				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
-					fmt.Errorf("%d check(s) failed", len(results.Errors)))
+				// without a second error document. EmittedError also
+				// suppresses reportError's stderr rendering, so the failure
+				// count diagnostic the old bare error produced is emitted
+				// explicitly here.
+				summary := fmt.Sprintf("%d check(s) failed", len(results.Errors))
+				cmdio.EmitWarn(cmd.ErrOrStderr(), summary)
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(summary))
 			}
 			return nil
 		},

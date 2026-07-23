@@ -62,7 +62,7 @@ func TestCheck_AgentMode_FailedChecks_OneDocumentAndExitPartialFailure(t *testin
 	agent.SetFlag(true)
 	t.Cleanup(func() { agent.SetFlag(false) })
 
-	stdout, _, err := executeCheck(t, failingChecker())
+	stdout, stderr, err := executeCheck(t, failingChecker())
 
 	// The returned error must be the emitted sentinel with exit 4 — the
 	// result document already carries the failing checks, and reportError
@@ -71,6 +71,12 @@ func TestCheck_AgentMode_FailedChecks_OneDocumentAndExitPartialFailure(t *testin
 	require.ErrorAs(t, err, &emitted)
 	assert.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
 	assert.Contains(t, err.Error(), "1 check(s) failed")
+
+	// EmittedError suppresses reportError's stderr rendering, so the
+	// failure count diagnostic must be emitted explicitly (typed JSONL in
+	// agent mode).
+	assert.Contains(t, stderr, "1 check(s) failed",
+		"stderr must carry the failure count diagnostic")
 
 	dec := json.NewDecoder(strings.NewReader(stdout))
 	var doc map[string]any
