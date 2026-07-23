@@ -12,7 +12,7 @@ weight: 3
 
 You can configure `gcx` with a configuration file or using environment variables.
 
-- Version 1 configuration files store named stacks, named Grafana Cloud credentials, and contexts that bind them. Version `1` is the only declared version this release accepts; a future or otherwise unsupported version fails before migration or credential access. gcx can layer system, user, and repository files. Check the [configuration file reference documentation](https://github.com/grafana/gcx/tree/main/docs/reference/configuration/index.md) for all options. If you have a file from an older `gcx` version, refer to [Migrate your gcx configuration](../migrate-configuration/) - gcx migrates it automatically when the layered result is semantically safe.
+- A configuration file stores named stacks, named Grafana Cloud credentials, and contexts that bind them. `gcx` can layer system, user, and repository files. Check the [configuration file reference documentation](https://github.com/grafana/gcx/tree/main/docs/reference/configuration/index.md) for all options. If you have a file from an older `gcx` version, refer to [Migrate your gcx configuration](../migrate-configuration/).
 - Environment variables override the selected context in memory, so they work best in CI environments and are never persisted implicitly. Refer to [Configure `gcx` with environment variables](#configure-gcx-with-environment-variables) for more information.
 
 ## Choose an authentication method
@@ -132,7 +132,7 @@ gcx config check
 The check covers every configured context before returning. It exits non-zero
 when the current context is invalid or any context fails configuration,
 authentication setup, connectivity, or Grafana version checks, so it is safe to
-use as a deployment or migration gate.
+use as a deployment gate.
 
 List existing contexts:
 
