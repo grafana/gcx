@@ -123,3 +123,54 @@ func TestGetPartialFailure_AtomicStdout(t *testing.T) {
 		})
 	}
 }
+
+// TestGetPartialFailure_JQKeepsShape pins that an active --jq transformation
+// is never dropped by the agent-mode fused envelope: the jq output keeps its
+// shape (identical to a success run) and the failure travels via the typed
+// stderr diagnostic + EmittedError exit 4, like other explicit formats.
+func TestGetPartialFailure_JQKeepsShape(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	item := unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "dashboard.grafana.app/v1alpha1",
+		"kind":       "Dashboard",
+		"metadata":   map[string]any{"name": "alpha"},
+	}}
+
+	flags := pflag.NewFlagSet("get", pflag.ContinueOnError)
+	opts := resources.NewGetOptsForTest(flags)
+	if err := flags.Set("jq", ".items[].metadata.name"); err != nil {
+		t.Fatalf("set --jq: %v", err)
+	}
+	if err := opts.Validate(); err != nil {
+		t.Fatalf("Validate() = %v", err)
+	}
+
+	summary := &remote.OperationSummary{}
+	summary.RecordSuccess()
+	summary.RecordFailure(nil, errors.New("boom"))
+	res := &resources.FetchResponse{PullSummary: summary}
+	output := unstructured.UnstructuredList{Items: []unstructured.Unstructured{item}}
+
+	var stdout, stderr bytes.Buffer
+	opts.IO.ErrWriter = &stderr
+	err := resources.WriteGetOutputForTest(&stdout, &stderr, opts, res, output)
+
+	var emitted *gcxerrors.EmittedError
+	if !errors.As(err, &emitted) {
+		t.Fatalf("writeGetOutput() error = %T (%v), want *gcxerrors.EmittedError", err, err)
+	}
+	if emitted.Code != gcxerrors.ExitPartialFailure {
+		t.Fatalf("EmittedError.Code = %d, want %d", emitted.Code, gcxerrors.ExitPartialFailure)
+	}
+
+	// stdout must be the jq transformation, not a fused envelope.
+	got := strings.TrimSpace(stdout.String())
+	if got != `"alpha"` {
+		t.Fatalf("stdout = %q, want jq output %q", got, `"alpha"`)
+	}
+	if !strings.Contains(stderr.String(), "failed to get") {
+		t.Fatalf("stderr = %q, want partial-failure diagnostic", stderr.String())
+	}
+}

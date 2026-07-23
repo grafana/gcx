@@ -233,6 +233,13 @@ func (opts *Options) applyJQFlag() error {
 	return nil
 }
 
+// JQActive reports whether a --jq transformation is in effect. Commands that
+// build fused envelopes (bypassing Options.Encode) must not do so when jq is
+// active — the envelope would silently drop the user's transformation.
+func (opts *Options) JQActive() bool {
+	return opts.jqQuery != nil
+}
+
 // Codec returns the codec for the configured output format.
 // We have to return an interface here.
 func (opts *Options) Codec() (format.Codec, error) { //nolint:ireturn

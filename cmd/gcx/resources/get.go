@@ -312,9 +312,13 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 	// field-select path — the failure must be readable from stdout alone
 	// (Constitution: an agent never needs both streams). Non-JSON formats
 	// (explicit -o yaml/text/wide) keep their shape and surface the
-	// failure via the typed stderr diagnostic + exit 4 below.
+	// failure via the typed stderr diagnostic + exit 4 below. An active
+	// --jq is treated the same way: the fused envelope would silently drop
+	// the user's transformation and change the document shape between
+	// success and partial-failure runs, so jq output keeps its shape and
+	// the failure travels via stderr + exit 4.
 	hasPartialFailure := opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0
-	if hasPartialFailure && agent.IsAgentMode() &&
+	if hasPartialFailure && agent.IsAgentMode() && !opts.IO.JQActive() &&
 		(opts.IO.OutputFormat == "agents" || opts.IO.OutputFormat == "json") {
 		itemMaps := make([]map[string]any, len(output.Items))
 		for i, item := range output.Items {
