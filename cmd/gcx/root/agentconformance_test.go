@@ -96,6 +96,9 @@ func runGcx(t *testing.T, args ...string) (string, int) {
 		"HOME=" + home,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
 		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
+		// swept commands run for real: agent prune deletes from os.TempDir(),
+		// so the host temp dir must not leak in
+		"TMPDIR=" + home,
 		"PATH=" + os.Getenv("PATH"),
 		"GCX_AGENT_MODE=1",
 		"GCX_TELEMETRY=off",
@@ -318,6 +321,9 @@ func runGcxIsolated(t *testing.T, bin string, args []string) (string, int, bool)
 		"HOME=" + home,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
 		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
+		// swept commands run for real: agent prune deletes from os.TempDir(),
+		// so the host temp dir must not leak in
+		"TMPDIR=" + home,
 		"PATH=" + os.Getenv("PATH"),
 		"GCX_AGENT_MODE=1",
 		"GCX_TELEMETRY=off",
