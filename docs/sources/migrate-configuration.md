@@ -6,7 +6,7 @@ title: Migrate your gcx configuration labels: products: - cloud - enterprise - o
 
 `gcx` is adjusting its configuration file format to make it easier to reuse credentials across contexts. This applies for `gcx` versions `v0.6.0` and later. The `v1` format splits the file into three sections: `stacks` for Grafana connections, `cloud` for Grafana Cloud credentials that multiple contexts can reference, and `contexts` that reference both by name.
 
-`gcx` attempts to migrate a single legacy configuration file automatically the first time it loads it. If `gcx` printed a warning or error that linked here, your migration paused or stopped for one of a small set of reasons. Find the message you saw in [Why a migration paused or stopped](#why-migration-pauses-or-stops) and follow the steps. The [table of field mappings](#map-a-legacy-configuration-to-version-1) at the end covers how to convert a config file manually.
+`gcx` attempts to migrate a single legacy configuration file automatically the first time it loads it. If `gcx` printed a warning or error that linked here, your migration paused or stopped for one of a small set of reasons. Find the message you saw in [Why a migration paused or stopped](#why-a-migration-paused-or-stopped) and follow the steps. The [table of field mappings](#map-a-legacy-configuration-to-version-1) at the end covers how to convert a config file manually.
 
 ## Nothing is deleted
 
@@ -65,7 +65,7 @@ Legacy `gcx` merged contexts with the same name, but from different files, field
 
 1. The error will name the entries that overlap. Open each file with `gcx config edit <system|user|local>`.
 1. Move the overriding fields into the file that owns the complete entry, or rename the overriding entry (for example, give a repository-specific context its own stack name) so nothing overlaps.
-1. Run any `gcx` command. The preflight re-checks; once nothing overlaps you are directed to [Migrate layered files](#migrate-layered-files).
+1. Run any `gcx` command. The preflight re-checks; once nothing overlaps you are directed to [Migrate layered files](#how-to-migrate-layered-files).
 
 ## Map a legacy configuration to version 1
 
