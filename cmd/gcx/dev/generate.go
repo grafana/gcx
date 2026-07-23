@@ -135,6 +135,14 @@ func runGenerate(cmd *cobra.Command, opts *generateOpts, args []string) error {
 
 	receipt := generateFiles(tmpl, opts, args, cmd.ErrOrStderr())
 
+	// Total failure: no receipt — exit 4 would misreport a complete failure
+	// as partial. The raw error takes the standard path (one gcx.error
+	// document in agent mode, exit 1), matching the batch cohort's
+	// zero-success convention.
+	if receipt.Summary.Failed > 0 && receipt.Summary.Succeeded == 0 {
+		return receiptFailuresError(receipt.Failures)
+	}
+
 	if err := opts.IO.Encode(cmd.OutOrStdout(), receipt); err != nil {
 		return err
 	}
@@ -148,6 +156,20 @@ func runGenerate(cmd *cobra.Command, opts *generateOpts, args []string) error {
 	}
 
 	return nil
+}
+
+// receiptFailuresError joins an artifact receipt's enumerated failures into
+// one error for the zero-success path.
+func receiptFailuresError(failures []cmdio.MutationFailure) error {
+	errs := make([]error, 0, len(failures))
+	for _, f := range failures {
+		msg := f.Error
+		if f.Target.Name != "" {
+			msg = f.Target.Name + ": " + msg
+		}
+		errs = append(errs, errors.New(msg))
+	}
+	return errors.Join(errs...)
 }
 
 // generateFiles processes each argument, streaming per-file failure notes to

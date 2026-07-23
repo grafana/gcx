@@ -300,7 +300,7 @@ func assertSuccessOnlyTable(t *testing.T, stdout, outputDir string) {
 	}
 }
 
-func TestSnapshot_AllFail_ReceiptNotNull(t *testing.T) {
+func TestSnapshot_AllFail_RawErrorNotPartial(t *testing.T) {
 	agent.SetFlag(true)
 	t.Cleanup(agent.ResetForTesting)
 
@@ -309,25 +309,20 @@ func TestSnapshot_AllFail_ReceiptNotNull(t *testing.T) {
 
 	stdout, _, err := runSnapshotCmd(t, server, []string{"bad-dash", "--output-dir", outputDir})
 
+	// Zero successes is a total failure, not a partial one: no receipt on
+	// stdout (a success-shaped document with zero files would mislead) and
+	// the raw error takes the standard path — exit 1 via reportError, not
+	// EmittedError exit 4. This matches the batch cohort's zero-success
+	// convention (slo, synth, kg, metrics, traces).
+	if err == nil {
+		t.Fatal("Execute() = nil, want the render error")
+	}
 	var emitted *gcxerrors.EmittedError
-	if !errors.As(err, &emitted) {
-		t.Fatalf("Execute() error = %T (%v), want *gcxerrors.EmittedError", err, err)
+	if errors.As(err, &emitted) {
+		t.Fatalf("Execute() error = EmittedError (exit %d), want a raw error on total failure", emitted.Code)
 	}
-	if emitted.Code != gcxerrors.ExitPartialFailure {
-		t.Fatalf("EmittedError.Code = %d, want %d", emitted.Code, gcxerrors.ExitPartialFailure)
-	}
-
-	// Previously agent mode emitted the literal `null` here (nil slice).
-	doc := decodeSingleJSONDoc(t, stdout)
-	files, ok := doc["files"].([]any)
-	if !ok {
-		t.Fatalf("files = %v (%T), want present [] — never null", doc["files"], doc["files"])
-	}
-	if len(files) != 0 {
-		t.Errorf("files = %v, want empty", files)
-	}
-	if summary, ok := doc["summary"].(map[string]any); !ok || summary["failed"] != float64(1) {
-		t.Errorf("summary = %v, want failed 1", doc["summary"])
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("stdout = %q, want empty (reportError owns the error document)", stdout)
 	}
 }
 

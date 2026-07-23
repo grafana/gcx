@@ -320,6 +320,15 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 				Failed:    len(receipt.Failures),
 			}
 
+			// Total failure: no receipt — a success-shaped document with
+			// zero files would be misleading, and exit 4 would misreport a
+			// complete failure as partial. The raw error takes the standard
+			// path (one gcx.error document in agent mode, exit 1), matching
+			// the batch cohort's zero-success convention.
+			if len(renderErrs) > 0 && len(receipt.Files) == 0 {
+				return errors.Join(renderErrs...)
+			}
+
 			if err := opts.IO.Encode(cmd.OutOrStdout(), receipt); err != nil {
 				return err
 			}

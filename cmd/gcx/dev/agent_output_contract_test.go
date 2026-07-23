@@ -344,3 +344,22 @@ func TestScaffold_FlagsProvidedByteIdentical(t *testing.T) {
 	require.DirExists(t, "my-dashboards")
 	require.FileExists(t, filepath.Join("my-dashboards", "go.mod"))
 }
+
+// TestGenerate_TotalFailure_RawErrorNotPartial pins the zero-success
+// convention: when every input fails there is no receipt on stdout and the
+// raw error takes the standard path (exit 1 via reportError), never exit 4 —
+// a "partial" code on a complete failure would mislead consumers.
+func TestGenerate_TotalFailure_RawErrorNotPartial(t *testing.T) {
+	setAgentMode(t, true)
+	tmp := t.TempDir()
+
+	bad := filepath.Join(tmp, "mystery", "nope.go")
+	stdout, _, err := runCommand(t, generateCmd(), bad)
+
+	require.Error(t, err)
+	var emitted *gcxerrors.EmittedError
+	require.NotErrorAs(t, err, &emitted,
+		"total failure must be a raw error (exit 1), not EmittedError (exit 4)")
+	require.Empty(t, strings.TrimSpace(stdout),
+		"no receipt on stdout — reportError owns the error document")
+}

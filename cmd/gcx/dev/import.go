@@ -135,6 +135,14 @@ func importCmd() *cobra.Command {
 				return err
 			}
 
+			// Total failure: no receipt — exit 4 would misreport a complete
+			// failure as partial. The raw error takes the standard path
+			// (one gcx.error document in agent mode, exit 1), matching the
+			// batch cohort's zero-success convention.
+			if receipt.Summary.Failed > 0 && receipt.Summary.Succeeded == 0 {
+				return receiptFailuresError(receipt.Failures)
+			}
+
 			if err := opts.IO.Encode(cmd.OutOrStdout(), receipt); err != nil {
 				return err
 			}
