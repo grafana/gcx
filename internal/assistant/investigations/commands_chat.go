@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// --- chat ---
+// --- list-messages ---
 
 type chatOpts struct {
 	IO     cmdio.Options
@@ -36,13 +36,13 @@ func (o *chatOpts) setup(flags *pflag.FlagSet) {
 func newChatCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &chatOpts{}
 	cmd := &cobra.Command{
-		Use:   "chat <id>",
-		Short: "Show the chat thread for a v2 investigation.",
-		Long: "Stream the chat thread that backs a v2 investigation: " +
+		Use:   "list-messages <id>",
+		Short: "List the chat thread messages for a v2 investigation.",
+		Long: "List the chat thread that backs a v2 investigation: " +
 			"assistant prose, tool calls (search_skills, prometheus_query_handler, " +
 			"loki_query_handler_investigator, tempo_query_handler, ...), and tool " +
-			"results. The legacy report/timeline/todos endpoints return empty stubs " +
-			"on v2 — this command is the substantive view.",
+			"results. This is the substantive view of what the agent did; " +
+			"use `get-narrative` for the prose-only rendering.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -103,7 +103,7 @@ func (o *narrativeOpts) setup(flags *pflag.FlagSet) {
 func newNarrativeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &narrativeOpts{}
 	cmd := &cobra.Command{
-		Use:   "narrative <id>",
+		Use:   "get-narrative <id>",
 		Short: "Show the assistant-authored prose for a v2 investigation.",
 		Long:  "Show just the assistant-authored prose from a v2 investigation's chat thread — the text a human would read in the workspace, with tool plumbing stripped.",
 		Args:  cobra.ExactArgs(1),
@@ -130,7 +130,7 @@ func newNarrativeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- tools ---
+// --- list-tool-calls ---
 
 type toolsOpts struct {
 	IO   cmdio.Options
@@ -148,7 +148,7 @@ func (o *toolsOpts) setup(flags *pflag.FlagSet) {
 func newToolsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &toolsOpts{}
 	cmd := &cobra.Command{
-		Use:   "tools <id>",
+		Use:   "list-tool-calls <id>",
 		Short: "List tool calls made during a v2 investigation.",
 		Long:  "List every tool call the agent made during a v2 investigation, paired with its result. Use --name to filter (e.g. search_skills, prometheus_query_handler).",
 		Args:  cobra.ExactArgs(1),

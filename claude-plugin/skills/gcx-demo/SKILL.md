@@ -115,9 +115,8 @@ gcx assistant prompt "Which service owns checkout-latency?" --continue
 gcx assistant prompt "Summarize CPU on prod" --json
 
 gcx assistant investigations list
-gcx assistant investigations todos <id>
-gcx assistant investigations timeline <id>
-gcx assistant investigations report <id>
+gcx assistant investigations get <id>
+gcx assistant investigations get-narrative <id>
 ```
 
 `prompt` runs natural language against the stack's live data — the Assistant
@@ -126,8 +125,7 @@ threads follow-ups via a stored context ID. `--json` emits a structured event
 stream for agent tools (Claude Code, Cursor) or scripts.
 
 Investigations are autonomous multi-step LLM runs. The read-only views show
-plan (`todos`), chronological activity (`timeline`), and final findings
-(`report`). `--open` on `investigations get` deep-links into the Grafana UI.
+lifecycle state (`get`) and the assistant's findings as prose (`get-narrative`). `--open` on `investigations get` deep-links into the Grafana UI.
 
 If `investigations list` is empty, note it and skip the per-investigation
 views. Do not create one during the demo.

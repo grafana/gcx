@@ -29,6 +29,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8syaml "sigs.k8s.io/yaml"
 )
 
 // ---------------------------------------------------------------------------
@@ -520,32 +521,16 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	getOpts.setup(getCmd.Flags())
 
-	var createFile string
-	createCmd := &cobra.Command{
-		Use:   "upsert",
-		Short: "Upload Knowledge Graph Custom Prometheus rules from a YAML file.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, createFile)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.UploadPromRules(cmd.Context(), string(data)); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Knowledge Graph rules uploaded")
-			return nil
-		},
-	}
-	createCmd.Flags().StringVarP(&createFile, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
+	createCmd := newRulesUpsertCommand(loader,
+		"Upload Knowledge Graph Custom Prometheus rules from a YAML file.",
+		`  gcx kg prom-rules upsert -f rules.yaml
+
+  # Validate against the backend and preview the diff without uploading:
+  gcx kg prom-rules upsert -f rules.yaml --dry-run`,
+		"Knowledge Graph rules uploaded",
+		runPromRulesDryRun,
+		(*Client).UploadPromRules,
+	)
 
 	deleteCmd := &cobra.Command{
 		Use:   "delete <name>",
@@ -724,32 +709,16 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Manage model rules in the Knowledge Graph.",
 	}
 
-	var fileFlag string
-	createCmd := &cobra.Command{
-		Use:   "upsert",
-		Short: "Upload model rules from a YAML file.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.UploadModelRules(cmd.Context(), string(data)); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Model rules uploaded")
-			return nil
-		},
-	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
+	createCmd := newRulesUpsertCommand(loader,
+		"Upload model rules from a YAML file.",
+		`  gcx kg model-rules upsert -f model-rules.yaml
+
+  # Validate against the backend and preview the diff without uploading:
+  gcx kg model-rules upsert -f model-rules.yaml --dry-run`,
+		"Model rules uploaded",
+		runModelRulesDryRun,
+		(*Client).UploadModelRules,
+	)
 
 	listOpts := &modelRulesListOpts{}
 	listCmd := &cobra.Command{
@@ -1228,6 +1197,262 @@ func unifiedYAMLDiff(remote, local string) (string, error) {
 		ToFile:   "local",
 		Context:  3,
 	})
+}
+
+// ---------------------------------------------------------------------------
+// model-rules / prom-rules upsert --dry-run
+//
+// These mirror the suppressions dry-run (validate-then-diff), but model-rules
+// and prom-rules manage a single named config per file rather than a batch, so
+// the result describes one config: add, modify, or no-op. See runSuppressionsDryRun.
+//
+// Note the deliberate YAML-library split: suppressions parse/diff with
+// gopkg.in/yaml.v3 because Suppression carries yaml: tags and only simple types.
+// The rule types here carry only json: tags (PromRule.Duration maps the YAML key
+// "for") and ModelRules embeds json.RawMessage, both of which yaml.v3 mishandles,
+// so the rules path uses sigs.k8s.io/yaml (YAML->JSON->struct) for correctness.
+// ---------------------------------------------------------------------------
+
+type rulesCreateOpts struct {
+	File   string
+	DryRun bool
+	IO     cmdio.Options
+}
+
+func (o *rulesCreateOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin.")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate against the backend and show a diff without uploading.")
+	o.IO.RegisterCustomCodec("text", &RulesDryRunTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+// newRulesUpsertCommand builds the shared `upsert` command for the model-rules
+// and prom-rules groups: both read a single named config from a YAML file (or
+// stdin) and both support --dry-run (validate + client-side diff, no writes).
+// dryRun runs the validate/diff path; upload performs the real PUT; successMsg is
+// printed after a real upsert.
+func newRulesUpsertCommand(
+	loader RESTConfigLoader,
+	short, example, successMsg string,
+	dryRun func(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte) error,
+	upload func(client *Client, ctx context.Context, yamlContent string) error,
+) *cobra.Command {
+	opts := &rulesCreateOpts{}
+	createCmd := &cobra.Command{
+		Use:     "upsert",
+		Short:   short,
+		Example: example,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if opts.DryRun {
+				if err := opts.IO.Validate(); err != nil {
+					return err
+				}
+			}
+			data, err := readFileOrStdin(cmd, opts.File)
+			if err != nil {
+				return fmt.Errorf("failed to read file: %w", err)
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			if opts.DryRun {
+				return dryRun(cmd, &opts.IO, client, data)
+			}
+			if err := upload(client, cmd.Context(), string(data)); err != nil {
+				return err
+			}
+			cmdio.Success(cmd.OutOrStdout(), "%s", successMsg)
+			return nil
+		},
+	}
+	opts.setup(createCmd.Flags())
+	_ = createCmd.MarkFlagRequired("file")
+	return createCmd
+}
+
+// RulesDryRunResult is the structured result of a model-rules / prom-rules
+// `upsert --dry-run`. Unlike suppressions (a batch), these commands manage a
+// single named config per file, so the result describes one config. It is
+// rendered as a unified diff in the default text format and as this struct under
+// -o json/yaml (and the agents format). Reaching this result implies validation
+// passed. Action is one of:
+//   - "add"    — absent remotely; `upsert` will add it.
+//   - "modify" — present remotely but differing; `upsert` will update it.
+//   - "none"   — present remotely and identical; `upsert` is a no-op.
+type RulesDryRunResult struct {
+	Valid   bool   `json:"valid" yaml:"valid"`
+	Changed bool   `json:"changed" yaml:"changed"`
+	Action  string `json:"action" yaml:"action"`
+	Name    string `json:"name" yaml:"name"`
+	Diff    string `json:"diff,omitempty" yaml:"diff,omitempty"`
+}
+
+// runModelRulesDryRun validates the model rules file against the backend's
+// synchronous validator and, if valid, reports what `upsert` would add or modify
+// versus the current remote config. It never writes. A diagnostic banner goes to
+// stderr; the result (diff in text mode, struct under -o json/yaml) to stdout.
+func runModelRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte) error {
+	ctx := cmd.Context()
+
+	var local ModelRules
+	if err := k8syaml.Unmarshal(data, &local); err != nil {
+		return fmt.Errorf("failed to parse model-rules file: %w", err)
+	}
+	if local.Name == "" {
+		return errors.New("model-rules file has no name")
+	}
+
+	if err := client.ValidateModelRules(ctx, string(data)); err != nil {
+		return err
+	}
+
+	remote, found, err := client.getModelRulesForDiff(ctx, local.Name)
+	if err != nil {
+		return err
+	}
+
+	localYAML, err := normalizeK8sYAMLForDiff(modelRulesForDiff(local))
+	if err != nil {
+		return fmt.Errorf("render local model rules: %w", err)
+	}
+	var remoteYAML string
+	if found {
+		remoteYAML, err = normalizeK8sYAMLForDiff(modelRulesForDiff(*remote))
+		if err != nil {
+			return fmt.Errorf("render remote model rules: %w", err)
+		}
+	}
+
+	result, err := buildRulesDryRunResult(local.Name, remoteYAML, localYAML, found)
+	if err != nil {
+		return err
+	}
+	reportRulesDryRun(cmd, "model rules", result)
+	return ioOpts.Encode(cmd.OutOrStdout(), result)
+}
+
+// runPromRulesDryRun is the prom-rules counterpart to runModelRulesDryRun.
+func runPromRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte) error {
+	ctx := cmd.Context()
+
+	var local Rule
+	if err := k8syaml.Unmarshal(data, &local); err != nil {
+		return fmt.Errorf("failed to parse prom-rules file: %w", err)
+	}
+	if local.Name == "" {
+		return errors.New("prom-rules file has no name")
+	}
+
+	if err := client.ValidatePromRules(ctx, string(data)); err != nil {
+		return err
+	}
+
+	remote, found, err := client.getPromRuleForDiff(ctx, local.Name)
+	if err != nil {
+		return err
+	}
+
+	localYAML, err := normalizeK8sYAMLForDiff(local)
+	if err != nil {
+		return fmt.Errorf("render local prom-rules: %w", err)
+	}
+	var remoteYAML string
+	if found {
+		remoteYAML, err = normalizeK8sYAMLForDiff(*remote)
+		if err != nil {
+			return fmt.Errorf("render remote prom-rules: %w", err)
+		}
+	}
+
+	result, err := buildRulesDryRunResult(local.Name, remoteYAML, localYAML, found)
+	if err != nil {
+		return err
+	}
+	reportRulesDryRun(cmd, "prom-rules", result)
+	return ioOpts.Encode(cmd.OutOrStdout(), result)
+}
+
+// buildRulesDryRunResult compares a single local config's canonical YAML against
+// its remote counterpart. found is false (remoteYAML "") when the config does not
+// exist remotely, which `create` would add. Reaching this implies validation
+// passed.
+func buildRulesDryRunResult(name, remoteYAML, localYAML string, found bool) (RulesDryRunResult, error) {
+	result := RulesDryRunResult{Valid: true, Name: name}
+	switch {
+	case !found:
+		result.Action = "add"
+		result.Changed = true
+	case remoteYAML != localYAML:
+		result.Action = "modify"
+		result.Changed = true
+	default:
+		result.Action = "none"
+		return result, nil
+	}
+
+	diff, err := unifiedYAMLDiff(remoteYAML, localYAML)
+	if err != nil {
+		return RulesDryRunResult{}, fmt.Errorf("render rules diff: %w", err)
+	}
+	result.Diff = diff
+	return result, nil
+}
+
+// reportRulesDryRun writes the stderr banner summarizing a rules dry-run.
+func reportRulesDryRun(cmd *cobra.Command, kind string, result RulesDryRunResult) {
+	if result.Changed {
+		cmdio.Info(cmd.ErrOrStderr(), "[dry-run] %s are valid; would %s %q (remote -> local)", kind, result.Action, result.Name)
+	} else {
+		cmdio.Info(cmd.ErrOrStderr(), "[dry-run] %s are valid; no changes to %q", kind, result.Name)
+	}
+}
+
+// modelRulesForDiff returns a copy of m with system-managed fields cleared, so
+// dry-run comparison and diffing consider only the user-authored fields.
+// managedBy is set by the backend (e.g. "terraform"), not the input file, so
+// including it would flag unchanged configs as modified.
+func modelRulesForDiff(m ModelRules) ModelRules {
+	m.ManagedBy = ""
+	return m
+}
+
+// normalizeK8sYAMLForDiff marshals a value to canonical YAML via sigs.k8s.io/yaml
+// (struct->JSON->YAML) so json-tagged fields and json.RawMessage render correctly
+// and two configs with equivalent content compare and diff cleanly.
+func normalizeK8sYAMLForDiff(v any) (string, error) {
+	out, err := k8syaml.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// RulesDryRunTextCodec renders a rules dry-run result as its unified diff (or
+// nothing when there are no changes, keeping stdout empty for pipe consumers).
+type RulesDryRunTextCodec struct{}
+
+func (c *RulesDryRunTextCodec) Format() format.Format { return "text" }
+
+func (c *RulesDryRunTextCodec) Encode(w io.Writer, v any) error {
+	result, ok := v.(RulesDryRunResult)
+	if !ok {
+		return errors.New("invalid data type for text codec: expected RulesDryRunResult")
+	}
+	if result.Diff == "" {
+		return nil
+	}
+	_, err := io.WriteString(w, result.Diff)
+	return err
+}
+
+func (c *RulesDryRunTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
 }
 
 type suppressionsListOpts struct {
