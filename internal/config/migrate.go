@@ -827,7 +827,7 @@ func warnInMemoryMigration(ctx context.Context, filename, reason string) {
 		collector.add(filename, reason)
 		return
 	}
-	const message = "running with in-memory config migration; the config file was not modified; config and credential writes remain blocked until migration can be persisted"
+	const message = "running with in-memory config migration: gcx attempted to migrate your config file, but it encountered an issue. The config file was not modified. Config and credential writes remain blocked until migration can be persisted. gcx will try again on each invocation until it succeeds."
 	if writer := warningWriterFromCtx(ctx); writer != nil {
 		fmt.Fprintf(writer, "Warning: %s: %s; reason: %s (%s)\n", message, filename, reason, docs.ConfigMigration)
 		return

@@ -39,12 +39,15 @@ func (e *layeredMigrationIncompleteError) Error() string {
 		fmt.Fprintf(&b, " (%v)", e.cause)
 	}
 	if e.targetedMigrationAllowed {
-		b.WriteString("; no additional config files or credentials were changed. Complete every remaining legacy layer:\n")
+		b.WriteString("; no additional config files or credentials were changed. Migrate each remaining file:\n")
 		b.WriteString(layeredMigrationSteps(e.remaining))
+		b.WriteByte('\n')
+		b.WriteString(layeredMigrationGuidance(e.remaining))
 		return b.String()
 	}
 	b.WriteString("; no config files or credentials were changed. The overlapping entries require manual consolidation; edit the remaining legacy layers directly, then retry:\n")
 	b.WriteString(layeredMigrationRepairSteps(e.remaining))
+	b.WriteString("\n  Guide: " + docs.ConfigMigration)
 	return b.String()
 }
 
@@ -80,11 +83,27 @@ func layeredMigrationSteps(sources []ConfigSource) string {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		fmt.Fprintf(&b, "  %s\n", source.Path)
-		fmt.Fprintf(&b, "    migrate: gcx config set --file %s version 1\n", source.Type)
-		fmt.Fprintf(&b, "    repair:  gcx config edit %s", source.Type)
+		fmt.Fprintf(&b, "  gcx config set --file %s version 1    # migrates %s", source.Type, source.Path)
 	}
 	return b.String()
+}
+
+// layeredMigrationGuidance explains what the migration commands do and how to
+// recover when one fails, naming the per-layer edit command for each file.
+func layeredMigrationGuidance(sources []ConfigSource) string {
+	return "  Each command rewrites that file in the current format and keeps a backup next to it (" + legacyBackupSuffix + ").\n" +
+		"  If a command reports a problem, fix that file by hand (" + layeredMigrationEditCommands(sources) + ") and re-run it.\n" +
+		"  Guide: " + docs.ConfigMigration
+}
+
+// layeredMigrationEditCommands lists the per-layer edit commands, for recovery
+// hints in warnings and structured logs.
+func layeredMigrationEditCommands(sources []ConfigSource) string {
+	edits := make([]string, 0, len(sources))
+	for _, source := range sources {
+		edits = append(edits, "gcx config edit "+source.Type)
+	}
+	return strings.Join(edits, ", ")
 }
 
 func writeExceptionalMigrationWarnings(writer io.Writer, warnings []inMemoryMigrationWarning) {

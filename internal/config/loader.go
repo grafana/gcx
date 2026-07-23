@@ -1277,18 +1277,30 @@ func warnIncompleteLayeredMigration(ctx context.Context, remaining []ConfigSourc
 		return
 	}
 	steps := layeredMigrationSteps(remaining)
-	const message = "layered configuration migration is incomplete; finish every remaining legacy layer"
+	guidance := layeredMigrationGuidance(remaining)
+	const message = "layered configuration migration is incomplete"
 	if writer := warningWriterFromCtx(ctx); writer != nil {
-		fmt.Fprintf(writer, "Warning: %s:\n%s", message, steps)
+		fmt.Fprintf(writer,
+			"Warning: %s: several of your config files still use the legacy format.\n"+
+				"gcx converted them in memory for this run - commands keep working, but the files themselves\n"+
+				"are unchanged and config or credential writes stay blocked until each file is migrated:\n%s\n%s",
+			message, steps, guidance)
 		writeExceptionalMigrationWarnings(writer, warnings)
 		fmt.Fprintln(writer)
 		return
 	}
 	if blockers := formatExceptionalMigrationWarnings(warnings); blockers != "" {
-		logging.FromContext(ctx).Warn(message, "steps", steps, "blockers", blockers)
+		logging.FromContext(ctx).Warn(message,
+			"steps", steps,
+			"repair", layeredMigrationEditCommands(remaining),
+			"guide", docs.ConfigMigration,
+			"blockers", blockers)
 		return
 	}
-	logging.FromContext(ctx).Warn(message, "steps", steps)
+	logging.FromContext(ctx).Warn(message,
+		"steps", steps,
+		"repair", layeredMigrationEditCommands(remaining),
+		"guide", docs.ConfigMigration)
 }
 
 // loadExplicit loads a single explicit config file, bypassing layered discovery.

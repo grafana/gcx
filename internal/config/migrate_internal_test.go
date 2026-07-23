@@ -803,7 +803,8 @@ current-context: dev
 	assert.True(t, os.IsNotExist(err))
 	assert.Contains(t, warnings.String(), "Warning: running with in-memory config migration")
 	assert.Contains(t, warnings.String(), path)
-	assert.Contains(t, warnings.String(), "config and credential writes remain blocked")
+	assert.Contains(t, warnings.String(), "Config and credential writes remain blocked")
+	assert.Contains(t, warnings.String(), "gcx will try again on each invocation")
 }
 
 func TestMigrateLegacyConfigBackupIsWriteOnce(t *testing.T) {
