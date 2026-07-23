@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/resources"
@@ -25,13 +25,15 @@ var _ ResourceHandler = &DashboardProxy{}
 
 // DashboardProxy describes how to proxy Dashboard resources.
 type DashboardProxy struct {
-	context   *config.Context
+	target    *url.URL
+	transport http.RoundTripper
 	resources *resources.Resources
 }
 
-func NewDashboardProxy(context *config.Context, resources *resources.Resources) *DashboardProxy {
+func NewDashboardProxy(target *url.URL, transport http.RoundTripper, resources *resources.Resources) *DashboardProxy {
 	return &DashboardProxy{
-		context:   context,
+		target:    target,
+		transport: transport,
 		resources: resources,
 	}
 }
@@ -57,7 +59,7 @@ func (c *DashboardProxy) Endpoints(_ *httputil.ReverseProxy) []HTTPEndpoint {
 		{
 			Method:  http.MethodGet,
 			URL:     "/d/{uid}/{slug}",
-			Handler: grafana.AuthenticateAndProxyHandler(c.context),
+			Handler: grafana.AuthenticateAndProxyHandler(c.target, c.transport),
 		},
 		{
 			Method:  http.MethodGet,

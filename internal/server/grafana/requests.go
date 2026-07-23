@@ -4,54 +4,62 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
-	"k8s.io/client-go/rest"
 )
 
-func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
+// AuthenticateAndProxyHandler proxies GET requests to the real Grafana
+// instance at target, using transport for auth (Basic, service-account bearer,
+// or OAuth with refresh) and TLS — see config.NewNamespacedRESTConfig, which
+// builds a transport carrying whichever auth mode the context is configured
+// for plus logging and retry.
+//
+// target is config.NamespacedRESTConfig.ProxyTarget(): its Path is the prefix
+// to prepend to each incoming request path (empty in direct mode so the
+// Grafana subpath already carried by the request is not doubled; the proxy
+// prefix in OAuth mode).
+func AuthenticateAndProxyHandler(target *url.URL, transport http.RoundTripper) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "text/html")
 
-		if err := ValidateDevProxyAuth(cfg); err != nil {
-			httputils.Error(r, w, err.Error(), err, http.StatusBadRequest)
-			return
-		}
-		restCfg, err := cfg.ToRESTConfig(r.Context())
-		if err != nil {
-			httputils.Error(r, w, "Grafana authentication configuration error", err, http.StatusBadRequest)
+		if target == nil || target.Host == "" {
+			httputils.Error(r, w, "Error: No Grafana URL configured", errors.New("no Grafana URL configured"), http.StatusBadRequest)
 			return
 		}
 
-		target := strings.TrimSuffix(restCfg.Host, "/") + r.URL.EscapedPath()
-		if r.URL.RawQuery != "" {
-			target += "?" + r.URL.RawQuery
-		}
-		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
+		out := *target
+		out.Path = joinProxyPath(target.Path, r.URL.Path)
+
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, out.String(), nil)
 		if err != nil {
 			httputils.Error(r, w, http.StatusText(http.StatusInternalServerError), err, http.StatusInternalServerError)
 			return
 		}
 
-		client, err := rest.HTTPClientFor(&restCfg.Config)
-		if err != nil {
-			httputils.Error(r, w, "Grafana transport configuration error", err, http.StatusInternalServerError)
-			return
-		}
-		client.Timeout = 10 * time.Second
+		client := &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: transport,
+			CheckRedirect: func(redirReq *http.Request, _ []*http.Request) error {
+				// Being redirected to the login page means authentication is misconfigured.
+				// We interrupt the redirect and let the rest of AuthenticateAndProxyHandler
+				// handle that case.
+				if strings.HasSuffix(redirReq.URL.Path, "/login") {
+					return http.ErrUseLastResponse
+				}
 
-		client.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
-			// Being redirected to the login page means authentication is misconfigured.
-			// We interrupt the redirect and let the rest of AuthenticateAndProxyHandler
-			// handle that case.
-			if strings.HasSuffix(req.URL.Path, "/login") {
-				return http.ErrUseLastResponse
-			}
+				// A relative redirect from Grafana resolves against the
+				// proxy-prefixed request URL and can drop the proxy prefix
+				// (OAuth proxy mode). Re-apply it so the followed request still
+				// routes through the proxy rather than hitting the backend root.
+				if target.Path != "" && redirReq.URL.Host == target.Host && !strings.HasPrefix(redirReq.URL.Path, target.Path) {
+					redirReq.URL.Path = joinProxyPath(target.Path, redirReq.URL.Path)
+				}
 
-			return nil
+				return nil
+			},
 		}
 
 		resp, err := client.Do(req)
@@ -78,20 +86,19 @@ func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
 	}
 }
 
-// ValidateDevProxyAuth rejects configurations that the local development
-// proxy cannot use without risking credential loss. OAuth refresh-token
-// rotation must be wired to the owning config source; this proxy has only a
-// resolved Context, so it must fail before constructing or sending a request.
-func ValidateDevProxyAuth(cfg *config.Context) error {
-	if cfg == nil || cfg.Grafana == nil || cfg.Grafana.Server == "" {
-		return errors.New("no Grafana URL configured")
+// joinProxyPath joins a proxy base-path prefix with an incoming request path,
+// matching net/http/httputil's single-slash join semantics. An empty base
+// returns the request path unchanged, so direct mode (no prefix) never doubles
+// the Grafana subpath already carried by reqPath.
+func joinProxyPath(base, reqPath string) string {
+	switch {
+	case base == "":
+		return reqPath
+	case strings.HasSuffix(base, "/") && strings.HasPrefix(reqPath, "/"):
+		return base + reqPath[1:]
+	case !strings.HasSuffix(base, "/") && !strings.HasPrefix(reqPath, "/"):
+		return base + "/" + reqPath
+	default:
+		return base + reqPath
 	}
-	authMethod, err := cfg.EffectiveGrafanaAuthMethod()
-	if err != nil {
-		return err
-	}
-	if authMethod == "oauth" {
-		return errors.New("OAuth authentication is not supported by `gcx dev serve` because refreshed credentials cannot be persisted safely; run `gcx login --token <token>` for this context or select a token, Basic, or mTLS context")
-	}
-	return nil
 }
