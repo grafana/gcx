@@ -25,9 +25,6 @@ import (
 
 // Commands returns the rules command group.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
-	if loader == nil {
-		loader = &providers.ConfigLoader{}
-	}
 	cmd := &cobra.Command{
 		Use:   "rules",
 		Short: "Manage rules that route generations to evaluators.",
