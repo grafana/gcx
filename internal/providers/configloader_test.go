@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/cloud"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1589,8 +1590,11 @@ current-context: prod
 // nil, and the resolved* fallbacks must treat that exactly like a zero-value
 // loader instead of panicking. Removing the nil checks in
 // resolvedContextName/resolvedConfigFile fails this test.
+//
+// SandboxConfigEnv rather than isolateConfigSources: the namespace assertion
+// is hard-coded, so ambient GRAFANA_STACK_ID/GRAFANA_SERVER must be cleared.
 func TestConfigLoader_NilLoaderBehavesLikeZeroValue(t *testing.T) {
-	isolateConfigSources(t)
+	testutils.SandboxConfigEnv(t)
 	cfgFile := writeConfigFile(t, `
 version: 1
 stacks:
