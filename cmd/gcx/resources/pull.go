@@ -8,7 +8,6 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/fail"
-	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/local"
@@ -290,10 +289,10 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			totalFailed := pullSummary.FailedCount() + len(writeFailures)
 			if opts.OnError.FailOnErrors() && totalFailed > 0 {
 				// The receipt (with enumerated failures, including file-write
-				// failures) is already on stdout — EmittedError carries exit 4
-				// without a second error document.
-				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
-					gcxerrors.NewPartialFailureError("pull", pullSummary.SuccessCount()+pullSummary.FailedCount(), totalFailed))
+				// failures) is already on stdout — the typed stderr diagnostic
+				// + EmittedError carry exit 4 without a second error document.
+				return partialBatchFailure(cmd.ErrOrStderr(), "pull",
+					pullSummary.SuccessCount()+pullSummary.FailedCount(), totalFailed)
 			}
 
 			return nil

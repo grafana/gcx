@@ -196,10 +196,10 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
 				// The result document (with enumerated failures) is already
-				// on stdout — EmittedError carries exit 4 without a second
-				// error document.
-				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
-					gcxerrors.NewPartialFailureError("delete", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount()))
+				// on stdout — the typed stderr diagnostic + EmittedError
+				// carry exit 4 without a second error document.
+				return partialBatchFailure(cmd.ErrOrStderr(), "delete",
+					summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
 			}
 
 			return nil

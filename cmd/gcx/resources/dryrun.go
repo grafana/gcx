@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/spf13/pflag"
@@ -33,6 +34,19 @@ func dryRunGuardConfig(current *config.Context, flagValues []string, warn io.Wri
 	}
 	assumed = append(assumed, flagValues...)
 	return remote.GuardConfig{AssumeServerDryRun: assumed, Warn: warn}
+}
+
+// partialBatchFailure reports a partial batch failure after the result
+// document was already written: a typed stderr diagnostic (JSONL in agent
+// mode, prose on a TTY) plus an EmittedError so the process exits
+// ExitPartialFailure without a second stdout document. The old bare
+// PartialFailureError return let reportError render an "Error: ..." stderr
+// line; EmittedError suppresses that rendering, so the diagnostic is
+// emitted explicitly here — mirroring get's partialGetFailure.
+func partialBatchFailure(stderr io.Writer, op string, total, failed int) error {
+	perr := gcxerrors.NewPartialFailureError(op, total, failed)
+	cmdio.EmitWarn(stderr, perr.Error())
+	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, perr)
 }
 
 // batchMutationFromSummary converts an OperationSummary into the shared

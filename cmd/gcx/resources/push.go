@@ -5,7 +5,6 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/format"
-	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
@@ -194,10 +193,10 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
 				// The result document (with enumerated failures) is already
-				// on stdout — EmittedError carries exit 4 without a second
-				// error document.
-				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
-					gcxerrors.NewPartialFailureError("push", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount()))
+				// on stdout — the typed stderr diagnostic + EmittedError
+				// carry exit 4 without a second error document.
+				return partialBatchFailure(cmd.ErrOrStderr(), "push",
+					summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
 			}
 
 			return nil
