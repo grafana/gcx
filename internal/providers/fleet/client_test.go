@@ -193,6 +193,78 @@ func TestClient_UpdatePipeline(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestClient_GetPipeline_PreservesConfigType is a regression test for the OTel
+// pipeline bug: a Fleet API response carrying "configType":"CONFIG_TYPE_OTEL"
+// must not lose that field on decode, otherwise valid OTel YAML is later treated
+// as Alloy River.
+func TestClient_GetPipeline_PreservesConfigType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"id":         "otel-1",
+			"name":       "macos_endpoint_otel",
+			"enabled":    true,
+			"configType": "CONFIG_TYPE_OTEL",
+			"contents":   "receivers: {}",
+		})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	p, err := client.GetPipeline(context.Background(), "otel-1")
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	assert.Equal(t, "CONFIG_TYPE_OTEL", p.ConfigType, "configType must survive API decode")
+}
+
+// TestClient_UpdatePipeline_SendsConfigType is a regression test: an OTel
+// pipeline update must send "configType":"CONFIG_TYPE_OTEL" back to Fleet.
+func TestClient_UpdatePipeline_SendsConfigType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+
+		var p fleet.Pipeline
+		assert.NoError(t, json.Unmarshal(body["pipeline"], &p))
+		assert.Equal(t, "CONFIG_TYPE_OTEL", p.ConfigType, "configType must be sent on update")
+
+		w.WriteHeader(http.StatusOK)
+		writeJSON(w, map[string]any{})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	err := client.UpdatePipeline(context.Background(), "otel-1", fleet.Pipeline{
+		Name:       "macos_endpoint_otel",
+		Contents:   "receivers: {}",
+		ConfigType: "CONFIG_TYPE_OTEL",
+	})
+	require.NoError(t, err)
+}
+
+// TestClient_UpdatePipeline_OmitsEmptyConfigType guards backward compatibility:
+// an Alloy pipeline with no configType must not send an empty "configType" field.
+func TestClient_UpdatePipeline_OmitsEmptyConfigType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+
+		var raw map[string]any
+		assert.NoError(t, json.Unmarshal(body["pipeline"], &raw))
+		assert.NotContains(t, raw, "configType", "empty configType must be omitted for Alloy pipelines")
+
+		w.WriteHeader(http.StatusOK)
+		writeJSON(w, map[string]any{})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	err := client.UpdatePipeline(context.Background(), "alloy-1", fleet.Pipeline{
+		Name:     "alloy-pipeline",
+		Contents: "logging {}",
+	})
+	require.NoError(t, err)
+}
+
 func TestClient_DeletePipeline(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)

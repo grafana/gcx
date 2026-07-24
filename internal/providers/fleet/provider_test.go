@@ -90,6 +90,70 @@ func TestCollectorToResource_RoundTrip(t *testing.T) {
 	assert.Equal(t, original.LocalAttributes, roundTripped.LocalAttributes)
 }
 
+// TestPipelineToResource_PreservesConfigType is a regression test for the OTel
+// pipeline bug: configType must survive the Pipeline -> Resource (pull/render) and
+// Resource -> Pipeline (manifest read/push) round-trips, and must appear as
+// spec.configType in the rendered manifest.
+func TestPipelineToResource_PreservesConfigType(t *testing.T) {
+	original := fleet.Pipeline{
+		ID:         "18155",
+		Name:       "macos_endpoint_otel",
+		Enabled:    new(true),
+		ConfigType: "CONFIG_TYPE_OTEL",
+		Contents:   "receivers: {}",
+		Matchers:   []string{"host.name=mbp14"},
+	}
+
+	res, err := fleet.PipelineToResource(original, "default")
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	spec, ok := res.Object.Object["spec"].(map[string]any)
+	require.True(t, ok, "spec should be a map")
+	assert.Equal(t, "CONFIG_TYPE_OTEL", spec["configType"], "spec.configType must be rendered")
+
+	roundTripped, err := fleet.PipelineFromResource(res)
+	require.NoError(t, err)
+	require.NotNil(t, roundTripped)
+	assert.Equal(t, "CONFIG_TYPE_OTEL", roundTripped.ConfigType, "configType must survive round-trip")
+}
+
+// TestPipelineFromResource_ReadsConfigType is a regression test proving a manifest
+// whose spec carries configType decodes it into the Pipeline (manifest read/push path).
+func TestPipelineFromResource_ReadsConfigType(t *testing.T) {
+	res, err := fleet.PipelineToResource(fleet.Pipeline{
+		ID:       "18155",
+		Name:     "macos_endpoint_otel",
+		Contents: "receivers: {}",
+	}, "default")
+	require.NoError(t, err)
+
+	// Simulate a manifest that declares spec.configType.
+	spec, ok := res.Object.Object["spec"].(map[string]any)
+	require.True(t, ok, "spec should be a map")
+	spec["configType"] = "CONFIG_TYPE_OTEL"
+
+	p, err := fleet.PipelineFromResource(res)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	assert.Equal(t, "CONFIG_TYPE_OTEL", p.ConfigType, "spec.configType must decode into the Pipeline")
+}
+
+// TestPipelineToResource_OmitsEmptyConfigType guards backward compatibility: an
+// Alloy pipeline (no configType) must not gain an empty spec.configType key.
+func TestPipelineToResource_OmitsEmptyConfigType(t *testing.T) {
+	res, err := fleet.PipelineToResource(fleet.Pipeline{
+		ID:       "42",
+		Name:     "alloy-pipeline",
+		Contents: "logging {}",
+	}, "default")
+	require.NoError(t, err)
+
+	spec, ok := res.Object.Object["spec"].(map[string]any)
+	require.True(t, ok, "spec should be a map")
+	assert.NotContains(t, spec, "configType", "empty configType must be omitted for Alloy pipelines")
+}
+
 func TestPipelineToResource_StripsID(t *testing.T) {
 	p := fleet.Pipeline{
 		ID:       "99999",
@@ -175,6 +239,28 @@ func TestPipelineTableCodec_Encode(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPipelineTableCodec_WideShowsConfigType asserts the wide table surfaces the
+// pipeline config type, so OTel pipelines are distinguishable from Alloy ones.
+// An empty configType (the Alloy default) renders as "-".
+func TestPipelineTableCodec_WideShowsConfigType(t *testing.T) {
+	pipelines := []fleet.Pipeline{
+		{ID: "p-1", Name: "otel-one", Enabled: new(true), ConfigType: "CONFIG_TYPE_OTEL"},
+		{ID: "p-2", Name: "alloy-one", Enabled: new(true)},
+	}
+
+	var buf bytes.Buffer
+	codec := fleet.PipelineTableCodec{Wide: true}
+	require.NoError(t, codec.Encode(&buf, pipelines))
+
+	output := buf.String()
+	assert.Contains(t, output, "CONFIG TYPE", "wide header should include CONFIG TYPE")
+	assert.Contains(t, output, "CONFIG_TYPE_OTEL", "OTel pipeline should show its config type")
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	require.GreaterOrEqual(t, len(lines), 3)
+	assert.Contains(t, lines[2], "-", "empty configType should render as -")
 }
 
 func TestPipelineTableCodec_WrongType(t *testing.T) {
