@@ -93,7 +93,7 @@ func TestClient_Get_NotFound(t *testing.T) {
 func TestClient_Create(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/collections", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/collections", r.URL.Path)
 
 		body, _ := io.ReadAll(r.Body)
 		var raw map[string]any
@@ -208,7 +208,7 @@ func TestClient_RemoveMember(t *testing.T) {
 
 func TestStaticDescriptor(t *testing.T) {
 	d := collections.StaticDescriptor()
-	assert.Equal(t, "sigil.ext.grafana.app", d.GroupVersion.Group)
+	assert.Equal(t, "agento11y.ext.grafana.app", d.GroupVersion.Group)
 	assert.Equal(t, "v1alpha1", d.GroupVersion.Version)
 	assert.Equal(t, "Collection", d.Kind)
 	assert.Equal(t, "collections", d.Plural)

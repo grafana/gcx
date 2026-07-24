@@ -145,7 +145,7 @@ the stack's OTLP tile, `https://grafana.com/orgs/<org-slug>/stacks/<stack-id>/ot
 Only if you already have a raw token and instance-id and must build the header yourself, do it with
 `printf '%s' '<otlp-instance-id>:<glc_token>' | base64 | tr -d '\n'` — a trailing newline breaks the
 header. (The tile is also reachable from the plugin **Connection page**,
-`https://<stack>.grafana.net/plugins/grafana-sigil-app`.)
+`https://<stack>.grafana.net/plugins/grafana-agento11y-app`.)
 
 For the full reference — per-provider wrapper usage, every framework adapter, the complete telemetry
 field list, workflow-step schema, `set_result` field completeness, and content-capture modes — fetch
