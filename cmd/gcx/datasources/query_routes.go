@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/mssql"
 	"github.com/grafana/gcx/internal/query/mysql"
 	"github.com/grafana/gcx/internal/query/postgres"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -84,6 +85,7 @@ func newQueryRoutes() queryRoutes {
 			"clickhouse": dispatchClickHouse,
 			"influxdb":   dispatchInfluxDB,
 			"loki":       dispatchLoki,
+			"mssql":      dispatchMSSQL,
 			"mysql":      dispatchMySQL,
 			"postgres":   dispatchPostgres,
 			"prometheus": dispatchPrometheus,
@@ -281,6 +283,26 @@ func dispatchBigQuery(ctx context.Context, req genericQueryRequest) (any, error)
 	}
 
 	resp, err := client.Query(ctx, req.uid, bqReq)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+
+	return resp, nil
+}
+
+func dispatchMSSQL(ctx context.Context, req genericQueryRequest) (any, error) {
+	client, err := mssql.NewClient(req.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	mssqlReq := mssql.QueryRequest{
+		RawSQL: mssql.EnforceTop(req.expr, 100, 1000),
+		Start:  req.start,
+		End:    req.end,
+	}
+
+	resp, err := client.Query(ctx, req.uid, mssqlReq)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
