@@ -4,13 +4,15 @@ title: Dashboards as code
 
 With this workflow, you can define and manage dashboards as code, saving them to a version control system like Git. This is useful for teams that want to maintain a history of changes, collaborate on dashboard design, and ensure consistency across environments.
 
-!!! note
-    In order to use `gcx dev serve` functionality, you will have to enable a feature toggle in your `config.ini`:
-      ```ini
-      [feature_toggles]
-      kubernetesDashboards = true
-      ```
-    Check [the documentation](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/#feature_toggles) to learn more about enabling feature toggles.
+> [!NOTE]
+> In order to use `gcx dev serve` functionality, you will have to enable a feature toggle in your `config.ini`:
+>
+> ```ini
+> [feature_toggles]
+> kubernetesDashboards = true
+> ```
+>
+> Check [the documentation](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/#feature_toggles) to learn more about enabling feature toggles.
 
     The local preview proxy supports service-account token, Basic, and mTLS
     contexts. Use a service-account token instead of OAuth for `gcx dev serve`;

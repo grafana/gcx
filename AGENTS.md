@@ -45,13 +45,13 @@ mise run build       # Build to bin/gcx
 mise run tests       # Run all tests with race detection
 mise run lint        # Run golangci-lint
 mise run gate        # lint + tests + build (no docs) — fast pre-push gate for code changes
-mise run all         # lint + tests + build + docs
-mise run docs        # Generate + build all documentation
+mise run all         # lint + tests + build + reference docs
+mise run reference   # Regenerate all reference documentation
 ```
 
 **Without mise**: replace with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`. Lint runs in Go **module mode** (`golangci-lint`'s `modules-download-mode: readonly`), so no `vendor/` directory is needed locally — the module cache (`go mod download`, run automatically on worktree entry) is sufficient.
 
-> **Agent environments**: always prefix with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults in `mise run docs`, producing wrong CLI reference docs.
+> **Agent environments**: always prefix with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults in `mise run reference`, producing wrong CLI reference docs.
 
 ## Testing
 
@@ -232,7 +232,7 @@ You MUST run this checklist when creating a PR or updating an existing PR with n
    ```bash
    git fetch origin main && git rebase origin/main
    ```
-3. **Quality gates pass** — `mise run docs` auto-detects agent mode from env vars (`CLAUDECODE`, `CLAUDE_CODE`) and flips output defaults, producing wrong docs. Always override:
+3. **Quality gates pass** — `mise run reference` auto-detects agent mode from env vars (`CLAUDECODE`, `CLAUDE_CODE`) and flips output defaults, producing wrong docs. Always override:
    ```bash
    GCX_AGENT_MODE=false mise run all
    ```
@@ -274,12 +274,7 @@ Run this checklist **before every commit** (not only before PR/push):
    GCX_AGENT_MODE=false mise run reference
    ```
    This regenerates CLI reference, env-var reference, config reference, and linter-rules reference. Required when changes touch commands, flags, config fields, env vars, or linter rules.
-6. **Docs build succeeds** (CI runs `mise run docs` after the drift check)
-   ```bash
-   mise run docs
-   ```
-   If `mise`/`mkdocs` is unavailable, skip — CI will catch build failures.
-7. **No unstaged surprises**
+6. **No unstaged surprises**
    ```bash
    git status
    ```

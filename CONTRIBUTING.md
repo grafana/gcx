@@ -77,7 +77,7 @@ All development commands use `mise run`:
 $ mise run build           # build to bin/gcx
 $ mise run lint            # run golangci-lint
 $ mise run tests           # run all tests
-$ mise run all             # lint + tests + build + docs
+$ mise run all             # lint + tests + build + reference docs
 $ mise tasks               # list all available tasks
 ```
 

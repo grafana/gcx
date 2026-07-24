@@ -4,16 +4,14 @@ min_version = "2024.1.0"
 go = "1.26"
 golangci-lint = "2.12.2"
 goreleaser = "2.13.3"
-python = "3.12"
-uv = "latest"
 
 # =============================================================================
 # GENERAL
 # =============================================================================
 
 [tasks.all]
-description = "Validate skills, lint, test, build, and generate docs"
-depends = ["validate-skills", "lint", "tests", "build", "docs"]
+description = "Validate skills, lint, test, build, and generate reference docs"
+depends = ["validate-skills", "lint", "tests", "build", "reference"]
 
 [tasks.gate]
 description = "Fast pre-push gate for code changes: lint + tests + build (no docs)"
@@ -74,17 +72,12 @@ fi
 """
 
 [tasks.deps]
-description = "Install Go and Python dependencies"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-go mod download
-uv pip install --system -q -r requirements.txt
-"""
+description = "Install Go dependencies"
+run = "go mod download"
 
 [tasks.clean]
 description = "Remove build artifacts"
-run = "rm -rf bin .venv"
+run = "rm -rf bin"
 
 [tasks.setup]
 description = "Set up local development environment (commit template, etc.)"
@@ -100,11 +93,6 @@ run = "./scripts/tag.sh"
 # =============================================================================
 # DOCUMENTATION
 # =============================================================================
-
-[tasks.docs]
-description = "Generate reference docs and build mkdocs site"
-depends = ["reference"]
-run = "mkdocs build -f mkdocs.yml -d ./build/documentation"
 
 [tasks.reference]
 description = "Regenerate all reference documentation"
@@ -201,10 +189,6 @@ if ! git diff --exit-code --quiet HEAD ./docs/reference/linter-rules/ ; then
     exit 1
 fi
 """
-
-[tasks."serve-docs"]
-description = "Serve docs with live reload for development"
-run = "mkdocs serve -f mkdocs.yml"
 
 # =============================================================================
 # INTEGRATION TESTING

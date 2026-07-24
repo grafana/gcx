@@ -105,6 +105,3 @@ jobs:
       - name: Check for drift in the generated documentation references
         run: mise run reference-drift
         shell: bash
-
-      - name: Build documentation
-        run: mise run docs

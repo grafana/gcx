@@ -458,20 +458,19 @@ on PATH and `mise run` invokes them with the correct versions.
 
 | Task | Purpose |
 |--------|---------|
-| `mise run all` | Full gate: lint + tests + build + docs |
+| `mise run all` | Full gate: lint + tests + build + reference docs |
 | `mise run build` | Compile to `bin/gcx` with version injection |
 | `mise run tests` | Run all unit tests |
 | `mise run lint` | golangci-lint with project config |
-| `mise run docs` | Generate reference docs + build mkdocs site |
+| `mise run reference` | Regenerate all reference docs |
 | `mise run reference-drift` | Fail if generated docs are stale |
 | `mise run test-env-up` | Start Grafana 12 + MySQL 9 via docker-compose |
 
 ### CI/CD
 
-Three GitHub Actions workflows:
+GitHub Actions workflows:
 - **ci.yaml**: PR/push gate -- lint, tests, doc drift check (parallel jobs)
 - **release.yaml**: Tag-triggered -- goreleaser cross-platform builds + GitHub Release
-- **publish-docs.yaml**: Manual GitHub Pages deployment
 
 ### Code Generation
 

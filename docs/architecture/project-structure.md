@@ -145,15 +145,12 @@ gcx/
 │   └── folder.yaml           # Sample resource manifest
 │
 ├── bin/                      # Build output (gitignored)
-├── build/                    # mkdocs output (gitignored)
 │
 ├── go.mod / go.sum           # Go module definition (module: github.com/grafana/gcx)
 ├── .golangci.yaml            # Linter configuration (golangci-lint v2)
 ├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release)
-├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser, Python)
-├── docker-compose.yml        # Integration test environment (Grafana 12 + MySQL 9)
-├── mkdocs.yml                # Documentation site config (Material theme)
-└── requirements.txt          # Python packages for mkdocs
+├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser)
+└── docker-compose.yml        # Integration test environment (Grafana 12 + MySQL 9)
 ```
 
 ### Rationale for cmd/ vs internal/ split
@@ -173,7 +170,7 @@ server) rather than technical concerns, making it easy to locate code by feature
 ### Toolchain
 
 Tools are managed by [mise](https://mise.jdx.dev/) via `mise.toml`. Once
-`mise install` has been run, all tools (Go, golangci-lint, goreleaser, Python)
+`mise install` has been run, all tools (Go, golangci-lint, goreleaser)
 are available. All development commands use `mise run`, which ensures the correct
 tool versions are used regardless of shell configuration.
 
@@ -181,20 +178,18 @@ tool versions are used regardless of shell configuration.
 
 | Task | What it does |
 |---|---|
-| `mise run all` | Runs lint + tests + build + docs (the full gate) |
+| `mise run all` | Runs lint + tests + build + reference docs (the full gate) |
 | `mise run build` | Compiles `./cmd/gcx` into `bin/gcx` |
 | `mise run install` | Copies binary to `$GOPATH/bin` |
 | `mise run tests` | `go test -v ./...` (all packages, with race detection implied) |
 | `mise run lint` | Runs `golangci-lint run -c .golangci.yaml` |
-| `mise run deps` | `go mod download` + `uv pip install -r requirements.txt` |
-| `mise run docs` | Runs `reference` then `mkdocs build` → `build/documentation/` |
+| `mise run deps` | `go mod download` |
 | `mise run reference` | Runs all four doc-generation scripts |
 | `mise run reference-drift` | Re-generates docs, fails if `git diff` finds changes |
-| `mise run serve-docs` | `mkdocs serve` with live reload for doc development |
 | `mise run test-env-up` | `docker-compose up -d` + health-wait loop |
 | `mise run test-env-down` | `docker-compose down` |
 | `mise run test-env-clean` | `docker-compose down -v` (removes volumes) |
-| `mise run clean` | Removes `bin/`, `.venv/` |
+| `mise run clean` | Removes `bin/` |
 
 ### Version injection
 
@@ -243,7 +238,7 @@ this.
 
 ## 4. CI/CD Pipeline (GitHub Actions)
 
-Three workflow files under `.github/workflows/`:
+Workflow files under `.github/workflows/`:
 
 ### ci.yaml — Pull Request and Main Branch Gate
 
@@ -255,7 +250,7 @@ Three parallel jobs:
 PR / push to main
 ├── linters  → mise run lint
 ├── tests    → mise run tests
-└── docs     → mise run reference-drift + mise run docs
+└── docs     → mise run reference-drift
 ```
 
 All jobs:
@@ -284,14 +279,6 @@ The changelog is auto-generated from `git log` via GitHub, filtering out
 
 Release concurrency is set to `cancel-in-progress: false` so in-flight releases
 always complete.
-
-### publish-docs.yaml — Manual Doc Deployment
-
-Triggered on: `workflow_dispatch` only (manual trigger).
-
-Used to republish documentation outside the normal release cadence without
-cutting a new release. Follows the same build + upload + deploy pattern as
-the release workflow.
 
 ---
 
@@ -447,29 +434,7 @@ is provided for manual developer testing only. This is identified as a gap
 
 ---
 
-## 9. Documentation Tooling (mkdocs)
-
-`mkdocs.yml` configures a Material-theme static site:
-
-- **Theme**: `material` with light/dark palette toggle
-- **Plugins**: `search` + `mkdocs-nav-weight` (controls page ordering in nav)
-- **Extensions**: `admonition`, `pymdownx.superfences` (code blocks),
-  `pymdownx.tabbed` (tabbed content), `pymdownx.highlight` (syntax highlighting)
-- **Output**: `build/documentation/` (via `mise run docs`)
-
-Python dependencies pinned in `requirements.txt`:
-```
-mkdocs==1.6.1
-mkdocs-material==9.7.1
-mkdocs-material-extensions==1.3.1
-mkdocs-nav-weight==0.3.0
-```
-
-These are installed via `uv pip install -r requirements.txt` during `mise run deps`.
-
----
-
-## 10. Quick Reference: How to Perform Common Tasks
+## 9. Quick Reference: How to Perform Common Tasks
 
 ### Build
 ```bash
@@ -481,15 +446,13 @@ mise run install              # → $GOPATH/bin/gcx
 ```bash
 mise run tests                # all unit tests
 mise run lint                 # golangci-lint
-mise run all                  # lint + tests + build + docs (full gate)
+mise run all                  # lint + tests + build + reference docs (full gate)
 ```
 
 ### Generate and Check Documentation
 ```bash
 mise run reference            # regenerate all reference docs
 mise run reference-drift      # fail if generated docs are stale
-mise run docs                 # build full mkdocs site
-mise run serve-docs           # live-reload doc server at localhost:8000
 ```
 
 ### Integration Testing (manual)

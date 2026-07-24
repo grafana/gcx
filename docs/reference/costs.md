@@ -9,12 +9,11 @@ Grafana Cloud products that are **billed based on usage**. Creating, updating,
 or invoking those products through gcx counts toward your Grafana Cloud bill
 exactly as if you had used the Grafana UI or API directly.
 
-!!! note
-
-    [Grafana Assistant pricing](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing/)
-    explicitly counts token usage made through the gcx CLI. Automated or
-    agent-driven `gcx assistant` invocations consume tokens the same way
-    interactive use does.
+> [!NOTE]
+> [Grafana Assistant pricing](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing/)
+> explicitly counts token usage made through the gcx CLI. Automated or
+> agent-driven `gcx assistant` invocations consume tokens the same way
+> interactive use does.
 
 ## Billable products reachable from gcx
 

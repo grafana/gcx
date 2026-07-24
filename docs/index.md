@@ -4,8 +4,8 @@ title: Home
 
 # Grafana CLI
 
-!!! note
-    **Grafana CLI only supports *Grafana 12 and above*, older Grafana versions are not supported!**
+> [!NOTE]
+> **Grafana CLI only supports *Grafana 12 and above*, older Grafana versions are not supported!**
 
 Grafana CLI (_gcx_) is a command-line tool designed to simplify interaction with Grafana instances.
 
@@ -21,9 +21,9 @@ Grafana Labs, it is still under active development.
 Additional information can be found in
 [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/).
 
-!!! note
-    Bugs and issues are handled solely by Engineering teams. On-call support
-    or SLAs are not available.
+> [!NOTE]
+> Bugs and issues are handled solely by Engineering teams. On-call support
+> or SLAs are not available.
 
 ## License
 

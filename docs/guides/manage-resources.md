@@ -22,9 +22,9 @@ In this example scenario, we will use `dev` for the development environment and 
    gcx resources push --context prod
    ```
 
-!!! note
-    Resources are pulled and pushed from the `./resources` directory by default.
-    This path can be configured with the `--path`/`-p` flags.
+> [!NOTE]
+> Resources are pulled and pushed from the `./resources` directory by default.
+> This path can be configured with the `--path`/`-p` flags.
 
 ## Backup and restore resources
 

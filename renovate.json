@@ -55,16 +55,6 @@
       ]
     },
     {
-      "description": "Group Python dependencies (mkdocs and related) for documentation",
-      "matchManagers": [
-        "pip_requirements"
-      ],
-      "groupName": "Python dependencies",
-      "groupSlug": "python-deps",
-      "semanticCommitType": "build",
-      "semanticCommitScope": "deps"
-    },
-    {
       "description": "Group all GitHub Actions together - maintains digest pinning for security while reducing PR noise",
       "matchManagers": [
         "github-actions"
@@ -103,20 +93,6 @@
       "description": "Auto-merge patch updates for Go dependencies after CI passes to reduce maintenance burden",
       "matchManagers": [
         "gomod"
-      ],
-      "matchUpdateTypes": [
-        "patch"
-      ],
-      "automerge": true,
-      "automergeType": "pr",
-      "automergeStrategy": "squash",
-      "ignoreTests": false,
-      "platformAutomerge": true
-    },
-    {
-      "description": "Auto-merge patch updates for Python dependencies after CI passes",
-      "matchManagers": [
-        "pip_requirements"
       ],
       "matchUpdateTypes": [
         "patch"
