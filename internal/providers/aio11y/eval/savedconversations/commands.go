@@ -11,6 +11,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
+	"github.com/grafana/gcx/internal/providers/aio11y/commandutil"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -210,11 +211,19 @@ plugin UI; pass --saved-id to override.`,
 // --- delete ---
 
 type deleteOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The delete result is a BatchMutation document through the codec
+	// system: the human text default stays silent (per-id receipts go to
+	// stderr, as they always have); agent mode and explicit -o json/yaml
+	// get the structured document.
+	o.IO.RegisterCustomCodec("text", commandutil.SilentTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -224,6 +233,9 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Delete saved conversations.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete %d saved conversation(s)?", len(args)))
 			if err != nil {
@@ -237,17 +249,20 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			for _, id := range args {
-				if err := client.Delete(cmd.Context(), id); err != nil {
-					return fmt.Errorf("deleting saved conversation %s: %w", id, err)
-				}
-				cmdio.Success(cmd.ErrOrStderr(), "Deleted saved conversation %s", id)
-			}
-			return nil
+			return runDelete(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args, func(id string) error {
+				return client.Delete(cmd.Context(), id)
+			})
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// runDelete performs the delete loop and writes the result document. Split
+// from RunE so the output contract is testable without a live plugin API.
+func runDelete(stdout, stderr io.Writer, opts *deleteOpts, ids []string, del func(id string) error) error {
+	return commandutil.RunBatchDelete(stdout, stderr, &opts.IO,
+		"saved-conversation", "Deleted saved conversation %s", "deleting saved conversation %s", ids, del)
 }
 
 // --- collections (reverse lookup) ---

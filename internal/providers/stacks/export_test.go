@@ -19,14 +19,40 @@ func NewTestGetCommandWithLoader(loader *providers.ConfigLoader) *cobra.Command 
 	return newGetCommand(loader)
 }
 
+// NewTestListCommandWithLoader creates a list command with a custom loader.
+func NewTestListCommandWithLoader(loader *providers.ConfigLoader) *cobra.Command {
+	return newListCommand(loader)
+}
+
 // NewTestCreateCommand creates a create command for external tests.
 func NewTestCreateCommand() *cobra.Command { return newCreateCommand(&providers.ConfigLoader{}) }
+
+// NewTestCreateCommandWithLoader creates a create command with a custom loader.
+func NewTestCreateCommandWithLoader(loader *providers.ConfigLoader) *cobra.Command {
+	return newCreateCommand(loader)
+}
 
 // NewTestUpdateCommand creates an update command for external tests.
 func NewTestUpdateCommand() *cobra.Command { return newUpdateCommand(&providers.ConfigLoader{}) }
 
+// NewTestUpdateCommandWithLoader creates an update command with a custom loader.
+func NewTestUpdateCommandWithLoader(loader *providers.ConfigLoader) *cobra.Command {
+	return newUpdateCommand(loader)
+}
+
 // NewTestDeleteCommand creates a delete command for external tests.
 func NewTestDeleteCommand() *cobra.Command { return newDeleteCommand(&providers.ConfigLoader{}) }
+
+// NewTestDeleteCommandWithLoader creates a delete command with a custom loader.
+func NewTestDeleteCommandWithLoader(loader *providers.ConfigLoader) *cobra.Command {
+	return newDeleteCommand(loader)
+}
+
+// NewTestListRegionsCommandWithLoader creates a list-regions command with a
+// custom loader.
+func NewTestListRegionsCommandWithLoader(loader *providers.ConfigLoader) *cobra.Command {
+	return newListRegionsCommand(loader)
+}
 
 // ExportLabelsFromFlag exposes labelsFromFlag for external tests.
 func ExportLabelsFromFlag(labels []string) (map[string]string, error) { return labelsFromFlag(labels) }

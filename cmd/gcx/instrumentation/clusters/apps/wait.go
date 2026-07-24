@@ -18,6 +18,10 @@ const pollInterval = 5 * time.Second
 
 type waitOpts struct {
 	timeout time.Duration
+	// pollInterval controls how often RunK8sDiscovery is polled. Defaults to
+	// pollInterval (5s). Exposed as a field so tests can override without
+	// flag machinery.
+	pollInterval time.Duration
 }
 
 func (o *waitOpts) setup(flags *pflag.FlagSet) {
@@ -29,6 +33,13 @@ func (o *waitOpts) Validate() error {
 		return errors.New("apps wait: --timeout must be positive")
 	}
 	return nil
+}
+
+func (o *waitOpts) effectivePollInterval() time.Duration {
+	if o.pollInterval > 0 {
+		return o.pollInterval
+	}
+	return pollInterval
 }
 
 // makeWaitCmd builds the "apps wait <cluster> <namespace>" command.
@@ -48,8 +59,12 @@ func (o *waitOpts) Validate() error {
 // factory is called inside RunE — after cobra has parsed all flags — to
 // lazily construct the appsClient and PromHeaders.
 func makeWaitCmd(factory appClientFactory) *cobra.Command {
-	opts := &waitOpts{}
+	return makeWaitCmdWithOpts(factory, &waitOpts{})
+}
 
+// makeWaitCmdWithOpts is the injectable core of makeWaitCmd; tests pass opts
+// with a fast pollInterval override.
+func makeWaitCmdWithOpts(factory appClientFactory, opts *waitOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "wait <cluster> <namespace>",
 		Short: "Wait for namespace instrumentation to reach a stable state",
@@ -85,81 +100,127 @@ Exit non-zero when:
 
 			start := time.Now()
 			deadline := time.Now().Add(timeout)
-			ticker := time.NewTicker(pollInterval)
+			ticker := time.NewTicker(opts.effectivePollInterval())
 			defer ticker.Stop()
 
 			var lastRawStatus instrumentation.InstrumentationStatus
 
+			// lastPollErr remembers a persistent poll failure (bad token, DNS)
+			// so the timeout terminal names the real cause instead of
+			// reporting a bare timeout with the cause buried in stderr retry
+			// lines. Cleared on any successful poll.
+			var lastPollErr error
+
+			target := instrOutput.Target{Cluster: cluster, Namespace: namespace}
+
+			// terminal emits the fused terminal WaitResult failure envelopes
+			// (timeout, error status, cancellation) shared with `clusters wait`.
+			terminal := instrOutput.WaitTerminal{
+				Target:    target,
+				ErrPrefix: "apps wait",
+				Start:     start,
+				Stdout:    stdout,
+				AgentMode: agentMode,
+			}
+
+			// finishTimeout emits the fused terminal timeout WaitResult; the
+			// ErrWaitTimeoutEmitted sentinel is returned only when that write
+			// lands intact (see WaitTerminal.FinishTimeout).
+			finishTimeout := func() error {
+				timeoutMsg := fmt.Sprintf("timed out after %s waiting for namespace %q in cluster %q%s",
+					timeout, namespace, cluster, probePipelineMsg(ctx, client, cluster))
+				if lastPollErr != nil {
+					timeoutMsg = fmt.Sprintf("%s; last poll error: %v", timeoutMsg, lastPollErr)
+				}
+				return terminal.FinishTimeout(string(lastRawStatus),
+					fmt.Sprintf("timed out waiting for namespace %q in cluster %q", namespace, cluster),
+					timeoutMsg)
+			}
+
+			// finishCanceled (agent mode only) writes the terminal canceled
+			// stream_end line and returns the matching EmittedError (see
+			// WaitTerminal.FinishCanceled).
+			finishCanceled := func(cause error) error {
+				return terminal.FinishCanceled(cause, string(lastRawStatus),
+					"wait canceled before reaching a stable status")
+			}
+
 			for {
 				// outcome is WaitOutcome; rawStatus is the wire string for logging.
 				outcome, rawStatus, pollErr := pollNamespaceStatus(ctx, client, promHeaders, cluster, namespace)
-				if pollErr != nil {
-					return fmt.Errorf("apps wait: poll error: %w", pollErr)
-				}
-				lastRawStatus = rawStatus
+				switch {
+				case pollErr != nil && ctx.Err() != nil:
+					// A cancellation arriving mid-poll surfaces as a poll error
+					// wrapping context.Canceled — route it to the canceled
+					// terminal so agent mode still gets its gcx.stream_end
+					// outcome=canceled line; human mode keeps the plain
+					// cancellation error.
+					if agentMode {
+						return finishCanceled(ctx.Err())
+					}
+					return ctx.Err()
+				case pollErr != nil:
+					// Transient poll failure: emit the typed poll_error stream
+					// event (agent mode) or the human retry line, then keep
+					// polling until the deadline.
+					lastPollErr = pollErr
+					pe := instrOutput.WaitPollError{
+						Event:  "poll_error",
+						Target: target,
+						Error:  pollErr.Error(),
+					}
+					_ = pe.EmitTo(stderr, agentMode)
+				default:
+					lastPollErr = nil
+					lastRawStatus = rawStatus
 
-				switch outcome {
-				case instrumentation.WaitError:
-					return fmt.Errorf("apps wait: namespace %q in cluster %q reached INSTRUMENTATION_ERROR", namespace, cluster)
-				case instrumentation.WaitPending:
-					// Emit per-poll progress to stderr.
-					progress := instrOutput.WaitProgress{
-						Event:     "waiting",
-						Target:    instrOutput.Target{Cluster: cluster, Namespace: namespace},
-						Status:    string(rawStatus),
-						ElapsedMs: time.Since(start).Milliseconds(),
+					switch outcome {
+					case instrumentation.WaitError:
+						// INSTRUMENTATION_ERROR must exit non-zero immediately.
+						// Agent mode gets the fused terminal stream_end line first;
+						// human mode keeps the plain error the reporter renders.
+						errStatus := fmt.Errorf("apps wait: namespace %q in cluster %q reached INSTRUMENTATION_ERROR", namespace, cluster)
+						if !agentMode {
+							return errStatus
+						}
+						return terminal.FinishErrorStatus(errStatus, string(rawStatus),
+							fmt.Sprintf("namespace %q in cluster %q reached INSTRUMENTATION_ERROR", namespace, cluster),
+							fmt.Sprintf("namespace %q in cluster %q reported status %s", namespace, cluster, rawStatus))
+					case instrumentation.WaitPending:
+						// Emit per-poll progress to stderr.
+						progress := instrOutput.WaitProgress{
+							Event:     "waiting",
+							Target:    target,
+							Status:    string(rawStatus),
+							ElapsedMs: time.Since(start).Milliseconds(),
+						}
+						_ = progress.EmitTo(stderr, agentMode)
+					default: // WaitSuccess
+						result := instrOutput.WaitResult{
+							Outcome:   "success",
+							Target:    target,
+							Status:    string(rawStatus),
+							ElapsedMs: time.Since(start).Milliseconds(),
+						}
+						return result.Emit(stdout, agentMode)
 					}
-					_ = progress.EmitTo(stderr, agentMode)
-				default: // WaitSuccess
-					result := instrOutput.WaitResult{
-						Outcome:   "success",
-						Target:    instrOutput.Target{Cluster: cluster, Namespace: namespace},
-						Status:    string(rawStatus),
-						ElapsedMs: time.Since(start).Milliseconds(),
-					}
-					return result.Emit(stdout, agentMode)
 				}
 
 				remaining := time.Until(deadline)
 				if remaining <= 0 {
-					// Emit fused WaitResult with Error field, then return sentinel.
-					timeoutMsg := fmt.Sprintf("timed out after %s waiting for namespace %q in cluster %q%s",
-						timeout, namespace, cluster, probePipelineMsg(ctx, client, cluster))
-					result := instrOutput.WaitResult{
-						Outcome:   "timeout",
-						Target:    instrOutput.Target{Cluster: cluster, Namespace: namespace},
-						Status:    string(lastRawStatus),
-						ElapsedMs: time.Since(start).Milliseconds(),
-						Error: &instrOutput.WaitError{
-							Summary:  fmt.Sprintf("timed out waiting for namespace %q in cluster %q", namespace, cluster),
-							Details:  timeoutMsg,
-							ExitCode: 1,
-						},
-					}
-					_ = result.Emit(stdout, agentMode)
-					return fmt.Errorf("apps wait: %w", instrumentation.ErrWaitTimeoutEmitted)
+					return finishTimeout()
 				}
 
 				select {
 				case <-ctx.Done():
+					// Agent mode still owes the stream its terminal event;
+					// human mode keeps the plain cancellation error.
+					if agentMode {
+						return finishCanceled(ctx.Err())
+					}
 					return ctx.Err()
 				case <-time.After(remaining):
-					// Emit fused WaitResult with Error field, then return sentinel.
-					timeoutMsg := fmt.Sprintf("timed out after %s waiting for namespace %q in cluster %q%s",
-						timeout, namespace, cluster, probePipelineMsg(ctx, client, cluster))
-					result := instrOutput.WaitResult{
-						Outcome:   "timeout",
-						Target:    instrOutput.Target{Cluster: cluster, Namespace: namespace},
-						Status:    string(lastRawStatus),
-						ElapsedMs: time.Since(start).Milliseconds(),
-						Error: &instrOutput.WaitError{
-							Summary:  fmt.Sprintf("timed out waiting for namespace %q in cluster %q", namespace, cluster),
-							Details:  timeoutMsg,
-							ExitCode: 1,
-						},
-					}
-					_ = result.Emit(stdout, agentMode)
-					return fmt.Errorf("apps wait: %w", instrumentation.ErrWaitTimeoutEmitted)
+					return finishTimeout()
 				case <-ticker.C:
 				}
 			}
@@ -171,11 +232,12 @@ Exit non-zero when:
 }
 
 // newWaitCmd is a test-facing constructor that injects a pre-built appsClient
-// and PromHeaders. Production code uses makeWaitCmd(factoryFromLoader(loader)) instead.
-func newWaitCmd(client appsClient, promHeaders instrumentation.PromHeaders) *cobra.Command {
-	return makeWaitCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, instrumentation.PromHeaders, error) {
-		return client, instrumentation.BackendURLs{}, promHeaders, nil
-	})
+// and polls at a fast test cadence. Production code uses
+// makeWaitCmd(factoryFromLoader(loader)) instead.
+func newWaitCmd(client appsClient) *cobra.Command {
+	return makeWaitCmdWithOpts(func(_ context.Context) (appsClient, instrumentation.BackendURLs, instrumentation.PromHeaders, error) {
+		return client, instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, nil
+	}, &waitOpts{pollInterval: time.Millisecond})
 }
 
 // probePipelineMsg checks whether a Fleet Management pipeline named

@@ -5,7 +5,7 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/format"
-	"github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/local"
@@ -16,6 +16,7 @@ import (
 )
 
 type pushOpts struct {
+	IO                 cmdio.Options
 	Paths              []string
 	MaxConcurrent      int
 	OnError            OnErrorMode
@@ -33,6 +34,12 @@ func (opts *pushOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.OmitManagerFields, "omit-manager-fields", opts.OmitManagerFields, "If set, the manager fields will not be appended to the resources")
 	flags.BoolVar(&opts.IncludeManaged, "include-managed", opts.IncludeManaged, "If set, resources managed by other tools will be included in the push operation")
 	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
+	// The push result is a BatchMutation document through the codec system:
+	// the default text codec prints the familiar one-line summary; agent
+	// mode and explicit -o json/yaml get the structured document.
+	opts.IO.RegisterCustomCodec("text", &mutationSummaryCodec{})
+	opts.IO.DefaultFormat("text")
+	opts.IO.BindFlags(flags)
 }
 
 func (opts *pushOpts) Validate() error {
@@ -42,6 +49,10 @@ func (opts *pushOpts) Validate() error {
 
 	if opts.MaxConcurrent < 1 {
 		return errors.New("max-concurrent must be greater than zero")
+	}
+
+	if err := opts.IO.Validate(); err != nil {
+		return err
 	}
 
 	return opts.OnError.Validate()
@@ -175,10 +186,17 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			writeMutationSummary(cmd.OutOrStdout(), "pushed", summary)
+			result := batchMutationFromSummary("pushed", summary, opts.DryRun)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+				return err
+			}
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
-				return gcxerrors.NewPartialFailureError("push", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
+				// The result document (with enumerated failures) is already
+				// on stdout — the typed stderr diagnostic + EmittedError
+				// carry exit 4 without a second error document.
+				return partialBatchFailure(cmd.ErrOrStderr(), "push",
+					summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
 			}
 
 			return nil

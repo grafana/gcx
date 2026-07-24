@@ -15,7 +15,47 @@ import (
 
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/gcxerrors"
 )
+
+// TestReportError_EmittedError pins the atomic-stdout-ownership contract:
+// a command that already wrote its complete result document returns an
+// EmittedError, and reportError must exit with the carried code without
+// writing a second document (the function returns before any output path).
+func TestReportError_EmittedError(t *testing.T) {
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	cases := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{
+			name: "partial failure code carried through wrapping",
+			err:  fmt.Errorf("push: %w", gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New("2 failed"))),
+			want: gcxerrors.ExitPartialFailure,
+		},
+		{
+			name: "general error code",
+			err:  gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, nil),
+			want: gcxerrors.ExitGeneralError,
+		},
+		{
+			name: "nil error still exits zero",
+			err:  nil,
+			want: 0,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := reportError(tc.err, nil, nil)
+			if got != tc.want {
+				t.Fatalf("reportError() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
 
 const (
 	configCheckProcessHelper       = "GCX_CONFIG_CHECK_PROCESS_HELPER"
@@ -75,7 +115,17 @@ current-context: smoke
 			if err := cmd.Run(); err != nil {
 				t.Fatalf("config set failed: %v; stdout=%q stderr=%q", err, stdout.String(), stderr.String())
 			}
-			if stdout.Len() != 0 {
+			// The agent output contract makes config set emit one JSON
+			// mutation document; the human default stays silent.
+			if agentMode == "true" {
+				var doc map[string]any
+				if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+					t.Fatalf("agent stdout is not one JSON document: %v; stdout=%q", err, stdout.String())
+				}
+				if doc["type"] != "gcx.config.mutation" {
+					t.Fatalf("agent stdout document type = %v, want gcx.config.mutation", doc["type"])
+				}
+			} else if stdout.Len() != 0 {
 				t.Fatalf("config set wrote unexpected stdout: %q", stdout.String())
 			}
 			if got := bytes.Count(stderr.Bytes(), []byte(warning)); got != 1 {

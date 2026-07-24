@@ -30,7 +30,7 @@ func TestRunExclude_AutoinstrumentTrue_AddsExcluded(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunExclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunExclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), ts.setAppCalled.Load(), "Set must be called once to add EXCLUDED override when autoinstrument=true")
 }
@@ -51,7 +51,7 @@ func TestRunExclude_AutoinstrumentFalse_NoOp(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunExclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunExclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), ts.setAppCalled.Load(), "no Set call when autoinstrument=false (namespace default is already off)")
 }
@@ -71,7 +71,7 @@ func TestRunExclude_NilAutoinstrument_NoOp(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunExclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunExclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), ts.setAppCalled.Load(), "no Set call when autoinstrument=nil")
 }
@@ -94,7 +94,7 @@ func TestRunExclude_RemovesIncludedOverride(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunExclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunExclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), ts.setAppCalled.Load(), "Set must be called once to replace INCLUDED with EXCLUDED")
 }
@@ -113,7 +113,7 @@ func TestRunExclude_NamespaceNotFound(t *testing.T) {
 	srv := ts.start(t)
 	client := makeIncludeClient(t, srv.URL)
 
-	err := services.RunExclude(context.Background(), client, "c1", "missing-ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
+	err := services.RunExclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "missing-ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "services exclude")
 	assert.Contains(t, err.Error(), "missing-ns")
@@ -165,14 +165,14 @@ func TestRunExclude_Idempotent(t *testing.T) {
 
 	// First invocation: should call SetApp once.
 	var out1 bytes.Buffer
-	err1 := services.RunExclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out1)
+	err1 := services.RunExclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out1)
 	require.NoError(t, err1, "first exclude must succeed")
 	firstCallCount := ts.setAppCalled.Load()
 	assert.Equal(t, int64(1), firstCallCount, "first exclude must call SetApp once")
 
 	// Second invocation: reads post-write state (EXCLUDED already present) → no-op.
 	var out2 bytes.Buffer
-	err2 := services.RunExclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out2)
+	err2 := services.RunExclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out2)
 	require.NoError(t, err2, "second exclude must succeed (exit 0)")
 	secondCallCount := ts.setAppCalled.Load()
 	assert.Equal(t, firstCallCount, secondCallCount, "second exclude must be a no-op: no additional Set calls")
@@ -202,7 +202,7 @@ func TestRunExclude_WorkloadNotFound(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunExclude(context.Background(), client, "prod-eu", "checkout", "nonexistent-svc",
+	err := services.RunExclude(context.Background(), services.NewMutationTestIO(t), client, "prod-eu", "checkout", "nonexistent-svc",
 		instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Resource not found")

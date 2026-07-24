@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -220,28 +219,32 @@ func promptRunE(opts *promptOpts, configOpts *providers.ConfigLoader) func(*cobr
 
 func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts *providers.ConfigLoader) error {
 	ctx := cmd.Context()
-	jsonStream := opts.jsonOut && !opts.noStream
-	w := cmd.OutOrStdout()
 	errW := cmd.ErrOrStderr()
 
-	// jsonError emits a JSON error and returns it.
-	jsonError := func(err error) error {
-		if jsonStream {
-			jsonLine(w, assistant.StreamEvent{Type: "error", Error: err.Error()})
-		} else {
-			jsonPretty(w, promptResult{Status: "error", Error: err.Error()})
-		}
-		return err
-	}
+	// The emitter owns every stdout/stderr rendering decision for the four
+	// consumer modes (human, agent JSONL, --json NDJSON, --json --no-stream).
+	// See stream_emitter.go.
+	//
+	// Errors before the stream starts are returned bare: stdout is still
+	// untouched, so the top-level reporter renders the single, properly
+	// classified error (JSON document on stdout for machine consumers, prose
+	// on stderr for humans). The command no longer pre-emits its own JSON
+	// error here — doing so produced two error documents on stdout for
+	// machine consumers.
+	em := newStreamEmitter(cmd.OutOrStdout(), errW, opts)
+
+	// The emitter cancels this context on the first stdout write failure
+	// (broken pipe): the SSE stream loop stops instead of draining events
+	// nobody can read, and em.finish returns the write error.
+	ctx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+	em.cancel = cancelStream
 
 	// Resolve context ID
 	contextID := opts.contextID
 	if opts.cont {
 		lastContextID, err := assistant.GetLastContextID()
 		if err != nil {
-			if opts.jsonOut {
-				return jsonError(err)
-			}
 			return err
 		}
 		contextID = lastContextID
@@ -249,9 +252,6 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 
 	clientOpts, err := resolveAssistantClientOptions(ctx, configOpts, opts.timeout, opts.agentID)
 	if err != nil {
-		if opts.jsonOut {
-			return jsonError(err)
-		}
 		return err
 	}
 	c := assistant.New(clientOpts)
@@ -260,155 +260,28 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 	if contextID != "" {
 		notice, err := c.ValidateCLIContext(ctx, contextID)
 		if err != nil {
-			if opts.jsonOut {
-				return jsonError(err)
-			}
 			return err
 		}
-		if notice != "" && !opts.jsonOut {
-			cmdio.Info(errW, "%s", notice)
-		}
+		em.notice(notice)
 	}
 
-	// Set up logging (disabled in JSON mode)
+	// Human mode gets prose progress logging on stderr; the machine modes
+	// keep stderr for typed diagnostics emitted by the emitter itself.
 	var logger assistant.Logger
-	if !opts.jsonOut {
+	if em.mode == modeHuman {
 		logger = &sseLogger{w: errW}
 		c.SetLogger(logger)
-	}
-
-	// Set up approval handler (interactive for non-JSON mode)
-	var approvalHandler assistant.ApprovalHandler
-	if !opts.jsonOut {
-		approvalHandler = &assistant.InteractiveApprovalHandler{Logger: logger}
 	}
 
 	streamOpts := assistant.StreamOptions{
 		Timeout:   opts.timeout,
 		ContextID: contextID,
+		OnEvent:   em.onEvent(),
 	}
 
-	// In JSON streaming mode, emit each event as NDJSON
-	if jsonStream {
-		streamOpts.OnEvent = func(event assistant.StreamEvent) {
-			jsonLine(w, event)
-		}
-	}
+	result := c.ChatWithApproval(ctx, message, streamOpts, em.approvalHandler(logger))
 
-	result := c.ChatWithApproval(ctx, message, streamOpts, approvalHandler)
-
-	return handlePromptResult(cmd, result, opts, jsonStream)
-}
-
-func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts *promptOpts, jsonStream bool) error {
-	w := cmd.OutOrStdout()
-	errW := cmd.ErrOrStderr()
-
-	if result.Completed {
-		if result.ContextID != "" {
-			_ = assistant.SaveLastContextID(result.ContextID)
-		}
-		switch {
-		case opts.jsonOut && !jsonStream:
-			jsonPretty(w, promptResult{
-				TaskID:    result.TaskID,
-				ContextID: result.ContextID,
-				Status:    "completed",
-				Response:  result.Response,
-			})
-		case !opts.jsonOut:
-			cmdio.Success(errW, "Completed!")
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, "--- Response ---")
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, result.Response)
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, "----------------")
-		}
-		return nil
-	}
-
-	if result.TimedOut {
-		err := fmt.Errorf("request timed out after %ds", opts.timeout)
-		switch {
-		case jsonStream:
-			jsonLine(w, assistant.StreamEvent{
-				Type:    "error",
-				Error:   err.Error(),
-				Timeout: opts.timeout,
-			})
-		case opts.jsonOut:
-			jsonPretty(w, promptResult{
-				TaskID:    result.TaskID,
-				ContextID: result.ContextID,
-				Status:    "timeout",
-				Timeout:   opts.timeout,
-			})
-		default:
-			cmdio.Warning(errW, "Request timed out after %ds. Task may still be processing.", opts.timeout)
-			if result.TaskID != "" {
-				cmdio.Info(errW, "Task ID: %s", result.TaskID)
-			}
-		}
-		return err
-	}
-
-	if result.Failed {
-		err := fmt.Errorf("request failed: %s", result.ErrorMessage)
-		switch {
-		case jsonStream && !result.ErrorEventEmitted:
-			jsonLine(w, assistant.StreamEvent{
-				Type:      "error",
-				TaskID:    result.TaskID,
-				ContextID: result.ContextID,
-				Error:     result.ErrorMessage,
-			})
-		case opts.jsonOut && !jsonStream:
-			jsonPretty(w, promptResult{
-				TaskID:    result.TaskID,
-				ContextID: result.ContextID,
-				Status:    "failed",
-				Error:     result.ErrorMessage,
-			})
-		case !opts.jsonOut:
-			cmdio.Error(errW, "Request failed: %s", result.ErrorMessage)
-		}
-		return err
-	}
-
-	if result.Canceled {
-		err := errors.New("request was canceled")
-		switch {
-		case opts.jsonOut && !jsonStream:
-			jsonPretty(w, promptResult{
-				TaskID:    result.TaskID,
-				ContextID: result.ContextID,
-				Status:    "canceled",
-			})
-		case !opts.jsonOut:
-			cmdio.Warning(errW, "Request was canceled")
-		}
-		return err
-	}
-
-	// Unknown state
-	err := errors.New("request ended in unknown state")
-	switch {
-	case jsonStream:
-		jsonLine(w, assistant.StreamEvent{Type: "error", Error: "stream ended unexpectedly"})
-	case opts.jsonOut:
-		jsonPretty(w, promptResult{
-			TaskID:    result.TaskID,
-			ContextID: result.ContextID,
-			Status:    "unknown",
-		})
-	default:
-		cmdio.Warning(errW, "Request ended unexpectedly. The stream closed without a completion signal.")
-		if result.TaskID != "" {
-			cmdio.Info(errW, "Task ID: %s", result.TaskID)
-		}
-	}
-	return err
+	return em.finish(result, opts.timeout)
 }
 
 // resolveAssistantClientOptions loads the gcx config and returns assistant
@@ -532,22 +405,28 @@ func newAssistantStreamingHTTPClientForRESTConfig(cfg *rest.Config, streamTimeou
 
 // Output helpers
 
-func jsonLine(w io.Writer, data any) {
+// jsonLine writes data as one NDJSON line. Both the marshal and the write
+// error are returned: a stream line that never reached stdout must surface as
+// the command error instead of being swallowed (a swallowed terminal write
+// would let a failed gcx.stream_end still exit 0 or claim EmittedError).
+func jsonLine(w io.Writer, data any) error {
 	output, err := json.Marshal(data)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: Failed to marshal JSON: %v\n", err)
-		return
+		return fmt.Errorf("encoding JSON line: %w", err)
 	}
-	fmt.Fprintln(w, string(output))
+	_, err = fmt.Fprintln(w, string(output))
+	return err
 }
 
-func jsonPretty(w io.Writer, data any) {
+// jsonPretty writes data as one indented JSON document, returning marshal and
+// write errors for the same reason as jsonLine.
+func jsonPretty(w io.Writer, data any) error {
 	output, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: Failed to marshal JSON: %v\n", err)
-		return
+		return fmt.Errorf("encoding JSON document: %w", err)
 	}
-	fmt.Fprintln(w, string(output))
+	_, err = fmt.Fprintln(w, string(output))
+	return err
 }
 
 // sseLogger implements assistant.Logger using stderr.

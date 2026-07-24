@@ -108,14 +108,41 @@ type UpdateStackRequest struct {
 // GCOMHTTPError is returned by GCOMClient when the GCOM API responds with a
 // non-200 status. Callers can use errors.As to inspect Status and dispatch on
 // 401/403/404 etc. without parsing the error message.
+//
+// Code and Message are parsed best-effort from GCOM's JSON error body
+// ({"code": ..., "message": ...}); both are empty when the body is not a JSON
+// object. Body always carries the raw response text.
 type GCOMHTTPError struct {
-	Status int
-	Body   string
+	Status  int
+	Body    string
+	Code    string
+	Message string
 }
 
 func (e *GCOMHTTPError) Error() string {
 	return fmt.Sprintf("gcom client: unexpected status %d %s: %s",
 		e.Status, http.StatusText(e.Status), e.Body)
+}
+
+// newGCOMHTTPError builds a GCOMHTTPError from a non-200 response, keeping the
+// raw body verbatim and extracting code/message when the body is a JSON object.
+func newGCOMHTTPError(status int, body []byte) *GCOMHTTPError {
+	httpErr := &GCOMHTTPError{
+		Status: status,
+		Body:   strings.TrimSpace(string(body)),
+	}
+	var parsed struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	// Keep whatever decoded even when Unmarshal reports an error: a type
+	// mismatch on one field (e.g. a numeric "code") still fills the others,
+	// and discarding a good Message over a bad Code would disable every
+	// message-led rendering downstream.
+	_ = json.Unmarshal(body, &parsed)
+	httpErr.Code = parsed.Code
+	httpErr.Message = parsed.Message
+	return httpErr
 }
 
 // GCOMClient is an HTTP client for the Grafana Cloud API (GCOM).
@@ -187,10 +214,7 @@ func (c *GCOMClient) GetStack(ctx context.Context, slug string) (StackInfo, erro
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return StackInfo{}, &GCOMHTTPError{
-			Status: resp.StatusCode,
-			Body:   strings.TrimSpace(string(body)),
-		}
+		return StackInfo{}, newGCOMHTTPError(resp.StatusCode, body)
 	}
 
 	var info StackInfo
@@ -227,7 +251,7 @@ func (c *GCOMClient) ListStacks(ctx context.Context, orgSlug string) ([]StackInf
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, &GCOMHTTPError{Status: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return nil, newGCOMHTTPError(resp.StatusCode, body)
 	}
 
 	var envelope struct {
@@ -270,7 +294,7 @@ func (c *GCOMClient) CreateStack(ctx context.Context, r CreateStackRequest) (Sta
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return StackInfo{}, &GCOMHTTPError{Status: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return StackInfo{}, newGCOMHTTPError(resp.StatusCode, body)
 	}
 
 	var info StackInfo
@@ -311,7 +335,7 @@ func (c *GCOMClient) UpdateStack(ctx context.Context, slug string, r UpdateStack
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return StackInfo{}, &GCOMHTTPError{Status: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return StackInfo{}, newGCOMHTTPError(resp.StatusCode, body)
 	}
 
 	var info StackInfo
@@ -347,7 +371,7 @@ func (c *GCOMClient) DeleteStack(ctx context.Context, slug string) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return &GCOMHTTPError{Status: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return newGCOMHTTPError(resp.StatusCode, body)
 	}
 	return nil
 }
@@ -378,7 +402,7 @@ func (c *GCOMClient) ListRegions(ctx context.Context) ([]Region, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, &GCOMHTTPError{Status: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return nil, newGCOMHTTPError(resp.StatusCode, body)
 	}
 
 	var envelope struct {

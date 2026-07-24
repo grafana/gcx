@@ -118,8 +118,14 @@ grafana_slo_* metrics.`,
 			}
 
 			if len(slos) == 0 {
-				cmdio.Info(cmd.OutOrStdout(), "No SLO definitions found.")
-				return nil
+				// Prose formats keep the historical notice; structured
+				// formats (json/yaml/agents) must still emit exactly one
+				// document, so the empty result set goes through the codec.
+				if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" || opts.IO.OutputFormat == "graph" {
+					cmdio.Info(cmd.OutOrStdout(), "No SLO definitions found.")
+					return nil
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), []StatusResult{})
 			}
 
 			// Create Prometheus client for metric queries.

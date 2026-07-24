@@ -1171,7 +1171,9 @@ func newScheduleListFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command
 				return err
 			}
 
-			var shifts []FlatShift
+			// Initialized (not nil) so an empty window encodes as [] — never
+			// null — for predictable agent-side parsing.
+			shifts := []FlatShift{}
 			for _, event := range result.Events {
 				if event.IsGap {
 					continue

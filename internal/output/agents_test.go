@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -68,6 +69,26 @@ func TestAgentsCodec_AboveThreshold_Spills(t *testing.T) {
 	preview, ok := summary["preview_sample"].([]any)
 	require.True(t, ok, "preview must be an array")
 	assert.LessOrEqual(t, len(preview), 3)
+
+	// The receipt shape differs from the domain result, so it must carry
+	// collision-resistant discriminators a consumer can dispatch on.
+	assert.Equal(t, cmdio.SpillReferenceType, summary["type"])
+	assert.Equal(t, "1", summary["schema_version"])
+	assert.Equal(t, "json", summary["content_format"])
+}
+
+// TestAgentsCodec_BelowThreshold_NoDiscriminator pins the other side of the
+// threshold: an in-line payload is the domain result itself and must NOT be
+// wrapped or tagged.
+func TestAgentsCodec_BelowThreshold_NoDiscriminator(t *testing.T) {
+	codec := cmdio.NewAgentsCodecForTesting()
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, []map[string]any{{"name": "alpha"}}))
+
+	var value []map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &value))
+	assert.Equal(t, []map[string]any{{"name": "alpha"}}, value)
 }
 
 func TestAgentsCodec_NonSlice_OmitsItems(t *testing.T) {
@@ -106,9 +127,11 @@ func TestAgentsCodec_NonSlice_PreviewIsKeyNames(t *testing.T) {
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
 
-	// stdout must be much smaller than the full payload — the preview must
-	// not embed the full map values.
-	assert.Less(t, buf.Len(), 500, "spill envelope must not embed the full payload")
+	// stdout must be much smaller than the full 10KB payload — the preview
+	// must not embed the full map values. The cap allows the fixed receipt
+	// fields (type/schema_version/content_format discriminators, path,
+	// message) but nothing payload-proportional.
+	assert.Less(t, buf.Len(), 700, "spill envelope must not embed the full payload")
 
 	// Preview should be the sorted top-level key names, not the full value.
 	preview, ok := summary["preview_sample"].([]any)
@@ -220,6 +243,10 @@ func TestAgentsCodec_Spill_EmitsStderrHint(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
 	t.Setenv("TMPDIR", t.TempDir())
 
+	// TTY mode: the hint stays a plain "hint: ..." line.
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
 	var errBuf bytes.Buffer
 	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
 
@@ -228,11 +255,42 @@ func TestAgentsCodec_Spill_EmitsStderrHint(t *testing.T) {
 
 	hint := errBuf.String()
 	require.NotEmpty(t, hint, "spill must emit a hint to errWriter")
+	assert.True(t, strings.HasPrefix(hint, "hint: "), "TTY-mode hint must keep the hint: prefix, got %q", hint)
 
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
 	spillPath, _ := summary["spilled_to"].(string)
 	assert.Contains(t, hint, spillPath, "hint must reference the spill file path")
+}
+
+// TestAgentsCodec_Spill_AgentModeHintIsJSONL pins the stderr contract in agent
+// mode: diagnostics must be JSONL records with a typed class (FR-104), never
+// raw prose — a bare "hint: ..." line would break agent stderr parsing.
+func TestAgentsCodec_Spill_AgentModeHintIsJSONL(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
+	t.Setenv("TMPDIR", t.TempDir())
+
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	var errBuf bytes.Buffer
+	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, map[string]any{"name": "alpha"}))
+
+	line := strings.TrimSpace(errBuf.String())
+	require.NotEmpty(t, line, "spill must emit a hint to errWriter")
+
+	var event map[string]any
+	require.NoError(t, json.Unmarshal([]byte(line), &event), "agent-mode hint must be a JSONL record, got %q", line)
+	assert.Equal(t, "hint", event["class"])
+
+	var summary map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
+	spillPath, _ := summary["spilled_to"].(string)
+	sum, _ := event["summary"].(string)
+	assert.Contains(t, sum, spillPath, "hint summary must reference the spill file path")
 }
 
 func TestAgentsCodec_NoSpill_NoStderrHint(t *testing.T) {

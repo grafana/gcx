@@ -9,8 +9,11 @@ gcx alert notification-policies reset [flags]
 ### Options
 
 ```
-      --force   Skip confirmation prompt
-  -h, --help    help for reset
+      --force           Skip confirmation prompt
+  -h, --help            help for reset
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

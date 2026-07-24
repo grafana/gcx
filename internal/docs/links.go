@@ -90,6 +90,17 @@ const (
 	// field mapping. Referenced by the loader's automatic migration on both
 	// success and failure.
 	ConfigMigration = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/migrate-configuration.md"
+
+	// AnonymousUsageStats documents gcx's anonymous usage statistics: what is
+	// collected and how to opt out. Referenced by the first-run telemetry
+	// notice.
+	AnonymousUsageStats = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics.md"
+
+	// CloudAPI documents the Grafana Cloud API (GCOM), the canonical reference
+	// for stack create/update parameters — including the slug rules (stack
+	// slugs become <slug>.grafana.net subdomains and accept lowercase
+	// characters only).
+	CloudAPI = "https://grafana.com/docs/grafana-cloud/developer-resources/api-reference/cloud-api.md"
 )
 
 // All returns every documentation URL in the registry. Used by the
@@ -114,5 +125,7 @@ func All() []string {
 		SyntheticMonitoringInvoice,
 		PerformanceTestingInvoice,
 		IRMInvoice,
+		AnonymousUsageStats,
+		CloudAPI,
 	}
 }

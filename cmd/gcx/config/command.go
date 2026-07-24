@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -374,7 +376,54 @@ func viewCmd(configOpts *Options) *cobra.Command {
 	return cmd
 }
 
+// ioOpts is the shared options struct for config subcommands whose only
+// output concern is the shared codec flags (-o/--json/--jq). The default
+// format is a custom codec reproducing the command's historical human
+// rendering byte-for-byte; agent mode and explicit -o json/yaml get the
+// structured value through the same Encode call.
+type ioOpts struct {
+	IO cmdio.Options
+}
+
+func (opts *ioOpts) setup(flags *pflag.FlagSet, defaultFormat string, codec format.Codec) {
+	opts.IO.RegisterCustomCodec(defaultFormat, codec)
+	opts.IO.DefaultFormat(defaultFormat)
+	opts.IO.BindFlags(flags)
+}
+
+func (opts *ioOpts) Validate() error {
+	return opts.IO.Validate()
+}
+
+// currentContextResult is the structured result of `config current-context`.
+// The key matches the config-file field so agents see the same name in
+// `config view` and here.
+type currentContextResult struct {
+	CurrentContext string `json:"current-context" yaml:"current-context"`
+}
+
+// currentContextTextCodec renders the historical kubectl-style bare context
+// name, byte-identical to the pre-codec output.
+type currentContextTextCodec struct{}
+
+func (c *currentContextTextCodec) Format() format.Format { return "text" }
+
+func (c *currentContextTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *currentContextTextCodec) Encode(w io.Writer, value any) error {
+	result, ok := value.(currentContextResult)
+	if !ok {
+		return errors.New("invalid data type for current-context text codec: expected currentContextResult")
+	}
+	_, err := fmt.Fprintln(w, result.CurrentContext)
+	return err
+}
+
 func currentContextCmd(configOpts *Options) *cobra.Command {
+	opts := &ioOpts{}
+
 	cmd := &cobra.Command{
 		Use:     "current-context",
 		Args:    cobra.NoArgs,
@@ -382,21 +431,74 @@ func currentContextCmd(configOpts *Options) *cobra.Command {
 		Long:    "Display the current context name.",
 		Example: "\n\tgcx config current-context",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
 			if err != nil {
 				return err
 			}
 
-			cmd.Println(cfg.CurrentContext)
-
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), currentContextResult{CurrentContext: cfg.CurrentContext})
 		},
 	}
+
+	opts.setup(cmd.Flags(), "text", &currentContextTextCodec{})
 
 	return cmd
 }
 
+// contextListEntry is one context row in the `config list-contexts` result.
+type contextListEntry struct {
+	Current bool   `json:"current" yaml:"current"`
+	Name    string `json:"name" yaml:"name"`
+	Server  string `json:"server,omitempty" yaml:"server,omitempty"`
+}
+
+// contextListResult is the single shape passed to every codec for
+// `config list-contexts` (Pattern 13: format-agnostic data).
+type contextListResult struct {
+	Contexts []contextListEntry `json:"contexts" yaml:"contexts"`
+}
+
+// contextsTableCodec renders the historical CURRENT/NAME/GRAFANA SERVER
+// table, byte-identical to the pre-codec output.
+type contextsTableCodec struct{}
+
+func (c *contextsTableCodec) Format() format.Format { return "table" }
+
+func (c *contextsTableCodec) Decode(io.Reader, any) error {
+	return errors.New("table codec does not support decoding")
+}
+
+func (c *contextsTableCodec) Encode(w io.Writer, value any) error {
+	result, ok := value.(contextListResult)
+	if !ok {
+		return errors.New("invalid data type for contexts table codec: expected contextListResult")
+	}
+
+	t := style.NewTable("CURRENT", "NAME", "GRAFANA SERVER")
+	for _, entry := range result.Contexts {
+		server := entry.Server
+		if server == "" {
+			server = " "
+		}
+
+		current := " "
+		if entry.Current {
+			current = "*"
+		}
+
+		t.Row(current, entry.Name, server)
+	}
+
+	return t.Render(w)
+}
+
 func listContextsCmd(configOpts *Options) *cobra.Command {
+	opts := &ioOpts{}
+
 	cmd := &cobra.Command{
 		Use:     "list-contexts",
 		Args:    cobra.NoArgs,
@@ -404,29 +506,37 @@ func listContextsCmd(configOpts *Options) *cobra.Command {
 		Long:    "List the contexts defined in the configuration.",
 		Example: "\n\tgcx config list-contexts",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
 			if err != nil {
 				return err
 			}
 
-			t := style.NewTable("CURRENT", "NAME", "GRAFANA SERVER")
-			for _, context := range cfg.Contexts {
-				server := " "
-				if context.Grafana != nil {
-					server = context.Grafana.Server
+			// Sorted by name for determinism — Contexts is a map, and the
+			// historical row order was whatever map iteration produced.
+			names := slices.Sorted(maps.Keys(cfg.Contexts))
+			entries := make([]contextListEntry, 0, len(names))
+			for _, name := range names {
+				server := ""
+				if gCtx := cfg.Contexts[name]; gCtx.Grafana != nil {
+					server = gCtx.Grafana.Server
 				}
 
-				current := " "
-				if cfg.CurrentContext == context.Name {
-					current = "*"
-				}
-
-				t.Row(current, context.Name, server)
+				entries = append(entries, contextListEntry{
+					Current: cfg.CurrentContext == name,
+					Name:    name,
+					Server:  server,
+				})
 			}
 
-			return t.Render(cmd.OutOrStdout())
+			return opts.IO.Encode(cmd.OutOrStdout(), contextListResult{Contexts: entries})
 		},
 	}
+
+	opts.setup(cmd.Flags(), "table", &contextsTableCodec{})
 
 	return cmd
 }
@@ -536,14 +646,19 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 	title += cmdio.Bold(gCtx.Name)
 
 	summarizeError := func(err error) string {
+		// ErrorToDetailedError returns nil for chains carrying an
+		// EmittedError (result already on stdout — nothing to render).
 		detailedErr := fail.ErrorToDetailedError(err)
+		if detailedErr == nil {
+			return err.Error()
+		}
 
 		return fmt.Sprintf("%s: %s", detailedErr.Summary, err.Error())
 	}
 
 	printSuggestions := func(err error) {
 		detailedErr := fail.ErrorToDetailedError(err)
-		if len(detailedErr.Suggestions) != 0 {
+		if detailedErr != nil && len(detailedErr.Suggestions) != 0 {
 			cmdio.Info(stdout, "Suggestions:\n")
 			for _, suggestion := range detailedErr.Suggestions {
 				fmt.Fprintf(stdout, "  • %s\n", suggestion)
@@ -644,8 +759,32 @@ func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, 
 	return nil
 }
 
+// useContextTextCodec renders the historical confirmation line for the
+// use-context SingleMutation result, byte-identical to the pre-codec output.
+type useContextTextCodec struct{}
+
+func (c *useContextTextCodec) Format() format.Format { return "text" }
+
+func (c *useContextTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *useContextTextCodec) Encode(w io.Writer, value any) error {
+	result, ok := value.(cmdio.SingleMutation)
+	if !ok {
+		return errors.New("invalid data type for use-context text codec: expected SingleMutation")
+	}
+	if result.Changed != nil && !*result.Changed {
+		cmdio.Success(w, "Context already set to \"%s\"", result.Target.Name)
+		return nil
+	}
+	cmdio.Success(w, "Context set to \"%s\"", result.Target.Name)
+	return nil
+}
+
 func useContextCmd(configOpts *Options) *cobra.Command {
 	var fileType string
+	opts := &ioOpts{}
 
 	cmd := &cobra.Command{
 		Use:     "use-context [CONTEXT_NAME]",
@@ -669,6 +808,10 @@ user config), use --file to choose which layer to update.`,
 	# Update the local .gcx.yaml when both user and local configs exist
 	gcx config use-context --file local dev-instance`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			// Cross-layer load: a context defined only in the user layer is
 			// still a valid target when --file local is specified, and the
 			// interactive picker needs the merged view.
@@ -680,6 +823,8 @@ user config), use --file to choose which layer to update.`,
 			target, err := resolveUseContextTarget(layered, args)
 			if err != nil {
 				if errors.Is(err, huh.ErrUserAborted) {
+					// Interactive-only path (the picker requires a TTY and is
+					// disabled in agent mode), so the note stays on stdout.
 					cmdio.Info(cmd.OutOrStdout(), "Aborted.")
 					return nil
 				}
@@ -696,10 +841,13 @@ user config), use --file to choose which layer to update.`,
 				return err
 			}
 
+			result := cmdio.NewSingleMutation("use-context", cmdio.MutationTarget{Kind: "context", Name: target})
+
 			prev := cfg.CurrentContext
 			if prev == target {
-				cmdio.Success(cmd.OutOrStdout(), "Context already set to \"%s\"", target)
-				return nil
+				changed := false
+				result.Changed = &changed
+				return opts.IO.Encode(cmd.OutOrStdout(), result)
 			}
 
 			cfg.CurrentContext = target
@@ -713,12 +861,14 @@ user config), use --file to choose which layer to update.`,
 				}
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Context set to \"%s\"", cfg.CurrentContext)
-			return nil
+			changed := true
+			result.Changed = &changed
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 
 	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
+	opts.setup(cmd.Flags(), "text", &useContextTextCodec{})
 
 	return cmd
 }
@@ -811,8 +961,56 @@ func pickContextInteractively(cfg config.Config) (string, error) {
 	return selected, nil
 }
 
+// configMutation is the structured result of `config set` / `config unset`.
+// The shared cmdio mutation family targets kind/name/uid objects; a config
+// mutation acts on a dot-path property within a layered config file, so this
+// bespoke shape carries the discriminators (type, schema_version) required of
+// result-family documents plus the fields the domain actually has.
+type configMutation struct {
+	Type          string `json:"type" yaml:"type"`
+	SchemaVersion string `json:"schema_version" yaml:"schema_version"`
+	Action        string `json:"action" yaml:"action"`
+	// Property is the fully resolved dot-path (bare paths are resolved
+	// against the current context before the write).
+	Property string `json:"property" yaml:"property"`
+	// File is the config file the mutation was written to.
+	File string `json:"file,omitempty" yaml:"file,omitempty"`
+}
+
+// newConfigMutation builds the result document for a completed config write.
+// The file path is resolved best-effort from the write target: the write
+// already succeeded, so a resolution error only omits the field.
+func newConfigMutation(action, property string, target config.Source) configMutation {
+	result := configMutation{
+		Type:          "gcx.config.mutation",
+		SchemaVersion: "1",
+		Action:        action,
+		Property:      property,
+	}
+	if target != nil {
+		if path, err := target(); err == nil {
+			result.File = path
+		}
+	}
+	return result
+}
+
+// silentTextCodec reproduces the historical human output of `config set` and
+// `config unset`: nothing on success. The structured result exists for agent
+// mode and explicit -o json/yaml only.
+type silentTextCodec struct{}
+
+func (c *silentTextCodec) Format() format.Format { return "text" }
+
+func (c *silentTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *silentTextCodec) Encode(io.Writer, any) error { return nil }
+
 func setCmd(configOpts *Options) *cobra.Command {
 	var fileType string
+	opts := &ioOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "set PROPERTY_NAME PROPERTY_VALUE",
@@ -838,6 +1036,10 @@ PROPERTY_VALUE is the new value to set.`,
 	# Set a cloud entry's token in the local config layer
 	gcx config set --file local cloud.grafana-com.token my-token`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
 			if err != nil && (configOpts.ConfigFile == "" || !config.CanInitializeMissingSource(cfg, err)) {
 				return err
@@ -857,11 +1059,16 @@ PROPERTY_VALUE is the new value to set.`,
 				return err
 			}
 
-			return config.Write(cmd.Context(), target, cfg)
+			if err := config.Write(cmd.Context(), target, cfg); err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("set", path, target))
 		},
 	}
 
 	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
+	opts.setup(cmd.Flags(), "text", &silentTextCodec{})
 
 	return cmd
 }
@@ -912,6 +1119,7 @@ func setConfigValue(cfg *config.Config, path, value string) error {
 
 func unsetCmd(configOpts *Options) *cobra.Command {
 	var fileType string
+	opts := &ioOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "unset PROPERTY_NAME",
@@ -932,6 +1140,10 @@ Paths are literal: they name the exact location in the configuration file, start
 	# Unset a cloud entry's token in the local config layer
 	gcx config unset --file local cloud.grafana-com.token`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
 			if err != nil {
 				return err
@@ -950,11 +1162,16 @@ Paths are literal: they name the exact location in the configuration file, start
 				return err
 			}
 
-			return config.Write(cmd.Context(), target, cfg)
+			if err := config.Write(cmd.Context(), target, cfg); err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("unset", path, target))
 		},
 	}
 
 	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
+	opts.setup(cmd.Flags(), "text", &silentTextCodec{})
 
 	return cmd
 }

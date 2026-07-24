@@ -19,8 +19,8 @@ func TestResolveMode(t *testing.T) {
 		want        Mode
 	}{
 		{
-			name: "no env, no config: built-in default",
-			want: defaultMode,
+			name: "no env, no config: enabled by default",
+			want: ModeEnabled,
 		},
 		{
 			name: "GCX_TELEMETRY=enabled",
@@ -44,10 +44,26 @@ func TestResolveMode(t *testing.T) {
 			want: ModeEnabled,
 		},
 		{
-			name:        "unrecognised GCX_TELEMETRY falls through to config",
+			name:        "unrecognised GCX_TELEMETRY disables",
 			env:         map[string]string{"GCX_TELEMETRY": "on"},
 			configValue: "enabled",
-			want:        ModeEnabled,
+			want:        ModeDisabled,
+		},
+		{
+			name: "GCX_TELEMETRY=off disables",
+			env:  map[string]string{"GCX_TELEMETRY": "off"},
+			want: ModeDisabled,
+		},
+		{
+			name: "GCX_TELEMETRY=false disables",
+			env:  map[string]string{"GCX_TELEMETRY": "false"},
+			want: ModeDisabled,
+		},
+		{
+			name:        "empty GCX_TELEMETRY falls through to config",
+			env:         map[string]string{"GCX_TELEMETRY": ""},
+			configValue: "log",
+			want:        ModeLog,
 		},
 		{
 			name:        "DO_NOT_TRACK=1 overrides config enabled",
@@ -80,9 +96,9 @@ func TestResolveMode(t *testing.T) {
 			want:        ModeLog,
 		},
 		{
-			name:        "unrecognised config value falls through to default",
+			name:        "unrecognised config value disables",
 			configValue: "on",
-			want:        defaultMode,
+			want:        ModeDisabled,
 		},
 	}
 

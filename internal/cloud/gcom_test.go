@@ -377,25 +377,85 @@ func TestGCOMClient_CreateStack_Success(t *testing.T) {
 }
 
 func TestGCOMClient_CreateStack_Conflict(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"message":"slug already taken"}`))
-	}))
-	defer srv.Close()
+	tests := []struct {
+		name        string
+		body        string
+		wantCode    string
+		wantMessage string
+	}{
+		{
+			name:        "invalid argument code and message parsed",
+			body:        `{"code":"InvalidArgument","message":"Invalid slug my-gcx-eval specified"}`,
+			wantCode:    "InvalidArgument",
+			wantMessage: "Invalid slug my-gcx-eval specified",
+		},
+		{
+			name:        "conflict code parsed",
+			body:        `{"code":"Conflict","message":"Invalid arguments: wrong or missing parameters"}`,
+			wantCode:    "Conflict",
+			wantMessage: "Invalid arguments: wrong or missing parameters",
+		},
+		{
+			name:        "message without code",
+			body:        `{"message":"slug already taken"}`,
+			wantCode:    "",
+			wantMessage: "slug already taken",
+		},
+		{
+			name:        "non-JSON body leaves parsed fields empty",
+			body:        `<html>oops</html>`,
+			wantCode:    "",
+			wantMessage: "",
+		},
+		{
+			name:        "field type mismatch keeps the fields that decoded",
+			body:        `{"code":409,"message":"boom"}`,
+			wantCode:    "",
+			wantMessage: "boom",
+		},
+	}
 
-	client, err := cloud.NewGCOMClient(srv.URL, "token")
-	if err != nil {
-		t.Fatalf("unexpected error creating client: %v", err)
-	}
-	_, err = client.CreateStack(context.Background(), cloud.CreateStackRequest{
-		Name: "dup", Slug: "dup",
-	})
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	var httpErr *cloud.GCOMHTTPError
-	if !errors.As(err, &httpErr) || httpErr.Status != http.StatusConflict {
-		t.Errorf("expected 409 GCOMHTTPError, got %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusConflict)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer srv.Close()
+
+			client, err := cloud.NewGCOMClient(srv.URL, "token")
+			if err != nil {
+				t.Fatalf("unexpected error creating client: %v", err)
+			}
+			_, err = client.CreateStack(context.Background(), cloud.CreateStackRequest{
+				Name: "dup", Slug: "dup",
+			})
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			var httpErr *cloud.GCOMHTTPError
+			if !errors.As(err, &httpErr) {
+				t.Fatalf("expected GCOMHTTPError, got %v", err)
+			}
+			if httpErr.Status != http.StatusConflict {
+				t.Errorf("Status: got %d, want %d", httpErr.Status, http.StatusConflict)
+			}
+			if httpErr.Code != tt.wantCode {
+				t.Errorf("Code: got %q, want %q", httpErr.Code, tt.wantCode)
+			}
+			if httpErr.Message != tt.wantMessage {
+				t.Errorf("Message: got %q, want %q", httpErr.Message, tt.wantMessage)
+			}
+			// The raw body and the rendered error string must be unaffected
+			// by the parse, whether or not it succeeded.
+			if httpErr.Body != tt.body {
+				t.Errorf("Body: got %q, want raw body %q", httpErr.Body, tt.body)
+			}
+			wantErrString := "gcom client: unexpected status 409 Conflict: " + tt.body
+			if httpErr.Error() != wantErrString {
+				t.Errorf("Error(): got %q, want %q", httpErr.Error(), wantErrString)
+			}
+		})
 	}
 }
 

@@ -63,8 +63,14 @@ func main() {
 
 	err := cmd.ExecuteContext(ctx)
 
-	// quick exit on context canceled
-	if errors.Is(err, context.Canceled) {
+	// Quick exit on context canceled — but never for an EmittedError: a
+	// command that already wrote its complete result document carries its
+	// own exit code, and its cause chain may legitimately wrap a canceled
+	// item error (e.g. a batch interrupted after partial success). The
+	// EmittedError contract (exit code agrees with the emitted document,
+	// agentlog/usage still recorded) outranks the cancellation fast path.
+	var emittedForCancel *gcxerrors.EmittedError
+	if errors.Is(err, context.Canceled) && !errors.As(err, &emittedForCancel) {
 		os.Exit(gcxerrors.ExitCancelled)
 	}
 
@@ -109,6 +115,26 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 	}
 	if exitCode, ok := gcxerrors.AlreadyReportedExitCode(err); ok {
 		return exitCode
+	}
+
+	// A command that has already written its complete result document —
+	// including its error content — signals it with EmittedError. Honor the
+	// carried exit code and write nothing more: a second document on stdout
+	// would corrupt the exactly-one-JSON-value contract machine consumers
+	// rely on, and a stderr rendering would duplicate the in-band error.
+	var emitted *gcxerrors.EmittedError
+	if errors.As(err, &emitted) {
+		if agent.IsAgentMode() && agentlog.IsEnabled() {
+			_ = agentlog.Append(agentlog.Entry{
+				Timestamp: time.Now(),
+				Version:   appversion.Get(),
+				Args:      agentlog.StripArgValues(os.Args[1:], boolFlags, subCmds),
+				ErrorKind: agentlog.KindFromExitCode(emitted.Code),
+				Error:     truncate(emitted.Error(), 200),
+				ExitCode:  emitted.Code,
+			})
+		}
+		return emitted.Code
 	}
 
 	detailedErr := fail.ErrorToDetailedError(err)

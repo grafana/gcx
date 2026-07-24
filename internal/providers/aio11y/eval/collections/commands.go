@@ -14,6 +14,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
+	"github.com/grafana/gcx/internal/providers/aio11y/commandutil"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/savedconversations"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
@@ -37,11 +38,11 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Manage named groups of saved conversations.",
 	}
 	cmd.AddCommand(
-		newListCommand(),
-		newGetCommand(),
-		newCreateCommand(),
+		newListCommand(loader),
+		newGetCommand(loader),
+		newCreateCommand(loader),
 		newUpdateCommand(loader),
-		newDeleteCommand(),
+		newDeleteCommand(loader),
 		newListConversationsCommand(loader),
 		newAddConversationsCommand(loader),
 		newRemoveConversationCommand(loader),
@@ -64,7 +65,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of collections to return (0 for no limit)")
 }
 
-func newListCommand() *cobra.Command {
+func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -75,7 +76,7 @@ func newListCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -120,7 +121,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand() *cobra.Command {
+func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <collection-id>",
@@ -132,7 +133,7 @@ func newGetCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -208,7 +209,7 @@ func readCollectionFile(path string, stdin io.Reader) (*Collection, error) {
 	return &col, nil
 }
 
-func newCreateCommand() *cobra.Command {
+func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -235,7 +236,7 @@ func newCreateCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -297,15 +298,11 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, client, err := newCRUDAndClient(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client, err := newClient(cmd, loader)
-			if err != nil {
-				return err
-			}
 			updated, err := client.Update(ctx, args[0], req)
 			if err != nil {
 				return err
@@ -326,20 +323,31 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 // --- delete ---
 
 type deleteOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The delete result is a BatchMutation document through the codec
+	// system: the human text default stays silent (per-id receipts go to
+	// stderr, as they always have); agent mode and explicit -o json/yaml
+	// get the structured document.
+	o.IO.RegisterCustomCodec("text", commandutil.SilentTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
-func newDeleteCommand() *cobra.Command {
+func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete COLLECTION-ID...",
 		Short: "Delete collections.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete %d collection(s)?", len(args)))
 			if err != nil {
@@ -350,22 +358,25 @@ func newDeleteCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			for _, id := range args {
-				if err := crud.Delete(ctx, id); err != nil {
-					return fmt.Errorf("deleting collection %s: %w", id, err)
-				}
-				cmdio.Success(cmd.ErrOrStderr(), "Deleted collection %s", id)
-			}
-			return nil
+			return runDelete(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args, func(id string) error {
+				return crud.Delete(ctx, id)
+			})
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// runDelete performs the delete loop and writes the result document. Split
+// from RunE so the output contract is testable without a live plugin API.
+func runDelete(stdout, stderr io.Writer, opts *deleteOpts, ids []string, del func(id string) error) error {
+	return commandutil.RunBatchDelete(stdout, stderr, &opts.IO,
+		"collection", "Deleted collection %s", "deleting collection %s", ids, del)
 }
 
 // --- membership commands ---
@@ -413,12 +424,54 @@ func newListConversationsCommand(loader *providers.ConfigLoader) *cobra.Command 
 	return cmd
 }
 
+// membershipResult is the finite result of a collection membership mutation
+// (add-conversations / remove-conversation). The cmdio mutation family cannot
+// represent a relation — the acted-on pair of a collection and its member
+// saved-conversation ids — so this bespoke shape carries the required
+// type/schema_version discriminators itself.
+type membershipResult struct {
+	Type          string   `json:"type" yaml:"type"`
+	SchemaVersion string   `json:"schema_version" yaml:"schema_version"`
+	Action        string   `json:"action" yaml:"action"`
+	CollectionID  string   `json:"collection_id" yaml:"collection_id"`
+	SavedIDs      []string `json:"saved_ids" yaml:"saved_ids"`
+}
+
+// newMembershipResult returns a membershipResult with the discriminators set.
+func newMembershipResult(action, collectionID string, savedIDs []string) membershipResult {
+	return membershipResult{
+		Type:          "gcx.aio11y.collection_membership",
+		SchemaVersion: "1",
+		Action:        action,
+		CollectionID:  collectionID,
+		SavedIDs:      savedIDs,
+	}
+}
+
+type membershipOpts struct {
+	IO cmdio.Options
+}
+
+func (o *membershipOpts) setup(flags *pflag.FlagSet) {
+	// The membership result is a document through the codec system: the
+	// human text default stays silent (the receipt goes to stderr, as it
+	// always has); agent mode and explicit -o json/yaml get the structured
+	// document.
+	o.IO.RegisterCustomCodec("text", commandutil.SilentTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
 func newAddConversationsCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &membershipOpts{}
 	cmd := &cobra.Command{
 		Use:   "add-conversations <collection-id> <saved-id>...",
 		Short: "Add one or more saved conversations to a collection.",
 		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			collectionID := args[0]
 			savedIDs := args[1:]
 			client, err := newClient(cmd, loader)
@@ -428,19 +481,31 @@ func newAddConversationsCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := client.AddMembers(cmd.Context(), collectionID, savedIDs); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.ErrOrStderr(), "Added %d conversation(s) to collection %s", len(savedIDs), collectionID)
-			return nil
+			return emitAddConversationsReceipt(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, collectionID, savedIDs)
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
+// emitAddConversationsReceipt writes the stderr receipt and the stdout result
+// document for a completed add-conversations call. Split from RunE so the
+// output contract is testable without a live plugin API.
+func emitAddConversationsReceipt(stdout, stderr io.Writer, opts *membershipOpts, collectionID string, savedIDs []string) error {
+	cmdio.Success(stderr, "Added %d conversation(s) to collection %s", len(savedIDs), collectionID)
+	return opts.IO.Encode(stdout, newMembershipResult("added", collectionID, savedIDs))
+}
+
 func newRemoveConversationCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &membershipOpts{}
 	cmd := &cobra.Command{
 		Use:   "remove-conversation <collection-id> <saved-id>",
 		Short: "Remove a single saved conversation from a collection.",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			collectionID := args[0]
 			savedID := args[1]
 			client, err := newClient(cmd, loader)
@@ -450,11 +515,19 @@ func newRemoveConversationCommand(loader *providers.ConfigLoader) *cobra.Command
 			if err := client.RemoveMember(cmd.Context(), collectionID, savedID); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.ErrOrStderr(), "Removed %s from collection %s", savedID, collectionID)
-			return nil
+			return emitRemoveConversationReceipt(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, collectionID, savedID)
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// emitRemoveConversationReceipt writes the stderr receipt and the stdout
+// result document for a completed remove-conversation call. Split from RunE
+// so the output contract is testable without a live plugin API.
+func emitRemoveConversationReceipt(stdout, stderr io.Writer, opts *membershipOpts, collectionID, savedID string) error {
+	cmdio.Success(stderr, "Removed %s from collection %s", savedID, collectionID)
+	return opts.IO.Encode(stdout, newMembershipResult("removed", collectionID, []string{savedID}))
 }
 
 // --- table codecs ---

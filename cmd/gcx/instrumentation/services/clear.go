@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/grafana/gcx/internal/fleet"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instoutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
@@ -16,13 +17,18 @@ import (
 )
 
 // clearOpts holds flag-bound options for the "services clear" command.
-// The command takes only positional args today, so the struct is empty;
-// it exists to satisfy the canonical opts struct + setup + Validate pattern.
-type clearOpts struct{}
+type clearOpts struct {
+	IO cmdio.Options
+}
 
-func (o *clearOpts) setup(_ *pflag.FlagSet) {}
+func (o *clearOpts) setup(flags *pflag.FlagSet) {
+	// The clear result is a MutationResult document through the codec
+	// system: the default text codec prints the familiar one-liner; agent
+	// mode and explicit -o json/yaml get the structured document.
+	instoutput.BindMutationIO(&o.IO, flags)
+}
 
-func (o *clearOpts) Validate() error { return nil }
+func (o *clearOpts) Validate() error { return o.IO.Validate() }
 
 func newClearCommand(loader fleet.ConfigLoader) *cobra.Command {
 	opts := &clearOpts{}
@@ -54,7 +60,7 @@ Examples:
 			}
 			client := instrumentation.NewClient(r.Client)
 			urls := instrumentation.BackendURLsFromStack(r.Stack)
-			return runClear(ctx, client, args[0], args[1], args[2], urls, instrumentation.PromHeadersFromStack(r.Stack), cmd.OutOrStdout())
+			return runClear(ctx, &opts.IO, client, args[0], args[1], args[2], urls, instrumentation.PromHeadersFromStack(r.Stack), cmd.OutOrStdout())
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -66,6 +72,7 @@ Examples:
 // nil (idempotent no-op) without making any backend call.
 func runClear(
 	ctx context.Context,
+	outOpts *cmdio.Options,
 	client *instrumentation.Client,
 	cluster, namespace, service string,
 	urls instrumentation.BackendURLs,
@@ -87,22 +94,16 @@ func runClear(
 	ns := findNamespace(resp.Namespaces, namespace)
 	if ns == nil {
 		// Namespace not configured — nothing to clear; idempotent no-op.
-		return instoutput.MutationResult{
-			Action:  "clear",
-			Target:  instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service},
-			Changed: false,
-		}.Emit(out)
+		return outOpts.Encode(out, instoutput.NewMutationResult("clear",
+			instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service}))
 	}
 
 	proposed := applyClearMutation(*ns, service)
 	equal, _ := rmw.AppEqual(*ns, proposed)
 	if equal {
 		// No override exists for the service — idempotent no-op.
-		return instoutput.MutationResult{
-			Action:  "clear",
-			Target:  instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service},
-			Changed: false,
-		}.Emit(out)
+		return outOpts.Encode(out, instoutput.NewMutationResult("clear",
+			instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service}))
 	}
 
 	getFn := func(ctx context.Context) ([]instrumentation.App, error) {
@@ -131,9 +132,8 @@ func runClear(
 		return fmt.Errorf("services clear: %w", err)
 	}
 
-	return instoutput.MutationResult{
-		Action:  "clear",
-		Target:  instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service},
-		Changed: true,
-	}.Emit(out)
+	result := instoutput.NewMutationResult("clear",
+		instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service})
+	result.Changed = true
+	return outOpts.Encode(out, result)
 }
