@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/style"
@@ -178,12 +179,29 @@ func (c *RulerNamespacesTableCodec) Decode(io.Reader, any) error {
 type rulerNamespacesDeleteOpts struct {
 	rulerOpts
 
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *rulerNamespacesDeleteOpts) setup(flags *pflag.FlagSet) {
+	// The delete result is a SingleMutation document through the codec
+	// system: the default text codec prints the familiar one-line success;
+	// agent mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{line: func(m cmdio.SingleMutation) string {
+		return "Deleted ruler namespace " + m.Target.Namespace
+	}})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	o.rulerOpts.setup(flags)
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
+// Validate checks the output options alongside the shared ruler options.
+func (o *rulerNamespacesDeleteOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	return o.rulerOpts.Validate()
 }
 
 func newRulerNamespacesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -201,7 +219,10 @@ func newRulerNamespacesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command 
 			if err != nil {
 				return err
 			}
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			// The confirmation exchange is a diagnostic, not the result —
+			// stderr keeps the prompt and "Aborted." out of the stdout
+			// document.
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Delete ruler namespace "+args[0]+" and all rule groups in it?")
 			if err != nil {
 				return err
@@ -212,8 +233,11 @@ func newRulerNamespacesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command 
 			if err := client.DeleteNamespace(ctx, args[0]); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted ruler namespace %s", args[0])
-			return nil
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{
+				Kind:      "ruler-namespace",
+				Namespace: args[0],
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -381,17 +405,28 @@ func newRulerGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 type rulerGroupsApplyOpts struct {
 	rulerOpts
 
+	IO     cmdio.Options
 	File   string
 	DryRun bool
 }
 
 func (o *rulerGroupsApplyOpts) setup(flags *pflag.FlagSet) {
+	// Applying many groups is a batch verb: the per-group receipts are stderr
+	// diagnostics and stdout carries exactly one BatchMutation document. The
+	// silent text codec keeps default human stdout as it was — the receipt
+	// stream is the human result.
+	o.IO.RegisterCustomCodec("text", silentTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	o.rulerOpts.setup(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing rule groups (Prometheus rules file or a single group; YAML/JSON, use - for stdin)")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Parse and validate only; send nothing to the ruler")
 }
 
 func (o *rulerGroupsApplyOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
 	return o.rulerOpts.Validate()
 }
 
@@ -431,26 +466,52 @@ bare rule group. Applying a group replaces the group with the same name.`,
 				}
 			}
 
+			stderr := cmd.ErrOrStderr()
+			result := cmdio.NewBatchMutation("applied")
+
 			if opts.DryRun {
 				for _, g := range groups {
-					cmdio.Info(cmd.OutOrStdout(), "would apply group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
+					cmdio.Info(stderr, "would apply group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
 				}
-				return nil
+				result.DryRun = true
+				result.Summary.Succeeded = len(groups)
+				return opts.IO.Encode(cmd.OutOrStdout(), result)
 			}
 
-			var failed int
+			// Every group is attempted, so no target is ever left unattempted
+			// and Skipped stays zero.
 			for _, g := range groups {
 				if err := client.ApplyGroup(ctx, namespace, g); err != nil {
-					failed++
-					cmdio.Warning(cmd.OutOrStdout(), "failed to apply group %q: %v", g.Name, err)
+					result.Summary.Failed++
+					result.Failures = append(result.Failures, cmdio.MutationFailure{
+						Target: cmdio.MutationTarget{Kind: "ruler-rule-group", Namespace: namespace, Name: g.Name},
+						Error:  err.Error(),
+					})
+					cmdio.Warning(stderr, "failed to apply group %q: %v", g.Name, err)
 					continue
 				}
-				cmdio.Success(cmd.OutOrStdout(), "Applied group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
+				result.Summary.Succeeded++
+				cmdio.Success(stderr, "Applied group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
 			}
-			if failed > 0 {
-				return fmt.Errorf("%d of %d rule group(s) failed to apply", failed, len(groups))
+
+			if result.Summary.Failed > 0 {
+				failErr := fmt.Errorf("%d of %d rule group(s) failed to apply", result.Summary.Failed, len(groups))
+				// Nothing was applied, so nothing has been written to stdout:
+				// return the error raw and let the standard error path render
+				// the single fused error document.
+				if result.Summary.Succeeded == 0 {
+					return failErr
+				}
+				// A genuine partial failure. The complete document goes to
+				// stdout and the EmittedError carries ExitPartialFailure
+				// without emitting a second document.
+				if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+					return err
+				}
+				cmdio.EmitWarn(stderr, failErr.Error())
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, failErr)
 			}
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -460,12 +521,29 @@ bare rule group. Applying a group replaces the group with the same name.`,
 type rulerGroupsDeleteOpts struct {
 	rulerOpts
 
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *rulerGroupsDeleteOpts) setup(flags *pflag.FlagSet) {
+	// The delete result is a SingleMutation document through the codec
+	// system: the default text codec prints the familiar one-line success;
+	// agent mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{line: func(m cmdio.SingleMutation) string {
+		return "Deleted ruler rule group " + m.Target.Namespace + "/" + m.Target.Name
+	}})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	o.rulerOpts.setup(flags)
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
+// Validate checks the output options alongside the shared ruler options.
+func (o *rulerGroupsDeleteOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	return o.rulerOpts.Validate()
 }
 
 func newRulerGroupsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -483,7 +561,10 @@ func newRulerGroupsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			// The confirmation exchange is a diagnostic, not the result —
+			// stderr keeps the prompt and "Aborted." out of the stdout
+			// document.
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Delete ruler rule group "+args[1]+" in namespace "+args[0]+"?")
 			if err != nil {
 				return err
@@ -494,8 +575,12 @@ func newRulerGroupsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err := client.DeleteGroup(ctx, args[0], args[1]); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted ruler rule group %s/%s", args[0], args[1])
-			return nil
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{
+				Kind:      "ruler-rule-group",
+				Namespace: args[0],
+				Name:      args[1],
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

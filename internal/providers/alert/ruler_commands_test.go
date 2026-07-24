@@ -3,6 +3,8 @@ package alert_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/alert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -231,4 +234,168 @@ func TestRulerGroupsTableCodec_Encode(t *testing.T) {
 	assert.Contains(t, g2Line, "-")
 
 	require.Error(t, codec.Encode(&buf, 42))
+}
+
+// runRulerSplit executes `alert ruler <args...>` with stdout and stderr kept
+// apart, so a test can assert what reaches the agent-mode stdout document
+// versus what is only a diagnostic. Agent mode is enabled before the command
+// tree is built because commands resolve their default output format at
+// construction time.
+func runRulerSplit(t *testing.T, loader alert.GrafanaConfigLoader, args ...string) (string, string, error) {
+	t.Helper()
+	wasAgent := agent.IsAgentMode()
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(wasAgent) })
+
+	cmd := alert.RulerCommands(loader)
+	// The real root command silences both, so usage text and the error render
+	// never land on stdout. Mirror that here, or the subtree's own Cobra
+	// defaults would pollute the document under test.
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetIn(strings.NewReader(""))
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return stdout.String(), stderr.String(), err
+}
+
+// decodeOneJSONDocument asserts that s is exactly one JSON value — the agent
+// output contract for a finite command — and returns it decoded.
+func decodeOneJSONDocument(t *testing.T, s string) map[string]any {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(s))
+	var doc map[string]any
+	require.NoError(t, dec.Decode(&doc), "stdout must be one JSON document, got %q", s)
+	require.ErrorIs(t, dec.Decode(new(any)), io.EOF, "stdout must carry exactly one JSON document, got %q", s)
+	return doc
+}
+
+func TestRulerNamespacesDelete_AgentStdoutIsOneMutationDocument(t *testing.T) {
+	loader := newRulerTestEnv(t, "prometheus", func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/api/ruler/my-ds/api/v1/rules/ns", r.URL.Path)
+		w.WriteHeader(http.StatusAccepted)
+	})
+
+	stdout, _, err := runRulerSplit(t, loader,
+		"namespaces", "delete", "ns", "--datasource", "my-ds", "--force")
+	require.NoError(t, err)
+
+	doc := decodeOneJSONDocument(t, stdout)
+	assert.Equal(t, "gcx.mutation", doc["type"])
+	assert.Equal(t, "deleted", doc["action"])
+	target, ok := doc["target"].(map[string]any)
+	require.True(t, ok, "target must be an object")
+	assert.Equal(t, "ruler-namespace", target["kind"])
+	assert.Equal(t, "ns", target["namespace"])
+}
+
+func TestRulerGroupsDelete_AgentStdoutIsOneMutationDocument(t *testing.T) {
+	loader := newRulerTestEnv(t, "prometheus", func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/api/ruler/my-ds/api/v1/rules/ns/g1", r.URL.Path)
+		w.WriteHeader(http.StatusAccepted)
+	})
+
+	stdout, _, err := runRulerSplit(t, loader,
+		"groups", "delete", "ns", "g1", "--datasource", "my-ds", "--force")
+	require.NoError(t, err)
+
+	doc := decodeOneJSONDocument(t, stdout)
+	assert.Equal(t, "gcx.mutation", doc["type"])
+	assert.Equal(t, "deleted", doc["action"])
+	target, ok := doc["target"].(map[string]any)
+	require.True(t, ok, "target must be an object")
+	assert.Equal(t, "ruler-rule-group", target["kind"])
+	assert.Equal(t, "ns", target["namespace"])
+	assert.Equal(t, "g1", target["name"])
+}
+
+func TestRulerGroupsApply_AgentStdoutIsOneBatchDocument(t *testing.T) {
+	loader := newRulerTestEnv(t, "prometheus", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	})
+
+	file := filepath.Join(t.TempDir(), "rules.yaml")
+	require.NoError(t, os.WriteFile(file, []byte(`groups:
+  - name: g1
+    rules:
+      - alert: A
+        expr: up == 0
+  - name: g2
+    rules:
+      - record: r:up
+        expr: up
+`), 0o600))
+
+	stdout, stderr, err := runRulerSplit(t, loader,
+		"groups", "apply", "ns", "-f", file, "--datasource", "my-ds")
+	require.NoError(t, err)
+
+	doc := decodeOneJSONDocument(t, stdout)
+	assert.Equal(t, "gcx.mutation_batch", doc["type"])
+	assert.Equal(t, "applied", doc["action"])
+	summary, ok := doc["summary"].(map[string]any)
+	require.True(t, ok, "summary must be an object")
+	assert.InDelta(t, 2, summary["succeeded"], 0)
+	assert.Empty(t, doc["failures"], "failures must be an empty list when nothing failed")
+
+	// The per-group receipts are diagnostics: they belong on stderr, never in
+	// the stdout document.
+	assert.Contains(t, stderr, `Applied group "g1"`)
+	assert.Contains(t, stderr, `Applied group "g2"`)
+}
+
+func TestRulerGroupsApply_PartialFailureEmitsDocumentAndPartialExit(t *testing.T) {
+	loader := newRulerTestEnv(t, "prometheus", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		// Fail only the second group, so the run is a genuine partial failure.
+		if strings.Contains(string(body), "g2") {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message":"ruler rejected group"}`))
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	})
+
+	file := filepath.Join(t.TempDir(), "rules.yaml")
+	require.NoError(t, os.WriteFile(file, []byte(`groups:
+  - name: g1
+    rules:
+      - alert: A
+        expr: up == 0
+  - name: g2
+    rules:
+      - record: r:up
+        expr: up
+`), 0o600))
+
+	stdout, _, err := runRulerSplit(t, loader,
+		"groups", "apply", "ns", "-f", file, "--datasource", "my-ds")
+	require.Error(t, err)
+
+	// The partial result is still one complete document on stdout, and the
+	// error is already reported — no second document.
+	doc := decodeOneJSONDocument(t, stdout)
+	assert.Equal(t, "gcx.mutation_batch", doc["type"])
+	summary, ok := doc["summary"].(map[string]any)
+	require.True(t, ok, "summary must be an object")
+	assert.InDelta(t, 1, summary["succeeded"], 0)
+	assert.InDelta(t, 1, summary["failed"], 0)
+	failures, ok := doc["failures"].([]any)
+	require.True(t, ok, "failures must be a list")
+	require.Len(t, failures, 1)
+	failure, ok := failures[0].(map[string]any)
+	require.True(t, ok, "failure must be an object")
+	failureTarget, ok := failure["target"].(map[string]any)
+	require.True(t, ok, "failure target must be an object")
+	assert.Equal(t, "g2", failureTarget["name"])
+
+	var emitted *gcxerrors.EmittedError
+	require.ErrorAs(t, err, &emitted, "partial failure must not print a second error document")
+	assert.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
 }

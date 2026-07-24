@@ -36,6 +36,20 @@ func (c *singleMutationTextCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
+// silentTextCodec is the human "text" codec for batch mutation results whose
+// human output is the per-target receipt stream on stderr rather than a stdout
+// document (ruler groups apply). It encodes any value as zero bytes so the
+// default human invocation keeps writing only receipts.
+type silentTextCodec struct{}
+
+func (silentTextCodec) Format() format.Format { return "text" }
+
+func (silentTextCodec) Encode(io.Writer, any) error { return nil }
+
+func (silentTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
 // All SingleMutation results in this family leave Changed nil ("cannot
 // tell"): Grafana's provisioning API acknowledges deletes and replace-style
 // writes without reporting whether server state actually differed, and
