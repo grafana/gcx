@@ -5,19 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
-	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
-	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/prometheus/common/model"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -153,16 +150,9 @@ func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*c
 
 		ctx := cmd.Context()
 
-		cfg, err := loader.LoadGrafanaConfig(ctx)
+		cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 		if err != nil {
 			return err
-		}
-
-		var cfgCtx *internalconfig.Context
-		if fullCfg, err := loader.LoadFullConfig(ctx); err != nil {
-			logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
-		} else {
-			cfgCtx = fullCfg.GetCurrentContext()
 		}
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")

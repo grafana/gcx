@@ -71,6 +71,12 @@ func (q *queryCapture) all() []string {
 	return append([]string(nil), q.bodies...)
 }
 
+func (q *queryCapture) reset() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.bodies = nil
+}
+
 // newAppO11yServer starts a recording server that answers every API family
 // the direct appo11y tree touches: the unified datasource query API (canned
 // frame), the datasource /series proxy (canned series), /api/datasources
@@ -205,11 +211,11 @@ func TestAppO11y_ExplicitConfigWinsOverDefault(t *testing.T) {
 	seriesPath := "/api/datasources/uid/prom-b/resources/api/v1/series"
 
 	cases := []struct {
-		name   string
-		args   []string
-		method string
-		path   string
-		isQury bool
+		name    string
+		args    []string
+		method  string
+		path    string
+		isQuery bool
 	}{
 		// Flag before the subcommand, matching the exact #951 repro position.
 		{"services list, --config first", []string{"--config", cfgB, "appo11y", "services", "list", "-o", "json"}, "POST", queryPath, true},
@@ -227,6 +233,7 @@ func TestAppO11y_ExplicitConfigWinsOverDefault(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			recA.reset()
 			recB.reset()
+			qcB.reset()
 			_, stderr, err := runAppO11y(t, tc.args...)
 			require.NoError(t, err, "stderr: %s", stderr)
 			assert.True(t, recB.contains(tc.method, tc.path),
@@ -234,8 +241,10 @@ func TestAppO11y_ExplicitConfigWinsOverDefault(t *testing.T) {
 			assert.Empty(t, recB.wrongAuth("Bearer token-b"),
 				"every request to --config server B must carry B's token")
 			assert.Zero(t, recA.count(), "default-config server A must receive no requests, got %v", recA.all())
-			if tc.isQury {
-				for _, body := range qcB.all() {
+			if tc.isQuery {
+				bodies := qcB.all()
+				require.NotEmpty(t, bodies, "expected unified-query POST bodies on server B")
+				for _, body := range bodies {
 					assert.Contains(t, body, `"uid":"prom-b"`,
 						"every query body must reference the --config datasource UID")
 				}
@@ -312,6 +321,8 @@ func TestAppO11y_ExplicitConfigWithoutDefault(t *testing.T) {
 			_, stderr, err := runAppO11y(t, tc.args...)
 			require.NoError(t, err, "stderr: %s", stderr)
 			assert.Positive(t, recB.count(), "expected requests on --config server B")
+			assert.Empty(t, recB.wrongAuth("Bearer token-b"),
+				"every request to --config server B must carry B's token")
 			_, statErr := os.Stat(defaultConfigPath(home))
 			assert.True(t, os.IsNotExist(statErr),
 				"no config file may be silently created at the default location")
@@ -369,9 +380,13 @@ func TestAppO11y_DatasourceDiscoverySaveBack(t *testing.T) {
 
 	assert.True(t, recB.contains("GET", "/api/datasources"),
 		"datasource auto-discovery must query the --config server, got %v", recB.all())
+	assert.True(t, recB.contains("POST", "/apis/query.grafana.app/v0alpha1/namespaces/stacks-22222/query"),
+		"the discovered datasource must be queried on the --config server, got %v", recB.all())
 	assert.Empty(t, recB.wrongAuth("Bearer token-b"), "discovery must carry B's token")
 	assert.Zero(t, recA.count(), "default-config server A must receive no requests, got %v", recA.all())
-	for _, body := range qcB.all() {
+	bodies := qcB.all()
+	require.NotEmpty(t, bodies, "expected unified-query POST bodies on server B")
+	for _, body := range bodies {
 		assert.Contains(t, body, `"uid":"ds-canonical-b"`,
 			"queries must use the canonical datasource discovered via the --config stack slug")
 	}
