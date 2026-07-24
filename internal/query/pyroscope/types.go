@@ -20,8 +20,7 @@ type QueryRequest struct {
 }
 
 // StackTraceSelector mirrors querier.v1.StackTraceSelector. Only the CallSite
-// variant is supported on the SelectMergeStacktraces RPC; GoPGO selection
-// lives on the SelectMergeProfile (pprof export) path.
+// variant is supported; GoPGO selection is not exposed by the CLI.
 type StackTraceSelector struct {
 	CallSite []Location `json:"callSite,omitempty"`
 }
@@ -98,6 +97,62 @@ type LabelValuesRequest struct {
 // LabelValuesResponse represents the response from a label values query.
 type LabelValuesResponse struct {
 	Names []string `json:"names"` // Pyroscope uses "names" for both labels and values
+}
+
+// SeriesRequest represents a request to list unique label sets via
+// querier.v1.QuerierService/Series.
+type SeriesRequest struct {
+	Matchers   []string
+	LabelNames []string
+	Start      time.Time
+	End        time.Time
+}
+
+// SeriesResponse represents the response from a Series query.
+type SeriesResponse struct {
+	// LabelNames echoes the projection requested by the CLI. It is not part
+	// of the server response; the table codec uses it for column order.
+	LabelNames []string `json:"labelNames,omitempty"`
+	LabelsSet  []Labels `json:"labelsSet"`
+}
+
+// Labels is a single unique label set returned by a Series query.
+type Labels struct {
+	Labels []LabelPair `json:"labels"`
+}
+
+// UniqueLabelNames returns the sorted union of label names across all label sets.
+func (r *SeriesResponse) UniqueLabelNames() []string {
+	set := make(map[string]struct{})
+	for _, ls := range r.LabelsSet {
+		for _, lp := range ls.Labels {
+			set[lp.Name] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(set))
+	for n := range set {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// UniqueLabelValues returns the sorted unique values of one label across all label sets.
+func (r *SeriesResponse) UniqueLabelValues(name string) []string {
+	set := make(map[string]struct{})
+	for _, ls := range r.LabelsSet {
+		for _, lp := range ls.Labels {
+			if lp.Name == name {
+				set[lp.Value] = struct{}{}
+			}
+		}
+	}
+	values := make([]string, 0, len(set))
+	for v := range set {
+		values = append(values, v)
+	}
+	sort.Strings(values)
+	return values
 }
 
 // FunctionSample represents a function in the flame graph with computed stats.
@@ -235,12 +290,14 @@ func (p TimePoint) FloatValue() float64 {
 
 // PprofRequest represents a request to fetch a profile in pprof binary format.
 type PprofRequest struct {
-	ProfileTypeID string
-	LabelSelector string
-	Start         time.Time
-	End           time.Time
-	MaxNodes      int64
-	TraceIDs      []string
+	ProfileTypeID      string
+	LabelSelector      string
+	Start              time.Time
+	End                time.Time
+	MaxNodes           int64
+	ProfileIDs         []string
+	TraceIDs           []string
+	StackTraceSelector *StackTraceSelector
 }
 
 // PprofWriteResult is the structured output emitted after writing a pprof binary to disk.

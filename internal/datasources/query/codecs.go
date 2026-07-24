@@ -76,6 +76,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return prometheus.FormatWideTable(w, resp)
 	case *loki.QueryResponse:
 		return loki.FormatQueryTableWide(w, resp)
+	case *pyroscope.QueryResponse:
+		return pyroscope.FormatQueryTableWide(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
 	case *infinity.QueryResponse:

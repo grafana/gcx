@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -21,7 +22,8 @@ type pyroscopeLabelsOpts struct {
 
 	IO         cmdio.Options
 	Datasource string
-	Label      string
+	Labels     []string
+	Expr       string
 }
 
 func (opts *pyroscopeLabelsOpts) setup(flags *pflag.FlagSet) {
@@ -30,7 +32,8 @@ func (opts *pyroscopeLabelsOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
-	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
+	flags.StringSliceVarP(&opts.Labels, "label", "l", nil, "Get values for this label; repeat to list unique label sets (omit to list all labels)")
+	flags.StringVar(&opts.Expr, "expr", "", "Label selector to scope the results (alternative to positional argument)")
 	opts.SetupTimeFlags(flags)
 }
 
@@ -41,13 +44,34 @@ func (opts *pyroscopeLabelsOpts) Validate() error {
 	return opts.ValidateTimeRange()
 }
 
+// resolveExpr resolves the optional label selector from the positional
+// argument or --expr. Unlike query commands, no selector is a valid input.
+func (opts *pyroscopeLabelsOpts) resolveExpr(args []string) (string, error) {
+	if opts.Expr != "" && len(args) > 0 {
+		return "", errors.New("provide the selector as a positional argument or via --expr, not both")
+	}
+	if opts.Expr != "" {
+		return opts.Expr, nil
+	}
+	if len(args) > 0 {
+		return args[0], nil
+	}
+	return "", nil
+}
+
 func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pyroscopeLabelsOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "labels",
-		Short: "List labels or label values",
-		Long:  "List all labels or get values for a specific label from a Pyroscope datasource.",
+		Use:   "labels [EXPR]",
+		Short: "List labels, label values, or label sets",
+		Long: `List all labels, get values for one label, or list unique label sets from a
+Pyroscope datasource.
+
+EXPR is an optional label selector (e.g., '{service_name="frontend"}') that
+scopes the results to matching series. Selector-scoped requests and multi-label
+requests are answered from the Series API, so they reflect exactly the series
+matching the selector.`,
 		Example: `
 	# List all labels (use datasource UID, not name)
 	gcx datasources pyroscope labels -d UID
@@ -55,13 +79,28 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	# Get values for a specific label
 	gcx datasources pyroscope labels -d UID --label service_name
 
+	# Labels present on series matching a selector
+	gcx datasources pyroscope labels -d UID '{service_name="frontend"}'
+
+	# Values of a label, scoped to a selector
+	gcx datasources pyroscope labels -d UID '{namespace="prod"}' -l service_name
+
+	# Unique label sets (one column per label)
+	gcx datasources pyroscope labels -d UID -l service_name -l namespace
+
 	# Search a wider window than the default last hour
 	gcx datasources pyroscope labels -d UID --since 24h
 
 	# Output as JSON
 	gcx datasources pyroscope labels -d UID -o json`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: cobra.RangeArgs(0, 1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			expr, err := opts.resolveExpr(args)
+			if err != nil {
 				return err
 			}
 
@@ -87,9 +126,13 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			if opts.Label != "" {
+			if expr != "" || len(opts.Labels) > 1 {
+				return opts.runSeries(cmd, client, datasourceUID, expr, start, end)
+			}
+
+			if len(opts.Labels) == 1 {
 				resp, err := client.LabelValues(ctx, datasourceUID, pyroscope.LabelValuesRequest{
-					Name:  opts.Label,
+					Name:  opts.Labels[0],
 					Start: start,
 					End:   end,
 				})
@@ -98,7 +141,7 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				}
 
 				if len(resp.Names) == 0 {
-					emitEmptyWindowHint(cmd.ErrOrStderr(), fmt.Sprintf("values for label %q", opts.Label), start, end, opts.IsRange())
+					emitEmptyWindowHint(cmd.ErrOrStderr(), fmt.Sprintf("values for label %q", opts.Labels[0]), start, end, opts.IsRange())
 				}
 				if opts.IO.OutputFormat == "table" {
 					return pyroscope.FormatLabelsTable(cmd.OutOrStdout(), resp.Names)
@@ -126,11 +169,61 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources pyroscope labels -d UID --since 1h -o json",
+		agent.AnnotationLLMHint:   "gcx datasources pyroscope labels -d UID '{service_name=\"frontend\"}' --since 1h -o json",
 	}
 
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// runSeries answers selector-scoped and multi-label requests from the Series
+// API and projects the label sets client-side, mirroring how the Pyroscope
+// querier itself resolves matcher-scoped label queries. Older backends ignore
+// matchers on LabelNames/LabelValues entirely, so Series is the only route
+// that behaves consistently everywhere.
+func (opts *pyroscopeLabelsOpts) runSeries(cmd *cobra.Command, client *pyroscope.Client, datasourceUID, expr string, start, end time.Time) error {
+	matcher := expr
+	if matcher == "" {
+		matcher = "{}"
+	}
+
+	resp, err := client.Series(cmd.Context(), datasourceUID, pyroscope.SeriesRequest{
+		Matchers:   []string{matcher},
+		LabelNames: opts.Labels,
+		Start:      start,
+		End:        end,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get series: %w", err)
+	}
+
+	out := cmd.OutOrStdout()
+	switch len(opts.Labels) {
+	case 0:
+		names := resp.UniqueLabelNames()
+		if len(names) == 0 {
+			emitEmptyWindowHint(cmd.ErrOrStderr(), fmt.Sprintf("labels matching %s", matcher), start, end, opts.IsRange())
+		}
+		if opts.IO.OutputFormat == "table" {
+			return pyroscope.FormatLabelsTable(out, names)
+		}
+		return opts.IO.Encode(out, &pyroscope.LabelNamesResponse{Names: names})
+	case 1:
+		values := resp.UniqueLabelValues(opts.Labels[0])
+		if len(values) == 0 {
+			emitEmptyWindowHint(cmd.ErrOrStderr(), fmt.Sprintf("values for label %q matching %s", opts.Labels[0], matcher), start, end, opts.IsRange())
+		}
+		if opts.IO.OutputFormat == "table" {
+			return pyroscope.FormatLabelsTable(out, values)
+		}
+		return opts.IO.Encode(out, &pyroscope.LabelValuesResponse{Names: values})
+	default:
+		resp.LabelNames = opts.Labels
+		if len(resp.LabelsSet) == 0 {
+			emitEmptyWindowHint(cmd.ErrOrStderr(), fmt.Sprintf("label sets for %s", strings.Join(opts.Labels, ", ")), start, end, opts.IsRange())
+		}
+		return opts.IO.Encode(out, resp)
+	}
 }
 
 type pyroscopeLabelsTableCodec struct{}
@@ -145,6 +238,8 @@ func (c *pyroscopeLabelsTableCodec) Encode(w io.Writer, data any) error {
 		return pyroscope.FormatLabelsTable(w, v.Names)
 	case *pyroscope.LabelValuesResponse:
 		return pyroscope.FormatLabelsTable(w, v.Names)
+	case *pyroscope.SeriesResponse:
+		return pyroscope.FormatLabelSetsTable(w, v)
 	default:
 		return errors.New("invalid data type for pyroscope labels table codec")
 	}

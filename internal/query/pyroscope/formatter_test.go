@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -253,4 +254,113 @@ func TestFormatSeriesTableWide(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFormatQueryTableWide(t *testing.T) {
+	longName := strings.Repeat("a", 70)
+
+	t.Run("untruncated names with self and total percentages", func(t *testing.T) {
+		resp := &pyroscope.QueryResponse{
+			Flamegraph: &pyroscope.Flamegraph{
+				Names: []string{"total", longName, "short"},
+				Levels: []pyroscope.Level{
+					{Values: []string{"0", "100", "0", "0"}},
+					{Values: []string{"0", "100", "60", "1"}},
+					{Values: []string{"0", "40", "40", "2"}},
+				},
+				Total:   100,
+				MaxSelf: 60,
+			},
+		}
+
+		var buf bytes.Buffer
+		require.NoError(t, pyroscope.FormatQueryTableWide(&buf, resp))
+		out := buf.String()
+
+		assert.Contains(t, out, "SELF%")
+		assert.Contains(t, out, "TOTAL%")
+		assert.Contains(t, out, longName, "wide output must not truncate function names")
+		assert.Contains(t, out, "60.00%")
+		assert.Contains(t, out, "100.00%")
+		assert.Contains(t, out, "40.00%")
+	})
+
+	t.Run("empty flamegraph", func(t *testing.T) {
+		var buf bytes.Buffer
+		require.NoError(t, pyroscope.FormatQueryTableWide(&buf, &pyroscope.QueryResponse{}))
+		assert.Contains(t, buf.String(), "(no profile data)")
+	})
+}
+
+func TestFormatLabelSetsTable(t *testing.T) {
+	set := func(pairs ...string) pyroscope.Labels {
+		var labels []pyroscope.LabelPair
+		for i := 0; i+1 < len(pairs); i += 2 {
+			labels = append(labels, pyroscope.LabelPair{Name: pairs[i], Value: pairs[i+1]})
+		}
+		return pyroscope.Labels{Labels: labels}
+	}
+
+	t.Run("one column per requested label, duplicate sets collapsed", func(t *testing.T) {
+		resp := &pyroscope.SeriesResponse{
+			LabelNames: []string{"service_name", "namespace"},
+			LabelsSet: []pyroscope.Labels{
+				set("service_name", "frontend", "namespace", "prod"),
+				set("service_name", "backend", "namespace", "prod"),
+				set("service_name", "frontend", "namespace", "prod"),
+			},
+		}
+
+		var buf bytes.Buffer
+		require.NoError(t, pyroscope.FormatLabelSetsTable(&buf, resp))
+		out := buf.String()
+
+		assert.Contains(t, out, "SERVICE_NAME")
+		assert.Contains(t, out, "NAMESPACE")
+		assert.Contains(t, out, "frontend")
+		assert.Contains(t, out, "backend")
+		assert.Equal(t, 2, strings.Count(out, "prod"), "duplicate label sets should collapse into one row")
+	})
+
+	t.Run("columns derived from sets when no projection requested", func(t *testing.T) {
+		resp := &pyroscope.SeriesResponse{
+			LabelsSet: []pyroscope.Labels{set("pod", "p-1", "container", "app")},
+		}
+
+		var buf bytes.Buffer
+		require.NoError(t, pyroscope.FormatLabelSetsTable(&buf, resp))
+		out := buf.String()
+
+		assert.Contains(t, out, "CONTAINER")
+		assert.Contains(t, out, "POD")
+	})
+
+	t.Run("empty response", func(t *testing.T) {
+		var buf bytes.Buffer
+		require.NoError(t, pyroscope.FormatLabelSetsTable(&buf, &pyroscope.SeriesResponse{}))
+		assert.Contains(t, buf.String(), "(no series data)")
+	})
+}
+
+func TestSeriesResponseProjections(t *testing.T) {
+	resp := &pyroscope.SeriesResponse{
+		LabelsSet: []pyroscope.Labels{
+			{Labels: []pyroscope.LabelPair{
+				{Name: "service_name", Value: "frontend"},
+				{Name: "namespace", Value: "prod"},
+			}},
+			{Labels: []pyroscope.LabelPair{
+				{Name: "service_name", Value: "backend"},
+				{Name: "region", Value: "eu"},
+			}},
+			{Labels: []pyroscope.LabelPair{
+				{Name: "service_name", Value: "frontend"},
+			}},
+		},
+	}
+
+	assert.Equal(t, []string{"namespace", "region", "service_name"}, resp.UniqueLabelNames())
+	assert.Equal(t, []string{"backend", "frontend"}, resp.UniqueLabelValues("service_name"))
+	assert.Equal(t, []string{"prod"}, resp.UniqueLabelValues("namespace"))
+	assert.Empty(t, resp.UniqueLabelValues("missing"))
 }

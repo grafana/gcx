@@ -34,6 +34,92 @@ func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
 	return t.Render(w)
 }
 
+// wideFunctionLimit is the number of top functions shown by the wide view;
+// the default table shows 20.
+const wideFunctionLimit = 50
+
+// FormatQueryTableWide formats a Pyroscope query response as a wide table:
+// more functions than the default view, untruncated names, and percentages
+// relative to both self and total time.
+func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
+	t := style.NewTable("FUNCTION", "SELF", "TOTAL", "SELF%", "TOTAL%")
+
+	if resp.Flamegraph == nil || len(resp.Flamegraph.Names) == 0 {
+		t.Row("(no profile data)", "", "", "", "")
+		return t.Render(w)
+	}
+
+	samples := ExtractTopFunctions(resp.Flamegraph, wideFunctionLimit)
+
+	for _, s := range samples {
+		var totalPct float64
+		if resp.Flamegraph.Total > 0 {
+			totalPct = float64(s.Total) / float64(resp.Flamegraph.Total) * 100
+		}
+		t.Row(
+			s.Name,
+			strconv.FormatInt(s.Self, 10),
+			strconv.FormatInt(s.Total, 10),
+			fmt.Sprintf("%.2f%%", s.Percentage),
+			fmt.Sprintf("%.2f%%", totalPct),
+		)
+	}
+
+	return t.Render(w)
+}
+
+// FormatLabelSetsTable formats unique label sets from a Series query with one
+// column per label name.
+func FormatLabelSetsTable(w io.Writer, resp *SeriesResponse) error {
+	names := resp.LabelNames
+	if len(names) == 0 {
+		names = resp.UniqueLabelNames()
+	}
+	if len(names) == 0 {
+		t := style.NewTable("LABELS")
+		t.Row("(no series data)")
+		return t.Render(w)
+	}
+
+	header := make([]string, len(names))
+	for i, n := range names {
+		header[i] = strings.ToUpper(n)
+	}
+	t := style.NewTable(header...)
+
+	rows := make([][]string, 0, len(resp.LabelsSet))
+	seen := make(map[string]struct{}, len(resp.LabelsSet))
+	for _, set := range resp.LabelsSet {
+		values := make(map[string]string, len(set.Labels))
+		for _, lp := range set.Labels {
+			values[lp.Name] = lp.Value
+		}
+		row := make([]string, len(names))
+		for i, n := range names {
+			row[i] = values[n]
+		}
+		key := strings.Join(row, "\x00")
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		for k := range rows[i] {
+			if rows[i][k] != rows[j][k] {
+				return rows[i][k] < rows[j][k]
+			}
+		}
+		return false
+	})
+	for _, row := range rows {
+		t.Row(row...)
+	}
+
+	return t.Render(w)
+}
+
 // FormatPprofWriteTable formats the result of writing a pprof binary as a single-row table.
 func FormatPprofWriteTable(w io.Writer, result *PprofWriteResult) error {
 	t := style.NewTable("PATH")
