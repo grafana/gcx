@@ -1,3 +1,42 @@
+## v0.6.0 (2026-07-24)
+
+Here are the CHANGELOG bullets for **v0.6.0**:
+
+```markdown
+### Breaking changes
+
+- Naming convergence: verb-first subcommand renames across all providers
+  (e.g. `versions`→`list-versions`, `create`→`upsert`, `summary`→`stats`)
+- Config split into separate stacks, cloud entries, and contexts (auto-migrates)
+- Agent output contract: one JSON document per finite command
+- Profiles: `profile-types` renamed to `list-profile-types` at both mounts
+- Alert: dropped `create`/`update`/`apply` aliases from templates `upsert`
+
+### Features
+
+- Telemetry: first-run notice and default-on anonymous usage stats
+- Output: list truncation contract with honest caps and agent-legible metadata
+- aio11y: experiments v2 shapes and commands, plus conversation annotations
+- kg: `--dry-run` for model-rules and prom-rules upsert
+- Profiles: time-range flags for `labels` and `list-profile-types`
+
+### Fixes
+
+- Cloud: stop misreporting invalid stack slugs as "slug already taken"
+- appo11y: honor `--config` across the direct command tree
+- aio11y: honor `--config` in direct agento11y CRUD commands
+- irm: decode expanded webhook integration filters
+
+### Docs
+
+- Added anonymous usage statistics page; fixed usage-stats command examples
+```
+
+A few notes on the grouping:
+- I folded the seven `naming convergence batch (#387)` commits (assistant, irm, cli, kg, datasources, k6, agento11y) into one breaking-change bullet since they're a single coordinated effort.
+- Pure-docs/plan commits (`docs(plans)`, `docs(skills)`) are internal maintenance, so I omitted them from the user-facing changelog.
+
+
 ## v0.5.0 (2026-07-21)
 
 - Register the Assistant as a first-class provider, moving `mcp-servers` into the resources pipeline
