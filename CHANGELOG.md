@@ -1,8 +1,5 @@
 ## v0.6.0 (2026-07-24)
 
-Here are the CHANGELOG bullets for **v0.6.0**:
-
-```markdown
 ### Breaking changes
 
 - Naming convergence: verb-first subcommand renames across all providers
@@ -30,12 +27,6 @@ Here are the CHANGELOG bullets for **v0.6.0**:
 ### Docs
 
 - Added anonymous usage statistics page; fixed usage-stats command examples
-```
-
-A few notes on the grouping:
-- I folded the seven `naming convergence batch (#387)` commits (assistant, irm, cli, kg, datasources, k6, agento11y) into one breaking-change bullet since they're a single coordinated effort.
-- Pure-docs/plan commits (`docs(plans)`, `docs(skills)`) are internal maintenance, so I omitted them from the user-facing changelog.
-
 
 ## v0.5.0 (2026-07-21)
 
