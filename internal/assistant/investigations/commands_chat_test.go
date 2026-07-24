@@ -110,7 +110,6 @@ func TestNarrativeCodec_EmptyString(t *testing.T) {
 
 func TestNarrativeCodec_Format(t *testing.T) {
 	assert.Equal(t, "table", string(investigations.NarrativeCodec{}.Format()))
-	assert.Equal(t, "agents", string(investigations.NarrativeCodec{Format_: "agents"}.Format()))
 }
 
 func TestToolsTableCodec_Encode(t *testing.T) {

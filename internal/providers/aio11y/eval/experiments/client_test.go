@@ -67,6 +67,118 @@ func TestClient_List_TransportError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestClient_ListSuites(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/test-suites", r.URL.Path)
+
+		writeJSON(w, map[string]any{
+			"items": []experiments.TestSuite{
+				{SuiteID: "suite-1", Name: "Suite 1", LatestVersion: "v1"},
+			},
+		})
+	}))
+
+	items, err := client.ListSuites(context.Background(), 0)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "suite-1", items[0].SuiteID)
+}
+
+func TestClient_GetSuite(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1", r.URL.Path)
+
+		writeJSON(w, experiments.TestSuite{
+			SuiteID: "suite-1",
+			Name:    "Suite 1",
+			Versions: []experiments.TestSuiteVersion{
+				{SuiteID: "suite-1", Version: "v1", Published: true},
+			},
+		})
+	}))
+
+	suite, err := client.GetSuite(context.Background(), "suite-1")
+	require.NoError(t, err)
+	assert.Equal(t, "suite-1", suite.SuiteID)
+	require.Len(t, suite.Versions, 1)
+}
+
+func TestClient_CreateSuiteVersionAndPublish(t *testing.T) {
+	var calls []string
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.Method+" "+r.URL.EscapedPath())
+		switch r.URL.EscapedPath() {
+		case "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions":
+			assert.Equal(t, http.MethodPost, r.Method)
+			body, _ := io.ReadAll(r.Body)
+			var raw map[string]any
+			assert.NoError(t, json.Unmarshal(body, &raw))
+			assert.Equal(t, "draft", raw["changelog"])
+			writeJSON(w, experiments.TestSuiteVersion{SuiteID: "suite-1", Version: "v2"})
+		case "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v2:publish":
+			assert.Equal(t, http.MethodPost, r.Method)
+			writeJSON(w, experiments.TestSuiteVersion{SuiteID: "suite-1", Version: "v2", Published: true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	version, err := client.CreateSuiteVersion(context.Background(), "suite-1", &experiments.CreateTestSuiteVersionRequest{Changelog: "draft"})
+	require.NoError(t, err)
+	assert.Equal(t, "v2", version.Version)
+
+	published, err := client.PublishSuiteVersion(context.Background(), "suite-1", "v2")
+	require.NoError(t, err)
+	assert.True(t, published.Published)
+	assert.Equal(t, []string{
+		"POST /api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions",
+		"POST /api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v2:publish",
+	}, calls)
+}
+
+func TestClient_Cases(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v1/test-cases":
+			writeJSON(w, map[string]any{"items": []experiments.TestCase{{TestCaseID: "case-1", SuiteID: "suite-1", SuiteVersion: "v1"}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v1/test-cases/case-1":
+			writeJSON(w, experiments.TestCase{TestCaseID: "case-1"})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v1/test-cases":
+			body, _ := io.ReadAll(r.Body)
+			assert.Contains(t, string(body), `"test_case_id":"case-1"`)
+			writeJSON(w, experiments.TestCase{TestCaseID: "case-1"})
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v1/test-cases/case-1":
+			body, _ := io.ReadAll(r.Body)
+			assert.Contains(t, string(body), `"name":"renamed"`)
+			writeJSON(w, experiments.TestCase{TestCaseID: "case-1", Name: "renamed"})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v1/test-cases/case-1":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	cases, err := client.ListCases(context.Background(), "suite-1", "v1", 0)
+	require.NoError(t, err)
+	require.Len(t, cases, 1)
+
+	tc, err := client.GetCase(context.Background(), "suite-1", "v1", "case-1")
+	require.NoError(t, err)
+	assert.Equal(t, "case-1", tc.TestCaseID)
+
+	tc, err = client.UpsertCase(context.Background(), "suite-1", "v1", &experiments.TestCase{TestCaseID: "case-1", Input: map[string]any{"prompt": "hi"}})
+	require.NoError(t, err)
+	assert.Equal(t, "case-1", tc.TestCaseID)
+
+	tc, err = client.PatchCase(context.Background(), "suite-1", "v1", "case-1", map[string]any{"name": "renamed"})
+	require.NoError(t, err)
+	assert.Equal(t, "renamed", tc.Name)
+
+	require.NoError(t, client.DeleteCase(context.Background(), "suite-1", "v1", "case-1"))
+}
+
 func TestClient_Get(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
@@ -86,6 +198,58 @@ func TestClient_Get(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "r-1", exp.RunID)
 	assert.Equal(t, "external", exp.Source)
+}
+
+func TestClient_Trials(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/experiments/exp-1/trials":
+			writeJSON(w, map[string]any{"items": []experiments.TestCaseTrial{{TrialID: "trial-1", ExperimentID: "exp-1", TestCaseID: "case-1", Attempt: 1}}})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/experiments/exp-1/trials":
+			body, _ := io.ReadAll(r.Body)
+			assert.Contains(t, string(body), `"test_case_id":"case-1"`)
+			writeJSON(w, experiments.TestCaseTrial{TrialID: "trial-1", ExperimentID: "exp-1", TestCaseID: "case-1", Attempt: 1})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-case-trials/trial-1":
+			writeJSON(w, experiments.TestCaseTrial{TrialID: "trial-1", ExperimentID: "exp-1", TestCaseID: "case-1", Attempt: 1})
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-case-trials/trial-1":
+			body, _ := io.ReadAll(r.Body)
+			assert.Contains(t, string(body), `"status":"completed"`)
+			writeJSON(w, experiments.TestCaseTrial{TrialID: "trial-1", Status: "completed"})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-case-trials/trial-1/scores":
+			writeJSON(w, map[string]any{"items": []experiments.ScoreItem{{ScoreID: "score-1", TrialID: "trial-1", ScoreKey: "final"}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-case-trials/trial-1/artifacts":
+			writeJSON(w, map[string]any{"items": []experiments.Artifact{{ArtifactID: "art-1", ParentKind: "test_case_trial", ParentID: "trial-1", Name: "output.json", Kind: "json"}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	trials, err := client.ListTrials(context.Background(), "exp-1", 0)
+	require.NoError(t, err)
+	require.Len(t, trials, 1)
+
+	trial, err := client.CreateTrial(context.Background(), "exp-1", &experiments.TestCaseTrial{TestCaseID: "case-1", Attempt: 1})
+	require.NoError(t, err)
+	assert.Equal(t, "trial-1", trial.TrialID)
+
+	trial, err = client.GetTrial(context.Background(), "trial-1")
+	require.NoError(t, err)
+	assert.Equal(t, "case-1", trial.TestCaseID)
+
+	status := "completed"
+	trial, err = client.UpdateTrial(context.Background(), "trial-1", &experiments.UpdateTrialRequest{Status: &status})
+	require.NoError(t, err)
+	assert.Equal(t, "completed", trial.Status)
+
+	scores, err := client.ListTrialScores(context.Background(), "trial-1", 0)
+	require.NoError(t, err)
+	require.Len(t, scores, 1)
+	assert.Equal(t, "score-1", scores[0].ScoreID)
+
+	artifacts, err := client.ListTrialArtifacts(context.Background(), "trial-1", 0)
+	require.NoError(t, err)
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "art-1", artifacts[0].ArtifactID)
 }
 
 func TestClient_Get_NotFound(t *testing.T) {

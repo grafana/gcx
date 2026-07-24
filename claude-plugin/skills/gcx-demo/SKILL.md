@@ -166,8 +166,9 @@ Who's on-call right now. Pipeable into runbooks and automation.
 
 ### Cloud Provider Commands
 
-Require `cloud.token` and `cloud.stack`. Skip gracefully if not configured,
-and note what's needed.
+Require cloud auth (a `cloud:` entry bound to the context via `gcx cloud
+login`, or `GRAFANA_CLOUD_TOKEN`) and a resolvable stack slug. Skip gracefully
+if not configured, and note what's needed.
 
 ```bash
 gcx k6 load-tests list --no-truncate
@@ -200,7 +201,7 @@ the create commands for checks, schedules, and pipelines currently don't.)
 |-----------|--------|
 | `config check` fails | Stop. Ask user to fix the context before continuing. |
 | Signal datasource not found | Skip that signal type, note it. |
-| `cloud.token` / `cloud.stack` missing | Skip k6 and fleet, note what's needed. |
+| Cloud auth or stack slug missing | Skip k6 and fleet, note what's needed. |
 | Assistant unavailable (self-hosted, OAuth missing, 403) | Skip assistant section, note Cloud + OAuth requirement. |
 | Auth scope missing (403) | Note the missing scope, skip, continue. |
 | Empty list (0 resources) | Report "none found" — not an error; continue. |

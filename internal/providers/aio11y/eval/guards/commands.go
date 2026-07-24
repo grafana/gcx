@@ -14,6 +14,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
+	"github.com/grafana/gcx/internal/providers/aio11y/commandutil"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
@@ -23,7 +24,7 @@ import (
 )
 
 // Commands returns the guards command group.
-func Commands() *cobra.Command {
+func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "guards",
 		Short: "Manage synchronous policy guards (hook rules) that evaluate generations on the request path.",
@@ -33,11 +34,11 @@ They can deny, warn, or transform a generation based on evaluators, regex patter
 Unlike eval rules (gcx agento11y rules), guards run inline on the request path and short-circuit by default.`,
 	}
 	cmd.AddCommand(
-		newListCommand(),
-		newGetCommand(),
-		newCreateCommand(),
-		newUpdateCommand(),
-		newDeleteCommand(),
+		newListCommand(loader),
+		newGetCommand(loader),
+		newCreateCommand(loader),
+		newUpdateCommand(loader),
+		newDeleteCommand(loader),
 	)
 	return cmd
 }
@@ -57,7 +58,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of hook rules to return (0 for no limit)")
 }
 
-func newListCommand() *cobra.Command {
+func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -68,7 +69,7 @@ func newListCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, namespace, err := NewTypedCRUD(ctx)
+			crud, namespace, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -113,7 +114,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand() *cobra.Command {
+func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <rule-id>",
@@ -125,7 +126,7 @@ func newGetCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, namespace, err := NewTypedCRUD(ctx)
+			crud, namespace, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -166,7 +167,7 @@ func (o *createOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-func newCreateCommand() *cobra.Command {
+func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -190,7 +191,7 @@ func newCreateCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -229,7 +230,7 @@ func (o *updateOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-func newUpdateCommand() *cobra.Command {
+func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &updateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <rule-id>",
@@ -248,7 +249,7 @@ func newUpdateCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -270,20 +271,31 @@ func newUpdateCommand() *cobra.Command {
 // --- delete ---
 
 type deleteOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The delete result is a BatchMutation document through the codec
+	// system: the human text default stays silent (per-id receipts go to
+	// stderr, as they always have); agent mode and explicit -o json/yaml
+	// get the structured document.
+	o.IO.RegisterCustomCodec("text", commandutil.SilentTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
-func newDeleteCommand() *cobra.Command {
+func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete ID...",
 		Short: "Delete hook rules (guards).",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete %d guard(s)?", len(args)))
 			if err != nil {
@@ -294,22 +306,25 @@ func newDeleteCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			for _, id := range args {
-				if err := crud.Delete(ctx, id); err != nil {
-					return fmt.Errorf("deleting hook rule %s: %w", id, err)
-				}
-				cmdio.Success(cmd.ErrOrStderr(), "Deleted guard %s", id)
-			}
-			return nil
+			return runDelete(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args, func(id string) error {
+				return crud.Delete(ctx, id)
+			})
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// runDelete performs the delete loop and writes the result document. Split
+// from RunE so the output contract is testable without a live plugin API.
+func runDelete(stdout, stderr io.Writer, opts *deleteOpts, ids []string, del func(id string) error) error {
+	return commandutil.RunBatchDelete(stdout, stderr, &opts.IO,
+		"guard", "Deleted guard %s", "deleting hook rule %s", ids, del)
 }
 
 func ReadFile(path string, stdin io.Reader) ([]byte, error) {

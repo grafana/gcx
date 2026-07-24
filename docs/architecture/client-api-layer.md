@@ -93,8 +93,9 @@ type GrafanaConfig struct {
 }
 ```
 
-`datapolicy:"secret"` tags cause these fields to be redacted in logs. Auth
-priority: APIToken beats User/Password (enforced in `NewNamespacedRESTConfig`).
+`datapolicy:"secret"` tags cause these fields to be redacted in logs. An
+explicit `AuthMethod` is authoritative. Only legacy entries with an empty
+method infer OAuth, then APIToken, then User/Password, then mTLS/anonymous.
 
 ### Layer 2: `NamespacedRESTConfig` — k8s REST Config Bridge
 
@@ -110,14 +111,23 @@ namespace string.
 
 2. **Auth mapping:**
    ```go
-   switch {
-   case cfg.Grafana.APIToken != "":
+   method, err := cfg.EffectiveGrafanaAuthMethod()
+   switch method {
+   case "oauth":
+       // proxy Host + RefreshTransport
+   case "token":
        rcfg.BearerToken = cfg.Grafana.APIToken   // → Authorization: Bearer <token>
-   case cfg.Grafana.User != "":
+   case "basic":
        rcfg.Username = cfg.Grafana.User
        rcfg.Password = cfg.Grafana.Password       // → Authorization: Basic <b64>
+   case "mtls":
+       // client certificate only; no Authorization header
    }
    ```
+
+   Selection validates required material and rejected-credential evidence
+   before network use. Explicit non-mTLS methods retain CA/SNI settings but
+   strip stale client certificate and key material.
 
 3. **TLS mapping** — gcx's `TLS` struct is manually mapped to k8s's
    `rest.TLSClientConfig` (they are incompatible types; `crypto/tls.Config` ≠
@@ -286,11 +296,16 @@ func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
         BasePath: grafanaURL.Path + "/api",
         Schemes:  []string{grafanaURL.Scheme},
     }
-    // Auth applied directly to TransportConfig (not rest.Config)
-    if ctx.Grafana.User != "" && ctx.Grafana.Password != "" {
-        cfg.BasicAuth = url.UserPassword(ctx.Grafana.User, ctx.Grafana.Password)
+    // Auth and TLS use the same authoritative selection as rest.Config.
+    method, err := ctx.EffectiveGrafanaAuthMethod()
+    selectedTLS, err := ctx.EffectiveGrafanaTLS()
+    if selectedTLS != nil {
+        cfg.TLSConfig, err = selectedTLS.ToStdTLSConfig()
     }
-    if ctx.Grafana.APIToken != "" {
+    switch method {
+    case "basic":
+        cfg.BasicAuth = url.UserPassword(ctx.Grafana.User, ctx.Grafana.Password)
+    case "token":
         cfg.APIKey = ctx.Grafana.APIToken
     }
     return goapi.NewHTTPClientWithConfig(strfmt.Default, cfg), nil
@@ -475,8 +490,11 @@ GrafanaConfig.User != ""
                              same mechanism as dynamic path
 ```
 
-Priority: API token always wins over basic auth (enforced by `switch` statement
-in `NewNamespacedRESTConfig` and by separate `if` guards in `ClientFromContext`).
+Both paths dispatch from `EffectiveGrafanaAuthMethod`; they do not inspect raw
+fields to establish a separate precedence. Explicit methods attach only their
+selected HTTP credential and TLS client identity. The diagram above describes
+the token and Basic branches; OAuth uses the proxy refresh transport, while
+mTLS uses the selected client certificate without an Authorization header.
 
 ---
 

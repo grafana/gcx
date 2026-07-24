@@ -266,6 +266,10 @@ func TestKgInsightsSearchRemoved(t *testing.T) {
 // a `get` subcommand with a `--type` flag defaulting to "generated", and
 // that the legacy `create` subcommand has been removed.
 func TestKgRelabelRulesCommand(t *testing.T) {
+	// Output defaults are resolved at flag-binding time, so ambient agent
+	// mode (e.g. CLAUDECODE=1) must be pinned off before building the tree.
+	pinHumanMode(t)
+
 	root := (&kg.KGProvider{}).Commands()
 	require.Len(t, root, 1)
 

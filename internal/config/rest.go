@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gofrs/flock"
 	"github.com/grafana/gcx/internal/auth"
+	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/retry"
 	"github.com/grafana/gcx/internal/version"
@@ -32,11 +34,28 @@ type NamespacedRESTConfig struct {
 	// mode is active, allowing callers to wire the OnRefresh callback after
 	// construction (Option C: call-site wiring).
 	oauthTransport *auth.RefreshTransport
+
+	// oauthCredentialBinding freezes the source/owner/field/destination tuple
+	// that authorized the OAuth transport. Persistence compares a freshly
+	// loaded stack against it before resolving or writing rotated credentials,
+	// so a concurrent server, proxy, or TLS trust change cannot adopt them.
+	oauthCredentialBinding credentials.Binding
 }
 
 // IsOAuthProxy reports whether the config is using OAuth proxy mode.
 func (n *NamespacedRESTConfig) IsOAuthProxy() bool {
 	return n.oauthTransport != nil
+}
+
+// FreshOAuthToken returns a usable access token through the configured OAuth
+// refresh lifecycle. Callers that need a token outside an HTTP RoundTrip (for
+// example A2A streaming) should use this instead of implementing a separate
+// refresh path.
+func (n *NamespacedRESTConfig) FreshOAuthToken(ctx context.Context) (string, error) {
+	if n.oauthTransport == nil {
+		return "", errors.New("OAuth proxy transport is not configured")
+	}
+	return n.oauthTransport.FreshToken(ctx)
 }
 
 // SetOnRefresh registers a callback that is invoked after a successful OAuth
@@ -53,133 +72,239 @@ func (n *NamespacedRESTConfig) SetOnRefresh(fn auth.TokenRefresher) {
 // file, reload it so concurrent gcx invocations don't both consume the same
 // rotating refresh token, and write rotated tokens back after a successful
 // refresh. No-op if the config is not using OAuth proxy mode.
-func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source Source, contextName string, sources []ConfigSource) {
+//
+// Tokens live on stack entries and stack entries are atomic across config
+// layers, so persistence targets the layer that owns the effective stack
+// entry — writing a partial oauth-only entry into another layer would shadow
+// the owning layer's entry wholesale. stackName is the context's stack ref;
+// when empty it defaults to contextName (the stack-named-after-context
+// convention used by login).
+//
+//nolint:gocyclo // Refresh locking, reload, binding CAS, and persistence form one security-critical transaction.
+func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source Source, contextName, stackName string, sources []ConfigSource) {
 	if n.oauthTransport == nil {
 		return
 	}
-	persistSource := ResolveTokenPersistenceSource(ctx, source, contextName, sources)
+	if stackName == "" {
+		stackName = contextName
+	}
+	persistSource := ResolveTokenPersistenceSource(ctx, source, stackName, sources)
+	expectedBinding := n.oauthCredentialBinding
 	// Persistence runs inside an HTTP RoundTrip whose request context may be
 	// cancelled the moment the caller has what it needs. Use a context
 	// detached from that cancellation so Load/Write always complete.
-	persistCtx := context.WithoutCancel(ctx)
+	persistCtx := withConfigWriteLockHeld(context.WithoutCancel(ctx))
+
+	persistLoad := func() (Config, error) {
+		path, err := persistSource()
+		if err != nil {
+			return Config{}, err
+		}
+		loadCtx := persistCtx
+		if selected, ok := configSourceForPath(sources, path); ok {
+			loadCtx = withConfigLayer(loadCtx, selected.Type)
+			current, readErr := readConfigSource(selected)
+			if readErr != nil {
+				return Config{}, readErr
+			}
+			if len(sources) > 1 && isLegacyConfig(current) {
+				loadCtx = withMigrationPersistenceSuppressed(loadCtx)
+			}
+		}
+		fresh, err := Load(loadCtx, persistSource)
+		if err != nil {
+			return fresh, err
+		}
+		if fresh.migrationDeferred {
+			return Config{}, fmt.Errorf("OAuth token persistence requires migrating config layer %s first; load or edit that layer explicitly before retrying", path)
+		}
+		stack := fresh.Stacks[stackName]
+		if stack == nil || stack.Grafana == nil {
+			return Config{}, fmt.Errorf("OAuth credential owner %q disappeared from %s; reload configuration before retrying", stackName, path)
+		}
+		freshBinding := stackOwner(stackName, stack).binding(credentials.FieldOAuthRefreshToken)
+		bindingChanged := freshBinding.Destination != expectedBinding.Destination
+		if expectedBinding.Valid() {
+			bindingChanged = freshBinding != expectedBinding
+		}
+		if bindingChanged {
+			return Config{}, fmt.Errorf("OAuth credential destination for %q changed in %s; reload configuration before retrying", stackName, path)
+		}
+		if fresh.keychainStore != nil {
+			backed, preserve, states := resolveSentinelsForOwner(stackOwner(stackName, stack), fresh.keychainStore)
+			fresh.trackKeychainResults(backed, preserve, states)
+		}
+		return fresh, nil
+	}
 
 	n.oauthTransport.Lock = func(reqCtx context.Context) (func(), error) {
 		path, err := persistSource()
 		if err != nil {
 			return nil, err
 		}
-		lock := flock.New(path + ".lock")
-		lockCtx, cancel := context.WithTimeout(context.WithoutCancel(reqCtx), 30*time.Second)
-		defer cancel()
-		if ok, err := lock.TryLockContext(lockCtx, 100*time.Millisecond); err != nil || !ok {
+		layer := ""
+		if selected, ok := configSourceForPath(sources, path); ok {
+			layer = selected.Type
+		}
+		identity, err := canonicalConfigSourceForLayer(path, layer)
+		if err != nil {
 			return nil, err
+		}
+		lockPath, err := configLockFile(identity, "write")
+		if err != nil {
+			return nil, err
+		}
+		lock := flock.New(lockPath)
+		lockCtx, cancel := context.WithTimeout(reqCtx, 30*time.Second)
+		defer cancel()
+		ok, err := lock.TryLockContext(lockCtx, 100*time.Millisecond)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("timed out locking OAuth token persistence for %s", path)
 		}
 		return func() { _ = lock.Unlock() }, nil
 	}
 
 	n.oauthTransport.Reload = func() (auth.StoredTokens, bool, error) {
-		fresh, err := Load(persistCtx, persistSource)
+		fresh, err := persistLoad()
 		if err != nil {
 			return auth.StoredTokens{}, false, err
 		}
-		c := fresh.Contexts[contextName]
-		if c == nil || c.Grafana == nil || c.Grafana.OAuthRefreshToken == "" {
-			return auth.StoredTokens{}, false, nil
+		s := fresh.Stacks[stackName]
+		if s == nil || s.Grafana == nil || s.Grafana.OAuthRefreshToken == "" {
+			return auth.StoredTokens{}, false, fmt.Errorf("OAuth refresh credential %q is missing from its persistence source", stackName)
 		}
 		return auth.StoredTokens{
-			Token:            c.Grafana.OAuthToken,
-			RefreshToken:     c.Grafana.OAuthRefreshToken,
-			ExpiresAt:        parseRFC3339OrZero(c.Grafana.OAuthTokenExpiresAt),
-			RefreshExpiresAt: parseRFC3339OrZero(c.Grafana.OAuthRefreshExpiresAt),
+			Token:            s.Grafana.OAuthToken,
+			RefreshToken:     s.Grafana.OAuthRefreshToken,
+			ExpiresAt:        parseRFC3339OrZero(s.Grafana.OAuthTokenExpiresAt),
+			RefreshExpiresAt: parseRFC3339OrZero(s.Grafana.OAuthRefreshExpiresAt),
 		}, true, nil
 	}
 
-	n.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
-		fresh, err := Load(persistCtx, persistSource)
+	n.SetOnRefresh(func(previousRefreshToken, token, refreshToken, expiresAt, refreshExpiresAt string) error {
+		fresh, err := persistLoad()
 		if err != nil {
 			return err
 		}
 
-		c := fresh.Contexts[contextName]
-		if c == nil {
-			c = &Context{}
-			if fresh.Contexts == nil {
-				fresh.Contexts = make(map[string]*Context)
-			}
-			fresh.Contexts[contextName] = c
+		if fresh.Stacks[stackName] == nil {
+			fresh.SetStack(stackName, StackConfig{})
 		}
-		if c.Grafana == nil {
-			c.Grafana = &GrafanaConfig{}
+		s := fresh.Stacks[stackName]
+		if s.Grafana == nil {
+			s.Grafana = &GrafanaConfig{}
+			fresh.Resolve()
 		}
 
-		c.Grafana.OAuthToken = token
-		c.Grafana.OAuthRefreshToken = refreshToken
-		c.Grafana.OAuthTokenExpiresAt = expiresAt
-		c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
+		g := s.Grafana
+		if g.OAuthToken == token &&
+			g.OAuthRefreshToken == refreshToken &&
+			g.OAuthTokenExpiresAt == expiresAt &&
+			g.OAuthRefreshExpiresAt == refreshExpiresAt {
+			// A prior write may have committed before reporting a durability
+			// error. Treat the exact on-disk generation as idempotent success.
+			return nil
+		}
+		refreshStateKey := stackOwner(stackName, s).stateKey(credentials.FieldOAuthRefreshToken)
+		refreshState, hasRefreshState := fresh.keychainStates[refreshStateKey]
+		if hasRefreshState {
+			var resolutionErr error
+			switch refreshState.status {
+			case keychainStateUnresolved, keychainStatePreserved:
+				resolutionErr = credentials.ErrUnavailable
+			case keychainStateMissing:
+				resolutionErr = credentials.ErrNotFound
+			}
+			if resolutionErr != nil {
+				// The file still contains the same bound sentinel, but its plaintext
+				// value could not be read. This is not evidence that another login won
+				// the generation CAS. Keep the rotated generation pending so a later
+				// call can retry after the keychain entry is available again.
+				return fmt.Errorf("cannot verify OAuth refresh-token generation for %q: %w", stackName, resolutionErr)
+			}
+		}
+		if g.OAuthRefreshToken != previousRefreshToken {
+			return fmt.Errorf("%w for OAuth credential owner %q; reload configuration before retrying", auth.ErrTokenGenerationChanged, stackName)
+		}
+		g.OAuthToken = token
+		g.OAuthRefreshToken = refreshToken
+		g.OAuthTokenExpiresAt = expiresAt
+		g.OAuthRefreshExpiresAt = refreshExpiresAt
 		return Write(persistCtx, persistSource, fresh)
 	})
 }
 
-// ResolveTokenPersistenceSource picks the best config file to persist rotated OAuth tokens.
-// It returns a Source pointing to the highest-priority file that already contains OAuth fields
-// for the given context, falling back to the user-level config or the provided fallback.
-func ResolveTokenPersistenceSource(ctx context.Context, fallback Source, contextName string, sources []ConfigSource) Source {
-	if len(sources) == 0 {
-		return fallback
-	}
-
-	// Explicit mode bypasses layered config and should always persist to the explicit file.
-	for _, src := range sources {
-		if src.Type == "explicit" {
-			return ExplicitConfigFile(src.Path)
-		}
-	}
-
-	if src, ok := pickHighestSourceForContext(ctx, sources, contextName, contextHasOAuthFields); ok {
-		return ExplicitConfigFile(src.Path)
-	}
-	if src, ok := pickHighestSourceForContext(ctx, sources, contextName, contextExists); ok {
-		return ExplicitConfigFile(src.Path)
-	}
-
-	// No source has the context; default to user layer when available.
-	for _, src := range slices.Backward(sources) {
-		if src.Type == "user" {
-			return ExplicitConfigFile(src.Path)
-		}
-	}
-
-	return fallback
-}
-
-func pickHighestSourceForContext(ctx context.Context, sources []ConfigSource, contextName string, match func(*Context) bool) (ConfigSource, bool) {
-	// DiscoverSources returns low→high precedence, so scan in reverse.
-	for _, src := range slices.Backward(sources) {
-		cfg, err := Load(ctx, ExplicitConfigFile(src.Path))
-		if err != nil {
-			continue
-		}
-		if c := cfg.Contexts[contextName]; c != nil && match(c) {
-			return src, true
+func configSourceForPath(sources []ConfigSource, path string) (ConfigSource, bool) {
+	for _, source := range sources {
+		if source.Path == path {
+			return source, true
 		}
 	}
 	return ConfigSource{}, false
 }
 
-func contextExists(c *Context) bool {
-	return c != nil
+// ResolveTokenPersistenceSource picks the best config file to persist rotated
+// OAuth tokens. It returns a Source pointing to the highest-priority file
+// whose stacks map defines the given stack, falling back to the user-level
+// config or the provided fallback. Stack entries are atomic across layers, so
+// the highest defining layer owns the effective entry even when only a lower
+// shadowed layer contains OAuth fields.
+func ResolveTokenPersistenceSource(ctx context.Context, fallback Source, stackName string, sources []ConfigSource) Source {
+	resolved, err := resolveTokenPersistenceSource(ctx, fallback, stackName, sources)
+	if err != nil {
+		return func() (string, error) { return "", err }
+	}
+	return resolved
 }
 
-func contextHasOAuthFields(c *Context) bool {
-	if c == nil || c.Grafana == nil {
-		return false
+func resolveTokenPersistenceSource(ctx context.Context, fallback Source, stackName string, sources []ConfigSource) (Source, error) {
+	if len(sources) == 0 {
+		return fallback, nil
 	}
-	g := c.Grafana
-	return g.OAuthToken != "" ||
-		g.OAuthRefreshToken != "" ||
-		g.OAuthTokenExpiresAt != "" ||
-		g.OAuthRefreshExpiresAt != "" ||
-		g.ProxyEndpoint != ""
+
+	// Explicit mode bypasses layered config and should always persist to the explicit file.
+	for _, src := range sources {
+		if src.Type == "explicit" {
+			return ExplicitConfigFile(src.Path), nil
+		}
+	}
+
+	if src, ok, err := pickHighestSourceForStack(ctx, sources, stackName, stackExists); err != nil {
+		return nil, err
+	} else if ok {
+		return ExplicitConfigFile(src.Path), nil
+	}
+
+	// No source has the stack; default to user layer when available.
+	for _, src := range slices.Backward(sources) {
+		if src.Type == "user" {
+			return ExplicitConfigFile(src.Path), nil
+		}
+	}
+
+	return fallback, nil
+}
+
+func pickHighestSourceForStack(ctx context.Context, sources []ConfigSource, stackName string, match func(*StackConfig) bool) (ConfigSource, bool, error) {
+	// DiscoverSources returns low→high precedence, so scan in reverse.
+	for _, src := range slices.Backward(sources) {
+		loadCtx := withMigrationPersistenceSuppressed(withConfigLayer(ctx, src.Type))
+		cfg, err := Load(loadCtx, ExplicitConfigFile(src.Path))
+		if err != nil {
+			return ConfigSource{}, false, fmt.Errorf("rescan OAuth persistence source %s: %w", src.Path, err)
+		}
+		if s := cfg.Stacks[stackName]; s != nil && match(s) {
+			return src, true, nil
+		}
+	}
+	return ConfigSource{}, false, nil
+}
+
+func stackExists(s *StackConfig) bool {
+	return s != nil
 }
 
 // parseRFC3339OrZero parses an RFC3339 timestamp, returning the zero time on
@@ -194,6 +319,19 @@ func parseRFC3339OrZero(s string) time.Time {
 
 // NewNamespacedRESTConfig creates a new namespaced REST config.
 func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTConfig, error) {
+	if cfg.Grafana == nil {
+		return NamespacedRESTConfig{}, ValidationError{
+			Path:    fmt.Sprintf("$.contexts.'%s'", cfg.Name),
+			Message: "context references no stack with grafana config",
+		}
+	}
+	authSelection, err := cfg.validatedGrafanaAuthSelection()
+	if err != nil {
+		return NamespacedRESTConfig{}, err
+	}
+	selectedGrafana := *cfg.Grafana
+	selectedGrafana.TLS = cfg.Grafana.tlsForSelectedAuth(authSelection)
+
 	rcfg := rest.Config{
 		UserAgent:       version.UserAgent(),
 		Host:            strings.TrimSuffix(cfg.Grafana.Server, "/"),
@@ -204,28 +342,30 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		Burst: 100,
 	}
 
-	if cfg.Grafana.TLS != nil {
+	if selectedGrafana.TLS != nil {
+		resolvedTLS := *selectedGrafana.TLS
 		// Resolve file paths to data before passing to the k8s REST client.
-		if err := cfg.Grafana.TLS.ResolveFiles(); err != nil {
+		if err := resolvedTLS.ResolveFiles(); err != nil {
 			return NamespacedRESTConfig{}, fmt.Errorf("TLS configuration: %w", err)
 		}
 		// Kubernetes really is wonderful, huh.
 		// tl;dr it has its own TLSClientConfig,
 		// and it's not compatible with the one from the "crypto/tls" package.
 		rcfg.TLSClientConfig = rest.TLSClientConfig{
-			Insecure:   cfg.Grafana.TLS.Insecure,
-			ServerName: cfg.Grafana.TLS.ServerName,
-			CertData:   cfg.Grafana.TLS.CertData,
-			KeyData:    cfg.Grafana.TLS.KeyData,
-			CAData:     cfg.Grafana.TLS.CAData,
-			NextProtos: cfg.Grafana.TLS.NextProtos,
+			Insecure:   resolvedTLS.Insecure,
+			ServerName: resolvedTLS.ServerName,
+			CertData:   resolvedTLS.CertData,
+			KeyData:    resolvedTLS.KeyData,
+			CAData:     resolvedTLS.CAData,
+			NextProtos: resolvedTLS.NextProtos,
 		}
 	}
 
 	// Authentication
 	var oauthTransport *auth.RefreshTransport
-	switch {
-	case cfg.Grafana.ProxyEndpoint != "" && cfg.Grafana.OAuthToken != "":
+	var oauthCredentialBinding credentials.Binding
+	switch authSelection.mode {
+	case grafanaAuthOAuth:
 		// OAuth proxy mode: route requests through the assistant backend proxy.
 		// The ProxyEndpoint may differ from Server (e.g. cloud routing through
 		// the assistant backend), so it is stored as a separate config field.
@@ -233,7 +373,9 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		// on rcfg to avoid client-go adding a redundant auth layer.
 		rcfg.Host = strings.TrimSuffix(cfg.Grafana.ProxyEndpoint, "/") + "/api/cli/v1/proxy"
 
-		// Zero time for ExpiresAt triggers an immediate refresh on first request.
+		// A zero expiry with a refresh token triggers renewal on first request.
+		// Access-only OAuth credentials with unknown expiry remain usable until
+		// the server rejects them, because there is no refresh path available.
 		expiresAt := parseRFC3339OrZero(cfg.Grafana.OAuthTokenExpiresAt)
 		refreshExpiresAt := parseRFC3339OrZero(cfg.Grafana.OAuthRefreshExpiresAt)
 		oauthTransport = &auth.RefreshTransport{
@@ -243,19 +385,24 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 			ExpiresAt:        expiresAt,
 			RefreshExpiresAt: refreshExpiresAt,
 		}
+		bindingStack := cfg.StackEntry
+		if bindingStack == nil {
+			bindingStack = &StackConfig{Grafana: cfg.Grafana}
+		}
+		oauthCredentialBinding = stackOwner(cfg.stackName(), bindingStack).binding(credentials.FieldOAuthRefreshToken)
 		rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
 			oauthTransport.Base = rt
 			return oauthTransport
 		}
-	case cfg.Grafana.APIToken != "":
+	case grafanaAuthToken:
 		rcfg.BearerToken = cfg.Grafana.APIToken
-	case cfg.Grafana.User != "":
+	case grafanaAuthBasic:
 		rcfg.Username = cfg.Grafana.User
 		rcfg.Password = cfg.Grafana.Password
 	}
 
 	// Namespace
-	namespace := resolveNamespace(ctx, *cfg.Grafana)
+	namespace := resolveNamespace(ctx, selectedGrafana)
 
 	// Wrap transport with debug logging so `-vvv` shows every HTTP request.
 	// When --insecure-log-http-payload is set, also add full request/response body dumps.
@@ -278,9 +425,10 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	}
 
 	return NamespacedRESTConfig{
-		Config:         rcfg,
-		Namespace:      namespace,
-		GrafanaURL:     strings.TrimSuffix(cfg.Grafana.Server, "/"),
-		oauthTransport: oauthTransport,
+		Config:                 rcfg,
+		Namespace:              namespace,
+		GrafanaURL:             strings.TrimSuffix(cfg.Grafana.Server, "/"),
+		oauthTransport:         oauthTransport,
+		oauthCredentialBinding: oauthCredentialBinding,
 	}, nil
 }

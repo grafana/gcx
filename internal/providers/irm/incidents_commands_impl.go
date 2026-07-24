@@ -157,7 +157,9 @@ func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return opts.IO.Encode(cmd.OutOrStdout(), incs)
 			}
 
-			var objs []unstructured.Unstructured
+			// Initialized (not nil) so an empty result encodes as [] — never
+			// null — for predictable agent-side parsing.
+			objs := make([]unstructured.Unstructured, 0, len(incs))
 			for _, inc := range incs {
 				res, err := ToResource(inc, restCfg.Namespace)
 				if err != nil {
@@ -387,7 +389,10 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to convert created incident to resource: %w", err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Created incident %s (id=%s)", created.Title, created.IncidentID)
+			// The confirmation one-liner is a diagnostic, not the result —
+			// stderr keeps it out of the stdout document (the echoed
+			// incident below is the result).
+			cmdio.Success(cmd.ErrOrStderr(), "Created incident %s (id=%s)", created.Title, created.IncidentID)
 			createdObj := createdRes.ToUnstructured()
 			return opts.IO.Encode(cmd.OutOrStdout(), &createdObj)
 		},
@@ -401,11 +406,25 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type closeOpts struct {
+	IO     cmdio.Options
 	loader GrafanaConfigLoader
 }
 
-func (o *closeOpts) setup(_ *pflag.FlagSet) {}
-func (o *closeOpts) Validate() error        { return nil }
+func (o *closeOpts) setup(flags *pflag.FlagSet) {
+	// The close result is a SingleMutation document through the codec
+	// system: the default text codec reproduces the familiar
+	// "Closed incident <id> (<title>)" line byte-for-byte; agent mode and
+	// explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
+		render: func(w io.Writer, m cmdio.SingleMutation) {
+			cmdio.Success(w, "Closed incident %s (%s)", m.Target.ID, m.Target.Name)
+		},
+	})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+func (o *closeOpts) Validate() error { return o.IO.Validate() }
 
 func NewCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &closeOpts{loader: loader}
@@ -414,6 +433,10 @@ func NewCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "Close (resolve) an incident.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 			id := args[0]
 
@@ -432,8 +455,14 @@ func NewCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to close incident %s: %w", id, err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Closed incident %s (%s)", updated.IncidentID, updated.Title)
-			return nil
+			result := cmdio.NewSingleMutation("closed", cmdio.MutationTarget{
+				Kind: "Incident",
+				ID:   updated.IncidentID,
+				Name: updated.Title,
+			})
+			changed := true
+			result.Changed = &changed
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -587,18 +616,30 @@ func (c *ActivityTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 type activityAddOpts struct {
+	IO   cmdio.Options
 	Body string
 }
 
 func (o *activityAddOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Body, "body", "", "Note body to add")
+	// The add result is a SingleMutation document through the codec system:
+	// the default text codec reproduces the familiar "Added activity note to
+	// incident <id>" line byte-for-byte; agent mode and explicit -o json/yaml
+	// get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
+		render: func(w io.Writer, m cmdio.SingleMutation) {
+			cmdio.Success(w, "Added activity note to incident %s", m.Target.ID)
+		},
+	})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func (o *activityAddOpts) Validate() error {
 	if o.Body == "" {
 		return errors.New("--body is required")
 	}
-	return nil
+	return o.IO.Validate()
 }
 
 func newActivityAddCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -629,8 +670,13 @@ func newActivityAddCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to add activity: %w", err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Added activity note to incident %s", incidentID)
-			return nil
+			result := cmdio.NewSingleMutation("add-activity", cmdio.MutationTarget{
+				Kind: "Incident",
+				ID:   incidentID,
+			})
+			changed := true
+			result.Changed = &changed
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

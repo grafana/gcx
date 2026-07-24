@@ -8,14 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant"
 	"github.com/grafana/gcx/internal/assistant/investigations"
-	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -24,6 +21,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	mcpserverscmd "github.com/grafana/gcx/internal/providers/assistant/mcpservers"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/rest"
 )
 
 func requireGrafanaCloud(ctx *config.Context) error {
@@ -221,28 +219,32 @@ func promptRunE(opts *promptOpts, configOpts *providers.ConfigLoader) func(*cobr
 
 func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts *providers.ConfigLoader) error {
 	ctx := cmd.Context()
-	jsonStream := opts.jsonOut && !opts.noStream
-	w := cmd.OutOrStdout()
 	errW := cmd.ErrOrStderr()
 
-	// jsonError emits a JSON error and returns it.
-	jsonError := func(err error) error {
-		if jsonStream {
-			jsonLine(w, assistant.StreamEvent{Type: "error", Error: err.Error()})
-		} else {
-			jsonPretty(w, promptResult{Status: "error", Error: err.Error()})
-		}
-		return err
-	}
+	// The emitter owns every stdout/stderr rendering decision for the four
+	// consumer modes (human, agent JSONL, --json NDJSON, --json --no-stream).
+	// See stream_emitter.go.
+	//
+	// Errors before the stream starts are returned bare: stdout is still
+	// untouched, so the top-level reporter renders the single, properly
+	// classified error (JSON document on stdout for machine consumers, prose
+	// on stderr for humans). The command no longer pre-emits its own JSON
+	// error here — doing so produced two error documents on stdout for
+	// machine consumers.
+	em := newStreamEmitter(cmd.OutOrStdout(), errW, opts)
+
+	// The emitter cancels this context on the first stdout write failure
+	// (broken pipe): the SSE stream loop stops instead of draining events
+	// nobody can read, and em.finish returns the write error.
+	ctx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+	em.cancel = cancelStream
 
 	// Resolve context ID
 	contextID := opts.contextID
 	if opts.cont {
 		lastContextID, err := assistant.GetLastContextID()
 		if err != nil {
-			if opts.jsonOut {
-				return jsonError(err)
-			}
 			return err
 		}
 		contextID = lastContextID
@@ -250,9 +252,6 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 
 	clientOpts, err := resolveAssistantClientOptions(ctx, configOpts, opts.timeout, opts.agentID)
 	if err != nil {
-		if opts.jsonOut {
-			return jsonError(err)
-		}
 		return err
 	}
 	c := assistant.New(clientOpts)
@@ -261,162 +260,38 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 	if contextID != "" {
 		notice, err := c.ValidateCLIContext(ctx, contextID)
 		if err != nil {
-			if opts.jsonOut {
-				return jsonError(err)
-			}
 			return err
 		}
-		if notice != "" && !opts.jsonOut {
-			cmdio.Info(errW, "%s", notice)
-		}
+		em.notice(notice)
 	}
 
-	// Set up logging (disabled in JSON mode)
+	// Human mode gets prose progress logging on stderr; the machine modes
+	// keep stderr for typed diagnostics emitted by the emitter itself.
 	var logger assistant.Logger
-	if !opts.jsonOut {
+	if em.mode == modeHuman {
 		logger = &sseLogger{w: errW}
 		c.SetLogger(logger)
-	}
-
-	// Set up approval handler (interactive for non-JSON mode)
-	var approvalHandler assistant.ApprovalHandler
-	if !opts.jsonOut {
-		approvalHandler = &assistant.InteractiveApprovalHandler{Logger: logger}
 	}
 
 	streamOpts := assistant.StreamOptions{
 		Timeout:   opts.timeout,
 		ContextID: contextID,
+		OnEvent:   em.onEvent(),
 	}
 
-	// In JSON streaming mode, emit each event as NDJSON
-	if jsonStream {
-		streamOpts.OnEvent = func(event assistant.StreamEvent) {
-			jsonLine(w, event)
-		}
-	}
+	result := c.ChatWithApproval(ctx, message, streamOpts, em.approvalHandler(logger))
 
-	result := c.ChatWithApproval(ctx, message, streamOpts, approvalHandler)
-
-	return handlePromptResult(cmd, result, opts, jsonStream)
-}
-
-func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts *promptOpts, jsonStream bool) error {
-	w := cmd.OutOrStdout()
-	errW := cmd.ErrOrStderr()
-
-	if result.Completed {
-		if result.ContextID != "" {
-			_ = assistant.SaveLastContextID(result.ContextID)
-		}
-		switch {
-		case opts.jsonOut && !jsonStream:
-			jsonPretty(w, promptResult{
-				TaskID:    result.TaskID,
-				ContextID: result.ContextID,
-				Status:    "completed",
-				Response:  result.Response,
-			})
-		case !opts.jsonOut:
-			cmdio.Success(errW, "Completed!")
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, "--- Response ---")
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, result.Response)
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, "----------------")
-		}
-		return nil
-	}
-
-	if result.TimedOut {
-		err := fmt.Errorf("request timed out after %ds", opts.timeout)
-		switch {
-		case jsonStream:
-			jsonLine(w, assistant.StreamEvent{
-				Type:    "error",
-				Error:   err.Error(),
-				Timeout: opts.timeout,
-			})
-		case opts.jsonOut:
-			jsonPretty(w, promptResult{
-				TaskID:    result.TaskID,
-				ContextID: result.ContextID,
-				Status:    "timeout",
-				Timeout:   opts.timeout,
-			})
-		default:
-			cmdio.Warning(errW, "Request timed out after %ds. Task may still be processing.", opts.timeout)
-			if result.TaskID != "" {
-				cmdio.Info(errW, "Task ID: %s", result.TaskID)
-			}
-		}
-		return err
-	}
-
-	if result.Failed {
-		err := fmt.Errorf("request failed: %s", result.ErrorMessage)
-		switch {
-		case jsonStream && !result.ErrorEventEmitted:
-			jsonLine(w, assistant.StreamEvent{
-				Type:      "error",
-				TaskID:    result.TaskID,
-				ContextID: result.ContextID,
-				Error:     result.ErrorMessage,
-			})
-		case opts.jsonOut && !jsonStream:
-			jsonPretty(w, promptResult{
-				TaskID:    result.TaskID,
-				ContextID: result.ContextID,
-				Status:    "failed",
-				Error:     result.ErrorMessage,
-			})
-		case !opts.jsonOut:
-			cmdio.Error(errW, "Request failed: %s", result.ErrorMessage)
-		}
-		return err
-	}
-
-	if result.Canceled {
-		err := errors.New("request was canceled")
-		switch {
-		case opts.jsonOut && !jsonStream:
-			jsonPretty(w, promptResult{
-				TaskID:    result.TaskID,
-				ContextID: result.ContextID,
-				Status:    "canceled",
-			})
-		case !opts.jsonOut:
-			cmdio.Warning(errW, "Request was canceled")
-		}
-		return err
-	}
-
-	// Unknown state
-	err := errors.New("request ended in unknown state")
-	switch {
-	case jsonStream:
-		jsonLine(w, assistant.StreamEvent{Type: "error", Error: "stream ended unexpectedly"})
-	case opts.jsonOut:
-		jsonPretty(w, promptResult{
-			TaskID:    result.TaskID,
-			ContextID: result.ContextID,
-			Status:    "unknown",
-		})
-	default:
-		cmdio.Warning(errW, "Request ended unexpectedly. The stream closed without a completion signal.")
-		if result.TaskID != "" {
-			cmdio.Info(errW, "Task ID: %s", result.TaskID)
-		}
-	}
-	return err
+	return em.finish(result, opts.timeout)
 }
 
 // resolveAssistantClientOptions loads the gcx config and returns assistant
 // ClientOptions for assistant prompt, including an HTTP client whose Timeout
 // matches streamTimeoutSeconds (see --timeout and SSE body reads).
 func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.ConfigLoader, streamTimeoutSeconds int, agentID string) (assistant.ClientOptions, error) {
-	cfg, err := configOpts.LoadConfig(ctx)
+	// Select the effective auth method before full context validation so an
+	// explicitly selected Basic or mTLS mode fails as unsupported without a
+	// namespace-discovery request. Supported bearer modes are validated below.
+	cfg, err := configOpts.LoadConfigTolerant(ctx)
 	if err != nil {
 		return assistant.ClientOptions{}, err
 	}
@@ -430,24 +305,51 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.Co
 	if grafana == nil {
 		return assistant.ClientOptions{}, fmt.Errorf("no grafana config in context %q", cfg.CurrentContext)
 	}
+	authMethod, err := curCtx.EffectiveGrafanaAuthMethod()
+	if err != nil {
+		return assistant.ClientOptions{}, err
+	}
 
-	httpClient := newAssistantStreamingHTTPClient(ctx, streamTimeoutSeconds)
-
-	switch {
-	case grafana.ProxyEndpoint != "" && grafana.OAuthToken != "":
-		// OAuth path: direct API via ProxyEndpoint
-		refresher := buildTokenRefresher(ctx, configOpts, cfg.CurrentContext, grafana)
+	switch authMethod {
+	case "oauth":
+		// OAuth path: direct API via ProxyEndpoint. Reuse the canonical REST
+		// refresh lifecycle so A2A requests get the same cross-process lock,
+		// owning-layer reload, keychain handling, and fail-closed persistence as
+		// every other OAuth consumer.
+		if err := curCtx.Validate(ctx); err != nil {
+			return assistant.ClientOptions{}, err
+		}
+		restCfg, err := curCtx.ToRESTConfig(ctx)
+		if err != nil {
+			return assistant.ClientOptions{}, err
+		}
+		restCfg.WireTokenPersistence(ctx, configOpts.ConfigSource(ctx), cfg.CurrentContext, curCtx.Stack, cfg.Sources)
+		httpClient, err := newAssistantStreamingHTTPClientForRESTConfig(&restCfg.Config, streamTimeoutSeconds)
+		if err != nil {
+			return assistant.ClientOptions{}, fmt.Errorf("create assistant HTTP client: %w", err)
+		}
 		return assistant.ClientOptions{
 			GrafanaURL:     grafana.Server,
 			Token:          grafana.OAuthToken,
 			APIEndpoint:    grafana.ProxyEndpoint,
 			AgentID:        agentID,
-			TokenRefresher: refresher,
+			TokenRefresher: restCfg.FreshOAuthToken,
 			HTTPClient:     httpClient,
 		}, nil
 
-	case grafana.APIToken != "":
+	case "token":
 		// SA token path: plugin proxy through Grafana
+		if err := curCtx.Validate(ctx); err != nil {
+			return assistant.ClientOptions{}, err
+		}
+		restCfg, err := curCtx.ToRESTConfig(ctx)
+		if err != nil {
+			return assistant.ClientOptions{}, err
+		}
+		httpClient, err := newAssistantStreamingHTTPClientForRESTConfig(&restCfg.Config, streamTimeoutSeconds)
+		if err != nil {
+			return assistant.ClientOptions{}, fmt.Errorf("create assistant HTTP client: %w", err)
+		}
 		return assistant.ClientOptions{
 			GrafanaURL: grafana.Server,
 			Token:      grafana.APIToken,
@@ -455,6 +357,11 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.Co
 			HTTPClient: httpClient,
 		}, nil
 
+	case "basic", "mtls":
+		return assistant.ClientOptions{}, fmt.Errorf(
+			"gcx assistant requires OAuth or token bearer authentication; selected auth-method %q is not supported",
+			authMethod,
+		)
 	default:
 		return assistant.ClientOptions{}, errors.New("no authentication configured; run 'gcx login' or set grafana.token in config")
 	}
@@ -480,102 +387,46 @@ func newAssistantStreamingHTTPClient(ctx context.Context, streamTimeoutSeconds i
 	return httputils.NewClient(httputils.ClientOpts{Timeout: d})
 }
 
-const refreshThreshold = 5 * time.Minute
-
-// buildTokenRefresher creates a TokenRefresher that uses gcx's auth refresh mechanism.
-func buildTokenRefresher(ctx context.Context, configOpts *providers.ConfigLoader, ctxName string, grafana *config.GrafanaConfig) assistant.TokenRefresher {
-	var mu sync.Mutex
-	token := grafana.OAuthToken
-	refreshToken := grafana.OAuthRefreshToken
-	expiresAt := parseRFC3339OrZero(grafana.OAuthTokenExpiresAt)
-	refreshExpiresAt := parseRFC3339OrZero(grafana.OAuthRefreshExpiresAt)
-	proxyEndpoint := grafana.ProxyEndpoint
-
-	return func() (string, error) {
-		mu.Lock()
-		defer mu.Unlock()
-
-		// Token still valid — return as-is
-		if time.Until(expiresAt) > refreshThreshold {
-			return token, nil
-		}
-
-		// Refresh token itself expired
-		if !refreshExpiresAt.IsZero() && time.Now().After(refreshExpiresAt) {
-			return "", auth.ErrRefreshTokenExpired
-		}
-
-		// Do the refresh
-		rr, err := auth.ProxyRefresh(ctx, proxyEndpoint, refreshToken)
-		if err != nil {
-			return token, err // return stale token on failure
-		}
-
-		// Update captured state
-		token = rr.Token
-		if rr.RefreshToken != "" {
-			refreshToken = rr.RefreshToken
-		}
-		if t, parseErr := time.Parse(time.RFC3339, rr.ExpiresAt); parseErr == nil {
-			expiresAt = t
-		}
-		if t, parseErr := time.Parse(time.RFC3339, rr.RefreshExpiresAt); parseErr == nil {
-			refreshExpiresAt = t
-		}
-
-		// Persist to config
-		persistRefreshedTokens(ctx, configOpts, ctxName, rr.Token, rr.RefreshToken, rr.ExpiresAt, rr.RefreshExpiresAt)
-
-		return token, nil
-	}
-}
-
-func persistRefreshedTokens(ctx context.Context, configOpts *providers.ConfigLoader, ctxName, token, refreshToken, expiresAt, refreshExpiresAt string) {
-	// Re-read from disk so env-sourced secrets (GRAFANA_TOKEN, etc.) are not persisted.
-	source := configOpts.ConfigSource()
-	raw, err := config.Load(ctx, source)
+// newAssistantStreamingHTTPClientForRESTConfig materializes the configured
+// REST transport so OAuth refreshes and A2A requests share its TLS settings.
+// Materializing WrapTransport also gives RefreshTransport the TLS-aware base
+// transport it needs for the refresh endpoint instead of http.DefaultTransport.
+func newAssistantStreamingHTTPClientForRESTConfig(cfg *rest.Config, streamTimeoutSeconds int) (*http.Client, error) {
+	client, err := rest.HTTPClientFor(cfg)
 	if err != nil {
-		return
+		return nil, err
 	}
-	curCtx := raw.Contexts[ctxName]
-	if curCtx == nil || curCtx.Grafana == nil {
-		return
+	if streamTimeoutSeconds <= 0 {
+		streamTimeoutSeconds = 300
 	}
-	curCtx.Grafana.OAuthToken = token
-	if refreshToken != "" {
-		curCtx.Grafana.OAuthRefreshToken = refreshToken
-	}
-	curCtx.Grafana.OAuthTokenExpiresAt = expiresAt
-	curCtx.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
-	_ = config.Write(ctx, source, raw)
-}
-
-func parseRFC3339OrZero(s string) time.Time {
-	if s == "" {
-		return time.Time{}
-	}
-	t, _ := time.Parse(time.RFC3339, s)
-	return t
+	client.Timeout = time.Duration(streamTimeoutSeconds) * time.Second
+	return client, nil
 }
 
 // Output helpers
 
-func jsonLine(w io.Writer, data any) {
+// jsonLine writes data as one NDJSON line. Both the marshal and the write
+// error are returned: a stream line that never reached stdout must surface as
+// the command error instead of being swallowed (a swallowed terminal write
+// would let a failed gcx.stream_end still exit 0 or claim EmittedError).
+func jsonLine(w io.Writer, data any) error {
 	output, err := json.Marshal(data)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: Failed to marshal JSON: %v\n", err)
-		return
+		return fmt.Errorf("encoding JSON line: %w", err)
 	}
-	fmt.Fprintln(w, string(output))
+	_, err = fmt.Fprintln(w, string(output))
+	return err
 }
 
-func jsonPretty(w io.Writer, data any) {
+// jsonPretty writes data as one indented JSON document, returning marshal and
+// write errors for the same reason as jsonLine.
+func jsonPretty(w io.Writer, data any) error {
 	output, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: Failed to marshal JSON: %v\n", err)
-		return
+		return fmt.Errorf("encoding JSON document: %w", err)
 	}
-	fmt.Fprintln(w, string(output))
+	_, err = fmt.Fprintln(w, string(output))
+	return err
 }
 
 // sseLogger implements assistant.Logger using stderr.

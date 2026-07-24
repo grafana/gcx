@@ -6,16 +6,15 @@ View or manipulate configuration settings
 
 View or manipulate configuration settings.
 
-The configuration file to load is chosen as follows:
+--config or $GCX_CONFIG selects one explicit file and bypasses layering.
+Otherwise gcx merges every existing source from lowest to highest priority:
 
-1. If the --config flag is set, then that file will be loaded. No other location will be considered.
-2. If the $GCX_CONFIG environment variable is set, then that file will be loaded. No other location will be considered.
-3. If the $XDG_CONFIG_HOME environment variable is set, then it will be used: $XDG_CONFIG_HOME/gcx/config.yaml
-   Example: /home/user/.config/gcx/config.yaml
-4. If the $HOME environment variable is set, then it will be used: $HOME/.config/gcx/config.yaml
-   Example: /home/user/.config/gcx/config.yaml
-5. If the $XDG_CONFIG_DIRS environment variable is set, then it will be used: $XDG_CONFIG_DIRS/gcx/config.yaml
-   Example: /etc/xdg/gcx/config.yaml
+1. System configuration: $XDG_CONFIG_DIRS/gcx/config.yaml (for example, /etc/xdg/gcx/config.yaml).
+2. User configuration: $HOME/.config/gcx/config.yaml, then the platform $XDG_CONFIG_HOME fallback.
+3. Repository configuration: .gcx.yaml in the current directory.
+
+Credential-bearing stack and Cloud entries are atomic across layers; contexts
+merge only their references and datasource defaults.
 
 
 ### Options

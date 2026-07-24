@@ -45,7 +45,7 @@ Suggestions must be commands the user can run — not vague advice:
 // Good:
 Suggestions: []string{
     "Review your configuration: gcx config view",
-    "Set your token: gcx config set contexts.<ctx>.grafana.token <value>",
+    "Set your token: gcx config set stacks.<name>.grafana.token <value>",
 }
 
 // Bad:
@@ -87,27 +87,38 @@ is ordered before the generic fallback.
 - HTTP 403 → summary: `"Authorization failed"`
 
 Both produce `DetailedError` with `ExitAuthFailure` exit code and actionable suggestions
-pointing at `gcx config set cloud.token` and `gcx login`.
+pointing at `gcx cloud login` and `gcx login`.
 
 The converter is enabled by `fleet.HTTPError` — a typed error returned by all non-2xx
 responses in `internal/providers/instrumentation/client.go`.
 
 ### 4.4 In-Band Error Reporting
 
-When agent mode is active and a command fails, a JSON error object is written
-to **stdout** in addition to the existing stderr `DetailedError` output
-(NC-003 — in-band JSON is additive, not a replacement).
+When agent mode (or `--json`) is active and a command fails, a JSON error
+object is written to **stdout** and the human-formatted stderr rendering is
+suppressed — machine consumers get exactly one error document, on one
+stream. The stderr fallback appears only if the stdout write itself fails.
+(Historical note: the original NC-003 design made in-band JSON additive to
+the stderr output; the implementation intentionally converged on
+either/or in `reportError`, `cmd/gcx/main.go`.)
+
+The envelope carries collision-resistant discriminators:
+`{"type": "gcx.error", "schema_version": "1", "error": {...}}`. The fused
+partial-failure envelope uses `"type": "gcx.partial_result"` with `items`
+alongside `error`.
 
 **Error-only response** (command fails completely):
 
 ```json
-{"error": {"summary": "Resource not found - code 404", "exitCode": 1}}
+{"type": "gcx.error", "schema_version": "1", "error": {"summary": "Resource not found - code 404", "exitCode": 1}}
 ```
 
 **Partial failure** (batch operation, some resources succeeded):
 
 ```json
 {
+  "type": "gcx.partial_result",
+  "schema_version": "1",
   "items": [...],
   "error": {"summary": "3 resources failed", "exitCode": 4, "details": "...", "suggestions": ["..."]}
 }
@@ -125,11 +136,17 @@ to **stdout** in addition to the existing stderr `DetailedError` output
 
 **Guarantees:**
 - On success, no `error` key appears in stdout JSON (NC-004).
-- When agent mode is NOT active, no error JSON is written to stdout.
+- When neither agent mode nor `--json` is active, no error JSON is written
+  to stdout (an active `--json` routes the error document to stdout even on
+  a TTY — machine consumers asked for machine output).
 - The JSON is always valid — partial writes cannot corrupt it (NC-004).
+- A command that already emitted its complete result document (including
+  fused error content) returns `gcxerrors.EmittedError`; the reporter then
+  writes nothing further, so stdout never carries two documents.
 
-**Implementation:** `cmd/gcx/fail/json.go` (`DetailedError.WriteJSON`).
-Invoked from `handleError` in `cmd/gcx/main.go` when `agent.IsAgentMode()` is true.
+**Implementation:** `internal/gcxerrors/json.go` (`DetailedError.WriteJSON`),
+invoked from `reportError` in `cmd/gcx/main.go` when `agent.IsAgentMode()` is
+true or `--json` is active.
 
 See [agent-mode.md](agent-mode.md) for the full agent mode specification.
 See [exit-codes.md](exit-codes.md) for exit code values referenced in `exitCode` fields.
@@ -148,7 +165,8 @@ Adding a new summary requires a PR amending this list.
 | `Authentication failed` | Token expired or missing |
 | `Authorization failed` | Permission denied (403) |
 | `Resource not found` | 404 or client-side not-found detection |
-| `Resource conflict` | Optimistic lock / RMW conflict |
+| `Resource conflict` | Optimistic lock / RMW conflict, or an API-reported conflict whose exact cause is not machine-discriminable (e.g. GCOM stack 409s) |
+| `Invalid stack request` | GCOM rejected stack create/update arguments (409 with code `InvalidArgument`) |
 | `Network error` | Connection refused, DNS failure |
 | `API error` | Non-404/403 HTTP error from backend |
 | `Unexpected error` | Catch-all — no typed converter matched |
