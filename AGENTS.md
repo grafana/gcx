@@ -93,6 +93,7 @@ internal/
 ├── config/      Config types (versioned stacks/cloud/contexts split - contexts reference named stack + cloud entries), loader, editor, rest.Config builder, stack-id discovery, context name helpers; auto-migrates legacy per-context configs (shape-detected, delete-nothing, `.legacy.bak` backup) and plaintext token-shaped secrets into the OS keychain via internal/credentials
 ├── credentials/ OS-keychain backend (zalando/go-keyring) for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
 ├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
+├── coreapi/     Shared HTTP client + generic DoJSON/DoStatus helpers for core Grafana `/api/*` REST providers (annotations, org, permissions, publicdashboards)
 ├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and instrumentation provider)
 ├── resources/
 │   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
