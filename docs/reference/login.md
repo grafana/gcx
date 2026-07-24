@@ -76,7 +76,7 @@ gcx login my-grafana --server https://your-instance.grafana.net
 # At the prompt, pick "Service account token" and paste your token.
 ```
 
-Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with a role matching what the token needs to do: **Viewer** is enough for querying (metrics, logs, traces, profiles) and reading dashboards or folders; pushing, editing, or deleting resources needs **Editor** or **Admin**. For tighter scoping, a custom role granting `datasources:read` and `datasources:query` on specific datasources also works.
+Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with a role matching what the token needs to do: **Viewer** is enough for querying (metrics, logs, traces, profiles) and reading dashboards or folders; **Editor** covers pushing and editing dashboards and folders; managing datasource configuration needs **Admin**. On Grafana Cloud and Enterprise, RBAC custom roles can scope query access tighter (for example `datasources:read` plus `datasources:query` on specific datasources).
 
 For on-premises instances, gcx defaults the organization ID to 1 if you do not specify one — the common case for single-tenant Grafana OSS. If you need a different org ID, set it with `gcx config set stacks.<name>.grafana.org-id N` after login (on the context's stack entry).
 
