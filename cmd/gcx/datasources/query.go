@@ -1,15 +1,18 @@
 package datasources
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/mssql"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/spf13/cobra"
@@ -86,124 +89,7 @@ that do not have a dedicated subcommand.`,
 				return err
 			}
 
-			switch dsType {
-			case "prometheus":
-				client, err := prometheus.NewClient(cfg)
-				if err != nil {
-					return fmt.Errorf("failed to create client: %w", err)
-				}
-
-				req := prometheus.QueryRequest{
-					Query: expr,
-					Start: start,
-					End:   end,
-					Step:  step,
-				}
-
-				resp, err := client.Query(ctx, datasourceUID, req)
-				if err != nil {
-					return fmt.Errorf("query failed: %w", err)
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			case "loki":
-				client, err := loki.NewClient(cfg)
-				if err != nil {
-					return fmt.Errorf("failed to create client: %w", err)
-				}
-
-				req := loki.QueryRequest{
-					Query: expr,
-					Start: start,
-					End:   end,
-					Step:  step,
-					Limit: limit,
-				}
-
-				resp, err := client.Query(ctx, datasourceUID, req)
-				if err != nil {
-					return fmt.Errorf("query failed: %w", err)
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			case "pyroscope":
-				if profileType == "" {
-					return errors.New("--profile-type is required for pyroscope queries")
-				}
-
-				client, err := pyroscope.NewClient(cfg)
-				if err != nil {
-					return fmt.Errorf("failed to create client: %w", err)
-				}
-
-				req := pyroscope.QueryRequest{
-					LabelSelector: expr,
-					ProfileTypeID: profileType,
-					Start:         start,
-					End:           end,
-					MaxNodes:      maxNodes,
-				}
-
-				resp, err := client.Query(ctx, datasourceUID, req)
-				if err != nil {
-					return fmt.Errorf("query failed: %w", err)
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			case "influxdb":
-				influxClient, err := influxdb.NewClient(cfg)
-				if err != nil {
-					return fmt.Errorf("failed to create client: %w", err)
-				}
-
-				modeStr, err := dsquery.GetInfluxDBMode(ctx, cfg, datasourceUID)
-				if err != nil {
-					return fmt.Errorf("failed to detect influxdb mode: %w", err)
-				}
-
-				req := influxdb.QueryRequest{
-					Query: expr,
-					Start: start,
-					End:   end,
-					Step:  step,
-					Mode:  influxdb.Mode(modeStr),
-				}
-
-				resp, err := influxClient.Query(ctx, datasourceUID, req)
-				if err != nil {
-					return fmt.Errorf("query failed: %w", err)
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			case "clickhouse":
-				client, err := clickhouse.NewClient(cfg)
-				if err != nil {
-					return fmt.Errorf("failed to create client: %w", err)
-				}
-
-				req := clickhouse.QueryRequest{
-					RawSQL: clickhouse.EnforceLimit(expr, 100, 1000),
-					Start:  start,
-					End:    end,
-				}
-				if step > 0 {
-					req.IntervalMs = step.Milliseconds()
-				}
-
-				resp, err := client.Query(ctx, datasourceUID, req)
-				if err != nil {
-					return fmt.Errorf("query failed: %w", err)
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			default:
-				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb, clickhouse)", dsType)
-			}
+			return dispatchTypedQuery(ctx, cmd, shared, cfg, dsType, datasourceUID, expr, start, end, step, limit, profileType, maxNodes)
 		},
 	}
 
@@ -214,4 +100,156 @@ that do not have a dedicated subcommand.`,
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return for loki queries (0 means no limit)")
 
 	return cmd
+}
+
+// dispatchTypedQuery routes a generic `datasources query` to the query client
+// for the detected datasource type. Kept separate from QueryCmd to keep the
+// command constructor's complexity in check.
+func dispatchTypedQuery(
+	ctx context.Context,
+	cmd *cobra.Command,
+	shared *dsquery.SharedOpts,
+	cfg config.NamespacedRESTConfig,
+	dsType, datasourceUID, expr string,
+	start, end time.Time,
+	step time.Duration,
+	limit int,
+	profileType string,
+	maxNodes int64,
+) error {
+	switch dsType {
+	case "prometheus":
+		client, err := prometheus.NewClient(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to create client: %w", err)
+		}
+
+		req := prometheus.QueryRequest{
+			Query: expr,
+			Start: start,
+			End:   end,
+			Step:  step,
+		}
+
+		resp, err := client.Query(ctx, datasourceUID, req)
+		if err != nil {
+			return fmt.Errorf("query failed: %w", err)
+		}
+
+		return shared.IO.Encode(cmd.OutOrStdout(), resp)
+
+	case "loki":
+		client, err := loki.NewClient(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to create client: %w", err)
+		}
+
+		req := loki.QueryRequest{
+			Query: expr,
+			Start: start,
+			End:   end,
+			Step:  step,
+			Limit: limit,
+		}
+
+		resp, err := client.Query(ctx, datasourceUID, req)
+		if err != nil {
+			return fmt.Errorf("query failed: %w", err)
+		}
+
+		return shared.IO.Encode(cmd.OutOrStdout(), resp)
+
+	case "pyroscope":
+		if profileType == "" {
+			return errors.New("--profile-type is required for pyroscope queries")
+		}
+
+		client, err := pyroscope.NewClient(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to create client: %w", err)
+		}
+
+		req := pyroscope.QueryRequest{
+			LabelSelector: expr,
+			ProfileTypeID: profileType,
+			Start:         start,
+			End:           end,
+			MaxNodes:      maxNodes,
+		}
+
+		resp, err := client.Query(ctx, datasourceUID, req)
+		if err != nil {
+			return fmt.Errorf("query failed: %w", err)
+		}
+
+		return shared.IO.Encode(cmd.OutOrStdout(), resp)
+
+	case "influxdb":
+		influxClient, err := influxdb.NewClient(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to create client: %w", err)
+		}
+
+		modeStr, err := dsquery.GetInfluxDBMode(ctx, cfg, datasourceUID)
+		if err != nil {
+			return fmt.Errorf("failed to detect influxdb mode: %w", err)
+		}
+
+		req := influxdb.QueryRequest{
+			Query: expr,
+			Start: start,
+			End:   end,
+			Step:  step,
+			Mode:  influxdb.Mode(modeStr),
+		}
+
+		resp, err := influxClient.Query(ctx, datasourceUID, req)
+		if err != nil {
+			return fmt.Errorf("query failed: %w", err)
+		}
+
+		return shared.IO.Encode(cmd.OutOrStdout(), resp)
+
+	case "clickhouse":
+		client, err := clickhouse.NewClient(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to create client: %w", err)
+		}
+
+		req := clickhouse.QueryRequest{
+			RawSQL: clickhouse.EnforceLimit(expr, 100, 1000),
+			Start:  start,
+			End:    end,
+		}
+		if step > 0 {
+			req.IntervalMs = step.Milliseconds()
+		}
+
+		resp, err := client.Query(ctx, datasourceUID, req)
+		if err != nil {
+			return fmt.Errorf("query failed: %w", err)
+		}
+
+		return shared.IO.Encode(cmd.OutOrStdout(), resp)
+
+	case "mssql":
+		client, err := mssql.NewClient(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to create client: %w", err)
+		}
+
+		resp, err := client.Query(ctx, datasourceUID, mssql.QueryRequest{
+			RawSQL: mssql.EnforceTop(expr, 100, 1000),
+			Start:  start,
+			End:    end,
+		})
+		if err != nil {
+			return fmt.Errorf("query failed: %w", err)
+		}
+
+		return shared.IO.Encode(cmd.OutOrStdout(), resp)
+
+	default:
+		return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb, clickhouse, mssql)", dsType)
+	}
 }
