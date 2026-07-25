@@ -203,18 +203,18 @@ func parseValue(v any) string {
 
 // FormatLabelsTable formats a LabelsResponse as a table.
 func FormatLabelsTable(w io.Writer, resp *LabelsResponse) error {
-	t := style.NewTable("LABEL")
-	for _, label := range resp.Data {
-		t.Row(label)
-	}
-	return t.Render(w)
+	return formatSingleColumnTable(w, "LABEL", resp.Data)
 }
 
 // FormatMetricNamesTable formats a LabelsResponse holding metric names as a table.
 func FormatMetricNamesTable(w io.Writer, resp *LabelsResponse) error {
-	t := style.NewTable("METRIC")
-	for _, name := range resp.Data {
-		t.Row(name)
+	return formatSingleColumnTable(w, "METRIC", resp.Data)
+}
+
+func formatSingleColumnTable(w io.Writer, header string, values []string) error {
+	t := style.NewTable(header)
+	for _, v := range values {
+		t.Row(v)
 	}
 	return t.Render(w)
 }

@@ -27,7 +27,7 @@ Query Prometheus datasources and manage Adaptive Metrics
 * [gcx metrics billing](gcx_metrics_billing.md)	 - Query Grafana Cloud billing metrics (grafanacloud_*)
 * [gcx metrics cardinality](gcx_metrics_cardinality.md)	 - Analyze series cardinality
 * [gcx metrics labels](gcx_metrics_labels.md)	 - List labels or label values
-* [gcx metrics list](gcx_metrics_list.md)	 - List metric names.
+* [gcx metrics list](gcx_metrics_list.md)	 - List metric names
 * [gcx metrics metadata](gcx_metrics_metadata.md)	 - Get metric metadata
 * [gcx metrics query](gcx_metrics_query.md)	 - Execute a PromQL query against a Prometheus datasource
 * [gcx metrics series](gcx_metrics_series.md)	 - List time series matching one or more selectors

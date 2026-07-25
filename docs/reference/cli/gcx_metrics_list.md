@@ -1,12 +1,13 @@
 ## gcx metrics list
 
-List metric names.
+List metric names
 
 ### Synopsis
 
-List metric names from a Prometheus datasource via the label values endpoint for __name__.
+List metric names from a Prometheus datasource via the label values endpoint for `__name__`.
 Scope the server-side lookup with --match selectors; filter names client-side
 with --prefix, --suffix, and --contains, which combine with AND.
+Output is capped at 100 names by default; pass --limit 0 for the full list.
 
 ```
 gcx metrics list [flags]
@@ -16,7 +17,7 @@ gcx metrics list [flags]
 
 ```
 
-  # List all metric names (use datasource UID, not name)
+  # List metric names (first 100 by default; use datasource UID, not name)
   gcx metrics list -d UID
 
   # Find cart-related metrics
@@ -40,7 +41,8 @@ gcx metrics list [flags]
   -h, --help                help for list
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --match stringArray   Series selector(s) to scope results; repeatable
+      --limit int           Maximum number of names to return after filtering (0 for all) (default 100)
+      --match stringArray   Series selector(s) to scope results; repeatable (repeated selectors combine as a union, per the Prometheus match[] API)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
       --prefix string       Only include names starting with this string
       --suffix string       Only include names ending with this string
