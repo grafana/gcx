@@ -4,16 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"strings"
 
-	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
-	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -25,6 +22,7 @@ type listOpts struct {
 	Prefix     string
 	Suffix     string
 	Contains   string
+	Limit      int
 }
 
 func (opts *listOpts) setup(flags *pflag.FlagSet) {
@@ -33,13 +31,17 @@ func (opts *listOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
-	flags.StringArrayVar(&opts.Match, "match", nil, "Series selector(s) to scope results; repeatable")
+	flags.StringArrayVar(&opts.Match, "match", nil, "Series selector(s) to scope results; repeatable (repeated selectors combine as a union, per the Prometheus match[] API)")
 	flags.StringVar(&opts.Prefix, "prefix", "", "Only include names starting with this string")
 	flags.StringVar(&opts.Suffix, "suffix", "", "Only include names ending with this string")
 	flags.StringVar(&opts.Contains, "contains", "", "Only include names containing this string")
+	flags.IntVar(&opts.Limit, "limit", 100, "Maximum number of names to return after filtering (0 for all)")
 }
 
 func (opts *listOpts) Validate() error {
+	if opts.Limit < 0 {
+		return errors.New("--limit must be zero or positive")
+	}
 	return opts.IO.Validate()
 }
 
@@ -71,12 +73,14 @@ func listCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List metric names.",
-		Long: `List metric names from a Prometheus datasource via the label values endpoint for __name__.
-Scope the server-side lookup with --match selectors; filter names client-side
-with --prefix, --suffix, and --contains, which combine with AND.`,
+		Short: "List metric names",
+		Long: "List metric names from a Prometheus datasource via the label values endpoint for `__name__`.\n" +
+			"Scope the server-side lookup with --match selectors; filter names client-side\n" +
+			"with --prefix, --suffix, and --contains, which combine with AND.\n" +
+			"Output is capped at 100 names by default; pass --limit 0 for the full list.",
+		Args: cobra.NoArgs,
 		Example: `
-  # List all metric names (use datasource UID, not name)
+  # List metric names (first 100 by default; use datasource UID, not name)
   gcx metrics list -d UID
 
   # Find cart-related metrics
@@ -97,17 +101,9 @@ with --prefix, --suffix, and --contains, which combine with AND.`,
 
 			ctx := cmd.Context()
 
-			cfg, err := loader.LoadGrafanaConfig(ctx)
+			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 			if err != nil {
 				return err
-			}
-
-			var cfgCtx *internalconfig.Context
-			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err != nil {
-				logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
-			} else {
-				cfgCtx = fullCfg.GetCurrentContext()
 			}
 
 			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
@@ -126,6 +122,11 @@ with --prefix, --suffix, and --contains, which combine with AND.`,
 			}
 
 			resp.Data = filterMetricNames(resp.Data, opts.Prefix, opts.Suffix, opts.Contains)
+
+			if total := len(resp.Data); opts.Limit > 0 && total > opts.Limit {
+				resp.Data = resp.Data[:opts.Limit]
+				cmdio.EmitHint(cmd.ErrOrStderr(), fmt.Sprintf("showing first %d of %d metric names; use --limit for more (0 for all)", opts.Limit, total), "")
+			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
