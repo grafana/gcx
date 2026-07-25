@@ -38,11 +38,11 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Manage named groups of saved conversations.",
 	}
 	cmd.AddCommand(
-		newListCommand(),
-		newGetCommand(),
-		newCreateCommand(),
+		newListCommand(loader),
+		newGetCommand(loader),
+		newCreateCommand(loader),
 		newUpdateCommand(loader),
-		newDeleteCommand(),
+		newDeleteCommand(loader),
 		newListConversationsCommand(loader),
 		newAddConversationsCommand(loader),
 		newRemoveConversationCommand(loader),
@@ -65,7 +65,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of collections to return (0 for no limit)")
 }
 
-func newListCommand() *cobra.Command {
+func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -76,7 +76,7 @@ func newListCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -121,7 +121,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand() *cobra.Command {
+func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <collection-id>",
@@ -133,7 +133,7 @@ func newGetCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -209,7 +209,7 @@ func readCollectionFile(path string, stdin io.Reader) (*Collection, error) {
 	return &col, nil
 }
 
-func newCreateCommand() *cobra.Command {
+func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -236,7 +236,7 @@ func newCreateCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -298,15 +298,11 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, client, err := newCRUDAndClient(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client, err := newClient(cmd, loader)
-			if err != nil {
-				return err
-			}
 			updated, err := client.Update(ctx, args[0], req)
 			if err != nil {
 				return err
@@ -342,7 +338,7 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newDeleteCommand() *cobra.Command {
+func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete COLLECTION-ID...",
@@ -362,7 +358,7 @@ func newDeleteCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}

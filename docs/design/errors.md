@@ -165,7 +165,8 @@ Adding a new summary requires a PR amending this list.
 | `Authentication failed` | Token expired or missing |
 | `Authorization failed` | Permission denied (403) |
 | `Resource not found` | 404 or client-side not-found detection |
-| `Resource conflict` | Optimistic lock / RMW conflict |
+| `Resource conflict` | Optimistic lock / RMW conflict, or an API-reported conflict whose exact cause is not machine-discriminable (e.g. GCOM stack 409s) |
+| `Invalid stack request` | GCOM rejected stack create/update arguments (409 with code `InvalidArgument`) |
 | `Network error` | Connection refused, DNS failure |
 | `API error` | Non-404/403 HTTP error from backend |
 | `Unexpected error` | Catch-all — no typed converter matched |

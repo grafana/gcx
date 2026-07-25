@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/cloud"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1581,4 +1582,41 @@ current-context: prod
 	assert.Equal(t, "staging-stack", cloudCfg.Stack.Slug)
 	assert.Equal(t, 7, cloudCfg.Stack.ID)
 	assert.NotEqual(t, "prod-stack", cloudCfg.Stack.Slug)
+}
+
+// TestConfigLoader_NilLoaderBehavesLikeZeroValue pins the nil-receiver
+// contract at the choke point: every provider Commands constructor accepts a
+// *ConfigLoader that external callers (package tests in particular) pass as
+// nil, and the resolved* fallbacks must treat that exactly like a zero-value
+// loader instead of panicking. Removing the nil checks in
+// resolvedContextName/resolvedConfigFile fails this test.
+//
+// SandboxConfigEnv rather than isolateConfigSources: the namespace assertion
+// is hard-coded, so ambient GRAFANA_STACK_ID/GRAFANA_SERVER must be cleared.
+func TestConfigLoader_NilLoaderBehavesLikeZeroValue(t *testing.T) {
+	testutils.SandboxConfigEnv(t)
+	cfgFile := writeConfigFile(t, `
+version: 1
+stacks:
+  main:
+    grafana:
+      server: http://127.0.0.1:3000
+      token: test-token
+      stack-id: 11111
+contexts:
+  default:
+    stack: main
+current-context: default
+`)
+	t.Setenv(internalconfig.ConfigFileEnvVar, cfgFile)
+
+	var nilLoader *providers.ConfigLoader
+	got, err := nilLoader.LoadGrafanaConfig(context.Background())
+	require.NoError(t, err)
+
+	want, err := (&providers.ConfigLoader{}).LoadGrafanaConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, want.Host, got.Host)
+	assert.Equal(t, want.Namespace, got.Namespace)
+	assert.Equal(t, "stacks-11111", got.Namespace)
 }

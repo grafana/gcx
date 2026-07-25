@@ -119,13 +119,19 @@ func (c CloudRESTConfig) ProviderConfig(name string) map[string]string {
 // ConfigLoader is a minimal config loading helper shared across providers.
 // It avoids importing cmd/gcx/config (which would create an import cycle
 // via internal/providers).
+//
+// A nil *ConfigLoader is valid for every load path and behaves exactly like
+// a zero-value loader (GCX_CONFIG, layered discovery, and ctx threading):
+// provider Commands constructors take a flag-bound loader, and external
+// callers — package tests in particular — pass nil. Only BindFlags and the
+// setters require a non-nil receiver.
 type ConfigLoader struct {
 	configFile string
 	ctxName    string
 }
 
 func (l *ConfigLoader) resolvedContextName(ctx context.Context) string {
-	if l.ctxName != "" {
+	if l != nil && l.ctxName != "" {
 		return l.ctxName
 	}
 	return config.ContextNameFromCtx(ctx)
@@ -137,7 +143,7 @@ func (l *ConfigLoader) resolvedContextName(ctx context.Context) string {
 // immutable context selection. An empty result retains GCX_CONFIG and layered
 // discovery in config.LoadLayered.
 func (l *ConfigLoader) resolvedConfigFile(ctx context.Context) string {
-	if l.configFile != "" {
+	if l != nil && l.configFile != "" {
 		return l.configFile
 	}
 	return config.ConfigFileFromCtx(ctx)
@@ -643,10 +649,7 @@ func (l *ConfigLoader) SaveDatasourceUID(ctx context.Context, kind, uid string) 
 		return err
 	}
 
-	ctxName := l.ctxName
-	if ctxName == "" {
-		ctxName = config.ContextNameFromCtx(ctx)
-	}
+	ctxName := l.resolvedContextName(ctx)
 	if ctxName == "" {
 		ctxName = loaded.CurrentContext
 	}

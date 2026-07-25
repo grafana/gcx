@@ -1389,12 +1389,21 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return nil, false
 	}
 
+	// Operation dispatch keys on the wrap prefix, never Contains: the error
+	// text embeds the raw GCOM body, and server-controlled text must not be
+	// able to steer dispatch into another operation's branch.
+	isCreate := strings.HasPrefix(msg, "failed to create stack")
+	isUpdate := strings.HasPrefix(msg, "failed to update stack")
+
 	switch httpErr.Status {
 	case http.StatusConflict:
-		if strings.Contains(msg, "failed to delete stack") {
+		if strings.HasPrefix(msg, "failed to delete stack") {
+			// Unlike create/update, GCOM documents the delete 409
+			// exclusively: it means the stack has delete protection
+			// enabled.
 			return &gcxerrors.DetailedError{
 				Summary: "Stack has delete protection enabled",
-				Details: msg,
+				Details: gcomErrorDetails(httpErr, msg),
 				Parent:  err,
 				Suggestions: []string{
 					"Disable delete protection first: gcx cloud stacks update <slug> --no-delete-protection",
@@ -1402,19 +1411,55 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 				},
 			}, true
 		}
-		return &gcxerrors.DetailedError{
-			Summary: "Stack slug already taken",
-			Details: msg,
-			Parent:  err,
-			Suggestions: []string{
+		if (isCreate || isUpdate) && httpErr.Code == "InvalidArgument" {
+			suggestions := []string{
+				"Check the flag values passed to the command, then preview the request with --dry-run",
+			}
+			if isCreate && strings.Contains(strings.ToLower(httpErr.Message), "slug") {
+				// The client-side format gate already rejects anything
+				// outside [a-z0-9]+ before the request, so a slug the
+				// server still refuses needs a different slug, not a
+				// format lesson.
+				suggestions = []string{
+					"Choose a different slug with --slug — this one may be reserved, too long, or unavailable",
+				}
+			}
+			return &gcxerrors.DetailedError{
+				Summary:     "Invalid stack request",
+				Details:     gcomErrorDetails(httpErr, msg),
+				Parent:      err,
+				ExitCode:    new(gcxerrors.ExitUsageError),
+				Suggestions: suggestions,
+				DocsLink:    docs.CloudAPI,
+			}, true
+		}
+		// GCOM's 409 on this API is an error class, not a duplicate-slug
+		// discriminator (the spec's ErrorConflict example message is the
+		// generic invalid-arguments text), so no branch may claim the slug
+		// is taken. On create the likely conflict is still a slug
+		// collision, so the slug remediation is always offered there — the
+		// message text is server-controlled and possibly non-JSON, too
+		// fragile to gate a suggestion on.
+		suggestions := []string{
+			"List existing stacks: gcx cloud stacks list --org <org-slug>",
+		}
+		if isCreate {
+			suggestions = []string{
 				"Choose a different slug with --slug",
 				"List existing stacks: gcx cloud stacks list --org <org-slug>",
-			},
+			}
+		}
+		return &gcxerrors.DetailedError{
+			Summary:     "Resource conflict",
+			Details:     gcomErrorDetails(httpErr, msg),
+			Parent:      err,
+			Suggestions: suggestions,
+			DocsLink:    docs.CloudAPI,
 		}, true
 	case http.StatusForbidden:
 		return &gcxerrors.DetailedError{
 			Summary:  "Stacks: permission denied",
-			Details:  msg,
+			Details:  gcomErrorDetails(httpErr, msg),
 			Parent:   err,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 			Suggestions: []string{
@@ -1427,7 +1472,7 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 	case http.StatusUnauthorized:
 		return &gcxerrors.DetailedError{
 			Summary:  "Stacks: authentication failed",
-			Details:  msg,
+			Details:  gcomErrorDetails(httpErr, msg),
 			Parent:   err,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 			Suggestions: []string{
@@ -1438,6 +1483,15 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+// gcomErrorDetails leads with GCOM's parsed error message (when the response
+// body carried one) so the real cause reads before the raw wrapped error text.
+func gcomErrorDetails(httpErr *cloud.GCOMHTTPError, msg string) string {
+	if httpErr.Message == "" {
+		return msg
+	}
+	return httpErr.Message + "\n\n" + msg
 }
 
 func convertPartialFailureErrors(err error) (*gcxerrors.DetailedError, bool) {
