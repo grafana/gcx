@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -11,6 +12,9 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/prometheus/common/model"
+	promlabels "github.com/prometheus/prometheus/model/labels"
+	promparser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -28,20 +32,66 @@ func (opts *labelsOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
-	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
+	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-prometheus-datasource is configured)")
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
-	flags.StringVar(&opts.Metric, "metric", "", "Scope results to this metric (shorthand for --match METRIC)")
-	flags.StringArrayVar(&opts.Match, "match", nil, "Series selector(s) to scope results; repeatable")
+	flags.StringVar(&opts.Metric, "metric", "", "Only results from series of this metric (narrows every --match selector)")
+	flags.StringArrayVar(&opts.Match, "match", nil, "Series selector(s) to scope results; repeatable (repeated selectors combine as a union, per the Prometheus match[] API)")
 }
 
-// selectors combines --match selectors with the --metric shorthand. A bare
-// metric name is itself a valid series selector for the match[] parameter.
-func (opts *labelsOpts) selectors() []string {
-	match := append([]string{}, opts.Match...)
-	if opts.Metric != "" {
-		match = append(match, opts.Metric)
+// selectors returns the match[] selectors to send. When --metric is set it is
+// folded into every --match selector as a __name__ matcher, so --metric always
+// narrows. Repeated --match selectors remain a union: the Prometheus API
+// returns results from series matching any match[] parameter.
+func (opts *labelsOpts) selectors() ([]string, error) {
+	nameMatcher := promlabels.MustNewMatcher(promlabels.MatchEqual, model.MetricNameLabel, opts.Metric)
+
+	if len(opts.Match) == 0 {
+		if opts.Metric == "" {
+			return nil, nil
+		}
+		return []string{"{" + nameMatcher.String() + "}"}, nil
 	}
-	return match
+
+	if opts.Metric == "" {
+		return opts.Match, nil
+	}
+
+	parser := promparser.NewParser(promparser.Options{})
+	folded := make([]string, 0, len(opts.Match))
+	for _, sel := range opts.Match {
+		matchers, err := parser.ParseMetricSelector(sel)
+		if err != nil {
+			return nil, fmt.Errorf("invalid --match selector %q: %w", sel, err)
+		}
+
+		// A selector may already constrain __name__ (a bare metric name or an
+		// explicit matcher). Consistent constraints (same metric, regex
+		// superset) fold fine; a constraint the metric cannot satisfy would
+		// silently match nothing, so reject it instead.
+		redundant := false
+		for _, m := range matchers {
+			if m.Name != model.MetricNameLabel {
+				continue
+			}
+			if !m.Matches(opts.Metric) {
+				return nil, fmt.Errorf("--metric %q contradicts the __name__ matcher in --match selector %q: the intersection matches nothing", opts.Metric, sel)
+			}
+			if m.Type == promlabels.MatchEqual {
+				redundant = true
+			}
+		}
+
+		parts := make([]string, 0, len(matchers)+1)
+		for _, m := range matchers {
+			parts = append(parts, m.String())
+		}
+		if !redundant {
+			parts = append(parts, nameMatcher.String())
+		}
+
+		folded = append(folded, "{"+strings.Join(parts, ",")+"}")
+	}
+	return folded, nil
 }
 
 func (opts *labelsOpts) Validate() error {
@@ -84,6 +134,11 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 				return err
 			}
 
+			selectors, err := opts.selectors()
+			if err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 
 			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
@@ -107,7 +162,7 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 			}
 
 			if opts.Label != "" {
-				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label, opts.selectors())
+				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label, selectors)
 				if err != nil {
 					return fmt.Errorf("failed to get label values: %w", err)
 				}
@@ -119,7 +174,7 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 			}
 
-			resp, err := client.Labels(ctx, datasourceUID, opts.selectors())
+			resp, err := client.Labels(ctx, datasourceUID, selectors)
 			if err != nil {
 				return fmt.Errorf("failed to get labels: %w", err)
 			}
