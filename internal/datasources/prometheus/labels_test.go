@@ -114,6 +114,18 @@ func TestLabelsCmd_MatchSelectors(t *testing.T) {
 			wantMatch: []string{`{cluster="prod",__name__="http_requests_total"}`, `{region=~"eu-.*",__name__="http_requests_total"}`},
 		},
 		{
+			name:      "selector already naming the same metric is not double-folded",
+			args:      []string{"--metric", "up", "--match", `up{job="api"}`},
+			path:      labelsPath,
+			wantMatch: []string{`{job="api",__name__="up"}`},
+		},
+		{
+			name:      "consistent __name__ regex folds with the metric",
+			args:      []string{"--metric", "http_requests_total", "--match", `{__name__=~"http_.*"}`},
+			path:      labelsPath,
+			wantMatch: []string{`{__name__=~"http_.*",__name__="http_requests_total"}`},
+		},
+		{
 			name:      "quoted UTF-8 label names survive folding",
 			args:      []string{"--metric", "up", "--match", `{"service.name"="cart"}`},
 			path:      labelsPath,
@@ -145,4 +157,33 @@ func TestLabelsCmd_InvalidMatchSelectorFailsBeforeAnyRequest(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid --match selector")
 	assert.Empty(t, captured)
+}
+
+func TestLabelsCmd_ContradictoryMetricFailsBeforeAnyRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "selector names a different metric",
+			args: []string{"--metric", "a", "--match", `b{x="y"}`},
+		},
+		{
+			name: "__name__ regex excludes the metric",
+			args: []string{"--metric", "up", "--match", `{__name__=~"http_.*"}`},
+		},
+		{
+			name: "negative equality excludes the metric",
+			args: []string{"--metric", "up", "--match", `{__name__!="up"}`},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			captured, err := runLabelsCmd(t, tc.args...)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "the intersection matches nothing")
+			assert.Empty(t, captured)
+		})
+	}
 }

@@ -64,11 +64,30 @@ func (opts *labelsOpts) selectors() ([]string, error) {
 			return nil, fmt.Errorf("invalid --match selector %q: %w", sel, err)
 		}
 
+		// A selector may already constrain __name__ (a bare metric name or an
+		// explicit matcher). Consistent constraints (same metric, regex
+		// superset) fold fine; a constraint the metric cannot satisfy would
+		// silently match nothing, so reject it instead.
+		redundant := false
+		for _, m := range matchers {
+			if m.Name != model.MetricNameLabel {
+				continue
+			}
+			if !m.Matches(opts.Metric) {
+				return nil, fmt.Errorf("--metric %q contradicts the __name__ matcher in --match selector %q: the intersection matches nothing", opts.Metric, sel)
+			}
+			if m.Type == promlabels.MatchEqual {
+				redundant = true
+			}
+		}
+
 		parts := make([]string, 0, len(matchers)+1)
 		for _, m := range matchers {
 			parts = append(parts, m.String())
 		}
-		parts = append(parts, nameMatcher.String())
+		if !redundant {
+			parts = append(parts, nameMatcher.String())
+		}
 
 		folded = append(folded, "{"+strings.Join(parts, ",")+"}")
 	}
