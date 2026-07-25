@@ -1,10 +1,14 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -28,6 +32,10 @@ import (
 type Options struct {
 	ConfigFile string
 	Context    string
+
+	mutationResolved bool
+	mutationTarget   config.ConfigSource
+	mutationErr      error
 }
 
 func (opts *Options) BindFlags(flags *pflag.FlagSet) {
@@ -42,7 +50,23 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 // This function should only be used by config-related commands, to allow the
 // user to iterate on the configuration until it becomes valid.
 func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...config.Override) (config.Config, error) {
-	overrides := append([]config.Override{
+	var overrides []config.Override
+
+	// Select the target context before applying context-scoped environment
+	// variables. Otherwise --context switches only after env values have already
+	// been written into the context named by current-context.
+	if opts.Context != "" {
+		overrides = append(overrides, func(cfg *config.Config) error {
+			if !cfg.HasContext(opts.Context) {
+				return config.ContextNotFound(opts.Context)
+			}
+
+			cfg.CurrentContext = opts.Context
+			return nil
+		})
+	}
+
+	overrides = append(overrides,
 		// If Grafana-related env variables are set, use them to configure the
 		// current context and Grafana config.
 		func(cfg *config.Config) error {
@@ -73,6 +97,9 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 				if !strings.HasPrefix(key, providerEnvPrefix) {
 					continue
 				}
+				if providers.IsBlankProviderCredentialEnvironmentOverride(key, val) {
+					continue
+				}
 
 				suffix := key[len(providerEnvPrefix):]
 				nameParts := strings.SplitN(suffix, "_", 2)
@@ -96,19 +123,8 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 
 			return nil
 		},
-	}, extraOverrides...)
-
-	// The current context is being overridden by a flag
-	if opts.Context != "" {
-		overrides = append(overrides, func(cfg *config.Config) error {
-			if !cfg.HasContext(opts.Context) {
-				return config.ContextNotFound(opts.Context)
-			}
-
-			cfg.CurrentContext = opts.Context
-			return nil
-		})
-	}
+	)
+	overrides = append(overrides, extraOverrides...)
 
 	return config.LoadLayered(ctx, opts.ConfigFile, overrides...)
 }
@@ -148,7 +164,7 @@ func (opts *Options) LoadGrafanaConfigWithContext(ctx context.Context) (config.N
 	if err != nil {
 		return config.NamespacedRESTConfig{}, nil, err
 	}
-	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext, cfg.Sources)
+	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext, current.Stack, cfg.Sources)
 
 	return restCfg, current, nil
 }
@@ -169,6 +185,84 @@ func (opts *Options) ConfigSource() config.Source {
 	return config.StandardLocation()
 }
 
+// MutationConfigSource resolves the single raw config document a mutating
+// command may safely rewrite. Layered reads can combine several documents, but
+// writing that merged view to an arbitrary user file can be shadowed by a local
+// layer or flatten unrelated layers. Explicit --config and GCX_CONFIG remain
+// authoritative; otherwise a sole discovered source is used and ambiguity is
+// rejected with guidance to choose one.
+func (opts *Options) MutationConfigSource() config.Source {
+	return func() (string, error) {
+		target, err := opts.resolveMutationConfigTarget()
+		return target.Path, err
+	}
+}
+
+// MutationConfigContext carries the sole discovered source's trust provenance
+// into raw login/provider mutations. Explicit --config and GCX_CONFIG paths
+// remain explicit user intent (including symlink support).
+func (opts *Options) MutationConfigContext(ctx context.Context) context.Context {
+	target, err := opts.resolveMutationConfigTarget()
+	if err != nil || target.Type == "explicit" || target.Type == "" {
+		return ctx
+	}
+	return config.ContextWithConfigSource(ctx, target)
+}
+
+// MutationConfigTarget returns the exact raw config document selected for a
+// mutation together with its discovery provenance. Credential-accepting
+// commands use the provenance to require an explicit --config/GCX_CONFIG trust
+// decision before handing a fresh secret to an auto-discovered repository
+// config.
+func (opts *Options) MutationConfigTarget() (config.ConfigSource, error) {
+	return opts.resolveMutationConfigTarget()
+}
+
+func (opts *Options) resolveMutationConfigTarget() (config.ConfigSource, error) {
+	if !opts.mutationResolved {
+		opts.mutationResolved = true
+		switch {
+		case opts.ConfigFile != "":
+			opts.mutationTarget = config.ConfigSource{Path: opts.ConfigFile, Type: "explicit"}
+			return opts.mutationTarget, nil
+		case os.Getenv(config.ConfigFileEnvVar) != "":
+			opts.mutationTarget = config.ConfigSource{Path: os.Getenv(config.ConfigFileEnvVar), Type: "explicit"}
+			return opts.mutationTarget, nil
+		}
+
+		sources, err := config.DiscoverSources()
+		if err != nil {
+			opts.mutationErr = fmt.Errorf("discover config write target: %w", err)
+			return opts.mutationTarget, opts.mutationErr
+		}
+		switch len(sources) {
+		case 0:
+			path, err := config.StandardLocation()()
+			if err != nil {
+				opts.mutationErr = err
+				return opts.mutationTarget, opts.mutationErr
+			}
+			opts.mutationTarget = config.ConfigSource{Path: path, Type: "user"}
+		case 1:
+			opts.mutationTarget = sources[0]
+		default:
+			paths := make([]string, 0, len(sources))
+			for _, source := range sources {
+				paths = append(paths, source.Path)
+			}
+			opts.mutationErr = gcxerrors.DetailedError{
+				Summary: "Configuration write target is ambiguous",
+				Details: "This command reads a layered configuration from multiple files and cannot safely choose one to update: " +
+					strings.Join(paths, ", "),
+				Suggestions: []string{
+					"Re-run with --config <path> to choose the file that should own the updated credentials",
+				},
+			}
+		}
+	}
+	return opts.mutationTarget, opts.mutationErr
+}
+
 func Command() *cobra.Command {
 	configOpts := &Options{}
 
@@ -177,16 +271,15 @@ func Command() *cobra.Command {
 		Short: "View or manipulate configuration settings",
 		Long: fmt.Sprintf(`View or manipulate configuration settings.
 
-The configuration file to load is chosen as follows:
+--config or $%[3]s selects one explicit file and bypasses layering.
+Otherwise gcx merges every existing source from lowest to highest priority:
 
-1. If the --config flag is set, then that file will be loaded. No other location will be considered.
-2. If the $%[3]s environment variable is set, then that file will be loaded. No other location will be considered.
-3. If the $XDG_CONFIG_HOME environment variable is set, then it will be used: $XDG_CONFIG_HOME/%[1]s/%[2]s
-   Example: /home/user/.config/%[1]s/%[2]s
-4. If the $HOME environment variable is set, then it will be used: $HOME/.config/%[1]s/%[2]s
-   Example: /home/user/.config/%[1]s/%[2]s
-5. If the $XDG_CONFIG_DIRS environment variable is set, then it will be used: $XDG_CONFIG_DIRS/%[1]s/%[2]s
-   Example: /etc/xdg/%[1]s/%[2]s
+1. System configuration: $XDG_CONFIG_DIRS/%[1]s/%[2]s (for example, /etc/xdg/%[1]s/%[2]s).
+2. User configuration: $HOME/.config/%[1]s/%[2]s, then the platform $XDG_CONFIG_HOME fallback.
+3. Repository configuration: .gcx.yaml in the current directory.
+
+Credential-bearing stack and Cloud entries are atomic across layers; contexts
+merge only their references and datasource defaults.
 `, config.StandardConfigFolder, config.StandardConfigFileName, config.ConfigFileEnvVar),
 	}
 
@@ -267,9 +360,9 @@ func viewCmd(configOpts *Options) *cobra.Command {
 				}
 
 				registered := providers.All()
-				for _, ctx := range cfg.Contexts {
-					if ctx.Providers != nil {
-						providers.RedactSecrets(ctx.Providers, registered)
+				for _, stack := range cfg.Stacks {
+					if stack != nil && stack.Providers != nil {
+						providers.RedactSecrets(stack.Providers, registered)
 					}
 				}
 			}
@@ -283,7 +376,54 @@ func viewCmd(configOpts *Options) *cobra.Command {
 	return cmd
 }
 
+// ioOpts is the shared options struct for config subcommands whose only
+// output concern is the shared codec flags (-o/--json/--jq). The default
+// format is a custom codec reproducing the command's historical human
+// rendering byte-for-byte; agent mode and explicit -o json/yaml get the
+// structured value through the same Encode call.
+type ioOpts struct {
+	IO cmdio.Options
+}
+
+func (opts *ioOpts) setup(flags *pflag.FlagSet, defaultFormat string, codec format.Codec) {
+	opts.IO.RegisterCustomCodec(defaultFormat, codec)
+	opts.IO.DefaultFormat(defaultFormat)
+	opts.IO.BindFlags(flags)
+}
+
+func (opts *ioOpts) Validate() error {
+	return opts.IO.Validate()
+}
+
+// currentContextResult is the structured result of `config current-context`.
+// The key matches the config-file field so agents see the same name in
+// `config view` and here.
+type currentContextResult struct {
+	CurrentContext string `json:"current-context" yaml:"current-context"`
+}
+
+// currentContextTextCodec renders the historical kubectl-style bare context
+// name, byte-identical to the pre-codec output.
+type currentContextTextCodec struct{}
+
+func (c *currentContextTextCodec) Format() format.Format { return "text" }
+
+func (c *currentContextTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *currentContextTextCodec) Encode(w io.Writer, value any) error {
+	result, ok := value.(currentContextResult)
+	if !ok {
+		return errors.New("invalid data type for current-context text codec: expected currentContextResult")
+	}
+	_, err := fmt.Fprintln(w, result.CurrentContext)
+	return err
+}
+
 func currentContextCmd(configOpts *Options) *cobra.Command {
+	opts := &ioOpts{}
+
 	cmd := &cobra.Command{
 		Use:     "current-context",
 		Args:    cobra.NoArgs,
@@ -291,21 +431,74 @@ func currentContextCmd(configOpts *Options) *cobra.Command {
 		Long:    "Display the current context name.",
 		Example: "\n\tgcx config current-context",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
 			if err != nil {
 				return err
 			}
 
-			cmd.Println(cfg.CurrentContext)
-
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), currentContextResult{CurrentContext: cfg.CurrentContext})
 		},
 	}
+
+	opts.setup(cmd.Flags(), "text", &currentContextTextCodec{})
 
 	return cmd
 }
 
+// contextListEntry is one context row in the `config list-contexts` result.
+type contextListEntry struct {
+	Current bool   `json:"current" yaml:"current"`
+	Name    string `json:"name" yaml:"name"`
+	Server  string `json:"server,omitempty" yaml:"server,omitempty"`
+}
+
+// contextListResult is the single shape passed to every codec for
+// `config list-contexts` (Pattern 13: format-agnostic data).
+type contextListResult struct {
+	Contexts []contextListEntry `json:"contexts" yaml:"contexts"`
+}
+
+// contextsTableCodec renders the historical CURRENT/NAME/GRAFANA SERVER
+// table, byte-identical to the pre-codec output.
+type contextsTableCodec struct{}
+
+func (c *contextsTableCodec) Format() format.Format { return "table" }
+
+func (c *contextsTableCodec) Decode(io.Reader, any) error {
+	return errors.New("table codec does not support decoding")
+}
+
+func (c *contextsTableCodec) Encode(w io.Writer, value any) error {
+	result, ok := value.(contextListResult)
+	if !ok {
+		return errors.New("invalid data type for contexts table codec: expected contextListResult")
+	}
+
+	t := style.NewTable("CURRENT", "NAME", "GRAFANA SERVER")
+	for _, entry := range result.Contexts {
+		server := entry.Server
+		if server == "" {
+			server = " "
+		}
+
+		current := " "
+		if entry.Current {
+			current = "*"
+		}
+
+		t.Row(current, entry.Name, server)
+	}
+
+	return t.Render(w)
+}
+
 func listContextsCmd(configOpts *Options) *cobra.Command {
+	opts := &ioOpts{}
+
 	cmd := &cobra.Command{
 		Use:     "list-contexts",
 		Args:    cobra.NoArgs,
@@ -313,29 +506,37 @@ func listContextsCmd(configOpts *Options) *cobra.Command {
 		Long:    "List the contexts defined in the configuration.",
 		Example: "\n\tgcx config list-contexts",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
 			if err != nil {
 				return err
 			}
 
-			t := style.NewTable("CURRENT", "NAME", "GRAFANA SERVER")
-			for _, context := range cfg.Contexts {
-				server := " "
-				if context.Grafana != nil {
-					server = context.Grafana.Server
+			// Sorted by name for determinism — Contexts is a map, and the
+			// historical row order was whatever map iteration produced.
+			names := slices.Sorted(maps.Keys(cfg.Contexts))
+			entries := make([]contextListEntry, 0, len(names))
+			for _, name := range names {
+				server := ""
+				if gCtx := cfg.Contexts[name]; gCtx.Grafana != nil {
+					server = gCtx.Grafana.Server
 				}
 
-				current := " "
-				if cfg.CurrentContext == context.Name {
-					current = "*"
-				}
-
-				t.Row(current, context.Name, server)
+				entries = append(entries, contextListEntry{
+					Current: cfg.CurrentContext == name,
+					Name:    name,
+					Server:  server,
+				})
 			}
 
-			return t.Render(cmd.OutOrStdout())
+			return opts.IO.Encode(cmd.OutOrStdout(), contextListResult{Contexts: entries})
 		},
 	}
+
+	opts.setup(cmd.Flags(), "table", &contextsTableCodec{})
 
 	return cmd
 }
@@ -354,59 +555,127 @@ func checkCmd(configOpts *Options) *cobra.Command {
 			}
 
 			stdout := cmd.OutOrStdout()
-
-			cmdio.Success(stdout, "Configuration file: %s", cmdio.Green(cfg.Source))
-
-			switch {
-			case cfg.CurrentContext == "":
-				cmdio.Error(stdout, "Current context: %s", cmdio.Red("<undefined>"))
-			case !cfg.HasContext(cfg.CurrentContext):
-				cmdio.Error(stdout, "Current context: %s", cmdio.Red(config.ContextNotFound(cfg.CurrentContext).Error()))
-			default:
-				cmdio.Success(stdout, "Current context: %s", cmdio.Green(cfg.CurrentContext))
+			reportWriter := stdout
+			var agentReport bytes.Buffer
+			if agent.IsAgentMode() {
+				reportWriter = &agentReport
 			}
 
-			cmd.Println()
+			cmdio.Success(reportWriter, "Configuration file: %s", cmdio.Green(cfg.Source))
 
-			var checkErr error
+			failedChecks := 0
+			failureExitCodes := make(map[int]struct{})
+			recordFailure := func(err error) {
+				failedChecks++
+				exitCode := gcxerrors.ExitGeneralError
+				if err != nil {
+					detailedErr := fail.ErrorToDetailedError(err)
+					if detailedErr != nil && detailedErr.ExitCode != nil {
+						exitCode = *detailedErr.ExitCode
+					}
+				}
+				failureExitCodes[exitCode] = struct{}{}
+			}
+			switch {
+			case cfg.CurrentContext == "":
+				cmdio.Error(reportWriter, "Current context: %s", cmdio.Red("<undefined>"))
+				recordFailure(nil)
+			case !cfg.HasContext(cfg.CurrentContext):
+				cmdio.Error(reportWriter, "Current context: %s", cmdio.Red(config.ContextNotFound(cfg.CurrentContext).Error()))
+				recordFailure(nil)
+			default:
+				cmdio.Success(reportWriter, "Current context: %s", cmdio.Green(cfg.CurrentContext))
+			}
+
+			fmt.Fprintln(reportWriter)
+
 			for _, gCtx := range cfg.Contexts {
-				if err := checkContext(cmd, cfg, gCtx, configOpts.ConfigSource()); err != nil {
-					checkErr = err
+				if err := cmd.Context().Err(); err != nil {
+					return err
+				}
+				if err := checkContext(cmd, &cfg, gCtx, configOpts.ConfigSource(), reportWriter); err != nil {
+					if ctxErr := cmd.Context().Err(); ctxErr != nil {
+						return ctxErr
+					}
+					if errors.Is(err, context.Canceled) {
+						return context.Canceled
+					}
+					recordFailure(err)
 				}
 			}
 
-			return checkErr
+			if failedChecks != 0 {
+				exitCode := gcxerrors.ExitGeneralError
+				if len(failureExitCodes) == 1 {
+					for code := range failureExitCodes {
+						exitCode = code
+					}
+				}
+				if agent.IsAgentMode() {
+					if _, err := cmd.ErrOrStderr().Write(agentReport.Bytes()); err != nil {
+						return fmt.Errorf("write configuration check report: %w", err)
+					}
+					return gcxerrors.DetailedError{
+						Summary:  "Configuration check failed",
+						Details:  strings.TrimSpace(agentReport.String()),
+						ExitCode: &exitCode,
+						Suggestions: []string{
+							"Review the failed contexts in the diagnostic report",
+							"Resolve the reported issues, then rerun: gcx config check",
+						},
+					}
+				}
+				return fmt.Errorf("%d configuration check(s) failed: %w", failedChecks, gcxerrors.NewAlreadyReportedError(exitCode))
+			}
+
+			if agent.IsAgentMode() {
+				if _, err := stdout.Write(agentReport.Bytes()); err != nil {
+					return fmt.Errorf("write configuration check report: %w", err)
+				}
+			}
+			return nil
 		},
 	}
 
 	return cmd
 }
 
-func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, source config.Source) error {
-	stdout := cmd.OutOrStdout()
+func checkContext(cmd *cobra.Command, cfg *config.Config, gCtx *config.Context, source config.Source, stdout io.Writer) error {
 	title := "Context: "
 	titleLen := len(title) + len(gCtx.Name)
 	title += cmdio.Bold(gCtx.Name)
 
 	summarizeError := func(err error) string {
+		// ErrorToDetailedError returns nil for chains carrying an
+		// EmittedError (result already on stdout — nothing to render).
 		detailedErr := fail.ErrorToDetailedError(err)
+		if detailedErr == nil {
+			return err.Error()
+		}
 
 		return fmt.Sprintf("%s: %s", detailedErr.Summary, err.Error())
 	}
 
 	printSuggestions := func(err error) {
 		detailedErr := fail.ErrorToDetailedError(err)
-		if len(detailedErr.Suggestions) != 0 {
+		if detailedErr != nil && len(detailedErr.Suggestions) != 0 {
 			cmdio.Info(stdout, "Suggestions:\n")
 			for _, suggestion := range detailedErr.Suggestions {
 				fmt.Fprintf(stdout, "  • %s\n", suggestion)
 			}
-			stdout.Write([]byte("\n"))
+			fmt.Fprintln(stdout)
 		}
 	}
 
-	cmd.Println(cmdio.Yellow(title))
-	cmd.Println(cmdio.Yellow(strings.Repeat("=", titleLen)))
+	fmt.Fprintln(stdout, cmdio.Yellow(title))
+	fmt.Fprintln(stdout, cmdio.Yellow(strings.Repeat("=", titleLen)))
+
+	// Load resolves only the current context eagerly. config check validates
+	// every context, so resolve this context's deferred keychain references
+	// before validation can construct a namespace-discovery transport. Missing
+	// or foreign references become typed rejection evidence and are therefore
+	// reported with connectivity skipped instead of being sent upstream.
+	cfg.ResolveContext(gCtx.Name)
 
 	if err := gCtx.Validate(cmd.Context()); err != nil {
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(summarizeError(err)))
@@ -414,14 +683,25 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
 
 		printSuggestions(err)
-		return nil
+		return err
 	}
 
 	cmdio.Success(stdout, "Configuration: %s", cmdio.Green("valid"))
 
-	authMethod := gCtx.Grafana.AuthMethod
-	if authMethod == "" {
-		authMethod = gCtx.Grafana.InferredAuthMethod() + " (inferred)"
+	authMethod, err := gCtx.EffectiveGrafanaAuthMethod()
+	if err != nil {
+		// Validate above uses the same selector, so this is defensive against a
+		// future validation/transport drift rather than an expected branch.
+		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(err.Error()))
+		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
+		return err
+	}
+	switch {
+	case gCtx.Grafana.AuthMethod == "":
+		authMethod += " (inferred)"
+	case !strings.EqualFold(authMethod, gCtx.Grafana.AuthMethod):
+		authMethod += " (environment override)"
 	}
 	cmdio.Info(stdout, "Auth method: %s", authMethod)
 
@@ -435,15 +715,17 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	restCfg, err := gCtx.ToRESTConfig(cmd.Context())
 	if err != nil {
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(err.Error()))
-		return nil
+		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
+		return err
 	}
-	restCfg.WireTokenPersistence(cmd.Context(), source, gCtx.Name, cfg.Sources)
+	restCfg.WireTokenPersistence(cmd.Context(), source, gCtx.Name, gCtx.Stack, cfg.Sources)
 
 	if _, err := discovery.NewDefaultRegistry(cmd.Context(), restCfg); err != nil {
 		cmdio.Error(stdout, "Connectivity: %s", cmdio.Red(summarizeError(err)))
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
 		printSuggestions(err)
-		return nil
+		return err
 	}
 
 	cmdio.Success(stdout, "Connectivity: %s", cmdio.Green("online"))
@@ -451,7 +733,8 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	version, raw, err := grafana.GetVersion(cmd.Context(), gCtx)
 	if err != nil {
 		cmdio.Error(stdout, "Grafana version: %s", cmdio.Red(summarizeError(err))+"\n")
-		return nil
+		printSuggestions(err)
+		return err
 	}
 
 	switch {
@@ -465,7 +748,10 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	case version == nil:
 		cmdio.Warning(stdout, "Grafana version: %s\n", cmdio.Yellow("unparseable: "+raw))
 	case version.Major() < 12:
-		return &grafana.VersionIncompatibleError{Version: version}
+		err := &grafana.VersionIncompatibleError{Version: version}
+		cmdio.Error(stdout, "Grafana version: %s", cmdio.Red(err.Error())+"\n")
+		printSuggestions(err)
+		return err
 	default:
 		cmdio.Success(stdout, "Grafana version: %s", cmdio.Green(version.String())+"\n")
 	}
@@ -473,8 +759,32 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	return nil
 }
 
+// useContextTextCodec renders the historical confirmation line for the
+// use-context SingleMutation result, byte-identical to the pre-codec output.
+type useContextTextCodec struct{}
+
+func (c *useContextTextCodec) Format() format.Format { return "text" }
+
+func (c *useContextTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *useContextTextCodec) Encode(w io.Writer, value any) error {
+	result, ok := value.(cmdio.SingleMutation)
+	if !ok {
+		return errors.New("invalid data type for use-context text codec: expected SingleMutation")
+	}
+	if result.Changed != nil && !*result.Changed {
+		cmdio.Success(w, "Context already set to \"%s\"", result.Target.Name)
+		return nil
+	}
+	cmdio.Success(w, "Context set to \"%s\"", result.Target.Name)
+	return nil
+}
+
 func useContextCmd(configOpts *Options) *cobra.Command {
 	var fileType string
+	opts := &ioOpts{}
 
 	cmd := &cobra.Command{
 		Use:     "use-context [CONTEXT_NAME]",
@@ -498,6 +808,10 @@ user config), use --file to choose which layer to update.`,
 	# Update the local .gcx.yaml when both user and local configs exist
 	gcx config use-context --file local dev-instance`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			// Cross-layer load: a context defined only in the user layer is
 			// still a valid target when --file local is specified, and the
 			// interactive picker needs the merged view.
@@ -509,6 +823,8 @@ user config), use --file to choose which layer to update.`,
 			target, err := resolveUseContextTarget(layered, args)
 			if err != nil {
 				if errors.Is(err, huh.ErrUserAborted) {
+					// Interactive-only path (the picker requires a TTY and is
+					// disabled in agent mode), so the note stays on stdout.
 					cmdio.Info(cmd.OutOrStdout(), "Aborted.")
 					return nil
 				}
@@ -525,10 +841,13 @@ user config), use --file to choose which layer to update.`,
 				return err
 			}
 
+			result := cmdio.NewSingleMutation("use-context", cmdio.MutationTarget{Kind: "context", Name: target})
+
 			prev := cfg.CurrentContext
 			if prev == target {
-				cmdio.Success(cmd.OutOrStdout(), "Context already set to \"%s\"", target)
-				return nil
+				changed := false
+				result.Changed = &changed
+				return opts.IO.Encode(cmd.OutOrStdout(), result)
 			}
 
 			cfg.CurrentContext = target
@@ -542,12 +861,14 @@ user config), use --file to choose which layer to update.`,
 				}
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Context set to \"%s\"", cfg.CurrentContext)
-			return nil
+			changed := true
+			result.Changed = &changed
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 
 	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
+	opts.setup(cmd.Flags(), "text", &useContextTextCodec{})
 
 	return cmd
 }
@@ -640,8 +961,56 @@ func pickContextInteractively(cfg config.Config) (string, error) {
 	return selected, nil
 }
 
+// configMutation is the structured result of `config set` / `config unset`.
+// The shared cmdio mutation family targets kind/name/uid objects; a config
+// mutation acts on a dot-path property within a layered config file, so this
+// bespoke shape carries the discriminators (type, schema_version) required of
+// result-family documents plus the fields the domain actually has.
+type configMutation struct {
+	Type          string `json:"type" yaml:"type"`
+	SchemaVersion string `json:"schema_version" yaml:"schema_version"`
+	Action        string `json:"action" yaml:"action"`
+	// Property is the fully resolved dot-path (bare paths are resolved
+	// against the current context before the write).
+	Property string `json:"property" yaml:"property"`
+	// File is the config file the mutation was written to.
+	File string `json:"file,omitempty" yaml:"file,omitempty"`
+}
+
+// newConfigMutation builds the result document for a completed config write.
+// The file path is resolved best-effort from the write target: the write
+// already succeeded, so a resolution error only omits the field.
+func newConfigMutation(action, property string, target config.Source) configMutation {
+	result := configMutation{
+		Type:          "gcx.config.mutation",
+		SchemaVersion: "1",
+		Action:        action,
+		Property:      property,
+	}
+	if target != nil {
+		if path, err := target(); err == nil {
+			result.File = path
+		}
+	}
+	return result
+}
+
+// silentTextCodec reproduces the historical human output of `config set` and
+// `config unset`: nothing on success. The structured result exists for agent
+// mode and explicit -o json/yaml only.
+type silentTextCodec struct{}
+
+func (c *silentTextCodec) Format() format.Format { return "text" }
+
+func (c *silentTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *silentTextCodec) Encode(io.Writer, any) error { return nil }
+
 func setCmd(configOpts *Options) *cobra.Command {
 	var fileType string
+	opts := &ioOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "set PROPERTY_NAME PROPERTY_VALUE",
@@ -651,47 +1020,106 @@ func setCmd(configOpts *Options) *cobra.Command {
 
 PROPERTY_NAME is a dot-delimited reference to the value to set. It can either represent a field or a map entry.
 
-A bare path (e.g. "cloud.token") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context.
+Paths are literal: they name the exact location in the configuration file, starting from a top-level section ("stacks.<name>.", "cloud.<entry>.", "contexts.<name>.", "resources.", "current-context"). Nothing is resolved against the current context - the path you type is the path you see in "gcx config view".
 
 PROPERTY_VALUE is the new value to set.`,
 		Example: `
-	# Set the "server" field on the current context to "https://grafana-dev.example"
-	gcx config set grafana.server https://grafana-dev.example
+	# Set the "server" field on the "dev-instance" stack
+	gcx config set stacks.dev-instance.grafana.server https://grafana-dev.example
 
-	# Set the "server" field on the "dev-instance" context to "https://grafana-dev.example"
-	gcx config set contexts.dev-instance.grafana.server https://grafana-dev.example
+	# Disable the validation of the server's SSL certificate on a stack
+	gcx config set stacks.dev-instance.grafana.tls.insecure-skip-verify true
 
-	# Disable the validation of the server's SSL certificate in the current context
-	gcx config set grafana.insecure-skip-tls-verify true
+	# Set the default prometheus datasource for a context
+	gcx config set contexts.dev.datasources.prometheus my-prom-uid
 
-	# Set a value in the local config layer
-	gcx config set --file local contexts.prod.cloud.token my-token`,
+	# Set a cloud entry's token in the local config layer
+	gcx config set --file local cloud.grafana-com.token my-token`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
+			if err != nil && (configOpts.ConfigFile == "" || !config.CanInitializeMissingSource(cfg, err)) {
+				return err
+			}
+			// A missing explicit --config path is a deliberate new write target.
+			// LoadForWrite's returned Config retains its absent-source revision,
+			// so Write atomically installs the first document without replacing a
+			// file created concurrently. Other mutators keep treating ENOENT as an
+			// error; only `config set` has constructive intent.
+
+			path, err := config.ValidateConfigPath(cfg, args[0])
 			if err != nil {
 				return err
 			}
 
-			path, err := config.ResolveContextPath(cfg, args[0])
-			if err != nil {
+			if err := setConfigValue(&cfg, path, args[1]); err != nil {
 				return err
 			}
 
-			if err := config.SetValue(&cfg, path, args[1]); err != nil {
+			if err := config.Write(cmd.Context(), target, cfg); err != nil {
 				return err
 			}
 
-			return config.Write(cmd.Context(), target, cfg)
+			return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("set", path, target))
 		},
 	}
 
 	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
+	opts.setup(cmd.Flags(), "text", &silentTextCodec{})
 
 	return cmd
 }
 
+func setConfigValue(cfg *config.Config, path, value string) error {
+	mutationPaths := []string{path}
+	clearPaths := []string{}
+	parts := strings.Split(path, ".")
+	if value != "" && len(parts) == 3 && parts[0] == "cloud" {
+		prefix := strings.Join(parts[:2], ".") + "."
+		switch parts[2] {
+		case "token":
+			mutationPaths = append(mutationPaths, prefix+"oauth-token")
+			clearPaths = append(clearPaths,
+				prefix+"oauth-token",
+				prefix+"oauth-token-expires-at",
+				prefix+"oauth-scopes",
+			)
+		case "oauth-token":
+			mutationPaths = append(mutationPaths, prefix+"token")
+			clearPaths = append(clearPaths,
+				prefix+"token",
+				prefix+"oauth-token-expires-at",
+				prefix+"oauth-scopes",
+			)
+		}
+	}
+
+	completeMutations := make([]func() error, 0, len(mutationPaths))
+	for _, mutationPath := range mutationPaths {
+		completeMutations = append(completeMutations, cfg.PrepareSecretPathMutation(mutationPath))
+	}
+	if err := config.SetValue(cfg, path, value); err != nil {
+		return err
+	}
+	for _, clearPath := range clearPaths {
+		if err := config.UnsetValue(cfg, clearPath); err != nil {
+			return err
+		}
+	}
+	for _, completeMutation := range completeMutations {
+		if err := completeMutation(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func unsetCmd(configOpts *Options) *cobra.Command {
 	var fileType string
+	opts := &ioOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "unset PROPERTY_NAME",
@@ -701,39 +1129,49 @@ func unsetCmd(configOpts *Options) *cobra.Command {
 
 PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
 
-A bare path (e.g. "cloud.token") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context.`,
+Paths are literal: they name the exact location in the configuration file, starting from a top-level section ("stacks.<name>.", "cloud.<entry>.", "contexts.<name>.", "resources.", "current-context"). Nothing is resolved against the current context - the path you type is the path you see in "gcx config view".`,
 		Example: `
 	# Unset the "foo" context
 	gcx config unset contexts.foo
 
-	# Unset the "insecure-skip-tls-verify" flag in the current context
-	gcx config unset grafana.insecure-skip-tls-verify
+	# Unset the "insecure-skip-verify" TLS setting on the "dev-instance" stack
+	gcx config unset stacks.dev-instance.grafana.tls.insecure-skip-verify
 
-	# Unset the "insecure-skip-tls-verify" flag in the "dev-instance" context
-	gcx config unset contexts.dev-instance.grafana.insecure-skip-tls-verify
-
-	# Unset a value in the local config layer
-	gcx config unset --file local contexts.prod.cloud.token`,
+	# Unset a cloud entry's token in the local config layer
+	gcx config unset --file local cloud.grafana-com.token`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
 			if err != nil {
 				return err
 			}
 
-			path, err := config.ResolveContextPath(cfg, args[0])
+			path, err := config.ValidateConfigPath(cfg, args[0])
 			if err != nil {
 				return err
 			}
 
+			completeSecretMutation := cfg.PrepareSecretPathMutation(path)
 			if err := config.UnsetValue(&cfg, path); err != nil {
 				return err
 			}
+			if err := completeSecretMutation(); err != nil {
+				return err
+			}
 
-			return config.Write(cmd.Context(), target, cfg)
+			if err := config.Write(cmd.Context(), target, cfg); err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("unset", path, target))
 		},
 	}
 
 	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
+	opts.setup(cmd.Flags(), "text", &silentTextCodec{})
 
 	return cmd
 }

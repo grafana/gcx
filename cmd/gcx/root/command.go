@@ -198,6 +198,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			)
 
 			ctx := logging.Context(cmd.Context(), logger)
+			ctx = internalconfig.ContextWithWarningWriter(ctx, cmd.ErrOrStderr())
 
 			// Thread --context into Go context so provider config loaders
 			// can discover it via config.ContextNameFromCtx().

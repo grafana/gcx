@@ -147,7 +147,7 @@ $ go run ./cmd/gcx --config testdata/integration-test-config.yaml config view
 #### List available resources
 
 ```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources schemas
+$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources list-types
 ```
 
 #### Create a test dashboard

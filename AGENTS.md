@@ -72,7 +72,7 @@ cmd/gcx/
   root/         CLI root (logging, global flags)
   login/        Unified login command (token + OAuth PKCE, interactive prompts)
   config/       Config management (set, use-context, view, check)
-  resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
+  resources/    Resource commands (get, list-types, list-examples, push, pull, delete, edit, validate)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
   cloud/        Cloud platform command group (mounts gcx cloud stacks)
@@ -90,7 +90,7 @@ internal/
 ├── auth/        OAuth PKCE flow, token refresh transport
 │   └── adaptive/  Shared adaptive telemetry auth (GCOM caching, Basic auth — used by signal providers)
 ├── login/       Login orchestration (target detection, auth resolution, connectivity validation, sentinel-retry flow)
-├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
+├── config/      Config types (versioned stacks/cloud/contexts split - contexts reference named stack + cloud entries), loader, editor, rest.Config builder, stack-id discovery, context name helpers; auto-migrates legacy per-context configs (shape-detected, delete-nothing, `.legacy.bak` backup) and plaintext token-shaped secrets into the OS keychain via internal/credentials
 ├── credentials/ OS-keychain backend (zalando/go-keyring) for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
 ├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
 ├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and instrumentation provider)
@@ -131,7 +131,7 @@ internal/
 ├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
 │   ├── clickhouse/  ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   ├── cloudwatch/  CloudWatch CLI commands (query, list-namespaces, list-metrics, list-dimensions, list-regions, list-accounts)
-│   ├── influxdb/  InfluxDB datasource command layer (query, field-keys, measurements)
+│   ├── influxdb/  InfluxDB datasource command layer (query, list-field-keys, list-measurements, list-tag-keys, list-tag-values)
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
 ├── query/       Datasource query clients
 │   ├── dataframe/   Shared Grafana data frame wire types for unified datasource query API responses
@@ -159,7 +159,7 @@ internal/
 ├── testutils/   Shared test utilities
 ├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
 ├── grafana/     OpenAPI client (health checks, version detection)
-├── output/      Output codec registry (json, yaml, text, wide, agents — field selection, discovery, k8s unstructured handling, temp-file spill)
+├── output/      Output codec registry (json, yaml, text, wide, agents — field selection, discovery, k8s unstructured handling, temp-file spill) + agent output contract shapes (mutation result family, artifact receipt emitter, stream envelope discriminators)
 ├── format/      JSON/YAML codecs with format auto-detection
 ├── retry/       Retry transport (429, 502/503/504, transient connection errors — wraps all HTTP tiers)
 ├── httputils/   HTTP helpers (used by serve command's proxy)

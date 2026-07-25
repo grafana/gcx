@@ -114,6 +114,10 @@ func TestSnapshotOpts_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Validate() now also validates the output options; the table
+			// entries construct opts directly (no BindFlags), so pin a valid
+			// format to keep these cases focused on the render flags.
+			tt.opts.IO.OutputFormat = "json"
 			err := tt.opts.Validate()
 
 			if (err != nil) != tt.wantErr {

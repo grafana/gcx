@@ -3,11 +3,14 @@ package dev
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
 
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/strcase"
 	"github.com/spf13/cobra"
@@ -32,11 +35,55 @@ var typeToTemplate = map[string]string{
 }
 
 type generateOpts struct {
+	IO   cmdio.Options
 	Type string
 }
 
 func (opts *generateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Type, "type", "t", "", "Resource type to generate (dashboard, alertrule). Overrides directory-based inference.")
+	// The generate result is an ArtifactReceipt document through the codec
+	// system: the default text codec prints the familiar per-file and
+	// summary lines; agent mode and explicit -o json/yaml get the
+	// structured document.
+	opts.IO.RegisterCustomCodec("text", &generateReceiptCodec{})
+	opts.IO.DefaultFormat("text")
+	opts.IO.BindFlags(flags)
+}
+
+func (opts *generateOpts) Validate() error {
+	return opts.IO.Validate()
+}
+
+// generateReceiptCodec is the human "text" codec for the generate receipt:
+// it renders exactly the per-file "Generated <file>" lines and the final
+// "Generated N file(s)." summary the command has always printed, so default
+// human stdout stays byte-identical to the pre-codec output (per-file error
+// lines are diagnostics and moved to stderr).
+type generateReceiptCodec struct{}
+
+func (c *generateReceiptCodec) Format() format.Format { return "text" }
+
+func (c *generateReceiptCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *generateReceiptCodec) Encode(w io.Writer, value any) error {
+	receipt, ok := value.(cmdio.ArtifactReceipt)
+	if !ok {
+		return errors.New("invalid data type for generate receipt codec: expected ArtifactReceipt")
+	}
+
+	for _, file := range receipt.Files {
+		cmdio.Success(w, "Generated %s", file.Path)
+	}
+
+	if receipt.Summary.Failed > 0 {
+		cmdio.Info(w, "Generated %d file(s), %d failed.", receipt.Summary.Succeeded, receipt.Summary.Failed)
+	} else {
+		cmdio.Info(w, "Generated %d file(s).", receipt.Summary.Succeeded)
+	}
+
+	return nil
 }
 
 func generateCmd() *cobra.Command {
@@ -77,46 +124,95 @@ Use --type to override type inference when the directory name does not match.`,
 }
 
 func runGenerate(cmd *cobra.Command, opts *generateOpts, args []string) error {
+	if err := opts.Validate(); err != nil {
+		return err
+	}
+
 	tmpl, err := template.New("").Option("missingkey=error").ParseFS(templatesFS, "templates/generate/*.tmpl")
 	if err != nil {
 		return fmt.Errorf("parsing templates: %w", err)
 	}
 
-	succeeded := 0
-	failed := 0
+	receipt := generateFiles(tmpl, opts, args, cmd.ErrOrStderr())
 
-	for _, arg := range args {
-		if err := processGenerateArg(cmd, tmpl, opts, arg); err != nil {
-			cmdio.Error(cmd.OutOrStdout(), "%s: %s", arg, err)
-			failed++
-		} else {
-			succeeded++
-		}
+	// Total failure: no receipt — exit 4 would misreport a complete failure
+	// as partial. The raw error takes the standard path (one gcx.error
+	// document in agent mode, exit 1), matching the batch cohort's
+	// zero-success convention.
+	if receipt.Summary.Failed > 0 && receipt.Summary.Succeeded == 0 {
+		return receiptFailuresError(receipt.Failures)
 	}
 
-	if failed > 0 {
-		cmdio.Info(cmd.OutOrStdout(), "Generated %d file(s), %d failed.", succeeded, failed)
-	} else {
-		cmdio.Info(cmd.OutOrStdout(), "Generated %d file(s).", succeeded)
+	if err := opts.IO.Encode(cmd.OutOrStdout(), receipt); err != nil {
+		return err
+	}
+
+	if receipt.Summary.Failed > 0 {
+		// The receipt (with enumerated failures) is already on stdout —
+		// EmittedError carries exit 4 without a second error document.
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+			gcxerrors.NewPartialFailureError("generate",
+				receipt.Summary.Succeeded+receipt.Summary.Failed, receipt.Summary.Failed))
 	}
 
 	return nil
 }
 
-func processGenerateArg(cmd *cobra.Command, tmpl *template.Template, opts *generateOpts, arg string) error {
+// receiptFailuresError joins an artifact receipt's enumerated failures into
+// one error for the zero-success path.
+func receiptFailuresError(failures []cmdio.MutationFailure) error {
+	errs := make([]error, 0, len(failures))
+	for _, f := range failures {
+		msg := f.Error
+		if f.Target.Name != "" {
+			msg = f.Target.Name + ": " + msg
+		}
+		errs = append(errs, errors.New(msg))
+	}
+	return errors.Join(errs...)
+}
+
+// generateFiles processes each argument, streaming per-file failure notes to
+// warn (stderr — diagnostics, not results), and returns the artifact receipt:
+// written files, counts, and enumerated failures.
+func generateFiles(tmpl *template.Template, opts *generateOpts, args []string, warn io.Writer) cmdio.ArtifactReceipt {
+	receipt := cmdio.NewArtifactReceipt("generated", "go")
+
+	for _, arg := range args {
+		outputFile, resourceType, err := processGenerateArg(tmpl, opts, arg)
+		if err != nil {
+			cmdio.Error(warn, "%s: %s", arg, err)
+			receipt.Summary.Failed++
+			receipt.Failures = append(receipt.Failures, cmdio.MutationFailure{
+				Target: cmdio.MutationTarget{Name: arg},
+				Error:  err.Error(),
+			})
+			continue
+		}
+
+		receipt.Summary.Succeeded++
+		receipt.Files = append(receipt.Files, cmdio.ArtifactFile{Path: outputFile, Kind: resourceType})
+	}
+
+	return receipt
+}
+
+// processGenerateArg generates one stub file and returns its path and
+// resource type.
+func processGenerateArg(tmpl *template.Template, opts *generateOpts, arg string) (string, string, error) {
 	dir := filepath.Dir(arg)
 	base := filepath.Base(arg)
 
 	// Infer resource name from filename (strip .go extension if present).
 	name := strings.TrimSuffix(base, ".go")
 	if name == "" {
-		return errors.New("empty filename")
+		return "", "", errors.New("empty filename")
 	}
 
 	// Resolve resource type.
 	resourceType, err := resolveResourceType(opts, dir)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
 	// Normalize output path: snake_case filename with .go extension.
@@ -124,12 +220,12 @@ func processGenerateArg(cmd *cobra.Command, tmpl *template.Template, opts *gener
 
 	// Check if file already exists.
 	if _, err := os.Stat(outputFile); err == nil {
-		return fmt.Errorf("file already exists: %s. Delete it first or use a different name", outputFile)
+		return "", "", fmt.Errorf("file already exists: %s. Delete it first or use a different name", outputFile)
 	}
 
 	// Ensure output directory exists.
 	if err := ensureDirectory(filepath.Dir(outputFile)); err != nil {
-		return fmt.Errorf("creating directory: %w", err)
+		return "", "", fmt.Errorf("creating directory: %w", err)
 	}
 
 	// Derive package name from immediate parent directory.
@@ -145,17 +241,15 @@ func processGenerateArg(cmd *cobra.Command, tmpl *template.Template, opts *gener
 
 	fileHandle, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
-		return fmt.Errorf("creating file: %w", err)
+		return "", "", fmt.Errorf("creating file: %w", err)
 	}
 	defer fileHandle.Close()
 
 	if err := tmpl.ExecuteTemplate(fileHandle, templateName, data); err != nil {
-		return fmt.Errorf("executing template: %w", err)
+		return "", "", fmt.Errorf("executing template: %w", err)
 	}
 
-	cmdio.Success(cmd.OutOrStdout(), "Generated %s", outputFile)
-
-	return nil
+	return outputFile, resourceType, nil
 }
 
 func resolveResourceType(opts *generateOpts, dir string) (string, error) {

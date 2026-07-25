@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
@@ -275,8 +276,24 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 				f.Close()
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Pulled %d SLO definitions to %s/", len(typedObjs), outputDir)
-			return nil
+			// The real output is files on disk — stdout carries the terminal
+			// receipt: one bounded entry for the kind directory, not one per
+			// file. Agent mode gets the receipt as a single JSON document;
+			// the human line stays byte-identical.
+			receipt := cmdio.NewArtifactReceipt("pulled", "yaml")
+			receipt.Dir = outputDir
+			receipt.Summary = cmdio.MutationSummary{Succeeded: len(typedObjs)}
+			if len(typedObjs) > 0 {
+				receipt.Files = append(receipt.Files, cmdio.ArtifactFile{
+					Path:  outputDir,
+					Kind:  "SLO",
+					Count: len(typedObjs),
+				})
+			}
+			return cmdio.EmitArtifactResult(cmd.OutOrStdout(), receipt, func(w io.Writer) error {
+				cmdio.Success(w, "Pulled %d SLO definitions to %s/", len(typedObjs), outputDir)
+				return nil
+			})
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -288,11 +305,94 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type pushOpts struct {
+	IO     cmdio.Options
 	DryRun bool
 }
 
 func (o *pushOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview changes without making them")
+	// The push result flows through the codec system: the default text codec
+	// reproduces the historical per-file lines byte-for-byte; agent mode and
+	// explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &pushResultCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+// pushItemResult is one successfully processed file in a push batch.
+type pushItemResult struct {
+	Action string `json:"action" yaml:"action"` // created | updated | dry-run
+	Name   string `json:"name" yaml:"name"`
+	UUID   string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+	File   string `json:"file,omitempty" yaml:"file,omitempty"`
+}
+
+// pushBatchResult is the finite result document for `slo definitions push`
+// (and its mirror in the reports package). It is bespoke rather than a
+// cmdio.BatchMutation because per-item outcomes carry information a consumer
+// cannot recover otherwise (the server-assigned UUID of created SLOs), so the
+// shape carries its own discriminators.
+type pushBatchResult struct {
+	Type          string                  `json:"type" yaml:"type"`
+	SchemaVersion string                  `json:"schema_version" yaml:"schema_version"`
+	Action        string                  `json:"action" yaml:"action"`
+	DryRun        bool                    `json:"dry_run,omitempty" yaml:"dry_run,omitempty"`
+	Summary       cmdio.MutationSummary   `json:"summary" yaml:"summary"`
+	Items         []pushItemResult        `json:"items" yaml:"items"`
+	Failures      []cmdio.MutationFailure `json:"failures" yaml:"failures"`
+}
+
+func newPushBatchResult(dryRun bool) pushBatchResult {
+	return pushBatchResult{
+		Type:          "gcx.slo.push_batch",
+		SchemaVersion: "1",
+		Action:        "pushed",
+		DryRun:        dryRun,
+		Items:         []pushItemResult{},
+		Failures:      []cmdio.MutationFailure{},
+	}
+}
+
+// pushResultCodec is the human "text" codec for pushBatchResult values: it
+// renders exactly the per-file lines push has always printed. Failures are
+// not rendered here — they stay on stderr as diagnostics, matching the
+// pre-codec behavior where failures never reached stdout.
+type pushResultCodec struct{}
+
+func (c *pushResultCodec) Format() format.Format { return "text" }
+
+func (c *pushResultCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *pushResultCodec) Encode(w io.Writer, v any) error {
+	result, ok := v.(pushBatchResult)
+	if !ok {
+		return errors.New("invalid data type for push result codec: expected pushBatchResult")
+	}
+	for _, item := range result.Items {
+		switch item.Action {
+		case "dry-run":
+			cmdio.Info(w, "[dry-run] Would push SLO %q (uuid=%s)", item.Name, item.UUID)
+		case "created":
+			cmdio.Success(w, "Created %s (uuid=%s)", item.Name, item.UUID)
+		case "updated":
+			cmdio.Success(w, "Updated %s", item.Name)
+		}
+	}
+	return nil
+}
+
+// emitPartialResult writes the completed result document (which enumerates
+// the failure) to stdout and returns the exit-4 sentinel. Call only after at
+// least one target succeeded — the cause additionally goes to stderr because
+// reportError writes nothing more for an EmittedError.
+func emitPartialResult(cmd *cobra.Command, io *cmdio.Options, result any, cause error) error {
+	cmdio.Error(cmd.ErrOrStderr(), "%v", cause)
+	if err := io.Encode(cmd.OutOrStdout(), result); err != nil {
+		return err
+	}
+	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
 }
 
 func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -302,6 +402,10 @@ func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "Push SLO definitions from files.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 
 			crud, _, err := NewTypedCRUD(ctx, loader)
@@ -311,49 +415,81 @@ func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			yamlCodec := format.NewYAMLCodec()
 
-			for _, filePath := range args {
-				data, err := os.ReadFile(filePath)
-				if err != nil {
-					return fmt.Errorf("failed to read file %s: %w", filePath, err)
-				}
+			result := newPushBatchResult(opts.DryRun)
 
-				// Decode YAML into an unstructured object
-				var obj unstructured.Unstructured
-				if err := yamlCodec.Decode(strings.NewReader(string(data)), &obj); err != nil {
-					return fmt.Errorf("failed to parse %s: %w", filePath, err)
+			// fail finalizes the batch after a mid-loop failure. The loop
+			// stops at the first error (as it always has): with no prior
+			// successes the standard error path owns the output; with a
+			// partial result the document goes to stdout and the sentinel
+			// carries exit 4.
+			fail := func(target cmdio.MutationTarget, remaining int, cause error) error {
+				result.Summary.Failed++
+				result.Summary.Skipped = remaining
+				result.Failures = append(result.Failures, cmdio.MutationFailure{Target: target, Error: cause.Error()})
+				if result.Summary.Succeeded == 0 {
+					return cause
 				}
+				return emitPartialResult(cmd, &opts.IO, result, cause)
+			}
 
-				res, err := resources.FromUnstructured(&obj)
+			for i, filePath := range args {
+				slo, err := readSloFile(yamlCodec, filePath)
 				if err != nil {
-					return fmt.Errorf("failed to build resource from %s: %w", filePath, err)
-				}
-
-				slo, err := FromResource(res)
-				if err != nil {
-					return fmt.Errorf("failed to convert resource to SLO from %s: %w", filePath, err)
+					return fail(cmdio.MutationTarget{Kind: "SLO", Name: filePath}, len(args)-i-1, err)
 				}
 
 				if opts.DryRun {
-					cmdio.Info(cmd.OutOrStdout(), "[dry-run] Would push SLO %q (uuid=%s)", slo.Name, slo.UUID)
+					result.Items = append(result.Items, pushItemResult{Action: "dry-run", Name: slo.Name, UUID: slo.UUID, File: filePath})
+					result.Summary.Succeeded++
 					continue
 				}
 
-				if err := upsertSLO(ctx, cmd, crud, slo); err != nil {
-					return err
+				item, err := upsertSLO(ctx, crud, slo)
+				if err != nil {
+					return fail(cmdio.MutationTarget{Kind: "SLO", Name: slo.Name, UID: slo.UUID}, len(args)-i-1, err)
 				}
+				item.File = filePath
+				result.Items = append(result.Items, item)
+				result.Summary.Succeeded++
 			}
 
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
 }
 
+// readSloFile reads one YAML manifest from disk and converts it to an Slo.
+func readSloFile(yamlCodec format.Codec, filePath string) (*Slo, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
+	}
+
+	// Decode YAML into an unstructured object
+	var obj unstructured.Unstructured
+	if err := yamlCodec.Decode(strings.NewReader(string(data)), &obj); err != nil {
+		return nil, fmt.Errorf("failed to parse %s: %w", filePath, err)
+	}
+
+	res, err := resources.FromUnstructured(&obj)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build resource from %s: %w", filePath, err)
+	}
+
+	slo, err := FromResource(res)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert resource to SLO from %s: %w", filePath, err)
+	}
+	return slo, nil
+}
+
 // upsertSLO creates or updates an SLO depending on whether it already exists.
 // If slo.UUID is set, it checks the server; a 404 means create, otherwise update.
-// If slo.UUID is empty, it always creates.
-func upsertSLO(ctx context.Context, cmd *cobra.Command, crud *adapter.TypedCRUD[Slo], slo *Slo) error {
+// If slo.UUID is empty, it always creates. It returns the item outcome — the
+// caller owns rendering, so the same result feeds every output format.
+func upsertSLO(ctx context.Context, crud *adapter.TypedCRUD[Slo], slo *Slo) (pushItemResult, error) {
 	if slo.UUID == "" {
 		// Wrap in TypedObject for create
 		typedObj := &adapter.TypedObject[Slo]{
@@ -361,10 +497,9 @@ func upsertSLO(ctx context.Context, cmd *cobra.Command, crud *adapter.TypedCRUD[
 		}
 		created, err := crud.Create(ctx, typedObj)
 		if err != nil {
-			return fmt.Errorf("failed to create SLO %s: %w", slo.Name, err)
+			return pushItemResult{}, fmt.Errorf("failed to create SLO %s: %w", slo.Name, err)
 		}
-		cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", slo.Name, created.Spec.UUID)
-		return nil
+		return pushItemResult{Action: "created", Name: slo.Name, UUID: created.Spec.UUID}, nil
 	}
 
 	_, getErr := crud.Get(ctx, slo.UUID)
@@ -376,10 +511,9 @@ func upsertSLO(ctx context.Context, cmd *cobra.Command, crud *adapter.TypedCRUD[
 		}
 		typedObj.SetName(slo.UUID)
 		if _, err := crud.Update(ctx, slo.UUID, typedObj); err != nil {
-			return fmt.Errorf("failed to update SLO %s: %w", slo.UUID, err)
+			return pushItemResult{}, fmt.Errorf("failed to update SLO %s: %w", slo.UUID, err)
 		}
-		cmdio.Success(cmd.OutOrStdout(), "Updated %s", slo.Name)
-		return nil
+		return pushItemResult{Action: "updated", Name: slo.Name, UUID: slo.UUID}, nil
 
 	case errors.Is(getErr, ErrNotFound):
 		// SLO not found — create.
@@ -388,14 +522,13 @@ func upsertSLO(ctx context.Context, cmd *cobra.Command, crud *adapter.TypedCRUD[
 		}
 		created, err := crud.Create(ctx, typedObj)
 		if err != nil {
-			return fmt.Errorf("failed to create SLO %s: %w", slo.Name, err)
+			return pushItemResult{}, fmt.Errorf("failed to create SLO %s: %w", slo.Name, err)
 		}
-		cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", slo.Name, created.Spec.UUID)
-		return nil
+		return pushItemResult{Action: "created", Name: slo.Name, UUID: created.Spec.UUID}, nil
 
 	default:
 		// Any other error (auth, network, server) — propagate.
-		return fmt.Errorf("failed to check SLO %s: %w", slo.UUID, getErr)
+		return pushItemResult{}, fmt.Errorf("failed to check SLO %s: %w", slo.UUID, getErr)
 	}
 }
 
@@ -404,11 +537,63 @@ func upsertSLO(ctx context.Context, cmd *cobra.Command, crud *adapter.TypedCRUD[
 // ---------------------------------------------------------------------------
 
 type deleteOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The delete result flows through the codec system: the default text
+	// codec reproduces the historical per-target lines byte-for-byte; agent
+	// mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &deleteResultCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+// deleteBatchResult is the finite result document for `slo definitions
+// delete` (and its mirror in the reports package). Bespoke rather than a
+// cmdio.BatchMutation because the historical human output enumerates each
+// deleted target, so the result must carry them.
+type deleteBatchResult struct {
+	Type          string                  `json:"type" yaml:"type"`
+	SchemaVersion string                  `json:"schema_version" yaml:"schema_version"`
+	Action        string                  `json:"action" yaml:"action"`
+	Summary       cmdio.MutationSummary   `json:"summary" yaml:"summary"`
+	Deleted       []string                `json:"deleted" yaml:"deleted"`
+	Failures      []cmdio.MutationFailure `json:"failures" yaml:"failures"`
+}
+
+func newDeleteBatchResult() deleteBatchResult {
+	return deleteBatchResult{
+		Type:          "gcx.slo.delete_batch",
+		SchemaVersion: "1",
+		Action:        "deleted",
+		Deleted:       []string{},
+		Failures:      []cmdio.MutationFailure{},
+	}
+}
+
+// deleteResultCodec is the human "text" codec for deleteBatchResult values:
+// exactly the per-target lines delete has always printed. Failures stay on
+// stderr as diagnostics, matching the pre-codec behavior.
+type deleteResultCodec struct{}
+
+func (c *deleteResultCodec) Format() format.Format { return "text" }
+
+func (c *deleteResultCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *deleteResultCodec) Encode(w io.Writer, v any) error {
+	result, ok := v.(deleteBatchResult)
+	if !ok {
+		return errors.New("invalid data type for delete result codec: expected deleteBatchResult")
+	}
+	for _, uuid := range result.Deleted {
+		cmdio.Success(w, "Deleted %s", uuid)
+	}
+	return nil
 }
 
 func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -418,9 +603,15 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "Delete SLO definitions.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			// The prompt and the decline note are diagnostics — stderr keeps
+			// them out of the stdout result document.
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete %d SLO definition(s)?", len(args)))
 			if err != nil {
 				return err
@@ -434,14 +625,26 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			for _, uuid := range args {
+			result := newDeleteBatchResult()
+			for i, uuid := range args {
 				if err := crud.Delete(ctx, uuid); err != nil {
-					return fmt.Errorf("failed to delete SLO %s: %w", uuid, err)
+					cause := fmt.Errorf("failed to delete SLO %s: %w", uuid, err)
+					result.Summary.Failed++
+					result.Summary.Skipped = len(args) - i - 1
+					result.Failures = append(result.Failures, cmdio.MutationFailure{
+						Target: cmdio.MutationTarget{Kind: "SLO", UID: uuid},
+						Error:  cause.Error(),
+					})
+					if result.Summary.Succeeded == 0 {
+						return cause
+					}
+					return emitPartialResult(cmd, &opts.IO, result, cause)
 				}
-				cmdio.Success(cmd.OutOrStdout(), "Deleted %s", uuid)
+				result.Deleted = append(result.Deleted, uuid)
+				result.Summary.Succeeded++
 			}
 
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

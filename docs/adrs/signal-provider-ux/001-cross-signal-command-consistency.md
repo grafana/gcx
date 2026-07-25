@@ -66,14 +66,14 @@ operation, and a `metrics` command where the backend supports a distinct
 time-series-over-time query with a different response shape:
 
 ```
-gcx metrics                       gcx logs                        gcx profiles                    gcx traces
-+-- query EXPR      (-d)          +-- query EXPR      (-d)        +-- query EXPR      (-d)        +-- query TRACEQL      (-d)
-|                                 +-- metrics EXPR    (-d)        +-- metrics EXPR    (-d)        |   (also: search)
-+-- labels          (-d)          +-- labels          (-d)        +-- labels          (-d)        +-- metrics TRACEQL    (-d)
-+-- metadata        (-d)          +-- series          (-d)        +-- profile-types   (-d)        +-- labels             (-d)
-|                                 |                               |                               |   (also: tags)
-'-- adaptive/                     '-- adaptive/                   '-- adaptive (stub)             +-- get TRACE_ID       (-d)
-                                                                                                  '-- adaptive/
+gcx metrics                       gcx logs                        gcx profiles                       gcx traces
++-- query EXPR      (-d)          +-- query EXPR      (-d)        +-- query EXPR         (-d)        +-- query TRACEQL      (-d)
+|                                 +-- metrics EXPR    (-d)        +-- metrics EXPR       (-d)        |   (also: search)
++-- labels          (-d)          +-- labels          (-d)        +-- labels             (-d)        +-- metrics TRACEQL    (-d)
++-- metadata        (-d)          +-- series          (-d)        +-- list-profile-types (-d)        +-- labels             (-d)
+|                                 |                               |                                  |   (also: tags)
+'-- adaptive/                     '-- adaptive/                   '-- adaptive (stub)                +-- get TRACE_ID       (-d)
+                                                                                                     '-- adaptive/
 ```
 
 `metrics query` keeps a single command because Prometheus instant vs range is

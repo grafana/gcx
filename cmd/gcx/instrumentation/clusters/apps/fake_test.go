@@ -29,6 +29,10 @@ type fakeAppsClient struct {
 	// discoverErr is the error to return from RunK8sDiscovery / IsNamespaceDiscovered.
 	discoverErr error
 
+	// discoverErrs is a per-call error queue for RunK8sDiscovery: each call
+	// pops the first entry (nil = success). When exhausted, discoverErr applies.
+	discoverErrs []error
+
 	// setCalls records the arguments passed to SetAppInstrumentation.
 	setCalls []setCall
 
@@ -80,7 +84,13 @@ func (f *fakeAppsClient) RunK8sDiscovery(_ context.Context, _ instrumentation.Pr
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if f.discoverErr != nil {
+	if len(f.discoverErrs) > 0 {
+		err := f.discoverErrs[0]
+		f.discoverErrs = f.discoverErrs[1:]
+		if err != nil {
+			return nil, err
+		}
+	} else if f.discoverErr != nil {
 		return nil, f.discoverErr
 	}
 	return &instrumentation.RunK8sDiscoveryResponse{Items: f.discoverItems}, nil

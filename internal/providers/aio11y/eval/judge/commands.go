@@ -54,7 +54,7 @@ func (o *providersOpts) setup(flags *pflag.FlagSet) {
 func newProvidersCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &providersOpts{}
 	cmd := &cobra.Command{
-		Use:   "providers",
+		Use:   "list-providers",
 		Short: "List available judge providers.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -87,12 +87,12 @@ func (o *modelsOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &ModelsTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.StringVar(&o.Provider, "provider", "", "Provider ID (required, see 'judge providers')")
+	flags.StringVar(&o.Provider, "provider", "", "Provider ID (required, see 'judge list-providers')")
 }
 
 func (o *modelsOpts) Validate() error {
 	if o.Provider == "" {
-		return errors.New("--provider is required (see 'gcx agento11y judge providers')")
+		return errors.New("--provider is required (see 'gcx agento11y judge list-providers')")
 	}
 	return o.IO.Validate()
 }
@@ -100,7 +100,7 @@ func (o *modelsOpts) Validate() error {
 func newModelsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &modelsOpts{}
 	cmd := &cobra.Command{
-		Use:   "models --provider <id>",
+		Use:   "list-models --provider <id>",
 		Short: "List available judge models.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

@@ -1,13 +1,17 @@
-// Package versions provides the `gcx dashboards versions` command group.
+// Package versions provides the `gcx dashboards list-versions` command and
+// the `gcx dashboards versions` command group.
 package versions
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/dashboards/descriptor"
@@ -72,7 +76,7 @@ func (d *commandDeps) resolve(ctx context.Context, apiVersion string) (Dashboard
 	return client, desc, nil
 }
 
-// Commands returns the versions subcommand group with list and restore children.
+// Commands returns the versions subcommand group with the restore child.
 func Commands(loader GrafanaConfigLoader) *cobra.Command {
 	deps := &commandDeps{loader: loader}
 
@@ -80,13 +84,21 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 		Use:   "versions",
 		Short: "Manage dashboard version history",
 	}
-	cmd.AddCommand(newListCommand(deps))
 	cmd.AddCommand(newRestoreCommand(deps))
 	return cmd
 }
 
+// ListVersionsCommand returns the `gcx dashboards list-versions` leaf command.
+// Versions are addressed by the parent dashboard's name (a version has no ID
+// of its own), so the command is an operation-subject compound mounted
+// directly under `dashboards`.
+func ListVersionsCommand(loader GrafanaConfigLoader) *cobra.Command {
+	deps := &commandDeps{loader: loader}
+	return newListVersionsCommand(deps)
+}
+
 // ---------------------------------------------------------------------------
-// versions list
+// dashboards list-versions
 // ---------------------------------------------------------------------------
 
 type versionsListOpts struct {
@@ -108,7 +120,7 @@ func (o *versionsListOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-// newListCommand returns the `dashboards versions list <name>` subcommand.
+// newListVersionsCommand returns the `dashboards list-versions <name>` command.
 //
 // It issues a K8s LIST with magic selectors:
 //
@@ -117,11 +129,11 @@ func (o *versionsListOpts) Validate() error {
 //
 // Results are sorted by descending metadata.generation before rendering.
 // Supports -o table (default), json, yaml via cmdio.Options.
-func newListCommand(deps *commandDeps) *cobra.Command {
+func newListVersionsCommand(deps *commandDeps) *cobra.Command {
 	opts := &versionsListOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "list <name>",
+		Use:   "list-versions <name>",
 		Short: "List dashboard version history",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -169,18 +181,87 @@ func newListCommand(deps *commandDeps) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type versionsRestoreOpts struct {
+	IO         cmdio.Options
 	Force      bool
 	Message    string
 	APIVersion string
 }
 
 func (o *versionsRestoreOpts) setup(flags *pflag.FlagSet) {
+	// The restore result is a restoreResult document through the codec
+	// system: the default text codec intentionally prints nothing (the
+	// command's stdout has always been empty — prompt and success prose live
+	// on stderr); agent mode and explicit -o json/yaml get the structured
+	// document with the server-assigned new generation.
+	o.IO.RegisterCustomCodec("text", &restoreTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 	flags.StringVar(&o.Message, "message", "", `Commit message for the restored revision (default: "Restored from version N")`)
 	flags.StringVar(&o.APIVersion, "api-version", "", "API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version")
 }
 
 func (o *versionsRestoreOpts) Validate() error {
+	return o.IO.Validate()
+}
+
+// restoreResult is the finite result document for `versions restore`. The
+// domain needs fields the shared cmdio.SingleMutation cannot carry — the
+// restored version and the server-assigned new generation — so it is a
+// bespoke shape with the collision-resistant discriminators the mutation
+// result family requires.
+type restoreResult struct {
+	Type          string               `json:"type" yaml:"type"`
+	SchemaVersion string               `json:"schema_version" yaml:"schema_version"`
+	Action        string               `json:"action" yaml:"action"`
+	Target        cmdio.MutationTarget `json:"target" yaml:"target"`
+	// Changed is false when the dashboard was already at the target version
+	// (idempotent no-op: no PUT issued), true when a new generation was
+	// written.
+	Changed         bool  `json:"changed" yaml:"changed"`
+	RestoredVersion int64 `json:"restored_version" yaml:"restored_version"`
+	// NewGeneration is the dashboard generation after the command: the
+	// server-assigned generation of the PUT response, or the current
+	// generation for a no-op.
+	NewGeneration int64 `json:"new_generation" yaml:"new_generation"`
+}
+
+// Discriminator values for the restore result shape.
+const (
+	restoreResultType          = "gcx.dashboards.restore"
+	restoreResultSchemaVersion = "1"
+)
+
+// newRestoreResult returns a restoreResult with the discriminators set.
+func newRestoreResult(desc resources.Descriptor, name string, changed bool, restoredVersion, newGeneration int64) restoreResult {
+	return restoreResult{
+		Type:            restoreResultType,
+		SchemaVersion:   restoreResultSchemaVersion,
+		Action:          "restored",
+		Target:          cmdio.MutationTarget{Kind: desc.Kind, Name: name},
+		Changed:         changed,
+		RestoredVersion: restoredVersion,
+		NewGeneration:   newGeneration,
+	}
+}
+
+// restoreTextCodec is the human "text" codec for restoreResult values. The
+// restore command has never written anything to stdout — its prompt, no-op
+// note, and success line all live on stderr — so the codec renders nothing,
+// keeping default human stdout byte-identical (empty).
+type restoreTextCodec struct{}
+
+func (c *restoreTextCodec) Format() format.Format { return "text" }
+
+func (c *restoreTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *restoreTextCodec) Encode(_ io.Writer, value any) error {
+	if _, ok := value.(restoreResult); !ok {
+		return errors.New("invalid data type for restore text codec: expected restoreResult")
+	}
 	return nil
 }
 
@@ -190,10 +271,14 @@ func (o *versionsRestoreOpts) Validate() error {
 //  1. Parse <version> as integer BEFORE any HTTP call.
 //  2. LIST history with magic selectors → find item where generation == <version>.
 //  3. GET current dashboard → capture resourceVersion and generation.
-//  4. No-op: if current.generation == <version>, emit cmdio.Success, exit 0.
-//  5. Prompt on stderr unless --yes.
+//  4. No-op: if current.generation == <version>, note on stderr, encode the
+//     restoreResult (changed=false) through the codec, exit 0.
+//  5. Prompt on stderr unless --force.
 //  6. Deep copy current, replace spec with historical spec, set grafana.app/message.
-//  7. PUT → 409 → non-zero exit; else cmdio.Success to stderr.
+//  7. PUT → 409 → non-zero exit; else success prose to stderr and the
+//     restoreResult (changed=true, server-assigned new generation) through
+//     the codec — nothing on default human stdout, one JSON document in
+//     agent mode / -o json|yaml.
 func newRestoreCommand(deps *commandDeps) *cobra.Command {
 	opts := &versionsRestoreOpts{}
 
@@ -255,7 +340,8 @@ func newRestoreCommand(deps *commandDeps) *cobra.Command {
 			// Step 4: No-op if already at target version.
 			if currentGen == targetGen {
 				cmdio.Success(cmd.ErrOrStderr(), "already at version %d", targetGen)
-				return nil
+				return opts.IO.Encode(cmd.OutOrStdout(),
+					newRestoreResult(desc, name, false, targetGen, currentGen))
 			}
 
 			// Step 5: Prompt unless --force.
@@ -311,7 +397,8 @@ func newRestoreCommand(deps *commandDeps) *cobra.Command {
 
 			newGen := updated.GetGeneration()
 			cmdio.Success(cmd.ErrOrStderr(), "restored to version %d (new generation %d)", targetGen, newGen)
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(),
+				newRestoreResult(desc, name, true, targetGen, newGen))
 		},
 	}
 

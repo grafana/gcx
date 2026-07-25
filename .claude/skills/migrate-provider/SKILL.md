@@ -34,7 +34,7 @@ Before invoking this skill, ensure:
 3. **Provider directory exists** — create `internal/providers/{name}` before
    starting the port.
 4. **Live API access** — smoke tests (Phase 4) require a real Grafana instance.
-   Verify connectivity: `gcx --context=<ctx> resources schemas`.
+   Verify connectivity: `gcx --context=<ctx> resources list-types`.
 
 ## Pipeline Overview
 
@@ -324,7 +324,7 @@ done
 ### Step 4C: Adapter Smoke (MANDATORY)
 
 Every TypedCRUD resource MUST be verified via the adapter path:
-- `resources schemas` — registration visible
+- `resources list-types` — registration visible
 - `resources get {alias}` — envelope + deserialization working
 
 ### Step 4D: Spec Compliance

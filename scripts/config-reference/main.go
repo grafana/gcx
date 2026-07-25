@@ -40,7 +40,11 @@ func main() {
 }
 
 func toMarkdown(reference string) string {
-	return fmt.Sprintf("# Configuration reference\n\n```yaml\n%s\n```\n", reference)
+	lines := strings.Split(reference, "\n")
+	for index := range lines {
+		lines[index] = strings.TrimRight(lines[index], " \t")
+	}
+	return fmt.Sprintf("# Configuration reference\n\n```yaml\n%s\n```\n", strings.Join(lines, "\n"))
 }
 
 type typeComments struct {
@@ -155,6 +159,11 @@ func docs(typeDef reflect.Type, typesCommentsMap map[string]typeComments) string
 
 		for fieldIndex := range typeDef.NumField() {
 			field := typeDef.Field(fieldIndex)
+			if field.PkgPath != "" {
+				// Unexported fields hold resolved runtime state and are not part of
+				// the serialized configuration schema.
+				continue
+			}
 			fieldKind := field.Type.Kind()
 			yamlTag := field.Tag.Get("yaml")
 			yamlName := strings.Split(yamlTag, ",")[0]
@@ -169,17 +178,17 @@ func docs(typeDef reflect.Type, typesCommentsMap map[string]typeComments) string
 			if comments.Fields[field.Name] != "" {
 				buffer.WriteString(prefixLines(comments.Fields[field.Name], "# ") + "\n")
 			}
-			buffer.WriteString(yamlName + ": ")
-
 			if field.Type.Kind() == reflect.Pointer {
 				fieldKind = field.Type.Elem().Kind()
 			}
 
 			if fieldKind == reflect.Struct || fieldKind == reflect.Map || fieldKind == reflect.Slice {
+				buffer.WriteString(yamlName + ":")
 				buffer.WriteString(
 					"\n" + indent(docs(field.Type, typesCommentsMap), 2),
 				)
 			} else {
+				buffer.WriteString(yamlName + ": ")
 				buffer.WriteString(docs(field.Type, typesCommentsMap))
 			}
 
@@ -201,6 +210,8 @@ func prefixLines(input string, prefix string) string {
 	if input == "" {
 		return ""
 	}
+
+	input = strings.TrimRight(input, "\n")
 
 	return prefix + strings.ReplaceAll(input, "\n", "\n"+prefix)
 }

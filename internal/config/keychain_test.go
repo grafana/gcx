@@ -1,9 +1,11 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -94,6 +96,42 @@ func withFakeStore(t *testing.T) *fakeStore {
 	return store
 }
 
+func testStackBinding(t *testing.T, path, name, server string, field credentials.Field) credentials.Binding {
+	t.Helper()
+	binding, err := config.StackBindingForTest(path, name, server, field)
+	require.NoError(t, err)
+	return binding
+}
+
+func testCloudBinding(t *testing.T, path, name string, field credentials.Field) credentials.Binding {
+	t.Helper()
+	binding, err := config.CloudBindingForTest(path, name, field)
+	require.NoError(t, err)
+	return binding
+}
+
+func storeBoundReference(t *testing.T, store *fakeStore, binding credentials.Binding, value string) credentials.BoundReference {
+	t.Helper()
+	ref, err := credentials.NewBoundReference(binding)
+	require.NoError(t, err)
+	require.NoError(t, store.Set(ref.Account, value))
+	return ref
+}
+
+func storedBoundValue(t *testing.T, store *fakeStore, binding credentials.Binding, value string) string {
+	t.Helper()
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	var matches []string
+	for account, stored := range store.entries {
+		if credentials.MatchesBoundAccount(account, binding) && stored == value {
+			matches = append(matches, account)
+		}
+	}
+	require.Len(t, matches, 1)
+	return matches[0]
+}
+
 func writeYAML(t *testing.T, contents string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -112,10 +150,14 @@ func TestLoad_NoSecretsDoesNotOpenKeychain(t *testing.T) {
 	t.Cleanup(restore)
 
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 
@@ -128,7 +170,6 @@ current-context: default
 func TestLoad_SentinelOpensKeychain(t *testing.T) {
 	var opens int
 	store := newFakeStore()
-	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldGrafanaToken), "resolved-token"))
 	restore := config.SetKeychainStoreFnForTest(func() credentials.Store {
 		opens++
 		return store
@@ -136,13 +177,31 @@ func TestLoad_SentinelOpensKeychain(t *testing.T) {
 	t.Cleanup(restore)
 
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
-      token: keychain:gcx:default:grafana-token
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
+	binding := testStackBinding(t, path, "default", "https://example.invalid", credentials.FieldGrafanaToken)
+	ref := storeBoundReference(t, store, binding, "resolved-token")
+	contents := fmt.Sprintf(`version: 1
+stacks:
+  default:
+    grafana:
+      server: https://example.invalid
+      token: %s
+contexts:
+  default:
+    stack: default
+current-context: default
+`, ref.Sentinel)
+	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
+	opens = 0
 
 	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
@@ -154,7 +213,8 @@ current-context: default
 func TestLoad_MigratesPlaintextSecretsIntoKeychain(t *testing.T) {
 	store := withFakeStore(t)
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
@@ -162,8 +222,13 @@ contexts:
       password: plain-password
       oauth-token: gat_plain
       oauth-refresh-token: gar_plain
-    cloud:
-      token: plain-cloud-token
+cloud:
+  grafana-com:
+    token: plain-cloud-token
+contexts:
+  default:
+    stack: default
+    cloud: grafana-com
 current-context: default
 `)
 
@@ -177,23 +242,19 @@ current-context: default
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
 	disk := string(raw)
-	assert.Contains(t, disk, "keychain:gcx:default:cloud-token")
-	assert.Contains(t, disk, "keychain:gcx:default:grafana-token")
-	assert.Contains(t, disk, "keychain:gcx:default:grafana-password")
-	assert.Contains(t, disk, "keychain:gcx:default:oauth-token")
-	assert.Contains(t, disk, "keychain:gcx:default:oauth-refresh-token")
+	assert.Equal(t, 5, strings.Count(disk, "keychain:gcx:v2:"))
 	assert.NotContains(t, disk, "plain-svc-token")
 	assert.NotContains(t, disk, "gat_plain")
 
-	got, err := store.Get(credentials.AccountKey("default", credentials.FieldGrafanaToken))
-	require.NoError(t, err)
-	assert.Equal(t, "plain-svc-token", got)
+	storedBoundValue(t, store, testStackBinding(t, path, "default", "https://example.invalid", credentials.FieldGrafanaToken), "plain-svc-token")
+	storedBoundValue(t, store, testCloudBinding(t, path, "grafana-com", credentials.FieldCloudToken), "plain-cloud-token")
 }
 
 func TestLoad_MigratesProviderSMToken(t *testing.T) {
 	store := withFakeStore(t)
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
@@ -201,6 +262,9 @@ contexts:
       synth:
         sm-url: https://sm.example.invalid
         sm-token: plain-sm-token
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 
@@ -214,28 +278,40 @@ current-context: default
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
 	disk := string(raw)
-	assert.Contains(t, disk, "keychain:gcx:default:sm-token")
+	assert.Contains(t, disk, "keychain:gcx:v2:")
 	assert.NotContains(t, disk, "plain-sm-token")
 
-	got, err := store.Get(credentials.AccountKey("default", credentials.FieldSMToken))
-	require.NoError(t, err)
-	assert.Equal(t, "plain-sm-token", got)
+	storedBoundValue(t, store, testStackBinding(t, path, "default", "https://example.invalid", credentials.FieldSMToken), "plain-sm-token")
 }
 
 func TestLoad_ResolvesSentinelsToPlaintext(t *testing.T) {
 	store := withFakeStore(t)
-	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldOAuthToken), "gat_resolved"))
-	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldOAuthRefreshToken), "gar_resolved"))
-
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
-      oauth-token: keychain:gcx:default:oauth-token
-      oauth-refresh-token: keychain:gcx:default:oauth-refresh-token
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
+	tokenRef := storeBoundReference(t, store, testStackBinding(t, path, "default", "https://example.invalid", credentials.FieldOAuthToken), "gat_resolved")
+	refreshRef := storeBoundReference(t, store, testStackBinding(t, path, "default", "https://example.invalid", credentials.FieldOAuthRefreshToken), "gar_resolved")
+	contents := fmt.Sprintf(`version: 1
+stacks:
+  default:
+    grafana:
+      server: https://example.invalid
+      oauth-token: %s
+      oauth-refresh-token: %s
+contexts:
+  default:
+    stack: default
+current-context: default
+`, tokenRef.Sentinel, refreshRef.Sentinel)
+	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
 
 	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
@@ -245,19 +321,58 @@ current-context: default
 	assert.Equal(t, "gar_resolved", def.Grafana.OAuthRefreshToken)
 }
 
-func TestLoad_IdempotentWithSentinels(t *testing.T) {
+func TestLoad_RejectsLegacySentinelsInVersionedConfig(t *testing.T) {
 	store := withFakeStore(t)
-	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldOAuthToken), "gat_resolved"))
-	seedSets := store.sets()
+	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldOAuthToken), "gat_legacy"))
 
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
       oauth-token: keychain:gcx:default:oauth-token
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+
+	assert.Empty(t, cfg.Contexts["default"].Grafana.OAuthToken)
+	got, err := store.Get(credentials.AccountKey("default", credentials.FieldOAuthToken))
+	require.NoError(t, err)
+	assert.Equal(t, "gat_legacy", got, "unbound versioned references must never select legacy accounts")
+}
+
+func TestLoad_IdempotentWithSentinels(t *testing.T) {
+	store := withFakeStore(t)
+	path := writeYAML(t, `
+version: 1
+stacks:
+  default:
+    grafana:
+      server: https://example.invalid
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	ref := storeBoundReference(t, store, testStackBinding(t, path, "default", "https://example.invalid", credentials.FieldOAuthToken), "gat_resolved")
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, `version: 1
+stacks:
+  default:
+    grafana:
+      server: https://example.invalid
+      oauth-token: %s
+contexts:
+  default:
+    stack: default
+current-context: default
+`, ref.Sentinel), 0o600))
+	seedSets := store.sets()
 
 	_, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
@@ -283,16 +398,30 @@ current-context: default
 
 func TestWrite_RoundTripsThroughSentinels(t *testing.T) {
 	store := withFakeStore(t)
-	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldOAuthToken), "gat_old"))
-
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
-      oauth-token: keychain:gcx:default:oauth-token
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
+	binding := testStackBinding(t, path, "default", "https://example.invalid", credentials.FieldOAuthToken)
+	oldRef := storeBoundReference(t, store, binding, "gat_old")
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, `version: 1
+stacks:
+  default:
+    grafana:
+      server: https://example.invalid
+      oauth-token: %s
+contexts:
+  default:
+    stack: default
+current-context: default
+`, oldRef.Sentinel), 0o600))
 
 	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
@@ -302,12 +431,12 @@ current-context: default
 
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "keychain:gcx:default:oauth-token")
+	assert.Contains(t, string(raw), "keychain:gcx:v2:")
 	assert.NotContains(t, string(raw), "gat_rotated")
 
-	got, err := store.Get(credentials.AccountKey("default", credentials.FieldOAuthToken))
-	require.NoError(t, err)
-	assert.Equal(t, "gat_rotated", got)
+	storedBoundValue(t, store, binding, "gat_rotated")
+	_, err = store.Get(oldRef.Account)
+	require.ErrorIs(t, err, credentials.ErrNotFound)
 
 	assert.Equal(t, "gat_rotated", cfg.Contexts["default"].Grafana.OAuthToken)
 }
@@ -316,11 +445,15 @@ func TestLoad_KeychainUnavailableKeepsPlaintext(t *testing.T) {
 	// Default test store already returns ErrUnavailable for every operation,
 	// so no explicit override is needed.
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
       oauth-token: gat_plain
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 
@@ -338,19 +471,32 @@ current-context: default
 // config write to permanently erase the sentinel reference from the YAML.
 func TestWrite_PreservesSentinelWhenKeychainUnavailableAtLoad(t *testing.T) {
 	store := withFakeStore(t)
-	key := credentials.AccountKey("default", credentials.FieldOAuthToken)
-	require.NoError(t, store.Set(key, "gat_real"))
-	// Reads now fail as if the backend went away (locked session, missing DBus).
-	store.setGetErr(credentials.ErrUnavailable)
-
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
-      oauth-token: keychain:gcx:default:oauth-token
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
+	binding := testStackBinding(t, path, "default", "https://example.invalid", credentials.FieldOAuthToken)
+	ref := storeBoundReference(t, store, binding, "gat_real")
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, `version: 1
+stacks:
+  default:
+    grafana:
+      server: https://example.invalid
+      oauth-token: %s
+contexts:
+  default:
+    stack: default
+current-context: default
+`, ref.Sentinel), 0o600))
+	// Reads now fail as if the backend went away (locked session, missing DBus).
+	store.setGetErr(credentials.ErrUnavailable)
 
 	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
@@ -364,9 +510,9 @@ current-context: default
 
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "keychain:gcx:default:oauth-token",
+	assert.Contains(t, string(raw), ref.Sentinel,
 		"sentinel must survive a write while the keychain is unavailable")
-	assert.False(t, store.deleted(key),
+	assert.False(t, store.deleted(ref.Account),
 		"an unresolvable entry must not be deleted from the keychain")
 }
 
@@ -375,17 +521,30 @@ current-context: default
 // keychain entry instead of orphaning it.
 func TestWrite_UnsettingBackedFieldRemovesKeychainEntry(t *testing.T) {
 	store := withFakeStore(t)
-	key := credentials.AccountKey("default", credentials.FieldOAuthToken)
-	require.NoError(t, store.Set(key, "gat_old"))
-
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
-      oauth-token: keychain:gcx:default:oauth-token
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
+	binding := testStackBinding(t, path, "default", "https://example.invalid", credentials.FieldOAuthToken)
+	ref := storeBoundReference(t, store, binding, "gat_old")
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, `version: 1
+stacks:
+  default:
+    grafana:
+      server: https://example.invalid
+      oauth-token: %s
+contexts:
+  default:
+    stack: default
+current-context: default
+`, ref.Sentinel), 0o600))
 
 	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
@@ -394,13 +553,13 @@ current-context: default
 	cfg.Contexts["default"].Grafana.OAuthToken = ""
 	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), cfg))
 
-	_, err = store.Get(key)
+	_, err = store.Get(ref.Account)
 	require.ErrorIs(t, err, credentials.ErrNotFound,
 		"stale keychain entry must be deleted when its field is unset")
 
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.NotContains(t, string(raw), "keychain:gcx:default:oauth-token")
+	assert.NotContains(t, string(raw), "keychain:gcx:v2:")
 }
 
 // Finding 3: secrets written by gcx login / gcx config set (no prior
@@ -412,7 +571,7 @@ func TestWrite_NewPlaintextSecretIsWrittenThrough(t *testing.T) {
 
 	cfg := config.Config{
 		CurrentContext: "default",
-		Contexts: map[string]*config.Context{
+		Stacks: map[string]*config.StackConfig{
 			"default": {
 				Grafana: &config.GrafanaConfig{
 					Server:   "https://example.invalid",
@@ -420,44 +579,65 @@ func TestWrite_NewPlaintextSecretIsWrittenThrough(t *testing.T) {
 				},
 			},
 		},
+		Contexts: map[string]*config.Context{
+			"default": {Stack: "default"},
+		},
 	}
 	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), cfg))
 
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "keychain:gcx:default:grafana-token",
+	assert.Contains(t, string(raw), "keychain:gcx:v2:",
 		"a freshly written plaintext secret must be replaced by a sentinel")
 	assert.NotContains(t, string(raw), "plain-new-token")
 
-	got, err := store.Get(credentials.AccountKey("default", credentials.FieldGrafanaToken))
-	require.NoError(t, err)
-	assert.Equal(t, "plain-new-token", got)
+	storedBoundValue(t, store, testStackBinding(t, path, "default", "https://example.invalid", credentials.FieldGrafanaToken), "plain-new-token")
 }
 
 func TestLoad_LazyResolvesOnlyCurrentContext(t *testing.T) {
 	store := withFakeStore(t)
-	require.NoError(t, store.Set(credentials.AccountKey("prod", credentials.FieldOAuthToken), "gat_prod"))
-	require.NoError(t, store.Set(credentials.AccountKey("staging", credentials.FieldOAuthToken), "gat_staging"))
-
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   prod:
     grafana:
       server: https://prod.invalid
-      oauth-token: keychain:gcx:prod:oauth-token
   staging:
     grafana:
       server: https://staging.invalid
-      oauth-token: keychain:gcx:staging:oauth-token
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
 current-context: prod
 `)
+	prodRef := storeBoundReference(t, store, testStackBinding(t, path, "prod", "https://prod.invalid", credentials.FieldOAuthToken), "gat_prod")
+	stagingRef := storeBoundReference(t, store, testStackBinding(t, path, "staging", "https://staging.invalid", credentials.FieldOAuthToken), "gat_staging")
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, `version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.invalid
+      oauth-token: %s
+  staging:
+    grafana:
+      server: https://staging.invalid
+      oauth-token: %s
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
+current-context: prod
+`, prodRef.Sentinel, stagingRef.Sentinel), 0o600))
 
 	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
 
 	assert.Equal(t, "gat_prod", cfg.Contexts["prod"].Grafana.OAuthToken,
 		"current context must be resolved eagerly during Load")
-	assert.Equal(t, "keychain:gcx:staging:oauth-token", cfg.Contexts["staging"].Grafana.OAuthToken,
+	assert.Equal(t, stagingRef.Sentinel, cfg.Contexts["staging"].Grafana.OAuthToken,
 		"non-current context must keep its raw sentinel until resolved on demand")
 
 	cfg.ResolveContext("staging")
@@ -467,19 +647,39 @@ current-context: prod
 
 func TestLoad_OverrideSwitchingContextResolvesSentinels(t *testing.T) {
 	store := withFakeStore(t)
-	require.NoError(t, store.Set(credentials.AccountKey("staging", credentials.FieldOAuthToken), "gat_staging"))
-
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   prod:
     grafana:
       server: https://prod.invalid
   staging:
     grafana:
       server: https://staging.invalid
-      oauth-token: keychain:gcx:staging:oauth-token
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
 current-context: prod
 `)
+	ref := storeBoundReference(t, store, testStackBinding(t, path, "staging", "https://staging.invalid", credentials.FieldOAuthToken), "gat_staging")
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, `version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.invalid
+  staging:
+    grafana:
+      server: https://staging.invalid
+      oauth-token: %s
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
+current-context: prod
+`, ref.Sentinel), 0o600))
 
 	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path), func(c *config.Config) error {
 		c.CurrentContext = "staging"
@@ -495,24 +695,42 @@ func TestResolveContext_NoOps(t *testing.T) {
 	// A config built directly (never Loaded) has no keychain store: ResolveContext
 	// must be a no-op and must not panic.
 	direct := config.Config{
+		Stacks: map[string]*config.StackConfig{
+			"default": {Grafana: &config.GrafanaConfig{OAuthToken: "keychain:gcx:stack:default:oauth-token"}},
+		},
 		Contexts: map[string]*config.Context{
-			"default": {Grafana: &config.GrafanaConfig{OAuthToken: "keychain:gcx:default:oauth-token"}},
+			"default": {Stack: "default"},
 		},
 	}
+	direct.Resolve()
 	direct.ResolveContext("default")
-	assert.Equal(t, "keychain:gcx:default:oauth-token", direct.Contexts["default"].Grafana.OAuthToken,
+	assert.Equal(t, "keychain:gcx:stack:default:oauth-token", direct.Stacks["default"].Grafana.OAuthToken,
 		"ResolveContext with no keychain store must leave the sentinel untouched")
 
 	store := withFakeStore(t)
-	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldOAuthToken), "gat_resolved"))
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
-      oauth-token: keychain:gcx:default:oauth-token
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
+	ref := storeBoundReference(t, store, testStackBinding(t, path, "default", "https://example.invalid", credentials.FieldOAuthToken), "gat_resolved")
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, `version: 1
+stacks:
+  default:
+    grafana:
+      server: https://example.invalid
+      oauth-token: %s
+contexts:
+  default:
+    stack: default
+current-context: default
+`, ref.Sentinel), 0o600))
 	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
 
@@ -526,24 +744,48 @@ current-context: default
 
 func TestLoadLayered_OverrideResolvesSentinelsForSelectedContext(t *testing.T) {
 	store := withFakeStore(t)
-	require.NoError(t, store.Set(credentials.AccountKey("staging", credentials.FieldOAuthToken), "gat_staging"))
 
 	userDir, workDir := isolatedLoaderEnv(t)
-	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"), `
+	userPath := filepath.Join(userDir, "gcx", "config.yaml")
+	writeLoaderConfig(t, userPath, `
+version: 1
 current-context: prod
-contexts:
+stacks:
   prod:
     grafana:
       server: https://prod.invalid
   staging:
     grafana:
       server: https://staging.invalid
-      oauth-token: keychain:gcx:staging:oauth-token
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
 `)
+	ref := storeBoundReference(t, store, testStackBinding(t, userPath, "staging", "https://staging.invalid", credentials.FieldOAuthToken), "gat_staging")
+	writeLoaderConfig(t, userPath, fmt.Sprintf(`
+version: 1
+current-context: prod
+stacks:
+  prod:
+    grafana:
+      server: https://prod.invalid
+  staging:
+    grafana:
+      server: https://staging.invalid
+      oauth-token: %s
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
+`, ref.Sentinel))
 	// A local layer makes len(sources) >= 2, exercising the multi-source merge path
 	// where each layer only resolves its own current-context.
 	writeLoaderConfig(t, filepath.Join(workDir, config.LocalConfigFileName), `
-contexts:
+version: 1
+stacks:
   prod:
     grafana:
       server: https://prod-local.invalid
@@ -564,11 +806,15 @@ func TestLoad_MalformedSentinelClearsField(t *testing.T) {
 	withFakeStore(t)
 
 	path := writeYAML(t, `
-contexts:
+version: 1
+stacks:
   default:
     grafana:
       server: https://example.invalid
-      oauth-token: keychain:gcx:wrong-context:oauth-token
+      oauth-token: keychain:gcx:stack:wrong-stack:oauth-token
+contexts:
+  default:
+    stack: default
 current-context: default
 `)
 

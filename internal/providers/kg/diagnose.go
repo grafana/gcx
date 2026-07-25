@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -92,6 +93,24 @@ func (r *DiagnoseResult) computeSummary() {
 // Command wiring
 // ---------------------------------------------------------------------------
 
+// encodeDiagnoseResult writes the single diagnose result document through the
+// codec system, then maps failed checks to the partial-failure exit code so
+// the process exit agrees with the verdict in the payload. The document (with
+// per-check outcomes) is already on stdout, so the error is an EmittedError:
+// the top-level reporter honors the exit code and writes nothing more — a
+// second error document would corrupt the one-JSON-value contract. Warned
+// checks do not affect the exit code.
+func encodeDiagnoseResult(w io.Writer, ioOpts *cmdio.Options, result any, failed, total int) error {
+	if err := ioOpts.Encode(w, result); err != nil {
+		return err
+	}
+	if failed > 0 {
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+			fmt.Errorf("%d of %d diagnostic checks failed", failed, total))
+	}
+	return nil
+}
+
 type diagnoseOpts struct {
 	IO         cmdio.Options
 	Scope      scopeFlags
@@ -134,7 +153,8 @@ auto-discovery. If unavailable, metric checks are skipped.`,
 			promClient, datasourceUID := resolvePromClient(ctx, loader, cfg, opts.Datasource, cmd)
 
 			result := runDiagnose(ctx, client, &opts.Scope, promClient, datasourceUID)
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return encodeDiagnoseResult(cmd.OutOrStdout(), &opts.IO, result,
+				result.Summary.Failed, result.Summary.Total)
 		},
 	}
 
@@ -185,7 +205,8 @@ with suggested next steps.`,
 			promClient, datasourceUID := resolvePromClient(ctx, loader, cfg, opts.Datasource, cmd)
 
 			result := runServiceDiagnose(ctx, client, args[0], &opts.Scope, promClient, datasourceUID)
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return encodeDiagnoseResult(cmd.OutOrStdout(), &opts.IO, result,
+				result.Summary.Failed, result.Summary.Total)
 		},
 	}
 
@@ -231,7 +252,8 @@ asserts_env values with no deployment_environment source.`,
 			promClient, dsUID := resolvePromClient(ctx, loader, cfg, datasource, cmd)
 
 			result := runLabelsDiagnose(ctx, kgClient, promClient, dsUID)
-			return ioOpts.Encode(cmd.OutOrStdout(), result)
+			return encodeDiagnoseResult(cmd.OutOrStdout(), &ioOpts, result,
+				result.Summary.Failed, result.Summary.Total)
 		},
 	}
 

@@ -489,6 +489,87 @@ func TestListWebhookPresets(t *testing.T) {
 	}
 }
 
+func TestListWebhooksIntegrationFilterShapes(t *testing.T) {
+	t.Parallel()
+
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wantPath := irm.BasePath + "/webhooks/"
+		if r.URL.Path != wantPath {
+			t.Errorf("got path %q, want %q", r.URL.Path, wantPath)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"id":"webhook-1","name":"Legacy","is_webhook_enabled":true,"integration_filter":["integration-1"]},
+			{"id":"webhook-2","name":"Expanded","is_webhook_enabled":true,"integration_filter":[{"id":"integration-2","name":"Grafana Alerts"}]}
+		]`))
+	}))
+
+	webhooks, err := client.ListWebhooks(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []irm.WebhookIntegrationFilter{{"integration-1"}, {"integration-2"}}
+	if len(webhooks) != len(want) {
+		t.Fatalf("got %d webhooks, want %d", len(webhooks), len(want))
+	}
+	for i := range webhooks {
+		if !reflect.DeepEqual(webhooks[i].IntegrationFilter, want[i]) {
+			t.Errorf("webhook %d integration filter: got %v, want %v", i, webhooks[i].IntegrationFilter, want[i])
+		}
+	}
+}
+
+func TestWebhookIntegrationFilterJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		want    irm.WebhookIntegrationFilter
+		wantErr string
+	}{
+		{name: "id strings", input: `["integration-1","integration-2"]`, want: irm.WebhookIntegrationFilter{"integration-1", "integration-2"}},
+		{name: "expanded objects", input: `[{"id":"integration-1","name":"Primary"}]`, want: irm.WebhookIntegrationFilter{"integration-1"}},
+		{name: "mixed entries", input: `["integration-1",{"id":"integration-2","name":"Secondary"}]`, want: irm.WebhookIntegrationFilter{"integration-1", "integration-2"}},
+		{name: "empty", input: `[]`, want: irm.WebhookIntegrationFilter{}},
+		{name: "null", input: `null`, want: nil},
+		{name: "object missing id", input: `[{"name":"Primary"}]`, wantErr: "missing id"},
+		{name: "invalid entry", input: `[42]`, wantErr: "cannot unmarshal number"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got irm.WebhookIntegrationFilter
+			err := json.Unmarshal([]byte(tt.input), &got)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("got error %v, want error containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+			encoded, err := json.Marshal(got)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var encodedIDs []string
+			if err := json.Unmarshal(encoded, &encodedIDs); err != nil {
+				t.Fatalf("marshaled filter should contain only IDs, got %s: %v", encoded, err)
+			}
+			if !reflect.DeepEqual(encodedIDs, []string(tt.want)) {
+				t.Errorf("marshaled filter: got %v, want %v", encodedIDs, tt.want)
+			}
+		})
+	}
+}
+
 func TestListRouteFilterTypes(t *testing.T) {
 	t.Parallel()
 

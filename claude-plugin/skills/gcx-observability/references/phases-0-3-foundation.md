@@ -20,8 +20,9 @@ Run `gcx config check` to verify the stack is initialized and authenticated. The
 If not configured: ask for the Grafana instance URL and an API token (service account with Admin role), then set up a context:
 
 ```bash
-gcx config set contexts.<name>.grafana.server <url>
-gcx config set contexts.<name>.grafana.token <token>
+gcx config set stacks.<name>.grafana.server <url>
+gcx config set stacks.<name>.grafana.token <token>
+gcx config set contexts.<name>.stack <name>
 gcx config use-context <name>
 gcx config check
 ```
@@ -66,7 +67,7 @@ Ask the user a **single `AskUserQuestion`** to confirm/adjust these defaults:
 
 For each journey `J` from Phase 1, launch an agent that:
 - Discovers the SLO command group (`gcx slo --help`, `gcx slo definitions --help`) to find available subcommands and flags.
-- Runs `gcx resources examples slo -o yaml` to get a template (the default text
+- Runs `gcx resources list-examples slo -o yaml` to get a template (the default text
   output is only a descriptor table), then customizes it: name, availability
   target, latency target, 28d window.
 - Adds an `alerting` section with `fastBurn` and `slowBurn` entries under

@@ -25,5 +25,5 @@ Manage Adaptive Traces recommendations.
 * [gcx traces adaptive](gcx_traces_adaptive.md)	 - Manage Adaptive Traces resources
 * [gcx traces adaptive recommendations apply](gcx_traces_adaptive_recommendations_apply.md)	 - Apply an Adaptive Traces recommendation.
 * [gcx traces adaptive recommendations dismiss](gcx_traces_adaptive_recommendations_dismiss.md)	 - Dismiss an Adaptive Traces recommendation.
-* [gcx traces adaptive recommendations show](gcx_traces_adaptive_recommendations_show.md)	 - Show Adaptive Traces recommendations.
+* [gcx traces adaptive recommendations list](gcx_traces_adaptive_recommendations_list.md)	 - List Adaptive Traces recommendations.
 

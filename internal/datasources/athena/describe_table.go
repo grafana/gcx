@@ -40,10 +40,10 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "describe-table TABLE",
-		Short: "Show column schema for an Athena table",
-		Long:  `Show column details including name and type for each column in the specified table.`,
+		Short: "List column names for an Athena table",
+		Long:  `List the column names of the specified table. Only names are returned, not types or other schema details.`,
 		Example: `
-  # Describe a table
+  # List columns for a table
   gcx datasources athena describe-table my_table -d UID --database mydb
 
   # With catalog and region
