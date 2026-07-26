@@ -58,6 +58,7 @@ func ParseEnvIntoContext(ctx *Context) error {
 		return err
 	}
 	CleanupAfterEnvParse(ctx)
+	clearRuntimeCredentialRejections(ctx)
 	if ctx.StackEntry != nil {
 		// PrepareForEnvParse may have created Grafana for a named stack that had
 		// no persisted Grafana block. Keep binding checks on the detached stack
@@ -69,6 +70,16 @@ func ParseEnvIntoContext(ctx *Context) error {
 		ctx.envStackSlug = slug
 	}
 	return nil
+}
+
+func clearRuntimeCredentialRejections(ctx *Context) {
+	for _, owner := range contextOwners(ctx) {
+		for _, field := range owner.fields {
+			if ctx.runtimeSecretOverrides[field] {
+				owner.clearReject(field)
+			}
+		}
+	}
 }
 
 // detachStackRuntimeView makes the selected context safe for process-local
