@@ -541,6 +541,33 @@ func TestBoundKeychainUnavailableReferenceIsPreservedUntilExplicitUnset(t *testi
 	assert.Contains(t, store.deletes, account)
 }
 
+func TestBoundKeychainUnavailableGrafanaTokenCanBeOverriddenByEnvironment(t *testing.T) {
+	store := newBoundTestStore()
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := boundStackTestConfig("https://example.invalid", "stored-token")
+	cfg.Stacks["default"].Grafana.StackID = 12345
+	require.NoError(t, Write(t.Context(), ExplicitConfigFile(path), cfg))
+
+	store.getErr = credentials.ErrUnavailable
+	store.gets = nil
+	t.Setenv("GRAFANA_TOKEN", "env-token")
+
+	loaded, err := Load(t.Context(), ExplicitConfigFile(path),
+		func(cfg *Config) error {
+			return ParseEnvIntoContext(cfg.Contexts["default"])
+		},
+		func(cfg *Config) error {
+			return cfg.GetCurrentContext().Validate(t.Context())
+		},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "env-token", loaded.Contexts["default"].Grafana.APIToken)
+	assert.Empty(t, loaded.Stacks["default"].Grafana.APIToken,
+		"the environment override must not mutate the persisted stack view")
+	require.Error(t, loaded.Stacks["default"].credentialRejection(credentials.FieldGrafanaToken))
+}
+
 func TestBoundKeychainWholeOwnerDeletionRemovesExactAccount(t *testing.T) {
 	store := newBoundTestStore()
 	useBoundTestStore(t, store)
