@@ -36,6 +36,7 @@ const (
 	searchPath               = pluginResourcePath + "/asserts/api-server/v1/search"
 	searchAssertPath         = searchPath + "/assertions"
 	searchSamplePath         = searchPath + "/sample"
+	alertInspectionPath      = pluginResourcePath + "/asserts/api-server/v1/alert-inspection"
 	rulesPath                = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
 	ruleByNameFmt            = rulesPath + "/%s"
 	rulesSchemaPath          = rulesPath + "/schema"
@@ -980,6 +981,27 @@ func (c *Client) CypherSearch(ctx context.Context, req CypherSearchRequest) (*Cy
 	}
 	if result.Edges == nil {
 		result.Edges = []CypherEdge{}
+	}
+	return &result, nil
+}
+
+// Correlate resolves affected Knowledge Graph entities from firing-alert label
+// sets, using the same correlation the product uses to attach alerts to
+// entities (backs the IRM Alert Groups "Impact" tab).
+//
+// Backend: POST /v1/alert-inspection. An empty correlation is a 200 with an
+// empty Data.Entities, not a 204 — callers detect "no correlation" from the
+// payload rather than the status code.
+func (c *Client) Correlate(ctx context.Context, req AlertInspectionRequest) (*AlertInspectionResponse, error) {
+	var result AlertInspectionResponse
+	if err := c.postJSON(ctx, alertInspectionPath, req, &result); err != nil {
+		return nil, fmt.Errorf("kg: correlate: %w", err)
+	}
+	if result.Data.Entities == nil {
+		result.Data.Entities = []GraphEntity{}
+	}
+	if result.Data.Edges == nil {
+		result.Data.Edges = []CypherEdge{}
 	}
 	return &result, nil
 }

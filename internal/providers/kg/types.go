@@ -416,6 +416,43 @@ type CypherSearchResponse struct {
 	LastPage bool           `json:"lastPage"`
 }
 
+// AlertInspectionRequest is the request body for POST /v1/alert-inspection.
+//
+// Each entry in AlertLabels is one firing alert's label set; the backend
+// resolves each to its affected entity (scope-enriched labels → raw labels).
+// Query is a PromQL fallback that is deferred from the CLI for now — the
+// backend fallback path currently 500s (see issue #972) — so it is reserved
+// but never populated by the correlate command yet.
+type AlertInspectionRequest struct {
+	AlertLabels  []map[string]string `json:"alertLabels,omitempty"`
+	Query        string              `json:"query,omitempty"`
+	TimeCriteria *TimeCriteria       `json:"timeCriteria,omitempty"`
+}
+
+// AlertInspectionResponse is the response from POST /v1/alert-inspection.
+//
+// It is a graph envelope: the correlated entities live under Data.Entities.
+// Unlike the flat CypherSearchResponse, the payload is wrapped in `data` with
+// a top-level `type` and echoed `timeCriteria`.
+type AlertInspectionResponse struct {
+	Type         string              `json:"type"`
+	TimeCriteria TimeCriteria        `json:"timeCriteria"`
+	Data         AlertInspectionData `json:"data"`
+}
+
+// AlertInspectionData is the graph payload inside an AlertInspectionResponse.
+//
+// The correlated entities carry the rich GraphEntity shape (id, scope,
+// connectedEntityTypes impact counts). Edges is empty in practice for the
+// label path — connectivity is surfaced per-entity via ConnectedEntityTypes.
+type AlertInspectionData struct {
+	Entities                 []GraphEntity `json:"entities"`
+	Edges                    []CypherEdge  `json:"edges"`
+	PageNum                  int           `json:"pageNum"`
+	LastPage                 bool          `json:"lastPage"`
+	SearchResultsMaxLimitHit bool          `json:"searchResultsMaxLimitHit"`
+}
+
 // KGMetadataOutput is the structured output from gcx kg metadata.
 type KGMetadataOutput struct {
 	Schema   *KGSchemaResult          `json:"schema,omitempty"`

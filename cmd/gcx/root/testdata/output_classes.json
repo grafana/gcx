@@ -364,6 +364,7 @@
  "gcx kg diagnose": "finite",
  "gcx kg diagnose labels": "finite",
  "gcx kg diagnose service": "finite",
+ "gcx kg entities correlate": "finite",
  "gcx kg entities delete": "finite",
  "gcx kg entities inspect": "finite",
  "gcx kg entities list": "finite",
