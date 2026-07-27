@@ -188,6 +188,11 @@ func NewPromRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	return newRulesCommand(loader)
 }
 
+// NewNotificationsCommand exposes the notifications command group for tests.
+func NewNotificationsCommand(loader RESTConfigLoader) *cobra.Command {
+	return newNotificationsCommand(loader)
+}
+
 func NewRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	return newRelationshipsDeleteCommand(loader)
 }
