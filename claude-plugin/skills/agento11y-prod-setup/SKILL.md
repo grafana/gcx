@@ -9,7 +9,7 @@ description: >
   online eval rules (score live conversations for regressions) and guards (warn-first
   request-path policies that redact / tool-filter and may later be promoted to deny).
   It drafts reviewable YAML and, only with explicit confirmation, applies via
-  `gcx agento11y`. New guards start disabled + warn. It DOES create tenant-level objects —
+  `gcx agento11y`. New guards start disabled + warn. It DOES create stack-level objects —
   that is the point — but every write is confirmed. It never rewrites or redeploys the
   agent. Trigger on phrases like "set up production evaluation", "my agent is in prod
   what should I evaluate", "catch quality regressions", "add guardrails to my agent",
@@ -59,12 +59,12 @@ the `agento11y` skill and to `gcx agento11y <sub> --help` rather than restating 
   if it isn't, say so and stop.
 - **Confirm the target stack before any WRITE (Step 0 + Step 5).** Reads run freely once you've
   shown the context; writes (upsert evaluators, create/update rules and guards) need an explicit yes on the
-  target stack. `gcx` may be pointed at the wrong stack, and this skill creates tenant-level
+  target stack. `gcx` may be pointed at the wrong stack, and this skill creates stack-level
   objects.
 - **Check before recommending.** Always list what already exists first
   (`gcx agento11y evaluators list`, `rules list`, `guards list`) and never recommend a duplicate.
   Compare by **semantic equivalence**, not just id/name — see Step 2.
-- This skill **does** create tenant-level objects — that is its job, the one thing that separates
+- This skill **does** create stack-level objects — that is its job, the one thing that separates
   it from `agento11y-test-starter`. But every creation is **explicit and confirmed**: show the exact
   YAML, get a yes, then create it with the matching `gcx agento11y` command. A yes for one object
   is not a yes for the next.
@@ -97,7 +97,7 @@ Display the resolved **context name, server URL, and org-id**. Two thresholds:
 - **Before reads** (traffic sampling, inventory): show the resolved context so the developer sees
   where the discovery ran. A wrong stack here wastes effort but doesn't change anything.
 - **Before any write** (Step 5): require an **explicit yes** that this is the intended production
-  stack. Writes are what create tenant objects, so this confirmation is the hard gate.
+  stack. Writes are what create stack-level objects, so this confirmation is the hard gate.
 
 If it's wrong, stop — the developer switches with `gcx config use-context <name>`, or you pass
 `--context <name>` on every `gcx` call. (Watch for `localhost` / dev-looking servers — a strong
@@ -157,8 +157,10 @@ duplicate, and duplicate guards/rules double cost and can conflict.
 ## Step 3 — Recommend rules and guards
 
 Map each observation to the surface that fits. **Online rules** *observe* (score, detect
-regressions, no user impact); **guards** *intervene* (block/redact on the live path). Pick the
-surface by whether you want to watch or to stop.
+regressions, no user impact, **no agent code change** — the eval worker scores ingested traffic
+asynchronously); **guards** *intervene* (block/redact on the live request path, **and require a
+code change in the agent to call them — see Step 5.5**). Pick the surface by whether you want to
+watch or to stop — and remember a guard is dead config until the agent is wired to it.
 
 | If, in code or traffic, the agent… | Surface | Shape (prefer a predefined template) |
 | --- | --- | --- |
@@ -238,7 +240,7 @@ shows more fields than you sent; that's expected, not drift. A guard starts **di
 
 ```yaml
 # ILLUSTRATIVE — confirm fields with `gcx agento11y guards create --help` before use.
-# PROD-SETUP DRAFT — creates a TENANT-LEVEL guard (HookRule) via gcx agento11y guards create.
+# PROD-SETUP DRAFT — creates a STACK-LEVEL guard (HookRule) via gcx agento11y guards create.
 # Starts disabled + warn on purpose: watch it on real traffic before enabling / switching to deny.
 rule_id: guard.<agent>.<policy>
 enabled: false
@@ -294,11 +296,78 @@ rule/guard referencing an evaluator needs it to exist first):
      If a guard landed `enabled: true`, that's a mistake (the draft carried the wrong value): fix
      the YAML to `enabled: false` and `update` it immediately. A first-time guard live on traffic
      is exactly what this skill must never ship.
-   - A judge-model 404 when testing/scoring is usually a stack-side misconfiguration (the tenant's
+   - A judge-model 404 when testing/scoring is usually a stack-side misconfiguration (the stack's
      judge model id is dead), not your evaluator — flag it; the online rule will hit the same broken
      judge at runtime until it's fixed.
 4. If `gcx` reports it isn't authenticated, stop and ask the developer to run `gcx login`; do not
    fall back to raw HTTP.
+
+## Step 5.5 — Wire the agent to call the guard (guards only, REQUIRED)
+
+Creating a guard on the stack does **not** make it do anything. Unlike online rules — which the
+eval worker applies asynchronously to already-ingested traffic, with zero agent changes — a guard
+is a **synchronous request-path policy the agent must call itself**. If the agent never calls the
+hooks endpoint, the guard is inert: it exists, shows `enabled`, and never fires. That is also why
+Step 6 would show no `warn`s — nothing invoked the guard.
+
+So every guard applied in Step 5 has a matching code change the developer owns. This skill does not
+edit or redeploy the agent (see Rules), but it MUST tell the developer exactly what to add, per
+guard, or the guard is dead config. Present this as part of the hand-off — don't leave the guard
+looking "done" after Step 5.
+
+At each LLM call the agent evaluates the guard via the SDK and honors the verdict. Minimal Python
+(`agento11y` >= 0.11):
+
+```python
+from agento11y import (
+    Client, ClientConfig, ApiConfig, HooksConfig,
+    HookEvaluateRequest, HookContext, HookModel, HookInput,
+    HookDeniedError, user_text_message,
+)
+
+client = Client(config=ClientConfig(
+    api=ApiConfig(endpoint="https://<stack>.grafana.net"),  # scheme+host; SDK appends the hooks path
+    hooks=HooksConfig(enabled=True, phases=["preflight"], fail_open=False),
+))
+
+# preflight: evaluate the INPUT before the LLM call.
+# postflight: run it AFTER the call and pass the produced output instead.
+resp = client.evaluate_hook(HookEvaluateRequest(
+    phase="preflight",
+    context=HookContext(
+        model=HookModel(provider="anthropic", name="claude-..."),
+        agent_name="<the rule's match.agent_name>",
+        agent_version="<v>",
+        conversation_id=conversation_id,   # REQUIRED to record the guard on the conversation
+    ),
+    input=HookInput(messages=[user_text_message(prompt)]),   # postflight: output=[assistant_message]
+))
+if resp.is_deny:
+    raise HookDeniedError(reason=resp.reason, rule_id=resp.rule_id,
+                          evaluations=list(resp.evaluations))
+```
+
+Three gotchas that silently break guards — call each out to the developer:
+
+- **`fail_open=False`** — with the default `True`, a transport error (or a disabled/missing guard)
+  resolves to `allow`, so a `deny` never actually blocks. Fail-closed is what makes the guard enforce.
+- **`conversation_id` in the context** — without it, a `deny`/`warn` outcome is NOT persisted onto
+  the conversation, so it's invisible in the UI and Step 6 has nothing to watch. With it, the server
+  records a "Guard: <rule>" workflow step on the conversation.
+- **`allow` leaves no trace** — the server persists only `deny` and `warn` outcomes; a clean pass
+  records nothing (just a metric). So "no guard step on the conversation" is ambiguous — it means
+  either allow OR not-wired. Distinguish them by whether ANY guard step ever appears for that agent.
+
+**Phase choice mirrors the guard:** a guard whose evaluator uses `target: input` is **preflight**
+(evaluate `input.messages` before the call — block a bad request before spending tokens); one with
+`target: response` is **postflight** (evaluate `input.output` after — catch a bad response). The
+rule's `match.agent_name` / `match.model` scopes the guard to this agent; the agent's context must
+send the same `agent_name`.
+
+Other SDKs (JS, Go) expose the same `evaluate_hook` / hooks-config shape; check the per-language SDK
+reference and verify the exact symbols against the installed `agento11y` package. (As of writing the
+canonical `llms.txt` does not yet carry a guard-instrumentation section, so don't defer to it for
+this — the shape above is the reference.)
 
 ## Step 6 — Summarize and hand off
 
@@ -312,9 +381,12 @@ Output, in this order:
    it was applied via gcx. (Considered-not-recommended items were never drafted, so they have no
    path — don't list them here.)
 3. The follow-through the developer still owns:
-   - **Guards:** watch the `warn` guards on real traffic; flip to `deny` + `enabled` only once the
-     false-positive rate looks acceptable — `gcx agento11y guards update <id> -f ...`. That flip is
-     theirs to make, not this skill's.
+   - **Guards:** first, **wire the agent to call the guard (Step 5.5)** — until that code ships the
+     guard is inert and you'll see no `warn`s, no matter how it's configured. State this per guard,
+     with the exact call to add. Then watch the `warn` guards on real traffic and flip to `deny` +
+     `enabled` only once the false-positive rate looks acceptable —
+     `gcx agento11y guards update <id> -f ...`. Both the wiring and the flip are theirs to make, not
+     this skill's.
    - **Rules:** raise `sample_rate` once scores look sane and cost is understood
      (`gcx agento11y rules update`); add alerting on regressions if wanted.
    - Inspect everything in Agent Observability (rules/guards/evaluators pages, the conversation
