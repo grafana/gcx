@@ -98,7 +98,7 @@ func (r *recorder) wrongAuth(want string) []hit {
 	return bad
 }
 
-// newPluginServer starts a recording server that answers the grafana-sigil-app
+// newPluginServer starts a recording server that answers the grafana-agento11y-app
 // plugin API well enough for every CRUD command to succeed: lists and gets
 // return an empty page/object, deletes return {}, and mutations return one
 // canned object whose keys satisfy all four definition decoders (unknown
@@ -167,7 +167,7 @@ func writeSpecFile(t *testing.T, name, content string) string {
 	return path
 }
 
-const pluginBase = "/api/plugins/grafana-sigil-app/resources"
+const pluginBase = "/api/plugins/grafana-agento11y-app/resources"
 
 // TestAIO11y_ExplicitConfigWinsOverDefault is the core #951 regression: a
 // valid config exists at the default location (server A) and the user passes

@@ -23,7 +23,7 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 }
 
 // AIO11yProvider manages Grafana Agent Observability resources
-// (backed by the upstream `grafana-sigil-app` plugin). The CLI command is
+// (backed by the upstream `grafana-agento11y-app` plugin). The CLI command is
 // `agento11y`; the Go package name is retained for internal stability.
 type AIO11yProvider struct{}
 
@@ -155,28 +155,28 @@ func (p *AIO11yProvider) TypedRegistrations() []adapter.Registration {
 			Descriptor:  evalDesc,
 			GVK:         evalDesc.GroupVersionKind(),
 			Schema:      evaluators.EvaluatorSchema(),
-			URLTemplate: "/a/grafana-sigil-app/evaluators/{name}",
+			URLTemplate: "/a/grafana-agento11y-app/evaluators/{name}",
 		},
 		{
 			Factory:     rules.NewLazyFactory(),
 			Descriptor:  ruleDesc,
 			GVK:         ruleDesc.GroupVersionKind(),
 			Schema:      rules.RuleSchema(),
-			URLTemplate: "/a/grafana-sigil-app/rules/{name}",
+			URLTemplate: "/a/grafana-agento11y-app/rules/{name}",
 		},
 		{
 			Factory:     guards.NewLazyFactory(),
 			Descriptor:  guardDesc,
 			GVK:         guardDesc.GroupVersionKind(),
 			Schema:      guards.HookRuleSchema(),
-			URLTemplate: "/a/grafana-sigil-app/guards/{name}",
+			URLTemplate: "/a/grafana-agento11y-app/guards/{name}",
 		},
 		{
 			Factory:     collections.NewLazyFactory(),
 			Descriptor:  collectionDesc,
 			GVK:         collectionDesc.GroupVersionKind(),
 			Schema:      collections.CollectionSchema(),
-			URLTemplate: "/a/grafana-sigil-app/collections/{name}",
+			URLTemplate: "/a/grafana-agento11y-app/collections/{name}",
 		},
 	}
 }

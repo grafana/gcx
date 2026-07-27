@@ -45,7 +45,7 @@ the flow and the decision logic. A minimal fallback lives in
 ## Rules
 
 - **Reference, don't restate.** Fetch SDK detail from
-  `https://raw.githubusercontent.com/grafana/sigil-sdk/main/llms.txt` (Path B). Only inline decision
+  `https://raw.githubusercontent.com/grafana/agento11y/main/llms.txt` (Path B). Only inline decision
   logic here. If the fetch fails, fall back to [references/instrumentation.md](references/instrumentation.md).
 - **Never invent an endpoint or a token.** Read them from the environment (`AGENTO11Y_ENDPOINT`,
   `AGENTO11Y_AUTH_TENANT_ID`, `AGENTO11Y_AUTH_TOKEN`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
@@ -146,7 +146,7 @@ that and verify against the local instance instead. The rest of this step is the
    the value uses `Basic%20…` — keep it as given.)
 
    **`AGENTO11Y_*` (generation ingest) — the plugin Connection page.** `AGENTO11Y_ENDPOINT` and the
-   token come from `https://<stack>.grafana.net/plugins/grafana-sigil-app` → Connection tab. When the
+   token come from `https://<stack>.grafana.net/plugins/grafana-agento11y-app` → Connection tab. When the
    developer creates the token via **"Create a token in Cloud Access Policies"**, tell them the scopes:
    **`sigil:write`, `metrics:write`, `traces:write`, `logs:write`**. UI heads-up: `sigil` is not in
    the default resource list — add it via **"Add scope"** (then tick Write); the scope is still
