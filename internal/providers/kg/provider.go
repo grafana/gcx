@@ -55,6 +55,7 @@ func (p *KGProvider) Commands() []*cobra.Command {
 		// High-level
 		newSummaryCommand(loader),
 		newDiagnoseCommand(loader),
+		newQualityCommand(loader),
 		newOpenCommand(loader),
 	)
 

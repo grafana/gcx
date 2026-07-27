@@ -10,7 +10,9 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalConfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +29,21 @@ If only one config file exists, it is opened directly.`,
 		Args:      cobra.MaximumNArgs(1),
 		ValidArgs: []string{"system", "user", "local"},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// The editor protocol is unconditionally interactive. Agent mode
+			// is an intentional non-interactive contract: never launch an
+			// editor (it would hang or fail against a pipe); hand back a
+			// structured error naming the scripted alternatives instead.
+			if agent.IsAgentMode() {
+				return gcxerrors.DetailedError{
+					Summary: "interactive editor disabled in agent mode",
+					Suggestions: []string{
+						"Use 'gcx config set PROPERTY_NAME PROPERTY_VALUE' to change a value",
+						"Use 'gcx config unset PROPERTY_NAME' to remove a value",
+						"Use 'gcx config view' to inspect the merged configuration",
+					},
+				}
+			}
+
 			target, err := resolveRawEditTarget(configOpts.ConfigFile, args, create)
 			if err != nil {
 				return err

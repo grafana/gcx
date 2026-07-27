@@ -4,7 +4,7 @@ This is a deliberately minimal fallback for when the live fetch of sigil-sdk's `
 is unavailable. It carries only the highest-value pieces — the OTel provider setup (gap checklist
 #1, the silent failure) and the instrumentation preference order. For everything else (per-provider
 wrappers, framework adapters, field lists, workflow steps, content-capture modes), fetch
-`https://raw.githubusercontent.com/grafana/sigil-sdk/main/llms.txt`.
+`https://raw.githubusercontent.com/grafana/agento11y/main/llms.txt`.
 
 ## The #1 gap: OTel providers (or metrics are silently lost)
 
@@ -145,8 +145,8 @@ the stack's OTLP tile, `https://grafana.com/orgs/<org-slug>/stacks/<stack-id>/ot
 Only if you already have a raw token and instance-id and must build the header yourself, do it with
 `printf '%s' '<otlp-instance-id>:<glc_token>' | base64 | tr -d '\n'` — a trailing newline breaks the
 header. (The tile is also reachable from the plugin **Connection page**,
-`https://<stack>.grafana.net/plugins/grafana-sigil-app`.)
+`https://<stack>.grafana.net/plugins/grafana-agento11y-app`.)
 
 For the full reference — per-provider wrapper usage, every framework adapter, the complete telemetry
 field list, workflow-step schema, `set_result` field completeness, and content-capture modes — fetch
-`https://raw.githubusercontent.com/grafana/sigil-sdk/main/llms.txt`.
+`https://raw.githubusercontent.com/grafana/agento11y/main/llms.txt`.

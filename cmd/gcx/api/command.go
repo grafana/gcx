@@ -29,8 +29,12 @@ func (opts *apiOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.DefaultFormat("json")
 	opts.IO.BindFlags(flags)
 
+	// Clarify that -o only shapes JSON-parseable responses (non-JSON bodies
+	// pass through raw), while keeping the codec list accurate: the full
+	// registry (including agents) is accepted, so the menu must not
+	// understate it. Only the leading sentence is replaced.
 	if f := flags.Lookup("output"); f != nil {
-		f.Usage = "Output format for JSON responses. One of: json, yaml"
+		f.Usage = strings.Replace(f.Usage, "Output format.", "Output format for JSON responses.", 1)
 	}
 
 	flags.StringVarP(&opts.Method, "method", "X", "", "HTTP method (default: GET, or POST if -d is set)")

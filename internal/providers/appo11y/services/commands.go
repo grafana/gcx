@@ -4,35 +4,34 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
-	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
-	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
 )
 
 // Commands returns the `services` command group, rooted under `gcx appo11y`.
-func Commands() *cobra.Command {
+// The loader carries the --config flag bound on the appo11y command; every
+// subcommand loads config through it so an explicit --config is honored.
+func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "services",
 		Short: "Inspect Application Observability services discovered from telemetry",
 	}
-	cmd.AddCommand(newListCommand())
-	cmd.AddCommand(newGetCommand())
-	cmd.AddCommand(newMapCommand())
-	cmd.AddCommand(newListOperationsCommand())
-	cmd.AddCommand(newListLabelsCommand())
+	cmd.AddCommand(newListCommand(loader))
+	cmd.AddCommand(newGetCommand(loader))
+	cmd.AddCommand(newMapCommand(loader))
+	cmd.AddCommand(newListOperationsCommand(loader))
+	cmd.AddCommand(newListLabelsCommand(loader))
 	return cmd
 }
 
@@ -150,7 +149,7 @@ func filterByEnv(items []Service, env string) []Service {
 	return out
 }
 
-func newListCommand() *cobra.Command {
+func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -181,7 +180,7 @@ instrumentation.`,
   # Pin a datasource and output JSON
   gcx appo11y services list -d grafanacloud-prom -o json`,
 		Args: cobra.NoArgs,
-		RunE: runList(opts),
+		RunE: runList(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
 			agent.AnnotationLLMHint:   `Application Observability service inventory from OTel target_info/traces_target_info: one row per (namespace, service, language) with instrumentation coverage (instrumented vs uninstrumented). Available on any App Observability stack without the Knowledge Graph. Distinct from 'gcx kg entities --type Service' (Knowledge Graph entities with relationships/insights, when the Knowledge Graph plugin is enabled) and 'gcx instrumentation services' (Kubernetes workloads discovered for setting up instrumentation). Examples: gcx appo11y services list -o json; gcx appo11y services list --count -o json; gcx appo11y services list --instrumentation uninstrumented -o json`,
@@ -191,7 +190,7 @@ instrumentation.`,
 	return cmd
 }
 
-func runList(opts *listOpts) func(*cobra.Command, []string) error {
+func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {
 		if err := opts.Validate(); err != nil {
 			return err
@@ -201,22 +200,13 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 		}
 
 		ctx := cmd.Context()
-		var loader providers.ConfigLoader
 
-		cfg, err := loader.LoadGrafanaConfig(ctx)
+		cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 		if err != nil {
 			return err
 		}
 
-		var cfgCtx *internalconfig.Context
-		fullCfg, err := loader.LoadFullConfig(ctx)
-		if err != nil {
-			logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
-		} else {
-			cfgCtx = fullCfg.GetCurrentContext()
-		}
-
-		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, &loader, opts.Datasource, cfgCtx, cfg, "prometheus")
+		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
 			return err
 		}

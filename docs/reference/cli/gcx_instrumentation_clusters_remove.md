@@ -31,8 +31,11 @@ gcx instrumentation clusters remove <cluster> [flags]
 ### Options
 
 ```
-  -h, --help   help for remove
-      --yes    Confirm the remove operation (required)
+  -h, --help            help for remove
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+      --yes             Confirm the remove operation (required)
 ```
 
 ### Options inherited from parent commands

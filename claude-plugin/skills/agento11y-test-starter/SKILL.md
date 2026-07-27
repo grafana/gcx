@@ -444,7 +444,7 @@ If they accept:
    actually calls their agent.
 2. Preflight the environment and stop with a clear ask if anything is missing. **When you ask, tell
    the developer exactly where each value is** — for a Cloud stack they all live on the plugin
-   **Connection page**, `https://<your-stack>.grafana.net/plugins/grafana-sigil-app`:
+   **Connection page**, `https://<your-stack>.grafana.net/plugins/grafana-agento11y-app`:
    - `AGENTO11Y_ENDPOINT` = the **API URL** on that page. If unset, ask — never invent one.
    - `AGENTO11Y_AUTH_TENANT_ID` = the **Instance ID** on that page.
    - `AGENTO11Y_AUTH_TOKEN` — always required (the SDK raises before any request if it is empty).

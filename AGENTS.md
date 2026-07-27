@@ -116,12 +116,12 @@ internal/
 │   │   └── rmw/        Read-modify-write helper with optimistic-lock guard (ConflictError)
 │   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents; rich K8s-envelope types for AlertGroup/Alert in rich.go, ADR-019)
 │   ├── k6/         k6 Cloud provider (projects, tests, runs, envvars)
-│   ├── kg/         Knowledge Graph (Asserts) provider
+│   ├── kg/         Knowledge Graph (Asserts) provider (rules, entities, insights, diagnose, quality reports)
 │   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
 │   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
 │   ├── appo11y/    App Observability provider (overrides, settings — singleton resources; services discovery via target_info)
 │   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
-│   ├── aio11y/     AI Observability provider (conversations, agents, generations, evaluators, rules, hook-rules (guards), templates, scores, judge, saved-conversations, collections, experiments — via grafana-sigil-app plugin API)
+│   ├── aio11y/     AI Observability provider (conversations, agents, generations, evaluators, rules, hook-rules (guards), templates, scores, judge, saved-conversations, collections, experiments — via grafana-agento11y-app plugin API)
 │   ├── slo/        SLO provider (definitions, reports)
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
 │   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
@@ -159,7 +159,7 @@ internal/
 ├── testutils/   Shared test utilities
 ├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
 ├── grafana/     OpenAPI client (health checks, version detection)
-├── output/      Output codec registry (json, yaml, text, wide, agents — field selection, discovery, k8s unstructured handling, temp-file spill)
+├── output/      Output codec registry (json, yaml, text, wide, agents — field selection, discovery, k8s unstructured handling, temp-file spill) + agent output contract shapes (mutation result family, artifact receipt emitter, stream envelope discriminators)
 ├── format/      JSON/YAML codecs with format auto-detection
 ├── retry/       Retry transport (429, 502/503/504, transient connection errors — wraps all HTTP tiers)
 ├── httputils/   HTTP helpers (used by serve command's proxy)

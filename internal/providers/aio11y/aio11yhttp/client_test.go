@@ -41,7 +41,7 @@ type testItem struct {
 
 func TestClient_DoRequest(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/query/test", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/query/test", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))

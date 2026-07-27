@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/grafana/gcx/internal/fleet"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instoutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
@@ -16,13 +17,18 @@ import (
 )
 
 // includeOpts holds flag-bound options for the "services include" command.
-// The command takes only positional args today, so the struct is empty;
-// it exists to satisfy the canonical opts struct + setup + Validate pattern.
-type includeOpts struct{}
+type includeOpts struct {
+	IO cmdio.Options
+}
 
-func (o *includeOpts) setup(_ *pflag.FlagSet) {}
+func (o *includeOpts) setup(flags *pflag.FlagSet) {
+	// The include result is a MutationResult document through the codec
+	// system: the default text codec prints the familiar one-liner; agent
+	// mode and explicit -o json/yaml get the structured document.
+	instoutput.BindMutationIO(&o.IO, flags)
+}
 
-func (o *includeOpts) Validate() error { return nil }
+func (o *includeOpts) Validate() error { return o.IO.Validate() }
 
 func newIncludeCommand(loader fleet.ConfigLoader) *cobra.Command {
 	opts := &includeOpts{}
@@ -59,7 +65,7 @@ Examples:
 			}
 			client := instrumentation.NewClient(r.Client)
 			urls := instrumentation.BackendURLsFromStack(r.Stack)
-			return runInclude(ctx, client, args[0], args[1], args[2], urls, instrumentation.PromHeadersFromStack(r.Stack), cmd.OutOrStdout())
+			return runInclude(ctx, &opts.IO, client, args[0], args[1], args[2], urls, instrumentation.PromHeadersFromStack(r.Stack), cmd.OutOrStdout())
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -72,6 +78,7 @@ Examples:
 // calls rmw.Update which handles retries and optimistic-lock detection.
 func runInclude(
 	ctx context.Context,
+	outOpts *cmdio.Options,
 	client *instrumentation.Client,
 	cluster, namespace, service string,
 	urls instrumentation.BackendURLs,
@@ -101,11 +108,8 @@ func runInclude(
 	equal, _ := rmw.AppEqual(*ns, proposed)
 	if equal {
 		// Already in the desired state — idempotent no-op; exit 0 with no Set call.
-		return instoutput.MutationResult{
-			Action:  "include",
-			Target:  instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service},
-			Changed: false,
-		}.Emit(out)
+		return outOpts.Encode(out, instoutput.NewMutationResult("include",
+			instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service}))
 	}
 
 	// Not a no-op: run the full RMW with optimistic-lock guard.
@@ -135,9 +139,8 @@ func runInclude(
 		return fmt.Errorf("services include: %w", err)
 	}
 
-	return instoutput.MutationResult{
-		Action:  "include",
-		Target:  instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service},
-		Changed: true,
-	}.Emit(out)
+	result := instoutput.NewMutationResult("include",
+		instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service})
+	result.Changed = true
+	return outOpts.Encode(out, result)
 }

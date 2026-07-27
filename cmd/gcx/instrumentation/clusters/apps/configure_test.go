@@ -154,7 +154,7 @@ func TestConfigureCmd(t *testing.T) {
 			}
 			client := &fakeAppsClient{getResponses: responses}
 
-			cmd := newConfigureCmd(client, instrumentation.BackendURLs{})
+			cmd := newConfigureCmd(client)
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
@@ -224,7 +224,7 @@ func TestConfigureCmd_ConflictError(t *testing.T) {
 		},
 	}
 
-	cmd := newConfigureCmd(client, instrumentation.BackendURLs{})
+	cmd := newConfigureCmd(client)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
@@ -343,7 +343,7 @@ func TestConfigureCmd_Discovered(t *testing.T) {
 				discoverItems: tc.discoverItems,
 			}
 
-			cmd := newConfigureCmd(client, instrumentation.BackendURLs{})
+			cmd := newConfigureCmd(client)
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)

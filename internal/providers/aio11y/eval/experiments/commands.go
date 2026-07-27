@@ -16,6 +16,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
+	"github.com/grafana/gcx/internal/providers/aio11y/commandutil"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -311,11 +312,19 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 // --- cancel ---
 
 type cancelOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *cancelOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The cancel result is a SingleMutation document through the codec
+	// system: the human text default stays silent (the receipt goes to
+	// stderr, as it always has); agent mode and explicit -o json/yaml get
+	// the structured document.
+	o.IO.RegisterCustomCodec("text", commandutil.SilentTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -325,6 +334,9 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Cancel a running experiment.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Cancel experiment %s?", args[0]))
 			if err != nil {
@@ -341,12 +353,20 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := client.Cancel(cmd.Context(), args[0]); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.ErrOrStderr(), "Experiment %s canceled", args[0])
-			return nil
+			return emitCancelReceipt(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args[0])
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// emitCancelReceipt writes the stderr receipt and the stdout result document
+// for a completed cancel call. Split from RunE so the output contract is
+// testable without a live plugin API.
+func emitCancelReceipt(stdout, stderr io.Writer, opts *cancelOpts, runID string) error {
+	cmdio.Success(stderr, "Experiment %s canceled", runID)
+	result := cmdio.NewSingleMutation("canceled", cmdio.MutationTarget{Kind: "experiment", ID: runID})
+	return opts.IO.Encode(stdout, result)
 }
 
 // --- list-scores ---

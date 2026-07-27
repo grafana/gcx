@@ -139,8 +139,10 @@ func (f *GCOMFlow) Run(ctx context.Context) (*GCOMResult, error) {
 	fmt.Fprintln(f.writer, "Opening browser to authenticate with Grafana Cloud...")
 	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", authURL)
 
-	if err := deeplink.Open(authURL); err != nil {
+	if opened, err := deeplink.OpenWithStatus(authURL); err != nil {
 		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
+	} else if !opened {
+		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
 	}
 
 	fmt.Fprintln(f.writer, "Waiting for authentication...")
