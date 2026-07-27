@@ -389,6 +389,8 @@
  "gcx kg prom-rules list": "finite",
  "gcx kg prom-rules schema": "finite",
  "gcx kg prom-rules upsert": "finite",
+ "gcx kg quality get": "finite",
+ "gcx kg quality list": "finite",
  "gcx kg relabel-rules get": "finite",
  "gcx kg relationships delete": "finite",
  "gcx kg relationships upsert": "finite",
