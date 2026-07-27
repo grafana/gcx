@@ -50,13 +50,9 @@ the flow and the decision logic. A minimal fallback lives in
 - **Never invent an endpoint or a token.** Read them from the environment (`AGENTO11Y_ENDPOINT`,
   `AGENTO11Y_AUTH_TENANT_ID`, `AGENTO11Y_AUTH_TOKEN`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
   `OTEL_EXPORTER_OTLP_HEADERS`) or ask the developer. Never fabricate a URL or mint a token.
-- **Two targets: Grafana Cloud and local dev.** Detect which the app is aimed at, don't assume Cloud.
-  A local endpoint (e.g. `http://localhost:8080` for a local Agent Observability instance, OTLP at
-  `http://localhost:4318`) is legitimate for development — if the app already points there, respect
-  it; do not force a Cloud URL. For Cloud, the developer supplies the endpoint + token (Step 0).
-  **Caveat:** the gcx verification loop (Step 5) reads a Cloud tenant — it only confirms data landing
-  for a Cloud target. For a local target, verify against the local instance / its UI instead and say
-  so.
+- **Target is Grafana Cloud.** The developer supplies the endpoint + token (Step 0), and the gcx
+  verification loop (Step 5) confirms data landing against the Cloud tenant. Never fabricate the
+  endpoint or token — read them from the environment or ask.
 - **Write `AGENTO11Y_*` env vars, never `SIGIL_*`.** `SIGIL_*` is a deprecated legacy fallback. Do
   this **even if sibling apps or existing `.env` files in the repo use `SIGIL_*`** — matching a stale
   local convention perpetuates it. If the app already reads `SIGIL_*`, add the `AGENTO11Y_*` names
@@ -112,14 +108,7 @@ already set (including any existing `.env`) — if all are present, skip to Step
 > `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_HEADERS` and leaving the developer to guess — the
 > answer is the stack OTLP tile + "Generate now", which precomputes both. Give that first.
 
-**First, decide the target.** Is the app aimed at **Grafana Cloud** or a **local dev instance**?
-Look at any existing endpoint in the env / `.env` / sibling apps. If it already points at
-`localhost` (a local Agent Observability instance), that's a local-dev target — keep it, and skip
-the Cloud/gcx credential steps below (there's no Cloud token to fetch; the local instance's own
-config applies). The gcx verification loop in Step 5 only works for a Cloud target — for local, note
-that and verify against the local instance instead. The rest of this step is the Cloud path.
-
-**Cloud path — what gcx does for you (run these):**
+**What gcx does for you (run these):**
 
 1. `gcx config current-context` — is there a working context? If not, **just ask the developer to log
    in to the stack they want the instrumentation to connect to** — e.g. "run `gcx login` against your
@@ -257,14 +246,12 @@ Only after the developer confirms a diff. Bounded to ~3–4 iterations.
 
    **Channel A — generations** (the SDK ingest client → `/api/v1/generations:export`). Carries the
    prompt, response, tokens, cost, model, finish_reason. This is what gcx can read.
-   - **Cloud target → via gcx:** `gcx agento11y agents list` (does the agent appear?);
+   - **Via gcx:** `gcx agento11y agents list` (does the agent appear?);
      `gcx agento11y agents get <agent-name>` (is `generation_count` climbing?);
      `gcx agento11y conversations search --filters 'agent = "<agent-name>"' --from <t0> --to <t1>`
      (both `--from`/`--to` required, RFC3339) then `gcx agento11y conversations get <conversation-id>`
      or `gcx agento11y generations get <generation-id>` — tokens, finish reason, and cost populated.
      This proves generation ingest + `set_result` are wired. **It does NOT prove OTel is wired.**
-   - **Local-dev target:** gcx can't read a local instance — confirm the app printed no `agento11y:`
-     export errors and check the local instance / its UI for the new conversation.
 
    **Channel B — OTel spans/metrics** (the TracerProvider/MeterProvider → OTLP exporter →
    `/v1/traces`, `/v1/metrics`). Carries latency/token/cost **metrics**. This is checklist #1, the
