@@ -103,7 +103,7 @@ You can name the `cloud` entries whatever you like, since contexts refer to them
 
 If your legacy `cloud.token` came from the experimental OAuth sign-in rather than an access policy, it still migrates into `token` - the legacy format can't tell the two apart. The next `gcx cloud login` stores it in the entry's `oauth-token` field.
 
-### Example of an legacy configuration update
+### Example of a legacy configuration update
 
 A legacy configuration:
 
