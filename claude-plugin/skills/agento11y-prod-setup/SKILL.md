@@ -291,7 +291,7 @@ rule/guard referencing an evaluator needs it to exist first):
    `gcx agento11y guards create -f guards/<id>.yaml`. Evaluators are create-or-update (same id
    updates). Pass `--context <name>` on every call if the confirmed stack isn't the default
    context. gcx handles auth — no tokens here.
-   - **`gcx guards create` does not preserve `enabled: false` / `short_circuit: false` — it stores
+   - **`gcx agento11y guards create` does not preserve `enabled: false` / `short_circuit: false` — it stores
      the guard `enabled: true` and `short_circuit: true` regardless of the draft.** This is a known
      `create` quirk, not a draft error, and the `create` command's own echoed output can still show
      the values you sent, so do NOT trust it. After every guard `create`, read the STORED object
