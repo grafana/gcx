@@ -538,7 +538,8 @@ jobs:
           gcx resources push -p ./resources --on-error abort
 ```
 
-- `push`, `pull`, and `validate` are non-interactive; add `--yes` to `delete` to skip its confirmation prompt
+- `gcx resources` commands are designed for non-interactive use, apart from `edit`, which opens an external editor
+- `resources delete` has no confirmation prompt. Named selectors proceed without `--force`; a type-only selector such as `dashboards` requires `--force` (`--yes` also enables it) and can delete every matching resource in the selected context and namespace
 - `--dry-run` on `push` and `delete` to preview changes
 - `--on-error abort|fail|ignore` to control error behavior
 - `-o json` or `-o yaml` for machine-parseable output
