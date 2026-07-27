@@ -291,11 +291,15 @@ rule/guard referencing an evaluator needs it to exist first):
    `gcx agento11y guards create -f guards/<id>.yaml`. Evaluators are create-or-update (same id
    updates). Pass `--context <name>` on every call if the confirmed stack isn't the default
    context. gcx handles auth — no tokens here.
-   - **Verify each created guard came back `enabled: false` and `action_on_fail: warn`.** The
-     create output (or `gcx agento11y guards get <id> -o yaml`) echoes the stored object — check it.
-     If a guard landed `enabled: true`, that's a mistake (the draft carried the wrong value): fix
-     the YAML to `enabled: false` and `update` it immediately. A first-time guard live on traffic
-     is exactly what this skill must never ship.
+   - **`gcx guards create` does not preserve `enabled: false` / `short_circuit: false` — it stores
+     the guard `enabled: true` and `short_circuit: true` regardless of the draft.** This is a known
+     `create` quirk, not a draft error, and the `create` command's own echoed output can still show
+     the values you sent, so do NOT trust it. After every guard `create`, read the STORED object
+     with `gcx agento11y guards get <id> -o yaml` and, if `enabled` came back `true` (it will) or
+     `short_circuit` isn't what you drafted, immediately `gcx agento11y guards update <id> -f
+     guards/<id>.yaml` to force `enabled: false` (+ your intended `short_circuit`), then `get` again
+     to confirm it held. A first-time guard live on traffic is exactly what this skill must never
+     ship, so this verify-and-update step is mandatory, not conditional.
    - A judge-model 404 when testing/scoring is usually a stack-side misconfiguration (the stack's
      judge model id is dead), not your evaluator — flag it; the online rule will hit the same broken
      judge at runtime until it's fixed.
