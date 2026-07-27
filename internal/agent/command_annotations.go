@@ -286,6 +286,7 @@ var commandAnnotations = map[string]annotation{
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
 	"gcx kg entities query":       {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s LIMIT 10\" [--since 1h] | read-only Cypher query; always include LIMIT for targeted lookups; omit for broad discovery"},
+	"gcx kg entities correlate":   {Cost: "medium", Hint: "--alert-labels 'alertname=<name>,job=<job>' [--since 1h] | resolve the affected entities for a firing alert from its labels (the \"I have an alert, which entity?\" entry point) | provide alerts inline (repeatable), from an Alertmanager webhook via -f/stdin, or both | empty result exits 0 with a notice | use this instead of list/inspect when you have an alert rather than a known entity name"},
 	"gcx kg diagnose":             {Cost: "medium", Hint: "[--env <env>] | run diagnostic checks on the Knowledge Graph pipeline: stack status, sanity checks, entity counts, scopes, telemetry configs, recording rule metrics, and an aggregate instrumentation-quality summary"},
 	"gcx kg diagnose service":     {Cost: "medium", Hint: "<service-name> [--env <env>] | deep diagnosis for a specific service: entity lookup, relationships, per-service metrics, interpreted diagnosis with next steps"},
 	"gcx kg diagnose labels":      {Cost: "medium", Hint: "validate the deployment_environment → asserts_env label mapping pipeline | identifies unmapped environments and orphaned asserts_env values"},

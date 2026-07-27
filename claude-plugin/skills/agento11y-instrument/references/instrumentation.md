@@ -105,14 +105,18 @@ Two channels — **both are required**, they carry different data:
 The same `glc_…` token covers both channels.
 
 ```
-# Generation ingest (conversations/generations; verified by gcx)
+# Generation ingest (conversations/generations; verified by gcx).
+# PROTOCOL/AUTH_MODE below govern THIS channel only — the AGENTO11Y_ENDPOINT
+# API, NOT the OTLP gateway. The OTel channel's transport/auth is set entirely
+# by the OTEL_* vars and is unaffected by AGENTO11Y_PROTOCOL.
 AGENTO11Y_ENDPOINT=<your-agent-observability-api-url>
 AGENTO11Y_PROTOCOL=http
 AGENTO11Y_AUTH_MODE=basic
 AGENTO11Y_AUTH_TENANT_ID=<your-instance-id>
 AGENTO11Y_AUTH_TOKEN=<glc_... token>
 
-# OTel traces/metrics (Performance view).
+# OTel traces/metrics (Performance view). Separate endpoint (the OTLP gateway),
+# separate auth — configured only via these OTEL_* vars.
 OTEL_EXPORTER_OTLP_ENDPOINT=<from the stack OTLP tile — see below>
 OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64 of "<otlp-instance-id>:<glc_... token>">
 ```
@@ -123,13 +127,14 @@ OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64 of "<otlp-instance-id>:<g
 > (`grpc` speaks the wrong transport, `none` sends no auth header). If a run fails with 401 on
 > generation ingest, these two vars are almost always missing — set both. (`basic` base64-encodes
 > `tenant_id:token` into the auth header, which is why `AGENTO11Y_AUTH_TENANT_ID` is also required.)
+>
+> Note the `http` here is about the **`AGENTO11Y_ENDPOINT`** ingest API, not the OTLP gateway you see
+> in the `OTEL_*` block below — those are two different endpoints on two different channels. The OTLP
+> gateway's transport is not controlled by `AGENTO11Y_PROTOCOL` at all; it's governed by `OTEL_*`.
 
-`OTEL_EXPORTER_OTLP_HEADERS` — required when sending **directly to the Grafana Cloud OTLP gateway**
-(the common case): the gateway enforces Basic auth and the credential cannot be embedded in the URL,
-so without the header you get a 401 and nothing lands. It is only omittable when
-`OTEL_EXPORTER_OTLP_ENDPOINT` points at a **local Alloy / OTel Collector** that holds the Cloud
-credentials and forwards on your behalf — then the app talks to the local collector unauthenticated
-and the collector handles Cloud auth. For the direct-to-Cloud path here, set both.
+`OTEL_EXPORTER_OTLP_HEADERS` — required when sending to the Grafana Cloud OTLP gateway: the gateway
+enforces Basic auth and the credential cannot be embedded in the URL, so without the header you get a
+401 and nothing lands. Set both `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS`.
 
 **Where to get the `OTEL_*` values (easiest — let Cloud build them for you).** Send the developer to
 the stack's OTLP tile, `https://grafana.com/orgs/<org-slug>/stacks/<stack-id>/otlp-info`:

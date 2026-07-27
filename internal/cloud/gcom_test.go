@@ -546,8 +546,8 @@ func TestGCOMClient_DeleteStack_DeleteProtection(t *testing.T) {
 
 func TestGCOMClient_ListRegions_Success(t *testing.T) {
 	want := []cloud.Region{
-		{ID: 1, Slug: "us", Name: "GCP US Central", Description: "United States", Provider: "gcp", Status: "active"},
-		{ID: 2, Slug: "eu", Name: "GCP Belgium", Description: "Europe", Provider: "gcp", Status: "active"},
+		{ID: 1, Slug: "us", Name: "GCP US Central", Description: "United States", Provider: "gcp"},
+		{ID: 2, Slug: "eu", Name: "GCP Belgium", Description: "Europe", Provider: "gcp"},
 	}
 
 	var capturedPath string

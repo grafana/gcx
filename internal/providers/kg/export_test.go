@@ -163,6 +163,21 @@ func NewSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 	return newSuppressionsCommand(loader)
 }
 
+// NewCorrelateCommand exposes the entities correlate command for tests.
+func NewCorrelateCommand(loader RESTConfigLoader) *cobra.Command {
+	return newCorrelateCommand(loader)
+}
+
+// ParseAlertLabelSet wraps the unexported parseAlertLabelSet for testing.
+func ParseAlertLabelSet(raw string) (map[string]string, error) {
+	return parseAlertLabelSet(raw)
+}
+
+// ParseAlertmanagerLabels wraps the unexported parseAlertmanagerLabels for testing.
+func ParseAlertmanagerLabels(data []byte) ([]map[string]string, error) {
+	return parseAlertmanagerLabels(data)
+}
+
 // NewModelRulesCommand exposes the model-rules command group for tests.
 func NewModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	return newModelRulesCommand(loader)
