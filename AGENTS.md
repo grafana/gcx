@@ -51,7 +51,7 @@ mise run docs        # Generate + build all documentation
 
 **Without mise**: replace with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`. Lint runs in Go **module mode** (`golangci-lint`'s `modules-download-mode: readonly`), so no `vendor/` directory is needed locally — the module cache (`go mod download`, run automatically on worktree entry) is sufficient.
 
-> **Agent environments**: always prefix with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults in `mise run docs`, producing wrong CLI reference docs.
+> **Agent environments**: always prefix `mise run docs`, `mise run reference`, and `mise run all` with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults, producing wrong CLI reference docs. The `tests` tasks pin `GCX_AGENT_MODE=false` themselves, so `mise run tests` needs no prefix.
 
 ## Testing
 
