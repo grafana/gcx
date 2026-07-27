@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -73,6 +74,34 @@ type DiagnoseResult struct {
 
 	Checks  []CheckResult   `json:"checks"`
 	Summary DiagnoseSummary `json:"summary"`
+
+	// Quality is the aggregate instrumentation-quality summary derived from
+	// the entity quality reports, when available. Nil when quality reports are
+	// not available on the stack. The per-check verdict also appears in Checks
+	// as "Instrumentation quality".
+	Quality *QualityCheckSummary `json:"quality,omitempty"`
+}
+
+// QualityCheckSummary is the aggregate instrumentation-quality signal folded
+// into a diagnose run: how many services have reports, how many are below a
+// perfect score, the single worst score, and the most common failing checks.
+// The aggregate is computed over the worst qualityDiagnoseTopServices services
+// (pulled worst-first); TotalServices is the true count across the scope.
+type QualityCheckSummary struct {
+	TotalServices   int                `json:"totalServices"`
+	BelowPerfect    int                `json:"belowPerfect"`
+	WorstQuality    int                `json:"worstQuality"`
+	TopFailedChecks []FailedCheckCount `json:"topFailedChecks,omitempty"`
+	// Sampled is true when there are more services than the worst-first window
+	// surfaced and it never reached a fully-instrumented service, so
+	// BelowPerfect and TopFailedChecks reflect only the worst services shown.
+	Sampled bool `json:"sampled,omitempty"`
+}
+
+// FailedCheckCount is a failing quality-check ID and how many services fail it.
+type FailedCheckCount struct {
+	ID    string `json:"id"`
+	Count int    `json:"count"`
 }
 
 func (r *DiagnoseResult) computeSummary() {
@@ -369,6 +398,18 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 		return nil
 	})
 
+	// Check 4b: Instrumentation quality. Uses the KG client, so it runs
+	// regardless of Prometheus availability. Degrades to a skip when quality
+	// reports are unavailable; never fails the run.
+	g.Go(func() error {
+		c, summary := checkQuality(ctx, client, scope)
+		mu.Lock()
+		result.Checks = append(result.Checks, c)
+		result.Quality = summary
+		mu.Unlock()
+		return nil
+	})
+
 	// Check 5–9: Metric checks (skip if no Prometheus client).
 	if promClient != nil && datasourceUID != "" {
 		for _, mc := range metricChecks(scope.env, scope.namespace) {
@@ -423,10 +464,38 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 
 	// Build the Orientation block from the data collected above.
 	orient := computeOrientation(orientationInput, scope)
-	orient.PipelineHealth = pipelineHealthFromSummary(result.Summary)
+	orient.PipelineHealth = pipelineHealthFromChecks(result.Checks)
 	result.Orientation = &orient
 
 	return result
+}
+
+// pipelineHealthFromChecks derives the Orientation health verdict from the
+// per-check results, excluding the instrumentation-quality check.
+//
+// Instrumentation debt is not a pipeline fault: virtually every real stack has
+// at least one service below 100%, so folding that WARN into the rollup would
+// flip PipelineHealth to Degraded almost everywhere and drown out genuine
+// pipeline problems — especially for agents keying off Orientation.PipelineHealth.
+// The quality check still surfaces its own WARN in the table and summary; it
+// just doesn't dominate the top-level verdict.
+func pipelineHealthFromChecks(checks []CheckResult) PipelineHealth {
+	var s DiagnoseSummary
+	for _, c := range checks {
+		if c.Name == qualityCheckName {
+			continue
+		}
+		s.Total++
+		switch c.Status {
+		case CheckPass:
+			s.Passed++
+		case CheckFail:
+			s.Failed++
+		case CheckWarn:
+			s.Warned++
+		}
+	}
+	return pipelineHealthFromSummary(s)
 }
 
 // pipelineHealthFromSummary derives the Orientation health verdict from
@@ -473,6 +542,9 @@ func checkOrder(name string) int {
 	}
 	if name == "Trace context propagation" {
 		return 9
+	}
+	if name == qualityCheckName {
+		return 13
 	}
 	return 50
 }
@@ -1119,6 +1191,182 @@ func checkTracePropagation(ctx context.Context, client *prometheus.Client, datas
 
 // ---------------------------------------------------------------------------
 // Text codec for human-readable output
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Instrumentation quality check
+// ---------------------------------------------------------------------------
+
+const (
+	// qualityCheckName is the display name of the aggregate instrumentation-
+	// quality check. Shared so the check runner, sort ordering, and the
+	// pipeline-health rollup (which excludes it) all refer to the same string.
+	qualityCheckName = "Instrumentation quality"
+	// qualityDiagnoseTopServices bounds how many services diagnose pulls for
+	// the aggregate. Reports are fetched sorted worst-quality-first, so this
+	// window always captures the most-degraded services — where the
+	// remediation value is — regardless of how many services the stack has,
+	// in a single request rather than paging the whole population.
+	qualityDiagnoseTopServices = 50
+	// qualityDiagnoseTopN is how many of the most common failing checks the
+	// summary surfaces.
+	qualityDiagnoseTopN = 5
+)
+
+// checkQuality aggregates the entity quality reports for the diagnose scope
+// into a single check result plus a structured summary. It degrades to a skip
+// (never a failure) when quality reports are unavailable or empty.
+//
+// Reports are pulled worst-quality-first (a single page of the worst
+// qualityDiagnoseTopServices), so the aggregate focuses on the most-degraded
+// services even on stacks with thousands of services. The true service count
+// comes from the page envelope's TotalElements, independent of the window.
+func checkQuality(ctx context.Context, client *Client, scope *scopeFlags) (CheckResult, *QualityCheckSummary) {
+	const name = qualityCheckName
+
+	page, err := client.ListQualityReports(ctx, QualityReportQuery{
+		Type:          defaultQualityEntityType,
+		Env:           scope.env,
+		Namespace:     scope.namespace,
+		Site:          scope.site,
+		SortDirection: "ASC", // worst quality first
+		PageSize:      qualityDiagnoseTopServices,
+	})
+	if err != nil {
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+			return CheckResult{
+				Name:   name,
+				Status: CheckSkip,
+				Detail: "Quality reports unavailable on this stack.",
+			}, nil
+		}
+		return CheckResult{
+			Name:   name,
+			Status: CheckSkip,
+			Detail: fmt.Sprintf("Could not fetch quality reports: %v", err),
+		}, nil
+	}
+
+	items := page.Content
+	if len(items) == 0 {
+		return CheckResult{
+			Name:   name,
+			Status: CheckSkip,
+			Detail: "No quality reports found for this scope.",
+		}, nil
+	}
+
+	below := 0
+	counts := map[string]int{}
+	worst := items[0].QualityPercent
+	sawPerfect := false
+	for _, it := range items {
+		if it.QualityPercent < worst {
+			worst = it.QualityPercent
+		}
+		if it.QualityPercent >= 100 {
+			sawPerfect = true
+		} else {
+			below++
+		}
+		for _, id := range it.FailedCheckIDs {
+			counts[id]++
+		}
+	}
+
+	// True service count comes from the page envelope; fall back to the window
+	// size if the backend omits it.
+	total := max(int(page.TotalElements), len(items))
+	// truncated: more services exist than we pulled, and the worst-first window
+	// never reached a fully-instrumented service — so more degraded services
+	// may lie beyond it and BelowPerfect/TopFailedChecks are lower bounds.
+	truncated := total > len(items) && !sawPerfect
+
+	summary := &QualityCheckSummary{
+		TotalServices:   total,
+		BelowPerfect:    below,
+		WorstQuality:    worst,
+		TopFailedChecks: topFailedChecks(counts, qualityDiagnoseTopN),
+		Sampled:         truncated,
+	}
+
+	status := CheckPass
+	if below > 0 {
+		status = CheckWarn
+	}
+
+	detail := fmt.Sprintf("%d services, worst %d%%", summary.TotalServices, summary.WorstQuality)
+	if summary.BelowPerfect > 0 {
+		detail += fmt.Sprintf(" (%d below 100%%)", summary.BelowPerfect)
+	}
+	if len(summary.TopFailedChecks) > 0 {
+		parts := make([]string, 0, len(summary.TopFailedChecks))
+		for _, fc := range summary.TopFailedChecks {
+			parts = append(parts, fmt.Sprintf("%s (%d)", fc.ID, fc.Count))
+		}
+		detail += "; top gaps: " + strings.Join(parts, ", ")
+	}
+	if truncated {
+		detail += fmt.Sprintf(" [worst %d of %d shown]", len(items), total)
+	}
+
+	rec := ""
+	if status == CheckWarn {
+		scopeArgs := diagnoseScopeArgs(scope)
+		rec = fmt.Sprintf(
+			"Run 'gcx kg quality list --sort asc%s' to rank the worst-instrumented services, and 'gcx kg quality get <service>%s' for per-check remediation.",
+			scopeArgs, scopeArgs,
+		)
+	}
+
+	return CheckResult{Name: name, Status: status, Detail: detail, Recommendation: rec}, summary
+}
+
+// diagnoseScopeArgs renders the diagnose scope as CLI flags for a hint, e.g.
+// " --env prod --namespace shop". --env is always present — both 'quality list'
+// and 'quality get' key off it — falling back to an "<env>" placeholder when
+// diagnose was run unscoped.
+func diagnoseScopeArgs(scope *scopeFlags) string {
+	env := scope.env
+	if env == "" {
+		env = "<env>"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, " --env %s", env)
+	if scope.namespace != "" {
+		fmt.Fprintf(&b, " --namespace %s", scope.namespace)
+	}
+	if scope.site != "" {
+		fmt.Fprintf(&b, " --site %s", scope.site)
+	}
+	return b.String()
+}
+
+// topFailedChecks returns the n most common failing check IDs, ordered by
+// count descending and then ID ascending for stable output.
+func topFailedChecks(counts map[string]int, n int) []FailedCheckCount {
+	if len(counts) == 0 {
+		return nil
+	}
+	out := make([]FailedCheckCount, 0, len(counts))
+	for id, c := range counts {
+		out = append(out, FailedCheckCount{ID: id, Count: c})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].ID < out[j].ID
+	})
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Output codec
 // ---------------------------------------------------------------------------
 
 // DiagnoseTableCodec renders DiagnoseResult as a human-readable table.

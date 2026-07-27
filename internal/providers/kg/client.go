@@ -55,6 +55,11 @@ const (
 	v2ProfileConfigPath      = v2ConfigPath + "/profile"
 	v2RelabelRulesPath       = v2ConfigPath + "/relabel-rules"
 
+	// KG entity quality reports, proxied through the asserts plugin.
+	qualityBasePath          = pluginResourcePath + "/asserts/kg-quality/v1/entities"
+	qualityReportsPath       = qualityBasePath + "/quality-reports"
+	qualityReportByEntityFmt = qualityBasePath + "/%s/%s/quality-report"
+
 	// KG Write API (K8s-style, namespaced). %s is the stacks-<id> namespace.
 	// Entity and relationship deletes use these collection paths with identity
 	// in the query string (type/name are not path segments), so names containing
@@ -744,6 +749,88 @@ func (c *Client) ListEntityScopes(ctx context.Context, startMs, endMs int64) (ma
 		return nil, fmt.Errorf("kg: list entity scopes: %w", err)
 	}
 	return wrapper.ScopeValues, nil
+}
+
+// ---------------------------------------------------------------------------
+// Quality reports
+// ---------------------------------------------------------------------------
+
+// QualityReportQuery holds filters for listing entity quality reports.
+type QualityReportQuery struct {
+	Type           string
+	Env            string
+	Namespace      string
+	Site           string
+	EntityName     string
+	FailedCheckIDs []string
+	SortDirection  string // "ASC" or "DESC"
+	Page           int
+	PageSize       int
+}
+
+// GetEntityQualityReport fetches the full quality report for a single entity.
+// env is required by the backend; namespace and site are optional scope filters.
+func (c *Client) GetEntityQualityReport(ctx context.Context, entityType, name, env, namespace, site string) (*QualityReport, error) {
+	path := fmt.Sprintf(qualityReportByEntityFmt, url.PathEscape(entityType), url.PathEscape(name))
+	q := url.Values{}
+	if env != "" {
+		q.Set("env", env)
+	}
+	if namespace != "" {
+		q.Set("namespace", namespace)
+	}
+	if site != "" {
+		q.Set("site", site)
+	}
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var report QualityReport
+	if err := c.getJSON(ctx, path, &report); err != nil {
+		return nil, fmt.Errorf("kg: get quality report: %w", err)
+	}
+	return &report, nil
+}
+
+// ListQualityReports fetches a page of entity quality reports matching the query.
+func (c *Client) ListQualityReports(ctx context.Context, query QualityReportQuery) (*QualityReportPage, error) {
+	q := url.Values{}
+	if query.Type != "" {
+		q.Set("type", query.Type)
+	}
+	if query.Env != "" {
+		q.Set("env", query.Env)
+	}
+	if query.Namespace != "" {
+		q.Set("namespace", query.Namespace)
+	}
+	if query.Site != "" {
+		q.Set("site", query.Site)
+	}
+	if query.EntityName != "" {
+		q.Set("entityName", query.EntityName)
+	}
+	for _, id := range query.FailedCheckIDs {
+		q.Add("failedCheckIds", id)
+	}
+	if query.SortDirection != "" {
+		q.Set("sortDirection", query.SortDirection)
+	}
+	if query.Page > 0 {
+		q.Set("page", strconv.Itoa(query.Page))
+	}
+	if query.PageSize > 0 {
+		q.Set("pageSize", strconv.Itoa(query.PageSize))
+	}
+	path := qualityReportsPath
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var page QualityReportPage
+	if err := c.getJSON(ctx, path, &page); err != nil {
+		return nil, fmt.Errorf("kg: list quality reports: %w", err)
+	}
+	return &page, nil
 }
 
 // ---------------------------------------------------------------------------

@@ -43,6 +43,11 @@ func RunDiagnose(ctx context.Context, client *Client, scope *ScopeFlags, promCli
 	return runDiagnose(ctx, client, scope, promClient, datasourceUID)
 }
 
+// CheckQuality wraps the unexported checkQuality function for testing.
+func CheckQuality(ctx context.Context, client *Client, scope *ScopeFlags) (CheckResult, *QualityCheckSummary) {
+	return checkQuality(ctx, client, scope)
+}
+
 // RunServiceDiagnose wraps the unexported runServiceDiagnose function for testing.
 func RunServiceDiagnose(ctx context.Context, client *Client, serviceName string, scope *ScopeFlags, promClient *prometheus.Client, datasourceUID string) ServiceDiagnoseResult {
 	return runServiceDiagnose(ctx, client, serviceName, scope, promClient, datasourceUID)
@@ -109,6 +114,12 @@ func BuildStartingPoints(scope ScopeSummary) []StartingPoint {
 // function for testing.
 func PipelineHealthFromSummary(s DiagnoseSummary) PipelineHealth {
 	return pipelineHealthFromSummary(s)
+}
+
+// PipelineHealthFromChecks wraps the unexported pipelineHealthFromChecks
+// function for testing.
+func PipelineHealthFromChecks(checks []CheckResult) PipelineHealth {
+	return pipelineHealthFromChecks(checks)
 }
 
 // --- KG write-flag helper test entry points ---

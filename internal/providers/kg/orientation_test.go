@@ -478,3 +478,50 @@ func TestPipelineHealthFromSummary(t *testing.T) {
 		})
 	}
 }
+
+func TestPipelineHealthFromChecks(t *testing.T) {
+	tests := []struct {
+		name   string
+		checks []kg.CheckResult
+		want   kg.PipelineHealth
+	}{
+		{
+			name: "instrumentation quality warn alone does not degrade",
+			checks: []kg.CheckResult{
+				{Name: "Stack status", Status: kg.CheckPass},
+				{Name: "Instrumentation quality", Status: kg.CheckWarn},
+			},
+			want: kg.PipelineHealthy,
+		},
+		{
+			name: "other warn still degrades",
+			checks: []kg.CheckResult{
+				{Name: "Stack status", Status: kg.CheckPass},
+				{Name: "Scope values", Status: kg.CheckWarn},
+				{Name: "Instrumentation quality", Status: kg.CheckWarn},
+			},
+			want: kg.PipelineDegraded,
+		},
+		{
+			name: "fail dominates regardless of quality check",
+			checks: []kg.CheckResult{
+				{Name: "Stack status", Status: kg.CheckFail},
+				{Name: "Instrumentation quality", Status: kg.CheckWarn},
+			},
+			want: kg.PipelineFailed,
+		},
+		{
+			name: "all pass except quality warn → healthy",
+			checks: []kg.CheckResult{
+				{Name: "Entity counts", Status: kg.CheckPass},
+				{Name: "Instrumentation quality", Status: kg.CheckWarn},
+			},
+			want: kg.PipelineHealthy,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, kg.PipelineHealthFromChecks(tt.checks))
+		})
+	}
+}
