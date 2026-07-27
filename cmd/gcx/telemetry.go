@@ -75,9 +75,8 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		IsTTY:   terminal.StdoutIsTerminal(),
 		IsAgent: agent.IsAgentMode(),
 		Agent:   agent.Name(),
-		// TargetKind needs the resolved config context; resolving it requires
-		// a keychain-free context loader, which is still a follow-up. Empty
-		// until then.
+		// Keychain-free classification: only ever "cloud", "self-managed", or "".
+		TargetKind: internalconfig.LoadTargetKind(context.Background()),
 	}
 
 	// The provider is the top-level command, the first segment of the path.
