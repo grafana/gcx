@@ -360,7 +360,7 @@ The agentic workflow above is one example. gcx supports a wide range of workflow
 - **Resource GitOps** — Pull resources to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`)
 - **Explore your data** — Discover datasources, metrics, labels, and log streams before writing queries (`gcx datasources list`, `gcx metrics labels`)
 - **SLO management** — Create, monitor, and investigate SLOs from your terminal (`gcx slo definitions list`, `gcx slo reports list`)
-- **Onboarding & setup** — Instrument a Kubernetes cluster and configure Grafana Cloud products (`gcx setup instrumentation`)
+- **Onboarding & setup** — Instrument a Kubernetes cluster and configure Grafana Cloud products (`gcx instrumentation setup`)
 - **Observability as Code** — Scaffold a project, import existing dashboards as Go code, lint, and deploy (`gcx dev scaffold`, `gcx dev import`)
 
 ## Compatibility
@@ -395,7 +395,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Alerting** | `gcx alert` | `alert rules list`, `alert groups list` |
 | **k6 Cloud** | `gcx k6` | `k6 load-tests list`, `k6 runs list` |
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
-| **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
+| **Knowledge Graph** | `gcx kg` | `kg status`, `kg entities list`, `kg entities inspect` |
 | **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
 | **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |
 | **Agent Observability** | `gcx agento11y` | `agento11y conversations list`, `agento11y agents list`, `agento11y rules list` |
@@ -470,12 +470,12 @@ gcx dev import dashboards
 gcx dev serve ./resources
 
 # Lint resources with built-in and custom Rego rules
-gcx dev lint run -p ./resources
+gcx dev lint run ./resources
 gcx dev lint list-rules                         # list available rules
-gcx dev lint new --resource dashboard --name my-rule  # create custom rule
+gcx dev lint new dashboard my-rule              # create custom rule
 
 # Build and push
-go run ./dashboards/... | gcx resources push -p -
+go run . && gcx resources push -p ./resources
 ```
 
 ## Raw API Access
@@ -538,7 +538,7 @@ jobs:
           gcx resources push -p ./resources --on-error abort
 ```
 
-- All commands except `edit` are non-interactive — safe for pipelines
+- `push`, `pull`, and `validate` are non-interactive; add `--yes` to `delete` to skip its confirmation prompt
 - `--dry-run` on `push` and `delete` to preview changes
 - `--on-error abort|fail|ignore` to control error behavior
 - `-o json` or `-o yaml` for machine-parseable output
