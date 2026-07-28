@@ -278,6 +278,54 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID string, req Labe
 	return &result, nil
 }
 
+// Series returns unique profile label sets from the datasource.
+func (c *Client) Series(ctx context.Context, datasourceUID string, req SeriesRequest) (*SeriesResponse, error) {
+	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/Series")
+
+	start, end := DefaultTimeRange(req.Start, req.End)
+	bodyMap := map[string]any{
+		"start": strconv.FormatInt(start.UnixMilli(), 10),
+		"end":   strconv.FormatInt(end.UnixMilli(), 10),
+	}
+	if len(req.Matchers) > 0 {
+		bodyMap["matchers"] = req.Matchers
+	}
+	if len(req.LabelNames) > 0 {
+		bodyMap["labelNames"] = req.LabelNames
+	}
+
+	body, err := json.Marshal(bodyMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal series request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create series request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute series request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read series response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, queryerror.FromBody("pyroscope", "profile series query", resp.StatusCode, respBody)
+	}
+
+	var result SeriesResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse series response: %w", err)
+	}
+	return &result, nil
+}
+
 // SelectSeries executes a SelectSeries query to get profile time-series data.
 func (c *Client) SelectSeries(ctx context.Context, datasourceUID string, req SelectSeriesRequest) (*SelectSeriesResponse, error) {
 	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/SelectSeries")
