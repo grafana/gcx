@@ -10,6 +10,7 @@ import (
 	"os"
 	"testing"
 
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/spf13/cobra"
@@ -95,10 +96,16 @@ func TestListCmd_Flags(t *testing.T) {
 
 const listNamesPath = "/api/datasources/uid/prom-uid/resources/api/v1/label/__name__/values"
 
+// listPayload mirrors the metricNamesListResult envelope for decoding stdout.
+type listPayload struct {
+	Data     []string        `json:"data"`
+	ListMeta *cmdio.ListMeta `json:"list_meta"`
+}
+
 // runListCmd executes the list command against a capture server returning the
 // given metric names. It reports the captured query values per path along
 // with the decoded stdout payload and stderr text.
-func runListCmd(t *testing.T, names []string, args ...string) (map[string]url.Values, *prometheus.LabelsResponse, string, error) {
+func runListCmd(t *testing.T, names []string, args ...string) (map[string]url.Values, *listPayload, string, error) {
 	t.Helper()
 
 	captured := map[string]url.Values{}
@@ -143,9 +150,9 @@ current-context: default
 
 	execErr := root.Execute()
 
-	var resp *prometheus.LabelsResponse
+	var resp *listPayload
 	if execErr == nil && stdout.Len() > 0 {
-		resp = &prometheus.LabelsResponse{}
+		resp = &listPayload{}
 		require.NoError(t, json.Unmarshal(stdout.Bytes(), resp))
 	}
 	return captured, resp, stderr.String(), execErr
@@ -165,7 +172,7 @@ func TestListCmd_MatchReachesRequest(t *testing.T) {
 	assert.Equal(t, []string{"up", "http_requests_total"}, resp.Data)
 }
 
-func TestListCmd_LimitTruncatesWithHint(t *testing.T) {
+func TestListCmd_LimitTruncatesWithListMetaAndHint(t *testing.T) {
 	names := []string{"a_total", "b_total", "c_total", "d_total", "e_total"}
 
 	captured, resp, stderr, err := runListCmd(t, names, "--limit", "2")
@@ -173,12 +180,21 @@ func TestListCmd_LimitTruncatesWithHint(t *testing.T) {
 	require.Contains(t, captured, listNamesPath)
 	require.NotNil(t, resp)
 	assert.Equal(t, []string{"a_total", "b_total"}, resp.Data)
-	assert.Contains(t, stderr, "showing first 2 of 5 metric names")
+
+	// Truncation must be machine-legible in the payload itself, per the
+	// list truncation contract (internal/output/listmeta.go).
+	require.NotNil(t, resp.ListMeta, "truncated page must carry list_meta")
+	assert.True(t, resp.ListMeta.Truncated)
+	assert.Equal(t, 2, resp.ListMeta.Returned)
+	require.NotNil(t, resp.ListMeta.Total)
+	assert.Equal(t, 5, *resp.ListMeta.Total)
+	assert.Contains(t, stderr, "showing first 2 of 5")
 
 	_, resp, stderr, err = runListCmd(t, names, "--limit", "0")
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Len(t, resp.Data, 5)
+	assert.Nil(t, resp.ListMeta, "complete result set must omit list_meta")
 	assert.NotContains(t, stderr, "showing first")
 }
 

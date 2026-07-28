@@ -41,7 +41,7 @@ gcx metrics list [flags]
   -h, --help                help for list
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum number of names to return after filtering (0 for all) (default 100)
+      --limit int           Maximum number of metric names to return. 0 means all results are returned (default 100)
       --match stringArray   Series selector(s) to scope results; repeatable (repeated selectors combine as a union, per the Prometheus match[] API)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
       --prefix string       Only include names starting with this string

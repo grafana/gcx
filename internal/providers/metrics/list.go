@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -35,13 +36,13 @@ func (opts *listOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Prefix, "prefix", "", "Only include names starting with this string")
 	flags.StringVar(&opts.Suffix, "suffix", "", "Only include names ending with this string")
 	flags.StringVar(&opts.Contains, "contains", "", "Only include names containing this string")
-	flags.IntVar(&opts.Limit, "limit", 100, "Maximum number of names to return after filtering (0 for all)")
+	// Cheaply complete source (the fetch always returns the full name set),
+	// so the limit is purely a display trim; the default cap keeps the
+	// command's advertised small token cost honest.
+	opts.IO.BindListLimit(flags, &opts.Limit, "metric names", 100)
 }
 
 func (opts *listOpts) Validate() error {
-	if opts.Limit < 0 {
-		return errors.New("--limit must be zero or positive")
-	}
 	return opts.IO.Validate()
 }
 
@@ -121,20 +122,36 @@ func listCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to list metric names: %w", err)
 			}
 
-			resp.Data = filterMetricNames(resp.Data, opts.Prefix, opts.Suffix, opts.Contains)
+			filtered := filterMetricNames(resp.Data, opts.Prefix, opts.Suffix, opts.Contains)
 
-			if total := len(resp.Data); opts.Limit > 0 && total > opts.Limit {
-				resp.Data = resp.Data[:opts.Limit]
-				cmdio.EmitHint(cmd.ErrOrStderr(), fmt.Sprintf("showing first %d of %d metric names; use --limit for more (0 for all)", opts.Limit, total), "")
+			// Fully-fetched source, so the observed total is exact. Truncation
+			// is machine-legible (list_meta in the envelope) and human-legible
+			// (stderr hint), per the list truncation contract.
+			names, meta := cmdio.TruncateCompleteList(filtered, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+
+			if err := opts.IO.Encode(cmd.OutOrStdout(), &metricNamesListResult{Data: names, ListMeta: meta}); err != nil {
+				return err
 			}
-
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+// metricNamesListResult is the single shape passed to every codec for
+// `gcx metrics list`. JSON/YAML serialize the envelope; the table codec
+// extracts .Data to render rows (Pattern 13: format-agnostic data).
+type metricNamesListResult struct {
+	Data []string `json:"data" yaml:"data"`
+	// ListMeta is attached only when the output is a truncated page, so
+	// agents cannot mistake a page for the complete set. Reserved key;
+	// see docs/design/output.md § List Truncation Contract.
+	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }
 
 type metricNamesTableCodec struct{}
@@ -144,12 +161,12 @@ func (c *metricNamesTableCodec) Format() format.Format {
 }
 
 func (c *metricNamesTableCodec) Encode(w io.Writer, data any) error {
-	resp, ok := data.(*prometheus.LabelsResponse)
+	result, ok := data.(*metricNamesListResult)
 	if !ok {
 		return errors.New("invalid data type for metric names table codec")
 	}
 
-	return prometheus.FormatMetricNamesTable(w, resp)
+	return prometheus.FormatMetricNamesTable(w, &prometheus.LabelsResponse{Data: result.Data})
 }
 
 func (c *metricNamesTableCodec) Decode(io.Reader, any) error {
