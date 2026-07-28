@@ -3,12 +3,10 @@ package prometheus
 import (
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -28,7 +26,16 @@ type labelsOpts struct {
 }
 
 func (opts *labelsOpts) setup(flags *pflag.FlagSet) {
-	opts.IO.RegisterCustomCodec("table", &labelsTableCodec{})
+	opts.IO.RegisterCustomCodec("table", &prometheus.SingleColumnTableCodec{
+		Header: "LABEL",
+		Rows: func(data any) ([]string, bool) {
+			resp, ok := data.(*prometheus.LabelsResponse)
+			if !ok {
+				return nil, false
+			}
+			return resp.Data, true
+		},
+	})
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
@@ -215,23 +222,4 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 	opts.setup(cmd.Flags())
 
 	return cmd
-}
-
-type labelsTableCodec struct{}
-
-func (c *labelsTableCodec) Format() format.Format {
-	return "table"
-}
-
-func (c *labelsTableCodec) Encode(w io.Writer, data any) error {
-	resp, ok := data.(*prometheus.LabelsResponse)
-	if !ok {
-		return errors.New("invalid data type for labels table codec")
-	}
-
-	return prometheus.FormatLabelsTable(w, resp)
-}
-
-func (c *labelsTableCodec) Decode(io.Reader, any) error {
-	return errors.New("labels table codec does not support decoding")
 }

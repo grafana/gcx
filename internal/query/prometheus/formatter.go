@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/style"
 )
 
@@ -206,17 +207,38 @@ func FormatLabelsTable(w io.Writer, resp *LabelsResponse) error {
 	return formatSingleColumnTable(w, "LABEL", resp.Data)
 }
 
-// FormatMetricNamesTable formats a LabelsResponse holding metric names as a table.
-func FormatMetricNamesTable(w io.Writer, resp *LabelsResponse) error {
-	return formatSingleColumnTable(w, "METRIC", resp.Data)
-}
-
 func formatSingleColumnTable(w io.Writer, header string, values []string) error {
 	t := style.NewTable(header)
 	for _, v := range values {
 		t.Row(v)
 	}
 	return t.Render(w)
+}
+
+// SingleColumnTableCodec is a table codec for any payload rendering as a
+// single-column list. Header is the column title; Rows extracts the row
+// values from the payload, returning false for an unexpected payload type.
+// Commands with single-column table output register an instance instead of
+// writing their own codec.
+type SingleColumnTableCodec struct {
+	Header string
+	Rows   func(data any) ([]string, bool)
+}
+
+func (c *SingleColumnTableCodec) Format() format.Format {
+	return "table"
+}
+
+func (c *SingleColumnTableCodec) Encode(w io.Writer, data any) error {
+	rows, ok := c.Rows(data)
+	if !ok {
+		return fmt.Errorf("invalid data type for %s table codec", strings.ToLower(c.Header))
+	}
+	return formatSingleColumnTable(w, c.Header, rows)
+}
+
+func (c *SingleColumnTableCodec) Decode(io.Reader, any) error {
+	return fmt.Errorf("%s table codec does not support decoding", strings.ToLower(c.Header))
 }
 
 // FormatSeriesTable formats a SeriesResponse as a table. Each row is a single

@@ -1,14 +1,11 @@
 package metrics
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -27,7 +24,16 @@ type listOpts struct {
 }
 
 func (opts *listOpts) setup(flags *pflag.FlagSet) {
-	opts.IO.RegisterCustomCodec("table", &metricNamesTableCodec{})
+	opts.IO.RegisterCustomCodec("table", &prometheus.SingleColumnTableCodec{
+		Header: "METRIC",
+		Rows: func(data any) ([]string, bool) {
+			result, ok := data.(*metricNamesListResult)
+			if !ok {
+				return nil, false
+			}
+			return result.Data, true
+		},
+	})
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
@@ -152,23 +158,4 @@ type metricNamesListResult struct {
 	// agents cannot mistake a page for the complete set. Reserved key;
 	// see docs/design/output.md § List Truncation Contract.
 	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
-}
-
-type metricNamesTableCodec struct{}
-
-func (c *metricNamesTableCodec) Format() format.Format {
-	return "table"
-}
-
-func (c *metricNamesTableCodec) Encode(w io.Writer, data any) error {
-	result, ok := data.(*metricNamesListResult)
-	if !ok {
-		return errors.New("invalid data type for metric names table codec")
-	}
-
-	return prometheus.FormatMetricNamesTable(w, &prometheus.LabelsResponse{Data: result.Data})
-}
-
-func (c *metricNamesTableCodec) Decode(io.Reader, any) error {
-	return errors.New("metric names table codec does not support decoding")
 }
