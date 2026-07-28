@@ -49,9 +49,9 @@ For details, refer to the [Cost Management and Billing documentation](https://gr
 
 The following applies:  
 
-- `gcx` is compatible with any agentic coding tool.
-
 - `gcx` is available for Grafana Cloud and Grafana OSS/Enterprise v12 or later. Older Grafana versions are not supported. 
+
+- `gcx` is compatible with any agentic coding tool.
 
 - `gcx` works across a wide range of Grafana product offerings. Feature availability depends on your Grafana deployment. For more information, refer to the [Compatibility matrix](https://github.com/grafana/gcx#compatibility).
 
