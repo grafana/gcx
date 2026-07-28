@@ -1,22 +1,11 @@
-## gcx alert rules list
+## gcx alert ruler groups
 
-List alert rules.
-
-```
-gcx alert rules list [flags]
-```
+Manage datasource-managed (Mimir/Loki ruler) rule groups.
 
 ### Options
 
 ```
-      --folder string   Filter by folder UID
-      --group string    Filter by group name
-  -h, --help            help for list
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of items to return (0 for unlimited) (default 50)
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
-      --state string    Filter by rule state (firing, pending, inactive)
+  -h, --help   help for groups
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +22,9 @@ gcx alert rules list [flags]
 
 ### SEE ALSO
 
-* [gcx alert rules](gcx_alert_rules.md)	 - Inspect alert rule state and health.
+* [gcx alert ruler](gcx_alert_ruler.md)	 - Manage datasource-managed (Mimir/Loki ruler) rules.
+* [gcx alert ruler groups delete](gcx_alert_ruler_groups_delete.md)	 - Delete a ruler rule group.
+* [gcx alert ruler groups get](gcx_alert_ruler_groups_get.md)	 - Get a ruler rule group (YAML by default, round-trips into upsert).
+* [gcx alert ruler groups list](gcx_alert_ruler_groups_list.md)	 - List ruler rule groups.
+* [gcx alert ruler groups upsert](gcx_alert_ruler_groups_upsert.md)	 - Create or update ruler rule groups from a file.
 

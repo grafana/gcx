@@ -1,22 +1,20 @@
-## gcx alert rules list
+## gcx alert ruler groups delete
 
-List alert rules.
+Delete a ruler rule group.
 
 ```
-gcx alert rules list [flags]
+gcx alert ruler groups delete NAMESPACE GROUP [flags]
 ```
 
 ### Options
 
 ```
-      --folder string   Filter by folder UID
-      --group string    Filter by group name
-  -h, --help            help for list
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of items to return (0 for unlimited) (default 50)
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
-      --state string    Filter by rule state (firing, pending, inactive)
+  -d, --datasource string   UID of the Mimir or Loki datasource used as ruler (required)
+      --force               Skip confirmation prompt
+  -h, --help                help for delete
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string       Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +31,5 @@ gcx alert rules list [flags]
 
 ### SEE ALSO
 
-* [gcx alert rules](gcx_alert_rules.md)	 - Inspect alert rule state and health.
+* [gcx alert ruler groups](gcx_alert_ruler_groups.md)	 - Manage datasource-managed (Mimir/Loki ruler) rule groups.
 

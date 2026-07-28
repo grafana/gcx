@@ -1,22 +1,24 @@
-## gcx alert rules list
+## gcx alert ruler
 
-List alert rules.
+Manage datasource-managed (Mimir/Loki ruler) rules.
 
-```
-gcx alert rules list [flags]
-```
+### Synopsis
+
+Manage alerting and recording rules stored in a Mimir or Loki ruler,
+via Grafana's per-datasource ruler proxy.
+
+These commands work only against Mimir (or another Prometheus-flavored
+ruler) and Loki datasources: every command requires --datasource with the
+UID of such a datasource.
+
+These are datasource-managed rules, distinct from Grafana-managed alert
+rules — inspect those with 'gcx alert rules' and modify them with
+'gcx resources pull/push alertrules'.
 
 ### Options
 
 ```
-      --folder string   Filter by folder UID
-      --group string    Filter by group name
-  -h, --help            help for list
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of items to return (0 for unlimited) (default 50)
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
-      --state string    Filter by rule state (firing, pending, inactive)
+  -h, --help   help for ruler
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +35,7 @@ gcx alert rules list [flags]
 
 ### SEE ALSO
 
-* [gcx alert rules](gcx_alert_rules.md)	 - Inspect alert rule state and health.
+* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
+* [gcx alert ruler groups](gcx_alert_ruler_groups.md)	 - Manage datasource-managed (Mimir/Loki ruler) rule groups.
+* [gcx alert ruler namespaces](gcx_alert_ruler_namespaces.md)	 - Manage datasource-managed (Mimir/Loki ruler) namespaces.
 
