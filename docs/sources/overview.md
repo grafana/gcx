@@ -10,15 +10,7 @@ weight: 1
 
 # Overview of the `gcx` CLI
 
-{{< admonition type="caution" >}}
-
-The Grafana CLI `gcx` is available in [public preview](https://grafana.com/docs/release-life-cycle/) for Grafana Cloud and Grafana OSS/Enterprise v12 or later. Older Grafana versions are not supported.
-
-**`gcx` is under development.** Documentation and support is available based on the different tiers but might be limited to enablement, configuration, and some troubleshooting. No SLAs are provided.
-
-[Contact Grafana](https://grafana.com/help/) for support or to report any issues you encounter and help us improve this feature.
-
-{{< /admonition >}}
+The Grafana CLI `gcx` is available for Grafana Cloud and Grafana OSS/Enterprise v12 or later. Older Grafana versions are not supported. `gcx` is under continuous development. [Contact Grafana](https://grafana.com/help/) for support or to report any issues you encounter and help us improve this feature.
 
 `gcx` is a single CLI that allows you and your AI coding agent structured access to both Grafana (dashboards, folders, alert rules, data sources) and Grafana Cloud products such as Synthetic Monitoring, K6, Fleet Management, Incidents, or Adaptive Telemetry.
 
