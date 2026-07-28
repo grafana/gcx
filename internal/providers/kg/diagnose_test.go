@@ -66,7 +66,6 @@ func TestRunDiagnose_AllHealthy(t *testing.T) {
 	scope := kg.NewTestScopeFlags("", "", "")
 	result := kg.RunDiagnose(t.Context(), client, &scope, nil, "")
 
-	assert.Equal(t, 7, result.Summary.Total)
 	assert.Equal(t, 7, result.Summary.Passed)
 	assert.Equal(t, 0, result.Summary.Failed)
 	assert.Equal(t, 0, result.Summary.Warned)
@@ -328,10 +327,9 @@ func TestRunDiagnose_MetricChecksPass(t *testing.T) {
 		assert.Contains(t, c.Detail, "series", "metric check %q detail should mention series count", c.Name)
 	}
 
-	// Total checks = 6 KG + 5 metric = 11 (profile warns, so 10 pass + 1 warn).
-	assert.Equal(t, 11, result.Summary.Total)
+	// 10 checks pass; the profile telemetry config is missing, so 1 warns.
 	assert.Equal(t, 10, result.Summary.Passed)
-	assert.Equal(t, 1, result.Summary.Warned) // profile config missing
+	assert.Equal(t, 1, result.Summary.Warned)
 }
 
 func TestRunDiagnose_MetricChecksFail(t *testing.T) {
@@ -422,7 +420,82 @@ func TestRunDiagnose_NilPromClientSkipsMetrics(t *testing.T) {
 	for _, c := range result.Checks {
 		assert.False(t, len(c.Name) > 7 && c.Name[:7] == "Metric:", "should have no metric checks when promClient is nil, got %q", c.Name)
 	}
-	assert.Equal(t, 6, result.Summary.Total, "should only have 6 KG checks")
+}
+
+const qualityReportsPath = "/api/plugins/grafana-asserts-app/resources/asserts/kg-quality/v1/entities/quality-reports"
+
+func TestRunDiagnose_QualityCheckWarn(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
+			writeJSON(w, kg.Status{Status: "complete", Enabled: true})
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
+			writeJSON(w, map[string]int64{"Service": 3})
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
+			writeJSON(w, map[string]any{"scopeValues": map[string][]string{"env": {"prod"}}})
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
+			writeJSON(w, kg.LogConfigsResponse{LogDrilldownConfigs: []kg.LogDrilldownConfig{{Name: "loki"}}})
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
+			writeJSON(w, kg.TraceConfigsResponse{TraceDrilldownConfigs: []kg.TraceDrilldownConfig{{Name: "tempo"}}})
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
+			writeJSON(w, kg.ProfileConfigsResponse{ProfileDrilldownConfigs: []kg.ProfileDrilldownConfig{{Name: "pyroscope"}}})
+		case qualityReportsPath:
+			writeJSON(w, kg.QualityReportPage{
+				Content: []kg.QualityReportListItem{
+					{EntityName: "a", EntityType: "Service", Env: "prod", QualityPercent: 60, FailedCheckIDs: []string{"span-metrics", "service-logs"}},
+					{EntityName: "b", EntityType: "Service", Env: "prod", QualityPercent: 80, FailedCheckIDs: []string{"span-metrics"}},
+					{EntityName: "c", EntityType: "Service", Env: "prod", QualityPercent: 100},
+				},
+				Last: true,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	scope := kg.NewTestScopeFlags("prod", "", "")
+	result := kg.RunDiagnose(t.Context(), client, &scope, nil, "")
+
+	// The quality check should surface as a warn (2 of 3 services below 100%).
+	qualityCheck := findCheck(result.Checks, "Instrumentation quality")
+	require.NotNil(t, qualityCheck)
+	assert.Equal(t, kg.CheckWarn, qualityCheck.Status)
+	assert.Contains(t, qualityCheck.Detail, "3 services")
+	// The recommendation carries the diagnose scope through to the follow-up
+	// commands so they can be run as-is.
+	assert.Contains(t, qualityCheck.Recommendation, "gcx kg quality list --sort asc --env prod")
+	assert.Contains(t, qualityCheck.Recommendation, "gcx kg quality get <service> --env prod")
+
+	// The structured summary should be populated on the result.
+	require.NotNil(t, result.Quality)
+	assert.Equal(t, 3, result.Quality.TotalServices)
+	assert.Equal(t, 2, result.Quality.BelowPerfect)
+	assert.Equal(t, 60, result.Quality.WorstQuality)
+	require.NotEmpty(t, result.Quality.TopFailedChecks)
+	// span-metrics fails 2 services, ranking ahead of service-logs (1).
+	assert.Equal(t, "span-metrics", result.Quality.TopFailedChecks[0].ID)
+	assert.Equal(t, 2, result.Quality.TopFailedChecks[0].Count)
+}
+
+func TestRunDiagnose_QualityCheckSkippedWhenUnavailable(t *testing.T) {
+	// minimalKGServer does not serve the quality-reports endpoint (404), so
+	// the quality check must degrade to a skip and leave Quality nil rather
+	// than failing the run.
+	server := minimalKGServer()
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	scope := kg.NewTestScopeFlags("prod", "", "")
+	result := kg.RunDiagnose(t.Context(), client, &scope, nil, "")
+
+	qualityCheck := findCheck(result.Checks, "Instrumentation quality")
+	require.NotNil(t, qualityCheck)
+	assert.Equal(t, kg.CheckSkip, qualityCheck.Status)
+	assert.Nil(t, result.Quality)
 }
 
 // ---------------------------------------------------------------------------

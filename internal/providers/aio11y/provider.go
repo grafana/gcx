@@ -23,7 +23,7 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 }
 
 // AIO11yProvider manages Grafana Agent Observability resources
-// (backed by the upstream `grafana-sigil-app` plugin). The CLI command is
+// (backed by the upstream `grafana-agento11y-app` plugin). The CLI command is
 // `agento11y`; the Go package name is retained for internal stability.
 type AIO11yProvider struct{}
 
@@ -68,13 +68,13 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx agento11y evaluators list -o json; gcx agento11y evaluators get <id> -o yaml; gcx agento11y evaluators upsert -f def.yaml -o json; gcx agento11y evaluators test -e <id> -g <gen-id> -o json; gcx agento11y evaluators delete <id> --force`,
 	}
 
-	rulesCmd := rules.Commands()
+	rulesCmd := rules.Commands(loader)
 	rulesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
 		agent.AnnotationLLMHint:   `gcx agento11y rules list -o json; gcx agento11y rules get <id> -o yaml; gcx agento11y rules create -f rule.yaml -o json; gcx agento11y rules update <id> -f patch.yaml -o json; gcx agento11y rules delete <id> --force`,
 	}
 
-	guardsCmd := guards.Commands()
+	guardsCmd := guards.Commands(loader)
 	guardsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
 		agent.AnnotationLLMHint:   `gcx agento11y guards list -o json; gcx agento11y guards get <id> -o yaml; gcx agento11y guards create -f guard.yaml -o json; gcx agento11y guards update <id> -f guard.yaml -o json; gcx agento11y guards delete <id> --force`,
@@ -155,28 +155,28 @@ func (p *AIO11yProvider) TypedRegistrations() []adapter.Registration {
 			Descriptor:  evalDesc,
 			GVK:         evalDesc.GroupVersionKind(),
 			Schema:      evaluators.EvaluatorSchema(),
-			URLTemplate: "/a/grafana-sigil-app/evaluators/{name}",
+			URLTemplate: "/a/grafana-agento11y-app/evaluators/{name}",
 		},
 		{
 			Factory:     rules.NewLazyFactory(),
 			Descriptor:  ruleDesc,
 			GVK:         ruleDesc.GroupVersionKind(),
 			Schema:      rules.RuleSchema(),
-			URLTemplate: "/a/grafana-sigil-app/rules/{name}",
+			URLTemplate: "/a/grafana-agento11y-app/rules/{name}",
 		},
 		{
 			Factory:     guards.NewLazyFactory(),
 			Descriptor:  guardDesc,
 			GVK:         guardDesc.GroupVersionKind(),
 			Schema:      guards.HookRuleSchema(),
-			URLTemplate: "/a/grafana-sigil-app/guards/{name}",
+			URLTemplate: "/a/grafana-agento11y-app/guards/{name}",
 		},
 		{
 			Factory:     collections.NewLazyFactory(),
 			Descriptor:  collectionDesc,
 			GVK:         collectionDesc.GroupVersionKind(),
 			Schema:      collections.CollectionSchema(),
-			URLTemplate: "/a/grafana-sigil-app/collections/{name}",
+			URLTemplate: "/a/grafana-agento11y-app/collections/{name}",
 		},
 	}
 }

@@ -5,19 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
-	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
-	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/prometheus/common/model"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -79,7 +76,7 @@ func (o *operationsOpts) Validate(cmd *cobra.Command) error {
 	return nil
 }
 
-func newListOperationsCommand() *cobra.Command {
+func newListOperationsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &operationsOpts{}
 	cmd := &cobra.Command{
 		Use:   "list-operations <service> [--namespace ns]",
@@ -115,7 +112,7 @@ default. Use --metrics-mode to pin it; see "gcx appo11y services get
   # Break each operation out per cluster to spot per-cluster hotspots
   gcx appo11y services list-operations faro-collector --group-by k8s_cluster_name`,
 		Args: cobra.ExactArgs(1),
-		RunE: runOperations(opts),
+		RunE: runOperations(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
 			agent.AnnotationLLMHint:   `Per-operation RED breakdown for one App Observability service: one row per span_name with rate (req/s), error rate, error percent, avg latency, p50/p95/p99, and time-share % (rate * avg_latency normalized across the service). Sorted by time-share desc to surface latency hotspots. Pairs with 'gcx appo11y services get' (which is the headline summary) — use 'list-operations' once a service is identified as hot to find which endpoints carry the load. Use --filter <label><op><value> (repeatable) to scope the breakdown to a subset of series — most usefully a cluster/region label (e.g. --filter k8s_cluster_name=prod-us) to break a multi-cluster service down one cluster at a time. Use --group-by <label> to instead break every operation out per distinct value of that label (time-share is normalized within each group) — surfaces per-cluster/per-region hotspots. Examples: gcx appo11y services list-operations <name> -o json; gcx appo11y services list-operations <ns>/<name> --since 1h --limit 0 -o json; gcx appo11y services list-operations <name> -o wide; gcx appo11y services list-operations <name> --filter k8s_cluster_name=<cluster> -o json; gcx appo11y services list-operations <name> --group-by k8s_cluster_name -o json`,
@@ -125,7 +122,7 @@ default. Use --metrics-mode to pin it; see "gcx appo11y services get
 	return cmd
 }
 
-func runOperations(opts *operationsOpts) func(*cobra.Command, []string) error {
+func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		if err := opts.Validate(cmd); err != nil {
 			return err
@@ -152,21 +149,13 @@ func runOperations(opts *operationsOpts) func(*cobra.Command, []string) error {
 		}
 
 		ctx := cmd.Context()
-		var loader providers.ConfigLoader
 
-		cfg, err := loader.LoadGrafanaConfig(ctx)
+		cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 		if err != nil {
 			return err
 		}
 
-		var cfgCtx *internalconfig.Context
-		if fullCfg, err := loader.LoadFullConfig(ctx); err != nil {
-			logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
-		} else {
-			cfgCtx = fullCfg.GetCurrentContext()
-		}
-
-		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, &loader, opts.Datasource, cfgCtx, cfg, "prometheus")
+		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
 			return err
 		}

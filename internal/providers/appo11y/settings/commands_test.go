@@ -191,7 +191,7 @@ func TestUpdateOpts_Validate(t *testing.T) {
 }
 
 func TestCommands_Structure(t *testing.T) {
-	cmd := Commands()
+	cmd := Commands(nil)
 	assert.Equal(t, "settings", cmd.Use)
 
 	subcommands := make(map[string]bool)
@@ -201,4 +201,17 @@ func TestCommands_Structure(t *testing.T) {
 
 	assert.True(t, subcommands["get"], "settings must have a get subcommand")
 	assert.True(t, subcommands["update"], "settings must have an update subcommand")
+}
+
+func TestUpdateCommand_RejectsPositionalArgs(t *testing.T) {
+	// A stray positional argument on a mutating command must be a usage
+	// error, not silently ignored. Args validation fails before RunE, so
+	// no config or network access happens.
+	cmd := Commands(nil)
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"update", "stray-arg", "-f", "settings.yaml"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown command")
 }

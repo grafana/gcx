@@ -55,12 +55,6 @@ mise run docs        # Generate + build all documentation
 
 ## Testing
 
-```bash
-go test ./internal/providers/traces/...   # Run one package
-go test -run TestQueryCodec ./internal/... # Run matching tests across packages
-go test -race -count=1 ./...              # Full suite with race detection (same as mise run tests)
-```
-
 Prefer table-driven tests. See existing `_test.go` files for patterns.
 
 ## Package Map
@@ -86,92 +80,7 @@ cmd/gcx/
   dev/          Developer tools (import, scaffold, generate, lint, serve)
   fail/         Structured error conversion
 
-internal/
-├── auth/        OAuth PKCE flow, token refresh transport
-│   └── adaptive/  Shared adaptive telemetry auth (GCOM caching, Basic auth — used by signal providers)
-├── login/       Login orchestration (target detection, auth resolution, connectivity validation, sentinel-retry flow)
-├── config/      Config types (versioned stacks/cloud/contexts split - contexts reference named stack + cloud entries), loader, editor, rest.Config builder, stack-id discovery, context name helpers; auto-migrates legacy per-context configs (shape-detected, delete-nothing, `.legacy.bak` backup) and plaintext token-shaped secrets into the OS keychain via internal/credentials
-├── credentials/ OS-keychain backend (zalando/go-keyring) for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
-├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
-├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and instrumentation provider)
-├── resources/
-│   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
-│   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration, slug-ID helpers
-│   ├── discovery/  API resource discovery, registry index, GVK resolution, OpenAPI schema fetcher
-│   ├── dynamic/    k8s dynamic client wrapper (namespaced + versioned)
-│   ├── local/      FSReader, FSWriter (disk I/O)
-│   ├── process/    Processors: ManagerFields, ServerFields, Namespace
-│   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary, dry-run guard
-├── providers/   Provider plugin system (interface, registry, self-registration)
-│   ├── alert/      Alert provider (rules, groups — read-only)
-│   ├── assistant/  Assistant provider — owns the full `gcx assistant` command tree (command.go/conversation.go for prompt/dashboard/conversation A2A; `mcpservers/` subpackage for mcp-servers CRUD) built entirely within internal/ (no cmd/ import); all subcommands share one `providers.ConfigLoader`; `TypedRegistrations()` registers the MCPServer adapter (see `internal/assistant/mcpserver/`); embed.go exports `RunPrompt`/`RequireGrafanaCloud` so other command trees (e.g. `instrumentation check --fix-plan`) can call Assistant without shelling out
-│   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
-│   ├── datasources/ Datasources provider — bridges /api/datasources into the resources pipeline via ResourceAdapter (no commands; managed via `gcx resources`)
-│   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
-│   ├── fleet/      Fleet Management provider (pipeline and collector resources)
-│   ├── instrumentation/  Instrumentation Hub provider (typed connect-go client, RMW with optimistic-lock, output codecs, helm formatter, enumerate helper)
-│   │   ├── enumerate/  Cluster enumeration helper (RunK8sMonitoring ⋃ ListPipelines merge)
-│   │   ├── helm/       Helm command formatter for the setup wizard
-│   │   ├── output/     View types and codecs (clusters, apps, services; wait/mutation envelopes)
-│   │   └── rmw/        Read-modify-write helper with optimistic-lock guard (ConflictError)
-│   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents; rich K8s-envelope types for AlertGroup/Alert in rich.go, ADR-019)
-│   ├── k6/         k6 Cloud provider (projects, tests, runs, envvars)
-│   ├── kg/         Knowledge Graph (Asserts) provider
-│   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
-│   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
-│   ├── appo11y/    App Observability provider (overrides, settings — singleton resources; services discovery via target_info)
-│   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
-│   ├── aio11y/     AI Observability provider (conversations, agents, generations, evaluators, rules, hook-rules (guards), templates, scores, judge, saved-conversations, collections, experiments — via grafana-sigil-app plugin API)
-│   ├── slo/        SLO provider (definitions, reports)
-│   ├── synth/      Synthetic Monitoring provider (checks, probes)
-│   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
-├── deeplink/    Deep link URL template registry and browser opener
-├── docs/        Canonical Grafana documentation URL registry (markdown links surfaced via DetailedError.DocsLink and agent llm_hints)
-├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
-├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
-│   ├── clickhouse/  ClickHouse datasource commands (query, list-tables, describe-table, explore)
-│   ├── cloudwatch/  CloudWatch CLI commands (query, list-namespaces, list-metrics, list-dimensions, list-regions, list-accounts)
-│   ├── influxdb/  InfluxDB datasource command layer (query, list-field-keys, list-measurements, list-tag-keys, list-tag-values)
-│   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
-├── query/       Datasource query clients
-│   ├── dataframe/   Shared Grafana data frame wire types for unified datasource query API responses
-│   ├── grafanaquery/ Shared POST transport for `/apis/query.grafana.app/.../query` with `/api/ds/query` fallback
-│   ├── cloudwatch/  CloudWatch HTTP query client (metric queries, resource listing)
-│   ├── prometheus/  Prometheus HTTP query client
-│   ├── influxdb/    InfluxDB HTTP query client
-│   ├── infinity/    Infinity HTTP query client
-│   ├── loki/        Loki HTTP query client
-│   ├── clickhouse/  ClickHouse HTTP query client
-│   └── synth/       Synthetic Monitoring transport via Grafana datasource proxy (SM token injected server-side) with direct SM-API fallback
-├── signals/     Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
-├── queryerror/  Typed API error for datasource query failures (APIError type, New/FromBody constructors, IsParseError helper)
-├── assistant/   Assistant client (A2A streaming, prompt, state management)
-│   ├── assistanthttp/  Base HTTP client for grafana-assistant-app plugin API
-│   ├── investigations/ Investigation CRUD commands, table codecs, v1 (legacy) + v2 (Lodestone) API clients with auto-detected capability cached via `SaveProviderConfig` at `providers.assistant.lodestone-v2` in the gcx config file
-│   ├── mcpservers/     MCP server integration HTTP client (offset-paginated list/get/create/update/delete, OAuth initiate/validate, user vs tenant scope headers)
-│   └── mcpserver/      MCPServer manifest domain type + `TypedCRUD[MCPServer]` adapter wiring (identity, natural key, schema/example) + per-header write-intent mapping (overwrite/preserve/remove, fromEnv/fromFile) — consumed by `internal/providers/assistant` (adapter registration + the mcp-servers CRUD commands, which route create/update/delete through this TypedCRUD)
-├── agent/       Agent mode detection, command annotations, known-resource registry with operation hints
-├── agentlog/    Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into reportError in cmd/gcx/main.go)
-├── style/       Terminal styling (Grafana Neon Dark theme, TableBuilder, ASCII banner, glamour help)
-├── terminal/    TTY/pipe detection (IsPiped, NoTruncate, Detect) for output suppression
-├── linter/      Linting engine (Rego rules, report aggregation, PromQL validator)
-├── graph/       Terminal chart rendering (ntcharts + lipgloss)
-├── testutils/   Shared test utilities
-├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
-├── grafana/     OpenAPI client (health checks, version detection)
-├── output/      Output codec registry (json, yaml, text, wide, agents — field selection, discovery, k8s unstructured handling, temp-file spill) + agent output contract shapes (mutation result family, artifact receipt emitter, stream envelope discriminators)
-├── format/      JSON/YAML codecs with format auto-detection
-├── retry/       Retry transport (429, 502/503/504, transient connection errors — wraps all HTTP tiers)
-├── httputils/   HTTP helpers (used by serve command's proxy)
-├── version/     Global version string (Set once from main; provides UserAgent() for HTTP clients)
-├── secrets/     Redactor for config view
-├── logs/        slog/klog integration
-├── notifier/    Update notifications (skills + gcx version checks; XDG state, throttling, message rendering — wired into root PersistentPostRun)
-├── skills/      Portable Agent Skills installer primitives (BundledSkillNames, Install, Update — extracted from cmd/gcx/skills)
-├── strcase/     String case conversion (snake_case, kebab-case, PascalCase)
-├── telemetry/   Anonymous usage stats library (wide-event model, device ID, CI detection, flat-JSON HTTP export to usage-stats; wired into the CLI lifecycle via cmd/gcx/root PersistentPreRun + cmd/gcx exitWith)
-├── xdg/         XDG Base Directory paths (config home, state home, config dirs)
-└── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
+internal/        Non-public packages — full annotated map: docs/architecture/project-structure.md
 ```
 
 ## What to Read Before You Start
@@ -205,23 +114,7 @@ Check work against these docs during planning, design, and implementation — in
 
 ## Releasing
 
-Automated via `mise run tag`. Requires `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
-
-```bash
-mise run tag -- patch   # or minor, major
-```
-
-This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits on a `release/vX.Y.Z` branch, and pushes the branch. Then:
-
-1. Open a PR and merge it (the script prints the exact command)
-2. After merge, tag the commit on main and push the tag:
-   ```bash
-   git checkout main && git pull
-   git tag v0.X.Y
-   git push origin v0.X.Y
-   ```
-
-The tag push triggers the GoReleaser workflow.
+Release steps live in the `release` skill ([.claude/skills/release/SKILL.md](.claude/skills/release/SKILL.md)) — invoke it when tagging a release.
 
 ## Mandatory Pull Request Checklist
 
@@ -236,18 +129,13 @@ You MUST run this checklist when creating a PR or updating an existing PR with n
    ```bash
    GCX_AGENT_MODE=false mise run all
    ```
-4. **Doc maintenance gate** — run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md). Update `CLAUDE.md` (package map), `ARCHITECTURE.md` (ADR table), and relevant `docs/architecture/` files if any are stale.
+4. **Doc maintenance gate** — run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md). Update `CLAUDE.md`, `ARCHITECTURE.md` (ADR table), and relevant `docs/architecture/` files (including the package map in `project-structure.md`) if any are stale.
 5. **Push**
    ```bash
    git push
    git status   # must show "up to date with origin"
    ```
    Work is not done until push succeeds. If it fails, resolve and retry.
-6. **Beads** (if in use) — close completed issues and sync:
-   ```bash
-   bd close <id>      # from repo root, not worktrees
-   bd dolt push
-   ```
 
 ## Mandatory Pre-Commit Checklist
 
@@ -295,15 +183,3 @@ When creating or commenting on GitHub issues, **always anonymize system-specific
 - API tokens, credentials → never include, even partially
 
 This applies to issue bodies, comments, and code snippets embedded in issues.
-
-## Beads Issue Tracker (optional)
-
-This project can use **bd (beads)** for issue tracking. Run `bd prime` for full command reference.
-
-```bash
-bd ready                  # Find available work
-bd show <id>              # View issue details
-bd update <id> --claim    # Claim work
-bd close <id>             # Complete work
-bd dolt push              # Sync to Dolt remote (run from repo root, not worktrees)
-```
