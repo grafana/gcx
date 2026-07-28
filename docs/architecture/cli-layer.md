@@ -86,7 +86,8 @@ gcx (root)
 │   ├── query                [DATASOURCE_UID] EXPR --profile-type TYPE [--from] [--to] [--since] [--max-nodes] [--profile-id UUID]... [--span-id ID]... [--trace-id ID]... [--stacktrace-selector FN]... [-o]
 │   ├── labels               [--datasource/-d UID] [--label/-l NAME]
 │   ├── list-profile-types   [--datasource/-d UID]
-│   ├── series               [DATASOURCE_UID] EXPR --profile-type TYPE [--top] [--group-by] [--limit]
+│   ├── metrics              [SELECTOR] --profile-type TYPE [--top] [--group-by] [--limit]
+│   ├── series               [SELECTOR] [--datasource/-d UID] [--match SELECTOR]... [--label-name LABEL]... [--from] [--to] [--since]
 │   └── adaptive             (stub — "not yet available")
 │
 ├── providers                [cmd/gcx/providers/command.go]
@@ -566,7 +567,7 @@ print available fields via `DiscoverFields()` and exit early (exit 0).
 
 Built-in codecs: `json` and `yaml` (always available). Commands register additional ones (e.g. `text`, `wide`, `graph`) by calling `RegisterCustomCodec` before `BindFlags`.
 
-The `graph` codec is a special-purpose output format available on per-kind `query` subcommands (`metrics query`, `logs query`, `profiles series`, etc.) and `synth checks status`. It renders Prometheus or Loki query results (or check status metrics) as a terminal line chart using `ntcharts` and `lipgloss` (via `internal/graph`). Terminal width is detected at render time via `golang.org/x/term`.
+The `graph` codec is a special-purpose output format available on per-kind `query` subcommands (`metrics query`, `logs query`, `profiles metrics`, etc.) and `synth checks status`. It renders Prometheus or Loki query results (or check status metrics) as a terminal line chart using `ntcharts` and `lipgloss` (via `internal/graph`). Terminal width is detected at render time via `golang.org/x/term`.
 
 The `wide` codec is available on `slo definitions list`, `slo reports list`, and `synth checks status`. It shows additional detail columns compared to the default `text` table codec.
 
