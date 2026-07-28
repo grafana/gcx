@@ -39,7 +39,7 @@ Among others, `gcx` provides the following benefits:
 For example:
 
 - Grafana Assistant is charged per token consumed, including requests made through `gcx`. 
-— Synthetic Monitoring is billed per test execution. 
+- Synthetic Monitoring is billed per test execution. 
 - Performance Testing (k6) is charged per Virtual User Hour. 
 - IRM is billed per monthly active user. 
 
