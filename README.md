@@ -21,9 +21,6 @@ gcx is a CLI for Grafana — Cloud, Enterprise, and OSS alike. It gives you and 
 
 gcx works with any agentic coding tool. It ships with a suite of agent skills for common workflows like alert investigation, dashboard creation and GitOps, SLO management, and observability setup - ready to use out of the box.
 
-> [!WARNING]
-> **Public preview** — gcx is under active development. Bugs are handled by Engineering; on-call support and SLAs are not available. See [release life cycle](https://grafana.com/docs/release-life-cycle/).
-
 ## Quick Start
 
 ```sh
