@@ -484,8 +484,12 @@ type AlertConfig struct {
 	AlertLabels map[string]string `json:"alertLabels,omitempty" yaml:"alertLabels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
 	For         string            `json:"for,omitempty" yaml:"for,omitempty"`
-	Silenced    bool              `json:"silenced,omitempty" yaml:"silenced,omitempty"`
-	ManagedBy   string            `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
+	// Silenced is intentionally NOT omitempty: omitempty drops a false bool, which
+	// would (a) hide the flag on read in exactly the un-silenced state where its
+	// absence is ambiguous, and (b) strip silenced:false on write, making it
+	// impossible to un-silence a config through an upsert. Always serialize it.
+	Silenced  bool   `json:"silenced" yaml:"silenced"`
+	ManagedBy string `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 }
 
 // AlertConfigs is the batch payload shape returned by GET /v1/config/alerts

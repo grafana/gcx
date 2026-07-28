@@ -1086,6 +1086,9 @@ deleted.`,
       for: 5m
       silenced: false' | gcx kg notifications upsert`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := createOpts.IO.Validate(); err != nil {
+				return err
+			}
 			data, err := readFileOrStdin(cmd, createOpts.File)
 			if err != nil {
 				return err
@@ -1106,13 +1109,35 @@ deleted.`,
 				return err
 			}
 			total := len(configs.AlertConfigs)
+			result := cmdio.NewBatchMutation("upserted")
 			for i, ac := range configs.AlertConfigs {
 				if err := client.UpsertNotification(cmd.Context(), ac); err != nil {
-					return fmt.Errorf("failed to upsert notification config %q (%d/%d succeeded): %w", ac.Name, i, total, err)
+					failure := fmt.Errorf("failed to upsert notification config %q (%d/%d succeeded): %w", ac.Name, i, total, err)
+					if i == 0 {
+						// Nothing succeeded: no result document is owed, so the
+						// standard error path emits the single error document
+						// (agent mode) or stderr rendering (human).
+						return failure
+					}
+					// Partial failure: the loop stops at the first error, so
+					// entries after it were never attempted (skipped).
+					result.Summary = cmdio.MutationSummary{Succeeded: i, Failed: 1, Skipped: total - i - 1}
+					result.Failures = append(result.Failures, cmdio.MutationFailure{
+						Target: cmdio.MutationTarget{Kind: "AlertConfig", Name: ac.Name},
+						Error:  err.Error(),
+					})
+					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Error())
+					if encErr := createOpts.IO.Encode(cmd.OutOrStdout(), result); encErr != nil {
+						return encErr
+					}
+					// The result document (with the enumerated failure) is
+					// already on stdout — EmittedError carries exit 4 without a
+					// second error document.
+					return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, failure)
 				}
 			}
-			cmdio.Success(cmd.OutOrStdout(), "%d notification config(s) upserted", total)
-			return nil
+			result.Summary = cmdio.MutationSummary{Succeeded: total}
+			return createOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	createOpts.setup(createCmd.Flags())
@@ -1161,10 +1186,39 @@ func (o *notificationsGetOpts) setup(flags *pflag.FlagSet) {
 
 type notificationsCreateOpts struct {
 	File string
+	IO   cmdio.Options
 }
 
 func (o *notificationsCreateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin. Reads from stdin if omitted.")
+	o.IO.RegisterCustomCodec("text", &NotificationsUpsertTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+// NotificationsUpsertTextCodec renders the `notifications upsert` write result
+// (a cmdio.BatchMutation) as the styled one-line summary in the default text
+// format, while -o json/yaml emit the structured mutation document.
+type NotificationsUpsertTextCodec struct{}
+
+func (c *NotificationsUpsertTextCodec) Format() format.Format { return "text" }
+
+func (c *NotificationsUpsertTextCodec) Encode(w io.Writer, v any) error {
+	result, ok := v.(cmdio.BatchMutation)
+	if !ok {
+		return errors.New("invalid data type for text codec: expected cmdio.BatchMutation")
+	}
+	if result.Summary.Failed > 0 {
+		cmdio.Warning(w, "%d notification config(s) upserted, %d failed (%d skipped)",
+			result.Summary.Succeeded, result.Summary.Failed, result.Summary.Skipped)
+		return nil
+	}
+	cmdio.Success(w, "%d notification config(s) upserted", result.Summary.Succeeded)
+	return nil
+}
+
+func (c *NotificationsUpsertTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
 }
 
 // NotificationTableCodec renders alert notification configs as a table.
