@@ -110,6 +110,7 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 	cmd := &cobra.Command{
 		Use:   "labels",
 		Short: "List labels or label values",
+		Args:  cobra.NoArgs,
 		Long:  "List all labels or get values for a specific label from a Prometheus datasource.",
 		Example: `
 	# List all labels (use datasource UID, not name)

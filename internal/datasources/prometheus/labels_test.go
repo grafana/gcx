@@ -152,6 +152,12 @@ func TestLabelsCmd_MatchSelectors(t *testing.T) {
 	}
 }
 
+func TestLabelsCmd_RejectsPositionalArgs(t *testing.T) {
+	captured, err := runLabelsCmd(t, "http_requests_total")
+	require.Error(t, err)
+	assert.Empty(t, captured, "no request should be made when args are rejected")
+}
+
 func TestLabelsCmd_InvalidMatchSelectorFailsBeforeAnyRequest(t *testing.T) {
 	captured, err := runLabelsCmd(t, "--metric", "up", "--match", `{cluster="prod"`)
 	require.Error(t, err)
