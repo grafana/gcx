@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
@@ -19,14 +20,16 @@ import (
 )
 
 // Commands returns the settings command group.
-func Commands() *cobra.Command {
+// The loader carries the --config flag bound on the appo11y command; every
+// subcommand loads config through it so an explicit --config is honored.
+func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "settings",
 		Short: "Manage App Observability plugin settings.",
 	}
 	cmd.AddCommand(
-		newGetCommand(),
-		newUpdateCommand(),
+		newGetCommand(loader),
+		newUpdateCommand(loader),
 	)
 	return cmd
 }
@@ -46,7 +49,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand() *cobra.Command {
+func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get",
@@ -59,7 +62,7 @@ func newGetCommand() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx)
+			crud, cfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -160,11 +163,12 @@ func (o *updateOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-func newUpdateCommand() *cobra.Command {
+func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &updateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Update App Observability plugin settings.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -202,7 +206,7 @@ func newUpdateCommand() *cobra.Command {
 				return fmt.Errorf("failed to extract settings from %s: %w", opts.File, err)
 			}
 
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}

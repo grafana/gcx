@@ -2,6 +2,7 @@ package docs_test
 
 import (
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -35,5 +36,13 @@ func TestAllURLsAreMarkdown(t *testing.T) {
 			t.Errorf("duplicate URL in registry: %q", raw)
 		}
 		seen[raw] = true
+	}
+}
+
+// TestAllContainsCloudAPI guards against the constant being defined but left
+// out of All() — the shape test above only checks what All() returns.
+func TestAllContainsCloudAPI(t *testing.T) {
+	if !slices.Contains(docs.All(), docs.CloudAPI) {
+		t.Errorf("docs.CloudAPI (%q) is missing from docs.All()", docs.CloudAPI)
 	}
 }

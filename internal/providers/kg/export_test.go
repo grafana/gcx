@@ -43,6 +43,11 @@ func RunDiagnose(ctx context.Context, client *Client, scope *ScopeFlags, promCli
 	return runDiagnose(ctx, client, scope, promClient, datasourceUID)
 }
 
+// CheckQuality wraps the unexported checkQuality function for testing.
+func CheckQuality(ctx context.Context, client *Client, scope *ScopeFlags) (CheckResult, *QualityCheckSummary) {
+	return checkQuality(ctx, client, scope)
+}
+
 // RunServiceDiagnose wraps the unexported runServiceDiagnose function for testing.
 func RunServiceDiagnose(ctx context.Context, client *Client, serviceName string, scope *ScopeFlags, promClient *prometheus.Client, datasourceUID string) ServiceDiagnoseResult {
 	return runServiceDiagnose(ctx, client, serviceName, scope, promClient, datasourceUID)
@@ -111,6 +116,12 @@ func PipelineHealthFromSummary(s DiagnoseSummary) PipelineHealth {
 	return pipelineHealthFromSummary(s)
 }
 
+// PipelineHealthFromChecks wraps the unexported pipelineHealthFromChecks
+// function for testing.
+func PipelineHealthFromChecks(checks []CheckResult) PipelineHealth {
+	return pipelineHealthFromChecks(checks)
+}
+
 // --- KG write-flag helper test entry points ---
 
 func ParseEntityRefToken(token string) (EntityRef, error) { return parseEntityRefToken(token) }
@@ -150,6 +161,21 @@ func NewRelationshipsCreateCommand(loader RESTConfigLoader) *cobra.Command {
 // NewSuppressionsCommand exposes the suppressions command group for tests.
 func NewSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 	return newSuppressionsCommand(loader)
+}
+
+// NewCorrelateCommand exposes the entities correlate command for tests.
+func NewCorrelateCommand(loader RESTConfigLoader) *cobra.Command {
+	return newCorrelateCommand(loader)
+}
+
+// ParseAlertLabelSet wraps the unexported parseAlertLabelSet for testing.
+func ParseAlertLabelSet(raw string) (map[string]string, error) {
+	return parseAlertLabelSet(raw)
+}
+
+// ParseAlertmanagerLabels wraps the unexported parseAlertmanagerLabels for testing.
+func ParseAlertmanagerLabels(data []byte) ([]map[string]string, error) {
+	return parseAlertmanagerLabels(data)
 }
 
 // NewModelRulesCommand exposes the model-rules command group for tests.

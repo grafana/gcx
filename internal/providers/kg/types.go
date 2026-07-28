@@ -416,6 +416,43 @@ type CypherSearchResponse struct {
 	LastPage bool           `json:"lastPage"`
 }
 
+// AlertInspectionRequest is the request body for POST /v1/alert-inspection.
+//
+// Each entry in AlertLabels is one firing alert's label set; the backend
+// resolves each to its affected entity (scope-enriched labels → raw labels).
+// Query is a PromQL fallback that is deferred from the CLI for now — the
+// backend fallback path currently 500s (see issue #972) — so it is reserved
+// but never populated by the correlate command yet.
+type AlertInspectionRequest struct {
+	AlertLabels  []map[string]string `json:"alertLabels,omitempty"`
+	Query        string              `json:"query,omitempty"`
+	TimeCriteria *TimeCriteria       `json:"timeCriteria,omitempty"`
+}
+
+// AlertInspectionResponse is the response from POST /v1/alert-inspection.
+//
+// It is a graph envelope: the correlated entities live under Data.Entities.
+// Unlike the flat CypherSearchResponse, the payload is wrapped in `data` with
+// a top-level `type` and echoed `timeCriteria`.
+type AlertInspectionResponse struct {
+	Type         string              `json:"type"`
+	TimeCriteria TimeCriteria        `json:"timeCriteria"`
+	Data         AlertInspectionData `json:"data"`
+}
+
+// AlertInspectionData is the graph payload inside an AlertInspectionResponse.
+//
+// The correlated entities carry the rich GraphEntity shape (id, scope,
+// connectedEntityTypes impact counts). Edges is empty in practice for the
+// label path — connectivity is surfaced per-entity via ConnectedEntityTypes.
+type AlertInspectionData struct {
+	Entities                 []GraphEntity `json:"entities"`
+	Edges                    []CypherEdge  `json:"edges"`
+	PageNum                  int           `json:"pageNum"`
+	LastPage                 bool          `json:"lastPage"`
+	SearchResultsMaxLimitHit bool          `json:"searchResultsMaxLimitHit"`
+}
+
 // KGMetadataOutput is the structured output from gcx kg metadata.
 type KGMetadataOutput struct {
 	Schema   *KGSchemaResult          `json:"schema,omitempty"`
@@ -509,4 +546,86 @@ type RelationshipWriteResponse struct {
 	From       EntityRef      `json:"from"`
 	To         EntityRef      `json:"to"`
 	Properties map[string]any `json:"properties,omitempty"`
+}
+
+// QualityState is the outcome state of a single KG quality check.
+type QualityState string
+
+const (
+	QualityStateSuccess QualityState = "SUCCESS"
+	QualityStateWarning QualityState = "WARNING"
+	QualityStateInfo    QualityState = "INFO"
+)
+
+// QualityCheckReference links a quality check to an external specification
+// (e.g. the OpenTelemetry Instrumentation Score spec).
+type QualityCheckReference struct {
+	Title string `json:"title" yaml:"title"`
+	URL   string `json:"url"   yaml:"url"`
+}
+
+// CheckCondition is a sub-condition of a quality check. It carries the resolved
+// query template (PromQL, LogQL, etc.) the UI uses to evaluate the condition.
+type CheckCondition struct {
+	ID                   string       `json:"id"                             yaml:"id"`
+	State                QualityState `json:"state"                          yaml:"state"`
+	ServiceQueryTemplate string       `json:"serviceQueryTemplate,omitempty" yaml:"serviceQueryTemplate,omitempty"`
+}
+
+// QualityCheckResult is a single check within an entity's quality report.
+type QualityCheckResult struct {
+	ID          string                 `json:"id"                    yaml:"id"`
+	State       QualityState           `json:"state"                 yaml:"state"`
+	Title       string                 `json:"title"                 yaml:"title"`
+	Description string                 `json:"description,omitempty" yaml:"description,omitempty"`
+	DocURL      string                 `json:"docUrl,omitempty"      yaml:"docUrl,omitempty"`
+	Reference   *QualityCheckReference `json:"reference,omitempty"   yaml:"reference,omitempty"`
+	Impact      string                 `json:"impact,omitempty"      yaml:"impact,omitempty"`
+	Conditions  []CheckCondition       `json:"conditions,omitempty"  yaml:"conditions,omitempty"`
+}
+
+// QualityReportData wraps the per-check results of an entity quality report.
+type QualityReportData struct {
+	Results []QualityCheckResult `json:"results" yaml:"results"`
+}
+
+// QualityReport is a full KG quality report for a single entity, returned by
+// the get-quality-report endpoint.
+type QualityReport struct {
+	EntityName     string             `json:"entityName"               yaml:"entityName"`
+	EntityType     string             `json:"entityType"               yaml:"entityType"`
+	Namespace      string             `json:"namespace,omitempty"      yaml:"namespace,omitempty"`
+	Env            string             `json:"env,omitempty"            yaml:"env,omitempty"`
+	Site           string             `json:"site,omitempty"           yaml:"site,omitempty"`
+	FailedCheckIDs []string           `json:"failedCheckIds,omitempty" yaml:"failedCheckIds,omitempty"`
+	ReportData     *QualityReportData `json:"reportData,omitempty"     yaml:"reportData,omitempty"`
+	QualityPercent int                `json:"qualityPercent"           yaml:"qualityPercent"`
+	Created        string             `json:"created,omitempty"        yaml:"created,omitempty"`
+	Updated        string             `json:"updated,omitempty"        yaml:"updated,omitempty"`
+}
+
+// QualityReportListItem is a slim quality report entry returned by the
+// list-quality-reports endpoint (no reportData/timestamps).
+type QualityReportListItem struct {
+	EntityName     string   `json:"entityName"               yaml:"entityName"`
+	EntityType     string   `json:"entityType"               yaml:"entityType"`
+	Namespace      string   `json:"namespace,omitempty"      yaml:"namespace,omitempty"`
+	Env            string   `json:"env,omitempty"            yaml:"env,omitempty"`
+	Site           string   `json:"site,omitempty"           yaml:"site,omitempty"`
+	QualityPercent int      `json:"qualityPercent"           yaml:"qualityPercent"`
+	FailedCheckIDs []string `json:"failedCheckIds,omitempty" yaml:"failedCheckIds,omitempty"`
+}
+
+// QualityReportPage is the Spring Data page envelope wrapping a list of quality
+// report items.
+type QualityReportPage struct {
+	Content          []QualityReportListItem `json:"content"                    yaml:"content"`
+	TotalElements    int64                   `json:"totalElements"              yaml:"totalElements"`
+	TotalPages       int                     `json:"totalPages"                 yaml:"totalPages"`
+	Number           int                     `json:"number"                     yaml:"number"`
+	Size             int                     `json:"size"                       yaml:"size"`
+	First            bool                    `json:"first"                      yaml:"first"`
+	Last             bool                    `json:"last"                       yaml:"last"`
+	NumberOfElements int                     `json:"numberOfElements,omitempty" yaml:"numberOfElements,omitempty"`
+	Empty            bool                    `json:"empty,omitempty"            yaml:"empty,omitempty"`
 }

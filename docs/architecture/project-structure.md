@@ -76,7 +76,7 @@ gcx/
 │   │   │   ├── output/       # View types and table/JSON codecs (clusters, apps, services; wait/mutation envelopes)
 │   │   │   └── rmw/          # Read-modify-write helper with optimistic-lock guard
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
-│   │   ├── kg/               # Knowledge Graph (Asserts) provider
+│   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, insights, diagnose, quality reports)
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── definitions/  # SLO definitions and status queries
 │   │   │   └── reports/      # SLO reports
@@ -90,6 +90,8 @@ gcx/
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
 │   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
+│   │   ├── mysql/            # MySQL datasource commands (query, list-tables, describe-table)
+│   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
 │   │   ├── dataframe/        # Shared Grafana data frame wire types for unified datasource query API responses
@@ -99,6 +101,8 @@ gcx/
 │   │   ├── influxdb/         # InfluxDB HTTP query client
 │   │   ├── infinity/         # Infinity HTTP query client
 │   │   ├── loki/             # Loki HTTP client (log + metric queries)
+│   │   ├── mysql/            # MySQL HTTP query client (raw SQL via unified query API)
+│   │   ├── postgres/         # PostgreSQL HTTP query client (raw SQL via unified query API)
 │   │   └── clickhouse/       # ClickHouse HTTP client
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)

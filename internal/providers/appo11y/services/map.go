@@ -5,20 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
-	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
-	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/prometheus/common/model"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -62,7 +59,7 @@ func (o *mapOpts) Validate(cmd *cobra.Command) error {
 	return nil
 }
 
-func newMapCommand() *cobra.Command {
+func newMapCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &mapOpts{}
 	cmd := &cobra.Command{
 		Use:   "map <service> [--namespace ns]",
@@ -111,7 +108,7 @@ suitable for inlining in markdown / piping to "dot -Tpng".`,
   # Split each edge per cluster (service-graph metrics must carry the label)
   gcx appo11y services map faro-collector --group-by k8s_cluster_name`,
 		Args: cobra.ExactArgs(1),
-		RunE: runMap(opts),
+		RunE: runMap(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
 			agent.AnnotationLLMHint:   `Service-graph slice for one App Observability service: callers (peers calling into the service) and callees (peers the service calls), with per-edge rate (req/s), error %, and direction-aware p95 latency (server-side for callers, client-side for callees). Connection-type label distinguishes HTTP/gRPC (empty), database, messaging, and virtual_node (uninstrumented upstreams synthesised by Tempo). Output formats: table/wide (default two-section view), json/yaml (structured), mermaid (markdown-renderable graph), dot (Graphviz). Pairs with 'gcx appo11y services get' (single-service RED) and 'gcx appo11y services list-operations' (per-endpoint breakdown). Use --filter <label><op><value> (repeatable) to scope the edges to a subset of series — most usefully a cluster/region label (e.g. --filter k8s_cluster_name=prod-us) to break a multi-cluster service down one cluster at a time. Use --group-by <label> to instead split each edge per distinct value of that label (note: the Tempo service-graph family often omits cluster labels, so this may return no edges — --filter/--group-by on span-metric-backed 'get'/'list-operations' is more reliable for cluster breakdowns). Examples: gcx appo11y services map <name> -o json; gcx appo11y services map <ns>/<name> --since 1h -o mermaid; gcx appo11y services map <name> --filter k8s_cluster_name=<cluster> -o json`,
@@ -121,7 +118,7 @@ suitable for inlining in markdown / piping to "dot -Tpng".`,
 	return cmd
 }
 
-func runMap(opts *mapOpts) func(*cobra.Command, []string) error {
+func runMap(loader *providers.ConfigLoader, opts *mapOpts) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		if err := opts.Validate(cmd); err != nil {
 			return err
@@ -140,21 +137,13 @@ func runMap(opts *mapOpts) func(*cobra.Command, []string) error {
 		}
 
 		ctx := cmd.Context()
-		var loader providers.ConfigLoader
 
-		cfg, err := loader.LoadGrafanaConfig(ctx)
+		cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 		if err != nil {
 			return err
 		}
 
-		var cfgCtx *internalconfig.Context
-		if fullCfg, err := loader.LoadFullConfig(ctx); err != nil {
-			logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
-		} else {
-			cfgCtx = fullCfg.GetCurrentContext()
-		}
-
-		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, &loader, opts.Datasource, cfgCtx, cfg, "prometheus")
+		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
 			return err
 		}
