@@ -52,11 +52,20 @@ func (opts *labelsOpts) selectors() ([]string, error) {
 		return []string{"{" + nameMatcher.String() + "}"}, nil
 	}
 
+	parser := promparser.NewParser(promparser.Options{})
+
 	if opts.Metric == "" {
+		// Validate client-side so a selector typo fails here with a clear
+		// error instead of an opaque proxied 400; valid selectors are sent
+		// exactly as written.
+		for _, sel := range opts.Match {
+			if _, err := parser.ParseMetricSelector(sel); err != nil {
+				return nil, fmt.Errorf("invalid --match selector %q: %w", sel, err)
+			}
+		}
 		return opts.Match, nil
 	}
 
-	parser := promparser.NewParser(promparser.Options{})
 	folded := make([]string, 0, len(opts.Match))
 	for _, sel := range opts.Match {
 		matchers, err := parser.ParseMetricSelector(sel)

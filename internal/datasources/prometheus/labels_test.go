@@ -159,10 +159,28 @@ func TestLabelsCmd_RejectsPositionalArgs(t *testing.T) {
 }
 
 func TestLabelsCmd_InvalidMatchSelectorFailsBeforeAnyRequest(t *testing.T) {
-	captured, err := runLabelsCmd(t, "--metric", "up", "--match", `{cluster="prod"`)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid --match selector")
-	assert.Empty(t, captured)
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "with metric",
+			args: []string{"--metric", "up", "--match", `{cluster="prod"`},
+		},
+		{
+			name: "without metric",
+			args: []string{"--match", `{cluster="prod"`},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			captured, err := runLabelsCmd(t, tc.args...)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid --match selector")
+			assert.Empty(t, captured)
+		})
+	}
 }
 
 func TestLabelsCmd_ContradictoryMetricFailsBeforeAnyRequest(t *testing.T) {
