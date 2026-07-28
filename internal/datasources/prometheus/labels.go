@@ -90,6 +90,9 @@ func (opts *labelsOpts) selectors() ([]string, error) {
 			}
 		}
 
+		// Brace-joining is safe despite Pattern 14's no-string-formatting rule:
+		// every part is a canonical Matcher.String() rendering, and
+		// promql-builder cannot express a matcher-only selector.
 		parts := make([]string, 0, len(matchers)+1)
 		for _, m := range matchers {
 			parts = append(parts, m.String())
