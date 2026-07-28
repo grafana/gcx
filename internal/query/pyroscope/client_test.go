@@ -221,9 +221,10 @@ func TestClient_Query_RequestFields(t *testing.T) {
 	emptyFlamegraph := `{"flamegraph":{"names":[],"levels":[],"total":"0","maxSelf":"0"}}`
 
 	tests := []struct {
-		name   string
-		req    pyroscope.QueryRequest
-		assert func(t *testing.T, body map[string]any)
+		name     string
+		req      pyroscope.QueryRequest
+		wantPath string
+		assert   func(t *testing.T, body map[string]any)
 	}{
 		{
 			name: "optional fields omitted when unset",
@@ -240,12 +241,13 @@ func TestClient_Query_RequestFields(t *testing.T) {
 			},
 		},
 		{
-			name: "spanSelector forwarded on SelectMergeStacktraces",
+			name: "spanSelector forwarded to span profile endpoint",
 			req: pyroscope.QueryRequest{
 				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
 				LabelSelector: `{}`,
 				SpanIDs:       []string{"00f067aa0ba902b7", "5a4fe264a9c987fe"},
 			},
+			wantPath: "querier.v1.QuerierService/SelectMergeSpanProfile",
 			assert: func(t *testing.T, body map[string]any) {
 				t.Helper()
 				assert.Equal(t, []any{"00f067aa0ba902b7", "5a4fe264a9c987fe"}, body["spanSelector"])
@@ -274,7 +276,7 @@ func TestClient_Query_RequestFields(t *testing.T) {
 				t.Helper()
 				assert.Equal(t, []any{"550e8400-e29b-41d4-a716-446655440000"}, body["profileIdSelector"])
 				_, present := body["spanSelector"]
-				assert.False(t, present, "spanSelector should not be sent when no span IDs are set")
+				assert.False(t, present, "spanSelector should not be sent on SelectMergeStacktraces (server drops it)")
 			},
 		},
 		{
@@ -312,7 +314,11 @@ func TestClient_Query_RequestFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/SelectMergeStacktraces")
+				wantPath := tt.wantPath
+				if wantPath == "" {
+					wantPath = "querier.v1.QuerierService/SelectMergeStacktraces"
+				}
+				assert.Contains(t, r.URL.Path, wantPath)
 				var body map[string]any
 				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
 					return
@@ -542,66 +548,6 @@ func TestClient_Pprof(t *testing.T) {
 		defer server.Close()
 
 		_, err := newTestClient(t, server).Pprof(context.Background(), "test-uid", req)
-		require.Error(t, err)
-	})
-}
-
-func TestClient_Query_SpanFallback(t *testing.T) {
-	emptyFlamegraph := `{"flamegraph":{"names":["total"],"levels":[],"total":"0","maxSelf":"0"}}`
-	spanReq := pyroscope.QueryRequest{
-		ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-		LabelSelector: `{}`,
-		SpanIDs:       []string{"00f067aa0ba902b7"},
-	}
-
-	t.Run("span query falls back to SelectMergeSpanProfile on rejection", func(t *testing.T) {
-		var spanProfileCalls int
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.Contains(r.URL.Path, "SelectMergeSpanProfile") {
-				spanProfileCalls++
-				var body map[string]any
-				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-				assert.Equal(t, []any{"00f067aa0ba902b7"}, body["spanSelector"])
-				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write([]byte(emptyFlamegraph))
-				return
-			}
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`unknown field "spanSelector"`))
-		}))
-		defer server.Close()
-
-		resp, err := newTestClient(t, server).Query(context.Background(), "test-uid", spanReq)
-		require.NoError(t, err)
-		require.NotNil(t, resp.Flamegraph)
-		assert.Equal(t, 1, spanProfileCalls)
-	})
-
-	t.Run("non-span query does not fall back", func(t *testing.T) {
-		var calls int
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			calls++
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`bad request`))
-		}))
-		defer server.Close()
-
-		_, err := newTestClient(t, server).Query(context.Background(), "test-uid", pyroscope.QueryRequest{
-			ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-			LabelSelector: `{`,
-		})
-		require.Error(t, err)
-		assert.Equal(t, 1, calls)
-	})
-
-	t.Run("fallback error is surfaced when both fail", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`bad request`))
-		}))
-		defer server.Close()
-
-		_, err := newTestClient(t, server).Query(context.Background(), "test-uid", spanReq)
 		require.Error(t, err)
 	})
 }

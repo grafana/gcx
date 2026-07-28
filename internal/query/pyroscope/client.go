@@ -39,12 +39,22 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 }
 
 // Query executes a Pyroscope profile query against the specified datasource.
-// All queries go to SelectMergeStacktraces; span-scoped queries fall back to
-// the deprecated SelectMergeSpanProfile RPC when the server rejects the
-// request, since older backends only accept span selectors there.
+// Span-scoped queries deliberately use the deprecated SelectMergeSpanProfile
+// RPC: on SelectMergeStacktraces, backends that predate the span_selector
+// field silently discard it and return an unfiltered flamegraph — there is no
+// way to detect that from the response. (profilecli detects old servers via
+// the pprof payload of format=PPROF and converts it, but gcx would then have
+// to rebuild a flamegraph from raw pprof client-side, which is not worth it.)
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
+	resourcePath := "querier.v1.QuerierService/SelectMergeStacktraces"
+	if len(req.SpanIDs) > 0 {
+		resourcePath = "querier.v1.QuerierService/SelectMergeSpanProfile"
+	}
+	apiPath := c.buildResourcePath(datasourceUID, resourcePath)
+
 	start, end := DefaultTimeRange(req.Start, req.End)
 
+	// Build request body
 	bodyMap := map[string]any{
 		"labelSelector": req.LabelSelector,
 		"profileTypeID": req.ProfileTypeID,
@@ -57,29 +67,17 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	}
 	if len(req.SpanIDs) > 0 {
 		bodyMap["spanSelector"] = req.SpanIDs
+	} else {
+		if len(req.ProfileIDs) > 0 {
+			bodyMap["profileIdSelector"] = req.ProfileIDs
+		}
+		if len(req.TraceIDs) > 0 {
+			bodyMap["traceIdSelector"] = req.TraceIDs
+		}
+		if req.StackTraceSelector != nil {
+			bodyMap["stackTraceSelector"] = req.StackTraceSelector
+		}
 	}
-	if len(req.ProfileIDs) > 0 {
-		bodyMap["profileIdSelector"] = req.ProfileIDs
-	}
-	if len(req.TraceIDs) > 0 {
-		bodyMap["traceIdSelector"] = req.TraceIDs
-	}
-	if req.StackTraceSelector != nil {
-		bodyMap["stackTraceSelector"] = req.StackTraceSelector
-	}
-
-	result, err := c.queryFlamegraph(ctx, datasourceUID, "querier.v1.QuerierService/SelectMergeStacktraces", bodyMap)
-	if err == nil || len(req.SpanIDs) == 0 || !isAPIError(err) {
-		return result, err
-	}
-
-	return c.queryFlamegraph(ctx, datasourceUID, "querier.v1.QuerierService/SelectMergeSpanProfile", bodyMap)
-}
-
-// queryFlamegraph posts a flamegraph query to the given querier RPC and
-// decodes the response.
-func (c *Client) queryFlamegraph(ctx context.Context, datasourceUID, rpc string, bodyMap map[string]any) (*QueryResponse, error) {
-	apiPath := c.buildResourcePath(datasourceUID, rpc)
 
 	body, err := json.Marshal(bodyMap)
 	if err != nil {
