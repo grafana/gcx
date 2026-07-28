@@ -152,6 +152,13 @@ func TestLabelsCmd_MatchSelectors(t *testing.T) {
 	}
 }
 
+func TestLabelsCmd_RejectsExplicitlyEmptyMetric(t *testing.T) {
+	captured, err := runLabelsCmd(t, "--metric", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid --metric")
+	assert.Empty(t, captured, "no request should be made for an empty --metric")
+}
+
 func TestLabelsCmd_RejectsPositionalArgs(t *testing.T) {
 	captured, err := runLabelsCmd(t, "http_requests_total")
 	require.Error(t, err)

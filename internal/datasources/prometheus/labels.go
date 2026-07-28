@@ -147,6 +147,13 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 				return err
 			}
 
+			// An explicitly empty --metric (typically an unset shell variable,
+			// as in --metric "$METRIC") would silently drop scoping; error
+			// instead of returning unscoped results.
+			if cmd.Flags().Changed("metric") && opts.Metric == "" {
+				return errors.New(`invalid --metric: value is empty (unset shell variable?)`)
+			}
+
 			selectors, err := opts.selectors()
 			if err != nil {
 				return err
