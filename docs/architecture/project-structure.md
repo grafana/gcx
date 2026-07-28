@@ -16,11 +16,11 @@ gcx/
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
-│       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, check, explain, clusters, services)
+│       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, check, explain, list-explanations, clusters, services)
 │       │   ├── check/        #   otel-checker wrapper: local OTel setup validation
 │       │   │   └── fixplan/   #     --fix-plan orchestrator (Assistant / local fallback + prompt build)
 │       │   ├── clusters/     #   cluster-level subcommands (list, get, configure, remove, wait, apps subtree)
-│       │   ├── explain/      #   otel-checker doc registry lookup (show <id>, list)
+│       │   ├── explain/      #   otel-checker doc registry lookup — hosts both `explain <id>` and `list-explanations`
 │       │   ├── services/     #   workload-level subcommands (list, get, include, exclude, clear)
 │       │   ├── setup/        #   onboarding wizard (helm command + access-policy guidance)
 │       │   └── status/       #   cross-cutting observed view

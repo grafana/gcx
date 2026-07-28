@@ -18,8 +18,11 @@ The instrumentation command tree provides:
              running locally (env vars, SDK, collector, Beyla, Alloy,
              Grafana Cloud connectivity).
 
-  explain    Show a markdown explanation for an otel-checker finding by
-             its explain ID.
+  explain              Show a markdown explanation for an otel-checker
+                       finding by its explain ID.
+
+  list-explanations    Enumerate every registered otel-checker explain ID
+                       with its title and severity.
 
   clusters   Declared and observed state per K8s cluster:
              list, get, configure, remove, wait.
@@ -52,6 +55,7 @@ The instrumentation command tree provides:
 * [gcx instrumentation check](gcx_instrumentation_check.md)	 - Validate OpenTelemetry instrumentation for an application
 * [gcx instrumentation clusters](gcx_instrumentation_clusters.md)	 - Manage K8s monitoring configuration for clusters
 * [gcx instrumentation explain](gcx_instrumentation_explain.md)	 - Show an explanation for an otel-checker finding
+* [gcx instrumentation list-explanations](gcx_instrumentation_list-explanations.md)	 - List every available otel-checker explain ID
 * [gcx instrumentation services](gcx_instrumentation_services.md)	 - Manage workload-level instrumentation across the fleet
 * [gcx instrumentation setup](gcx_instrumentation_setup.md)	 - Onboard a Kubernetes cluster for Grafana Instrumentation Hub
 * [gcx instrumentation status](gcx_instrumentation_status.md)	 - Show observed instrumentation state for clusters and namespaces.

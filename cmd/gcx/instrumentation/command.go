@@ -4,13 +4,14 @@
 // The command tree follows the action-verb design from ADR-018:
 //
 //	gcx instrumentation
-//	├── setup      — guided onboarding wizard
-//	├── status     — cross-cutting observed-state view
-//	├── check      — validate OTel instrumentation locally (otel-checker)
-//	├── explain    — show a markdown explanation for an otel-checker finding
-//	├── clusters   — declared/observed state per cluster
-//	│   └── apps   — namespace-level RMW operations
-//	└── services   — workload-level observed state + overrides
+//	├── setup              — guided onboarding wizard
+//	├── status             — cross-cutting observed-state view
+//	├── check              — validate OTel instrumentation locally (otel-checker)
+//	├── explain            — show a markdown explanation for an otel-checker finding
+//	├── list-explanations  — enumerate every otel-checker explain ID
+//	├── clusters           — declared/observed state per cluster
+//	│   └── apps           — namespace-level RMW operations
+//	└── services           — workload-level observed state + overrides
 //
 // This package does NOT import from internal/providers/instrumentation to avoid a
 // cmd → internal/providers cycle. Subcommands are wired here after all
@@ -51,8 +52,11 @@ The instrumentation command tree provides:
              running locally (env vars, SDK, collector, Beyla, Alloy,
              Grafana Cloud connectivity).
 
-  explain    Show a markdown explanation for an otel-checker finding by
-             its explain ID.
+  explain              Show a markdown explanation for an otel-checker
+                       finding by its explain ID.
+
+  list-explanations    Enumerate every registered otel-checker explain ID
+                       with its title and severity.
 
   clusters   Declared and observed state per K8s cluster:
              list, get, configure, remove, wait.
@@ -70,6 +74,7 @@ The instrumentation command tree provides:
 		status.Command(loader),
 		check.Command(loader),
 		explain.Command(),
+		explain.ListCommand(),
 		clusters.Command(loader),
 		services.Command(loader),
 	)

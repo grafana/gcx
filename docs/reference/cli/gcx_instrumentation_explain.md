@@ -10,10 +10,12 @@ Each finding emitted by `gcx instrumentation check` may carry an
 explain ID (e.g. env.otel-service-name.unset). Passing that ID here prints the
 full explanation — what the finding means, why it matters, and how to fix it.
 
+To see every available ID, run `gcx instrumentation list-explanations`.
+
 Powered by github.com/grafana/otel-checker.
 
 ```
-gcx instrumentation explain [id] [flags]
+gcx instrumentation explain <id> [flags]
 ```
 
 ### Options
@@ -40,5 +42,4 @@ gcx instrumentation explain [id] [flags]
 ### SEE ALSO
 
 * [gcx instrumentation](gcx_instrumentation.md)	 - Manage Grafana Instrumentation Hub
-* [gcx instrumentation explain list](gcx_instrumentation_explain_list.md)	 - List every available explain ID with its title
 

@@ -241,7 +241,7 @@
  "gcx help-tree": "finite",
  "gcx instrumentation check": "finite",
  "gcx instrumentation explain": "finite",
- "gcx instrumentation explain list": "finite",
+ "gcx instrumentation list-explanations": "finite",
  "gcx instrumentation clusters apps configure": "finite",
  "gcx instrumentation clusters apps get": "finite",
  "gcx instrumentation clusters apps list": "finite",
