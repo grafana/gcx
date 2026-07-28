@@ -49,7 +49,8 @@ right group:
 |--------|-------|---------|
 | Dashboards, folders, K8s resources | `resources` | `gcx resources get dashboards` |
 | SLO definitions and reports | `slo` | `gcx slo definitions list` |
-| Alert rules and groups | `alert` | `gcx alert rules list` |
+| Alert rule status, notification settings | `alert` | `gcx alert rules list` |
+| Create/modify/delete alert rules | `resources` | `gcx resources pull alertrules -p ./rules`, edit, `gcx resources push -p ./rules` |
 | Synthetic Monitoring checks | `synthetic-monitoring` | `gcx synthetic-monitoring checks list` |
 | IRM (OnCall + Incidents) | `irm` | `gcx irm oncall schedules list`, `gcx irm incidents list` |
 | k6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |

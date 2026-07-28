@@ -343,7 +343,7 @@ The codebase has four distinct communication paths to Grafana:
 - Hits datasource-specific sub-resource endpoints (`/apis/prometheus.datasource.grafana.app/...`)
 
 **Quaternary (provider adapter client):** `adapter.ResourceAdapter` implementations -> provider REST APIs
-- Used for provider-backed resource types (SLO, Synthetic Monitoring, OnCall, Fleet, KG, IRM Incidents, Alert)
+- Used for provider-backed resource types (SLO, Synthetic Monitoring, OnCall, Fleet, KG, IRM Incidents)
 - Each adapter wraps a provider-specific REST client targeting the product's API
 - Routed via `ResourceClientRouter`: calls to Pusher/Puller/Deleter are transparently dispatched to the adapter for registered GVKs, falling back to the primary dynamic client for all others
 - Read-only adapters return `errors.ErrUnsupported` for Create/Update/Delete
@@ -721,8 +721,10 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 | File | Purpose |
 |------|---------|
 | `internal/providers/alert/provider.go` | `AlertProvider` implementing the `providers.Provider` interface |
-| `internal/providers/alert/rules/` | Alert rules management (read-only via the Prometheus-compatible alerting API) |
-| `internal/providers/alert/groups/` | Alert groups management |
+| `internal/providers/alert/rules_commands.go` | Alert rule status inspection (read-only via the Prometheus-compatible alerting API) |
+| `internal/providers/alert/groups_commands.go` | Alert rule group status inspection |
+| `internal/providers/alert/instances_commands.go` | Firing/pending alert instances (`--datasource` for datasource-managed rules) |
+| `internal/providers/alert/provisioning_client.go` | GMA provisioning API CRUD (contact points, mute timings, notification policies, templates) |
 
 ### SLO Provider
 
