@@ -69,9 +69,7 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 Pyroscope datasource.
 
 EXPR is an optional label selector (e.g., '{service_name="frontend"}') that
-scopes the results to matching series. Selector-scoped requests and multi-label
-requests are answered from the Series API, so they reflect exactly the series
-matching the selector.`,
+scopes the results to matching series.`,
 		Example: `
 	# List all labels (use datasource UID, not name)
 	gcx datasources pyroscope labels -d UID
@@ -126,22 +124,28 @@ matching the selector.`,
 				return err
 			}
 
-			if expr != "" || len(opts.Labels) > 1 {
-				return opts.runSeries(cmd, client, datasourceUID, expr, start, end)
+			var matchers []string
+			if expr != "" {
+				matchers = []string{expr}
+			}
+
+			if len(opts.Labels) > 1 {
+				return opts.runLabelSets(cmd, client, datasourceUID, matchers, start, end)
 			}
 
 			if len(opts.Labels) == 1 {
 				resp, err := client.LabelValues(ctx, datasourceUID, pyroscope.LabelValuesRequest{
-					Name:  opts.Labels[0],
-					Start: start,
-					End:   end,
+					Name:     opts.Labels[0],
+					Matchers: matchers,
+					Start:    start,
+					End:      end,
 				})
 				if err != nil {
 					return fmt.Errorf("failed to get label values: %w", err)
 				}
 
 				if len(resp.Names) == 0 {
-					emitEmptyWindowHint(cmd.ErrOrStderr(), fmt.Sprintf("values for label %q", opts.Labels[0]), start, end, opts.IsRange())
+					emitEmptyWindowHint(cmd.ErrOrStderr(), scopedSubject(fmt.Sprintf("values for label %q", opts.Labels[0]), expr), start, end, opts.IsRange())
 				}
 				if opts.IO.OutputFormat == "table" {
 					return pyroscope.FormatLabelsTable(cmd.OutOrStdout(), resp.Names)
@@ -150,15 +154,16 @@ matching the selector.`,
 			}
 
 			resp, err := client.LabelNames(ctx, datasourceUID, pyroscope.LabelNamesRequest{
-				Start: start,
-				End:   end,
+				Matchers: matchers,
+				Start:    start,
+				End:      end,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to get labels: %w", err)
 			}
 
 			if len(resp.Names) == 0 {
-				emitEmptyWindowHint(cmd.ErrOrStderr(), "labels", start, end, opts.IsRange())
+				emitEmptyWindowHint(cmd.ErrOrStderr(), scopedSubject("labels", expr), start, end, opts.IsRange())
 			}
 			if opts.IO.OutputFormat == "table" {
 				return pyroscope.FormatLabelsTable(cmd.OutOrStdout(), resp.Names)
@@ -176,19 +181,23 @@ matching the selector.`,
 	return cmd
 }
 
-// runSeries answers selector-scoped and multi-label requests from the Series
-// API and projects the label sets client-side, mirroring how the Pyroscope
-// querier itself resolves matcher-scoped label queries. Older backends ignore
-// matchers on LabelNames/LabelValues entirely, so Series is the only route
-// that behaves consistently everywhere.
-func (opts *pyroscopeLabelsOpts) runSeries(cmd *cobra.Command, client *pyroscope.Client, datasourceUID, expr string, start, end time.Time) error {
-	matcher := expr
-	if matcher == "" {
-		matcher = "{}"
+// scopedSubject appends the selector to an empty-window hint subject when the
+// request was selector-scoped.
+func scopedSubject(subject, expr string) string {
+	if expr == "" {
+		return subject
 	}
+	return subject + " matching " + expr
+}
 
+// runLabelSets lists unique label sets via the Series API — the only RPC that
+// returns whole label combinations. Matchers are omitted when no selector is
+// given so the query-frontend can answer profile-type-shaped projections
+// ({__profile_type__, service_name}) from metastore metadata without touching
+// data blocks.
+func (opts *pyroscopeLabelsOpts) runLabelSets(cmd *cobra.Command, client *pyroscope.Client, datasourceUID string, matchers []string, start, end time.Time) error {
 	resp, err := client.Series(cmd.Context(), datasourceUID, pyroscope.SeriesRequest{
-		Matchers:   []string{matcher},
+		Matchers:   matchers,
 		LabelNames: opts.Labels,
 		Start:      start,
 		End:        end,
@@ -197,33 +206,11 @@ func (opts *pyroscopeLabelsOpts) runSeries(cmd *cobra.Command, client *pyroscope
 		return fmt.Errorf("failed to get series: %w", err)
 	}
 
-	out := cmd.OutOrStdout()
-	switch len(opts.Labels) {
-	case 0:
-		names := resp.UniqueLabelNames()
-		if len(names) == 0 {
-			emitEmptyWindowHint(cmd.ErrOrStderr(), fmt.Sprintf("labels matching %s", matcher), start, end, opts.IsRange())
-		}
-		if opts.IO.OutputFormat == "table" {
-			return pyroscope.FormatLabelsTable(out, names)
-		}
-		return opts.IO.Encode(out, &pyroscope.LabelNamesResponse{Names: names})
-	case 1:
-		values := resp.UniqueLabelValues(opts.Labels[0])
-		if len(values) == 0 {
-			emitEmptyWindowHint(cmd.ErrOrStderr(), fmt.Sprintf("values for label %q matching %s", opts.Labels[0], matcher), start, end, opts.IsRange())
-		}
-		if opts.IO.OutputFormat == "table" {
-			return pyroscope.FormatLabelsTable(out, values)
-		}
-		return opts.IO.Encode(out, &pyroscope.LabelValuesResponse{Names: values})
-	default:
-		resp.LabelNames = opts.Labels
-		if len(resp.LabelsSet) == 0 {
-			emitEmptyWindowHint(cmd.ErrOrStderr(), fmt.Sprintf("label sets for %s", strings.Join(opts.Labels, ", ")), start, end, opts.IsRange())
-		}
-		return opts.IO.Encode(out, resp)
+	resp.LabelNames = opts.Labels
+	if len(resp.LabelsSet) == 0 {
+		emitEmptyWindowHint(cmd.ErrOrStderr(), "label sets for "+strings.Join(opts.Labels, ", "), start, end, opts.IsRange())
 	}
+	return opts.IO.Encode(cmd.OutOrStdout(), resp)
 }
 
 type pyroscopeLabelsTableCodec struct{}

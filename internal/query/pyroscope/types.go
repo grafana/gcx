@@ -137,24 +137,6 @@ func (r *SeriesResponse) UniqueLabelNames() []string {
 	return names
 }
 
-// UniqueLabelValues returns the sorted unique values of one label across all label sets.
-func (r *SeriesResponse) UniqueLabelValues(name string) []string {
-	set := make(map[string]struct{})
-	for _, ls := range r.LabelsSet {
-		for _, lp := range ls.Labels {
-			if lp.Name == name {
-				set[lp.Value] = struct{}{}
-			}
-		}
-	}
-	values := make([]string, 0, len(set))
-	for v := range set {
-		values = append(values, v)
-	}
-	sort.Strings(values)
-	return values
-}
-
 // FunctionSample represents a function in the flame graph with computed stats.
 type FunctionSample struct {
 	Name       string

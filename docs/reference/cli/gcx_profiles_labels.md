@@ -8,9 +8,7 @@ List all labels, get values for one label, or list unique label sets from a
 Pyroscope datasource.
 
 EXPR is an optional label selector (e.g., '{service_name="frontend"}') that
-scopes the results to matching series. Selector-scoped requests and multi-label
-requests are answered from the Series API, so they reflect exactly the series
-matching the selector.
+scopes the results to matching series.
 
 ```
 gcx profiles labels [EXPR] [flags]

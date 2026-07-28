@@ -412,12 +412,12 @@ func buildStacktracesPprofResponse(profile []byte) []byte {
 
 // fakeProfileProto is a minimal valid binary protobuf that stands in for a
 // google.pprof.Profile; it carries one string-table entry (field 6 = "cpu").
-var fakeProfileProto = func() []byte {
+func fakeProfileProto() []byte {
 	var b []byte
 	b = protowire.AppendTag(b, 6, protowire.BytesType)
 	b = protowire.AppendString(b, "cpu")
 	return b
-}()
+}
 
 func requireGzippedProfile(t *testing.T, got []byte) {
 	t.Helper()
@@ -425,7 +425,7 @@ func requireGzippedProfile(t *testing.T, got []byte) {
 	require.NoError(t, err, "response should be gzip-compressed")
 	decompressed, err := io.ReadAll(gz)
 	require.NoError(t, err)
-	assert.Equal(t, fakeProfileProto, decompressed)
+	assert.Equal(t, fakeProfileProto(), decompressed)
 }
 
 func TestClient_Pprof(t *testing.T) {
@@ -454,8 +454,9 @@ func TestClient_Pprof(t *testing.T) {
 
 		selectors := protoBytesFields(body, stsField)
 		if assert.Len(t, selectors, 1, "stack_trace_selector should be encoded once") {
-			var names []string
-			for _, loc := range protoBytesFields(selectors[0], 1) {
+			locations := protoBytesFields(selectors[0], 1)
+			names := make([]string, 0, len(locations))
+			for _, loc := range locations {
 				names = append(names, protoStringFields(loc, 1)...)
 			}
 			assert.Equal(t, []string{"main.run", "main.handler"}, names)
@@ -480,7 +481,7 @@ func TestClient_Pprof(t *testing.T) {
 			assertCommonFields(t, body, 7, 8, 10)
 
 			w.Header().Set("Content-Type", "application/proto")
-			_, _ = w.Write(buildStacktracesPprofResponse(fakeProfileProto))
+			_, _ = w.Write(buildStacktracesPprofResponse(fakeProfileProto()))
 		}))
 		defer server.Close()
 
@@ -499,7 +500,7 @@ func TestClient_Pprof(t *testing.T) {
 				legacyCalls++
 				body, _ := io.ReadAll(r.Body)
 				assertCommonFields(t, body, 6, 7, 8)
-				_, _ = w.Write(fakeProfileProto)
+				_, _ = w.Write(fakeProfileProto())
 				return
 			}
 			// Old backend: format field ignored, flamegraph (field 1) returned.
@@ -520,7 +521,7 @@ func TestClient_Pprof(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if strings.Contains(r.URL.Path, "SelectMergeProfile") {
 				w.Header().Set("Content-Type", "application/proto")
-				_, _ = w.Write(fakeProfileProto)
+				_, _ = w.Write(fakeProfileProto())
 				return
 			}
 			w.WriteHeader(http.StatusBadRequest)

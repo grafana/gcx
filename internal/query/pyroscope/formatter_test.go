@@ -342,7 +342,7 @@ func TestFormatLabelSetsTable(t *testing.T) {
 	})
 }
 
-func TestSeriesResponseProjections(t *testing.T) {
+func TestSeriesResponseUniqueLabelNames(t *testing.T) {
 	resp := &pyroscope.SeriesResponse{
 		LabelsSet: []pyroscope.Labels{
 			{Labels: []pyroscope.LabelPair{
@@ -353,14 +353,9 @@ func TestSeriesResponseProjections(t *testing.T) {
 				{Name: "service_name", Value: "backend"},
 				{Name: "region", Value: "eu"},
 			}},
-			{Labels: []pyroscope.LabelPair{
-				{Name: "service_name", Value: "frontend"},
-			}},
 		},
 	}
 
 	assert.Equal(t, []string{"namespace", "region", "service_name"}, resp.UniqueLabelNames())
-	assert.Equal(t, []string{"backend", "frontend"}, resp.UniqueLabelValues("service_name"))
-	assert.Equal(t, []string{"prod"}, resp.UniqueLabelValues("namespace"))
-	assert.Empty(t, resp.UniqueLabelValues("missing"))
+	assert.Empty(t, (&pyroscope.SeriesResponse{}).UniqueLabelNames())
 }
