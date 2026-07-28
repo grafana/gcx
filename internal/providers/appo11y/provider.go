@@ -49,9 +49,9 @@ func (p *AppO11yProvider) Commands() []*cobra.Command {
 	// Bind config flags on the parent — all subcommands inherit these.
 	loader.BindFlags(cmd.PersistentFlags())
 
-	cmd.AddCommand(overrides.Commands())
-	cmd.AddCommand(services.Commands())
-	cmd.AddCommand(settings.Commands())
+	cmd.AddCommand(overrides.Commands(loader))
+	cmd.AddCommand(services.Commands(loader))
+	cmd.AddCommand(settings.Commands(loader))
 	return []*cobra.Command{cmd}
 }
 

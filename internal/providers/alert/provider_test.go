@@ -18,6 +18,15 @@ func TestAlertProvider_Interface(t *testing.T) {
 	assert.Nil(t, p.ConfigKeys())
 }
 
+func TestAlertProvider_TypedRegistrations(t *testing.T) {
+	p := &alert.AlertProvider{}
+
+	// Alert rules are served from the rules.alerting.grafana.app API group.
+	// A read-only status API must not be registered as an adapter: it would shadow
+	// the writable group and fail push/delete with ErrUnsupported.
+	assert.Nil(t, p.TypedRegistrations())
+}
+
 func TestAlertProvider_Commands(t *testing.T) {
 	p := &alert.AlertProvider{}
 	cmds := p.Commands()

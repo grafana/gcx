@@ -439,7 +439,6 @@ falling back to the k8s dynamic client for non-provider resource types.
 - `internal/resources/adapter/router.go`: `ResourceClientRouter` implementation
 - `internal/providers/slo/definitions/resource_adapter.go`: SLO provider implementation
 - `internal/providers/synth/checks/resource_adapter.go`: Synthetic Monitoring implementation
-- `internal/providers/alert/resource_adapter.go`: Alert rules implementation
 
 **Slug-ID naming convention (Fleet, Synth checks):** Providers whose APIs use
 numeric IDs but whose users want human-readable names use a composite

@@ -1630,10 +1630,23 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		Long: `Manage Knowledge Graph entities.
 
 Prefer 'list' for listing and for basic lookups (an entity's identity and
-properties — the labels used to build PromQL/Loki queries); it is cheap. Use
-'inspect' only when you need an entity's insight timeline or related entities
-for root-cause analysis — it is heavier and can return large output,
-so don't use it just to read properties.`,
+properties — the labels used to build PromQL/Loki queries); it is cheap and is
+the right choice even when you already know the exact entity. Use 'inspect'
+only for root-cause analysis — it is heavy and can return large output, so
+don't reach for it just to read properties.
+
+Pick the read verb by what you start with:
+
+  list       Default for listing and basic lookups: an entity's identity, scope,
+             and properties. Filter to one known entity with
+             '--property name=<name>'. Cheap — use this for plain lookups.
+  correlate  You have a firing alert (its labels) but not the entity → find
+             which entity the alert hangs off. The "I have an alert, which
+             entity is it?" entry point.
+  inspect    Root-cause analysis only — heavy: insight timeline + related
+             entities. Don't use it just to read an entity's properties (use
+             'list'); reach for it only when you need the RCA view.
+  query      Arbitrary Cypher over the graph.`,
 	}
 
 	// list subcommand
@@ -1731,7 +1744,7 @@ analysis, use 'gcx kg entities inspect' instead.`,
 	listOpts.setup(listCmd.Flags())
 	_ = listCmd.MarkFlagRequired("type")
 
-	cmd.AddCommand(listCmd, newEntitiesInspectCommand(loader), newCypherCommand(loader),
+	cmd.AddCommand(listCmd, newCorrelateCommand(loader), newEntitiesInspectCommand(loader), newCypherCommand(loader),
 		newEntitiesCreateCommand(loader), newEntitiesDeleteCommand(loader))
 	return cmd
 }
@@ -2608,6 +2621,208 @@ func (c *CypherTableCodec) Encode(w io.Writer, v any) error {
 }
 
 func (c *CypherTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ---------------------------------------------------------------------------
+// Correlate command
+// ---------------------------------------------------------------------------
+
+func newCorrelateCommand(loader RESTConfigLoader) *cobra.Command {
+	var (
+		correlateScope scopeFlags
+		alertLabelsRaw []string
+		file           string
+	)
+	ioOpts := &correlateOpts{}
+	cmd := &cobra.Command{
+		Use:   "correlate",
+		Short: "Resolve the affected entities for a firing alert from its labels.",
+		Long: `Resolve the affected Knowledge Graph entities for one or more firing alerts.
+
+Give it an alert's labels and a time window; it returns the entities the alert
+hangs off, using the same correlation the product uses to attach alerts to
+entities. This is the "I have an alert, which entity is it?" entry point — no
+entity type/name or Cypher required.
+
+Provide alerts as inline label sets, from an Alertmanager webhook file, or both:
+
+  --alert-labels 'k=v,k=v'   one firing alert per flag (repeatable)
+  -f/--file / stdin          Alertmanager JSON — an envelope {"alerts":[...]}
+                             or a bare array [{"labels":{...}}], auto-detected
+
+At least one of --alert-labels or -f is required. When nothing correlates the
+command prints a notice and exits 0 (an empty result is not an error).
+
+Note: correlation from a PromQL alert expression (--query) is not yet supported
+here — the backend fallback is unreliable today; use alert labels instead.`,
+		Example: `  gcx kg entities correlate --alert-labels 'alertname=ErrorRatioBreach,job=cart' --since 1h
+  gcx kg entities correlate -f am-webhook.json --since 1h
+  cat am-webhook.json | gcx kg entities correlate -f - --since 6h`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := ioOpts.IO.Validate(); err != nil {
+				return err
+			}
+			// Parse inputs first so bad input fails fast, before any network I/O.
+			var alertLabels []map[string]string
+			for _, raw := range alertLabelsRaw {
+				labels, err := parseAlertLabelSet(raw)
+				if err != nil {
+					return err
+				}
+				alertLabels = append(alertLabels, labels)
+			}
+			if file != "" {
+				data, err := readFileOrStdin(cmd, file)
+				if err != nil {
+					return err
+				}
+				fromFile, err := parseAlertmanagerLabels(data)
+				if err != nil {
+					return err
+				}
+				alertLabels = append(alertLabels, fromFile...)
+			}
+			if len(alertLabels) == 0 {
+				return errors.New("no alerts provided: use --alert-labels 'k=v,k=v' (repeatable) and/or -f <alertmanager.json>")
+			}
+
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			startMs, endMs, err := correlateScope.resolveTime()
+			if err != nil {
+				return err
+			}
+			resp, err := client.Correlate(cmd.Context(), AlertInspectionRequest{
+				AlertLabels:  alertLabels,
+				TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
+			})
+			if err != nil {
+				return err
+			}
+			if len(resp.Data.Entities) == 0 {
+				fmt.Fprintln(cmd.ErrOrStderr(), "no entities correlated for the given alert(s)")
+			}
+			// Return the bare entities slice (like 'entities list') rather than
+			// the full graph envelope — agents only need the entities, and the
+			// envelope's edges/paging fields are noise for this command.
+			return ioOpts.IO.Encode(cmd.OutOrStdout(), resp.Data.Entities)
+		},
+	}
+	cmd.Flags().StringArrayVar(&alertLabelsRaw, "alert-labels", nil, "Firing alert label set as comma-separated key=value pairs; one flag per alert (repeatable)")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "Alertmanager webhook JSON file, or '-' for stdin (envelope {\"alerts\":[...]} or bare array [{\"labels\":...}])")
+	cmd.Flags().StringVar(&correlateScope.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
+	cmd.Flags().StringVar(&correlateScope.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
+	cmd.Flags().StringVar(&correlateScope.since, "since", "", "Duration before --to (or now); mutually exclusive with --from/--to (default 1h; e.g. 1h, 30m, 7d)")
+	ioOpts.setup(cmd.Flags())
+	return cmd
+}
+
+type correlateOpts struct {
+	IO cmdio.Options
+}
+
+func (o *correlateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &AlertCorrelateTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+// parseAlertLabelSet parses a single 'k=v,k=v' alert label set. Values may
+// contain '=' (split on the first only); commas separate pairs.
+func parseAlertLabelSet(raw string) (map[string]string, error) {
+	labels := map[string]string{}
+	for pair := range strings.SplitSeq(raw, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(pair, "=")
+		k = strings.TrimSpace(k)
+		if !ok || k == "" {
+			return nil, fmt.Errorf("invalid --alert-labels entry %q: expected comma-separated key=value pairs", pair)
+		}
+		labels[k] = strings.TrimSpace(v)
+	}
+	if len(labels) == 0 {
+		return nil, fmt.Errorf("invalid --alert-labels %q: no key=value pairs found", raw)
+	}
+	return labels, nil
+}
+
+// parseAlertmanagerLabels extracts per-alert label sets from Alertmanager
+// webhook JSON. It auto-detects an envelope ({"alerts":[{"labels":...}]}) and a
+// bare array ([{"labels":...}]). JSON is valid YAML, so yaml.Unmarshal handles
+// both wire formats.
+func parseAlertmanagerLabels(data []byte) ([]map[string]string, error) {
+	type amAlert struct {
+		Labels map[string]string `yaml:"labels"`
+	}
+	collect := func(alerts []amAlert) []map[string]string {
+		out := make([]map[string]string, 0, len(alerts))
+		for _, a := range alerts {
+			if len(a.Labels) > 0 {
+				out = append(out, a.Labels)
+			}
+		}
+		return out
+	}
+
+	// Envelope: {"alerts": [{"labels": {...}}, ...]}.
+	var env struct {
+		Alerts []amAlert `yaml:"alerts"`
+	}
+	if err := yaml.Unmarshal(data, &env); err == nil {
+		if out := collect(env.Alerts); len(out) > 0 {
+			return out, nil
+		}
+	}
+	// Bare array: [{"labels": {...}}, ...].
+	var arr []amAlert
+	if err := yaml.Unmarshal(data, &arr); err == nil {
+		if out := collect(arr); len(out) > 0 {
+			return out, nil
+		}
+	}
+	return nil, errors.New(`no alert labels found in input: expected an Alertmanager envelope {"alerts":[{"labels":{...}}]} or a bare array [{"labels":{...}}]`)
+}
+
+// AlertCorrelateTableCodec renders the correlated entities as a table with
+// their connected-entity impact counts.
+type AlertCorrelateTableCodec struct{}
+
+func (c *AlertCorrelateTableCodec) Format() format.Format { return "table" }
+
+func (c *AlertCorrelateTableCodec) Encode(w io.Writer, v any) error {
+	entities, ok := v.([]GraphEntity)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []GraphEntity")
+	}
+	t := style.NewTable("TYPE", "NAME", "SCOPE", "CONNECTED")
+	for _, e := range entities {
+		var scopeParts []string
+		for k, val := range e.Scope {
+			scopeParts = append(scopeParts, fmt.Sprintf("%s=%s", k, val))
+		}
+		sort.Strings(scopeParts)
+		var connParts []string
+		for k, n := range e.ConnectedEntityTypes {
+			connParts = append(connParts, fmt.Sprintf("%s=%d", k, n))
+		}
+		sort.Strings(connParts)
+		t.Row(e.Type, e.Name, strings.Join(scopeParts, ", "), strings.Join(connParts, ", "))
+	}
+	return t.Render(w)
+}
+
+func (c *AlertCorrelateTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 

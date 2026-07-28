@@ -275,8 +275,11 @@ ResourceAdapter    k8s DynamicClient
 (provider REST)    (/apis endpoint)
 ```
 
-Adapters are lazily initialized (factory called once, result cached). For read-only
-provider types (Alert rules/groups), Create/Update/Delete return `errors.ErrUnsupported`.
+Adapters are lazily initialized (factory called once, result cached). Adapters with
+nil write functions return `errors.ErrUnsupported` for Create/Update/Delete — so a
+provider must not register an adapter for a resource its API cannot actually write
+(alert rules are served by the dynamic client via `rules.alerting.grafana.app` for
+exactly this reason).
 
 The `--context` flag (Grafana config context name) is threaded into adapter
 factories via `context.Context` using `config.ContextWithName` / `config.ContextNameFromCtx`

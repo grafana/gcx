@@ -196,6 +196,43 @@ func TestAgentConformance_FailuresAreOneInBandErrorDocument(t *testing.T) {
 	}
 }
 
+// TestAgentConformance_InvalidStackSlugIsUsageError pins the client-side slug
+// validation added for issue #950: an invalid slug fails before the dry-run
+// preview with a single gcx.error document and a usage exit code, in both the
+// process status and the in-band payload.
+func TestAgentConformance_InvalidStackSlugIsUsageError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the gcx binary; skipped with -short")
+	}
+
+	stdout, code := runGcx(t, "cloud", "stacks", "create",
+		"--name", "t", "--slug", "my-gcx-eval", "--dry-run")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (usage error)\nstdout:\n%s", code, stdout)
+	}
+	doc := assertOneJSONValue(t, stdout)
+	obj, ok := doc.(map[string]any)
+	if !ok {
+		t.Fatalf("error document is %T, want object", doc)
+	}
+	if obj["type"] != "gcx.error" {
+		t.Fatalf("document type = %v, want gcx.error (no dry-run preview may render)", obj["type"])
+	}
+	if obj["schema_version"] != "1" {
+		t.Fatalf("schema_version = %v, want %q", obj["schema_version"], "1")
+	}
+	errField, ok := obj["error"].(map[string]any)
+	if !ok {
+		t.Fatal("error document missing error object")
+	}
+	if exitCode, _ := errField["exitCode"].(float64); int(exitCode) != 2 {
+		t.Fatalf("in-band exitCode = %v, want 2", errField["exitCode"])
+	}
+	if details, _ := errField["details"].(string); !strings.Contains(details, "lowercase") {
+		t.Fatalf("details should state the slug rule, got %q", details)
+	}
+}
+
 // TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue sweeps EVERY leaf
 // command classified finite, artifact or stream in
 // testdata/output_classes.json: each is executed with no arguments in a

@@ -86,8 +86,8 @@ inspect populated credential fields to invent their own precedence.
 
 Service account tokens are static bearer credentials issued by a Grafana
 instance. Users provision them through the Grafana UI under Administration →
-Service accounts; the token carries the scope of its account (Editor, Admin,
-or custom role). Tokens are prefixed `glsa_`.
+Service accounts; the token carries the scope of its account (Viewer, Editor,
+Admin, or custom role). Tokens are prefixed `glsa_`.
 
 gcx stores them in `GrafanaConfig.APIToken` (`datapolicy:"secret"`, redacted
 in `gcx config view`). The REST config builder in `internal/config/rest.go`

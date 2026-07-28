@@ -74,9 +74,10 @@ func OverridesExample() json.RawMessage {
 // UpdateFn extracts the ETag from the spec (set by the command layer via SetETag) and
 // passes it to the API as an If-Match header.
 // ListFn, CreateFn, and DeleteFn are nil (singleton, no collection endpoint).
-func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[MetricsGeneratorConfig], internalconfig.NamespacedRESTConfig, error) {
-	var loader providers.ConfigLoader
-
+// The loader carries the command's --config selection; adapter factories pass
+// a zero-value loader and inherit the selection (config file and context name)
+// threaded through ctx by the resources command.
+func NewTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) (*adapter.TypedCRUD[MetricsGeneratorConfig], internalconfig.NamespacedRESTConfig, error) {
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
 		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to load REST config for overrides: %w", err)
@@ -125,7 +126,8 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[MetricsGeneratorConfi
 // and by AppO11yProvider.TypedRegistrations().
 func NewLazyFactory() adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		crud, _, err := NewTypedCRUD(ctx)
+		var loader providers.ConfigLoader
+		crud, _, err := NewTypedCRUD(ctx, &loader)
 		if err != nil {
 			return nil, err
 		}
