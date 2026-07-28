@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -48,9 +49,26 @@ func (c *Client) Create(ctx context.Context, rule *eval.RuleDefinition) (*eval.R
 	return &created, nil
 }
 
-// Update sends a full rule definition as a PATCH request.
+// Update sends a rule definition as a PATCH request.
+//
+// The rule id is taken from the URL path, so it must not also appear in the
+// body: the server decodes the PATCH body with DisallowUnknownFields and its
+// update DTO has no rule_id field, so a body carrying rule_id (even as an empty
+// string) fails with `unknown field "rule_id"`. RuleDefinition.RuleID has no
+// omitempty because it is required on create, so we can't just zero it — we
+// marshal to a map and drop the key entirely before sending.
 func (c *Client) Update(ctx context.Context, id string, rule *eval.RuleDefinition) (*eval.RuleDefinition, error) {
-	updated, err := aio11yhttp.DoJSON[eval.RuleDefinition, eval.RuleDefinition](ctx, c.base, http.MethodPatch, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), rule, http.StatusOK)
+	raw, err := json.Marshal(rule)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal rule: %w", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return nil, fmt.Errorf("failed to prepare rule body: %w", err)
+	}
+	delete(body, "rule_id")
+
+	updated, err := aio11yhttp.DoJSON[map[string]any, eval.RuleDefinition](ctx, c.base, http.MethodPatch, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), &body, http.StatusOK)
 	if err != nil {
 		return nil, err
 	}
