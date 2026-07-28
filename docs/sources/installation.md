@@ -62,13 +62,13 @@ rm ~/.local/bin/gcx
 To install `gcx` with Homebrew run:
 
 ```shell
-brew install grafana/grafana/gcx
+brew install gcx
 ```
 
 To upgrade an existing installation:
 
 ```shell
-brew upgrade grafana/grafana/gcx
+brew upgrade gcx
 ```
 
 Homebrew builds `gcx` from source on your machine, as it pulls `go` as a build dependency.

@@ -37,6 +37,22 @@ func TestDetailedError_Error_OmitsDuplicateParentDetails(t *testing.T) {
 	assert.NotContains(t, rendered, "├─ Details:")
 }
 
+func TestDetailedError_Error_SummaryOnlyHasNoScaffolding(t *testing.T) {
+	oldNoColor := color.NoColor
+	color.NoColor = true
+	t.Cleanup(func() { color.NoColor = oldNoColor })
+
+	err := gcxerrors.DetailedError{
+		Summary: "1 of 1 rule group(s) failed to apply",
+	}
+
+	rendered := err.Error()
+
+	assert.Equal(t, "Error: 1 of 1 rule group(s) failed to apply\n", rendered)
+	assert.NotContains(t, rendered, "│")
+	assert.NotContains(t, rendered, "└─")
+}
+
 func TestDetailedError_Error_KeepsDistinctParentDetails(t *testing.T) {
 	oldNoColor := color.NoColor
 	color.NoColor = true

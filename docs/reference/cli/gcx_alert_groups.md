@@ -1,6 +1,13 @@
 ## gcx alert groups
 
-Manage alert rule groups.
+Inspect alert rule groups and their evaluation status.
+
+### Synopsis
+
+Inspect Grafana-managed alert rule groups.
+
+These commands are read-only. To modify the rules in a group, use the
+resources commands: gcx resources pull/push alertrules.
 
 ### Options
 

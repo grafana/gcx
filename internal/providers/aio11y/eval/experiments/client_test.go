@@ -40,7 +40,7 @@ func newTestClient(t *testing.T, handler http.Handler) *experiments.Client {
 func TestClient_List(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/experiments", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiments", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
 		writeJSON(w, map[string]any{
@@ -70,7 +70,7 @@ func TestClient_List_TransportError(t *testing.T) {
 func TestClient_ListSuites(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/test-suites", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/test-suites", r.URL.Path)
 
 		writeJSON(w, map[string]any{
 			"items": []experiments.TestSuite{
@@ -88,7 +88,7 @@ func TestClient_ListSuites(t *testing.T) {
 func TestClient_GetSuite(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/test-suites/suite-1", r.URL.Path)
 
 		writeJSON(w, experiments.TestSuite{
 			SuiteID: "suite-1",
@@ -110,14 +110,14 @@ func TestClient_CreateSuiteVersionAndPublish(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls = append(calls, r.Method+" "+r.URL.EscapedPath())
 		switch r.URL.EscapedPath() {
-		case "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions":
+		case "/api/plugins/grafana-agento11y-app/resources/eval/test-suites/suite-1/versions":
 			assert.Equal(t, http.MethodPost, r.Method)
 			body, _ := io.ReadAll(r.Body)
 			var raw map[string]any
 			assert.NoError(t, json.Unmarshal(body, &raw))
 			assert.Equal(t, "draft", raw["changelog"])
 			writeJSON(w, experiments.TestSuiteVersion{SuiteID: "suite-1", Version: "v2"})
-		case "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v2:publish":
+		case "/api/plugins/grafana-agento11y-app/resources/eval/test-suites/suite-1/versions/v2:publish":
 			assert.Equal(t, http.MethodPost, r.Method)
 			writeJSON(w, experiments.TestSuiteVersion{SuiteID: "suite-1", Version: "v2", Published: true})
 		default:
@@ -133,27 +133,27 @@ func TestClient_CreateSuiteVersionAndPublish(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, published.Published)
 	assert.Equal(t, []string{
-		"POST /api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions",
-		"POST /api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v2:publish",
+		"POST /api/plugins/grafana-agento11y-app/resources/eval/test-suites/suite-1/versions",
+		"POST /api/plugins/grafana-agento11y-app/resources/eval/test-suites/suite-1/versions/v2:publish",
 	}, calls)
 }
 
 func TestClient_Cases(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v1/test-cases":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-agento11y-app/resources/eval/test-suites/suite-1/versions/v1/test-cases":
 			writeJSON(w, map[string]any{"items": []experiments.TestCase{{TestCaseID: "case-1", SuiteID: "suite-1", SuiteVersion: "v1"}}})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v1/test-cases/case-1":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-agento11y-app/resources/eval/test-suites/suite-1/versions/v1/test-cases/case-1":
 			writeJSON(w, experiments.TestCase{TestCaseID: "case-1"})
-		case r.Method == http.MethodPost && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v1/test-cases":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/plugins/grafana-agento11y-app/resources/eval/test-suites/suite-1/versions/v1/test-cases":
 			body, _ := io.ReadAll(r.Body)
 			assert.Contains(t, string(body), `"test_case_id":"case-1"`)
 			writeJSON(w, experiments.TestCase{TestCaseID: "case-1"})
-		case r.Method == http.MethodPatch && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v1/test-cases/case-1":
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/plugins/grafana-agento11y-app/resources/eval/test-suites/suite-1/versions/v1/test-cases/case-1":
 			body, _ := io.ReadAll(r.Body)
 			assert.Contains(t, string(body), `"name":"renamed"`)
 			writeJSON(w, experiments.TestCase{TestCaseID: "case-1", Name: "renamed"})
-		case r.Method == http.MethodDelete && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-suites/suite-1/versions/v1/test-cases/case-1":
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/plugins/grafana-agento11y-app/resources/eval/test-suites/suite-1/versions/v1/test-cases/case-1":
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			http.NotFound(w, r)
@@ -182,7 +182,7 @@ func TestClient_Cases(t *testing.T) {
 func TestClient_Get(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/experiments/r-1", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiments/r-1", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
 		writeJSON(w, experiments.Experiment{
@@ -203,21 +203,21 @@ func TestClient_Get(t *testing.T) {
 func TestClient_Trials(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/experiments/exp-1/trials":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-agento11y-app/resources/eval/experiments/exp-1/trials":
 			writeJSON(w, map[string]any{"items": []experiments.TestCaseTrial{{TrialID: "trial-1", ExperimentID: "exp-1", TestCaseID: "case-1", Attempt: 1}}})
-		case r.Method == http.MethodPost && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/experiments/exp-1/trials":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/plugins/grafana-agento11y-app/resources/eval/experiments/exp-1/trials":
 			body, _ := io.ReadAll(r.Body)
 			assert.Contains(t, string(body), `"test_case_id":"case-1"`)
 			writeJSON(w, experiments.TestCaseTrial{TrialID: "trial-1", ExperimentID: "exp-1", TestCaseID: "case-1", Attempt: 1})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-case-trials/trial-1":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-agento11y-app/resources/eval/test-case-trials/trial-1":
 			writeJSON(w, experiments.TestCaseTrial{TrialID: "trial-1", ExperimentID: "exp-1", TestCaseID: "case-1", Attempt: 1})
-		case r.Method == http.MethodPatch && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-case-trials/trial-1":
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/plugins/grafana-agento11y-app/resources/eval/test-case-trials/trial-1":
 			body, _ := io.ReadAll(r.Body)
 			assert.Contains(t, string(body), `"status":"completed"`)
 			writeJSON(w, experiments.TestCaseTrial{TrialID: "trial-1", Status: "completed"})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-case-trials/trial-1/scores":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-agento11y-app/resources/eval/test-case-trials/trial-1/scores":
 			writeJSON(w, map[string]any{"items": []experiments.ScoreItem{{ScoreID: "score-1", TrialID: "trial-1", ScoreKey: "final"}}})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-sigil-app/resources/eval/test-case-trials/trial-1/artifacts":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-agento11y-app/resources/eval/test-case-trials/trial-1/artifacts":
 			writeJSON(w, map[string]any{"items": []experiments.Artifact{{ArtifactID: "art-1", ParentKind: "test_case_trial", ParentID: "trial-1", Name: "output.json", Kind: "json"}}})
 		default:
 			http.NotFound(w, r)
@@ -274,7 +274,7 @@ func TestClient_Get_TransportError(t *testing.T) {
 func TestClient_Create(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/experiments", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiments", r.URL.Path)
 
 		body, _ := io.ReadAll(r.Body)
 		var raw map[string]any
@@ -319,7 +319,7 @@ func TestClient_Create_TransportError(t *testing.T) {
 func TestClient_Update_PATCH(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPatch, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/experiments/r-1", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiments/r-1", r.URL.Path)
 
 		body, _ := io.ReadAll(r.Body)
 		var raw map[string]any
@@ -366,7 +366,7 @@ func TestClient_Update_TransportError(t *testing.T) {
 func TestClient_Cancel(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/experiments/r-1:cancel", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiments/r-1:cancel", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -379,7 +379,7 @@ func TestClient_Cancel_EscapesColonInRunID(t *testing.T) {
 	// to see the wire bytes.
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/experiments/r%3Afoo:cancel", r.URL.EscapedPath())
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiments/r%3Afoo:cancel", r.URL.EscapedPath())
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -407,7 +407,7 @@ func TestClient_Cancel_TransportError(t *testing.T) {
 func TestClient_ListScores(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/experiments/r-1/scores", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiments/r-1/scores", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
 		writeJSON(w, map[string]any{
@@ -454,7 +454,7 @@ func TestClient_ListScores_TransportError(t *testing.T) {
 func TestClient_GetReport(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/experiments/r-1/report", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiments/r-1/report", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
 		writeJSON(w, map[string]any{
