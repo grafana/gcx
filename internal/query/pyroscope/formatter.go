@@ -81,6 +81,55 @@ func FormatLabelsTable(w io.Writer, labels []string) error {
 	return t.Render(w)
 }
 
+// FormatProfileSeriesTable formats unique profile label sets as one row each.
+func FormatProfileSeriesTable(w io.Writer, resp *SeriesResponse) error {
+	t := style.NewTable("SERIES", "LABELS")
+	for i, set := range resp.LabelsSet {
+		t.Row(strconv.Itoa(i+1), formatLabelSet(set))
+	}
+	return t.Render(w)
+}
+
+// FormatProfileSeriesWide formats unique profile label sets with one label per column.
+func FormatProfileSeriesWide(w io.Writer, resp *SeriesResponse) error {
+	labelNames := make(map[string]struct{})
+	for _, set := range resp.LabelsSet {
+		for _, label := range set.Labels {
+			labelNames[label.Name] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(labelNames))
+	for name := range labelNames {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	columns := append([]string{"SERIES"}, names...)
+	t := style.NewTable(columns...)
+	for i, set := range resp.LabelsSet {
+		values := make(map[string]string, len(set.Labels))
+		for _, label := range set.Labels {
+			values[label.Name] = label.Value
+		}
+		row := make([]string, 1, len(columns))
+		row[0] = strconv.Itoa(i + 1)
+		for _, name := range names {
+			row = append(row, values[name])
+		}
+		t.Row(row...)
+	}
+	return t.Render(w)
+}
+
+func formatLabelSet(set Labels) string {
+	labels := append([]LabelPair(nil), set.Labels...)
+	sort.Slice(labels, func(i, j int) bool { return labels[i].Name < labels[j].Name })
+	parts := make([]string, 0, len(labels))
+	for _, label := range labels {
+		parts = append(parts, label.Name+"="+strconv.Quote(label.Value))
+	}
+	return "{" + strings.Join(parts, ",") + "}"
+}
+
 // ExtractTopFunctions extracts the top N functions by self time from a flame graph.
 func ExtractTopFunctions(fg *Flamegraph, limit int) []FunctionSample {
 	if fg == nil || len(fg.Levels) == 0 {
