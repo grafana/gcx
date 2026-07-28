@@ -96,7 +96,7 @@ func TestRulerCommands_NonRulerDatasourceRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "no ruler API")
 }
 
-func TestRulerGroupsApply_DryRunSendsNoMutation(t *testing.T) {
+func TestRulerGroupsUpsert_DryRunSendsNoMutation(t *testing.T) {
 	loader := newRulerTestEnv(t, "prometheus", func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("unexpected ruler request: %s %s", r.Method, r.URL.Path)
 	})
@@ -110,12 +110,12 @@ func TestRulerGroupsApply_DryRunSendsNoMutation(t *testing.T) {
 `), 0o600))
 
 	out, err := runRuler(t, loader,
-		"groups", "apply", "ns", "-f", file, "--datasource", "my-ds", "--dry-run")
+		"groups", "upsert", "ns", "-f", file, "--datasource", "my-ds", "--dry-run")
 	require.NoError(t, err)
-	assert.Contains(t, out, "would apply group")
+	assert.Contains(t, out, "would upsert group")
 }
 
-func TestRulerGroupsApply_InvalidPromQLRejectedBeforeHTTP(t *testing.T) {
+func TestRulerGroupsUpsert_InvalidPromQLRejectedBeforeHTTP(t *testing.T) {
 	loader := newRulerTestEnv(t, "prometheus", func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("unexpected ruler request: %s %s", r.Method, r.URL.Path)
 	})
@@ -129,12 +129,12 @@ func TestRulerGroupsApply_InvalidPromQLRejectedBeforeHTTP(t *testing.T) {
 `), 0o600))
 
 	_, err := runRuler(t, loader,
-		"groups", "apply", "ns", "-f", file, "--datasource", "my-ds")
+		"groups", "upsert", "ns", "-f", file, "--datasource", "my-ds")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid PromQL")
 }
 
-func TestRulerGroupsApply_PostsGroups(t *testing.T) {
+func TestRulerGroupsUpsert_PostsGroups(t *testing.T) {
 	var posted []string
 	loader := newRulerTestEnv(t, "prometheus", func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
@@ -157,11 +157,11 @@ func TestRulerGroupsApply_PostsGroups(t *testing.T) {
 `), 0o600))
 
 	out, err := runRuler(t, loader,
-		"groups", "apply", "ns", "-f", file, "--datasource", "my-ds")
+		"groups", "upsert", "ns", "-f", file, "--datasource", "my-ds")
 	require.NoError(t, err)
 	assert.Len(t, posted, 2)
-	assert.Contains(t, out, `Applied group "g1"`)
-	assert.Contains(t, out, `Applied group "g2"`)
+	assert.Contains(t, out, `Upserted group "g1"`)
+	assert.Contains(t, out, `Upserted group "g2"`)
 }
 
 func TestRulerGroupsDelete_DeclinesWithoutForce(t *testing.T) {
@@ -315,7 +315,7 @@ func TestRulerGroupsDelete_AgentStdoutIsOneMutationDocument(t *testing.T) {
 	assert.Equal(t, "g1", target["name"])
 }
 
-func TestRulerGroupsApply_AgentStdoutIsOneBatchDocument(t *testing.T) {
+func TestRulerGroupsUpsert_AgentStdoutIsOneBatchDocument(t *testing.T) {
 	loader := newRulerTestEnv(t, "prometheus", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 	})
@@ -333,12 +333,12 @@ func TestRulerGroupsApply_AgentStdoutIsOneBatchDocument(t *testing.T) {
 `), 0o600))
 
 	stdout, stderr, err := runRulerSplit(t, loader,
-		"groups", "apply", "ns", "-f", file, "--datasource", "my-ds")
+		"groups", "upsert", "ns", "-f", file, "--datasource", "my-ds")
 	require.NoError(t, err)
 
 	doc := decodeOneJSONDocument(t, stdout)
 	assert.Equal(t, "gcx.mutation_batch", doc["type"])
-	assert.Equal(t, "applied", doc["action"])
+	assert.Equal(t, "upserted", doc["action"])
 	summary, ok := doc["summary"].(map[string]any)
 	require.True(t, ok, "summary must be an object")
 	assert.InDelta(t, 2, summary["succeeded"], 0)
@@ -346,11 +346,11 @@ func TestRulerGroupsApply_AgentStdoutIsOneBatchDocument(t *testing.T) {
 
 	// The per-group receipts are diagnostics: they belong on stderr, never in
 	// the stdout document.
-	assert.Contains(t, stderr, `Applied group "g1"`)
-	assert.Contains(t, stderr, `Applied group "g2"`)
+	assert.Contains(t, stderr, `Upserted group "g1"`)
+	assert.Contains(t, stderr, `Upserted group "g2"`)
 }
 
-func TestRulerGroupsApply_PartialFailureEmitsDocumentAndPartialExit(t *testing.T) {
+func TestRulerGroupsUpsert_PartialFailureEmitsDocumentAndPartialExit(t *testing.T) {
 	loader := newRulerTestEnv(t, "prometheus", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		// Fail only the second group, so the run is a genuine partial failure.
@@ -375,7 +375,7 @@ func TestRulerGroupsApply_PartialFailureEmitsDocumentAndPartialExit(t *testing.T
 `), 0o600))
 
 	stdout, _, err := runRulerSplit(t, loader,
-		"groups", "apply", "ns", "-f", file, "--datasource", "my-ds")
+		"groups", "upsert", "ns", "-f", file, "--datasource", "my-ds")
 	require.Error(t, err)
 
 	// The partial result is still one complete document on stdout, and the

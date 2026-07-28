@@ -92,7 +92,7 @@
  "gcx alert notification-policies get": "finite",
  "gcx alert notification-policies reset": "finite",
  "gcx alert notification-policies set": "finite",
- "gcx alert ruler groups apply": "finite",
+ "gcx alert ruler groups upsert": "finite",
  "gcx alert ruler groups delete": "finite",
  "gcx alert ruler groups get": "finite",
  "gcx alert ruler groups list": "finite",

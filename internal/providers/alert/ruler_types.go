@@ -28,10 +28,10 @@ type RulerRuleGroup struct {
 	Rules    []RulerRule `json:"rules"`
 }
 
-// RulerApplyInput accepts both apply input shapes in a single decode: a
+// RulerUpsertInput accepts both upsert input shapes in a single decode: a
 // standard Prometheus rules file (`groups:` list, as used by mimirtool) and a
 // bare single rule group (`name`/`interval`/`rules` at the top level).
-type RulerApplyInput struct {
+type RulerUpsertInput struct {
 	Groups   []RulerRuleGroup `json:"groups,omitempty"`
 	Name     string           `json:"name,omitempty"`
 	Interval string           `json:"interval,omitempty"`
@@ -39,7 +39,7 @@ type RulerApplyInput struct {
 }
 
 // RuleGroups returns the rule groups described by the input.
-func (in RulerApplyInput) RuleGroups() ([]RulerRuleGroup, error) {
+func (in RulerUpsertInput) RuleGroups() ([]RulerRuleGroup, error) {
 	if len(in.Groups) > 0 {
 		if in.Name != "" || len(in.Rules) > 0 {
 			return nil, errors.New("input mixes a `groups:` list with a top-level rule group")

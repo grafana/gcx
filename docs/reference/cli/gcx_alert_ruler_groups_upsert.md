@@ -1,4 +1,4 @@
-## gcx alert ruler groups apply
+## gcx alert ruler groups upsert
 
 Create or update ruler rule groups from a file.
 
@@ -6,10 +6,10 @@ Create or update ruler rule groups from a file.
 
 Create or update rule groups in a ruler namespace. The input may be a
 standard Prometheus rules file (with a top-level "groups:" list) or a single
-bare rule group. Applying a group replaces the group with the same name.
+bare rule group. Upserting a group replaces the group with the same name.
 
 ```
-gcx alert ruler groups apply NAMESPACE [flags]
+gcx alert ruler groups upsert NAMESPACE [flags]
 ```
 
 ### Options
@@ -18,7 +18,7 @@ gcx alert ruler groups apply NAMESPACE [flags]
   -d, --datasource string   UID of the Mimir or Loki datasource used as ruler (required)
       --dry-run             Parse and validate only; send nothing to the ruler
   -f, --filename string     File containing rule groups (Prometheus rules file or a single group; YAML/JSON, use - for stdin)
-  -h, --help                help for apply
+  -h, --help                help for upsert
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, text, yaml (default "text")

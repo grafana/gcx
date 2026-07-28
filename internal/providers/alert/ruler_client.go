@@ -114,9 +114,9 @@ func (c *RulerClient) GetGroup(ctx context.Context, namespace, group string) (*R
 	return &out, nil
 }
 
-// ApplyGroup creates or updates a rule group in the given namespace. The body
+// UpsertGroup creates or updates a rule group in the given namespace. The body
 // is JSON: Grafana's ruler proxy rejects YAML bodies (see RulerClient docs).
-func (c *RulerClient) ApplyGroup(ctx context.Context, namespace string, group RulerRuleGroup) error {
+func (c *RulerClient) UpsertGroup(ctx context.Context, namespace string, group RulerRuleGroup) error {
 	path := c.path(namespace)
 	return doBody(ctx, c.httpClient, http.MethodPost, c.host+path, path, jsonBodyCodec(), ErrRulerNotFound, group, nil)
 }

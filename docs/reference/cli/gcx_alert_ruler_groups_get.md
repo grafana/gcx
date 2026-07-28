@@ -1,6 +1,6 @@
 ## gcx alert ruler groups get
 
-Get a ruler rule group (YAML by default, round-trips into apply).
+Get a ruler rule group (YAML by default, round-trips into upsert).
 
 ```
 gcx alert ruler groups get NAMESPACE GROUP [flags]

@@ -181,7 +181,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx alert ruler namespaces delete":      {Cost: "small", Hint: "<namespace> --datasource <uid> --force"},
 	"gcx alert ruler groups list":            {Cost: "medium", Hint: "--datasource <uid> [--namespace <ns>] -o json"},
 	"gcx alert ruler groups get":             {Cost: "medium", Hint: "<namespace> <group> --datasource <uid>"},
-	"gcx alert ruler groups apply":           {Cost: "small", Hint: "<namespace> -f <file> --datasource <uid>"},
+	"gcx alert ruler groups upsert":          {Cost: "small", Hint: "<namespace> -f <file> --datasource <uid>"},
 	"gcx alert ruler groups delete":          {Cost: "small", Hint: "<namespace> <group> --datasource <uid> --force"},
 	"gcx alert contact-points list":          {Cost: "small"},
 	"gcx alert contact-points get":           {Cost: "small"},

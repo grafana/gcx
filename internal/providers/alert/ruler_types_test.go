@@ -110,7 +110,7 @@ func TestRulerRuleGroup_Validate(t *testing.T) {
 	}
 }
 
-func TestRulerApplyInput_RuleGroups(t *testing.T) {
+func TestRulerUpsertInput_RuleGroups(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
@@ -158,7 +158,7 @@ groups:
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var input alert.RulerApplyInput
+			var input alert.RulerUpsertInput
 			require.NoError(t, yaml.Unmarshal([]byte(tt.input), &input))
 			groups, err := input.RuleGroups()
 			if tt.wantErr != "" {

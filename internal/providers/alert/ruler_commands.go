@@ -257,7 +257,7 @@ func rulerGroupsCommands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd.AddCommand(
 		newRulerGroupsListCommand(loader),
 		newRulerGroupsGetCommand(loader),
-		newRulerGroupsApplyCommand(loader),
+		newRulerGroupsUpsertCommand(loader),
 		newRulerGroupsDeleteCommand(loader),
 	)
 	return cmd
@@ -377,7 +377,7 @@ func newRulerGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &rulerGroupsGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get NAMESPACE GROUP",
-		Short: "Get a ruler rule group (YAML by default, round-trips into apply).",
+		Short: "Get a ruler rule group (YAML by default, round-trips into upsert).",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -402,7 +402,7 @@ func newRulerGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-type rulerGroupsApplyOpts struct {
+type rulerGroupsUpsertOpts struct {
 	rulerOpts
 
 	IO     cmdio.Options
@@ -410,8 +410,8 @@ type rulerGroupsApplyOpts struct {
 	DryRun bool
 }
 
-func (o *rulerGroupsApplyOpts) setup(flags *pflag.FlagSet) {
-	// Applying many groups is a batch verb: the per-group receipts are stderr
+func (o *rulerGroupsUpsertOpts) setup(flags *pflag.FlagSet) {
+	// Upserting many groups is a batch verb: the per-group receipts are stderr
 	// diagnostics and stdout carries exactly one BatchMutation document. The
 	// silent text codec keeps default human stdout as it was — the receipt
 	// stream is the human result.
@@ -423,28 +423,28 @@ func (o *rulerGroupsApplyOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Parse and validate only; send nothing to the ruler")
 }
 
-func (o *rulerGroupsApplyOpts) Validate() error {
+func (o *rulerGroupsUpsertOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
 	return o.rulerOpts.Validate()
 }
 
-func newRulerGroupsApplyCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &rulerGroupsApplyOpts{}
+func newRulerGroupsUpsertCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &rulerGroupsUpsertOpts{}
 	cmd := &cobra.Command{
-		Use:   "apply NAMESPACE",
+		Use:   "upsert NAMESPACE",
 		Short: "Create or update ruler rule groups from a file.",
 		Long: `Create or update rule groups in a ruler namespace. The input may be a
 standard Prometheus rules file (with a top-level "groups:" list) or a single
-bare rule group. Applying a group replaces the group with the same name.`,
+bare rule group. Upserting a group replaces the group with the same name.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
 			namespace := args[0]
-			var input RulerApplyInput
+			var input RulerUpsertInput
 			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &input); err != nil {
 				return err
 			}
@@ -467,11 +467,11 @@ bare rule group. Applying a group replaces the group with the same name.`,
 			}
 
 			stderr := cmd.ErrOrStderr()
-			result := cmdio.NewBatchMutation("applied")
+			result := cmdio.NewBatchMutation("upserted")
 
 			if opts.DryRun {
 				for _, g := range groups {
-					cmdio.Info(stderr, "would apply group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
+					cmdio.Info(stderr, "would upsert group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
 				}
 				result.DryRun = true
 				result.Summary.Succeeded = len(groups)
@@ -481,22 +481,22 @@ bare rule group. Applying a group replaces the group with the same name.`,
 			// Every group is attempted, so no target is ever left unattempted
 			// and Skipped stays zero.
 			for _, g := range groups {
-				if err := client.ApplyGroup(ctx, namespace, g); err != nil {
+				if err := client.UpsertGroup(ctx, namespace, g); err != nil {
 					result.Summary.Failed++
 					result.Failures = append(result.Failures, cmdio.MutationFailure{
 						Target: cmdio.MutationTarget{Kind: "ruler-rule-group", Namespace: namespace, Name: g.Name},
 						Error:  err.Error(),
 					})
-					cmdio.Warning(stderr, "failed to apply group %q: %v", g.Name, err)
+					cmdio.Warning(stderr, "failed to upsert group %q: %v", g.Name, err)
 					continue
 				}
 				result.Summary.Succeeded++
-				cmdio.Success(stderr, "Applied group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
+				cmdio.Success(stderr, "Upserted group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
 			}
 
 			if result.Summary.Failed > 0 {
-				failErr := fmt.Errorf("%d of %d rule group(s) failed to apply", result.Summary.Failed, len(groups))
-				// Nothing was applied, so nothing has been written to stdout:
+				failErr := fmt.Errorf("%d of %d rule group(s) failed to upsert", result.Summary.Failed, len(groups))
+				// Nothing was upserted, so nothing has been written to stdout:
 				// return the error raw and let the standard error path render
 				// the single fused error document.
 				if result.Summary.Succeeded == 0 {

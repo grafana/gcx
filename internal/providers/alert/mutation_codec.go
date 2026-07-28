@@ -38,7 +38,7 @@ func (c *singleMutationTextCodec) Decode(io.Reader, any) error {
 
 // silentTextCodec is the human "text" codec for batch mutation results whose
 // human output is the per-target receipt stream on stderr rather than a stdout
-// document (ruler groups apply). It encodes any value as zero bytes so the
+// document (ruler groups upsert). It encodes any value as zero bytes so the
 // default human invocation keeps writing only receipts.
 type silentTextCodec struct{}
 

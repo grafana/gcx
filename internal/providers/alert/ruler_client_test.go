@@ -146,7 +146,7 @@ func TestRulerClient_GetGroup(t *testing.T) {
 	}
 }
 
-func TestRulerClient_ApplyGroup(t *testing.T) {
+func TestRulerClient_UpsertGroup(t *testing.T) {
 	group := alert.RulerRuleGroup{
 		Name:     "g1",
 		Interval: "1m",
@@ -189,7 +189,7 @@ func TestRulerClient_ApplyGroup(t *testing.T) {
 			defer server.Close()
 
 			client := newTestRulerClient(t, server, "")
-			err := client.ApplyGroup(context.Background(), "ns", group)
+			err := client.UpsertGroup(context.Background(), "ns", group)
 			if tt.wantErr {
 				require.Error(t, err)
 				return

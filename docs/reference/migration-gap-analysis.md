@@ -200,7 +200,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | `gcx adaptive-metrics rules/recommendations` | Cardinality reduction | **Exists** (`gcx metrics adaptive rules list\|get\|create\|update\|delete`, `gcx metrics adaptive recommendations list\|apply`) |
 | `gcx adaptive-traces policies/recommendations/insights/tenants` | Trace sampling | **Partially exists** (`gcx traces adaptive policies` CRUD, `gcx traces adaptive recommendations list\|apply\|dismiss`; insights/tenants **missing**) |
 | `gcx adaptive-profiles list/sync` | Profile sampling | **Stub** (`gcx profiles adaptive` exists but no subcommands listed) |
-| `gcx recording-rules prometheus/loki` | Recording rules management | `alert ruler` (datasource-managed alerting + recording rule groups via the Mimir/Loki ruler: `gcx alert ruler groups list\|get\|apply\|delete --datasource <uid>`); Grafana-managed RecordingRule also via `gcx resources get\|pull\|push` (writes require Grafana 13+, where `rules.alerting.grafana.app` is enabled by default; on 12.x enable the experimental `kubernetesAlertingRules` feature toggle) |
+| `gcx recording-rules prometheus/loki` | Recording rules management | `alert ruler` (datasource-managed alerting + recording rule groups via the Mimir/Loki ruler: `gcx alert ruler groups list\|get\|upsert\|delete --datasource <uid>`); Grafana-managed RecordingRule also via `gcx resources get\|pull\|push` (writes require Grafana 13+, where `rules.alerting.grafana.app` is enabled by default; on 12.x enable the experimental `kubernetesAlertingRules` feature toggle) |
 
 ### Other Observability
 
