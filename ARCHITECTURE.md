@@ -124,7 +124,7 @@ Action-verb command tree for Grafana Cloud's Instrumentation Hub. Backed by flee
 - **`instrumentation setup <cluster>`** — End-to-end onboarding wizard; calls `SetupK8sDiscovery`, applies declared K8s monitoring config, prints a parameterized helm command
 - **`instrumentation status`** — Cross-cutting observed view across cluster → namespace → service hierarchy
 - **`instrumentation check [components]`** — Local OTel-instrumentation validation via the [otel-checker](https://github.com/grafana/otel-checker) library; runs entirely against the workstation's env vars, package manifests, and collector/Beyla/Alloy config. No Grafana stack calls
-- **`instrumentation explain <id>`** (+ **`list`**) — Lookup surface for the explanation docs bundled by otel-checker; IDs come from the `explain_id` field emitted by `check`
+- **`instrumentation explain <id>`** and **`instrumentation list-explanations`** — Lookup surface for the explanation docs bundled by otel-checker; IDs come from the `explain_id` field emitted by `check`
 - **`instrumentation clusters [list|get|configure|remove|wait]`** + nested **`apps`** — Declared-state read/write with tri-state flag semantics on `configure` and a per-namespace optimistic-lock guard
 - **`instrumentation services [list|get|include|exclude|clear]`** — Observed-state fleet sweep via `RunK8sDiscovery` with DWIM single-workload mutation
 

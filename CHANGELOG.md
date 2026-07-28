@@ -75,7 +75,7 @@
 
 ## Unreleased
 
-- Added `gcx instrumentation explain <id>` and `gcx instrumentation explain list` for looking up finding explanations bundled with `otel-checker` (bumped to v0.3.1).
+- Added `gcx instrumentation explain <id>` and `gcx instrumentation list-explanations` for looking up finding explanations bundled with `otel-checker` (bumped to v0.3.1).
 - `gcx instrumentation check` now surfaces an `EXPLAIN_ID` column in table output (and `explain_id` field in JSON), feedable directly into `gcx instrumentation explain`.
 
 ## v0.4.1 (2026-06-23)

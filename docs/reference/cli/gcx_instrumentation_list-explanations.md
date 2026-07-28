@@ -1,22 +1,22 @@
-## gcx instrumentation explain list
+## gcx instrumentation list-explanations
 
-List every available explain ID with its title
+List every available otel-checker explain ID
 
 ### Synopsis
 
 List every registered otel-checker explain ID with its title and severity.
 
 Use one of the IDs with `gcx instrumentation explain <id>` to see the
-full explanation.
+full explanation for a specific finding.
 
 ```
-gcx instrumentation explain list [flags]
+gcx instrumentation list-explanations [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for list
+  -h, --help            help for list-explanations
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
@@ -36,5 +36,5 @@ gcx instrumentation explain list [flags]
 
 ### SEE ALSO
 
-* [gcx instrumentation explain](gcx_instrumentation_explain.md)	 - Show an explanation for an otel-checker finding
+* [gcx instrumentation](gcx_instrumentation.md)	 - Manage Grafana Instrumentation Hub
 
