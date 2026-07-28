@@ -166,8 +166,17 @@ func TestClient_Update(t *testing.T) {
 		assert.Equal(t, http.MethodPatch, r.Method)
 		assert.Contains(t, r.URL.Path, "/eval/rules/rule-1")
 
+		raw, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		// The id is in the URL path; it must NOT be in the PATCH body. The
+		// server decodes with DisallowUnknownFields and its update DTO has no
+		// rule_id field, so a body carrying rule_id fails with
+		// `unknown field "rule_id"`. Even though the caller passes RuleID, the
+		// client must strip it before sending.
+		assert.NotContains(t, string(raw), "rule_id", "PATCH body must not carry rule_id")
+
 		var def eval.RuleDefinition
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&def))
+		assert.NoError(t, json.Unmarshal(raw, &def))
 		assert.InDelta(t, 0.5, def.SampleRate, 0.001)
 
 		writeJSON(w, eval.RuleDefinition{
