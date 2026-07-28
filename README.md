@@ -365,18 +365,41 @@ The agentic workflow above is one example. gcx supports a wide range of workflow
 
 ## Compatibility
 
-gcx works across Grafana's product offerings. Feature availability depends on your deployment:
+### Grafana version support
 
-| Feature | Commands | OSS (12+) | Enterprise (12+) | Cloud | BYOC |
-|---------|----------|:---------:|:----------------:|:-----:|:----:|
+| Grafana | Support level |
+|---------|---------------|
+| **Grafana Cloud** | **Full support.** Everything in this README, including Cloud-only products (SLO, Synthetic Monitoring, IRM, k6, Fleet, Adaptive Telemetry, Assistant). |
+| **Grafana 13+** (OSS / Enterprise) | **Full support** of self-hosted features. All app-platform API groups gcx relies on are enabled by default. |
+| **Grafana 12.x** (OSS / Enterprise) | **Most features supported.** Features built on app-platform API groups that are not yet enabled by default in 12 need an explicit feature toggle — see ‡ below for the known case. |
+| **Grafana < 12** | **Unsupported.** gcx detects the server version and exits with code 6 (version incompatible). |
+
+Grafana is progressively migrating its APIs to app-platform (Kubernetes-style)
+API groups, and each group flips to enabled-by-default in a different release.
+When a command needs an API group your stack does not serve, upgrade or enable
+the corresponding feature toggle. Per-command declaration of these
+requirements (min version, feature toggles) is tracked in
+[#989](https://github.com/grafana/gcx/issues/989).
+
+### Feature availability by deployment
+
+| Feature | Commands | OSS | Enterprise | Cloud | BYOC |
+|---------|----------|:---:|:----------:|:-----:|:----:|
 | Resource management (dashboards, folders) | `resources` | ✓ | ✓ | ✓ | ✓ |
-| Alert rules | `alert` | ✓ | ✓ | ✓ | ✓ |
+| Alert rules | `alert` | ✓ ‡ | ✓ ‡ | ✓ | ✓ |
 | Raw API passthrough | `api` | ✓ | ✓ | ✓ | ✓ |
 | Observability as Code | `dev` | ✓ | ✓ | ✓ | ✓ |
 | Signal queries (metrics, logs, traces, profiles) | `metrics`, `logs`, `traces`, `profiles` | ✓ † | ✓ † | ✓ | ✓ |
 | SLO, Synthetic Monitoring, IRM, k6, Fleet, etc. | `slo`, `synthetic-monitoring`, `irm`, `k6`, `fleet` | ✗ | ✗ | ✓ | ◐ |
 | Adaptive Metrics / Logs / Traces | `metrics adaptive`, `logs adaptive`, `traces adaptive` | ✗ | ✗ | ✓ | ◐ |
 | Grafana Assistant | `assistant` | ✗ | ✗ | ✓ | ✗ |
+
+**‡ Grafana-managed rule writes** — reading alert rules (`gcx alert rules`, `gcx alert groups`) and datasource-managed ruler writes (`gcx alert ruler`) work on Grafana 12+. Writing *Grafana-managed* rules via the resources tier (`gcx resources pull/push alertrules`) requires Grafana 13+, where the `rules.alerting.grafana.app` API is enabled by default. On Grafana 12 it must be enabled explicitly with the `kubernetesAlertingRules` feature toggle (experimental in 12.x, requires a restart, and Unified Alerting must be enabled):
+
+```ini
+[feature_toggles]
+kubernetesAlertingRules = true
+```
 
 **† Self-hosted signal queries** — `gcx metrics query`, `gcx logs query`, `gcx traces query`, and `gcx profiles query` work against self-hosted datasources (Prometheus, Loki, Tempo, Pyroscope), but datasource endpoints must be configured manually. For Grafana Cloud, endpoints are auto-discovered from your stack.
 

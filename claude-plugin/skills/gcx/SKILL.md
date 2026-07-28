@@ -51,6 +51,7 @@ right group:
 | SLO definitions and reports | `slo` | `gcx slo definitions list` |
 | Alert rule status, notification settings | `alert` | `gcx alert rules list` |
 | Create/modify/delete alert rules | `resources` | `gcx resources pull alertrules -p ./rules`, edit, `gcx resources push -p ./rules` |
+| Datasource-managed (Mimir/Loki ruler) rules | `alert ruler` | `gcx alert ruler groups list --datasource <uid>` |
 | Synthetic Monitoring checks | `synthetic-monitoring` | `gcx synthetic-monitoring checks list` |
 | IRM (OnCall + Incidents) | `irm` | `gcx irm oncall schedules list`, `gcx irm incidents list` |
 | k6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
