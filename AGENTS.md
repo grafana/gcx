@@ -80,7 +80,7 @@ cmd/gcx/
   linter/       Linting (mounted under dev lint)
   commands/     Commands catalog (agent metadata)
   helptree/     Help tree for agent context
-  setup/        Onboarding (gcx setup status)
+  setup/        Setup command area (status; datasources/ — onboard cloud datasources: azure Azure Monitor + ADX, mints gcx-owned app registrations, provisions via legacy datasource API)
   instrumentation/  Instrumentation Hub commands (clusters, services, setup wizard, status)
   skills/       Portable Agent Skills installer for .agents-compatible tools (install/update/list/get/uninstall; get reads bundled SKILL.md or references without installing)
   dev/          Developer tools (import, scaffold, generate, lint, serve)
@@ -93,6 +93,8 @@ internal/
 ├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
 ├── credentials/ OS-keychain backend (zalando/go-keyring) for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
 ├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
+├── cloudcli/    Generic cloud CLI exec wrapper (az/aws/gcloud — Ensure + Run/RunJSON, injectable runner for tests)
+├── onboard/     Cloud datasource onboarding core (Result types with status/health, naming/collision, rollback) + azure/ (az CLI wrapper with tag attribution + secret rotation, discover, plan (Azure Monitor + one ADX datasource per cluster), payload builders, idempotent orchestration + health verification, tag-scoped cleanup, secret rotate, Cosmos scaffold)
 ├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and instrumentation provider)
 ├── resources/
 │   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
@@ -159,6 +161,7 @@ internal/
 ├── testutils/   Shared test utilities
 ├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
 ├── grafana/     OpenAPI client (health checks, version detection)
+├── plugins/     Grafana plugin admin client (check/install datasource plugins — used by onboard pre-flight)
 ├── output/      Output codec registry (json, yaml, text, wide, agents — field selection, discovery, k8s unstructured handling, temp-file spill)
 ├── format/      JSON/YAML codecs with format auto-detection
 ├── retry/       Retry transport (429, 502/503/504, transient connection errors — wraps all HTTP tiers)
