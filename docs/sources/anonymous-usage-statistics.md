@@ -49,6 +49,28 @@ Each `gcx` event contains the following properties:
 | `target_kind` | Whether the target Grafana is `cloud` or `self-hosted`. Empty when no effective Grafana target could be resolved. Deliberately coarse — never the URL, hostname, or stack slug. | `cloud` |
 | `output_format` | The output format the command used. | `table`, `json` |
 
+When the invocation is a batch resource operation (`gcx resources push`, `pull`, `delete`, or `validate`) that finished writing its result, these additional fields are set. They describe the *size* of the operation, never what it contained:
+
+| Field | Description | Example |
+| :---- | :---- | :---- |
+| `batch_succeeded_bucket` | The size range of the successful part of the operation, from a fixed list of ranges. Never an exact count. | `21-100` |
+| `batch_failed_bucket` | The size range of the failed part, from the same fixed list. | `0` |
+| `batch_skipped_bucket` | The size range of the skipped part, from the same fixed list. | `0` |
+| `dry_run` | Whether the operation was a rehearsal rather than a real change. | `false` |
+
+The ranges are exactly `0`, `1`, `2-5`, `6-20`, `21-100`, `101-1000`, and `1001+`. Sizes are reported as ranges rather than exact counts on purpose: an exact resource count, correlated with the per-installation `device_id` and the network organization name added on receipt, would describe a specific organization's resource inventory. Ranges answer how `gcx` is used without carrying that detail.
+
+### How to read the batch fields
+
+These fields are easy to misread, so the following constraints are part of the contract:
+
+- **All four are present together, or none are.** Their absence means the invocation was not one of those four commands, or it stopped before printing a summary.
+- **`0` is a real answer.** A `batch_succeeded_bucket` of `0` means the command ran and matched nothing, which is different from the field being absent.
+- **The values are always what the command printed.** A run that aborted before showing a summary reports no sizes at all, rather than an internal count that was never displayed.
+- **The unit depends on the command, so these must not be compared or totalled across commands.** In `gcx resources pull`, successes count individual resources while skips count whole resource *types* that could not be listed — the same distinction that command's own output makes.
+- **`gcx resources validate` is always a dry run**, so its sizes describe a validation pass, not resources changed.
+- **`gcx resources get` never reports these fields.** It reads resources rather than changing them.
+
 When the invocation fails to parse, these additional fields are set. They capture what was attempted so the team can understand the differences between what users expect and what exists:
 
 | Field | Description | Example |

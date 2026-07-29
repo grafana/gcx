@@ -285,6 +285,14 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			if emitErr != nil {
 				return emitErr
 			}
+			// The receipt's summary, not pullSummary: the receipt moves
+			// fetched-but-unwritten resources from succeeded to failed, so it
+			// is the only value that matches what the user just read. Pull has
+			// no dry-run mode. Note the units differ within this one summary —
+			// successes are resources, skips are resource types (see the line
+			// printed above) — which is why the usage-stats docs forbid summing
+			// these across commands.
+			captureBatchVolume(receipt.Summary, false)
 
 			totalFailed := pullSummary.FailedCount() + len(writeFailures)
 			if opts.OnError.FailOnErrors() && totalFailed > 0 {

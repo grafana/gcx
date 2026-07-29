@@ -136,6 +136,13 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			if err := reportValidation(cmd.OutOrStdout(), opts.IO, summary); err != nil {
 				return err
 			}
+			// Always a rehearsal: the request above sets DryRun unconditionally,
+			// so validate's volume is never "resources managed".
+			captureBatchVolume(cmdio.MutationSummary{
+				Succeeded: summary.SuccessCount(),
+				Failed:    summary.FailedCount(),
+				Skipped:   summary.SkippedCount(),
+			}, true)
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
 				// The validation document (with per-file failures) is already
