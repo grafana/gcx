@@ -42,28 +42,53 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Show column name, data type, and nullability for each column in a table via
 INFORMATION_SCHEMA.COLUMNS.
 
---dataset is required. When --project is omitted, the datasource's default
-project is used.`,
+The dataset is required, supplied either in the table name (DATASET.TABLE or
+PROJECT.DATASET.TABLE) or via --dataset. When the project is omitted, the
+datasource's default project is used.`,
 		Example: `
-  # Describe a table in a dataset (default project)
+  # Describe a table in a dataset (default project; equivalent forms)
+  gcx datasources bigquery describe-table my_dataset.events
   gcx datasources bigquery describe-table events --dataset my_dataset
 
-  # Describe a table in a specific project
+  # Describe a table in a specific project (equivalent forms)
+  gcx datasources bigquery describe-table my-project.my_dataset.events
   gcx datasources bigquery describe-table events --project my-project --dataset my_dataset
 
   # Output as JSON
-  gcx datasources bigquery describe-table events --dataset my_dataset -o json`,
+  gcx datasources bigquery describe-table my_dataset.events -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
 
-			if opts.Dataset == "" {
-				return errors.New("--dataset is required (run 'gcx datasources bigquery list-datasets' to discover datasets)")
+			// Accept a qualified table name (DATASET.TABLE or
+			// PROJECT.DATASET.TABLE); the segments are equivalent to
+			// --dataset / --project.
+			projFromName, dsFromName, table, err := bigquery.SplitQualifiedTable(args[0])
+			if err != nil {
+				return err
 			}
 
-			table := args[0]
+			project := opts.Project
+			if projFromName != "" {
+				if project != "" {
+					return errors.New("specify the project in the table name (PROJECT.DATASET.TABLE) or via --project, not both")
+				}
+				project = projFromName
+			}
+
+			dataset := opts.Dataset
+			if dsFromName != "" {
+				if dataset != "" {
+					return errors.New("specify the dataset in the table name (DATASET.TABLE) or via --dataset, not both")
+				}
+				dataset = dsFromName
+			}
+			if dataset == "" {
+				return errors.New("dataset is required: pass DATASET.TABLE or --dataset (run 'gcx datasources bigquery list-datasets' to discover datasets)")
+			}
+
 			ctx := cmd.Context()
 
 			// Resolve datasource UID from -d flag, config, or Grafana auto-discovery.
@@ -77,10 +102,10 @@ project is used.`,
 				return err
 			}
 
-			if err := bigquery.ValidateProject(opts.Project); err != nil {
+			if err := bigquery.ValidateProject(project); err != nil {
 				return err
 			}
-			if err := bigquery.ValidateName(opts.Dataset, "dataset"); err != nil {
+			if err := bigquery.ValidateName(dataset, "dataset"); err != nil {
 				return err
 			}
 			if err := bigquery.ValidateName(table, "table"); err != nil {
@@ -89,7 +114,7 @@ project is used.`,
 
 			sql := fmt.Sprintf(
 				"SELECT column_name, data_type, is_nullable FROM %s.COLUMNS WHERE table_name = '%s' ORDER BY ordinal_position LIMIT 1000",
-				bigquery.InfoSchemaPrefix(opts.Project, opts.Dataset),
+				bigquery.InfoSchemaPrefix(project, dataset),
 				bigquery.EscapeSQLString(table),
 			)
 

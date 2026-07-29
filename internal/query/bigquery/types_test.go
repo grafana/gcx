@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/gcx/internal/query/bigquery"
 	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEscapeSQLString(t *testing.T) {
@@ -73,6 +74,35 @@ func TestValidateProject(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestSplitQualifiedTable(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantProject string
+		wantDataset string
+		wantTable   string
+		wantErr     bool
+	}{
+		{"bare table", "WORLD_DATA", "", "", "WORLD_DATA", false},
+		{"dataset qualified", "my_dataset.WORLD_DATA", "", "my_dataset", "WORLD_DATA", false},
+		{"project qualified", "my-project.my_dataset.WORLD_DATA", "my-project", "my_dataset", "WORLD_DATA", false},
+		{"four parts errors", "a.b.c.d", "", "", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			project, dataset, table, err := bigquery.SplitQualifiedTable(tt.input)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantProject, project)
+			assert.Equal(t, tt.wantDataset, dataset)
+			assert.Equal(t, tt.wantTable, table)
 		})
 	}
 }
