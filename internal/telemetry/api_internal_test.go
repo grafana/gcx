@@ -45,7 +45,9 @@ func TestNormalizeAPIRoute(t *testing.T) {
 			want: "other"},
 		{name: "k8s unknown group redacted", path: "/apis/acmecorp-billing-app.grafana.app/v1/namespaces/default/things", want: "other"},
 		{name: "k8s bad version shape", path: "/apis/dashboard.grafana.app/latest/namespaces/default/dashboards", want: "other"},
+		{name: "k8s unlisted version redacted", path: "/apis/dashboard.grafana.app/v12345/namespaces/default/dashboards", want: "other"},
 		{name: "k8s resource with digits rejected", path: "/apis/dashboard.grafana.app/v1/namespaces/default/abc123", want: "other"},
+		{name: "k8s unlisted resource redacted", path: "/apis/dashboard.grafana.app/v1/namespaces/default/internal-customer-name", want: "other"},
 		{name: "k8s too short", path: "/apis/dashboard.grafana.app/v1", want: "other"},
 	}
 	for _, tt := range tests {
@@ -85,10 +87,12 @@ func TestAllowedDatasourceType(t *testing.T) {
 		{in: "postgres", want: "postgres"},
 		{in: "grafana-postgresql-datasource", want: "grafana-postgresql-datasource"},
 		{in: "grafana-clickhouse-datasource", want: "grafana-clickhouse-datasource"},
-		// Public community plugin: still redacted, because ID shape cannot
-		// distinguish it from a private plugin.
+		// Public community plugin: still redacted, because no test built from
+		// the value itself can distinguish it from a private plugin.
 		{in: "marcusolsson-json-datasource", want: "other"},
 		{in: "acmecorp-secret-datasource", want: "other"},
+		// The grafana- prefix alone is not enough: only listed IDs pass.
+		{in: "grafana-customer-secret", want: "other"},
 		{in: "grafana-UPPER-datasource", want: "other"},
 		{in: "grafana-" + strings.Repeat("x", 100), want: "other"},
 		{in: "", want: "other"},

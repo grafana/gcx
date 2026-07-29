@@ -2,7 +2,6 @@ package telemetry
 
 import (
 	"encoding/json"
-	"regexp"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -223,15 +222,37 @@ func knownAPIGroup(group string) bool {
 	return false
 }
 
-// k8sVersionShape matches Kubernetes-style API versions (v1, v1beta1,
-// v0alpha1). Anything else in the version position is not API shape.
-var k8sVersionShape = regexp.MustCompile(`^v[0-9]+((alpha|beta)[0-9]+)?$`)
+// knownK8sVersions is the closed vocabulary of Kubernetes-style API versions
+// the usage event can name. A finite list rather than a shape check: the
+// version position is user-typed, so an unlisted value is recorded as
+// "other" like any other unknown, never verbatim.
+//
+//nolint:gochecknoglobals
+var knownK8sVersions = map[string]bool{
+	"v0alpha1": true, "v0beta1": true,
+	"v1alpha1": true, "v1beta1": true, "v1": true,
+	"v2alpha1": true, "v2beta1": true, "v2": true,
+}
 
-// k8sResourceShape matches Kubernetes-style resource names (lowercase
-// letters and hyphens). By construction of /apis routes the segment in this
-// position is a resource type defined by server code, not user data; the
-// shape check guards against malformed paths smuggling a value through.
-var k8sResourceShape = regexp.MustCompile(`^[a-z][a-z-]*$`)
+// knownK8sResources is the closed vocabulary of resource names the usage
+// event can name in the /apis resource position, across the allowlisted
+// groups. A finite list rather than a shape check: the segment is
+// user-typed, so an unlisted value drops the whole route to "other", never
+// through verbatim. Curated like the route table; grow it when the share of
+// "other" says it is worth it.
+//
+//nolint:gochecknoglobals
+var knownK8sResources = map[string]bool{
+	"dashboards": true, "folders": true, "search": true,
+	"query": true, "queryconvert": true,
+	"datasources": true, "connections": true,
+	"playlists": true, "shorturls": true, "preferences": true, "stars": true,
+	"alertrules": true, "recordingrules": true,
+	"receivers": true, "routingtrees": true, "templategroups": true, "timeintervals": true,
+	"users": true, "teams": true, "serviceaccounts": true, "ssosettings": true,
+	"securevalues": true, "keepers": true,
+	"repositories": true, "jobs": true,
+}
 
 // k8sAPIRoute templates an app-platform path:
 // /apis/{group}/{version}[/namespaces/{ns}]/{resource}[/{name}/...].
@@ -244,7 +265,7 @@ func k8sAPIRoute(segs []string) string {
 		return otherValue
 	}
 	group, version := segs[1], segs[2]
-	if !knownAPIGroup(group) || !k8sVersionShape.MatchString(version) {
+	if !knownAPIGroup(group) || !knownK8sVersions[version] {
 		return otherValue
 	}
 	out := []string{"", "apis", group, version}
@@ -256,7 +277,7 @@ func k8sAPIRoute(segs []string) string {
 		out = append(out, "namespaces", "{namespace}")
 		rest = rest[2:]
 	}
-	if !k8sResourceShape.MatchString(rest[0]) {
+	if !knownK8sResources[rest[0]] {
 		return otherValue
 	}
 	out = append(out, rest[0])
@@ -276,15 +297,8 @@ func isDatasourceQueryRoute(route string) bool {
 	return strings.HasPrefix(route, "/apis/query.grafana.app/") && strings.HasSuffix(route, "/query")
 }
 
-// grafanaPluginIDShape matches plugin IDs in the grafana- publisher
-// namespace. The prefix is reserved for Grafana-authored plugins (enforced
-// by plugin signature verification), so IDs of this shape name public
-// catalog plugins, never a customer's private plugin.
-var grafanaPluginIDShape = regexp.MustCompile(`^grafana-[a-z0-9-]+$`)
-
 // coreDatasourceTypes lists the core datasource plugin IDs that predate the
-// grafana- publisher prefix. Like the prefix rule, membership means
-// "Grafana-authored, from the fixed public list".
+// grafana- publisher prefix. Grafana-authored, from the fixed public list.
 //
 //nolint:gochecknoglobals
 var coreDatasourceTypes = map[string]bool{
@@ -295,16 +309,87 @@ var coreDatasourceTypes = map[string]bool{
 	"grafana": true, "mixed": true, "dashboard": true, "testdata": true,
 }
 
+// grafanaDatasourceTypes lists the Grafana-published datasource plugin IDs
+// from the public catalog. Generated 2026-07-29 from
+// https://grafana.com/api/plugins (typeCode datasource, orgSlug grafana).
+// A finite list rather than a grafana- prefix rule so no user-typed value
+// can ever pass: a plugin missing here is undercounted as "other" until the
+// list is regenerated, which is the safe direction to fail.
+//
+//nolint:gochecknoglobals
+var grafanaDatasourceTypes = map[string]bool{
+	"grafana-adobeanalytics-datasource":      true,
+	"grafana-amazonprometheus-datasource":    true,
+	"grafana-astradb-datasource":             true,
+	"grafana-athena-datasource":              true,
+	"grafana-atlassianstatuspage-datasource": true,
+	"grafana-aurora-datasource":              true,
+	"grafana-azure-data-explorer-datasource": true,
+	"grafana-azure-monitor-datasource":       true,
+	"grafana-azurecosmosdb-datasource":       true,
+	"grafana-azuredevops-datasource":         true,
+	"grafana-azureprometheus-datasource":     true,
+	"grafana-bigquery-datasource":            true,
+	"grafana-catchpoint-datasource":          true,
+	"grafana-clickhouse-datasource":          true,
+	"grafana-cloudflare-datasource":          true,
+	"grafana-cockroachdb-datasource":         true,
+	"grafana-cube-datasource":                true,
+	"grafana-databricks-datasource":          true,
+	"grafana-datadog-datasource":             true,
+	"grafana-drone-datasource":               true,
+	"grafana-dynamodb-datasource":            true,
+	"grafana-dynatrace-datasource":           true,
+	"grafana-falconlogscale-datasource":      true,
+	"grafana-github-datasource":              true,
+	"grafana-gitlab-datasource":              true,
+	"grafana-googlesheets-datasource":        true,
+	"grafana-honeycomb-datasource":           true,
+	"grafana-ibmdb2-datasource":              true,
+	"grafana-iot-sitewise-datasource":        true,
+	"grafana-jenkins-datasource":             true,
+	"grafana-jira-datasource":                true,
+	"grafana-logicmonitor-datasource":        true,
+	"grafana-looker-datasource":              true,
+	"grafana-mock-datasource":                true,
+	"grafana-mongodb-datasource":             true,
+	"grafana-mqtt-datasource":                true,
+	"grafana-netlify-datasource":             true,
+	"grafana-newrelic-datasource":            true,
+	"grafana-odbc-datasource":                true,
+	"grafana-opensearch-datasource":          true,
+	"grafana-oracle-datasource":              true,
+	"grafana-pagerduty-datasource":           true,
+	"grafana-postgresql-datasource":          true,
+	"grafana-pyroscope-datasource":           true,
+	"grafana-redshift-datasource":            true,
+	"grafana-salesforce-datasource":          true,
+	"grafana-saphana-datasource":             true,
+	"grafana-sentry-datasource":              true,
+	"grafana-servicenow-datasource":          true,
+	"grafana-snowflake-datasource":           true,
+	"grafana-solarwinds-datasource":          true,
+	"grafana-splunk-datasource":              true,
+	"grafana-splunk-monitoring-datasource":   true,
+	"grafana-strava-datasource":              true,
+	"grafana-sumologic-datasource":           true,
+	"grafana-testdata-datasource":            true,
+	"grafana-timestream-datasource":          true,
+	"grafana-vercel-datasource":              true,
+	"grafana-wavefront-datasource":           true,
+	"grafana-x-ray-datasource":               true,
+	"grafana-yugabyte-datasource":            true,
+	"grafana-zendesk-datasource":             true,
+}
+
 // allowedDatasourceType maps a datasource plugin type onto the closed
-// vocabulary: the type itself when it names a Grafana-authored plugin, else
-// "other". Third-party and private plugin IDs are never recorded, even
-// though many third-party IDs are public catalog data, because ID shape
-// cannot distinguish a public community plugin from a customer's private one.
+// vocabulary: the type itself when it is on one of the two fixed
+// Grafana-authored lists, else "other". Everything not listed is redacted,
+// including public third-party plugins, because no membership test built
+// from the value itself can distinguish a public community plugin from a
+// customer's private one.
 func allowedDatasourceType(t string) string {
-	if coreDatasourceTypes[t] {
-		return t
-	}
-	if len(t) <= 64 && grafanaPluginIDShape.MatchString(t) {
+	if coreDatasourceTypes[t] || grafanaDatasourceTypes[t] {
 		return t
 	}
 	return otherValue
