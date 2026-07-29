@@ -33,6 +33,7 @@ gcx setup datasources azure [flags]
 ### Options
 
 ```
+      --all-subscriptions        Onboard every discovered subscription non-interactively (otherwise --subscription is required when several exist)
       --cleanup                  Remove gcx-created Azure app registrations and their datasources
       --concurrency int          Maximum datasources to provision in parallel (0 = default; interactive runs are always serial)
       --config string            Path to the configuration file to use
@@ -47,7 +48,7 @@ gcx setup datasources azure [flags]
       --role string              Override the default Azure role set (comma-separated role names, e.g. "Monitoring Reader")
       --secret-expiry-days int   Set an expiry (in days) on minted client secrets (0 = Azure default). Rotate before expiry with the rotate subcommand
       --skip-health-check        Skip the post-create datasource health verification
-      --subscription strings     Subscription ID(s) to target (default: all discovered)
+      --subscription strings     Subscription ID(s) to target (default: the active subscription, or interactive multi-select)
       --types strings            Restrict to datasource kinds: azure-monitor, adx, cosmos
       --yes                      Non-interactive: skip prompts and accept all suggestions
 ```

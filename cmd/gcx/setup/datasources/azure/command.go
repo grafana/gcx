@@ -1,28 +1,32 @@
 package azure
 
 import (
+	"strings"
+
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	azonboard "github.com/grafana/gcx/internal/onboard/azure"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
 type azureOpts struct {
-	Config        cmdconfig.Options
-	IO            cmdio.Options
-	Subscription  []string
-	Types         []string
-	Role          string
-	IncludeCosmos bool
-	Cleanup       bool
-	DryRun        bool
-	SkipHealth    bool
-	SecretExpiry  int
-	Concurrency   int
-	Yes           bool
-	Force         bool
+	Config           cmdconfig.Options
+	IO               cmdio.Options
+	Subscription     []string
+	AllSubscriptions bool
+	Types            []string
+	Role             string
+	IncludeCosmos    bool
+	Cleanup          bool
+	DryRun           bool
+	SkipHealth       bool
+	SecretExpiry     int
+	Concurrency      int
+	Yes              bool
+	Force            bool
 }
 
 func (o *azureOpts) setup(flags *pflag.FlagSet) {
@@ -31,7 +35,8 @@ func (o *azureOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 
-	flags.StringSliceVar(&o.Subscription, "subscription", nil, "Subscription ID(s) to target (default: all discovered)")
+	flags.StringSliceVar(&o.Subscription, "subscription", nil, "Subscription ID(s) to target (default: the active subscription, or interactive multi-select)")
+	flags.BoolVar(&o.AllSubscriptions, "all-subscriptions", false, "Onboard every discovered subscription non-interactively (otherwise --subscription is required when several exist)")
 	flags.StringSliceVar(&o.Types, "types", nil, "Restrict to datasource kinds: azure-monitor, adx, cosmos")
 	flags.StringVar(&o.Role, "role", "", "Override the default Azure role set (comma-separated role names, e.g. \"Monitoring Reader\")")
 	flags.BoolVar(&o.IncludeCosmos, "include-cosmos", false, "Include Azure Cosmos DB datasources (requires the Enterprise plugin licensed in Grafana)")

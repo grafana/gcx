@@ -47,8 +47,29 @@ func resolveSubscriptions(ctx context.Context, cli *azonboard.CLI, opts *azureOp
 		return filtered, nil
 	}
 
-	if !interactive || len(all) == 1 {
+	if len(all) == 1 {
 		return all, nil
+	}
+
+	if !interactive {
+		// Non-interactive (agent/piped/--force/--yes) with several subscriptions
+		// and no explicit --subscription would silently fan out credential
+		// minting and datasource creation across every subscription. Refuse to
+		// do that implicitly — require an explicit target (or an explicit opt-in)
+		// to bound the blast radius. --dry-run is exempt because it mutates
+		// nothing, so previewing every subscription is safe and useful.
+		if opts.AllSubscriptions || opts.DryRun {
+			return all, nil
+		}
+		return nil, gcxerrors.DetailedError{
+			Summary: fmt.Sprintf("%d subscriptions were discovered; refusing to onboard all of them without confirmation", len(all)),
+			Details: "This non-interactive session cannot prompt for which subscriptions to target, and onboarding mints credentials and creates datasources in each one.",
+			Suggestions: []string{
+				"Target specific subscriptions with --subscription <id> (repeatable)",
+				"Or onboard every discovered subscription with --all-subscriptions",
+				"List subscriptions with: az account list -o table",
+			},
+		}
 	}
 
 	// Interactive multi-select, default all selected.
