@@ -725,6 +725,11 @@ func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName s
 	selectionServer := requestedLoginServer(flags.Server, nil)
 	sourceCtx, resolvedName := resolveSourceContext(cfg, contextName, selectionServer)
 	if sourceCtx == nil {
+		// No configured context describes the requested server, so the reload
+		// below is skipped and the telemetry kind captured by the load above
+		// still describes whichever context was current. Reclassify from the
+		// requested server, which is the target this login is about to create.
+		config.CaptureTargetKindForServer(selectionServer)
 		return cfg, sourceCtx, resolvedName, nil
 	}
 

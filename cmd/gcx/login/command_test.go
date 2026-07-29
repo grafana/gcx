@@ -828,6 +828,31 @@ func TestLoadLoginSourceContextAppliesEnvToPositionalTarget(t *testing.T) {
 	assert.Equal(t, "target-env-token", sourceCtx.Grafana.APIToken)
 }
 
+func TestLoadLoginSourceContextClassifiesUnmatchedServerForTelemetry(t *testing.T) {
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_STACK")
+	unsetEnvForTest(t, "GRAFANA_STACK_ID")
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("onprem", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "http://localhost:3000", OrgID: 1}})
+	seed.SetContext("onprem", true, config.Context{Stack: "onprem"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	// Logging in to a cloud stack no context describes: the load above classifies
+	// the current self-hosted context and the reload that would correct it is
+	// skipped, so telemetry has to be reclassified from the requested server or
+	// this cloud login is counted as self-hosted.
+	flags := &loginOpts{
+		Config: configcmd.Options{ConfigFile: path},
+		Server: "https://newstack.grafana.net",
+	}
+	_, sourceCtx, _, err := loadLoginSourceContext(t.Context(), flags, "")
+	require.NoError(t, err)
+	require.Nil(t, sourceCtx)
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
 func TestPersistedLoginSourceContextIgnoresRuntimeEnvironmentOverrides(t *testing.T) {
 	t.Setenv("GRAFANA_SERVER", "https://runtime.invalid")
 	t.Setenv("GRAFANA_CLOUD_API_URL", "https://grafana-ops.com")
