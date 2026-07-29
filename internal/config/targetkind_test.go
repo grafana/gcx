@@ -329,6 +329,12 @@ contexts:
 current-context: dev
 `)
 
+	// Seed a different kind first. Without this the assertion passes against an
+	// implementation that captures nothing on the error path, because an earlier
+	// test in this package leaves "self-hosted" in the process-wide value and the
+	// stale reading is indistinguishable from a fresh one.
+	config.CaptureTargetKind(config.TargetKindCloud)
+
 	// Commands run context validation as an override (providers.LoadGrafanaConfig),
 	// so a config that resolves but fails validation — a self-hosted stack with no
 	// org-id, for instance — reaches this path with a fully merged config. The
@@ -343,9 +349,46 @@ current-context: dev
 	assert.Equal(t, "self-hosted", config.CapturedTargetKind())
 }
 
+func TestCapturedTargetKind_ContextSelectionFailureLeavesTargetUnreported(t *testing.T) {
+	userDir, _ := isolatedLoaderEnv(t)
+	scrubTargetKindEnv(t)
+
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"), `
+stacks:
+  onprem:
+    grafana:
+      server: http://localhost:3000
+contexts:
+  dev:
+    stack: onprem
+current-context: dev
+`)
+
+	// Stands in for a kind established earlier in the invocation, so the
+	// assertion distinguishes "left alone" from "overwritten with the stale
+	// context's kind".
+	config.CaptureTargetKind(config.TargetKindCloud)
+
+	// --context naming a context that does not exist fails selection without
+	// changing CurrentContext, so the merged config still describes the
+	// previously current self-hosted context. That context is not what the
+	// invocation targeted and must not be reported as though it were.
+	selectMissing := func(*config.Config) error {
+		return config.ContextNotFound("does-not-exist")
+	}
+
+	_, err := config.LoadLayered(t.Context(), "", selectMissing, testEnvOverride)
+	require.ErrorIs(t, err, config.ErrContextNotFound)
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
 func TestCapturedTargetKind_CloudCredentialOnlyContextIsUnclassified(t *testing.T) {
 	userDir, _ := isolatedLoaderEnv(t)
 	scrubTargetKindEnv(t)
+
+	// Seeded so an implementation that captures nothing here cannot pass on a
+	// leftover empty value from an earlier test.
+	config.CaptureTargetKind(config.TargetKindCloud)
 
 	// A cloud entry on its own is an org-wide GCOM credential: no stack slug, no
 	// Grafana server, so it names no Grafana instance to classify. Pinned so the

@@ -1051,13 +1051,21 @@ func configWriteTarget(filename, canonicalSource string, allowSymlink bool) (str
 // Every load also records the effective context's telemetry target kind.
 func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
 	cfg, err := loadLayered(ctx, explicitFile, overrides...)
-	// Capture regardless of err: the override and credential-binding failure
-	// paths below return a fully merged config, so the target is known even
-	// though the command will fail. Gating on success attributed those failures
-	// to no target at all, making a resolved-but-invalid config indistinguishable
-	// from an absent one. Failures that stop before merge return Config{}, which
-	// still classifies as "".
-	captureTargetKind(&cfg)
+	// Capture even when err is non-nil: the validation and credential-binding
+	// override paths below return a fully merged config, so the target is known
+	// even though the command will fail. Gating on success attributed those
+	// failures to no target at all, making a resolved-but-invalid config
+	// indistinguishable from an absent one. Failures that stop before merge
+	// return Config{}, which still classifies as unknown.
+	//
+	// Context selection failing is the exception. cfg.CurrentContext then still
+	// names whichever context was current before --context was applied, and that
+	// is not what the invocation targeted — classifying it would report a
+	// confidently wrong kind where the honest answer is that no target was ever
+	// resolved.
+	if !errors.Is(err, ErrContextNotFound) {
+		captureTargetKind(&cfg)
+	}
 	return cfg, err
 }
 

@@ -2,9 +2,15 @@ package config
 
 import "sync/atomic"
 
+// TargetKind classifies the Grafana instance a command targeted. The values are
+// the ones sent in the usage-stats event.
+type TargetKind string
+
 const (
-	targetKindCloud      = "cloud"
-	targetKindSelfHosted = "self-hosted"
+	// TargetKindUnknown means no Grafana target could be determined.
+	TargetKindUnknown    TargetKind = ""
+	TargetKindCloud      TargetKind = "cloud"
+	TargetKindSelfHosted TargetKind = "self-hosted"
 )
 
 // capturedTargetKind holds the target kind for the invocation. LoadLayered
@@ -14,11 +20,11 @@ const (
 // load wins, which is the most specific view of what the command actually
 // targeted. It is read once at exit by the usage-stats emitter.
 //
-// It stays "" for paths that never reach LoadLayered, notably the LoadForWrite
-// shortcuts for --config and --file. Those load a single named layer instead of
-// the merged view, so classifying from them could report a kind the invocation
-// never targeted; an absent value is preferable to a wrong one, and config
-// writes do not talk to a Grafana instance anyway.
+// It stays unset for paths that never reach LoadLayered, notably the
+// LoadForWrite shortcuts for --config and --file. Those load a single named
+// layer instead of the merged view, so classifying from them could report a
+// kind the invocation never targeted, and an absent value is preferable to a
+// wrong one.
 //
 //nolint:gochecknoglobals
 var capturedTargetKind atomic.Value
@@ -30,39 +36,61 @@ func CapturedTargetKind() string {
 }
 
 // captureTargetKind classifies the config's effective context and records it.
+// Unlike CaptureTargetKind it records TargetKindUnknown too: a load that
+// resolved no context is itself the answer for that invocation.
 func captureTargetKind(cfg *Config) {
-	capturedTargetKind.Store(targetKindForContext(cfg.GetCurrentContext()))
+	capturedTargetKind.Store(string(targetKindForContext(cfg.GetCurrentContext())))
 }
 
-// CaptureTargetKindForServer records the target kind for a Grafana server URL
-// that no configured context describes yet — gcx login building a new context
-// from --server. Without it the value captured by the preceding config load
-// would describe whichever context happened to be current, mislabelling the
-// login target in either direction. An empty server carries no signal, so it
-// leaves any kind already captured for this invocation in place.
+// CaptureTargetKind records a target kind the caller determined for itself.
+// gcx login resolves its target by probing the server and by honouring --cloud,
+// both of which outrank the hostname guess in CaptureTargetKindForServer, so it
+// reports the resolved value through here.
+//
+// TargetKindUnknown is ignored rather than stored: a detection that came back
+// undecided is no reason to erase a kind already established for this
+// invocation.
+func CaptureTargetKind(kind TargetKind) {
+	if kind == TargetKindUnknown {
+		return
+	}
+	capturedTargetKind.Store(string(kind))
+}
+
+// CaptureTargetKindForServer records the target kind implied by a Grafana server
+// URL, for the point in gcx login before target detection has run and where no
+// configured context describes the requested server. Without it the value
+// captured by the preceding config load would describe whichever context
+// happened to be current, mislabelling the login target in either direction.
+//
+// This is a hostname guess and nothing more; a custom domain fronting a Cloud
+// stack looks self-hosted here. Callers that later learn the real target must
+// report it through CaptureTargetKind. An empty server carries no signal and
+// leaves any kind already captured in place.
 func CaptureTargetKindForServer(server string) {
 	if server == "" {
 		return
 	}
-	capturedTargetKind.Store(targetKindForContext(&Context{Grafana: &GrafanaConfig{Server: server}}))
+	CaptureTargetKind(targetKindForContext(&Context{Grafana: &GrafanaConfig{Server: server}}))
 }
 
 // targetKindForContext classifies a context as cloud or self-hosted for
-// telemetry. It reports "" when no Grafana target can be determined.
+// telemetry. It reports TargetKindUnknown when no Grafana target can be
+// determined.
 //
 // A context holding only a cloud entry (an org-wide GCOM credential, no stack
-// slug and no Grafana server) is deliberately "" rather than cloud: target_kind
-// describes the Grafana instance a command talked to, and such a context names
-// no instance. Commands against the Cloud control plane alone are therefore
-// unclassified by design.
-func targetKindForContext(context *Context) string {
+// slug and no Grafana server) is deliberately unknown rather than cloud:
+// target_kind describes the Grafana instance a command talked to, and such a
+// context names no instance. Commands against the Cloud control plane alone are
+// therefore unclassified by design.
+func targetKindForContext(context *Context) TargetKind {
 	switch {
 	case context == nil:
-		return ""
+		return TargetKindUnknown
 	case context.IsCloud():
-		return targetKindCloud
+		return TargetKindCloud
 	case context.Grafana == nil || context.Grafana.Server == "":
-		return ""
+		return TargetKindUnknown
 	}
-	return targetKindSelfHosted
+	return TargetKindSelfHosted
 }
