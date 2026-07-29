@@ -114,6 +114,20 @@ func Provision(ctx context.Context, deps RunDeps, in ProvisionInput) (onboard.Re
 		rb.Run(ctx, deps.Log, deps.Progress)
 	}
 
+	// ensurePluginOnce memoizes the plugin pre-flight per plugin kind for the
+	// span of this run: several datasources of the same kind (e.g. two ADX
+	// clusters) share a single install prompt/attempt instead of re-prompting
+	// for each one.
+	ensured := map[string]error{}
+	ensurePluginOnce := func(kind string) error {
+		if e, ok := ensured[kind]; ok {
+			return e
+		}
+		e := ensurePlugin(ctx, deps, kind)
+		ensured[kind] = e
+		return e
+	}
+
 	results := make([]onboard.DatasourceResult, 0, len(in.Selections))
 	for _, sel := range in.Selections {
 		base := sel.Suggestion.Name
@@ -134,17 +148,23 @@ func Provision(ctx context.Context, deps RunDeps, in ProvisionInput) (onboard.Re
 			continue
 		}
 
-		result, err := provisionOne(ctx, deps, in, sel, base, existing, rb)
-		if err != nil {
-			// A missing/uninstallable plugin fails only this datasource (nothing
-			// was minted or created for it, since the plugin pre-flight runs
-			// first). Record it as skipped and carry on with the others.
+		// Pre-flight the datasource plugin before minting any credentials, so we
+		// never create Azure artifacts for a datasource that can't be created. A
+		// missing/uninstallable plugin fails only this datasource (nothing has
+		// been minted yet): record it as skipped and carry on with the others.
+		if err := ensurePluginOnce(sel.Suggestion.Spec.Kind()); err != nil {
 			if errors.Is(err, ErrPluginUnavailable) {
 				onboard.Progressf(deps.Progress, "  skipping %s: %v", sel.Suggestion.Label, err)
 				warn(deps.ErrOut, fmt.Sprintf("skipping %s: %v", sel.Suggestion.Label, err))
 				results = append(results, skippedResult(sel, base, err))
 				continue
 			}
+			rollback()
+			return onboard.Result{}, err
+		}
+
+		result, err := provisionOne(ctx, deps, in, sel, base, existing, rb)
+		if err != nil {
 			rollback()
 			return onboard.Result{}, err
 		}
@@ -166,13 +186,6 @@ func provisionOne(
 	rb *onboard.Rollback,
 ) (onboard.DatasourceResult, error) {
 	onboard.Progressf(deps.Progress, "→ %s", sel.Suggestion.Label)
-
-	// Pre-flight: ensure the datasource plugin is present before minting any
-	// credentials, so we don't create Azure artifacts for a datasource that
-	// can't be created.
-	if err := ensurePlugin(ctx, deps, sel.Suggestion.Spec.Kind()); err != nil {
-		return onboard.DatasourceResult{}, err
-	}
 
 	name, err := onboard.EnsureUniqueName(base, func(n string) (bool, error) {
 		if existing[strings.ToLower(n)] != nil {
