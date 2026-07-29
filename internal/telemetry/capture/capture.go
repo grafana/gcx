@@ -22,19 +22,22 @@ package capture
 
 import "sync/atomic"
 
-// Batch describes a completed batch resource operation, as the user saw it.
+// Batch describes a batch resource operation that ran to a finalized count.
 //
 // Presence is meaningful: a nil *Batch means this invocation was not a batch
-// resource operation, or it aborted before emitting a result. That is why the
-// counts travel together in one struct rather than as four independent globals
-// — "all present or all absent" is then an invariant of the type, not a rule
-// each caller has to remember.
+// resource operation, or it aborted before its counts were final. That is why
+// the counts travel together in one struct rather than as four independent
+// globals — "all present or all absent" is then an invariant of the type, not a
+// rule each caller has to remember.
 type Batch struct {
-	// Succeeded, Failed and Skipped mirror the finalized summary the command
-	// printed. Units differ per command and must not be compared across them:
-	// on the pull path successes count resource instances while failures and
-	// skips count filters, because the puller iterates filters and records one
-	// failure per filter.
+	// Succeeded, Failed and Skipped are the operation's finalized counts.
+	//
+	// Units differ per command and must not be compared or totalled across
+	// them. Pull is the case that makes this concrete: successes and failures
+	// are per resource (a fetched resource whose file write fails moves from
+	// succeeded to failed), while skips are per resource *type*, because the
+	// puller iterates filters and records one skip for each type the server
+	// cannot list.
 	Succeeded int
 	Failed    int
 	Skipped   int
@@ -54,13 +57,12 @@ var batch atomic.Pointer[Batch]
 
 // SetBatch records the outcome of a batch resource operation.
 //
-// Callers must only call this once the command's final result document or
-// receipt has been written successfully. That timing is the whole contract:
-// what gets reported is exactly what the user was shown, so a run that aborted
-// before printing a summary reports no volume rather than an internal count
-// nobody saw.
+// Callers must only call this once the operation has completed and its counts
+// are final — not before, so a hard abort reports nothing, and not conditional
+// on output succeeding, because work already performed is not undone by a
+// failure to render or write the summary.
 //
-// The last call wins. A command that emits more than one result reports the
+// The last call wins. A command that runs more than one operation reports the
 // most recent, which is the closest thing to a final answer available at exit.
 func SetBatch(b Batch) {
 	batch.Store(&b)

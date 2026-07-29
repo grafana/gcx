@@ -14,7 +14,7 @@ weight: 4
 
 `gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
 
-The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values and flag values are never sent. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
+The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values are never sent, and flag values are never sent with one deliberate exception: the on/off state of `--dry-run` is recorded, so that a rehearsal can be told apart from a real change. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
 
 {{< admonition type="note" >}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usage reporting.{{< /admonition >}}
 
@@ -35,7 +35,7 @@ Each `gcx` event contains the following properties:
 | `device_id` | The random per-installation ID described in [Telemetry data and identifiers](#telemetry-data-and-identifiers). | UUID |
 | `device_id_persisted` | Whether the device ID was read from or saved to disk. `false` means a throwaway ID was used for this invocation. | `true` |
 | `command` | The resolved command path only, no arguments are sent. | `dashboards push` |
-| `flags` | The **names** of the flags you set, sorted. No flag values are sent. | `dry-run,folder` |
+| `flags` | The **names** of the flags you set, sorted. No flag values are sent in this field. | `dry-run,folder` |
 | `provider` | The resource provider the command belongs to. | `dashboards` |
 | `outcome` | How the invocation ended: `ok`, `runtime_error`, `parse_error`, or `help`. | `ok` |
 | `exit_code` | The process exit code. | `0` |
@@ -49,7 +49,7 @@ Each `gcx` event contains the following properties:
 | `target_kind` | Whether the target Grafana is `cloud` or `self-hosted`. Empty when no effective Grafana target could be resolved. Deliberately coarse — never the URL, hostname, or stack slug. | `cloud` |
 | `output_format` | The output format the command used. | `table`, `json` |
 
-When the invocation is a batch resource operation (`gcx resources push`, `pull`, `delete`, or `validate`) that finished writing its result, these additional fields are set. They describe the *size* of the operation, never what it contained:
+When the invocation is a batch resource operation (`gcx resources push`, `pull`, `delete`, or `validate`) that ran to completion, these additional fields are set. They describe the *size* of the operation, never what it contained:
 
 | Field | Description | Example |
 | :---- | :---- | :---- |
@@ -64,12 +64,13 @@ The ranges are exactly `0`, `1`, `2-5`, `6-20`, `21-100`, `101-1000`, and `1001+
 
 These fields are easy to misread, so the following constraints are part of the contract:
 
-- **All four are present together, or none are.** Their absence means the invocation was not one of those four commands, or it stopped before printing a summary.
+- **All four are present together, or none are.** Their absence means the invocation was not one of those four commands, or it stopped before the operation reached a final count.
 - **`0` is a real answer.** A `batch_succeeded_bucket` of `0` means the command ran and matched nothing, which is different from the field being absent.
-- **The values are always what the command printed.** A run that aborted before showing a summary reports no sizes at all, rather than an internal count that was never displayed.
-- **The unit depends on the command, so these must not be compared or totalled across commands.** In `gcx resources pull`, successes count individual resources while skips count whole resource *types* that could not be listed — the same distinction that command's own output makes.
+- **The sizes describe the operation, not the output.** They are recorded once the operation has finished and its counts are final. If the summary then fails to render or cannot be written to stdout, the sizes are still reported, because work that already happened is not undone by a display failure. Equally, they do not always correspond to a number printed on screen: `--jq` and `--json <fields>` reshape the output, and `validate` prints only failures and skips in JSON.
+- **An operation that aborted partway reports nothing.** It never reached a final count, so there is no size to report. Note that `gcx resources delete` with `--on-error=abort` may have deleted some resources before stopping; that partial work is deliberately not reported, so absence consistently means "no final count", never "no work done".
+- **The unit depends on the command, so these must not be compared or totalled across commands.** In `gcx resources pull`, successes and failures count individual resources — a resource fetched but not written to disk counts as failed — while skips count whole resource *types* the server could not list.
 - **`gcx resources validate` is always a dry run**, so its sizes describe a validation pass, not resources changed.
-- **`gcx resources get` never reports these fields.** It reads resources rather than changing them.
+- **`gcx resources get` never reports these fields**, because only the four commands listed above are instrumented. It is a read, but so is `pull`, which does report.
 
 When the invocation fails to parse, these additional fields are set. They capture what was attempted so the team can understand the differences between what users expect and what exists:
 

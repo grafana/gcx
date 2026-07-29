@@ -19,7 +19,7 @@ const firstRunNoticeFileName = "telemetry-notice-shown"
 // serves to agents.
 //
 //nolint:gochecknoglobals // constant-like; var only because TrimSuffix is not const-able.
-var firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect potentially identifiable or sensitive information like argument or flag values or resource names.
+var firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect potentially identifiable or sensitive information like argument or flag values or resource names. The one exception is --dry-run, whose on/off state is recorded so we can tell rehearsals apart from real changes.
 You can opt out by setting GCX_TELEMETRY=disabled, or adding to your gcx config file:
   diagnostics:
     telemetry: disabled
