@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -15,11 +14,10 @@ import (
 	"github.com/grafana/gcx/internal/onboard"
 	azonboard "github.com/grafana/gcx/internal/onboard/azure"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/terminal"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"golang.org/x/term"
 )
 
 type rotateOpts struct {
@@ -135,10 +133,26 @@ func runRotate(cmd *cobra.Command, opts *rotateOpts) error {
 		}
 	}
 
-	// In interactive mode, let the user choose which datasources to rotate
-	// rather than sweeping every gcx-managed one.
+	// Rotation is destructive (mints and retires client secrets), so the
+	// mutating path routes through the shared bypass chain (--force,
+	// GCX_AUTO_APPROVE, agent mode) exactly like every other destructive command
+	// (docs/design/safety.md § 3.2). --dry-run mutates nothing and is exempt.
+	bypass := opts.Force
+	if !opts.DryRun {
+		var err error
+		bypass, err = providers.CheckDestructiveBypass(opts.Force)
+		if err != nil {
+			return err
+		}
+	}
+
+	// When nothing bypassed the prompt, an interactive session lets the user
+	// choose targets rather than sweeping every gcx-managed one; a
+	// non-interactive real rotation is refused instead of silently rotating
+	// everything. Bypassed (--force/GCX_AUTO_APPROVE) and dry-run runs sweep all.
 	var includeUIDs []string
-	if isRotateInteractive(opts) {
+	switch {
+	case !bypass && canPrompt():
 		selected, err := pickRotateTargets(ctx, ds)
 		if err != nil {
 			return err
@@ -148,6 +162,15 @@ func runRotate(cmd *cobra.Command, opts *rotateOpts) error {
 			return opts.IO.Encode(cmd.OutOrStdout(), onboard.Result{Provider: "azure"})
 		}
 		includeUIDs = selected
+	case !bypass && !opts.DryRun:
+		return gcxerrors.DetailedError{
+			Summary: "rotate mints new cloud credentials and needs confirmation",
+			Details: "Rotation mints a new client secret for each gcx-managed datasource and retires the old one, and this non-interactive session cannot prompt for which datasources to rotate.",
+			Suggestions: []string{
+				"Re-run with --force to rotate every gcx-managed Azure datasource",
+				"Or preview which datasources would rotate with --dry-run",
+			},
+		}
 	}
 
 	res, err := azonboard.Rotate(ctx, deps, azonboard.RotateInput{
@@ -162,16 +185,6 @@ func runRotate(cmd *cobra.Command, opts *rotateOpts) error {
 		return err
 	}
 	return opts.IO.Encode(cmd.OutOrStdout(), res)
-}
-
-// isRotateInteractive reports whether to render the rotate target picker.
-// --force (like a non-TTY or agent mode) turns the picker off and rotates every
-// gcx-managed datasource.
-func isRotateInteractive(opts *rotateOpts) bool {
-	return terminal.StdoutIsTerminal() &&
-		term.IsTerminal(int(os.Stdin.Fd())) &&
-		!opts.Force &&
-		!agent.IsAgentMode()
 }
 
 // pickRotateTargets lists gcx-managed, rotatable Azure datasources and returns

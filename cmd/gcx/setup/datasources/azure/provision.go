@@ -13,6 +13,7 @@ import (
 	azonboard "github.com/grafana/gcx/internal/onboard/azure"
 	cmdio "github.com/grafana/gcx/internal/output"
 	pluginsclient "github.com/grafana/gcx/internal/plugins"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 )
@@ -163,7 +164,15 @@ func runCleanup(
 		return opts.IO.Encode(cmd.OutOrStdout(), res)
 	}
 
-	if !opts.Force {
+	// Route through the shared destructive-bypass chain so --force,
+	// GCX_AUTO_APPROVE, and agent mode behave identically to every other
+	// destructive command (docs/design/safety.md § 3.2). Only when nothing
+	// bypasses do we fall back to the interactive preview + confirmation.
+	bypass, err := providers.CheckDestructiveBypass(opts.Force)
+	if err != nil {
+		return err
+	}
+	if !bypass {
 		proceed, err := confirmRemoval(cmd, opts, deps, callerOID, stack, progress, errOut)
 		if err != nil || !proceed {
 			return err
