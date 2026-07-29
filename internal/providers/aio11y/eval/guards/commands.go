@@ -400,7 +400,7 @@ func (c *TableCodec) appendRow(t *style.TableBuilder, r eval.HookRuleDefinition)
 		evalIDs = "-"
 	}
 	transform := "no"
-	if r.Transform != nil && len(r.Transform.Patterns) > 0 {
+	if r.Redact != nil && len(r.Redact.Patterns) > 0 {
 		transform = "yes"
 	}
 	toolFilter := "no"

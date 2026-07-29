@@ -1,6 +1,6 @@
 # Instrumentation fallback (minimal)
 
-This is a deliberately minimal fallback for when the live fetch of sigil-sdk's `llms.txt` "Path B"
+This is a deliberately minimal fallback for when the live fetch of agento11y's `llms.txt` "Path B"
 is unavailable. It carries only the highest-value pieces — the OTel provider setup (gap checklist
 #1, the silent failure) and the instrumentation preference order. For everything else (per-provider
 wrappers, framework adapters, field lists, workflow steps, content-capture modes), fetch
