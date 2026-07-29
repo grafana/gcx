@@ -33,9 +33,7 @@
 /internal/datasources/influxdb/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/loki/ @grafana/grafana-gcx @grafana/loki-team
 /internal/datasources/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
-/internal/datasources/providers/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
-/internal/datasources/query/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/tempo/ @grafana/grafana-gcx @grafana/tempo
 
 /internal/query/loki/ @grafana/grafana-gcx @grafana/loki-team
