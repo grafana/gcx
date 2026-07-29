@@ -72,12 +72,10 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		DurationMS:   time.Since(start).Milliseconds(),
 		OutputFormat: info.OutputFormat,
 
-		IsTTY:   terminal.StdoutIsTerminal(),
-		IsAgent: agent.IsAgentMode(),
-		Agent:   agent.Name(),
-		// TargetKind needs the resolved config context; resolving it requires
-		// a keychain-free context loader, which is still a follow-up. Empty
-		// until then.
+		IsTTY:      terminal.StdoutIsTerminal(),
+		IsAgent:    agent.IsAgentMode(),
+		Agent:      agent.Name(),
+		TargetKind: internalconfig.CapturedTargetKind(),
 	}
 
 	// The provider is the top-level command, the first segment of the path.
