@@ -381,6 +381,10 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if flags.AllowServerOverride {
 		opts.AllowOverride = true
 	}
+	// Record the target before the gates below, so a login rejected by the
+	// server-override preflight still reports the server it was aimed at rather
+	// than the one the existing context happens to hold.
+	captureLoginTargetKind(&opts)
 	if err := preflightServerOverride(&opts, persistedSourceCtx, isInteractive); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(cmd.ErrOrStderr(), "Aborted.")
@@ -448,6 +452,22 @@ func enforceAutoLocalCredentialPolicy(opts *login.Options, sourceCtx *config.Con
 	return nil
 }
 
+// captureLoginTargetKind records the telemetry target kind for this login.
+// A resolved target — forced by --cloud or established by detection inside
+// login.Run — is authoritative. Until one exists the requested server's
+// hostname is the only signal available, normalized the same way Run
+// normalizes it so a schemeless cloud URL is not read as self-hosted.
+func captureLoginTargetKind(opts *login.Options) {
+	switch opts.Target {
+	case login.TargetCloud:
+		config.CaptureTargetKind(config.TargetKindCloud)
+	case login.TargetOnPrem:
+		config.CaptureTargetKind(config.TargetKindSelfHosted)
+	case login.TargetUnknown:
+		config.CaptureTargetKindForServer(login.NormalizeServerURL(opts.Server))
+	}
+}
+
 func runLoginLoop(
 	cmd *cobra.Command,
 	flags *loginOpts,
@@ -465,6 +485,11 @@ func runLoginLoop(
 			}
 		}
 		result, err := login.Run(cmd.Context(), opts)
+		// Run resolves opts.Target by detection when it was not forced, and the
+		// resolution survives the sentinel retries below. It outranks anything
+		// derived from the URL: a custom domain fronting a Cloud stack is only
+		// recognisable once detection has run.
+		captureLoginTargetKind(opts)
 		if err == nil {
 			if shouldWarnRuntimeOnlyDestination(runtimeDestinationFromEnvironment, result) {
 				warnRuntimeOnlyDestination(cmd.ErrOrStderr())

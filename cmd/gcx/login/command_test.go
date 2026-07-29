@@ -853,6 +853,116 @@ func TestLoadLoginSourceContextClassifiesUnmatchedServerForTelemetry(t *testing.
 	assert.Equal(t, "cloud", config.CapturedTargetKind())
 }
 
+func TestCaptureLoginTargetKind(t *testing.T) {
+	// Each case is seeded with the opposite kind, so a helper that recorded
+	// nothing would read back the seed and fail rather than pass by accident.
+	tests := []struct {
+		name string
+		seed config.TargetKind
+		opts internallogin.Options
+		want string
+	}{
+		{
+			name: "resolved cloud target wins over the URL",
+			// --cloud, or detection recognising a Cloud stack behind a custom
+			// domain: the hostname alone would read as self-hosted.
+			seed: config.TargetKindSelfHosted,
+			opts: internallogin.Options{Inputs: internallogin.Inputs{Target: internallogin.TargetCloud, Server: "https://grafana.mycorp.example"}},
+			want: "cloud",
+		},
+		{
+			name: "resolved on-prem target wins over the URL",
+			seed: config.TargetKindCloud,
+			opts: internallogin.Options{Inputs: internallogin.Inputs{Target: internallogin.TargetOnPrem, Server: "https://mystack.grafana.net"}},
+			want: "self-hosted",
+		},
+		{
+			name: "undetected target falls back to the server hostname",
+			seed: config.TargetKindSelfHosted,
+			opts: internallogin.Options{Inputs: internallogin.Inputs{Server: "https://mystack.grafana.net"}},
+			want: "cloud",
+		},
+		{
+			name: "schemeless server is normalized before classifying",
+			seed: config.TargetKindSelfHosted,
+			opts: internallogin.Options{Inputs: internallogin.Inputs{Server: "mystack.grafana.net"}},
+			want: "cloud",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config.CaptureTargetKind(tt.seed)
+			captureLoginTargetKind(&tt.opts)
+			assert.Equal(t, tt.want, config.CapturedTargetKind())
+		})
+	}
+}
+
+func TestCaptureLoginTargetKindKeepsKindWhenNothingIsKnown(t *testing.T) {
+	config.CaptureTargetKind(config.TargetKindCloud)
+	captureLoginTargetKind(&internallogin.Options{})
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
+func TestLoginRejectedByServerOverridePreflightReportsRequestedTarget(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "https://old.example.invalid"}})
+	seed.SetContext("default", true, config.Context{Stack: "default"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"default", "--server", "https://newstack.grafana.net", "--token", "fresh", "--config", path, "--yes"})
+
+	// The preflight rejects re-pointing the context, so the login never reaches
+	// detection. Telemetry must still describe the cloud stack the user aimed at
+	// rather than the self-hosted server the existing context holds.
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "--allow-server-override")
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
+func TestLoginForcedCloudTargetOnCustomDomainReportsCloud(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "http://localhost:3000"}})
+	seed.SetContext("default", true, config.Context{Stack: "default"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"default", "--cloud", "--server", "https://grafana.mycorp.example", "--token", "fresh", "--config", path, "--yes"})
+
+	// --cloud forces the target, so a hostname that looks nothing like Cloud must
+	// not be classified from the URL. The preflight stops the login before any
+	// network call.
+	err := cmd.ExecuteContext(t.Context())
+	require.Error(t, err)
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
 func TestPersistedLoginSourceContextIgnoresRuntimeEnvironmentOverrides(t *testing.T) {
 	t.Setenv("GRAFANA_SERVER", "https://runtime.invalid")
 	t.Setenv("GRAFANA_CLOUD_API_URL", "https://grafana-ops.com")
