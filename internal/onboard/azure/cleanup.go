@@ -31,7 +31,7 @@ func Cleanup(ctx context.Context, deps RunDeps, in CleanupInput) (onboard.Result
 	prefix := onboard.NamePrefix + "-"
 	var cleaned []onboard.CleanupResult
 
-	progressf(deps.Progress, "Listing gcx-created Grafana datasources...")
+	onboard.Progressf(deps.Progress, "Listing gcx-created Grafana datasources...")
 	list, err := deps.DS.List(ctx)
 	if err != nil {
 		return onboard.Result{}, err
@@ -44,7 +44,7 @@ func Cleanup(ctx context.Context, deps RunDeps, in CleanupInput) (onboard.Result
 			cleaned = append(cleaned, onboard.CleanupResult{Kind: "datasource", Name: d.Name, ID: d.UID, Planned: true})
 			continue
 		}
-		progressf(deps.Progress, "  deleting datasource %q...", d.Name)
+		onboard.Progressf(deps.Progress, "  deleting datasource %q...", d.Name)
 		if err := deps.DS.Delete(ctx, d.UID); err != nil {
 			warn(deps.ErrOut, "failed to delete datasource "+d.Name+": "+err.Error())
 			continue
@@ -58,7 +58,7 @@ func Cleanup(ctx context.Context, deps RunDeps, in CleanupInput) (onboard.Result
 	// no kusto extension or no ADX clusters) are warned and skipped.
 	cleaned = append(cleaned, cleanupADXAssignments(ctx, deps, prefix, in.DryRun)...)
 
-	progressf(deps.Progress, "Listing gcx-created Azure app registrations...")
+	onboard.Progressf(deps.Progress, "Listing gcx-created Azure app registrations...")
 	apps, err := deps.CLI.ListAppsByPrefix(ctx, prefix)
 	if err != nil {
 		return onboard.Result{}, err
@@ -75,7 +75,7 @@ func Cleanup(ctx context.Context, deps RunDeps, in CleanupInput) (onboard.Result
 			cleaned = append(cleaned, onboard.CleanupResult{Kind: "app-registration", Name: a.DisplayName, ID: a.AppID, Planned: true})
 			continue
 		}
-		progressf(deps.Progress, "  deleting app registration %q...", a.DisplayName)
+		onboard.Progressf(deps.Progress, "  deleting app registration %q...", a.DisplayName)
 		if err := deps.CLI.DeleteAppRegistration(ctx, a.AppID); err != nil {
 			warn(deps.ErrOut, "failed to delete app registration "+a.DisplayName+": "+err.Error())
 			continue
@@ -98,7 +98,7 @@ func ownedByCaller(a AppSummary, in CleanupInput) bool {
 // cleanupADXAssignments removes gcx-prefixed cluster principal assignments from
 // all ADX clusters in the active subscription.
 func cleanupADXAssignments(ctx context.Context, deps RunDeps, prefix string, dryRun bool) []onboard.CleanupResult {
-	progressf(deps.Progress, "Listing ADX clusters for gcx-created assignments...")
+	onboard.Progressf(deps.Progress, "Listing ADX clusters for gcx-created assignments...")
 	clusters, err := deps.CLI.ListKustoClusters(ctx)
 	if err != nil {
 		warn(deps.ErrOut, "skipping ADX assignment cleanup: "+err.Error())
@@ -121,7 +121,7 @@ func cleanupADXAssignments(ctx context.Context, deps RunDeps, prefix string, dry
 				cleaned = append(cleaned, onboard.CleanupResult{Kind: "adx-assignment", Name: short, ID: cl.Name, Planned: true})
 				continue
 			}
-			progressf(deps.Progress, "  deleting ADX assignment %q on cluster %q...", short, cl.Name)
+			onboard.Progressf(deps.Progress, "  deleting ADX assignment %q on cluster %q...", short, cl.Name)
 			if err := deps.CLI.DeleteADXClusterAssignment(ctx, cl.RG, cl.Name, short); err != nil {
 				warn(deps.ErrOut, "failed to delete ADX assignment "+short+": "+err.Error())
 				continue

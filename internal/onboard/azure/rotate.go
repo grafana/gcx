@@ -33,7 +33,7 @@ type RotateInput struct {
 func Rotate(ctx context.Context, deps RunDeps, in RotateInput) (onboard.Result, error) {
 	prefix := onboard.NamePrefix + "-"
 
-	progressf(deps.Progress, "Listing gcx-created Grafana datasources...")
+	onboard.Progressf(deps.Progress, "Listing gcx-created Grafana datasources...")
 	list, err := deps.DS.List(ctx)
 	if err != nil {
 		return onboard.Result{}, err
@@ -89,7 +89,7 @@ func rotateOne(
 	d *datasources.Datasource,
 	appID, field string,
 ) (onboard.DatasourceResult, error) {
-	progressf(deps.Progress, "→ rotating secret for %q...", d.Name)
+	onboard.Progressf(deps.Progress, "→ rotating secret for %q...", d.Name)
 	rot, err := deps.CLI.RotateSecret(ctx, appID, in.ExpiryDays)
 	if err != nil {
 		return onboard.DatasourceResult{}, fmt.Errorf("failed to rotate secret for %q: %w", d.Name, err)
@@ -111,7 +111,7 @@ func rotateOne(
 	if err := deps.CLI.PruneSecretsExcept(ctx, appID, rot.KeyID); err != nil {
 		warn(deps.ErrOut, fmt.Sprintf("rotated %q but could not remove the old secret(s): %v", d.Name, err))
 	}
-	progressf(deps.Progress, "  rotated secret for %q", d.Name)
+	onboard.Progressf(deps.Progress, "  rotated secret for %q", d.Name)
 
 	result := onboard.DatasourceResult{
 		Name: d.Name, Type: d.Type, UID: d.UID, Status: onboard.StatusRotated,

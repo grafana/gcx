@@ -187,8 +187,18 @@ func (r *Rollback) Run(ctx context.Context, log logging.Logger, progress io.Writ
 	narrate(progress, "Revert complete.")
 }
 
-func narrate(w io.Writer, msg string) {
-	if w != nil {
-		fmt.Fprintln(w, msg)
+// Progressf writes a human-readable progress line to w, appending a newline. It
+// is a no-op when w is nil, letting callers disable narration (e.g. agent mode,
+// where structured output is the contract) by passing a nil writer. Progress is
+// informational narration for long-running cloud and Grafana calls — it is never
+// the result.
+func Progressf(w io.Writer, format string, a ...any) {
+	if w == nil {
+		return
 	}
+	fmt.Fprintf(w, format+"\n", a...)
+}
+
+func narrate(w io.Writer, msg string) {
+	Progressf(w, "%s", msg)
 }
