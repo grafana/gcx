@@ -13,6 +13,7 @@ import (
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/rest"
@@ -110,12 +111,19 @@ func Command() *cobra.Command {
 				path = "/" + path
 			}
 
-			cfg, err := configOpts.LoadGrafanaConfig(cmd.Context())
+			body, err := resolveBody(cmd, opts.Data)
 			if err != nil {
 				return err
 			}
 
-			body, err := resolveBody(cmd, opts.Data)
+			// Record the anonymous usage shape before anything that can fail
+			// on config or network, so failed invocations keep their route
+			// detail. RecordAPIRequest reduces the path to a known-route
+			// template and the body to allowlisted datasource types; the raw
+			// path and body are never recorded.
+			telemetry.RecordAPIRequest(opts.effectiveMethod(), path, body)
+
+			cfg, err := configOpts.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -135,39 +143,46 @@ func Command() *cobra.Command {
 	return cmd
 }
 
-func resolveBody(cmd *cobra.Command, data string) (io.Reader, error) {
+// resolveBody returns the request body bytes, or nil when no body was given.
+// The body is materialized (rather than streamed) so the telemetry recording
+// can inspect it without consuming the reader the request needs.
+func resolveBody(cmd *cobra.Command, data string) ([]byte, error) {
 	if data == "" {
-		return http.NoBody, nil
+		return nil, nil
 	}
 	if data == "@-" {
 		b, err := io.ReadAll(cmd.InOrStdin())
 		if err != nil {
 			return nil, fmt.Errorf("failed to read stdin: %w", err)
 		}
-		return bytes.NewReader(b), nil
+		return b, nil
 	}
 	if strings.HasPrefix(data, "@") {
 		b, err := os.ReadFile(data[1:])
 		if err != nil {
 			return nil, fmt.Errorf("failed to read file: %w", err)
 		}
-		return bytes.NewReader(b), nil
+		return b, nil
 	}
-	return strings.NewReader(data), nil
+	return []byte(data), nil
 }
 
-func doRequest(ctx context.Context, cfg config.NamespacedRESTConfig, method, path string, body io.Reader, headers []string) (*http.Response, error) {
+func doRequest(ctx context.Context, cfg config.NamespacedRESTConfig, method, path string, body []byte, headers []string) (*http.Response, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, cfg.Host+path, body)
+	var reqBody io.Reader = http.NoBody
+	if body != nil {
+		reqBody = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, cfg.Host+path, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if body != http.NoBody {
+	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 

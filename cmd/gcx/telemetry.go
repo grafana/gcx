@@ -103,6 +103,14 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 	event.DeviceID, event.DeviceIDPersisted = telemetry.DeviceID()
 	event.CIProvider, event.IsCI = telemetry.DetectCI()
 
+	// Sanitized api-command detail, recorded by the api command itself and
+	// already reduced to closed vocabularies (see telemetry.RecordAPIRequest).
+	if r := telemetry.CurrentAPIRequest(); r != nil {
+		event.APIMethod = r.Method
+		event.APIRoute = r.Route
+		event.APIDatasourceTypes = r.DatasourceTypes
+	}
+
 	switch {
 	case info.Help && exitCode == 0:
 		event.Outcome = telemetry.OutcomeHelp
