@@ -98,6 +98,14 @@ func (t Tool) Run(ctx context.Context, args ...string) ([]byte, []byte, error) {
 
 // redactArgs masks the value following any flag whose name suggests a secret, so
 // command tracing never leaks credentials passed as arguments.
+//
+// This relies on secrets only ever reaching the CLI through a --secret/--password
+// style flag. gcx today never passes a credential as a positional argument or
+// embeds one in a --body/--uri payload, and secret-bearing command *output*
+// (e.g. `az ad app credential reset`) is protected separately: Run never logs
+// stdout. If a future caller passes a secret via --body, --uri, or a positional
+// argument, this redaction will NOT catch it — add explicit handling at that
+// call site (or extend this matcher) before it ships.
 func redactArgs(args []string) []string {
 	out := make([]string, len(args))
 	redactNext := false

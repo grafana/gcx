@@ -175,6 +175,15 @@ func Provision(ctx context.Context, deps RunDeps, in ProvisionInput) (onboard.Re
 		if limit > 1 {
 			onboard.Progressf(deps.Progress, "Provisioning %d datasource(s), up to %d in parallel...", len(jobs), limit)
 		}
+		// Each created artifact registers its rollback step synchronously, right
+		// after the `az`/Grafana call that created it returns (see
+		// CreateOwnedAppRegistration and provisionOne). So when errgroup cancels
+		// gctx on the first failure, any sibling that already created something
+		// has already recorded its undo and will be reverted by rollback() below.
+		// The only unrecoverable window is a job canceled after Azure/Grafana
+		// committed an object server-side but before the create call returned its
+		// id — a narrow race whose rare orphan is still reclaimable with
+		// `--cleanup` (name prefix + gcx:managed tag).
 		g, gctx := errgroup.WithContext(ctx)
 		g.SetLimit(limit)
 		for _, job := range jobs {
