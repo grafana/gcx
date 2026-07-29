@@ -48,6 +48,40 @@ func TestChangedFlagNames_SortedNamesOnly(t *testing.T) {
 	assert.NotContains(t, names, "secret-value", "flag values must never be recorded")
 }
 
+// resolvedOutputFormat is the only guard stopping a filesystem path from
+// reaching the wire through output_format: on some commands --output is a
+// directory, not a rendering format (`gcx dev linter new --output <dir>`).
+// Anything not in the allowlist must be dropped, not passed through.
+func TestResolvedOutputFormat_AllowlistsFormatsAndDropsPaths(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{"known format is recorded", "json", "json"},
+		{"known format is lowercased", "YAML", "yaml"},
+		{"absolute path is dropped", "/home/alice/generated-rules", ""},
+		{"relative path is dropped", "./out/rules", ""},
+		{"windows path is dropped", `C:\Users\alice\out`, ""},
+		{"unknown value is dropped", "some-custom-thing", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, get, _ := telemetryTestTree()
+			get.Flags().String("output", "", "")
+			require.NoError(t, get.Flags().Set("output", tt.value))
+
+			got := resolvedOutputFormat(get)
+
+			assert.Equal(t, tt.want, got)
+			if tt.want == "" {
+				assert.NotContains(t, got, "alice", "no path fragment may survive")
+			}
+		})
+	}
+}
+
 func TestTelemetrySuppressed(t *testing.T) {
 	rootCmd, get, zsh := telemetryTestTree()
 

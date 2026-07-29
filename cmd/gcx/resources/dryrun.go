@@ -50,31 +50,26 @@ func partialBatchFailure(stderr io.Writer, op string, total, failed int) error {
 	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, perr)
 }
 
-// emitBatchResult writes the batch result document and, only when that
-// succeeded, records its volume for the anonymous usage event.
+// captureBatchVolume records a completed batch operation's finalized counts for
+// the anonymous usage event; buildUsageEvent turns them into bucket labels at
+// exit.
 //
-// The two steps live together so their order cannot drift apart: there is no
-// path here that reports volume for a document the user never received. A hard
-// abort returns before this is reached and therefore reports no volume at all,
-// which is the intended answer — an internal count nobody was shown is worse
-// than no count.
-func emitBatchResult(w io.Writer, ioOpts cmdio.Options, result cmdio.BatchMutation) error {
-	if err := ioOpts.Encode(w, result); err != nil {
-		return err
-	}
-	captureBatchVolume(result.Summary, result.DryRun)
-	return nil
-}
-
-// captureBatchVolume records the finalized counts for the anonymous usage
-// event; buildUsageEvent turns them into bucket labels at exit.
+// The contract is deliberately about the operation, not about the output. Call
+// this once the operation itself has completed and its counts are final, which
+// for pull means after the filesystem writes, since the receipt moves
+// fetched-but-unwritten resources from succeeded to failed.
 //
-// Callers must only reach this once the command has written its result
-// successfully — see emitBatchResult, which pairs the two for the commands that
-// share a BatchMutation. Callers must also pass the counts the command actually
-// reported, not the raw OperationSummary where those differ: pull recomputes its
-// counts after the filesystem writes, so only the receipt's summary matches what
-// the user just read.
+// Two consequences, both intended:
+//
+//   - A hard abort reports nothing. The operation never reached a finalized
+//     count, so there is no honest number to send, and the absence of these
+//     fields is what marks that case on the wire.
+//   - A later output failure changes nothing. If 47 dashboards were pushed and
+//     then rendering or the stdout write failed, those 47 are still on the
+//     server. Suppressing the count would understate work that really happened.
+//     This is why capture does not depend on the encode: Encode also returns nil
+//     for --jq and --json discovery, which print something other than the result
+//     document, so its return value never was evidence about the operation.
 //
 // Telemetry must never affect the command's outcome, so this returns nothing and
 // cannot fail.

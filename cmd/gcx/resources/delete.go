@@ -190,7 +190,11 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			result := batchMutationFromSummary("deleted", summary, opts.DryRun)
-			if err := emitBatchResult(cmd.OutOrStdout(), opts.IO, result); err != nil {
+			// The deletion is done and its counts are final; a later rendering
+			// or stdout failure does not restore anything.
+			captureBatchVolume(result.Summary, result.DryRun)
+
+			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
 

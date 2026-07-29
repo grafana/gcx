@@ -162,18 +162,16 @@ func TestBuildUsageEventAlwaysEmitsErrorKind(t *testing.T) {
 	}
 }
 
-// The event must carry no filesystem paths. --path is free-form user input and
-// pull receipts enumerate real directories, so a path separator anywhere in the
-// payload means something leaked: no legitimate field contains one.
-func TestBuildUsageEventCarriesNoPaths(t *testing.T) {
-	isolate(t)
-	capture.SetBatch(capture.Batch{Succeeded: 2})
-
-	data, err := json.Marshal(buildUsageEvent(pushInfo(), time.Now(), 0))
-	require.NoError(t, err)
-
-	for _, separator := range []string{"/", `\`} {
-		assert.NotContains(t, string(data), separator,
-			"no usage-event field may contain a path separator")
-	}
-}
+// Path safety is deliberately not asserted here. buildUsageEvent copies
+// TelemetryInfo.Command, .Flags and .OutputFormat verbatim — it has no
+// sanitisation of its own, so a test feeding it a path would be asserting a
+// guarantee this layer does not provide, and one feeding it only flag names
+// would pass for any implementation.
+//
+// The filtering lives in cmd/gcx/root: changedFlagNames records flag names only,
+// and resolvedOutputFormat allowlists the format so that commands where
+// --output is a directory cannot leak it. Both are tested there, in
+// root/telemetry_internal_test.go.
+//
+// What this layer owns is the batch block, and the tests above cover it: bucket
+// labels only, from the declared vocabulary, with no exact count on the wire.

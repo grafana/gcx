@@ -1,7 +1,8 @@
 package capture_test
 
 import (
-	"sync"
+	"fmt"
+	"os"
 	"testing"
 
 	"github.com/grafana/gcx/internal/telemetry/capture"
@@ -9,11 +10,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNothingCapturedByDefault(t *testing.T) {
-	capture.Reset()
-
-	assert.Nil(t, capture.CurrentBatch(),
-		"an invocation that ran no batch operation must report no volume")
+// TestMain observes the package default before any test has written to it,
+// which is the only point where "nothing captured unless something captured it"
+// can actually be checked. A test that calls Reset() first and then asserts nil
+// would pass even if a future init gave the global a non-nil default — and that
+// default would make every non-batch invocation (gcx login, gcx resources get,
+// a parse error) emit batch fields, destroying the meaning of their absence.
+func TestMain(m *testing.M) {
+	if capture.CurrentBatch() != nil {
+		fmt.Fprintln(os.Stderr,
+			"capture package has a non-nil default: every non-batch invocation would report volume")
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
 }
 
 func TestSetBatchRoundTrips(t *testing.T) {
@@ -62,27 +71,14 @@ func TestResetClearsEverything(t *testing.T) {
 	assert.Nil(t, capture.CurrentBatch())
 }
 
-// The value is written from inside errgroup-driven batch pipelines, so the
-// accessors must be safe to call concurrently. Run with -race.
-func TestConcurrentAccessIsSafe(t *testing.T) {
-	capture.Reset()
-
-	var wg sync.WaitGroup
-	for i := range 50 {
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			capture.SetBatch(capture.Batch{Succeeded: i})
-		}()
-		go func() {
-			defer wg.Done()
-			_ = capture.CurrentBatch()
-		}()
-	}
-	wg.Wait()
-
-	assert.NotNil(t, capture.CurrentBatch(), "some write must have landed")
-}
+// Every real caller writes once, synchronously, after its operation has
+// finished — never from a worker goroutine. That is a property of the call
+// sites, not of this package, and it matters: a write from inside an errgroup
+// worker would report one arbitrary worker's partial counts instead of the
+// finalized summary. The call sites are pinned in
+// cmd/gcx/resources/batchvolume_test.go; there is deliberately no concurrency
+// test here, because exercising atomic.Pointer under -race would only restate
+// its own contract and would read as sanctioning concurrent writes.
 
 // Batch is copied in and out, so a caller mutating its own struct afterwards
 // cannot retroactively change what telemetry reports.

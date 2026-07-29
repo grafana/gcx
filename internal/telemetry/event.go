@@ -24,6 +24,14 @@ const (
 // exact counts, because an exact count correlated with the persistent device ID
 // and the receiver's whois enrichment would describe a named organisation's
 // resource inventory (see bucket.go).
+//
+// DryRun is the single, deliberate exception to "no flag values": it carries
+// the boolean state of --dry-run, because a rehearsal and a real change are
+// otherwise indistinguishable and the difference decides whether a reported
+// volume represents work that happened. A boolean carries nothing about the
+// user, their organisation, or their data. Any further exception needs the same
+// scrutiny — and must be reflected in the first-run notice (firstrun.go) and
+// the published usage-statistics page, which both state the promise.
 type Event struct {
 	// Envelope.
 	Service string `json:"service"`
@@ -53,10 +61,11 @@ type Event struct {
 	TargetKind   string `json:"target_kind"`
 	OutputFormat string `json:"output_format"`
 
-	// Batch volume, set only for a batch resource operation that emitted a
-	// final result document. All four are present together or absent together:
+	// Batch volume, set only for a batch resource operation that ran to a
+	// finalized count. All four are present together or absent together:
 	// absent means this invocation was not one of those operations, or it
-	// aborted before printing a summary.
+	// aborted before its counts were final. A failure to render or write the
+	// summary afterwards does not clear them — the work still happened.
 	//
 	// The bucket values come from Bucket; units differ per command, so these
 	// must be read alongside Command and never summed across commands.
