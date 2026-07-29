@@ -173,8 +173,9 @@ watch or to stop — and remember a guard is dead config until the agent is wire
 | must emit JSON / a fixed shape | online **rule** | fork `template.json_valid` (`json_schema`) |
 | over-refuses or drifts off-topic | online **rule** | `regex` / `llm_judge` on `all_assistant_generations` |
 | public-facing text | online **rule** | fork `template.toxicity` / `template.pii` (`llm_judge`) |
-| echoes user data with PII/secrets | **guard** | `redact` guard (regex → placeholder) for a known pattern; `llm_judge`-backed guard when the leak needs judgment |
-| can call dangerous tools (shell, delete, write) | **guard** | `tool_filter` with `blocked_names` globs; or an `llm_judge`-backed guard on the output for command patterns |
+| receives PII/secrets in its **input** (pasted into the prompt) | **guard** | `redact` guard, **preflight** — rewrites the request before the model sees it |
+| **generates** PII/secrets/destructive commands in its **output** | **guard** | evaluator-backed detector (`regex` / `llm_judge`), **postflight**, `warn` — `redact` CANNOT touch output, so detect + warn instead |
+| can call dangerous tools (shell, delete, write) | **guard** | `tool_filter` with `blocked_names` globs, postflight |
 | is subject to prompt-injection / hard policy | **guard** | `llm_judge` evaluator; draft `warn`, later promotable to `deny` |
 
 > **Three guard shapes, all first-class:** `evaluator_ids` (an evaluator decides — most flexible),
@@ -285,7 +286,25 @@ evaluator_ids: ["<policy-judge-id>"]  # create the evaluator first
 # tool_filter:
 #   blocked_names: ["shell_exec", "Bash(*rm*)"]
 ```
-`phase` is `preflight` (default) or `postflight`. **Always draft `action_on_fail: warn`, even for
+`phase` is `preflight` (default) or `postflight`, and **the correct phase depends on the guard
+type** — getting this wrong yields a guard that runs but silently does nothing:
+
+- **`redact` → `preflight` (input) ONLY.** Redaction rewrites the request `input` (`messages`)
+  before the model call; it does **not** transform the model's `output`. A `redact` guard set to
+  `postflight` (or one aimed at the generated output) matches but redacts nothing — the response
+  comes back `allow` with `transformed_input` empty. So a redaction guard must sit **preflight** and
+  the thing it redacts must be present in the **input** (e.g. a secret pasted into the user prompt /
+  incident text). If the sensitive value is *produced by the model* rather than *fed to it*,
+  redaction is the wrong tool — use an evaluator-backed detector instead (below). This mirrors the
+  Grafana UI, which forces a Redact guard to preflight and offers no postflight option for it.
+- **`tool_filter` → `postflight`.** It inspects the tool calls the model wants to make.
+- **`evaluator_ids` (detector) → phase follows what you evaluate.** `preflight` to judge the
+  **input** (block a bad request before spending tokens), `postflight` to judge the **output**
+  (catch a bad response — e.g. detect that the model *generated* a credential or a destructive
+  command). This is the right shape for "the model produces something risky," which `redact` cannot
+  catch.
+
+**Always draft `action_on_fail: warn`, even for
 a hard-policy guard** (prompt-injection, deny-list): a first-time `deny` enabled on live traffic
 blocks real users on a false positive. A policy-judge guard references an evaluator id (create the
 evaluator first); the developer changes it to `deny` only later, after watching the false-positive
@@ -388,9 +407,11 @@ Three gotchas that silently break guards — call each out to the developer:
   records nothing (just a metric). So "no guard step on the conversation" is ambiguous — it means
   either allow OR not-wired. Distinguish them by whether ANY guard step ever appears for that agent.
 
-**Phase choice mirrors the guard:** a guard whose evaluator uses `target: input` is **preflight**
-(evaluate `input.messages` before the call — block a bad request before spending tokens); one with
-`target: response` is **postflight** (evaluate `input.output` after — catch a bad response). The
+**Phase choice mirrors the guard** (see the guard-type rules in Step 4): `redact` is always
+**preflight** (it rewrites the input; it cannot transform output); `tool_filter` is **postflight**.
+For an evaluator-backed guard, phase follows `target`: `target: input` → **preflight** (evaluate
+`input.messages` before the call — block a bad request before spending tokens); `target: response`
+→ **postflight** (evaluate `input.output` after — catch a bad response the model produced). The
 rule's `match.agent_name` / `match.model` scopes the guard to this agent; the agent's context must
 send the same `agent_name`.
 
