@@ -47,11 +47,11 @@ func newBase(t *testing.T, handler http.Handler) *aio11yhttp.Client {
 	return base
 }
 
-// fakePluginMux returns a mux mimicking the grafana-sigil-app plugin API.
+// fakePluginMux returns a mux mimicking the grafana-agento11y-app plugin API.
 func fakePluginMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/query/conversations",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/query/conversations",
 		func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, map[string]any{
 				"items": []map[string]any{
@@ -61,7 +61,7 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/query/conversations/conv-1",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/query/conversations/conv-1",
 		func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, map[string]any{
 				"conversation_id": "conv-1",
@@ -71,7 +71,7 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/query/conversations/search",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/query/conversations/search",
 		func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, map[string]any{
 				"conversations": []map[string]any{
@@ -83,7 +83,7 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/query/agents",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/query/agents",
 		func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, map[string]any{
 				"items": []map[string]any{
@@ -94,7 +94,7 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/query/agents/lookup",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/query/agents/lookup",
 		func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, map[string]any{
 				"agent_name": r.URL.Query().Get("name"), "effective_version": "sha256:abc123",
@@ -102,7 +102,7 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/query/agents/versions",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/query/agents/versions",
 		func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, map[string]any{
 				"items": []map[string]any{
@@ -113,7 +113,7 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval/evaluators",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/eval/evaluators",
 		func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, map[string]any{
 				"items": []map[string]any{
@@ -122,7 +122,7 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval/evaluators/eval-1",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/eval/evaluators/eval-1",
 		func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, map[string]any{
 				"evaluator_id": "eval-1", "version": "1.0", "kind": "llm_judge",
@@ -132,7 +132,7 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval/rules",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/eval/rules",
 		func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, map[string]any{
 				"items": []map[string]any{
@@ -143,7 +143,7 @@ func fakePluginMux() *http.ServeMux {
 		})
 
 	hookRulesCalls := 0
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval/hook-rules",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/eval/hook-rules",
 		func(w http.ResponseWriter, _ *http.Request) {
 			hookRulesCalls++
 			if hookRulesCalls == 1 {
@@ -165,7 +165,7 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval:test",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/eval:test",
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -182,7 +182,7 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval/templates",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/eval/templates",
 		func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, map[string]any{
 				"items": []map[string]any{
@@ -192,7 +192,7 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
-	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval/templates/tpl-1/versions",
+	mux.HandleFunc("/api/plugins/grafana-agento11y-app/resources/eval/templates/tpl-1/versions",
 		func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, map[string]any{
 				"items": []map[string]any{

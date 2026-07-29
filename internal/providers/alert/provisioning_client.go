@@ -1,9 +1,7 @@
 package alert
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,53 +25,7 @@ var ErrProvisioningNotFound = errors.New("provisioning resource not found")
 // decodes a JSON response. Returns ErrProvisioningNotFound for 404 responses.
 // A 202 Accepted with an empty body is treated as success.
 func (c *Client) doJSON(ctx context.Context, method, path string, in, out any) error {
-	var body io.Reader
-	if in != nil {
-		data, err := json.Marshal(in)
-		if err != nil {
-			return fmt.Errorf("failed to marshal request body: %w", err)
-		}
-		body = bytes.NewReader(data)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, c.host+path, body)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	if in != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	switch {
-	case resp.StatusCode == http.StatusNotFound:
-		return fmt.Errorf("%s %s: %w", method, path, ErrProvisioningNotFound)
-	case resp.StatusCode >= 400:
-		return providers.HandleErrorResponse(resp)
-	}
-
-	if out == nil {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		return nil
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
-	if len(data) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err)
-	}
-	return nil
+	return doBody(ctx, c.httpClient, method, c.host+path, path, jsonBodyCodec(), ErrProvisioningNotFound, in, out)
 }
 
 // doRaw performs an HTTP GET and returns the raw response body bytes.

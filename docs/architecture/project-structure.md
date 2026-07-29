@@ -15,7 +15,8 @@ gcx/
 │       │   └── query/        # Auto-detecting query command (GenericCmd only)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
-│       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
+│       ├── setup/            # 'setup' command area (status; cross-product onboarding helpers)
+│       │   └── datasources/  #   onboard cloud datasources (azure: Azure Monitor + ADX + Cosmos; rotate subcommand rotates gcx-minted secrets)
 │       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, clusters, services)
 │       │   ├── clusters/     #   cluster-level subcommands (list, get, configure, remove, wait, apps subtree)
 │       │   ├── services/     #   workload-level subcommands (list, get, include, exclude, clear)
@@ -35,6 +36,7 @@ gcx/
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
+│   ├── cloudcli/             # Generic cloud CLI exec wrapper (az/aws/gcloud — Ensure + Run/RunJSON, injectable runner for tests)
 │   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and instrumentation provider)
 │   ├── config/               # Config loading, context management, auth types (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
 │   │   └── testdata/         # YAML fixtures for config unit tests
@@ -42,6 +44,7 @@ gcx/
 │   ├── format/               # JSON/YAML codec, format auto-detection
 │   ├── output/               # Output codec registry (json, yaml, text, wide), field selection, user-facing messages
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
+│   ├── plugins/              # Grafana plugin admin client (check/install datasource plugins — used by onboard pre-flight)
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
 │   ├── httputils/            # REST client helpers, request/response utilities
 │   ├── retry/                # Retry transport (429/5xx/connection errors, exponential backoff, Retry-After)
@@ -76,7 +79,7 @@ gcx/
 │   │   │   ├── output/       # View types and table/JSON codecs (clusters, apps, services; wait/mutation envelopes)
 │   │   │   └── rmw/          # Read-modify-write helper with optimistic-lock guard
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
-│   │   ├── kg/               # Knowledge Graph (Asserts) provider
+│   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, insights, diagnose, quality reports)
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── definitions/  # SLO definitions and status queries
 │   │   │   └── reports/      # SLO reports
@@ -101,6 +104,8 @@ gcx/
 │   │   ├── loki/             # Loki HTTP client (log + metric queries)
 │   │   └── clickhouse/       # ClickHouse HTTP client
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
+│   ├── onboard/              # Cloud datasource onboarding core (result types, naming/collision, rollback, shared progress)
+│   │   └── azure/            # Azure onboarding (az CLI wrapper, discover, plan, Azure Monitor + ADX + Cosmos payloads, orchestration, cleanup, rotate)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)

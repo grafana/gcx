@@ -1,6 +1,7 @@
 package k6
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -402,7 +403,9 @@ func newProjectsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to convert created project to resource: %w", err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Created project %q (id=%d)", created.Name, created.ID)
+			// Status note goes to stderr: stdout carries exactly one result
+			// document (the created object) for both humans and agents.
+			cmdio.Success(cmd.ErrOrStderr(), "Created project %q (id=%d)", created.Name, created.ID)
 			createdObj := createdRes.ToUnstructured()
 			return opts.IO.Encode(cmd.OutOrStdout(), &createdObj)
 		},
@@ -412,10 +415,16 @@ func newProjectsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 type projectsUpdateOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
 func (o *projectsUpdateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return "Updated project " + m.Target.ID
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the project manifest (use - for stdin)")
 }
 
@@ -426,6 +435,9 @@ func newProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 		Short: "Update a k6 project.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
@@ -472,20 +484,36 @@ func newProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to update project: %w", err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated project %d", id)
-			return nil
+			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "project", ID: strconv.Itoa(id)})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
 }
 
+type projectsDeleteOpts struct {
+	IO cmdio.Options
+}
+
+func (o *projectsDeleteOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return "Deleted project " + m.Target.ID
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
 func newProjectsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
+	opts := &projectsDeleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete <id-or-name>",
 		Short: "Delete a k6 project.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			ctx := cmd.Context()
 			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
@@ -498,10 +526,11 @@ func newProjectsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 			if err := client.DeleteProject(ctx, id); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted project %d", id)
-			return nil
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "project", ID: strconv.Itoa(id)})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -717,7 +746,9 @@ Hours (VUh). See ` + docs.PerformanceTestingInvoice + `.`,
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Created load test %q (id=%d)", test.Name, test.ID)
+			// Status note goes to stderr: stdout carries exactly one result
+			// document (the created object) for both humans and agents.
+			cmdio.Success(cmd.ErrOrStderr(), "Created load test %q (id=%d)", test.Name, test.ID)
 			return opts.IO.Encode(cmd.OutOrStdout(), test)
 		},
 	}
@@ -726,10 +757,16 @@ Hours (VUh). See ` + docs.PerformanceTestingInvoice + `.`,
 }
 
 type testsUpdateOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
 func (o *testsUpdateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return "Updated load test " + m.Target.ID
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the test definition (JSON/YAML)")
 }
 
@@ -740,6 +777,9 @@ func newTestsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 		Short: "Update a k6 load test from a file.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
@@ -766,8 +806,8 @@ func newTestsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated load test %d", id)
-			return nil
+			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "load-test", ID: strconv.Itoa(id)})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -775,10 +815,16 @@ func newTestsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 type testsUpdateScriptOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
 func (o *testsUpdateScriptOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return "Updated script for load test " + m.Target.ID
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "k6 script file to upload")
 }
 
@@ -789,6 +835,9 @@ func newTestsUpdateScriptCommand(loader CloudConfigLoader) *cobra.Command {
 		Short: "Update the script of a k6 load test from a file.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
@@ -811,37 +860,73 @@ func newTestsUpdateScriptCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated script for load test %d", id)
-			return nil
+			result := cmdio.NewSingleMutation("updated-script", cmdio.MutationTarget{Kind: "load-test", ID: strconv.Itoa(id)})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
 }
 
-func newTestsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
+// deleteByIDSpec parameterizes newDeleteByIDCommand: a delete-style command
+// that takes exactly one numeric ID argument and dispatches a single client
+// call. Only naming, the mutation envelope fields, and the API call vary.
+type deleteByIDSpec struct {
+	use         string
+	short       string
+	idLabel     string // subject label in the "invalid <label> ID" parse error
+	operation   string // SingleMutation operation, e.g. "deleted"
+	targetKind  string // SingleMutation target kind, e.g. "load-test"
+	successText func(m cmdio.SingleMutation) string
+	deleteFn    func(ctx context.Context, client API, id int) error
+}
+
+func newDeleteByIDCommand(loader CloudConfigLoader, spec deleteByIDSpec) *cobra.Command {
+	opts := &cmdio.Options{}
 	cmd := &cobra.Command{
-		Use:   "delete <id>",
-		Short: "Delete a k6 load test.",
+		Use:   spec.use,
+		Short: spec.short,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
 			ctx := cmd.Context()
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
-				return fmt.Errorf("invalid load test ID: %w", err)
+				return fmt.Errorf("invalid %s ID: %w", spec.idLabel, err)
 			}
 			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
-			if err := client.DeleteLoadTest(ctx, id); err != nil {
+			if err := spec.deleteFn(ctx, client, id); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted load test %d", id)
-			return nil
+			result := cmdio.NewSingleMutation(spec.operation, cmdio.MutationTarget{Kind: spec.targetKind, ID: strconv.Itoa(id)})
+			return opts.Encode(cmd.OutOrStdout(), result)
 		},
 	}
+	opts.RegisterCustomCodec("text", singleMutationTextCodec(spec.successText))
+	opts.DefaultFormat("text")
+	opts.BindFlags(cmd.Flags())
 	return cmd
+}
+
+func newTestsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
+	return newDeleteByIDCommand(loader, deleteByIDSpec{
+		use:        "delete <id>",
+		short:      "Delete a k6 load test.",
+		idLabel:    "load test",
+		operation:  "deleted",
+		targetKind: "load-test",
+		successText: func(m cmdio.SingleMutation) string {
+			return "Deleted load test " + m.Target.ID
+		},
+		deleteFn: func(ctx context.Context, client API, id int) error {
+			return client.DeleteLoadTest(ctx, id)
+		},
+	})
 }
 
 // newTestsDeleteScheduleCommand deletes a load test's schedule. The schedule is
@@ -849,28 +934,19 @@ func newTestsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 // command is an operation-subject compound under `load-tests` rather than a
 // leaf of the `schedules` group (whose siblings take a schedule's own ID).
 func newTestsDeleteScheduleCommand(loader CloudConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "delete-schedule <load-test-id>",
-		Short: "Delete the schedule for a k6 load test.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			id, err := strconv.Atoi(args[0])
-			if err != nil {
-				return fmt.Errorf("invalid load test ID: %w", err)
-			}
-			client, _, err := authenticatedClient(ctx, loader)
-			if err != nil {
-				return err
-			}
-			if err := client.DeleteScheduleByLoadTest(ctx, id); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted schedule for load test %d", id)
-			return nil
+	return newDeleteByIDCommand(loader, deleteByIDSpec{
+		use:        "delete-schedule <load-test-id>",
+		short:      "Delete the schedule for a k6 load test.",
+		idLabel:    "load test",
+		operation:  "deleted-schedule",
+		targetKind: "load-test",
+		successText: func(m cmdio.SingleMutation) string {
+			return "Deleted schedule for load test " + m.Target.ID
 		},
-	}
-	return cmd
+		deleteFn: func(ctx context.Context, client API, id int) error {
+			return client.DeleteScheduleByLoadTest(ctx, id)
+		},
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -1090,10 +1166,16 @@ func (c *EnvVarTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 type envVarsCreateOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
 func (o *envVarsCreateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return fmt.Sprintf("Created env var %q (id=%s)", m.Target.Name, m.Target.ID)
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the env var JSON (use - for stdin)")
 }
 
@@ -1103,6 +1185,9 @@ func newEnvVarsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 		Use:   "create",
 		Short: "Create a k6 environment variable from a file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
@@ -1135,8 +1220,12 @@ func newEnvVarsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Created env var %q (id=%d)", created.Name, created.ID)
-			return nil
+			result := cmdio.NewSingleMutation("created", cmdio.MutationTarget{
+				Kind: "env-var",
+				Name: created.Name,
+				ID:   strconv.Itoa(created.ID),
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1144,10 +1233,16 @@ func newEnvVarsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 type envVarsUpdateOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
 func (o *envVarsUpdateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return "Updated env var " + m.Target.ID
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the env var JSON (use - for stdin)")
 }
 
@@ -1158,6 +1253,9 @@ func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 		Short: "Update a k6 environment variable.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
@@ -1193,8 +1291,8 @@ func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated env var %d", id)
-			return nil
+			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "env-var", ID: strconv.Itoa(id)})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1202,28 +1300,19 @@ func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 func newEnvVarsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "delete <id>",
-		Short: "Delete a k6 environment variable.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			id, err := strconv.Atoi(args[0])
-			if err != nil {
-				return fmt.Errorf("invalid env var ID: %w", err)
-			}
-			client, _, err := authenticatedClient(ctx, loader)
-			if err != nil {
-				return err
-			}
-			if err := client.DeleteEnvVar(ctx, id); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted env var %d", id)
-			return nil
+	return newDeleteByIDCommand(loader, deleteByIDSpec{
+		use:        "delete <id>",
+		short:      "Delete a k6 environment variable.",
+		idLabel:    "env var",
+		operation:  "deleted",
+		targetKind: "env-var",
+		successText: func(m cmdio.SingleMutation) string {
+			return "Deleted env var " + m.Target.ID
 		},
-	}
-	return cmd
+		deleteFn: func(ctx context.Context, client API, id int) error {
+			return client.DeleteEnvVar(ctx, id)
+		},
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -1403,11 +1492,19 @@ func newSchedulesGetCommand(loader CloudConfigLoader) *cobra.Command { //nolint:
 }
 
 type schedulesCreateOpts struct {
+	IO         cmdio.Options
 	LoadTestID int
 	File       string
 }
 
 func (o *schedulesCreateOpts) setup(flags *pflag.FlagSet) {
+	// The human line names both the schedule and its parent load test; the
+	// closure reads the parent from the flag-bound opts at render time.
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return fmt.Sprintf("Created schedule %s for load test %d", m.Target.ID, o.LoadTestID)
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.IntVar(&o.LoadTestID, "load-test-id", 0, "Load test ID (required)")
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the schedule request (JSON/YAML)")
 }
@@ -1418,6 +1515,9 @@ func newSchedulesCreateCommand(loader CloudConfigLoader) *cobra.Command {
 		Use:   "create",
 		Short: "Create a k6 schedule from a file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			if opts.LoadTestID == 0 {
 				return errors.New("--load-test-id is required")
 			}
@@ -1444,8 +1544,8 @@ func newSchedulesCreateCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Created schedule %d for load test %d", schedule.ID, opts.LoadTestID)
-			return nil
+			result := cmdio.NewSingleMutation("created", cmdio.MutationTarget{Kind: "schedule", ID: strconv.Itoa(schedule.ID)})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1453,10 +1553,16 @@ func newSchedulesCreateCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 type schedulesUpdateOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
 func (o *schedulesUpdateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return "Updated schedule " + m.Target.ID
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the schedule request (JSON/YAML)")
 }
 
@@ -1467,6 +1573,9 @@ func newSchedulesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 		Short: "Update a k6 schedule from a file.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
@@ -1493,8 +1602,8 @@ func newSchedulesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated schedule %d", id)
-			return nil
+			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "schedule", ID: strconv.Itoa(id)})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1587,6 +1696,7 @@ func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 type loadZonesCreateOpts struct {
+	IO         cmdio.Options
 	Name       string
 	ProviderID string
 	CPU        string
@@ -1595,6 +1705,11 @@ type loadZonesCreateOpts struct {
 }
 
 func (o *loadZonesCreateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return fmt.Sprintf("Registered load zone %q", m.Target.Name)
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Name, "name", "", "Load zone name (must be unique in your org)")
 	flags.StringVar(&o.ProviderID, "provider-id", "", "Provider ID for the load zone")
 	flags.StringVar(&o.CPU, "cpu", "2", "CPU limit for load zone pods")
@@ -1608,6 +1723,9 @@ func newLoadZonesCreateCommand(loader CloudConfigLoader) *cobra.Command {
 		Use:   "create",
 		Short: "Register a Private Load Zone.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			if opts.Name == "" {
 				return errors.New("--name is required")
 			}
@@ -1631,20 +1749,36 @@ func newLoadZonesCreateCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Registered load zone %q", resp.Name)
-			return nil
+			result := cmdio.NewSingleMutation("registered", cmdio.MutationTarget{Kind: "load-zone", Name: resp.Name})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
 }
 
+type loadZonesDeleteOpts struct {
+	IO cmdio.Options
+}
+
+func (o *loadZonesDeleteOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return fmt.Sprintf("Deregistered load zone %q", m.Target.Name)
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
 func newLoadZonesDeleteCommand(loader CloudConfigLoader) *cobra.Command {
+	opts := &loadZonesDeleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Deregister a Private Load Zone.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			ctx := cmd.Context()
 			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
@@ -1653,10 +1787,11 @@ func newLoadZonesDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 			if err := client.DeleteLoadZone(ctx, args[0]); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Deregistered load zone %q", args[0])
-			return nil
+			result := cmdio.NewSingleMutation("deregistered", cmdio.MutationTarget{Kind: "load-zone", Name: args[0]})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -1736,10 +1871,16 @@ func newListAllowedProjectsCommand(loader CloudConfigLoader) *cobra.Command { //
 }
 
 type allowedProjectsUpdateOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
 func (o *allowedProjectsUpdateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return "Updated allowed projects for load zone " + m.Target.ID
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the complete replacement set of project IDs (JSON array)")
 }
 
@@ -1750,6 +1891,9 @@ func newUpdateAllowedProjectsCommand(loader CloudConfigLoader) *cobra.Command { 
 		Short: "Replace the set of projects allowed to use a load zone.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
@@ -1776,8 +1920,8 @@ func newUpdateAllowedProjectsCommand(loader CloudConfigLoader) *cobra.Command { 
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated allowed projects for load zone %d", id)
-			return nil
+			result := cmdio.NewSingleMutation("updated-allowed-projects", cmdio.MutationTarget{Kind: "load-zone", ID: strconv.Itoa(id)})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1861,10 +2005,16 @@ func newListAllowedLoadZonesCommand(loader CloudConfigLoader) *cobra.Command { /
 }
 
 type allowedLoadZonesUpdateOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
 func (o *allowedLoadZonesUpdateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", singleMutationTextCodec(func(m cmdio.SingleMutation) string {
+		return "Updated allowed load zones for project " + m.Target.ID
+	}))
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the complete replacement set of load zone IDs (JSON array)")
 }
 
@@ -1875,6 +2025,9 @@ func newUpdateAllowedLoadZonesCommand(loader CloudConfigLoader) *cobra.Command {
 		Short: "Replace the set of load zones allowed for a project.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
@@ -1901,8 +2054,8 @@ func newUpdateAllowedLoadZonesCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated allowed load zones for project %d", id)
-			return nil
+			result := cmdio.NewSingleMutation("updated-allowed-load-zones", cmdio.MutationTarget{Kind: "project", ID: strconv.Itoa(id)})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1998,11 +2151,15 @@ Virtual User Hours (VUh). See ` + docs.PerformanceTestingInvoice + `.`,
 }
 
 type testrunStatusOpts struct {
+	IO        cmdio.Options
 	ProjectID int
 	ID        int
 }
 
 func (o *testrunStatusOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", &testRunStatusTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "k6 Cloud project ID (required when using name lookup)")
 	flags.IntVar(&o.ID, "id", 0, "Load test ID (skip name lookup)")
 }
@@ -2014,6 +2171,9 @@ func newTestrunStatusCommand(loader CloudConfigLoader) *cobra.Command {
 		Short: "Show the most recent test run status for a k6 load test.",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			testName, err := requireNameOrID(opts.ID, args)
 			if err != nil {
 				return err
@@ -2036,11 +2196,7 @@ func newTestrunStatusCommand(loader CloudConfigLoader) *cobra.Command {
 				return fmt.Errorf("no test runs found for load test %d", test.ID)
 			}
 
-			run := runs[0]
-			resultStr := resultStatusString(run.ResultStatus)
-			fmt.Fprintf(cmd.OutOrStdout(), "Run ID:  %d\nStatus:  %s\nResult:  %s\nCreated: %s\nEnded:   %s\n",
-				run.ID, run.Status, resultStr, run.Created, run.Ended)
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), runs[0])
 		},
 	}
 	opts.setup(cmd.Flags())

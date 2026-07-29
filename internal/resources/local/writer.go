@@ -65,6 +65,18 @@ type FSWriter struct {
 	// by FSWriter.
 	// Note: the path should contain an extension.
 	Namer FileNamer
+
+	// OnWritten, when set, is invoked after each resource file is written
+	// successfully with the path (relative to Path, as the user sees it)
+	// and the resource. Used by callers that report a receipt of written
+	// files. Write is sequential, so the callback needs no locking.
+	OnWritten func(path string, resource *resources.Resource)
+
+	// OnWriteError, when set, is invoked for each resource whose file write
+	// failed when StopOnError is false (with StopOnError the first error is
+	// returned instead). Without it, skipped writes are only logged — a
+	// receipt built solely from OnWritten would silently overstate success.
+	OnWriteError func(resource *resources.Resource, err error)
 	// Encoder to use when encoding resources.
 	Encoder format.Encoder
 	// Whether to stop writing resources upon encountering an error.
@@ -90,6 +102,9 @@ func (writer *FSWriter) Write(ctx context.Context, resources *resources.Resource
 				return err
 			}
 
+			if writer.OnWriteError != nil {
+				writer.OnWriteError(resource, err)
+			}
 			logger.Warn("could not write resource: skipping", slog.String("kind", resource.Kind()), logs.Err(err))
 		}
 	}
@@ -139,6 +154,10 @@ func (writer *FSWriter) writeSingle(resource *resources.Resource) error {
 	// so we need to make sure we dereference `resource` before formatting it.
 	if err := writer.Encoder.Encode(file, &obj); err != nil {
 		return fmt.Errorf("could write resource: %w", err)
+	}
+
+	if writer.OnWritten != nil {
+		writer.OnWritten(filepath.Join(writer.Path, rel), resource)
 	}
 
 	return nil

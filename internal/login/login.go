@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/httputils"
 )
 
@@ -56,18 +57,29 @@ type Inputs struct {
 	ContextName  string
 	Target       Target
 	GrafanaToken string
-	CloudToken   string
-	CloudAPIURL  string
-	// CloudTokenFromOAuth marks CloudToken as already trusted, so the GCOM stack
-	// check in Validate is skipped for it. Set when the token was obtained via
-	// the browser OAuth login (freshly minted with the requested scopes) or when
-	// an already-accepted token is being kept on re-auth. That check exists to
-	// catch typos in freshly pasted Cloud Access Policy tokens; it 403s
-	// spuriously on non-prod stacks, so it must not run for these (matching
-	// `gcx cloud login`, which does not validate at all).
-	CloudTokenFromOAuth bool
-	OrgID               int
-	UseOAuth            bool
+	// ExistingGrafanaAuthMethod records a previously persisted explicit auth
+	// method for pre-auth request safety. It never supplies a credential or
+	// selects the final login method; it only prevents target detection from
+	// presenting a stale client certificate when the existing method is known
+	// to be token, OAuth, or Basic.
+	ExistingGrafanaAuthMethod string
+	CloudToken                string
+	CloudAPIURL               string
+	CloudOAuthURL             string
+	// CloudCredentialKind controls which CloudEntry field receives CloudToken.
+	// It is deliberately independent from CloudTokenTrusted: credential type and
+	// validation policy are separate concerns. The zero value means CAP so
+	// existing programmatic callers that only set CloudToken keep their behavior.
+	CloudCredentialKind CloudCredentialKind
+	// CloudTokenTrusted skips the optional GCOM stack validation. It is set for
+	// credentials obtained from OAuth and for an existing credential the user
+	// explicitly chose to keep. Freshly pasted CAP tokens leave it false.
+	CloudTokenTrusted bool
+	// OAuth-only metadata. These fields are ignored for CAP credentials.
+	CloudOAuthTokenExpiresAt string
+	CloudOAuthScopes         []string
+	OrgID                    int
+	UseOAuth                 bool
 	// OAuthCallbackPort fixes the local port for the OAuth callback server.
 	// Zero means auto-pick from the default range. Useful when only specific
 	// ports are forwarded between a remote dev host and the user's browser.
@@ -84,6 +96,21 @@ type Inputs struct {
 	// On re-auth of an existing context, the CLI pre-populates this from the
 	// stored grafana.tls.* block so mTLS keeps working without re-specifying certs.
 	TLS *config.TLS
+	// PreserveStoredTLS keeps process-environment TLS overrides runtime-only.
+	// Detection and validation use TLS, while persistence restores StoredTLS.
+	// A token/OAuth login fails before network use when that would create a
+	// credential that the next invocation cannot resolve. Programmatic callers
+	// retain the historical behavior unless they opt in.
+	PreserveStoredTLS bool
+	StoredTLS         *config.TLS
+	// PreserveStoredProxyEndpoint is the proxy equivalent for an ephemeral
+	// GRAFANA_PROXY_ENDPOINT override. RuntimeProxyEndpoint is the effective
+	// override and StoredProxyEndpoint is the durable value. Bearer logins fail
+	// closed when the two destinations differ; non-bearer mTLS remains usable
+	// with runtime-only transport settings.
+	PreserveStoredProxyEndpoint bool
+	RuntimeProxyEndpoint        string
+	StoredProxyEndpoint         string
 
 	// Writer receives human-facing OAuth progress output. When nil, the
 	// internal/login package discards writes (NC-001: the package is UI-free
@@ -101,10 +128,26 @@ type Hooks struct {
 	// written to. Nil falls back to config.StandardLocation().
 	ConfigSource config.Source
 
+	// CloudMutationSafety carries shared-reference evidence from a complete
+	// layered read into the selected raw-owner write. Without it, reloading one
+	// file can undercount contexts in other layers and mutate their shared Cloud
+	// credential in place.
+	CloudMutationSafety config.CloudMutationSafety
+
+	// LoginMutationGuard pins the selected raw owner's pre-auth revision so the
+	// persistence reload cannot silently adopt a context changed during OAuth or
+	// connectivity validation.
+	LoginMutationGuard config.LoginMutationGuard
+
 	// NewAuthFlow constructs the OAuth PKCE flow. Must be non-nil when
 	// UseOAuth is true; otherwise Run returns an error. Callers typically
 	// pass a factory that wraps auth.NewFlow.
 	NewAuthFlow func(server string, opts auth.Options) AuthFlow
+
+	// NewCloudAuthFlow constructs the direct GCOM OAuth PKCE flow used by the
+	// optional Cloud follow-up. Nil selects auth.NewGCOMFlow. The seam keeps the
+	// command path deterministic in tests without putting browser logic in cmd/.
+	NewCloudAuthFlow func(opts auth.GCOMOptions) CloudAuthFlow
 
 	// ValidateFn overrides connectivity validation for testing.
 	// Returns the Grafana version string on success. When nil, the real
@@ -205,12 +248,49 @@ func (e *ErrNeedClarification) Error() string {
 	return fmt.Sprintf("clarification needed for %s: %s", e.Field, e.Question)
 }
 
+// RuntimeOnlyBearerDestinationError is returned when a token or OAuth login
+// would use proxy/TLS destination settings that are present only in the process
+// environment. Saving the credential without those settings would create a
+// context whose next invocation rejects its own destination-bound credential.
+//
+// The CLI turns this UI-free sentinel into exact persistence commands for the
+// selected config owner and stack.
+type RuntimeOnlyBearerDestinationError struct {
+	// OAuthIssuerProxyMismatch identifies the post-OAuth case where the issuer
+	// selected a proxy endpoint different from GRAFANA_PROXY_ENDPOINT. Persisting
+	// the environment value cannot repair that conflict; the caller must remove
+	// the override and let the issuer-selected endpoint become authoritative.
+	OAuthIssuerProxyMismatch bool
+	RuntimeProxyEndpoint     string
+	OAuthIssuerProxyEndpoint string
+}
+
+func (e *RuntimeOnlyBearerDestinationError) Error() string {
+	if e.OAuthIssuerProxyMismatch {
+		return "GRAFANA_PROXY_ENDPOINT conflicts with the proxy endpoint selected by the OAuth issuer; unset the environment override and retry"
+	}
+	return "runtime-only Grafana proxy/TLS settings cannot be used to save a token or OAuth credential; persist GRAFANA_PROXY_ENDPOINT and GRAFANA_TLS_* settings in the selected config, or unset the overrides and retry"
+}
+
 // AuthFlow is the interface implemented by auth.Flow (and test stubs).
 // It exists so internal/login can reference the flow without importing a
 // concrete browser-dependent type, and without depending on cmd/.
 type AuthFlow interface {
 	Run(ctx context.Context) (*auth.Result, error)
 }
+
+// CloudAuthFlow is implemented by auth.GCOMFlow.
+type CloudAuthFlow interface {
+	Run(ctx context.Context) (*auth.GCOMResult, error)
+}
+
+// CloudCredentialKind identifies which Cloud auth mechanism produced a token.
+type CloudCredentialKind string
+
+const (
+	CloudCredentialCAP   CloudCredentialKind = "cap"
+	CloudCredentialOAuth CloudCredentialKind = "oauth"
+)
 
 // Run orchestrates the full login lifecycle:
 //
@@ -227,6 +307,8 @@ type AuthFlow interface {
 // auto-detection) propagate back to the caller and remain available across
 // the CLI sentinel-retry flow. Callers that retry after ErrNeedInput /
 // ErrNeedClarification should reuse the same Options value.
+//
+//nolint:gocyclo // The ordered login state machine is easier to audit when its validation and persistence gates remain explicit.
 func Run(ctx context.Context, opts *Options) (Result, error) {
 	// Step 1: check if the server is set
 	if opts.Server == "" && !opts.UseCloudInstanceSelector {
@@ -239,8 +321,9 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 
 	// Normalize: missing scheme → default to https. Users who meant http://
 	// must pass the full URL explicitly; defaulting to https is safer.
-	if opts.Server != "" && !strings.HasPrefix(opts.Server, "http://") && !strings.HasPrefix(opts.Server, "https://") {
-		opts.Server = "https://" + opts.Server
+	opts.Server = NormalizeServerURL(opts.Server)
+	if err := validateRuntimeOnlyBearerDestination(*opts, ""); err != nil {
+		return Result{}, err
 	}
 
 	// Step 2: detect target (using TLS-aware client when mTLS is configured)
@@ -276,6 +359,9 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if err := validateRuntimeOnlyBearerDestination(*opts, authMethod, grafanaCfg); err != nil {
+		return Result{}, err
+	}
 
 	// set the server if the user used the interactive instance selector
 	if opts.Server == "" {
@@ -289,21 +375,37 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	}
 
 	// Step 5: Cloud API token (Cloud targets only)
-	cloudCfg, err := resolveCloudAuth(*opts, target)
+	cloudEntry, stackSlug, err := resolveCloudAuth(*opts, target)
 	if err != nil {
 		return Result{}, err
 	}
 
-	// Step 6: Build temp context and validate connectivity
+	// Step 6: Build temp context and validate connectivity. The temp context
+	// carries detached resolved views (Grafana, CloudEntry); persistContext
+	// gives them their homes on stack and cloud entries.
 	tempCtx := config.Context{
-		Name:    contextName,
-		Grafana: grafanaCfg,
-		Cloud:   cloudCfg,
+		Name:       contextName,
+		Grafana:    grafanaCfg,
+		CloudEntry: cloudEntry,
 	}
 	restCfg, err := config.NewNamespacedRESTConfig(ctx, tempCtx)
 	if err != nil {
 		return Result{}, fmt.Errorf("TLS configuration: %w", err)
 	}
+	// Connectivity validation can refresh a just-issued OAuth generation when
+	// its access expiry is inside the proactive-refresh window. PersistContext
+	// runs only after validation, so retain that rotation in the staged Grafana
+	// config instead of later writing the consumed pre-validation generation.
+	restCfg.SetOnRefresh(func(previousRefreshToken, token, refreshToken, expiresAt, refreshExpiresAt string) error {
+		if tempCtx.Grafana == nil || tempCtx.Grafana.OAuthRefreshToken != previousRefreshToken {
+			return fmt.Errorf("%w while validating newly issued OAuth credentials", auth.ErrTokenGenerationChanged)
+		}
+		tempCtx.Grafana.OAuthToken = token
+		tempCtx.Grafana.OAuthRefreshToken = refreshToken
+		tempCtx.Grafana.OAuthTokenExpiresAt = expiresAt
+		tempCtx.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
+		return nil
+	})
 
 	// Persist the cloud stack ID discovered while building the REST config so
 	// subsequent commands resolve the namespace locally and skip the /bootdata
@@ -354,9 +456,15 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 			}
 		}
 	}
+	if opts.PreserveStoredTLS && tempCtx.Grafana != nil {
+		tempCtx.Grafana.TLS = opts.StoredTLS
+	}
+	if opts.PreserveStoredProxyEndpoint && authMethod != "oauth" && tempCtx.Grafana != nil {
+		tempCtx.Grafana.ProxyEndpoint = opts.StoredProxyEndpoint
+	}
 
 	// Step 7: Persist to config (write only after all validation passes)
-	if err := persistContext(ctx, *opts, contextName, tempCtx); err != nil {
+	if err := persistContext(ctx, *opts, contextName, tempCtx, stackSlug); err != nil {
 		return Result{}, err
 	}
 
@@ -365,10 +473,98 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 		ContextName:    contextName,
 		AuthMethod:     authMethod,
 		IsCloud:        target == TargetCloud,
-		HasCloudToken:  cloudCfg != nil && cloudCfg.Token != "",
+		HasCloudToken:  cloudEntry != nil && (cloudEntry.Token != "" || cloudEntry.OAuthToken != ""),
 		GrafanaVersion: grafanaVersion,
 		StackSlug:      resolveStackSlug(opts.Server),
 	}, nil
+}
+
+// validateRuntimeOnlyBearerDestination prevents a successful login from
+// persisting a token/OAuth credential against a different destination than the
+// runtime-only proxy/TLS settings that authorized the invocation. Without this
+// gate the next process would apply the same environment, reject the new
+// keychain generation as destination-mismatched, and leave a seemingly
+// successful login unusable.
+//
+// Before authMethod is resolved, explicit token/OAuth intent is enough to
+// reject known mismatches before target detection or a browser flow. After
+// OAuth resolves, the second call also compares the issuer-provided proxy that
+// will actually be persisted.
+func validateRuntimeOnlyBearerDestination(opts Options, authMethod string, resolved ...*config.GrafanaConfig) error {
+	if authMethod == "" && opts.GrafanaToken == "" && !opts.UseOAuth {
+		return nil
+	}
+	if authMethod != "" && authMethod != "token" && authMethod != "oauth" {
+		return nil
+	}
+
+	server := opts.Server
+	var resolvedDestination *config.GrafanaConfig
+	if len(resolved) > 0 {
+		resolvedDestination = resolved[0]
+	}
+	if resolvedDestination != nil && resolvedDestination.Server != "" {
+		server = resolvedDestination.Server
+	}
+	durable := &config.GrafanaConfig{Server: server}
+	runtime := &config.GrafanaConfig{Server: server}
+
+	if opts.PreserveStoredTLS {
+		durable.TLS = opts.StoredTLS
+		runtime.TLS = opts.TLS
+	} else {
+		durable.TLS = opts.TLS
+		runtime.TLS = opts.TLS
+	}
+	if opts.PreserveStoredProxyEndpoint {
+		runtime.ProxyEndpoint = opts.RuntimeProxyEndpoint
+		switch {
+		case authMethod == "oauth" && resolvedDestination != nil:
+			durable.ProxyEndpoint = resolvedDestination.ProxyEndpoint
+		case authMethod == "" && opts.UseOAuth && opts.GrafanaToken == "":
+			// OAuth supplies and persists its own proxy endpoint. Before the
+			// browser flow returns, defer this component to the post-auth check;
+			// TLS is already fully knowable and remains enforced here.
+			durable.ProxyEndpoint = opts.RuntimeProxyEndpoint
+		default:
+			durable.ProxyEndpoint = opts.StoredProxyEndpoint
+		}
+	} else {
+		proxyEndpoint := opts.RuntimeProxyEndpoint
+		if resolvedDestination != nil {
+			proxyEndpoint = resolvedDestination.ProxyEndpoint
+		}
+		durable.ProxyEndpoint = proxyEndpoint
+		runtime.ProxyEndpoint = proxyEndpoint
+	}
+
+	if config.GrafanaBearerCredentialDestinationMatches(durable, runtime) {
+		return nil
+	}
+	if authMethod == "oauth" && resolvedDestination != nil && opts.PreserveStoredProxyEndpoint {
+		proxyAligned := *durable
+		proxyAligned.ProxyEndpoint = runtime.ProxyEndpoint
+		if config.GrafanaBearerCredentialDestinationMatches(&proxyAligned, runtime) {
+			return &RuntimeOnlyBearerDestinationError{
+				OAuthIssuerProxyMismatch: true,
+				RuntimeProxyEndpoint:     runtime.ProxyEndpoint,
+				OAuthIssuerProxyEndpoint: durable.ProxyEndpoint,
+			}
+		}
+	}
+	return &RuntimeOnlyBearerDestinationError{}
+}
+
+// NormalizeServerURL trims surrounding whitespace and defaults a schemeless
+// Grafana server to HTTPS. An explicit HTTP scheme is retained: callers that
+// deliberately connect without TLS must continue to say so.
+func NormalizeServerURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	lower := strings.ToLower(raw)
+	if raw != "" && !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+		return "https://" + raw
+	}
+	return raw
 }
 
 // detectTarget calls DetectFn or falls back to the real DetectTarget.
@@ -382,11 +578,26 @@ func detectTarget(ctx context.Context, opts Options) (Target, error) {
 	if opts.DetectFn != nil {
 		return opts.DetectFn(ctx, opts.Server)
 	}
-	client, err := tlsAwareClient(ctx, opts.TLS)
+	client, err := tlsAwareClient(ctx, preAuthTLS(opts))
 	if err != nil {
 		return TargetUnknown, fmt.Errorf("TLS configuration: %w", err)
 	}
 	return DetectTarget(ctx, opts.Server, client)
+}
+
+// preAuthTLS returns the TLS view authorized for requests that run before
+// login has built a fully resolved Context. Explicit token/OAuth intent, and a
+// persisted explicit non-mTLS method, retain CA/SNI/ALPN trust settings but do
+// not present a potentially stale client identity to the probed destination.
+func preAuthTLS(opts Options) *config.TLS {
+	if opts.TLS == nil {
+		return nil
+	}
+	method := strings.ToLower(strings.TrimSpace(opts.ExistingGrafanaAuthMethod))
+	if opts.GrafanaToken != "" || opts.UseOAuth || (method != "" && method != "mtls") {
+		return opts.TLS.ServerTrustOnly()
+	}
+	return opts.TLS
 }
 
 // tlsAwareClient returns a TLS-aware *http.Client when tlsCfg is non-nil and
@@ -418,10 +629,12 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		return opts.StagedContext.Grafana.AuthMethod, opts.StagedContext.Grafana, nil
 	}
 
+	authTLS := preAuthTLS(opts)
 	grafanaCfg := &config.GrafanaConfig{
-		Server: opts.Server,
-		OrgID:  int64(opts.OrgID),
-		TLS:    opts.TLS,
+		Server:        opts.Server,
+		ProxyEndpoint: opts.RuntimeProxyEndpoint,
+		OrgID:         int64(opts.OrgID),
+		TLS:           opts.TLS,
 	}
 
 	var method string
@@ -430,16 +643,6 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		grafanaCfg.APIToken = opts.GrafanaToken
 		grafanaCfg.AuthMethod = "token"
 		method = "token"
-
-	case opts.TLS != nil && (len(opts.TLS.CertData) > 0 || opts.TLS.CertFile != ""):
-		// mTLS-only auth: the client certificate authenticates at the transport
-		// layer (e.g. Teleport proxy). No Grafana token or OAuth needed.
-		// Note: we check only for cert presence here, not cert+key pairing.
-		// TLS.ResolveFiles() enforces "both cert-file and key-file must be
-		// provided together" downstream, producing a clear error if the key
-		// is missing.
-		grafanaCfg.AuthMethod = "mtls"
-		method = "mtls"
 
 	case opts.UseOAuth:
 		if opts.NewAuthFlow == nil {
@@ -474,6 +677,16 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		// once: retries hit the StagedContext cache above and skip OAuth.
 		announceOAuthLogin(w, result)
 
+	case authTLS != nil && (len(authTLS.CertData) > 0 || authTLS.CertFile != ""):
+		// mTLS-only auth: the client certificate authenticates at the transport
+		// layer (e.g. Teleport proxy). No Grafana token or OAuth needed.
+		// Note: we check only for cert presence here, not cert+key pairing.
+		// TLS.ResolveFiles() enforces "both cert-file and key-file must be
+		// provided together" downstream, producing a clear error if the key
+		// is missing.
+		grafanaCfg.AuthMethod = "mtls"
+		method = "mtls"
+
 	default:
 		return "", nil, &ErrNeedInput{Fields: []string{"grafana-auth"}}
 	}
@@ -494,61 +707,86 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 	return method, grafanaCfg, nil
 }
 
-// resolveCloudAuth builds CloudConfig for Cloud targets (step 5).
+// resolveCloudAuth builds the cloud auth entry for Cloud targets (step 5),
+// alongside the stack slug to record on the stack entry when derivable.
 // If CloudToken is empty and this is a Cloud target, returns ErrNeedInput
 // unless Yes or agent mode is set (which allows skipping step 5: the CAP
 // token is optional — its absence just disables Cloud management features,
 // it does not block login).
-func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) {
+func resolveCloudAuth(opts Options, target Target) (*config.CloudEntry, string, error) {
 	if target != TargetCloud {
-		return nil, nil //nolint:nilnil // nil CloudConfig means "no Cloud auth"; caller checks for nil.
+		return nil, "", nil
 	}
 
+	slug := resolveStackSlug(opts.Server)
+
 	if opts.CloudToken != "" {
-		return cloudConfigForToken(opts), nil
+		return cloudEntryForToken(opts), slug, nil
 	}
 
 	// Cloud target with no token: skip if Yes or agent mode (D9, D10).
 	// Still persist the stack slug when derivable so datasource auto-discovery
 	// works on stacks with multiple signal datasources.
 	if opts.Yes || agent.IsAgentMode() {
-		if slug := resolveStackSlug(opts.Server); slug != "" {
-			return &config.CloudConfig{Stack: slug}, nil
-		}
-		return nil, nil //nolint:nilnil // nil CloudConfig means "Cloud auth skipped"; valid non-error state.
+		return nil, slug, nil
 	}
 
 	// About to prompt for the optional Cloud API token: frame it as a distinct,
 	// skippable step so it doesn't read as a continuation of OAuth.
 	announceCloudTokenStep(opts.Writer)
-	return nil, &ErrNeedInput{
+	return nil, "", &ErrNeedInput{
 		Fields:   []string{"cloud-token"},
 		Optional: true,
 		Hint:     cloudTokenHint(opts.Server),
 	}
 }
 
-// cloudConfigForToken builds the CloudConfig for a Cloud target that has a
-// resolved token. For an OAuth or kept (already-trusted) token it records the
-// GCOM endpoint for this stack env, matching `gcx cloud login`; without this a
-// later `gcx cloud login` on an ops/dev context would default to prod
-// grafana.com. A freshly pasted CAP token carries no such origin, so its API
-// URL is left to auto-derivation at use time.
-func cloudConfigForToken(opts Options) *config.CloudConfig {
-	cc := &config.CloudConfig{
-		Token:  opts.CloudToken,
-		APIUrl: opts.CloudAPIURL,
-	}
-	if root, ok := config.GCOMRootFromServerURL(opts.Server); ok && opts.CloudTokenFromOAuth {
-		cc.OAuthUrl = root
-		if cc.APIUrl == "" {
-			cc.APIUrl = root
+// ResolveCloudEndpoints resolves the OAuth origin and API destination as one
+// coherent pair. Explicit/sticky values in Options win. When only one endpoint
+// is supplied it represents the Cloud environment for both operations; callers
+// that intentionally use distinct endpoints must supply both. Otherwise the
+// pair is derived from the stack environment, then defaults to production.
+func ResolveCloudEndpoints(opts Options) (string, string) {
+	oauthURL := opts.CloudOAuthURL
+	apiURL := opts.CloudAPIURL
+
+	switch {
+	case oauthURL != "" && apiURL == "":
+		apiURL = oauthURL
+	case apiURL != "" && oauthURL == "":
+		oauthURL = apiURL
+	case oauthURL == "" && apiURL == "":
+		if root, ok := config.GCOMRootFromServerURL(opts.Server); ok {
+			oauthURL, apiURL = root, root
+		} else {
+			oauthURL, apiURL = "https://grafana.com", "https://grafana.com"
 		}
 	}
-	if slug := resolveStackSlug(opts.Server); slug != "" {
-		cc.Stack = slug
+
+	return config.NormalizeCloudURL(oauthURL), config.NormalizeCloudURL(apiURL)
+}
+
+// cloudEntryForToken builds the cloud auth entry for a Cloud target that has
+// a resolved token. OAuth-issued tokens land in the oauth-token field, pasted
+// CAP tokens in the token field. OAuth metadata and the exact endpoint pair
+// used to mint/use the token are persisted together.
+func cloudEntryForToken(opts Options) *config.CloudEntry {
+	oauthURL, apiURL := ResolveCloudEndpoints(opts)
+	if opts.CloudCredentialKind == CloudCredentialOAuth {
+		entry := &config.CloudEntry{
+			OAuthToken:          opts.CloudToken,
+			OAuthTokenExpiresAt: opts.CloudOAuthTokenExpiresAt,
+			OAuthScopes:         append([]string(nil), opts.CloudOAuthScopes...),
+			OAuthUrl:            oauthURL,
+			APIUrl:              apiURL,
+		}
+		return entry
 	}
-	return cc
+	return &config.CloudEntry{
+		Token:    opts.CloudToken,
+		OAuthUrl: oauthURL,
+		APIUrl:   apiURL,
+	}
 }
 
 // announceOAuthLogin surfaces a clear success message once the interactive OAuth
@@ -601,24 +839,38 @@ func warnCloudTokenUnvalidated(w io.Writer, e *GCOMStackError) {
 	fmt.Fprintln(w, msg+". Logging in anyway; some Cloud management features may be unavailable.")
 }
 
-// persistContext loads the existing config (tolerating ErrNotExist), upserts the
-// context, and writes it back. On re-auth (context exists), only token fields and
-// AuthMethod are mutated; other fields are preserved (D20, AC-009).
-func persistContext(ctx context.Context, opts Options, contextName string, tempCtx config.Context) error {
+// persistContext loads the existing config (tolerating ErrNotExist), upserts
+// the stack entry, cloud entry, and context, and writes it back. The stack is
+// named after the context (1:1); the cloud entry reuses the context's existing
+// binding, else one named after its API URL host. On re-auth (context exists),
+// only token fields and AuthMethod are mutated; other fields are preserved
+// (D20, AC-009).
+func persistContext(ctx context.Context, opts Options, contextName string, tempCtx config.Context, stackSlug string) error {
 	source := opts.ConfigSource
 	if source == nil {
 		source = config.StandardLocation()
 	}
 
-	cfg, err := config.Load(ctx, source)
+	cfg, err := config.LoadLoginMutationGuarded(ctx, source, opts.LoginMutationGuard)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("loading config: %w", err)
 	}
-	if errors.Is(err, os.ErrNotExist) {
-		cfg = config.Config{}
-	}
+	// Keep the source-absent revision marker returned by Load. Write uses it to
+	// avoid replacing a config another process creates while login is running.
+	// Load resolves only the file's current context. A login may target another
+	// existing context; resolve its deferred keychain references before merging
+	// auth so Write can replace and delete the exact old credential generation.
+	cfg.ResolveContext(contextName)
 
 	existing := cfg.Contexts[contextName]
+	// An unbound context may already have a same-named raw stack containing
+	// provider/resource settings. Bind and reuse that owned entry before the
+	// destination guard; replacing it with an empty stack would lose unrelated
+	// configuration and would bypass the existing-server confirmation.
+	if existing != nil && existing.Stack == "" && cfg.Stacks[existing.Name] != nil {
+		existing.Stack = existing.Name
+		cfg.Resolve()
+	}
 
 	// Server-mismatch guard: if the existing context points at a different
 	// server than the incoming one, require explicit confirmation before
@@ -627,8 +879,8 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 	// --yes alone does not bypass this guard; changing which server a context
 	// targets is a potentially destructive operation that requires an explicit signal.
 	if existing != nil && existing.Grafana != nil && tempCtx.Grafana != nil {
-		oldServer := existing.Grafana.Server
-		newServer := tempCtx.Grafana.Server
+		oldServer := NormalizeServerURL(existing.Grafana.Server)
+		newServer := NormalizeServerURL(tempCtx.Grafana.Server)
 		if oldServer != "" && newServer != "" && oldServer != newServer &&
 			!opts.AllowOverride {
 			return &ErrNeedClarification{
@@ -643,11 +895,17 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 	}
 
 	// Re-auth mode: preserve existing context fields, update only auth.
-	if existing != nil {
-		mergeAuthIntoExisting(existing, tempCtx, opts.OrgID)
-		cfg.CurrentContext = contextName // make current on success, same as new-context path
+	if existing == nil {
+		cfg.SetContext(contextName, true, config.Context{})
+		existing = cfg.Contexts[contextName]
 	} else {
-		cfg.SetContext(contextName, true, tempCtx)
+		cfg.CurrentContext = contextName // make current on success, same as new-context path
+	}
+	if err := mergeAuthIntoExisting(&cfg, existing, tempCtx, opts.OrgID, stackSlug, opts.CloudMutationSafety); err != nil {
+		return err
+	}
+	if err := opts.LoginMutationGuard.VerifyCurrentSources(); err != nil {
+		return err
 	}
 
 	if err := config.Write(ctx, source, cfg); err != nil {
@@ -656,31 +914,82 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 	return nil
 }
 
-// mergeAuthIntoExisting updates only auth-related fields on an existing context,
-// preserving all other user-configured fields (OrgID, Datasources, Providers, etc.).
-func mergeAuthIntoExisting(existing *config.Context, incoming config.Context, explicitOrgID int) {
-	if existing.Grafana == nil {
-		existing.Grafana = &config.GrafanaConfig{}
+// mergeAuthIntoExisting updates only auth-related fields on the context's
+// stack and cloud entries, preserving all other user-configured fields
+// (OrgID, Datasources, Providers, etc.). Missing entries are created: the
+// stack named after the context, the cloud entry via EnsureCloudEntry.
+func mergeAuthIntoExisting(
+	cfg *config.Config,
+	existing *config.Context,
+	incoming config.Context,
+	explicitOrgID int,
+	stackSlug string,
+	cloudSafety config.CloudMutationSafety,
+) error {
+	if incoming.Grafana != nil {
+		if err := mergeGrafanaAuthIntoStack(cfg, existing, incoming.Grafana, explicitOrgID, stackSlug); err != nil {
+			return err
+		}
 	}
-	g := existing.Grafana
-	src := incoming.Grafana
 
-	if src == nil {
-		return
+	// Update the cloud entry if the incoming context carries cloud auth.
+	if incoming.CloudEntry != nil {
+		existing.Cloud = cfg.EnsureCloudEntryWithSafety(existing.Cloud, *incoming.CloudEntry, existing.Name, cloudSafety)
 	}
 
-	// Always update the server (may have changed scheme or path).
+	cfg.Resolve()
+	return nil
+}
+
+// mergeGrafanaAuthIntoStack writes the incoming grafana auth onto the
+// context's stack entry, creating a stack named after the context when it has
+// none.
+func mergeGrafanaAuthIntoStack(cfg *config.Config, existing *config.Context, src *config.GrafanaConfig, explicitOrgID int, stackSlug string) error {
+	if existing.Stack == "" {
+		if cfg.Stacks[existing.Name] == nil {
+			cfg.SetStack(existing.Name, config.StackConfig{})
+		}
+		existing.Stack = existing.Name
+		cfg.Resolve()
+	}
+	stack := existing.StackEntry
+	if stack == nil {
+		// Tolerant login can repair a sole/explicit config whose context names a
+		// missing stack. Materialize that exact referenced owner before applying
+		// auth instead of dereferencing a dangling resolved view.
+		cfg.SetStack(existing.Stack, config.StackConfig{})
+		cfg.Resolve()
+		stack = existing.StackEntry
+	}
+	if stack.Grafana == nil {
+		stack.Grafana = &config.GrafanaConfig{}
+		cfg.Resolve()
+	}
+	g := stack.Grafana
+	finishDestinationMutation := cfg.PrepareSecretPathMutation("stacks." + existing.Stack + ".grafana.server")
+
+	// Update every credential destination before assigning incoming secrets.
+	// The completion callback clears old Grafana and SM generations whose
+	// server/proxy/TLS/username authority changed, without clearing the newly
+	// authenticated values below.
 	g.Server = src.Server
+	g.User = src.User
+	g.ProxyEndpoint = src.ProxyEndpoint
+	g.TLS = src.TLS
+	if err := finishDestinationMutation(); err != nil {
+		return err
+	}
 	g.AuthMethod = src.AuthMethod
 
 	// Clear all auth fields then repopulate with incoming values so that
 	// switching from OAuth to token (or vice-versa) leaves no stale credentials.
+	g.Password = src.Password
 	g.APIToken = src.APIToken
 	g.OAuthToken = src.OAuthToken
 	g.OAuthRefreshToken = src.OAuthRefreshToken
 	g.OAuthTokenExpiresAt = src.OAuthTokenExpiresAt
 	g.OAuthRefreshExpiresAt = src.OAuthRefreshExpiresAt
-	g.ProxyEndpoint = src.ProxyEndpoint
+	markGrafanaAuthMutation(cfg, existing.Stack)
 
 	// Carry the freshly discovered cloud stack ID through re-auth so re-logins
 	// keep it current. Left untouched when discovery yielded nothing (0).
@@ -690,15 +999,26 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context, ex
 
 	if explicitOrgID != 0 {
 		g.OrgID = int64(explicitOrgID)
+	} else if g.OrgID == 0 {
+		// Fresh contexts carry the on-prem OrgID=1 default from
+		// resolveGrafanaAuth; re-auth keeps the user's existing value.
+		g.OrgID = src.OrgID
 	}
 
-	// Sync TLS settings so that re-auth with updated or cleared certs
-	// takes effect. Setting to src.TLS (which may be nil) handles both
-	// the "update certs" and "remove certs" cases.
-	g.TLS = src.TLS
+	if stackSlug != "" {
+		stack.Slug = stackSlug
+	}
+	return nil
+}
 
-	// Update Cloud config if present in the incoming context.
-	if incoming.Cloud != nil {
-		existing.Cloud = config.MergeCloudInto(existing.Cloud, incoming.Cloud)
+func markGrafanaAuthMutation(cfg *config.Config, stackName string) {
+	owner := credentials.StackOwner(stackName)
+	for _, field := range []credentials.Field{
+		credentials.FieldGrafanaPassword,
+		credentials.FieldGrafanaToken,
+		credentials.FieldOAuthToken,
+		credentials.FieldOAuthRefreshToken,
+	} {
+		cfg.MarkSecretMutation(owner, field)
 	}
 }

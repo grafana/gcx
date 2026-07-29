@@ -12,6 +12,11 @@ With this workflow, you can define and manage dashboards as code, saving them to
       ```
     Check [the documentation](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/#feature_toggles) to learn more about enabling feature toggles.
 
+    The local preview proxy supports service-account token, Basic, and mTLS
+    contexts. Use a service-account token instead of OAuth for `gcx dev serve`;
+    OAuth is rejected before startup until refresh-token rotation can be
+    persisted safely by the long-running server.
+
 1. Use a dashboard generation script (for example, with the [Foundation SDK](https://github.com/grafana/grafana-foundation-sdk)). You can find an example implementation in the Grafana as code [hands-on lab repository](https://github.com/grafana/dashboards-as-code-workshop/tree/main/part-one-golang-starter).
 1. Serve and preview the output of the dashboard generator locally:
    ```shell

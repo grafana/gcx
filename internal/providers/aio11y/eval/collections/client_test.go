@@ -93,7 +93,7 @@ func TestClient_Get_NotFound(t *testing.T) {
 func TestClient_Create(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/collections", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/collections", r.URL.Path)
 
 		body, _ := io.ReadAll(r.Body)
 		var raw map[string]any

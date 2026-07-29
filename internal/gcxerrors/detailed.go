@@ -68,8 +68,10 @@ func (e DetailedError) Error() string {
 	blue := color.New(color.FgBlue).SprintFunc()
 
 	buffer.WriteString(red("Error: ") + e.Summary + "\n")
+	hasSections := false
 
 	if e.Details != "" {
+		hasSections = true
 		lines := strings.Split(e.Details, "\n")
 		buffer.WriteString("│\n")
 		for _, line := range lines {
@@ -86,6 +88,7 @@ func (e DetailedError) Error() string {
 	}
 
 	if showParent {
+		hasSections = true
 		fmt.Fprintf(&buffer, "│\n├─ %s\n│\n", blue("Details:"))
 		for line := range strings.SplitSeq(formattedParent, "\n") {
 			buffer.WriteString("│ " + line + "\n")
@@ -93,6 +96,7 @@ func (e DetailedError) Error() string {
 	}
 
 	if len(e.Suggestions) != 0 {
+		hasSections = true
 		fmt.Fprintf(&buffer, "│\n├─ %s\n│\n", blue("Suggestions:"))
 
 		for _, suggestion := range e.Suggestions {
@@ -101,10 +105,15 @@ func (e DetailedError) Error() string {
 	}
 
 	if e.DocsLink != "" {
+		hasSections = true
 		fmt.Fprintf(&buffer, "│\n├─ %s\n│\n│ %s\n", blue("Learn more:"), e.DocsLink)
 	}
 
-	buffer.WriteString("│\n└─\n")
+	// A summary with no sections renders as a single line; the box
+	// scaffolding would frame nothing.
+	if hasSections {
+		buffer.WriteString("│\n└─\n")
+	}
 
 	return buffer.String()
 }

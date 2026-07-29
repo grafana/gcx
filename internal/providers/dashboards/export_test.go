@@ -3,6 +3,8 @@ package dashboards
 import (
 	"io"
 
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -49,4 +51,22 @@ func NewListOptsForTest(flags *pflag.FlagSet) *listOpts {
 // EmitListPaginationHintForTest exposes the pagination hint helper.
 func EmitListPaginationHintForTest(w io.Writer, argv []string, list *unstructured.UnstructuredList, opts *listOpts) {
 	emitListPaginationHint(w, argv, list, opts)
+}
+
+// NewTestCreateCommand exposes the create command with an injected mutation
+// client and descriptor, bypassing real K8s discovery.
+func NewTestCreateCommand(client DashboardMutationClient, desc resources.Descriptor) *cobra.Command {
+	return newCreateCommandWithDeps(&mutationDeps{client: client, desc: desc})
+}
+
+// NewTestUpdateCommand exposes the update command with an injected mutation
+// client and descriptor, bypassing real K8s discovery.
+func NewTestUpdateCommand(client DashboardMutationClient, desc resources.Descriptor) *cobra.Command {
+	return newUpdateCommandWithDeps(&mutationDeps{client: client, desc: desc})
+}
+
+// NewTestDeleteCommand exposes the delete command with an injected mutation
+// client and descriptor, bypassing real K8s discovery.
+func NewTestDeleteCommand(client DashboardMutationClient, desc resources.Descriptor) *cobra.Command {
+	return newDeleteCommandWithDeps(&mutationDeps{client: client, desc: desc})
 }

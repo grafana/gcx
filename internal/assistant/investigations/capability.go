@@ -44,7 +44,7 @@ func (m APIMode) SupportsV2() bool {
 type capabilityProbe func(ctx context.Context, base *assistanthttp.Client) (APIMode, error)
 
 // DetectAPIMode returns the API mode for the current context. Results are
-// cached at contexts.<current>.providers.assistant.api-mode via
+// cached at stacks.<selected-stack>.providers.assistant.api-mode via
 // SaveProviderConfig and reused on subsequent invocations.
 //
 // Set GCX_ASSISTANT_API_VERSION to v1 or v2 to short-circuit the probe;

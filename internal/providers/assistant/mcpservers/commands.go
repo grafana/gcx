@@ -14,6 +14,7 @@ import (
 	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -23,7 +24,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-var openURL = deeplink.Open //nolint:gochecknoglobals // Test seam for browser-open failure handling.
+var openURL = deeplink.OpenWithStatus //nolint:gochecknoglobals // Test seam for browser-open failure handling.
 
 // newClient builds the MCP-servers client and returns the namespace from the
 // resolved Grafana config, so callers needing envelope parity with the
@@ -217,10 +218,13 @@ func displayServer(m mcpserver.MCPServer) *assistantmcp.Server {
 // isEnvelopeFormat reports whether the resolved output format must produce
 // the exact {apiVersion, kind, metadata, spec} envelope gcx resources
 // get/pull emits, so gcx assistant mcp-servers get/list and gcx resources
-// get mcpservers are byte-identical for JSON and YAML.
+// get mcpservers are byte-identical for JSON and YAML. The agents format is
+// a JSON-family format (it is the agent-mode default), so it carries the
+// same envelope — a machine consumer must see one shape regardless of
+// whether it asked with -o json or inherited the agents default.
 // Table/wide/text output keeps the flat, human-friendly Server view.
 func isEnvelopeFormat(f string) bool {
-	return f == string(format.JSON) || f == string(format.YAML)
+	return f == string(format.JSON) || f == string(format.YAML) || f == "agents"
 }
 
 // envelopeList is the JSON/YAML shape gcx resources get emits for a
@@ -525,11 +529,38 @@ func runCreate(cmd *cobra.Command, crud *adapter.TypedCRUD[mcpserver.MCPServer],
 	}
 
 	result := &assistantmcp.MutationResult{Operation: "created", Server: displayServer(created.Spec)}
-	if err := maybeAttachAuthURL(cmd, client, result); err != nil {
+	return finishMutation(cmd, client, &opts.IO, result)
+}
+
+// finishMutation completes a create/update after the mutation has already
+// persisted: the best-effort OAuth requirement check (attach the auth URL,
+// then open it or hint at it), the result document, and the exit code. An
+// OAuth-step failure must not suppress the result document or masquerade as
+// a failed mutation — previously it did both, exiting non-zero with nothing
+// on stdout although the server was created/updated. The failure summary is
+// carried in-band on the result document's `error` field (a consumer reading
+// only stdout must see why the exit code is ExitPartialFailure, and the
+// authUrl stays present when it is known); the document is emitted, the same
+// summary goes to stderr as a typed warning, and the exit code travels via
+// EmittedError, saying "the mutation succeeded but a follow-up step did not"
+// without a second stdout document.
+func finishMutation(cmd *cobra.Command, client *assistantmcp.Client, io *cmdio.Options, result *assistantmcp.MutationResult) error {
+	authErr := maybeAttachAuthURL(cmd, client, result)
+	if authErr == nil {
+		maybeOpenAuthURL(cmd, result)
+	} else {
+		result.Error = fmt.Sprintf(
+			"MCP server %s, but the OAuth requirement check failed: %v — if the server needs OAuth, authorize it in Grafana's Assistant settings",
+			result.Operation, authErr)
+	}
+	if err := io.Encode(cmd.OutOrStdout(), result); err != nil {
 		return err
 	}
-	maybeOpenAuthURL(cmd, result)
-	return opts.IO.Encode(cmd.OutOrStdout(), result)
+	if authErr != nil {
+		cmdio.EmitWarn(cmd.ErrOrStderr(), result.Error)
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, authErr)
+	}
+	return nil
 }
 
 type updateOpts struct {
@@ -578,33 +609,36 @@ header list, so any existing header you don't list is removed.`,
 			if err != nil {
 				return err
 			}
-
-			current, err := resolveServerRef(cmd.Context(), crud, args[0])
-			if err != nil {
-				return err
-			}
-			desired, err := applyUpdate(current.Spec, input)
-			if err != nil {
-				return err
-			}
-
-			obj := &adapter.TypedObject[mcpserver.MCPServer]{Spec: desired}
-			obj.SetName(desired.GetResourceName())
-			updated, err := crud.Update(cmd.Context(), desired.GetResourceName(), obj)
-			if err != nil {
-				return err
-			}
-
-			result := &assistantmcp.MutationResult{Operation: "updated", Server: displayServer(updated.Spec)}
-			if err := maybeAttachAuthURL(cmd, client, result); err != nil {
-				return err
-			}
-			maybeOpenAuthURL(cmd, result)
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return runUpdate(cmd, crud, client, opts, args[0], input)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// runUpdate resolves the ref, overlays the partial CLI update onto the
+// current manifest, persists it through the TypedCRUD path, and finishes via
+// finishMutation (result document first, OAuth-step failure as partial
+// failure).
+func runUpdate(cmd *cobra.Command, crud *adapter.TypedCRUD[mcpserver.MCPServer], client *assistantmcp.Client, opts *updateOpts, ref string, input assistantmcp.ServerInput) error {
+	current, err := resolveServerRef(cmd.Context(), crud, ref)
+	if err != nil {
+		return err
+	}
+	desired, err := applyUpdate(current.Spec, input)
+	if err != nil {
+		return err
+	}
+
+	obj := &adapter.TypedObject[mcpserver.MCPServer]{Spec: desired}
+	obj.SetName(desired.GetResourceName())
+	updated, err := crud.Update(cmd.Context(), desired.GetResourceName(), obj)
+	if err != nil {
+		return err
+	}
+
+	result := &assistantmcp.MutationResult{Operation: "updated", Server: displayServer(updated.Spec)}
+	return finishMutation(cmd, client, &opts.IO, result)
 }
 
 type deleteOpts struct {
@@ -643,7 +677,11 @@ while agent mode still requires explicit --force for destructive operations.`,
 				return err
 			}
 			if !proceed {
-				return nil
+				// Declining the prompt must not look like success: exit 0
+				// with empty stdout is indistinguishable from a completed
+				// delete for a piping consumer. Follow the cancelled-exit
+				// convention (ExitCancelled) with an explicit summary.
+				return cancelledDeleteError(args[0])
 			}
 			crud, client, err := newCRUDAndClient(cmd, loader)
 			if err != nil {
@@ -654,6 +692,18 @@ while agent mode still requires explicit --force for destructive operations.`,
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// cancelledDeleteError reports a declined confirmation prompt as an explicit
+// cancellation (exit ExitCancelled), matching the IRM cancelled-exit
+// convention, instead of the old silent exit 0 with empty stdout.
+func cancelledDeleteError(ref string) error {
+	exitCancelled := gcxerrors.ExitCancelled
+	return &gcxerrors.DetailedError{
+		Summary:  "delete cancelled",
+		Details:  fmt.Sprintf("Confirmation prompt was declined; MCP server %q was not deleted.", ref),
+		ExitCode: &exitCancelled,
+	}
 }
 
 // runDelete resolves the <id-or-name> ref to a single server via
@@ -764,14 +814,24 @@ func loadInputFile(path string) (assistantmcp.ServerInput, error) {
 	return input, nil
 }
 
+// maybeOpenAuthURL delivers the OAuth authorization URL to the consumer. The
+// browser open routes through the deeplink guard (internal/deeplink.Open):
+// that single shared guard skips the launch in agent mode and emits the typed
+// stderr hint itself — no bespoke agent-mode branch here. Machine consumers
+// always receive the URL in-band via the stdout result document's authUrl
+// field regardless; the reported open status only keeps the human stderr
+// guidance accurate.
 func maybeOpenAuthURL(cmd *cobra.Command, result *assistantmcp.MutationResult) {
 	if result == nil || result.AuthURL == "" {
 		return
 	}
-	cmdio.Info(cmd.ErrOrStderr(), "Opening OAuth authorization URL: %s", result.AuthURL)
-	if err := openURL(result.AuthURL); err != nil {
+	opened, err := openURL(result.AuthURL)
+	switch {
+	case err != nil:
 		cmdio.Warning(cmd.ErrOrStderr(), "Could not open browser: %v", err)
 		cmdio.Info(cmd.ErrOrStderr(), "Open the OAuth authorization URL manually: %s", result.AuthURL)
+	case opened:
+		cmdio.Info(cmd.ErrOrStderr(), "Opening OAuth authorization URL: %s", result.AuthURL)
 	}
 }
 

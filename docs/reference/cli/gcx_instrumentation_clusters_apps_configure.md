@@ -27,7 +27,10 @@ gcx instrumentation clusters apps configure <cluster> <namespace> [flags]
 ```
       --extended-metrics   Set extended Beyla metrics collection. Pass --extended-metrics=false to disable.
   -h, --help               help for configure
+      --jq string          jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --logging            Set log collection. Pass --logging=false to disable.
+  -o, --output string      Output format. One of: agents, json, text, yaml (default "text")
       --process-metrics    Set process-level metrics collection. Pass --process-metrics=false to disable.
       --profiling          Set continuous profiling collection. Pass --profiling=false to disable.
       --tracing            Set distributed tracing collection. Pass --tracing=false to disable.

@@ -212,11 +212,20 @@ func newContactPointsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 type contactPointsDeleteOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *contactPointsDeleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The delete result is a SingleMutation document through the codec
+	// system: the default text codec prints the familiar one-line success;
+	// agent mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{line: func(m cmdio.SingleMutation) string {
+		return "Deleted contact point " + m.Target.UID
+	}})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 //nolint:dupl // Similar structure to mute-timings and templates delete commands is intentional
@@ -227,8 +236,14 @@ func newContactPointsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "Delete a contact point by UID.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			ctx := cmd.Context()
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			// The confirmation exchange is a diagnostic, not the result —
+			// stderr keeps the prompt and "Aborted." out of the stdout
+			// document.
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Delete contact point "+args[0]+"?")
 			if err != nil {
 				return err
@@ -247,8 +262,8 @@ func newContactPointsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err := client.DeleteContactPoint(ctx, args[0]); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Deleted contact point %s", args[0])
-			return nil
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "contact-point", UID: args[0]})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

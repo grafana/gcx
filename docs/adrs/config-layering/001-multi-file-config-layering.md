@@ -5,6 +5,12 @@
 **Bead**: none
 **Supersedes**: none
 
+> **Proposed amendment:** [ADR-022](../config-v1/001-versioned-split-config-and-secret-trust.md)
+> would retain system/user/local discovery and explicit write targeting, but
+> replace field-level merge for credential-bearing entries with atomic `stacks`
+> and `cloud` entries and add a semantic preflight for layered legacy migration.
+> The implementation follows that model while ratification remains pending.
+
 ## Context
 
 gcx loads config from a single file — the first file found on the XDG search path. There is no way to:
@@ -16,21 +22,23 @@ gcx loads config from a single file — the first file found on the XDG search p
 
 This becomes a pain point as users work across multiple Grafana stacks and projects. The `--config` flag is a workaround but requires remembering the path and can't be automated.
 
-## Decision
+## Decision (with the proposed ADR-022 model)
 
 ### Config Layering
 
-The loader discovers and deep-merges configs from up to three file sources, then applies env var / flag overrides on top:
+The loader discovers configs from up to three file sources, combines them under
+the current atomic-entry rules, then applies environment/flag overrides to the
+selected runtime context:
 
 ```
 ┌─────────────────┐  priority 3 (lowest)
 │ System           │  $XDG_CONFIG_DIRS/gcx/config.yaml
 └────────┬────────┘  (Linux: /etc/xdg/, macOS: /Library/Application Support/)
-         ▼ deep merge
+         ▼ merge
 ┌─────────────────┐  priority 2
 │ User             │  $XDG_CONFIG_HOME/gcx/config.yaml
 └────────┬────────┘  (default: ~/.config/)
-         ▼ deep merge
+         ▼ merge
 ┌─────────────────┐  priority 1 (highest)
 │ Local            │  .gcx.yaml (in working directory)
 └────────┬────────┘
@@ -42,10 +50,17 @@ The loader discovers and deep-merges configs from up to three file sources, then
 --config flag: bypasses all layering, loads only that file.
 ```
 
-**Deep merge rules:**
-- Scalar fields (`current-context`): higher priority wins if non-empty; zero values in higher layers do not erase lower layer values
-- Maps (`contexts`, `providers`, `datasources`): merge by key — same key does a field-level merge, new keys are added
-- Struct fields within a context: higher priority wins per-field (e.g., user layer can set `grafana.token`, local layer can add `cloud.token` without erasing the token)
+**Current merge rules:**
+
+- Scalar fields such as `current-context` use the highest-priority nonempty
+  value.
+- Top-level maps merge by key, but each same-named `stacks` and `cloud` entry is
+  atomic: the highest-priority defining layer replaces the complete entry.
+  Credentials are therefore never field-merged with a destination from another
+  file.
+- Thin `contexts` and non-credential maps such as datasource defaults continue
+  to merge by key where their schema permits it.
+- `--config` bypasses discovery and makes that one file explicit/trusted.
 
 **Source tracking:** The merged `Config` gains a `Sources []ConfigSource` field (not serialized) that records which files contributed:
 
@@ -88,8 +103,8 @@ $ gcx config edit local --create  # creates .gcx.yaml if missing, then opens it
 When multiple configs are loaded, `config set` requires `--file <type>` to target a specific layer:
 
 ```bash
-gcx config set --file local contexts.prod.cloud.token my-token
-gcx config set --file user  contexts.prod.grafana.server https://prod.grafana.net
+gcx config set --file local cloud.grafana-com.token my-token
+gcx config set --file user  stacks.prod.grafana.server https://prod.grafana.net
 ```
 
 Without `--file` and multiple configs present: error with suggestion to add `--file`. With a single config: behaves as before.
@@ -112,7 +127,10 @@ Without `--file` and multiple configs present: error with suggestion to add `--f
 ### Negative
 - Layering adds a discovery step on every config load — negligible I/O cost (stat 3 files), but adds conceptual complexity
 - `config set` without `--file` now errors when multiple configs exist — breaking behavior for users with both user and local configs
-- Local config risks accidental secret commit if `cloud.token` is set per-project (mitigated by future `config check` warning)
+- Local config risks accidental secret commit if a `cloud.<name>.token` is set
+  per-project. Auto-discovered local files cannot supply fresh runtime
+  credentials or direct-provider destinations; selecting the file explicitly
+  is the user's trust decision.
 
 ### Neutral
 - `--config` flag continues to bypass all layering — explicit always wins

@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/grafana/gcx/internal/fleet"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instoutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
@@ -31,6 +32,7 @@ func defaultClusterConfig(clusterName string) instrumentation.Cluster {
 }
 
 type configureOpts struct {
+	IO            cmdio.Options
 	useDefaults   bool
 	yes           bool
 	costMetrics   bool
@@ -42,8 +44,7 @@ type configureOpts struct {
 // Validate of the mutually-exclusive-mode and --yes-required-for-defaults rules
 // requires inspecting flags.Changed(), which depends on the *cobra.Command
 // instance. Those checks live in runConfigure where the command is in scope.
-// Keeping Validate as a no-op here satisfies the canonical opts pattern.
-func (o *configureOpts) Validate() error { return nil }
+func (o *configureOpts) Validate() error { return o.IO.Validate() }
 
 func (o *configureOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.useDefaults, "use-defaults", false,
@@ -58,6 +59,10 @@ func (o *configureOpts) setup(flags *pflag.FlagSet) {
 		"Set clusterEvents. Pass --cluster-events=false to disable.")
 	flags.BoolVar(&o.nodeLogs, "node-logs", false,
 		"Set nodeLogs. Pass --node-logs=false to disable.")
+	// The configure result is a MutationResult document through the codec
+	// system: the default text codec prints the familiar one-liner; agent
+	// mode and explicit -o json/yaml get the structured document.
+	instoutput.BindMutationIO(&o.IO, flags)
 }
 
 func newConfigureCommand(loader fleet.ConfigLoader) *cobra.Command {
@@ -90,6 +95,9 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			clusterName := args[0]
+			if err := opts.Validate(); err != nil {
+				return err
+			}
 			r, err := fleet.LoadClientWithStack(ctx, loader)
 			if err != nil {
 				return fmt.Errorf("clusters configure: %w", err)
@@ -139,12 +147,10 @@ func runConfigure(
 		if err := client.SetK8SInstrumentation(ctx, clusterName, defaults, backendURLs); err != nil {
 			return fmt.Errorf("clusters configure: %w", err)
 		}
-		return instoutput.MutationResult{
-			Action:  "configure",
-			Target:  instoutput.Target{Cluster: clusterName},
-			Changed: true,
-			Fields:  []instoutput.FieldChange{{Name: "use-defaults", From: "custom", To: "defaults"}},
-		}.Emit(w)
+		result := instoutput.NewMutationResult("configure", instoutput.Target{Cluster: clusterName})
+		result.Changed = true
+		result.Fields = []instoutput.FieldChange{{Name: "use-defaults", From: "custom", To: "defaults"}}
+		return opts.IO.Encode(w, result)
 	}
 
 	// RMW mode: set listed flags, preserve unspecified.
@@ -187,11 +193,7 @@ func runConfigure(
 	}
 	post := mutateFn(preResp.Cluster)
 	if equal, _ := rmw.ClusterEqual(preResp.Cluster, post); equal {
-		return instoutput.MutationResult{
-			Action:  "configure",
-			Target:  instoutput.Target{Cluster: clusterName},
-			Changed: false,
-		}.Emit(w)
+		return opts.IO.Encode(w, instoutput.NewMutationResult("configure", instoutput.Target{Cluster: clusterName}))
 	}
 
 	err = rmw.Update[instrumentation.Cluster](ctx, getFn, mutateFn, setFn, rmw.ClusterEqual, 2)
@@ -203,9 +205,7 @@ func runConfigure(
 		}
 		return err
 	}
-	return instoutput.MutationResult{
-		Action:  "configure",
-		Target:  instoutput.Target{Cluster: clusterName},
-		Changed: true,
-	}.Emit(w)
+	result := instoutput.NewMutationResult("configure", instoutput.Target{Cluster: clusterName})
+	result.Changed = true
+	return opts.IO.Encode(w, result)
 }

@@ -379,60 +379,56 @@ func (r *RegistryIndex) getKindCandidates(resource string) ([]schema.GroupKind, 
 func (r *RegistryIndex) filterCandidates(
 	groupKindCandidates []schema.GroupKind, group, version string,
 ) (resources.Descriptor, bool) {
-	var groupVersion schema.GroupVersion
-
 	if group != "" {
-		found := false
+		var resolvedGroup string
 
 		// Check if the group was provided in the short form.
 		if g, ok := r.shortGroups[group]; ok {
-			groupVersion.Group = g
-			found = true
+			resolvedGroup = g
 		}
 
 		// Check if the group was provided in the long form.
 		if _, ok := r.longGroups[group]; ok {
-			groupVersion.Group = group
-			found = true
+			resolvedGroup = group
 		}
 
-		if !found {
+		if resolvedGroup == "" {
 			return resources.Descriptor{}, false
 		}
+
+		for _, gk := range groupKindCandidates {
+			if gk.Group == resolvedGroup {
+				return r.resolveDescriptor(gk, version)
+			}
+		}
+
+		return resources.Descriptor{}, false
 	}
 
-	// Check that the group is supported.
-	var kind string
+	// No group specified: pick the first candidate group that actually resolves
+	// for the requested (or preferred) version. This makes lookups like
+	// resource=foo version=v1 skip candidate groups that don't serve v1 instead
+	// of committing to the first group and failing.
 	for _, gk := range groupKindCandidates {
-		// TODO: there's an issue here that if we have resource & version (but not group)
-		// we end up choosing the first group that supports the resource, but this might not be what we want.
-		// e.g. the lookup could be for resource = Foo, version = v1
-		// And we use group = Bar but that group might not support v1
-		// (whereas some other group does support v1 and has the same resource Foo)
-		if groupVersion.Group == "" {
-			groupVersion.Group = gk.Group
-		}
-
-		if groupVersion.Group == gk.Group {
-			kind = gk.Kind
-			break
+		if desc, ok := r.resolveDescriptor(gk, version); ok {
+			return desc, true
 		}
 	}
 
-	// If somehow we didn't find a kind, we can't proceed.
-	// This could happen if the group & kind combination doesn't exist.
-	if kind == "" {
-		return resources.Descriptor{}, false
-	}
+	return resources.Descriptor{}, false
+}
 
-	if version != "" {
-		groupVersion.Version = version
-	} else if gv, ok := r.preferredVersions[groupVersion.Group]; ok {
+// resolveDescriptor resolves a group/kind candidate to its descriptor at the
+// requested version, or at the group's preferred version when none is given.
+func (r *RegistryIndex) resolveDescriptor(gk schema.GroupKind, version string) (resources.Descriptor, bool) {
+	groupVersion := schema.GroupVersion{Group: gk.Group, Version: version}
+
+	if version == "" {
+		gv, ok := r.preferredVersions[gk.Group]
+		if !ok {
+			return resources.Descriptor{}, false
+		}
 		groupVersion.Version = gv.Version
-	} else {
-		// Somehow the group is supported, but we don't have a preferred version for it.
-		// TODO: panic?
-		return resources.Descriptor{}, false
 	}
 
 	descs, ok := r.descriptors[groupVersion]
@@ -441,7 +437,7 @@ func (r *RegistryIndex) filterCandidates(
 	}
 
 	for _, desc := range descs {
-		if desc.Kind == kind {
+		if desc.Kind == gk.Kind {
 			return desc, true
 		}
 	}

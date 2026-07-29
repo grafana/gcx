@@ -216,6 +216,34 @@ func TestClient_SelectSeries(t *testing.T) {
 	}
 }
 
+func TestClient_LabelNames_UTF8CapabilityAndResponse(t *testing.T) {
+	const utf8LabelName = "\u90e8\u7f72"
+	selector := `{"` + utf8LabelName + `"="frontend"}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/LabelNames")
+		assert.Equal(t, []string{"*/*;allow-utf8-labelnames=true"}, r.Header.Values("Accept"))
+
+		var body map[string]any
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+			return
+		}
+		assert.Equal(t, []any{selector}, body["matchers"])
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"names":["service_name","` + utf8LabelName + `"]}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	resp, err := client.LabelNames(context.Background(), "test-uid", pyroscope.LabelNamesRequest{
+		Matchers: []string{selector},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"service_name", utf8LabelName}, resp.Names)
+}
+
 func TestClient_Query_RequestFields(t *testing.T) {
 	emptyFlamegraph := `{"flamegraph":{"names":[],"levels":[],"total":"0","maxSelf":"0"}}`
 
