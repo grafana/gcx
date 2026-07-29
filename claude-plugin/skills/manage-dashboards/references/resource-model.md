@@ -134,7 +134,7 @@ gcx dynamically discovers available resources using Grafana's API:
 
 ```bash
 # Discover what's available
-gcx resources schemas
+gcx resources list-types
 ```
 
 Discovery process:

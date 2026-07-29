@@ -67,13 +67,13 @@ gcx providers list
 ```bash
 gcx resources get dashboards -o wide --no-truncate
 gcx resources get folders --no-truncate
-gcx resources schemas
+gcx resources list-types
 ```
 
 Dashboards are K8s resources — listable, pushable, validateable. The `URL`
 column in `-o wide` gives a direct deep link for every dashboard. `gcx
-resources schemas` reveals the full type catalog including any plugin-installed
-types (e.g. Adaptive Logs `DropRule`). `gcx resources examples <Kind>` produces
+resources list-types` reveals the full type catalog including any plugin-installed
+types (e.g. Adaptive Logs `DropRule`). `gcx resources list-examples <Kind>` produces
 a ready-to-push template for provider-registered kinds (try `slos` or
 `DropRule`) — core kinds like dashboards and folders don't ship examples, so
 don't demo it on those.
@@ -115,9 +115,8 @@ gcx assistant prompt "Which service owns checkout-latency?" --continue
 gcx assistant prompt "Summarize CPU on prod" --json
 
 gcx assistant investigations list
-gcx assistant investigations todos <id>
-gcx assistant investigations timeline <id>
-gcx assistant investigations report <id>
+gcx assistant investigations get <id>
+gcx assistant investigations get-narrative <id>
 ```
 
 `prompt` runs natural language against the stack's live data — the Assistant
@@ -126,8 +125,7 @@ threads follow-ups via a stored context ID. `--json` emits a structured event
 stream for agent tools (Claude Code, Cursor) or scripts.
 
 Investigations are autonomous multi-step LLM runs. The read-only views show
-plan (`todos`), chronological activity (`timeline`), and final findings
-(`report`). `--open` on `investigations get` deep-links into the Grafana UI.
+lifecycle state (`get`) and the assistant's findings as prose (`get-narrative`). `--open` on `investigations get` deep-links into the Grafana UI.
 
 If `investigations list` is empty, note it and skip the per-investigation
 views. Do not create one during the demo.
@@ -168,8 +166,9 @@ Who's on-call right now. Pipeable into runbooks and automation.
 
 ### Cloud Provider Commands
 
-Require `cloud.token` and `cloud.stack`. Skip gracefully if not configured,
-and note what's needed.
+Require cloud auth (a `cloud:` entry bound to the context via `gcx cloud
+login`, or `GRAFANA_CLOUD_TOKEN`) and a resolvable stack slug. Skip gracefully
+if not configured, and note what's needed.
 
 ```bash
 gcx k6 load-tests list --no-truncate
@@ -202,7 +201,7 @@ the create commands for checks, schedules, and pipelines currently don't.)
 |-----------|--------|
 | `config check` fails | Stop. Ask user to fix the context before continuing. |
 | Signal datasource not found | Skip that signal type, note it. |
-| `cloud.token` / `cloud.stack` missing | Skip k6 and fleet, note what's needed. |
+| Cloud auth or stack slug missing | Skip k6 and fleet, note what's needed. |
 | Assistant unavailable (self-hosted, OAuth missing, 403) | Skip assistant section, note Cloud + OAuth requirement. |
 | Auth scope missing (403) | Note the missing scope, skip, continue. |
 | Empty list (0 resources) | Report "none found" — not an error; continue. |

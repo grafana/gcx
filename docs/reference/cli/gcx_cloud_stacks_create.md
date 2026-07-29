@@ -10,6 +10,9 @@ This provisions new infrastructure and may incur costs. The stack name, slug,
 and region cannot be changed after creation - double-check before running.
 Use --dry-run to preview the request first.
 
+Stack slugs may only contain lowercase letters and digits: the slug becomes
+the stack's <slug>.grafana.net subdomain.
+
 ```
 gcx cloud stacks create [flags]
 ```
@@ -26,8 +29,8 @@ gcx cloud stacks create [flags]
       --labels strings       Labels in key=value format (may be repeated)
       --name string          Stack name (required)
   -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
-      --region string        Region slug (e.g. us, eu). Use 'gcx cloud stacks regions' to list.
-      --slug string          Stack slug / subdomain (required)
+      --region string        Region slug (e.g. us, eu). Use 'gcx cloud stacks list-regions' to list.
+      --slug string          Stack slug / subdomain (lowercase letters and digits only; required)
       --url string           Custom domain URL
 ```
 

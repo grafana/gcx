@@ -7,6 +7,8 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/discovery"
 )
 
@@ -30,6 +32,26 @@ func validateAgainstLive(ctx context.Context, cfg config.NamespacedRESTConfig, c
 	}
 
 	return agent.CompareAgainstLive(entries, liveDescs), nil
+}
+
+// emitValidationResult writes the validation document to stdout through the
+// codec system and converts an uncovered-types outcome into the exit code.
+// The document — which already enumerates the uncovered types in every output
+// format — is the single result value on stdout, so the failure is signalled
+// with EmittedError: reportError honors the carried ExitPartialFailure
+// (covered types succeeded, uncovered types failed) without appending a
+// second error document to the stream.
+func emitValidationResult(w io.Writer, ioOpts *cmdio.Options, result *agent.ValidationResult) error {
+	if err := ioOpts.Encode(w, result); err != nil {
+		// Encoding failed midway — the stream is already broken, so the
+		// standard error path is the honest one.
+		return err
+	}
+	if len(result.Uncovered) > 0 {
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+			fmt.Errorf("%d resource types not covered by catalog", len(result.Uncovered)))
+	}
+	return nil
 }
 
 // writeValidationReport outputs a human-readable validation report.

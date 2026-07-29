@@ -27,6 +27,6 @@ Manage Grafana Cloud stacks (list, create, update, delete)
 * [gcx cloud stacks delete](gcx_cloud_stacks_delete.md)	 - Delete a Grafana Cloud stack.
 * [gcx cloud stacks get](gcx_cloud_stacks_get.md)	 - Get details of a single stack.
 * [gcx cloud stacks list](gcx_cloud_stacks_list.md)	 - List stacks in an organisation.
-* [gcx cloud stacks regions](gcx_cloud_stacks_regions.md)	 - List available regions for stack creation.
+* [gcx cloud stacks list-regions](gcx_cloud_stacks_list-regions.md)	 - List available regions for stack creation.
 * [gcx cloud stacks update](gcx_cloud_stacks_update.md)	 - Update a Grafana Cloud stack.
 

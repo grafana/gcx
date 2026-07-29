@@ -23,7 +23,9 @@ Query Agent Observability conversations.
 ### SEE ALSO
 
 * [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
+* [gcx agento11y conversations annotate](gcx_agento11y_conversations_annotate.md)	 - Annotate a conversation.
 * [gcx agento11y conversations get](gcx_agento11y_conversations_get.md)	 - Get a single conversation with all generations.
 * [gcx agento11y conversations list](gcx_agento11y_conversations_list.md)	 - List conversations.
+* [gcx agento11y conversations list-annotations](gcx_agento11y_conversations_list-annotations.md)	 - List annotations for a conversation.
 * [gcx agento11y conversations search](gcx_agento11y_conversations_search.md)	 - Search conversations with filters.
 

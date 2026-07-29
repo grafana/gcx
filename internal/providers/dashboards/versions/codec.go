@@ -1,4 +1,5 @@
-// Package versions provides the `gcx dashboards versions` command group.
+// Package versions provides the `gcx dashboards list-versions` command and
+// the `gcx dashboards versions` command group.
 package versions
 
 import (

@@ -1,13 +1,25 @@
 package assistant_test
 
 import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/grafana/gcx/internal/assistant"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestFormatTimeContext(t *testing.T) {
 	result := assistant.FormatTimeContext()
@@ -106,6 +118,101 @@ func TestClient_GetToken(t *testing.T) {
 
 	if c.GetToken() != "secret-token" {
 		t.Errorf("GetToken() = %q, want %q", c.GetToken(), "secret-token")
+	}
+}
+
+func TestClient_GetTokenConcurrentRefreshIsRaceFree(t *testing.T) {
+	var refreshCalls atomic.Int32
+	c := assistant.New(assistant.ClientOptions{
+		GrafanaURL: "https://test.grafana.net",
+		Token:      "stale-token",
+		TokenRefresher: func(context.Context) (string, error) {
+			refreshCalls.Add(1)
+			return "fresh-token", nil
+		},
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"data":{"id":"chat-id"}}`)),
+				Request:    req,
+			}, nil
+		})},
+	})
+
+	const callers = 32
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make(chan error, callers)
+	for range callers {
+		wg.Go(func() {
+			<-start
+			if _, err := c.GetChat(t.Context(), "chat-id"); err != nil {
+				errs <- err
+			}
+		})
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("GetChat() error = %v", err)
+	}
+	if got := refreshCalls.Load(); got != callers {
+		t.Fatalf("refresh calls = %d, want %d", got, callers)
+	}
+	if got := c.GetToken(); got != "fresh-token" {
+		t.Fatalf("GetToken() = %q, want %q", got, "fresh-token")
+	}
+	if got := refreshCalls.Load(); got != callers {
+		t.Fatalf("GetToken triggered refresh: calls = %d, want %d", got, callers)
+	}
+}
+
+func TestClientRefreshFailureStopsChatBeforeHTTPRequest(t *testing.T) {
+	requestCount := 0
+	c := assistant.New(assistant.ClientOptions{
+		GrafanaURL: "https://test.grafana.net",
+		Token:      "stale-token",
+		TokenRefresher: func(context.Context) (string, error) {
+			return "", errors.New("persistence failed")
+		},
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			requestCount++
+			return nil, errors.New("must not be called")
+		})},
+	})
+
+	result := c.Chat(t.Context(), "hello", assistant.StreamOptions{Timeout: 1})
+
+	if !result.Failed || !strings.Contains(result.ErrorMessage, "persistence failed") {
+		t.Fatalf("Chat() result = %#v, want token refresh failure", result)
+	}
+	if requestCount != 0 {
+		t.Fatalf("HTTP request count = %d, want 0", requestCount)
+	}
+}
+
+func TestClientRefreshFailureStopsReadBeforeHTTPRequest(t *testing.T) {
+	requestCount := 0
+	c := assistant.New(assistant.ClientOptions{
+		GrafanaURL: "https://test.grafana.net",
+		Token:      "stale-token",
+		TokenRefresher: func(context.Context) (string, error) {
+			return "", errors.New("lock failed")
+		},
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			requestCount++
+			return nil, errors.New("must not be called")
+		})},
+	})
+
+	_, err := c.GetChat(t.Context(), "chat-id")
+	if err == nil || !strings.Contains(err.Error(), "lock failed") {
+		t.Fatalf("GetChat() error = %v, want lock failure", err)
+	}
+	if requestCount != 0 {
+		t.Fatalf("HTTP request count = %d, want 0", requestCount)
 	}
 }
 

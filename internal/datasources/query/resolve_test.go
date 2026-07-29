@@ -53,14 +53,14 @@ func TestResolveDatasource(t *testing.T) {
 		assert.False(t, resolved.Persist)
 	})
 
-	t.Run("auto-discovers canonical cloud datasource when cloud.stack is configured", func(t *testing.T) {
+	t.Run("auto-discovers canonical cloud datasource when the stack slug is configured", func(t *testing.T) {
 		restCfg := testDatasourceRESTConfig(t, []map[string]any{
 			{"uid": "tempo-1", "name": "Tempo Ops", "type": "tempo"},
 			{"uid": "grafanacloud-traces", "name": "grafanacloud-ops-traces", "type": "tempo"},
 		})
 
 		resolved, err := dsquery.ResolveDatasource(context.Background(), "", &config.Context{
-			Cloud: &config.CloudConfig{Stack: "ops"},
+			StackEntry: &config.StackConfig{Slug: "ops"},
 		}, restCfg, "tempo")
 		require.NoError(t, err)
 		assert.Equal(t, "grafanacloud-traces", resolved.UID)
@@ -130,7 +130,7 @@ func TestResolveDatasource(t *testing.T) {
 		assert.Contains(t, err.Error(), "no tempo datasource found in Grafana")
 	})
 
-	t.Run("errors when multiple matching datasources are ambiguous and cloud.stack is unset", func(t *testing.T) {
+	t.Run("errors when multiple matching datasources are ambiguous and no stack slug is set", func(t *testing.T) {
 		restCfg := testDatasourceRESTConfig(t, []map[string]any{
 			{"uid": "tempo-1", "name": "traces-a", "type": "tempo"},
 			{"uid": "tempo-2", "name": "traces-b", "type": "tempo"},
@@ -139,7 +139,7 @@ func TestResolveDatasource(t *testing.T) {
 		_, err := dsquery.ResolveDatasource(context.Background(), "", nil, restCfg, "tempo")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "multiple tempo datasources found")
-		assert.Contains(t, err.Error(), "set cloud.stack or grafana.server to enable auto-discovery")
+		assert.Contains(t, err.Error(), "set the stack slug (gcx config set stacks.<name>.slug <slug>) or grafana.server to enable auto-discovery")
 		assert.Contains(t, err.Error(), "traces-a (tempo-1)")
 		assert.Contains(t, err.Error(), "traces-b (tempo-2)")
 	})
@@ -164,7 +164,7 @@ func TestResolveDatasource_TypePopulated(t *testing.T) {
 		})
 
 		resolved, err := dsquery.ResolveDatasource(context.Background(), "", &config.Context{
-			Cloud: &config.CloudConfig{Stack: "ops"},
+			StackEntry: &config.StackConfig{Slug: "ops"},
 		}, restCfg, "prometheus")
 		require.NoError(t, err)
 		assert.Equal(t, "prom-cloud", resolved.UID)

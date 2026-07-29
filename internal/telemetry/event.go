@@ -1,7 +1,7 @@
 package telemetry
 
-// ServiceName identifies gcx in the event envelope and as the OTLP resource
-// service.name; the usage-stats receiver dispatches on it.
+// ServiceName identifies gcx in the event envelope; the usage-stats receiver
+// dispatches on it.
 const ServiceName = "gcx"
 
 // Outcome values for Event.Outcome.
@@ -13,8 +13,8 @@ const (
 )
 
 // Event is the flat wide event describing one gcx invocation. Field names
-// follow the usage-stats JSON schema (snake_case); the same fields travel as
-// OTLP span/resource attributes on the wire.
+// follow the usage-stats JSON schema (snake_case); the json encoding of this
+// struct is exactly what travels on the wire (see Export).
 //
 // Privacy invariant: no field may carry argument or flag values, resource
 // names, hostnames, or anything else that identifies a person, an

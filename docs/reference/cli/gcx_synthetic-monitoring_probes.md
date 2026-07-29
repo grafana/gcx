@@ -27,5 +27,5 @@ Manage Synthetic Monitoring probes.
 * [gcx synthetic-monitoring probes delete](gcx_synthetic-monitoring_probes_delete.md)	 - Delete Synthetic Monitoring probes.
 * [gcx synthetic-monitoring probes deploy](gcx_synthetic-monitoring_probes_deploy.md)	 - Generate Kubernetes manifests for deploying an SM agent.
 * [gcx synthetic-monitoring probes list](gcx_synthetic-monitoring_probes_list.md)	 - List Synthetic Monitoring probes.
-* [gcx synthetic-monitoring probes token-reset](gcx_synthetic-monitoring_probes_token-reset.md)	 - Reset the auth token of a Synthetic Monitoring probe.
+* [gcx synthetic-monitoring probes reset-token](gcx_synthetic-monitoring_probes_reset-token.md)	 - Reset the auth token of a Synthetic Monitoring probe.
 

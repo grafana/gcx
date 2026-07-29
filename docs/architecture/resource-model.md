@@ -339,7 +339,7 @@ PULL pipeline (cmd/gcx/resources/pull.go):
 
 **Files:** `internal/resources/adapter/adapter.go`, `internal/resources/adapter/typed.go`, `internal/resources/adapter/identity.go`, `internal/resources/adapter/router.go`
 
-Some resource types are backed by provider REST APIs (SLO, Synthetic Monitoring, Alert)
+Some resource types are backed by provider REST APIs (SLO, Synthetic Monitoring)
 rather than by the Grafana k8s-compatible `/apis` endpoint. These types plug into the
 unified `resources` pipeline via the `ResourceAdapter` interface:
 
@@ -448,7 +448,7 @@ client is a REST adapter or the k8s dynamic client.
 ### Discovery Integration
 
 Provider descriptors are injected into the `RegistryIndex` via `RegisterStatic(desc, aliases)`
-so that provider types appear in `resources schemas` output and resolve correctly from
+so that provider types appear in `resources list-types` output and resolve correctly from
 selector strings like `"slos"` or `"rules"`.
 
 ---
@@ -529,5 +529,5 @@ PartialGVK                         Descriptor
 | `internal/resources/adapter/typed.go` | `TypedCRUD[T]`, `TypedObject[T]`, `TypedRegistration[T]` — generic adapter framework |
 | `internal/resources/adapter/register.go` | Global `Register()`, `AllRegistrations()` for self-registration |
 | `internal/resources/adapter/router.go` | `ResourceClientRouter` — routes CRUD to adapter or dynamic client |
-| `internal/resources/discovery/openapi.go` | `SchemaFetcher` — fetches OpenAPI v3 schemas with disk caching; used by `resources schemas` |
+| `internal/resources/discovery/openapi.go` | `SchemaFetcher` — fetches OpenAPI v3 schemas with disk caching; used by `resources list-types` |
 | `internal/config/context.go` | `ContextWithName` / `ContextNameFromCtx` — threads config context name through `context.Context` to adapter factories |

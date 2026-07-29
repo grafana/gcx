@@ -134,7 +134,7 @@ See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation wi
 
 - **Idempotent by default**: `push` is create-or-update. Safe to run repeatedly.
 - **Dry-run available**: `push` and `delete` accept `--dry-run`.
-- **Prompt before destructive ops**: `delete` prompts unless `--force` or `GCX_AUTO_APPROVE`. Agent mode auto-approves.
+- **Prompt before destructive operations**: cloud provider delete commands prompt for confirmation unless `--force` or `GCX_AUTO_APPROVE`; agent mode requires `--force`. `resources delete` has no prompt yet (coming in [#241](https://github.com/grafana/gcx/issues/241)) — type-only selectors require `--force` (`--yes` also enables it).
 - **No prompt for reversible ops**: push, pull, config changes do not prompt.
 
 See [docs/design/safety.md](docs/design/safety.md) for implementation patterns and flag precedence.

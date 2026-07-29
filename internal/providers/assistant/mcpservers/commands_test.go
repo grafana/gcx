@@ -10,10 +10,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/assistant/mcpserver"
 	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -35,6 +37,10 @@ func TestCreateOptsValidateRequiresNameAndURL(t *testing.T) {
 }
 
 func TestListOptsDefaultFormatAndAliases(t *testing.T) {
+	// The human default is resolved at flag-binding time; pin ambient
+	// agent-mode detection (e.g. CLAUDECODE=1) off before setup.
+	setAgentModeMCP(t, false)
+
 	opts := &listOpts{}
 	flags := pflag.NewFlagSet("list", pflag.ContinueOnError)
 	opts.setup(flags)
@@ -229,25 +235,68 @@ func TestRunListNoHintWhenPageIsShort(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+// TestDeletePromptsAndAbortsWithoutConfigLoad: declining the confirmation
+// prompt is an explicit cancellation (ExitCancelled), never a silent exit 0 —
+// an empty-stdout success would be indistinguishable from a completed delete
+// for a piping consumer.
 func TestDeletePromptsAndAbortsWithoutConfigLoad(t *testing.T) {
+	// The interactive [y/N] prompt only renders outside agent mode; pin
+	// ambient agent-mode detection (e.g. CLAUDECODE=1) off.
+	setAgentModeMCP(t, false)
+
 	cmd := newDeleteCommand(&providers.ConfigLoader{})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
 	cmd.SetIn(strings.NewReader("n\n"))
 	cmd.SetArgs([]string{"GitHub"})
 
-	require.NoError(t, cmd.Execute())
+	err := cmd.Execute()
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &detailed)
+	require.NotNil(t, detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitCancelled, *detailed.ExitCode)
+	assert.Contains(t, detailed.Summary, "cancelled")
 	// Prompts go to stderr so structured stdout stays machine-readable.
 	assert.Contains(t, errOut.String(), `Delete MCP server "GitHub"?`)
 	assert.Contains(t, errOut.String(), "Aborted.")
 	assert.Empty(t, out.String())
 }
 
+// TestDeleteAgentModeRequiresForce: agent mode must never block on the
+// interactive [y/N] prompt — without --force the command fails immediately
+// with the actionable typed error, even when stdin has an answer ready.
+func TestDeleteAgentModeRequiresForce(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(agent.ResetForTesting)
+	t.Setenv("GCX_AUTO_APPROVE", "")
+
+	cmd := newDeleteCommand(&providers.ConfigLoader{})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetIn(strings.NewReader("y\n"))
+	cmd.SetArgs([]string{"GitHub"})
+
+	err := cmd.Execute()
+	require.ErrorIs(t, err, providers.ErrAgentModeRequiresForce)
+	assert.Empty(t, out.String())
+	assert.NotContains(t, errOut.String(), "[y/N]", "agent mode must not render the interactive prompt")
+}
+
 func TestMaybeOpenAuthURLWarnsWhenBrowserOpenFails(t *testing.T) {
+	// The browser-open path is gated off in agent mode (by the shared
+	// deeplink guard behind the openURL seam); pin ambient agent-mode
+	// detection (e.g. CLAUDECODE=1) off to test the human path.
+	setAgentModeMCP(t, false)
+
 	origOpenURL := openURL
-	openURL = func(string) error {
-		return errors.New("browser unavailable")
+	openURL = func(string) (bool, error) {
+		return true, errors.New("browser unavailable")
 	}
 	t.Cleanup(func() { openURL = origOpenURL })
 

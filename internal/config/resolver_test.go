@@ -15,69 +15,26 @@ func TestDefaultDatasourceUID(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "new datasources key takes precedence over legacy field (prometheus)",
+			name: "returns the per-kind datasources entry",
 			ctx: config.Context{
-				Datasources:                 map[string]string{"prometheus": "new-uid"},
-				DefaultPrometheusDatasource: "legacy-uid",
+				Datasources: map[string]string{"prometheus": "prom-uid"},
 			},
 			kind:     "prometheus",
-			expected: "new-uid",
+			expected: "prom-uid",
 		},
 		{
-			name: "legacy prometheus fallback when no datasources entry",
-			ctx: config.Context{
-				DefaultPrometheusDatasource: "legacy-uid",
-			},
-			kind:     "prometheus",
-			expected: "legacy-uid",
-		},
-		{
-			name: "new datasources key takes precedence over legacy field (loki)",
-			ctx: config.Context{
-				Datasources:           map[string]string{"loki": "new-loki-uid"},
-				DefaultLokiDatasource: "legacy-loki-uid",
-			},
-			kind:     "loki",
-			expected: "new-loki-uid",
-		},
-		{
-			name: "legacy loki fallback when no datasources entry",
-			ctx: config.Context{
-				DefaultLokiDatasource: "legacy-loki-uid",
-			},
-			kind:     "loki",
-			expected: "legacy-loki-uid",
-		},
-		{
-			name: "new datasources key takes precedence over legacy field (pyroscope)",
-			ctx: config.Context{
-				Datasources:                map[string]string{"pyroscope": "new-pyro-uid"},
-				DefaultPyroscopeDatasource: "legacy-pyro-uid",
-			},
-			kind:     "pyroscope",
-			expected: "new-pyro-uid",
-		},
-		{
-			name: "legacy pyroscope fallback when no datasources entry",
-			ctx: config.Context{
-				DefaultPyroscopeDatasource: "legacy-pyro-uid",
-			},
-			kind:     "pyroscope",
-			expected: "legacy-pyro-uid",
-		},
-		{
-			name:     "returns empty string when neither datasources entry nor legacy field set (loki)",
+			name:     "returns empty string when no datasources entry set",
 			ctx:      config.Context{},
 			kind:     "loki",
 			expected: "",
 		},
 		{
-			name: "legacy tempo fallback when no datasources entry",
+			name: "datasources map with different kind does not match",
 			ctx: config.Context{
-				DefaultTempoDatasource: "legacy-tempo-uid",
+				Datasources: map[string]string{"prometheus": "prom-uid"},
 			},
-			kind:     "tempo",
-			expected: "legacy-tempo-uid",
+			kind:     "loki",
+			expected: "",
 		},
 		{
 			name:     "returns empty string for unknown kind",
@@ -86,22 +43,12 @@ func TestDefaultDatasourceUID(t *testing.T) {
 			expected: "",
 		},
 		{
-			name: "datasources map with different kind does not match",
+			name: "empty datasources entry returns empty string",
 			ctx: config.Context{
-				Datasources:           map[string]string{"prometheus": "prom-uid"},
-				DefaultLokiDatasource: "loki-uid",
-			},
-			kind:     "loki",
-			expected: "loki-uid",
-		},
-		{
-			name: "empty datasources entry falls through to legacy field",
-			ctx: config.Context{
-				Datasources:                 map[string]string{"prometheus": ""},
-				DefaultPrometheusDatasource: "legacy-uid",
+				Datasources: map[string]string{"prometheus": ""},
 			},
 			kind:     "prometheus",
-			expected: "legacy-uid",
+			expected: "",
 		},
 	}
 

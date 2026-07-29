@@ -35,7 +35,7 @@ For each FAIL: capture the error message and root cause.
 
 Every TypedCRUD resource MUST be verified via the adapter path.
 
-| resource alias | `resources schemas` visible? | `resources get {alias}` works? | `resources get {alias}/{id} -o json` works? | notes |
+| resource alias | `resources list-types` visible? | `resources get {alias}` works? | `resources get {alias}/{id} -o json` works? | notes |
 |----------------|------------------------------|-------------------------------|---------------------------------------------|-------|
 | {alias} | YES / NO | YES / NO | YES / NO | {error details if NO} |
 

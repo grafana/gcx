@@ -4,6 +4,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
+	"github.com/grafana/gcx/internal/providers/aio11y/scores"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -24,6 +25,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newGetCommand(loader),
+		scores.NewListScoresCommand(loader),
 	)
 	return cmd
 }

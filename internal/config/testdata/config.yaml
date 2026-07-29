@@ -1,6 +1,10 @@
-contexts:
+version: 1
+stacks:
   local:
     grafana:
       server: http://localhost:3000/
       token: local_token
+contexts:
+  local:
+    stack: local
 current-context: local

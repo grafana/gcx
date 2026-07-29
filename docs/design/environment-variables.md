@@ -6,6 +6,24 @@
 
 ## 10. Environment Variable Reference
 
+Context-scoped variables are applied after `--context` selection to the
+selected context's in-memory view. They do not mutate another context and are
+never persisted implicitly by login, provider, or datasource write-back paths.
+`GRAFANA_CLOUD_*` authentication variables synthesize an ephemeral Cloud entry
+for that invocation. When an endpoint override changes a credential
+destination, supply the corresponding credential override in the same
+invocation. Login commands turn one supplied endpoint into a coherent OAuth/API
+pair; set both endpoint variables when a custom environment deliberately uses
+distinct origins.
+
+Auto-discovered repository `.gcx.yaml` files cannot attach runtime secrets or
+external mTLS client keypairs to destinations the file supplies. Select the
+file explicitly with `--config .gcx.yaml` or `GCX_CONFIG` to authorize it.
+Provider-specific direct endpoint overrides must be paired with their matching
+credential environment variable and are resolved from the same config
+snapshot. That pair still does not authorize an auto-discovered repository
+stack because its TLS and proxy settings affect the transport.
+
 ### Core Variables
 
 | Variable | Scope | Effect |
@@ -16,7 +34,18 @@
 | `GRAFANA_PASSWORD` | context | Basic auth password |
 | `GRAFANA_ORG_ID` | context | On-prem org ID (namespace) |
 | `GRAFANA_STACK_ID` | context | Cloud stack ID (namespace) |
+| `GRAFANA_PROXY_ENDPOINT` | context | Assistant backend used for Grafana OAuth proxy routing |
+| `GRAFANA_TLS_CERT_FILE` | context | mTLS client certificate file |
+| `GRAFANA_TLS_KEY_FILE` | context | mTLS client private-key file |
+| `GRAFANA_TLS_CA_FILE` | context | Custom CA bundle file |
+| `GRAFANA_CLOUD_TOKEN` | context | Cloud Access Policy token on an ephemeral Cloud entry |
+| `GRAFANA_CLOUD_API_URL` | context | Grafana Cloud API destination on the ephemeral entry |
+| `GRAFANA_CLOUD_OAUTH_URL` | context | Grafana Cloud OAuth issuer on the ephemeral entry |
+| `GRAFANA_CLOUD_STACK` | context | Selected stack's Grafana Cloud slug |
 | `GCX_CONFIG` | global | Config file path override |
+| `GCX_TELEMETRY` | global | `enabled`, `disabled`, or `log`; takes precedence over `DO_NOT_TRACK` and config |
+| `DO_NOT_TRACK` | global | Disable anonymous telemetry when `1` or `true` unless `GCX_TELEMETRY` overrides it |
+| `GCX_NO_UPDATE_NOTIFIER` | global | Disable the periodic gcx/skill update notifier when non-empty |
 | `NO_COLOR` | global | Disable color output ([no-color.org](https://no-color.org/)) |
 
 ### Provider Variables

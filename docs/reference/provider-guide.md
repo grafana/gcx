@@ -103,7 +103,7 @@ import "fmt"
 func (p *SLOProvider) Validate(cfg map[string]string) error {
     if cfg["token"] == "" {
         return fmt.Errorf("slo provider: token is required; "+
-            "set it with: gcx config set contexts.<ctx>.providers.slo.token <value>")
+            "set it with: gcx config set stacks.<name>.providers.slo.token <value>")
     }
     return nil
 }
@@ -313,8 +313,16 @@ Both paths carry `LoggingRoundTripper` and respect `--insecure-log-http-payload`
 
 ### Direct construction (when CloudRESTConfig is unavailable)
 
-When the provider receives credentials directly (not via `LoadCloudConfig`),
-use `httputils.NewDefaultClient(ctx)` in the constructor:
+When a provider sends credentials to its own direct API, first load the
+destination and all Grafana/Cloud credentials with
+`ConfigLoader.LoadDirectProviderSnapshot`. Declare the provider endpoint keys,
+their corresponding runtime credential variable, and whether the path requires
+Grafana validation. This single-snapshot API rejects repository-local trust
+splicing and endpoint-only environment overrides before returning secrets or
+performing network I/O.
+
+After that trust check, when `CloudRESTConfig` is unavailable, use
+`httputils.NewDefaultClient(ctx)` in the constructor:
 
 ```go
 func NewClient(ctx context.Context, baseURL, token string) *Client {
@@ -391,12 +399,34 @@ This self-registration pattern (via `init()`) is handled by Go's import system â
 
 ### YAML Config
 
-Provider config lives in the `providers` map within a context:
+Provider config lives in the `providers` map on a stack entry
+(`stacks.<name>.providers.<provider>`); contexts reach it through their
+`stack:` reference. `ConfigLoader.SaveProviderConfig` persists keys there,
+creating the stack entry if the context has none. It reloads and changes only
+the raw destination file, so values from environment overrides or other config
+layers are never flattened into that file. An explicit `--config` or
+`GCX_CONFIG` identifies the destination. Without one, write-back proceeds only
+when discovery found exactly one source; multiple sources require an explicit
+target and no source means there is nothing to persist.
+Derived provider tokens, endpoints, and caches are not written implicitly to
+an auto-discovered repository `.gcx.yaml`; `SaveProviderConfig` returns
+`ErrAutoLocalProviderWriteback` so best-effort cache callers can continue
+without persistence. `--config` or `GCX_CONFIG` explicitly authorizes the same
+file.
+
+When a provider adapter is mounted under `gcx resources`, use the operation's
+`context.Context` for every `ConfigLoader` call. The resources parent carries
+its `--config` selection there, and zero-value loaders inherit it for direct
+provider snapshots, Grafana/Cloud reads, refresh persistence, and write-back.
+Do not start an independent discovery pass or discard that context in a lazy
+adapter factory; doing so can route a read or destructive mutation to another
+stack.
 
 ```yaml
 # ~/.config/gcx/config.yaml
+version: 1
 current-context: prod
-contexts:
+stacks:
   prod:
     grafana:
       server: https://grafana.example.com
@@ -407,13 +437,17 @@ contexts:
         url: https://slo.example.com
       oncall:
         token: glsa_...
+contexts:
+  prod:
+    stack: prod
 ```
 
-Set individual keys with the config command (dotted-path notation):
+Set individual keys with the config command using literal, fully-qualified
+dotted paths that target a stack by name:
 
 ```bash
-gcx config set contexts.prod.providers.slo.token glsa_abc123
-gcx config set contexts.prod.providers.slo.url https://slo.example.com
+gcx config set stacks.mystack.providers.slo.token glsa_abc123
+gcx config set stacks.prod.providers.slo.url https://slo.example.com
 ```
 
 ### Environment Variables
@@ -437,7 +471,18 @@ export GRAFANA_PROVIDER_SLO_TOKEN=glsa_abc123
 export GRAFANA_PROVIDER_SLO_ORG_ID=42
 ```
 
-Env vars take precedence over YAML config values.
+Nonblank env vars take precedence over YAML config values. A blank or
+whitespace-only value for a registered `ConfigKey{Secret: true}` is treated as
+absent, so inherited CI state cannot erase a stored credential or authorize a
+destination change. The Synthetic Monitoring token receives the same treatment
+through its trust-bound credential field. Blank non-secret and unknown provider
+keys retain their existing override semantics.
+
+For a direct-auth endpoint, an endpoint environment override must be paired
+with the corresponding credential environment variable in the same invocation;
+it may not redirect a credential loaded from disk or the keychain. This pair
+does not authorize TLS or proxy settings from an auto-discovered repository
+stack, which still requires explicit `--config`/`GCX_CONFIG` selection.
 
 ---
 

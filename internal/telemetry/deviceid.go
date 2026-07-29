@@ -11,10 +11,16 @@ import (
 
 const deviceIDFileName = "device-id"
 
-// DeviceIDPath returns the full path of the persistent device ID file.
-// Deleting the file resets the ID.
+// DeviceIDPath returns the full path of the persistent device ID file, or ""
+// when no state home is known (HOME and XDG_STATE_HOME both unset), so the ID
+// file cannot land relative to the current directory. Deleting the file
+// resets the ID.
 func DeviceIDPath() string {
-	return filepath.Join(xdg.StateHome(), "gcx", deviceIDFileName)
+	stateHome := xdg.StateHome()
+	if stateHome == "" {
+		return ""
+	}
+	return filepath.Join(stateHome, "gcx", deviceIDFileName)
 }
 
 // DeviceID returns the anonymous per-install device ID and whether it is
@@ -34,6 +40,10 @@ func DeviceID() (string, bool) {
 		return "", false
 	}
 	id := fresh.String()
+	// No known state home: nowhere sensible to persist, so stay ephemeral.
+	if path == "" {
+		return id, false
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return id, false
 	}

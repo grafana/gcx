@@ -4,7 +4,7 @@ Delete resources from Grafana
 
 ### Synopsis
 
-Delete resources from Grafana by selector or from local files. Use --dry-run to preview changes. Use --yes to skip confirmation prompts. Use --force to delete all resources of a given type.
+Delete resources from Grafana by selector or from local files. Use --dry-run to preview changes. Named selectors delete without confirmation. Use --force to delete all resources of a given type (--yes also enables --force).
 
 ```
 gcx resources delete [RESOURCE_SELECTOR]... [flags]
@@ -53,11 +53,14 @@ gcx resources delete [RESOURCE_SELECTOR]... [flags]
       --dry-run                         If set, the delete operation will be simulated
       --force                           Delete all resources of the specified resource types
   -h, --help                            help for delete
+      --jq string                       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string                     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-concurrent int              Maximum number of concurrent operations (default 10)
       --on-error string                 How to handle errors during resource operations:
                                           ignore — continue processing all resources and exit 0
-                                          fail   — continue processing all resources and exit 1 if any failed (default)
-                                          abort  — stop on the first error and exit 1 (default "fail")
+                                          fail   — continue processing all resources and exit 4 (partial failure) if any failed (default)
+                                          abort  — stop on the first error and exit non-zero (default "fail")
+  -o, --output string                   Output format. One of: agents, json, text, yaml (default "text")
   -p, --path strings                    Path on disk containing the resources to delete
   -y, --yes                             Auto-approve destructive operations (automatically enables --force)
 ```

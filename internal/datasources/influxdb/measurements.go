@@ -34,23 +34,23 @@ func (opts *measurementsOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-// MeasurementsCmd returns the `measurements` subcommand.
+// MeasurementsCmd returns the `list-measurements` subcommand.
 func MeasurementsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &measurementsOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "measurements",
+		Use:   "list-measurements",
 		Short: "List measurements",
 		Long:  "List measurement names from an InfluxDB datasource.",
 		Example: `
   # List all measurements (use datasource UID, not name)
-  gcx datasources influxdb measurements -d UID
+  gcx datasources influxdb list-measurements -d UID
 
   # List measurements with Flux mode (requires --bucket)
-  gcx datasources influxdb measurements -d UID --bucket my-bucket
+  gcx datasources influxdb list-measurements -d UID --bucket my-bucket
 
   # Output as JSON
-  gcx datasources influxdb measurements -d UID -o json`,
+  gcx datasources influxdb list-measurements -d UID -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -94,7 +94,7 @@ func MeasurementsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources influxdb measurements -d UID",
+		agent.AnnotationLLMHint:   "gcx datasources influxdb list-measurements -d UID",
 	}
 
 	opts.setup(cmd.Flags())

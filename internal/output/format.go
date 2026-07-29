@@ -43,10 +43,13 @@ type Options struct {
 
 	customCodecs        map[string]format.Codec
 	defaultFormat       string
+	defaultFormatPinned bool
+	hiddenFormats       map[string]bool // formats removed from the advertised menu (see HideFormat)
 	flags               *pflag.FlagSet
 	jsonFieldValidator  func(fields []string) error // optional; invoked before field extraction when --json is used
 	jqQuery             *gojq.Query                 // compiled --jq query; nil when flag not set
 	jsonFieldsHintShown bool
+	listLimit           *int // registered by BindListLimit; Validate enforces >= 0
 }
 
 // SetJSONFieldValidator registers an optional validator invoked before field
@@ -72,6 +75,35 @@ func (opts *Options) DefaultFormat(name string) {
 	opts.defaultFormat = name
 }
 
+// PinDefaultFormat sets the command's default output format and exempts it
+// from the agent-mode "agents" default override applied in BindFlags.
+//
+// File-writing commands (resources pull, resources edit) must use this:
+// their OutputFormat doubles as the on-disk file extension and the encoder,
+// so silently flipping the default to the agents codec in agent mode would
+// write `<name>.agents` files — and, for payloads above the spill threshold,
+// write a spill-summary envelope instead of the resource content. An explicit
+// -o flag from the user still wins over the pinned default.
+func (opts *Options) PinDefaultFormat(name string) {
+	opts.defaultFormat = name
+	opts.defaultFormatPinned = true
+}
+
+// HideFormat removes a format name from the advertised format menu — the
+// -o usage string built by BindFlags and the "Valid formats are: ..."
+// error listings — without unregistering the codec. Resolution is
+// unaffected: an explicit -o <name> still reaches the codec, so the
+// command's own Validate keeps owning the rejection with a
+// context-specific error. Used by commands that reject a built-in display
+// codec (resources pull and edit reject `agents`), so the menu never
+// advertises a format the command will refuse. Call before BindFlags.
+func (opts *Options) HideFormat(name string) {
+	if opts.hiddenFormats == nil {
+		opts.hiddenFormats = make(map[string]bool)
+	}
+	opts.hiddenFormats[name] = true
+}
+
 func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	defaultFormat := "json"
 	if opts.defaultFormat != "" {
@@ -79,8 +111,10 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	}
 
 	// Agent mode: override any per-command default with the agents codec.
-	// Explicit -o flag from user still takes precedence (via cobra flag parsing).
-	if agent.IsAgentMode() {
+	// Explicit -o flag from user still takes precedence (via cobra flag
+	// parsing). Commands whose default was pinned via PinDefaultFormat
+	// (file-writing commands) are exempt from the override.
+	if agent.IsAgentMode() && !opts.defaultFormatPinned {
 		defaultFormat = string(agentsFormat)
 	}
 
@@ -101,6 +135,10 @@ func (opts *Options) Validate() error {
 	codec := opts.codecFor(opts.OutputFormat)
 	if codec == nil {
 		return fmt.Errorf("unknown output format '%s'. Valid formats are: %s", opts.OutputFormat, strings.Join(opts.allowedCodecs(), ", "))
+	}
+
+	if opts.listLimit != nil && *opts.listLimit < 0 {
+		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 means all results are returned)", *opts.listLimit)
 	}
 
 	if err := opts.applyJSONFlag(); err != nil {
@@ -195,6 +233,13 @@ func (opts *Options) applyJQFlag() error {
 	return nil
 }
 
+// JQActive reports whether a --jq transformation is in effect. Commands that
+// build fused envelopes (bypassing Options.Encode) must not do so when jq is
+// active — the envelope would silently drop the user's transformation.
+func (opts *Options) JQActive() bool {
+	return opts.jqQuery != nil
+}
+
 // Codec returns the codec for the configured output format.
 // We have to return an interface here.
 func (opts *Options) Codec() (format.Codec, error) { //nolint:ireturn
@@ -220,11 +265,15 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 	// not realize --jq exists for transformation (group_by, filter, count).
 	// Suppressed when --jq is already in use (caller already has the more
 	// powerful tool) or when --json list is requested (discovery output is
-	// not a transformation target). Emitted once per invocation to stderr
-	// (never pollutes stdout) as JSONL {"class":"hint",...} via emitHint
-	// (FR-104). Suppressed outside agent mode to avoid noise on TTYs.
+	// not a transformation target). Also suppressed for pinned-default
+	// (file-writing) commands: their encode fills a file or editor buffer,
+	// not stdout, and they reject --json/--jq — recommending those flags
+	// would contradict the command's own validation. Emitted once per
+	// invocation to stderr (never pollutes stdout) as JSONL
+	// {"class":"hint",...} via emitHint (FR-104). Suppressed outside agent
+	// mode to avoid noise on TTYs.
 	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
-	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && !opts.JSONDiscovery && opts.jqQuery == nil {
+	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && !opts.JSONDiscovery && opts.jqQuery == nil && !opts.defaultFormatPinned {
 		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter
 		if w == nil {
@@ -293,6 +342,19 @@ func marshalToSampleMap(value any) (map[string]any, error) {
 		}
 		return nil, errors.New("cannot discover fields from empty UnstructuredList")
 	case map[string]any:
+		// A dynamic map carrying the reserved list_meta key is a list
+		// envelope: sample item fields exactly like the marshalled-struct
+		// path, so list_meta.* paths are never listed. The map may hold
+		// native Go values (a *ListMeta, typed item slices), so sampling
+		// runs on a JSON-normalized copy, with the reserved shape validated
+		// after normalization. All other maps stay as-is — raw passthrough
+		// payloads (e.g. gcx api responses) keep discovering their own
+		// fields.
+		if _, ok := v[ListMetaKey]; ok {
+			if m, err := toMap(v); err == nil && hasListMetaEntry(m) {
+				return sampleFromObject(m, value), nil
+			}
+		}
 		return v, nil
 	}
 
@@ -363,6 +425,10 @@ func reflectFields(t reflect.Type) []string {
 // from a marshaled object: the first element of an "items" array or of a
 // single-key list envelope (e.g. {"datasources": [...]}), reflected item
 // fields for an envelope with no rows, or the object itself.
+//
+// The reserved ListMetaKey ("list_meta") truncation-metadata sibling is
+// transparent to discovery: envelopes are recognized with or without it, the
+// sample is always an item, and list_meta.* paths are never listed.
 func sampleFromObject(m map[string]any, value any) map[string]any {
 	// If the object has an "items" array, use the first element.
 	if raw, ok := m["items"]; ok {
@@ -370,19 +436,39 @@ func sampleFromObject(m map[string]any, value any) map[string]any {
 			return items[0]
 		}
 	}
-	// Single-key list envelope: sample the first item so discovery lists
-	// item-level fields.
+	// Single-key list envelope (optionally with a list_meta sibling): sample
+	// the first item so discovery lists item-level fields.
 	if _, items, ok := singleKeyItems(m); ok && len(items) > 0 {
 		return items[0]
 	}
 	// Single-key envelope with no rows (empty or nil slice): reflect on the
 	// wrapper struct's sole slice field so discovery still works.
-	if len(m) == 1 {
+	if nonListMetaKeyCount(m) == 1 {
 		if fields := reflectSingleSliceField(reflect.TypeOf(value)); len(fields) > 0 {
 			return nullFieldMap(fields)
 		}
 	}
-	return m
+	// Not an envelope shape (or an empty dynamic envelope with no element
+	// type to reflect on): sample the object itself, minus the reserved
+	// truncation-metadata entry — list_meta.* paths are never discoverable.
+	return withoutListMetaEntry(m)
+}
+
+// withoutListMetaEntry returns m without its reserved truncation-metadata
+// entry (see isListMetaEntry). Returns m unchanged when no reserved entry is
+// present.
+func withoutListMetaEntry(m map[string]any) map[string]any {
+	if !hasListMetaEntry(m) {
+		return m
+	}
+	out := make(map[string]any, len(m)-1)
+	for k, v := range m {
+		if isListMetaEntry(k, v) {
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // nullFieldMap builds a discovery sample map whose keys are the given field
@@ -400,7 +486,9 @@ func nullFieldMap(fields []string) map[string]any {
 // a struct's sole exported field, which must be a slice of structs. Returns
 // nil unless t (after pointer unwrapping) is a struct with exactly one
 // exported non-json:"-" field of slice kind. Used to discover item fields of
-// an empty single-key list envelope.
+// an empty single-key list envelope. A field carrying the reserved
+// ListMetaKey json tag (truncation metadata) does not count against the
+// single-field shape.
 func reflectSingleSliceField(t reflect.Type) []string {
 	if t == nil {
 		return nil
@@ -416,6 +504,9 @@ func reflectSingleSliceField(t reflect.Type) []string {
 	exported := 0
 	for f := range t.Fields() {
 		if !f.IsExported() || f.Tag.Get("json") == "-" {
+			continue
+		}
+		if name, _, _ := strings.Cut(f.Tag.Get("json"), ","); name == ListMetaKey {
 			continue
 		}
 		exported++
@@ -459,6 +550,13 @@ func (opts *Options) allowedCodecs() []string {
 	}
 	for name := range opts.customCodecs {
 		all[name] = struct{}{}
+	}
+
+	// Drop menu-hidden formats (see HideFormat). Custom codecs registered
+	// under a hidden name stay hidden too — the command asked for the name
+	// to disappear from the menu, whatever backs it.
+	for name := range opts.hiddenFormats {
+		delete(all, name)
 	}
 
 	allowedCodecs := slices.Collect(maps.Keys(all))

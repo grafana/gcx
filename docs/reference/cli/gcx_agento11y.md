@@ -33,6 +33,5 @@ Manage Grafana Agent Observability resources
 * [gcx agento11y judge](gcx_agento11y_judge.md)	 - List LLM providers and models available for LLM-judge evaluators.
 * [gcx agento11y rules](gcx_agento11y_rules.md)	 - Manage rules that route generations to evaluators.
 * [gcx agento11y saved-conversations](gcx_agento11y_saved-conversations.md)	 - Bookmark live conversations as fixed inputs for evaluation runs.
-* [gcx agento11y scores](gcx_agento11y_scores.md)	 - View evaluation scores for generations.
 * [gcx agento11y templates](gcx_agento11y_templates.md)	 - Browse reusable evaluator blueprints (global and tenant-scoped).
 
