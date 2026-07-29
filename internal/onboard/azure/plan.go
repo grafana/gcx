@@ -37,11 +37,12 @@ func BuildPlan(ctx context.Context, in PlanInput) []Suggestion {
 	}
 	for _, cl := range clusters {
 		s := Suggestion{
-			Spec:   adxSpec{},
-			Name:   artifactName(in.Stack, TokenADX, cl.Name),
-			Label:  "Azure Data Explorer — " + cl.Name,
-			Scopes: []string{sub},
-			Extra:  map[string]string{"clusterUrl": cl.URI, "rg": cl.RG, "cluster": cl.Name},
+			Spec:           adxSpec{},
+			Name:           artifactName(in.Stack, TokenADX, cl.Name),
+			Label:          "Azure Data Explorer — " + cl.Name,
+			Scopes:         []string{sub},
+			Extra:          map[string]string{"clusterUrl": cl.URI, "rg": cl.RG, "cluster": cl.Name},
+			PrivateNetwork: cl.IsPrivate(),
 		}
 		if !cl.IsRunning() {
 			s.Disabled = true
@@ -61,10 +62,11 @@ func BuildPlan(ctx context.Context, in PlanInput) []Suggestion {
 		}
 		for _, a := range accounts {
 			out = append(out, Suggestion{
-				Spec:  cosmosSpec{},
-				Name:  artifactName(in.Stack, TokenCosmos, a.Name),
-				Label: "Azure Cosmos DB — " + a.Name + " (requires Enterprise plugin)",
-				Extra: map[string]string{"endpoint": a.DocumentEndpoint, "rg": a.RG, "account": a.Name},
+				Spec:           cosmosSpec{},
+				Name:           artifactName(in.Stack, TokenCosmos, a.Name),
+				Label:          "Azure Cosmos DB — " + a.Name + " (requires Enterprise plugin)",
+				Extra:          map[string]string{"endpoint": a.DocumentEndpoint, "rg": a.RG, "account": a.Name},
+				PrivateNetwork: a.IsPrivate(),
 			})
 		}
 	}

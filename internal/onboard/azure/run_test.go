@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/onboard"
 	"github.com/grafana/gcx/internal/plugins"
 	"k8s.io/client-go/rest"
@@ -462,6 +463,62 @@ func TestProvision_TagsAppRegistrationWithDatasourceUID(t *testing.T) {
 	}
 	if !tagged {
 		t.Fatal("expected the app registration to be tagged with attribution after datasource creation")
+	}
+}
+
+func TestProvision_PrivateNetworkAddsPDCHint(t *testing.T) {
+	newDS := func(t *testing.T) *datasources.Client {
+		t.Helper()
+		return newDSClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				_, _ = w.Write([]byte(`[]`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"datasource":{"uid":"uid-1","name":"gcx-azure-monitor","type":"grafana-azure-monitor-datasource"}}`))
+		}))
+	}
+
+	sel := Selection{
+		Suggestion: Suggestion{
+			Spec:           azureMonitorSpec{},
+			Name:           "gcx-azure-monitor",
+			Scopes:         []string{"/subscriptions/sub-1"},
+			PrivateNetwork: true,
+		},
+		Roles: []string{"Reader"},
+	}
+
+	// Cloud stack (non-empty Stack) → advisory PDC hint with docs link.
+	runner := &scriptedRunner{handler: mintHandler()}
+	res, err := Provision(context.Background(), RunDeps{CLI: NewCLIWithRunner(runner), DS: newDS(t)},
+		ProvisionInput{
+			Account:    Account{TenantID: "t1", SubID: "sub-1", CloudName: "AzureCloud"},
+			CallerOID:  "oid",
+			Stack:      "mystack",
+			SkipHealth: true,
+			Selections: []Selection{sel},
+		})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d := res.Datasources[0]; d.Hint == "" || d.HintDocs != docs.PrivateDataSourceConnect {
+		t.Fatalf("expected PDC hint with docs link on a private resource for a cloud stack, got %+v", d)
+	}
+
+	// Self-managed target (empty Stack) → no PDC hint (PDC is Cloud-only).
+	runner = &scriptedRunner{handler: mintHandler()}
+	res, err = Provision(context.Background(), RunDeps{CLI: NewCLIWithRunner(runner), DS: newDS(t)},
+		ProvisionInput{
+			Account:    Account{TenantID: "t1", SubID: "sub-1", CloudName: "AzureCloud"},
+			CallerOID:  "oid",
+			SkipHealth: true,
+			Selections: []Selection{sel},
+		})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d := res.Datasources[0]; d.Hint != "" || d.HintDocs != "" {
+		t.Fatalf("did not expect a PDC hint for a self-managed target, got %+v", d)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/onboard"
 )
@@ -80,6 +81,12 @@ func (c *onboardTextCodec) encodeDatasource(w io.Writer, d onboard.DatasourceRes
 	fmt.Fprintln(w)
 	if d.HealthMessage != "" {
 		fmt.Fprintf(w, "      health: %s\n", d.HealthMessage)
+	}
+	if d.Hint != "" {
+		fmt.Fprintf(w, "      hint: %s\n", d.Hint)
+		if d.HintDocs != "" {
+			fmt.Fprintf(w, "      docs: %s\n", docs.HumanURL(d.HintDocs))
+		}
 	}
 }
 

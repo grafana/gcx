@@ -13,6 +13,10 @@ type KustoCluster struct {
 	// State is the cluster runtime state (e.g. "Running", "Stopped",
 	// "Starting"). Provisioning requires a running cluster.
 	State string `json:"state"`
+	// PublicNetworkAccess is the cluster's public network access setting
+	// ("Enabled"/"Disabled"). "Disabled" means Grafana Cloud can only reach the
+	// cluster via Private Data source Connect (PDC).
+	PublicNetworkAccess string `json:"publicNetworkAccess"`
 }
 
 // IsRunning reports whether the cluster is in a state that supports
@@ -20,6 +24,16 @@ type KustoCluster struct {
 func (c KustoCluster) IsRunning() bool {
 	return strings.EqualFold(c.State, "Running")
 }
+
+// isPrivate reports whether an Azure resource's publicNetworkAccess value
+// indicates the resource is not publicly reachable. An empty value is treated
+// as public (the common default) so we never emit a spurious PDC hint.
+func isPrivate(publicNetworkAccess string) bool {
+	return strings.EqualFold(publicNetworkAccess, "Disabled")
+}
+
+// IsPrivate reports whether the cluster has public network access disabled.
+func (c KustoCluster) IsPrivate() bool { return isPrivate(c.PublicNetworkAccess) }
 
 // ListKustoClusters discovers ADX clusters via `az kusto cluster list`. The
 // command requires the `kusto` az extension (auto-installed by az on first use)
@@ -37,7 +51,14 @@ type CosmosAccount struct {
 	Name             string `json:"name"`
 	RG               string `json:"resourceGroup"`
 	DocumentEndpoint string `json:"documentEndpoint"`
+	// PublicNetworkAccess is the account's public network access setting
+	// ("Enabled"/"Disabled"). "Disabled" means Grafana Cloud can only reach the
+	// account via Private Data source Connect (PDC).
+	PublicNetworkAccess string `json:"publicNetworkAccess"`
 }
+
+// IsPrivate reports whether the account has public network access disabled.
+func (a CosmosAccount) IsPrivate() bool { return isPrivate(a.PublicNetworkAccess) }
 
 // ListCosmosAccounts discovers Cosmos DB accounts via `az cosmosdb list`.
 func (c *CLI) ListCosmosAccounts(ctx context.Context) ([]CosmosAccount, error) {

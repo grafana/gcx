@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/datasources"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/onboard"
 	"github.com/grafana/gcx/internal/plugins"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -136,15 +137,19 @@ func Provision(ctx context.Context, deps RunDeps, in ProvisionInput) (onboard.Re
 		// instead of creating a "-2" duplicate.
 		if d := existing[strings.ToLower(base)]; d != nil {
 			onboard.Progressf(deps.Progress, "→ %s already exists (uid %s); skipping", d.Name, d.UID)
-			results = append(results, onboard.DatasourceResult{
+			result := onboard.DatasourceResult{
 				Name: d.Name, Type: d.Type, UID: d.UID, Status: onboard.StatusExisting,
-			})
+			}
+			applyPrivateHint(in, sel, &result)
+			results = append(results, result)
 			continue
 		}
 
 		if in.DryRun {
 			onboard.Progressf(deps.Progress, "→ would create %s", sel.Suggestion.Label)
-			results = append(results, plannedResult(sel, base))
+			result := plannedResult(sel, base)
+			applyPrivateHint(in, sel, &result)
+			results = append(results, result)
 			continue
 		}
 
@@ -168,6 +173,7 @@ func Provision(ctx context.Context, deps RunDeps, in ProvisionInput) (onboard.Re
 			rollback()
 			return onboard.Result{}, err
 		}
+		applyPrivateHint(in, sel, &result)
 		results = append(results, result)
 	}
 
@@ -263,6 +269,20 @@ func plannedResult(sel Selection, base string) onboard.DatasourceResult {
 			Scopes: sel.Suggestion.Scopes,
 		},
 	}
+}
+
+// applyPrivateHint attaches an advisory Private Data source Connect (PDC) hint
+// when the backing resource has public network access disabled. It is gated to
+// Grafana Cloud stacks (a non-empty stack slug): PDC is a Cloud feature, and a
+// self-managed Grafana may already sit inside the resource's network. The hint
+// is purely informational — the datasource and its credentials are still
+// created; it only tells the user extra connectivity setup is likely needed.
+func applyPrivateHint(in ProvisionInput, sel Selection, r *onboard.DatasourceResult) {
+	if !sel.Suggestion.PrivateNetwork || in.Stack == "" {
+		return
+	}
+	r.Hint = "public network access is disabled on this resource; your Grafana Cloud stack can only query it via Private Data source Connect (PDC)"
+	r.HintDocs = docs.PrivateDataSourceConnect
 }
 
 // skippedResult builds the row for a selection that was intentionally not

@@ -87,6 +87,11 @@ type Suggestion struct {
 	// a stopped ADX cluster). DisabledReason explains why.
 	Disabled       bool
 	DisabledReason string
+	// PrivateNetwork marks a resource whose public network access is disabled,
+	// so a Grafana Cloud stack can only reach it via Private Data source
+	// Connect (PDC). Surfaced as an advisory hint on the result; it never
+	// blocks provisioning (the datasource and credentials are still created).
+	PrivateNetwork bool
 }
 
 // monitorCloud maps an `az` environmentName to the Azure Monitor datasource's

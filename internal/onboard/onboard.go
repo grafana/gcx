@@ -58,6 +58,13 @@ type DatasourceResult struct {
 	Credential *CloudCredential `json:"credential,omitempty" yaml:"credential,omitempty"`
 	// Note carries a short human-readable explanation for skipped/planned rows.
 	Note string `json:"note,omitempty" yaml:"note,omitempty"`
+	// Hint is an advisory, non-blocking suggestion about this datasource (e.g.
+	// the backing resource is not publicly reachable, so Private Data source
+	// Connect is likely needed). It never affects the run outcome.
+	Hint string `json:"hint,omitempty" yaml:"hint,omitempty"`
+	// HintDocs is a documentation URL backing Hint, so users and agents can
+	// follow up. Empty when there is no hint.
+	HintDocs string `json:"hintDocs,omitempty" yaml:"hintDocs,omitempty"`
 }
 
 // CloudCredential describes the cloud identity gcx provisions for a datasource

@@ -88,6 +88,42 @@ func TestBuildPlan_ADXDiscoveryErrorIsTolerated(t *testing.T) {
 	}
 }
 
+func TestBuildPlan_PrivateNetworkFlaggedOnADXAndCosmos(t *testing.T) {
+	runner := &scriptedRunner{
+		handler: func(args []string) ([]byte, []byte, error) {
+			switch {
+			case hasPrefix(args, []string{"kusto", "cluster", "list"}):
+				return []byte(`[{"name":"adx-priv","uri":"https://adx-priv.kusto.windows.net","resourceGroup":"rg1","state":"Running","publicNetworkAccess":"Disabled"}]`), nil, nil
+			case hasPrefix(args, []string{"cosmosdb", "list"}):
+				return []byte(`[{"name":"cosmos-pub","resourceGroup":"rg1","documentEndpoint":"https://cosmos-pub.documents.azure.com","publicNetworkAccess":"Enabled"}]`), nil, nil
+			}
+			return nil, nil, nil
+		},
+	}
+	cli := NewCLIWithRunner(runner)
+
+	plan := BuildPlan(context.Background(), PlanInput{CLI: cli, Account: Account{SubID: "sub-1"}, IncludeCosmos: true})
+
+	var adx, cosmos *Suggestion
+	for i := range plan {
+		switch plan[i].Spec.Token() {
+		case TokenADX:
+			adx = &plan[i]
+		case TokenCosmos:
+			cosmos = &plan[i]
+		}
+	}
+	if adx == nil || cosmos == nil {
+		t.Fatalf("expected both ADX and Cosmos suggestions, got %d total", len(plan))
+	}
+	if !adx.PrivateNetwork {
+		t.Error("ADX cluster with publicNetworkAccess=Disabled should set PrivateNetwork")
+	}
+	if cosmos.PrivateNetwork {
+		t.Error("Cosmos account with publicNetworkAccess=Enabled should not set PrivateNetwork")
+	}
+}
+
 func TestBuildPlan_IncludeCosmos(t *testing.T) {
 	runner := &scriptedRunner{
 		handler: func(args []string) ([]byte, []byte, error) {
