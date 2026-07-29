@@ -5,8 +5,9 @@ List columns for an MSSQL table
 ### Synopsis
 
 List the columns of the specified table from INFORMATION_SCHEMA.COLUMNS,
-reporting name, data type, nullability, max length, and default. Pass --schema
-to disambiguate a table that exists in multiple schemas.
+reporting name, data type, nullability, max length, and default. Disambiguate a
+table that exists in multiple schemas with a schema-qualified name
+(SCHEMA.TABLE) or the --schema flag.
 
 ```
 gcx datasources mssql describe-table TABLE [flags]
@@ -19,7 +20,8 @@ gcx datasources mssql describe-table TABLE [flags]
   # Describe a table
   gcx datasources mssql describe-table WORLD_DATA
 
-  # Restrict to a schema
+  # Restrict to a schema (equivalent forms)
+  gcx datasources mssql describe-table dbo.WORLD_DATA
   gcx datasources mssql describe-table WORLD_DATA --schema dbo
 
   # Output as JSON

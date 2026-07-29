@@ -1,6 +1,7 @@
 package mssql
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -37,13 +38,15 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "describe-table TABLE",
 		Short: "List columns for an MSSQL table",
 		Long: `List the columns of the specified table from INFORMATION_SCHEMA.COLUMNS,
-reporting name, data type, nullability, max length, and default. Pass --schema
-to disambiguate a table that exists in multiple schemas.`,
+reporting name, data type, nullability, max length, and default. Disambiguate a
+table that exists in multiple schemas with a schema-qualified name
+(SCHEMA.TABLE) or the --schema flag.`,
 		Example: `
   # Describe a table
   gcx datasources mssql describe-table WORLD_DATA
 
-  # Restrict to a schema
+  # Restrict to a schema (equivalent forms)
+  gcx datasources mssql describe-table dbo.WORLD_DATA
   gcx datasources mssql describe-table WORLD_DATA --schema dbo
 
   # Output as JSON
@@ -54,11 +57,24 @@ to disambiguate a table that exists in multiple schemas.`,
 				return err
 			}
 
-			table := args[0]
+			// Accept a schema-qualified table (e.g. "dbo.WORLD_DATA"); the
+			// schema segment is equivalent to passing --schema.
+			schemaFromName, table, err := mssql.SplitSchemaQualifiedTable(args[0])
+			if err != nil {
+				return err
+			}
+			schema := opts.Schema
+			if schemaFromName != "" {
+				if schema != "" {
+					return errors.New("specify the schema in the table name (SCHEMA.TABLE) or via --schema, not both")
+				}
+				schema = schemaFromName
+			}
+
 			if err := mssql.ValidateIdentifier(table, "table"); err != nil {
 				return err
 			}
-			if err := mssql.ValidateIdentifier(opts.Schema, "schema"); err != nil {
+			if err := mssql.ValidateIdentifier(schema, "schema"); err != nil {
 				return err
 			}
 
@@ -78,8 +94,8 @@ to disambiguate a table that exists in multiple schemas.`,
 				"SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '%s'",
 				mssql.EscapeSQLString(table),
 			)
-			if opts.Schema != "" {
-				sql += fmt.Sprintf(" AND TABLE_SCHEMA = '%s'", mssql.EscapeSQLString(opts.Schema))
+			if schema != "" {
+				sql += fmt.Sprintf(" AND TABLE_SCHEMA = '%s'", mssql.EscapeSQLString(schema))
 			}
 			sql += " ORDER BY ORDINAL_POSITION"
 
