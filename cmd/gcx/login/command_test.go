@@ -905,6 +905,102 @@ func TestCaptureLoginTargetKindKeepsKindWhenNothingIsKnown(t *testing.T) {
 	assert.Equal(t, "cloud", config.CapturedTargetKind())
 }
 
+func TestLoginNewContextWithoutServerReportsNoTarget(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("onprem", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "http://localhost:3000", OrgID: 1}})
+	seed.SetContext("dev", true, config.Context{Stack: "onprem"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"brand-new-context", "--config", path, "--yes"})
+
+	// A brand-new context with no --server: nothing is known about the target,
+	// so the self-hosted context that happens to be current must not be
+	// reported in its place.
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "server")
+	assert.Empty(t, config.CapturedTargetKind())
+}
+
+func TestLoginRejectedStoredTokenReportsRequestedTarget(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("onprem", config.StackConfig{
+		Grafana: &config.GrafanaConfig{Server: "http://localhost:3000", OrgID: 1, APIToken: "stored"},
+	})
+	seed.SetContext("dev", true, config.Context{Stack: "onprem"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"dev", "--server", "https://newstack.grafana.net", "--config", path, "--yes"})
+
+	// The stored token cannot be reused for the new destination, which returns
+	// well before target detection. The event must still describe the cloud
+	// stack that was requested, not the self-hosted server being replaced.
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "Stored Grafana token cannot be reused")
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
+func TestRunLoginLoopReportsDetectedCloudTargetOnCustomDomain(t *testing.T) {
+	// Seeded with the kind the hostname implies, so only a value taken from the
+	// resolved target can satisfy this.
+	config.CaptureTargetKind(config.TargetKindSelfHosted)
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetContext(t.Context())
+
+	detected := false
+	opts := &internallogin.Options{
+		Inputs: internallogin.Inputs{
+			Server:      "https://grafana.mycorp.example",
+			ContextName: "dev",
+		},
+		// A Cloud stack behind a custom domain — invisible to any hostname
+		// heuristic, and the reason the recapture after login.Run exists.
+		Hooks: internallogin.Hooks{
+			DetectFn: func(context.Context, string) (internallogin.Target, error) {
+				detected = true
+				return internallogin.TargetCloud, nil
+			},
+		},
+	}
+
+	// Non-interactive, and a Cloud target with no cloud credential, so Run
+	// returns a missing-input error before attempting any network call.
+	err := runLoginLoop(cmd, &loginOpts{}, opts, nil, nil, false, nil, false)
+	require.Error(t, err)
+	require.True(t, detected, "detection did not run; the test no longer covers the recapture")
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
 func TestLoginRejectedByServerOverridePreflightReportsRequestedTarget(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	unsetEnvForTest(t, "GRAFANA_SERVER")

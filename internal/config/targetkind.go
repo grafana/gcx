@@ -57,6 +57,17 @@ func CaptureTargetKind(kind TargetKind) {
 	capturedTargetKind.Store(string(kind))
 }
 
+// ClearCapturedTargetKind resets the captured kind to unknown.
+//
+// gcx login uses it once it has resolved neither a context nor a server: the
+// kind the config load took from whichever context happened to be current
+// describes a target this invocation is not aiming at, and reporting nothing is
+// the honest answer. Prefer CaptureTargetKind for a kind that is merely
+// undecided — that leaves an established value alone rather than erasing it.
+func ClearCapturedTargetKind() {
+	capturedTargetKind.Store(string(TargetKindUnknown))
+}
+
 // CaptureTargetKindForServer records the target kind implied by a Grafana server
 // URL, for the point in gcx login before target detection has run and where no
 // configured context describes the requested server. Without it the value

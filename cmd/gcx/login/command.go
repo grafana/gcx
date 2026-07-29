@@ -189,6 +189,12 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Every gate between here and login.Run — mutation planning, auto-local
+	// credential policy, binding verification, the server-override preflight —
+	// can reject the login before detection ever runs. Record what the
+	// invocation asked for now, so those refusals report the target the user
+	// aimed at instead of the one the current context happens to hold.
+	captureRequestedLoginTargetKind(flags, sourceCtx)
 	mutationTarget, err := flags.Config.PlanLoginMutation(cfg, contextName, config.LoginMutationUnified)
 	if err != nil {
 		return err
@@ -381,10 +387,6 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if flags.AllowServerOverride {
 		opts.AllowOverride = true
 	}
-	// Record the target before the gates below, so a login rejected by the
-	// server-override preflight still reports the server it was aimed at rather
-	// than the one the existing context happens to hold.
-	captureLoginTargetKind(&opts)
 	if err := preflightServerOverride(&opts, persistedSourceCtx, isInteractive); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(cmd.ErrOrStderr(), "Aborted.")
@@ -450,6 +452,19 @@ func enforceAutoLocalCredentialPolicy(opts *login.Options, sourceCtx *config.Con
 		}
 	}
 	return nil
+}
+
+// captureRequestedLoginTargetKind records the target the invocation asked for,
+// before any gate that could reject the login. --cloud and --server name a
+// target explicitly and outrank the context the preceding config load
+// classified; with neither, that context is the target and its classification
+// stands.
+func captureRequestedLoginTargetKind(flags *loginOpts, sourceCtx *config.Context) {
+	if flags.Cloud {
+		config.CaptureTargetKind(config.TargetKindCloud)
+		return
+	}
+	config.CaptureTargetKindForServer(login.NormalizeServerURL(requestedLoginServer(flags.Server, sourceCtx)))
 }
 
 // captureLoginTargetKind records the telemetry target kind for this login.
@@ -752,9 +767,14 @@ func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName s
 	if sourceCtx == nil {
 		// No configured context describes the requested server, so the reload
 		// below is skipped and the telemetry kind captured by the load above
-		// still describes whichever context was current. Reclassify from the
-		// requested server, which is the target this login is about to create.
-		config.CaptureTargetKindForServer(selectionServer)
+		// still describes whichever context was current.
+		if selectionServer == "" {
+			// A new context with no server yet: nothing about the target is
+			// known, and an unrelated context must not stand in for it.
+			config.ClearCapturedTargetKind()
+		} else {
+			config.CaptureTargetKindForServer(selectionServer)
+		}
 		return cfg, sourceCtx, resolvedName, nil
 	}
 

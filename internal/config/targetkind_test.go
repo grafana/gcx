@@ -364,10 +364,9 @@ contexts:
 current-context: dev
 `)
 
-	// Stands in for a kind established earlier in the invocation, so the
-	// assertion distinguishes "left alone" from "overwritten with the stale
-	// context's kind".
-	config.CaptureTargetKind(config.TargetKindCloud)
+	// Start from a genuinely unset value so the assertion below is about the
+	// label being absent, not about some earlier value happening to survive.
+	config.ClearCapturedTargetKind()
 
 	// --context naming a context that does not exist fails selection without
 	// changing CurrentContext, so the merged config still describes the
@@ -379,15 +378,15 @@ current-context: dev
 
 	_, err := config.LoadLayered(t.Context(), "", selectMissing, testEnvOverride)
 	require.ErrorIs(t, err, config.ErrContextNotFound)
-	assert.Equal(t, "cloud", config.CapturedTargetKind())
+	assert.Empty(t, config.CapturedTargetKind())
 }
 
 func TestCapturedTargetKind_CloudCredentialOnlyContextIsUnclassified(t *testing.T) {
 	userDir, _ := isolatedLoaderEnv(t)
 	scrubTargetKindEnv(t)
 
-	// Seeded so an implementation that captures nothing here cannot pass on a
-	// leftover empty value from an earlier test.
+	// Seeded with a kind, so passing requires the load to actively record
+	// "unknown" rather than inherit an empty value from an earlier test.
 	config.CaptureTargetKind(config.TargetKindCloud)
 
 	// A cloud entry on its own is an org-wide GCOM credential: no stack slug, no
