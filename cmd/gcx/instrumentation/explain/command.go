@@ -18,6 +18,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/style"
 	otelexplain "github.com/grafana/otel-checker/checks/explain"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -105,9 +106,14 @@ func completeExplainIDs(_ *cobra.Command, _ []string, _ string) ([]string, cobra
 // ─── docTextCodec ────────────────────────────────────────────────────────────
 
 // docTextCodec renders a DocView as markdown. When the destination is a
-// terminal, glamour styles the markdown; otherwise the raw markdown is written
-// so that piping (`gcx instrumentation explain <id> | grep`) and tests stay
-// clean.
+// terminal AND styled output is enabled (respecting --no-color / NO_COLOR),
+// glamour styles the markdown; otherwise the raw markdown is written so that
+// piping (`gcx instrumentation explain <id> | grep`), no-color mode, and
+// tests all stay clean.
+//
+// Word wrap is disabled (WithWordWrap(0)) so long tokens — URLs, code lines,
+// long finding messages — stay on one logical line for click-through and
+// copy/paste.
 type docTextCodec struct{}
 
 var _ format.Codec = (*docTextCodec)(nil)
@@ -120,12 +126,15 @@ func (*docTextCodec) Encode(w io.Writer, v any) error {
 		return fmt.Errorf("docTextCodec: expected DocView, got %T", v)
 	}
 	source := fmt.Sprintf("# %s\n\n%s", doc.Title, doc.Body)
-	if isTerminalWriter(w) {
-		if out, err := glamour.Render(source, "dark"); err == nil {
-			_, err := fmt.Fprint(w, out)
-			return err
+	if isTerminalWriter(w) && style.IsStylingEnabled() {
+		r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(0))
+		if err == nil {
+			if out, err := r.Render(source); err == nil {
+				_, err := fmt.Fprint(w, out)
+				return err
+			}
 		}
-		// Fall through to raw markdown if glamour fails.
+		// Fall through to raw markdown if glamour construction or render fails.
 	}
 	_, err := fmt.Fprint(w, source)
 	return err
