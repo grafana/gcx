@@ -469,6 +469,8 @@
  "gcx resources pull": "artifact",
  "gcx resources push": "finite",
  "gcx resources validate": "finite",
+ "gcx setup datasources azure": "finite",
+ "gcx setup datasources azure rotate": "finite",
  "gcx setup status": "finite",
  "gcx slo definitions delete": "finite",
  "gcx slo definitions get": "finite",
