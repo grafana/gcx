@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -49,12 +51,14 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 
 // Query executes an Azure Monitor metrics query via the Grafana datasource query API.
 func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*QueryResponse, error) {
+	// Sort dimensions so the request body is deterministic; Azure treats the
+	// filter list as unordered.
 	filters := make([]any, 0, len(req.DimensionFilters))
-	for dim, val := range req.DimensionFilters {
+	for _, dim := range slices.Sorted(maps.Keys(req.DimensionFilters)) {
 		filters = append(filters, map[string]any{
 			"dimension": dim,
 			"operator":  "eq",
-			"filters":   []string{val},
+			"filters":   []string{req.DimensionFilters[dim]},
 		})
 	}
 
@@ -95,7 +99,7 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 			"uid":  dsUID,
 		},
 		"azureMonitor":  azm,
-		"intervalMs":    intervalMsFor(req),
+		"intervalMs":    intervalMsFor(req.Start, req.End),
 		"maxDataPoints": 1000,
 	}
 
@@ -146,7 +150,7 @@ func (c *Client) LogsQuery(ctx context.Context, dsUID string, req LogsQueryReque
 			"query":        req.Query,
 			"resultFormat": "table",
 		},
-		"intervalMs":    intervalMsFor(QueryRequest{Start: req.Start, End: req.End}),
+		"intervalMs":    intervalMsFor(req.Start, req.End),
 		"maxDataPoints": 1000,
 	}
 
@@ -200,9 +204,9 @@ func (c *Client) executeTableQuery(ctx context.Context, query map[string]any, st
 // intervalMsFor derives the query interval from the time range so the
 // plugin's "auto" time grain picks a grain that keeps the series under the
 // Azure Monitor API's data-point cap, with a 60s floor (the smallest grain).
-func intervalMsFor(req QueryRequest) int64 {
+func intervalMsFor(start, end time.Time) int64 {
 	const minIntervalMs = 60_000
-	rangeMs := req.End.Sub(req.Start).Milliseconds()
+	rangeMs := end.Sub(start).Milliseconds()
 	if rangeMs <= 0 {
 		return minIntervalMs
 	}
@@ -301,7 +305,7 @@ func (c *Client) listARM(ctx context.Context, dsUID, armPath, apiVersion, operat
 		}
 		pathAndQuery = strings.TrimPrefix(next.Path, "/") + "?" + next.RawQuery
 	}
-	return items, nil
+	return nil, fmt.Errorf("%s results exceeded %d pages; narrow the query scope", operation, maxResourcePages)
 }
 
 // getResource calls the Azure Monitor plugin's resource proxy, which passes

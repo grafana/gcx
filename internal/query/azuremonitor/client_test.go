@@ -317,6 +317,27 @@ func TestClient_Query(t *testing.T) {
 	})
 }
 
+func TestClient_QueryDimensionFilterOrder(t *testing.T) {
+	req := testQueryReq()
+	req.DimensionFilters = map[string]string{"GeoType": "Primary", "ApiName": "*", "Tier": "Hot"}
+	q := captureQuery(t, req)
+
+	azm, ok := q["azureMonitor"].(map[string]any)
+	require.True(t, ok)
+	filters, ok := azm["dimensionFilters"].([]any)
+	require.True(t, ok, "dimensionFilters must be a JSON array, got %T", azm["dimensionFilters"])
+	require.Len(t, filters, 3)
+	dims := make([]string, 0, len(filters))
+	for _, f := range filters {
+		filter, ok := f.(map[string]any)
+		require.True(t, ok)
+		dim, ok := filter["dimension"].(string)
+		require.True(t, ok, "dimension must be a string, got %T", filter["dimension"])
+		dims = append(dims, dim)
+	}
+	assert.Equal(t, []string{"ApiName", "GeoType", "Tier"}, dims)
+}
+
 func TestClient_LogsQuery(t *testing.T) {
 	logsReq := azuremonitor.LogsQueryRequest{
 		Subscription:  "sub-1",
@@ -551,6 +572,19 @@ func TestClient_ListSubscriptions(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, result, 2)
 		assert.Equal(t, "sub-2", result[1].ID)
+	})
+
+	t.Run("errors instead of truncating when pagination exceeds the page cap", func(t *testing.T) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write(mustJSON(t, armPage{
+				Value:    []map[string]any{{"subscriptionId": "sub-1", "displayName": "Dev"}},
+				NextLink: "https://management.azure.com/subscriptions?api-version=2020-01-01&$skiptoken=abc",
+			}))
+		}))
+
+		_, err := client.ListSubscriptions(context.Background(), "test-uid")
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "exceeded 32 pages")
 	})
 
 	t.Run("HTTP 500 returns typed error", func(t *testing.T) {
