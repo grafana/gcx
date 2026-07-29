@@ -43,9 +43,21 @@ func (o *azureOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *azureOpts) Validate() error {
-	// --dry-run and --cleanup never mint credentials, so they are exempt from the
-	// agent-mode --force gate. Provisioning (the default action) is not.
-	if agent.IsAgentMode() && !o.Force && !o.Cleanup && !o.DryRun {
+	// --dry-run never mutates, so it is always exempt from the agent-mode --force
+	// gate. Both provisioning (mints credentials) and cleanup (deletes cloud
+	// artifacts) mutate, so they require --force in agent mode, where gcx cannot
+	// prompt for confirmation.
+	if agent.IsAgentMode() && !o.Force && !o.DryRun {
+		if o.Cleanup {
+			return gcxerrors.DetailedError{
+				Summary: "setup datasources azure --cleanup deletes cloud artifacts; --force is required in agent mode",
+				Details: "Cleanup permanently removes gcx-created Azure app registrations, role assignments, and Grafana datasources.",
+				Suggestions: []string{
+					"Re-run with --cleanup --force",
+					"Or preview first with --cleanup --dry-run (nothing is deleted)",
+				},
+			}
+		}
 		return gcxerrors.DetailedError{
 			Summary: "setup datasources azure mints cloud credentials; --force is required in agent mode",
 			Details: "Provisioning creates Azure app registrations, role assignments, and Grafana datasources.",

@@ -50,13 +50,45 @@ func TestValidate_AgentModeForceAllowed(t *testing.T) {
 	}
 }
 
-func TestValidate_AgentModeCleanupAllowedWithoutForce(t *testing.T) {
+func TestValidate_AgentModeCleanupRequiresForce(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "true")
 	agent.ResetForTesting()
 	t.Cleanup(agent.ResetForTesting)
 
 	opts := newOpts(t)
 	opts.Cleanup = true
+
+	err := opts.Validate()
+	if err == nil {
+		t.Fatal("expected error for destructive cleanup in agent mode without --force")
+	}
+	var de gcxerrors.DetailedError
+	if !errors.As(err, &de) {
+		t.Fatalf("expected DetailedError, got %T", err)
+	}
+}
+
+func TestValidate_AgentModeCleanupForceAllowed(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "true")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	opts := newOpts(t)
+	opts.Cleanup = true
+	opts.Force = true
+	if err := opts.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidate_AgentModeCleanupDryRunAllowedWithoutForce(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "true")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	opts := newOpts(t)
+	opts.Cleanup = true
+	opts.DryRun = true
 	if err := opts.Validate(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

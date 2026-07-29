@@ -53,27 +53,7 @@ func runAzure(cmd *cobra.Command, opts *azureOpts) error {
 	stack := stackLabel(restCfg)
 
 	if opts.Cleanup {
-		if opts.DryRun {
-			onboard.Progressf(progress, "Previewing gcx-created Azure artifacts and datasources that would be removed...")
-		} else {
-			onboard.Progressf(progress, "Removing gcx-created Azure artifacts and datasources...")
-		}
-		// Resolve the caller identity so cleanup only touches app registrations
-		// attributable to this caller (best-effort: an unresolved OID falls back
-		// to the gcx-managed tag guard alone).
-		callerOID, err := cli.SignedInUserObjectID(ctx)
-		if err != nil {
-			return err
-		}
-		res, err := azonboard.Cleanup(ctx, deps, azonboard.CleanupInput{
-			CallerOID: callerOID,
-			Stack:     stack,
-			DryRun:    opts.DryRun,
-		})
-		if err != nil {
-			return err
-		}
-		return opts.IO.Encode(cmd.OutOrStdout(), res)
+		return runCleanup(cmd, opts, deps, cli, stack, progress, errOut)
 	}
 
 	interactive := isInteractive(opts)
@@ -137,6 +117,98 @@ func runAzure(cmd *cobra.Command, opts *azureOpts) error {
 		return partialFailureError(combined, subErrs)
 	}
 	return nil
+}
+
+// runCleanup removes gcx-created Azure artifacts and datasources. Because this
+// is destructive, it requires confirmation unless --force is passed: in an
+// interactive session it previews exactly what will be removed and asks; in a
+// non-interactive session (piped/agent) it refuses and points at --force. A
+// --dry-run only previews and never needs confirmation.
+func runCleanup(
+	cmd *cobra.Command,
+	opts *azureOpts,
+	deps azonboard.RunDeps,
+	cli *azonboard.CLI,
+	stack string,
+	progress, errOut io.Writer,
+) error {
+	ctx := cmd.Context()
+
+	// Resolve the caller identity so cleanup only touches app registrations
+	// attributable to this caller/stack (best-effort: an unresolved OID falls
+	// back to the gcx-managed tag guard alone).
+	callerOID, err := cli.SignedInUserObjectID(ctx)
+	if err != nil {
+		return err
+	}
+	in := azonboard.CleanupInput{CallerOID: callerOID, Stack: stack, DryRun: opts.DryRun}
+
+	if opts.DryRun {
+		onboard.Progressf(progress, "Previewing gcx-created Azure artifacts and datasources that would be removed...")
+		res, err := azonboard.Cleanup(ctx, deps, in)
+		if err != nil {
+			return err
+		}
+		return opts.IO.Encode(cmd.OutOrStdout(), res)
+	}
+
+	if !opts.Force {
+		proceed, err := confirmRemoval(cmd, opts, deps, callerOID, stack, progress, errOut)
+		if err != nil || !proceed {
+			return err
+		}
+	}
+
+	onboard.Progressf(progress, "Removing gcx-created Azure artifacts and datasources...")
+	res, err := azonboard.Cleanup(ctx, deps, in)
+	if err != nil {
+		return err
+	}
+	return opts.IO.Encode(cmd.OutOrStdout(), res)
+}
+
+// confirmRemoval previews the gcx-created artifacts a real cleanup would remove
+// and asks the user to confirm. It returns proceed=true only when the user
+// approved removing a non-empty set. On the refusal (non-interactive), empty,
+// and declined paths it returns proceed=false — encoding the appropriate result
+// itself — so the caller simply stops. A non-nil error is fatal.
+func confirmRemoval(
+	cmd *cobra.Command,
+	opts *azureOpts,
+	deps azonboard.RunDeps,
+	callerOID, stack string,
+	progress, errOut io.Writer,
+) (bool, error) {
+	if !canPrompt() {
+		return false, gcxerrors.DetailedError{
+			Summary: "cleanup permanently removes cloud artifacts and needs confirmation",
+			Details: "Deleting gcx-created Azure app registrations, role assignments, and Grafana datasources is irreversible, and this non-interactive session cannot prompt for confirmation.",
+			Suggestions: []string{
+				"Re-run with --cleanup --force to confirm the removal",
+				"Or preview first with --cleanup --dry-run (nothing is deleted)",
+			},
+		}
+	}
+
+	onboard.Progressf(progress, "Finding gcx-created Azure artifacts and datasources to remove...")
+	preview, err := azonboard.Cleanup(cmd.Context(), deps, azonboard.CleanupInput{CallerOID: callerOID, Stack: stack, DryRun: true})
+	if err != nil {
+		return false, err
+	}
+	if len(preview.Cleaned) == 0 {
+		cmdio.EmitNote(errOut, "no gcx-created artifacts found; nothing to remove")
+		return false, opts.IO.Encode(cmd.OutOrStdout(), preview)
+	}
+
+	confirmed, err := confirmCleanup(errOut, preview)
+	if err != nil {
+		return false, err
+	}
+	if !confirmed {
+		cmdio.EmitNote(errOut, "cleanup aborted; nothing was removed")
+		return false, opts.IO.Encode(cmd.OutOrStdout(), onboard.Result{Provider: "azure"})
+	}
+	return true, nil
 }
 
 // provisionSubscription switches to the subscription, discovers candidates, and

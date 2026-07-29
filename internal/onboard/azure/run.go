@@ -255,6 +255,7 @@ func provisionOne(
 	if !in.SkipHealth {
 		applyHealth(ctx, deps, &result, uid)
 	}
+	applyPrivateHint(in, sel, &result)
 	return result, nil
 }
 

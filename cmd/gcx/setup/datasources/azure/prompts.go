@@ -65,6 +65,28 @@ func pickSuggestions(suggestions []azonboard.Suggestion) ([]azonboard.Suggestion
 	return chosen, nil
 }
 
+// confirmCleanup lists the gcx-created artifacts that will be permanently
+// removed and asks the user to confirm. It defaults to "Cancel" because the
+// action is destructive and irreversible.
+func confirmCleanup(errOut io.Writer, preview onboard.Result) (bool, error) {
+	fmt.Fprintf(errOut, "The following %d gcx-created artifact(s) will be permanently removed:\n", len(preview.Cleaned))
+	for _, c := range preview.Cleaned {
+		fmt.Fprintf(errOut, "  - %s %s\n", c.Kind, c.Name)
+	}
+	proceed := false
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title("Remove these artifacts? This cannot be undone.").
+			Affirmative("Remove").
+			Negative("Cancel").
+			Value(&proceed),
+	))
+	if err := form.Run(); err != nil {
+		return false, err
+	}
+	return proceed, nil
+}
+
 // confirmRollback lists the changes that can be reverted and asks the user
 // whether to undo them. Defaults to reverting.
 func confirmRollback(errOut io.Writer, steps []string) (bool, error) {
