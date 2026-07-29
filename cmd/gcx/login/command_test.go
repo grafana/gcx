@@ -1597,16 +1597,21 @@ contexts:
 }
 
 func TestLoginRejectsFreshCredentialsForAutoLocalBeforeNetwork(t *testing.T) {
+	// wantKind is the telemetry target kind the rejection must report. This gate
+	// runs before any config is read, so only the flags can supply it: --server
+	// points at the local test server, and --cloud outranks it.
 	tests := []struct {
-		name string
-		env  string
-		args []string
+		name     string
+		env      string
+		args     []string
+		wantKind string
 	}{
-		{name: "Grafana token flag", args: []string{"--token", "fresh-grafana-token"}},
-		{name: "Grafana token environment", env: "GRAFANA_TOKEN"},
-		{name: "Grafana OAuth", args: []string{"--oauth"}},
-		{name: "Cloud token flag", args: []string{"--cloud-token", "fresh-cloud-token"}},
-		{name: "Cloud token environment", env: "GRAFANA_CLOUD_TOKEN"},
+		{name: "Grafana token flag", args: []string{"--token", "fresh-grafana-token"}, wantKind: "self-hosted"},
+		{name: "Grafana token environment", env: "GRAFANA_TOKEN", wantKind: "self-hosted"},
+		{name: "Grafana OAuth", args: []string{"--oauth"}, wantKind: "self-hosted"},
+		{name: "Cloud token flag", args: []string{"--cloud-token", "fresh-cloud-token"}, wantKind: "self-hosted"},
+		{name: "Cloud token environment", env: "GRAFANA_CLOUD_TOKEN", wantKind: "self-hosted"},
+		{name: "Cloud target forced", args: []string{"--cloud", "--cloud-token", "fresh-cloud-token"}, wantKind: "cloud"},
 	}
 
 	for _, tt := range tests {
@@ -1615,6 +1620,14 @@ func TestLoginRejectsFreshCredentialsForAutoLocalBeforeNetwork(t *testing.T) {
 			if tt.env != "" {
 				t.Setenv(tt.env, "fresh-environment-token")
 			}
+
+			// Seed the opposite kind, so reporting the requested one cannot be a
+			// leftover value from an earlier case.
+			seed := config.TargetKindCloud
+			if tt.wantKind == "cloud" {
+				seed = config.TargetKindSelfHosted
+			}
+			config.CaptureTargetKind(seed)
 
 			var requests atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -1651,6 +1664,8 @@ current-context: default
 			require.ErrorContains(t, err, "auto-discovered repository config")
 			require.ErrorContains(t, err, "--config "+localPath)
 			assert.Zero(t, requests.Load(), "fresh credentials must fail before target detection or validation")
+			assert.Equal(t, tt.wantKind, config.CapturedTargetKind(),
+				"the earliest rejection gate must still report the requested target")
 			raw, readErr := os.ReadFile(localPath)
 			require.NoError(t, readErr)
 			assert.Equal(t, original, raw)

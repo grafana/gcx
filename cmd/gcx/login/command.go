@@ -161,6 +161,12 @@ Auth sources (for non-interactive use):
 //nolint:gocyclo,maintidx // Login deliberately keeps trust preflight, auth selection, and retry setup in one auditable flow.
 func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	ctx := cmd.Context()
+	// The auto-discovered-config credential rejection below is the earliest gate
+	// that can end a login, and it runs before any config is read — so there is
+	// nothing but the flags to go on. Record what they ask for here; the
+	// context-derived capture after the load refines it for logins that get that
+	// far, and login.Run's detection overrides both.
+	captureRequestedLoginTargetKind(flags, nil)
 	preflightTarget, targetIsDeterministic, err := flags.Config.PreflightLoginMutationTarget()
 	if err != nil {
 		return err
