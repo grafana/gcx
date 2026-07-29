@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/remote"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/spf13/pflag"
 )
 
@@ -47,6 +48,43 @@ func partialBatchFailure(stderr io.Writer, op string, total, failed int) error {
 	perr := gcxerrors.NewPartialFailureError(op, total, failed)
 	cmdio.EmitWarn(stderr, perr.Error())
 	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, perr)
+}
+
+// emitBatchResult writes the batch result document and, only when that
+// succeeded, records its volume for the anonymous usage event.
+//
+// The two steps live together so their order cannot drift apart: there is no
+// path here that reports volume for a document the user never received. A hard
+// abort returns before this is reached and therefore reports no volume at all,
+// which is the intended answer — an internal count nobody was shown is worse
+// than no count.
+func emitBatchResult(w io.Writer, ioOpts cmdio.Options, result cmdio.BatchMutation) error {
+	if err := ioOpts.Encode(w, result); err != nil {
+		return err
+	}
+	captureBatchVolume(result.Summary, result.DryRun)
+	return nil
+}
+
+// captureBatchVolume records the finalized counts for the anonymous usage
+// event; buildUsageEvent turns them into bucket labels at exit.
+//
+// Callers must only reach this once the command has written its result
+// successfully — see emitBatchResult, which pairs the two for the commands that
+// share a BatchMutation. Callers must also pass the counts the command actually
+// reported, not the raw OperationSummary where those differ: pull recomputes its
+// counts after the filesystem writes, so only the receipt's summary matches what
+// the user just read.
+//
+// Telemetry must never affect the command's outcome, so this returns nothing and
+// cannot fail.
+func captureBatchVolume(summary cmdio.MutationSummary, dryRun bool) {
+	capture.SetBatch(capture.Batch{
+		Succeeded: summary.Succeeded,
+		Failed:    summary.Failed,
+		Skipped:   summary.Skipped,
+		DryRun:    dryRun,
+	})
 }
 
 // batchMutationFromSummary converts an OperationSummary into the shared

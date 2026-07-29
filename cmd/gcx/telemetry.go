@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/agentlog"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/telemetry"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/grafana/gcx/internal/terminal"
 	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
@@ -81,6 +82,21 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 	// The provider is the top-level command, the first segment of the path.
 	if fields := strings.Fields(info.Command); len(fields) > 0 {
 		event.Provider = fields[0]
+	}
+
+	// Batch volume, present only when a resource command finished emitting its
+	// result document. Counts become bucket labels here rather than at capture
+	// time, so the wire vocabulary stays in this package alongside the rest of
+	// the privacy filtering.
+	if b := capture.CurrentBatch(); b != nil {
+		succeeded := telemetry.Bucket(b.Succeeded)
+		failed := telemetry.Bucket(b.Failed)
+		skipped := telemetry.Bucket(b.Skipped)
+		dryRun := b.DryRun
+		event.BatchSucceededBucket = &succeeded
+		event.BatchFailedBucket = &failed
+		event.BatchSkippedBucket = &skipped
+		event.DryRun = &dryRun
 	}
 
 	event.DeviceID, event.DeviceIDPersisted = telemetry.DeviceID()

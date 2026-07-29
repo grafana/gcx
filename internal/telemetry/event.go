@@ -20,7 +20,10 @@ const (
 // names, hostnames, or anything else that identifies a person, an
 // organisation, or their data. Flags holds flag NAMES only; Command is the
 // resolved command path only. The parse_error_* fields are shape-filtered
-// before they are set (see #578).
+// before they are set (see #578). Volumes are reported as bucket labels, never
+// exact counts, because an exact count correlated with the persistent device ID
+// and the receiver's whois enrichment would describe a named organisation's
+// resource inventory (see bucket.go).
 type Event struct {
 	// Envelope.
 	Service string `json:"service"`
@@ -49,6 +52,18 @@ type Event struct {
 	Agent        string `json:"agent"`
 	TargetKind   string `json:"target_kind"`
 	OutputFormat string `json:"output_format"`
+
+	// Batch volume, set only for a batch resource operation that emitted a
+	// final result document. All four are present together or absent together:
+	// absent means this invocation was not one of those operations, or it
+	// aborted before printing a summary.
+	//
+	// The bucket values come from Bucket; units differ per command, so these
+	// must be read alongside Command and never summed across commands.
+	BatchSucceededBucket *string `json:"batch_succeeded_bucket,omitempty"`
+	BatchFailedBucket    *string `json:"batch_failed_bucket,omitempty"`
+	BatchSkippedBucket   *string `json:"batch_skipped_bucket,omitempty"`
+	DryRun               *bool   `json:"dry_run,omitempty"`
 
 	// Parse-failure capture, set only when Outcome is OutcomeParseError.
 	ParseErrorKind     string `json:"parse_error_kind,omitempty"`

@@ -190,7 +190,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			result := batchMutationFromSummary("deleted", summary, opts.DryRun)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+			if err := emitBatchResult(cmd.OutOrStdout(), opts.IO, result); err != nil {
 				return err
 			}
 
