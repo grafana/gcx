@@ -134,12 +134,23 @@ func runCleanup(
 ) error {
 	ctx := cmd.Context()
 
-	// Resolve the caller identity so cleanup only touches app registrations
-	// attributable to this caller/stack (best-effort: an unresolved OID falls
-	// back to the gcx-managed tag guard alone).
-	callerOID, err := cli.SignedInUserObjectID(ctx)
-	if err != nil {
-		return err
+	// Cleanup only touches app registrations attributable to this caller/stack
+	// (matched on the gcx:owner tag). A real cleanup therefore needs a resolved
+	// caller object ID; without one the sweep cannot be scoped and would risk
+	// deleting another owner's artifacts in a shared tenant. --dry-run is
+	// read-only, so a missing identity is tolerated there (the preview simply
+	// falls back to the gcx-managed tag).
+	callerOID, oidErr := cli.SignedInUserObjectID(ctx)
+	if !opts.DryRun && (oidErr != nil || callerOID == "") {
+		return gcxerrors.DetailedError{
+			Summary: "cannot resolve your Azure identity to scope the cleanup",
+			Details: "Cleanup permanently deletes app registrations and role grants you own, matched on the gcx:owner tag. Without a signed-in user object ID gcx cannot scope the removal and refuses to proceed.",
+			Parent:  oidErr,
+			Suggestions: []string{
+				"Sign in as a user (az login) rather than a service principal or managed identity, then re-run",
+				"Or preview what would be removed with --cleanup --dry-run",
+			},
+		}
 	}
 	in := azonboard.CleanupInput{CallerOID: callerOID, Stack: stack, DryRun: opts.DryRun}
 

@@ -3,6 +3,7 @@ package azure
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -144,6 +145,22 @@ func TestRotate_DryRunChangesNothing(t *testing.T) {
 		if hasPrefix(c, []string{"ad", "app", "credential", "reset"}) {
 			t.Fatal("must not mint a secret during --dry-run")
 		}
+	}
+}
+
+func TestRotate_RefusesWithoutCallerScope(t *testing.T) {
+	// A real (non-dry-run) rotation with no caller OID must refuse rather than
+	// sweep and prune every gcx-managed app's secrets in the tenant.
+	runner := &scriptedRunner{handler: func([]string) ([]byte, []byte, error) { return nil, nil, nil }}
+	cli := NewCLIWithRunner(runner)
+	ds := newDSClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("rotate must refuse before touching the datasource API")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	_, err := Rotate(context.Background(), RunDeps{CLI: cli, DS: ds}, RotateInput{})
+	if !errors.Is(err, ErrUnscopedDestructive) {
+		t.Fatalf("expected ErrUnscopedDestructive, got %v", err)
 	}
 }
 

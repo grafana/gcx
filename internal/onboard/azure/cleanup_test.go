@@ -3,22 +3,25 @@ package azure
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"testing"
 )
 
-func TestCleanup_RemovesADXAssignments(t *testing.T) {
+func TestCleanup_RemovesOnlyOwnedADXAssignments(t *testing.T) {
+	// onboardAssignmentName("abc123") == "gcx-abc123", so the caller's owned app
+	// backs the assignment "gcx-abc123". A second gcx assignment ("gcx-deadbeef")
+	// belongs to no owned app and must be left alone, as must a non-gcx one.
 	runner := &scriptedRunner{
 		handler: func(args []string) ([]byte, []byte, error) {
 			switch {
 			case hasPrefix(args, []string{"ad", "app", "list"}):
-				return []byte(`[]`), nil, nil
+				return []byte(`[{"appId":"abc123","displayName":"gcx-adx","tags":["gcx:managed","gcx:owner=me"]}]`), nil, nil
 			case hasPrefix(args, []string{"kusto", "cluster", "list"}):
 				return []byte(`[{"name":"adx1","uri":"https://adx1.kusto.windows.net","resourceGroup":"rg1","state":"Running"}]`), nil, nil
 			case hasPrefix(args, []string{"kusto", "cluster-principal-assignment", "list"}):
-				// One gcx-created assignment and one unrelated assignment.
-				return []byte(`[{"name":"adx1/gcx-abc123"},{"name":"adx1/someone-else"}]`), nil, nil
+				return []byte(`[{"name":"adx1/gcx-abc123"},{"name":"adx1/gcx-deadbeef"},{"name":"adx1/someone-else"}]`), nil, nil
 			default:
 				return nil, nil, nil
 			}
@@ -31,7 +34,7 @@ func TestCleanup_RemovesADXAssignments(t *testing.T) {
 		_, _ = w.Write([]byte(`[]`))
 	}))
 
-	res, err := Cleanup(context.Background(), RunDeps{CLI: cli, DS: ds}, CleanupInput{})
+	res, err := Cleanup(context.Background(), RunDeps{CLI: cli, DS: ds}, CleanupInput{CallerOID: "me"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -46,27 +49,63 @@ func TestCleanup_RemovesADXAssignments(t *testing.T) {
 		}
 	}
 	if !gotAssignment {
-		t.Fatal("expected the gcx- ADX assignment to be cleaned up")
+		t.Fatal("expected the caller's owned ADX assignment to be cleaned up")
 	}
 
-	// Verify the unrelated assignment was NOT deleted and the gcx one was.
-	var deletedGcx, deletedOther bool
+	// Only the owned assignment may be deleted; the other gcx app's assignment
+	// and the unrelated one must be untouched.
+	var deletedOwned, deletedOtherGcx, deletedUnrelated bool
 	for _, call := range runner.calls {
 		if !hasPrefix(call, []string{"kusto", "cluster-principal-assignment", "delete"}) {
 			continue
 		}
 		switch {
 		case slices.Contains(call, "gcx-abc123"):
-			deletedGcx = true
+			deletedOwned = true
+		case slices.Contains(call, "gcx-deadbeef"):
+			deletedOtherGcx = true
 		case slices.Contains(call, "someone-else"):
-			deletedOther = true
+			deletedUnrelated = true
 		}
 	}
-	if !deletedGcx {
-		t.Fatal("expected gcx assignment to be deleted")
+	if !deletedOwned {
+		t.Fatal("expected the caller's owned assignment to be deleted")
 	}
-	if deletedOther {
-		t.Fatal("did not expect the unrelated assignment to be deleted")
+	if deletedOtherGcx {
+		t.Fatal("must not delete a gcx assignment backing another owner's app")
+	}
+	if deletedUnrelated {
+		t.Fatal("must not delete an unrelated assignment")
+	}
+}
+
+func TestCleanup_RefusesWithoutCallerScope(t *testing.T) {
+	// A real (non-dry-run) cleanup with no caller OID must refuse rather than
+	// sweep every gcx-managed app in the tenant.
+	runner := &scriptedRunner{handler: func(args []string) ([]byte, []byte, error) {
+		if hasPrefix(args, []string{"ad", "app", "list"}) {
+			return []byte(`[]`), nil, nil
+		}
+		return nil, nil, nil
+	}}
+	cli := NewCLIWithRunner(runner)
+	ds := newDSClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		t.Error("cleanup must not mutate anything in this test")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	_, err := Cleanup(context.Background(), RunDeps{CLI: cli, DS: ds}, CleanupInput{})
+	if !errors.Is(err, ErrUnscopedDestructive) {
+		t.Fatalf("expected ErrUnscopedDestructive, got %v", err)
+	}
+
+	// A dry-run with no caller OID is still allowed (read-only).
+	if _, err := Cleanup(context.Background(), RunDeps{CLI: cli, DS: ds}, CleanupInput{DryRun: true}); err != nil {
+		t.Fatalf("dry-run cleanup should be allowed without a caller OID, got %v", err)
 	}
 }
 

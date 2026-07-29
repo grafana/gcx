@@ -117,9 +117,23 @@ func runRotate(cmd *cobra.Command, opts *rotateOpts) error {
 
 	deps := azonboard.RunDeps{CLI: cli, DS: ds, Log: log, ErrOut: errOut, Progress: progress}
 
-	// Best-effort caller identity so rotation only touches app registrations
-	// attributable to this caller.
-	callerOID, _ := cli.SignedInUserObjectID(ctx)
+	// Rotation only touches app registrations attributable to this caller
+	// (matched on the gcx:owner tag). A real rotation therefore needs a resolved
+	// caller object ID; without one the sweep cannot be scoped and would risk
+	// rotating another owner's credentials in a shared tenant. --dry-run is
+	// read-only, so a missing identity is tolerated there.
+	callerOID, oidErr := cli.SignedInUserObjectID(ctx)
+	if !opts.DryRun && (oidErr != nil || callerOID == "") {
+		return gcxerrors.DetailedError{
+			Summary: "cannot resolve your Azure identity to scope the rotation",
+			Details: "Rotation mints and prunes client secrets only on app registrations you own, matched on the gcx:owner tag. Without a signed-in user object ID gcx cannot scope the sweep and refuses to proceed.",
+			Parent:  oidErr,
+			Suggestions: []string{
+				"Sign in as a user (az login) rather than a service principal or managed identity, then re-run",
+				"Or preview which datasources would rotate with --dry-run",
+			},
+		}
+	}
 
 	// In interactive mode, let the user choose which datasources to rotate
 	// rather than sweeping every gcx-managed one.

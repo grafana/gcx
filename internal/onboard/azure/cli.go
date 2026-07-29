@@ -112,6 +112,13 @@ func attributableToCaller(tags []string, callerOID, stack string) bool {
 // error explaining the roles an administrator must grant.
 var ErrInsufficientPrivilege = errors.New("insufficient Azure privileges")
 
+// ErrUnscopedDestructive indicates a destructive sweep (rotate or cleanup) was
+// requested without a resolved caller object ID to scope it. attributableToCaller
+// treats an empty caller OID as "skip the owner check", so proceeding would let
+// the sweep touch every gcx-managed artifact in a shared tenant regardless of
+// owner. gcx refuses instead. It never blocks --dry-run, which mutates nothing.
+var ErrUnscopedDestructive = errors.New("cannot scope destructive operation without a caller identity")
+
 // CLI is a thin wrapper around the `az` binary.
 type CLI struct {
 	tool cloudcli.Tool

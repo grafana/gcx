@@ -35,6 +35,17 @@ type RotateInput struct {
 // attributable to this caller/stack; key-based datasources (Cosmos DB) and
 // datasources using supplied credentials are reported as skipped.
 func Rotate(ctx context.Context, deps RunDeps, in RotateInput) (onboard.Result, error) {
+	// A real rotation mints and prunes secrets, so it must be scoped to the
+	// caller. Without a caller OID, attributableToCaller degrades to "any
+	// gcx-managed app", which in a shared tenant would rotate (and prune) other
+	// owners' credentials. Refuse rather than widen the sweep. --dry-run is
+	// read-only and stays allowed.
+	if !in.DryRun && in.CallerOID == "" {
+		return onboard.Result{}, fmt.Errorf(
+			"%w: no signed-in Azure user object ID was resolved (e.g. a service-principal or managed-identity login); re-run as a user, or preview with --dry-run",
+			ErrUnscopedDestructive)
+	}
+
 	prefix := onboard.NamePrefix + "-"
 
 	only := uidSet(in.IncludeUIDs)

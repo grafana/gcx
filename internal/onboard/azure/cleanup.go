@@ -2,6 +2,7 @@ package azure
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 
@@ -27,7 +28,23 @@ type CleanupInput struct {
 // caller/stack is known, owned by this caller and scoped to this stack). It is
 // best-effort — individual failures are warned and skipped. With DryRun set it
 // reports what would be removed without deleting anything.
+//
+// App registrations are enumerated up-front so ADX cluster principal
+// assignments can be scoped to the ones this caller actually owns (see
+// cleanupADXAssignments): the assignment name embeds the owning app, so
+// deletions never revoke another owner's cluster access in a shared tenant.
 func Cleanup(ctx context.Context, deps RunDeps, in CleanupInput) (onboard.Result, error) {
+	// A real cleanup deletes credentials and role grants, so it must be scoped
+	// to the caller. Without a caller OID, ownedByCaller/attributableToCaller
+	// degrades to "any gcx-managed app", which in a shared tenant would delete
+	// other owners' artifacts. Refuse rather than widen the sweep. --dry-run is
+	// read-only and stays allowed.
+	if !in.DryRun && in.CallerOID == "" {
+		return onboard.Result{}, fmt.Errorf(
+			"%w: no signed-in Azure user object ID was resolved (e.g. a service-principal or managed-identity login); re-run as a user, or preview with --dry-run",
+			ErrUnscopedDestructive)
+	}
+
 	prefix := onboard.NamePrefix + "-"
 	var cleaned []onboard.CleanupResult
 
@@ -52,17 +69,15 @@ func Cleanup(ctx context.Context, deps RunDeps, in CleanupInput) (onboard.Result
 		cleaned = append(cleaned, onboard.CleanupResult{Kind: "datasource", Name: d.Name, ID: d.UID})
 	}
 
-	// Remove gcx-created ADX cluster principal assignments. These are scoped to
-	// the active subscription's clusters and outlive the app registration, so
-	// clean them before deleting the apps. Best-effort: discovery failures (e.g.
-	// no kusto extension or no ADX clusters) are warned and skipped.
-	cleaned = append(cleaned, cleanupADXAssignments(ctx, deps, prefix, in.DryRun)...)
-
+	// Enumerate app registrations first so ADX assignment cleanup can be scoped
+	// to the apps this caller owns.
 	onboard.Progressf(deps.Progress, "Listing gcx-created Azure app registrations...")
 	apps, err := deps.CLI.ListAppsByPrefix(ctx, prefix)
 	if err != nil {
 		return onboard.Result{}, err
 	}
+	var owned []AppSummary
+	ownedAssignments := map[string]bool{}
 	for _, a := range apps {
 		if !ownedByCaller(a, in) {
 			if deps.Log != nil {
@@ -71,6 +86,17 @@ func Cleanup(ctx context.Context, deps RunDeps, in CleanupInput) (onboard.Result
 			}
 			continue
 		}
+		owned = append(owned, a)
+		ownedAssignments[onboardAssignmentName(a.AppID)] = true
+	}
+
+	// Remove gcx-created ADX cluster principal assignments backing our owned
+	// apps. They outlive the app registration, so clean them before deleting the
+	// apps. Best-effort: discovery failures (e.g. no kusto extension or no ADX
+	// clusters) are warned and skipped.
+	cleaned = append(cleaned, cleanupADXAssignments(ctx, deps, ownedAssignments, in.DryRun)...)
+
+	for _, a := range owned {
 		if in.DryRun {
 			cleaned = append(cleaned, onboard.CleanupResult{Kind: "app-registration", Name: a.DisplayName, ID: a.AppID, Planned: true})
 			continue
@@ -95,9 +121,20 @@ func ownedByCaller(a AppSummary, in CleanupInput) bool {
 	return attributableToCaller(a.Tags, in.CallerOID, in.Stack)
 }
 
-// cleanupADXAssignments removes gcx-prefixed cluster principal assignments from
-// all ADX clusters in the active subscription.
-func cleanupADXAssignments(ctx context.Context, deps RunDeps, prefix string, dryRun bool) []onboard.CleanupResult {
+// cleanupADXAssignments removes the cluster principal assignments that back the
+// caller's owned app registrations, across all ADX clusters in the active
+// subscription. owned holds the assignment names derived from those apps
+// (onboardAssignmentName); only assignments in this set are deleted, so a shared
+// cluster's other gcx owners are never affected.
+//
+// The trade-off is that an orphaned assignment whose app registration has
+// already been deleted cannot be attributed to this caller and is therefore
+// left in place — the safe choice, since ownership can no longer be proven.
+func cleanupADXAssignments(ctx context.Context, deps RunDeps, owned map[string]bool, dryRun bool) []onboard.CleanupResult {
+	if len(owned) == 0 {
+		return nil
+	}
+
 	onboard.Progressf(deps.Progress, "Listing ADX clusters for gcx-created assignments...")
 	clusters, err := deps.CLI.ListKustoClusters(ctx)
 	if err != nil {
@@ -114,7 +151,7 @@ func cleanupADXAssignments(ctx context.Context, deps RunDeps, prefix string, dry
 		}
 		for _, a := range assigns {
 			short := adxAssignmentShortName(a.Name)
-			if !strings.HasPrefix(short, prefix) {
+			if !owned[short] {
 				continue
 			}
 			if dryRun {
