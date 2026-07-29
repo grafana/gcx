@@ -45,6 +45,10 @@ func (o *azureOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *azureOpts) Validate() error {
+	if err := o.validateTypes(); err != nil {
+		return err
+	}
+
 	// --dry-run never mutates, so it is always exempt from the agent-mode --force
 	// gate. Both provisioning (mints credentials) and cleanup (deletes cloud
 	// artifacts) mutate, so they require --force in agent mode, where gcx cannot
@@ -71,6 +75,35 @@ func (o *azureOpts) Validate() error {
 	}
 
 	return o.IO.Validate()
+}
+
+// validateTypes rejects unknown --types values up front so a typo (e.g.
+// "--types adxx") fails with the valid set rather than silently matching no
+// suggestions and reporting "nothing was created".
+func (o *azureOpts) validateTypes() error {
+	if len(o.Types) == 0 {
+		return nil
+	}
+	valid := make(map[string]bool, len(azonboard.TypeTokens()))
+	for _, t := range azonboard.TypeTokens() {
+		valid[t] = true
+	}
+	var unknown []string
+	for _, t := range o.Types {
+		norm := strings.ToLower(strings.TrimSpace(t))
+		if norm != "" && !valid[norm] {
+			unknown = append(unknown, t)
+		}
+	}
+	if len(unknown) == 0 {
+		return nil
+	}
+	return gcxerrors.DetailedError{
+		Summary: "unknown --types value(s): " + strings.Join(unknown, ", "),
+		Suggestions: []string{
+			"Valid types are: " + strings.Join(azonboard.TypeTokens(), ", "),
+		},
+	}
 }
 
 // Command returns the `gcx setup datasources azure` command.

@@ -106,6 +106,28 @@ func TestValidate_AgentModeDryRunAllowedWithoutForce(t *testing.T) {
 	}
 }
 
+func TestValidateTypes_RejectsUnknown(t *testing.T) {
+	opts := newOpts(t)
+	opts.Types = []string{"azure-monitor", "adxx"}
+
+	err := opts.validateTypes()
+	if err == nil {
+		t.Fatal("expected error for an unknown --types value")
+	}
+	var de gcxerrors.DetailedError
+	if !errors.As(err, &de) {
+		t.Fatalf("expected DetailedError, got %T", err)
+	}
+}
+
+func TestValidateTypes_AcceptsKnown(t *testing.T) {
+	opts := newOpts(t)
+	opts.Types = []string{"azure-monitor", " ADX ", "cosmos"}
+	if err := opts.validateTypes(); err != nil {
+		t.Fatalf("unexpected error for valid --types: %v", err)
+	}
+}
+
 func TestSplitRoles(t *testing.T) {
 	got := splitRoles(" Reader , Monitoring Reader ,")
 	want := []string{"Reader", "Monitoring Reader"}

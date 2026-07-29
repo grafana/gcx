@@ -9,12 +9,20 @@ import (
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
-// Friendly datasource tokens accepted by --only and shown in the picker.
+// Friendly datasource tokens accepted by --types and shown in the picker.
 const (
 	TokenAzureMonitor = "azure-monitor"
 	TokenADX          = "adx"
 	TokenCosmos       = "cosmos"
 )
+
+// TypeTokens returns the datasource tokens accepted by --types, in display
+// order. It is the authoritative set the command layer validates --types
+// against so an unrecognised value fails fast instead of silently matching
+// nothing.
+func TypeTokens() []string {
+	return []string{TokenAzureMonitor, TokenADX, TokenCosmos}
+}
 
 // Grafana plugin IDs.
 const (
