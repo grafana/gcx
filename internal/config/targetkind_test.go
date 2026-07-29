@@ -61,7 +61,7 @@ func TestCapturedTargetKind(t *testing.T) {
 			want: "cloud",
 		},
 		{
-			name: "self-managed server",
+			name: "self-hosted server",
 			user: "stacks:\n" +
 				"  onprem:\n" +
 				"    grafana:\n" +
@@ -70,7 +70,7 @@ func TestCapturedTargetKind(t *testing.T) {
 				"  dev:\n" +
 				"    stack: onprem\n" +
 				"current-context: dev\n",
-			want: "self-managed",
+			want: "self-hosted",
 		},
 		{
 			name: "explicit stack slug",
@@ -113,9 +113,9 @@ func TestCapturedTargetKind(t *testing.T) {
 			want: "cloud",
 		},
 		{
-			name: "env-only self-managed GRAFANA_SERVER",
+			name: "env-only self-hosted GRAFANA_SERVER",
 			env:  map[string]string{"GRAFANA_SERVER": "http://localhost:3000"},
-			want: "self-managed",
+			want: "self-hosted",
 		},
 		{
 			name: "env-only cloud GRAFANA_SERVER",
@@ -151,14 +151,14 @@ func TestCapturedTargetKind(t *testing.T) {
 			want: "cloud",
 		},
 		{
-			name: "legacy config self-managed",
+			name: "legacy config self-hosted",
 			user: "contexts:\n" +
 				"  dev:\n" +
 				"    grafana:\n" +
 				"      server: http://localhost:3000\n" +
 				"      token: abc\n" +
 				"current-context: dev\n",
-			want: "self-managed",
+			want: "self-hosted",
 		},
 		{
 			name: "local layer switches current context",
@@ -171,7 +171,7 @@ func TestCapturedTargetKind(t *testing.T) {
 				"  local:\n" +
 				"    stack: onprem\n" +
 				"current-context: local\n",
-			want: "self-managed",
+			want: "self-hosted",
 		},
 		{
 			name: "local context references user-layer stack",
@@ -230,7 +230,7 @@ func TestCapturedTargetKind_ContextOverride(t *testing.T) {
 	scrubTargetKindEnv(t)
 
 	// current-context says cloud; a --context style override selects the
-	// self-managed context and must win.
+	// self-hosted context and must win.
 	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
 		"stacks:\n"+
 			"  prod:\n"+
@@ -251,7 +251,7 @@ func TestCapturedTargetKind_ContextOverride(t *testing.T) {
 	}
 	_, err := config.LoadLayered(t.Context(), "", selectLocal, testEnvOverride)
 	require.NoError(t, err)
-	assert.Equal(t, "self-managed", config.CapturedTargetKind())
+	assert.Equal(t, "self-hosted", config.CapturedTargetKind())
 }
 
 func TestCapturedTargetKind_ExplicitConfigFile(t *testing.T) {
@@ -268,5 +268,5 @@ func TestCapturedTargetKind_ExplicitConfigFile(t *testing.T) {
 
 	_, err := config.LoadLayered(t.Context(), explicit, testEnvOverride)
 	require.NoError(t, err)
-	assert.Equal(t, "self-managed", config.CapturedTargetKind())
+	assert.Equal(t, "self-hosted", config.CapturedTargetKind())
 }

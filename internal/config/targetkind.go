@@ -4,7 +4,7 @@ import "sync/atomic"
 
 const (
 	targetKindCloud       = "cloud"
-	targetKindSelfManaged = "self-managed"
+	targetKindSelfManaged = "self-hosted"
 )
 
 // capturedTargetKind holds the targetKind for the invocation. It is updated when each layer of the config is read. It is read once at exit by the usage-stats emitter.
