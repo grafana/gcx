@@ -68,58 +68,6 @@ func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
 	return t.Render(w)
 }
 
-// FormatLabelSetsTable formats unique label sets from a Series query with one
-// column per label name.
-func FormatLabelSetsTable(w io.Writer, resp *SeriesResponse) error {
-	names := resp.LabelNames
-	if len(names) == 0 {
-		names = resp.UniqueLabelNames()
-	}
-	if len(names) == 0 {
-		t := style.NewTable("LABELS")
-		t.Row("(no series data)")
-		return t.Render(w)
-	}
-
-	header := make([]string, len(names))
-	for i, n := range names {
-		header[i] = strings.ToUpper(n)
-	}
-	t := style.NewTable(header...)
-
-	rows := make([][]string, 0, len(resp.LabelsSet))
-	seen := make(map[string]struct{}, len(resp.LabelsSet))
-	for _, set := range resp.LabelsSet {
-		values := make(map[string]string, len(set.Labels))
-		for _, lp := range set.Labels {
-			values[lp.Name] = lp.Value
-		}
-		row := make([]string, len(names))
-		for i, n := range names {
-			row[i] = values[n]
-		}
-		key := strings.Join(row, "\x00")
-		if _, dup := seen[key]; dup {
-			continue
-		}
-		seen[key] = struct{}{}
-		rows = append(rows, row)
-	}
-	sort.Slice(rows, func(i, j int) bool {
-		for k := range rows[i] {
-			if rows[i][k] != rows[j][k] {
-				return rows[i][k] < rows[j][k]
-			}
-		}
-		return false
-	})
-	for _, row := range rows {
-		t.Row(row...)
-	}
-
-	return t.Render(w)
-}
-
 // FormatPprofWriteTable formats the result of writing a pprof binary as a single-row table.
 func FormatPprofWriteTable(w io.Writer, result *PprofWriteResult) error {
 	t := style.NewTable("PATH")

@@ -99,44 +99,6 @@ type LabelValuesResponse struct {
 	Names []string `json:"names"` // Pyroscope uses "names" for both labels and values
 }
 
-// SeriesRequest represents a request to list unique label sets via
-// querier.v1.QuerierService/Series.
-type SeriesRequest struct {
-	Matchers   []string
-	LabelNames []string
-	Start      time.Time
-	End        time.Time
-}
-
-// SeriesResponse represents the response from a Series query.
-type SeriesResponse struct {
-	// LabelNames echoes the projection requested by the CLI. It is not part
-	// of the server response; the table codec uses it for column order.
-	LabelNames []string `json:"labelNames,omitempty"`
-	LabelsSet  []Labels `json:"labelsSet"`
-}
-
-// Labels is a single unique label set returned by a Series query.
-type Labels struct {
-	Labels []LabelPair `json:"labels"`
-}
-
-// UniqueLabelNames returns the sorted union of label names across all label sets.
-func (r *SeriesResponse) UniqueLabelNames() []string {
-	set := make(map[string]struct{})
-	for _, ls := range r.LabelsSet {
-		for _, lp := range ls.Labels {
-			set[lp.Name] = struct{}{}
-		}
-	}
-	names := make([]string, 0, len(set))
-	for n := range set {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return names
-}
-
 // FunctionSample represents a function in the flame graph with computed stats.
 type FunctionSample struct {
 	Name       string
