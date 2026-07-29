@@ -255,18 +255,13 @@ enabled at a low `sample_rate`.
 **Guards** — the shape the `agento11y` skill omits (`gcx agento11y guards create -f guard.yaml`; the
 resource `Kind` is `HookRule`).
 
-> **Hard gate: do not draft a guard until you have captured the exact accepted create-file shape
-> from the current `gcx` version.** Run `gcx agento11y guards create --help` and inspect a real
-> definition (`gcx agento11y guards get <id> -o yaml`, or `guards list -o yaml`); if none exists, get
-> the schema from `--help` / the resource definition. Only then write a guard file.
-
-This skill (not the `agento11y` skill) carries the guard shape, and field names/nesting can drift by
-`gcx` version and by stack — so the shape you capture from a real stored guard
-(`gcx agento11y guards get <existing-id> -o yaml`) is the source of truth, not the snippet below.
-The snippet is **illustrative only**. A guard drives its decision from one of three (mutually
+This skill (not the `agento11y` skill) carries the guard shape — draft the guard file directly from
+it, no schema-discovery step needed. A guard drives its decision from one of three (mutually
 exclusive) shapes — `evaluator_ids`, `redact`, or `tool_filter` — plus `action_on_fail`, `phase`,
 `priority`, `selector`. Use the `redact` schema exactly as the callout above shows (`{id, regex}`,
-no `replacement`). On create the server fills defaults you don't set — notably `selector: all`,
+no `replacement`). If the server ever rejects a field, its 400 names the correct one (e.g.
+`redact.patterns`) — fix and retry then, rather than probing up front. On create the server fills
+defaults you don't set — notably `selector: all`,
 `phase: preflight`, and `short_circuit: false` — so a `guards get -o yaml` right after create
 shows more fields than you sent; that's expected, not drift. A guard is drafted in **warn** (and
 `enabled: false` if the server honors it — it may not; see Step 5):
