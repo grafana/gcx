@@ -9,7 +9,8 @@ description: >
   online eval rules (score live conversations for regressions) and guards (warn-first
   request-path policies that redact / tool-filter and may later be promoted to deny).
   It drafts reviewable YAML and, only with explicit confirmation, applies via
-  `gcx agento11y`. New guards start disabled + warn. It DOES create stack-level objects —
+  `gcx agento11y`. New guards are drafted in warn mode (safe on live traffic — warn records but
+  never blocks). It DOES create stack-level objects —
   that is the point — but every write is confirmed. It never rewrites or redeploys the
   agent. Trigger on phrases like "set up production evaluation", "my agent is in prod
   what should I evaluate", "catch quality regressions", "add guardrails to my agent",
@@ -25,8 +26,9 @@ traffic, and sets up the two production surfaces the starter deliberately leaves
 
 - **Online eval rules** — evaluators that score ingested live conversations, so regressions
   surface without hand-reviewing every conversation.
-- **Guards** (hook-rules) — policies on the request path that `warn`, redact (`transform`), or
-  block tools (`tool_filter`) in real time, and can later be promoted to `deny`.
+- **Guards** (hook-rules) — policies on the request path that `warn` (and can later be promoted to
+  `deny`) in real time. A guard decides via one of three shapes: `evaluator_ids` (an evaluator
+  judges), `redact` (regex redaction), or `tool_filter` (block tool calls). See Step 4.
 
 ## What this skill does that `agento11y` doesn't
 
@@ -47,7 +49,7 @@ Two gaps this skill fills beyond `agento11y`:
 - **Recommendation from evidence** — `agento11y` starts once you know what to create; this decides.
 - **Guards** — `agento11y` documents evaluators and rules but not guards (hook-rules), even though
   `gcx agento11y guards` exists. This skill carries the guard shapes
-  (`transform` / `tool_filter` / `action_on_fail`) itself.
+  (`evaluator_ids` / `redact` / `tool_filter`, plus `action_on_fail`) itself.
 
 For any mechanical detail — exact flags, evaluator/rule YAML fields, the setup flow — defer to
 the `agento11y` skill and to `gcx agento11y <sub> --help` rather than restating it here.
@@ -68,10 +70,12 @@ the `agento11y` skill and to `gcx agento11y <sub> --help` rather than restating 
   it from `agento11y-test-starter`. But every creation is **explicit and confirmed**: show the exact
   YAML, get a yes, then create it with the matching `gcx agento11y` command. A yes for one object
   is not a yes for the next.
-- New guards are always drafted **`enabled: false`** and **`action_on_fail: "warn"`** — even
-  hard-policy ones. Never draft a first-time `deny` guard, and never ship one enabled: a false
-  positive blocks real users. The developer flips to `deny` + enabled themselves, later, after
-  watching it in warn mode (Step 6).
+- New guards are always drafted **`action_on_fail: "warn"`** — even hard-policy ones. That is what
+  makes a new guard safe: a `warn` guard only records the outcome, it never blocks a request, so it
+  is harmless even while it is live. Never draft a first-time `deny` guard. The developer switches to
+  `deny` themselves, later, after watching it in warn mode (Step 6). Draft `enabled: false` if you
+  can, but don't build extra steps around it — the server may store the guard `enabled: true`
+  regardless (see Step 5), and that is fine, because `warn` carries the safety, not `enabled`.
 - New online rules start with a **conservative `sample_rate`** (e.g. `0.1`), not `1.0` — an
   `llm_judge` over 100% of traffic costs real money.
 - Prefer **starting from an evaluator template** (`gcx agento11y templates list`, then
@@ -133,8 +137,8 @@ from the traffic; read it from the code.
 **Minimum evidence bar.** Aim for **≥20 recent conversations over ≥7 days** before drafting
 anything. Fewer than that and you risk overfitting one odd conversation into a production rule or
 guard: if the window is thin, either stop and say so, or proceed but mark every recommendation
-**low-confidence** and lean on drafts (disabled guards, low `sample_rate`) rather than anything
-that intervenes. A recommendation from a single conversation is a hypothesis, not a rule. If the
+**low-confidence** and lean on non-intervening setups (guards in `warn`, low `sample_rate`) rather
+than anything that blocks. A recommendation from a single conversation is a hypothesis, not a rule. If the
 agent has essentially no traffic, stop — this is the wrong skill; `agento11y-test-starter` (offline
 suite) is the right one until traffic exists.
 
@@ -169,9 +173,28 @@ watch or to stop — and remember a guard is dead config until the agent is wire
 | must emit JSON / a fixed shape | online **rule** | fork `template.json_valid` (`json_schema`) |
 | over-refuses or drifts off-topic | online **rule** | `regex` / `llm_judge` on `all_assistant_generations` |
 | public-facing text | online **rule** | fork `template.toxicity` / `template.pii` (`llm_judge`) |
-| echoes user data with PII/secrets | **guard** | `transform` (regex → `[REDACTED:...]`) |
-| can call dangerous tools (shell, delete, write) | **guard** | `tool_filter` with `blocked_names` globs (e.g. `Bash(*rm*)`) |
+| echoes user data with PII/secrets | **guard** | `redact` guard (regex → placeholder) for a known pattern; `llm_judge`-backed guard when the leak needs judgment |
+| can call dangerous tools (shell, delete, write) | **guard** | `tool_filter` with `blocked_names` globs; or an `llm_judge`-backed guard on the output for command patterns |
 | is subject to prompt-injection / hard policy | **guard** | `llm_judge` evaluator; draft `warn`, later promotable to `deny` |
+
+> **Three guard shapes, all first-class:** `evaluator_ids` (an evaluator decides — most flexible),
+> `redact` (regex redaction), and `tool_filter` (block tool calls). Pick the one that fits the policy;
+> a redaction need is a `redact` guard, not a judge.
+>
+> **`redact` schema is exact — get it right or the create 400s.** The field is `redact` (the server's
+> canonical name; a legacy `transform` alias also works), and each pattern is **only `{id, regex}`** —
+> there is **no `replacement` key**. On a match the server redacts to a placeholder derived from the
+> pattern `id`; supplying `replacement` fails with `400 unknown field "replacement"`. Draft it as:
+>
+> ```yaml
+> redact:
+>   patterns:
+>     - id: bearer_token          # the id names the placeholder
+>       regex: 'Bearer\s+[A-Za-z0-9._-]+'
+> ```
+>
+> After creating any guard, `guards get -o yaml` and confirm the spec stored what you sent (a clean
+> create echo is not proof on its own).
 
 Template ids above are the **expected** global blueprints — they can vary by deployment and
 version, so always resolve the current set with `gcx agento11y templates list` before using a name;
@@ -230,31 +253,37 @@ resource `Kind` is `HookRule`).
 > the schema from `--help` / the resource definition. Only then write a guard file.
 
 This skill (not the `agento11y` skill) carries the guard shape, and field names/nesting can drift by
-`gcx` version — so the captured shape is the source of truth, not the snippet below. The snippet
-is **illustrative only** (verified against gcx v0.4.0: a `transform` guard with `rule_id`,
-`enabled`, `priority`, `action_on_fail`, and `transform.patterns[].{id,regex,replacement}` is
-accepted as-is). On create the server fills defaults you don't set — notably `selector: all`,
+`gcx` version and by stack — so the shape you capture from a real stored guard
+(`gcx agento11y guards get <existing-id> -o yaml`) is the source of truth, not the snippet below.
+The snippet is **illustrative only**. A guard drives its decision from one of three (mutually
+exclusive) shapes — `evaluator_ids`, `redact`, or `tool_filter` — plus `action_on_fail`, `phase`,
+`priority`, `selector`. Use the `redact` schema exactly as the callout above shows (`{id, regex}`,
+no `replacement`). On create the server fills defaults you don't set — notably `selector: all`,
 `phase: preflight`, and `short_circuit: false` — so a `guards get -o yaml` right after create
-shows more fields than you sent; that's expected, not drift. A guard starts **disabled** and in
-**warn**:
+shows more fields than you sent; that's expected, not drift. A guard is drafted in **warn** (and
+`enabled: false` if the server honors it — it may not; see Step 5):
 
 ```yaml
 # ILLUSTRATIVE — confirm fields with `gcx agento11y guards create --help` before use.
 # PROD-SETUP DRAFT — creates a STACK-LEVEL guard (HookRule) via gcx agento11y guards create.
-# Starts disabled + warn on purpose: watch it on real traffic before enabling / switching to deny.
+# warn on purpose: a warn guard records but never blocks, so it is safe on real traffic
+# even while live; watch it, then switch to deny yourself later.
 rule_id: guard.<agent>.<policy>
-enabled: false
+enabled: false         # server may store true anyway; harmless because action_on_fail is warn
 priority: 10           # lower runs first
 action_on_fail: warn   # always draft as warn (see below)
-# choose at least one of transform / tool_filter / evaluator_ids:
-transform:
-  patterns:
-    - id: ssn
-      regex: "\\b\\d{3}-\\d{2}-\\d{4}\\b"
-      replacement: "[REDACTED:ssn]"
+# Pick exactly ONE decision shape:
+# (a) evaluator-backed — an evaluator (judge/regex) decides; most flexible.
+evaluator_ids: ["<policy-judge-id>"]  # create the evaluator first
+# (b) redact — regex redaction to a placeholder derived from `id`. Schema is {id, regex} ONLY;
+#     a `replacement` key 400s. Field name is `redact` (legacy alias: `transform`).
+# redact:
+#   patterns:
+#     - id: ssn
+#       regex: "\\b\\d{3}-\\d{2}-\\d{4}\\b"
+# (c) tool_filter — block tool calls by name glob.
 # tool_filter:
 #   blocked_names: ["shell_exec", "Bash(*rm*)"]
-# evaluator_ids: ["<policy-judge-id>"]
 ```
 `phase` is `preflight` (default) or `postflight`. **Always draft `action_on_fail: warn`, even for
 a hard-policy guard** (prompt-injection, deny-list): a first-time `deny` enabled on live traffic
@@ -268,8 +297,8 @@ rate in warn mode (Step 6). This skill never drafts an enabled `deny` guard.
 > (step 2).** The one thing you CAN run before the yes is `evaluators test -f <request>.yaml`,
 > which tests a judge config **without persisting it** (pass `kind`, `config`, `output_keys`,
 > `generation_id` in the file — no evaluator need exist yet). Use it to tune the judge (step 1).
-> There is **no CLI dry-run** for rules or guards — their safety comes from shipping guards
-> `disabled` + `warn` and rules at a low `sample_rate`, not from a preview.
+> There is **no CLI dry-run** for rules or guards — their safety comes from shipping guards in
+> `warn` (records, never blocks) and rules at a low `sample_rate`, not from a preview.
 
 Per object the developer wants, in dependency order (evaluators → rules → guards, since a
 rule/guard referencing an evaluator needs it to exist first):
@@ -291,15 +320,12 @@ rule/guard referencing an evaluator needs it to exist first):
    `gcx agento11y guards create -f guards/<id>.yaml`. Evaluators are create-or-update (same id
    updates). Pass `--context <name>` on every call if the confirmed stack isn't the default
    context. gcx handles auth — no tokens here.
-   - **`gcx agento11y guards create` does not preserve `enabled: false` / `short_circuit: false` — it stores
-     the guard `enabled: true` and `short_circuit: true` regardless of the draft.** This is a known
-     `create` quirk, not a draft error, and the `create` command's own echoed output can still show
-     the values you sent, so do NOT trust it. After every guard `create`, read the STORED object
-     with `gcx agento11y guards get <id> -o yaml` and, if `enabled` came back `true` (it will) or
-     `short_circuit` isn't what you drafted, immediately `gcx agento11y guards update <id> -f
-     guards/<id>.yaml` to force `enabled: false` (+ your intended `short_circuit`), then `get` again
-     to confirm it held. A first-time guard live on traffic is exactly what this skill must never
-     ship, so this verify-and-update step is mandatory, not conditional.
+   - **The server may store a new guard `enabled: true` / `short_circuit: true` regardless of what
+     you drafted.** That is a known server default, not a draft error. Do not build a
+     create→get→update dance around it: because you drafted `action_on_fail: warn`, a live guard only
+     records outcomes and blocks no one, so `enabled: true` is harmless here. Create the guard and
+     move on. (What you must never create is an enabled `deny` guard — the `warn` rule above is what
+     prevents that, not the `enabled` value.)
    - A judge-model 404 when testing/scoring is usually a stack-side misconfiguration (the stack's
      judge model id is dead), not your evaluator — flag it; the online rule will hit the same broken
      judge at runtime until it's fixed.

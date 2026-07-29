@@ -32,9 +32,8 @@ func ListCommand() *cobra.Command {
 	opts := &listOpts{}
 
 	cmd := &cobra.Command{
-		Use:     "list-explanations",
-		Short:   "List every available otel-checker explain ID",
-		Aliases: []string{"list-explains"},
+		Use:   "list-explanations",
+		Short: "List every available otel-checker explain ID",
 		Long: `List every registered otel-checker explain ID with its title and severity.
 
 Use one of the IDs with ` + "`gcx instrumentation explain <id>`" + ` to see the
@@ -72,6 +71,12 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 // allEntries returns every registered explain doc as an EntryView, in the
 // alphabetical order produced by otelexplain.All(). No additional sort — the
 // upstream registry already yields sorted IDs.
+//
+// The `!ok` skip below is defense against an upstream refactor where All()
+// and Lookup() disagree. Today every ID from All() is guaranteed to Lookup
+// (see TestAllEntries_SortedAndNonEmpty), so the branch is dead — kept as a
+// silent guard rather than a panic to avoid crashing the CLI if the invariant
+// breaks in a future otel-checker release.
 func allEntries() []EntryView {
 	ids := otelexplain.All()
 	entries := make([]EntryView, 0, len(ids))
@@ -109,18 +114,13 @@ func (c *entryTableCodec) Format() format.Format {
 }
 
 func (c *entryTableCodec) Encode(w io.Writer, v any) error {
-	var entries []EntryView
-	switch val := v.(type) {
-	case EntryListEnvelope:
-		entries = val.Items
-	case []EntryView:
-		entries = val
-	default:
-		return fmt.Errorf("entryTableCodec: expected EntryListEnvelope or []EntryView, got %T", v)
+	envelope, ok := v.(EntryListEnvelope)
+	if !ok {
+		return fmt.Errorf("entryTableCodec: expected EntryListEnvelope, got %T", v)
 	}
 
 	t := style.NewTable("ID", "SEVERITY", "TITLE")
-	for _, e := range entries {
+	for _, e := range envelope.Items {
 		t.Row(e.ID, e.Severity, e.Title)
 	}
 	return t.Render(w)
