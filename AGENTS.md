@@ -87,7 +87,7 @@ internal/        Non-public packages — full annotated map: docs/architecture/p
 
 | Task | Read first | Then |
 |------|-----------|------|
-| **Adding a new command** | [DESIGN.md](DESIGN.md) (grammar, output model) | [docs/design/](docs/design/) for implementation rules, [ARCHITECTURE.md](ARCHITECTURE.md) § CLI layer |
+| **Adding a new command** | [docs/design/command-naming.md](docs/design/command-naming.md) (verb + placement), [DESIGN.md](DESIGN.md) (grammar, output model) | [docs/design/](docs/design/) for implementation rules, [ARCHITECTURE.md](ARCHITECTURE.md) § CLI layer |
 | **Adding a new provider** | [ARCHITECTURE.md](ARCHITECTURE.md) § Provider System | [docs/reference/provider-guide.md](docs/reference/provider-guide.md), [docs/design/provider-checklist.md](docs/design/provider-checklist.md) |
 | **Adding a signal provider command** | [ARCHITECTURE.md](ARCHITECTURE.md) § Signal Providers | Existing signal provider code for the SharedOpts pattern |
 | **Modifying resource handling** | [ARCHITECTURE.md](ARCHITECTURE.md) § Resources Pipeline | [docs/architecture/resource-model.md](docs/architecture/resource-model.md), [docs/architecture/data-flows.md](docs/architecture/data-flows.md) |
