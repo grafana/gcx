@@ -15,7 +15,8 @@ gcx/
 │       │   └── query/        # Auto-detecting query command (GenericCmd only)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
-│       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
+│       ├── setup/            # 'setup' command area (status; cross-product onboarding helpers)
+│       │   └── datasources/  #   onboard cloud datasources (azure: Azure Monitor + ADX + Cosmos; rotate subcommand rotates gcx-minted secrets)
 │       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, clusters, services)
 │       │   ├── clusters/     #   cluster-level subcommands (list, get, configure, remove, wait, apps subtree)
 │       │   ├── services/     #   workload-level subcommands (list, get, include, exclude, clear)
@@ -43,6 +44,7 @@ gcx/
 │   ├── format/               # JSON/YAML codec, format auto-detection
 │   ├── output/               # Output codec registry (json, yaml, text, wide), field selection, user-facing messages
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
+│   ├── plugins/              # Grafana plugin admin client (check/install datasource plugins — used by onboard pre-flight)
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
 │   ├── httputils/            # REST client helpers, request/response utilities
 │   ├── retry/                # Retry transport (429/5xx/connection errors, exponential backoff, Retry-After)
@@ -103,6 +105,7 @@ gcx/
 │   │   └── clickhouse/       # ClickHouse HTTP client
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── onboard/              # Cloud datasource onboarding core (result types, naming/collision, rollback, shared progress)
+│   │   └── azure/            # Azure onboarding (az CLI wrapper, discover, plan, Azure Monitor + ADX + Cosmos payloads, orchestration, cleanup, rotate)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
