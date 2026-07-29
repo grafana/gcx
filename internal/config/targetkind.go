@@ -3,8 +3,8 @@ package config
 import "sync/atomic"
 
 const (
-	targetKindCloud       = "cloud"
-	targetKindSelfManaged = "self-hosted"
+	targetKindCloud      = "cloud"
+	targetKindSelfHosted = "self-hosted"
 )
 
 // capturedTargetKind holds the targetKind for the invocation. It is updated when each layer of the config is read. It is read once at exit by the usage-stats emitter.
@@ -32,5 +32,5 @@ func targetKindForContext(context *Context) string {
 	case context.Grafana == nil || context.Grafana.Server == "":
 		return ""
 	}
-	return targetKindSelfManaged
+	return targetKindSelfHosted
 }
