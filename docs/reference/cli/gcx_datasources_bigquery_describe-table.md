@@ -7,8 +7,9 @@ Show column schema for a BigQuery table
 Show column name, data type, and nullability for each column in a table via
 INFORMATION_SCHEMA.COLUMNS.
 
---dataset is required. When --project is omitted, the datasource's default
-project is used.
+The dataset is required, supplied either in the table name (DATASET.TABLE or
+PROJECT.DATASET.TABLE) or via --dataset. When the project is omitted, the
+datasource's default project is used.
 
 ```
 gcx datasources bigquery describe-table TABLE [flags]
@@ -18,14 +19,16 @@ gcx datasources bigquery describe-table TABLE [flags]
 
 ```
 
-  # Describe a table in a dataset (default project)
+  # Describe a table in a dataset (default project; equivalent forms)
+  gcx datasources bigquery describe-table my_dataset.events
   gcx datasources bigquery describe-table events --dataset my_dataset
 
-  # Describe a table in a specific project
+  # Describe a table in a specific project (equivalent forms)
+  gcx datasources bigquery describe-table my-project.my_dataset.events
   gcx datasources bigquery describe-table events --project my-project --dataset my_dataset
 
   # Output as JSON
-  gcx datasources bigquery describe-table events --dataset my_dataset -o json
+  gcx datasources bigquery describe-table my_dataset.events -o json
 ```
 
 ### Options

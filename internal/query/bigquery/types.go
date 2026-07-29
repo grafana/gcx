@@ -52,6 +52,29 @@ func ValidateProject(project string) error {
 	return nil
 }
 
+// SplitQualifiedTable splits a possibly qualified table reference into its
+// project, dataset, and table parts, returning (project, dataset, table, error):
+//
+//	"WORLD_DATA"                       -> ("", "", "WORLD_DATA")
+//	"my_dataset.WORLD_DATA"            -> ("", "my_dataset", "WORLD_DATA")
+//	"my-project.my_dataset.WORLD_DATA" -> ("my-project", "my_dataset", "WORLD_DATA")
+//
+// It errors on more than three dot-separated parts. Parts are not validated
+// here — callers pass them through ValidateProject / ValidateName.
+func SplitQualifiedTable(name string) (string, string, string, error) {
+	parts := strings.Split(name, ".")
+	switch len(parts) {
+	case 1:
+		return "", "", parts[0], nil
+	case 2:
+		return "", parts[0], parts[1], nil
+	case 3:
+		return parts[0], parts[1], parts[2], nil
+	default:
+		return "", "", "", fmt.Errorf("invalid table %q: use TABLE, DATASET.TABLE, or PROJECT.DATASET.TABLE (or pass --project/--dataset)", name)
+	}
+}
+
 // InfoSchemaPrefix builds a backtick-quoted INFORMATION_SCHEMA path prefix from
 // an optional project and dataset. Callers MUST validate the identifiers first
 // (see ValidateProject / ValidateName) so interpolation is safe.
