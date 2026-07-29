@@ -1,12 +1,15 @@
 package datasources
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/query/bigquery"
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -201,8 +204,11 @@ that do not have a dedicated subcommand.`,
 
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
+			case "bigquery":
+				return runBigQueryQuery(ctx, cmd, shared, cfg, datasourceUID, expr, start, end)
+
 			default:
-				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb, clickhouse)", dsType)
+				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb, clickhouse, bigquery)", dsType)
 			}
 		},
 	}
@@ -214,4 +220,25 @@ that do not have a dedicated subcommand.`,
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return for loki queries (0 means no limit)")
 
 	return cmd
+}
+
+// runBigQueryQuery executes a BigQuery SQL query for the auto-detecting query
+// command. Extracted from the RunE switch to keep QueryCmd within complexity
+// bounds.
+func runBigQueryQuery(ctx context.Context, cmd *cobra.Command, shared *dsquery.SharedOpts, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time) error {
+	client, err := bigquery.NewClient(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+
+	resp, err := client.Query(ctx, datasourceUID, bigquery.QueryRequest{
+		RawSQL: bigquery.EnforceLimit(expr, 100, 1000),
+		Start:  start,
+		End:    end,
+	})
+	if err != nil {
+		return fmt.Errorf("query failed: %w", err)
+	}
+
+	return shared.IO.Encode(cmd.OutOrStdout(), resp)
 }
