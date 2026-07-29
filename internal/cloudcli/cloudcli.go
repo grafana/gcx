@@ -134,7 +134,9 @@ func redactArgs(args []string) []string {
 func (t Tool) RunJSON(ctx context.Context, out any, args ...string) error {
 	stdout, stderr, err := t.Run(ctx, args...)
 	if err != nil {
-		return fmt.Errorf("%s %v failed: %w: %s", t.Bin, args, err, bytes.TrimSpace(stderr))
+		// Redact args here too: this error wraps into %w chains that reach logs,
+		// telemetry, and user-facing stderr, so a raw --secret value would leak.
+		return fmt.Errorf("%s %s failed: %w: %s", t.Bin, strings.Join(redactArgs(args), " "), err, bytes.TrimSpace(stderr))
 	}
 	if out == nil {
 		return nil
