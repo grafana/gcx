@@ -101,6 +101,12 @@ const (
 	// slugs become <slug>.grafana.net subdomains and accept lowercase
 	// characters only).
 	CloudAPI = "https://grafana.com/docs/grafana-cloud/developer-resources/api-reference/cloud-api.md"
+
+	// PrivateDataSourceConnect documents Private Data source Connect (PDC), the
+	// Grafana Cloud path for querying data sources that are not publicly
+	// reachable. Suggested during Azure onboarding when a discovered resource
+	// has public network access disabled.
+	PrivateDataSourceConnect = "https://grafana.com/docs/grafana-cloud/connect-externally-hosted/private-data-source-connect.md"
 )
 
 // All returns every documentation URL in the registry. Used by the
@@ -127,5 +133,6 @@ func All() []string {
 		IRMInvoice,
 		AnonymousUsageStats,
 		CloudAPI,
+		PrivateDataSourceConnect,
 	}
 }
