@@ -24,6 +24,8 @@ func TestEnforceTop(t *testing.T) {
 		{"limit zero disables", "SELECT * FROM dbo.t", 0, "SELECT * FROM dbo.t"},
 		{"existing top untouched", "SELECT TOP 5 * FROM dbo.t", 100, "SELECT TOP 5 * FROM dbo.t"},
 		{"existing top parens untouched", "SELECT TOP (5) * FROM dbo.t", 100, "SELECT TOP (5) * FROM dbo.t"},
+		{"existing top percent not clamped", "SELECT TOP 50 PERCENT * FROM dbo.t", 100, "SELECT TOP 50 PERCENT * FROM dbo.t"},
+		{"existing top with ties not clamped", "SELECT TOP (5) WITH TIES * FROM dbo.t ORDER BY id", 100, "SELECT TOP (5) WITH TIES * FROM dbo.t ORDER BY id"},
 		{"cte bails", "WITH c AS (SELECT 1 AS n) SELECT * FROM c", 100, "WITH c AS (SELECT 1 AS n) SELECT * FROM c"},
 		{"union bails", "SELECT a FROM t1 UNION SELECT a FROM t2", 100, "SELECT a FROM t1 UNION SELECT a FROM t2"},
 		{"offset fetch bails", "SELECT * FROM dbo.t ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY", 100, "SELECT * FROM dbo.t ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY"},
@@ -41,6 +43,33 @@ func TestEscapeSQLString(t *testing.T) {
 	assert.Equal(t, "dbo", mssql.EscapeSQLString("dbo"))
 	assert.Equal(t, "O''Brien", mssql.EscapeSQLString("O'Brien"))
 	assert.Equal(t, "a''b''c", mssql.EscapeSQLString("a'b'c"))
+}
+
+func TestSplitSchemaQualifiedTable(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantSchema string
+		wantTable  string
+		wantErr    bool
+	}{
+		{"bare table", "WORLD_DATA", "", "WORLD_DATA", false},
+		{"schema qualified", "dbo.WORLD_DATA", "dbo", "WORLD_DATA", false},
+		{"three parts errors", "db.dbo.WORLD_DATA", "", "", true},
+		{"trailing dot yields empty table part", "dbo.", "dbo", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema, table, err := mssql.SplitSchemaQualifiedTable(tt.input)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSchema, schema)
+			assert.Equal(t, tt.wantTable, table)
+		})
+	}
 }
 
 func TestValidateIdentifier(t *testing.T) {

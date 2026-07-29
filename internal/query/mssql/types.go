@@ -30,6 +30,24 @@ func EscapeSQLString(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
 }
 
+// SplitSchemaQualifiedTable splits a possibly schema-qualified table reference
+// (e.g. "dbo.WORLD_DATA") into its schema and table parts, returning
+// (schema, table, error). A bare name ("WORLD_DATA") returns an empty schema.
+// It errors on more than two dot-separated parts (e.g. db.schema.table), which
+// gcx cannot map onto INFORMATION_SCHEMA's two-level schema/table columns.
+// Individual parts are not validated here — callers pass them through
+// ValidateIdentifier.
+func SplitSchemaQualifiedTable(name string) (string, string, error) {
+	if !strings.Contains(name, ".") {
+		return "", name, nil
+	}
+	parts := strings.Split(name, ".")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid table %q: use SCHEMA.TABLE (e.g. dbo.WORLD_DATA) or pass --schema", name)
+	}
+	return parts[0], parts[1], nil
+}
+
 var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 // ValidateIdentifier checks that a schema or table name contains only safe
@@ -61,6 +79,13 @@ var (
 // or change semantics: non-SELECT statements, CTEs (WITH ...), queries that
 // already use TOP, set operations (UNION/INTERSECT/EXCEPT), and paged queries
 // (OFFSET ... FETCH). Bailing is always safe because it only forgoes the cap.
+//
+// Note the deliberate divergence from the shared EnforceLimit: when the SQL
+// already carries a cap, EnforceLimit rewrites an over-max `LIMIT n` down to
+// maxLimit, but EnforceTop leaves an existing TOP untouched rather than clamping
+// it. Rewriting TOP is not a safe find-and-replace — it has `TOP (n) PERCENT`
+// and `TOP (n) WITH TIES` variants whose semantics a naive clamp would corrupt —
+// so a user-supplied TOP is always honoured as-is.
 func EnforceTop(sql string, limit, maxLimit int) string {
 	if limit == 0 {
 		return sql
