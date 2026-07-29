@@ -24,7 +24,7 @@ func newClient(t *testing.T, handler http.Handler) *plugins.Client {
 
 func TestIsInstalled_True(t *testing.T) {
 	c := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/plugins/grafana-azure-data-explorer-datasource" {
+		if r.URL.Path != "/api/plugins/grafana-azure-data-explorer-datasource/settings" {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
 		_, _ = w.Write([]byte(`{"id":"grafana-azure-data-explorer-datasource","enabled":true,"info":{"version":"5.0.0"}}`))

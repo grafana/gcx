@@ -1,6 +1,7 @@
 // Package plugins provides a thin client for Grafana's plugin admin API
 // (/api/plugins). It is used to check whether a required datasource plugin is
-// installed and, when permitted, to install it. It reuses the
+// installed (via GET /api/plugins/{id}/settings — Grafana has no bare
+// /api/plugins/{id} route) and, when permitted, to install it. It reuses the
 // NamespacedRESTConfig transport so OAuth proxy mode and token refresh are
 // respected, mirroring internal/datasources.
 package plugins
@@ -55,8 +56,14 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 
 // Get returns the plugin with the given ID. It returns ErrNotInstalled when the
 // plugin is not installed (HTTP 404). Other non-200 responses return an error.
+//
+// It queries GET /api/plugins/{id}/settings: Grafana has no bare
+// /api/plugins/{id} route (that path always 404s), and the settings endpoint is
+// the canonical per-plugin lookup — it returns 404 "Plugin not found, no
+// installed plugin with that id" when the plugin is absent and 200 with the
+// plugin metadata when it is installed.
 func (c *Client) Get(ctx context.Context, id string) (*Plugin, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+pluginsPath+url.PathEscape(id), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+pluginsPath+url.PathEscape(id)+"/settings", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

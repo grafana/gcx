@@ -95,7 +95,7 @@ func TestProvision_InstallsMissingPlugin(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/plugins/"+KindADX+"/install":
 			installed = true
 			w.WriteHeader(http.StatusOK)
-		case r.URL.Path == "/api/plugins/"+KindADX:
+		case r.URL.Path == "/api/plugins/"+KindADX+"/settings":
 			if installed {
 				_, _ = w.Write([]byte(`{"id":"` + KindADX + `"}`))
 				return
@@ -153,7 +153,7 @@ func TestProvision_UnavailablePluginSkipsOnlyThatDatasource(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/plugins/"+KindADX+"/install":
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"message":"enterprise plugin not licensed"}`))
-		case r.URL.Path == "/api/plugins/"+KindADX:
+		case r.URL.Path == "/api/plugins/"+KindADX+"/settings":
 			w.WriteHeader(http.StatusNotFound)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/datasources":
 			_, _ = w.Write([]byte(`[]`))
@@ -226,7 +226,7 @@ func TestProvision_PluginPreflightDedupedPerKind(t *testing.T) {
 			installs++
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"message":"enterprise plugin not licensed"}`))
-		case r.URL.Path == "/api/plugins/"+KindADX:
+		case r.URL.Path == "/api/plugins/"+KindADX+"/settings":
 			w.WriteHeader(http.StatusNotFound)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/datasources":
 			_, _ = w.Write([]byte(`[]`))
