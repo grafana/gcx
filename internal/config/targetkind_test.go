@@ -1,14 +1,40 @@
 package config_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestLoadTargetKind(t *testing.T) {
+// scrubTargetKindEnv unsets the env vars that influence classification.
+// Set-but-empty is not enough: the real env parsing uses LookupEnv, so an
+// empty GRAFANA_SERVER would clear the config-file server instead.
+func scrubTargetKindEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{"GRAFANA_SERVER", "GRAFANA_CLOUD_STACK", "GRAFANA_STACK_ID"} {
+		t.Setenv(key, "") // register restoration of the real value
+		require.NoError(t, os.Unsetenv(key))
+	}
+}
+
+// testEnvOverride mirrors the env override every command load path applies
+// (providers.envOverride / cloudEnvOverride): ensure a current context exists
+// and parse GRAFANA_* env vars into it.
+func testEnvOverride(cfg *config.Config) error {
+	if cfg.CurrentContext == "" {
+		cfg.CurrentContext = config.DefaultContextName
+	}
+	if !cfg.HasContext(cfg.CurrentContext) {
+		cfg.SetContext(cfg.CurrentContext, true, config.Context{})
+	}
+	return config.ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+}
+
+func TestCapturedTargetKind(t *testing.T) {
 	cloudConfig := "stacks:\n" +
 		"  prod:\n" +
 		"    grafana:\n" +
@@ -82,11 +108,6 @@ func TestLoadTargetKind(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "malformed config",
-			user: "{{{ not yaml",
-			want: "",
-		},
-		{
 			name: "env-only GRAFANA_CLOUD_STACK",
 			env:  map[string]string{"GRAFANA_CLOUD_STACK": "mystack"},
 			want: "cloud",
@@ -99,6 +120,14 @@ func TestLoadTargetKind(t *testing.T) {
 		{
 			name: "env-only cloud GRAFANA_SERVER",
 			env:  map[string]string{"GRAFANA_SERVER": "https://mystack.grafana.net"},
+			want: "cloud",
+		},
+		{
+			name: "env GRAFANA_STACK_ID marks custom domain as cloud",
+			env: map[string]string{
+				"GRAFANA_SERVER":   "https://grafana.mycorp.com",
+				"GRAFANA_STACK_ID": "12345",
+			},
 			want: "cloud",
 		},
 		{
@@ -158,13 +187,27 @@ func TestLoadTargetKind(t *testing.T) {
 				"current-context: dev\n",
 			want: "cloud",
 		},
+		{
+			name: "legacy cloud-auth-only local layer keeps user-layer stack ref",
+			user: "stacks:\n" +
+				"  prod:\n" +
+				"    slug: mystack\n" +
+				"contexts:\n" +
+				"  dev:\n" +
+				"    stack: prod\n" +
+				"current-context: dev\n",
+			local: "contexts:\n" +
+				"  dev:\n" +
+				"    cloud:\n" +
+				"      token: abc\n",
+			want: "cloud",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			userDir, workDir := isolatedLoaderEnv(t)
-			t.Setenv("GRAFANA_CLOUD_STACK", "")
-			t.Setenv("GRAFANA_SERVER", "")
+			scrubTargetKindEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -175,15 +218,45 @@ func TestLoadTargetKind(t *testing.T) {
 				writeLoaderConfig(t, filepath.Join(workDir, ".gcx.yaml"), tt.local)
 			}
 
-			assert.Equal(t, tt.want, config.LoadTargetKind(t.Context()))
+			_, err := config.LoadLayered(t.Context(), "", testEnvOverride)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, config.CapturedTargetKind())
 		})
 	}
 }
 
-func TestLoadTargetKind_ExplicitConfigFile(t *testing.T) {
+func TestCapturedTargetKind_ContextOverride(t *testing.T) {
 	userDir, _ := isolatedLoaderEnv(t)
-	t.Setenv("GRAFANA_CLOUD_STACK", "")
-	t.Setenv("GRAFANA_SERVER", "")
+	scrubTargetKindEnv(t)
+
+	// current-context says cloud; a --context style override selects the
+	// self-managed context and must win.
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
+		"stacks:\n"+
+			"  prod:\n"+
+			"    slug: mystack\n"+
+			"  onprem:\n"+
+			"    grafana:\n"+
+			"      server: http://localhost:3000\n"+
+			"contexts:\n"+
+			"  dev:\n"+
+			"    stack: prod\n"+
+			"  local:\n"+
+			"    stack: onprem\n"+
+			"current-context: dev\n")
+
+	selectLocal := func(cfg *config.Config) error {
+		cfg.CurrentContext = "local"
+		return nil
+	}
+	_, err := config.LoadLayered(t.Context(), "", selectLocal, testEnvOverride)
+	require.NoError(t, err)
+	assert.Equal(t, "self-managed", config.CapturedTargetKind())
+}
+
+func TestCapturedTargetKind_ExplicitConfigFile(t *testing.T) {
+	userDir, _ := isolatedLoaderEnv(t)
+	scrubTargetKindEnv(t)
 
 	// The discoverable user layer says cloud; the explicit file must bypass it.
 	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
@@ -192,7 +265,8 @@ func TestLoadTargetKind_ExplicitConfigFile(t *testing.T) {
 	explicit := filepath.Join(t.TempDir(), "explicit.yaml")
 	writeLoaderConfig(t, explicit,
 		"stacks:\n  onprem:\n    grafana:\n      server: http://localhost:3000\ncontexts:\n  dev:\n    stack: onprem\ncurrent-context: dev\n")
-	t.Setenv("GCX_CONFIG", explicit)
 
-	assert.Equal(t, "self-managed", config.LoadTargetKind(t.Context()))
+	_, err := config.LoadLayered(t.Context(), explicit, testEnvOverride)
+	require.NoError(t, err)
+	assert.Equal(t, "self-managed", config.CapturedTargetKind())
 }

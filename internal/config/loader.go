@@ -1048,7 +1048,16 @@ func configWriteTarget(filename, canonicalSource string, allowSymlink bool) (str
 // If no config files are found, creates a default user config (preserving current behavior).
 // If explicitFile is set (--config flag) or GCX_CONFIG env var is set,
 // bypasses layering entirely and loads that single file.
+// Every successful load also records the current context's telemetry target kind.
 func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
+	cfg, err := loadLayered(ctx, explicitFile, overrides...)
+	if err == nil {
+		captureTargetKind(&cfg)
+	}
+	return cfg, err
+}
+
+func loadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
 	// --config flag bypasses layering.
 	if explicitFile != "" {
 		return loadExplicit(ctx, explicitFile, overrides...)

@@ -72,11 +72,10 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		DurationMS:   time.Since(start).Milliseconds(),
 		OutputFormat: info.OutputFormat,
 
-		IsTTY:   terminal.StdoutIsTerminal(),
-		IsAgent: agent.IsAgentMode(),
-		Agent:   agent.Name(),
-		// Keychain-free classification: only ever "cloud", "self-managed", or "".
-		TargetKind: internalconfig.LoadTargetKind(context.Background()),
+		IsTTY:      terminal.StdoutIsTerminal(),
+		IsAgent:    agent.IsAgentMode(),
+		Agent:      agent.Name(),
+		TargetKind: internalconfig.CapturedTargetKind(),
 	}
 
 	// The provider is the top-level command, the first segment of the path.
