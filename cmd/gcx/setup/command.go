@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	datasourcescmd "github.com/grafana/gcx/cmd/gcx/setup/datasources"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/providers"
 	instrum "github.com/grafana/gcx/internal/providers/instrumentation"
@@ -30,6 +31,7 @@ func Command() *cobra.Command {
 	loader.BindFlags(cmd.PersistentFlags())
 
 	cmd.AddCommand(newStatusCommand(loader))
+	cmd.AddCommand(datasourcescmd.Command())
 
 	return cmd
 }

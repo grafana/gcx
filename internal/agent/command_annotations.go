@@ -74,6 +74,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx config use-context":     {Cost: "small"},
 	"gcx config view":            {Cost: "medium", Hint: "--minify -o json"},
 
+	// setup datasources
+	"gcx setup datasources azure":        {Cost: "small", Hint: "Mints Azure credentials and creates datasources; requires --force in agent mode (or --dry-run to preview). Example: gcx setup datasources azure --force --types azure-monitor --subscription <sub-id> -o json. Clean up gcx-created artifacts with: gcx setup datasources azure --cleanup --force -o json"},
+	"gcx setup datasources azure rotate": {Cost: "small", Hint: "Rotates client secrets for gcx-created Azure datasources; requires --force in agent mode (or --dry-run to preview). Example: gcx setup datasources azure rotate --force -o json"},
+
 	// datasources
 	"gcx datasources get":   {Cost: "medium", Hint: "<uid> -o json"},
 	"gcx datasources list":  {Cost: "small"},
