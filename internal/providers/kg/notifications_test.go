@@ -265,6 +265,23 @@ func TestNotifications_Upsert_EmptyFile(t *testing.T) {
 	assert.Contains(t, err.Error(), "no notification configs found")
 }
 
+func TestNotifications_Upsert_EmptyName(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("server must not be hit when an entry has an empty name")
+	}))
+	defer server.Close()
+
+	cmd := kg.NewNotificationsCommand(writeLoaderFor(server))
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"upsert", "-f", "-"})
+	// Second entry has no name; validation must fail before any request.
+	cmd.SetIn(bytes.NewBufferString("alertConfigs:\n  - name: ok\n  - matchLabels:\n      alertname: A\n"))
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "notification config 1 has an empty name")
+}
+
 func TestNotifications_Delete(t *testing.T) {
 	var deleted string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

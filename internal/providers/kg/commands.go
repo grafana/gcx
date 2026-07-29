@@ -1100,6 +1100,11 @@ deleted.`,
 			if len(configs.AlertConfigs) == 0 {
 				return errors.New("no notification configs found in file")
 			}
+			for i, ac := range configs.AlertConfigs {
+				if ac.Name == "" {
+					return fmt.Errorf("notification config %d has an empty name", i)
+				}
+			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
