@@ -128,11 +128,26 @@ from the traffic; read it from the code.
    (add `status = "error"`, time windows, `tool.name`, `eval.passed = false`) and
    `gcx agento11y generations get <id>` for detail. Look for long tool loops, over-refusals, PII
    echoed back, off-topic drift, malformed outputs, error clusters.
-   - **Some agents have generations but no conversations** (e.g. single-shot agents whose spans
-     aren't grouped into a conversation). If `conversations search` returns empty but `agents get`
-     shows a non-zero `generation_count`, don't stop — sample generations directly
-     (`gcx agento11y generations get <id>`) and use `selector: all_assistant_generations` for rules
-     rather than a conversation-scoped one.
+   - **Some agents have generations but no conversation** (e.g. single-shot agents whose spans
+     aren't grouped into a conversation). If `conversations search` is empty but `agents get` shows a
+     non-zero `generation_count`, don't stop and conclude "no traffic, wrong skill" — sample the
+     generations directly (`gcx agento11y generations get <id>`); there's plenty to work from.
+   - **Pick the selector from how the agent produces generations, not by habit.** The symptom to
+     recognize: a rule that **matches traffic but whose scores stay at zero** — it looks live but
+     silently never fires. That happens when `selector: user_visible_turn` is used on an agent whose
+     generations aren't user-facing turns: a **multi-agent DAG / programmatic pipeline**
+     (fan-out/fan-in, internal nodes, one conversation per run), or a single-shot agent with no
+     conversation. (The underlying reason is that those generations carry no user-visible-turn flag,
+     but there's no `gcx` command to inspect that directly — diagnose from the zero-score symptom,
+     not by hunting for the field.) For these agents use **`selector: all_assistant_generations`**
+     and scope with `match.agent_name` to the node you care about. Reserve `user_visible_turn` for
+     genuine chat/assistant agents where a turn is what the user sees. To confirm a selector is
+     working, score over enough sampled traffic — either wait for the rule's `sample_rate` to
+     accumulate hits, or temporarily bump it (and drop it back afterward; `sample_rate: 1.0` costs
+     real judge money, see the rule rules below) — then check `conversations search`. A run that
+     scored nothing shows **`eval_summary` absent or `total_scores: 0`** (the field is omitted when
+     nothing scored, not returned as `0`); persistent zero on a matching agent almost always means
+     the selector is wrong for this agent shape.
 
 **Minimum evidence bar.** Aim for **≥20 recent conversations over ≥7 days** before drafting
 anything. Fewer than that and you risk overfitting one odd conversation into a production rule or
@@ -166,15 +181,20 @@ asynchronously); **guards** *intervene* (block/redact on the live request path, 
 code change in the agent to call them — see Step 5.5**). Pick the surface by whether you want to
 watch or to stop — and remember a guard is dead config until the agent is wired to it.
 
+For every online **rule** row below, pick the `selector` per Step 1 (agent shape), not by the
+template's default — `user_visible_turn` for a genuine chat agent, `all_assistant_generations` for a
+DAG/pipeline node or single-shot agent.
+
 | If, in code or traffic, the agent… | Surface | Shape (prefer a predefined template) |
 | --- | --- | --- |
-| gives answers whose quality can drift | online **rule** | fork `template.helpfulness` / `template.relevance` (`llm_judge`) over `user_visible_turn` |
+| gives answers whose quality can drift | online **rule** | fork `template.helpfulness` / `template.relevance` (`llm_judge`) |
 | does RAG / cites sources | online **rule** | fork `template.groundedness` (`llm_judge`) |
 | must emit JSON / a fixed shape | online **rule** | fork `template.json_valid` (`json_schema`) |
 | over-refuses or drifts off-topic | online **rule** | `regex` / `llm_judge` on `all_assistant_generations` |
 | public-facing text | online **rule** | fork `template.toxicity` / `template.pii` (`llm_judge`) |
-| echoes user data with PII/secrets | **guard** | `redact` guard (regex → placeholder) for a known pattern; `llm_judge`-backed guard when the leak needs judgment |
-| can call dangerous tools (shell, delete, write) | **guard** | `tool_filter` with `blocked_names` globs; or an `llm_judge`-backed guard on the output for command patterns |
+| receives PII/secrets in its **input** (pasted into the prompt) | **guard** | `redact` guard, **preflight** — rewrites the request before the model sees it |
+| **generates** PII/secrets/destructive commands in its final **output** | **guard** | evaluator-backed detector (`regex` / `llm_judge`), **postflight**, `warn` — don't rely on `redact` to scrub already-generated assistant text; detect + warn instead |
+| can call dangerous tools (shell, delete, write) | **guard** | `tool_filter` with `blocked_names` globs, postflight |
 | is subject to prompt-injection / hard policy | **guard** | `llm_judge` evaluator; draft `warn`, later promotable to `deny` |
 
 > **Three guard shapes, all first-class:** `evaluator_ids` (an evaluator decides — most flexible),
@@ -247,24 +267,18 @@ enabled at a low `sample_rate`.
 **Guards** — the shape the `agento11y` skill omits (`gcx agento11y guards create -f guard.yaml`; the
 resource `Kind` is `HookRule`).
 
-> **Hard gate: do not draft a guard until you have captured the exact accepted create-file shape
-> from the current `gcx` version.** Run `gcx agento11y guards create --help` and inspect a real
-> definition (`gcx agento11y guards get <id> -o yaml`, or `guards list -o yaml`); if none exists, get
-> the schema from `--help` / the resource definition. Only then write a guard file.
-
-This skill (not the `agento11y` skill) carries the guard shape, and field names/nesting can drift by
-`gcx` version and by stack — so the shape you capture from a real stored guard
-(`gcx agento11y guards get <existing-id> -o yaml`) is the source of truth, not the snippet below.
-The snippet is **illustrative only**. A guard drives its decision from one of three (mutually
+This skill (not the `agento11y` skill) carries the guard shape — draft the guard file directly from
+it, no schema-discovery step needed. A guard drives its decision from one of three (mutually
 exclusive) shapes — `evaluator_ids`, `redact`, or `tool_filter` — plus `action_on_fail`, `phase`,
 `priority`, `selector`. Use the `redact` schema exactly as the callout above shows (`{id, regex}`,
-no `replacement`). On create the server fills defaults you don't set — notably `selector: all`,
-`phase: preflight`, and `short_circuit: false` — so a `guards get -o yaml` right after create
+no `replacement`). If the server ever rejects a field, the 400 names the offending field, so a bad
+shape surfaces at create time rather than needing a probe up front. On create the server fills
+defaults you don't set — notably `selector: all`, `phase: preflight`, and `short_circuit: false` —
+so a `guards get -o yaml` right after create
 shows more fields than you sent; that's expected, not drift. A guard is drafted in **warn** (and
 `enabled: false` if the server honors it — it may not; see Step 5):
 
 ```yaml
-# ILLUSTRATIVE — confirm fields with `gcx agento11y guards create --help` before use.
 # PROD-SETUP DRAFT — creates a STACK-LEVEL guard (HookRule) via gcx agento11y guards create.
 # warn on purpose: a warn guard records but never blocks, so it is safe on real traffic
 # even while live; watch it, then switch to deny yourself later.
@@ -285,7 +299,35 @@ evaluator_ids: ["<policy-judge-id>"]  # create the evaluator first
 # tool_filter:
 #   blocked_names: ["shell_exec", "Bash(*rm*)"]
 ```
-`phase` is `preflight` (default) or `postflight`. **Always draft `action_on_fail: warn`, even for
+`phase` is `preflight` (default) or `postflight`, and **the correct phase depends on the guard
+type** — getting this wrong yields a guard that runs but silently does nothing:
+
+- **`redact` → normally `preflight` (input).** Use it to redact sensitive values in the request
+  `input` (`messages`) **before the model sees them** — e.g. a secret pasted into the user prompt or
+  incident text. This is the common case and the one the Grafana UI defaults a Redact guard to.
+  **Do not rely on `redact` to rewrite already-generated assistant text:** for a secret the model
+  *produces* in its final response, a postflight redaction of the assistant text does not reliably
+  scrub it — use a postflight evaluator-backed **detector** (`warn`/`deny`) instead (below).
+  (Postflight `redact` is not useless in general — some runtimes explicitly consume
+  `transformed_input.output` to rewrite **tool-call payloads/arguments** postflight — but that is a
+  narrow tool-arg case, not final-response scrubbing.)
+  - **Disambiguation — decide by where the sensitive value ENTERS, not by where it's most visible.**
+    An agent can both *receive* a secret in its input AND *echo/generate* one in its output; don't
+    let the more eye-catching output occurrence pull you to postflight. If the secret enters through
+    the input (e.g. a key pasted into the prompt / incident text / a config blob), the guard that
+    actually protects it is **`redact` preflight on the input** — that scrubs it before the model,
+    the logs, and every downstream node see it. A postflight guard cannot undo a secret that already
+    entered upstream. Add a postflight **detector** on top only if the model *also* independently
+    produces secrets in its final text; that is a second, separate concern, not a replacement for the
+    preflight redact.
+- **`tool_filter` → `postflight`.** It inspects the tool calls the model wants to make.
+- **`evaluator_ids` (detector) → phase follows what you evaluate.** `preflight` to judge the
+  **input** (block a bad request before spending tokens), `postflight` to judge the **output**
+  (catch a bad response — e.g. detect that the model *generated* a credential or a destructive
+  command). This is the right shape for "the model produces something risky," which `redact` cannot
+  catch.
+
+**Always draft `action_on_fail: warn`, even for
 a hard-policy guard** (prompt-injection, deny-list): a first-time `deny` enabled on live traffic
 blocks real users on a false positive. A policy-judge guard references an evaluator id (create the
 evaluator first); the developer changes it to `deny` only later, after watching the false-positive
@@ -388,9 +430,12 @@ Three gotchas that silently break guards — call each out to the developer:
   records nothing (just a metric). So "no guard step on the conversation" is ambiguous — it means
   either allow OR not-wired. Distinguish them by whether ANY guard step ever appears for that agent.
 
-**Phase choice mirrors the guard:** a guard whose evaluator uses `target: input` is **preflight**
-(evaluate `input.messages` before the call — block a bad request before spending tokens); one with
-`target: response` is **postflight** (evaluate `input.output` after — catch a bad response). The
+**Phase choice mirrors the guard** (see the guard-type rules in Step 4): `redact` is normally
+**preflight** (redact the input before the model sees it; don't use it to scrub already-generated
+assistant text — see Step 4 for the tool-arg exception); `tool_filter` is **postflight**.
+For an evaluator-backed guard, phase follows `target`: `target: input` → **preflight** (evaluate
+`input.messages` before the call — block a bad request before spending tokens); `target: response`
+→ **postflight** (evaluate `input.output` after — catch a bad response the model produced). The
 rule's `match.agent_name` / `match.model` scopes the guard to this agent; the agent's context must
 send the same `agent_name`.
 
@@ -417,8 +462,10 @@ Output, in this order:
      `enabled` only once the false-positive rate looks acceptable —
      `gcx agento11y guards update <id> -f ...`. Both the wiring and the flip are theirs to make, not
      this skill's.
-   - **Rules:** raise `sample_rate` once scores look sane and cost is understood
-     (`gcx agento11y rules update`); add alerting on regressions if wanted.
+   - **Rules:** first confirm the rule is actually scoring — if `eval_summary` is absent or
+     `total_scores` stays 0 on a matching agent, the `selector` is likely wrong for the agent shape
+     (see Step 1), not the sample rate. Once scores appear, raise `sample_rate` as they look sane and
+     cost is understood (`gcx agento11y rules update`); add alerting on regressions if wanted.
    - Inspect everything in Agent Observability (rules/guards/evaluators pages, the conversation
      Quality view) or via the `gcx agento11y` list and get commands.
 4. A one-line pointer back: for pre-ship offline evaluation of a new agent or version,
