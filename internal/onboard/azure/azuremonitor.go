@@ -16,11 +16,16 @@ func (azureMonitorSpec) Token() string { return TokenAzureMonitor }
 func (azureMonitorSpec) Kind() string  { return KindAzureMonitor }
 
 func (azureMonitorSpec) RoleOptions() []RoleOption {
+	// Reader (*/read) already covers metrics, Resource Graph, and Log Analytics
+	// queries: in the default workspace access-control mode ("Use resource or
+	// workspace permissions") a subscription-scoped read grant authorizes all
+	// log reads, so a separate Log Analytics Reader is redundant here. It would
+	// only matter for workspaces set to "Require workspace permissions", which
+	// ignore subscription-scoped grants and need a workspace-scoped assignment
+	// instead — out of scope for this subscription-level onboarding.
 	return []RoleOption{
-		{Label: "Default — Reader + Monitoring Reader (metrics, Resource Graph)", Roles: []string{"Reader", "Monitoring Reader"}},
+		{Label: "Default — Reader (metrics, logs, Resource Graph)", Roles: []string{"Reader"}},
 		{Label: "Metrics only — Monitoring Reader", Roles: []string{"Monitoring Reader"}},
-		{Label: "Metrics + Logs — Monitoring Reader + Log Analytics Reader", Roles: []string{"Monitoring Reader", "Log Analytics Reader"}},
-		{Label: "Full read — Reader + Monitoring Reader + Log Analytics Reader", Roles: []string{"Reader", "Monitoring Reader", "Log Analytics Reader"}},
 	}
 }
 
