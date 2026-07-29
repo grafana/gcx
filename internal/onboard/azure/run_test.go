@@ -212,6 +212,76 @@ func TestProvision_UnavailablePluginSkipsOnlyThatDatasource(t *testing.T) {
 	}
 }
 
+func TestProvision_PluginPreflightDedupedPerKind(t *testing.T) {
+	runner := &scriptedRunner{handler: mintHandler()}
+	cli := NewCLIWithRunner(runner)
+
+	// Two ADX datasources, plugin missing. The install attempt must happen at
+	// most once for the shared plugin kind — not once per datasource.
+	var installs int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/plugins/"+KindADX+"/install":
+			installs++
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message":"enterprise plugin not licensed"}`))
+		case r.URL.Path == "/api/plugins/"+KindADX:
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/datasources":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	t.Cleanup(server.Close)
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}}
+	ds, err := datasources.NewClient(cfg)
+	if err != nil {
+		t.Fatalf("ds client: %v", err)
+	}
+	pl, err := plugins.NewClient(cfg)
+	if err != nil {
+		t.Fatalf("plugins client: %v", err)
+	}
+
+	var confirms int
+	adx := func(name string) Selection {
+		return Selection{
+			Suggestion: Suggestion{
+				Spec:   adxSpec{},
+				Name:   name,
+				Scopes: []string{"/subscriptions/sub-1"},
+				Extra:  map[string]string{"clusterUrl": "https://" + name + ".kusto.windows.net", "rg": "rg1", "cluster": name},
+			},
+			Roles: []string{"Reader"},
+		}
+	}
+
+	res, err := Provision(context.Background(), RunDeps{
+		CLI: cli, DS: ds, Plugins: pl,
+		ConfirmInstallPlugin: func(string) (bool, error) { confirms++; return true, nil },
+	}, ProvisionInput{
+		Account:    Account{TenantID: "t1", SubID: "sub-1", CloudName: "AzureCloud"},
+		CallerOID:  "oid",
+		SkipHealth: true,
+		Selections: []Selection{adx("gcx-adx1"), adx("gcx-adx2")},
+	})
+	if err != nil {
+		t.Fatalf("expected no top-level error, got %v", err)
+	}
+	if len(res.Datasources) != 2 ||
+		res.Datasources[0].Status != onboard.StatusSkipped ||
+		res.Datasources[1].Status != onboard.StatusSkipped {
+		t.Fatalf("expected both ADX datasources skipped, got %+v", res.Datasources)
+	}
+	if installs != 1 {
+		t.Fatalf("expected exactly one install attempt for the shared plugin kind, got %d", installs)
+	}
+	if confirms != 1 {
+		t.Fatalf("expected exactly one install prompt for the shared plugin kind, got %d", confirms)
+	}
+}
+
 func TestEnsurePlugin_SkipsCoreAzureMonitor(t *testing.T) {
 	// A plugins client pointed at a server that fails every request; the core
 	// Azure Monitor plugin must be skipped without any call being made.

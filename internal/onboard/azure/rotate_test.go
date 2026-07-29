@@ -5,11 +5,18 @@ import (
 	"context"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/onboard"
 )
+
+// isByUID reports whether the request targets the single-datasource by-uid GET
+// (which returns jsonData) rather than the list (which omits it).
+func isByUID(r *http.Request) bool {
+	return strings.Contains(r.URL.Path, "/uid/")
+}
 
 // rotateHandler answers the az calls a rotation makes: tag read, credential
 // reset (append), credential list, credential delete.
@@ -34,10 +41,12 @@ func TestRotate_RotatesGcxManagedDatasource(t *testing.T) {
 
 	var updated bool
 	ds := newDSClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			_, _ = w.Write([]byte(`[{"uid":"uid-1","name":"gcx-azure-monitor","type":"grafana-azure-monitor-datasource","jsonData":{"clientId":"app-1"}}]`))
-		case http.MethodPut:
+		switch {
+		case r.Method == http.MethodGet && isByUID(r):
+			_, _ = w.Write([]byte(`{"uid":"uid-1","name":"gcx-azure-monitor","type":"grafana-azure-monitor-datasource","jsonData":{"clientId":"app-1"}}`))
+		case r.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`[{"uid":"uid-1","name":"gcx-azure-monitor","type":"grafana-azure-monitor-datasource"}]`))
+		case r.Method == http.MethodPut:
 			updated = true
 			_, _ = w.Write([]byte(`{"datasource":{"uid":"uid-1","name":"gcx-azure-monitor","type":"grafana-azure-monitor-datasource"}}`))
 		default:
@@ -83,12 +92,15 @@ func TestRotate_SkipsNonGcxManagedApp(t *testing.T) {
 	cli := NewCLIWithRunner(runner)
 
 	ds := newDSClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			_, _ = w.Write([]byte(`[{"uid":"uid-1","name":"gcx-azure-monitor","type":"grafana-azure-monitor-datasource","jsonData":{"clientId":"app-1"}}]`))
-			return
+		switch {
+		case r.Method == http.MethodGet && isByUID(r):
+			_, _ = w.Write([]byte(`{"uid":"uid-1","name":"gcx-azure-monitor","type":"grafana-azure-monitor-datasource","jsonData":{"clientId":"app-1"}}`))
+		case r.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`[{"uid":"uid-1","name":"gcx-azure-monitor","type":"grafana-azure-monitor-datasource"}]`))
+		default:
+			t.Errorf("did not expect a datasource write for a non-gcx-managed app")
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		t.Errorf("did not expect a datasource write for a non-gcx-managed app")
-		w.WriteHeader(http.StatusInternalServerError)
 	}))
 
 	res, err := Rotate(context.Background(), RunDeps{CLI: cli, DS: ds}, RotateInput{CallerOID: "owner-oid"})
@@ -110,12 +122,15 @@ func TestRotate_DryRunChangesNothing(t *testing.T) {
 	cli := NewCLIWithRunner(runner)
 
 	ds := newDSClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			_, _ = w.Write([]byte(`[{"uid":"uid-1","name":"gcx-adx","type":"` + KindADX + `","jsonData":{"azureCredentials":{"clientId":"app-1"}}}]`))
-			return
+		switch {
+		case r.Method == http.MethodGet && isByUID(r):
+			_, _ = w.Write([]byte(`{"uid":"uid-1","name":"gcx-adx","type":"` + KindADX + `","jsonData":{"azureCredentials":{"clientId":"app-1"}}}`))
+		case r.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`[{"uid":"uid-1","name":"gcx-adx","type":"` + KindADX + `"}]`))
+		default:
+			t.Errorf("did not expect a datasource write during rotate --dry-run")
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		t.Errorf("did not expect a datasource write during rotate --dry-run")
-		w.WriteHeader(http.StatusInternalServerError)
 	}))
 
 	res, err := Rotate(context.Background(), RunDeps{CLI: cli, DS: ds}, RotateInput{DryRun: true})

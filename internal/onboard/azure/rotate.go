@@ -23,6 +23,10 @@ type RotateInput struct {
 	DryRun bool
 	// SkipHealth skips the post-rotation datasource health verification.
 	SkipHealth bool
+	// IncludeUIDs, when non-empty, restricts rotation to datasources with these
+	// UIDs (used by the interactive picker). Nil/empty means every gcx-managed
+	// Azure datasource is a candidate.
+	IncludeUIDs []string
 }
 
 // Rotate mints a fresh client secret for each gcx-managed Azure datasource,
@@ -33,6 +37,8 @@ type RotateInput struct {
 func Rotate(ctx context.Context, deps RunDeps, in RotateInput) (onboard.Result, error) {
 	prefix := onboard.NamePrefix + "-"
 
+	only := uidSet(in.IncludeUIDs)
+
 	onboard.Progressf(deps.Progress, "Listing gcx-created Grafana datasources...")
 	list, err := deps.DS.List(ctx)
 	if err != nil {
@@ -40,8 +46,20 @@ func Rotate(ctx context.Context, deps RunDeps, in RotateInput) (onboard.Result, 
 	}
 
 	results := make([]onboard.DatasourceResult, 0)
-	for _, d := range list {
-		if !strings.HasPrefix(d.Name, prefix) {
+	for _, item := range list {
+		if !strings.HasPrefix(item.Name, prefix) {
+			continue
+		}
+		if only != nil && !only[item.UID] {
+			continue
+		}
+
+		// The /api/datasources list omits jsonData, so fetch the full datasource
+		// to read the backing client ID and to preserve jsonData on update.
+		d, err := deps.DS.GetByUID(ctx, item.UID)
+		if err != nil {
+			warn(deps.ErrOut, fmt.Sprintf("skipping %q: could not read datasource details: %v", item.Name, err))
+			results = append(results, skipRotate(item, "could not read datasource details"))
 			continue
 		}
 
@@ -134,19 +152,65 @@ func skipRotate(d *datasources.Datasource, note string) onboard.DatasourceResult
 // secureJsonData field that holds its client secret, based on the datasource
 // type. It returns ("", "") for datasources without a rotatable
 // service-principal secret (e.g. key-based Cosmos DB or an unknown type).
+//
+// The client ID is read from whichever schema the datasource uses: gcx writes
+// the flat Azure Monitor schema (top-level clientId), but Grafana may normalize
+// it into the shared azureCredentials object, so both are checked.
 func credentialRef(d *datasources.Datasource) (string, string) {
 	switch d.Type {
 	case KindAzureMonitor:
-		return stringField(d.JSONData, "clientId"), "clientSecret"
-	case KindADX:
-		creds, ok := d.JSONData["azureCredentials"].(map[string]any)
-		if !ok {
+		id := stringField(d.JSONData, "clientId")
+		if id == "" {
+			id = stringField(azureCredentials(d), "clientId")
+		}
+		if id == "" {
 			return "", ""
 		}
-		return stringField(creds, "clientId"), "azureClientSecret"
+		return id, azureSecretField(d, "clientSecret")
+	case KindADX:
+		id := stringField(azureCredentials(d), "clientId")
+		if id == "" {
+			return "", ""
+		}
+		return id, azureSecretField(d, "azureClientSecret")
 	default:
 		return "", ""
 	}
+}
+
+// azureCredentials extracts the nested azureCredentials object from a
+// datasource's jsonData, or nil when absent.
+func azureCredentials(d *datasources.Datasource) map[string]any {
+	if creds, ok := d.JSONData["azureCredentials"].(map[string]any); ok {
+		return creds
+	}
+	return nil
+}
+
+// azureSecretField returns the secureJsonData key currently holding the client
+// secret, preferring whichever key the datasource already reports as set so
+// rotation overwrites the exact field Grafana expects. It falls back to the
+// type's default key when nothing is reported.
+func azureSecretField(d *datasources.Datasource, fallback string) string {
+	for _, k := range []string{"azureClientSecret", "clientSecret"} {
+		if d.SecureJSONFields[k] {
+			return k
+		}
+	}
+	return fallback
+}
+
+// uidSet builds a lookup set from the include list, or nil when empty (meaning
+// "no restriction").
+func uidSet(uids []string) map[string]bool {
+	if len(uids) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(uids))
+	for _, u := range uids {
+		set[u] = true
+	}
+	return set
 }
 
 func stringField(m map[string]any, key string) string {

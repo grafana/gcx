@@ -1,8 +1,13 @@
 package azure
 
 import (
+	"context"
+	"fmt"
 	"io"
+	"os"
+	"strings"
 
+	"github.com/charmbracelet/huh"
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
 	dsclient "github.com/grafana/gcx/internal/datasources"
@@ -10,9 +15,11 @@ import (
 	"github.com/grafana/gcx/internal/onboard"
 	azonboard "github.com/grafana/gcx/internal/onboard/azure"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 )
 
 type rotateOpts struct {
@@ -114,15 +121,79 @@ func runRotate(cmd *cobra.Command, opts *rotateOpts) error {
 	// attributable to this caller.
 	callerOID, _ := cli.SignedInUserObjectID(ctx)
 
+	// In interactive mode, let the user choose which datasources to rotate
+	// rather than sweeping every gcx-managed one.
+	var includeUIDs []string
+	if isRotateInteractive(opts) {
+		selected, err := pickRotateTargets(ctx, ds)
+		if err != nil {
+			return err
+		}
+		if len(selected) == 0 {
+			onboard.Progressf(progress, "No datasources selected; nothing to rotate.")
+			return opts.IO.Encode(cmd.OutOrStdout(), onboard.Result{Provider: "azure"})
+		}
+		includeUIDs = selected
+	}
+
 	res, err := azonboard.Rotate(ctx, deps, azonboard.RotateInput{
-		CallerOID:  callerOID,
-		Stack:      stackLabel(restCfg),
-		ExpiryDays: opts.SecretExpiry,
-		DryRun:     opts.DryRun,
-		SkipHealth: opts.SkipHealth,
+		CallerOID:   callerOID,
+		Stack:       stackLabel(restCfg),
+		ExpiryDays:  opts.SecretExpiry,
+		DryRun:      opts.DryRun,
+		SkipHealth:  opts.SkipHealth,
+		IncludeUIDs: includeUIDs,
 	})
 	if err != nil {
 		return err
 	}
 	return opts.IO.Encode(cmd.OutOrStdout(), res)
+}
+
+// isRotateInteractive reports whether to render the rotate target picker.
+// --force (like a non-TTY or agent mode) turns the picker off and rotates every
+// gcx-managed datasource.
+func isRotateInteractive(opts *rotateOpts) bool {
+	return terminal.StdoutIsTerminal() &&
+		term.IsTerminal(int(os.Stdin.Fd())) &&
+		!opts.Force &&
+		!agent.IsAgentMode()
+}
+
+// pickRotateTargets lists gcx-managed, rotatable Azure datasources and returns
+// the UIDs the user selects (default: all selected). Cosmos DB and other
+// key-based datasources are omitted since they have no rotatable secret.
+func pickRotateTargets(ctx context.Context, ds *dsclient.Client) ([]string, error) {
+	list, err := ds.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	prefix := onboard.NamePrefix + "-"
+
+	options := make([]huh.Option[string], 0)
+	var selected []string
+	for _, d := range list {
+		if !strings.HasPrefix(d.Name, prefix) || !rotatableType(d.Type) {
+			continue
+		}
+		options = append(options, huh.NewOption(fmt.Sprintf("%s (%s)", d.Name, d.Type), d.UID).Selected(true))
+		selected = append(selected, d.UID)
+	}
+	if len(options) == 0 {
+		return nil, nil
+	}
+
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewMultiSelect[string]().Title("Datasources to rotate").Options(options...).Value(&selected),
+	))
+	if err := form.Run(); err != nil {
+		return nil, err
+	}
+	return selected, nil
+}
+
+// rotatableType reports whether a datasource type uses a rotatable
+// service-principal secret (as opposed to key-based auth like Cosmos DB).
+func rotatableType(t string) bool {
+	return t == azonboard.KindAzureMonitor || t == azonboard.KindADX
 }
