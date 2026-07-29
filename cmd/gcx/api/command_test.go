@@ -21,7 +21,7 @@ func TestResolveBody_EmptyData(t *testing.T) {
 	cmd := &cobra.Command{}
 	body, err := resolveBody(cmd, "")
 	require.NoError(t, err)
-	assert.Equal(t, http.NoBody, body)
+	assert.Nil(t, body)
 }
 
 func TestResolveBody_DirectString(t *testing.T) {
@@ -29,10 +29,7 @@ func TestResolveBody_DirectString(t *testing.T) {
 	data := `{"title":"test"}`
 	body, err := resolveBody(cmd, data)
 	require.NoError(t, err)
-
-	content, err := io.ReadAll(body)
-	require.NoError(t, err)
-	assert.Equal(t, data, string(content))
+	assert.Equal(t, data, string(body))
 }
 
 func TestResolveBody_FromFile(t *testing.T) {
@@ -42,10 +39,7 @@ func TestResolveBody_FromFile(t *testing.T) {
 	cmd := &cobra.Command{}
 	body, err := resolveBody(cmd, "@"+filePath)
 	require.NoError(t, err)
-
-	result, err := io.ReadAll(body)
-	require.NoError(t, err)
-	assert.Equal(t, content, string(result))
+	assert.Equal(t, content, string(body))
 }
 
 func TestResolveBody_FromStdin(t *testing.T) {
@@ -55,10 +49,7 @@ func TestResolveBody_FromStdin(t *testing.T) {
 
 	body, err := resolveBody(cmd, "@-")
 	require.NoError(t, err)
-
-	result, err := io.ReadAll(body)
-	require.NoError(t, err)
-	assert.Equal(t, content, string(result))
+	assert.Equal(t, content, string(body))
 }
 
 func TestResolveBody_FileNotFound(t *testing.T) {

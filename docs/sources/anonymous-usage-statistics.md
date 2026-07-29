@@ -12,7 +12,7 @@ weight: 4
 
 `gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
 
-The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values and flag values are never sent. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
+The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values and flag values are never sent. The one place a value is used at all is the `api` command, where the requested route and the datasource plugin type are first reduced to fixed vocabularies built into the binary, so only known, non-identifying names can ever be sent - see [The api command](#the-api-command) for details. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
 
 {{< admonition type="note" >}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usage reporting.{{< /admonition >}}
 
@@ -58,6 +58,18 @@ When the invocation fails to parse, these additional fields are set. They captur
 | `parse_error_flags` | The **names** of unknown flags. No flag values are sent. | `verbsoe` |
 | `parse_error_nearest` | The nearest real command or flag name, if one is close. | `search` |
 | `parse_error_distance` | The edit distance to the nearest real name, or `-1` if there is no near match. | `2` |
+
+### The api command
+
+`gcx api` is a raw passthrough: the interesting usage signal (which endpoint, which method) lives in its argument values, which are never sent as-is. Instead, three additional fields carry derived values, each filtered through a fixed vocabulary built into the binary before anything is recorded. We use them to learn which endpoints and datasources people reach for through the raw passthrough, so we know which first-class `gcx` commands to build next.
+
+| Field | Description | Example |
+| :---- | :---- | :---- |
+| `api_method` | The HTTP method, from the fixed list of valid verbs. | `POST` |
+| `api_route` | The requested route, matched against a built-in table of known Grafana API route templates. Variable segments such as UIDs and names are replaced with placeholders, and a path that matches no known route is sent as `other`. The raw path is never sent, and the query string is discarded before matching. | `/api/dashboards/uid/{uid}` |
+| `api_datasource_types` | For datasource query requests only: the datasource plugin types named in the request body. A type is sent only when it names a Grafana-authored plugin, meaning a core datasource type or an ID with the `grafana-` publisher prefix. Any other type, including third-party and private plugins, is sent as `other`. The body is used only to read the `queries[].datasource.type` field. The datasource UID and name, the query text, the time range, and everything else in the body are never sent. | `grafana-postgresql-datasource` |
+
+You can verify all of this for any invocation with `GCX_TELEMETRY=log` (see [Inspect what would be sent](#inspect-what-would-be-sent)).
 
 ## Invocations that report nothing
 
