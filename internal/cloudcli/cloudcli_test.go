@@ -3,6 +3,7 @@ package cloudcli_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/cloudcli"
@@ -65,5 +66,22 @@ func TestRunJSON_WrapsRunErrorWithStderr(t *testing.T) {
 	err := tool.RunJSON(context.Background(), nil, "ad", "app", "create")
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestRunJSON_ErrorRedactsSecretArgs(t *testing.T) {
+	tool := cloudcli.New("az", "Azure CLI", "").
+		WithRunner(&fakeRunner{stderr: []byte("boom"), runErr: errors.New("exit 1")})
+
+	err := tool.RunJSON(context.Background(), nil,
+		"ad", "app", "credential", "reset", "--password", "hunter2", "--display-name=svc")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), "hunter2") {
+		t.Fatalf("error must not leak secret value: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "***") {
+		t.Fatalf("expected redacted arg in error, got %q", err.Error())
 	}
 }
