@@ -20,6 +20,7 @@ type azureOpts struct {
 	DryRun        bool
 	SkipHealth    bool
 	SecretExpiry  int
+	Concurrency   int
 	Yes           bool
 	Force         bool
 }
@@ -38,6 +39,7 @@ func (o *azureOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview what would be created or removed without making any changes")
 	flags.BoolVar(&o.SkipHealth, "skip-health-check", false, "Skip the post-create datasource health verification")
 	flags.IntVar(&o.SecretExpiry, "secret-expiry-days", 0, "Set an expiry (in days) on minted client secrets (0 = Azure default). Rotate before expiry with the rotate subcommand")
+	flags.IntVar(&o.Concurrency, "concurrency", 0, "Maximum datasources to provision in parallel (0 = default; interactive runs are always serial)")
 	flags.BoolVar(&o.Yes, "yes", false, "Non-interactive: skip prompts and accept all suggestions")
 	flags.BoolVar(&o.Force, "force", false, "Confirm credential-minting side effects (required in agent mode); implies --yes")
 }

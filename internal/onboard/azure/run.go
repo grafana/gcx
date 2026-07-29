@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/onboard"
 	"github.com/grafana/gcx/internal/plugins"
 	"github.com/grafana/grafana-app-sdk/logging"
+	"golang.org/x/sync/errgroup"
 )
 
 // ErrPluginUnavailable indicates the datasource plugin a selection needs is not
@@ -82,6 +83,47 @@ type ProvisionInput struct {
 	ExpiryDays  int    // optional minted-secret expiry in days (0 = Azure default)
 	DryRun      bool   // preview only: mint/create nothing
 	SkipHealth  bool   // skip the post-create datasource health verification
+	// Concurrency bounds how many datasources are minted/created in parallel.
+	// Zero uses defaultProvisionConcurrency. Interactive runs are always serial
+	// (see effectiveConcurrency) so prompts and progress stay ordered.
+	Concurrency int
+}
+
+// defaultProvisionConcurrency bounds parallel minting when the caller does not
+// set ProvisionInput.Concurrency. It is deliberately modest: each job shells out
+// to `az` (which shares an on-disk MSAL token cache) and issues Azure ARM
+// writes, so a small fan-out avoids token-cache contention and ARM throttling
+// while still overlapping the slow RBAC-propagation health waits.
+const defaultProvisionConcurrency = 4
+
+// effectiveConcurrency resolves the parallelism for a run, clamped to the number
+// of jobs. Interactive runs stay serial so narration and prompts remain ordered
+// and readable.
+func effectiveConcurrency(in ProvisionInput, jobs int) int {
+	limit := in.Concurrency
+	if limit <= 0 {
+		limit = defaultProvisionConcurrency
+	}
+	if in.Interactive {
+		limit = 1
+	}
+	if limit > jobs {
+		limit = jobs
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	return limit
+}
+
+// mintJob is a selection that survived the serial planning pass and needs its
+// credentials minted and datasource created in the parallel pass. name is the
+// pre-resolved, collision-free artifact name, so parallel workers never race on
+// name resolution.
+type mintJob struct {
+	idx  int
+	sel  Selection
+	name string
 }
 
 // Provision creates each selected datasource, minting gcx-owned app
@@ -91,6 +133,13 @@ type ProvisionInput struct {
 // It is idempotent: a selection whose gcx-managed datasource already exists is
 // reused (reported as "existing") rather than duplicated. With DryRun set it
 // resolves the plan and reports what would be created without any side effects.
+//
+// Provisioning runs in two passes. The first (serial) pass resolves already-
+// existing, dry-run, and skipped datasources, runs the plugin pre-flight (which
+// may prompt interactively), and reserves a unique name for each datasource
+// that will be minted. The second pass mints credentials and creates the
+// datasources with bounded parallelism (see effectiveConcurrency), overlapping
+// the slow Azure/Grafana calls. Result ordering matches the input selections.
 func Provision(ctx context.Context, deps RunDeps, in ProvisionInput) (onboard.Result, error) {
 	rb := &onboard.Rollback{}
 
@@ -115,6 +164,52 @@ func Provision(ctx context.Context, deps RunDeps, in ProvisionInput) (onboard.Re
 		rb.Run(ctx, deps.Log, deps.Progress)
 	}
 
+	results := make([]onboard.DatasourceResult, len(in.Selections))
+	jobs, err := planJobs(ctx, deps, in, existing, results)
+	if err != nil {
+		return onboard.Result{}, err
+	}
+
+	if len(jobs) > 0 {
+		limit := effectiveConcurrency(in, len(jobs))
+		if limit > 1 {
+			onboard.Progressf(deps.Progress, "Provisioning %d datasource(s), up to %d in parallel...", len(jobs), limit)
+		}
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(limit)
+		for _, job := range jobs {
+			g.Go(func() error {
+				res, err := provisionOne(gctx, deps, in, job, rb)
+				if err != nil {
+					return err
+				}
+				// Each job owns a distinct index, so concurrent writes to
+				// separate elements are safe without a lock.
+				results[job.idx] = res
+				return nil
+			})
+		}
+		if err := g.Wait(); err != nil {
+			rollback()
+			return onboard.Result{}, err
+		}
+	}
+
+	return onboard.Result{Provider: "azure", Datasources: results, DryRun: in.DryRun}, nil
+}
+
+// planJobs runs the serial planning pass: it fills results[i] for every
+// selection that is already existing, dry-run-planned, or skipped, and returns
+// the remaining selections (with reserved, collision-free names) that must be
+// minted in the parallel pass. It is kept serial because it may prompt (plugin
+// install) and because name reservation must not race.
+func planJobs(
+	ctx context.Context,
+	deps RunDeps,
+	in ProvisionInput,
+	existing map[string]*datasources.Datasource,
+	results []onboard.DatasourceResult,
+) ([]mintJob, error) {
 	// ensurePluginOnce memoizes the plugin pre-flight per plugin kind for the
 	// span of this run: several datasources of the same kind (e.g. two ADX
 	// clusters) share a single install prompt/attempt instead of re-prompting
@@ -129,8 +224,11 @@ func Provision(ctx context.Context, deps RunDeps, in ProvisionInput) (onboard.Re
 		return e
 	}
 
-	results := make([]onboard.DatasourceResult, 0, len(in.Selections))
-	for _, sel := range in.Selections {
+	// reserved tracks names claimed by earlier selections in this run so two
+	// jobs never resolve to the same minted name before either exists.
+	reserved := map[string]bool{}
+	var jobs []mintJob
+	for i, sel := range in.Selections {
 		base := sel.Suggestion.Name
 
 		// Idempotency: reuse an existing gcx-managed datasource for this resource
@@ -141,7 +239,7 @@ func Provision(ctx context.Context, deps RunDeps, in ProvisionInput) (onboard.Re
 				Name: d.Name, Type: d.Type, UID: d.UID, Status: onboard.StatusExisting,
 			}
 			applyPrivateHint(in, sel, &result)
-			results = append(results, result)
+			results[i] = result
 			continue
 		}
 
@@ -149,7 +247,7 @@ func Provision(ctx context.Context, deps RunDeps, in ProvisionInput) (onboard.Re
 			onboard.Progressf(deps.Progress, "→ would create %s", sel.Suggestion.Label)
 			result := plannedResult(sel, base)
 			applyPrivateHint(in, sel, &result)
-			results = append(results, result)
+			results[i] = result
 			continue
 		}
 
@@ -161,47 +259,43 @@ func Provision(ctx context.Context, deps RunDeps, in ProvisionInput) (onboard.Re
 			if errors.Is(err, ErrPluginUnavailable) {
 				onboard.Progressf(deps.Progress, "  skipping %s: %v", sel.Suggestion.Label, err)
 				warn(deps.ErrOut, fmt.Sprintf("skipping %s: %v", sel.Suggestion.Label, err))
-				results = append(results, skippedResult(sel, base, err))
+				results[i] = skippedResult(sel, base, err)
 				continue
 			}
-			rollback()
-			return onboard.Result{}, err
+			// Nothing has been minted yet in this pass, so there is nothing to
+			// roll back — surface the hard error directly.
+			return nil, err
 		}
 
-		result, err := provisionOne(ctx, deps, in, sel, base, existing, rb)
+		name, err := onboard.EnsureUniqueName(base, func(n string) (bool, error) {
+			key := strings.ToLower(n)
+			if existing[key] != nil || reserved[key] {
+				return true, nil
+			}
+			return deps.CLI.AppExists(ctx, n)
+		})
 		if err != nil {
-			rollback()
-			return onboard.Result{}, err
+			return nil, err
 		}
-		applyPrivateHint(in, sel, &result)
-		results = append(results, result)
+		reserved[strings.ToLower(name)] = true
+		jobs = append(jobs, mintJob{idx: i, sel: sel, name: name})
 	}
-
-	return onboard.Result{Provider: "azure", Datasources: results, DryRun: in.DryRun}, nil
+	return jobs, nil
 }
 
 // provisionOne mints credentials (as needed) and creates a single datasource,
-// then tags the backing app registration and verifies datasource health.
+// then tags the backing app registration and verifies datasource health. It is
+// safe to run concurrently for distinct jobs: the name is pre-resolved, the
+// rollback accumulator is concurrency-safe, and no shared maps are mutated.
 func provisionOne(
 	ctx context.Context,
 	deps RunDeps,
 	in ProvisionInput,
-	sel Selection,
-	base string,
-	existing map[string]*datasources.Datasource,
+	job mintJob,
 	rb *onboard.Rollback,
 ) (onboard.DatasourceResult, error) {
+	sel, name := job.sel, job.name
 	onboard.Progressf(deps.Progress, "→ %s", sel.Suggestion.Label)
-
-	name, err := onboard.EnsureUniqueName(base, func(n string) (bool, error) {
-		if existing[strings.ToLower(n)] != nil {
-			return true, nil
-		}
-		return deps.CLI.AppExists(ctx, n)
-	})
-	if err != nil {
-		return onboard.DatasourceResult{}, err
-	}
 
 	prov, err := sel.Suggestion.Spec.AcquireAndBuild(ctx, SpecInput{
 		CLI:         deps.CLI,
@@ -229,8 +323,6 @@ func provisionOne(
 	}
 	onboard.Progressf(deps.Progress, "  created datasource %q (uid %s)", name, ds.UID)
 
-	// Reserve the name so a later selection in the same run cannot reuse it.
-	existing[strings.ToLower(name)] = ds
 	uid := ds.UID
 	rb.Add("delete datasource "+name, func(ctx context.Context) error {
 		return deps.DS.Delete(ctx, uid)

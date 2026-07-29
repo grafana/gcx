@@ -34,6 +34,7 @@ gcx setup datasources azure [flags]
 
 ```
       --cleanup                  Remove gcx-created Azure app registrations and their datasources
+      --concurrency int          Maximum datasources to provision in parallel (0 = default; interactive runs are always serial)
       --config string            Path to the configuration file to use
       --context string           Name of the context to use
       --dry-run                  Preview what would be created or removed without making any changes

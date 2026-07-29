@@ -7,21 +7,26 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/onboard"
 	azonboard "github.com/grafana/gcx/internal/onboard/azure"
 	"github.com/grafana/gcx/internal/terminal"
 	"golang.org/x/term"
 )
+
+// canPrompt reports whether gcx can render an interactive TUI prompt: both
+// stdout and stdin must be TTYs and the process must not be in agent mode.
+func canPrompt() bool {
+	return terminal.StdoutIsTerminal() &&
+		term.IsTerminal(int(os.Stdin.Fd())) &&
+		!agent.IsAgentMode()
+}
 
 // isInteractive reports whether to render the TUI pickers. Both --yes and
 // --force imply "accept all suggestions", so either one (like a non-TTY or
 // agent mode) turns the picker off. This lets agent/CI callers provision with a
 // single --force flag instead of pairing it with --yes.
 func isInteractive(opts *azureOpts) bool {
-	return terminal.StdoutIsTerminal() &&
-		term.IsTerminal(int(os.Stdin.Fd())) &&
-		!opts.Yes &&
-		!opts.Force &&
-		!agent.IsAgentMode()
+	return canPrompt() && !opts.Yes && !opts.Force
 }
 
 // pickSuggestions renders the interactive datasource multiselect. Disabled

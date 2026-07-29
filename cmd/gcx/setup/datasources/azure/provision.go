@@ -258,6 +258,7 @@ func provisionSubscription(
 		ExpiryDays:  opts.SecretExpiry,
 		DryRun:      opts.DryRun,
 		SkipHealth:  opts.SkipHealth,
+		Concurrency: opts.Concurrency,
 	})
 }
 

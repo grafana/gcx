@@ -3,9 +3,11 @@ package azure
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -463,6 +465,63 @@ func TestProvision_TagsAppRegistrationWithDatasourceUID(t *testing.T) {
 	}
 	if !tagged {
 		t.Fatal("expected the app registration to be tagged with attribution after datasource creation")
+	}
+}
+
+func TestProvision_ParallelPreservesOrderAndCreatesAll(t *testing.T) {
+	runner := &scriptedRunner{handler: mintHandler()}
+	cli := NewCLIWithRunner(runner)
+
+	// Datasource create echoes back the requested name/type, so each parallel
+	// job produces a distinct, correctly-ordered result row.
+	var created int32
+	ds := newDSClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		var req struct {
+			Name string `json:"name"`
+			Type string `json:"type"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		atomic.AddInt32(&created, 1)
+		_, _ = w.Write([]byte(`{"datasource":{"uid":"uid-` + req.Name + `","name":"` + req.Name + `","type":"` + req.Type + `"}}`))
+	}))
+
+	sels := make([]Selection, 0, 5)
+	for _, n := range []string{"gcx-azure-monitor-a", "gcx-azure-monitor-b", "gcx-azure-monitor-c", "gcx-azure-monitor-d", "gcx-azure-monitor-e"} {
+		sels = append(sels, Selection{
+			Suggestion: Suggestion{Spec: azureMonitorSpec{}, Name: n, Scopes: []string{"/subscriptions/sub-1"}},
+			Roles:      []string{"Reader"},
+		})
+	}
+
+	res, err := Provision(context.Background(), RunDeps{CLI: cli, DS: ds},
+		ProvisionInput{
+			Account:     Account{TenantID: "t1", SubID: "sub-1", CloudName: "AzureCloud"},
+			CallerOID:   "oid",
+			SkipHealth:  true,
+			Concurrency: 4,
+			Selections:  sels,
+		})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if int(created) != len(sels) {
+		t.Fatalf("expected %d datasources created, got %d", len(sels), created)
+	}
+	if len(res.Datasources) != len(sels) {
+		t.Fatalf("expected %d result rows, got %d", len(sels), len(res.Datasources))
+	}
+	// Result order must match input selection order regardless of completion order.
+	for i, sel := range sels {
+		if res.Datasources[i].Name != sel.Suggestion.Name {
+			t.Fatalf("result[%d] = %q, want %q (order not preserved)", i, res.Datasources[i].Name, sel.Suggestion.Name)
+		}
+		if res.Datasources[i].Status != onboard.StatusCreated {
+			t.Fatalf("result[%d] status = %q, want created", i, res.Datasources[i].Status)
+		}
 	}
 }
 

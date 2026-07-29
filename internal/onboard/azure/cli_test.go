@@ -5,12 +5,15 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 )
 
 // scriptedRunner returns canned stdout/err based on the leading args and
-// records the order of calls.
+// records the order of calls. It is safe for concurrent use so it can back the
+// parallel provisioning path under the race detector.
 type scriptedRunner struct {
+	mu      sync.Mutex
 	calls   [][]string
 	handler func(args []string) (stdout, stderr []byte, err error)
 	lookErr error
@@ -19,7 +22,9 @@ type scriptedRunner struct {
 func (s *scriptedRunner) LookPath(string) error { return s.lookErr }
 
 func (s *scriptedRunner) Run(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+	s.mu.Lock()
 	s.calls = append(s.calls, args)
+	s.mu.Unlock()
 	if s.handler != nil {
 		return s.handler(args)
 	}

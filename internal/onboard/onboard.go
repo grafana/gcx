@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sync"
 
 	"github.com/grafana/grafana-app-sdk/logging"
 )
@@ -130,7 +131,11 @@ func EnsureUniqueName(base string, taken func(name string) (bool, error)) (strin
 // Rollback accumulates undo steps registered as artifacts are created, and runs
 // them in reverse (LIFO) order. Steps are best-effort: a failing step is logged
 // and does not stop the remaining steps.
+//
+// It is safe for concurrent use: Add may be called from multiple goroutines
+// (e.g. parallel provisioning), so a mutex guards the step slice.
 type Rollback struct {
+	mu    sync.Mutex
 	steps []step
 }
 
@@ -141,16 +146,24 @@ type step struct {
 
 // Add registers an undo step. desc is a short human description used in logs.
 func (r *Rollback) Add(desc string, undo func(ctx context.Context) error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.steps = append(r.steps, step{desc: desc, undo: undo})
 }
 
 // Len reports how many undo steps are registered.
-func (r *Rollback) Len() int { return len(r.steps) }
+func (r *Rollback) Len() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.steps)
+}
 
 // Descriptions returns the step descriptions in the order they would be
 // reverted (reverse of registration / LIFO). Used to list pending reverts to
 // the user before running them.
 func (r *Rollback) Descriptions() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	out := make([]string, 0, len(r.steps))
 	for _, s := range slices.Backward(r.steps) {
 		out = append(out, s.desc)
@@ -163,15 +176,19 @@ func (r *Rollback) Descriptions() []string {
 // visible without -v) as it is reverted, so the user can see exactly what is
 // being undone. progress may be nil to suppress narration.
 func (r *Rollback) Run(ctx context.Context, log logging.Logger, progress io.Writer) {
-	if len(r.steps) == 0 {
+	r.mu.Lock()
+	steps := slices.Clone(r.steps)
+	r.mu.Unlock()
+
+	if len(steps) == 0 {
 		return
 	}
 	if log != nil {
-		log.Info("rolling back created artifacts", "steps", len(r.steps))
+		log.Info("rolling back created artifacts", "steps", len(steps))
 	}
-	narrate(progress, fmt.Sprintf("Reverting %d change(s):", len(r.steps)))
+	narrate(progress, fmt.Sprintf("Reverting %d change(s):", len(steps)))
 
-	for _, s := range slices.Backward(r.steps) {
+	for _, s := range slices.Backward(steps) {
 		if log != nil {
 			log.Info("rollback step", "step", s.desc)
 		}
@@ -189,7 +206,7 @@ func (r *Rollback) Run(ctx context.Context, log logging.Logger, progress io.Writ
 	}
 
 	if log != nil {
-		log.Info("rollback complete", "steps", len(r.steps))
+		log.Info("rollback complete", "steps", len(steps))
 	}
 	narrate(progress, "Revert complete.")
 }
