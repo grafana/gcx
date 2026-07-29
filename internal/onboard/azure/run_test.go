@@ -47,6 +47,37 @@ func mintHandler() func(args []string) ([]byte, []byte, error) {
 	}
 }
 
+// mintHandlerDistinct is like mintHandler but returns a per-name appId derived
+// from the `ad app create --display-name` value, so a test can correlate each
+// minted app registration with its rollback delete.
+func mintHandlerDistinct() func(args []string) ([]byte, []byte, error) {
+	return func(args []string) ([]byte, []byte, error) {
+		switch {
+		case hasPrefix(args, []string{"ad", "app", "list"}):
+			return []byte(`[]`), nil, nil
+		case hasPrefix(args, []string{"ad", "app", "create"}):
+			name := flagValue(args, "--display-name")
+			return []byte(`{"appId":"app-` + name + `","id":"obj-` + name + `"}`), nil, nil
+		case hasPrefix(args, []string{"ad", "sp", "create"}):
+			return []byte(`{"id":"sp-1"}`), nil, nil
+		case hasPrefix(args, []string{"ad", "app", "credential", "reset"}):
+			return []byte(`{"password":"sek"}`), nil, nil
+		default:
+			return nil, nil, nil
+		}
+	}
+}
+
+// flagValue returns the argument following the named flag, or "" when absent.
+func flagValue(args []string, flag string) string {
+	for i := range args {
+		if args[i] == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
 func TestProvision_HappyPath(t *testing.T) {
 	runner := &scriptedRunner{handler: mintHandler()}
 	cli := NewCLIWithRunner(runner)
@@ -521,6 +552,78 @@ func TestProvision_ParallelPreservesOrderAndCreatesAll(t *testing.T) {
 		}
 		if res.Datasources[i].Status != onboard.StatusCreated {
 			t.Fatalf("result[%d] status = %q, want created", i, res.Datasources[i].Status)
+		}
+	}
+}
+
+func TestProvision_ParallelRollsBackAllCreatedOnFailure(t *testing.T) {
+	runner := &scriptedRunner{handler: mintHandlerDistinct()}
+	cli := NewCLIWithRunner(runner)
+
+	// One of several parallel datasource creations fails; every app
+	// registration minted during the run must be rolled back (deleted) so a
+	// mid-parallel failure never leaves orphaned credentials behind.
+	const failName = "gcx-azure-monitor-c"
+	ds := newDSClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`[]`))
+		case http.MethodDelete:
+			w.WriteHeader(http.StatusOK)
+		default:
+			var req struct {
+				Name string `json:"name"`
+				Type string `json:"type"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			if req.Name == failName {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"message":"boom"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"datasource":{"uid":"uid-` + req.Name + `","name":"` + req.Name + `","type":"` + req.Type + `"}}`))
+		}
+	}))
+
+	sels := make([]Selection, 0, 5)
+	for _, n := range []string{"gcx-azure-monitor-a", "gcx-azure-monitor-b", failName, "gcx-azure-monitor-d", "gcx-azure-monitor-e"} {
+		sels = append(sels, Selection{
+			Suggestion: Suggestion{Spec: azureMonitorSpec{}, Name: n, Scopes: []string{"/subscriptions/sub-1"}},
+			Roles:      []string{"Reader"},
+		})
+	}
+
+	_, err := Provision(context.Background(), RunDeps{CLI: cli, DS: ds},
+		ProvisionInput{
+			Account:     Account{TenantID: "t1", SubID: "sub-1", CloudName: "AzureCloud"},
+			CallerOID:   "oid",
+			SkipHealth:  true,
+			Concurrency: 4,
+			Selections:  sels,
+		})
+	if err == nil {
+		t.Fatal("expected a run error when one parallel datasource creation fails")
+	}
+
+	// Every app registration that was created must have a matching rollback
+	// delete. Provision has returned, so all workers are joined and reading the
+	// recorded calls is race-free.
+	created := map[string]bool{}
+	deleted := map[string]bool{}
+	for _, c := range runner.calls {
+		switch {
+		case hasPrefix(c, []string{"ad", "app", "create"}):
+			created["app-"+flagValue(c, "--display-name")] = true
+		case hasPrefix(c, []string{"ad", "app", "delete"}):
+			deleted[flagValue(c, "--id")] = true
+		}
+	}
+	if len(created) < 2 {
+		t.Fatalf("expected several app registrations to be minted in parallel, got %d", len(created))
+	}
+	for appID := range created {
+		if !deleted[appID] {
+			t.Fatalf("app registration %q was created but not rolled back; deleted=%v", appID, deleted)
 		}
 	}
 }
