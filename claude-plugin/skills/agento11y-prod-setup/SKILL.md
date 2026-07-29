@@ -128,11 +128,18 @@ from the traffic; read it from the code.
    (add `status = "error"`, time windows, `tool.name`, `eval.passed = false`) and
    `gcx agento11y generations get <id>` for detail. Look for long tool loops, over-refusals, PII
    echoed back, off-topic drift, malformed outputs, error clusters.
-   - **Some agents have generations but no conversations** (e.g. single-shot agents whose spans
-     aren't grouped into a conversation). If `conversations search` returns empty but `agents get`
-     shows a non-zero `generation_count`, don't stop — sample generations directly
-     (`gcx agento11y generations get <id>`) and use `selector: all_assistant_generations` for rules
-     rather than a conversation-scoped one.
+   - **Pick the selector from how the agent produces generations, not by habit.**
+     `user_visible_turn` only matches generations flagged as a user-facing turn; a
+     **multi-agent DAG / programmatic pipeline** (fan-out/fan-in, internal nodes, one conversation
+     per run) produces generations with **no user-visible-turn flag** (`is_user_visible` is null),
+     so a `user_visible_turn` rule matches **nothing and scores zero** — the rule looks live but
+     silently never fires. For these agents (and for single-shot agents that have generations but no
+     conversation at all), use **`selector: all_assistant_generations`** and scope with
+     `match.agent_name` to the node you care about. Reserve `user_visible_turn` for genuine
+     chat/assistant agents where a turn is what the user sees. Verify before trusting it: after
+     creating the rule, run the agent once and confirm scores appear (`conversations search` →
+     `eval_summary.total_scores > 0`); zero scores on a matching agent almost always means the
+     selector is wrong for this agent shape.
 
 **Minimum evidence bar.** Aim for **≥20 recent conversations over ≥7 days** before drafting
 anything. Fewer than that and you risk overfitting one odd conversation into a production rule or
@@ -168,7 +175,7 @@ watch or to stop — and remember a guard is dead config until the agent is wire
 
 | If, in code or traffic, the agent… | Surface | Shape (prefer a predefined template) |
 | --- | --- | --- |
-| gives answers whose quality can drift | online **rule** | fork `template.helpfulness` / `template.relevance` (`llm_judge`) over `user_visible_turn` |
+| gives answers whose quality can drift | online **rule** | fork `template.helpfulness` / `template.relevance` (`llm_judge`); selector `user_visible_turn` for a chat agent, `all_assistant_generations` for a DAG/pipeline node (see Step 1) |
 | does RAG / cites sources | online **rule** | fork `template.groundedness` (`llm_judge`) |
 | must emit JSON / a fixed shape | online **rule** | fork `template.json_valid` (`json_schema`) |
 | over-refuses or drifts off-topic | online **rule** | `regex` / `llm_judge` on `all_assistant_generations` |
