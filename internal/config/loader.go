@@ -1048,12 +1048,16 @@ func configWriteTarget(filename, canonicalSource string, allowSymlink bool) (str
 // If no config files are found, creates a default user config (preserving current behavior).
 // If explicitFile is set (--config flag) or GCX_CONFIG env var is set,
 // bypasses layering entirely and loads that single file.
-// Every successful load also records the current context's telemetry target kind.
+// Every load also records the effective context's telemetry target kind.
 func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
 	cfg, err := loadLayered(ctx, explicitFile, overrides...)
-	if err == nil {
-		captureTargetKind(&cfg)
-	}
+	// Capture regardless of err: the override and credential-binding failure
+	// paths below return a fully merged config, so the target is known even
+	// though the command will fail. Gating on success attributed those failures
+	// to no target at all, making a resolved-but-invalid config indistinguishable
+	// from an absent one. Failures that stop before merge return Config{}, which
+	// still classifies as "".
+	captureTargetKind(&cfg)
 	return cfg, err
 }
 

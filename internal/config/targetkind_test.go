@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -311,4 +312,79 @@ current-context: dev
 	_, err := config.LoadLayered(t.Context(), explicit, testEnvOverride)
 	require.NoError(t, err)
 	assert.Equal(t, "self-hosted", config.CapturedTargetKind())
+}
+
+func TestCapturedTargetKind_FailedOverrideStillRecordsTarget(t *testing.T) {
+	userDir, _ := isolatedLoaderEnv(t)
+	scrubTargetKindEnv(t)
+
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"), `
+stacks:
+  onprem:
+    grafana:
+      server: http://localhost:3000
+contexts:
+  dev:
+    stack: onprem
+current-context: dev
+`)
+
+	// Commands run context validation as an override (providers.LoadGrafanaConfig),
+	// so a config that resolves but fails validation — a self-hosted stack with no
+	// org-id, for instance — reaches this path with a fully merged config. The
+	// target is known and must be recorded, otherwise those invocations look
+	// identical to ones that had no config at all.
+	failValidation := func(*config.Config) error {
+		return errors.New("missing stacks.onprem.grafana.org-id")
+	}
+
+	_, err := config.LoadLayered(t.Context(), "", testEnvOverride, failValidation)
+	require.Error(t, err)
+	assert.Equal(t, "self-hosted", config.CapturedTargetKind())
+}
+
+func TestCapturedTargetKind_CloudCredentialOnlyContextIsUnclassified(t *testing.T) {
+	userDir, _ := isolatedLoaderEnv(t)
+	scrubTargetKindEnv(t)
+
+	// A cloud entry on its own is an org-wide GCOM credential: no stack slug, no
+	// Grafana server, so it names no Grafana instance to classify. Pinned so the
+	// empty value stays a decision rather than becoming an accident.
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"), `
+cloud:
+  grafana-com:
+    token: abc
+contexts:
+  dev:
+    cloud: grafana-com
+current-context: dev
+`)
+
+	_, err := config.LoadLayered(t.Context(), "", testEnvOverride)
+	require.NoError(t, err)
+	assert.Empty(t, config.CapturedTargetKind())
+}
+
+func TestCaptureTargetKindForServer(t *testing.T) {
+	tests := []struct {
+		name   string
+		server string
+		want   string
+	}{
+		{name: "cloud host", server: "https://mystack.grafana.net", want: "cloud"},
+		{name: "self-hosted host", server: "http://localhost:3000", want: "self-hosted"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config.CaptureTargetKindForServer(tt.server)
+			assert.Equal(t, tt.want, config.CapturedTargetKind())
+		})
+	}
+}
+
+func TestCaptureTargetKindForServer_EmptyServerKeepsCapturedKind(t *testing.T) {
+	config.CaptureTargetKindForServer("https://mystack.grafana.net")
+	config.CaptureTargetKindForServer("")
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
 }
