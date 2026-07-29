@@ -10,7 +10,7 @@ Before implementing features or commands, read:
 - [docs/design/](docs/design/) — prescriptive UX implementation rules (output, errors, agent mode, naming, …)
 
 Naming a command? Start with the
-[command naming conventions guide](docs/design/naming-conventions-guide.md).
+[command naming and placement guide](docs/design/command-naming.md).
 
 ## Issue Tracking
 
