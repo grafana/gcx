@@ -300,6 +300,15 @@ type** — getting this wrong yields a guard that runs but silently does nothing
   (Postflight `redact` is not useless in general — some runtimes explicitly consume
   `transformed_input.output` to rewrite **tool-call payloads/arguments** postflight — but that is a
   narrow tool-arg case, not final-response scrubbing.)
+  - **Disambiguation — decide by where the sensitive value ENTERS, not by where it's most visible.**
+    An agent can both *receive* a secret in its input AND *echo/generate* one in its output; don't
+    let the more eye-catching output occurrence pull you to postflight. If the secret enters through
+    the input (e.g. a key pasted into the prompt / incident text / a config blob), the guard that
+    actually protects it is **`redact` preflight on the input** — that scrubs it before the model,
+    the logs, and every downstream node see it. A postflight guard cannot undo a secret that already
+    entered upstream. Add a postflight **detector** on top only if the model *also* independently
+    produces secrets in its final text; that is a second, separate concern, not a replacement for the
+    preflight redact.
 - **`tool_filter` → `postflight`.** It inspects the tool calls the model wants to make.
 - **`evaluator_ids` (detector) → phase follows what you evaluate.** `preflight` to judge the
   **input** (block a bad request before spending tokens), `postflight` to judge the **output**
