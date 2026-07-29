@@ -35,14 +35,16 @@ func testEnvOverride(cfg *config.Config) error {
 }
 
 func TestCapturedTargetKind(t *testing.T) {
-	cloudConfig := "stacks:\n" +
-		"  prod:\n" +
-		"    grafana:\n" +
-		"      server: https://mystack.grafana.net\n" +
-		"contexts:\n" +
-		"  dev:\n" +
-		"    stack: prod\n" +
-		"current-context: dev\n"
+	cloudConfig := `
+stacks:
+  prod:
+    grafana:
+      server: https://mystack.grafana.net
+contexts:
+  dev:
+    stack: prod
+current-context: dev
+`
 
 	tests := []struct {
 		name  string
@@ -62,49 +64,57 @@ func TestCapturedTargetKind(t *testing.T) {
 		},
 		{
 			name: "self-hosted server",
-			user: "stacks:\n" +
-				"  onprem:\n" +
-				"    grafana:\n" +
-				"      server: https://grafana.internal.example.com\n" +
-				"contexts:\n" +
-				"  dev:\n" +
-				"    stack: onprem\n" +
-				"current-context: dev\n",
+			user: `
+stacks:
+  onprem:
+    grafana:
+      server: https://grafana.internal.example.com
+contexts:
+  dev:
+    stack: onprem
+current-context: dev
+`,
 			want: "self-hosted",
 		},
 		{
 			name: "explicit stack slug",
-			user: "stacks:\n" +
-				"  prod:\n" +
-				"    slug: mystack\n" +
-				"contexts:\n" +
-				"  dev:\n" +
-				"    stack: prod\n" +
-				"current-context: dev\n",
+			user: `
+stacks:
+  prod:
+    slug: mystack
+contexts:
+  dev:
+    stack: prod
+current-context: dev
+`,
 			want: "cloud",
 		},
 		{
 			name: "stack id on custom domain",
-			user: "stacks:\n" +
-				"  prod:\n" +
-				"    grafana:\n" +
-				"      server: https://grafana.example.com\n" +
-				"      stack-id: 12345\n" +
-				"contexts:\n" +
-				"  dev:\n" +
-				"    stack: prod\n" +
-				"current-context: dev\n",
+			user: `
+stacks:
+  prod:
+    grafana:
+      server: https://grafana.example.com
+      stack-id: 12345
+contexts:
+  dev:
+    stack: prod
+current-context: dev
+`,
 			want: "cloud",
 		},
 		{
 			name: "no current context",
-			user: "stacks:\n" +
-				"  prod:\n" +
-				"    grafana:\n" +
-				"      server: https://mystack.grafana.net\n" +
-				"contexts:\n" +
-				"  dev:\n" +
-				"    stack: prod\n",
+			user: `
+stacks:
+  prod:
+    grafana:
+      server: https://mystack.grafana.net
+contexts:
+  dev:
+    stack: prod
+`,
 			want: "",
 		},
 		{
@@ -132,74 +142,90 @@ func TestCapturedTargetKind(t *testing.T) {
 		},
 		{
 			name: "legacy config cloud",
-			user: "contexts:\n" +
-				"  dev:\n" +
-				"    grafana:\n" +
-				"      server: https://mystack.grafana.net\n" +
-				"current-context: dev\n",
+			user: `
+contexts:
+  dev:
+    grafana:
+      server: https://mystack.grafana.net
+current-context: dev
+`,
 			want: "cloud",
 		},
 		{
 			name: "legacy config cloud via cloud stack slug",
-			user: "contexts:\n" +
-				"  dev:\n" +
-				"    grafana:\n" +
-				"      server: https://grafana.internal.example.com\n" +
-				"    cloud:\n" +
-				"      stack: mystack\n" +
-				"current-context: dev\n",
+			user: `
+contexts:
+  dev:
+    grafana:
+      server: https://grafana.internal.example.com
+    cloud:
+      stack: mystack
+current-context: dev
+`,
 			want: "cloud",
 		},
 		{
 			name: "legacy config self-hosted",
-			user: "contexts:\n" +
-				"  dev:\n" +
-				"    grafana:\n" +
-				"      server: http://localhost:3000\n" +
-				"      token: abc\n" +
-				"current-context: dev\n",
+			user: `
+contexts:
+  dev:
+    grafana:
+      server: http://localhost:3000
+      token: abc
+current-context: dev
+`,
 			want: "self-hosted",
 		},
 		{
 			name: "local layer switches current context",
 			user: cloudConfig,
-			local: "stacks:\n" +
-				"  onprem:\n" +
-				"    grafana:\n" +
-				"      server: http://localhost:3000\n" +
-				"contexts:\n" +
-				"  local:\n" +
-				"    stack: onprem\n" +
-				"current-context: local\n",
+			local: `
+stacks:
+  onprem:
+    grafana:
+      server: http://localhost:3000
+contexts:
+  local:
+    stack: onprem
+current-context: local
+`,
 			want: "self-hosted",
 		},
 		{
 			name: "local context references user-layer stack",
-			user: "stacks:\n" +
-				"  prod:\n" +
-				"    grafana:\n" +
-				"      server: https://mystack.grafana.net\n" +
-				"contexts:\n" +
-				"  dev:\n" +
-				"    stack: prod\n",
-			local: "contexts:\n" +
-				"  dev: {}\n" +
-				"current-context: dev\n",
+			user: `
+stacks:
+  prod:
+    grafana:
+      server: https://mystack.grafana.net
+contexts:
+  dev:
+    stack: prod
+`,
+			local: `
+contexts:
+  dev: {}
+current-context: dev
+`,
 			want: "cloud",
 		},
 		{
 			name: "legacy cloud-auth-only local layer keeps user-layer stack ref",
-			user: "stacks:\n" +
-				"  prod:\n" +
-				"    slug: mystack\n" +
-				"contexts:\n" +
-				"  dev:\n" +
-				"    stack: prod\n" +
-				"current-context: dev\n",
-			local: "contexts:\n" +
-				"  dev:\n" +
-				"    cloud:\n" +
-				"      token: abc\n",
+			user: `
+stacks:
+  prod:
+    slug: mystack
+contexts:
+  dev:
+    stack: prod
+current-context: dev
+`,
+			local: `
+contexts:
+  dev:
+    cloud:
+      token: abc
+`,
 			want: "cloud",
 		},
 	}
@@ -231,19 +257,20 @@ func TestCapturedTargetKind_ContextOverride(t *testing.T) {
 
 	// current-context says cloud; a --context style override selects the
 	// self-hosted context and must win.
-	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
-		"stacks:\n"+
-			"  prod:\n"+
-			"    slug: mystack\n"+
-			"  onprem:\n"+
-			"    grafana:\n"+
-			"      server: http://localhost:3000\n"+
-			"contexts:\n"+
-			"  dev:\n"+
-			"    stack: prod\n"+
-			"  local:\n"+
-			"    stack: onprem\n"+
-			"current-context: dev\n")
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"), `
+stacks:
+  prod:
+    slug: mystack
+  onprem:
+    grafana:
+      server: http://localhost:3000
+contexts:
+  dev:
+    stack: prod
+  local:
+    stack: onprem
+current-context: dev
+`)
 
 	selectLocal := func(cfg *config.Config) error {
 		cfg.CurrentContext = "local"
@@ -259,12 +286,27 @@ func TestCapturedTargetKind_ExplicitConfigFile(t *testing.T) {
 	scrubTargetKindEnv(t)
 
 	// The discoverable user layer says cloud; the explicit file must bypass it.
-	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
-		"stacks:\n  prod:\n    slug: mystack\ncontexts:\n  dev:\n    stack: prod\ncurrent-context: dev\n")
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"), `
+stacks:
+  prod:
+    slug: mystack
+contexts:
+  dev:
+    stack: prod
+current-context: dev
+`)
 
 	explicit := filepath.Join(t.TempDir(), "explicit.yaml")
-	writeLoaderConfig(t, explicit,
-		"stacks:\n  onprem:\n    grafana:\n      server: http://localhost:3000\ncontexts:\n  dev:\n    stack: onprem\ncurrent-context: dev\n")
+	writeLoaderConfig(t, explicit, `
+stacks:
+  onprem:
+    grafana:
+      server: http://localhost:3000
+contexts:
+  dev:
+    stack: onprem
+current-context: dev
+`)
 
 	_, err := config.LoadLayered(t.Context(), explicit, testEnvOverride)
 	require.NoError(t, err)
