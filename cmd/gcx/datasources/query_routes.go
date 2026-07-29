@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/bigquery"
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -79,6 +80,7 @@ type queryRoutes struct {
 func newQueryRoutes() queryRoutes {
 	return queryRoutes{
 		dispatch: map[string]queryDispatch{
+			"bigquery":   dispatchBigQuery,
 			"clickhouse": dispatchClickHouse,
 			"influxdb":   dispatchInfluxDB,
 			"loki":       dispatchLoki,
@@ -254,6 +256,26 @@ func dispatchClickHouse(ctx context.Context, req genericQueryRequest) (any, erro
 	}
 
 	resp, err := client.Query(ctx, req.uid, clickhouseReq)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+
+	return resp, nil
+}
+
+func dispatchBigQuery(ctx context.Context, req genericQueryRequest) (any, error) {
+	client, err := bigquery.NewClient(req.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	bqReq := bigquery.QueryRequest{
+		RawSQL: bigquery.EnforceLimit(req.expr, 100, 1000),
+		Start:  req.start,
+		End:    req.end,
+	}
+
+	resp, err := client.Query(ctx, req.uid, bqReq)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
