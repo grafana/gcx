@@ -44,7 +44,7 @@ Each `gcx` event contains the following properties:
 | `ci_provider` | Which CI system was detected, from a fixed list of known names. `gcx` reads well-known CI environment variables to detect the provider but never sends their values. | `github_actions` |
 | `is_agent` | Whether an AI coding agent drove the invocation. | `true` |
 | `agent` | The name of the agent harness, if one was detected. | `claude-code` |
-| `target_kind` | Whether the target Grafana is `cloud` or `self-hosted`. Empty when the invocation had no Grafana target to classify, such as a command that only reads or writes config. Deliberately coarse — never the URL, hostname, or stack slug. | `cloud` |
+| `target_kind` | Whether the target Grafana is `cloud` or `self-hosted`. Empty when no effective Grafana target could be resolved. Deliberately coarse — never the URL, hostname, or stack slug. | `cloud` |
 | `output_format` | The output format the command used. | `table`, `json` |
 
 When the invocation fails to parse, these additional fields are set. They capture what was attempted so the team can understand the differences between what users expect and what exists:
