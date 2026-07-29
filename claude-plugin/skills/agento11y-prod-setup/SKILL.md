@@ -128,18 +128,26 @@ from the traffic; read it from the code.
    (add `status = "error"`, time windows, `tool.name`, `eval.passed = false`) and
    `gcx agento11y generations get <id>` for detail. Look for long tool loops, over-refusals, PII
    echoed back, off-topic drift, malformed outputs, error clusters.
-   - **Pick the selector from how the agent produces generations, not by habit.**
-     `user_visible_turn` only matches generations flagged as a user-facing turn; a
-     **multi-agent DAG / programmatic pipeline** (fan-out/fan-in, internal nodes, one conversation
-     per run) produces generations with **no user-visible-turn flag** (`is_user_visible` is null),
-     so a `user_visible_turn` rule matches **nothing and scores zero** — the rule looks live but
-     silently never fires. For these agents (and for single-shot agents that have generations but no
-     conversation at all), use **`selector: all_assistant_generations`** and scope with
-     `match.agent_name` to the node you care about. Reserve `user_visible_turn` for genuine
-     chat/assistant agents where a turn is what the user sees. Verify before trusting it: after
-     creating the rule, run the agent once and confirm scores appear (`conversations search` →
-     `eval_summary.total_scores > 0`); zero scores on a matching agent almost always means the
-     selector is wrong for this agent shape.
+   - **Some agents have generations but no conversation** (e.g. single-shot agents whose spans
+     aren't grouped into a conversation). If `conversations search` is empty but `agents get` shows a
+     non-zero `generation_count`, don't stop and conclude "no traffic, wrong skill" — sample the
+     generations directly (`gcx agento11y generations get <id>`); there's plenty to work from.
+   - **Pick the selector from how the agent produces generations, not by habit.** The symptom to
+     recognize: a rule that **matches traffic but whose scores stay at zero** — it looks live but
+     silently never fires. That happens when `selector: user_visible_turn` is used on an agent whose
+     generations aren't user-facing turns: a **multi-agent DAG / programmatic pipeline**
+     (fan-out/fan-in, internal nodes, one conversation per run), or a single-shot agent with no
+     conversation. (The underlying reason is that those generations carry no user-visible-turn flag,
+     but there's no `gcx` command to inspect that directly — diagnose from the zero-score symptom,
+     not by hunting for the field.) For these agents use **`selector: all_assistant_generations`**
+     and scope with `match.agent_name` to the node you care about. Reserve `user_visible_turn` for
+     genuine chat/assistant agents where a turn is what the user sees. To confirm a selector is
+     working, score over enough sampled traffic — either wait for the rule's `sample_rate` to
+     accumulate hits, or temporarily bump it (and drop it back afterward; `sample_rate: 1.0` costs
+     real judge money, see the rule rules below) — then check `conversations search`. A run that
+     scored nothing shows **`eval_summary` absent or `total_scores: 0`** (the field is omitted when
+     nothing scored, not returned as `0`); persistent zero on a matching agent almost always means
+     the selector is wrong for this agent shape.
 
 **Minimum evidence bar.** Aim for **≥20 recent conversations over ≥7 days** before drafting
 anything. Fewer than that and you risk overfitting one odd conversation into a production rule or
@@ -173,9 +181,13 @@ asynchronously); **guards** *intervene* (block/redact on the live request path, 
 code change in the agent to call them — see Step 5.5**). Pick the surface by whether you want to
 watch or to stop — and remember a guard is dead config until the agent is wired to it.
 
+For every online **rule** row below, pick the `selector` per Step 1 (agent shape), not by the
+template's default — `user_visible_turn` for a genuine chat agent, `all_assistant_generations` for a
+DAG/pipeline node or single-shot agent.
+
 | If, in code or traffic, the agent… | Surface | Shape (prefer a predefined template) |
 | --- | --- | --- |
-| gives answers whose quality can drift | online **rule** | fork `template.helpfulness` / `template.relevance` (`llm_judge`); selector `user_visible_turn` for a chat agent, `all_assistant_generations` for a DAG/pipeline node (see Step 1) |
+| gives answers whose quality can drift | online **rule** | fork `template.helpfulness` / `template.relevance` (`llm_judge`) |
 | does RAG / cites sources | online **rule** | fork `template.groundedness` (`llm_judge`) |
 | must emit JSON / a fixed shape | online **rule** | fork `template.json_valid` (`json_schema`) |
 | over-refuses or drifts off-topic | online **rule** | `regex` / `llm_judge` on `all_assistant_generations` |
@@ -259,15 +271,14 @@ This skill (not the `agento11y` skill) carries the guard shape — draft the gua
 it, no schema-discovery step needed. A guard drives its decision from one of three (mutually
 exclusive) shapes — `evaluator_ids`, `redact`, or `tool_filter` — plus `action_on_fail`, `phase`,
 `priority`, `selector`. Use the `redact` schema exactly as the callout above shows (`{id, regex}`,
-no `replacement`). If the server ever rejects a field, its 400 names the correct one (e.g.
-`redact.patterns`) — fix and retry then, rather than probing up front. On create the server fills
-defaults you don't set — notably `selector: all`,
-`phase: preflight`, and `short_circuit: false` — so a `guards get -o yaml` right after create
+no `replacement`). If the server ever rejects a field, the 400 names the offending field, so a bad
+shape surfaces at create time rather than needing a probe up front. On create the server fills
+defaults you don't set — notably `selector: all`, `phase: preflight`, and `short_circuit: false` —
+so a `guards get -o yaml` right after create
 shows more fields than you sent; that's expected, not drift. A guard is drafted in **warn** (and
 `enabled: false` if the server honors it — it may not; see Step 5):
 
 ```yaml
-# ILLUSTRATIVE — confirm fields with `gcx agento11y guards create --help` before use.
 # PROD-SETUP DRAFT — creates a STACK-LEVEL guard (HookRule) via gcx agento11y guards create.
 # warn on purpose: a warn guard records but never blocks, so it is safe on real traffic
 # even while live; watch it, then switch to deny yourself later.
@@ -451,8 +462,10 @@ Output, in this order:
      `enabled` only once the false-positive rate looks acceptable —
      `gcx agento11y guards update <id> -f ...`. Both the wiring and the flip are theirs to make, not
      this skill's.
-   - **Rules:** raise `sample_rate` once scores look sane and cost is understood
-     (`gcx agento11y rules update`); add alerting on regressions if wanted.
+   - **Rules:** first confirm the rule is actually scoring — if `eval_summary` is absent or
+     `total_scores` stays 0 on a matching agent, the `selector` is likely wrong for the agent shape
+     (see Step 1), not the sample rate. Once scores appear, raise `sample_rate` as they look sane and
+     cost is understood (`gcx agento11y rules update`); add alerting on regressions if wanted.
    - Inspect everything in Agent Observability (rules/guards/evaluators pages, the conversation
      Quality view) or via the `gcx agento11y` list and get commands.
 4. A one-line pointer back: for pre-ship offline evaluation of a new agent or version,
