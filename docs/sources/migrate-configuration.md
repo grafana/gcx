@@ -1,4 +1,6 @@
 ---
+aliases:
+  - /docs/grafana-cloud/as-code/observability-as-code/grafana-cli/gcx/migrate-configuration/
 title: Migrate your gcx configuration
 labels:
   products:
