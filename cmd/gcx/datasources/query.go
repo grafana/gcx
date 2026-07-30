@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -192,7 +194,7 @@ that do not have a dedicated subcommand.`,
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
 			case "postgres":
-				resp, err := runPostgresQuery(ctx, cfg, datasourceUID, expr, start, end, step)
+				resp, err := runPostgresQuery(ctx, cfg, datasourceUID, expr, start, end, step, cmd.ErrOrStderr())
 				if err != nil {
 					return err
 				}
@@ -238,14 +240,18 @@ func runClickHouseQuery(ctx context.Context, cfg config.NamespacedRESTConfig, da
 }
 
 // runPostgresQuery executes the auto-detected postgres branch of QueryCmd.
-func runPostgresQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time, step time.Duration) (*querysql.QueryResponse, error) {
+func runPostgresQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time, step time.Duration, warnw io.Writer) (*querysql.QueryResponse, error) {
 	client, err := postgres.NewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
+	sql, capped := postgres.EnforceLimit(expr, 100, 1000)
+	if capped {
+		cmdio.Warning(warnw, "LIMIT in query exceeds the maximum of 1000 and was capped")
+	}
 	req := postgres.QueryRequest{
-		RawSQL: postgres.EnforceLimit(expr, 100, 1000),
+		RawSQL: sql,
 		Start:  start,
 		End:    end,
 	}

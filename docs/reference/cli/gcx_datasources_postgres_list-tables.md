@@ -17,7 +17,7 @@ gcx datasources postgres list-tables [flags]
 ```
 
   # List all tables
-  gcx datasources postgres list-tables
+  gcx datasources postgres list-tables -d UID
 
   # Filter to a specific schema
   gcx datasources postgres list-tables --schema public

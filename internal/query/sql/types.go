@@ -25,17 +25,19 @@ type Column struct {
 
 var limitClauseRe = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\s*$`)
 
-// EnforceLimit ensures the SQL has a trailing LIMIT clause within bounds.
+// EnforceLimit ensures the SQL has a trailing LIMIT clause within bounds and
+// reports whether an existing LIMIT was capped to maxLimit, so callers can
+// warn the user instead of truncating silently.
 // If limit is 0, enforcement is disabled (pass-through). The bail predicate
 // lets each dialect opt out for statements where appending a LIMIT is invalid
 // or unwanted (SHOW/DESCRIBE/EXPLAIN, LIMIT … OFFSET, dialect-specific clauses).
-func EnforceLimit(sql string, limit, maxLimit int, bail func(string) bool) string {
+func EnforceLimit(sql string, limit, maxLimit int, bail func(string) bool) (string, bool) {
 	if limit == 0 {
-		return sql
+		return sql, false
 	}
 
 	if bail != nil && bail(sql) {
-		return sql
+		return sql, false
 	}
 
 	trimmed := strings.TrimRight(sql, "; \t\n")
@@ -44,13 +46,13 @@ func EnforceLimit(sql string, limit, maxLimit int, bail func(string) bool) strin
 	if m := limitClauseRe.FindStringSubmatchIndex(trimmed); m != nil {
 		existing, _ := strconv.Atoi(trimmed[m[2]:m[3]])
 		if existing > maxLimit {
-			return trimmed[:m[2]] + strconv.Itoa(maxLimit) + trimmed[m[3]:] + suffix
+			return trimmed[:m[2]] + strconv.Itoa(maxLimit) + trimmed[m[3]:] + suffix, true
 		}
-		return sql
+		return sql, false
 	}
 
 	if limit > maxLimit {
 		limit = maxLimit
 	}
-	return trimmed + " LIMIT " + strconv.Itoa(limit) + suffix
+	return trimmed + " LIMIT " + strconv.Itoa(limit) + suffix, false
 }

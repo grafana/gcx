@@ -41,7 +41,7 @@ func ListTablesCmd(loader *providers.ConfigLoader) *cobra.Command {
 Shows schema, name, and type for each table.`,
 		Example: `
   # List all tables
-  gcx datasources postgres list-tables
+  gcx datasources postgres list-tables -d UID
 
   # Filter to a specific schema
   gcx datasources postgres list-tables --schema public
