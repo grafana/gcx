@@ -68,8 +68,8 @@ func (o *checkOpts) setup(flags *pflag.FlagSet) {
 		"With --fix-plan: target a specific Grafana Assistant agent (defaults to the CLI agent).")
 	flags.BoolVar(&o.PrintPrompt, "print-prompt", false,
 		"With --fix-plan: build and print the Assistant prompt to stdout, then exit. Assistant is NOT called; no billing.")
-	flags.IntVar(&o.TimeoutSeconds, "assistant-timeout", 300,
-		"With --fix-plan: Grafana Assistant response timeout in seconds.")
+	flags.IntVar(&o.TimeoutSeconds, "assistant-timeout", 0,
+		"With --fix-plan: Grafana Assistant response timeout in seconds. 0 uses the library default (300s).")
 }
 
 // Validate finalizes opts after flag parsing and runs the otel-checker
@@ -199,13 +199,20 @@ Powered by github.com/grafana/otel-checker.`,
 				if err != nil {
 					return fmt.Errorf("instrumentation check: fix-plan: %w", err)
 				}
-				if !plan.Empty {
+				switch {
+				case plan.Empty && opts.PrintPrompt:
+					// --print-prompt with nothing to build a prompt for:
+					// note it explicitly rather than leaving the user with
+					// silent no-op output.
+					cmdio.EmitNote(cmd.ErrOrStderr(), "no findings — nothing to build a prompt for")
+				case !plan.Empty:
 					envelope.FixPlan = &FixPlanEnvelope{
 						Source:   string(plan.Source),
 						Content:  plan.Content,
 						DocsUsed: plan.DocsUsed,
 						Fallback: plan.Fallback,
 						Reason:   plan.Reason,
+						Preview:  plan.Preview,
 					}
 				}
 			}

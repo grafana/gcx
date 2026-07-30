@@ -33,7 +33,7 @@ gcx instrumentation check [components] [flags]
 
 ```
       --agent-id string                With --fix-plan: target a specific Grafana Assistant agent (defaults to the CLI agent).
-      --assistant-timeout int          With --fix-plan: Grafana Assistant response timeout in seconds. (default 300)
+      --assistant-timeout int          With --fix-plan: Grafana Assistant response timeout in seconds. 0 uses the library default (300s).
       --collector-config-path string   Path to the OpenTelemetry Collector config file.
       --debug                          Print additional diagnostic output from the checker.
       --fix-plan                       After running the checks, synthesize a single fix plan for every finding. Uses Grafana Assistant when the current context is a Grafana Cloud stack (billable); falls back to a local aggregation of the explanation docs otherwise.

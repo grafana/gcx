@@ -23,11 +23,12 @@ const (
 // findings that need a fix plan; callers should skip rendering in that case.
 type Plan struct {
 	Source   Source
-	Content  string   // markdown
+	Content  string   // markdown (or the raw prompt when Preview == true)
 	DocsUsed []string // explain IDs the plan consulted
 	Empty    bool     // true when there are no error/warning findings
 	Fallback bool     // true when Assistant was requested but local was used
 	Reason   string   // when Fallback: one-line human explanation
+	Preview  bool     // true when Content holds the built Assistant prompt (--print-prompt), not a real plan
 }
 
 // Options configures Generate. All optional; sensible defaults are applied.
@@ -71,10 +72,13 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 	prompt := buildPrompt(findings, docs)
 
 	if opts.PrintPromptOnly {
+		// Preview keeps JSON consumers and the human codec able to tell
+		// "this is the prompt we would have sent" apart from a real plan.
 		return Plan{
 			Source:   SourceAssistant,
 			Content:  prompt,
 			DocsUsed: docIDs,
+			Preview:  true,
 		}, nil
 	}
 
@@ -102,6 +106,15 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 			Message:        prompt,
 			AgentID:        opts.AgentID,
 			TimeoutSeconds: opts.TimeoutSeconds,
+			// Opt in to auto-approve: the fix-plan prompt asks for markdown
+			// synthesis, not tool calls, and there is no interactive stdin
+			// here. RunPrompt's fail-closed default would deny any approval
+			// request, which manifests server-side as "HTTP 500: Permission
+			// check failed" on Grafana Cloud.
+			ApprovalHandler: assistantprov.AlwaysApprove{},
+			// PersistContextID left false: fix-plan does not do
+			// continuation, so we must not overwrite the last-context-ID
+			// the user may be building via `gcx assistant prompt --continue`.
 		})
 		if err != nil {
 			// Same fallback contract as the Cloud-check branch above.
@@ -131,11 +144,17 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 // checkCloud runs the Grafana-Cloud precondition for the Assistant path.
 // It resolves the current context and returns a user-facing error string
 // when Assistant isn't reachable. Returns nil on success.
+//
+// Uses LoadConfigTolerant so a strict-validator failure (missing token,
+// bad path, malformed context) still produces a useful "Assistant not
+// available: <reason>" fallback rather than making that config error look
+// like an Assistant error. If the caller genuinely reaches Assistant with
+// bad auth, RunPrompt surfaces the real error later.
 func checkCloud(ctx context.Context, opts Options) error {
 	if opts.cloudChecker != nil {
 		return opts.cloudChecker(ctx, opts.Loader)
 	}
-	cfg, err := opts.Loader.LoadConfig(ctx)
+	cfg, err := opts.Loader.LoadConfigTolerant(ctx)
 	if err != nil {
 		return err
 	}
