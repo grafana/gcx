@@ -3,6 +3,7 @@ package fixplan
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/grafana/gcx/internal/providers"
 	assistantprov "github.com/grafana/gcx/internal/providers/assistant"
@@ -117,13 +118,16 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 			// the user may be building via `gcx assistant prompt --continue`.
 		})
 		if err != nil {
-			// Same fallback contract as the Cloud-check branch above.
-			return Plan{ //nolint:nilerr // fallback is intentional; reason is preserved on Plan.
+			// Same fallback contract as the Cloud-check branch above:
+			// the assistant call failed, but the local aggregator still
+			// produces a usable plan. Surface the reason on Plan.Reason
+			// rather than treating it as fatal.
+			return Plan{
 				Source:   SourceLocal,
 				Content:  buildLocalPlan(findings, docs),
 				DocsUsed: docIDs,
 				Fallback: true,
-				Reason:   "Assistant request failed: " + err.Error(),
+				Reason:   fmt.Sprintf("Assistant request failed: %s", err),
 			}, nil
 		}
 		return Plan{

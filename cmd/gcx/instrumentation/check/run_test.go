@@ -331,3 +331,29 @@ func TestCheckTableCodec_LocalFallbackNoticePrinted(t *testing.T) {
 	assert.Contains(t, out, "not a Grafana Cloud stack")
 	assert.Contains(t, out, "Combined fix")
 }
+
+// TestCheckTableCodec_PreviewNoticePrinted guards the --print-prompt UX:
+// when the envelope carries Preview=true, the codec must announce that
+// Assistant was NOT called before dumping the prompt body. Otherwise a
+// user skimming stdout can mistake the raw prompt for a real fix plan.
+func TestCheckTableCodec_PreviewNoticePrinted(t *testing.T) {
+	envelope := ResultsWithFixPlan{
+		Results: otelutils.Results{
+			Errors: []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no headers", ExplainID: "grafana-cloud.headers.missing-auth"}},
+		},
+		FixPlan: &FixPlanEnvelope{
+			Source:  "assistant",
+			Preview: true,
+			Content: "You are helping fix OpenTelemetry instrumentation problems...",
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&CheckTableCodec{}).Encode(&buf, envelope))
+	out := buf.String()
+	assert.Contains(t, out, "Prompt preview")
+	assert.Contains(t, out, "Grafana Assistant was NOT called")
+	assert.Contains(t, out, "no billing")
+	// Preview notice must sit before the prompt body.
+	assert.Less(t, strings.Index(out, "Prompt preview"), strings.Index(out, "You are helping fix"),
+		"preview notice must precede the prompt body")
+}
