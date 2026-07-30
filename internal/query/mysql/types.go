@@ -35,7 +35,8 @@ var limitBailRe = regexp.MustCompile(`(?im)(\bLIMIT\s+\d+\s+OFFSET\b|\bLIMIT\s+\
 // locking, or a metadata statement (EXPLAIN/SHOW/DESCRIBE), it bails out
 // (pass-through).
 func EnforceLimit(sql string, limit, maxLimit int) string {
-	return querysql.EnforceLimit(sql, limit, maxLimit, limitBailRe.MatchString)
+	out, _ := querysql.EnforceLimit(sql, limit, maxLimit, limitBailRe.MatchString)
+	return out
 }
 
 // QueryRequest represents a MySQL query request.

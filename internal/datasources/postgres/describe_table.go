@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -16,6 +17,24 @@ type describeTableOpts struct {
 	IO         cmdio.Options
 	Datasource string
 	Schema     string
+}
+
+// splitTableArg resolves a possibly schema-qualified TABLE argument
+// (schema.table, the Postgres idiom) against the --schema flag, returning
+// the effective schema and bare table name.
+func splitTableArg(arg, schemaFlag string) (string, string, error) {
+	parts := strings.Split(arg, ".")
+	switch {
+	case len(parts) == 1:
+		return schemaFlag, arg, nil
+	case len(parts) == 2 && parts[0] != "" && parts[1] != "":
+		if schemaFlag != "" && schemaFlag != parts[0] {
+			return "", "", fmt.Errorf("schema %q from the table argument conflicts with --schema %q", parts[0], schemaFlag)
+		}
+		return parts[0], parts[1], nil
+	default:
+		return "", "", fmt.Errorf("invalid table %q: use TABLE or SCHEMA.TABLE", arg)
+	}
 }
 
 func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
@@ -38,12 +57,14 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Show the columns of a PostgreSQL table",
 		Long: `Show the columns of a PostgreSQL table: name, data type, nullability, and default.
 
-Use --schema to disambiguate when the same table name exists in multiple schemas.`,
+The table can be schema-qualified (schema.table); otherwise use --schema to
+disambiguate when the same table name exists in multiple schemas.`,
 		Example: `
   # Describe a table
-  gcx datasources postgres describe-table orders
+  gcx datasources postgres describe-table orders -d UID
 
   # Disambiguate by schema
+  gcx datasources postgres describe-table public.orders
   gcx datasources postgres describe-table orders --schema public
 
   # Output as JSON
@@ -54,11 +75,14 @@ Use --schema to disambiguate when the same table name exists in multiple schemas
 				return err
 			}
 
-			table := args[0]
+			schema, table, err := splitTableArg(args[0], opts.Schema)
+			if err != nil {
+				return err
+			}
 			if err := postgres.ValidateIdentifier(table, "table"); err != nil {
 				return err
 			}
-			if err := postgres.ValidateIdentifier(opts.Schema, "schema"); err != nil {
+			if err := postgres.ValidateIdentifier(schema, "schema"); err != nil {
 				return err
 			}
 
@@ -75,13 +99,17 @@ Use --schema to disambiguate when the same table name exists in multiple schemas
 			}
 
 			sql := fmt.Sprintf(
-				"SELECT column_name AS name, data_type AS type, is_nullable AS nullable, column_default AS default FROM information_schema.columns WHERE table_name = '%s'",
+				"SELECT table_schema AS schema, column_name AS name, data_type AS type, is_nullable AS nullable, column_default AS default FROM information_schema.columns WHERE table_name = '%s'",
 				postgres.EscapeSQLString(table),
 			)
-			if opts.Schema != "" {
-				sql += fmt.Sprintf(" AND table_schema = '%s'", postgres.EscapeSQLString(opts.Schema))
+			if schema != "" {
+				sql += fmt.Sprintf(" AND table_schema = '%s'", postgres.EscapeSQLString(schema))
+			} else {
+				// Same system-schema exclusion as list-tables, so an unscoped
+				// describe never returns pg_catalog/information_schema columns.
+				sql += " AND table_schema NOT IN ('pg_catalog', 'information_schema')"
 			}
-			sql += " ORDER BY ordinal_position"
+			sql += " ORDER BY table_schema, ordinal_position"
 
 			client, err := postgres.NewClient(cfg)
 			if err != nil {
@@ -94,6 +122,9 @@ Use --schema to disambiguate when the same table name exists in multiple schemas
 			}
 
 			if len(resp.Rows) == 0 {
+				if schema != "" {
+					return fmt.Errorf("table %q not found in schema %q", table, schema)
+				}
 				return fmt.Errorf("table %q not found", table)
 			}
 

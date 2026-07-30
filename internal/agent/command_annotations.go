@@ -138,9 +138,11 @@ var commandAnnotations = map[string]annotation{
 	"gcx instrumentation clusters apps wait":      {Cost: "small"},
 
 	// top-level single commands
-	"gcx instrumentation setup":  {Cost: "medium", Hint: "<cluster> --use-defaults -o json | Docs: " + docs.KubernetesMonitoring},
-	"gcx instrumentation status": {Cost: "medium", Hint: "-o json | Docs: " + docs.KubernetesMonitoring},
-	"gcx instrumentation check":  {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds) — does not query any Grafana stack. [components] --language <lang> -o json"},
+	"gcx instrumentation setup":             {Cost: "medium", Hint: "<cluster> --use-defaults -o json | Docs: " + docs.KubernetesMonitoring},
+	"gcx instrumentation status":            {Cost: "medium", Hint: "-o json | Docs: " + docs.KubernetesMonitoring},
+	"gcx instrumentation check":             {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds) — does not query any Grafana stack. [components] --language <lang> -o json"},
+	"gcx instrumentation explain":           {Cost: "small", Hint: "Show a markdown explanation for an otel-checker finding by its explain ID (see the explain_id field in `gcx instrumentation check -o json` output). Use `gcx instrumentation list-explanations` to enumerate every registered ID."},
+	"gcx instrumentation list-explanations": {Cost: "medium", Hint: "-o json"},
 
 	// services verb group
 	"gcx instrumentation services list":    {Cost: "large", Hint: "K8s workloads discovered fleet-wide by the Beyla survey collector, for setting up instrumentation (distinct from 'gcx appo11y services', which lists telemetry-reporting services). --cluster <name> --namespace <ns> -o json"},
@@ -177,6 +179,12 @@ var commandAnnotations = map[string]annotation{
 	"gcx alert instances list":               {Cost: "large", Hint: "--state firing --group <name> -o json"},
 	"gcx alert rules get":                    {Cost: "small"},
 	"gcx alert rules list":                   {Cost: "medium", Hint: "--folder <uid> --group <name> -o json"},
+	"gcx alert ruler namespaces list":        {Cost: "small", Hint: "--datasource <uid>"},
+	"gcx alert ruler namespaces delete":      {Cost: "small", Hint: "<namespace> --datasource <uid> --force"},
+	"gcx alert ruler groups list":            {Cost: "medium", Hint: "--datasource <uid> [--namespace <ns>] -o json"},
+	"gcx alert ruler groups get":             {Cost: "medium", Hint: "<namespace> <group> --datasource <uid>"},
+	"gcx alert ruler groups upsert":          {Cost: "small", Hint: "<namespace> -f <file> --datasource <uid>"},
+	"gcx alert ruler groups delete":          {Cost: "small", Hint: "<namespace> <group> --datasource <uid> --force"},
 	"gcx alert contact-points list":          {Cost: "small"},
 	"gcx alert contact-points get":           {Cost: "small"},
 	"gcx alert contact-points create":        {Cost: "small"},

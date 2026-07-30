@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/postgres"
 	"github.com/spf13/cobra"
@@ -81,7 +82,10 @@ Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.`,
 				return err
 			}
 
-			sql := postgres.EnforceLimit(expr, opts.Limit, maxLimit)
+			sql, capped := postgres.EnforceLimit(expr, opts.Limit, maxLimit)
+			if capped {
+				cmdio.Warning(cmd.ErrOrStderr(), "LIMIT in query exceeds the maximum of %d and was capped; use --limit 0 to disable enforcement", maxLimit)
+			}
 
 			now := time.Now()
 			start, end, step, err := opts.ParseTimes(now)

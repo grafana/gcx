@@ -32,7 +32,7 @@ func TestEnforceLimit(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := sql.EnforceLimit(tt.sql, tt.limit, tt.maxLimit, tt.bail)
+			got, _ := sql.EnforceLimit(tt.sql, tt.limit, tt.maxLimit, tt.bail)
 			assert.Equal(t, tt.want, got)
 		})
 	}

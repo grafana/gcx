@@ -6,7 +6,8 @@ Show the columns of a PostgreSQL table
 
 Show the columns of a PostgreSQL table: name, data type, nullability, and default.
 
-Use --schema to disambiguate when the same table name exists in multiple schemas.
+The table can be schema-qualified (schema.table); otherwise use --schema to
+disambiguate when the same table name exists in multiple schemas.
 
 ```
 gcx datasources postgres describe-table TABLE [flags]
@@ -17,9 +18,10 @@ gcx datasources postgres describe-table TABLE [flags]
 ```
 
   # Describe a table
-  gcx datasources postgres describe-table orders
+  gcx datasources postgres describe-table orders -d UID
 
   # Disambiguate by schema
+  gcx datasources postgres describe-table public.orders
   gcx datasources postgres describe-table orders --schema public
 
   # Output as JSON

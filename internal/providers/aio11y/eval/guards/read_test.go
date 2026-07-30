@@ -30,10 +30,10 @@ action_on_fail: warn
 short_circuit: true
 evaluator_ids:
   - eval-1
-transform:
+redact:
   patterns:
-    - regex: secret
-      replacement: "[REDACTED]"
+    - id: secret
+      regex: secret
 `
 	path := filepath.Join(t.TempDir(), "guard.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
@@ -46,7 +46,8 @@ transform:
 	assert.Equal(t, 10, def.Priority)
 	assert.Equal(t, "warn", def.ActionOnFail)
 	assert.True(t, def.ShortCircuit)
-	require.NotNil(t, def.Transform)
-	require.Len(t, def.Transform.Patterns, 1)
-	assert.Equal(t, "secret", def.Transform.Patterns[0].Regex)
+	require.NotNil(t, def.Redact)
+	require.Len(t, def.Redact.Patterns, 1)
+	assert.Equal(t, "secret", def.Redact.Patterns[0].ID)
+	assert.Equal(t, "secret", def.Redact.Patterns[0].Regex)
 }

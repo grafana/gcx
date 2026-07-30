@@ -89,7 +89,10 @@ type HookRuleDefinition struct {
 	ActionOnFail string            `json:"action_on_fail"` // deny | warn
 	ShortCircuit bool              `json:"short_circuit"`
 	ToolFilter   *ToolFilterConfig `json:"tool_filter,omitempty"`
-	Transform    *TransformConfig  `json:"transform,omitempty"`
+	// Redact is the server's canonical field name (the response also uses "redact").
+	// Sigil accepts a legacy "transform" alias on input but always emits "redact",
+	// so using "redact" here keeps create/get round-trips symmetric.
+	Redact *TransformConfig `json:"redact,omitempty"`
 
 	// Server-generated fields (stripped on push)
 	TenantID  string     `json:"tenant_id,omitempty"`
@@ -111,16 +114,19 @@ type ToolFilterConfig struct {
 	BlockedNames []string `json:"blocked_names"`
 }
 
-// TransformConfig rewrites generation content with regex-based patterns.
+// TransformConfig redacts generation content by matching regex patterns. On a
+// match the server replaces the text with a placeholder derived from the
+// pattern id; there is no caller-supplied replacement string.
 type TransformConfig struct {
 	Patterns []TransformPattern `json:"patterns"`
 }
 
-// TransformPattern is a single regex/replacement pair applied by a transform.
+// TransformPattern is a single regex applied by a redact rule. The server's
+// schema is exactly {id, regex} — it rejects any other field (e.g. a
+// "replacement" key) with 400 unknown field.
 type TransformPattern struct {
-	ID          string `json:"id,omitempty"`
-	Regex       string `json:"regex"`
-	Replacement string `json:"replacement,omitempty"`
+	ID    string `json:"id,omitempty"`
+	Regex string `json:"regex"`
 }
 
 // TemplateDefinition is a list item from GET /eval/templates.

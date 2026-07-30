@@ -21,7 +21,7 @@ func TestTableCodec_Encode(t *testing.T) {
 			Selector:     "all",
 			ActionOnFail: "deny",
 			EvaluatorIDs: []string{"eval-1", "eval-2"},
-			Transform:    &eval.TransformConfig{Patterns: []eval.TransformPattern{{Regex: "secret", Replacement: "[redacted]"}}},
+			Redact:       &eval.TransformConfig{Patterns: []eval.TransformPattern{{ID: "secret", Regex: "secret"}}},
 			ToolFilter:   &eval.ToolFilterConfig{BlockedNames: []string{"bad-tool"}},
 			CreatedBy:    "admin",
 			CreatedAt:    time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC),

@@ -44,7 +44,7 @@ agent has a clean function seam or needs a harness / full stack. For deeper run-
 (binding existing generations, cross-process verifiers) point to the per-language run skill
 (Python: `agento11y-experiments`).
 
-> Note: `agento11y-experiments` currently ships in the grafana/sigil-sdk repo
+> Note: `agento11y-experiments` currently ships in the grafana/agento11y repo
 > (`python/skills/agento11y-experiments/`), not in this gcx bundle yet — install it from there for
 > now. Consolidating it into the gcx bundle is pending.
 
