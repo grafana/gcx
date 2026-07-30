@@ -10,33 +10,56 @@ import (
 )
 
 // EscapeSQLString escapes single quotes for use in SQL string literals.
+// Backticks and other quoting characters need no handling here: every value
+// reaching this function is pre-validated by ValidateIdentifier, which
+// already rejects them.
 func EscapeSQLString(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
 }
 
-var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_.]*$`)
+var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// ValidateIdentifier checks that a database or table name contains only safe characters.
+// ValidateIdentifier checks that a single database or table name contains
+// only safe characters. Database-qualified names (db.table) must be split
+// before validation — a dot inside one identifier would silently match
+// nothing in information_schema lookups.
 func ValidateIdentifier(name, field string) error {
 	if name == "" {
 		return nil
 	}
 	if !identifierRe.MatchString(name) {
-		return fmt.Errorf("invalid %s: must contain only letters, numbers, underscores, and dots", field)
+		return fmt.Errorf("invalid %s: must contain only letters, numbers, and underscores", field)
 	}
 	return nil
 }
 
-var limitBailRe = regexp.MustCompile(`(?im)(\bLIMIT\s+\d+\s+OFFSET\b|\bLIMIT\s+\d+\s*,|\bOFFSET\s+\d+\b|\bINTO\s+(OUTFILE|DUMPFILE)\b|\bFOR\s+(UPDATE|SHARE)\b|\bLOCK\s+IN\s+SHARE\s+MODE\b|^\s*EXPLAIN\b|^\s*SHOW\b|^\s*DESC(RIBE)?\b)`)
+// limitStatementRe matches statements that should get a trailing LIMIT
+// clause. MySQL accepts LIMIT on single-table UPDATE/DELETE and on
+// INSERT ... SELECT — appending one there would silently restrict the write
+// to LIMIT rows, so only SELECT-shaped statements are ever touched.
+var limitStatementRe = regexp.MustCompile(`(?is)^\s*(SELECT|WITH|TABLE|VALUES)\b`)
 
-// EnforceLimit ensures the SQL has a LIMIT clause within bounds.
+// The DML keywords catch CTE-wrapped writes (e.g. WITH ... UPDATE ...),
+// which start with WITH and so pass limitStatementRe. Matching them anywhere
+// means a SELECT mentioning e.g. 'DELETE' in a string literal also skips
+// enforcement — that fails safe (no LIMIT added) rather than limiting a write.
+// EXPLAIN/SHOW/DESCRIBE need no bail entries: limitStatementRe already
+// excludes them, and line-anchored entries would misfire on formatted
+// queries (e.g. a multiline ORDER BY ... \nDESC).
+var limitBailRe = regexp.MustCompile(`(?i)(\bLIMIT\s+\d+\s+OFFSET\b|\bLIMIT\s+\d+\s*,|\bOFFSET\s+\d+\b|\bINTO\s+(OUTFILE|DUMPFILE)\b|\bFOR\s+(UPDATE|SHARE)\b|\bLOCK\s+IN\s+SHARE\s+MODE\b|\b(INSERT|UPDATE|DELETE|REPLACE)\b)`)
+
+// EnforceLimit ensures the SQL has a LIMIT clause within bounds and reports
+// whether an explicit trailing LIMIT was capped to maxLimit, so callers can
+// warn instead of truncating silently.
 // If limit is 0, enforcement is disabled (pass-through).
-// If the SQL uses OFFSET, LIMIT offset,count syntax, INTO OUTFILE, row
-// locking, or a metadata statement (EXPLAIN/SHOW/DESCRIBE), it bails out
-// (pass-through).
-func EnforceLimit(sql string, limit, maxLimit int) string {
-	out, _ := querysql.EnforceLimit(sql, limit, maxLimit, limitBailRe.MatchString)
-	return out
+// Statements that cannot safely take a trailing LIMIT (DML, DDL,
+// EXPLAIN/SHOW/DESCRIBE, ...) and SELECTs using OFFSET, LIMIT offset,count,
+// INTO OUTFILE, or row locking pass through unchanged.
+func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
+	if !limitStatementRe.MatchString(sql) {
+		return sql, false
+	}
+	return querysql.EnforceLimit(sql, limit, maxLimit, limitBailRe.MatchString)
 }
 
 // QueryRequest represents a MySQL query request.

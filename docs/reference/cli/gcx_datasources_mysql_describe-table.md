@@ -6,7 +6,8 @@ Show the columns of a MySQL table
 
 Show the columns of a MySQL table: name, column type, nullability, and default.
 
-Use --database to disambiguate when the same table name exists in multiple databases.
+The table can be database-qualified (db.table); otherwise use --database to
+disambiguate when the same table name exists in multiple databases.
 
 ```
 gcx datasources mysql describe-table TABLE [flags]
@@ -17,9 +18,10 @@ gcx datasources mysql describe-table TABLE [flags]
 ```
 
   # Describe a table
-  gcx datasources mysql describe-table orders
+  gcx datasources mysql describe-table orders -d UID
 
   # Disambiguate by database
+  gcx datasources mysql describe-table mydb.orders
   gcx datasources mysql describe-table orders --database mydb
 
   # Output as JSON

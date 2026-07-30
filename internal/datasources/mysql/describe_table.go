@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -16,6 +17,24 @@ type describeTableOpts struct {
 	IO         cmdio.Options
 	Datasource string
 	Database   string
+}
+
+// splitTableArg resolves a possibly database-qualified TABLE argument
+// (db.table, the MySQL idiom) against the --database flag, returning the
+// effective database and bare table name.
+func splitTableArg(arg, databaseFlag string) (string, string, error) {
+	parts := strings.Split(arg, ".")
+	switch {
+	case len(parts) == 1:
+		return databaseFlag, arg, nil
+	case len(parts) == 2 && parts[0] != "" && parts[1] != "":
+		if databaseFlag != "" && databaseFlag != parts[0] {
+			return "", "", fmt.Errorf("database %q from the table argument conflicts with --database %q", parts[0], databaseFlag)
+		}
+		return parts[0], parts[1], nil
+	default:
+		return "", "", fmt.Errorf("invalid table %q: use TABLE or DATABASE.TABLE", arg)
+	}
 }
 
 func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
@@ -38,12 +57,14 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Show the columns of a MySQL table",
 		Long: `Show the columns of a MySQL table: name, column type, nullability, and default.
 
-Use --database to disambiguate when the same table name exists in multiple databases.`,
+The table can be database-qualified (db.table); otherwise use --database to
+disambiguate when the same table name exists in multiple databases.`,
 		Example: `
   # Describe a table
-  gcx datasources mysql describe-table orders
+  gcx datasources mysql describe-table orders -d UID
 
   # Disambiguate by database
+  gcx datasources mysql describe-table mydb.orders
   gcx datasources mysql describe-table orders --database mydb
 
   # Output as JSON
@@ -54,11 +75,14 @@ Use --database to disambiguate when the same table name exists in multiple datab
 				return err
 			}
 
-			table := args[0]
+			database, table, err := splitTableArg(args[0], opts.Database)
+			if err != nil {
+				return err
+			}
 			if err := mysql.ValidateIdentifier(table, "table"); err != nil {
 				return err
 			}
-			if err := mysql.ValidateIdentifier(opts.Database, "database"); err != nil {
+			if err := mysql.ValidateIdentifier(database, "database"); err != nil {
 				return err
 			}
 
@@ -75,13 +99,17 @@ Use --database to disambiguate when the same table name exists in multiple datab
 			}
 
 			sql := fmt.Sprintf(
-				"SELECT column_name AS name, column_type AS type, is_nullable AS nullable, column_default AS `default` FROM information_schema.columns WHERE table_name = '%s'",
+				"SELECT table_schema AS `database`, column_name AS name, column_type AS type, is_nullable AS nullable, column_default AS `default` FROM information_schema.columns WHERE table_name = '%s'",
 				mysql.EscapeSQLString(table),
 			)
-			if opts.Database != "" {
-				sql += fmt.Sprintf(" AND table_schema = '%s'", mysql.EscapeSQLString(opts.Database))
+			if database != "" {
+				sql += fmt.Sprintf(" AND table_schema = '%s'", mysql.EscapeSQLString(database))
+			} else {
+				// Same system-schema exclusion as list-tables, so an unscoped
+				// describe never returns system-catalog columns.
+				sql += " AND table_schema NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')"
 			}
-			sql += " ORDER BY ordinal_position"
+			sql += " ORDER BY table_schema, ordinal_position"
 
 			client, err := mysql.NewClient(cfg)
 			if err != nil {
@@ -94,6 +122,9 @@ Use --database to disambiguate when the same table name exists in multiple datab
 			}
 
 			if len(resp.Rows) == 0 {
+				if database != "" {
+					return fmt.Errorf("table %q not found in database %q", table, database)
+				}
 				return fmt.Errorf("table %q not found", table)
 			}
 

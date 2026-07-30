@@ -17,7 +17,7 @@ gcx datasources mysql list-tables [flags]
 ```
 
   # List all tables
-  gcx datasources mysql list-tables
+  gcx datasources mysql list-tables -d UID
 
   # Filter to a specific database
   gcx datasources mysql list-tables --database mydb

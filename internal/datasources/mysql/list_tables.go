@@ -41,7 +41,7 @@ func ListTablesCmd(loader *providers.ConfigLoader) *cobra.Command {
 Shows database, name, and type for each table.`,
 		Example: `
   # List all tables
-  gcx datasources mysql list-tables
+  gcx datasources mysql list-tables -d UID
 
   # Filter to a specific database
   gcx datasources mysql list-tables --database mydb

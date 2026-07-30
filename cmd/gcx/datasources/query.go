@@ -203,7 +203,7 @@ that do not have a dedicated subcommand.`,
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
 			case "mysql":
-				resp, err := runMySQLQuery(ctx, cfg, datasourceUID, expr, start, end, step)
+				resp, err := runMySQLQuery(ctx, cfg, datasourceUID, expr, start, end, step, cmd.ErrOrStderr())
 				if err != nil {
 					return err
 				}
@@ -249,14 +249,18 @@ func runClickHouseQuery(ctx context.Context, cfg config.NamespacedRESTConfig, da
 }
 
 // runMySQLQuery executes the auto-detected mysql branch of QueryCmd.
-func runMySQLQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time, step time.Duration) (*querysql.QueryResponse, error) {
+func runMySQLQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time, step time.Duration, warnw io.Writer) (*querysql.QueryResponse, error) {
 	client, err := mysql.NewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
+	sql, capped := mysql.EnforceLimit(expr, 100, 1000)
+	if capped {
+		cmdio.Warning(warnw, "LIMIT in query exceeds the maximum of 1000 and was capped")
+	}
 	req := mysql.QueryRequest{
-		RawSQL: mysql.EnforceLimit(expr, 100, 1000),
+		RawSQL: sql,
 		Start:  start,
 		End:    end,
 	}
