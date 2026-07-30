@@ -33,11 +33,16 @@ type Batch struct {
 	// Succeeded, Failed and Skipped are the operation's finalized counts.
 	//
 	// Units differ per command and must not be compared or totalled across
-	// them. Pull is the case that makes this concrete: successes and failures
-	// are per resource (a fetched resource whose file write fails moves from
-	// succeeded to failed), while skips are per resource *type*, because the
-	// puller iterates filters and records one skip for each type the server
-	// cannot list.
+	// them. Pull is the case that makes this concrete, and its Failed count is
+	// genuinely mixed: the puller records one failure per resource whose file
+	// write fails, but also one failure per whole resource *type* when a list
+	// call fails, and one skip per type the server cannot list at all. So a
+	// pull failure count of 2 can mean two dashboards or two entire types.
+	//
+	// These are also not a complete partition of the work. A resource filtered
+	// out before processing (an unmanaged resource without --include-managed,
+	// a resource type the delete API does not support) is recorded in none of
+	// the three, so all-zero counts do not prove nothing matched.
 	Succeeded int
 	Failed    int
 	Skipped   int
@@ -49,8 +54,8 @@ type Batch struct {
 	DryRun bool
 }
 
-// batch is written by the resource commands after their result document is
-// emitted, and read once at exit.
+// batch is written by the resource commands once their operation has finished
+// and its counts are final, and read once at exit.
 //
 //nolint:gochecknoglobals // process-wide invocation fact; see package doc.
 var batch atomic.Pointer[Batch]

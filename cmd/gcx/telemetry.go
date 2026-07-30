@@ -84,10 +84,11 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		event.Provider = fields[0]
 	}
 
-	// Batch volume, present only when a resource command finished emitting its
-	// result document. Counts become bucket labels here rather than at capture
-	// time, so the wire vocabulary stays in this package alongside the rest of
-	// the privacy filtering.
+	// Batch volume, present only when a resource operation ran to a finalized
+	// count. It is deliberately not conditional on the result document having
+	// been emitted: the work happened either way. Counts become bucket labels
+	// here rather than at capture time, so the wire vocabulary stays in this
+	// package alongside the rest of the privacy filtering.
 	if b := capture.CurrentBatch(); b != nil {
 		succeeded := telemetry.Bucket(b.Succeeded)
 		failed := telemetry.Bucket(b.Failed)

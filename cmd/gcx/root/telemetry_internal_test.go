@@ -74,12 +74,34 @@ func TestResolvedOutputFormat_AllowlistsFormatsAndDropsPaths(t *testing.T) {
 
 			got := resolvedOutputFormat(get)
 
+			// Asserting equality is the whole check: an allowlist miss yields
+			// "". A follow-up NotContains on an already-empty string would add
+			// nothing, which is how the first version of this test managed to
+			// look like a privacy assertion while testing nothing.
 			assert.Equal(t, tt.want, got)
-			if tt.want == "" {
-				assert.NotContains(t, got, "alice", "no path fragment may survive")
-			}
 		})
 	}
+}
+
+// The --json path is a separate branch of resolvedOutputFormat and is where it
+// is currently wrong for the commands this PR instruments: gcx registers --json
+// as a string flag (fields to select, or "list" to discover), so boolFlagSet
+// never fires for it. A command rendering JSON via --json is recorded with
+// whatever --output says, which for the resources commands is the "text"
+// default.
+//
+// Pinned rather than fixed here: output_format is pre-existing and changing what
+// it reports is a wire-contract change, not part of adding batch volume. It
+// matters because correlating batch volume against output_format is one of the
+// first questions the new fields invite, and the answer is currently skewed.
+func TestResolvedOutputFormat_JSONFlagIsNotReflected(t *testing.T) {
+	_, get, _ := telemetryTestTree()
+	get.Flags().String("output", "text", "")
+	get.Flags().String("json", "", "")
+	require.NoError(t, get.Flags().Set("json", "name,uid"))
+
+	assert.Equal(t, "text", resolvedOutputFormat(get),
+		"known gap: --json renders JSON but output_format still reports --output's value")
 }
 
 func TestTelemetrySuppressed(t *testing.T) {

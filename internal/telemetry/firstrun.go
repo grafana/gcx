@@ -13,13 +13,30 @@ import (
 
 const firstRunNoticeFileName = "telemetry-notice-shown"
 
+// noticeRevision must be bumped whenever firstRunNotice's substance changes,
+// in particular whenever a new kind of data starts being collected.
+//
+// The flag file records the revision it was written for, and a mismatch
+// re-shows the notice. Without this, a revised disclosure would only ever reach
+// installs that had never run gcx interactively: everyone else already has the
+// flag file and would keep the consent text they were originally shown while
+// the collection behind it changed.
+const noticeRevision = "2"
+
 // firstRunNotice is the one-time message telling interactive users that
 // anonymous usage stats are on and how to opt out. The docs link is the
 // rendered page (trailing slash), not the raw-markdown .md URL the registry
 // serves to agents.
 //
+// It names the two fields derived from flag settings rather than claiming a
+// single exception: output_format carries the value of --output (filtered to a
+// fixed list of formats), and dry_run reports whether the run was a rehearsal.
+// An enumeration like "the only exception is X" is a promise that has to be
+// re-audited against the whole event every time a field is added, and it was
+// wrong the first time it was written.
+//
 //nolint:gochecknoglobals // constant-like; var only because TrimSuffix is not const-able.
-var firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect potentially identifiable or sensitive information like argument or flag values or resource names. The one exception is --dry-run, whose on/off state is recorded so we can tell rehearsals apart from real changes.
+var firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect potentially identifiable or sensitive information like argument values or resource names, and flags you set are recorded by name only. Two settings are also recorded by value, because they describe what a command did rather than who ran it: the output format, and whether the run was a rehearsal rather than a real change.
 You can opt out by setting GCX_TELEMETRY=disabled, or adding to your gcx config file:
   diagnostics:
     telemetry: disabled
@@ -38,10 +55,14 @@ func FirstRunNoticePath() string {
 
 // MaybeShowFirstRunNotice writes the one-time telemetry notice to w. It is
 // shown only when telemetry is actually enabled and the run is interactive
-// (a TTY, not CI, not an agent), at most once per install, gated by a flag
-// file under the XDG state dir. All file I/O is best-effort: when the flag
+// (a TTY, not CI, not an agent), at most once per notice revision, gated by a
+// flag file under the XDG state dir. All file I/O is best-effort: when the flag
 // file cannot be written the notice is skipped rather than repeated on every
 // invocation.
+//
+// "Once per revision" rather than once per install: bumping noticeRevision
+// re-shows a materially changed disclosure to existing installs, which is the
+// only way an amended notice reaches anyone who has already run gcx.
 func MaybeShowFirstRunNotice(w io.Writer, mode Mode, isTTY, isCI, isAgent bool) {
 	maybeShowFirstRunNotice(w, mode, isTTY, isCI, isAgent, FirstRunNoticePath())
 }
@@ -55,7 +76,10 @@ func maybeShowFirstRunNotice(w io.Writer, mode Mode, isTTY, isCI, isAgent bool, 
 	if path == "" {
 		return
 	}
-	if _, err := os.Stat(path); err == nil {
+	// A file written for the current revision means this disclosure has been
+	// shown. An older file (including the empty one written before revisions
+	// existed) means the notice has changed since, so show it again.
+	if data, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(data)) == noticeRevision {
 		return
 	}
 	// Record before showing: when the state dir is unwritable, skipping the
@@ -63,7 +87,7 @@ func maybeShowFirstRunNotice(w io.Writer, mode Mode, isTTY, isCI, isAgent bool, 
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return
 	}
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(noticeRevision+"\n"), 0o600); err != nil {
 		return
 	}
 	fmt.Fprint(w, firstRunNotice)
