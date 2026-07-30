@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -286,6 +288,28 @@ func TestDoRequest_ContentTypeOnlyWithBody(t *testing.T) {
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 		})
 	}
+}
+
+// TestCommand_RecordsAPIRequestBeforeConfigLoad pins the telemetry wiring:
+// without it, deleting the RecordAPIRequest call keeps the suite green. It
+// also pins the ordering contract that the sanitized shape is recorded even
+// when config loading fails.
+func TestCommand_RecordsAPIRequestBeforeConfigLoad(t *testing.T) {
+	// Point config at a file that does not exist so the run fails
+	// deterministically after the recording, before any network use.
+	t.Setenv("GCX_CONFIG", filepath.Join(t.TempDir(), "missing.yaml"))
+
+	cmd := Command()
+	cmd.SetArgs([]string{"/api/dashboards/uid/super-secret", "-X", "DELETE"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	require.Error(t, cmd.Execute())
+
+	got := telemetry.CurrentAPIRequest()
+	require.NotNil(t, got, "api command must record its usage shape even on config failure")
+	assert.Equal(t, "DELETE", got.Method)
+	assert.Equal(t, "/api/dashboards/uid/{uid}", got.Route)
 }
 
 func TestApiOpts_EffectiveMethod(t *testing.T) {

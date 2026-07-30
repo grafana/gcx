@@ -48,14 +48,11 @@ func (opts *apiOpts) Validate() error {
 		return err
 	}
 	if opts.Method != "" {
+		// The verb vocabulary is shared with the usage event, so a method
+		// that validates here is always one telemetry can record.
 		method := strings.ToUpper(opts.Method)
-		validMethods := []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"}
-		valid := make(map[string]bool, len(validMethods))
-		for _, m := range validMethods {
-			valid[m] = true
-		}
-		if !valid[method] {
-			return fmt.Errorf("invalid method %q: must be one of %s", opts.Method, strings.Join(validMethods, ", "))
+		if !telemetry.IsKnownHTTPMethod(method) {
+			return fmt.Errorf("invalid method %q: must be one of %s", opts.Method, strings.Join(telemetry.HTTPMethods(), ", "))
 		}
 	}
 	return nil
