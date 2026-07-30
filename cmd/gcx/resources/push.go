@@ -189,7 +189,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			result := batchMutationFromSummary("pushed", summary, opts.DryRun)
 			// The push is done and its counts are final; a later rendering or
 			// stdout failure does not un-push anything.
-			captureBatchVolume(result.Summary, result.DryRun)
+			captureBatchVolume(result.Summary, result.DryRun, err)
 
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err

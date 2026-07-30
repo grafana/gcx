@@ -61,13 +61,15 @@ func partialBatchFailure(stderr io.Writer, op string, total, failed int) error {
 //
 // Two consequences, both intended:
 //
-//   - A hard abort reports nothing. This is a choice, not a limitation: push,
-//     delete and pull all still hold a usable summary on their abort paths, and
-//     delete even prints those counts to stderr. Reporting them would make an
-//     absent field mean either "not a batch command" or "aborted after doing
-//     some work", so absence is kept to the single meaning "no finalized
-//     count". The cost is that partial work done before an abort is invisible,
-//     which the usage-statistics page states outright.
+//   - A hard abort reports nothing. This is a choice, not a limitation: push and
+//     delete both still hold a usable summary on their abort paths, and delete
+//     even prints those counts to stderr. (Pull genuinely has none: its first
+//     abort returns before a summary exists and its second before the receipt is
+//     computed.) Reporting partial work would make an absent field mean either
+//     "not a batch command" or "aborted after doing some work", so absence is
+//     kept to the single meaning "no finalized count". The cost is that work
+//     done before an abort is invisible, which the usage-statistics page states
+//     outright.
 //   - A later output failure changes nothing. If 47 dashboards were pushed and
 //     then rendering or the stdout write failed, those 47 are still on the
 //     server. Suppressing the count would understate work that really happened.
@@ -75,9 +77,20 @@ func partialBatchFailure(stderr io.Writer, op string, total, failed int) error {
 //     for --jq and --json discovery, which print something other than the result
 //     document, so its return value never was evidence about the operation.
 //
+// opErr is the error from the operation that produced these counts, and makes
+// the first consequence hold by construction rather than by placement. Callers
+// pass it even though it is nil wherever they currently call: if this call is
+// ever moved above its own error check — the one regression that matters here,
+// and one an AST order check kept failing to catch, since it can be defeated by
+// renaming the error variable — the counts are simply not recorded. Enforcing it
+// in the callee costs one argument and cannot be worked around by accident.
+//
 // Telemetry must never affect the command's outcome, so this returns nothing and
 // cannot fail.
-func captureBatchVolume(summary cmdio.MutationSummary, dryRun bool) {
+func captureBatchVolume(summary cmdio.MutationSummary, dryRun bool, opErr error) {
+	if opErr != nil {
+		return
+	}
 	capture.SetBatch(capture.Batch{
 		Succeeded: summary.Succeeded,
 		Failed:    summary.Failed,

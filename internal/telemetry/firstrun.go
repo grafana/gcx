@@ -36,7 +36,7 @@ const noticeRevision = "2"
 // wrong the first time it was written.
 //
 //nolint:gochecknoglobals // constant-like; var only because TrimSuffix is not const-able.
-var firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect potentially identifiable or sensitive information like argument values or resource names, and flags you set are recorded by name only. Two settings are also recorded by value, because they describe what a command did rather than who ran it: the output format, and whether the run was a rehearsal rather than a real change.
+var firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect potentially identifiable or sensitive information like argument values or resource names, and flags you set are recorded by name only. Two things about the run itself are also recorded, because they describe what a command did rather than who ran it: the output format you chose, and whether the run was a rehearsal rather than a real change.
 You can opt out by setting GCX_TELEMETRY=disabled, or adding to your gcx config file:
   diagnostics:
     telemetry: disabled
