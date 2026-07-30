@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,6 +55,101 @@ func TestReportError_EmittedError(t *testing.T) {
 				t.Fatalf("reportError() = %d, want %d", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestIsSilentCancellation pins which errors take the quiet exit-5 route.
+// An interrupted invocation prints nothing, but an EmittedError has already
+// written its own result document and owns its exit code, even when its cause
+// chain reaches context.Canceled.
+func TestIsSilentCancellation(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil error", err: nil, want: false},
+		{name: "bare context.Canceled", err: context.Canceled, want: true},
+		{name: "wrapped context.Canceled", err: fmt.Errorf("query: %w", context.Canceled), want: true},
+		{name: "deadline exceeded is not a cancellation", err: context.DeadlineExceeded, want: false},
+		{name: "unrelated error", err: errors.New("boom"), want: false},
+		{
+			name: "EmittedError wrapping context.Canceled keeps its own exit code",
+			err:  gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, context.Canceled),
+			want: false,
+		},
+		{
+			name: "EmittedError carrying exit 5 still reports through reportError",
+			err:  gcxerrors.NewEmittedError(gcxerrors.ExitCancelled, context.Canceled),
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if got := isSilentCancellation(ctx, tc.err); got != tc.want {
+				t.Fatalf("isSilentCancellation() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A signal context carries a cause describing the signal (Go 1.26), and
+// net/http surfaces that cause instead of context.Canceled. Before Go 1.26.5
+// the cause did not report itself as context.Canceled, so an interrupted
+// request has to be recognised through the context's own cause — but only when
+// the error really carries it, never for an unrelated failure that happened to
+// land while the context was done.
+func TestIsSilentCancellationMatchesSignalCause(t *testing.T) {
+	signalCause := errors.New("interrupt signal received")
+
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "request failure carrying the signal cause",
+			err:  &url.Error{Op: "Get", URL: "http://example.invalid", Err: signalCause},
+			want: true,
+		},
+		{name: "the bare cause", err: signalCause, want: true},
+		{name: "unrelated failure during a canceled context", err: errors.New("boom"), want: false},
+		{
+			name: "EmittedError carrying the signal cause keeps its own exit code",
+			err:  gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, signalCause),
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancelCause(context.Background())
+			cancel(signalCause)
+			if got := isSilentCancellation(ctx, tc.err); got != tc.want {
+				t.Fatalf("isSilentCancellation() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A cause is only consulted once the context is actually canceled: an ordinary
+// failure in a live invocation must never be read as a cancellation.
+func TestIsSilentCancellationIgnoresLiveContext(t *testing.T) {
+	if isSilentCancellation(context.Background(), errors.New("boom")) {
+		t.Fatal("an error in a live context must not be treated as a cancellation")
+	}
+}
+
+// An EmittedError carrying exit 5 keeps that code through reportError, so the
+// usage event classifies it as canceled like any other exit-5 invocation.
+func TestReportErrorEmittedCancellationKeepsExitFive(t *testing.T) {
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	err := fmt.Errorf("push: %w", gcxerrors.NewEmittedError(gcxerrors.ExitCancelled, context.Canceled))
+	if got := reportError(err, nil, nil); got != gcxerrors.ExitCancelled {
+		t.Fatalf("reportError() = %d, want %d", got, gcxerrors.ExitCancelled)
 	}
 }
 
