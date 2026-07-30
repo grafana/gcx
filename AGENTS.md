@@ -75,7 +75,7 @@ cmd/gcx/
   commands/     Commands catalog (agent metadata)
   helptree/     Help tree for agent context
   setup/        Onboarding (gcx setup status)
-  instrumentation/  Instrumentation Hub commands (clusters, services, setup wizard, status)
+  instrumentation/  Instrumentation Hub commands (clusters, services, setup wizard, status, check, explain, list-explanations)
   skills/       Portable Agent Skills installer for .agents-compatible tools (install/update/list/get/uninstall; get reads bundled SKILL.md or references without installing)
   dev/          Developer tools (import, scaffold, generate, lint, serve)
   fail/         Structured error conversion
