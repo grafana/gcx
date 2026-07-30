@@ -103,7 +103,7 @@ gcx/
 │   │   ├── infinity/         # Infinity HTTP query client
 │   │   ├── loki/             # Loki HTTP client (log + metric queries)
 │   │   ├── clickhouse/       # ClickHouse HTTP client
-│   │   └── mssql/            # Microsoft SQL Server HTTP client (format:"table" string, TOP/EnforceTop, INFORMATION_SCHEMA helpers)
+│   │   └── mssql/            # Microsoft SQL Server HTTP client
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
