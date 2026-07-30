@@ -219,6 +219,48 @@ func TestListCmd_RejectsPositionalArgs(t *testing.T) {
 	assert.Empty(t, captured, "no request should be made when args are rejected")
 }
 
+// TestListCmd_FiltersReachOutput drives each name filter through the command
+// so a swapped flag binding cannot pass the suite (round 3 review on #1050).
+func TestListCmd_FiltersReachOutput(t *testing.T) {
+	names := []string{"http_requests_total", "http_request_duration_seconds_bucket", "app_carts_created_total", "up"}
+
+	tests := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "prefix",
+			args: []string{"--prefix", "http_"},
+			want: []string{"http_requests_total", "http_request_duration_seconds_bucket"},
+		},
+		{
+			name: "suffix",
+			args: []string{"--suffix", "_total"},
+			want: []string{"http_requests_total", "app_carts_created_total"},
+		},
+		{
+			name: "contains",
+			args: []string{"--contains", "carts"},
+			want: []string{"app_carts_created_total"},
+		},
+		{
+			name: "combined filters AND",
+			args: []string{"--prefix", "http_", "--suffix", "_total", "--contains", "requests"},
+			want: []string{"http_requests_total"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, resp, _, err := runListCmd(t, names, tc.args...)
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			assert.Equal(t, tc.want, resp.Data)
+		})
+	}
+}
+
 func TestFilterMetricNames_NilInputYieldsEmptySlice(t *testing.T) {
 	got := filterMetricNames(nil, "", "", "")
 	require.NotNil(t, got, "data must serialize as [] rather than null")
