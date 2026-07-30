@@ -262,8 +262,11 @@ func TestCaptureBatchVolumeKeepsEarlierSuccessOnLaterFailure(t *testing.T) {
 }
 
 // The callee guard only works if call sites actually pass their operation's
-// error. Passing a nil literal would silently restore the old placement
-// dependency, so every call site must pass an identifier.
+// error, and this checks the weakest necessary condition: that the argument is
+// an identifier rather than a nil literal. It cannot tell whether that
+// identifier is the right error — a caller passing some other nil-valued error
+// variable would pass here and silently restore the dependency on placement.
+// Reviewers still own that; this only catches the accidental `nil`.
 func TestCaptureBatchVolumeCallSitesPassTheOperationError(t *testing.T) {
 	checked := 0
 

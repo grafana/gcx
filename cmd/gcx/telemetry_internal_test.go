@@ -91,13 +91,18 @@ func TestBuildUsageEventKeepsBatchOnPartialFailure(t *testing.T) {
 	assert.Equal(t, "partial_failure", event.ErrorKind)
 }
 
-// The privacy contract for this PR: exact volumes must never leave the process.
-// A count is recoverable from the wire only as the range it falls in.
+// The privacy contract for the batch fields, stated as what is actually true.
+//
+// An earlier version of this test was called NeverEmitsExactCounts, which is
+// false: "0" and "1" are singleton categories, so those two sizes are exactly
+// recoverable by design. What holds is narrower and is what governance was asked
+// to approve — sizes leave the process only as one of seven fixed labels, and no
+// raw numeric count field is sent at all.
 //
 // Asserts against decoded field values rather than a substring of the wire: the
 // device ID is random hex, so a raw substring search for a small count would
 // match it by chance and make this test flaky.
-func TestBuildUsageEventNeverEmitsExactCounts(t *testing.T) {
+func TestBuildUsageEventSendsOnlyCategoryLabelsForBatchSizes(t *testing.T) {
 	isolate(t)
 
 	const succeeded, failed, skipped = 4312, 77, 913
@@ -109,18 +114,46 @@ func TestBuildUsageEventNeverEmitsExactCounts(t *testing.T) {
 	var fields map[string]any
 	require.NoError(t, json.Unmarshal(data, &fields))
 
+	// No field carries a raw count, in either encoding. This is the claim that
+	// survives the singleton categories: a large batch is never recoverable.
 	for name, value := range fields {
 		for _, count := range []int{succeeded, failed, skipped} {
 			assert.NotEqual(t, float64(count), value,
-				"field %q carries exact volume %d; buckets only", name, count)
+				"field %q carries raw count %d; categories only", name, count)
 			assert.NotEqual(t, strconv.Itoa(count), value,
-				"field %q carries exact volume %d as a string; buckets only", name, count)
+				"field %q carries raw count %d as a string; categories only", name, count)
 		}
+	}
+
+	declared := make(map[string]bool, len(telemetry.Buckets()))
+	for _, label := range telemetry.Buckets() {
+		declared[label] = true
+	}
+	for _, field := range []string{"batch_succeeded_bucket", "batch_failed_bucket", "batch_skipped_bucket"} {
+		label, ok := fields[field].(string)
+		require.True(t, ok, "%s must be a category label, not a number", field)
+		assert.True(t, declared[label], "%s carries undeclared label %q", field, label)
 	}
 
 	assert.Equal(t, telemetry.BucketOverThousand, fields["batch_succeeded_bucket"])
 	assert.Equal(t, telemetry.BucketToHundred, fields["batch_failed_bucket"])
 	assert.Equal(t, telemetry.BucketToThousand, fields["batch_skipped_bucket"])
+}
+
+// 0 and 1 are singleton categories on purpose, so those sizes are exact. Pinned
+// so nobody "fixes" the privacy story by folding them into a range without a
+// governance decision, and so the honest wording in the docs stays honest.
+func TestBuildUsageEventKeepsSingletonCategoriesExact(t *testing.T) {
+	for count, want := range map[int]string{0: telemetry.BucketZero, 1: telemetry.BucketOne} {
+		isolate(t)
+		capture.SetBatch(capture.Batch{Succeeded: count})
+
+		event := buildUsageEvent(pushInfo(), time.Now(), 0)
+
+		require.NotNil(t, event.BatchSucceededBucket)
+		assert.Equal(t, want, *event.BatchSucceededBucket,
+			"a batch of %d must report its own singleton category", count)
+	}
 }
 
 // Every emitted bucket value must come from the declared vocabulary, so the

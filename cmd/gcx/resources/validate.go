@@ -133,7 +133,7 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			// Always a rehearsal: the request above sets DryRun unconditionally,
+			// Always dry-run: the request above sets DryRun unconditionally,
 			// so validate's volume is never "resources managed". The counts come
 			// from the completed validation pass, which is the operation here;
 			// validate's own JSON document reports only failures and skips, so

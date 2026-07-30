@@ -1,16 +1,23 @@
 package telemetry
 
 // Bucket labels for the batch volume fields. These are the complete vocabulary:
-// a bucket field never carries any other value.
+// a bucket field never carries any other value, and no raw numeric count field
+// is sent alongside them.
 //
-// Volumes are reported as buckets rather than exact counts on purpose. An exact
-// resource count is operationally sensitive once it is correlated: events carry
-// a persistent per-install device ID, and the receiver enriches them with the
-// network organisation name from a whois lookup, so exact volumes would let a
-// precise managed-resource inventory be attributed to a named organisation.
-// Buckets keep every question we actually ask answerable — the batch-size
-// distribution, single-item versus real batch work, how failure rate varies with
-// size — without carrying that inference.
+// Be precise about what this does and does not hide. BucketZero and BucketOne
+// are singleton categories: a batch of 0 or of 1 is recoverable exactly from the
+// label. That is deliberate — "matched nothing" and "one resource" are the two
+// answers worth distinguishing on their own, and neither describes an inventory
+// — but it means "volumes are never exact" is false as a blanket claim, and must
+// not be written anywhere. Everything above 1 is a range.
+//
+// The reason for ranges at all is correlation: events carry a persistent
+// per-install device ID and the receiver adds the network organisation name from
+// a whois lookup, so an exact count of a large batch would attribute a precise
+// managed-resource inventory to a named organisation. A range keeps the
+// questions we actually ask answerable — batch-size distribution, single-item
+// versus real batch work, how failure rate varies with size — without carrying
+// that inference. The singletons carry no inventory to infer.
 //
 // If exact counts are ever approved, they must arrive as new numeric fields
 // alongside these. Changing a bucket field from string to integer would change

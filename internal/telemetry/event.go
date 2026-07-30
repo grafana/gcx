@@ -16,20 +16,23 @@ const (
 // follow the usage-stats JSON schema (snake_case); the json encoding of this
 // struct is exactly what travels on the wire (see Export).
 //
-// Privacy invariant: no field may carry argument or flag values, resource
-// names, hostnames, or anything else that identifies a person, an
-// organisation, or their data. Flags holds flag NAMES only; Command is the
-// resolved command path only. The parse_error_* fields are shape-filtered
-// before they are set (see #578). Volumes are reported as bucket labels, never
-// exact counts, because an exact count correlated with the persistent device ID
-// and the receiver's whois enrichment would describe a named organisation's
-// resource inventory (see bucket.go).
+// Privacy invariant, stated as three separate rules because a single blanket
+// sentence has twice been written here in a form that was already false:
 //
-// Two fields are derived from flag settings rather than flag names, and both
-// are deliberate: OutputFormat carries the value of --output filtered to a fixed
-// list of formats, and DryRun reports whether the run was a rehearsal. Neither
-// says anything about the user, their organisation, or their data, and both
-// describe what a command did.
+//   - No field carries an argument value, a free-form flag value, a resource
+//     name, a hostname, or anything else identifying a person, an organisation,
+//     or their data. Flags holds flag NAMES only; Command is the resolved
+//     command path only; the parse_error_* fields are shape-filtered before they
+//     are set (see #578).
+//   - No field carries a raw numeric count. Batch sizes travel as labels from
+//     the fixed vocabulary in bucket.go. Note that two of those labels are
+//     singletons, so a batch of 0 or 1 is exactly recoverable — say "fixed
+//     categories", never "never exact".
+//   - A small, enumerated set of fields is derived from how the command ran
+//     rather than from a name, and each is documented on its own field below:
+//     OutputFormat (the value of --output, filtered to a fixed list of formats)
+//     and DryRun (whether the operation ran in dry-run mode). Neither says
+//     anything about the user, their organisation, or their data.
 //
 // Do not phrase this as "the only exception is X". That form is a promise about
 // every other field in the struct, so it has to be re-audited against the whole
@@ -72,6 +75,10 @@ type Event struct {
 	// absent means this invocation was not one of those operations, or it
 	// aborted before its counts were final. A failure to render or write the
 	// summary afterwards does not clear them — the work still happened.
+	//
+	// DryRun reports whether the operation ran in dry-run mode. False does not
+	// imply that anything was mutated: pull is read-only and always reports
+	// false. Interpret it together with Command.
 	//
 	// The bucket values come from Bucket; units differ per command, so these
 	// must be read alongside Command and never summed across commands.

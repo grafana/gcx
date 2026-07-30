@@ -67,19 +67,47 @@ func TestFirstRunNoticeReshownAfterRevisionBump(t *testing.T) {
 	}
 }
 
-// The notice names the fields derived from flag settings instead of claiming a
-// single exception. An enumeration has to be re-audited against the whole event
-// every time a field is added, and the first one shipped was already wrong:
-// output_format carries the value of --output.
-func TestFirstRunNoticeDoesNotClaimASingleFlagException(t *testing.T) {
+// The notice must disclose what this revision actually added.
+//
+// Revision 2 exists because batch size categories started being collected, so a
+// notice that mentions only the output format and dry-run state discloses the
+// trimmings and omits the headline. That was the shape of the first draft.
+func TestFirstRunNoticeDisclosesBatchSizeCategories(t *testing.T) {
+	assert.Contains(t, firstRunNotice, "size categories",
+		"the batch size categories are the new collection in this revision")
+	assert.Contains(t, firstRunNotice, "succeeded, failed and skipped",
+		"say which counts are categorised, not just that sizes are collected")
+	assert.Contains(t, firstRunNotice, `"0" and "1"`,
+		"the singleton categories are exact, so the notice must say so")
+	assert.Contains(t, firstRunNotice, "dry-run mode",
+		"dry_run must be disclosed alongside the sizes")
+	assert.Contains(t, firstRunNotice, "output format",
+		"output_format is derived from --output and must be disclosed")
+}
+
+// The notice states what is not collected without enumerating exceptions. An
+// enumeration has to be re-audited against the whole event every time a field is
+// added, and the first one shipped was already wrong: it claimed --dry-run was
+// the only flag-derived value while output_format sat beside it.
+func TestFirstRunNoticeStatesExclusionsWithoutEnumeratingExceptions(t *testing.T) {
 	assert.NotContains(t, firstRunNotice, "one exception",
 		"do not enumerate exceptions; name what is collected")
 	assert.Contains(t, firstRunNotice, "by name only",
 		"the notice must still state that flags are recorded by name")
-	assert.Contains(t, firstRunNotice, "output format",
-		"output_format is flag-derived and must be disclosed")
-	assert.Contains(t, firstRunNotice, "rehearsal",
-		"dry_run is flag-derived and must be disclosed")
+	assert.Contains(t, firstRunNotice, "raw counts",
+		"no raw numeric count field is sent, and the notice must say so")
+	for _, excluded := range []string{"arguments", "free-form flag values", "resource names"} {
+		assert.Contains(t, firstRunNotice, excluded,
+			"the notice must name what is not collected")
+	}
+}
+
+// "rehearsal" overstated what dry_run means: pull is read-only and always
+// reports false, so false does not imply a real change. The notice must not
+// reintroduce that framing.
+func TestFirstRunNoticeDoesNotEquateDryRunWithRehearsalVersusChange(t *testing.T) {
+	assert.NotContains(t, firstRunNotice, "rather than a real change",
+		"dry_run=false does not imply mutation; pull is read-only and always false")
 }
 
 func TestFirstRunNoticeSuppressedWhenNotInteractive(t *testing.T) {

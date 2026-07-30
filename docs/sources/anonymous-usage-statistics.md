@@ -14,9 +14,11 @@ weight: 4
 
 `gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
 
-The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values and resource names are never sent, and the flags you set are recorded by name only.
+The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values, free-form flag values, and resource names are never sent, and the flags you set are recorded by name only. No raw numeric count fields are sent.
 
-Two fields describe the run itself rather than a flag name, because they change what a command did rather than identify who ran it: `output_format` records the output format used, from a fixed list of known formats, and `dry_run` records whether the run was a rehearsal rather than a real change. `output_format` is read from `--output`; `dry_run` is derived from the operation and is set even for commands that have no `--dry-run` flag. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
+For the resource commands that operate on batches, the size of the operation is sent as one of seven fixed categories rather than as a number. Two of those categories, `0` and `1`, cover a single value each, so those two sizes are exact; every larger category is a range. See [How to read the batch fields](#how-to-read-the-batch-fields).
+
+Two further fields describe how the command ran rather than naming a flag: `output_format` records the output format used, from a fixed list of known formats, and `dry_run` records whether the operation executed in dry-run mode. `output_format` is read from `--output`; `dry_run` is derived from the operation and is set even for commands that have no `--dry-run` flag. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
 
 {{< admonition type="note" >}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usage reporting.{{< /admonition >}}
 
@@ -55,12 +57,14 @@ When the invocation is a batch resource operation (`gcx resources push`, `pull`,
 
 | Field | Description | Example |
 | :---- | :---- | :---- |
-| `batch_succeeded_bucket` | The size range of the successful part of the operation, from a fixed list of ranges. Never an exact count. | `21-100` |
-| `batch_failed_bucket` | The size range of the failed part, from the same fixed list. | `0` |
-| `batch_skipped_bucket` | The size range of the skipped part, from the same fixed list. | `0` |
-| `dry_run` | Whether the operation was a rehearsal rather than a real change. Derived from the operation, not read from a flag: `gcx resources validate` is always a rehearsal and `gcx resources pull` never is, and neither has a `--dry-run` flag. | `false` |
+| `batch_succeeded_bucket` | The size of the successful part of the operation, as one of seven fixed categories. | `21-100` |
+| `batch_failed_bucket` | The size of the failed part, from the same seven categories. | `0` |
+| `batch_skipped_bucket` | The size of the skipped part, from the same seven categories. | `0` |
+| `dry_run` | Whether the operation executed in dry-run mode. `false` does not imply anything was changed: `gcx resources pull` is read-only and always reports `false`. Interpret it together with `command`. Derived from the operation, not read from a flag: `gcx resources validate` always reports `true` and `pull` always `false`, and neither has a `--dry-run` flag. | `false` |
 
-The ranges are exactly `0`, `1`, `2-5`, `6-20`, `21-100`, `101-1000`, and `1001+`. Sizes are reported as ranges rather than exact counts on purpose: an exact resource count, correlated with the per-installation `device_id` and the network organization name added on receipt, would describe a specific organization's resource inventory. Ranges answer how `gcx` is used without carrying that detail.
+The seven categories are exactly `0`, `1`, `2-5`, `6-20`, `21-100`, `101-1000`, and `1001+`. Note that `0` and `1` are singleton categories, so those two sizes are recoverable exactly; every larger category is a range.
+
+Sizes are sent as categories rather than as numbers on purpose. An exact count of a large batch, correlated with the per-installation `device_id` and the network organization name added on receipt, would describe a specific organization's resource inventory. Categories answer how `gcx` is used without carrying that detail, and the two singleton categories carry no inventory to infer. No raw numeric count field is sent.
 
 ### How to read the batch fields
 
@@ -72,7 +76,7 @@ These fields are easy to misread, so the following constraints are part of the c
 - **An operation that aborted partway reports nothing.** It never reached a final count, so there is no size to report. Note that `gcx resources delete` with `--on-error=abort` may have deleted some resources before stopping; that partial work is deliberately not reported, so absence consistently means "no final count", never "no work done".
 - **The unit depends on the command, so these must not be compared or totalled across commands.** `gcx resources pull` is the clearest case, and its failure count is genuinely mixed: a resource fetched but not written to disk counts as one failure, and a whole resource *type* whose list call fails also counts as one failure. Skips there count whole resource types the server could not list. A pull failure count of 2 can therefore mean two resources or two entire types.
 - **`batch_skipped_bucket` means different things per command, and for two of them it is structurally always `0`.** In `gcx resources push` and `gcx resources delete` a skip is recorded solely when a dry run cannot be verified server-side, so a real run reports `0` by construction rather than as a measurement. In `gcx resources pull` it is a genuine measurement on every run, counting resource types the server could not list.
-- **`gcx resources validate` is always a dry run**, so its sizes describe a validation pass, not resources changed.
+- **`dry_run` is not a mutation flag.** `gcx resources validate` always reports `true` and `gcx resources pull` always `false`, yet neither changes anything: pull is read-only. Read `dry_run` together with `command`, never as "this run modified resources".
 - **`gcx resources get` never reports these fields**, because only the four commands listed above are instrumented. It is a read, but so is `pull`, which does report.
 
 ### Parse-failure fields

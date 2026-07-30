@@ -47,10 +47,14 @@ type Batch struct {
 	Failed    int
 	Skipped   int
 
-	// DryRun reports whether the operation was a rehearsal. It is captured
-	// explicitly because it cannot be recovered from the recorded flag names:
-	// --dry-run=false marks the flag as changed too, so the flag's presence
-	// says nothing about its value.
+	// DryRun reports whether the operation ran in dry-run mode. False does not
+	// imply anything was mutated — pull is read-only and always reports false —
+	// so it only means something read together with the command.
+	//
+	// It is captured explicitly because it cannot be recovered from the recorded
+	// flag names: --dry-run=false marks the flag as changed too, so the flag's
+	// presence says nothing about its value, and two of the four commands set it
+	// without having the flag at all.
 	DryRun bool
 }
 
