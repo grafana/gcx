@@ -37,9 +37,9 @@ func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	opts.SetupTimeFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.azuremonitor is configured)")
-	flags.StringVar(&opts.Subscription, "subscription", "", "Azure subscription ID (required)")
+	flags.StringVar(&opts.Subscription, "subscription", "", "Azure subscription ID (defaults to the datasource's default subscription)")
 	flags.StringVar(&opts.ResourceGroup, "resource-group", "", "Azure resource group name (required)")
-	flags.StringVar(&opts.Resource, "resource", "", "Azure resource name (required)")
+	flags.StringVar(&opts.Resource, "resource", "", "Azure resource name; use the slash form for sub-resources, e.g. mystorage/blobServices/default (required)")
 	flags.StringVar(&opts.Namespace, "namespace", "", "Metric namespace, e.g. Microsoft.Storage/storageAccounts (required)")
 	flags.StringVar(&opts.Metric, "metric", "", "Metric name, e.g. Transactions (required)")
 	flags.StringVar(&opts.Aggregation, "aggregation", "Average", "Aggregation: Average, Total, Maximum, Minimum, or Count (must be supported by the metric; see list-metrics)")
@@ -55,9 +55,6 @@ func (opts *queryOpts) Validate() error {
 	}
 	if err := opts.ValidateTimeRange(); err != nil {
 		return err
-	}
-	if opts.Subscription == "" {
-		return errors.New("--subscription is required")
 	}
 	if opts.ResourceGroup == "" {
 		return errors.New("--resource-group is required")
@@ -141,13 +138,18 @@ authentication cannot be queried with API tokens or service accounts.`,
 				start = now.Add(-1 * time.Hour)
 			}
 
+			subscription, err := resolveSubscription(ctx, cfg, datasourceUID, opts.Subscription)
+			if err != nil {
+				return err
+			}
+
 			client, err := azclient.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
 			req := azclient.QueryRequest{
-				Subscription:     opts.Subscription,
+				Subscription:     subscription,
 				ResourceGroup:    opts.ResourceGroup,
 				ResourceName:     opts.Resource,
 				MetricNamespace:  opts.Namespace,

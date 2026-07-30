@@ -30,18 +30,15 @@ func (opts *listMetricsOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.azuremonitor is configured)")
-	flags.StringVar(&opts.Subscription, "subscription", "", "Azure subscription ID (required)")
+	flags.StringVar(&opts.Subscription, "subscription", "", "Azure subscription ID (defaults to the datasource's default subscription)")
 	flags.StringVar(&opts.ResourceGroup, "resource-group", "", "Azure resource group name (required)")
-	flags.StringVar(&opts.Resource, "resource", "", "Azure resource name (required)")
+	flags.StringVar(&opts.Resource, "resource", "", "Azure resource name; use the slash form for sub-resources, e.g. mystorage/blobServices/default (required)")
 	flags.StringVar(&opts.Namespace, "namespace", "", "Metric namespace, e.g. Microsoft.Storage/storageAccounts (required; matches the resource type from list-resources)")
 }
 
 func (opts *listMetricsOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
-	}
-	if opts.Subscription == "" {
-		return errors.New("--subscription is required")
 	}
 	if opts.ResourceGroup == "" {
 		return errors.New("--resource-group is required")
@@ -88,12 +85,17 @@ each metric's primary aggregation, unit, and dimensions.`,
 				return err
 			}
 
+			subscription, err := resolveSubscription(ctx, cfg, datasourceUID, opts.Subscription)
+			if err != nil {
+				return err
+			}
+
 			client, err := azclient.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			defs, err := client.ListMetricDefinitions(ctx, datasourceUID, opts.Subscription, opts.ResourceGroup, opts.Namespace, opts.Resource)
+			defs, err := client.ListMetricDefinitions(ctx, datasourceUID, subscription, opts.ResourceGroup, opts.Namespace, opts.Resource)
 			if err != nil {
 				return fmt.Errorf("failed to list metrics: %w", err)
 			}

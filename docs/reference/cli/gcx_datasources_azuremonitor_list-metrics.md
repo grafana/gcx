@@ -31,9 +31,9 @@ gcx datasources azuremonitor list-metrics [flags]
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --namespace string        Metric namespace, e.g. Microsoft.Storage/storageAccounts (required; matches the resource type from list-resources)
   -o, --output string           Output format. One of: agents, json, table, yaml (default "table")
-      --resource string         Azure resource name (required)
+      --resource string         Azure resource name; use the slash form for sub-resources, e.g. mystorage/blobServices/default (required)
       --resource-group string   Azure resource group name (required)
-      --subscription string     Azure subscription ID (required)
+      --subscription string     Azure subscription ID (defaults to the datasource's default subscription)
 ```
 
 ### Options inherited from parent commands

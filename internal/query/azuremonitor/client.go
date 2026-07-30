@@ -253,11 +253,14 @@ func (c *Client) ListResources(ctx context.Context, dsUID, subscription, resourc
 
 // ListMetricDefinitions returns the metric definitions available for a resource.
 func (c *Client) ListMetricDefinitions(ctx context.Context, dsUID, subscription, resourceGroup, metricNamespace, resourceName string) ([]MetricDefinition, error) {
+	// resourceName may contain slashes for sub-resources (e.g.
+	// mystorage/blobServices/default), so escape per segment like the
+	// namespace rather than escaping the whole string.
 	path := fmt.Sprintf("subscriptions/%s/resourceGroups/%s/providers/%s/%s/providers/microsoft.insights/metricdefinitions",
 		url.PathEscape(subscription),
 		url.PathEscape(resourceGroup),
 		escapeNamespace(metricNamespace),
-		url.PathEscape(resourceName),
+		escapeNamespace(resourceName),
 	)
 	items, err := c.listARM(ctx, dsUID, path, "2018-01-01", "metric-definitions")
 	if err != nil {

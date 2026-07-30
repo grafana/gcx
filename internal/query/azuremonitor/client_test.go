@@ -672,3 +672,23 @@ func TestClient_ListMetricDefinitions(t *testing.T) {
 	assert.Equal(t, "Count", result[0].Unit)
 	assert.Equal(t, []string{"ResponseType", "ApiName"}, result[0].Dimensions)
 }
+
+func TestClient_ListMetricDefinitionsSubResource(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t,
+			"/api/datasources/uid/test-uid/resources/azuremonitor/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Storage/storageAccounts/mystorage/blobServices/default/providers/microsoft.insights/metricdefinitions",
+			r.URL.Path)
+		_, _ = w.Write(mustJSON(t, armPage{Value: []map[string]any{
+			{
+				"name":                   map[string]any{"value": "BlobCapacity"},
+				"primaryAggregationType": "Average",
+				"unit":                   "Bytes",
+			},
+		}}))
+	}))
+
+	result, err := client.ListMetricDefinitions(context.Background(), "test-uid", "sub-1", "my-rg", "Microsoft.Storage/storageAccounts", "mystorage/blobServices/default")
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, "BlobCapacity", result[0].Name)
+}

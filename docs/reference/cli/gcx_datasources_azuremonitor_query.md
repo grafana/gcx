@@ -57,10 +57,10 @@ gcx datasources azuremonitor query [flags]
       --namespace string            Metric namespace, e.g. Microsoft.Storage/storageAccounts (required)
   -o, --output string               Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --region string               Azure region, e.g. uksouth (optional; used for multi-resource queries)
-      --resource string             Azure resource name (required)
+      --resource string             Azure resource name; use the slash form for sub-resources, e.g. mystorage/blobServices/default (required)
       --resource-group string       Azure resource group name (required)
       --since string                Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
-      --subscription string         Azure subscription ID (required)
+      --subscription string         Azure subscription ID (defaults to the datasource's default subscription)
       --time-grain string           Time grain as an ISO 8601 duration (e.g. PT1M, PT1H) or "auto" to fit the time range (default "auto")
       --to string                   End time (RFC3339, Unix timestamp, or relative like 'now')
       --top string                  Maximum number of dimension value series to return (only with --dimensions)

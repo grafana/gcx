@@ -27,17 +27,11 @@ func (opts *listResourceGroupsOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.azuremonitor is configured)")
-	flags.StringVar(&opts.Subscription, "subscription", "", "Azure subscription ID (required)")
+	flags.StringVar(&opts.Subscription, "subscription", "", "Azure subscription ID (defaults to the datasource's default subscription)")
 }
 
 func (opts *listResourceGroupsOpts) Validate() error {
-	if err := opts.IO.Validate(); err != nil {
-		return err
-	}
-	if opts.Subscription == "" {
-		return errors.New("--subscription is required")
-	}
-	return nil
+	return opts.IO.Validate()
 }
 
 // ListResourceGroupsCmd returns the `list-resource-groups` subcommand for Azure Monitor.
@@ -69,12 +63,17 @@ func ListResourceGroupsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
+			subscription, err := resolveSubscription(ctx, cfg, datasourceUID, opts.Subscription)
+			if err != nil {
+				return err
+			}
+
 			client, err := azclient.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			groups, err := client.ListResourceGroups(ctx, datasourceUID, opts.Subscription)
+			groups, err := client.ListResourceGroups(ctx, datasourceUID, subscription)
 			if err != nil {
 				return fmt.Errorf("failed to list resource groups: %w", err)
 			}
