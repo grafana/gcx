@@ -25,6 +25,20 @@ func TestNormalizeAPIRoute(t *testing.T) {
 		{name: "datasource proxy tail collapsed", path: "/api/datasources/proxy/uid/abc123/api/v1/query_range", want: "/api/datasources/proxy/uid/{uid}/{rest}"},
 		{name: "specific wins over rest", path: "/api/teams/search", want: "/api/teams/search"},
 		{name: "rest catches deeper paths", path: "/api/teams/42/members", want: "/api/teams/{rest}"},
+		{name: "collection root not swallowed by rest", path: "/api/teams", want: "/api/teams"},
+		{name: "playlists root", path: "/api/playlists", want: "/api/playlists"},
+		{name: "snapshots root", path: "/api/snapshots", want: "/api/snapshots"},
+		{name: "library elements root", path: "/api/library-elements", want: "/api/library-elements"},
+		{name: "serviceaccounts root", path: "/api/serviceaccounts", want: "/api/serviceaccounts"},
+		{name: "users root", path: "/api/users", want: "/api/users"},
+		{name: "orgs root", path: "/api/orgs", want: "/api/orgs"},
+		{name: "graphite annotations not swallowed by id", path: "/api/annotations/graphite", want: "/api/annotations/graphite"},
+		{name: "annotation by id", path: "/api/annotations/42", want: "/api/annotations/{id}"},
+		{name: "legacy numeric datasource proxy", path: "/api/datasources/proxy/1/api/v1/query", want: "/api/datasources/proxy/{id}/{rest}"},
+		{name: "uid proxy wins over numeric proxy", path: "/api/datasources/proxy/uid/abc/render", want: "/api/datasources/proxy/uid/{uid}/{rest}"},
+		{name: "provisioning subresource root", path: "/api/v1/provisioning/alert-rules", want: "/api/v1/provisioning/alert-rules"},
+		{name: "provisioning subresource deeper path", path: "/api/v1/provisioning/contact-points/abc-123", want: "/api/v1/provisioning/contact-points/{rest}"},
+		{name: "unknown provisioning subresource falls to catch-all", path: "/api/v1/provisioning/something-new", want: "/api/v1/provisioning/{rest}"},
 		{name: "unknown api route", path: "/api/some-internal-endpoint/abc", want: "other"},
 		{name: "extra segments do not match", path: "/api/health/deep/er", want: "other"},
 		{name: "non-api path", path: "/logout", want: "other"},
@@ -70,6 +84,46 @@ func TestNormalizeAPIRouteNeverEchoesValues(t *testing.T) {
 		got := normalizeAPIRoute(path)
 		assert.NotContains(t, got, marker, "template %q leaked a path value", tmpl)
 	}
+}
+
+// FuzzNormalizeAPIRoute pins the privacy property across both branches
+// (classic /api templates and /apis k8s routing, the one that assembles its
+// result from path segments): every segment of a non-"other" result must be
+// a placeholder or a known constant, so no user-typed path value can ever be
+// echoed into the event.
+func FuzzNormalizeAPIRoute(f *testing.F) {
+	knownSegments := map[string]bool{"apis": true, "namespaces": true}
+	for _, tmpl := range apiRouteTemplates {
+		f.Add(tmpl)
+		for _, seg := range splitPath(tmpl) {
+			knownSegments[seg] = true
+		}
+	}
+	for v := range knownK8sVersions {
+		knownSegments[v] = true
+	}
+	for r := range knownK8sResources {
+		knownSegments[r] = true
+	}
+	f.Add("/apis/dashboard.grafana.app/v1beta1/namespaces/stacks-123/dashboards/my-dash")
+	f.Add("/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/default/connections")
+	f.Add("/api/datasources/proxy/1/api/v1/query?query=secret")
+
+	f.Fuzz(func(t *testing.T, path string) {
+		got := normalizeAPIRoute(path)
+		if got == otherValue {
+			return
+		}
+		for _, seg := range splitPath(got) {
+			if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
+				continue
+			}
+			if knownSegments[seg] || knownAPIGroup(seg) {
+				continue
+			}
+			t.Fatalf("normalizeAPIRoute(%q) = %q: segment %q is not a placeholder or known constant", path, got, seg)
+		}
+	})
 }
 
 func TestKnownHTTPMethod(t *testing.T) {
@@ -167,6 +221,18 @@ func TestRecordAPIRequest(t *testing.T) {
 		Route:           "/api/ds/query",
 		DatasourceTypes: "grafana-postgresql-datasource",
 	}, got)
+}
+
+func TestRecordAPIRequestExtractionFailureIsOther(t *testing.T) {
+	t.Cleanup(func() { apiRequest.Store(nil) })
+
+	// A query route whose body yields no types must record "other", not
+	// empty: an empty field always means "not a query route".
+	RecordAPIRequest("POST", "/api/ds/query", []byte(`not json`))
+	assert.Equal(t, otherValue, CurrentAPIRequest().DatasourceTypes)
+
+	RecordAPIRequest("GET", "/api/ds/query", nil)
+	assert.Equal(t, otherValue, CurrentAPIRequest().DatasourceTypes)
 }
 
 func TestRecordAPIRequestIgnoresBodyOffQueryRoutes(t *testing.T) {
