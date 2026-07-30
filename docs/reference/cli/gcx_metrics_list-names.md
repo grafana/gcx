@@ -1,4 +1,4 @@
-## gcx metrics list
+## gcx metrics list-names
 
 List metric names
 
@@ -10,7 +10,7 @@ with --prefix, --suffix, and --contains, which combine with AND.
 Output is capped at 100 names by default; pass --limit 0 for the full list.
 
 ```
-gcx metrics list [flags]
+gcx metrics list-names [flags]
 ```
 
 ### Examples
@@ -18,19 +18,19 @@ gcx metrics list [flags]
 ```
 
   # List metric names (first 100 by default; use datasource UID, not name)
-  gcx metrics list -d UID
+  gcx metrics list-names -d UID
 
   # Find cart-related metrics
-  gcx metrics list -d UID --contains cart
+  gcx metrics list-names -d UID --contains cart
 
   # Counters only
-  gcx metrics list -d UID --suffix _total
+  gcx metrics list-names -d UID --suffix _total
 
   # Metrics present on a job
-  gcx metrics list -d UID --match '{job="api"}'
+  gcx metrics list-names -d UID --match '{job="api"}'
 
   # Output as JSON
-  gcx metrics list -d UID -o json
+  gcx metrics list-names -d UID -o json
 ```
 
 ### Options
@@ -38,7 +38,7 @@ gcx metrics list [flags]
 ```
       --contains string     Only include names containing this string
   -d, --datasource string   Datasource UID (required unless datasources.prometheus is configured)
-  -h, --help                help for list
+  -h, --help                help for list-names
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of metric names to return. 0 means all results are returned (default 100)

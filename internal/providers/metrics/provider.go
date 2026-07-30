@@ -89,7 +89,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 			{
 				Build:     listCmd,
 				TokenCost: "small",
-				LLMHint:   `gcx metrics list -d abc123 --contains request -o json`,
+				LLMHint:   `gcx metrics list-names -d abc123 --contains request -o json`,
 			},
 		},
 		ExtraCommands: []signals.CommandBuilder{BillingCommands, CardinalityCommands},

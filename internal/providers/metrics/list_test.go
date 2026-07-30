@@ -81,7 +81,7 @@ func TestFilterMetricNames(t *testing.T) {
 
 func TestListCmd_Flags(t *testing.T) {
 	cmd := listCmd(nil)
-	require.Equal(t, "list", cmd.Name())
+	require.Equal(t, "list-names", cmd.Name())
 
 	for _, name := range []string{"datasource", "match", "prefix", "suffix", "contains", "limit", "output"} {
 		assert.NotNil(t, cmd.Flags().Lookup(name), "missing flag --%s", name)
@@ -146,7 +146,7 @@ current-context: default
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs(append([]string{"list", "-d", "prom-uid", "-o", "json"}, args...))
+	root.SetArgs(append([]string{"list-names", "-d", "prom-uid", "-o", "json"}, args...))
 
 	execErr := root.Execute()
 

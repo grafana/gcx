@@ -79,7 +79,7 @@ func listCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "list",
+		Use:   "list-names",
 		Short: "List metric names",
 		Long: "List metric names from a Prometheus datasource via the label values endpoint for `__name__`.\n" +
 			"Scope the server-side lookup with --match selectors; filter names client-side\n" +
@@ -88,19 +88,19 @@ func listCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Args: cobra.NoArgs,
 		Example: `
   # List metric names (first 100 by default; use datasource UID, not name)
-  gcx metrics list -d UID
+  gcx metrics list-names -d UID
 
   # Find cart-related metrics
-  gcx metrics list -d UID --contains cart
+  gcx metrics list-names -d UID --contains cart
 
   # Counters only
-  gcx metrics list -d UID --suffix _total
+  gcx metrics list-names -d UID --suffix _total
 
   # Metrics present on a job
-  gcx metrics list -d UID --match '{job="api"}'
+  gcx metrics list-names -d UID --match '{job="api"}'
 
   # Output as JSON
-  gcx metrics list -d UID -o json`,
+  gcx metrics list-names -d UID -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -150,7 +150,7 @@ func listCmd(loader *providers.ConfigLoader) *cobra.Command {
 }
 
 // metricNamesListResult is the single shape passed to every codec for
-// `gcx metrics list`. JSON/YAML serialize the envelope; the table codec
+// `gcx metrics list-names`. JSON/YAML serialize the envelope; the table codec
 // extracts .Data to render rows (Pattern 13: format-agnostic data).
 type metricNamesListResult struct {
 	Data []string `json:"data" yaml:"data"`
