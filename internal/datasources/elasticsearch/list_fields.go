@@ -33,21 +33,21 @@ func (opts *fieldsOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-// FieldsCmd returns the `fields` subcommand for an Elasticsearch datasource parent.
-func FieldsCmd(loader *providers.ConfigLoader) *cobra.Command {
+// ListFieldsCmd returns the `list-fields` subcommand for an Elasticsearch datasource parent.
+func ListFieldsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &fieldsOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "fields",
+		Use:   "list-fields",
 		Short: "List mapped fields from an Elasticsearch datasource",
 		Long: `List the mapped fields and their types, per index. Nested object fields are
 flattened with dotted names. Use these names in Lucene queries and --group-by.`,
 		Example: `
   # All fields across indices
-  gcx datasources elasticsearch fields
+  gcx datasources elasticsearch list-fields
 
   # Fields of one index
-  gcx datasources elasticsearch fields -d UID --index grafana-logs -o json`,
+  gcx datasources elasticsearch list-fields -d UID --index grafana-logs -o json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
@@ -82,7 +82,7 @@ flattened with dotted names. Use these names in Lucene queries and --group-by.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   `gcx datasources elasticsearch fields -d UID --index INDEX`,
+		agent.AnnotationLLMHint:   `gcx datasources elasticsearch list-fields -d UID --index INDEX`,
 	}
 
 	opts.setup(cmd.Flags())

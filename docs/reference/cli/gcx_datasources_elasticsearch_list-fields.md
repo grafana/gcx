@@ -1,4 +1,4 @@
-## gcx datasources elasticsearch fields
+## gcx datasources elasticsearch list-fields
 
 List mapped fields from an Elasticsearch datasource
 
@@ -8,7 +8,7 @@ List the mapped fields and their types, per index. Nested object fields are
 flattened with dotted names. Use these names in Lucene queries and --group-by.
 
 ```
-gcx datasources elasticsearch fields [flags]
+gcx datasources elasticsearch list-fields [flags]
 ```
 
 ### Examples
@@ -16,17 +16,17 @@ gcx datasources elasticsearch fields [flags]
 ```
 
   # All fields across indices
-  gcx datasources elasticsearch fields
+  gcx datasources elasticsearch list-fields
 
   # Fields of one index
-  gcx datasources elasticsearch fields -d UID --index grafana-logs -o json
+  gcx datasources elasticsearch list-fields -d UID --index grafana-logs -o json
 ```
 
 ### Options
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.elasticsearch is configured)
-  -h, --help                help for fields
+  -h, --help                help for list-fields
       --index string        Restrict to this index or index pattern
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields

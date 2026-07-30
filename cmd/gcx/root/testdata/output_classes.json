@@ -181,7 +181,7 @@
  "gcx datasources cloudwatch query": "finite",
  "gcx datasources create": "finite",
  "gcx datasources delete": "finite",
- "gcx datasources elasticsearch fields": "finite",
+ "gcx datasources elasticsearch list-fields": "finite",
  "gcx datasources elasticsearch list-indices": "finite",
  "gcx datasources elasticsearch logs": "finite",
  "gcx datasources elasticsearch metrics": "finite",

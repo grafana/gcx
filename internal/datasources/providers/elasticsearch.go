@@ -25,6 +25,6 @@ func (p *elasticsearchDSProvider) ExtraCommands(loader *providers.ConfigLoader) 
 		elasticsearch.LogsCmd(loader),
 		elasticsearch.MetricsCmd(loader),
 		elasticsearch.ListIndicesCmd(loader),
-		elasticsearch.FieldsCmd(loader),
+		elasticsearch.ListFieldsCmd(loader),
 	}
 }
