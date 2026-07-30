@@ -25,9 +25,25 @@ func writeLabelsTestConfig(t *testing.T, content string) string {
 	return f.Name()
 }
 
-// runLabelsCmd executes the labels command against a capture server and
-// returns the request query values recorded per path.
+// runLabelsCmd executes the labels command against a capture server with JSON
+// output and returns the request query values recorded per path.
 func runLabelsCmd(t *testing.T, args ...string) (map[string]url.Values, error) {
+	t.Helper()
+	captured, _, err := execLabelsCmd(t, append([]string{"-o", "json"}, args...)...)
+	return captured, err
+}
+
+// runLabelsCmdRawOutput executes the labels command and returns raw stdout,
+// leaving the output format to the caller's args.
+func runLabelsCmdRawOutput(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	_, stdout, err := execLabelsCmd(t, args...)
+	return stdout, err
+}
+
+// execLabelsCmd executes the labels command against a capture server and
+// returns the recorded query values per path, raw stdout, and the run error.
+func execLabelsCmd(t *testing.T, args ...string) (map[string]url.Values, string, error) {
 	t.Helper()
 
 	captured := map[string]url.Values{}
@@ -65,10 +81,10 @@ current-context: default
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs(append([]string{"labels", "-d", "prom-uid", "-o", "json"}, args...))
+	root.SetArgs(append([]string{"labels", "-d", "prom-uid"}, args...))
 
 	err := root.Execute()
-	return captured, err
+	return captured, stdout.String(), err
 }
 
 const (
@@ -150,6 +166,16 @@ func TestLabelsCmd_MatchSelectors(t *testing.T) {
 			assert.Len(t, captured, 1, "expected no other API requests")
 		})
 	}
+}
+
+// TestLabelsCmd_TableOutputThroughCodec proves the registered shared codec
+// renders the table path, guarding against a formatter bypass regressing
+// (round 3 review on #1050: RunE previously short-circuited around it).
+func TestLabelsCmd_TableOutputThroughCodec(t *testing.T) {
+	stdout, err := runLabelsCmdRawOutput(t, "-o", "table")
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "LABEL")
+	assert.Contains(t, stdout, "job")
 }
 
 func TestLabelsCmd_RejectsExplicitlyEmptyMetric(t *testing.T) {

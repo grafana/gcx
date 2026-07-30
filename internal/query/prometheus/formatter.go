@@ -202,11 +202,6 @@ func parseValue(v any) string {
 	}
 }
 
-// FormatLabelsTable formats a LabelsResponse as a table.
-func FormatLabelsTable(w io.Writer, resp *LabelsResponse) error {
-	return formatSingleColumnTable(w, "LABEL", resp.Data)
-}
-
 func formatSingleColumnTable(w io.Writer, header string, values []string) error {
 	t := style.NewTable(header)
 	for _, v := range values {

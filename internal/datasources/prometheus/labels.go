@@ -194,20 +194,12 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 					return fmt.Errorf("failed to get label values: %w", err)
 				}
 
-				if opts.IO.OutputFormat == "table" {
-					return prometheus.FormatLabelsTable(cmd.OutOrStdout(), resp)
-				}
-
 				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 			}
 
 			resp, err := client.Labels(ctx, datasourceUID, selectors)
 			if err != nil {
 				return fmt.Errorf("failed to get labels: %w", err)
-			}
-
-			if opts.IO.OutputFormat == "table" {
-				return prometheus.FormatLabelsTable(cmd.OutOrStdout(), resp)
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
