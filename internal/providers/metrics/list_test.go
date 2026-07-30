@@ -198,6 +198,21 @@ func TestListCmd_LimitTruncatesWithListMetaAndHint(t *testing.T) {
 	assert.NotContains(t, stderr, "showing first")
 }
 
+// TestListCmd_ListMetaSurvivesFieldSelection guards the truncation signal on
+// the --json path agent mode steers consumers toward: the payload must carry
+// list_meta even under field selection (round 3 review on #1050).
+func TestListCmd_ListMetaSurvivesFieldSelection(t *testing.T) {
+	names := []string{"a_total", "b_total", "c_total", "d_total", "e_total"}
+
+	_, resp, _, err := runListCmd(t, names, "--limit", "2", "--json", "data")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, []string{"a_total", "b_total"}, resp.Data)
+	require.NotNil(t, resp.ListMeta, "list_meta must survive --json field selection")
+	assert.True(t, resp.ListMeta.Truncated)
+	assert.Equal(t, 2, resp.ListMeta.Returned)
+}
+
 func TestListCmd_RejectsPositionalArgs(t *testing.T) {
 	captured, _, _, err := runListCmd(t, []string{"up"}, `{job="api"}`)
 	require.Error(t, err)

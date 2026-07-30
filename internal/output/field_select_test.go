@@ -422,3 +422,41 @@ func TestUnknownFieldSelectionError_Error(t *testing.T) {
 	assert.Contains(t, msg, "extra")
 	assert.Contains(t, msg, "--json list")
 }
+
+// TestFieldSelectCodec_ScalarArrayEnvelopeKeepsListMeta pins the truncation
+// contract for []string list envelopes (e.g. gcx metrics list-names): field
+// selection must re-attach the reserved list_meta entry even though the items
+// are scalars, and a complete result (no list_meta) stays plain.
+func TestFieldSelectCodec_ScalarArrayEnvelopeKeepsListMeta(t *testing.T) {
+	type scalarEnvelope struct {
+		Data     []string        `json:"data"`
+		ListMeta *cmdio.ListMeta `json:"list_meta,omitempty"`
+	}
+
+	total := 5
+	truncated := &scalarEnvelope{
+		Data:     []string{"a_total", "b_total"},
+		ListMeta: &cmdio.ListMeta{Truncated: true, Returned: 2, Total: &total},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, cmdio.NewFieldSelectCodec([]string{"data"}).Encode(&buf, truncated))
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	assert.Equal(t, []any{"a_total", "b_total"}, got["data"])
+	meta, ok := got["list_meta"].(map[string]any)
+	require.True(t, ok, "list_meta must survive field selection, got: %s", buf.String())
+	assert.Equal(t, true, meta["truncated"])
+	assert.InDelta(t, 2, meta["returned"], 0)
+
+	buf.Reset()
+	complete := &scalarEnvelope{Data: []string{"a_total"}}
+	require.NoError(t, cmdio.NewFieldSelectCodec([]string{"data"}).Encode(&buf, complete))
+
+	got = nil
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	assert.Equal(t, []any{"a_total"}, got["data"])
+	_, hasMeta := got["list_meta"]
+	assert.False(t, hasMeta, "complete result must not gain a list_meta entry")
+}

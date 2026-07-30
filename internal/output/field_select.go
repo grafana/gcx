@@ -184,6 +184,17 @@ func (c *FieldSelectCodec) envelopeFieldSelection(m map[string]any) (map[string]
 		return out, true
 	}
 
+	// A single-key envelope whose items are scalars (e.g. {"data": ["a"],
+	// "list_meta": {...}}) never matches singleKeyItems, but a truncated page
+	// must keep its reserved metadata under field selection all the same.
+	// Scalar items have no fields to select into, so selection runs on the
+	// whole envelope and the reserved entry is re-attached.
+	if hasListMetaEntry(m) && singleKeyScalarArray(m) {
+		out := extractFields(m, c.fields)
+		attachListMetaEntry(out, m)
+		return out, true
+	}
+
 	return nil, false
 }
 
@@ -346,6 +357,24 @@ func singleKeyItems(m map[string]any) (string, []map[string]any, bool) {
 		return key, items, true
 	}
 	return "", nil, false
+}
+
+// singleKeyScalarArray reports whether m is a single-key envelope (excluding
+// a reserved ListMetaKey entry) whose value is an array not composed entirely
+// of objects — the shape a []string list envelope normalizes to. Empty arrays
+// are not scalar: they satisfy singleKeyItems.
+func singleKeyScalarArray(m map[string]any) bool {
+	if nonListMetaKeyCount(m) != 1 {
+		return false
+	}
+	for key, raw := range m {
+		if isListMetaEntry(key, raw) {
+			continue
+		}
+		arr, ok := raw.([]any)
+		return ok && len(toSliceOfMaps(arr)) != len(arr)
+	}
+	return false
 }
 
 // nonListMetaKeyCount counts m's keys excluding a reserved ListMetaKey entry
