@@ -36,7 +36,9 @@ const noticeRevision = "2"
 // wrong the first time it was written.
 //
 //nolint:gochecknoglobals // constant-like; var only because TrimSuffix is not const-able.
-var firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect potentially identifiable or sensitive information like argument values or resource names, and flags you set are recorded by name only. Two things about the run itself are also recorded, because they describe what a command did rather than who ran it: the output format you chose, and whether the run was a rehearsal rather than a real change.
+var firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect arguments, free-form flag values, resource names, or raw counts of anything. Flags you set are recorded by name only.
+
+For the resource commands that work on batches, we record how many resources the operation succeeded, failed and skipped, as one of seven fixed size categories rather than a number. Two of those categories, "0" and "1", cover a single value each; the rest are ranges. We also record the output format used, and whether the operation ran in dry-run mode.
 You can opt out by setting GCX_TELEMETRY=disabled, or adding to your gcx config file:
   diagnostics:
     telemetry: disabled

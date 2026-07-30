@@ -77,13 +77,18 @@ func partialBatchFailure(stderr io.Writer, op string, total, failed int) error {
 //     for --jq and --json discovery, which print something other than the result
 //     document, so its return value never was evidence about the operation.
 //
-// opErr is the error from the operation that produced these counts, and makes
-// the first consequence hold by construction rather than by placement. Callers
-// pass it even though it is nil wherever they currently call: if this call is
-// ever moved above its own error check — the one regression that matters here,
-// and one an AST order check kept failing to catch, since it can be defeated by
-// renaming the error variable — the counts are simply not recorded. Enforcing it
-// in the callee costs one argument and cannot be worked around by accident.
+// opErr is the error from the operation that produced these counts. Callers pass
+// it even though it is nil wherever they currently call, so that moving this
+// call above its own error check does not start reporting aborted work: the
+// counts are simply not recorded. That replaced an AST order check which proved
+// less than it appeared to — it recognised an error binding only by the
+// identifier name "err", so renaming the variable defeated it.
+//
+// This guard is only as good as what callers pass. It does not verify that opErr
+// is the error of the operation the counts came from; passing an unrelated nil
+// would restore the old dependency on placement. A test checks that no call site
+// passes a nil literal, which is the mistake most likely to be made by accident,
+// and that is the whole of what is mechanically enforced.
 //
 // Telemetry must never affect the command's outcome, so this returns nothing and
 // cannot fail.

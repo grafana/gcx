@@ -101,7 +101,8 @@ func TestResolvedOutputFormat_JSONFlagIsNotReflected(t *testing.T) {
 	require.NoError(t, get.Flags().Set("json", "name,uid"))
 
 	assert.Equal(t, "text", resolvedOutputFormat(get),
-		"known gap: --json renders JSON but output_format still reports --output's value")
+		"pinning current behaviour, which is wrong and should be fixed separately: "+
+			"--json renders JSON but output_format reports --output's value")
 }
 
 func TestTelemetrySuppressed(t *testing.T) {
