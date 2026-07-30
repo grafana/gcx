@@ -267,7 +267,7 @@ func TestCaptureBatchVolumeKeepsEarlierSuccessOnLaterFailure(t *testing.T) {
 // identifier is the right error — a caller passing some other nil-valued error
 // variable would pass here and silently restore the dependency on placement.
 // Reviewers still own that; this only catches the accidental `nil`.
-func TestCaptureBatchVolumeCallSitesPassTheOperationError(t *testing.T) {
+func TestCaptureBatchVolumeCallSitesPassANonNilIdentifierAsOpErr(t *testing.T) {
 	checked := 0
 
 	for path, parsed := range parsePackageFiles(t) {

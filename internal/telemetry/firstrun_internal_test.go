@@ -94,8 +94,11 @@ func TestFirstRunNoticeStatesExclusionsWithoutEnumeratingExceptions(t *testing.T
 		"do not enumerate exceptions; name what is collected")
 	assert.Contains(t, firstRunNotice, "by name only",
 		"the notice must still state that flags are recorded by name")
-	assert.Contains(t, firstRunNotice, "raw counts",
-		"no raw numeric count field is sent, and the notice must say so")
+	assert.Contains(t, firstRunNotice, "no raw batch or resource counts",
+		"the notice must say batch counts are not sent")
+	assert.NotContains(t, firstRunNotice, "raw counts of anything",
+		"the event does carry other numbers (duration_ms, exit_code), so the promise "+
+			"must stay scoped to batch and resource counts")
 	for _, excluded := range []string{"arguments", "free-form flag values", "resource names"} {
 		assert.Contains(t, firstRunNotice, excluded,
 			"the notice must name what is not collected")
