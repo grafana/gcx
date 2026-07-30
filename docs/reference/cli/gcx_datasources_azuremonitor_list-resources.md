@@ -16,6 +16,9 @@ gcx datasources azuremonitor list-resources [flags]
 
   gcx datasources azuremonitor list-resources -d UID --subscription SUB_ID --resource-group my-rg
   gcx datasources azuremonitor list-resources -d UID --subscription SUB_ID -o json
+
+  # Uses the datasource's default subscription when --subscription is omitted
+  gcx datasources azuremonitor list-resources -d UID
 ```
 
 ### Options
@@ -27,7 +30,7 @@ gcx datasources azuremonitor list-resources [flags]
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string           Output format. One of: agents, json, table, yaml (default "table")
       --resource-group string   Azure resource group name (optional; lists the whole subscription when omitted)
-      --subscription string     Azure subscription ID (required)
+      --subscription string     Azure subscription ID (defaults to the datasource's default subscription)
 ```
 
 ### Options inherited from parent commands

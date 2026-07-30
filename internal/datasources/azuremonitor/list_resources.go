@@ -28,18 +28,12 @@ func (opts *listResourcesOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.azuremonitor is configured)")
-	flags.StringVar(&opts.Subscription, "subscription", "", "Azure subscription ID (required)")
+	flags.StringVar(&opts.Subscription, "subscription", "", "Azure subscription ID (defaults to the datasource's default subscription)")
 	flags.StringVar(&opts.ResourceGroup, "resource-group", "", "Azure resource group name (optional; lists the whole subscription when omitted)")
 }
 
 func (opts *listResourcesOpts) Validate() error {
-	if err := opts.IO.Validate(); err != nil {
-		return err
-	}
-	if opts.Subscription == "" {
-		return errors.New("--subscription is required")
-	}
-	return nil
+	return opts.IO.Validate()
 }
 
 // ListResourcesCmd returns the `list-resources` subcommand for Azure Monitor.
@@ -52,7 +46,10 @@ func ListResourcesCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long:  "List the Azure resources in a subscription, optionally scoped to a resource group, via an Azure Monitor datasource.",
 		Example: `
   gcx datasources azuremonitor list-resources -d UID --subscription SUB_ID --resource-group my-rg
-  gcx datasources azuremonitor list-resources -d UID --subscription SUB_ID -o json`,
+  gcx datasources azuremonitor list-resources -d UID --subscription SUB_ID -o json
+
+  # Uses the datasource's default subscription when --subscription is omitted
+  gcx datasources azuremonitor list-resources -d UID`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
@@ -71,12 +68,17 @@ func ListResourcesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
+			subscription, err := resolveSubscription(ctx, cfg, datasourceUID, opts.Subscription)
+			if err != nil {
+				return err
+			}
+
 			client, err := azclient.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			resources, err := client.ListResources(ctx, datasourceUID, opts.Subscription, opts.ResourceGroup)
+			resources, err := client.ListResources(ctx, datasourceUID, subscription, opts.ResourceGroup)
 			if err != nil {
 				return fmt.Errorf("failed to list resources: %w", err)
 			}
