@@ -208,14 +208,16 @@ func TestRunWith_EmptyReporterReturnsNonNilSlices(t *testing.T) {
 
 func TestCheckTableCodec_Encode(t *testing.T) {
 	codec := &CheckTableCodec{}
-	results := otelutils.Results{
-		Checks:   []otelutils.ComponentResult{{Component: "SDK", Message: "service.name set"}},
-		Warnings: []otelutils.ComponentResult{{Component: "Collector", Message: "missing receiver"}},
-		Errors:   []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no instance id"}},
+	envelope := ResultsWithFixPlan{
+		Results: otelutils.Results{
+			Checks:   []otelutils.ComponentResult{{Component: "SDK", Message: "service.name set"}},
+			Warnings: []otelutils.ComponentResult{{Component: "Collector", Message: "missing receiver"}},
+			Errors:   []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no instance id"}},
+		},
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, results))
+	require.NoError(t, codec.Encode(&buf, envelope))
 
 	out := buf.String()
 	// All three rows present, in failure-first order.
@@ -231,7 +233,7 @@ func TestCheckTableCodec_WrongType(t *testing.T) {
 	codec := &CheckTableCodec{}
 	err := codec.Encode(&bytes.Buffer{}, "nope")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "otelutils.Results")
+	assert.Contains(t, err.Error(), "ResultsWithFixPlan")
 }
 
 // ─── Command smoke test ──────────────────────────────────────────────────────

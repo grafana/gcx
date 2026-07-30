@@ -65,17 +65,11 @@ func (c *CheckTableCodec) Format() format.Format {
 }
 
 func (c *CheckTableCodec) Encode(w io.Writer, v any) error {
-	var results otelutils.Results
-	var plan *FixPlanEnvelope
-	switch val := v.(type) {
-	case ResultsWithFixPlan:
-		results = val.Results
-		plan = val.FixPlan
-	case otelutils.Results:
-		results = val
-	default:
+	envelope, ok := v.(ResultsWithFixPlan)
+	if !ok {
 		return errCheckTableCodecExpectedResults
 	}
+	results := envelope.Results
 
 	t := style.NewTable("STATUS", "COMPONENT", "MESSAGE", "EXPLAIN_ID")
 	for _, r := range results.Errors {
@@ -91,10 +85,10 @@ func (c *CheckTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	if plan == nil || plan.Content == "" {
+	if envelope.FixPlan == nil || envelope.FixPlan.Content == "" {
 		return nil
 	}
-	return renderFixPlan(w, plan)
+	return renderFixPlan(w, envelope.FixPlan)
 }
 
 func (c *CheckTableCodec) Decode(_ io.Reader, _ any) error {
@@ -102,8 +96,14 @@ func (c *CheckTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // renderFixPlan prints a separator, a source notice, and the plan body.
-// When the destination is a terminal, the plan (which is markdown) is styled
-// via glamour; otherwise it's written raw so piping/tests stay clean.
+// When the destination is a terminal AND styled output is enabled (respecting
+// --no-color / NO_COLOR), the plan (markdown) is styled via glamour;
+// otherwise the raw markdown is written so piping, no-color mode, and tests
+// stay clean.
+//
+// Word wrap is disabled (WithWordWrap(0)) so shell commands, env-var
+// examples, and URLs in the plan stay on one logical line for click-through
+// and copy/paste.
 func renderFixPlan(w io.Writer, plan *FixPlanEnvelope) error {
 	if _, err := fmt.Fprintln(w); err != nil {
 		return err
@@ -120,12 +120,15 @@ func renderFixPlan(w io.Writer, plan *FixPlanEnvelope) error {
 		// No leading notice; Assistant output speaks for itself.
 	}
 
-	if isTerminalWriter(w) {
-		if out, err := glamour.Render(plan.Content, "dark"); err == nil {
-			_, err := fmt.Fprint(w, out)
-			return err
+	if isTerminalWriter(w) && style.IsStylingEnabled() {
+		r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(0))
+		if err == nil {
+			if out, err := r.Render(plan.Content); err == nil {
+				_, err := fmt.Fprint(w, out)
+				return err
+			}
 		}
-		// Fall through to raw on glamour failure.
+		// Fall through to raw markdown if glamour construction or render fails.
 	}
 	_, err := fmt.Fprint(w, plan.Content)
 	return err
@@ -143,6 +146,6 @@ func isTerminalWriter(w io.Writer) bool {
 }
 
 var (
-	errCheckTableCodecExpectedResults = errors.New("CheckTableCodec: expected otelutils.Results or ResultsWithFixPlan")
+	errCheckTableCodecExpectedResults = errors.New("CheckTableCodec: expected ResultsWithFixPlan")
 	errCheckTableCodecNoDecode        = errors.New("table format does not support decoding")
 )

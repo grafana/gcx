@@ -122,7 +122,7 @@ func TestCheck_HumanDefault_ByteIdenticalTable(t *testing.T) {
 
 	var want bytes.Buffer
 	results := runWith(context.Background(), otelutils.Commands{}, failingChecker(), io.Discard)
-	require.NoError(t, (&CheckTableCodec{}).Encode(&want, results))
+	require.NoError(t, (&CheckTableCodec{}).Encode(&want, ResultsWithFixPlan{Results: results}))
 
 	assert.Equal(t, want.String(), stdout, "default human stdout must stay byte-identical to the table codec output")
 }

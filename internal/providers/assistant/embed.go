@@ -88,7 +88,7 @@ func RunPrompt(ctx context.Context, loader *providers.ConfigLoader, req PromptRe
 		Timeout:   req.TimeoutSeconds,
 		ContextID: contextID,
 	}
-	result := c.Chat(ctx, req.Message, streamOpts)
+	result := c.ChatWithApproval(ctx, req.Message, streamOpts, autoApproveHandler{})
 
 	switch {
 	case result.Completed:
@@ -120,4 +120,13 @@ func RunPrompt(ctx context.Context, loader *providers.ConfigLoader, req PromptRe
 // to produce a clearer error than the raw auth failure.
 func RequireGrafanaCloud(ctx *config.Context) error {
 	return requireGrafanaCloud(ctx)
+}
+
+// autoApproveHandler satisfies assistant.ApprovalHandler by approving every
+// request. Used by RunPrompt for non-interactive embed callers where there
+// is no stdin to prompt on.
+type autoApproveHandler struct{}
+
+func (autoApproveHandler) HandleApproval(_ assistant.ApprovalRequest) bool {
+	return true
 }
