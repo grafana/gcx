@@ -9,6 +9,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	promparser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -104,6 +105,16 @@ func listCmd(loader *providers.ConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			// Validate selectors client-side, matching the labels command:
+			// a typo fails here with the selector named instead of an opaque
+			// proxied 400. Valid selectors are sent exactly as written.
+			parser := promparser.NewParser(promparser.Options{})
+			for _, sel := range opts.Match {
+				if _, err := parser.ParseMetricSelector(sel); err != nil {
+					return fmt.Errorf("invalid --match selector %q: %w", sel, err)
+				}
 			}
 
 			ctx := cmd.Context()

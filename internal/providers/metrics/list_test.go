@@ -219,6 +219,13 @@ func TestListCmd_RejectsPositionalArgs(t *testing.T) {
 	assert.Empty(t, captured, "no request should be made when args are rejected")
 }
 
+func TestListCmd_InvalidMatchSelectorFailsBeforeAnyRequest(t *testing.T) {
+	captured, _, _, err := runListCmd(t, []string{"up"}, "--match", `{job="api"`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid --match selector")
+	assert.Empty(t, captured)
+}
+
 func TestListCmd_RejectsNegativeLimit(t *testing.T) {
 	captured, _, _, err := runListCmd(t, []string{"up"}, "--limit", "-1")
 	require.Error(t, err)
