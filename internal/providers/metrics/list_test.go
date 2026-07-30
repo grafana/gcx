@@ -219,6 +219,23 @@ func TestListCmd_RejectsPositionalArgs(t *testing.T) {
 	assert.Empty(t, captured, "no request should be made when args are rejected")
 }
 
+func TestFilterMetricNames_NilInputYieldsEmptySlice(t *testing.T) {
+	got := filterMetricNames(nil, "", "", "")
+	require.NotNil(t, got, "data must serialize as [] rather than null")
+	assert.Empty(t, got)
+}
+
+func TestListCmd_RejectsExplicitlyEmptyFilters(t *testing.T) {
+	for _, flag := range []string{"prefix", "suffix", "contains"} {
+		t.Run(flag, func(t *testing.T) {
+			captured, _, _, err := runListCmd(t, []string{"up"}, "--"+flag, "")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid --"+flag)
+			assert.Empty(t, captured)
+		})
+	}
+}
+
 func TestListCmd_InvalidMatchSelectorFailsBeforeAnyRequest(t *testing.T) {
 	captured, _, _, err := runListCmd(t, []string{"up"}, "--match", `{job="api"`)
 	require.Error(t, err)

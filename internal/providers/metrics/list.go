@@ -54,9 +54,14 @@ func (opts *listOpts) Validate() error {
 }
 
 // filterMetricNames returns the names passing every configured name filter.
-// Filters combine with AND; with no filters configured it returns names as-is.
+// Filters combine with AND. The result is always a non-nil slice so the
+// envelope's data field serializes as [] rather than null regardless of
+// which filter flags were passed.
 func filterMetricNames(names []string, prefix, suffix, contains string) []string {
 	if prefix == "" && suffix == "" && contains == "" {
+		if names == nil {
+			return []string{}
+		}
 		return names
 	}
 
@@ -105,6 +110,16 @@ func listCmd(loader *providers.ConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			// An explicitly empty name filter (typically an unset shell
+			// variable, as in --contains "$SVC") would silently read as no
+			// filter and answer with unfiltered names; error instead, like
+			// the labels command's --metric guard.
+			for _, name := range []string{"prefix", "suffix", "contains"} {
+				if cmd.Flags().Changed(name) && cmd.Flags().Lookup(name).Value.String() == "" {
+					return fmt.Errorf("invalid --%s: value is empty (unset shell variable?)", name)
+				}
 			}
 
 			// Validate selectors client-side, matching the labels command:
