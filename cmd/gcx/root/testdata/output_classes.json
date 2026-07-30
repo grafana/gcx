@@ -452,6 +452,7 @@
  "gcx metrics cardinality label-names": "finite",
  "gcx metrics cardinality label-values": "finite",
  "gcx metrics labels": "finite",
+ "gcx metrics list-names": "finite",
  "gcx metrics metadata": "finite",
  "gcx metrics query": "finite",
  "gcx metrics series": "finite",
