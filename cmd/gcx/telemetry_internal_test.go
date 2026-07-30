@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/grafana/gcx/cmd/gcx/root"
+	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/stretchr/testify/assert"
@@ -24,6 +28,17 @@ func isolate(t *testing.T) {
 
 func pushInfo() *root.TelemetryInfo {
 	return &root.TelemetryInfo{Command: "resources push", Flags: "path", OutputFormat: "text"}
+}
+
+// marshalEvent returns the event as it travels on the wire, so assertions can
+// tell an empty field from an absent one.
+func marshalEvent(t *testing.T, event telemetry.Event) map[string]any {
+	t.Helper()
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+	var fields map[string]any
+	require.NoError(t, json.Unmarshal(data, &fields))
+	return fields
 }
 
 func TestBuildUsageEventOmitsBatchFieldsWithoutCapture(t *testing.T) {
@@ -173,17 +188,81 @@ func TestBuildUsageEventEmitsOnlyDeclaredBuckets(t *testing.T) {
 	}
 }
 
+// Every invocation whose final exit code is ExitCancelled reports the same
+// outcome, whatever stopped it, and reports it as a stop rather than a failure:
+// error_kind stays on the wire — it has no omitempty — but carries no kind.
+func TestBuildUsageEventReportsCanceled(t *testing.T) {
+	isolate(t)
+
+	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), gcxerrors.ExitCancelled))
+
+	assert.Equal(t, telemetry.OutcomeCanceled, fields["outcome"])
+	assert.InDelta(t, float64(gcxerrors.ExitCancelled), fields["exit_code"], 0)
+	require.Contains(t, fields, "error_kind",
+		"error_kind must stay serialized for a canceled invocation")
+	assert.Empty(t, fields["error_kind"],
+		"an invocation that stopped early has no error kind")
+}
+
+// The classification is on the final exit code, not on the route that produced
+// it: a command that already wrote its own result document and returned an
+// EmittedError carrying exit 5 reports the same outcome as the Ctrl-C path.
+func TestBuildUsageEventReportsCanceledFromEmittedError(t *testing.T) {
+	isolate(t)
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	err := fmt.Errorf("push: %w",
+		gcxerrors.NewEmittedError(gcxerrors.ExitCancelled, context.Canceled))
+	exitCode := reportError(err, nil, nil)
+	require.Equal(t, gcxerrors.ExitCancelled, exitCode)
+
+	event := buildUsageEvent(pushInfo(), time.Now(), exitCode)
+
+	assert.Equal(t, telemetry.OutcomeCanceled, event.Outcome)
+	assert.Empty(t, event.ErrorKind)
+}
+
+// Reporting cancellation must not disturb any other outcome, so the whole
+// vocabulary is pinned against the final exit code.
+func TestBuildUsageEventOutcomeVocabulary(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		help          bool
+		exitCode      int
+		wantOutcome   string
+		wantErrorKind string
+	}{
+		{name: "success", exitCode: gcxerrors.ExitSuccess, wantOutcome: telemetry.OutcomeOK},
+		{name: "help", help: true, exitCode: gcxerrors.ExitSuccess, wantOutcome: telemetry.OutcomeHelp},
+		{name: "canceled", exitCode: gcxerrors.ExitCancelled, wantOutcome: telemetry.OutcomeCanceled},
+		{name: "runtime error", exitCode: gcxerrors.ExitGeneralError, wantOutcome: telemetry.OutcomeRuntimeError, wantErrorKind: "error"},
+		{name: "usage error", exitCode: gcxerrors.ExitUsageError, wantOutcome: telemetry.OutcomeRuntimeError, wantErrorKind: "usage_error"},
+		{name: "auth failure", exitCode: gcxerrors.ExitAuthFailure, wantOutcome: telemetry.OutcomeRuntimeError, wantErrorKind: "auth_failure"},
+		{name: "partial failure", exitCode: gcxerrors.ExitPartialFailure, wantOutcome: telemetry.OutcomeRuntimeError, wantErrorKind: "partial_failure"},
+		{name: "version incompatible", exitCode: gcxerrors.ExitVersionIncompatible, wantOutcome: telemetry.OutcomeRuntimeError, wantErrorKind: "version_incompatible"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isolate(t)
+			info := pushInfo()
+			info.Help = tc.help
+
+			event := buildUsageEvent(info, time.Now(), tc.exitCode)
+
+			assert.Equal(t, tc.wantOutcome, event.Outcome)
+			assert.Equal(t, tc.wantErrorKind, event.ErrorKind)
+		})
+	}
+}
+
 // error_kind has no omitempty and must stay on the wire for every outcome;
 // only the new batch fields are allowed to disappear.
 func TestBuildUsageEventAlwaysEmitsErrorKind(t *testing.T) {
-	for _, exitCode := range []int{0, 1, 2, 4} {
+	for _, exitCode := range []int{0, 1, 2, 3, 4, 5, 6} {
 		isolate(t)
 
-		data, err := json.Marshal(buildUsageEvent(pushInfo(), time.Now(), exitCode))
-		require.NoError(t, err)
+		fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), exitCode))
 
-		var fields map[string]any
-		require.NoError(t, json.Unmarshal(data, &fields))
 		assert.Contains(t, fields, "error_kind",
 			"error_kind must be present for exit code %d, even when empty", exitCode)
 	}

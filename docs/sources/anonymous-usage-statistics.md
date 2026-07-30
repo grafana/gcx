@@ -41,9 +41,9 @@ Each `gcx` event contains the following properties:
 | `command` | The resolved command path only, no arguments are sent. | `dashboards push` |
 | `flags` | The **names** of the flags you set, sorted. No flag values are sent in this field. | `dry-run,folder` |
 | `provider` | The resource provider the command belongs to. | `dashboards` |
-| `outcome` | How the invocation ended: `ok`, `runtime_error`, `parse_error`, or `help`. | `ok` |
+| `outcome` | How the invocation ended: `ok`, `runtime_error`, `canceled`, or `help`. (`parse_error` is reserved and not sent yet — see below.) | `ok` |
 | `exit_code` | The process exit code. | `0` |
-| `error_kind` | A coarse error category when the command failed: `usage_error`, `auth_failure`, `partial_failure`, `version_incompatible`, or `error`. Never an error message. | `auth_failure` |
+| `error_kind` | A coarse error category when the command failed: `usage_error`, `auth_failure`, `partial_failure`, `version_incompatible`, or `error`. Never an error message. Empty when the command did not fail, including when it was canceled. | `auth_failure` |
 | `duration_ms` | Total invocation duration in milliseconds. | `1234` |
 | `is_tty` | Whether `gcx` ran attached to an interactive terminal. | `false` |
 | `is_ci` | Whether a CI environment was detected. | `true` |
@@ -79,9 +79,25 @@ These fields are easy to misread, so the following constraints are part of the c
 - **`dry_run` is not a mutation flag.** `gcx resources validate` always reports `true` and `gcx resources pull` always `false`, yet neither changes anything: pull is read-only. Read `dry_run` together with `command`, never as "this run modified resources".
 - **`gcx resources get` never reports these fields**, because only the four commands listed above are instrumented. It is a read, but so is `pull`, which does report.
 
+### Canceled invocations
+
+An invocation that stopped before it finished reports `outcome: canceled` with `exit_code: 5`, and `error_kind` present but empty, because a stop is not a kind of failure. No new property is collected — a canceled invocation carries exactly the same fields as any other, and like every other event it is sent on a best-effort basis: pressing Ctrl-C a second time ends the process immediately, before the report is sent.
+
+Two things this value does *not* tell you:
+
+- **It is not always your Ctrl-C.** Any invocation whose exit code is `5` reports `canceled`, which includes a confirmation prompt you declined and a task the server itself reported as canceled. The field records that the invocation stopped early, not who stopped it.
+- **Not every interrupted command reports it.** Commands that treat an interrupt as a clean shutdown — `gcx resources serve`, for example — finish normally when you press Ctrl-C, so they report `ok` with `exit_code: 0` like any other successful run.
+
+If your first-ever `gcx` command is one you interrupt, the one-time notice described in [Opt out](#opt-out) is printed after the interrupt, because that invocation does report. The notice comes first and the export is attempted after it, so the notice records the attempt rather than a delivery: as above, the report is best-effort and may never arrive.
+
+This moves the denominator of every outcome rate in two ways, so compare rates within a `version` rather than across the version where `canceled` first appears:
+
+- **Some invocations start being counted at all.** Earlier versions reported nothing for an invocation that ended on the interrupt path — exit code `5` with no error printed. Those now count towards the total, so the share of `ok` invocations falls without anything having got worse. This is narrower than "every Ctrl-C": an interrupt a command turns into a clean shutdown was always reported as `ok`, and one that leaves a batch partially applied was always reported as a partial failure.
+- **Some invocations change label.** Exit-code-`5` invocations that *were* already reported — a declined prompt, for instance — moved out of `runtime_error` with `error_kind: error` and into `canceled` with an empty `error_kind`. Both the `runtime_error` share and the volume of `error_kind: error` drop for the same reason, with no change in what happened.
+
 ### Parse-failure fields
 
-When the invocation fails to parse, these additional fields are set. They capture what was attempted so the team can understand the differences between what users expect and what exists:
+When the invocation fails to parse, these additional fields are set. They capture what was attempted so the team can understand the differences between what users expect and what exists. They are not populated yet: a parse failure currently reports no event at all (see [Invocations that report nothing](#invocations-that-report-nothing)), and `outcome` is never `parse_error` today.
 
 | Field | Description | Example |
 | :---- | :---- | :---- |
@@ -99,7 +115,7 @@ Some invocations never emit an event:
 
 - **Shell completion** — the completion machinery runs on every tab-press and carries no usage signal.  
 - **`gcx version`**  
-- **Cancelled invocations** — pressing Ctrl-C emits nothing.
+- **Invocations that failed to parse** — an unknown command or flag reports nothing today, which is why the `parse_error_*` properties above are not yet populated.
 
 ## Server-side enrichment
 

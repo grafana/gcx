@@ -35,9 +35,9 @@ func main() {
 	start := time.Now()
 
 	// stop is deliberately not deferred: every path out of main ends in
-	// os.Exit (exitWith or the cancellation fast path), so a defer would
-	// never run, and signal-handler cleanup is moot at process exit.
-	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
+	// os.Exit, which does not run defers. exitWith calls it instead, for the
+	// one case that needs it — see exitWith.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 
 	// Pre-parse --agent flag before Cobra sees it. This must happen before
 	// root.Command() because io.Options.BindFlags() reads agent.IsAgentMode()
@@ -58,28 +58,88 @@ func main() {
 	// prefer sticking to err != nil format, than optimizing for calling exitWith
 	// once
 	if err := root.ValidateArgs(cmd, os.Args[1:]); err != nil {
-		exitWith(cmd, start, reportError(err, boolFlags, subCmds))
+		exitWith(cmd, interrupted(ctx), stop, start, reportError(err, boolFlags, subCmds))
 	}
 
 	err := cmd.ExecuteContext(ctx)
 
-	// Quick exit on context canceled — but never for an EmittedError: a
-	// command that already wrote its complete result document carries its
-	// own exit code, and its cause chain may legitimately wrap a canceled
-	// item error (e.g. a batch interrupted after partial success). The
-	// EmittedError contract (exit code agrees with the emitted document,
-	// agentlog/usage still recorded) outranks the cancellation fast path.
-	var emittedForCancel *gcxerrors.EmittedError
-	if errors.Is(err, context.Canceled) && !errors.As(err, &emittedForCancel) {
-		os.Exit(gcxerrors.ExitCancelled)
+	// An interrupted invocation reports no error: there is no failure to
+	// describe, and a fused error document on stdout would contradict a command
+	// that was interrupted before it wrote its result. It still exits through
+	// exitWith, so the invocation is reported like any other outcome. Other
+	// routes to exit 5 — a declined confirmation prompt, a server-reported
+	// cancellation — report their own outcome and are not silenced here.
+	if isSilentCancellation(ctx, err) {
+		exitWith(cmd, interrupted(ctx), stop, start, gcxerrors.ExitCancelled)
 	}
 
-	exitWith(cmd, start, reportError(err, boolFlags, subCmds))
+	exitWith(cmd, interrupted(ctx), stop, start, reportError(err, boolFlags, subCmds))
+}
+
+// interrupted reports whether a signal has cancelled this invocation. Only
+// signal.NotifyContext cancels the root context, so this is exactly "the user
+// pressed Ctrl-C at some point during this run".
+func interrupted(ctx context.Context) bool {
+	return ctx.Err() != nil
+}
+
+// isSilentCancellation reports whether err is a cancellation that must exit
+// quietly with ExitCancelled — but never for an EmittedError: a command that
+// already wrote its complete result document carries its own exit code, and
+// its cause chain may legitimately wrap a canceled item error (e.g. a batch
+// interrupted after partial success). The EmittedError contract (exit code
+// agrees with the emitted document, agentlog/usage still recorded) outranks
+// the cancellation fast path.
+//
+// The interrupt does not always arrive as context.Canceled. Go 1.26's
+// signal.NotifyContext cancels with a cause describing the signal, and
+// net/http surfaces context.Cause rather than context.Canceled, so an
+// interrupted request fails with "interrupt signal received". Before Go 1.26.5
+// that cause did not report itself as context.Canceled, and gcx classified a
+// Ctrl-C as a network error and exited 1. Matching the invocation context's
+// own cause covers both, without widening to unrelated errors that merely
+// happen to arrive while the context is done.
+func isSilentCancellation(ctx context.Context, err error) bool {
+	var emitted *gcxerrors.EmittedError
+	if err == nil || errors.As(err, &emitted) {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	// A cause that reports itself as context.Canceled was already matched
+	// above, so reaching here means the cause is the signal error itself.
+	cause := context.Cause(ctx)
+	return cause != nil && errors.Is(err, cause)
 }
 
 // exitWith emits the usage event for this invocation, then exits. Every
-// invocation ends here, except the cancellation fast path above.
-func exitWith(cmd *cobra.Command, start time.Time, exitCode int) {
+// invocation ends here.
+//
+// It restores default signal handling first, but only for an invocation the
+// user has already interrupted, and not from a defer: os.Exit does not run
+// defers, and the usage export that follows is synchronous. While
+// signal.NotifyContext's handler is installed a second Ctrl-C is swallowed, so
+// an export waiting out its timeout would ignore a user who is asking again to
+// be let go. Stopping the handler restores the SIGINT disposition gcx started
+// with — the default terminate action in a terminal — so that second Ctrl-C
+// ends the process at once instead of waiting for the export.
+//
+// It is deliberately conditional. Disarming the handler on every exit path
+// would also hand a stray interrupt the power to kill an invocation that had
+// already finished: a command that wrote its complete result and was waiting
+// out its export would die by signal instead of exiting with the code that
+// agrees with what it printed. An interrupt only becomes a request to abandon
+// the export once there is something to abandon.
+//
+// It takes the answer as a bool rather than the invocation context on purpose.
+// The export must not inherit that context: for the case this whole path
+// exists to report, the context is already cancelled, so passing it would
+// abort the very event being sent.
+func exitWith(cmd *cobra.Command, interrupted bool, stop func(), start time.Time, exitCode int) {
+	if interrupted {
+		stop()
+	}
 	emitUsageEvent(cmd, start, exitCode)
 	os.Exit(exitCode)
 }
