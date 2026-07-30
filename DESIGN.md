@@ -158,4 +158,5 @@ Prescriptive implementation rules live in [docs/design/](docs/design/), split by
 | [provider-checklist.md](docs/design/provider-checklist.md) | Provider UX compliance (architecture patterns in [patterns.md](docs/architecture/patterns.md)) |
 | [help-text.md](docs/design/help-text.md) | Command descriptions, examples format |
 | [naming.md](docs/design/naming.md) | Resource kinds, file naming, config keys, flags |
+| [command-naming.md](docs/design/command-naming.md) | Canonical command verbs and placement |
 | [environment-variables.md](docs/design/environment-variables.md) | Canonical environment variable reference |
