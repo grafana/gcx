@@ -57,6 +57,7 @@ func TestEnforceLimit(t *testing.T) {
 		{"SELECT mentioning DML in a literal skips enforcement", "SELECT * FROM audit WHERE action = 'DELETE'", 100, "SELECT * FROM audit WHERE action = 'DELETE'", false},
 		{"subquery LIMIT appends without cap warning", "SELECT * FROM (SELECT a FROM t LIMIT 5000) x", 100, "SELECT * FROM (SELECT a FROM t LIMIT 5000) x LIMIT 100", false},
 		{"DML-like column names do not bail", "SELECT last_update, deleted_at FROM t", 100, "SELECT last_update, deleted_at FROM t LIMIT 100", false},
+		{"multiline query with a line starting in a keyword-like name still gets LIMIT", "SELECT id,\nshow FROM schedule", 100, "SELECT id,\nshow FROM schedule LIMIT 100", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

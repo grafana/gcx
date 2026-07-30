@@ -39,7 +39,9 @@ var limitStatementRe = regexp.MustCompile(`(?is)^\s*(SELECT|WITH|TABLE|VALUES)\b
 // which start with WITH and so pass limitStatementRe. Matching them anywhere
 // means a SELECT mentioning e.g. 'DELETE' in a string literal also skips
 // enforcement — that fails safe (no LIMIT added) rather than corrupting SQL.
-var limitBailRe = regexp.MustCompile(`(?im)(\bLIMIT\s+\d+\s+OFFSET\b|\bOFFSET\s+\d+\b|\bFETCH\s+(FIRST|NEXT)\b|\bRETURNING\b|\bFOR\s+(UPDATE|SHARE)\b|\b(INSERT|UPDATE|DELETE|MERGE)\b|^\s*EXPLAIN\b|^\s*SHOW\b)`)
+// EXPLAIN/SHOW need no bail entries: limitStatementRe already excludes them,
+// and line-anchored entries would misfire on formatted multiline queries.
+var limitBailRe = regexp.MustCompile(`(?i)(\bLIMIT\s+\d+\s+OFFSET\b|\bOFFSET\s+\d+\b|\bFETCH\s+(FIRST|NEXT)\b|\bRETURNING\b|\bFOR\s+(UPDATE|SHARE)\b|\b(INSERT|UPDATE|DELETE|MERGE)\b)`)
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds and reports
 // whether an explicit trailing LIMIT was capped to maxLimit, so callers can
