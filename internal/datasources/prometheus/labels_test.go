@@ -178,11 +178,15 @@ func TestLabelsCmd_TableOutputThroughCodec(t *testing.T) {
 	assert.Contains(t, stdout, "job")
 }
 
-func TestLabelsCmd_RejectsExplicitlyEmptyMetric(t *testing.T) {
-	captured, err := runLabelsCmd(t, "--metric", "")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid --metric")
-	assert.Empty(t, captured, "no request should be made for an empty --metric")
+func TestLabelsCmd_RejectsExplicitlyEmptyFlagValues(t *testing.T) {
+	for _, flag := range []string{"metric", "label"} {
+		t.Run(flag, func(t *testing.T) {
+			captured, err := runLabelsCmd(t, "--"+flag, "")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid --"+flag)
+			assert.Empty(t, captured, "no request should be made for an empty --%s", flag)
+		})
+	}
 }
 
 func TestLabelsCmd_RejectsPositionalArgs(t *testing.T) {

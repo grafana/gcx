@@ -1,7 +1,6 @@
 package prometheus
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -154,11 +153,15 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 				return err
 			}
 
-			// An explicitly empty --metric (typically an unset shell variable,
-			// as in --metric "$METRIC") would silently drop scoping; error
-			// instead of returning unscoped results.
-			if cmd.Flags().Changed("metric") && opts.Metric == "" {
-				return errors.New(`invalid --metric: value is empty (unset shell variable?)`)
+			// An explicitly empty --metric or --label (typically an unset
+			// shell variable, as in --metric "$METRIC") would silently answer
+			// a different question than the one asked: --metric "" drops
+			// scoping, --label "" returns label names instead of label
+			// values, in the same response shape. Error instead.
+			for _, name := range []string{"metric", "label"} {
+				if cmd.Flags().Changed(name) && cmd.Flags().Lookup(name).Value.String() == "" {
+					return fmt.Errorf("invalid --%s: value is empty (unset shell variable?)", name)
+				}
 			}
 
 			selectors, err := opts.selectors()
