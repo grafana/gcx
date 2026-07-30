@@ -142,7 +142,7 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				Succeeded: summary.SuccessCount(),
 				Failed:    summary.FailedCount(),
 				Skipped:   summary.SkippedCount(),
-			}, true)
+			}, true, err)
 
 			if err := reportValidation(cmd.OutOrStdout(), opts.IO, summary); err != nil {
 				return err

@@ -1,11 +1,11 @@
 package resources //nolint:testpackage // exercises the unexported capture helper and its call sites
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,7 +21,7 @@ func TestCaptureBatchVolumeRecordsFinalizedCounts(t *testing.T) {
 	capture.Reset()
 	t.Cleanup(capture.Reset)
 
-	captureBatchVolume(cmdio.MutationSummary{Succeeded: 12, Failed: 3, Skipped: 4}, true)
+	captureBatchVolume(cmdio.MutationSummary{Succeeded: 12, Failed: 3, Skipped: 4}, true, nil)
 
 	got := capture.CurrentBatch()
 	require.NotNil(t, got)
@@ -35,7 +35,7 @@ func TestCaptureBatchVolumeReportsEmptyOperation(t *testing.T) {
 	capture.Reset()
 	t.Cleanup(capture.Reset)
 
-	captureBatchVolume(cmdio.MutationSummary{}, false)
+	captureBatchVolume(cmdio.MutationSummary{}, false, nil)
 
 	got := capture.CurrentBatch()
 	require.NotNil(t, got, "an operation that matched nothing is still a completed operation")
@@ -49,13 +49,15 @@ func TestCaptureBatchVolumeCarriesDryRunBothWays(t *testing.T) {
 		capture.Reset()
 		t.Cleanup(capture.Reset)
 
-		captureBatchVolume(cmdio.MutationSummary{Succeeded: 5}, dryRun)
+		captureBatchVolume(cmdio.MutationSummary{Succeeded: 5}, dryRun, nil)
 
 		got := capture.CurrentBatch()
 		require.NotNil(t, got)
 		assert.Equal(t, dryRun, got.DryRun)
 	}
 }
+
+const capturePackagePath = "github.com/grafana/gcx/internal/telemetry/capture"
 
 // capturedCallSites are the only functions allowed to record batch volume.
 //
@@ -154,9 +156,15 @@ func TestNothingOutsideResourcesWritesBatchCapture(t *testing.T) {
 
 	var writers []string
 	for _, path := range goFiles {
-		src, readErr := os.ReadFile(path)
-		require.NoError(t, readErr, path)
-		if !strings.Contains(string(src), "capture.SetBatch") {
+		// Parse rather than substring-match. A raw search for "capture.SetBatch"
+		// misses an aliased import (cap "…/telemetry/capture"; cap.SetBatch)
+		// — exactly the move this guard exists to block — and fires on any
+		// passing mention in a comment.
+		parsed, parseErr := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if parseErr != nil {
+			continue // not buildable Go; nothing this guard can say about it
+		}
+		if !callsCaptureSetBatch(parsed) {
 			continue
 		}
 		rel, relErr := filepath.Rel(root, path)
@@ -169,66 +177,116 @@ func TestNothingOutsideResourcesWritesBatchCapture(t *testing.T) {
 			"bypasses the call-site pin and can make read-only commands report volume")
 }
 
-// Capture must be unreachable when the operation returned an error, so a hard
-// abort reports nothing. Placement alone carries that guarantee — there is no
-// type or signature enforcing it — and no test executes these commands, so
-// moving the call above its error check would otherwise pass the whole suite
-// while silently reporting volume for aborted work.
+// callsCaptureSetBatch reports whether the file calls SetBatch on the capture
+// package, resolving the local name from the import so an alias cannot hide it.
+func callsCaptureSetBatch(file *ast.File) bool {
+	local := ""
+	for _, imp := range file.Imports {
+		if imp.Path == nil || strings.Trim(imp.Path.Value, `"`) != capturePackagePath {
+			continue
+		}
+		local = "capture"
+		if imp.Name != nil {
+			local = imp.Name.Name
+		}
+	}
+	if local == "" || local == "_" {
+		return false
+	}
+
+	found := false
+	ast.Inspect(file, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "SetBatch" {
+			return true
+		}
+		// A dot-import makes the qualifier absent; that is caught by the
+		// local == "." case below rather than here.
+		if ident, isIdent := sel.X.(*ast.Ident); isIdent && ident.Name == local {
+			found = true
+			return false
+		}
+		return true
+	})
+	if found {
+		return true
+	}
+
+	// Dot-imported: SetBatch appears unqualified.
+	if local != "." {
+		return false
+	}
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if ident, isIdent := call.Fun.(*ast.Ident); isIdent && ident.Name == "SetBatch" {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// A failed operation must record nothing, whatever the placement of the call.
 //
-// Checked structurally: in the block containing the capture call, some earlier
-// statement must be an `if` that returns.
-func TestCaptureBatchVolumeIsGuardedByAnErrorReturn(t *testing.T) {
-	guarded := 0
+// This replaces an AST order check that tried to prove the call sat after its
+// error guard. That check was defeated twice: first by the many unrelated error
+// guards in a RunE body, then by renaming the error variable, since it had to
+// recognise the binding by the identifier "err". Enforcing it in the callee
+// removes the naming dependency and the ordering assumption together.
+func TestCaptureBatchVolumeIgnoresAFailedOperation(t *testing.T) {
+	capture.Reset()
+	t.Cleanup(capture.Reset)
+
+	captureBatchVolume(cmdio.MutationSummary{Succeeded: 47}, false, errors.New("aborted"))
+
+	assert.Nil(t, capture.CurrentBatch(),
+		"an operation that failed must report no volume, even if counts were available")
+}
+
+// A prior successful capture must not be erased by a later failed one, so the
+// guard cannot turn a reported operation into an unreported one.
+func TestCaptureBatchVolumeKeepsEarlierSuccessOnLaterFailure(t *testing.T) {
+	capture.Reset()
+	t.Cleanup(capture.Reset)
+
+	captureBatchVolume(cmdio.MutationSummary{Succeeded: 5}, false, nil)
+	captureBatchVolume(cmdio.MutationSummary{Succeeded: 99}, false, errors.New("aborted"))
+
+	got := capture.CurrentBatch()
+	require.NotNil(t, got)
+	assert.Equal(t, 5, got.Succeeded)
+}
+
+// The callee guard only works if call sites actually pass their operation's
+// error. Passing a nil literal would silently restore the old placement
+// dependency, so every call site must pass an identifier.
+func TestCaptureBatchVolumeCallSitesPassTheOperationError(t *testing.T) {
+	checked := 0
 
 	for path, parsed := range parsePackageFiles(t) {
 		ast.Inspect(parsed, func(n ast.Node) bool {
-			block, ok := n.(*ast.BlockStmt)
+			call, ok := n.(*ast.CallExpr)
 			if !ok {
 				return true
 			}
-			for i, stmt := range block.List {
-				expr, isExpr := stmt.(*ast.ExprStmt)
-				if !isExpr || !referencesCaptureHelper(expr) {
-					continue
-				}
-				guarded++
-				assert.True(t, errorCheckedBefore(block.List[:i]),
-					"%s: captureBatchVolume must sit after the error check for the operation that "+
-						"produced its counts, so an aborted operation reports no volume", path)
+			ident, isIdent := call.Fun.(*ast.Ident)
+			if !isIdent || ident.Name != "captureBatchVolume" {
+				return true
 			}
+			checked++
+			require.Len(t, call.Args, 3, "%s: captureBatchVolume takes the operation error", path)
+			arg, isIdent := call.Args[2].(*ast.Ident)
+			assert.True(t, isIdent && arg.Name != "nil",
+				"%s: pass the operation's error, not a nil literal, or a reordered call "+
+					"would record volume for aborted work", path)
 			return true
 		})
 	}
 
-	assert.Len(t, capturedCallSites(), guarded,
-		"every pinned call site must be order-checked; a call nested somewhere this walk "+
-			"does not reach is a call whose abort behaviour is unverified")
-}
-
-// errorCheckedBefore reports whether the most recent error-producing assignment
-// before this point was followed by a returning `if`.
-//
-// Scanning backwards is what makes this meaningful. A RunE body is full of
-// earlier `if err != nil { return err }` guards, so merely finding one somewhere
-// above is satisfied by any placement, including immediately after the operation
-// call and before its own check. Reaching an assignment that binds `err` first
-// means the capture sits between an operation and its error check.
-func errorCheckedBefore(stmts []ast.Stmt) bool {
-	for _, stmt := range slices.Backward(stmts) {
-		switch stmt := stmt.(type) {
-		case *ast.IfStmt:
-			for _, inner := range stmt.Body.List {
-				if _, isReturn := inner.(*ast.ReturnStmt); isReturn {
-					return true
-				}
-			}
-		case *ast.AssignStmt:
-			for _, lhs := range stmt.Lhs {
-				if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "err" {
-					return false
-				}
-			}
-		}
-	}
-	return false
+	assert.Len(t, capturedCallSites(), checked,
+		"every pinned call site must be checked for the error argument")
 }
