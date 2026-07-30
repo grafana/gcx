@@ -14,7 +14,9 @@ weight: 4
 
 `gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
 
-The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values are never sent, and flag values are never sent with one deliberate exception: the on/off state of `--dry-run` is recorded, so that a rehearsal can be told apart from a real change. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
+The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values and resource names are never sent, and the flags you set are recorded by name only.
+
+Two fields describe flag *settings* rather than names, because they change what a command did rather than identify who ran it: `output_format` records the output format you chose, from a fixed list of known formats, and `dry_run` records whether the run was a rehearsal rather than a real change. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
 
 {{< admonition type="note" >}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usage reporting.{{< /admonition >}}
 
@@ -56,7 +58,7 @@ When the invocation is a batch resource operation (`gcx resources push`, `pull`,
 | `batch_succeeded_bucket` | The size range of the successful part of the operation, from a fixed list of ranges. Never an exact count. | `21-100` |
 | `batch_failed_bucket` | The size range of the failed part, from the same fixed list. | `0` |
 | `batch_skipped_bucket` | The size range of the skipped part, from the same fixed list. | `0` |
-| `dry_run` | Whether the operation was a rehearsal rather than a real change. | `false` |
+| `dry_run` | Whether the operation was a rehearsal rather than a real change. Derived from the operation, not read from a flag: `gcx resources validate` is always a rehearsal and `gcx resources pull` never is, and neither has a `--dry-run` flag. | `false` |
 
 The ranges are exactly `0`, `1`, `2-5`, `6-20`, `21-100`, `101-1000`, and `1001+`. Sizes are reported as ranges rather than exact counts on purpose: an exact resource count, correlated with the per-installation `device_id` and the network organization name added on receipt, would describe a specific organization's resource inventory. Ranges answer how `gcx` is used without carrying that detail.
 
@@ -65,12 +67,15 @@ The ranges are exactly `0`, `1`, `2-5`, `6-20`, `21-100`, `101-1000`, and `1001+
 These fields are easy to misread, so the following constraints are part of the contract:
 
 - **All four are present together, or none are.** Their absence means the invocation was not one of those four commands, or it stopped before the operation reached a final count.
-- **`0` is a real answer.** A `batch_succeeded_bucket` of `0` means the command ran and matched nothing, which is different from the field being absent.
+- **`0` means nothing was counted in that outcome, which is not the same as nothing having happened.** The three counts are not a complete partition of the work: a resource filtered out before processing is recorded in none of them. `gcx resources validate` over resources that are all managed elsewhere, or `gcx resources delete` against a resource type whose API does not support deletion, can therefore report `0`/`0`/`0` for a run that did examine resources. A `0` is still distinct from the field being absent, which means the operation never reached a final count.
 - **The sizes describe the operation, not the output.** They are recorded once the operation has finished and its counts are final. If the summary then fails to render or cannot be written to stdout, the sizes are still reported, because work that already happened is not undone by a display failure. Equally, they do not always correspond to a number printed on screen: `--jq` and `--json <fields>` reshape the output, and `validate` prints only failures and skips in JSON.
 - **An operation that aborted partway reports nothing.** It never reached a final count, so there is no size to report. Note that `gcx resources delete` with `--on-error=abort` may have deleted some resources before stopping; that partial work is deliberately not reported, so absence consistently means "no final count", never "no work done".
-- **The unit depends on the command, so these must not be compared or totalled across commands.** In `gcx resources pull`, successes and failures count individual resources — a resource fetched but not written to disk counts as failed — while skips count whole resource *types* the server could not list.
+- **The unit depends on the command, so these must not be compared or totalled across commands.** `gcx resources pull` is the clearest case, and its failure count is genuinely mixed: a resource fetched but not written to disk counts as one failure, and a whole resource *type* whose list call fails also counts as one failure. Skips there count whole resource types the server could not list. A pull failure count of 2 can therefore mean two resources or two entire types.
+- **`batch_skipped_bucket` is only ever non-zero for a rehearsal.** For `gcx resources push` and `gcx resources delete`, a skip is recorded solely when a dry run cannot be verified server-side, so a real run always reports `0` here by construction rather than as a measurement.
 - **`gcx resources validate` is always a dry run**, so its sizes describe a validation pass, not resources changed.
 - **`gcx resources get` never reports these fields**, because only the four commands listed above are instrumented. It is a read, but so is `pull`, which does report.
+
+### Parse-failure fields
 
 When the invocation fails to parse, these additional fields are set. They capture what was attempted so the team can understand the differences between what users expect and what exists:
 

@@ -61,9 +61,13 @@ func partialBatchFailure(stderr io.Writer, op string, total, failed int) error {
 //
 // Two consequences, both intended:
 //
-//   - A hard abort reports nothing. The operation never reached a finalized
-//     count, so there is no honest number to send, and the absence of these
-//     fields is what marks that case on the wire.
+//   - A hard abort reports nothing. This is a choice, not a limitation: push,
+//     delete and pull all still hold a usable summary on their abort paths, and
+//     delete even prints those counts to stderr. Reporting them would make an
+//     absent field mean either "not a batch command" or "aborted after doing
+//     some work", so absence is kept to the single meaning "no finalized
+//     count". The cost is that partial work done before an abort is invisible,
+//     which the usage-statistics page states outright.
 //   - A later output failure changes nothing. If 47 dashboards were pushed and
 //     then rendering or the stdout write failed, those 47 are still on the
 //     server. Suppressing the count would understate work that really happened.

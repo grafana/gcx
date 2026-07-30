@@ -34,8 +34,9 @@ func Buckets() []string {
 	}
 }
 
-// Bucket maps a count to its bucket label. The ranges are half-open and do not
-// overlap: each count falls in exactly one bucket.
+// Bucket maps a count to its bucket label. Every range is closed at both ends
+// and none overlap, so each count falls in exactly one bucket: "2-5" contains
+// both 2 and 5, and "101-1000" contains 1000.
 //
 // Zero is a real, distinct answer — a batch that matched nothing — so it gets
 // its own label rather than being folded into the smallest range. Counts below

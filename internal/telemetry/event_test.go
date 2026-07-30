@@ -28,9 +28,10 @@ func wantParseErrorOnly() []string {
 	}
 }
 
-// wantBatchOnly are the fields set only for a batch resource operation that
-// emitted a final result document. They travel together: present for such an
-// operation, absent for every other invocation.
+// wantBatchOnly are the fields set only for a batch resource operation that ran
+// to a finalized count. They travel together: present for such an operation,
+// absent for every other invocation. Their presence says the operation
+// completed, not that the user was shown a summary.
 func wantBatchOnly() []string {
 	return []string{
 		"batch_succeeded_bucket", "batch_failed_bucket", "batch_skipped_bucket", "dry_run",

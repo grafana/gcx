@@ -32,6 +32,56 @@ func TestFirstRunNoticeShownOnceThenSuppressed(t *testing.T) {
 	assert.Empty(t, second.String(), "flag file must suppress the notice")
 }
 
+// An install that already saw an earlier notice must see a revised one. This is
+// the upgrade path: before revisions existed the flag file was written empty, so
+// every existing install holds one, and without this the amended disclosure
+// would only ever reach brand-new installs while the collection behind it had
+// already changed for everyone.
+func TestFirstRunNoticeReshownAfterRevisionBump(t *testing.T) {
+	for _, stale := range []struct {
+		name    string
+		content []byte
+	}{
+		{"pre-revision empty file", nil},
+		{"older revision", []byte("1\n")},
+	} {
+		t.Run(stale.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "gcx", firstRunNoticeFileName)
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+			require.NoError(t, os.WriteFile(path, stale.content, 0o600))
+
+			var out strings.Builder
+			maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
+			assert.Equal(t, firstRunNotice, out.String(),
+				"a changed disclosure must reach installs that saw an earlier one")
+
+			recorded, err := os.ReadFile(path)
+			require.NoError(t, err)
+			assert.Equal(t, noticeRevision, strings.TrimSpace(string(recorded)),
+				"the flag file must record the revision just shown")
+
+			var again strings.Builder
+			maybeShowFirstRunNotice(&again, ModeEnabled, true, false, false, path)
+			assert.Empty(t, again.String(), "the revised notice must then be suppressed")
+		})
+	}
+}
+
+// The notice names the fields derived from flag settings instead of claiming a
+// single exception. An enumeration has to be re-audited against the whole event
+// every time a field is added, and the first one shipped was already wrong:
+// output_format carries the value of --output.
+func TestFirstRunNoticeDoesNotClaimASingleFlagException(t *testing.T) {
+	assert.NotContains(t, firstRunNotice, "one exception",
+		"do not enumerate exceptions; name what is collected")
+	assert.Contains(t, firstRunNotice, "by name only",
+		"the notice must still state that flags are recorded by name")
+	assert.Contains(t, firstRunNotice, "output format",
+		"output_format is flag-derived and must be disclosed")
+	assert.Contains(t, firstRunNotice, "rehearsal",
+		"dry_run is flag-derived and must be disclosed")
+}
+
 func TestFirstRunNoticeSuppressedWhenNotInteractive(t *testing.T) {
 	tests := []struct {
 		name                 string

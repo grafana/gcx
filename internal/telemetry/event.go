@@ -25,13 +25,19 @@ const (
 // and the receiver's whois enrichment would describe a named organisation's
 // resource inventory (see bucket.go).
 //
-// DryRun is the single, deliberate exception to "no flag values": it carries
-// the boolean state of --dry-run, because a rehearsal and a real change are
-// otherwise indistinguishable and the difference decides whether a reported
-// volume represents work that happened. A boolean carries nothing about the
-// user, their organisation, or their data. Any further exception needs the same
-// scrutiny — and must be reflected in the first-run notice (firstrun.go) and
-// the published usage-statistics page, which both state the promise.
+// Two fields are derived from flag settings rather than flag names, and both
+// are deliberate: OutputFormat carries the value of --output filtered to a fixed
+// list of formats, and DryRun reports whether the run was a rehearsal. Neither
+// says anything about the user, their organisation, or their data, and both
+// describe what a command did.
+//
+// Do not phrase this as "the only exception is X". That form is a promise about
+// every other field in the struct, so it has to be re-audited against the whole
+// event each time one is added — and the first version written here claimed
+// DryRun was the only one while OutputFormat sat two lines below it. Adding a
+// third such field means updating the first-run notice (firstrun.go, and
+// bumping noticeRevision so existing installs actually see it) and the published
+// usage-statistics page.
 type Event struct {
 	// Envelope.
 	Service string `json:"service"`
