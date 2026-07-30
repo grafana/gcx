@@ -22,6 +22,7 @@ func TestEnforceTop(t *testing.T) {
 		{"leading whitespace", "  \n SELECT id FROM dbo.t", 7, "  \n SELECT TOP (7) id FROM dbo.t"},
 		{"clamped to max", "SELECT * FROM dbo.t", 99999, "SELECT TOP (1000) * FROM dbo.t"},
 		{"limit zero disables", "SELECT * FROM dbo.t", 0, "SELECT * FROM dbo.t"},
+		{"negative limit disables", "SELECT * FROM dbo.t", -5, "SELECT * FROM dbo.t"},
 		{"existing top untouched", "SELECT TOP 5 * FROM dbo.t", 100, "SELECT TOP 5 * FROM dbo.t"},
 		{"existing top parens untouched", "SELECT TOP (5) * FROM dbo.t", 100, "SELECT TOP (5) * FROM dbo.t"},
 		{"existing top percent not clamped", "SELECT TOP 50 PERCENT * FROM dbo.t", 100, "SELECT TOP 50 PERCENT * FROM dbo.t"},
@@ -56,7 +57,8 @@ func TestSplitSchemaQualifiedTable(t *testing.T) {
 		{"bare table", "WORLD_DATA", "", "WORLD_DATA", false},
 		{"schema qualified", "dbo.WORLD_DATA", "dbo", "WORLD_DATA", false},
 		{"three parts errors", "db.dbo.WORLD_DATA", "", "", true},
-		{"trailing dot yields empty table part", "dbo.", "dbo", "", false},
+		{"trailing dot errors", "dbo.", "", "", true},
+		{"leading dot errors", ".WORLD_DATA", "", "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
