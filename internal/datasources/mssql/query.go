@@ -26,7 +26,7 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
 		Short: "Execute a SQL query against an MSSQL datasource",
-		Long: `Execute a T-SQL query against a Microsoft SQL Server datasource.
+		Long: `Execute a SQL query against a Microsoft SQL Server datasource.
 
 EXPR is the SQL query to execute, passed as a positional argument or via --expr.
 Datasource is resolved from -d flag or datasources.mssql in your context.
