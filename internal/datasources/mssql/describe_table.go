@@ -36,7 +36,7 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "describe-table TABLE",
-		Short: "List columns for an MSSQL table",
+		Short: "Describe a MSSQL table",
 		Long: `List the columns of the specified table from INFORMATION_SCHEMA.COLUMNS,
 reporting name, data type, nullability, max length, and default. Disambiguate a
 table that exists in multiple schemas with a schema-qualified name

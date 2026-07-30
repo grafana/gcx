@@ -15,6 +15,12 @@ import (
 type QueryResponse struct {
 	Columns []Column `json:"columns"`
 	Rows    [][]any  `json:"rows"`
+
+	// Notices carries warning/error-severity notices the datasource plugin
+	// attached to the result (e.g. "Results have been limited to N ..."). It is
+	// surfaced to the user out-of-band (stderr) and excluded from serialized
+	// output so it never pollutes the `-o json`/`-o yaml` data document.
+	Notices []string `json:"-"`
 }
 
 // Column describes a result column.

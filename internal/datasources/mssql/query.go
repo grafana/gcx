@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/mssql"
 	"github.com/spf13/cobra"
@@ -98,6 +99,12 @@ it in your browser after the query succeeds.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
+			// Surface any plugin notices (e.g. the server-side row-limit
+			// truncation warning) so the user knows the result was capped.
+			for _, notice := range resp.Notices {
+				cmdio.EmitHint(cmd.ErrOrStderr(), notice, "")
+			}
+
 			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
@@ -123,7 +130,10 @@ it in your browser after the query succeeds.`,
 		agent.AnnotationLLMHint:   `gcx datasources mssql query -d UID 'SELECT name, id FROM dbo.my_table' -o json`,
 	}
 
-	shared.Setup(cmd.Flags(), false)
+	// MSSQL results are tabular, not time-series: the Grafana plugin ignores the
+	// query intervalMs, so --step would have no effect. Omit it rather than
+	// advertise a flag we silently ignore.
+	shared.Setup(cmd.Flags(), false, dsquery.WithoutStep())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.mssql is configured)")
 	cmd.Flags().IntVar(&limit, "limit", defaultLimit, "Max rows to return via injected TOP (n) (0 disables injection)")
 	share.Setup(cmd.Flags(), "executed query")
