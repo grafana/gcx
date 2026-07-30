@@ -27,6 +27,7 @@
 /internal/providers/traces/ @grafana/grafana-gcx @grafana/tempo
 
 /internal/datasources/athena/ @grafana/grafana-gcx @grafana/data-sources
+/internal/datasources/azuremonitor/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/clickhouse/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/cloudwatch/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/infinity/ @grafana/grafana-gcx @grafana/data-sources
@@ -36,6 +37,7 @@
 /internal/datasources/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
 /internal/datasources/tempo/ @grafana/grafana-gcx @grafana/tempo
 
+/internal/query/azuremonitor/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/loki/ @grafana/grafana-gcx @grafana/loki-team
 /internal/query/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
 /internal/query/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
