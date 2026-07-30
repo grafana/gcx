@@ -673,6 +673,26 @@ func TestClient_GetProfileStats(t *testing.T) {
 			want: &pyroscope.ProfileStatsResponse{},
 		},
 		{
+			name: "v1 no-data sentinel bounds are normalized to zero",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"dataIngested":false,"oldestProfileTime":"9223372036854775807","newestProfileTime":"-9223372036854775808"}`))
+			},
+			want: &pyroscope.ProfileStatsResponse{},
+		},
+		{
+			name: "numeric wire form decodes",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"dataIngested":true,"oldestProfileTime":1711800000000,"newestProfileTime":1711886400000}`))
+			},
+			want: &pyroscope.ProfileStatsResponse{
+				DataIngested:      true,
+				OldestProfileTime: 1711800000000,
+				NewestProfileTime: 1711886400000,
+			},
+		},
+		{
 			name: "server error is surfaced",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -698,4 +718,14 @@ func TestClient_GetProfileStats(t *testing.T) {
 			assert.Equal(t, tt.want, resp)
 		})
 	}
+}
+
+func TestProfileStatsResponse_MarshalJSON_EmitsNumbers(t *testing.T) {
+	out, err := json.Marshal(&pyroscope.ProfileStatsResponse{
+		DataIngested:      true,
+		OldestProfileTime: 1711800000000,
+		NewestProfileTime: 1711886400000,
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"dataIngested":true,"oldestProfileTime":1711800000000,"newestProfileTime":1711886400000}`, string(out))
 }

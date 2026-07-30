@@ -166,6 +166,14 @@ func (c *Client) GetProfileStats(ctx context.Context, datasourceUID string) (*Pr
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
+	// The v1 read path reports math.MaxInt64/math.MinInt64 bound sentinels
+	// when no data was ever ingested (the v2 read path reports zeros).
+	// Normalize any inverted range to zero so both times mean "unknown".
+	if !result.DataIngested || result.OldestProfileTime > result.NewestProfileTime {
+		result.OldestProfileTime = 0
+		result.NewestProfileTime = 0
+	}
+
 	return &result, nil
 }
 
