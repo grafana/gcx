@@ -29,6 +29,8 @@ UX requirements. All items are unless marked otherwise.
 - [ ] `--config` and `--context` inherited via `configOpts` persistent flags
 - [ ] Destructive operations document `--dry-run` support
 - [ ] Help text follows [help-text.md](help-text.md) standards (Short/Long/Examples)
+- [ ] New canonical verbs and command placement follow [command-naming.md](command-naming.md);
+  uncovered verbs or identity shapes have explicit maintainer review
 - [ ] Push-like operations are idempotent (create-or-update)
 - [ ] Data fetching is format-agnostic — do not gate fetches on `--output` value (Pattern 13)
 - [ ] PromQL queries use `promql-builder` (`github.com/grafana/promql-builder/go/promql`), not string formatting (Pattern 14)

@@ -1,10 +1,12 @@
 # `list-<subject>` family — adjudication verdicts (#387)
 
-Status record for the addressability rule in the Command Operation Semantics ADR §8
-(`docs/adrs/command-operation-contract/001-command-operation-semantics.md` on
-`awsome-o/387-command-operation-contract-adr`, PR #994): *things with their own ID get a
-noun group (`things list` / `things get <id>`); `list-things` is reserved for (a) plain
-value enumerations with no ID of their own and (b) sub-lists addressed by the parent's ID.*
+Status record for the list-placement rule now codified in
+[command-naming.md](../design/command-naming.md): use a noun group's `list`
+operation when it needs no parent identity; reserve `list-<subject>` for plain
+value discovery and lists addressed by a parent's identity. The rule was
+developed in the historical Command Operation Semantics proposal (PR #994).
+References to “ADR §…” below refer to that unmerged proposal as historical
+decision provenance, not current authority.
 
 This answers the maintainer's question on that rule ("let's see how many commands we'd
 have to change", PR #994 thread r3616693985): **28 commands across 12 providers; every

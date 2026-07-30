@@ -2,6 +2,9 @@
 
 > Naming conventions for resource kinds, file names, config keys, environment variables, flags, and URL path patterns.
 
+For canonical command verbs and command-tree placement, see
+[command-naming.md](command-naming.md).
+
 ---
 
 ## 9. Resource and API Naming
