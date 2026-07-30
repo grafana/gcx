@@ -1,6 +1,6 @@
 ## gcx datasources mssql describe-table
 
-List columns for an MSSQL table
+Describe a MSSQL table
 
 ### Synopsis
 
