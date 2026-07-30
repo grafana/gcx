@@ -36,7 +36,7 @@ gcx metrics list-names [flags]
 ### Options
 
 ```
-      --contains string     Only include names containing this string
+      --contains string     Only include names containing this string (case-sensitive)
   -d, --datasource string   Datasource UID (required unless datasources.prometheus is configured)
   -h, --help                help for list-names
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
@@ -44,8 +44,8 @@ gcx metrics list-names [flags]
       --limit int           Maximum number of metric names to return. 0 means all results are returned (default 100)
       --match stringArray   Series selector(s) to scope results; repeatable (repeated selectors combine as a union, per the Prometheus match[] API)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
-      --prefix string       Only include names starting with this string
-      --suffix string       Only include names ending with this string
+      --prefix string       Only include names starting with this string (case-sensitive)
+      --suffix string       Only include names ending with this string (case-sensitive)
 ```
 
 ### Options inherited from parent commands

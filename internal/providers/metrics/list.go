@@ -40,9 +40,9 @@ func (opts *listOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
 	flags.StringArrayVar(&opts.Match, "match", nil, "Series selector(s) to scope results; repeatable (repeated selectors combine as a union, per the Prometheus match[] API)")
-	flags.StringVar(&opts.Prefix, "prefix", "", "Only include names starting with this string")
-	flags.StringVar(&opts.Suffix, "suffix", "", "Only include names ending with this string")
-	flags.StringVar(&opts.Contains, "contains", "", "Only include names containing this string")
+	flags.StringVar(&opts.Prefix, "prefix", "", "Only include names starting with this string (case-sensitive)")
+	flags.StringVar(&opts.Suffix, "suffix", "", "Only include names ending with this string (case-sensitive)")
+	flags.StringVar(&opts.Contains, "contains", "", "Only include names containing this string (case-sensitive)")
 	// Cheaply complete source (the fetch always returns the full name set),
 	// so the limit is purely a display trim; the default cap keeps the
 	// command's advertised small token cost honest.
