@@ -133,6 +133,42 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	return &result, nil
 }
 
+// GetProfileStats returns ingestion stats from the datasource: whether any
+// data was ever ingested and the oldest/newest profile times. The RPC is
+// scoped server-side to the tenant the datasource is bound to.
+func (c *Client) GetProfileStats(ctx context.Context, datasourceUID string) (*ProfileStatsResponse, error) {
+	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/GetProfileStats")
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBufferString("{}"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get profile stats: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, queryerror.FromBody("pyroscope", "profile stats query", resp.StatusCode, respBody)
+	}
+
+	var result ProfileStatsResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &result, nil
+}
+
 // ProfileTypes returns available profile types from the datasource.
 func (c *Client) ProfileTypes(ctx context.Context, datasourceUID string, req ProfileTypesRequest) (*ProfileTypesResponse, error) {
 	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/ProfileTypes")

@@ -60,6 +60,14 @@ type ProfileTypesRequest struct {
 	End   time.Time
 }
 
+// ProfileStatsResponse mirrors types.v1.GetProfileStatsResponse. Times are
+// milliseconds since epoch; the wire encodes int64 as strings (proto-JSON).
+type ProfileStatsResponse struct {
+	DataIngested      bool  `json:"dataIngested"`
+	OldestProfileTime int64 `json:"oldestProfileTime,string"`
+	NewestProfileTime int64 `json:"newestProfileTime,string"`
+}
+
 // ProfileTypesResponse represents the response from a profile types query.
 type ProfileTypesResponse struct {
 	ProfileTypes []ProfileType `json:"profileTypes"`

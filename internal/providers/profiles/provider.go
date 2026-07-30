@@ -120,6 +120,17 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Output as JSON for scripting
   gcx profiles exemplars profile '{}' --since 30m -o json`,
 			},
+			{
+				Build:     dspyroscope.StatsCmd,
+				TokenCost: "small",
+				LLMHint:   "gcx profiles stats -d abc123 -o json",
+				Example: `
+  # Check whether the datasource is receiving profiling data
+  gcx profiles stats -d UID
+
+  # Output as JSON (times are milliseconds since epoch)
+  gcx profiles stats -d UID -o json`,
+			},
 		},
 		ExtraCommands: []signals.CommandBuilder{func(*providers.ConfigLoader) *cobra.Command {
 			return adaptiveStubCmd()
