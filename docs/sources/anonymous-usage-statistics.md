@@ -1,4 +1,6 @@
 ---
+aliases:
+  - /docs/grafana-cloud/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/
 title: Usage statistics
 labels:
   products:
