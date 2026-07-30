@@ -101,6 +101,41 @@ func TestQuery(t *testing.T) {
 		}, tsl["filters"])
 	})
 
+	t.Run("multiple filters are sorted by key", func(t *testing.T) {
+		var (
+			captured   map[string]any
+			decodedErr error
+		)
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			decodedErr = json.NewDecoder(r.Body).Decode(&captured)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
+		}))
+
+		req := testQueryReq()
+		req.Filters = map[string]string{
+			"resource.label.zone":       "us-east1-b",
+			"metric.label.device_name":  "sda",
+			"resource.label.project_id": "p1",
+		}
+		_, err := client.Query(context.Background(), "test-uid", req)
+		require.NoError(t, err)
+		require.NoError(t, decodedErr)
+
+		queries, ok := captured["queries"].([]any)
+		require.True(t, ok)
+		q, ok := queries[0].(map[string]any)
+		require.True(t, ok)
+		tsl, ok := q["timeSeriesList"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, []any{
+			"metric.type", "=", "compute.googleapis.com/instance/cpu/utilization",
+			"AND", "metric.label.device_name", "=", "sda",
+			"AND", "resource.label.project_id", "=", "p1",
+			"AND", "resource.label.zone", "=", "us-east1-b",
+		}, tsl["filters"])
+	})
+
 	// Captured live: the plugin prefixes GCP's JSON error envelope with
 	// "query failed: " — simplification must find the envelope mid-string.
 	t.Run("GCP error envelope simplified", func(t *testing.T) {

@@ -130,6 +130,9 @@ func parseFrame(df dataframe.Frame) (Frame, bool) {
 		if v, ok := toFloat64(values[i]); ok {
 			frame.Values = append(frame.Values, &v)
 		} else {
+			// Non-numeric value: drop the timestamp appended above so
+			// Timestamps and Values stay the same length. Distinct from a
+			// nil value, which is kept as a gap.
 			frame.Timestamps = frame.Timestamps[:len(frame.Timestamps)-1]
 		}
 	}

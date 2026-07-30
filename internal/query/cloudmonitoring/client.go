@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/config"
@@ -47,10 +49,12 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 
 // Query executes a time-series list query via the Grafana datasource query API.
 func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*QueryResponse, error) {
+	// Sort filter keys so the request body is deterministic; the filters are
+	// ANDed, so order doesn't change the result.
 	filters := make([]string, 0, 3+4*len(req.Filters))
 	filters = append(filters, "metric.type", "=", req.MetricType)
-	for key, value := range req.Filters {
-		filters = append(filters, "AND", key, "=", value)
+	for _, key := range slices.Sorted(maps.Keys(req.Filters)) {
+		filters = append(filters, "AND", key, "=", req.Filters[key])
 	}
 
 	groupBys := req.GroupBys
