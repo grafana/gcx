@@ -157,7 +157,7 @@ the template at `docs/_templates/research.md`. Must include:
 - At least one successful API call result
 - Confidence assessment per finding
 
-### Gate: User Approves Research
+### Checkpoint: Research Complete
 
 Present the findings and keep going — this is a checkpoint, not an approval
 wait, on either entry path. Ask only if something unresolved would materially
@@ -246,7 +246,7 @@ bin/gcx {name} {resource} delete <test-id> --force
 bin/gcx resources get {alias}
 ```
 
-### Gate: User Approves Design
+### Checkpoint: Design Complete
 
 Present the decisions — and whichever of ADR/spec the risk test actually called
 for — and keep going. No approval wait on either entry path. On the
@@ -260,7 +260,7 @@ recorded rather than re-derived — see [Entry paths](#entry-paths).
 > **Guide**: `docs/reference/provider-guide.md` (Steps 1–7)
 > **UX Guide**: `docs/design/`
 
-Implement one stage at a time per the approved spec. Each stage's doc is
+Implement one stage at a time per the plan. Each stage's doc is
 self-contained enough to resume in a fresh session.
 
 If `/build-spec` or `/build-task` skills are available, use them to drive
