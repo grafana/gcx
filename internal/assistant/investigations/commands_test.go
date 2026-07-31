@@ -2,10 +2,17 @@ package investigations_test
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/grafana/gcx/internal/assistant/investigations"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -127,4 +134,141 @@ func TestListTableCodec_TitleTruncation(t *testing.T) {
 	codec := &investigations.ListTableCodec{}
 	require.NoError(t, codec.Encode(&buf, summaries))
 	assert.Contains(t, buf.String(), "...")
+}
+
+// --- get command: v2 identifier merge ---
+
+const v1InvestigationsPath = "/api/plugins/grafana-assistant-app/resources/api/v1/investigations"
+
+// newGetLoader builds a ConfigLoader whose current context points at the
+// given httptest handler, so the get command's full path (mode detection,
+// resolve, snapshot/legacy fetch) runs against a fake stack.
+func newGetLoader(t *testing.T, handler http.Handler) *providers.ConfigLoader {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	cfgFile := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := fmt.Sprintf("contexts:\n  default:\n    grafana:\n      server: %s\n      org-id: 1\ncurrent-context: default\n", server.URL)
+	require.NoError(t, os.WriteFile(cfgFile, []byte(cfg), 0o600))
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+	return loader
+}
+
+// runGetJSON executes `investigations get <id> -o json` and returns the
+// decoded output object.
+func runGetJSON(t *testing.T, loader *providers.ConfigLoader, id string) map[string]any {
+	t.Helper()
+	cmd := investigations.Commands(loader)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"get", id, "-o", "json"})
+	require.NoError(t, cmd.Execute())
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &got))
+	return got
+}
+
+// TestGetCommand_V2ExposesBothIdentifiers verifies that on a v2 stack, get
+// output carries both investigationId (from the snapshot) and the backing
+// chatId (from the resolve step, which the snapshot itself does not include).
+func TestGetCommand_V2ExposesBothIdentifiers(t *testing.T) {
+	t.Setenv("GCX_ASSISTANT_API_VERSION", "v2")
+	t.Setenv("GCX_AGENT_MODE", "false")
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case v2InvestigationsPath + "/inv-1":
+			writeJSON(w, map[string]any{
+				"data": investigations.ResolveByIDResponse{InvestigationID: "inv-1", ChatID: "chat-1"},
+			})
+		case v2InvestigationsPath + "/inv-1/snapshot":
+			writeJSON(w, map[string]any{
+				"data": investigations.LodestoneState{"investigationId": "inv-1", "sessionStatus": "active"},
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	got := runGetJSON(t, newGetLoader(t, handler), "inv-1")
+	assert.Equal(t, "inv-1", got["investigationId"])
+	assert.Equal(t, "chat-1", got["chatId"])
+}
+
+// TestGetCommand_V2ServerProvidedChatIDWins verifies the client-side chatId
+// injection never clobbers a chatId the snapshot already carries.
+func TestGetCommand_V2ServerProvidedChatIDWins(t *testing.T) {
+	t.Setenv("GCX_ASSISTANT_API_VERSION", "v2")
+	t.Setenv("GCX_AGENT_MODE", "false")
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case v2InvestigationsPath + "/inv-1":
+			writeJSON(w, map[string]any{
+				"data": investigations.ResolveByIDResponse{InvestigationID: "inv-1", ChatID: "chat-resolved"},
+			})
+		case v2InvestigationsPath + "/inv-1/snapshot":
+			writeJSON(w, map[string]any{
+				"data": investigations.LodestoneState{"investigationId": "inv-1", "chatId": "chat-server"},
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	got := runGetJSON(t, newGetLoader(t, handler), "inv-1")
+	assert.Equal(t, "chat-server", got["chatId"])
+}
+
+// TestGetCommand_V1FallbackUnchanged verifies that when resolve returns 404
+// (not a v2 investigation), get falls back to legacy detail verbatim — no
+// chatId injection.
+func TestGetCommand_V1FallbackUnchanged(t *testing.T) {
+	t.Setenv("GCX_ASSISTANT_API_VERSION", "v2")
+	t.Setenv("GCX_AGENT_MODE", "false")
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case v2InvestigationsPath + "/inv-legacy":
+			w.WriteHeader(http.StatusNotFound)
+		case v1InvestigationsPath + "/inv-legacy":
+			writeJSON(w, map[string]any{
+				"data": investigations.Investigation{"id": "inv-legacy", "title": "Legacy detail"},
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	got := runGetJSON(t, newGetLoader(t, handler), "inv-legacy")
+	assert.Equal(t, map[string]any{"id": "inv-legacy", "title": "Legacy detail"}, got)
+	assert.NotContains(t, got, "chatId")
+}
+
+// TestGetCommand_V2NilSnapshotDoesNotPanic verifies a 200 snapshot response
+// with a null data envelope (decoded as a nil map) doesn't panic on the
+// chatId injection and still surfaces the resolved chatId.
+func TestGetCommand_V2NilSnapshotDoesNotPanic(t *testing.T) {
+	t.Setenv("GCX_ASSISTANT_API_VERSION", "v2")
+	t.Setenv("GCX_AGENT_MODE", "false")
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case v2InvestigationsPath + "/inv-1":
+			writeJSON(w, map[string]any{
+				"data": investigations.ResolveByIDResponse{InvestigationID: "inv-1", ChatID: "chat-1"},
+			})
+		case v2InvestigationsPath + "/inv-1/snapshot":
+			writeJSON(w, map[string]any{"data": nil})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	got := runGetJSON(t, newGetLoader(t, handler), "inv-1")
+	assert.Equal(t, map[string]any{"chatId": "chat-1"}, got)
 }

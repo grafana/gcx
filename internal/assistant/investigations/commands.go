@@ -246,7 +246,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get investigation detail.",
-		Long:  "Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise.",
+		Long:  "Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise. v2 output includes both identifiers: investigationId, and the backing chatId that the chat, narrative, and tools subcommands key on.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -269,18 +269,14 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			if mode.SupportsV2() {
-				resp, status, err := client.ResolveByID(cmd.Context(), args[0])
+				state, ok, err := getV2State(cmd, client, args[0])
 				if err != nil {
 					return err
 				}
-				if status == http.StatusOK {
-					state, err := client.GetState(cmd.Context(), resp.InvestigationID)
-					if err != nil {
-						return err
-					}
+				if ok {
 					return opts.IO.Encode(cmd.OutOrStdout(), state)
 				}
-				// 404 — not a v2 investigation; fall through to legacy detail.
+				// Not a v2 investigation; fall through to legacy detail.
 			}
 			inv, err := client.Get(cmd.Context(), args[0])
 			if err != nil {
@@ -291,6 +287,35 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// getV2State resolves id and fetches the full v2 session state. Returns
+// ok=false when the id does not resolve to a v2 investigation (resolve 404),
+// signalling the caller to fall back to legacy detail.
+func getV2State(cmd *cobra.Command, client *Client, id string) (LodestoneState, bool, error) {
+	resp, status, err := client.ResolveByID(cmd.Context(), id)
+	if err != nil {
+		return nil, false, err
+	}
+	if status != http.StatusOK {
+		return nil, false, nil
+	}
+	state, err := client.GetState(cmd.Context(), resp.InvestigationID)
+	if err != nil {
+		return nil, false, err
+	}
+	// The snapshot carries investigationId but not the backing chatId, which
+	// the chat/narrative/tools subcommands key on — surface the resolved one.
+	// Only set when absent so a future server-provided chatId wins over the
+	// injection. A 200 with an empty envelope decodes to a nil map — allocate
+	// so the injection can't panic.
+	if state == nil {
+		state = LodestoneState{}
+	}
+	if _, ok := state["chatId"]; !ok {
+		state["chatId"] = resp.ChatID
+	}
+	return state, true, nil
 }
 
 // --- create ---
