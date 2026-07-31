@@ -30,10 +30,9 @@ func (c *Client) CreateLodestone(ctx context.Context, req CreateLodestoneRequest
 	return assistanthttp.DoEnvelopeRequest[CreateLodestoneResponse](c.base, ctx, http.MethodPost, v2InvestigationsBase, req, "create investigation")
 }
 
-// ListLodestone returns v2 investigation summaries. The envelope is the same
-// shape as the v1 summary endpoint, so the existing InvestigationSummary type
-// and ListTableCodec are reused.
-func (c *Client) ListLodestone(ctx context.Context, opts ListLodestoneOptions) ([]InvestigationSummary, error) {
+// ListLodestone returns the v2 investigation collection: rich summaries plus
+// the total matching count for offset-based pagination.
+func (c *Client) ListLodestone(ctx context.Context, opts ListLodestoneOptions) (*LodestoneList, error) {
 	params := url.Values{}
 	if opts.State != "" {
 		params.Set("state", opts.State)
@@ -89,17 +88,15 @@ func (c *Client) ListLodestone(ctx context.Context, opts ListLodestoneOptions) (
 		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 	var envelope struct {
-		Data struct {
-			Investigations []InvestigationSummary `json:"investigations"`
-		} `json:"data"`
+		Data LodestoneList `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("decode list response: %w", err)
 	}
 	if envelope.Data.Investigations == nil {
-		return []InvestigationSummary{}, nil
+		envelope.Data.Investigations = []LodestoneInvestigationSummary{}
 	}
-	return envelope.Data.Investigations, nil
+	return &envelope.Data, nil
 }
 
 // ResolveByID maps a user-supplied investigation identifier to both forms

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/deeplink"
@@ -203,7 +204,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.validateForV2(); err != nil {
 				return err
 			}
-			summaries, err := client.ListLodestone(cmd.Context(), ListLodestoneOptions{
+			list, err := client.ListLodestone(cmd.Context(), ListLodestoneOptions{
 				State:         opts.State,
 				Q:             opts.Q,
 				Scope:         opts.Scope,
@@ -221,7 +222,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), summaries)
+			return opts.IO.Encode(cmd.OutOrStdout(), list)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -246,7 +247,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get investigation detail.",
-		Long:  "Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise.",
+		Long:  "Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise. v2 output includes both identifiers: investigationId, and the backing chatId that the chat, narrative, and tools subcommands key on.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -269,18 +270,14 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			if mode.SupportsV2() {
-				resp, status, err := client.ResolveByID(cmd.Context(), args[0])
+				state, ok, err := getV2State(cmd, client, args[0])
 				if err != nil {
 					return err
 				}
-				if status == http.StatusOK {
-					state, err := client.GetState(cmd.Context(), resp.InvestigationID)
-					if err != nil {
-						return err
-					}
+				if ok {
 					return opts.IO.Encode(cmd.OutOrStdout(), state)
 				}
-				// 404 — not a v2 investigation; fall through to legacy detail.
+				// Not a v2 investigation; fall through to legacy detail.
 			}
 			inv, err := client.Get(cmd.Context(), args[0])
 			if err != nil {
@@ -291,6 +288,35 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// getV2State resolves id and fetches the full v2 session state. Returns
+// ok=false when the id does not resolve to a v2 investigation (resolve 404),
+// signalling the caller to fall back to legacy detail.
+func getV2State(cmd *cobra.Command, client *Client, id string) (LodestoneState, bool, error) {
+	resp, status, err := client.ResolveByID(cmd.Context(), id)
+	if err != nil {
+		return nil, false, err
+	}
+	if status != http.StatusOK {
+		return nil, false, nil
+	}
+	state, err := client.GetState(cmd.Context(), resp.InvestigationID)
+	if err != nil {
+		return nil, false, err
+	}
+	// The snapshot carries investigationId but not the backing chatId, which
+	// the chat/narrative/tools subcommands key on — surface the resolved one.
+	// Only set when absent so a future server-provided chatId wins over the
+	// injection. A 200 with an empty envelope decodes to a nil map — allocate
+	// so the injection can't panic.
+	if state == nil {
+		state = LodestoneState{}
+	}
+	if _, ok := state["chatId"]; !ok {
+		state["chatId"] = resp.ChatID
+	}
+	return state, true, nil
 }
 
 // --- create ---
@@ -450,7 +476,8 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- table codecs ---
 
-// ListTableCodec renders []InvestigationSummary as a table.
+// ListTableCodec renders []InvestigationSummary (v1) or *LodestoneList (v2)
+// as a table with the same columns for both API versions.
 type ListTableCodec struct {
 	Wide bool
 }
@@ -463,11 +490,6 @@ func (c *ListTableCodec) Format() format.Format {
 }
 
 func (c *ListTableCodec) Encode(w io.Writer, v any) error {
-	summaries, ok := v.([]InvestigationSummary)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []InvestigationSummary")
-	}
-
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	if c.Wide {
 		fmt.Fprintln(tw, "ID\tTITLE\tSTATUS\tCREATED BY\tCREATED\tUPDATED")
@@ -475,24 +497,41 @@ func (c *ListTableCodec) Encode(w io.Writer, v any) error {
 		fmt.Fprintln(tw, "ID\tTITLE\tSTATUS\tUPDATED")
 	}
 
-	for _, s := range summaries {
-		title := truncate(s.Title, 40)
-		updated := assistanthttp.FormatTime(s.UpdatedAt)
-
-		if c.Wide {
-			created := assistanthttp.FormatTime(s.CreatedAt)
+	switch list := v.(type) {
+	case []InvestigationSummary:
+		for _, s := range list {
 			createdBy := "-"
 			if s.Source != nil && s.Source.UserID != "" {
 				createdBy = s.Source.UserID
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				s.ID, title, s.State, createdBy, created, updated)
-		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-				s.ID, title, s.State, updated)
+			c.writeRow(tw, s.ID, s.Title, s.State, createdBy, s.CreatedAt, s.UpdatedAt)
 		}
+	case *LodestoneList:
+		for _, s := range list.Investigations {
+			createdBy := s.OwnerUserID
+			if s.Source != nil && s.Source.UserID != "" {
+				createdBy = s.Source.UserID
+			}
+			if createdBy == "" {
+				createdBy = "-"
+			}
+			c.writeRow(tw, s.ID, s.Title, s.State, createdBy, s.CreatedAt, s.UpdatedAt)
+		}
+	default:
+		return errors.New("invalid data type for table codec: expected []InvestigationSummary or *LodestoneList")
 	}
 	return tw.Flush()
+}
+
+func (c *ListTableCodec) writeRow(w io.Writer, id, title, state, createdBy string, createdAt, updatedAt time.Time) {
+	title = truncate(title, 40)
+	updated := assistanthttp.FormatTime(updatedAt)
+	if c.Wide {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			id, title, state, createdBy, assistanthttp.FormatTime(createdAt), updated)
+	} else {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", id, title, state, updated)
+	}
 }
 
 func (c *ListTableCodec) Decode(_ io.Reader, _ any) error {
