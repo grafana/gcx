@@ -63,7 +63,7 @@ func TestFormatError(t *testing.T) {
 			var carrier interface{ HTTPStatusCode() int }
 			require.ErrorAs(t, err, &carrier, "every FormatError form must carry its status")
 			assert.Equal(t, tt.code, carrier.HTTPStatusCode())
-			assert.Nil(t, errors.Unwrap(err),
+			require.NoError(t, errors.Unwrap(err),
 				"FormatError never wrapped anything and must not start: converters walk these chains")
 
 			// Exit-code tripwire: implementing APIServiceName and APIUserMessage
@@ -75,7 +75,7 @@ func TestFormatError(t *testing.T) {
 				APIServiceName() string
 				APIUserMessage() string
 			}
-			assert.False(t, errors.As(err, &serviceShaped),
+			assert.NotErrorAs(t, err, &serviceShaped,
 				"the provider error must implement only the status accessor")
 		})
 	}
@@ -87,18 +87,18 @@ func TestFormatError(t *testing.T) {
 func TestHandleErrorResponseReadFailureCarriesStatusAndCause(t *testing.T) {
 	readErr := errors.New("boom")
 	resp := &http.Response{
-		StatusCode: 502,
+		StatusCode: http.StatusBadGateway,
 		Body:       io.NopCloser(&failingReader{err: readErr}),
 	}
 
 	err := providers.HandleErrorResponse(resp)
 	require.Error(t, err)
 	assert.Equal(t, "request failed with status 502 (could not read body: boom)", err.Error())
-	assert.ErrorIs(t, err, readErr, "the reader error must stay in the unwrap chain")
+	require.ErrorIs(t, err, readErr, "the reader error must stay in the unwrap chain")
 
 	var carrier interface{ HTTPStatusCode() int }
 	require.ErrorAs(t, err, &carrier)
-	assert.Equal(t, 502, carrier.HTTPStatusCode(),
+	assert.Equal(t, http.StatusBadGateway, carrier.HTTPStatusCode(),
 		"a body-read failure must not lose the status the response already carried")
 }
 
