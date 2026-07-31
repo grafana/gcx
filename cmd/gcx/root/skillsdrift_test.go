@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -220,12 +221,26 @@ func extractInvocations(content string) []invocation {
 	return invs
 }
 
+// gcxCommandWords lists the ways a skill can spell an invocation of this CLI.
+// Contributor-facing skills use the built binary (`bin/gcx …`) because
+// exercising a fresh build is the point; end-user skills use the installed
+// `gcx`. Both resolve against the same command tree, so both are validated.
+func gcxCommandWords() []string {
+	return []string{"gcx", "bin/gcx", "./bin/gcx"}
+}
+
+// isGcxCommandWord reports whether tok is one of the accepted spellings of the
+// gcx binary in command position.
+func isGcxCommandWord(tok string) bool {
+	return slices.Contains(gcxCommandWords(), tok)
+}
+
 // inlineGcxCommands returns the simple commands found in backtick code spans
 // of a prose or table line. A span opens and closes with equal-length backtick
 // runs, so double-backtick spans quoting text with backticks are matched too.
-// Only spans starting with "gcx " are treated as invocations; anything else
-// (fragments like `--force` or `resources delete`) is a mention, not a
-// runnable command.
+// Only spans starting with a gcx command word (see gcxCommandPrefixes) are
+// treated as invocations; anything else (fragments like `--force` or
+// `resources delete`) is a mention, not a runnable command.
 func inlineGcxCommands(line string) [][]string {
 	var cmds [][]string
 	for i := 0; i < len(line); {
@@ -244,8 +259,11 @@ func inlineGcxCommands(line string) [][]string {
 		}
 		content := strings.TrimSpace(line[i : i+end])
 		i += end + len(delim)
-		if strings.HasPrefix(content, "gcx ") {
-			cmds = append(cmds, parseCommands(content)...)
+		for _, w := range gcxCommandWords() {
+			if strings.HasPrefix(content, w+" ") {
+				cmds = append(cmds, parseCommands(content)...)
+				break
+			}
 		}
 	}
 	return cmds
@@ -257,7 +275,7 @@ func gcxArgs(tokens []string) ([]string, bool) {
 	for len(tokens) > 0 && (envAssignRe.MatchString(tokens[0]) || isShellKeyword(tokens[0])) {
 		tokens = tokens[1:]
 	}
-	if len(tokens) == 0 || tokens[0] != "gcx" {
+	if len(tokens) == 0 || !isGcxCommandWord(tokens[0]) {
 		return nil, false
 	}
 	return tokens[1:], true
