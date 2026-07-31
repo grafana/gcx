@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/mysql"
 	"github.com/grafana/gcx/internal/query/postgres"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -201,8 +202,16 @@ that do not have a dedicated subcommand.`,
 
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
+			case "mysql":
+				resp, err := runMySQLQuery(ctx, cfg, datasourceUID, expr, start, end, step, cmd.ErrOrStderr())
+				if err != nil {
+					return err
+				}
+
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
+
 			default:
-				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb, clickhouse, postgres)", dsType)
+				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb, clickhouse, postgres, mysql)", dsType)
 			}
 		},
 	}
@@ -225,6 +234,33 @@ func runClickHouseQuery(ctx context.Context, cfg config.NamespacedRESTConfig, da
 
 	req := clickhouse.QueryRequest{
 		RawSQL: clickhouse.EnforceLimit(expr, 100, 1000),
+		Start:  start,
+		End:    end,
+	}
+	if step > 0 {
+		req.IntervalMs = step.Milliseconds()
+	}
+
+	resp, err := client.Query(ctx, datasourceUID, req)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	return resp, nil
+}
+
+// runMySQLQuery executes the auto-detected mysql branch of QueryCmd.
+func runMySQLQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time, step time.Duration, warnw io.Writer) (*querysql.QueryResponse, error) {
+	client, err := mysql.NewClient(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	sql, capped := mysql.EnforceLimit(expr, 100, 1000)
+	if capped {
+		cmdio.Warning(warnw, "LIMIT in query exceeds the maximum of 1000 and was capped")
+	}
+	req := mysql.QueryRequest{
+		RawSQL: sql,
 		Start:  start,
 		End:    end,
 	}
