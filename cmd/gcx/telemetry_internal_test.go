@@ -521,6 +521,33 @@ func TestBuildUsageEventKeepsGrafanaAuthMethodOnEveryOutcome(t *testing.T) {
 	}
 }
 
+// Golden privacy sweep for the new fields: every capture slot is fed content
+// shaped like the things that must never travel — a resource name and a
+// namespace inside a server-controlled reason, a credential in the auth slot —
+// and the wire must carry none of it anywhere, while still carrying the
+// clamped values the vocabulary allows.
+func TestBuildUsageEventNewFieldsLeakNothing(t *testing.T) {
+	isolate(t)
+	capture.SetHTTPStatus(500)
+	capture.SetK8sReason(`dashboards "acme-revenue-2026" not found in namespace stacks-777`)
+	capture.SetGrafanaAuthMethod("Bearer glsa_v3ry5ecret")
+
+	data, err := json.Marshal(buildUsageEvent(pushInfo(), time.Now(), 1))
+	require.NoError(t, err)
+
+	wire := string(data)
+	for _, leaked := range []string{"acme-revenue-2026", "stacks-777", "glsa_", "Bearer", "not found in namespace"} {
+		assert.NotContains(t, wire, leaked,
+			"server- or config-controlled content must never reach the wire")
+	}
+
+	var fields map[string]any
+	require.NoError(t, json.Unmarshal(data, &fields))
+	assert.InDelta(t, float64(500), fields["http_status"], 0)
+	assert.Equal(t, telemetry.K8sReasonOther, fields["k8s_reason"])
+	assert.Equal(t, telemetry.AuthMethodUnknown, fields["grafana_auth_method"])
+}
+
 // Path safety is deliberately not asserted here. buildUsageEvent copies
 // TelemetryInfo.Command, .Flags and .OutputFormat verbatim — it has no
 // sanitisation of its own, so a test feeding it a path would be asserting a
