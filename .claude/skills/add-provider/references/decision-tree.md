@@ -11,8 +11,10 @@ Does the product expose a K8s-compatible API via Grafana's /apis endpoint?
 │
 └── NO → Does the product have its own REST API?
     ├── YES → Create a new provider
-    │         The provider wraps the product's REST API and translates
-    │         to/from the K8s envelope format.
+    │         The provider wraps the product's REST API. Plain provider
+    │         commands are a complete integration on their own; resource
+    │         types that belong in the `gcx resources` pipeline additionally
+    │         get an adapter + K8s envelope mapping.
     │
     └── NO → The product likely has no external API.
               Check if it's a UI-only feature or if the API is internal.
@@ -42,23 +44,29 @@ Grafana's native K8s API and need no provider.
 **Examples**: SLO (plugin API, custom status commands), Synthetic Monitoring
 (separate service URL + token), OnCall (separate API).
 
-**Important: CRUD via unified resources path**. Once a provider implements
-`ResourceAdapter` and registers a static descriptor (via `adapter.Register()`
-in its `init()` function), its resource types become accessible through the
-unified `gcx resources` command:
+**Adapters are conditional, not mandatory.** Plain provider commands are valid
+and first-class on their own — an adapter must never be created merely to
+unlock a CRUD verb (CONSTITUTION § Provider Architecture). When a resource type
+does belong in the unified pipeline, the provider implements `ResourceIdentity`
+on the domain type, builds a `TypedCRUD[T]`-backed `adapter.Registration`
+(non-nil `Schema`), and returns it from `TypedRegistrations()` — the single
+`providers.Register()` call in `init()` performs the registration (provider code
+never calls `adapter.Register()` directly). The type then ALSO becomes
+accessible through `gcx resources`:
 
 ```
-gcx resources get slo           # replaces: gcx slo definitions list
-gcx resources get slo/<uuid>   # replaces: gcx slo definitions get <uuid>
-gcx resources push slo -p ./   # replaces: gcx slo definitions push
-gcx resources pull slo -p ./   # replaces: gcx slo definitions pull
-gcx resources delete slo/<id>  # replaces: gcx slo definitions delete <id>
+gcx resources get slos          # alongside: gcx slo definitions list
+gcx resources get slos/<uuid>   # alongside: gcx slo definitions get <uuid>
+gcx resources push -p ./        # alongside: gcx slo definitions push
+gcx resources pull slos -p ./   # alongside: gcx slo definitions pull
+gcx resources delete slos/<id>  # alongside: gcx slo definitions delete <id>
 ```
 
-The provider-specific top-level commands (`gcx slo`, `gcx synthetic-monitoring`,
-`gcx alert`) remain available for backward compatibility but print a
-deprecation warning to stderr. New providers should implement `ResourceAdapter`
-alongside the existing command tree from the start.
+**Dual CRUD access paths are permanent** for adapter-backed resources
+(CONSTITUTION § Provider Architecture): neither the provider commands nor the
+`resources` path is deprecated, no deprecation warnings are printed, and both
+must return identical JSON/YAML by construction (both go through the adapter's
+TypedCRUD).
 
 ### Edge cases
 

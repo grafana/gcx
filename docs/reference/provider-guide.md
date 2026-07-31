@@ -32,8 +32,16 @@ type Provider interface {
     Commands()   []*cobra.Command
     Validate(cfg map[string]string) error
     ConfigKeys() []ConfigKey
+    TypedRegistrations() []adapter.Registration
 }
 ```
+
+`TypedRegistrations()` returns the adapter registrations for resource types the
+provider exposes through the unified `gcx resources` pipeline (see Step 6). Each
+registration must carry a non-nil `Schema`. Commands-only providers with no
+adapter-backed resources return `nil` — that is a valid, first-class shape
+(plain provider commands do not require an adapter, and an adapter must never be
+created merely to unlock a CRUD verb; see CONSTITUTION § Provider Architecture).
 
 A minimal skeleton:
 
@@ -121,61 +129,69 @@ Guidelines:
 `Commands()` returns the Cobra commands to add under the gcx root. Each
 command receives provider config by reading the active context at call time.
 
-Follow the Options pattern used by all other commands — accept `*cmdconfig.Options`
-as a constructor argument and call `configOpts.LoadConfig(cmd.Context())` inside `RunE`:
+Provider implementations must use `providers.ConfigLoader` for config and auth
+resolution (CONSTITUTION § Dependency Rules) — do not import `cmd/gcx/config`
+from `internal/providers/` (that inverts the `cmd/` → `internal/` layering) and
+do not construct HTTP clients or load credentials independently. The pattern,
+mirroring the real SLO provider (`internal/providers/slo/provider.go`):
 
 ```go
-import cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+import (
+    "github.com/spf13/cobra"
+    "github.com/grafana/gcx/internal/providers"
+)
 
 // Commands returns a "slo" command group with subcommands underneath it.
-// Config flags are bound once on the parent's PersistentFlags so every
-// subcommand inherits them automatically.
+// One ConfigLoader is created per provider tree; its flags are bound once on
+// the parent's PersistentFlags so every subcommand inherits them.
 func (p *SLOProvider) Commands() []*cobra.Command {
-    configOpts := &cmdconfig.Options{}
+    loader := &providers.ConfigLoader{}
 
     sloCmd := &cobra.Command{
         Use:   "slo",
         Short: p.ShortDesc(),
+        // Chain the root PersistentPreRun so global setup (logging,
+        // telemetry, context propagation) still runs.
+        PersistentPreRun: func(cmd *cobra.Command, args []string) {
+            if root := cmd.Root(); root.PersistentPreRun != nil {
+                root.PersistentPreRun(cmd, args)
+            }
+        },
     }
 
-    // Bind once on the parent — all subcommands inherit these flags.
-    configOpts.BindFlags(sloCmd.PersistentFlags())
+    // Bind config flags once on the parent — all subcommands inherit them.
+    loader.BindFlags(sloCmd.PersistentFlags())
 
-    sloCmd.AddCommand(newListCommand(configOpts))
-    // sloCmd.AddCommand(newGetCommand(configOpts))  // add more subcommands here
+    sloCmd.AddCommand(newListCommand(loader))
+    // sloCmd.AddCommand(newGetCommand(loader))  // add more subcommands here
 
     return []*cobra.Command{sloCmd}
 }
 
-func newListCommand(configOpts *cmdconfig.Options) *cobra.Command {
+func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
     return &cobra.Command{
         Use:   "list",
         Short: "List SLO definitions.",
         RunE: func(cmd *cobra.Command, _ []string) error {
-            cfg, err := configOpts.LoadConfig(cmd.Context())
+            // Grafana-stack auth (URL + token) for plugin/K8s APIs:
+            cfg, err := loader.LoadGrafanaConfig(cmd.Context())
             if err != nil {
                 return err
             }
-            curCtx := cfg.GetCurrentContext()
-
-            providerCfg := curCtx.Providers["slo"]  // map[string]string
-
-            // Validate before use
-            p := &SLOProvider{}
-            if err := p.Validate(providerCfg); err != nil {
-                return err
-            }
-
-            token := providerCfg["token"]
-            url   := providerCfg["url"]
-            // ... make API calls ...
-            _ = token
-            _ = url
+            // ... make API calls with cfg ...
+            _ = cfg
             return nil
         },
     }
 }
 ```
+
+Pick the loader method that matches your backend surface: `LoadGrafanaConfig`
+(stack URL + token for plugin/K8s APIs), `LoadCloudConfig` /
+`LoadCloudTokenConfig` (GCOM control plane), or `LoadProviderConfig(ctx, name)`
+(provider-specific keys declared in `ConfigKeys()`). See
+[patterns.md – Pattern 16, Provider ConfigLoader](../architecture/patterns.md)
+for the full method-to-consumer table.
 
 **Wiring note:** The root command automatically adds every provider's commands
 via `p.Commands()...` — you do not need to touch `cmd/gcx/root/command.go`.
@@ -387,7 +403,7 @@ func init() {
 
 The `Register()` function appends your provider to the global registry automatically. Once registered via `init()`:
 - Its commands appear under `gcx`
-- Its name and description appear in `gcx providers`
+- Its name and description appear in `gcx providers list`
 - Its secrets are correctly redacted by `gcx config view`
 - Its config is loaded from YAML and env vars automatically
 
@@ -551,13 +567,13 @@ see `internal/providers/redact_test.go` for table-driven examples.
 
 When implementing a new provider (see also [provider-checklist.md](../design/provider-checklist.md) for UX compliance requirements):
 
-- [ ] Struct implements all five `Provider` interface methods
+- [ ] Struct implements all six `Provider` interface methods (including `TypedRegistrations()`, which may return `nil` for commands-only providers)
 - [ ] `Name()` is lowercase, unique, and stable (it is the map key in config files)
 - [ ] All config keys read by commands are declared in `ConfigKeys()`
 - [ ] Secret keys (`passwords`, `tokens`, `api_keys`) have `Secret: true`
 - [ ] `Validate` returns a helpful error message pointing to the `config set` command
-- [ ] Provider is added to `internal/providers/registry.go:All()`
+- [ ] Provider self-registers via a single `providers.Register()` call in `init()`, and the package is blank-imported in `cmd/gcx/root/command.go`
 - [ ] `mise run build` succeeds
 - [ ] `mise run tests` passes
-- [ ] `gcx providers` lists the new provider
+- [ ] `gcx providers list` lists the new provider
 - [ ] `gcx config view` redacts secrets correctly

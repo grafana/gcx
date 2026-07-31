@@ -98,10 +98,15 @@ Answer each decision from the guide, grounded in research findings:
 
 1. **Auth strategy** — reuse Grafana token or separate credentials?
 2. **Client type** — plugin API, K8s API, or external service?
-3. **Envelope mapping** — how do API objects map to K8s envelope?
-4. **Command surface** — CRUD + which beyond-CRUD commands?
-5. **Package layout** — flat or subpackaged?
-6. **Staging** — how to break into shippable stages?
+3. **Adapter-backed or commands-only?** — plain provider commands are valid on
+   their own; register a `ResourceAdapter` (via `TypedRegistrations()`) only when
+   the resource genuinely belongs in the `gcx resources` push/pull pipeline. Never
+   create an adapter merely to unlock a CRUD verb (CONSTITUTION § Provider
+   Architecture).
+4. **Envelope mapping** *(adapter-backed resources only)* — how do API objects map to the K8s envelope?
+5. **Command surface** — which verbs are actually implemented (CRUD subset + beyond-CRUD)?
+6. **Package layout** — flat or subpackaged?
+7. **Staging** — how to break into shippable stages?
 
 For beyond-CRUD commands: brainstorm based on real APIs found in research
 (status, timeline, validation, etc.). Present options to user — include
@@ -125,9 +130,8 @@ Write the implementation plan in `docs/specs/{product}-provider/`:
 - Top-level plan with all stages, file tree, and decisions summary
 - Per-stage docs with scope, files to create, and acceptance criteria
 
-Reference implementations for plan structure:
-- SLO: `docs/specs/slo-provider/2026-03-04-slo-provider-plan.md`
-- Synth: `docs/specs/synth-provider/2026-03-06-synth-provider-plan.md`
+Use the templates in `docs/_templates/` for structure; `docs/plans/` holds
+precedent planning documents.
 
 ### 2d. Write Smoke Test Plan
 
@@ -135,22 +139,23 @@ Reference implementations for plan structure:
 test commands using real values (not placeholders). These are executed in
 Stage 4 after implementation.
 
-Example pattern (replace with real product/resource names in actual spec):
+Cover only the verbs the stage actually implements — do not smoke-test CRUD
+verbs the provider doesn't expose. Destructive commands use `--force`
+(never `--yes`; see `docs/design/safety.md` §3.2). Example pattern (replace
+with real product/resource names in actual spec):
 ```bash
 # Provider appears in list
-gcx providers | grep {name}
+gcx providers list | grep {name}
 
 # Config secrets are redacted
 gcx config view | grep {name}
 
-# CRUD operations work
+# Implemented operations work (subset per stage)
 gcx {name} {resource} list
 gcx {name} {resource} get <test-id>
-gcx {name} {resource} push ./testdata/{resource}.yaml
-gcx {name} {resource} pull -d ./tmp/
-gcx {name} {resource} delete <test-id> --yes
+gcx {name} {resource} delete <test-id> --force
 
-# Unified resources path works
+# Unified resources path works (adapter-backed resources only)
 gcx resources get {alias}
 ```
 
@@ -172,18 +177,18 @@ If `/build-spec` or `/build-task` skills are available, use them to drive
 implementation. Otherwise, follow `provider-guide.md` Steps 1–7 directly.
 Summary of the key steps:
 
-1. Provider interface + `init()` + `configLoader` (copy from SLO reference)
+1. Provider interface + `init()` with a single `providers.Register()` call + `providers.ConfigLoader` (mirror the SLO reference)
 2. Config keys + validation
 3. Commands with UX compliance
-4. Types + client + adapter per resource type
-5. Register (blank import + ResourceAdapter)
-6. Tests (interface compliance, adapter round-trip, client httptest)
+4. Types + client; adapter only for resources placed in the `resources` pipeline (returned from `TypedRegistrations()`, non-nil `Schema`)
+5. Register (blank import in `cmd/gcx/root/command.go`; adapter registration flows through `TypedRegistrations()` — never call `adapter.Register()` directly)
+6. Tests (interface compliance, client httptest request mapping; adapter round-trip only when an adapter exists)
 
 **Key patterns** (see provider-guide.md for details):
 - Hand-roll HTTP client (~200 LOC) — don't use generated OpenAPI clients
-- Copy full `configLoader` from `internal/providers/slo/provider.go`
+- Use `providers.ConfigLoader` (instantiate once in `Commands()`, `BindFlags` on the parent) — don't hand-roll config loading or import `cmd/gcx/config`
 - Config key names use hyphen-case
-- Adapter must strip server-generated fields on Create/Update
+- Adapter-backed resources must strip server-generated fields on Create/Update
 
 ### Gate: Stage Complete
 
@@ -202,14 +207,20 @@ a real Grafana instance. Record results (pass/fail + output).
 
 From `docs/design/provider-checklist.md` and `docs/reference/provider-guide.md`:
 
-**Interface**: All 5 Provider methods, `Name()` lowercase/unique, ConfigKeys
+**Interface**: All 6 Provider methods (incl. `TypedRegistrations()` — `nil` is
+valid for commands-only providers), `Name()` lowercase/unique, ConfigKeys
 complete, secrets marked, Validate returns actionable errors, blank import added.
 
 **UX**: `-o json/yaml` support, text table default, actionable error suggestions,
 no `os.Exit()`, cmdio status messages, help text standards, push idempotent,
 format-agnostic data fetching, promql-builder for PromQL.
 
-**Build**: `mise run all`, `gcx providers` lists it, `config view` redacts.
+**Agent contract**: every new leaf command has an entry in
+`cmd/gcx/root/testdata/output_classes.json` and a token-cost annotation (plus
+`llm_hint` for medium/large) — the `TestConsistency_*` and `TestAgentConformance_*`
+suites in `cmd/gcx/root/` fail CI otherwise.
+
+**Build**: `mise run all`, `gcx providers list` lists it, `config view` redacts.
 
 ### 4c. Update Architecture Docs
 
@@ -230,14 +241,14 @@ All smoke tests pass, all checklists green, docs updated.
 | SLO | Same Grafana token | Plugin API | `internal/providers/slo/provider.go` |
 | Synth | Separate URL + token | External service | `internal/providers/synth/provider.go` |
 
-Spec plans: `docs/specs/slo-provider/`, `docs/specs/synth-provider/`
-
 ## Common Pitfalls
 
 | Pitfall | Mitigation |
 |---------|------------|
 | K8s CRDs not externally accessible | Verify with real API call before choosing K8s client |
 | Incomplete OpenAPI specs | Cross-reference with source code route handlers |
-| configLoader is non-trivial | Copy full impl from SLO, don't simplify |
+| Hand-rolled config loading | Use `providers.ConfigLoader` (see SLO reference); never import `cmd/gcx/config` from `internal/providers/` |
 | Missing blank import | Add `_ ".../{name}"` in `cmd/gcx/root/command.go` |
+| Adapter created just for CRUD verbs | Commands-only providers are first-class; adapters only for resources that belong in the `resources` pipeline |
 | readOnly fields in POST/PUT | Adapter must strip server-generated fields |
+| Missing output class / token cost | New leaves fail `TestConsistency_*` in `cmd/gcx/root/` — add the `output_classes.json` entry + annotation |
