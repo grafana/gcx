@@ -80,6 +80,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newResumeCommand(loader),
 		newModeCommand(loader),
 		newShareCommand(loader),
+		newEvidenceCommand(loader),
 		newChatCommand(loader),
 		newNarrativeCommand(loader),
 		newToolsCommand(loader),
