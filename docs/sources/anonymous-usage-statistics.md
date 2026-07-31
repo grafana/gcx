@@ -14,11 +14,11 @@ weight: 4
 
 `gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
 
-The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values, free-form flag values, and resource names are never sent, and the flags you set are recorded by name only. No raw numeric count fields are sent.
+The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values, free-form flag values, and resource names are never sent, and the flags you set are recorded by name only. Numeric values such as exit code, duration, and HTTP status describe command execution or protocol behavior. No raw batch or resource counts are sent.
 
 For the resource commands that operate on batches, the size of the operation is sent as one of seven fixed categories rather than as a number. Two of those categories, `0` and `1`, cover a single value each, so those two sizes are exact; every larger category is a range. See [How to read the batch fields](#how-to-read-the-batch-fields).
 
-Two further fields describe how the command ran rather than naming a flag: `output_format` records the output format used, from a fixed list of known formats, and `dry_run` records whether the operation executed in dry-run mode. `output_format` is read from `--output`; `dry_run` is derived from the operation and is set even for commands that have no `--dry-run` flag. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
+Further fields describe how the command ran rather than naming a flag: `output_format` records the output format used, from a fixed list of known formats; `dry_run` records whether the operation executed in dry-run mode; and `grafana_auth_method` records the authentication category selected for the Grafana connection, from a fixed vocabulary and never the credential itself. `output_format` is read from `--output`; `dry_run` is derived from the operation and is set even for commands that have no `--dry-run` flag; `grafana_auth_method` is described in [Failure and authentication fields](#failure-and-authentication-fields). Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
 
 {{< admonition type="note" >}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usage reporting.{{< /admonition >}}
 
@@ -81,7 +81,7 @@ These fields are easy to misread, so the following constraints are part of the c
 
 ### Canceled invocations
 
-An invocation that stopped before it finished reports `outcome: canceled` with `exit_code: 5`, and `error_kind` present but empty, because a stop is not a kind of failure. No new property is collected — a canceled invocation carries exactly the same fields as any other, and like every other event it is sent on a best-effort basis: pressing Ctrl-C a second time ends the process immediately, before the report is sent.
+An invocation that stopped before it finished reports `outcome: canceled` with `exit_code: 5`, and `error_kind` present but empty, because a stop is not a kind of failure. No property is collected specifically for cancellation — and the failure fields described in [Failure and authentication fields](#failure-and-authentication-fields) are never attached to one, for the same reason. Like every other event it is sent on a best-effort basis: pressing Ctrl-C a second time ends the process immediately, before the report is sent.
 
 Two things this value does *not* tell you:
 
@@ -94,6 +94,28 @@ This moves the denominator of every outcome rate in two ways, so compare rates w
 
 - **Some invocations start being counted at all.** Earlier versions reported nothing for an invocation that ended on the interrupt path — exit code `5` with no error printed. Those now count towards the total, so the share of `ok` invocations falls without anything having got worse. This is narrower than "every Ctrl-C": an interrupt a command turns into a clean shutdown was always reported as `ok`, and one that leaves a batch partially applied was always reported as a partial failure.
 - **Some invocations change label.** Exit-code-`5` invocations that *were* already reported — a declined prompt, for instance — moved out of `runtime_error` with `error_kind: error` and into `canceled` with an empty `error_kind`. Both the `runtime_error` share and the volume of `error_kind: error` drop for the same reason, with no change in what happened.
+
+### Failure and authentication fields
+
+For Grafana connections, `gcx` records the authentication category selected, such as `oauth`, `token`, `basic`, `mtls`, `anonymous`, or `unknown`, but never credentials. For some failed commands, it may also record a 4xx/5xx HTTP status or a fixed Kubernetes reason category; these details are omitted for partial failures and cancellations.
+
+| Field | Description | Example |
+| :---- | :---- | :---- |
+| `http_status` | The HTTP transport status of the failing request, only ever `400`–`599`. Never a status embedded inside a response body, and never a Kubernetes status code. | `403` |
+| `k8s_reason` | The Kubernetes status reason of the failing API call, from a fixed vocabulary. Any reason outside the vocabulary is sent as `other`, never verbatim. | `NotFound` |
+| `grafana_auth_method` | The authentication category selected for the Grafana connection. Exactly one of `oauth`, `token`, `basic`, `mtls`, `anonymous`, or `unknown`. Never a raw configured value, never credential material. | `token` |
+
+The `k8s_reason` vocabulary is exactly: `Unauthorized`, `Forbidden`, `NotFound`, `AlreadyExists`, `Conflict`, `Gone`, `Invalid`, `BadRequest`, `MethodNotAllowed`, `NotAcceptable`, `RequestEntityTooLarge`, `UnsupportedMediaType`, `Expired`, `Timeout`, `ServerTimeout`, `TooManyRequests`, `InternalError`, `ServiceUnavailable`, `StorageReadError`, plus the `other` sentinel.
+
+These fields are easy to misread, so the following constraints are part of the contract:
+
+- **`http_status` is a transport status, never a body status.** Datasource queries can fail inside an HTTP 200 response, with the real error and its status embedded in the body. Such a failure sets no `http_status` at all. In exactly that case `error_kind` may still say `auth_failure`, because the command classifies and explains errors on the embedded status; the divergence is deliberate and must not be "fixed" by aligning either side.
+- **Only failure statuses travel.** A status outside `400`–`599` — a success, a redirect, anything malformed — is omitted, never coerced into the range.
+- **Coverage is partial, so absence proves nothing.** `http_status` is recorded for selected provider APIs that use the shared error helper, for datasource query endpoints, and for `gcx api`. GCOM, Fleet, k6, Faro, Adaptive Metrics, the assistant, and other clients are not instrumented, so the absence of `http_status` must never be read as "no HTTP failure occurred".
+- **Kubernetes failures report a reason, never a status.** A Kubernetes API error sets `k8s_reason` and leaves `http_status` empty; the status code inside a Kubernetes error never feeds `http_status`.
+- **Both failure fields are omitted for exit codes `4` and `5`.** A partial failure has no single causal status — the one that surfaced would stand in for many — and a canceled run is not a failure.
+- **`grafana_auth_method` describes Grafana connection authentication only**, never Grafana Cloud/GCOM authentication. Absent means no Grafana context was selected, or the invocation selected several different methods (`gcx config check` examines every context, so it reports no single method when they differ). `anonymous` means a valid selection with no credential material — requests went out unauthenticated. `unknown` means the configured method could not be classified. A selected method whose credential is invalid or rejected reports the method: which authentication category fails is precisely what this field exists to show.
+- **`grafana_auth_method` is present on every outcome** — success, failure, partial failure, and cancellation — whenever a Grafana context was selected. `gcx login` reports the method it actually resolved by probing, even when the login fails after authentication was resolved.
 
 ### Parse-failure fields
 
