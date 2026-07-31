@@ -237,6 +237,91 @@ func TestEncode_JSONFields_SingleKeyEnvelope(t *testing.T) {
 	}
 }
 
+// listEnvelopeResult is a multi-key list envelope (items + list-level
+// metadata) that opts into item-level --json handling via ListItemsKey.
+type listEnvelopeItem struct {
+	UID  string `json:"uid"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type listEnvelopeResult struct {
+	Investigations []listEnvelopeItem `json:"investigations"`
+	Total          int64              `json:"total"`
+}
+
+func (listEnvelopeResult) ListItemsKey() string { return "investigations" }
+
+func TestEncode_JSONFields_ListEnvelope(t *testing.T) {
+	// A multi-key list envelope marked with ListItemsKey must apply field
+	// selection per item and pass metadata siblings (e.g. total) through.
+	tests := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{
+			name: "populated envelope selects per item and preserves metadata",
+			value: &listEnvelopeResult{
+				Investigations: []listEnvelopeItem{
+					{UID: "a", Name: "one", Type: "x"},
+					{UID: "b", Name: "two", Type: "y"},
+				},
+				Total: 42,
+			},
+			want: `{"investigations":[{"uid":"a","name":"one"},{"uid":"b","name":"two"}],"total":42}`,
+		},
+		{
+			name:  "empty envelope preserves items key and metadata",
+			value: &listEnvelopeResult{Investigations: []listEnvelopeItem{}, Total: 0},
+			want:  `{"investigations":[],"total":0}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := optsWithJSONFields(t, []string{"uid", "name"})
+			var buf bytes.Buffer
+			require.NoError(t, opts.Encode(&buf, tt.value))
+			assert.JSONEq(t, tt.want, buf.String())
+		})
+	}
+}
+
+func TestEncode_JSONDiscovery_ListEnvelope(t *testing.T) {
+	// Discovery on a marked list envelope must list item-level fields, not
+	// the envelope keys — with rows (sampled) and without (reflected).
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{
+			name: "populated",
+			value: &listEnvelopeResult{
+				Investigations: []listEnvelopeItem{{UID: "a", Name: "x", Type: "t"}},
+				Total:          1,
+			},
+		},
+		{
+			name:  "empty",
+			value: &listEnvelopeResult{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := optsWithJSONDiscovery(t)
+			var buf bytes.Buffer
+			require.NoError(t, opts.Encode(&buf, tt.value))
+			lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+			assert.Contains(t, lines, "uid")
+			assert.Contains(t, lines, "name")
+			assert.NotContains(t, lines, "investigations")
+			assert.NotContains(t, lines, "total")
+		})
+	}
+}
+
 func TestEncode_JSONDiscovery_SingleKeyEnvelope(t *testing.T) {
 	// Discovery on a single-key list envelope must list item-level fields,
 	// not the wrapper key.
