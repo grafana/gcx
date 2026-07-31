@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/assistant/investigations"
 	"github.com/stretchr/testify/assert"
@@ -87,15 +88,17 @@ func TestListLodestone(t *testing.T) {
 				tt.assertReq(t, r)
 				writeJSON(w, map[string]any{
 					"data": map[string]any{
-						"investigations": []investigations.InvestigationSummary{
-							{ID: "inv-1", Title: "x", State: "in_progress"},
+						"investigations": []map[string]any{
+							{"id": "inv-1", "title": "x", "state": "in_progress"},
 						},
+						"total": 42,
 					},
 				})
 			}))
 			out, err := client.ListLodestone(t.Context(), tt.opts)
 			require.NoError(t, err)
-			assert.Len(t, out, tt.wantCount)
+			assert.Len(t, out.Investigations, tt.wantCount)
+			assert.Equal(t, int64(42), out.Total)
 		})
 	}
 }
@@ -171,6 +174,127 @@ func TestLodestoneProfile_RequiredFieldsSerialized(t *testing.T) {
 		assert.Contains(t, keys, key)
 	}
 	assert.NotContains(t, keys, "description")
+}
+
+// TestListLodestone_LosslessSummary pins the full v2 summary shape: every
+// field the server emits must survive the decode so json/yaml output is
+// lossless (gcx#997).
+func TestListLodestone_LosslessSummary(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"investigations": []map[string]any{{
+					"id":          "inv-1",
+					"title":       "High latency",
+					"description": "p99 spiked",
+					"state":       "in_progress",
+					"chatId":      "chat-1",
+					"variant":     "lodestone",
+					"createdAt":   "2026-07-01T10:00:00Z",
+					"updatedAt":   "2026-07-01T12:00:00Z",
+					"tokensUsed":  1234,
+					"source": map[string]any{
+						"type": "user", "value": "https://hook", "prompt": "check latency",
+						"chatId": "chat-1", "userId": "admin",
+					},
+					"agents": []map[string]any{{
+						"id": "agent-1", "name": "lead", "task": "investigate",
+						"finalMessage": "done", "status": "completed", "audience": "user",
+						"createdAt": "2026-07-01T10:00:00Z", "updatedAt": "2026-07-01T11:00:00Z",
+						"tokensPerSecondHistory": []float64{10.5, 12.0},
+						"tokenCounter":           int64(999),
+						"outputPreview":          "tail of output",
+					}},
+					"progress": map[string]any{
+						"pending": 1, "inProgress": 2, "completed": 3, "canceled": 4, "total": 10,
+					},
+					"completionQuality": "degraded",
+					"degradedReason":    "token budget exhausted",
+					"labels":            map[string]string{"env": "prod"},
+					"ownerUserId":       "owner-1",
+					"activeLoopCount":   2,
+				}},
+				"total": 1,
+			},
+		})
+	}))
+
+	out, err := client.ListLodestone(t.Context(), investigations.ListLodestoneOptions{})
+	require.NoError(t, err)
+	require.Len(t, out.Investigations, 1)
+	assert.Equal(t, int64(1), out.Total)
+
+	s := out.Investigations[0]
+	assert.Equal(t, "inv-1", s.ID)
+	assert.Equal(t, "High latency", s.Title)
+	assert.Equal(t, "p99 spiked", s.Description)
+	assert.Equal(t, "in_progress", s.State)
+	assert.Equal(t, "chat-1", s.ChatID)
+	assert.Equal(t, "lodestone", s.Variant)
+	assert.Equal(t, "2026-07-01T10:00:00Z", s.CreatedAt.Format(time.RFC3339))
+	assert.Equal(t, "2026-07-01T12:00:00Z", s.UpdatedAt.Format(time.RFC3339))
+	require.NotNil(t, s.TokensUsed)
+	assert.Equal(t, 1234, *s.TokensUsed)
+	require.NotNil(t, s.Source)
+	assert.Equal(t, investigations.LodestoneSource{
+		Type: "user", Value: "https://hook", Prompt: "check latency",
+		ChatID: "chat-1", UserID: "admin",
+	}, *s.Source)
+	require.Len(t, s.Agents, 1)
+	a := s.Agents[0]
+	assert.Equal(t, "agent-1", a.ID)
+	assert.Equal(t, "lead", a.Name)
+	assert.Equal(t, "investigate", a.Task)
+	require.NotNil(t, a.FinalMessage)
+	assert.Equal(t, "done", *a.FinalMessage)
+	assert.Equal(t, "completed", a.Status)
+	assert.Equal(t, "user", a.Audience)
+	assert.Equal(t, "2026-07-01T10:00:00Z", a.CreatedAt.Format(time.RFC3339))
+	assert.Equal(t, "2026-07-01T11:00:00Z", a.UpdatedAt.Format(time.RFC3339))
+	assert.Equal(t, []float64{10.5, 12.0}, a.TokensPerSecondHistory)
+	require.NotNil(t, a.TokenCounter)
+	assert.Equal(t, int64(999), *a.TokenCounter)
+	require.NotNil(t, a.OutputPreview)
+	assert.Equal(t, "tail of output", *a.OutputPreview)
+	require.NotNil(t, s.Progress)
+	assert.Equal(t, investigations.LodestoneTodoProgress{
+		Pending: 1, InProgress: 2, Completed: 3, Canceled: 4, Total: 10,
+	}, *s.Progress)
+	require.NotNil(t, s.CompletionQuality)
+	assert.Equal(t, "degraded", *s.CompletionQuality)
+	require.NotNil(t, s.DegradedReason)
+	assert.Equal(t, "token budget exhausted", *s.DegradedReason)
+	assert.Equal(t, map[string]string{"env": "prod"}, s.Labels)
+	assert.Equal(t, "owner-1", s.OwnerUserID)
+	assert.Equal(t, 2, s.ActiveLoopCount)
+}
+
+// TestLodestoneSummary_RequiredFieldsSerialized pins the required-vs-omitempty
+// split against the server schema: title, description, and chatId are always
+// serialized by the API, so gcx json output must keep them (as "") even when
+// empty — dropping them would turn "" into null under --json selection.
+func TestLodestoneSummary_RequiredFieldsSerialized(t *testing.T) {
+	data, err := json.Marshal(investigations.LodestoneInvestigationSummary{ID: "inv-1", State: "pending"})
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m))
+	for _, key := range []string{"id", "title", "description", "state", "chatId", "createdAt", "updatedAt"} {
+		assert.Contains(t, m, key, "required summary field %q must serialize even when empty", key)
+	}
+	for _, key := range []string{"variant", "tokensUsed", "source", "agents", "progress", "completionQuality", "degradedReason", "labels", "ownerUserId", "activeLoopCount"} {
+		assert.NotContains(t, m, key, "optional summary field %q must stay omitempty like the server's", key)
+	}
+
+	data, err = json.Marshal(investigations.LodestoneAgent{ID: "agent-1"})
+	require.NoError(t, err)
+	m = nil
+	require.NoError(t, json.Unmarshal(data, &m))
+	for _, key := range []string{"id", "name", "task", "status", "audience", "createdAt", "updatedAt"} {
+		assert.Contains(t, m, key, "required agent field %q must serialize even when empty", key)
+	}
+	for _, key := range []string{"finalMessage", "tokensPerSecondHistory", "tokenCounter", "outputPreview"} {
+		assert.NotContains(t, m, key, "optional agent field %q must stay omitempty like the server's", key)
+	}
 }
 
 func TestResolveByID(t *testing.T) {
