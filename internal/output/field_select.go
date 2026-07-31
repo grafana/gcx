@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	goio "io"
+	"maps"
 	"reflect"
 	"sort"
 	"strings"
@@ -126,6 +127,24 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 	default:
 		// For arbitrary types: marshal → map → extract fields.
 		m, err := toMap(value)
+		if err == nil {
+			// Explicitly-marked list envelope (e.g. {"investigations": [...],
+			// "total": 42}): apply field selection per item under the declared
+			// key and pass every other key through untouched as list-level
+			// metadata.
+			if env, ok := value.(ListEnvelope); ok {
+				key := env.ListItemsKey()
+				items := toSliceOfMaps(m[key])
+				extracted := make([]map[string]any, len(items))
+				for i, item := range items {
+					extracted[i] = extractFields(item, c.fields)
+				}
+				out := make(map[string]any, len(m))
+				maps.Copy(out, m)
+				out[key] = extracted
+				return c.json.Encode(dst, out)
+			}
+		}
 		if err != nil {
 			// toMap fails when value is an array/slice (JSON is [...] not {...}).
 			// Fall back to marshaling as an array of objects.
@@ -328,6 +347,18 @@ func paginationMetadataValuePresent(value any) bool {
 		return s != ""
 	}
 	return true
+}
+
+// ListEnvelope marks a list-result type whose items live under the returned
+// JSON key, with any sibling keys carrying list-level metadata (e.g. a
+// pagination total). Multi-key list envelopes must implement this so that
+// --json field selection and discovery operate on the items rather than the
+// envelope; single-key envelopes are detected structurally and need no
+// marker. The interface is satisfied structurally, so result types do not
+// need to import this package.
+type ListEnvelope interface {
+	// ListItemsKey returns the JSON key under which the item array lives.
+	ListItemsKey() string
 }
 
 // singleKeyItems reports whether m is a single-key list envelope: exactly one

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/deeplink"
@@ -202,7 +203,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.validateForV2(); err != nil {
 				return err
 			}
-			summaries, err := client.ListLodestone(cmd.Context(), ListLodestoneOptions{
+			list, err := client.ListLodestone(cmd.Context(), ListLodestoneOptions{
 				State:         opts.State,
 				Q:             opts.Q,
 				Scope:         opts.Scope,
@@ -220,7 +221,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), summaries)
+			return opts.IO.Encode(cmd.OutOrStdout(), list)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -449,7 +450,8 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- table codecs ---
 
-// ListTableCodec renders []InvestigationSummary as a table.
+// ListTableCodec renders []InvestigationSummary (v1) or *LodestoneList (v2)
+// as a table with the same columns for both API versions.
 type ListTableCodec struct {
 	Wide bool
 }
@@ -462,11 +464,6 @@ func (c *ListTableCodec) Format() format.Format {
 }
 
 func (c *ListTableCodec) Encode(w io.Writer, v any) error {
-	summaries, ok := v.([]InvestigationSummary)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []InvestigationSummary")
-	}
-
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	if c.Wide {
 		fmt.Fprintln(tw, "ID\tTITLE\tSTATUS\tCREATED BY\tCREATED\tUPDATED")
@@ -474,24 +471,41 @@ func (c *ListTableCodec) Encode(w io.Writer, v any) error {
 		fmt.Fprintln(tw, "ID\tTITLE\tSTATUS\tUPDATED")
 	}
 
-	for _, s := range summaries {
-		title := truncate(s.Title, 40)
-		updated := assistanthttp.FormatTime(s.UpdatedAt)
-
-		if c.Wide {
-			created := assistanthttp.FormatTime(s.CreatedAt)
+	switch list := v.(type) {
+	case []InvestigationSummary:
+		for _, s := range list {
 			createdBy := "-"
 			if s.Source != nil && s.Source.UserID != "" {
 				createdBy = s.Source.UserID
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				s.ID, title, s.State, createdBy, created, updated)
-		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-				s.ID, title, s.State, updated)
+			c.writeRow(tw, s.ID, s.Title, s.State, createdBy, s.CreatedAt, s.UpdatedAt)
 		}
+	case *LodestoneList:
+		for _, s := range list.Investigations {
+			createdBy := s.OwnerUserID
+			if s.Source != nil && s.Source.UserID != "" {
+				createdBy = s.Source.UserID
+			}
+			if createdBy == "" {
+				createdBy = "-"
+			}
+			c.writeRow(tw, s.ID, s.Title, s.State, createdBy, s.CreatedAt, s.UpdatedAt)
+		}
+	default:
+		return errors.New("invalid data type for table codec: expected []InvestigationSummary or *LodestoneList")
 	}
 	return tw.Flush()
+}
+
+func (c *ListTableCodec) writeRow(w io.Writer, id, title, state, createdBy string, createdAt, updatedAt time.Time) {
+	title = truncate(title, 40)
+	updated := assistanthttp.FormatTime(updatedAt)
+	if c.Wide {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			id, title, state, createdBy, assistanthttp.FormatTime(createdAt), updated)
+	} else {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", id, title, state, updated)
+	}
 }
 
 func (c *ListTableCodec) Decode(_ io.Reader, _ any) error {

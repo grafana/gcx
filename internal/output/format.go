@@ -430,6 +430,17 @@ func reflectFields(t reflect.Type) []string {
 // transparent to discovery: envelopes are recognized with or without it, the
 // sample is always an item, and list_meta.* paths are never listed.
 func sampleFromObject(m map[string]any, value any) map[string]any {
+	// Explicitly-marked list envelope: sample the first item under the
+	// declared key, or reflect on that key's slice field when there are no
+	// rows, so discovery lists item-level fields either way.
+	if env, ok := value.(ListEnvelope); ok {
+		if items := toSliceOfMaps(m[env.ListItemsKey()]); len(items) > 0 {
+			return items[0]
+		}
+		if fields := reflectSliceFieldByKey(reflect.TypeOf(value), env.ListItemsKey()); len(fields) > 0 {
+			return nullFieldMap(fields)
+		}
+	}
 	// If the object has an "items" array, use the first element.
 	if raw, ok := m["items"]; ok {
 		if items := toSliceOfMaps(raw); len(items) > 0 {
@@ -518,6 +529,39 @@ func reflectSingleSliceField(t reflect.Type) []string {
 		return nil
 	}
 	return reflectFields(sliceType)
+}
+
+// reflectSliceFieldByKey returns the JSON field names of the element type of
+// the struct field whose JSON name matches key and whose kind is slice.
+// Used to discover item fields of an empty ListEnvelope. Returns nil when t
+// (after pointer unwrapping) is not a struct or has no matching slice field.
+func reflectSliceFieldByKey(t reflect.Type, key string) []string {
+	if t == nil {
+		return nil
+	}
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+	for f := range t.Fields() {
+		if !f.IsExported() || f.Type.Kind() != reflect.Slice {
+			continue
+		}
+		tag := f.Tag.Get("json")
+		if tag == "-" {
+			continue
+		}
+		name, _, _ := strings.Cut(tag, ",")
+		if name == "" {
+			name = f.Name
+		}
+		if name == key {
+			return reflectFields(f.Type)
+		}
+	}
+	return nil
 }
 
 // We have to return an interface here.
