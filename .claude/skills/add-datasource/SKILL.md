@@ -256,8 +256,15 @@ Reference: `internal/datasources/providers/prometheus.go`.
    `gcx datasources list -o json` and add a mapping in
    `internal/datasources/query/resolve.go` if they don't match. Without this,
    auto-discovery and datasource type validation will fail silently.
-3. Optionally add to the auto-detecting `datasources query` switch in
-   `cmd/gcx/datasources/query.go`
+3. Decide, deliberately, what the auto-detecting `datasources query` should do
+   for your kind — the switch in `cmd/gcx/datasources/query.go` is
+   hand-maintained and no test enforces parity with registration:
+   - the generic `<uid> <expr>` form can carry your query → add the case, so a
+     caller reaching for `datasources query` is not met with the bare
+     "datasource type %q is not supported" default;
+   - it cannot (a structured query with several required parameters) → add an
+     explicit redirect naming your typed command and its flags, the way
+     CloudWatch does. Do not force a lossy generic path.
 
 ### Step 4: Agent Annotations
 
@@ -303,7 +310,7 @@ bin/gcx datasources {kind} query '<expr>' --since 1h
 mise run all
 
 # Agent annotation consistency
-go test ./internal/agent/...
+mise exec -- go test ./internal/agent/...
 ```
 
 ### Gate: All Green

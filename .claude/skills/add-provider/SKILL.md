@@ -34,11 +34,20 @@ necessity, command path, backend evidence, wiring, readiness). Then:
   do not wait for sign-off before implementing. Build autonomously. If something
   is genuinely unsettled, discover it, or ask one targeted question carrying the
   evidence and a recommendation — never fall back to a blanket approval gate.
-- **Still produce the Stage 2 deliverables** — the ADRs, the spec, and the
-  smoke-test plan. A four-bullet placement section settles the tier, the path,
-  the backend and readiness; it does not contain an auth-strategy ADR or a
-  per-stage verification plan, so those are written here, not skipped. What
-  changed is that they are reviewed with the PR instead of gating it.
+- **Write documents only where they earn their keep.** The Stage 2 artifacts are
+  conditional on real architectural risk or a repository requirement, not
+  mandatory paperwork:
+  - **ADR** — only for a decision that is contested, hard to reverse, or departs
+    from precedent: a new auth model, a client type the repo has not used, an
+    adapter registration, a cross-cutting config change. "Reuse the stack token,
+    hand-rolled HTTP client, commands-only" is the documented default across
+    existing providers — record it in the PR body and move on.
+  - **Spec / per-stage documents** — only when the work is genuinely staged
+    across multiple PRs, which is what they exist to make resumable. A provider
+    shipping in one change does not need them.
+  - **Smoke-test plan** — always, because Stage 4 executes it and the repo
+    requires real-instance verification. Keep it to the commands you actually
+    implemented.
 - Start at Stage 3, and use Stage 4 verification as written.
 
 **Invoked directly** (no placement section): run all four stages below,
@@ -58,7 +67,7 @@ research report    ADRs + spec       code per stage     smoke tests
 |-------|-------------|------|
 | 1. Discover | `docs/research/` report | User approves findings *(direct invocation only)* |
 | 2. Design | ADRs + spec + smoke test plan | User approves design *(direct invocation only)* |
-| 3. Implement | Code (one stage at a time) | `mise run all` passes per stage |
+| 3. Implement | Code (one stage at a time) | `mise run gate` passes per stage |
 | 4. Verify | Smoke tests + architecture doc updates | All checks green |
 
 ### Prerequisites
@@ -142,18 +151,26 @@ For beyond-CRUD commands: brainstorm based on real APIs found in research
 
 ### 2b. Write ADRs
 
-For each significant decision, write an ADR in
-`docs/adrs/{product}-provider/NNN-{decision}.md` using the template at
-`docs/_templates/adr.md`. At minimum, create ADRs for:
+Write an ADR in `docs/adrs/{product}-provider/NNN-{decision}.md` (template:
+`docs/_templates/adr.md`) for each decision that is **contested, hard to reverse,
+or departs from precedent** — typically a new auth model, a client type the repo
+has not used before, or an adapter registration.
 
-- Auth strategy choice
-- Client type choice (plugin API vs K8s vs external)
+A decision that matches the documented default across existing providers does not
+need an ADR: record it in the PR body. "Reuse the Grafana token, hand-rolled HTTP
+client, commands-only" is the default, not a novel choice. Writing an ADR to
+restate it is paperwork, and reviewers have to read it.
 
 Other decisions can be captured in the spec if they're straightforward.
 
 ### 2c. Write Spec
 
-Write the implementation plan in `docs/specs/{product}-provider/`:
+Write the implementation plan in `docs/specs/{product}-provider/` **when the work
+is genuinely staged across multiple PRs** — that is what per-stage documents exist
+for, making the work resumable in a fresh session. A provider that ships in one
+change does not need them; put the plan in the PR description.
+
+When staging is real:
 
 - Top-level plan with all stages, file tree, and decisions summary
 - Per-stage docs with scope, files to create, and acceptance criteria
@@ -223,7 +240,10 @@ Summary of the key steps:
 
 ### Gate: Stage Complete
 
-Per stage: `mise run all` passes, no regressions.
+Per stage: `mise run gate` (lint + tests + build) passes, no regressions. Run the
+full `GCX_AGENT_MODE=false mise run all` **once** before pushing — it adds
+validate-skills and the docs build on top of the same lint/tests/build, so
+repeating it per stage buys nothing and costs minutes each time.
 
 ---
 
@@ -251,7 +271,7 @@ format-agnostic data fetching, promql-builder for PromQL.
 `llm_hint` for medium/large) — the `TestConsistency_*` and `TestAgentConformance_*`
 suites in `cmd/gcx/root/` fail CI otherwise.
 
-**Build**: `mise run all`, `gcx providers list` lists it, `config view` redacts.
+**Build**: `GCX_AGENT_MODE=false mise run all` once, `gcx providers list` lists it, `config view` redacts.
 
 ### 4c. Update Architecture Docs
 

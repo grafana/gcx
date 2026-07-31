@@ -3,24 +3,39 @@
 ## Per-leaf wiring that cannot be skipped
 
 Adding a command to the tree is automatic (provider `Commands()`, datasource
-registration, or a signal descriptor). These are not, and CI fails without them:
+registration, or a signal descriptor). The rest is not. Read the "Enforced by"
+column literally — some rows are CI-enforced and some only look like it:
 
 | Wiring | Where | Enforced by |
 |--------|-------|-------------|
 | Output protocol class | `cmd/gcx/root/testdata/output_classes.json` — one entry per new leaf | `TestConsistency_AllLeafCommandsHaveOutputClass` (also fails on stale entries after renames) |
 | Token cost | `internal/agent/command_annotations.go`, or inline `cmd.Annotations` (signal specs use `CommandSpec.TokenCost`) | `TestConsistency_AllLeafCommandsHaveTokenCost` |
 | LLM hint (medium/large costs) | same as token cost | `TestConsistency_NonSmallCommandsHaveLLMHint` |
-| Cloud-only availability | `internal/agent/availability.go` (path prefix, covers subtrees) | `TestConsistency_CloudOnlyPathsResolveToCommands` |
+| Cloud-only availability | `internal/agent/availability.go` (path prefix, covers subtrees) | **review only.** `TestConsistency_CloudOnlyPathsResolveToCommands` walks the declared paths and checks each resolves to a command — it catches a stale entry, not a missing one |
+| Command→skill mapping | `internal/agent/command_skills.go` | **review only**, same direction: `TestConsistency_SkillMappingResolvesToCommands` validates declared keys, never requires one |
 | Resource-type agent metadata, **native K8s types** | `internal/agent/known_resources.go` | `internal/agent/known_resources_test.go` |
 | Resource-type agent metadata, **adapter-backed** | adapter `Registration.Operations` | **nothing.** `known_resources_test.go` only walks `agent.KnownResources`; no test asserts `Operations` is populated on an adapter registration. Review-enforced only |
 | Generated reference docs | `GCX_AGENT_MODE=false mise run reference` | `mise run reference-drift` in CI |
 | Package map | `docs/architecture/project-structure.md` | AGENTS.md PR checklist step 4 (human-enforced) |
 
-**The gap CI does not cover:** a new datasource kind is mounted as
-`datasources <kind>` automatically from `datasources.AllProviders()`, but the
-generic auto-detecting `datasources query` dispatches through a hand-maintained
-switch in `cmd/gcx/datasources/query.go`. Miss it and your kind is rejected
-there as unsupported, with no failing test to tell you.
+**The gap CI does not cover, and it is a judgement call.** A new datasource kind
+is mounted as `datasources <kind>` automatically from
+`datasources.AllProviders()`, but the generic auto-detecting `datasources query`
+dispatches through a hand-maintained switch in `cmd/gcx/datasources/query.go`.
+Registration does not reach it, and no test enforces parity — deliberately, because
+parity is not always correct:
+
+- **The generic `<uid> <expr>` contract fits your kind** → add the case. Otherwise
+  a caller who reasonably reaches for `datasources query` gets the bare
+  "datasource type %q is not supported" default.
+- **It does not fit** → add an explicit redirect instead. CloudWatch is the
+  worked example: its query is structured (namespace, metric, dimensions, region,
+  statistic, period), no single `expr` can carry it, so the switch returns an
+  error naming the typed command to use. That is the honest outcome, not a
+  degraded generic path.
+
+Tempo is a third shape — it has no `query` leaf at all, so the question does not
+arise. Kinds currently outside the switch: athena, cloudwatch, infinity, tempo.
 
 ## What the root conformance suites do to your command
 
@@ -40,10 +55,13 @@ Format what you actually edited — including changes you have not committed yet
 which a base-diff would miss — then gate:
 
 ```bash
-gofmt -w <the .go files you edited>
+mise exec -- gofmt -w <the .go files you edited>
 mise run gate
 GCX_AGENT_MODE=false mise run all
 ```
+
+`go` and `gofmt` come from mise and may not be on `PATH`; prefix them with
+`mise exec --` (or use a `mise run` task) so you get the pinned version.
 
 `mise run gate` is the fast inner loop (lint + tests + build).
 `GCX_AGENT_MODE=false mise run all` is the pre-push gate and already subsumes
@@ -54,7 +72,7 @@ For a skill-only change:
 
 ```bash
 mise run validate-skills
-go test ./cmd/gcx/root/ -run TestSkillsGcxInvocations
+mise exec -- go test ./cmd/gcx/root/ -run TestSkillsGcxInvocations
 ```
 
 Notes:

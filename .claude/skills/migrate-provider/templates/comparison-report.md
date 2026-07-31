@@ -9,6 +9,11 @@ from tasks.md. Every row must have a status. Do not omit commands or mark them
 
 ### Per-Command Pass/Fail
 
+> Rows below were generated when both CLIs shared the name `gcx`, so the
+> old-vs-new pairs are indistinguishable as written. Label each row with the
+> binary you actually ran (`bin/gcx` vs the legacy tool's own path) before
+> filling it in, or the comparison proves nothing.
+
 | command | status | captured output (truncated) |
 |---------|--------|-----------------------------|
 | gcx {resource} list | PASS / FAIL | {first 3 lines of output or error} |

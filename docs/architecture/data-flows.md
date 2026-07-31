@@ -308,14 +308,19 @@ touching both:
    `QueryCmd` and `ExtraCommands` automatically — no per-kind wiring in the
    command layer. Registered kinds live in `internal/datasources/providers/`;
    read that directory rather than trusting a list here.
-2. **Generic `datasources query` — hand-maintained.** The auto-detecting command
-   resolves the datasource type over the API and then dispatches through an
-   explicit `switch` in `cmd/gcx/datasources/query.go`, which covers
-   prometheus, loki, pyroscope, influxdb and clickhouse and returns
-   "datasource type %q is not supported" for anything else. Registration does
-   **not** reach it. Kinds that are registered but absent from the switch
-   (currently athena, cloudwatch, infinity, tempo) have working typed
-   subcommands and are rejected by the generic path. No test enforces parity.
+2. **Generic `datasources query` — hand-maintained, and deliberately not at
+   parity.** The auto-detecting command resolves the datasource type over the API
+   and dispatches through an explicit `switch` in
+   `cmd/gcx/datasources/query.go`, covering prometheus, loki, pyroscope, influxdb
+   and clickhouse. Registration does **not** reach it, and no test enforces
+   parity, because parity is not always the right answer: the generic contract is
+   `<uid> <expr>`, and a kind whose query cannot be expressed as one string does
+   not belong there. CloudWatch is handled explicitly for that reason — the switch
+   returns an error naming `datasources cloudwatch query` and its structured flags
+   (namespace, metric, dimensions, region, statistic, period). Kinds outside the
+   switch: athena and infinity (both `query [EXPR]`-shaped, so candidates),
+   cloudwatch (excluded by design, with the redirect above), and tempo (no
+   `query` leaf at all). Everything else falls to the "not supported" default.
 
 ```
 User invocation:
