@@ -196,11 +196,11 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
     var datasource string
 
     cmd := &cobra.Command{
-        Use:   "query EXPR",
+        Use:   "query [EXPR]",
         Short: "Execute a query against a {Name} datasource",
         Long: `Execute a query against a {Name} datasource.
 
-EXPR is the query expression to evaluate.
+EXPR is the query expression to evaluate; --expr is accepted instead.
 Datasource is resolved from -d flag or datasources.{kind} in your context.`,
         Example: `
   # Query using configured default datasource
@@ -211,7 +211,10 @@ Datasource is resolved from -d flag or datasources.{kind} in your context.`,
 
   # Output as JSON
   gcx datasources {kind} query -d UID 'EXPR' -o json`,
-        Args: cobra.ExactArgs(1),
+        // RangeArgs, not ExactArgs — the current family accepts the
+        // expression positionally OR via --expr. Copy the newest kind
+        // (internal/datasources/athena/query.go) rather than this sketch.
+        Args: cobra.RangeArgs(0, 1),
         RunE: func(cmd *cobra.Command, args []string) error {
             // ... resolve datasource, create client, execute query
         },
@@ -242,8 +245,8 @@ Reference: `internal/datasources/prometheus/`, `internal/datasources/loki/`
 ### Step 2: DatasourceProvider
 
 Add a registration file in `internal/datasources/providers/`. This package
-contains one registration file per built-in datasource (see
-`prometheus.go`, `loki.go`, `tempo.go`, `pyroscope.go`).
+contains one registration file per built-in datasource — `ls` it for the current
+set and copy the most recently added one rather than trusting a list here.
 
 ```go
 // internal/datasources/providers/{kind}.go
@@ -283,7 +286,30 @@ on each provider sub-command. Forward it to each command constructor.
 
 Reference: `internal/datasources/providers/prometheus.go`.
 
-### Step 3: Registration & Wiring
+### Step 3: Codec dispatch — the step that breaks the default invocation
+
+`internal/datasources/query/codecs.go` ends `RegisterCodecs` with
+`ioOpts.DefaultFormat("table")`, and each codec's `Encode` is a type switch that
+falls through to `errors.New("invalid data type for query table codec")`. So if
+your client returns a **new** response type and you do not add an arm here, the
+plain `gcx datasources {kind} query …` invocation — the default, with no `-o` —
+fails at encode time. Lint and unit tests will not catch it.
+
+Two ways out, cheapest first:
+
+1. **Reuse an existing response type.** If your results are table-shaped, returning
+   `internal/query/sql`'s response gets you the table and wide codecs for free.
+   Verify the fit first: `internal/query/sql/parse.go` takes `Frames[0]` **only**,
+   which is honest for `sqlds`-backed datasources and wrong for any query that
+   returns one frame per series.
+2. **Add an arm to every codec** — table, wide, and graph — giving graph an
+   explicit "not supported for {kind}" error rather than letting it fall through
+   to the generic one.
+
+Then trace each registration in `RegisterCodecs` to a reachable `Encode`
+(self-review T1 check 4).
+
+### Step 4: Registration & Wiring
 
 1. The `internal/datasources/providers/` package is already blank-imported in
    `cmd/gcx/root/command.go` — new registrations in that package are
@@ -304,7 +330,7 @@ Reference: `internal/datasources/providers/prometheus.go`.
      explicit redirect naming your typed command and its flags, the way
      CloudWatch does. Do not force a lossy generic path.
 
-### Step 4: Agent Annotations
+### Step 5: Agent Annotations
 
 Annotations should already be set on each command via `cmd.Annotations` in the
 constructor (see Step 1b). Verify every leaf command has both
