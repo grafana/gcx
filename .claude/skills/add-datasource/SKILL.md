@@ -32,8 +32,14 @@ necessity, command path, backend evidence, wiring, readiness):
   recommendation — never fall back to a blanket approval gate.
 - Start at Stage 2, and use Stage 3 verification as written.
 
-**Invoked directly** (no placement section): run all three stages below,
-including the Stage 1 gate.
+**Invoked directly** (no placement section): work through all three stages.
+Autonomy is the same as above — the Stage 1 gate is a checkpoint you satisfy, not
+an approval you wait for. Discover the plugin type, endpoints and response shapes
+from `bin/gcx datasources list -o json`, the vendor's API docs and `gcx api`
+probes; present findings and keep going. Ask only where an unresolved answer would
+materially change the implementation — an unknown query-expression format, an
+endpoint you cannot verify. If no instance is reachable, report the live checks as
+**UNVERIFIED** with the reason rather than blocking or claiming them green.
 
 ## Workflow
 
@@ -47,7 +53,7 @@ research report     code per step      smoke tests
 | Stage | Deliverable | Gate |
 |-------|-------------|------|
 | 1. Discover | Research report | User approves findings |
-| 2. Implement | Code (one step at a time) | `mise run all` passes per step |
+| 2. Implement | Code (one step at a time) | `mise run gate` passes per step; `GCX_AGENT_MODE=false mise run all` once before push |
 | 3. Verify | Smoke tests + annotation check | All checks green |
 
 ### Prerequisites

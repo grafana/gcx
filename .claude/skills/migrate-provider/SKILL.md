@@ -42,10 +42,11 @@ Consequences until that is disambiguated:
   proving nothing.
 - Bare `gcx` in these documents resolves to whatever is installed on `PATH`, not
   the binary you just built. For anything you are verifying, use `bin/gcx`.
-- The mechanical steps — package layout, `providers.Register()` +
-  `TypedRegistrations()`, adapter shape, schema/example registration — are
-  accurate and were checked against the current code. It is the *verification*
-  half that is broken.
+- Of the mechanical steps, only the registration flow (`providers.Register()` +
+  `TypedRegistrations()`, and the `TypedCRUD` `Descriptor`/`Aliases` fields) was
+  checked against the current code. Package layout, schema/example registration
+  and the client translation were **not** re-verified — treat them as unaudited.
+  What is definitely broken is the *verification* half.
 
 A human should drive this skill and read the comparison steps critically. Fixing
 the naming collision properly means disambiguating the legacy tool throughout the
@@ -56,9 +57,11 @@ recipe, its four templates and this file; that is deliberately not attempted her
 One-directional, so the two skills cannot bounce a port back and forth:
 
 - **Placement is not an open question here.** An existing grafana-cloud-cli
-  client already establishes the provider tier, so `integrate-with-gcx` routes
-  ports straight to this skill without producing a placement section. Phases 0-4
-  below own the port end to end.
+  client already establishes the provider tier, so no placement section is
+  produced. Phases 0-4 below own the port end to end.
+- **`integrate-with-gcx` does not route work here**, because of the status note
+  above: it tells the user a port needs a human to drive and stops. Reach this
+  skill by invoking it deliberately.
 - **Call back into two sections only**, not the whole skill: the naming pass on
   the ported command surface (`self-review.md` T7 — released names are frozen,
   and a port is where a legacy name most often gets carried in), and the

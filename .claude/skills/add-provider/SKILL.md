@@ -50,9 +50,22 @@ necessity, command path, backend evidence, wiring, readiness). Then:
     implemented.
 - Start at Stage 3, and use Stage 4 verification as written.
 
-**Invoked directly** (no placement section): run all four stages below,
-including their gates, and check `references/decision-tree.md` first to confirm a
-provider is the right approach.
+**Invoked directly** (no placement section): work through all four stages, and
+check `references/decision-tree.md` first to confirm a provider is the right
+approach. Autonomy is the same as above — the stage gates are **checkpoints you
+satisfy, not approvals you wait for**:
+
+- Discover and decide from the repository, the product's API docs and a probe.
+  Present the research and design findings as you go; do not stop for sign-off.
+- Ask only where an unresolved answer would materially change the implementation —
+  a missing auth model, an API shape you cannot verify, a frozen command name the
+  naming guide and precedent record do not settle. Group those questions, carry
+  the evidence and a recommendation.
+- Documents follow the same risk test as above: ADR for contested or
+  precedent-departing decisions, spec only for genuinely staged work,
+  smoke-test plan always.
+- Stop only for a CONSTITUTION conflict with no compliant alternative, a needed
+  waiver, or a missing backend/auth prerequisite.
 
 ## Workflow
 
@@ -190,18 +203,18 @@ verbs the provider doesn't expose. Destructive commands use `--force`
 with real product/resource names in actual spec):
 ```bash
 # Provider appears in list
-gcx providers list | grep {name}
+bin/gcx providers list | grep {name}
 
 # Config secrets are redacted
-gcx config view | grep {name}
+bin/gcx config view | grep {name}
 
 # Implemented operations work (subset per stage)
-gcx {name} {resource} list
-gcx {name} {resource} get <test-id>
-gcx {name} {resource} delete <test-id> --force
+bin/gcx {name} {resource} list
+bin/gcx {name} {resource} get <test-id>
+bin/gcx {name} {resource} delete <test-id> --force
 
 # Unified resources path works (adapter-backed resources only)
-gcx resources get {alias}
+bin/gcx resources get {alias}
 ```
 
 ### Gate: User Approves Design
@@ -251,8 +264,15 @@ repeating it per stage buys nothing and costs minutes each time.
 
 ### 4a. Run Smoke Tests
 
-Execute every smoke test command from the Stage 2d verification plan against
-a real Grafana instance. Record results (pass/fail + output).
+Execute every smoke test command from the Stage 2d verification plan against a
+real Grafana instance, using `bin/gcx` so you exercise the build under review.
+Record results (pass/fail + output).
+
+If no instance or credentials are available, report every smoke test as
+**UNVERIFIED** with that reason, and say what a reviewer must run before merge.
+Do not block on it, and do not report untested commands as passing — an
+`httptest`-proven client with UNVERIFIED smoke tests is an honest state; a silent
+gap is not.
 
 ### 4b. Run Checklists
 

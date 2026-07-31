@@ -92,7 +92,7 @@ everything below is a wiring option within or beside them, not a new tier:
 | Cloud provider | single `providers.Register()` in `init()` + blank import in `cmd/gcx/root/command.go` | `internal/providers/slo/provider.go` | docs/reference/provider-guide.md, docs/design/provider-checklist.md |
 | Adapter-backed resource | returned from `Provider.TypedRegistrations()` — never call `adapter.Register()` directly | `internal/providers/irm/oncall_adapter.go` | docs/architecture/patterns.md §16-18, CONSTITUTION § Provider Architecture |
 | Signal command | `signals.Descriptor` + `signals.Command()` | `internal/providers/metrics/provider.go` | ARCHITECTURE.md §3 |
-| Datasource kind | `datasources.RegisterProvider()` in `internal/datasources/providers/<kind>.go` (package already blank-imported), **plus** the generic-dispatch switch in `cmd/gcx/datasources/query.go` | `internal/datasources/providers/prometheus.go` | ADR 001, docs/architecture/patterns.md §12 |
+| Datasource kind | `datasources.RegisterProvider()` in `internal/datasources/providers/<kind>.go` (package already blank-imported). The generic-dispatch switch in `cmd/gcx/datasources/query.go` is a **separate, conditional** decision — a case if `<uid> <expr>` fits, an explicit redirect if it does not | `internal/datasources/providers/prometheus.go` | ADR 001, docs/architecture/patterns.md §12 |
 | Bundled skill | directory under `claude-plugin/skills/` (auto-embedded) + row in `claude-plugin/README.md` | any sibling skill | AGENTS.md Key Conventions |
 
 ## 5. Backend-readiness gate

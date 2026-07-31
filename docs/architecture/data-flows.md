@@ -318,9 +318,11 @@ touching both:
    not belong there. CloudWatch is handled explicitly for that reason — the switch
    returns an error naming `datasources cloudwatch query` and its structured flags
    (namespace, metric, dimensions, region, statistic, period). Kinds outside the
-   switch: athena and infinity (both `query [EXPR]`-shaped, so candidates),
-   cloudwatch (excluded by design, with the redirect above), and tempo (no
-   `query` leaf at all). Everything else falls to the "not supported" default.
+   switch: athena and infinity (both `query [EXPR]`-shaped, so candidates), tempo
+   (its `query` leaf takes a TraceQL expression and is built in
+   `internal/datasources/tempo/search.go`, so it is a candidate too), and
+   cloudwatch (excluded by design, with the redirect above). Everything else falls
+   to the "not supported" default.
 
 ```
 User invocation:
@@ -445,7 +447,7 @@ Key files:
 - `internal/datasources/query/opts.go` + `resolve.go` — shared opts, `ResolveTypedArgs`, `ValidateDatasourceType`
 - `internal/datasources/provider.go` — the `DatasourceProvider` interface (`Kind`, `QueryCmd`, `ExtraCommands`)
 - `internal/datasources/providers/` — one file per registered kind, each calling `datasources.RegisterProvider()`; the authoritative list of supported kinds
-- `internal/datasources/<kind>/query.go` — per-kind `QueryCmd` constructors (tempo builds its command set in `internal/datasources/tempo/` without a `query.go`)
+- `internal/datasources/<kind>/query.go` — per-kind `QueryCmd` constructors (tempo's lives in `search.go`, not `query.go` — the leaf exists, the filename differs)
 - `cmd/gcx/datasources/command.go` — mounts every registered kind's subtree from `datasources.AllProviders()`
 - `cmd/gcx/datasources/query.go` — generic auto-detecting `datasources query`, with the hand-maintained type `switch`
 - `internal/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)

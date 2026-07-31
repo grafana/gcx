@@ -70,8 +70,20 @@ a document):
   / not gcx. Product teams own their API shape, auth, limits and domain data
   reduction; gcx wraps APIs, it does not fix them.
 
-Then continue into Build, or hand off ([Handoffs](#handoffs)). Missing
-information does not stop you: discover it, or ask one targeted question.
+Missing information does not stop you: discover it, or ask one targeted question.
+
+**Placement is never the last thing you do here.** Whether you implement in Build
+or hand the work to a sibling skill, the flow is the same four steps:
+
+```text
+Place  →  contract (Build, sized to the change)  →  implementation  →  Review
+```
+
+Handing off after Place and skipping straight to a sibling's Stage 3 means the
+naming, typed-input, output-class, completeness, error and test-quality guidance
+never runs — which is most of what this skill is for. Cover the contract first,
+pass it forward with the placement section, and come back for Review before the
+work is called review-ready. None of those steps is a human gate.
 
 ## Mode: Build
 
@@ -123,7 +135,8 @@ Never state proposed or conventional guidance as law.
 
 | Rule | Strength |
 |---|---|
-| Output-class fixture entry, token cost, `llm_hint` for medium/large | **CI-enforced** — `TestConsistency_AllLeafCommandsHaveOutputClass` / `HaveTokenCost` / `NonSmallCommandsHaveLLMHint` walk every leaf and fail on a missing entry |
+| Output-class fixture entry, token cost | **CI-enforced** — `TestConsistency_AllLeafCommandsHaveOutputClass` / `HaveTokenCost` walk every leaf and fail on a missing entry |
+| `llm_hint` whenever the worst case is medium/large | **Required, only partly CI-enforced.** `NonSmallCommandsHaveLLMHint` matches the annotation *exactly* against `"medium"`/`"large"`, so a qualified cost (`small (large with --all)`) evades the check. Write the hint anyway — the rule is about the worst case, not the annotation's spelling |
 | Cloud-only availability, command→skill mapping | **NOT enforced in that direction.** `TestConsistency_CloudOnlyPathsResolveToCommands` and `SkillMappingResolvesToCommands` iterate the entries you *declared* and check each resolves to a real command — they catch a stale entry after a rename, never a missing one. Adding the entry is review-enforced |
 | A `finite` leaf emits exactly one JSON value in agent mode | **CI-enforced** (`TestAgentConformance_*`) |
 | One `init()`, one `providers.Register()`; no `adapter.Register()` outside it | **CONSTITUTION** § Architecture Invariants |
@@ -171,15 +184,27 @@ implementation · an unresolved user choice would materially change what is buil
 
 ## Handoffs
 
-| Skill | Owns | On the way in |
-|---|---|---|
-| `add-provider` | provider package, config keys, client, adapter, staging | skips its own classification and readiness research when your placement section answers them |
-| `add-datasource` | query client, per-kind constructor, `DatasourceProvider` registration | same |
-| `migrate-provider` | porting an existing grafana-cloud-cli client | route ports straight there; it calls back only into this skill's review and naming sections |
+Hand off **after** the contract, not after Place, and return for Review:
 
-Pass the placement section forward and say which decisions are settled. If your
-harness does not expose these as skills, read the file — you are in the
-checkout: `.claude/skills/{add-provider,add-datasource,migrate-provider}/SKILL.md`.
+```text
+Place  →  contract  →  [add-provider | add-datasource]  →  Review (here)
+```
+
+| Skill | Owns | What you pass in | What you do after |
+|---|---|---|---|
+| `add-provider` | provider package, config keys, client, adapter, staging | the placement section **and** the contract — command paths, typed inputs and empty-value behaviour, output class, completeness decision, error summaries, token cost | run [Review](#mode-review) over the resulting diff |
+| `add-datasource` | query client, per-kind constructor, `DatasourceProvider` registration, the generic-dispatch decision | same | same |
+
+Say explicitly which decisions are settled so the sibling records them instead of
+re-deriving them. If your harness does not expose these as skills, read the file —
+you are in the checkout: `.claude/skills/{add-provider,add-datasource}/SKILL.md`.
+
+**Migration is out of scope for this version.** Porting a provider from the legacy
+CLI is not covered: `migrate-provider` documents its own naming collision with the
+legacy tool (both were called `gcx`), which makes its side-by-side verification
+steps ambiguous. Do not route a port through this skill autonomously — tell the
+user it needs a human to drive, and point them at
+`.claude/skills/migrate-provider/SKILL.md` and its status note.
 
 ## Wiring and gates
 
