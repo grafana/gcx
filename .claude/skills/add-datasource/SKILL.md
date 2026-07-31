@@ -77,15 +77,20 @@ research report     code per step      smoke tests
 | 2. Implement | Code (one step at a time) | `mise run gate` passes per step; `GCX_AGENT_MODE=false mise run all` once before push |
 | 3. Verify | Smoke tests + annotation check | smoke tests run or reported UNVERIFIED; wiring checks pass |
 
-### Prerequisites
+### Prerequisites — discover these, don't ask for them
 
-Confirm with the user before starting:
-- **Datasource type** — which Grafana datasource plugin (e.g., `elasticsearch`, `cloudwatch`)
-- **Access** — do they have a gcx context configured that points to a Grafana instance
-  with this datasource? If so, use it directly — run `bin/gcx datasources list -o json`
-  yourself to find the datasource UID and plugin type string. Don't ask the user to
-  run commands you can run yourself.
-- **Scope** — which operations? (query, labels, metadata, series, etc.)
+Settle each from the repo and the environment first. Ask only if what remains is
+materially insufficient, and then in one grouped question carrying the evidence
+and a recommendation:
+
+- **Datasource type** — usually stated in the request. Confirm the plugin type
+  string yourself with `bin/gcx datasources list -o json`.
+- **Access** — check for a configured context the same way. If none is reachable,
+  proceed against the vendor's API docs and report every live check as UNVERIFIED
+  with the reason; do not stop.
+- **Scope** — infer from the request (a "query client" means `query` first) and
+  state what you inferred. Extra verbs are additive later; a wrong frozen name is
+  not.
 
 ---
 
@@ -96,10 +101,10 @@ Confirm with the user before starting:
 1. Run `bin/gcx datasources list -o json` to find the datasource UID and plugin type
    string. If the user has a configured context, do this yourself rather than asking
    them to do it.
-2. Ask for API documentation or source code for the datasource's query language and
-   endpoints. Don't guess what query language or syntax the datasource uses — ask for
-   docs. The user will need to provide documentation or links for query expression
-   format and any metadata/label endpoints.
+2. Find the query language and endpoint shapes from the vendor's API docs or the
+   plugin's source before writing anything — do not guess them. If they cannot be
+   settled that way, ask once, naming exactly what is missing and what you will
+   assume otherwise.
 3. Known quirks — special auth, pagination, response formats?
 
 ### 1b. Research
@@ -116,7 +121,8 @@ Document findings. Must include:
 - API endpoints and response shapes
 - Query request/response format
 - Available metadata operations
-- At least one successful API call result
+- At least one successful probe result — or, if no instance is reachable, the
+  probe you would run, marked UNVERIFIED with the reason
 
 ### Checkpoint: Research Complete
 

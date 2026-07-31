@@ -8,9 +8,23 @@ description: Use when porting a Grafana Cloud product from grafana-cloud-cli (gc
 Port an existing gcx resource client into a gcx provider — core adapter,
 schema/example registration, CRUD redirect commands, and ancillary subcommands.
 
-**Before starting:** Read `gcx-provider-recipe.md` front to back.
-The recipe is the source of truth for mechanical steps. This skill wraps it
-with workflow discipline and orchestration.
+> **Read this before the recipe. A human drives this skill; it is not covered by
+> the integrate-with-gcx v1 workflow.** The legacy CLI this skill ports *from* was
+> also called `gcx`, and the rename collapsed both names throughout these
+> documents — so every "compare old against new" instruction is ambiguous about
+> which binary it means, and a bare `gcx` runs whatever is installed rather than
+> the build under review. Use `bin/gcx` for anything you are verifying, and name
+> the legacy binary's own path explicitly.
+>
+> Of the recipe's mechanical steps, only the registration flow
+> (`providers.Register()` + `TypedRegistrations()`, and the `TypedCRUD`
+> `Descriptor`/`Aliases` fields) has been checked against current code. Treat the
+> rest as unaudited and verify as you go. Disambiguating the legacy tool
+> throughout is out of scope for v1.
+
+**Before starting:** read `gcx-provider-recipe.md` front to back for the
+mechanical steps, subject to the caveat above. This skill wraps it with workflow
+discipline and orchestration.
 
 **Canonical reference:** the `incidents_*.go` files in
 `internal/providers/irm/` — the first full port
@@ -24,20 +38,6 @@ with workflow discipline and orchestration.
 
 **When NOT to use**: Building a provider from scratch for a product without
 a gcx client — use `/add-provider` instead.
-
-## Status: not covered by the integrate-with-gcx v1 workflow
-
-**A human drives this skill.** The legacy CLI this skill ports *from* was also
-called `gcx`, and the rename collapsed both names throughout these documents — so
-every "compare old against new" instruction here is ambiguous about which binary
-it means, and bare `gcx` resolves to whatever is installed rather than the build
-under review. Read the comparison steps critically, use `bin/gcx` for anything you
-are verifying, and name the legacy binary's own path explicitly.
-
-Only the registration flow in the recipe (`providers.Register()` +
-`TypedRegistrations()`, and the `TypedCRUD` `Descriptor`/`Aliases` fields) has been
-checked against current code. Treat the rest as unaudited. Disambiguating the
-legacy tool throughout is deliberately out of scope for v1.
 
 ## Relationship to integrate-with-gcx
 
@@ -354,7 +354,7 @@ to the user.
 CTX={context-name}
 
 for fmt in json table wide yaml; do
-  GCX_AGENT_MODE=false gcx --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
+  GCX_AGENT_MODE=false bin/gcx --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
     && echo "list $fmt: OK" || echo "list $fmt: FAIL"
 done
 ```

@@ -17,9 +17,10 @@ product that doesn't have a gcx client.
 
 ## Skill Structure
 
-This recipe covers the **mechanical implementation steps only** (Steps 1-8).
-Workflow orchestration, phase gates, and verification are governed by
-`SKILL.md` — read it before starting any migration.
+This recipe covers the **mechanical implementation steps only** (Steps 1-8), and
+only its registration flow has been checked against current code — read SKILL.md's
+opening caveat first. Workflow orchestration, phase gates, and verification are
+governed by `SKILL.md`.
 
 - **Orchestration** is defined in SKILL.md's five-phase pipeline (Phase 0–4).
 - **Phase gates** in SKILL.md control when you may proceed between phases.
@@ -55,23 +56,28 @@ HTTP client reference section template that plan.md must include.
 Verify these before starting any port:
 
 ```bash
-# 1. gcx binary is available
-gcx --version
+# 1. This repo's binary is built
+bin/gcx --version
 
 # 2. Grafana context is configured and working
-gcx config view
-gcx --context=<ctx> resources list-types | head -5
+bin/gcx config view
+bin/gcx --context=<ctx> resources list-types | head -5
 
-# 3. gcx uses the same context (or configure separately)
-gcx --context=<ctx> config check
+# 3. The legacy CLI is reachable under its OWN path and points at the same
+#    Grafana. Substitute its real location; writing `gcx` here runs this repo's
+#    binary again and compares it against itself.
+"$LEGACY_CLI" --version
 
 # 4. Provider directory structure exists
 # Use /add-dir or create manually:
 mkdir -p internal/providers/{name}/{resource}
 ```
 
-If any of these fail, fix them before proceeding. Smoke tests (Phase 4) require
-live API access to both gcx and gcx against the same Grafana instance.
+If any of these fail, fix them before proceeding. Smoke tests (Phase 4) need live
+access from **both** binaries — `bin/gcx` and `$LEGACY_CLI` — against the same
+Grafana instance, and every comparison must keep the two visibly distinct. If no
+instance is reachable, report each smoke test UNVERIFIED with the reason rather
+than asserting parity.
 
 ---
 
@@ -104,7 +110,7 @@ Before starting a port, answer these questions:
       resolution logic in CreateFn/UpdateFn.
 
 [ ] 6. Pagination?
-      gcx uses manual pagination loops. Check if the API has limit/offset,
+      bin/gcx uses manual pagination loops. Check if the API has limit/offset,
       cursor, or Link headers. The adapter's ListFn must handle this.
 ```
 
@@ -314,7 +320,7 @@ After Build-Core and Build-Commands are complete, the integration task MUST:
 
 ```bash
 GCX_AGENT_MODE=false mise run all    # MUST exit 0 — this is the Phase 3 gate
-gcx providers list                   # new provider listed
+bin/gcx providers list                   # new provider listed
 ```
 
 ### Step 8: Smoke Test (Phase 4 — MANDATORY)
@@ -344,32 +350,32 @@ diff <(echo "$GCX_IDS") <(echo "$GCTL_IDS") && echo "MATCH" || echo "MISMATCH"
 
 # --- Get: compare key fields ---
 ID="<pick-an-id-from-list>"
-gcx --context=$CTX {resource} get $ID -o json | jq '{title, status, labels}' > /tmp/gcx_get.json
-gcx --context=$CTX {resource} get $ID -o json \
+bin/gcx --context=$CTX {resource} get $ID -o json | jq '{title, status, labels}' > /tmp/gcx_get.json
+bin/gcx --context=$CTX {resource} get $ID -o json \
   | jq '{title: .spec.title, status: .spec.status, labels: .metadata.labels}' > /tmp/gctl_get.json
 echo "=== Get field diff ==="
 diff /tmp/gcx_get.json /tmp/gctl_get.json && echo "MATCH" || echo "MISMATCH"
 
 # --- Adapter path ---
 echo "=== Adapter path ==="
-gcx --context=$CTX resources get {alias} > /dev/null 2>&1 && echo "resources get: OK" || echo "resources get: FAIL"
-gcx --context=$CTX resources get {alias}/$ID -o json > /dev/null 2>&1 && echo "resources get/id: OK" || echo "resources get/id: FAIL"
+bin/gcx --context=$CTX resources get {alias} > /dev/null 2>&1 && echo "resources get: OK" || echo "resources get: FAIL"
+bin/gcx --context=$CTX resources get {alias}/$ID -o json > /dev/null 2>&1 && echo "resources get/id: OK" || echo "resources get/id: FAIL"
 
 # --- Ancillary commands (repeat per ancillary) ---
 echo "=== Ancillary: {subcommand} ==="
-gcx --context=$CTX {resource} {subcommand} -o json | jq length
-gcx --context=$CTX {resource} {subcommand} -o json | jq length
+bin/gcx --context=$CTX {resource} {subcommand} -o json | jq length
+bin/gcx --context=$CTX {resource} {subcommand} -o json | jq length
 
 # --- Schema + example ---
 echo "=== Schema ==="
-gcx --context=$CTX resources list-types -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
+bin/gcx --context=$CTX resources list-types -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
 echo "=== Example ==="
-gcx --context=$CTX resources list-examples {alias} | head -10
+bin/gcx --context=$CTX resources list-examples {alias} | head -10
 
 # --- Output format check ---
 echo "=== Output formats ==="
 for fmt in table wide json yaml; do
-  GCX_AGENT_MODE=false gcx --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
+  GCX_AGENT_MODE=false bin/gcx --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
     && echo "$fmt: OK" || echo "$fmt: FAIL"
 done
 ```
