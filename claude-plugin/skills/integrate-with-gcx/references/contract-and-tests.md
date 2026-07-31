@@ -158,6 +158,8 @@ backend correctly — that is the package's job. Plan, per command:
 - **Both output modes**: human table/text and agent-mode single-JSON-document
   (use `internal/testutils` helpers to pin agent mode BEFORE constructing the
   command — the default resolves at flag-binding time).
+- **Zero-result serialization**: the empty-collection case emits `[]`, not
+  `null`, in both modes.
 - **Error paths**: backend 4xx/5xx map to the declared summaries and exit codes.
 - **Destructive confirmation** where applicable: `--force`, `GCX_AUTO_APPROVE`,
   agent-mode declines without `--force`.
