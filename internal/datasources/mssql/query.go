@@ -6,7 +6,6 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
-	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/mssql"
 	"github.com/spf13/cobra"
@@ -77,7 +76,11 @@ it in your browser after the query succeeds.`,
 				return err
 			}
 
-			sql := mssql.EnforceTop(expr, limit, maxLimit)
+			// Inject TOP (eff+1) so we can detect and warn when our own cap hid
+			// rows; displaySQL carries the user-facing TOP (eff) for the Explore
+			// link so it never leaks the +1 sentinel.
+			querySQL, eff, capped := mssql.EnforceTopSentinel(expr, limit, maxLimit)
+			displaySQL := mssql.EnforceTop(expr, limit, maxLimit)
 
 			now := time.Now()
 			start, end, _, err := shared.ParseTimes(now)
@@ -91,7 +94,7 @@ it in your browser after the query succeeds.`,
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, mssql.QueryRequest{
-				RawSQL: sql,
+				RawSQL: querySQL,
 				Start:  start,
 				End:    end,
 			})
@@ -99,16 +102,15 @@ it in your browser after the query succeeds.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			// Surface any plugin notices (e.g. the server-side row-limit
-			// truncation warning) so the user knows the result was capped.
-			for _, notice := range resp.Notices {
-				cmdio.EmitHint(cmd.ErrOrStderr(), notice, "")
-			}
+			// Drop the sentinel row and warn if our TOP cap hid rows; also surface
+			// any server-side plugin notices (e.g. the datasource's own row-limit
+			// warning). Must run before Encode so the sentinel never reaches output.
+			dsquery.SurfaceRowLimits(cmd.ErrOrStderr(), resp, capped, eff, maxLimit)
 
 			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
-				Expr:           sql,
+				Expr:           displaySQL,
 				From:           shared.From,
 				To:             shared.To,
 				OrgID:          dsquery.OrgID(cfgCtx),

@@ -91,19 +91,42 @@ func EnforceTop(sql string, limit, maxLimit int) string {
 	if limit <= 0 {
 		return sql
 	}
-	if limit > maxLimit {
-		limit = maxLimit
-	}
+	out, _ := injectTop(sql, min(limit, maxLimit))
+	return out
+}
 
+// EnforceTopSentinel is EnforceTop's truncation-detecting variant. It injects
+// `TOP (eff+1)` (eff = min(limit, maxLimit)) so the caller can tell whether more
+// rows matched than the cap allows, and returns the SQL to execute, the
+// effective row cap to display (eff), and whether gcx injected a fresh TOP.
+// When capped is true, run the query and call (*QueryResponse).Truncate(eff);
+// if it reports dropped rows, warn with querysql.TruncationHint. When capped is
+// false (limit disabled, or the statement was left unchanged) the caller must
+// not truncate or warn. Mirrors querysql.EnforceLimitSentinel for the LIMIT
+// datasources.
+func EnforceTopSentinel(sql string, limit, maxLimit int) (string, int, bool) {
+	if limit <= 0 {
+		return sql, 0, false
+	}
+	eff := min(limit, maxLimit)
+	out, capped := injectTop(sql, eff+1)
+	return out, eff, capped
+}
+
+// injectTop inserts `TOP (n)` immediately after a leading SELECT [DISTINCT|ALL],
+// returning the rewritten SQL and whether the injection happened. It bails
+// (returns the SQL unchanged, false) for statements where injecting TOP would be
+// invalid or change semantics: non-SELECT statements, CTEs (WITH ...), queries
+// that already use TOP, set operations, and paged (OFFSET ... FETCH) queries.
+func injectTop(sql string, n int) (string, bool) {
 	loc := leadingSelectRe.FindStringIndex(sql)
 	if loc == nil {
-		return sql // not a leading-SELECT statement (e.g. WITH, EXEC, INSERT)
+		return sql, false // not a leading-SELECT statement (e.g. WITH, EXEC, INSERT)
 	}
 	if existingTopRe.MatchString(sql) || setOpRe.MatchString(sql) || offsetRe.MatchString(sql) {
-		return sql
+		return sql, false
 	}
 
-	// Insert `TOP (n) ` immediately after the leading SELECT [DISTINCT|ALL].
 	insertAt := loc[1]
-	return sql[:insertAt] + "TOP (" + strconv.Itoa(limit) + ") " + sql[insertAt:]
+	return sql[:insertAt] + "TOP (" + strconv.Itoa(n) + ") " + sql[insertAt:], true
 }

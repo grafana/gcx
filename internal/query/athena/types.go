@@ -40,6 +40,13 @@ func EnforceLimit(sql string, limit, maxLimit int) string {
 	return querysql.EnforceLimit(sql, limit, maxLimit, athenaBail)
 }
 
+// EnforceLimitSentinel is EnforceLimit's truncation-detecting variant: it
+// injects "LIMIT eff+1" so the caller can tell whether more rows matched than
+// the cap allows. See querysql.EnforceLimitSentinel for the contract.
+func EnforceLimitSentinel(sql string, limit, maxLimit int) (string, int, bool) {
+	return querysql.EnforceLimitSentinel(sql, limit, maxLimit, athenaBail)
+}
+
 func athenaBail(sql string) bool {
 	upper := strings.ToUpper(strings.TrimSpace(sql))
 	if strings.HasPrefix(upper, "SHOW") || strings.HasPrefix(upper, "DESCRIBE") || strings.HasPrefix(upper, "EXPLAIN") {
