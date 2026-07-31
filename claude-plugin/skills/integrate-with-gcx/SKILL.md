@@ -72,8 +72,23 @@ a document):
 
 Missing information does not stop you: discover it, or ask one targeted question.
 
-**Placement is never the last thing you do here.** Whether you implement in Build
-or hand the work to a sibling skill, the flow is the same four steps:
+**What happens next depends on the readiness outcome.** Two of the four are
+terminal — Place is the whole deliverable and there is nothing to implement:
+
+| Readiness outcome | Next |
+|---|---|
+| **ready** | continue |
+| **bounded bootstrap** | continue, within the ceiling the outcome requires |
+| **backend prerequisite** *with an explicitly viable read-only slice* | continue, on that slice only |
+| **backend prerequisite** *without a viable slice* | **stop.** Report the boundary, the missing prerequisite and its named owner |
+| **not gcx** | **stop.** Report the boundary and the owner; write no contract and no code |
+
+Do not invent a contract or an implementation for a terminal outcome. Concluding
+"not gcx" and then building anyway is the expensive version of getting placement
+wrong.
+
+For the outcomes that continue, the flow is the same four steps whether you
+implement in Build or hand the work to a sibling skill:
 
 ```text
 Place  →  contract (Build, sized to the change)  →  implementation  →  Review
@@ -184,7 +199,9 @@ implementation · an unresolved user choice would materially change what is buil
 
 ## Handoffs
 
-Hand off **after** the contract, not after Place, and return for Review:
+For outcomes that continue (see [Place](#mode-place) — a terminal readiness verdict
+hands off nothing), hand off **after** the contract, not after Place, and return
+for Review:
 
 ```text
 Place  →  contract  →  [add-provider | add-datasource]  →  Review (here)

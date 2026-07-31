@@ -11,9 +11,14 @@ When should you create a new provider vs using the existing `gcx resources` comm
 ## Quick Decision
 
 ```
-Does the product expose a K8s-compatible API via Grafana's /apis endpoint?
-├── YES → Use existing `gcx resources` command (no provider needed)
-│         The resource is already discoverable and manageable.
+Do you need only standard CRUD on a type that is externally accessible
+and discoverable on Grafana's /apis endpoint?
+├── YES → `gcx resources` already covers it; no provider needed for CRUD.
+│         But if the product also has non-CRUD operations (restore a
+│         version, export a tree, validate a rule), those still need
+│         placement analysis — `gcx dashboards` and `gcx alert` are
+│         dedicated command trees over /apis-backed products for exactly
+│         that reason. Being on /apis does not settle the command surface.
 │
 └── NO → Does the product have its own REST API?
     ├── YES → Create a new provider
@@ -25,6 +30,12 @@ Does the product expose a K8s-compatible API via Grafana's /apis endpoint?
     └── NO → The product likely has no external API.
               Check if it's a UI-only feature or if the API is internal.
               → Cannot integrate without an accessible API.
+
+NOTE: if the design that falls out is a commands-only provider calling the
+K8s dynamic client, CONSTITUTION.md § Provider Architecture records
+internal/providers/dashboards/ as the ONE documented exception (ADR 016).
+A second extends that exception: explicit human approval and a
+CONSTITUTION change are required before building it.
 ```
 
 ## Detailed Criteria
@@ -97,7 +108,8 @@ TypedCRUD).
 Before committing to a provider, verify with a real API call:
 
 ```bash
-# Test if K8s API works (if yes → no provider needed)
+# Test if the K8s API serves it (if yes → no provider needed for CRUD;
+#  non-CRUD operations still need placement analysis)
 curl -s -H "Authorization: Bearer $TOKEN" \
   "$GRAFANA_URL/apis/" | jq '.groups[].name' | grep {product}
 
