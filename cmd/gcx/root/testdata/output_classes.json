@@ -123,6 +123,7 @@
  "gcx assistant investigations get-narrative": "finite",
  "gcx assistant investigations list": "finite",
  "gcx assistant investigations list-messages": "finite",
+ "gcx assistant investigations list-profiles": "finite",
  "gcx assistant investigations list-tool-calls": "finite",
  "gcx assistant investigations mode": "finite",
  "gcx assistant investigations pause": "finite",
