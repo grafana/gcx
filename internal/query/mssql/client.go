@@ -36,17 +36,22 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		to = strconv.FormatInt(now.UnixMilli(), 10)
 	}
 
+	query := map[string]any{
+		"refId":      "A",
+		"datasource": map[string]any{"type": DatasourceType, "uid": datasourceUID},
+		"rawSql":     req.RawSQL,
+		"format":     QueryFormatTable,
+	}
+	// Only send intervalMs when set (--step); omitting it lets the plugin apply
+	// its own default for the $__interval macro.
+	if req.IntervalMs > 0 {
+		query["intervalMs"] = req.IntervalMs
+	}
+
 	bodyMap := map[string]any{
-		"queries": []any{
-			map[string]any{
-				"refId":      "A",
-				"datasource": map[string]any{"type": DatasourceType, "uid": datasourceUID},
-				"rawSql":     req.RawSQL,
-				"format":     QueryFormatTable,
-			},
-		},
-		"from": from,
-		"to":   to,
+		"queries": []any{query},
+		"from":    from,
+		"to":      to,
 	}
 
 	body, err := json.Marshal(bodyMap)
