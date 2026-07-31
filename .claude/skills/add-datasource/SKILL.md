@@ -6,7 +6,8 @@ description: Use for the implementation workflow once a capability is already cl
 # Add Datasource Type
 
 Orchestrates adding a new datasource type plugin — from API discovery through
-verified implementation. Three stages with human approval gates.
+verified implementation. Three stages, worked autonomously: the stage boundaries
+are checkpoints you satisfy, not approvals you wait for.
 
 ## When to Use
 
@@ -41,10 +42,37 @@ materially change the implementation — an unknown query-expression format, an
 endpoint you cannot verify. If no instance is reachable, report the live checks as
 **UNVERIFIED** with the reason rather than blocking or claiming them green.
 
+
+## The flow, however you got here
+
+```text
+contract (proportional)  →  implementation  →  Review
+```
+
+Both entry paths run all three. The contract and the review are the
+high-value part — naming against the frozen surface, typed inputs and
+explicitly-empty values, output protocol class, completeness honesty, actionable
+errors, token cost, shared-transport reuse, mutation-resistant tests — and none
+of it is a document or a gate.
+
+- **Contract, before you write code:** cover
+  `claude-plugin/skills/integrate-with-gcx/references/contract-and-tests.md`,
+  sized to the change. A one-flag addition needs three lines of it; a new
+  provider needs all of it. If you arrived from `integrate-with-gcx` the contract
+  already exists — use it, don't redo it.
+- **Review, before you call it review-ready:** run the diff-triggered checks in
+  `claude-plugin/skills/integrate-with-gcx/references/self-review.md`, and re-run
+  them after every fix push. Report only unresolved risks, unverified
+  assumptions, failed or skipped checks, and architecture deviations.
+
+Read those two files from the checkout, or via
+`gcx agent skills get integrate-with-gcx`. Skipping them is the one way to get
+this wrong while every gate stays green.
+
 ## Workflow
 
 ```
-Discover ──gate──> Implement ──gate──> Verify
+Discover ───────> Implement ──gate──> Verify
    │                    │                  │
    v                    v                  v
 research report     code per step      smoke tests
@@ -52,7 +80,7 @@ research report     code per step      smoke tests
 
 | Stage | Deliverable | Gate |
 |-------|-------------|------|
-| 1. Discover | Research report | User approves findings |
+| 1. Discover | research findings | findings presented; no approval wait |
 | 2. Implement | Code (one step at a time) | `mise run gate` passes per step; `GCX_AGENT_MODE=false mise run all` once before push |
 | 3. Verify | Smoke tests + annotation check | All checks green |
 
@@ -286,7 +314,7 @@ If the datasource also needs entries in `internal/agent/command_annotations.go`
 "gcx datasources {kind} labels": {Cost: "small"},
 ```
 
-### Gate: `mise run all` passes
+### Gate: `mise run gate` per step, `GCX_AGENT_MODE=false mise run all` once before push
 
 ---
 
@@ -313,7 +341,7 @@ bin/gcx datasources {kind} query '<expr>' --since 1h
 
 ```bash
 # Full quality gates
-mise run all
+GCX_AGENT_MODE=false mise run all
 
 # Agent annotation consistency
 mise exec -- go test ./internal/agent/...

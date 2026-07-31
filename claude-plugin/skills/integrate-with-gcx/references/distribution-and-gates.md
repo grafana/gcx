@@ -34,8 +34,10 @@ parity is not always correct:
   error naming the typed command to use. That is the honest outcome, not a
   degraded generic path.
 
-Tempo is a third shape — it has no `query` leaf at all, so the question does not
-arise. Kinds currently outside the switch: athena, cloudwatch, infinity, tempo.
+Kinds currently outside the switch: athena, infinity and tempo — all three have a
+typed `query` leaf and are candidates (tempo's is built in
+`internal/datasources/tempo/search.go` rather than a `query.go`) — plus cloudwatch,
+which is excluded by design as above.
 
 ## What the root conformance suites do to your command
 
