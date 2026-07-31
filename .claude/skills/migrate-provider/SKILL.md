@@ -1,6 +1,6 @@
 ---
 name: migrate-provider
-description: Use when porting a Grafana Cloud product from grafana-cloud-cli (gcx) to gcx, when a bead task references gcx provider migration, or when user says "migrate provider", "port from gcx", "port oncall", "port k6". Not for building providers from scratch — use /add-provider for that. For placement decisions, integration contracts, or pre-review self-checks use the integrate-with-gcx skill (bundled; `gcx agent skills get integrate-with-gcx`).
+description: Use when porting a Grafana Cloud product from grafana-cloud-cli (gcx) to gcx, when a bead task references gcx provider migration, or when user says "migrate provider", "port from gcx", "port oncall", "port k6". Not for building providers from scratch — use /add-provider for that. Placement is already settled for a port, so this skill owns it end to end; it draws only the command-naming pass and the pre-review diff checks from the integrate-with-gcx skill (bundled; `gcx agent skills get integrate-with-gcx`).
 ---
 
 # Migrate Provider from gcx
@@ -12,7 +12,8 @@ schema/example registration, CRUD redirect commands, and ancillary subcommands.
 The recipe is the source of truth for mechanical steps. This skill wraps it
 with workflow discipline and orchestration.
 
-**Canonical reference:** `internal/providers/incidents/` — the first full port
+**Canonical reference:** the `incidents_*.go` files in
+`internal/providers/irm/` — the first full port
 (adapter + schema + commands + ancillary). Start there for patterns.
 
 ## When to Use
@@ -23,6 +24,24 @@ with workflow discipline and orchestration.
 
 **When NOT to use**: Building a provider from scratch for a product without
 a gcx client — use `/add-provider` instead.
+
+## Relationship to integrate-with-gcx
+
+One-directional, so the two skills cannot bounce a port back and forth:
+
+- **Placement is not an open question here.** An existing grafana-cloud-cli
+  client already establishes the provider tier, so `integrate-with-gcx` routes
+  ports straight to this skill without producing a placement section. Phases 0-4
+  below own the port end to end.
+- **Call back into two sections only**, not the whole skill: the naming pass on
+  the ported command surface (`self-review.md` T7 — released names are frozen,
+  and a port is where a legacy name most often gets carried in), and the
+  diff-triggered review before requesting human review (`self-review.md`).
+  Everything else — contract worksheets, placement, readiness — does not apply
+  to a port.
+- Read either from the checkout at
+  `claude-plugin/skills/integrate-with-gcx/references/`, or via
+  `gcx agent skills get integrate-with-gcx`.
 
 ## Prerequisites
 

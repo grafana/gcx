@@ -18,6 +18,23 @@ verified implementation. Three stages with human approval gates.
 those already exist. If the product is a Grafana Cloud product (not a datasource),
 use `/add-provider` instead.
 
+## Entry paths
+
+**Invoked from `integrate-with-gcx`** (the placement section already exists —
+necessity, command path, backend evidence, wiring, readiness):
+
+- Skip the Stage 1 questions it already answers: the datasource kind and plugin
+  type string, the query/metadata endpoints, and the readiness verdict. Record
+  them and move on rather than re-asking.
+- The Stage 1 approval gate **does not apply on this path**. Build autonomously.
+  If a query-language or endpoint detail is genuinely missing, discover it from
+  the vendor docs, or ask one targeted question carrying the evidence and a
+  recommendation — never fall back to a blanket approval gate.
+- Start at Stage 2, and use Stage 3 verification as written.
+
+**Invoked directly** (no placement section): run all three stages below,
+including the Stage 1 gate.
+
 ## Workflow
 
 ```
@@ -75,6 +92,8 @@ Document findings. Must include:
 - At least one successful API call result
 
 ### Gate: User Approves Research
+
+Direct-invocation path only — see [Entry paths](#entry-paths).
 
 ---
 

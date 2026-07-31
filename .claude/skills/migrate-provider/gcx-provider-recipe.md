@@ -246,13 +246,34 @@ helpers in `internal/resources/adapter/slug.go` (`ComposeName`,
 
 ### Step 5: Register in init()
 
+`init()` contains exactly one call — `providers.Register()` — and nothing else.
+That single call populates both the provider registry and the adapter registry,
+by invoking `adapter.Register()` for every entry your `TypedRegistrations()`
+returns. A second registration call in `init()` violates
+CONSTITUTION.md § Architecture Invariants ("Unified provider registration").
+
 In `provider.go`:
 ```go
 func init() {
     providers.Register(&Provider{})
-    {resource}.Register(&configLoader{})
+}
+
+// TypedRegistrations collects the adapter registrations for this provider's
+// resources. Construct the config loader here and thread it into each
+// resource's Registration() — the loader is not registered separately.
+func (p *Provider) TypedRegistrations() []adapter.Registration {
+    loader := &configLoader{}
+    return []adapter.Registration{
+        {resource}.Registration(loader),
+        // ...one entry per adapter-backed resource
+    }
 }
 ```
+
+Commands-only providers return `nil` from `TypedRegistrations()` — that is
+first-class, not a stub. Reference implementation:
+`internal/providers/irm/provider.go` (`init()` plus `TypedRegistrations()`
+assembling registrations from two resource families through one loader).
 
 > **Note:** The blank import in `cmd/gcx/root/command.go` is added in Step 7
 > (Integration / Wiring), not here. Step 5 only covers `provider.go`.
@@ -268,15 +289,18 @@ Minimum test coverage per resource:
 
 After Build-Core and Build-Commands are complete, the integration task MUST:
 
-1. **Wire `Commands()` and `TypedRegistrations()`** in the provider's `init()`
-2. **Add blank import** in `cmd/gcx/root/command.go`
+1. **Implement `Commands()` and `TypedRegistrations()`** as methods on the
+   provider — `init()` itself stays a single `providers.Register()` call (Step 5)
+2. **Add blank import** in `cmd/gcx/root/command.go` — the root command mounts
+   every *registered* provider's commands automatically, but nothing registers
+   until the package is linked in, and only the blank import does that
 3. **Fix import cycles** introduced by subpackage references
 4. **Fix variable name collisions** from package aliasing
 5. **Run `mise run lint`** and fix all new issues
 
 ```bash
 GCX_AGENT_MODE=false mise run all    # MUST exit 0 — this is the Phase 3 gate
-gcx providers                    # new provider listed
+gcx providers list                   # new provider listed
 ```
 
 ### Step 8: Smoke Test (Phase 4 — MANDATORY)

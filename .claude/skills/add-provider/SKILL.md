@@ -6,7 +6,8 @@ description: Use for the implementation workflow once a capability is already cl
 # Add Provider
 
 Orchestrates adding a new Grafana product provider — from API discovery through
-verified implementation. Four stages with human approval gates.
+verified implementation. Four stages; the discovery and design gates apply to
+direct invocation only (see [Entry paths](#entry-paths)).
 
 ## When to Use
 
@@ -17,8 +18,27 @@ verified implementation. Four stages with human approval gates.
 **When NOT to use**: If the product exposes a K8s-compatible `/apis` endpoint,
 it already works with `gcx resources` — no provider needed.
 
-**First**: Check `references/decision-tree.md` to confirm a provider is the
-right approach.
+## Entry paths
+
+**Invoked from `integrate-with-gcx`** (the placement section already exists —
+necessity, command path, backend evidence, wiring, readiness). Then:
+
+- Skip Stage 1 entirely if the placement section carries the API surface, auth
+  model and readiness verdict. Record those findings and move on; do not
+  re-research or re-classify what is already settled, and do not ask for
+  approval of decisions that were made with evidence.
+- Skip the Stage 2 decisions it already answers (tier, command surface, and
+  whether the resource belongs in the `resources` pipeline). Answer only what is
+  genuinely still open.
+- The Stage 1 and Stage 2 approval gates **do not apply on this path**. Build
+  autonomously. If something is genuinely unsettled, discover it, or ask one
+  targeted question carrying the evidence and a recommendation — never fall back
+  to a blanket approval gate.
+- Start at Stage 3, and use Stage 4 verification as written.
+
+**Invoked directly** (no placement section): run all four stages below,
+including their gates, and check `references/decision-tree.md` first to confirm a
+provider is the right approach.
 
 ## Workflow
 
@@ -31,16 +51,17 @@ research report    ADRs + spec       code per stage     smoke tests
 
 | Stage | Deliverable | Gate |
 |-------|-------------|------|
-| 1. Discover | `docs/research/` report | User approves findings |
-| 2. Design | ADRs + spec + smoke test plan | User approves design |
+| 1. Discover | `docs/research/` report | User approves findings *(direct invocation only)* |
+| 2. Design | ADRs + spec + smoke test plan | User approves design *(direct invocation only)* |
 | 3. Implement | Code (one stage at a time) | `mise run all` passes per stage |
 | 4. Verify | Smoke tests + architecture doc updates | All checks green |
 
 ### Prerequisites
 
-Confirm with the user before starting:
+Know these before starting — from the placement section on the
+`integrate-with-gcx` path, or by asking on direct invocation:
 - **Product name** — which Grafana product to integrate
-- **Access** — do they have a running Grafana instance with the product enabled?
+- **Access** — is there a running Grafana instance with the product enabled?
 - **Scope** — full provider or single resource type first?
 
 ---
@@ -84,7 +105,9 @@ the template at `docs/_templates/research.md`. Must include:
 
 ### Gate: User Approves Research
 
-Present the research report. Do not proceed to design until approved.
+Direct-invocation path only. Present the research report; do not proceed to
+design until approved. On the `integrate-with-gcx` path this stage and its gate
+are skipped — see [Entry paths](#entry-paths).
 
 ---
 
@@ -161,7 +184,10 @@ gcx resources get {alias}
 
 ### Gate: User Approves Design
 
-Present ADRs and spec. Do not proceed to implementation until approved.
+Direct-invocation path only. Present ADRs and spec; do not proceed to
+implementation until approved. On the `integrate-with-gcx` path, decisions the
+placement section already settled are recorded rather than re-derived, and there
+is no approval gate — see [Entry paths](#entry-paths).
 
 ---
 

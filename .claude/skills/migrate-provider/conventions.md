@@ -1,7 +1,8 @@
 # Go Conventions for Provider Ports
 
 Conventions and linter gotchas discovered during provider migrations.
-Reference: `internal/providers/incidents/` for working examples.
+Reference: the `internal/providers/irm/incidents_*.go` files for working
+examples.
 
 ## API Group Naming
 
