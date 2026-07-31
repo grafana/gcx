@@ -117,17 +117,19 @@ Know these before starting — from the placement section on the
 
 > **Guide**: `docs/reference/provider-discovery-guide.md` Sections 1.1–1.6
 
-### 1a. Gather User Context
+### 1a. Establish context yourself
 
-Before autonomous research, ask what the user already knows:
+Research these before asking anything — the repo, the module cache, the vendor's
+docs and a probe answer most of them:
 
-1. Source code access — which repo?
-2. API documentation — OpenAPI specs, Grafana docs URLs?
-3. Terraform resources — does the Terraform provider support this product?
-4. Go SDK — existing Go client library?
-5. Known quirks — non-standard auth, async ops, unusual pagination?
+1. Source code or OpenAPI spec for the product's API
+2. Terraform provider coverage, if any, as a schema reference
+3. An existing Go client library
+4. Quirks — non-standard auth, async operations, unusual pagination
 
-Use answers to skip known areas and focus research on gaps.
+Ask only where the answer is both unavailable and load-bearing, in one grouped
+question with the evidence and a recommendation. Do not open with a
+questionnaire.
 
 ### 1b. Research
 
@@ -147,7 +149,8 @@ the template at `docs/_templates/research.md`. Must include:
 - API endpoints and response shapes discovered
 - Auth model analysis
 - Resource relationships
-- At least one successful API call result
+- At least one successful probe result — or, if no instance is reachable, the
+  probe you would run, marked UNVERIFIED with the reason
 - Confidence assessment per finding
 
 ### Checkpoint: Research Complete
@@ -327,7 +330,8 @@ need updating.
 
 ### Checkpoint: Verified
 
-All smoke tests pass, all checklists green, docs updated.
+Smoke tests executed and recorded, or reported UNVERIFIED with the reason and
+what a reviewer must run before merge. Wiring checks pass; docs updated.
 
 ---
 
