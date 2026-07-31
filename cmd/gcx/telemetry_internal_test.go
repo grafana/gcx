@@ -10,10 +10,14 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/queryerror"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // isolate points the device-id and notice files at a temp dir so building an
@@ -383,6 +387,96 @@ func TestBuildUsageEventSuppressesErrorSignalsOnCanceled(t *testing.T) {
 	assert.NotContains(t, fields, "k8s_reason")
 	require.Contains(t, fields, "error_kind")
 	assert.Empty(t, fields["error_kind"])
+}
+
+// reportError extracts the failure signals from the raw error, ahead of its
+// short-circuits, and the extraction moves no exit code: the columns here pin
+// today's taxonomy, including its known asymmetry — a raw Kubernetes
+// *StatusError exits 3 while the dynamic client's re-wrapped APIError falls
+// to the generic path and exits 1. Both yield their reason; neither feeds
+// http_status.
+func TestReportErrorCapturesSignalsAndPreservesExitCodes(t *testing.T) {
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	for _, tc := range []struct {
+		name       string
+		err        error
+		wantExit   int
+		wantStatus int
+		wantReason string
+	}{
+		{
+			name:       "bare provider 401 keeps exit 1",
+			err:        providers.FormatError(401, []byte(`{"message":"denied"}`)),
+			wantExit:   gcxerrors.ExitGeneralError,
+			wantStatus: 401,
+		},
+		{
+			name: "SM register-install 401 keeps exit 3",
+			err: fmt.Errorf("SM token not configured: SM register/install: %w",
+				providers.FormatError(401, []byte(`{"message":"denied"}`))),
+			wantExit:   gcxerrors.ExitAuthFailure,
+			wantStatus: 401,
+		},
+		{
+			name:       "emitted in-band failure honors its code and still captures",
+			err:        gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, providers.FormatError(403, nil)),
+			wantExit:   gcxerrors.ExitGeneralError,
+			wantStatus: 403,
+		},
+		{
+			name:       "raw k8s unauthorized keeps exit 3 and no http_status",
+			err:        k8sapi.NewUnauthorized("bad token"),
+			wantExit:   gcxerrors.ExitAuthFailure,
+			wantReason: "Unauthorized",
+		},
+		{
+			name:       "dynamic k8s unauthorized keeps exit 1 and no http_status",
+			err:        dynamic.ParseStatusError(k8sapi.NewUnauthorized("bad token")),
+			wantExit:   gcxerrors.ExitGeneralError,
+			wantReason: "Unauthorized",
+		},
+		{
+			name:       "query error inside HTTP 200 captures the raw 2xx the wire filter drops",
+			err:        queryerror.FromBody("loki", "query", 200, []byte(`{"results":{"A":{"error":"bad query","status":400}}}`)),
+			wantExit:   gcxerrors.ExitGeneralError,
+			wantStatus: 200,
+		},
+		{
+			name:       "query transport 403 captures 403 and keeps exit 3",
+			err:        queryerror.FromBody("loki", "query", 403, []byte(`{"results":{"A":{"error":"denied","status":500}}}`)),
+			wantExit:   gcxerrors.ExitAuthFailure,
+			wantStatus: 403,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isolate(t)
+
+			exitCode := reportError(tc.err, nil, nil)
+
+			assert.Equal(t, tc.wantExit, exitCode, "the extraction must not move any exit code")
+			assert.Equal(t, tc.wantStatus, capture.CurrentHTTPStatus())
+			assert.Equal(t, tc.wantReason, capture.CurrentK8sReason(),
+				"HTTP and query failures must not invent a Kubernetes reason, nor k8s errors a status")
+		})
+	}
+}
+
+// The whole in-process path for the one case the wire contract calls out by
+// name: a query failure inside an HTTP 200 must not put http_status on the
+// event, even though the raw 200 was captured on the way.
+func TestReportErrorEmbedded200NeverReachesTheEvent(t *testing.T) {
+	isolate(t)
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	err := queryerror.FromBody("loki", "query", 200, []byte(`{"results":{"A":{"error":"bad query","status":400}}}`))
+	exitCode := reportError(err, nil, nil)
+
+	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), exitCode))
+	assert.NotContains(t, fields, "http_status",
+		"a 2xx transport status is not a failure and must never be sent")
 }
 
 // The auth method describes the invocation, not the failure, so it survives
