@@ -74,25 +74,18 @@ satisfy, not approvals you wait for**:
 contract (proportional)  →  implementation  →  Review
 ```
 
-Both entry paths run all three. The contract and the review are the
-high-value part — naming against the frozen surface, typed inputs and
-explicitly-empty values, output protocol class, completeness honesty, actionable
-errors, token cost, shared-transport reuse, mutation-resistant tests — and none
-of it is a document or a gate.
+Both entry paths run all three, and none of them is a document or a gate:
 
-- **Contract, before you write code:** cover
-  `claude-plugin/skills/integrate-with-gcx/references/contract-and-tests.md`,
-  sized to the change. A one-flag addition needs three lines of it; a new
-  provider needs all of it. If you arrived from `integrate-with-gcx` the contract
-  already exists — use it, don't redo it.
-- **Review, before you call it review-ready:** run the diff-triggered checks in
-  `claude-plugin/skills/integrate-with-gcx/references/self-review.md`, and re-run
-  them after every fix push. Report only unresolved risks, unverified
-  assumptions, failed or skipped checks, and architecture deviations.
+- **Contract, before code** — `claude-plugin/skills/integrate-with-gcx/references/contract-and-tests.md`,
+  sized to the change. If you arrived from `integrate-with-gcx` the contract
+  already exists; use it, don't redo it.
+- **Review, before calling it review-ready** —
+  `claude-plugin/skills/integrate-with-gcx/references/self-review.md`, re-run after
+  every fix push.
 
-Read those two files from the checkout, or via
-`gcx agent skills get integrate-with-gcx`. Skipping them is the one way to get
-this wrong while every gate stays green.
+That is where the naming, typed-input, output-class, completeness, error,
+token-cost and test-quality guidance lives. Read those two rather than restating
+them here.
 
 ## Workflow
 
@@ -108,7 +101,7 @@ research report    ADRs + spec       code per stage     smoke tests
 | 1. Discover | research findings (report only if staged work needs one) | findings presented; no approval wait |
 | 2. Design | decisions + smoke test plan (ADR/spec only per the risk test) | decisions presented; no approval wait |
 | 3. Implement | Code (one stage at a time) | `mise run gate` passes per stage |
-| 4. Verify | Smoke tests + architecture doc updates | All checks green |
+| 4. Verify | Smoke tests + architecture doc updates | smoke tests run or reported UNVERIFIED; wiring checks pass |
 
 ### Prerequisites
 
@@ -332,7 +325,7 @@ Follow `docs/reference/doc-maintenance.md` structural checks — a new provider
 adds packages to `internal/` and commands to `cmd/`, so architecture docs
 need updating.
 
-### Gate: All Green
+### Checkpoint: Verified
 
 All smoke tests pass, all checklists green, docs updated.
 
