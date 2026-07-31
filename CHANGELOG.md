@@ -1,3 +1,84 @@
+## Unreleased
+
+- Added `gcx instrumentation explain <id>` and `gcx instrumentation list-explanations` for looking up finding explanations bundled with `otel-checker` (bumped to v0.3.1).
+- `gcx instrumentation check` now surfaces an `EXPLAIN_ID` column in table output (and `explain_id` field in JSON), feedable directly into `gcx instrumentation explain`.
+
+## v1.0.0 (2026-07-28)
+
+### Features
+
+- alert: add ruler subtree for datasource-managed rule writes
+- kg: add `entities correlate` to resolve entities from alert labels
+- kg: add entity quality reports (`kg quality`), folded into `kg diagnose`
+
+### Fixes
+
+- alert: make GMA alert rules modifiable via the resources tier
+- cloud: drop status/createdAt/updatedAt from stack regions output
+- aio11y: point plugin id at renamed grafana-agento11y-app
+
+### Docs
+
+- GA: remove public preview warnings, add GA notes across docs and README
+- skills: harden agento11y-instrument and agento11y-prod-setup guidance
+- stop prescribing Editor/Admin for service-account tokens; installation fixes
+
+## v0.6.0 (2026-07-24)
+
+### Breaking changes
+
+- Naming convergence: verb-first subcommand renames across all providers
+  (e.g. `versions`→`list-versions`, `create`→`upsert`, `summary`→`stats`)
+- Config split into separate stacks, cloud entries, and contexts (auto-migrates)
+- Agent output contract: one JSON document per finite command
+- Profiles: `profile-types` renamed to `list-profile-types` at both mounts
+- Alert: dropped `create`/`update`/`apply` aliases from templates `upsert`
+
+### Features
+
+- Telemetry: first-run notice and default-on anonymous usage stats
+- Output: list truncation contract with honest caps and agent-legible metadata
+- aio11y: experiments v2 shapes and commands, plus conversation annotations
+- kg: `--dry-run` for model-rules and prom-rules upsert
+- Profiles: time-range flags for `labels` and `list-profile-types`
+
+### Fixes
+
+- Cloud: stop misreporting invalid stack slugs as "slug already taken"
+- appo11y: honor `--config` across the direct command tree
+- aio11y: honor `--config` in direct agento11y CRUD commands
+- irm: decode expanded webhook integration filters
+
+### Docs
+
+- Added anonymous usage statistics page; fixed usage-stats command examples
+
+## v0.5.0 (2026-07-21)
+
+- Register the Assistant as a first-class provider, moving `mcp-servers` into the resources pipeline
+- **Breaking:** rename the `aio11y` command tree and skills to `agento11y`
+- **Breaking:** rename the `agento11y-eval-starter` skill to `agento11y-test-starter`
+- Add `agento11y-instrument` skill (setup → instrument → verify loop)
+- Add `agento11y-prod-setup` skill for production evals and guards
+- Bundle the `agento11y-test-starter` starter skill
+- **Breaking:** remove the `explore-datasources` skill
+- Retune skill descriptions and fix API drift in aio11y, SLO, and Synthetics guidance
+- Export anonymous usage events as flat JSON over HTTP when telemetry is enabled
+- Add profiles span and trace selectors; include trace IDs in exemplars
+- Fix profiles `--top` totals to exclude the pre-window boundary point
+- Add KG `prom-rules schema` command and `--dry-run` to suppressions create
+- Route KG write API through the Asserts plugin proxy
+- Fix KG entity/relationship deletes to use the collection-path API
+- Support Dashboard V2 in the resource linter
+- Descend into single-key list envelopes for `--json` discovery and selection
+- Include an output-shape hint in `--jq` runtime errors
+- Request full cloud scopes in the `login cloud` followup flow
+- Derive SDK imports for generated `dev import` code from actual usage
+- Disclose per-product Grafana Cloud costs in docs and help text
+- Clarify gcx works with OSS and Enterprise, not just Cloud
+- Mark the traces `--llm` flag experimental and document its Accept header
+
+
 ## v0.4.4 (2026-07-10)
 
 - Add full CRUD lifecycle for datasources (create, update, delete, health, schemas)
@@ -46,8 +127,6 @@
 - Refine output formatting (format and jq handling)
 - Remove obsolete publish-technical-documentation workflows
 
-
-## Unreleased
 
 ## v0.4.1 (2026-06-23)
 

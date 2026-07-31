@@ -42,7 +42,10 @@ gcx instrumentation clusters configure <cluster> [flags]
       --cost-metrics     Set costMetrics. Pass --cost-metrics=false to disable. Omit to preserve current value.
       --energy-metrics   Set energyMetrics. Pass --energy-metrics=false to disable.
   -h, --help             help for configure
+      --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --node-logs        Set nodeLogs. Pass --node-logs=false to disable.
+  -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
       --use-defaults     Apply canonical defaults (costMetrics=true, clusterEvents=true, energyMetrics=false, nodeLogs=false). Requires --yes.
       --yes              Confirm the --use-defaults operation (required with --use-defaults)
 ```

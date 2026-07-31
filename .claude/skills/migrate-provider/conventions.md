@@ -61,7 +61,8 @@ its section reference before proceeding to Phase 1.
 |----------|---------|-------------|-------|
 | `CONSTITUTION.md` | CLI Grammar | Yes / No / Partial | {which rules apply to this provider's command tree} |
 | `CONSTITUTION.md` | Output Conventions | Yes / No / Partial | {format defaults, codec requirements} |
-| `docs/design/naming.md` | Naming | Yes / No / Partial | {noun choice, alias conventions} |
+| `docs/design/naming.md` | Resource and API Naming | Yes / No / Partial | {resource kinds, files, config keys, flags} |
+| `docs/design/command-naming.md` | Command Naming and Placement | Yes / No / Partial | {verbs, noun groups, parent-scoped operations} |
 | `docs/design/output.md` | Output Formats | Yes / No / Partial | {table/wide/json/yaml compliance} |
 | `docs/design/exit-codes.md` | Exit Codes | Yes / No / Partial | {error handling conventions} |
 | `docs/reference/provider-guide.md` | Provider Interface | Yes / No / Partial | {registration, ConfigKeys, TypedCRUD} |
@@ -116,4 +117,4 @@ user-facing fields. No external dependencies needed.
 
 **Example**: static `map[string]any` matching gcx's `Example{Resource}()`
 output. Include realistic field values — this is what users see when they
-run `gcx resources examples {alias}`.
+run `gcx resources list-examples {alias}`.

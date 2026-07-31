@@ -29,7 +29,7 @@ They control which resources the command operates on.
 ### Kind Selector
 
 Targets all resources of a given kind. The kind name is the plural resource name as
-reported by `gcx resources schemas`.
+reported by `gcx resources list-types`.
 
 ```bash
 gcx resources get dashboards

@@ -110,14 +110,17 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	return convertGrafanaResponse(&grafanaResp, req.IsRange()), nil
 }
 
-// Labels returns all label names.
-func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsResponse, error) {
+// Labels returns all label names. Optional match selectors scope the result
+// to labels present on matching series.
+func (c *Client) Labels(ctx context.Context, datasourceUID string, match []string) (*LabelsResponse, error) {
 	apiPath := c.buildLabelsPath(datasourceUID)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	addMatchParams(httpReq, match)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -142,14 +145,17 @@ func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsRespo
 	return &result, nil
 }
 
-// LabelValues returns values for a specific label.
-func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName string) (*LabelsResponse, error) {
+// LabelValues returns values for a specific label. Optional match selectors
+// scope the result to values present on matching series.
+func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName string, match []string) (*LabelsResponse, error) {
 	apiPath := c.buildLabelValuesPath(datasourceUID, labelName)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	addMatchParams(httpReq, match)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -210,6 +216,18 @@ func (c *Client) Metadata(ctx context.Context, datasourceUID string, metric stri
 	}
 
 	return &result, nil
+}
+
+// addMatchParams appends each selector as a match[] query parameter.
+func addMatchParams(httpReq *http.Request, match []string) {
+	if len(match) == 0 {
+		return
+	}
+	q := httpReq.URL.Query()
+	for _, m := range match {
+		q.Add("match[]", m)
+	}
+	httpReq.URL.RawQuery = q.Encode()
 }
 
 func (c *Client) buildLabelsPath(datasourceUID string) string {

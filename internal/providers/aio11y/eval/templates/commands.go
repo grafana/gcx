@@ -101,10 +101,10 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Get the full template definition including config and output keys.
 
 Templates are reusable evaluator blueprints. Export a template as YAML,
-customize it, and create an evaluator with 'evaluators create -f'.`,
+customize it, and create an evaluator with 'evaluators upsert -f'.`,
 		Example: `  # Get a template's config and output keys.
   gcx agento11y templates get my-template -o yaml > evaluator.yaml
-  gcx agento11y evaluators create -f evaluator.yaml`,
+  gcx agento11y evaluators upsert -f evaluator.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -140,7 +140,7 @@ func (o *versionsOpts) setup(flags *pflag.FlagSet) {
 func newVersionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &versionsOpts{}
 	cmd := &cobra.Command{
-		Use:   "versions <template-id>",
+		Use:   "list-versions <template-id>",
 		Short: "List version history for an eval template.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

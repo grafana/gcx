@@ -130,7 +130,10 @@ grafana_slo_sli_window metrics.`,
 				}
 			}
 
-			if len(rpts) == 0 {
+			if len(rpts) == 0 && (opts.IO.OutputFormat == "graph" || opts.IO.OutputFormat == "table") {
+				// Prose formats keep the historical notice; structured
+				// formats (json/yaml/agents) fall through and encode the
+				// (empty) payload so stdout still carries one document.
 				cmdio.Info(cmd.OutOrStdout(), "No SLO reports found.")
 				return nil
 			}

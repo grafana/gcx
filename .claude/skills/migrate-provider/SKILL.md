@@ -34,7 +34,7 @@ Before invoking this skill, ensure:
 3. **Provider directory exists** — create `internal/providers/{name}` before
    starting the port.
 4. **Live API access** — smoke tests (Phase 4) require a real Grafana instance.
-   Verify connectivity: `gcx --context=<ctx> resources schemas`.
+   Verify connectivity: `gcx --context=<ctx> resources list-types`.
 
 ## Pipeline Overview
 
@@ -92,7 +92,8 @@ to the target provider. Use the lint compliance checklist from `conventions.md`
 as the recording template.
 
 - `CONSTITUTION.md` — CLI grammar, output conventions
-- `docs/design/naming.md` — naming conventions
+- `docs/design/naming.md` — resource, file, config, and flag naming conventions
+- `docs/design/command-naming.md` — canonical command verbs and placement
 - `docs/design/output.md` — output formats
 - `docs/design/exit-codes.md` — exit codes
 - `docs/reference/provider-guide.md` — provider interface, adapter wiring
@@ -324,7 +325,7 @@ done
 ### Step 4C: Adapter Smoke (MANDATORY)
 
 Every TypedCRUD resource MUST be verified via the adapter path:
-- `resources schemas` — registration visible
+- `resources list-types` — registration visible
 - `resources get {alias}` — envelope + deserialization working
 
 ### Step 4D: Spec Compliance

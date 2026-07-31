@@ -23,9 +23,9 @@ Manage Knowledge Graph Custom Prometheus rules.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg prom-rules create](gcx_kg_prom-rules_create.md)	 - Upload Knowledge Graph Custom Prometheus rules from a YAML file.
 * [gcx kg prom-rules delete](gcx_kg_prom-rules_delete.md)	 - Delete a Knowledge Graph Custom Prometheus rule by name.
 * [gcx kg prom-rules get](gcx_kg_prom-rules_get.md)	 - Get a Knowledge Graph Custom Prometheus rule by name.
 * [gcx kg prom-rules list](gcx_kg_prom-rules_list.md)	 - List Knowledge Graph Custom Prometheus rules.
 * [gcx kg prom-rules schema](gcx_kg_prom-rules_schema.md)	 - Fetch the live JSON Schema for Custom Prometheus rules from the backend.
+* [gcx kg prom-rules upsert](gcx_kg_prom-rules_upsert.md)	 - Upload Knowledge Graph Custom Prometheus rules from a YAML file.
 

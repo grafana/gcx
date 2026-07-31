@@ -9,12 +9,24 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/datasources"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func executeDatasourceCommand(t *testing.T, args []string) (string, error) {
 	t.Helper()
+	stdout, _, err := executeDatasourceCommandStreams(t, args)
+	return stdout, err
+}
+
+func executeDatasourceCommandStreams(t *testing.T, args []string) (string, string, error) {
+	t.Helper()
+
+	// Pin agent-mode detection off so TTY hint shapes and table-default
+	// output are asserted deterministically even when the test itself runs
+	// inside an agent harness (e.g. CLAUDECODE=1).
+	testutils.SetAgentMode(t, false)
 
 	root := helperRoot(datasources.Command())
 	var stdout, stderr bytes.Buffer
@@ -26,7 +38,7 @@ func executeDatasourceCommand(t *testing.T, args []string) (string, error) {
 	if err != nil {
 		t.Logf("stderr: %s", stderr.String())
 	}
-	return stdout.String(), err
+	return stdout.String(), stderr.String(), err
 }
 
 // newDatasourceServer serves the given items from /api/datasources. It mimics a
@@ -201,13 +213,116 @@ func TestListExplicitLimitTrimsDatasources(t *testing.T) {
 	server := newDatasourceListServer(t, 60)
 	defer server.Close()
 
+	// The hint's continuation command derives from the real argv, preserving
+	// the user's flags; pin it for determinism.
+	testutils.PinArgv(t, "gcx", "datasources", "list", "--limit", "10")
+
 	configFile := newConfigFileForServer(t, server.URL)
-	stdout, err := executeDatasourceCommand(t, []string{"datasources", "list", "--config", configFile, "--limit", "10", "-o", "json"})
+	stdout, stderr, err := executeDatasourceCommandStreams(t, []string{"datasources", "list", "--config", configFile, "--limit", "10", "-o", "json"})
 	require.NoError(t, err)
 
 	var result struct {
 		Datasources []map[string]any `json:"datasources"`
+		ListMeta    *struct {
+			Truncated bool   `json:"truncated"`
+			Returned  int    `json:"returned"`
+			Total     *int   `json:"total"`
+			Continue  string `json:"continue"`
+		} `json:"list_meta"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &result))
 	assert.Len(t, result.Datasources, 10)
+
+	// Truncation is machine-legible in the payload: the source is fully
+	// fetched, so the total is the observed count.
+	require.NotNil(t, result.ListMeta)
+	assert.True(t, result.ListMeta.Truncated)
+	assert.Equal(t, 10, result.ListMeta.Returned)
+	require.NotNil(t, result.ListMeta.Total)
+	assert.Equal(t, 60, *result.ListMeta.Total)
+	assert.Equal(t, "gcx datasources list --limit 0", result.ListMeta.Continue)
+
+	// ...and human-legible on stderr, in the maintainer-approved sentence
+	// shape (not a "<summary>: <command>" splice).
+	assert.Contains(t, stderr, "hint: showing first 10 of 60. See all results with: gcx datasources list --limit 0")
+}
+
+// TestListDefaultReturnsAllWithoutMeta locks the cheaply-complete-source
+// default: no --limit means the full set (default 0), with no truncation
+// metadata and no hint.
+func TestListDefaultReturnsAllWithoutMeta(t *testing.T) {
+	server := newDatasourceListServer(t, 60)
+	defer server.Close()
+
+	configFile := newConfigFileForServer(t, server.URL)
+	stdout, stderr, err := executeDatasourceCommandStreams(t, []string{"datasources", "list", "--config", configFile, "-o", "json"})
+	require.NoError(t, err)
+
+	var result struct {
+		Datasources []map[string]any `json:"datasources"`
+		ListMeta    *map[string]any  `json:"list_meta"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &result))
+	assert.Len(t, result.Datasources, 60)
+	assert.Nil(t, result.ListMeta, "complete set must not carry list_meta")
+	assert.NotContains(t, stderr, "showing first")
+}
+
+// TestListTruncatedFieldSelection is the end-to-end guard for PR988 defect
+// (b): `--limit 1 --json uid` on a truncated result must return the real uid
+// per item plus the list_meta signal — never {"uid": null}.
+func TestListTruncatedFieldSelection(t *testing.T) {
+	server := newDatasourceListServer(t, 60)
+	defer server.Close()
+
+	configFile := newConfigFileForServer(t, server.URL)
+	stdout, err := executeDatasourceCommand(t, []string{"datasources", "list", "--config", configFile, "--limit", "1", "--json", "uid"})
+	require.NoError(t, err)
+
+	var result struct {
+		UID         any              `json:"uid"`
+		Datasources []map[string]any `json:"datasources"`
+		ListMeta    *struct {
+			Truncated bool `json:"truncated"`
+			Total     *int `json:"total"`
+		} `json:"list_meta"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &result))
+	assert.Nil(t, result.UID, "must not extract fields from the envelope itself")
+	require.Len(t, result.Datasources, 1)
+	assert.Equal(t, "ds-00", result.Datasources[0]["uid"])
+	require.NotNil(t, result.ListMeta, "truncation signal must survive --json field selection")
+	assert.True(t, result.ListMeta.Truncated)
+	require.NotNil(t, result.ListMeta.Total)
+	assert.Equal(t, 60, *result.ListMeta.Total)
+}
+
+// TestListTruncatedFieldDiscovery is the end-to-end guard for PR988 defect
+// (c): `--limit 1 --json list` on a truncated result must discover item
+// fields, not list_meta.* or the wrapper key.
+func TestListTruncatedFieldDiscovery(t *testing.T) {
+	server := newDatasourceListServer(t, 60)
+	defer server.Close()
+
+	configFile := newConfigFileForServer(t, server.URL)
+	stdout, err := executeDatasourceCommand(t, []string{"datasources", "list", "--config", configFile, "--limit", "1", "--json", "list"})
+	require.NoError(t, err)
+
+	for _, field := range []string{"uid", "name", "type", "url"} {
+		assert.Contains(t, stdout, field, "item field %q must be discovered", field)
+	}
+	assert.NotContains(t, stdout, "datasources", "wrapper key must not be listed")
+	assert.NotContains(t, stdout, "list_meta", "reserved truncation metadata must be excluded from discovery")
+}
+
+// TestListNegativeLimitRejected locks the binder validation: --limit must be
+// >= 0 (0 means all results are returned).
+func TestListNegativeLimitRejected(t *testing.T) {
+	server := newDatasourceListServer(t, 2)
+	defer server.Close()
+
+	configFile := newConfigFileForServer(t, server.URL)
+	_, err := executeDatasourceCommand(t, []string{"datasources", "list", "--config", configFile, "--limit", "-1"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid --limit -1")
 }

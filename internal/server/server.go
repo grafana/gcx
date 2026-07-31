@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"html/template"
@@ -26,6 +25,7 @@ import (
 	"github.com/grafana/gcx/internal/server/livereload"
 	"github.com/grafana/gcx/internal/version"
 	"github.com/grafana/grafana-app-sdk/logging"
+	"k8s.io/client-go/rest"
 )
 
 type Config struct {
@@ -95,6 +95,13 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("could not create a sub-tree from the embedded assets FS: %w", err)
 	}
 
+	if s.context == nil || s.context.Grafana == nil {
+		return errors.New("grafana is not configured")
+	}
+	if err := grafana.ValidateDevProxyAuth(s.context); err != nil {
+		return fmt.Errorf("grafana authentication configuration: %w", err)
+	}
+
 	u, err := url.Parse(s.context.Grafana.Server)
 	if err != nil {
 		return err
@@ -102,22 +109,37 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.subpath = strings.TrimSuffix(u.Path, "/")
 
-	var tlsCfg *tls.Config
-	if s.context.Grafana != nil && s.context.Grafana.TLS != nil {
-		var err error
-		tlsCfg, err = s.context.Grafana.TLS.ToStdTLSConfig()
-		if err != nil {
-			return fmt.Errorf("TLS configuration: %w", err)
-		}
+	// Build the proxy from the same validated REST configuration used by
+	// resource clients. That keeps auth-method selection, rejected-credential
+	// handling, and TLS behavior on one authority. ValidateDevProxyAuth rejects
+	// OAuth above until refresh persistence can be wired to the config owner.
+	restCfg, err := s.context.ToRESTConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("grafana authentication configuration: %w", err)
+	}
+	proxyURL, err := url.Parse(restCfg.Host)
+	if err != nil {
+		return fmt.Errorf("grafana proxy URL: %w", err)
+	}
+	if !restCfg.IsOAuthProxy() {
+		// Incoming dev-server routes already include Grafana's configured
+		// subpath, so retaining it in the direct target would duplicate it.
+		proxyURL.Path = ""
+		proxyURL.RawPath = ""
+	}
+	proxyTransport, err := rest.TransportFor(&restCfg.Config)
+	if err != nil {
+		return fmt.Errorf("grafana proxy transport: %w", err)
 	}
 	s.proxy = &httputil.ReverseProxy{
-		Transport: httputils.NewTransport(tlsCfg),
+		Transport: proxyTransport,
 		Rewrite: func(r *httputil.ProxyRequest) {
-			u.Path = "" // to ensure possible sub-paths won't be added twice.
-			r.SetURL(u)
+			r.SetURL(proxyURL)
 
-			grafana.AuthenticateRequest(s.context.Grafana, r.Out)
-
+			// Never forward a browser-supplied credential. The selected REST
+			// transport adds exactly the configured Basic/token auth; mTLS
+			// intentionally sends no Authorization header.
+			r.Out.Header.Del("Authorization")
 			r.Out.Header.Del("Origin")
 			r.Out.Header.Set("User-Agent", version.UserAgent())
 		},

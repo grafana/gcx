@@ -2,8 +2,10 @@ package kg
 
 import (
 	"context"
+	"io"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/spf13/cobra"
 )
@@ -39,6 +41,11 @@ func FilterByInsightMatchers(results []SearchResult, matchers []InsightMatcher) 
 // Pass nil promClient and empty datasourceUID to skip metric checks.
 func RunDiagnose(ctx context.Context, client *Client, scope *ScopeFlags, promClient *prometheus.Client, datasourceUID string) DiagnoseResult {
 	return runDiagnose(ctx, client, scope, promClient, datasourceUID)
+}
+
+// CheckQuality wraps the unexported checkQuality function for testing.
+func CheckQuality(ctx context.Context, client *Client, scope *ScopeFlags) (CheckResult, *QualityCheckSummary) {
+	return checkQuality(ctx, client, scope)
 }
 
 // RunServiceDiagnose wraps the unexported runServiceDiagnose function for testing.
@@ -109,6 +116,12 @@ func PipelineHealthFromSummary(s DiagnoseSummary) PipelineHealth {
 	return pipelineHealthFromSummary(s)
 }
 
+// PipelineHealthFromChecks wraps the unexported pipelineHealthFromChecks
+// function for testing.
+func PipelineHealthFromChecks(checks []CheckResult) PipelineHealth {
+	return pipelineHealthFromChecks(checks)
+}
+
 // --- KG write-flag helper test entry points ---
 
 func ParseEntityRefToken(token string) (EntityRef, error) { return parseEntityRefToken(token) }
@@ -150,6 +163,31 @@ func NewSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 	return newSuppressionsCommand(loader)
 }
 
+// NewCorrelateCommand exposes the entities correlate command for tests.
+func NewCorrelateCommand(loader RESTConfigLoader) *cobra.Command {
+	return newCorrelateCommand(loader)
+}
+
+// ParseAlertLabelSet wraps the unexported parseAlertLabelSet for testing.
+func ParseAlertLabelSet(raw string) (map[string]string, error) {
+	return parseAlertLabelSet(raw)
+}
+
+// ParseAlertmanagerLabels wraps the unexported parseAlertmanagerLabels for testing.
+func ParseAlertmanagerLabels(data []byte) ([]map[string]string, error) {
+	return parseAlertmanagerLabels(data)
+}
+
+// NewModelRulesCommand exposes the model-rules command group for tests.
+func NewModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
+	return newModelRulesCommand(loader)
+}
+
+// NewPromRulesCommand exposes the prom-rules command group for tests.
+func NewPromRulesCommand(loader RESTConfigLoader) *cobra.Command {
+	return newRulesCommand(loader)
+}
+
 func NewRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	return newRelationshipsDeleteCommand(loader)
 }
@@ -165,3 +203,32 @@ func DiscoverEntityScope(client *Client, entityType, name, domain string, startM
 	cmd.SetContext(context.Background())
 	return discoverEntityScope(cmd, client, entityType, name, domain, startMs, endMs)
 }
+
+// --- Agent output contract test entry points ---
+
+// NewRulesCommand exposes the prom-rules command group for tests.
+func NewRulesCommand(loader RESTConfigLoader) *cobra.Command { return newRulesCommand(loader) }
+
+// NewRelabelRulesCommand exposes the relabel-rules command group for tests.
+func NewRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
+	return newRelabelRulesCommand(loader)
+}
+
+// NewInsightsCommand exposes the insights command group for tests.
+func NewInsightsCommand(loader RESTConfigLoader) *cobra.Command {
+	return newAssertionsCommand(loader)
+}
+
+// NewDescribeAllCommand exposes `kg meta all` for tests.
+func NewDescribeAllCommand(loader RESTConfigLoader) *cobra.Command {
+	return newDescribeAllCmd(loader)
+}
+
+// EncodeDiagnoseResult wraps encodeDiagnoseResult for testing.
+func EncodeDiagnoseResult(w io.Writer, ioOpts *cmdio.Options, result any, failed, total int) error {
+	return encodeDiagnoseResult(w, ioOpts, result, failed, total)
+}
+
+// NewKGOpenLinkForTest wraps newKGOpenLink for encoding-level tests (the full
+// command is not executed in tests because it would launch a host browser).
+func NewKGOpenLinkForTest(url string) any { return newKGOpenLink(url) }

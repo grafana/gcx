@@ -34,7 +34,7 @@ Dynamic Client (k8s.io/client-go)   Create-or-update via /apis endpoint
 Grafana K8s API                      /apis/{group}/{version}/namespaces/{ns}/{plural}/{name}
 ```
 
-**Operations:** `get`, `push` (create-or-update, idempotent), `pull` (export to local YAML/JSON), `delete`, `edit` (single resource, `$EDITOR`), `validate` (local linting via Rego), `schemas` (discover types), `examples` (show sample manifests).
+**Operations:** `get`, `push` (create-or-update, idempotent), `pull` (export to local YAML/JSON), `delete`, `edit` (single resource, `$EDITOR`), `validate` (local linting via Rego), `list-types` (discover types), `list-examples` (show sample manifests).
 
 **Key abstractions** ([resource-model.md](docs/architecture/resource-model.md)): `Resource` wraps `unstructured.Unstructured` — no pre-generated Go types. `Selector` → `Filter` two-stage resolution keeps CLI ignorant of API details. `Processor` pipeline composes transformations at defined pipeline points. `Discovery` registry resolves plural names and short names to full GVKs at runtime.
 
@@ -91,7 +91,7 @@ Codec Pipeline               table (default) | graph (terminal chart) | json | y
 
 **Dual command mounting**: Datasource commands are accessible via two paths — top-level signal commands (`gcx metrics query`) and the `datasources` subgroup (`gcx datasources prometheus query`). Both paths call the same exported command constructors in `internal/datasources/{kind}/`. Signal command shape (shared config flags, root hook chaining, command metadata, adaptive subtree mounting) and signal-backed datasource provider wiring are centralized in `internal/signals/`. Top-level signal providers use `signals.Command(...)`; built-in datasource providers use `signals.DatasourceProvider(...)` and self-register via `init()` in `internal/datasources/providers/` (blank-imported from `cmd/gcx/root/command.go`).
 
-**Adaptive telemetry** nests under each signal provider (`metrics adaptive`, `logs adaptive`, `traces adaptive`) with its own CRUD resources (rules, policies, exemptions, segments) and operational views (recommendations, patterns). Uses `internal/auth/adaptive/` for shared GCOM-cached Basic auth.
+**Adaptive telemetry** nests under each signal provider (`metrics adaptive`, `logs adaptive`, `traces adaptive`) with its own CRUD resources (rules, policies, exemptions, segments) and operational views (recommendations, patterns). Uses `internal/auth/adaptive/` for shared, GCOM-resolved Basic auth.
 
 **Graph rendering:** `internal/graph/` converts query responses to terminal charts via ntcharts + lipgloss. Available as `-o graph` on all query commands and SLO/synth timeline commands.
 
@@ -123,31 +123,50 @@ Action-verb command tree for Grafana Cloud's Instrumentation Hub. Backed by flee
 
 - **`instrumentation setup <cluster>`** — End-to-end onboarding wizard; calls `SetupK8sDiscovery`, applies declared K8s monitoring config, prints a parameterized helm command
 - **`instrumentation status`** — Cross-cutting observed view across cluster → namespace → service hierarchy
+- **`instrumentation check [components]`** — Local OTel-instrumentation validation via the [otel-checker](https://github.com/grafana/otel-checker) library; runs entirely against the workstation's env vars, package manifests, and collector/Beyla/Alloy config. No Grafana stack calls
+- **`instrumentation explain <id>`** and **`instrumentation list-explanations`** — Lookup surface for the explanation docs bundled by otel-checker; IDs come from the `explain_id` field emitted by `check`
 - **`instrumentation clusters [list|get|configure|remove|wait]`** + nested **`apps`** — Declared-state read/write with tri-state flag semantics on `configure` and a per-namespace optimistic-lock guard
 - **`instrumentation services [list|get|include|exclude|clear]`** — Observed-state fleet sweep via `RunK8sDiscovery` with DWIM single-workload mutation
 
-Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider). See ADR-018 for the design.
+Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider). `check` and `explain` are thin cmd/-only wrappers around the upstream `github.com/grafana/otel-checker/checks` and `.../checks/explain` packages — no provider glue. See ADR-018 for the design.
 
 ### 7. Configuration
 
-kubectl-inspired context-based multi-environment configuration.
+kubectl-inspired, versioned multi-environment configuration. Named stacks bind
+Grafana destinations to Grafana auth and provider settings; named Cloud entries
+bind GCOM endpoints to Cloud auth; thin contexts select one of each.
 
 ```yaml
+version: 1
 current-context: prod
-contexts:
+stacks:
   prod:
-    grafana: { server: https://grafana.example.com, token: gf_... }
-    cloud: { token: glsa_..., org: my-org }
+    slug: my-stack
+    grafana: { server: https://my-stack.grafana.net, token: gf_... }
     providers:
       slo: { token: glsa_... }
-      synth: { sm-url: https://... }
+cloud:
+  grafana-com:
+    token: glc_...
+    api-url: https://grafana.com
+contexts:
+  prod: { stack: prod, cloud: grafana-com }
 ```
 
-**Loading chain:** Config file → env var overrides (`GRAFANA_SERVER`, `GRAFANA_TOKEN`, `GRAFANA_PROVIDER_{NAME}_{KEY}`) → CLI flags (`--context`). Env vars take precedence over YAML. The `--context` flag selects the active context; absent, `current-context` is used.
+**Loading chain:** Discover system → user → local files (or one explicit
+`--config` file), reject unsupported versions, preflight legacy migration, merge
+credential-bearing stack/Cloud entries atomically, select `--context` or
+`current-context`, then apply environment overrides (`GRAFANA_SERVER`,
+`GRAFANA_TOKEN`, `GRAFANA_PROVIDER_{NAME}_{KEY}`). Overrides take runtime
+precedence but remain ephemeral.
 
 **Namespace resolution:** `org-id` (on-prem, maps to K8s namespace) or `stack-id` (Cloud, discovered via GCOM). Providers use `ConfigLoader` which resolves these uniformly.
 
-**Secret handling:** Config keys marked `Secret: true` in provider `ConfigKeys()` are redacted in `gcx config view`. Undeclared keys and unknown providers are redacted by default (secure-by-default).
+**Secret handling:** Config keys marked `Secret: true` in provider `ConfigKeys()`
+are redacted in `gcx config view`. Undeclared keys and unknown providers are
+redacted by default. Keychain references are bound to their canonical source
+file, exact owner/field, and destination so another layer cannot redirect or
+overwrite a stored credential.
 
 **Deep-dive:** [config-system.md](docs/architecture/config-system.md).
 
@@ -161,9 +180,18 @@ Multiple auth mechanisms for different tiers.
 | **Cloud Access Policy token** | GCOM stack discovery, Cloud product APIs | `internal/cloud/` GCOM client |
 | **OAuth PKCE** | Browser-based login (`gcx login`) | `internal/auth/` — token refresh transport persists to config |
 | **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
-| **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-cached Basic auth shared across signal providers |
+| **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-resolved Basic auth shared across signal providers; stale provider cache fields are not credential destinations |
 
-**Precedence:** Token > OAuth > user/password. Explicit flags override env vars override config file. `httputils.NewDefaultClient(ctx)` must be used for APIs outside the Grafana server (k6 Cloud, Synth, Fleet) — the k8s transport injects the Grafana bearer token on every request, which conflicts with product-specific auth.
+**Runtime selection:** an explicit `grafana.auth-method` (`oauth`, `token`,
+`basic`, or `mtls`) is authoritative, and stale fields for other methods are
+not attached to the request. Legacy entries without `auth-method` infer OAuth
+proxy > service-account token > user/password > mTLS/anonymous; partial or
+rejected higher-priority credentials fail before network use instead of falling
+through. Explicit flags override env vars override config file while credentials
+are being resolved. `httputils.NewDefaultClient(ctx)` must be used for APIs outside
+the Grafana server unless the provider uses the trust-checked
+`CloudRESTConfig.HTTPClient`/direct-provider snapshot path; a raw k8s transport
+can otherwise inject Grafana auth into the wrong request.
 
 **Deep-dive:** [client-api-layer.md](docs/architecture/client-api-layer.md), [config-system.md](docs/architecture/config-system.md).
 
@@ -192,6 +220,7 @@ Multiple auth mechanisms for different tiers.
 | [019](docs/adrs/oncall-alert-group-rich-shape/001-rich-shape-and-list-defaults.md) | Rich `AlertGroup` shape and actionable `alert-groups list` defaults | implemented |
 | [020](docs/adrs/sm-datasource-proxy/001-dual-mode-transport.md) | Synthetic Monitoring dual-mode transport: datasource proxy primary, direct SM API fallback | accepted |
 | [021](docs/adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) | Assistant provider + MCP servers as resources | proposed |
+| [022](docs/adrs/config-v1/001-versioned-split-config-and-secret-trust.md) | Versioned Split Config and Source-Bound Secret Trust | proposed |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
@@ -250,7 +279,7 @@ See also: [docs/design/](docs/design/) for UX implementation guides, [docs/refer
 3. [provider-checklist.md](docs/design/provider-checklist.md) — UX compliance checklist
 
 **Debugging an authentication issue:**
-1. [config-system.md](docs/architecture/config-system.md) § "Auth Priority" — token vs user/password precedence
+1. [auth-system.md](docs/architecture/auth-system.md) § "Grafana auth selection" — authoritative methods and legacy precedence
 2. [client-api-layer.md](docs/architecture/client-api-layer.md) — how auth wires into `rest.Config`
 3. [config-system.md](docs/architecture/config-system.md) — env var override behavior
 

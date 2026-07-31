@@ -18,8 +18,8 @@ import (
 
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
@@ -29,6 +29,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8syaml "sigs.k8s.io/yaml"
 )
 
 // ---------------------------------------------------------------------------
@@ -372,9 +373,10 @@ func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, enti
 			return nil, fmt.Errorf("search entity type %s: %w", et, err)
 		}
 		if page.MaxLimitHit || (!page.LastPage && len(page.Entities) > 0) {
-			fmt.Fprintf(cmd.ErrOrStderr(),
-				"hint: more results available for type %q (page %d returned %d) — use --page %d or narrow with --property/--namespace\n",
-				et, pageNum, len(page.Entities), pageNum+1)
+			cmdio.EmitHint(cmd.ErrOrStderr(),
+				fmt.Sprintf("more results available for type %q (page %d returned %d) — use --page %d or narrow with --property/--namespace",
+					et, pageNum, len(page.Entities), pageNum+1),
+				"")
 		}
 		allResults = append(allResults, page.Entities...)
 	}
@@ -520,51 +522,34 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	getOpts.setup(getCmd.Flags())
 
-	var createFile string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Upload Knowledge Graph Custom Prometheus rules from a YAML file.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, createFile)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.UploadPromRules(cmd.Context(), string(data)); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Knowledge Graph rules uploaded")
-			return nil
-		},
-	}
-	createCmd.Flags().StringVarP(&createFile, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
+	createCmd := newRulesUpsertCommand(loader,
+		"Upload Knowledge Graph Custom Prometheus rules from a YAML file.",
+		`  gcx kg prom-rules upsert -f rules.yaml
 
+  # Validate against the backend and preview the diff without uploading:
+  gcx kg prom-rules upsert -f rules.yaml --dry-run`,
+		Kind,
+		"Knowledge Graph rules uploaded",
+		runPromRulesDryRun,
+		(*Client).UploadPromRules,
+	)
+
+	rulesDeleteOpts := &guardedDeleteOpts{}
 	deleteCmd := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a Knowledge Graph Custom Prometheus rule by name.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx, loader)
-			if err != nil {
-				return err
-			}
-			if err := crud.Delete(ctx, name); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Knowledge Graph rule %q deleted", name)
-			return nil
+			return runGuardedDelete(cmd, rulesDeleteOpts, loader, Kind, args[0],
+				fmt.Sprintf("Delete Knowledge Graph rule %q?", args[0]),
+				func(ctx context.Context, client *Client) error {
+					return client.DeleteRule(ctx, args[0])
+				})
 		},
 	}
+	rulesDeleteOpts.setup(deleteCmd.Flags(), func(w io.Writer, m cmdio.SingleMutation) {
+		cmdio.Success(w, "Knowledge Graph rule %q deleted", m.Target.Name)
+	})
 
 	schemaOpts := &rulesSchemaOpts{}
 	schemaCmd := &cobra.Command{
@@ -724,32 +709,17 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Manage model rules in the Knowledge Graph.",
 	}
 
-	var fileFlag string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Upload model rules from a YAML file.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.UploadModelRules(cmd.Context(), string(data)); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Model rules uploaded")
-			return nil
-		},
-	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
+	createCmd := newRulesUpsertCommand(loader,
+		"Upload model rules from a YAML file.",
+		`  gcx kg model-rules upsert -f model-rules.yaml
+
+  # Validate against the backend and preview the diff without uploading:
+  gcx kg model-rules upsert -f model-rules.yaml --dry-run`,
+		"ModelRules",
+		"Model rules uploaded",
+		runModelRulesDryRun,
+		(*Client).UploadModelRules,
+	)
 
 	listOpts := &modelRulesListOpts{}
 	listCmd := &cobra.Command{
@@ -802,37 +772,22 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	getOpts.setup(getCmd.Flags())
 
-	var force bool
+	deleteOpts := &guardedDeleteOpts{}
 	deleteCmd := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a custom model rules configuration by name.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), force,
-				fmt.Sprintf("Delete model rules %q?", name))
-			if err != nil {
-				return err
-			}
-			if !proceed {
-				return nil
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.DeleteModelRules(cmd.Context(), name); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Model rules %q deleted", name)
-			return nil
+			return runGuardedDelete(cmd, deleteOpts, loader, "ModelRules", args[0],
+				fmt.Sprintf("Delete model rules %q?", args[0]),
+				func(ctx context.Context, client *Client) error {
+					return client.DeleteModelRules(ctx, args[0])
+				})
 		},
 	}
-	deleteCmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
+	deleteOpts.setup(deleteCmd.Flags(), func(w io.Writer, m cmdio.SingleMutation) {
+		cmdio.Success(w, "Model rules %q deleted", m.Target.Name)
+	})
 
 	schemaOpts := &modelRulesSchemaOpts{}
 	schemaCmd := &cobra.Command{
@@ -948,23 +903,27 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 
 	createOpts := &suppressionsCreateOpts{}
 	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Create or update one or more suppressions from a YAML file or stdin.",
-		Example: `  gcx kg suppressions create -f suppressions.yaml
+		Use:   "upsert",
+		Short: "Upsert (create or update) one or more suppressions from a YAML file or stdin.",
+		Long: `Upsert (create or update) one or more suppressions from a YAML file or stdin.
+
+Applies the entries in the input file, creating each suppression when absent or
+updating it when present. Remote suppressions absent from the file are never
+deleted. Use --dry-run to validate against the backend and preview the diff,
+scoped to the entries in the input file, without uploading.`,
+		Example: `  gcx kg suppressions upsert -f suppressions.yaml
 
   # Validate against the backend and preview the diff without uploading:
-  gcx kg suppressions create -f suppressions.yaml --dry-run
+  gcx kg suppressions upsert -f suppressions.yaml --dry-run
 
   echo 'disabledAlertConfigs:
     - name: my-suppression
       matchLabels:
         alertname: ErrorRatioBreach
-        job: my-service' | gcx kg suppressions create`,
+        job: my-service' | gcx kg suppressions upsert`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if createOpts.DryRun {
-				if err := createOpts.IO.Validate(); err != nil {
-					return err
-				}
+			if err := createOpts.IO.Validate(); err != nil {
+				return err
 			}
 			data, err := readFileOrStdin(cmd, createOpts.File)
 			if err != nil {
@@ -989,48 +948,55 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 				return runSuppressionsDryRun(cmd, &createOpts.IO, client, &suppressions)
 			}
 			total := len(suppressions.DisabledAlertConfigs)
+			result := cmdio.NewBatchMutation("upserted")
 			for i, s := range suppressions.DisabledAlertConfigs {
 				if err := client.UpsertSuppression(cmd.Context(), s); err != nil {
-					return fmt.Errorf("failed to upsert suppression %q (%d/%d succeeded): %w", s.Name, i, total, err)
+					failure := fmt.Errorf("failed to upsert suppression %q (%d/%d succeeded): %w", s.Name, i, total, err)
+					if i == 0 {
+						// Nothing succeeded: no result document is owed, so
+						// the standard error path emits the single error
+						// document (agent mode) or stderr rendering (human).
+						return failure
+					}
+					// Partial failure: the loop stops at the first error, so
+					// entries after it were never attempted (skipped).
+					result.Summary = cmdio.MutationSummary{Succeeded: i, Failed: 1, Skipped: total - i - 1}
+					result.Failures = append(result.Failures, cmdio.MutationFailure{
+						Target: cmdio.MutationTarget{Kind: "Suppression", Name: s.Name},
+						Error:  err.Error(),
+					})
+					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Error())
+					if encErr := createOpts.IO.Encode(cmd.OutOrStdout(), result); encErr != nil {
+						return encErr
+					}
+					// The result document (with the enumerated failure) is
+					// already on stdout — EmittedError carries exit 4
+					// without a second error document.
+					return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, failure)
 				}
 			}
-			cmdio.Success(cmd.OutOrStdout(), "%d suppression(s) upserted", total)
-			return nil
+			result.Summary = cmdio.MutationSummary{Succeeded: total}
+			return createOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	createOpts.setup(createCmd.Flags())
 
-	var force bool
+	deleteOpts := &guardedDeleteOpts{}
 	deleteCmd := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a suppression by name.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), force,
-				fmt.Sprintf("Delete suppression %q?", name))
-			if err != nil {
-				return err
-			}
-			if !proceed {
-				return nil
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.DeleteSuppression(cmd.Context(), name); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Suppression %q deleted", name)
-			return nil
+			return runGuardedDelete(cmd, deleteOpts, loader, "Suppression", args[0],
+				fmt.Sprintf("Delete suppression %q?", args[0]),
+				func(ctx context.Context, client *Client) error {
+					return client.DeleteSuppression(ctx, args[0])
+				})
 		},
 	}
-	deleteCmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
+	deleteOpts.setup(deleteCmd.Flags(), func(w io.Writer, m cmdio.SingleMutation) {
+		cmdio.Success(w, "Suppression %q deleted", m.Target.Name)
+	})
 
 	cmd.AddCommand(listCmd, createCmd, deleteCmd)
 	return cmd
@@ -1050,27 +1016,27 @@ func (o *suppressionsCreateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-// SuppressionChange describes one entry-level change `create` would apply in a
+// SuppressionChange describes one entry-level change `upsert` would apply in a
 // dry-run. Action is one of:
-//   - "add"    — present locally, absent remotely; `create` will add it.
-//   - "modify" — present in both but differing; `create` will update it.
+//   - "add"    — present locally, absent remotely; `upsert` will add it.
+//   - "modify" — present in both but differing; `upsert` will update it.
 //
-// The dry-run is scoped to the entries in the input file. `create` is
-// upsert-only — it never deletes — so remote entries absent from the file are
-// not reported and not shown in the diff, keeping the output focused on what
-// `create` will actually do.
+// The dry-run is scoped to the entries in the input file. `upsert` never
+// deletes, so remote entries absent from the file are not reported and not
+// shown in the diff, keeping the output focused on what `upsert` will
+// actually do.
 type SuppressionChange struct {
 	Name   string `json:"name" yaml:"name"`
 	Action string `json:"action" yaml:"action"`
 }
 
-// SuppressionsDryRunResult is the structured result of `suppressions create
+// SuppressionsDryRunResult is the structured result of `suppressions upsert
 // --dry-run`. It is rendered as a unified diff in the default text format and as
 // this struct under -o json/yaml (and the agents format) so consumers do not
 // have to parse diff text. Reaching this result implies validation passed.
 //
 // Both Changes and Diff are scoped to the input file's entries: Changed reports
-// whether `create` would add or modify anything.
+// whether `upsert` would add or modify anything.
 type SuppressionsDryRunResult struct {
 	Valid   bool                `json:"valid" yaml:"valid"`
 	Changed bool                `json:"changed" yaml:"changed"`
@@ -1079,7 +1045,7 @@ type SuppressionsDryRunResult struct {
 }
 
 // runSuppressionsDryRun validates the parsed suppressions against the backend's
-// server-side validator and, if valid, reports what `create` would add or modify
+// server-side validator and, if valid, reports what `upsert` would add or modify
 // versus the current remote configuration. It never writes. A diagnostic banner
 // goes to stderr; the result (unified diff in text mode, structured object under
 // -o json/yaml) goes to stdout so pipe consumers receive clean input.
@@ -1109,12 +1075,12 @@ func runSuppressionsDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Cl
 // buildSuppressionsDryRunResult compares the input file's entries against their
 // remote counterparts (matched by name), producing per-entry add/modify changes
 // and a canonical-YAML unified diff scoped to those entries. Remote entries
-// absent from the file are ignored — `create` is upsert-only and never deletes,
-// so surfacing them would only add noise.
+// absent from the file are ignored — `upsert` never deletes — so surfacing
+// them would only add noise.
 //
 // System-managed fields (see forDiff) are excluded from both the comparison and
 // the diff: they are populated by the backend, not the user, so showing them as
-// added/removed would misrepresent what `create` actually changes.
+// added/removed would misrepresent what `upsert` actually changes.
 func buildSuppressionsDryRunResult(remote, local *Suppressions) (SuppressionsDryRunResult, error) {
 	remoteByName := make(map[string]Suppression, len(remote.DisabledAlertConfigs))
 	for _, s := range remote.DisabledAlertConfigs {
@@ -1180,22 +1146,34 @@ func suppressionEqual(a, b Suppression) bool {
 	return a.Name == b.Name && a.ManagedBy == b.ManagedBy && maps.Equal(a.MatchLabels, b.MatchLabels)
 }
 
-// SuppressionsDryRunTextCodec renders a dry-run result as its unified diff (or
-// nothing when there are no changes, keeping stdout empty for pipe consumers).
+// SuppressionsDryRunTextCodec is the "text" codec for `suppressions upsert`.
+// A dry-run result renders as its unified diff (or nothing when there are no
+// changes, keeping stdout empty for pipe consumers); the real write path's
+// cmdio.BatchMutation renders as the styled one-line summary the command has
+// always printed.
 type SuppressionsDryRunTextCodec struct{}
 
 func (c *SuppressionsDryRunTextCodec) Format() format.Format { return "text" }
 
 func (c *SuppressionsDryRunTextCodec) Encode(w io.Writer, v any) error {
-	result, ok := v.(SuppressionsDryRunResult)
-	if !ok {
-		return errors.New("invalid data type for text codec: expected SuppressionsDryRunResult")
-	}
-	if result.Diff == "" {
+	switch result := v.(type) {
+	case SuppressionsDryRunResult:
+		if result.Diff == "" {
+			return nil
+		}
+		_, err := io.WriteString(w, result.Diff)
+		return err
+	case cmdio.BatchMutation:
+		if result.Summary.Failed > 0 {
+			cmdio.Warning(w, "%d suppression(s) upserted, %d failed (%d skipped)",
+				result.Summary.Succeeded, result.Summary.Failed, result.Summary.Skipped)
+			return nil
+		}
+		cmdio.Success(w, "%d suppression(s) upserted", result.Summary.Succeeded)
 		return nil
+	default:
+		return errors.New("invalid data type for text codec: expected SuppressionsDryRunResult or BatchMutation")
 	}
-	_, err := io.WriteString(w, result.Diff)
-	return err
 }
 
 func (c *SuppressionsDryRunTextCodec) Decode(_ io.Reader, _ any) error {
@@ -1222,6 +1200,269 @@ func unifiedYAMLDiff(remote, local string) (string, error) {
 		ToFile:   "local",
 		Context:  3,
 	})
+}
+
+// ---------------------------------------------------------------------------
+// model-rules / prom-rules upsert --dry-run
+//
+// These mirror the suppressions dry-run (validate-then-diff), but model-rules
+// and prom-rules manage a single named config per file rather than a batch, so
+// the result describes one config: add, modify, or no-op. See runSuppressionsDryRun.
+//
+// Note the deliberate YAML-library split: suppressions parse/diff with
+// gopkg.in/yaml.v3 because Suppression carries yaml: tags and only simple types.
+// The rule types here carry only json: tags (PromRule.Duration maps the YAML key
+// "for") and ModelRules embeds json.RawMessage, both of which yaml.v3 mishandles,
+// so the rules path uses sigs.k8s.io/yaml (YAML->JSON->struct) for correctness.
+// ---------------------------------------------------------------------------
+
+type rulesCreateOpts struct {
+	File   string
+	DryRun bool
+	IO     cmdio.Options
+}
+
+func (o *rulesCreateOpts) setup(flags *pflag.FlagSet, successMsg string) {
+	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin.")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate against the backend and show a diff without uploading.")
+	o.IO.RegisterCustomCodec("text", &RulesDryRunTextCodec{SuccessMsg: successMsg})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+// newRulesUpsertCommand builds the shared `upsert` command for the model-rules
+// and prom-rules groups: both read a single named config from a YAML file (or
+// stdin) and both support --dry-run (validate + client-side diff, no writes).
+// dryRun runs the validate/diff path; upload performs the real PUT; kind names
+// the mutated resource in the result document and successMsg is the human
+// one-liner printed after a real upsert.
+func newRulesUpsertCommand(
+	loader RESTConfigLoader,
+	short, example, kind, successMsg string,
+	dryRun func(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte) error,
+	upload func(client *Client, ctx context.Context, yamlContent string) error,
+) *cobra.Command {
+	opts := &rulesCreateOpts{}
+	createCmd := &cobra.Command{
+		Use:     "upsert",
+		Short:   short,
+		Example: example,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			data, err := readFileOrStdin(cmd, opts.File)
+			if err != nil {
+				return fmt.Errorf("failed to read file: %w", err)
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			if opts.DryRun {
+				return dryRun(cmd, &opts.IO, client, data)
+			}
+			if err := upload(client, cmd.Context(), string(data)); err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(),
+				cmdio.NewSingleMutation("upserted", cmdio.MutationTarget{Kind: kind}))
+		},
+	}
+	opts.setup(createCmd.Flags(), successMsg)
+	_ = createCmd.MarkFlagRequired("file")
+	return createCmd
+}
+
+// RulesDryRunResult is the structured result of a model-rules / prom-rules
+// `upsert --dry-run`. Unlike suppressions (a batch), these commands manage a
+// single named config per file, so the result describes one config. It is
+// rendered as a unified diff in the default text format and as this struct under
+// -o json/yaml (and the agents format). Reaching this result implies validation
+// passed. Action is one of:
+//   - "add"    — absent remotely; `upsert` will add it.
+//   - "modify" — present remotely but differing; `upsert` will update it.
+//   - "none"   — present remotely and identical; `upsert` is a no-op.
+type RulesDryRunResult struct {
+	Valid   bool   `json:"valid" yaml:"valid"`
+	Changed bool   `json:"changed" yaml:"changed"`
+	Action  string `json:"action" yaml:"action"`
+	Name    string `json:"name" yaml:"name"`
+	Diff    string `json:"diff,omitempty" yaml:"diff,omitempty"`
+}
+
+// runModelRulesDryRun validates the model rules file against the backend's
+// synchronous validator and, if valid, reports what `upsert` would add or modify
+// versus the current remote config. It never writes. A diagnostic banner goes to
+// stderr; the result (diff in text mode, struct under -o json/yaml) to stdout.
+func runModelRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte) error {
+	ctx := cmd.Context()
+
+	var local ModelRules
+	if err := k8syaml.Unmarshal(data, &local); err != nil {
+		return fmt.Errorf("failed to parse model-rules file: %w", err)
+	}
+	if local.Name == "" {
+		return errors.New("model-rules file has no name")
+	}
+
+	if err := client.ValidateModelRules(ctx, string(data)); err != nil {
+		return err
+	}
+
+	remote, found, err := client.getModelRulesForDiff(ctx, local.Name)
+	if err != nil {
+		return err
+	}
+
+	localYAML, err := normalizeK8sYAMLForDiff(modelRulesForDiff(local))
+	if err != nil {
+		return fmt.Errorf("render local model rules: %w", err)
+	}
+	var remoteYAML string
+	if found {
+		remoteYAML, err = normalizeK8sYAMLForDiff(modelRulesForDiff(*remote))
+		if err != nil {
+			return fmt.Errorf("render remote model rules: %w", err)
+		}
+	}
+
+	result, err := buildRulesDryRunResult(local.Name, remoteYAML, localYAML, found)
+	if err != nil {
+		return err
+	}
+	reportRulesDryRun(cmd, "model rules", result)
+	return ioOpts.Encode(cmd.OutOrStdout(), result)
+}
+
+// runPromRulesDryRun is the prom-rules counterpart to runModelRulesDryRun.
+func runPromRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte) error {
+	ctx := cmd.Context()
+
+	var local Rule
+	if err := k8syaml.Unmarshal(data, &local); err != nil {
+		return fmt.Errorf("failed to parse prom-rules file: %w", err)
+	}
+	if local.Name == "" {
+		return errors.New("prom-rules file has no name")
+	}
+
+	if err := client.ValidatePromRules(ctx, string(data)); err != nil {
+		return err
+	}
+
+	remote, found, err := client.getPromRuleForDiff(ctx, local.Name)
+	if err != nil {
+		return err
+	}
+
+	localYAML, err := normalizeK8sYAMLForDiff(local)
+	if err != nil {
+		return fmt.Errorf("render local prom-rules: %w", err)
+	}
+	var remoteYAML string
+	if found {
+		remoteYAML, err = normalizeK8sYAMLForDiff(*remote)
+		if err != nil {
+			return fmt.Errorf("render remote prom-rules: %w", err)
+		}
+	}
+
+	result, err := buildRulesDryRunResult(local.Name, remoteYAML, localYAML, found)
+	if err != nil {
+		return err
+	}
+	reportRulesDryRun(cmd, "prom-rules", result)
+	return ioOpts.Encode(cmd.OutOrStdout(), result)
+}
+
+// buildRulesDryRunResult compares a single local config's canonical YAML against
+// its remote counterpart. found is false (remoteYAML "") when the config does not
+// exist remotely, which `create` would add. Reaching this implies validation
+// passed.
+func buildRulesDryRunResult(name, remoteYAML, localYAML string, found bool) (RulesDryRunResult, error) {
+	result := RulesDryRunResult{Valid: true, Name: name}
+	switch {
+	case !found:
+		result.Action = "add"
+		result.Changed = true
+	case remoteYAML != localYAML:
+		result.Action = "modify"
+		result.Changed = true
+	default:
+		result.Action = "none"
+		return result, nil
+	}
+
+	diff, err := unifiedYAMLDiff(remoteYAML, localYAML)
+	if err != nil {
+		return RulesDryRunResult{}, fmt.Errorf("render rules diff: %w", err)
+	}
+	result.Diff = diff
+	return result, nil
+}
+
+// reportRulesDryRun writes the stderr banner summarizing a rules dry-run.
+func reportRulesDryRun(cmd *cobra.Command, kind string, result RulesDryRunResult) {
+	if result.Changed {
+		cmdio.Info(cmd.ErrOrStderr(), "[dry-run] %s are valid; would %s %q (remote -> local)", kind, result.Action, result.Name)
+	} else {
+		cmdio.Info(cmd.ErrOrStderr(), "[dry-run] %s are valid; no changes to %q", kind, result.Name)
+	}
+}
+
+// modelRulesForDiff returns a copy of m with system-managed fields cleared, so
+// dry-run comparison and diffing consider only the user-authored fields.
+// managedBy is set by the backend (e.g. "terraform"), not the input file, so
+// including it would flag unchanged configs as modified.
+func modelRulesForDiff(m ModelRules) ModelRules {
+	m.ManagedBy = ""
+	return m
+}
+
+// normalizeK8sYAMLForDiff marshals a value to canonical YAML via sigs.k8s.io/yaml
+// (struct->JSON->YAML) so json-tagged fields and json.RawMessage render correctly
+// and two configs with equivalent content compare and diff cleanly.
+func normalizeK8sYAMLForDiff(v any) (string, error) {
+	out, err := k8syaml.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// RulesDryRunTextCodec is the "text" codec for the model-rules / prom-rules
+// `upsert`. Dry-run results render as their unified diff (or nothing when
+// there are no changes, keeping stdout empty for pipe consumers); a real
+// upsert's mutation result renders as the styled SuccessMsg one-liner.
+type RulesDryRunTextCodec struct {
+	SuccessMsg string
+}
+
+func (c *RulesDryRunTextCodec) Format() format.Format { return "text" }
+
+func (c *RulesDryRunTextCodec) Encode(w io.Writer, v any) error {
+	switch result := v.(type) {
+	case RulesDryRunResult:
+		if result.Diff == "" {
+			return nil
+		}
+		_, err := io.WriteString(w, result.Diff)
+		return err
+	case cmdio.SingleMutation:
+		cmdio.Success(w, "%s", c.SuccessMsg)
+		return nil
+	default:
+		return errors.New("invalid data type for text codec: expected RulesDryRunResult or SingleMutation")
+	}
+}
+
+func (c *RulesDryRunTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
 }
 
 type suppressionsListOpts struct {
@@ -1292,8 +1533,10 @@ func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 			if rules == nil {
+				// The note is advisory (stderr); the nil group still goes
+				// through the codec so machine consumers always receive
+				// exactly one JSON value (null) instead of empty stdout.
 				cmdio.Info(cmd.ErrOrStderr(), "No %s relabel rules configured.", t)
-				return nil
 			}
 			return io.Encode(cmd.OutOrStdout(), rules)
 		},
@@ -1317,6 +1560,11 @@ func (c *RelabelRuleTableCodec) Encode(w io.Writer, v any) error {
 	group, ok := v.(map[string]any)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected map[string]any")
+	}
+	if group == nil {
+		// No rule group configured: the human default has always printed
+		// nothing on stdout (an advisory note goes to stderr).
+		return nil
 	}
 	rawRules, _ := group["rules"].([]any)
 	t := style.NewTable("SELECTOR", "TARGET LABEL", "JOIN LABELS", "RANKED CHOICE", "REPLACEMENT", "DROP")
@@ -1382,10 +1630,23 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		Long: `Manage Knowledge Graph entities.
 
 Prefer 'list' for listing and for basic lookups (an entity's identity and
-properties — the labels used to build PromQL/Loki queries); it is cheap. Use
-'inspect' only when you need an entity's insight timeline or related entities
-for root-cause analysis — it is heavier and can return large output,
-so don't use it just to read properties.`,
+properties — the labels used to build PromQL/Loki queries); it is cheap and is
+the right choice even when you already know the exact entity. Use 'inspect'
+only for root-cause analysis — it is heavy and can return large output, so
+don't reach for it just to read properties.
+
+Pick the read verb by what you start with:
+
+  list       Default for listing and basic lookups: an entity's identity, scope,
+             and properties. Filter to one known entity with
+             '--property name=<name>'. Cheap — use this for plain lookups.
+  correlate  You have a firing alert (its labels) but not the entity → find
+             which entity the alert hangs off. The "I have an alert, which
+             entity is it?" entry point.
+  inspect    Root-cause analysis only — heavy: insight timeline + related
+             entities. Don't use it just to read an entity's properties (use
+             'list'); reach for it only when you need the RCA view.
+  query      Arbitrary Cypher over the graph.`,
 	}
 
 	// list subcommand
@@ -1465,7 +1726,9 @@ analysis, use 'gcx kg entities inspect' instead.`,
 			}
 			results = adapter.TruncateSlice(results, listOpts.Limit)
 			if listOpts.Limit > 0 && int64(len(results)) >= listOpts.Limit {
-				fmt.Fprintf(os.Stderr, "hint: --limit of %d reached — results may be truncated; raise --limit or pass --limit 0 for all\n", listOpts.Limit)
+				cmdio.EmitHint(cmd.ErrOrStderr(),
+					fmt.Sprintf("--limit of %d reached — results may be truncated; raise --limit or pass --limit 0 for all", listOpts.Limit),
+					"")
 			}
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
@@ -1481,7 +1744,7 @@ analysis, use 'gcx kg entities inspect' instead.`,
 	listOpts.setup(listCmd.Flags())
 	_ = listCmd.MarkFlagRequired("type")
 
-	cmd.AddCommand(listCmd, newEntitiesInspectCommand(loader), newCypherCommand(loader),
+	cmd.AddCommand(listCmd, newCorrelateCommand(loader), newEntitiesInspectCommand(loader), newCypherCommand(loader),
 		newEntitiesCreateCommand(loader), newEntitiesDeleteCommand(loader))
 	return cmd
 }
@@ -1536,10 +1799,14 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	// chart subcommand
 	var entityMetricScope scopeFlags
 	var entityMetricLabels []string
+	chartOpts := &insightsOpts{}
 	entityMetricCmd := &cobra.Command{
 		Use:   "chart [Type--Name]",
 		Short: "Get chart data (series + thresholds) for a specific insight on an entity.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := chartOpts.IO.Validate(); err != nil {
+				return err
+			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
@@ -1598,9 +1865,10 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return (&cmdio.Options{OutputFormat: "json"}).Encode(cmd.OutOrStdout(), result)
+			return chartOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
+	chartOpts.setup(entityMetricCmd.Flags())
 	entityMetricCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
 	entityMetricCmd.Flags().String("name", "", "Entity name")
 	entityMetricCmd.Flags().String("type", "", "Entity type")
@@ -1615,10 +1883,14 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	// for --label alertname=<value>.
 	var sourceMetricsScope scopeFlags
 	var sourceMetricsLabels []string
+	sourcesOpts := &insightsOpts{}
 	sourceMetricsCmd := &cobra.Command{
 		Use:   "sources [Type--Name]",
 		Short: "List the underlying metrics (name + label matchers) that source a specific insight.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := sourcesOpts.IO.Validate(); err != nil {
+				return err
+			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
@@ -1675,9 +1947,10 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return (&cmdio.Options{OutputFormat: "json"}).Encode(cmd.OutOrStdout(), results)
+			return sourcesOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
+	sourcesOpts.setup(sourceMetricsCmd.Flags())
 	sourceMetricsCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
 	sourceMetricsCmd.Flags().String("name", "", "Entity name")
 	sourceMetricsCmd.Flags().String("type", "", "Entity type")
@@ -1687,6 +1960,19 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 
 	cmd.AddCommand(entityMetricCmd, sourceMetricsCmd)
 	return cmd
+}
+
+// insightsOpts carries the output options for the insights subcommands. The
+// human default stays plain JSON (the format these commands always printed);
+// agent mode resolves to the agents codec, which adds the oversized-payload
+// spill envelope chart data can need.
+type insightsOpts struct {
+	IO cmdio.Options
+}
+
+func (o *insightsOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
 }
 
 // filterByInsightMatchers filters results to those whose inlined assertions
@@ -2063,7 +2349,7 @@ func rcaWorkbenchURL(host, entityType, name string, scope map[string]string, sta
 }
 
 // ---------------------------------------------------------------------------
-// Summary command
+// Stats command
 // ---------------------------------------------------------------------------
 
 func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
@@ -2073,8 +2359,8 @@ func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 	)
 	ioOpts := &summaryOpts{}
 	cmd := &cobra.Command{
-		Use:   "summary",
-		Short: "Show a summary of entities and active insights, broken down by type, severity, and insight name.",
+		Use:   "stats",
+		Short: "Show entity and active-insight counts, broken down by type, severity, and insight name.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
@@ -2177,21 +2463,50 @@ func (o *summaryOpts) setup(flags *pflag.FlagSet) {
 // Open command
 // ---------------------------------------------------------------------------
 
+// kgOpenLink is the finite stdout document for `kg open`: the deep link
+// handed to the host browser. Bespoke shape (not a cmdio mutation) because
+// the command's effect is a browser launch and the URL is the whole payload;
+// it carries the discriminators required of bespoke results.
+type kgOpenLink struct {
+	Type          string `json:"type" yaml:"type"`
+	SchemaVersion string `json:"schema_version" yaml:"schema_version"`
+	URL           string `json:"url" yaml:"url"`
+}
+
+func newKGOpenLink(url string) kgOpenLink {
+	return kgOpenLink{Type: "gcx.kg.deeplink", SchemaVersion: "1", URL: url}
+}
+
 func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
-	return &cobra.Command{
+	var ioOpts cmdio.Options
+	cmd := &cobra.Command{
 		Use:   "open",
 		Short: "Open the Knowledge Graph app in the browser.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := ioOpts.Validate(); err != nil {
+				return err
+			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
 			url := strings.TrimRight(cfg.GrafanaURL, "/") + "/a/grafana-asserts-app"
 			cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
-			return deeplink.Open(url)
+			if err := deeplink.Open(url); err != nil {
+				return err
+			}
+			// The browser launch is the command's real effect; the stdout
+			// document is a receipt carrying the opened URL. The text codec
+			// prints nothing, matching the command's historical (empty)
+			// human stdout.
+			return ioOpts.Encode(cmd.OutOrStdout(), newKGOpenLink(url))
 		},
 	}
+	ioOpts.RegisterCustomCodec("text", &textLineCodec{render: func(io.Writer, any) error { return nil }})
+	ioOpts.DefaultFormat("text")
+	ioOpts.BindFlags(cmd.Flags())
+	return cmd
 }
 
 // ---------------------------------------------------------------------------
@@ -2306,6 +2621,208 @@ func (c *CypherTableCodec) Encode(w io.Writer, v any) error {
 }
 
 func (c *CypherTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ---------------------------------------------------------------------------
+// Correlate command
+// ---------------------------------------------------------------------------
+
+func newCorrelateCommand(loader RESTConfigLoader) *cobra.Command {
+	var (
+		correlateScope scopeFlags
+		alertLabelsRaw []string
+		file           string
+	)
+	ioOpts := &correlateOpts{}
+	cmd := &cobra.Command{
+		Use:   "correlate",
+		Short: "Resolve the affected entities for a firing alert from its labels.",
+		Long: `Resolve the affected Knowledge Graph entities for one or more firing alerts.
+
+Give it an alert's labels and a time window; it returns the entities the alert
+hangs off, using the same correlation the product uses to attach alerts to
+entities. This is the "I have an alert, which entity is it?" entry point — no
+entity type/name or Cypher required.
+
+Provide alerts as inline label sets, from an Alertmanager webhook file, or both:
+
+  --alert-labels 'k=v,k=v'   one firing alert per flag (repeatable)
+  -f/--file / stdin          Alertmanager JSON — an envelope {"alerts":[...]}
+                             or a bare array [{"labels":{...}}], auto-detected
+
+At least one of --alert-labels or -f is required. When nothing correlates the
+command prints a notice and exits 0 (an empty result is not an error).
+
+Note: correlation from a PromQL alert expression (--query) is not yet supported
+here — the backend fallback is unreliable today; use alert labels instead.`,
+		Example: `  gcx kg entities correlate --alert-labels 'alertname=ErrorRatioBreach,job=cart' --since 1h
+  gcx kg entities correlate -f am-webhook.json --since 1h
+  cat am-webhook.json | gcx kg entities correlate -f - --since 6h`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := ioOpts.IO.Validate(); err != nil {
+				return err
+			}
+			// Parse inputs first so bad input fails fast, before any network I/O.
+			var alertLabels []map[string]string
+			for _, raw := range alertLabelsRaw {
+				labels, err := parseAlertLabelSet(raw)
+				if err != nil {
+					return err
+				}
+				alertLabels = append(alertLabels, labels)
+			}
+			if file != "" {
+				data, err := readFileOrStdin(cmd, file)
+				if err != nil {
+					return err
+				}
+				fromFile, err := parseAlertmanagerLabels(data)
+				if err != nil {
+					return err
+				}
+				alertLabels = append(alertLabels, fromFile...)
+			}
+			if len(alertLabels) == 0 {
+				return errors.New("no alerts provided: use --alert-labels 'k=v,k=v' (repeatable) and/or -f <alertmanager.json>")
+			}
+
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			startMs, endMs, err := correlateScope.resolveTime()
+			if err != nil {
+				return err
+			}
+			resp, err := client.Correlate(cmd.Context(), AlertInspectionRequest{
+				AlertLabels:  alertLabels,
+				TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
+			})
+			if err != nil {
+				return err
+			}
+			if len(resp.Data.Entities) == 0 {
+				fmt.Fprintln(cmd.ErrOrStderr(), "no entities correlated for the given alert(s)")
+			}
+			// Return the bare entities slice (like 'entities list') rather than
+			// the full graph envelope — agents only need the entities, and the
+			// envelope's edges/paging fields are noise for this command.
+			return ioOpts.IO.Encode(cmd.OutOrStdout(), resp.Data.Entities)
+		},
+	}
+	cmd.Flags().StringArrayVar(&alertLabelsRaw, "alert-labels", nil, "Firing alert label set as comma-separated key=value pairs; one flag per alert (repeatable)")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "Alertmanager webhook JSON file, or '-' for stdin (envelope {\"alerts\":[...]} or bare array [{\"labels\":...}])")
+	cmd.Flags().StringVar(&correlateScope.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
+	cmd.Flags().StringVar(&correlateScope.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
+	cmd.Flags().StringVar(&correlateScope.since, "since", "", "Duration before --to (or now); mutually exclusive with --from/--to (default 1h; e.g. 1h, 30m, 7d)")
+	ioOpts.setup(cmd.Flags())
+	return cmd
+}
+
+type correlateOpts struct {
+	IO cmdio.Options
+}
+
+func (o *correlateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &AlertCorrelateTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+// parseAlertLabelSet parses a single 'k=v,k=v' alert label set. Values may
+// contain '=' (split on the first only); commas separate pairs.
+func parseAlertLabelSet(raw string) (map[string]string, error) {
+	labels := map[string]string{}
+	for pair := range strings.SplitSeq(raw, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(pair, "=")
+		k = strings.TrimSpace(k)
+		if !ok || k == "" {
+			return nil, fmt.Errorf("invalid --alert-labels entry %q: expected comma-separated key=value pairs", pair)
+		}
+		labels[k] = strings.TrimSpace(v)
+	}
+	if len(labels) == 0 {
+		return nil, fmt.Errorf("invalid --alert-labels %q: no key=value pairs found", raw)
+	}
+	return labels, nil
+}
+
+// parseAlertmanagerLabels extracts per-alert label sets from Alertmanager
+// webhook JSON. It auto-detects an envelope ({"alerts":[{"labels":...}]}) and a
+// bare array ([{"labels":...}]). JSON is valid YAML, so yaml.Unmarshal handles
+// both wire formats.
+func parseAlertmanagerLabels(data []byte) ([]map[string]string, error) {
+	type amAlert struct {
+		Labels map[string]string `yaml:"labels"`
+	}
+	collect := func(alerts []amAlert) []map[string]string {
+		out := make([]map[string]string, 0, len(alerts))
+		for _, a := range alerts {
+			if len(a.Labels) > 0 {
+				out = append(out, a.Labels)
+			}
+		}
+		return out
+	}
+
+	// Envelope: {"alerts": [{"labels": {...}}, ...]}.
+	var env struct {
+		Alerts []amAlert `yaml:"alerts"`
+	}
+	if err := yaml.Unmarshal(data, &env); err == nil {
+		if out := collect(env.Alerts); len(out) > 0 {
+			return out, nil
+		}
+	}
+	// Bare array: [{"labels": {...}}, ...].
+	var arr []amAlert
+	if err := yaml.Unmarshal(data, &arr); err == nil {
+		if out := collect(arr); len(out) > 0 {
+			return out, nil
+		}
+	}
+	return nil, errors.New(`no alert labels found in input: expected an Alertmanager envelope {"alerts":[{"labels":{...}}]} or a bare array [{"labels":{...}}]`)
+}
+
+// AlertCorrelateTableCodec renders the correlated entities as a table with
+// their connected-entity impact counts.
+type AlertCorrelateTableCodec struct{}
+
+func (c *AlertCorrelateTableCodec) Format() format.Format { return "table" }
+
+func (c *AlertCorrelateTableCodec) Encode(w io.Writer, v any) error {
+	entities, ok := v.([]GraphEntity)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []GraphEntity")
+	}
+	t := style.NewTable("TYPE", "NAME", "SCOPE", "CONNECTED")
+	for _, e := range entities {
+		var scopeParts []string
+		for k, val := range e.Scope {
+			scopeParts = append(scopeParts, fmt.Sprintf("%s=%s", k, val))
+		}
+		sort.Strings(scopeParts)
+		var connParts []string
+		for k, n := range e.ConnectedEntityTypes {
+			connParts = append(connParts, fmt.Sprintf("%s=%d", k, n))
+		}
+		sort.Strings(connParts)
+		t.Row(e.Type, e.Name, strings.Join(scopeParts, ", "), strings.Join(connParts, ", "))
+	}
+	return t.Render(w)
+}
+
+func (c *AlertCorrelateTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
@@ -2756,10 +3273,26 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 				mu      sync.Mutex
 				g, gCtx = errgroup.WithContext(cmd.Context())
 			)
+			// Section fetches are best-effort: a failure is warned on stderr
+			// AND recorded in the payload's errors map (under the section
+			// key), so a stdout-only consumer can distinguish "failed to
+			// load" from "empty".
+			recordSectionError := func(key, label string, err error) {
+				mu.Lock()
+				defer mu.Unlock()
+				// The warning write shares the mutex: section fetches run
+				// concurrently and the stderr writer is not safe for
+				// concurrent use.
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s failed to load: %v\n", label, err)
+				if out.Errors == nil {
+					out.Errors = make(map[string]string)
+				}
+				out.Errors[key] = err.Error()
+			}
 			g.Go(func() error {
 				schemaResp, schemaErr := client.FetchGraphSchema(gCtx, startMs, endMs)
 				if schemaErr != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: schema failed to load: %v\n", schemaErr)
+					recordSectionError("schema", "schema", schemaErr)
 					return nil
 				}
 				result := processGraphSchema(schemaResp)
@@ -2771,7 +3304,7 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 			g.Go(func() error {
 				scopes, scopeErr := client.ListEntityScopes(gCtx, startMs, endMs)
 				if scopeErr != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: scope values failed to load: %v\n", scopeErr)
+					recordSectionError("scopes", "scope values", scopeErr)
 					return nil
 				}
 				mu.Lock()
@@ -2782,7 +3315,7 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 			g.Go(func() error {
 				logResp, logErr := client.FetchLogConfigs(gCtx)
 				if logErr != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: log configs failed to load: %v\n", logErr)
+					recordSectionError("logs", "log configs", logErr)
 					return nil
 				}
 				mu.Lock()
@@ -2793,7 +3326,7 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 			g.Go(func() error {
 				traceResp, traceErr := client.FetchTraceConfigs(gCtx)
 				if traceErr != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: trace configs failed to load: %v\n", traceErr)
+					recordSectionError("traces", "trace configs", traceErr)
 					return nil
 				}
 				mu.Lock()
@@ -2804,7 +3337,7 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 			g.Go(func() error {
 				profileResp, profileErr := client.FetchProfileConfigs(gCtx)
 				if profileErr != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: profile configs failed to load: %v\n", profileErr)
+					recordSectionError("profiles", "profile configs", profileErr)
 					return nil
 				}
 				mu.Lock()

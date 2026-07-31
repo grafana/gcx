@@ -172,10 +172,11 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 			}
 
 			if opts.Top {
-				topResp := pyroscope.AggregateTopSeries(resp, opts.ProfileType, groupBy, int(opts.Limit))
+				topResp := pyroscope.AggregateTopSeries(resp, opts.ProfileType, groupBy, int(opts.Limit), start.UnixMilli())
 				return opts.shared.IO.Encode(cmd.OutOrStdout(), topResp)
 			}
 
+			resp.StepSeconds = stepSeconds
 			return opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}

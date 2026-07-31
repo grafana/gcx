@@ -9,6 +9,9 @@ Before implementing features or commands, read:
 - [CONSTITUTION.md](CONSTITUTION.md) — invariants you must not violate
 - [docs/design/](docs/design/) — prescriptive UX implementation rules (output, errors, agent mode, naming, …)
 
+Naming a command? Start with the
+[command naming and placement guide](docs/design/command-naming.md).
+
 ## Issue Tracking
 
 Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues).
@@ -147,7 +150,7 @@ $ go run ./cmd/gcx --config testdata/integration-test-config.yaml config view
 #### List available resources
 
 ```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources schemas
+$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources list-types
 ```
 
 #### Create a test dashboard

@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/spf13/cobra"
@@ -49,7 +50,7 @@ func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
 	opts.shared.Setup(flags, true)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
-	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)")
+	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)")
 	flags.Int64Var(&opts.MaxNodes, "max-nodes", 0, fmt.Sprintf("Maximum nodes in flame graph (default 0/unlimited for pprof output, %d for all other formats)", defaultMaxNodes))
 	flags.StringSliceVar(&opts.ProfileIDs, "profile-id", nil, "Drill down to specific profile UUIDs from exemplar queries (repeatable)")
 	flags.StringSliceVar(&opts.SpanIDs, "span-id", nil, "Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof)")
@@ -238,7 +239,15 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 					return fmt.Errorf("writing pprof profile: %w", err)
 				}
 				result := &pyroscope.PprofWriteResult{Path: dest}
-				return pyroscope.FormatPprofWriteTable(cmd.OutOrStdout(), result)
+				// -o pprof is an artifact write: in agent mode the stdout
+				// confirmation is a JSON receipt, not a human table (shared
+				// artifact-command protocol, internal/output/artifact.go).
+				receipt := cmdio.NewArtifactReceipt("pprof-export", "pprof")
+				receipt.Files = append(receipt.Files, cmdio.ArtifactFile{Path: dest})
+				receipt.Summary = cmdio.MutationSummary{Succeeded: 1}
+				return cmdio.EmitArtifactResult(cmd.OutOrStdout(), receipt, func(w io.Writer) error {
+					return pyroscope.FormatPprofWriteTable(w, result)
+				})
 			}
 
 			req := pyroscope.QueryRequest{

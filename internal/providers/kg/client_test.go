@@ -789,7 +789,7 @@ func TestClient_UpsertEntity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Contains(t, r.URL.Path, "/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/entities")
+				assert.Contains(t, r.URL.Path, "/api/plugins/grafana-asserts-app/resources/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/entities")
 				var got kg.EntityWriteRequest
 				assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
 				assert.Equal(t, "myapp", got.Domain)
@@ -823,7 +823,7 @@ func TestClient_DeleteEntity(t *testing.T) {
 	t.Run("sends identity as query params on collection path", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodDelete, r.Method)
-			assert.Equal(t, "/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/entities", r.URL.Path)
+			assert.Equal(t, "/api/plugins/grafana-asserts-app/resources/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/entities", r.URL.Path)
 			q := r.URL.Query()
 			assert.Equal(t, "myapp", q.Get("domain"))
 			assert.Equal(t, "Service", q.Get("type"))
@@ -838,7 +838,7 @@ func TestClient_DeleteEntity(t *testing.T) {
 	t.Run("allows slash in name via query params", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodDelete, r.Method)
-			assert.Equal(t, "/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/entities", r.URL.Path)
+			assert.Equal(t, "/api/plugins/grafana-asserts-app/resources/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/entities", r.URL.Path)
 			assert.Equal(t, "foo/bar", r.URL.Query().Get("name"))
 			w.WriteHeader(http.StatusNoContent)
 		}))
@@ -862,7 +862,7 @@ func TestClient_DeleteEntity(t *testing.T) {
 func TestClient_DeleteRelationship(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Equal(t, "/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/relationships", r.URL.Path)
+		assert.Equal(t, "/api/plugins/grafana-asserts-app/resources/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/relationships", r.URL.Path)
 		q := r.URL.Query()
 		assert.Equal(t, "CALLS", q.Get("type"))
 		assert.Equal(t, "myapp", q.Get("from.domain"))

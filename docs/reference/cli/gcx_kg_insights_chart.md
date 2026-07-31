@@ -14,9 +14,12 @@ gcx kg insights chart [Type--Name] [flags]
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for chart
       --insight string      Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --label stringArray   Extra assertion label as key=value (repeatable; e.g. asserts_resource_type=jvm:live_threads to narrow ResourceRateAnomaly to a specific resource)
       --name string         Entity name
       --namespace string    Namespace scope
+  -o, --output string       Output format. One of: agents, json, yaml (default "json")
       --since string        Duration before --to (or now); mutually exclusive with --from/--to (e.g. 1h, 30m, 7d)
       --site string         Site scope
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')

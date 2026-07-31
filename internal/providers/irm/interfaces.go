@@ -14,10 +14,12 @@ import (
 // and alertGroupListFilters are package-private to irm.
 type RichAlertGroupReader interface {
 	// ListAlertGroupsRaw fetches paginated alert groups from the internal API
-	// and returns the per-item raw JSON plus a serverHasMore flag indicating
-	// whether the server reported additional pages when we stopped early due
-	// to the caller-supplied cap.
-	ListAlertGroupsRaw(ctx context.Context, filters alertGroupListFilters, limit int) ([]json.RawMessage, bool, error)
+	// and returns the per-item raw JSON plus page info describing how the
+	// fetch ended: whether items beyond the returned page exist (the fetch
+	// stopped at the effective bound with a next cursor, or in-hand items
+	// exceeded the bound) and, when the source was fully drained, the
+	// observed total.
+	ListAlertGroupsRaw(ctx context.Context, filters alertGroupListFilters, limit int) ([]json.RawMessage, alertGroupPageInfo, error)
 
 	// GetAlertGroupRich fetches a single alert group by ID and returns the
 	// rich shape. Identity fields (PK, StartedAt) are on rich.Metadata;
@@ -40,7 +42,7 @@ type RichAlertGroupReader interface {
 
 // ListAlertGroupsRaw is the exported method wrapper that delegates to the
 // package-level listAlertGroupsRaw free function, satisfying RichAlertGroupReader.
-func (c *OnCallClient) ListAlertGroupsRaw(ctx context.Context, filters alertGroupListFilters, limit int) ([]json.RawMessage, bool, error) {
+func (c *OnCallClient) ListAlertGroupsRaw(ctx context.Context, filters alertGroupListFilters, limit int) ([]json.RawMessage, alertGroupPageInfo, error) {
 	return listAlertGroupsRaw(ctx, c, filters, limit)
 }
 

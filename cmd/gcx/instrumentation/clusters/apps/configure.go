@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instoutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
@@ -14,6 +15,7 @@ import (
 )
 
 type configureOpts struct {
+	IO              cmdio.Options
 	useDefaults     bool
 	yes             bool
 	tracing         bool
@@ -31,13 +33,16 @@ func (o *configureOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.processMetrics, "process-metrics", false, "Set process-level metrics collection. Pass --process-metrics=false to disable.")
 	flags.BoolVar(&o.extendedMetrics, "extended-metrics", false, "Set extended Beyla metrics collection. Pass --extended-metrics=false to disable.")
 	flags.BoolVar(&o.profiling, "profiling", false, "Set continuous profiling collection. Pass --profiling=false to disable.")
+	// The configure result is a MutationResult document through the codec
+	// system: the default text codec prints the familiar one-liner; agent
+	// mode and explicit -o json/yaml get the structured document.
+	instoutput.BindMutationIO(&o.IO, flags)
 }
 
 // Validate of the mutually-exclusive-mode and --yes-required-for-defaults rules
 // requires inspecting flags.Changed(), which depends on the *cobra.Command
 // instance. Those checks live in the RunE body where the command is in scope.
-// Keeping Validate as a no-op here satisfies the canonical opts pattern.
-func (o *configureOpts) Validate() error { return nil }
+func (o *configureOpts) Validate() error { return o.IO.Validate() }
 
 // makeConfigureCmd builds the "apps configure <cluster> <namespace>" command.
 //
@@ -97,7 +102,7 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 			}
 
 			// --use-defaults mode: overwrite with all-on defaults, requires --yes.
-			if useDefaultsSet { //nolint:nestif // inherited control flow complexity from RMW/use-defaults modes; extracting further reduces readability without reducing actual nesting
+			if useDefaultsSet {
 				if !opts.yes {
 					return errors.New("apps configure --use-defaults: --yes is required to confirm this operation")
 				}
@@ -109,31 +114,13 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 				updated := replaceOrAppendNamespace(resp.Namespaces, namespace, defaults)
 				if equal, _ := appListEqual(resp.Namespaces, updated); equal {
 					// No write — discover post-state before emitting result.
-					disc, discErr := client.IsNamespaceDiscovered(ctx, promHeaders, cluster, namespace)
-					if discErr != nil {
-						return fmt.Errorf("apps configure: %w", discErr)
-					}
-					return instoutput.MutationResult{
-						Action:     "configure",
-						Target:     instoutput.Target{Cluster: cluster, Namespace: namespace},
-						Changed:    false,
-						Discovered: boolPtr(disc), //nolint:modernize // boolPtr(x) cannot simplify to new(x) — new(T) creates *zero-value, not *x
-					}.Emit(cmd.OutOrStdout())
+					return emitConfigureResult(ctx, cmd, opts, client, promHeaders, cluster, namespace, false, false)
 				}
 				if err := client.SetAppInstrumentation(ctx, cluster, updated, urls); err != nil {
 					return err
 				}
 				// Discover post-write state.
-				disc, discErr := client.IsNamespaceDiscovered(ctx, promHeaders, cluster, namespace)
-				if discErr != nil {
-					return fmt.Errorf("apps configure: %w", discErr)
-				}
-				return instoutput.MutationResult{
-					Action:     "configure",
-					Target:     instoutput.Target{Cluster: cluster, Namespace: namespace},
-					Changed:    true,
-					Discovered: boolPtr(disc), //nolint:modernize // boolPtr(x) cannot simplify to new(x) — new(T) creates *zero-value, not *x
-				}.Emit(cmd.OutOrStdout())
+				return emitConfigureResult(ctx, cmd, opts, client, promHeaders, cluster, namespace, true, true)
 			}
 
 			// RMW mode: set listed flags, preserve unspecified.
@@ -147,16 +134,7 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 			post := applyAppMutations(pre, namespace, flags,
 				opts.tracing, opts.logging, opts.processMetrics, opts.extendedMetrics, opts.profiling)
 			if equal, _ := appListEqual(pre, post); equal {
-				disc, discErr := client.IsNamespaceDiscovered(ctx, promHeaders, cluster, namespace)
-				if discErr != nil {
-					return fmt.Errorf("apps configure: %w", discErr)
-				}
-				return instoutput.MutationResult{
-					Action:     "configure",
-					Target:     instoutput.Target{Cluster: cluster, Namespace: namespace},
-					Changed:    false,
-					Discovered: boolPtr(disc), //nolint:modernize // boolPtr(x) cannot simplify to new(x) — new(T) creates *zero-value, not *x
-				}.Emit(cmd.OutOrStdout())
+				return emitConfigureResult(ctx, cmd, opts, client, promHeaders, cluster, namespace, false, false)
 			}
 
 			getFn := func(ctx context.Context) ([]instrumentation.App, error) {
@@ -185,16 +163,7 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 				return err
 			}
 			// Discover post-write state.
-			disc, discErr := client.IsNamespaceDiscovered(ctx, promHeaders, cluster, namespace)
-			if discErr != nil {
-				return fmt.Errorf("apps configure: %w", discErr)
-			}
-			return instoutput.MutationResult{
-				Action:     "configure",
-				Target:     instoutput.Target{Cluster: cluster, Namespace: namespace},
-				Changed:    true,
-				Discovered: boolPtr(disc), //nolint:modernize // boolPtr(x) cannot simplify to new(x) — new(T) creates *zero-value, not *x
-			}.Emit(cmd.OutOrStdout())
+			return emitConfigureResult(ctx, cmd, opts, client, promHeaders, cluster, namespace, true, true)
 		},
 	}
 
@@ -202,11 +171,48 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 	return cmd
 }
 
-// newConfigureCmd is a test-facing constructor that injects a pre-built appsClient
-// and BackendURLs. Production code uses makeConfigureCmd(factoryFromLoader(loader)) instead.
-func newConfigureCmd(client appsClient, urls instrumentation.BackendURLs) *cobra.Command {
+// emitConfigureResult probes namespace discovery, then writes the
+// MutationResult document to stdout through the codec system.
+//
+// postWrite selects the contract for a discovery-probe failure:
+//   - pre-write paths (no mutation was applied) return the probe error — the
+//     error document is the honest terminal result;
+//   - post-write paths (the mutation is already applied) still emit the result
+//     document, just without the Discovered enrichment, and route the probe
+//     failure to stderr as a warning. An applied mutation must never be
+//     reported as a bare failure with no result on stdout.
+func emitConfigureResult(
+	ctx context.Context,
+	cmd *cobra.Command,
+	opts *configureOpts,
+	client appsClient,
+	promHeaders instrumentation.PromHeaders,
+	cluster, namespace string,
+	changed, postWrite bool,
+) error {
+	result := instoutput.NewMutationResult("configure", instoutput.Target{Cluster: cluster, Namespace: namespace})
+	result.Changed = changed
+
+	disc, discErr := client.IsNamespaceDiscovered(ctx, promHeaders, cluster, namespace)
+	switch {
+	case discErr == nil:
+		result.Discovered = boolPtr(disc) //nolint:modernize // boolPtr(x) cannot simplify to new(x) — new(T) creates *zero-value, not *x
+	case !postWrite:
+		return fmt.Errorf("apps configure: %w", discErr)
+	default:
+		cmdio.EmitWarn(cmd.ErrOrStderr(),
+			fmt.Sprintf("apps configure: configuration applied, but the discovery probe failed: %v", discErr))
+	}
+
+	return opts.IO.Encode(cmd.OutOrStdout(), result)
+}
+
+// newConfigureCmd is a test-facing constructor that injects a pre-built
+// appsClient (with zero-value BackendURLs). Production code uses
+// makeConfigureCmd(factoryFromLoader(loader)) instead.
+func newConfigureCmd(client appsClient) *cobra.Command {
 	return makeConfigureCmd(func(_ context.Context) (appsClient, instrumentation.BackendURLs, instrumentation.PromHeaders, error) {
-		return client, urls, instrumentation.PromHeaders{}, nil
+		return client, instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, nil
 	})
 }
 

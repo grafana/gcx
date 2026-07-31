@@ -157,6 +157,9 @@ func TestAggregateTopSeries(t *testing.T) {
 			{
 				Labels: []pyroscope.LabelPair{{Name: "service_name", Value: "frontend"}},
 				Points: []pyroscope.TimePoint{
+					// boundary point at the window start aggregates pre-window
+					// data and must not count towards the total
+					tp(999, 500),
 					tp(100, 1000),
 					tp(200, 2000),
 				},
@@ -170,7 +173,7 @@ func TestAggregateTopSeries(t *testing.T) {
 		},
 	}
 
-	top := pyroscope.AggregateTopSeries(resp, "process_cpu:cpu:nanoseconds:cpu:nanoseconds", []string{"service_name"}, 10)
+	top := pyroscope.AggregateTopSeries(resp, "process_cpu:cpu:nanoseconds:cpu:nanoseconds", []string{"service_name"}, 10, 500)
 
 	assert.Equal(t, "process_cpu:cpu:nanoseconds:cpu:nanoseconds", top.ProfileType)
 	assert.Equal(t, []string{"service_name"}, top.GroupBy)
@@ -196,7 +199,7 @@ func TestAggregateTopSeries_Limit(t *testing.T) {
 		},
 	}
 
-	top := pyroscope.AggregateTopSeries(resp, "test", []string{"s"}, 2)
+	top := pyroscope.AggregateTopSeries(resp, "test", []string{"s"}, 2, 0)
 	assert.Len(t, top.Series, 2)
 	assert.Equal(t, "c", top.Series[0].Labels["s"])
 	assert.Equal(t, "b", top.Series[1].Labels["s"])

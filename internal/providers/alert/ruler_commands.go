@@ -1,0 +1,588 @@
+package alert
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"sort"
+	"strconv"
+
+	"github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/style"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+)
+
+// rulerCommands returns the ruler command group for datasource-managed
+// (Mimir/Loki ruler) alerting and recording rules.
+func rulerCommands(loader GrafanaConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "ruler",
+		Short: "Manage datasource-managed (Mimir/Loki ruler) rules.",
+		Long: `Manage alerting and recording rules stored in a Mimir or Loki ruler,
+via Grafana's per-datasource ruler proxy.
+
+These commands work only against Mimir (or another Prometheus-flavored
+ruler) and Loki datasources: every command requires --datasource with the
+UID of such a datasource.
+
+These are datasource-managed rules, distinct from Grafana-managed alert
+rules — inspect those with 'gcx alert rules' and modify them with
+'gcx resources pull/push alertrules'.`,
+	}
+	cmd.AddCommand(
+		rulerNamespacesCommands(loader),
+		rulerGroupsCommands(loader),
+	)
+	return cmd
+}
+
+// rulerOpts carries the flags shared by every ruler command.
+type rulerOpts struct {
+	Datasource string
+}
+
+func (o *rulerOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.Datasource, "datasource", "d", "", "UID of the Mimir or Loki datasource used as ruler (required)")
+}
+
+func (o *rulerOpts) Validate() error {
+	if o.Datasource == "" {
+		return errors.New("--datasource is required")
+	}
+	return nil
+}
+
+// newRulerClient resolves the datasource type to a ruler subtype and builds
+// the client. The returned dsType is the datasource plugin type (single
+// lookup, reused by callers that need PromQL-vs-LogQL decisions).
+func (o *rulerOpts) newRulerClient(ctx context.Context, loader GrafanaConfigLoader) (*RulerClient, string, error) {
+	cfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	dsType, err := query.GetDatasourceType(ctx, cfg, o.Datasource)
+	if err != nil {
+		return nil, "", err
+	}
+	subtype, err := rulerSubtypeForDatasourceType(dsType)
+	if err != nil {
+		return nil, "", err
+	}
+	client, err := NewRulerClient(cfg, o.Datasource, subtype)
+	if err != nil {
+		return nil, "", err
+	}
+	return client, dsType, nil
+}
+
+// ---------------------------------------------------------------------------
+// Namespaces
+// ---------------------------------------------------------------------------
+
+func rulerNamespacesCommands(loader GrafanaConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "namespaces",
+		Short:   "Manage datasource-managed (Mimir/Loki ruler) namespaces.",
+		Aliases: []string{"namespace"},
+	}
+	cmd.AddCommand(
+		newRulerNamespacesListCommand(loader),
+		newRulerNamespacesDeleteCommand(loader),
+	)
+	return cmd
+}
+
+type rulerNamespacesListOpts struct {
+	rulerOpts
+
+	IO cmdio.Options
+}
+
+func (o *rulerNamespacesListOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &RulerNamespacesTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+	o.rulerOpts.setup(flags)
+}
+
+// RulerNamespaceView is one row of the namespaces listing.
+type RulerNamespaceView struct {
+	Namespace string `json:"namespace"`
+	Groups    int    `json:"groups"`
+	Rules     int    `json:"rules"`
+}
+
+func newRulerNamespacesListCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &rulerNamespacesListOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List ruler namespaces with group and rule counts.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			client, _, err := opts.newRulerClient(ctx, loader)
+			if err != nil {
+				return err
+			}
+			namespaces, err := client.ListNamespaces(ctx)
+			if err != nil {
+				return err
+			}
+			views := make([]RulerNamespaceView, 0, len(namespaces))
+			for ns, groups := range namespaces {
+				rules := 0
+				for _, g := range groups {
+					rules += len(g.Rules)
+				}
+				views = append(views, RulerNamespaceView{Namespace: ns, Groups: len(groups), Rules: rules})
+			}
+			sort.Slice(views, func(i, j int) bool { return views[i].Namespace < views[j].Namespace })
+			return opts.IO.Encode(cmd.OutOrStdout(), views)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// RulerNamespacesTableCodec renders ruler namespaces as a table.
+type RulerNamespacesTableCodec struct{}
+
+func (c *RulerNamespacesTableCodec) Format() format.Format { return "table" }
+
+func (c *RulerNamespacesTableCodec) Encode(w io.Writer, v any) error {
+	views, ok := v.([]RulerNamespaceView)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []RulerNamespaceView")
+	}
+	t := style.NewTable("NAMESPACE", "GROUPS", "RULES")
+	for _, n := range views {
+		t.Row(n.Namespace, strconv.Itoa(n.Groups), strconv.Itoa(n.Rules))
+	}
+	return t.Render(w)
+}
+
+func (c *RulerNamespacesTableCodec) Decode(io.Reader, any) error {
+	return errors.New("table format does not support decoding")
+}
+
+type rulerNamespacesDeleteOpts struct {
+	rulerOpts
+
+	IO    cmdio.Options
+	Force bool
+}
+
+func (o *rulerNamespacesDeleteOpts) setup(flags *pflag.FlagSet) {
+	// The delete result is a SingleMutation document through the codec
+	// system: the default text codec prints the familiar one-line success;
+	// agent mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{line: func(m cmdio.SingleMutation) string {
+		return "Deleted ruler namespace " + m.Target.Namespace
+	}})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+	o.rulerOpts.setup(flags)
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
+// Validate checks the output options alongside the shared ruler options.
+func (o *rulerNamespacesDeleteOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	return o.rulerOpts.Validate()
+}
+
+func newRulerNamespacesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &rulerNamespacesDeleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete NAMESPACE",
+		Short: "Delete a ruler namespace and all rule groups in it.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			client, _, err := opts.newRulerClient(ctx, loader)
+			if err != nil {
+				return err
+			}
+			// The confirmation exchange is a diagnostic, not the result —
+			// stderr keeps the prompt and "Aborted." out of the stdout
+			// document.
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+				"Delete ruler namespace "+args[0]+" and all rule groups in it?")
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+			if err := client.DeleteNamespace(ctx, args[0]); err != nil {
+				return err
+			}
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{
+				Kind:      "ruler-namespace",
+				Namespace: args[0],
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// Groups
+// ---------------------------------------------------------------------------
+
+func rulerGroupsCommands(loader GrafanaConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "groups",
+		Short:   "Manage datasource-managed (Mimir/Loki ruler) rule groups.",
+		Aliases: []string{"group"},
+	}
+	cmd.AddCommand(
+		newRulerGroupsListCommand(loader),
+		newRulerGroupsGetCommand(loader),
+		newRulerGroupsUpsertCommand(loader),
+		newRulerGroupsDeleteCommand(loader),
+	)
+	return cmd
+}
+
+type rulerGroupsListOpts struct {
+	rulerOpts
+
+	IO        cmdio.Options
+	Namespace string
+}
+
+func (o *rulerGroupsListOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &RulerGroupsTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+	o.rulerOpts.setup(flags)
+	flags.StringVarP(&o.Namespace, "namespace", "n", "", "Only list groups in this namespace")
+}
+
+// RulerGroupView is one row of the groups listing.
+type RulerGroupView struct {
+	Namespace string `json:"namespace"`
+	Group     string `json:"group"`
+	Interval  string `json:"interval,omitempty"`
+	Rules     int    `json:"rules"`
+}
+
+func newRulerGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &rulerGroupsListOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List ruler rule groups.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			client, _, err := opts.newRulerClient(ctx, loader)
+			if err != nil {
+				return err
+			}
+			var namespaces map[string][]RulerRuleGroup
+			if opts.Namespace != "" {
+				namespaces, err = client.ListGroups(ctx, opts.Namespace)
+			} else {
+				namespaces, err = client.ListNamespaces(ctx)
+			}
+			if err != nil {
+				return err
+			}
+			var views []RulerGroupView
+			for ns, groups := range namespaces {
+				for _, g := range groups {
+					views = append(views, RulerGroupView{
+						Namespace: ns,
+						Group:     g.Name,
+						Interval:  g.Interval,
+						Rules:     len(g.Rules),
+					})
+				}
+			}
+			sort.Slice(views, func(i, j int) bool {
+				if views[i].Namespace != views[j].Namespace {
+					return views[i].Namespace < views[j].Namespace
+				}
+				return views[i].Group < views[j].Group
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), views)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// RulerGroupsTableCodec renders ruler rule groups as a table.
+type RulerGroupsTableCodec struct{}
+
+func (c *RulerGroupsTableCodec) Format() format.Format { return "table" }
+
+func (c *RulerGroupsTableCodec) Encode(w io.Writer, v any) error {
+	views, ok := v.([]RulerGroupView)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []RulerGroupView")
+	}
+	t := style.NewTable("NAMESPACE", "GROUP", "INTERVAL", "RULES")
+	for _, g := range views {
+		interval := g.Interval
+		if interval == "" {
+			interval = "-"
+		}
+		t.Row(g.Namespace, g.Group, interval, strconv.Itoa(g.Rules))
+	}
+	return t.Render(w)
+}
+
+func (c *RulerGroupsTableCodec) Decode(io.Reader, any) error {
+	return errors.New("table format does not support decoding")
+}
+
+type rulerGroupsGetOpts struct {
+	rulerOpts
+
+	IO cmdio.Options
+}
+
+func (o *rulerGroupsGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+	o.rulerOpts.setup(flags)
+}
+
+func newRulerGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &rulerGroupsGetOpts{}
+	cmd := &cobra.Command{
+		Use:   "get NAMESPACE GROUP",
+		Short: "Get a ruler rule group (YAML by default, round-trips into upsert).",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			client, _, err := opts.newRulerClient(ctx, loader)
+			if err != nil {
+				return err
+			}
+			group, err := client.GetGroup(ctx, args[0], args[1])
+			if err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), group)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+type rulerGroupsUpsertOpts struct {
+	rulerOpts
+
+	IO     cmdio.Options
+	File   string
+	DryRun bool
+}
+
+func (o *rulerGroupsUpsertOpts) setup(flags *pflag.FlagSet) {
+	// Upserting many groups is a batch verb: the per-group receipts are stderr
+	// diagnostics and stdout carries exactly one BatchMutation document. The
+	// silent text codec keeps default human stdout as it was — the receipt
+	// stream is the human result.
+	o.IO.RegisterCustomCodec("text", silentTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+	o.rulerOpts.setup(flags)
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing rule groups (Prometheus rules file or a single group; YAML/JSON, use - for stdin)")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Parse and validate only; send nothing to the ruler")
+}
+
+func (o *rulerGroupsUpsertOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	return o.rulerOpts.Validate()
+}
+
+func newRulerGroupsUpsertCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &rulerGroupsUpsertOpts{}
+	cmd := &cobra.Command{
+		Use:   "upsert NAMESPACE",
+		Short: "Create or update ruler rule groups from a file.",
+		Long: `Create or update rule groups in a ruler namespace. The input may be a
+standard Prometheus rules file (with a top-level "groups:" list) or a single
+bare rule group. Upserting a group replaces the group with the same name.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			namespace := args[0]
+			var input RulerUpsertInput
+			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &input); err != nil {
+				return err
+			}
+			groups, err := input.RuleGroups()
+			if err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, dsType, err := opts.newRulerClient(ctx, loader)
+			if err != nil {
+				return err
+			}
+
+			promQL := query.NormalizeKind(dsType) == "prometheus"
+			for _, g := range groups {
+				if err := g.Validate(promQL); err != nil {
+					return err
+				}
+			}
+
+			stderr := cmd.ErrOrStderr()
+			result := cmdio.NewBatchMutation("upserted")
+
+			if opts.DryRun {
+				for _, g := range groups {
+					cmdio.Info(stderr, "would upsert group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
+				}
+				result.DryRun = true
+				result.Summary.Succeeded = len(groups)
+				return opts.IO.Encode(cmd.OutOrStdout(), result)
+			}
+
+			// Every group is attempted, so no target is ever left unattempted
+			// and Skipped stays zero.
+			for _, g := range groups {
+				if err := client.UpsertGroup(ctx, namespace, g); err != nil {
+					result.Summary.Failed++
+					result.Failures = append(result.Failures, cmdio.MutationFailure{
+						Target: cmdio.MutationTarget{Kind: "ruler-rule-group", Namespace: namespace, Name: g.Name},
+						Error:  err.Error(),
+					})
+					cmdio.Warning(stderr, "failed to upsert group %q: %v", g.Name, err)
+					continue
+				}
+				result.Summary.Succeeded++
+				cmdio.Success(stderr, "Upserted group %q (%d rule(s)) to namespace %q", g.Name, len(g.Rules), namespace)
+			}
+
+			if result.Summary.Failed > 0 {
+				failErr := fmt.Errorf("%d of %d rule group(s) failed to upsert", result.Summary.Failed, len(groups))
+				// Nothing was upserted, so nothing has been written to stdout:
+				// return the error raw and let the standard error path render
+				// the single fused error document.
+				if result.Summary.Succeeded == 0 {
+					return failErr
+				}
+				// A genuine partial failure. The complete document goes to
+				// stdout and the EmittedError carries ExitPartialFailure
+				// without emitting a second document.
+				if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+					return err
+				}
+				cmdio.EmitWarn(stderr, failErr.Error())
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, failErr)
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+type rulerGroupsDeleteOpts struct {
+	rulerOpts
+
+	IO    cmdio.Options
+	Force bool
+}
+
+func (o *rulerGroupsDeleteOpts) setup(flags *pflag.FlagSet) {
+	// The delete result is a SingleMutation document through the codec
+	// system: the default text codec prints the familiar one-line success;
+	// agent mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{line: func(m cmdio.SingleMutation) string {
+		return "Deleted ruler rule group " + m.Target.Namespace + "/" + m.Target.Name
+	}})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+	o.rulerOpts.setup(flags)
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
+// Validate checks the output options alongside the shared ruler options.
+func (o *rulerGroupsDeleteOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	return o.rulerOpts.Validate()
+}
+
+func newRulerGroupsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &rulerGroupsDeleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete NAMESPACE GROUP",
+		Short: "Delete a ruler rule group.",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			client, _, err := opts.newRulerClient(ctx, loader)
+			if err != nil {
+				return err
+			}
+			// The confirmation exchange is a diagnostic, not the result —
+			// stderr keeps the prompt and "Aborted." out of the stdout
+			// document.
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+				"Delete ruler rule group "+args[1]+" in namespace "+args[0]+"?")
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+			if err := client.DeleteGroup(ctx, args[0], args[1]); err != nil {
+				return err
+			}
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{
+				Kind:      "ruler-rule-group",
+				Namespace: args[0],
+				Name:      args[1],
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}

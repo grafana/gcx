@@ -594,7 +594,7 @@ func TestErrorToDetailedError_SMURLNotConfigured(t *testing.T) {
 	assert.Equal(t, "SM URL not configured", got.Summary)
 	assert.Contains(t, got.Details, "SM URL not configured")
 	require.Len(t, got.Suggestions, 4)
-	assert.Contains(t, got.Suggestions[0], "gcx config set providers.synth.sm-url")
+	assert.Contains(t, got.Suggestions[0], "gcx config set stacks.<name>.providers.synth.sm-url")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_PROVIDER_SYNTH_SM_URL")
 	assert.Contains(t, got.Suggestions[2], "grafana.server")
 	assert.Contains(t, got.Suggestions[3], "gcx config view")
@@ -610,9 +610,9 @@ func TestErrorToDetailedError_SMTokenNotConfigured(t *testing.T) {
 	assert.Equal(t, "SM token not configured", got.Summary)
 	assert.Contains(t, got.Details, "SM token not configured")
 	require.Len(t, got.Suggestions, 4)
-	assert.Contains(t, got.Suggestions[0], "gcx config set providers.synth.sm-token")
+	assert.Contains(t, got.Suggestions[0], "gcx config set stacks.<name>.providers.synth.sm-token")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_PROVIDER_SYNTH_SM_TOKEN")
-	assert.Contains(t, got.Suggestions[2], "cloud.token")
+	assert.Contains(t, got.Suggestions[2], "gcx cloud login")
 	assert.Contains(t, got.Suggestions[3], "gcx config view")
 }
 
@@ -659,7 +659,7 @@ func TestErrorToDetailedError_SMTokenRegisterInstallPermissionDenied(t *testing.
 			assert.Contains(t, got.Suggestions[0], "metrics:write")
 			assert.Contains(t, got.Suggestions[0], "logs:write")
 			assert.Contains(t, got.Suggestions[0], "traces:write")
-			assert.Contains(t, got.Suggestions[1], "gcx config set providers.synth.sm-token")
+			assert.Contains(t, got.Suggestions[1], "gcx config set stacks.<name>.providers.synth.sm-token")
 		})
 	}
 }
@@ -677,26 +677,35 @@ func TestErrorToDetailedError_SMTokenRegisterInstallGeneric400FallsThrough(t *te
 }
 
 func TestErrorToDetailedError_CloudTokenNotConfigured(t *testing.T) {
-	err := errors.New("cloud token is required: set cloud.token in config or GRAFANA_CLOUD_TOKEN env var")
+	err := errors.New("context has no cloud auth: run `gcx cloud login`, or set GRAFANA_CLOUD_TOKEN")
 
 	got := fail.ErrorToDetailedError(err)
 
 	require.NotNil(t, got)
 	assert.Equal(t, "Cloud credentials not configured", got.Summary)
 	require.Len(t, got.Suggestions, 2)
-	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.token")
+	assert.Contains(t, got.Suggestions[0], "gcx cloud login")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_TOKEN")
 }
 
+func TestErrorToDetailedError_CloudEntryTokenMissing(t *testing.T) {
+	err := errors.New(`cloud entry "grafana-com" has no token: run ` + "`gcx cloud login`" + `, or set cloud.grafana-com.token or GRAFANA_CLOUD_TOKEN`)
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Cloud credentials not configured", got.Summary)
+}
+
 func TestErrorToDetailedError_CloudStackNotConfigured(t *testing.T) {
-	err := errors.New("cloud stack is not configured: set cloud.stack in config or GRAFANA_CLOUD_STACK env var")
+	err := errors.New("cloud stack is not configured: set the stack's slug (gcx config set stacks.<name>.slug <slug>) or GRAFANA_CLOUD_STACK env var")
 
 	got := fail.ErrorToDetailedError(err)
 
 	require.NotNil(t, got)
 	assert.Equal(t, "Cloud stack not configured", got.Summary)
 	require.Len(t, got.Suggestions, 2)
-	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.stack")
+	assert.Contains(t, got.Suggestions[0], "gcx config set stacks.<name>.slug")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_STACK")
 }
 
@@ -738,6 +747,160 @@ func TestErrorToDetailedError_LoginGCOMStack404(t *testing.T) {
 	assert.Equal(t, "Grafana Cloud stack not found", got.Summary)
 	require.NotEmpty(t, got.Suggestions)
 	assert.Contains(t, strings.Join(got.Suggestions, "\n"), "mystack")
+}
+
+func TestErrorToDetailedError_StacksConflict409(t *testing.T) {
+	tests := []struct {
+		name            string
+		wrap            string
+		httpErr         *cloud.GCOMHTTPError
+		wantSummary     string
+		wantExitUsage   bool
+		wantSuggestion  string
+		notInSuggestion string
+	}{
+		{
+			name:            "create InvalidArgument with slug message",
+			wrap:            "failed to create stack",
+			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"InvalidArgument","message":"Invalid slug my-gcx-eval specified"}`, Code: "InvalidArgument", Message: "Invalid slug my-gcx-eval specified"},
+			wantSummary:     "Invalid stack request",
+			wantExitUsage:   true,
+			wantSuggestion:  "Choose a different slug",
+			notInSuggestion: "lowercase letters",
+		},
+		{
+			name:            "create InvalidArgument with non-slug message",
+			wrap:            "failed to create stack",
+			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"InvalidArgument","message":"Invalid region narnia specified"}`, Code: "InvalidArgument", Message: "Invalid region narnia specified"},
+			wantSummary:     "Invalid stack request",
+			wantExitUsage:   true,
+			wantSuggestion:  "--dry-run",
+			notInSuggestion: "Choose a different slug",
+		},
+		{
+			name:           "create Conflict code with duplicate-looking message",
+			wrap:           "failed to create stack",
+			httpErr:        &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"Conflict","message":"that url has already been taken"}`, Code: "Conflict", Message: "that url has already been taken"},
+			wantSummary:    "Resource conflict",
+			wantSuggestion: "Choose a different slug",
+		},
+		{
+			name:           "create code-less duplicate-looking message",
+			wrap:           "failed to create stack",
+			httpErr:        &cloud.GCOMHTTPError{Status: 409, Body: `{"message":"slug already taken"}`, Message: "slug already taken"},
+			wantSummary:    "Resource conflict",
+			wantSuggestion: "Choose a different slug",
+		},
+		{
+			name:           "create unknown nonempty code keeps slug remediation",
+			wrap:           "failed to create stack",
+			httpErr:        &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"SomethingNew","message":"conflicting state"}`, Code: "SomethingNew", Message: "conflicting state"},
+			wantSummary:    "Resource conflict",
+			wantSuggestion: "Choose a different slug",
+		},
+		{
+			name:           "create non-JSON body keeps slug remediation",
+			wrap:           "failed to create stack",
+			httpErr:        &cloud.GCOMHTTPError{Status: 409, Body: `<html>bad gateway</html>`},
+			wantSummary:    "Resource conflict",
+			wantSuggestion: "Choose a different slug",
+		},
+		{
+			name:            "update InvalidArgument is a usage error too",
+			wrap:            "failed to update stack",
+			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"InvalidArgument","message":"Invalid name specified"}`, Code: "InvalidArgument", Message: "Invalid name specified"},
+			wantSummary:     "Invalid stack request",
+			wantExitUsage:   true,
+			wantSuggestion:  "--dry-run",
+			notInSuggestion: "Choose a different slug",
+		},
+		{
+			name:            "update conflict has no slug remediation",
+			wrap:            "failed to update stack",
+			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"Conflict","message":"conflict"}`, Code: "Conflict", Message: "conflict"},
+			wantSummary:     "Resource conflict",
+			wantSuggestion:  "List existing stacks",
+			notInSuggestion: "--slug",
+		},
+		{
+			name:            "list InvalidArgument stays a generic conflict",
+			wrap:            "failed to list stacks",
+			httpErr:         &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"InvalidArgument","message":"Invalid arguments"}`, Code: "InvalidArgument", Message: "Invalid arguments"},
+			wantSummary:     "Resource conflict",
+			notInSuggestion: "--slug",
+		},
+		{
+			name:           "delete keeps delete-protection mapping",
+			wrap:           "failed to delete stack",
+			httpErr:        &cloud.GCOMHTTPError{Status: 409, Body: `{"code":"Conflict","message":"instance is protected"}`, Code: "Conflict", Message: "instance is protected"},
+			wantSummary:    "Stack has delete protection enabled",
+			wantSuggestion: "--no-delete-protection",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := fmt.Errorf("%s: %w", tt.wrap, tt.httpErr)
+
+			got := fail.ErrorToDetailedError(err)
+
+			require.NotNil(t, got)
+			assert.Equal(t, tt.wantSummary, got.Summary)
+			if tt.wantExitUsage {
+				require.NotNil(t, got.ExitCode)
+				assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
+				assert.Equal(t, docs.CloudAPI, got.DocsLink)
+			} else {
+				assert.Nil(t, got.ExitCode, "non-usage 409s keep the default exit code")
+			}
+			if tt.httpErr.Message != "" {
+				assert.True(t, strings.HasPrefix(got.Details, tt.httpErr.Message),
+					"details must lead with GCOM's message, got %q", got.Details)
+			}
+			joined := strings.Join(got.Suggestions, "\n")
+			if tt.wantSuggestion != "" {
+				assert.Contains(t, joined, tt.wantSuggestion)
+			}
+			if tt.notInSuggestion != "" {
+				assert.NotContains(t, joined, tt.notInSuggestion)
+			}
+		})
+	}
+}
+
+func TestErrorToDetailedError_StacksAuthErrors(t *testing.T) {
+	for _, tt := range []struct {
+		status      int
+		wantSummary string
+	}{
+		{403, "Stacks: permission denied"},
+		{401, "Stacks: authentication failed"},
+	} {
+		t.Run(tt.wantSummary, func(t *testing.T) {
+			err := fmt.Errorf("failed to create stack: %w",
+				&cloud.GCOMHTTPError{Status: tt.status, Body: `{"message":"token lacks stacks scopes"}`, Message: "token lacks stacks scopes"})
+
+			got := fail.ErrorToDetailedError(err)
+
+			require.NotNil(t, got)
+			assert.Equal(t, tt.wantSummary, got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+			assert.True(t, strings.HasPrefix(got.Details, "token lacks stacks scopes"),
+				"auth details must lead with GCOM's message, got %q", got.Details)
+		})
+	}
+}
+
+func TestErrorToDetailedError_NonStacks409NotClaimed(t *testing.T) {
+	err := fmt.Errorf("failed to frobnicate: %w",
+		&cloud.GCOMHTTPError{Status: 409, Body: `{"code":"Conflict"}`, Code: "Conflict"})
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.NotEqual(t, "Resource conflict", got.Summary)
+	assert.NotEqual(t, "Invalid stack request", got.Summary)
 }
 
 func TestErrorToDetailedError_LoginHealthCheckAuth(t *testing.T) {
@@ -871,6 +1034,14 @@ func TestErrorToDetailedError_WaitTimeoutEmittedSuppressesEnvelope(t *testing.T)
 	// nil means "already handled; suppress secondary output" — matches
 	// the convertLinterErrors(ErrTestsFailed) precedent.
 	assert.Nil(t, got, "ErrWaitTimeoutEmitted must suppress the DetailedError envelope (return nil)")
+}
+
+func TestErrorToDetailedError_AlreadyReportedSuppressesEnvelope(t *testing.T) {
+	err := fmt.Errorf("config check failed: %w", gcxerrors.ErrAlreadyReported)
+
+	got := fail.ErrorToDetailedError(err)
+
+	assert.Nil(t, got, "an already-rendered diagnostic must not produce a second error envelope")
 }
 
 func TestErrorToDetailedError_WaitTimeoutEmittedBeforeOtherConverters(t *testing.T) {
@@ -1141,6 +1312,36 @@ func TestErrorToDetailedError_ValueTypedPreservesExitCode(t *testing.T) {
 			require.NotNil(t, got)
 			require.NotNil(t, got.ExitCode, "ExitCode must not be nil — value-typed DetailedError must propagate ExitCode")
 			assert.Equal(t, 2, *got.ExitCode, "ExitCode must equal the original value, not nil or 1")
+		})
+	}
+}
+
+func TestErrorToDetailedError_EmittedErrorSuppressesEnvelope(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "bare EmittedError",
+			err:  gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New("2 failed")),
+		},
+		{
+			name: "wrapped EmittedError",
+			err:  fmt.Errorf("push: %w", gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, nil)),
+		},
+		{
+			name: "chain carrying both a DetailedError and an EmittedError",
+			err: &gcxerrors.DetailedError{
+				Summary: "outer",
+				Parent:  gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New("inner")),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Nil(t, fail.ErrorToDetailedError(tt.err),
+				"an EmittedError anywhere in the chain must suppress the secondary envelope")
 		})
 	}
 }

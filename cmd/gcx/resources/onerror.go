@@ -30,8 +30,8 @@ func bindOnErrorFlag(flags *pflag.FlagSet, target *OnErrorMode) {
 		string(OnErrorFail),
 		`How to handle errors during resource operations:
   ignore — continue processing all resources and exit 0
-  fail   — continue processing all resources and exit 1 if any failed (default)
-  abort  — stop on the first error and exit 1`,
+  fail   — continue processing all resources and exit 4 (partial failure) if any failed (default)
+  abort  — stop on the first error and exit non-zero`,
 	)
 }
 

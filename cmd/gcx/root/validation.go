@@ -57,6 +57,9 @@ func ValidateArgs(rootCmd *cobra.Command, args []string) error {
 	commandPath := strings.TrimSpace(cmd.CommandPath())
 	suggestions := []string{}
 	if commandPath != "" {
+		for _, name := range cmd.SuggestionsFor(positionals[0]) {
+			suggestions = append(suggestions, fmt.Sprintf("Did you mean '%s %s'?", commandPath, name))
+		}
 		suggestions = append(suggestions, fmt.Sprintf("Run '%s --help' for full usage and examples", commandPath))
 	}
 
@@ -102,11 +105,17 @@ func formatUnknownGroupCommand(cmd *cobra.Command, unknown string) string {
 	if cmd.HasAvailableSubCommands() {
 		fmt.Fprintln(&b)
 		fmt.Fprintln(&b, "Available Commands:")
+		width := 16
+		for _, sub := range cmd.Commands() {
+			if sub.IsAvailableCommand() && sub.Name() != "help" && len(sub.Name()) > width {
+				width = len(sub.Name())
+			}
+		}
 		for _, sub := range cmd.Commands() {
 			if !sub.IsAvailableCommand() || sub.Name() == "help" {
 				continue
 			}
-			fmt.Fprintf(&b, "  %-16s %s\n", sub.Name(), sub.Short)
+			fmt.Fprintf(&b, "  %-*s %s\n", width, sub.Name(), sub.Short)
 		}
 	}
 
