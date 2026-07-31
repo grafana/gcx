@@ -1,6 +1,6 @@
 ---
 name: migrate-provider
-description: Use when porting a Grafana Cloud product from grafana-cloud-cli (gcx) to gcx, when a bead task references gcx provider migration, or when user says "migrate provider", "port from gcx", "port oncall", "port k6". Not for building providers from scratch — use /add-provider for that.
+description: Use when porting a Grafana Cloud product from grafana-cloud-cli (gcx) to gcx, when a bead task references gcx provider migration, or when user says "migrate provider", "port from gcx", "port oncall", "port k6". Not for building providers from scratch — use /add-provider for that. For placement decisions, integration contracts, or pre-review self-checks use the integrate-with-gcx skill (bundled; `gcx agent skills get integrate-with-gcx`).
 ---
 
 # Migrate Provider from gcx

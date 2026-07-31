@@ -1,6 +1,6 @@
 ---
 name: add-provider
-description: Use when adding a new Grafana Cloud product provider to gcx (SLO, OnCall, Synthetic Monitoring, k6, ML, etc.), or when the user says "add provider", "new provider", or "integrate [product]".
+description: Use for the implementation workflow once a capability is already classified as a Grafana Cloud product provider (SLO, OnCall, Synthetic Monitoring, k6, ML, etc.) — provider package, commands, config keys, optional resource adapters. Trigger on "add provider", "new provider", "build the [product] provider". NOT for deciding whether something should be a provider at all, for integration contracts, or for pre-review self-checks — use the integrate-with-gcx skill for those (bundled; `gcx agent skills get integrate-with-gcx`).
 ---
 
 # Add Provider

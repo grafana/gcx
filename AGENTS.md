@@ -94,6 +94,7 @@ internal/        Non-public packages — full annotated map: docs/architecture/p
 | **Changing config or auth** | [ARCHITECTURE.md](ARCHITECTURE.md) § Configuration + § Auth | [docs/architecture/config-system.md](docs/architecture/config-system.md), [docs/architecture/client-api-layer.md](docs/architecture/client-api-layer.md) |
 | **Fixing a bug** | [ARCHITECTURE.md](ARCHITECTURE.md) for the relevant subsystem | Jump directly to the deep-dive doc for that domain |
 | **Planning a new feature** | [VISION.md](VISION.md) (does it belong?), [CONSTITUTION.md](CONSTITUTION.md) (can we build it within the rules?) | [DESIGN.md](DESIGN.md) for UX, [ARCHITECTURE.md](ARCHITECTURE.md) for structure |
+| **Integrating a new capability (domain teams)** | The `integrate-with-gcx` bundled skill (`claude-plugin/skills/integrate-with-gcx/`, or `gcx agent skills get integrate-with-gcx`) — surface necessity, placement, readiness, contract, self-review | [docs/design/command-naming.md](docs/design/command-naming.md), [docs/reference/provider-guide.md](docs/reference/provider-guide.md) |
 | **Reviewing a PR** | [Compliance Hierarchy](#compliance-hierarchy) below | Check all 4 levels in order |
 
 ## Compliance Hierarchy
