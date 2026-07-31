@@ -50,10 +50,11 @@ func (l *fakeLoader) LoadOnCallClient(_ context.Context) (OnCallAPI, string, err
 	return l.client, "stacks-test", nil
 }
 
-// runAck drives runAcknowledge with captured stdout/stderr and a no-op exit
-// function. Returns the captured streams, the returned error (if any), and
-// the captured exit code (-1 if not called).
-func runAck(t *testing.T, args []string, opts *alertGroupActionVerbOpts, fake *fakeOnCallAPI) (string, string, int, error) {
+// runAck drives runAcknowledge with captured stdout/stderr. Returns the
+// captured streams, the exit code carried by a returned EmittedError (-1
+// when the runner returned nil or a non-emitted error), and the returned
+// error (if any).
+func runAck(t *testing.T, args []string, opts *alertGroupActionVerbOpts, client OnCallAPI) (string, string, int, error) {
 	t.Helper()
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -69,13 +70,17 @@ func runAck(t *testing.T, args []string, opts *alertGroupActionVerbOpts, fake *f
 	opts.IO.OutputFormat = "json"
 	opts.IO.ErrWriter = stderr
 
-	exitCode := -1
-	prev := exitFuncForTesting
-	exitFuncForTesting = func(code int) { exitCode = code }
-	t.Cleanup(func() { exitFuncForTesting = prev })
-
-	loader := &fakeLoader{client: fake}
+	loader := &fakeLoader{client: client}
 	err := runActionVerb(cmd, args, opts, loader, acknowledgeVerb())
+
+	// Partial failures surface as an EmittedError sentinel (the result
+	// document is already on stdout); mirror the old exit-code capture by
+	// extracting the carried code.
+	exitCode := -1
+	var emitted *fail.EmittedError
+	if errors.As(err, &emitted) {
+		exitCode = emitted.Code
+	}
 	return stdout.String(), stderr.String(), exitCode, err
 }
 
@@ -242,9 +247,13 @@ func TestRunAcknowledge_SingleTarget_ApplyError(t *testing.T) {
 			return errors.New("backend boom")
 		},
 	}
-	stdout, _, exit, _ := runAck(t, []string{"IFAIL"}, &alertGroupActionVerbOpts{}, fake)
+	stdout, _, exit, err := runAck(t, []string{"IFAIL"}, &alertGroupActionVerbOpts{}, fake)
 	if exit != fail.ExitPartialFailure {
 		t.Errorf("expected exit %d (ExitPartialFailure); got %d", fail.ExitPartialFailure, exit)
+	}
+	var emitted *fail.EmittedError
+	if !errors.As(err, &emitted) {
+		t.Fatalf("expected *gcxerrors.EmittedError sentinel (result already on stdout); got %T: %v", err, err)
 	}
 
 	// Single-target failure path (Option A): {action, target, error} — NO `changed`.
@@ -274,11 +283,116 @@ func TestRunAcknowledge_SingleTarget_ApplyError(t *testing.T) {
 
 // --- Bulk-by-filter tests (locked shape: {action, summary, failures}) ---
 
-// fakeOnCallClientForBulk — bulk path requires a *OnCallClient (concrete type)
-// rather than the OnCallAPI interface, because resolveBulkTargets calls
-// listAlertGroupsRaw directly. Driving the bulk path from a unit test would
-// require mocking the HTTP layer; we exercise the result-builder logic via
-// runAcknowledgeBulk's internal pieces instead — see TestBulkResult_*.
+// fakeBulkOnCallAPI drives the full bulk-by-filter path: embedding
+// fakeOnCallAPI supplies the single-target surface (AcknowledgeAlertGroup +
+// call recording), and the RichAlertGroupReader methods below let
+// resolveBulkTargets enumerate targets without a live OnCall backend. Only
+// ListAlertGroupsRaw is meaningfully implemented — the remaining reader
+// methods are unused by the bulk action path.
+type fakeBulkOnCallAPI struct {
+	fakeOnCallAPI
+
+	items []json.RawMessage
+}
+
+func (f *fakeBulkOnCallAPI) ListAlertGroupsRaw(context.Context, alertGroupListFilters, int) ([]json.RawMessage, alertGroupPageInfo, error) {
+	return f.items, alertGroupPageInfo{}, nil
+}
+
+func (f *fakeBulkOnCallAPI) GetAlertGroupRich(context.Context, string) (*AlertGroupRich, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeBulkOnCallAPI) ListAlertIDs(context.Context, string, int) ([]string, int, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeBulkOnCallAPI) GetAlertRich(context.Context, string) (*alertAPI, *AlertRich, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
+func (f *fakeBulkOnCallAPI) ResolveTeams(context.Context) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
+// TestRunAcknowledge_Bulk_PartialFailure drives runActionVerbBulk end-to-end
+// with a mixed target set: when some targets fail, the complete bulk envelope
+// must still land on stdout as one JSON value, and the runner must return the
+// *gcxerrors.EmittedError sentinel carrying ExitPartialFailure (the result is
+// already emitted — reportError must not render a second error document).
+func TestRunAcknowledge_Bulk_PartialFailure(t *testing.T) {
+	resetAgentMode(t)
+	fake := &fakeBulkOnCallAPI{
+		items: []json.RawMessage{
+			json.RawMessage(`{"pk":"I1","status":0}`), // firing → succeeds
+			json.RawMessage(`{"pk":"I2","status":0}`), // firing → API call fails
+			json.RawMessage(`{"pk":"I3","status":1}`), // already acknowledged → skipped
+		},
+	}
+	fake.acknowledgeAlertGroupFn = func(_ context.Context, id string) error {
+		if id == "I2" {
+			return errors.New("backend boom")
+		}
+		return nil
+	}
+
+	// --force skips the >1-target confirmation prompt (stdin is empty).
+	opts := &alertGroupActionVerbOpts{Teams: []string{"prod-sre"}, Force: true}
+	stdout, _, exit, err := runAck(t, nil, opts, fake)
+
+	if exit != fail.ExitPartialFailure {
+		t.Errorf("expected exit %d (ExitPartialFailure); got %d", fail.ExitPartialFailure, exit)
+	}
+	var emitted *fail.EmittedError
+	if !errors.As(err, &emitted) {
+		t.Fatalf("expected *gcxerrors.EmittedError sentinel (result already on stdout); got %T: %v", err, err)
+	}
+	if emitted.Code != fail.ExitPartialFailure {
+		t.Errorf("EmittedError.Code: got %d want %d", emitted.Code, fail.ExitPartialFailure)
+	}
+
+	// Locked bulk shape: top-level keys MUST be exactly {action, summary,
+	// failures}. topLevelKeys unmarshals the whole stream, so trailing data
+	// (a second JSON value) would fail the assertion too.
+	keys := topLevelKeys(t, stdout)
+	for _, must := range []string{"action", "summary", "failures"} {
+		if !keys[must] {
+			t.Errorf("missing required top-level key %q in %s", must, stdout)
+		}
+	}
+	for _, forbidden := range []string{"target", "changed", "targets", "error"} {
+		if keys[forbidden] {
+			t.Errorf("unexpected top-level key %q in bulk shape: %s", forbidden, stdout)
+		}
+	}
+
+	var got bulkMutationResult
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\nstdout=%s", err, stdout)
+	}
+	if got.Action != "acknowledge" {
+		t.Errorf("action: got %q want acknowledge", got.Action)
+	}
+	if got.Summary.Matched != 3 || got.Summary.Succeeded != 1 ||
+		got.Summary.Skipped != 1 || got.Summary.Failed != 1 {
+		t.Errorf("summary: got %+v want matched=3 succeeded=1 skipped=1 failed=1", got.Summary)
+	}
+	assertSummaryAddsUp(t, got.Summary)
+	if len(got.Failures) != 1 {
+		t.Fatalf("expected 1 failure entry; got %d (%+v)", len(got.Failures), got.Failures)
+	}
+	if got.Failures[0].Target.AlertGroupID != "I2" {
+		t.Errorf("failure target: got %q want I2", got.Failures[0].Target.AlertGroupID)
+	}
+	if got.Failures[0].Error.Code != "acknowledge_failed" {
+		t.Errorf("failure error code: got %q want acknowledge_failed", got.Failures[0].Error.Code)
+	}
+
+	// I3 is skipped (idempotent), so only I1 and I2 reach the API.
+	if len(fake.calls) != 2 || fake.calls[0] != "I1" || fake.calls[1] != "I2" {
+		t.Errorf("expected ack calls [I1 I2]; got %v", fake.calls)
+	}
+}
 
 // TestBulkResult_AllSucceed verifies the bulk envelope for the all-succeed
 // case via direct construction of the result-builder loop. This complements

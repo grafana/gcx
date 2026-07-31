@@ -92,7 +92,8 @@ to the target provider. Use the lint compliance checklist from `conventions.md`
 as the recording template.
 
 - `CONSTITUTION.md` — CLI grammar, output conventions
-- `docs/design/naming.md` — naming conventions
+- `docs/design/naming.md` — resource, file, config, and flag naming conventions
+- `docs/design/command-naming.md` — canonical command verbs and placement
 - `docs/design/output.md` — output formats
 - `docs/design/exit-codes.md` — exit codes
 - `docs/reference/provider-guide.md` — provider interface, adapter wiring

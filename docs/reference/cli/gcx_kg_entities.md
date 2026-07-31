@@ -7,10 +7,23 @@ Manage Knowledge Graph entities.
 Manage Knowledge Graph entities.
 
 Prefer 'list' for listing and for basic lookups (an entity's identity and
-properties — the labels used to build PromQL/Loki queries); it is cheap. Use
-'inspect' only when you need an entity's insight timeline or related entities
-for root-cause analysis — it is heavier and can return large output,
-so don't use it just to read properties.
+properties — the labels used to build PromQL/Loki queries); it is cheap and is
+the right choice even when you already know the exact entity. Use 'inspect'
+only for root-cause analysis — it is heavy and can return large output, so
+don't reach for it just to read properties.
+
+Pick the read verb by what you start with:
+
+  list       Default for listing and basic lookups: an entity's identity, scope,
+             and properties. Filter to one known entity with
+             '--property name=<name>'. Cheap — use this for plain lookups.
+  correlate  You have a firing alert (its labels) but not the entity → find
+             which entity the alert hangs off. The "I have an alert, which
+             entity is it?" entry point.
+  inspect    Root-cause analysis only — heavy: insight timeline + related
+             entities. Don't use it just to read an entity's properties (use
+             'list'); reach for it only when you need the RCA view.
+  query      Arbitrary Cypher over the graph.
 
 ### Options
 
@@ -33,6 +46,7 @@ so don't use it just to read properties.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
+* [gcx kg entities correlate](gcx_kg_entities_correlate.md)	 - Resolve the affected entities for a firing alert from its labels.
 * [gcx kg entities delete](gcx_kg_entities_delete.md)	 - Delete a custom entity [experimental].
 * [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show the insight timeline and related entities for a single entity (root-cause analysis).
 * [gcx kg entities list](gcx_kg_entities_list.md)	 - List entities by type/scope, or look up an entity's identity and properties.

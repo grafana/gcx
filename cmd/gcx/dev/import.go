@@ -3,11 +3,13 @@ package dev
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +17,8 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/resources"
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	model "github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/strcase"
@@ -27,6 +31,11 @@ import (
 	"golang.org/x/tools/imports"
 )
 
+// errNoConverter marks resources whose kind/version has no Go builder
+// converter — an expected capability gap (counted as skipped), as opposed to
+// a real conversion failure (counted as failed, non-zero exit).
+var errNoConverter = errors.New("no converter found")
+
 //nolint:gochecknoglobals
 var convertersMap = map[string]resourceConverter{
 	"Dashboard.dashboard.grafana.app/v0alpha1": dashboardv1Converter,
@@ -37,11 +46,44 @@ var convertersMap = map[string]resourceConverter{
 }
 
 type importOpts struct {
+	IO   cmdio.Options
 	Path string
 }
 
 func (opts *importOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Path, "path", "p", "imported", "Import path.")
+	// The import result is an ArtifactReceipt document through the codec
+	// system: the default text codec prints the familiar one-line summary;
+	// agent mode and explicit -o json/yaml get the structured document.
+	opts.IO.RegisterCustomCodec("text", &importReceiptCodec{})
+	opts.IO.DefaultFormat("text")
+	opts.IO.BindFlags(flags)
+}
+
+func (opts *importOpts) Validate() error {
+	return opts.IO.Validate()
+}
+
+// importReceiptCodec is the human "text" codec for the import receipt: it
+// renders exactly the one-line "Imported N resources in <path>" summary the
+// command has always printed, so default human stdout stays byte-identical
+// to the pre-codec output.
+type importReceiptCodec struct{}
+
+func (c *importReceiptCodec) Format() format.Format { return "text" }
+
+func (c *importReceiptCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *importReceiptCodec) Encode(w io.Writer, value any) error {
+	receipt, ok := value.(cmdio.ArtifactReceipt)
+	if !ok {
+		return errors.New("invalid data type for import receipt codec: expected ArtifactReceipt")
+	}
+
+	cmdio.Success(w, "Imported %d resources in %s", receipt.Summary.Succeeded, receipt.Dir)
+	return nil
 }
 
 func importCmd() *cobra.Command {
@@ -69,6 +111,10 @@ func importCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
@@ -84,22 +130,31 @@ func importCmd() *cobra.Command {
 
 			plugins.RegisterDefaultPlugins()
 
-			imported := 0
-			err = res.Resources.ForEach(func(resource *model.Resource) error {
-				if err := convertResource(opts.Path, resource); err != nil {
-					resourceId := fmt.Sprintf("%s.%s", resource.Kind(), resource.Name())
-					cmdio.Info(cmd.OutOrStdout(), "Skipping resource '%s': %s", resourceId, err)
-					return nil
-				}
-
-				imported++
-				return nil
-			})
+			receipt, err := importResources(&res.Resources, opts.Path, cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Imported %d resources in %s", imported, opts.Path)
+			// Total failure: no receipt — exit 4 would misreport a complete
+			// failure as partial. The raw error takes the standard path
+			// (one gcx.error document in agent mode, exit 1), matching the
+			// batch cohort's zero-success convention.
+			if receipt.Summary.Failed > 0 && receipt.Summary.Succeeded == 0 {
+				return receiptFailuresError(receipt.Failures)
+			}
+
+			if err := opts.IO.Encode(cmd.OutOrStdout(), receipt); err != nil {
+				return err
+			}
+
+			if receipt.Summary.Failed > 0 {
+				// The receipt (with enumerated failures) is already on
+				// stdout — EmittedError carries exit 4 without a second
+				// error document.
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+					gcxerrors.NewPartialFailureError("import",
+						receipt.Summary.Succeeded+receipt.Summary.Failed, receipt.Summary.Failed))
+			}
 
 			return nil
 		},
@@ -109,6 +164,43 @@ func importCmd() *cobra.Command {
 	configOpts.BindFlags(cmd.Flags())
 
 	return cmd
+}
+
+// importResources converts each fetched resource into a Go builder file under
+// path. Per-resource skip/failure notes stream to warn (stderr — diagnostics,
+// not results); the returned ArtifactReceipt is the terminal result: written
+// files, counts, and enumerated failures. Resources without a registered
+// converter are an expected capability gap and count as skipped; any other
+// conversion error counts as failed.
+func importResources(list *model.Resources, path string, warn io.Writer) (cmdio.ArtifactReceipt, error) {
+	receipt := cmdio.NewArtifactReceipt("imported", "go")
+	receipt.Dir = path
+
+	err := list.ForEach(func(resource *model.Resource) error {
+		file, err := convertResource(path, resource)
+		if err != nil {
+			resourceId := fmt.Sprintf("%s.%s", resource.Kind(), resource.Name())
+			cmdio.Info(warn, "Skipping resource '%s': %s", resourceId, err)
+
+			if errors.Is(err, errNoConverter) {
+				receipt.Summary.Skipped++
+				return nil
+			}
+
+			receipt.Summary.Failed++
+			receipt.Failures = append(receipt.Failures, cmdio.MutationFailure{
+				Target: cmdio.MutationTarget{Kind: resource.Kind(), Name: resource.Name()},
+				Error:  err.Error(),
+			})
+			return nil
+		}
+
+		receipt.Summary.Succeeded++
+		receipt.Files = append(receipt.Files, cmdio.ArtifactFile{Path: file, Kind: resource.Kind()})
+		return nil
+	})
+
+	return receipt, err
 }
 
 type resourceConverter func(resource *model.Resource) (string, error)
@@ -177,10 +269,12 @@ func computeSDKImports(src []byte) ([]string, error) {
 	return paths, nil
 }
 
-func convertResource(destinationRoot string, resource *model.Resource) error {
+// convertResource renders one resource as a Go builder file and returns the
+// written file path.
+func convertResource(destinationRoot string, resource *model.Resource) (string, error) {
 	tmpl, err := template.New("").Option("missingkey=error").ParseFS(templatesFS, "templates/import/*.tmpl")
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	gvk := resource.GroupVersionKind()
@@ -188,18 +282,18 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 
 	converter, ok := convertersMap[converterKey]
 	if !ok {
-		return fmt.Errorf("no converter found for %s", converterKey)
+		return "", fmt.Errorf("%w for %s", errNoConverter, converterKey)
 	}
 
 	converted, err := converter(resource)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	convertedFile := filepath.Join(destinationRoot, strcase.ToSnakeCase(resource.Name())) + ".go"
 
 	if err := ensureDirectory(filepath.Dir(convertedFile)); err != nil {
-		return err
+		return "", err
 	}
 
 	templateData := map[string]any{
@@ -218,18 +312,18 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 	// goimports can resolve anything.
 	var scanBuf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&scanBuf, "resource.go.tmpl", templateData); err != nil {
-		return err
+		return "", err
 	}
 
 	sdkImports, err := computeSDKImports(scanBuf.Bytes())
 	if err != nil {
-		return err
+		return "", err
 	}
 	templateData["Imports"] = sdkImports
 
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "resource.go.tmpl", templateData); err != nil {
-		return err
+		return "", err
 	}
 
 	// The import list is already complete; FormatOnly keeps goimports from
@@ -246,7 +340,11 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 		formatted = buf.Bytes()
 	}
 
-	return os.WriteFile(convertedFile, formatted, 0600)
+	if err := os.WriteFile(convertedFile, formatted, 0600); err != nil {
+		return "", err
+	}
+
+	return convertedFile, nil
 }
 
 func dashboardv1Converter(resource *model.Resource) (string, error) {

@@ -141,14 +141,14 @@ func TestRunInclude_Idempotent_AutoinstrumentDefault(t *testing.T) {
 
 	// First invocation: should call SetApp once.
 	var out1 bytes.Buffer
-	err1 := services.RunInclude(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out1)
+	err1 := services.RunInclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out1)
 	require.NoError(t, err1, "first include must succeed (exit 0)")
 	firstCallCount := ts.setAppCalled.Load()
 	assert.Equal(t, int64(1), firstCallCount, "first include must call SetApp once")
 
 	// Second invocation: reads post-write state (INCLUDED already present) → no-op.
 	var out2 bytes.Buffer
-	err2 := services.RunInclude(context.Background(), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out2)
+	err2 := services.RunInclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "grotshop", "frontend", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out2)
 	require.NoError(t, err2, "second include must succeed (exit 0)")
 	secondCallCount := ts.setAppCalled.Load()
 	assert.Equal(t, firstCallCount, secondCallCount,
@@ -171,7 +171,7 @@ func TestRunInclude_AutoinstrumentTrue_NoOverrideAdded(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunInclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunInclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.NoError(t, err)
 	// autoinstrument=true: namespace default is on, no override needed → no-op.
 	assert.Equal(t, int64(0), ts.setAppCalled.Load(), "no Set call when autoinstrument=true and service is not excluded")
@@ -195,7 +195,7 @@ func TestRunInclude_RemovesExcludedOverride(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunInclude(context.Background(), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+	err := services.RunInclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), ts.setAppCalled.Load(), "Set must be called once to remove EXCLUDED override")
 }
@@ -215,7 +215,7 @@ func TestRunInclude_NamespaceNotFound(t *testing.T) {
 	srv := ts.start(t)
 	client := makeIncludeClient(t, srv.URL)
 
-	err := services.RunInclude(context.Background(), client, "c1", "missing-ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
+	err := services.RunInclude(context.Background(), services.NewMutationTestIO(t), client, "c1", "missing-ns", "svc", instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &bytes.Buffer{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "services include")
 	assert.Contains(t, err.Error(), "missing-ns")
@@ -245,7 +245,7 @@ func TestRunInclude_WorkloadNotFound(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunInclude(context.Background(), client, "prod-eu", "checkout", "nonexistent-svc",
+	err := services.RunInclude(context.Background(), services.NewMutationTestIO(t), client, "prod-eu", "checkout", "nonexistent-svc",
 		instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Resource not found")
@@ -274,7 +274,7 @@ func TestRunInclude_WorkloadNotFound_ExitCode1(t *testing.T) {
 	client := makeIncludeClient(t, srv.URL)
 
 	var out bytes.Buffer
-	err := services.RunInclude(context.Background(), client, "prod-eu", "checkout", "nonexistent-svc",
+	err := services.RunInclude(context.Background(), services.NewMutationTestIO(t), client, "prod-eu", "checkout", "nonexistent-svc",
 		instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.Error(t, err)
 

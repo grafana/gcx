@@ -26,15 +26,19 @@ The `agents` codec is optimised for AI-agent contexts. It emits compact JSON
 (no indentation, no HTML escaping) when the serialised payload is within the
 spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 
-**Below threshold** — output is compact JSON identical in content to `-o json`.
+**Below threshold** — output is compact JSON, content-equivalent to `-o json`
+(NOT byte-identical: `-o json` is indented, the agents codec is compact).
 
 **Above threshold** — the full payload is written to
 `$TMPDIR/gcx-results-<random>.json` and a short summary is printed to stdout:
 
 ```json
 {
+  "type": "gcx.spill_reference",
+  "schema_version": "1",
   "spilled_to": "/tmp/gcx-results-3781234567.json",
   "bytes": 143200,
+  "content_format": "json",
   "total_items": 312,
   "preview_sample": [ { ... }, { ... }, { ... } ],
   "message": "Response too large for stdout (143200 bytes). Full data written to ..."
@@ -43,13 +47,17 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 
 | Field | Always present | Description |
 |-------|---------------|-------------|
+| `type` | yes | Fixed discriminator `gcx.spill_reference` — the receipt shape differs from the domain result, so consumers dispatch on this marker instead of heuristics |
+| `schema_version` | yes | Version of the receipt shape itself (currently `1`) |
+| `content_format` | yes | Media type of the spilled file's content (`json`) |
 | `spilled_to` | yes | Absolute path to the full-payload file |
 | `bytes` | yes | Byte size of the full payload |
 | `total_items` | only for lists | Element count — named `total_items` (not `items`) to avoid collision with the k8s list `items` array shape |
 | `preview_sample` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes. Named `preview_sample` (not `preview`) to signal it is never the complete dataset |
 | `message` | yes | Human-readable guidance: references `spilled_to` path and opt-outs |
 
-**Override:** `-o json` forces full compact JSON to stdout regardless of size.
+**Override:** `-o json` forces the full document inline to stdout regardless
+of size (standard indented JSON — see the byte-identity note above).
 `-o text` renders the human table.
 
 **Threshold configuration:** `GCX_AGENT_SPILL_BYTES` (int, bytes; default
@@ -274,12 +282,23 @@ When agent mode is active:
 
 ## 14. Pull Format Consistency
 
-`pull` accepts a `--format` flag (values: `yaml`, `json`; default: `yaml`)
-that enforces consistent file format on disk. All pulled files use the
-specified format regardless of the server's response format.
+`resources pull` uses the standard `-o/--output` flag (values: `json`,
+`yaml`; default: `json`) to enforce a consistent file format on disk. All
+pulled files use the specified format regardless of the server's response
+format.
 
-Files are written as `plural.version.group/name.{ext}` where `{ext}`
-matches the chosen format (`.yaml` or `.json`).
+Files are written as `plural.version.group/name.{ext}` where `{ext}` is the
+chosen format name (`.json` or `.yaml`).
+
+Because the output format doubles as the on-disk file extension and the
+encoder, file-writing commands pin their default with
+`Options.PinDefaultFormat`: agent mode must not flip their default to the
+`agents` display codec (which would write `<name>.agents` files containing
+spill-summary envelopes for large resources). `resources pull` and
+`resources edit` reject an explicit `-o agents` at validation time for the
+same reason. The `json` default is ratified policy (#1030 Decision 2):
+CONSTITUTION.md § Push/Pull Philosophy was amended accordingly in the same
+change that landed this contract.
 
 ---
 

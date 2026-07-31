@@ -40,7 +40,16 @@ func emitUsageEvent(cmd *cobra.Command, start time.Time, exitCode int) {
 		return
 	}
 
-	switch telemetry.ResolveMode(diagnosticsTelemetryValue) {
+	mode := telemetry.ResolveMode(diagnosticsTelemetryValue)
+
+	// One-time opt-out notice for interactive users; the command's own output
+	// has already been written by this point. Gated on stderr's TTY state
+	// because that is where the notice goes: piped stdout must not hide it,
+	// and discarded stderr must not consume the one-shot flag.
+	_, isCI := telemetry.DetectCI()
+	telemetry.MaybeShowFirstRunNotice(os.Stderr, mode, terminal.StderrIsTerminal(), isCI, agent.IsAgentMode())
+
+	switch mode {
 	case telemetry.ModeLog:
 		if data, err := json.Marshal(buildUsageEvent(info, start, exitCode)); err == nil {
 			fmt.Fprintln(os.Stderr, string(data))
@@ -63,12 +72,10 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		DurationMS:   time.Since(start).Milliseconds(),
 		OutputFormat: info.OutputFormat,
 
-		IsTTY:   terminal.StdoutIsTerminal(),
-		IsAgent: agent.IsAgentMode(),
-		Agent:   agent.Name(),
-		// TargetKind needs the resolved config context; resolving it requires
-		// a keychain-free context loader, which is still a follow-up. Empty
-		// until then.
+		IsTTY:      terminal.StdoutIsTerminal(),
+		IsAgent:    agent.IsAgentMode(),
+		Agent:      agent.Name(),
+		TargetKind: internalconfig.CapturedTargetKind(),
 	}
 
 	// The provider is the top-level command, the first segment of the path.

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -156,24 +157,30 @@ func TestSettingsTableCodec_Decode_AlwaysErrors(t *testing.T) {
 func TestUpdateOpts_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		opts    updateOpts
+		file    string
 		wantErr bool
 	}{
 		{
 			name:    "file set",
-			opts:    updateOpts{File: "settings.yaml"},
+			file:    "settings.yaml",
 			wantErr: false,
 		},
 		{
 			name:    "file not set",
-			opts:    updateOpts{},
+			file:    "",
 			wantErr: true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.opts.Validate()
+			// Bind flags as the command does so the output-format default is
+			// populated before Validate (which now also validates IO).
+			opts := &updateOpts{}
+			opts.setup(pflag.NewFlagSet("update", pflag.ContinueOnError))
+			opts.File = tc.file
+
+			err := opts.Validate()
 			if tc.wantErr {
 				require.Error(t, err)
 			} else {
@@ -184,7 +191,7 @@ func TestUpdateOpts_Validate(t *testing.T) {
 }
 
 func TestCommands_Structure(t *testing.T) {
-	cmd := Commands()
+	cmd := Commands(nil)
 	assert.Equal(t, "settings", cmd.Use)
 
 	subcommands := make(map[string]bool)
@@ -194,4 +201,17 @@ func TestCommands_Structure(t *testing.T) {
 
 	assert.True(t, subcommands["get"], "settings must have a get subcommand")
 	assert.True(t, subcommands["update"], "settings must have an update subcommand")
+}
+
+func TestUpdateCommand_RejectsPositionalArgs(t *testing.T) {
+	// A stray positional argument on a mutating command must be a usage
+	// error, not silently ignored. Args validation fails before RunE, so
+	// no config or network access happens.
+	cmd := Commands(nil)
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"update", "stray-arg", "-f", "settings.yaml"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown command")
 }

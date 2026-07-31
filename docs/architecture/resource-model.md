@@ -339,7 +339,7 @@ PULL pipeline (cmd/gcx/resources/pull.go):
 
 **Files:** `internal/resources/adapter/adapter.go`, `internal/resources/adapter/typed.go`, `internal/resources/adapter/identity.go`, `internal/resources/adapter/router.go`
 
-Some resource types are backed by provider REST APIs (SLO, Synthetic Monitoring, Alert)
+Some resource types are backed by provider REST APIs (SLO, Synthetic Monitoring)
 rather than by the Grafana k8s-compatible `/apis` endpoint. These types plug into the
 unified `resources` pipeline via the `ResourceAdapter` interface:
 

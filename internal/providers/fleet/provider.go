@@ -166,7 +166,9 @@ func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
 // ---------------------------------------------------------------------------
 
 type fleetHelper struct {
-	loader *providers.ConfigLoader
+	// loader is the narrow cloud-config interface (satisfied by
+	// *providers.ConfigLoader) so tests can inject a fake loader.
+	loader CloudConfigLoader
 }
 
 func (h *fleetHelper) loadClient(ctx context.Context) (*Client, string, error) {
@@ -395,11 +397,17 @@ func (h *fleetHelper) newPipelineCreateCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Created pipeline %s (id=%s)", created.Name, created.ID)
-			return nil
+			result := cmdio.NewSingleMutation("created", cmdio.MutationTarget{
+				Kind: PipelineKind,
+				Name: created.Name,
+				ID:   created.ID,
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
+		return fmt.Sprintf("Created pipeline %s (id=%s)", m.Target.Name, m.Target.ID)
+	}))
 	return cmd
 }
 
@@ -437,11 +445,17 @@ func (h *fleetHelper) newPipelineUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated pipeline %s", args[0])
-			return nil
+			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{
+				Kind: PipelineKind,
+				Name: args[0],
+				ID:   existing.ID,
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
+		return "Updated pipeline " + m.Target.Name
+	}))
 	return cmd
 }
 
@@ -474,39 +488,53 @@ func (h *fleetHelper) newPipelineDeleteCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Deleted pipeline %s", args[0])
-			return nil
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{
+				Kind: PipelineKind,
+				Name: args[0],
+				ID:   existing.ID,
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
+		return "Deleted pipeline " + m.Target.Name
+	}))
 	return cmd
 }
 
 type pipelineDeleteOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
-func (o *pipelineDeleteOpts) setup(flags *pflag.FlagSet) {
+func (o *pipelineDeleteOpts) setup(flags *pflag.FlagSet, render func(v any) (string, error)) {
 	flags.BoolVar(&o.Force, "force", false, "Override protection guard for instrumentation-managed pipelines")
+	o.IO.RegisterCustomCodec("text", &successLineCodec{render: render})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
-func (o *pipelineDeleteOpts) Validate() error { return nil }
+func (o *pipelineDeleteOpts) Validate() error { return o.IO.Validate() }
 
 type pipelineWriteOpts struct {
+	IO    cmdio.Options
 	File  string
 	Force bool
 }
 
-func (o *pipelineWriteOpts) setup(flags *pflag.FlagSet) {
+func (o *pipelineWriteOpts) setup(flags *pflag.FlagSet, render func(v any) (string, error)) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the pipeline manifest (use - for stdin)")
 	flags.BoolVar(&o.Force, "force", false, "Override protection guard for instrumentation-managed pipelines")
+	o.IO.RegisterCustomCodec("text", &successLineCodec{render: render})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func (o *pipelineWriteOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
 	}
-	return nil
+	return o.IO.Validate()
 }
 
 // managedPipelinePrefix is the name prefix used by gcx instrumentation
@@ -671,11 +699,17 @@ func (h *fleetHelper) newCollectorCreateCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Created collector %s (id=%s)", created.Name, created.ID)
-			return nil
+			result := cmdio.NewSingleMutation("created", cmdio.MutationTarget{
+				Kind: CollectorKind,
+				Name: created.Name,
+				ID:   created.ID,
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
+		return fmt.Sprintf("Created collector %s (id=%s)", m.Target.Name, m.Target.ID)
+	}))
 	return cmd
 }
 
@@ -706,11 +740,17 @@ func (h *fleetHelper) newCollectorUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated collector %s", args[0])
-			return nil
+			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{
+				Kind: CollectorKind,
+				Name: collector.Name,
+				ID:   args[0],
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
+		return "Updated collector " + m.Target.ID
+	}))
 	return cmd
 }
 
@@ -735,33 +775,48 @@ func (h *fleetHelper) newCollectorDeleteCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Deleted collector %s", args[0])
-			return nil
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{
+				Kind: CollectorKind,
+				ID:   args[0],
+			})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
+		return "Deleted collector " + m.Target.ID
+	}))
 	return cmd
 }
 
-type collectorDeleteOpts struct{}
+type collectorDeleteOpts struct {
+	IO cmdio.Options
+}
 
-func (o *collectorDeleteOpts) setup(_ *pflag.FlagSet) {}
+func (o *collectorDeleteOpts) setup(flags *pflag.FlagSet, render func(v any) (string, error)) {
+	o.IO.RegisterCustomCodec("text", &successLineCodec{render: render})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
 
-func (o *collectorDeleteOpts) Validate() error { return nil }
+func (o *collectorDeleteOpts) Validate() error { return o.IO.Validate() }
 
 type collectorWriteOpts struct {
+	IO   cmdio.Options
 	File string
 }
 
-func (o *collectorWriteOpts) setup(flags *pflag.FlagSet) {
+func (o *collectorWriteOpts) setup(flags *pflag.FlagSet, render func(v any) (string, error)) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the collector manifest (use - for stdin)")
+	o.IO.RegisterCustomCodec("text", &successLineCodec{render: render})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func (o *collectorWriteOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
 	}
-	return nil
+	return o.IO.Validate()
 }
 
 // ---------------------------------------------------------------------------

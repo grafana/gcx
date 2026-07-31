@@ -16,8 +16,10 @@ gcx/
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
-│       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, clusters, services)
+│       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, check, explain, list-explanations, clusters, services)
+│       │   ├── check/        #   otel-checker wrapper: local OTel setup validation
 │       │   ├── clusters/     #   cluster-level subcommands (list, get, configure, remove, wait, apps subtree)
+│       │   ├── explain/      #   otel-checker doc registry lookup — hosts both `explain <id>` and `list-explanations`
 │       │   ├── services/     #   workload-level subcommands (list, get, include, exclude, clear)
 │       │   ├── setup/        #   onboarding wizard (helm command + access-policy guidance)
 │       │   └── status/       #   cross-cutting observed view
@@ -76,7 +78,7 @@ gcx/
 │   │   │   ├── output/       # View types and table/JSON codecs (clusters, apps, services; wait/mutation envelopes)
 │   │   │   └── rmw/          # Read-modify-write helper with optimistic-lock guard
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
-│   │   ├── kg/               # Knowledge Graph (Asserts) provider
+│   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, insights, diagnose, quality reports)
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── definitions/  # SLO definitions and status queries
 │   │   │   └── reports/      # SLO reports

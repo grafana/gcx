@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/cloud"
+	"github.com/grafana/gcx/internal/docs"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -123,6 +126,13 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 // create
 // ---------------------------------------------------------------------------
 
+// stackSlugRe matches valid Grafana Cloud stack slugs. GCOM accepts lowercase
+// characters only, and the issue-#950 repro confirmed hyphens are rejected;
+// the slug becomes the <slug>.grafana.net subdomain. Length is not bounded
+// here — GCOM does not document a limit, so anything past this format check
+// is left to the server (surfaced via the 409 InvalidArgument mapping).
+var stackSlugRe = regexp.MustCompile(`^[a-z0-9]+$`)
+
 type createOpts struct {
 	IO               cmdio.Options
 	Name             string
@@ -135,12 +145,57 @@ type createOpts struct {
 	DryRun           bool
 }
 
+func (o *createOpts) Validate() error {
+	if o.Name == "" || o.Slug == "" {
+		return &gcxerrors.DetailedError{
+			Summary:  "Invalid command usage",
+			Details:  "--name and --slug are required",
+			ExitCode: new(gcxerrors.ExitUsageError),
+			Suggestions: []string{
+				"Provide both flags: gcx cloud stacks create --name <name> --slug <slug> --region <region>",
+			},
+		}
+	}
+	if !stackSlugRe.MatchString(o.Slug) {
+		return &gcxerrors.DetailedError{
+			Summary:  "Invalid command usage",
+			Details:  fmt.Sprintf("invalid stack slug %q: stack slugs may only contain lowercase letters (a-z) and digits (0-9); the slug becomes your instance URL <slug>.grafana.net", o.Slug),
+			ExitCode: new(gcxerrors.ExitUsageError),
+			Suggestions: []string{
+				"Retry with a lowercase alphanumeric slug, e.g. --slug mygcxeval",
+			},
+			DocsLink: docs.CloudAPI,
+		}
+	}
+	if err := validateLabels(o.Labels); err != nil {
+		return err
+	}
+	return o.IO.Validate()
+}
+
+// validateLabels wraps a malformed --labels value in the standard usage-error
+// shape so it fails with the same class and exit code as the other flag
+// mistakes on stacks commands.
+func validateLabels(labels []string) error {
+	if _, err := labelsFromFlag(labels); err != nil {
+		return &gcxerrors.DetailedError{
+			Summary:  "Invalid command usage",
+			Details:  err.Error(),
+			ExitCode: new(gcxerrors.ExitUsageError),
+			Suggestions: []string{
+				"Pass labels as key=value, e.g. --labels env=prod --labels team=platform",
+			},
+		}
+	}
+	return nil
+}
+
 func (o *createOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &stackTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Name, "name", "", "Stack name (required)")
-	flags.StringVar(&o.Slug, "slug", "", "Stack slug / subdomain (required)")
+	flags.StringVar(&o.Slug, "slug", "", "Stack slug / subdomain (lowercase letters and digits only; required)")
 	flags.StringVar(&o.Region, "region", "", "Region slug (e.g. us, eu). Use 'gcx cloud stacks list-regions' to list.")
 	flags.StringVar(&o.Description, "description", "", "Short description")
 	flags.StringSliceVar(&o.Labels, "labels", nil, "Labels in key=value format (may be repeated)")
@@ -158,17 +213,17 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 This provisions new infrastructure and may incur costs. The stack name, slug,
 and region cannot be changed after creation - double-check before running.
-Use --dry-run to preview the request first.`,
+Use --dry-run to preview the request first.
+
+Stack slugs may only contain lowercase letters and digits: the slug becomes
+the stack's <slug>.grafana.net subdomain.`,
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "stacks:write",
 			agent.AnnotationTokenCost:     "small",
-			agent.AnnotationLLMHint:       "This command creates a new Grafana Cloud stack, which provisions infrastructure and may incur costs. Always confirm the stack name, slug, and region with the user before executing. Prefer --dry-run first.",
+			agent.AnnotationLLMHint:       "This command creates a new Grafana Cloud stack, which provisions infrastructure and may incur costs. Always confirm the stack name, slug, and region with the user before executing. Prefer --dry-run first. Stack slugs may only contain lowercase letters and digits (they become <slug>.grafana.net).",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if opts.Name == "" || opts.Slug == "" {
-				return errors.New("--name and --slug are required")
-			}
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 
@@ -191,8 +246,12 @@ Use --dry-run to preview the request first.`,
 			}
 
 			if opts.DryRun {
-				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, instancesPath, req)
-				return nil
+				// The preview is the command's result: it goes through the
+				// codec so agent mode and explicit -o json/yaml receive one
+				// structured document while the default table codec keeps the
+				// classic human rendering.
+				return opts.IO.Encode(cmd.OutOrStdout(),
+					newDryRunPreview("created", http.MethodPost, instancesPath, req))
 			}
 
 			ctx := cmd.Context()
@@ -229,6 +288,23 @@ type updateOpts struct {
 	DryRun             bool
 }
 
+func (o *updateOpts) Validate() error {
+	if o.DeleteProtection && o.NoDeleteProtection {
+		return &gcxerrors.DetailedError{
+			Summary:  "Invalid command usage",
+			Details:  "--delete-protection and --no-delete-protection are mutually exclusive",
+			ExitCode: new(gcxerrors.ExitUsageError),
+			Suggestions: []string{
+				"Pass only one of --delete-protection or --no-delete-protection",
+			},
+		}
+	}
+	if err := validateLabels(o.Labels); err != nil {
+		return err
+	}
+	return o.IO.Validate()
+}
+
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &stackTableCodec{})
 	o.IO.DefaultFormat("table")
@@ -257,11 +333,8 @@ Use --dry-run to preview the request first.`,
 			agent.AnnotationLLMHint:       "This command modifies a live Grafana Cloud stack. Changing the name or disabling delete protection can have downstream effects. Always confirm the intended changes with the user and prefer --dry-run first.",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
-			}
-			if opts.DeleteProtection && opts.NoDeleteProtection {
-				return errors.New("--delete-protection and --no-delete-protection are mutually exclusive")
 			}
 
 			labels, err := labelsFromFlag(opts.Labels)
@@ -288,8 +361,10 @@ Use --dry-run to preview the request first.`,
 			slug := args[0]
 
 			if opts.DryRun {
-				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, instancesPath+"/"+slug, req)
-				return nil
+				// See create: the preview is the result and flows through the
+				// codec system.
+				return opts.IO.Encode(cmd.OutOrStdout(),
+					newDryRunPreview("updated", http.MethodPost, instancesPath+"/"+slug, req))
 			}
 
 			ctx := cmd.Context()
@@ -315,6 +390,7 @@ Use --dry-run to preview the request first.`,
 // ---------------------------------------------------------------------------
 
 type deleteOpts struct {
+	IO     cmdio.Options
 	Force  bool
 	DryRun bool
 }
@@ -322,6 +398,13 @@ type deleteOpts struct {
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview the operation without executing it")
+	// The delete result is a SingleMutation document through the codec
+	// system: the default text codec reproduces the familiar human lines
+	// (dry-run preview or styled success line); agent mode and explicit
+	// -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &deleteTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -341,12 +424,16 @@ Use --dry-run to preview the operation first.`,
 			agent.AnnotationLLMHint:       "This command permanently deletes a Grafana Cloud stack and all its data (dashboards, alerts, datasources, metrics, logs, traces). This action is irreversible. Always confirm with the user by name before executing. Prefer --dry-run first. Never run this command without explicit user confirmation.",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
 			slug := args[0]
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "stack", Name: slug})
 
 			if opts.DryRun {
-				fmt.Fprintf(cmd.OutOrStdout(), "Dry run: DELETE %s/%s\n", instancesPath, slug)
-				fmt.Fprintf(cmd.OutOrStdout(), "\nStack %q would be permanently deleted. No changes were made.\n", slug)
-				return nil
+				result.DryRun = true
+				return opts.IO.Encode(cmd.OutOrStdout(), result)
 			}
 
 			if err := confirmStackDelete(cmd, slug, opts.Force); err != nil {
@@ -363,8 +450,9 @@ Use --dry-run to preview the operation first.`,
 				return fmt.Errorf("failed to delete stack: %w", err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Stack %q deleted successfully.", slug)
-			return nil
+			changed := true
+			result.Changed = &changed
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

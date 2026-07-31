@@ -49,7 +49,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 
@@ -638,13 +637,14 @@ func runActionVerbSingle(ctx context.Context, client OnCallAPI, id string, stdou
 	}
 
 	// TTY-only one-liner + post-result hint on success.
-	// exitFuncForTesting(ExitPartialFailure) on failure: stdout already carries
-	// the JSON envelope with the structured error; returning a Go error would
-	// re-emit on stderr and duplicate output for agent parsers.
+	// EmittedError on failure: stdout already carries the JSON envelope with
+	// the structured error, so the sentinel makes reportError exit with the
+	// partial-failure code without rendering a second error document —
+	// while keeping the normal exit path (telemetry, PersistentPostRun).
 	if result.err != nil {
 		emitTTYSummary(stderr, fmt.Sprintf("%s %q: failed (%s)", cfg.Name, result.id, result.err.Code))
-		exitFuncForTesting(fail.ExitPartialFailure)
-		return nil
+		return fail.NewEmittedError(fail.ExitPartialFailure,
+			fail.NewPartialFailureError(cfg.Name, 1, 1))
 	}
 
 	if result.changed {
@@ -766,22 +766,17 @@ func runActionVerbBulk(ctx context.Context, client OnCallAPI, opts *alertGroupAc
 		}
 	}
 
-	// exitFuncForTesting(ExitPartialFailure) when any target failed: stdout
-	// already carries the JSON envelope with the full failures list;
-	// re-emitting a Go error would duplicate output and confuse agent parsers.
-	// The non-zero exit code signals partial failure to callers/scripts
-	// without adding noise on stdout.
+	// EmittedError when any target failed: stdout already carries the JSON
+	// envelope with the full failures list, so the sentinel makes reportError
+	// exit with the partial-failure code without rendering a second error
+	// document — while keeping the normal exit path (telemetry,
+	// PersistentPostRun) that a direct os.Exit would bypass.
 	if env.Summary.Failed > 0 {
-		exitFuncForTesting(fail.ExitPartialFailure)
+		return fail.NewEmittedError(fail.ExitPartialFailure,
+			fail.NewPartialFailureError(cfg.Name, env.Summary.Matched, env.Summary.Failed))
 	}
 	return nil
 }
-
-// exitFuncForTesting is os.Exit by default. Tests override this to capture
-// the exit code instead of terminating the test runner.
-//
-//nolint:gochecknoglobals
-var exitFuncForTesting = os.Exit
 
 // ---------------------------------------------------------------------------
 // Target resolution — single-target vs bulk-by-filter.

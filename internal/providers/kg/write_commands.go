@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/style"
@@ -104,19 +105,43 @@ and entries already written stay written if a later entry fails.`,
 			if err != nil {
 				return err
 			}
-			for _, req := range reqs {
-				resp, created, err := client.UpsertEntity(cmd.Context(), req)
+			responses := make([]*EntityWriteResponse, 0, len(reqs))
+			var failure error
+			for i := range reqs {
+				resp, created, err := client.UpsertEntity(cmd.Context(), reqs[i])
 				if err != nil {
-					return err
+					if len(responses) == 0 {
+						// Nothing succeeded: the standard error path emits
+						// the single error document.
+						return err
+					}
+					// Partial failure: entries already written stay written
+					// (documented non-atomicity). The failure detail goes to
+					// stderr; stdout keeps exactly one document below.
+					failure = fmt.Errorf("failed to upsert entity %q (%d/%d succeeded): %w",
+						reqs[i].Name, len(responses), len(reqs), err)
+					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Error())
+					break
 				}
 				verb := "updated"
 				if created {
 					verb = "created"
 				}
-				cmdio.Success(cmd.ErrOrStderr(), "entity %q %s", req.Name, verb)
-				if err := opts.IO.Encode(cmd.OutOrStdout(), resp); err != nil {
-					return err
-				}
+				cmdio.Success(cmd.ErrOrStderr(), "entity %q %s", reqs[i].Name, verb)
+				responses = append(responses, resp)
+			}
+			// Exactly one stdout document: the echoed object for a
+			// single-request invocation (historical shape), an array for
+			// batch (-f array) input.
+			var doc any = responses
+			if len(reqs) == 1 {
+				doc = responses[0]
+			}
+			if err := opts.IO.Encode(cmd.OutOrStdout(), doc); err != nil {
+				return err
+			}
+			if failure != nil {
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, failure)
 			}
 			return nil
 		},
@@ -193,18 +218,26 @@ func neverExpire() *int64 {
 	return &v
 }
 
-// EntityWriteTableCodec renders an EntityWriteResponse as a one-row identity table.
+// EntityWriteTableCodec renders one or more EntityWriteResponses as an
+// identity table (one row per upserted entity).
 type EntityWriteTableCodec struct{}
 
 func (c *EntityWriteTableCodec) Format() format.Format { return "table" }
 
 func (c *EntityWriteTableCodec) Encode(w io.Writer, v any) error {
-	resp, ok := v.(*EntityWriteResponse)
-	if !ok {
+	var responses []*EntityWriteResponse
+	switch resp := v.(type) {
+	case *EntityWriteResponse:
+		responses = []*EntityWriteResponse{resp}
+	case []*EntityWriteResponse:
+		responses = resp
+	default:
 		return errors.New("invalid data type for table codec: expected *EntityWriteResponse")
 	}
 	t := style.NewTable("DOMAIN", "TYPE", "NAME", "SCOPE")
-	t.Row(resp.Domain, resp.Type, resp.Name, scopeStr(resp.Scope))
+	for _, resp := range responses {
+		t.Row(resp.Domain, resp.Type, resp.Name, scopeStr(resp.Scope))
+	}
 	return t.Render(w)
 }
 
@@ -219,6 +252,7 @@ func newEntitiesDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 		name       string
 		scope      map[string]string
 		force      bool
+		ioOpts     cmdio.Options
 	)
 	cmd := &cobra.Command{
 		Use:   "delete [Type--Name]",
@@ -231,6 +265,9 @@ Experimental: this command uses the Knowledge Graph write API, which is gated
 server-side and may change.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := ioOpts.Validate(); err != nil {
+				return err
+			}
 			et, n, err := resolveEntityTypeAndName(cmd, args)
 			if err != nil {
 				return err
@@ -244,7 +281,7 @@ server-side and may change.`,
 			if err := validateKgKeys(scope, "scope"); err != nil {
 				return err
 			}
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), force,
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), force,
 				fmt.Sprintf("Delete entity %s--%s in domain %q?", et, n, domain))
 			if err != nil {
 				return err
@@ -266,15 +303,20 @@ server-side and may change.`,
 				}
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "entity %s--%s deleted", et, n)
-			return nil
+			return ioOpts.Encode(cmd.OutOrStdout(),
+				cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: et, Name: n}))
 		},
 	}
 	cmd.Flags().StringVar(&domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm' (required)")
 	cmd.Flags().StringVar(&entityType, "type", "", "Entity type (or use positional Type--Name)")
 	cmd.Flags().StringVar(&name, "name", "", "Entity name (or use positional Type--Name)")
-	cmd.Flags().StringToStringVar(&scope, "scope", nil, "Scope as key=value (repeatable or comma-separated; must match upsert-time scope)")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
+	cmd.Flags().StringToStringVar(&scope, "scope", nil, "Scope as key=value (repeatable or comma-separated; must match upsert-time scope)")
+	ioOpts.RegisterCustomCodec("text", singleMutationText(func(w io.Writer, m cmdio.SingleMutation) {
+		cmdio.Success(w, "entity %s--%s deleted", m.Target.Kind, m.Target.Name)
+	}))
+	ioOpts.DefaultFormat("text")
+	ioOpts.BindFlags(cmd.Flags())
 	return cmd
 }
 
@@ -404,15 +446,39 @@ and entries already written stay written if a later entry fails.`,
 			if err != nil {
 				return err
 			}
-			for _, req := range reqs {
-				resp, err := client.UpsertRelationship(cmd.Context(), req)
+			responses := make([]*RelationshipWriteResponse, 0, len(reqs))
+			var failure error
+			for i := range reqs {
+				resp, err := client.UpsertRelationship(cmd.Context(), reqs[i])
 				if err != nil {
-					return err
+					if len(responses) == 0 {
+						// Nothing succeeded: the standard error path emits
+						// the single error document.
+						return err
+					}
+					// Partial failure: entries already written stay written
+					// (documented non-atomicity). The failure detail goes to
+					// stderr; stdout keeps exactly one document below.
+					failure = fmt.Errorf("failed to upsert relationship %q (%d/%d succeeded): %w",
+						reqs[i].Type, len(responses), len(reqs), err)
+					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Error())
+					break
 				}
-				cmdio.Success(cmd.ErrOrStderr(), "relationship %q written", req.Type)
-				if err := opts.IO.Encode(cmd.OutOrStdout(), resp); err != nil {
-					return err
-				}
+				cmdio.Success(cmd.ErrOrStderr(), "relationship %q written", reqs[i].Type)
+				responses = append(responses, resp)
+			}
+			// Exactly one stdout document: the echoed object for a
+			// single-request invocation (historical shape), an array for
+			// batch (-f array) input.
+			var doc any = responses
+			if len(reqs) == 1 {
+				doc = responses[0]
+			}
+			if err := opts.IO.Encode(cmd.OutOrStdout(), doc); err != nil {
+				return err
+			}
+			if failure != nil {
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, failure)
 			}
 			return nil
 		},
@@ -492,20 +558,28 @@ func validateRelFileRef(ref EntityRef, side string) error {
 	return validateKgKeys(ref.Scope, side+".scope")
 }
 
-// RelationshipWriteTableCodec renders a RelationshipWriteResponse as a one-row table.
+// RelationshipWriteTableCodec renders one or more RelationshipWriteResponses
+// as a table (one row per upserted edge).
 type RelationshipWriteTableCodec struct{}
 
 func (c *RelationshipWriteTableCodec) Format() format.Format { return "table" }
 
 func (c *RelationshipWriteTableCodec) Encode(w io.Writer, v any) error {
-	resp, ok := v.(*RelationshipWriteResponse)
-	if !ok {
+	var responses []*RelationshipWriteResponse
+	switch resp := v.(type) {
+	case *RelationshipWriteResponse:
+		responses = []*RelationshipWriteResponse{resp}
+	case []*RelationshipWriteResponse:
+		responses = resp
+	default:
 		return errors.New("invalid data type for table codec: expected *RelationshipWriteResponse")
 	}
 	t := style.NewTable("TYPE", "FROM", "TO")
-	t.Row(resp.Type,
-		fmt.Sprintf("%s/%s/%s", resp.From.Domain, resp.From.Type, resp.From.Name),
-		fmt.Sprintf("%s/%s/%s", resp.To.Domain, resp.To.Type, resp.To.Name))
+	for _, resp := range responses {
+		t.Row(resp.Type,
+			fmt.Sprintf("%s/%s/%s", resp.From.Domain, resp.From.Type, resp.From.Name),
+			fmt.Sprintf("%s/%s/%s", resp.To.Domain, resp.To.Type, resp.To.Name))
+	}
 	return t.Render(w)
 }
 
@@ -521,6 +595,7 @@ func newRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 		to        string
 		toScope   map[string]string
 		force     bool
+		ioOpts    cmdio.Options
 	)
 	cmd := &cobra.Command{
 		Use:   "delete",
@@ -533,6 +608,9 @@ server-side and may change.`,
 		Example: `  gcx kg relationships delete --type CALLS \
     --from myapp/Service/checkout --to myapp/Service/cart --force`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := ioOpts.Validate(); err != nil {
+				return err
+			}
 			if err := validateIdentifier(relType, "type"); err != nil {
 				return err
 			}
@@ -544,7 +622,7 @@ server-side and may change.`,
 			if err != nil {
 				return fmt.Errorf("--to: %w", err)
 			}
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), force,
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), force,
 				fmt.Sprintf("Delete relationship %q from %s to %s?", relType, from, to))
 			if err != nil {
 				return err
@@ -566,8 +644,8 @@ server-side and may change.`,
 				}
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "relationship %q deleted", relType)
-			return nil
+			return ioOpts.Encode(cmd.OutOrStdout(),
+				cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "Relationship", Name: relType}))
 		},
 	}
 	cmd.Flags().StringVar(&relType, "type", "", "Relationship type (identifier; required)")
@@ -576,5 +654,10 @@ server-side and may change.`,
 	cmd.Flags().StringVar(&to, "to", "", "Target entity ref as domain/Type/name (required)")
 	cmd.Flags().StringToStringVar(&toScope, "to-scope", nil, "Scope for --to as key=value (repeatable or comma-separated)")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
+	ioOpts.RegisterCustomCodec("text", singleMutationText(func(w io.Writer, m cmdio.SingleMutation) {
+		cmdio.Success(w, "relationship %q deleted", m.Target.Name)
+	}))
+	ioOpts.DefaultFormat("text")
+	ioOpts.BindFlags(cmd.Flags())
 	return cmd
 }

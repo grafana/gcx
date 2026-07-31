@@ -323,14 +323,14 @@ func TestResolveDatasourceFlag(t *testing.T) {
 			flagValue: "",
 			cfgCtx:    nil,
 			kind:      "prometheus",
-			wantErr:   "datasource UID is required: use -d flag or set datasources.prometheus in config",
+			wantErr:   "datasource UID is required: use -d flag or set contexts.<name>.datasources.prometheus in config",
 		},
 		{
 			name:      "empty config returns error",
 			flagValue: "",
 			cfgCtx:    &config.Context{},
 			kind:      "loki",
-			wantErr:   "datasource UID is required: use -d flag or set datasources.loki in config",
+			wantErr:   "datasource UID is required: use -d flag or set contexts.<name>.datasources.loki in config",
 		},
 		{
 			name:      "flag value works with nil config",

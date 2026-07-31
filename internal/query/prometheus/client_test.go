@@ -44,6 +44,92 @@ func TestQuery_FallsBackOn403(t *testing.T) {
 	assert.Equal(t, "/api/ds/query", paths[1])
 }
 
+func TestClient_Labels_Match(t *testing.T) {
+	var (
+		capturedPath  string
+		capturedQuery url.Values
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["__name__","instance","job"]}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+
+	resp, err := client.Labels(context.Background(), "prom-uid", []string{"http_requests_total", `{job="api"}`})
+	require.NoError(t, err)
+
+	assert.Equal(t, "/api/datasources/uid/prom-uid/resources/api/v1/labels", capturedPath)
+	assert.Equal(t, []string{"http_requests_total", `{job="api"}`}, capturedQuery["match[]"])
+	require.NotNil(t, resp)
+	assert.Equal(t, []string{"__name__", "instance", "job"}, resp.Data)
+}
+
+func TestClient_Labels_NoMatch(t *testing.T) {
+	var capturedRawQuery string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRawQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+
+	_, err := client.Labels(context.Background(), "prom-uid", nil)
+	require.NoError(t, err)
+
+	assert.Empty(t, capturedRawQuery)
+}
+
+func TestClient_LabelValues_Match(t *testing.T) {
+	var (
+		capturedPath  string
+		capturedQuery url.Values
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["api","worker"]}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+
+	resp, err := client.LabelValues(context.Background(), "prom-uid", "job", []string{"http_requests_total"})
+	require.NoError(t, err)
+
+	assert.Equal(t, "/api/datasources/uid/prom-uid/resources/api/v1/label/job/values", capturedPath)
+	assert.Equal(t, []string{"http_requests_total"}, capturedQuery["match[]"])
+	require.NotNil(t, resp)
+	assert.Equal(t, []string{"api", "worker"}, resp.Data)
+}
+
+func TestClient_LabelValues_NoMatch(t *testing.T) {
+	var capturedRawQuery string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRawQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+
+	_, err := client.LabelValues(context.Background(), "prom-uid", "job", nil)
+	require.NoError(t, err)
+
+	assert.Empty(t, capturedRawQuery)
+}
+
 func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 	c := &prometheus.Client{}
 	uid := "uid/../admin"

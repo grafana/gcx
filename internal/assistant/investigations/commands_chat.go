@@ -92,10 +92,10 @@ type narrativeOpts struct{ IO cmdio.Options }
 func (o *narrativeOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &NarrativeCodec{})
 	o.IO.RegisterCustomCodec("wide", &NarrativeCodec{})
-	// In agent mode the default flips to "agents", which would JSON-quote the
-	// string. Override with the raw-markdown codec so coding agents and pagers
-	// see the prose directly.
-	o.IO.RegisterCustomCodec("agents", &NarrativeCodec{Format_: "agents"})
+	// No "agents" override: like every sibling investigations command, agent
+	// mode falls through to the standard agents codec, so the default agent
+	// output is exactly one JSON value (the narrative as a JSON string).
+	// Humans keep the raw markdown via the table/wide codecs.
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -348,17 +348,12 @@ func compactJSON(raw json.RawMessage, wide bool) string {
 }
 
 // NarrativeCodec renders the narrative string raw, with a trailing newline.
-// JSON/YAML codecs handle the string natively; this codec is registered under
-// "table"/"wide" for terminal use and under "agents" so coding agents see raw
-// markdown instead of a JSON-quoted blob.
-type NarrativeCodec struct {
-	Format_ format.Format
-}
+// JSON/YAML/agents codecs handle the string natively (as a JSON/YAML string
+// value); this codec is registered under "table"/"wide" for terminal use so
+// humans read the markdown directly.
+type NarrativeCodec struct{}
 
 func (c NarrativeCodec) Format() format.Format {
-	if c.Format_ != "" {
-		return c.Format_
-	}
 	return "table"
 }
 
