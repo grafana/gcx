@@ -6,7 +6,7 @@ Contents:
 3. [Axis 2 — gcx wiring](#3-axis-2--gcx-wiring)
 4. [Wiring mechanics](#4-wiring-mechanics)
 5. [Backend-readiness gate](#5-backend-readiness-gate)
-6. [Placement memo template](#6-placement-memo-template)
+6. [The placement section](#6-the-placement-section)
 
 ## 1. Surface necessity
 
@@ -14,11 +14,11 @@ Every gcx leaf competes for an agent's attention during command selection. Befor
 proposing a new one, inventory what exists:
 
 ```bash
-gcx help-tree
-gcx commands --flat -o json
-gcx resources list-types
-gcx providers list
-gcx agent skills list
+bin/gcx help-tree
+bin/gcx commands --flat -o json
+bin/gcx resources list-types
+bin/gcx providers list
+bin/gcx agent skills list
 ```
 
 Then decide, in writing, one of five outcomes:
@@ -41,8 +41,8 @@ Identify what actually serves the data. Verify empirically, don't assume:
 
 | Surface | Probe |
 |---------|-------|
-| Grafana K8s API (`/apis/...`) | `gcx api /apis/` — look for the product's API group |
-| Plugin / product REST API | `gcx api /api/plugins/` or the product's own service URL with its docs |
+| Grafana K8s API (`/apis/...`) | `bin/gcx api /apis/` — look for the product's API group |
+| Plugin / product REST API | `bin/gcx api /api/plugins/` or the product's own service URL with its docs |
 | GCOM control plane (stack/org-level) | grafana.com API, cloud token — different auth domain from stack tokens |
 | Datasource query API | The data lives behind a datasource plugin and is queried per-datasource UID |
 | Client-only workflow | No new backend calls — composition of existing gcx commands |
@@ -69,7 +69,11 @@ everything below is a wiring option within or beside them, not a new tier:
     signals use `signals.Descriptor` (see `internal/signals/`).
 - **Datasource provider** — a new queryable datasource kind implements
   `DatasourceProvider` (`internal/datasources/provider.go`) and self-registers in
-  `internal/datasources/providers/<kind>.go`.
+  `internal/datasources/providers/<kind>.go`. Registration mounts the typed
+  `datasources <kind>` subtree automatically; it does **not** reach the generic
+  auto-detecting `datasources query`, which dispatches through a hand-maintained
+  switch in `cmd/gcx/datasources/query.go`. Extend that switch too, or your kind
+  is rejected there as unsupported. No test catches this.
 - **Skill-only** — a workflow over existing commands ships as a bundled Agent
   Skill under `claude-plugin/skills/`, no Go code.
 - **`gcx api`** is a raw diagnostic fallback (token cost: large, exempt from the
@@ -85,7 +89,7 @@ everything below is a wiring option within or beside them, not a new tier:
 | Cloud provider | single `providers.Register()` in `init()` + blank import in `cmd/gcx/root/command.go` | `internal/providers/slo/provider.go` | docs/reference/provider-guide.md, docs/design/provider-checklist.md |
 | Adapter-backed resource | returned from `Provider.TypedRegistrations()` — never call `adapter.Register()` directly | `internal/providers/irm/oncall_adapter.go` | docs/architecture/patterns.md §16-18, CONSTITUTION § Provider Architecture |
 | Signal command | `signals.Descriptor` + `signals.Command()` | `internal/providers/metrics/provider.go` | ARCHITECTURE.md §3 |
-| Datasource kind | `datasources.RegisterProvider()` in `internal/datasources/providers/<kind>.go` (package already blank-imported) | `internal/datasources/providers/prometheus.go` | ADR 001, docs/architecture/patterns.md §12 |
+| Datasource kind | `datasources.RegisterProvider()` in `internal/datasources/providers/<kind>.go` (package already blank-imported), **plus** the generic-dispatch switch in `cmd/gcx/datasources/query.go` | `internal/datasources/providers/prometheus.go` | ADR 001, docs/architecture/patterns.md §12 |
 | Bundled skill | directory under `claude-plugin/skills/` (auto-embedded) + row in `claude-plugin/README.md` | any sibling skill | AGENTS.md Key Conventions |
 
 ## 5. Backend-readiness gate
@@ -107,7 +111,7 @@ domain-specific data reduction. Before designing commands, answer:
 
 Outcome (one of four, written down):
 
-1. **Ready** — proceed to the contract worksheet.
+1. **Ready** — proceed to the contract (contract-and-tests.md).
 2. **Backend prerequisite** — name the owner and the missing piece; gcx work
    waits or ships read-only around the gap.
 3. **Bounded bootstrap** — proceed with an explicitly experimental, narrow
@@ -121,16 +125,25 @@ Outcome (one of four, written down):
 4. **Not gcx** — the capability is product-owned (e.g., client-side bulk data
    mining); write a short boundary memo instead of code.
 
-## 6. Placement memo template
+## 6. The placement section
+
+Four bullets, shown in your plan and carried forward to any sibling skill you
+hand off to. Not a document, and not something to wait for approval on — if the
+repository, the governing docs and a probe settle it, it is settled.
 
 ```text
 Capability: <one line>
-Surface necessity: <reuse|extend|consolidate|new leaf|no new surface>
-  Nearest sibling: <command> — disambiguation: <one sentence>
-Backend surface: <k8s-apis|plugin-rest|product-rest|gcom|datasource-query|client-only>
-  Verified by: <probe command / doc link>
-gcx wiring: <no-new-code|cloud|provider(plain|adapter|signal)|datasource|skill-only>
-Readiness: <ready|backend-prerequisite(owner)|bounded-bootstrap|not-gcx>
-  Open boundary items: <auth/RBAC, limits, pagination, data reduction — or none>
-Sign-off: <human reviewer who approved this memo>
+
+- Necessity: <reuse|extend|consolidate|new leaf|not gcx>
+    nearest sibling <command> — an agent picks between them by: <one sentence>
+- Path: gcx <…> — derived from <naming-guide rule + tree precedent>
+- Backend + wiring: <surface> verified by <probe / doc link>
+    → <no-new-code|cloud|provider(plain|adapter|signal)|datasource|skill-only>
+- Readiness: <ready|backend-prerequisite(owner)|bounded-bootstrap|not-gcx>
+    boundary items: <auth/RBAC, limits, pagination, data reduction — or none>
+
+Unresolved: <what evidence could not settle — or none>
 ```
+
+If `Unresolved` is non-empty, that is what you ask about (one grouped question,
+with the evidence and a recommendation) — not a request to approve the section.
