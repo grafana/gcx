@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -13,6 +12,7 @@ import (
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/telemetry/capture"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -134,100 +134,16 @@ func TestNothingOutsideResourcesWritesBatchCapture(t *testing.T) {
 	root, err := filepath.Abs("../../..")
 	require.NoError(t, err)
 
-	// Collect paths during the walk and read them afterwards: doing the I/O
-	// inside the callback walks a path the walker may already have moved past.
-	var goFiles []string
-	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			if name := d.Name(); name == ".git" || name == "vendor" || name == "node_modules" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go") {
-			goFiles = append(goFiles, path)
-		}
-		return nil
-	})
-	require.NoError(t, err)
+	// The walk-and-resolve logic is shared with the error-signal guard in
+	// cmd/gcx/fail so the two pins cannot drift apart: it parses rather than
+	// substring-matching, because a raw search for "capture.SetBatch" misses
+	// an aliased import — exactly the move this guard exists to block — and
+	// fires on any passing mention in a comment.
+	writers := testutils.CaptureWriters(t, root, capturePackagePath, "SetBatch")
 
-	var writers []string
-	for _, path := range goFiles {
-		// Parse rather than substring-match. A raw search for "capture.SetBatch"
-		// misses an aliased import (cap "…/telemetry/capture"; cap.SetBatch)
-		// — exactly the move this guard exists to block — and fires on any
-		// passing mention in a comment.
-		parsed, parseErr := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-		if parseErr != nil {
-			continue // not buildable Go; nothing this guard can say about it
-		}
-		if !callsCaptureSetBatch(parsed) {
-			continue
-		}
-		rel, relErr := filepath.Rel(root, path)
-		require.NoError(t, relErr)
-		writers = append(writers, rel)
-	}
-
-	assert.ElementsMatch(t, []string{filepath.Join("cmd", "gcx", "resources", "dryrun.go")}, writers,
+	assert.ElementsMatch(t, []string{filepath.Join("cmd", "gcx", "resources", "dryrun.go")}, writers["SetBatch"],
 		"capture.SetBatch must only be written through captureBatchVolume; a direct writer elsewhere "+
 			"bypasses the call-site pin and can make read-only commands report volume")
-}
-
-// callsCaptureSetBatch reports whether the file calls SetBatch on the capture
-// package, resolving the local name from the import so an alias cannot hide it.
-func callsCaptureSetBatch(file *ast.File) bool {
-	local := ""
-	for _, imp := range file.Imports {
-		if imp.Path == nil || strings.Trim(imp.Path.Value, `"`) != capturePackagePath {
-			continue
-		}
-		local = "capture"
-		if imp.Name != nil {
-			local = imp.Name.Name
-		}
-	}
-	if local == "" || local == "_" {
-		return false
-	}
-
-	found := false
-	ast.Inspect(file, func(n ast.Node) bool {
-		sel, ok := n.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "SetBatch" {
-			return true
-		}
-		// A dot-import makes the qualifier absent; that is caught by the
-		// local == "." case below rather than here.
-		if ident, isIdent := sel.X.(*ast.Ident); isIdent && ident.Name == local {
-			found = true
-			return false
-		}
-		return true
-	})
-	if found {
-		return true
-	}
-
-	// Dot-imported: SetBatch appears unqualified.
-	if local != "." {
-		return false
-	}
-	ast.Inspect(file, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		if ident, isIdent := call.Fun.(*ast.Ident); isIdent && ident.Name == "SetBatch" {
-			found = true
-			return false
-		}
-		return true
-	})
-	return found
 }
 
 // A failed operation must record nothing, whatever the placement of the call.
