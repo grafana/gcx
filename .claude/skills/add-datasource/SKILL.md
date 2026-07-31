@@ -1,6 +1,6 @@
 ---
 name: add-datasource
-description: Use when adding a new datasource type to gcx (e.g., Elasticsearch, CloudWatch, InfluxDB), or when the user says "add datasource", "new datasource type", or "integrate [datasource]".
+description: Use for the implementation workflow once a capability is already classified as a new gcx datasource type (e.g., Elasticsearch, CloudWatch, InfluxDB) — query client, command constructors, DatasourceProvider registration. Trigger on "add datasource", "new datasource type". NOT for deciding the integration tier, integration contracts, or pre-review self-checks — use the integrate-with-gcx skill for those (bundled; `gcx agent skills get integrate-with-gcx`).
 ---
 
 # Add Datasource Type

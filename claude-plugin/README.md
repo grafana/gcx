@@ -75,6 +75,7 @@ canonical portable skill bundle.
 | `create-dashboard` | Design and create dashboards with datasource discovery and snapshot-based visual iteration |
 | `manage-dashboards` | Operate existing dashboards: list, search, pull, push, validate, promote, restore, delete, and snapshot |
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
+| `oncall-triage` | Triage active Grafana OnCall alert groups: list, inspect, acknowledge, silence, resolve |
 | `debug-with-grafana` | Run a structured diagnostic workflow across metrics, logs, and dashboards |
 | `diagnose-entity-graph` | Diagnose Knowledge Graph problems: missing entities, missing edges, broken trace context propagation, service-name collisions |
 | `slo-check-status` | Check SLO health and summarize current status |
@@ -90,6 +91,7 @@ canonical portable skill bundle.
 | `synth-manage-checks` | Create, update, pull, push, and delete Synthetic Monitoring checks |
 | `gcx-observability` | Roll out end-to-end observability: instrumentation, SLOs, alerts, synth, k6, IRM, dashboards, and cost optimization |
 | `gcx-demo` | Run a narrated, read-only demo tour of gcx across every Grafana Cloud product area — for customer or colleague presentations |
+| `integrate-with-gcx` | Contribute a new capability to the gcx codebase: placement and readiness, integration contract, self-review against recurring review findings, and PR preflight |
 
 ## Agents
 
