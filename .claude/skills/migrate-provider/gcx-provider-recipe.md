@@ -208,11 +208,19 @@ import (
     "github.com/grafana/gcx/internal/resources/adapter"
 )
 
-func Register(loader ConfigLoader) {
-    adapter.Register(adapter.TypedRegistration[ResourceType]{
+// Registration returns the typed registration for this resource. Collect these
+// in the provider's TypedRegistrations() — the single providers.Register() call
+// in the provider's init() performs the actual registration (never call
+// adapter.Register() directly; CONSTITUTION § Architecture Invariants).
+func Registration(loader ConfigLoader) adapter.Registration {
+    // ResourceType must implement adapter.ResourceIdentity
+    // (GetResourceName/SetResourceName) — identity comes from the domain
+    // type, not function pointers (CONSTITUTION § Architecture Invariants).
+    return adapter.TypedRegistration[ResourceType]{
         Descriptor: Descriptor(),
         Aliases:    []string{"{alias}"},
         GVK:        GVK(),
+        Schema:     resourceSchema(), // required, non-nil
         Factory: func(ctx context.Context) (*adapter.TypedCRUD[ResourceType], error) {
             cfg, err := loader.Load(ctx)
             if err != nil {
@@ -221,7 +229,6 @@ func Register(loader ConfigLoader) {
             client := NewClient(cfg.BaseURL, cfg.Token)
             return &adapter.TypedCRUD[ResourceType]{
                 Namespace: cfg.Namespace,
-                NameFn:    func(r ResourceType) string { return r.UID },
                 ListFn:    client.List,
                 GetFn:     client.Get,
                 CreateFn:  client.Create,
@@ -229,14 +236,13 @@ func Register(loader ConfigLoader) {
                 DeleteFn:  client.Delete,
             }, nil
         },
-    })
+    }.ToRegistration()
 }
 ```
 
-**For int-ID resources**, the `NameFn` converts:
-```go
-NameFn: func(r Resource) string { return strconv.FormatInt(r.ID, 10) },
-```
+**For numeric-ID resources**, implement `ResourceIdentity` with the slug-id
+helpers in `internal/resources/adapter/slug.go` (`ComposeName`,
+`ExtractIDFromSlug`) so `metadata.name` stays human-readable.
 
 ### Step 5: Register in init()
 

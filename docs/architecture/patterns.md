@@ -290,8 +290,8 @@ terminal charts (`internal/graph`). The `query` command registers custom codecs
 - `internal/query/dataframe/types.go`: shared Grafana data frame wire envelope for unified query responses
 - `internal/query/prometheus/client.go`: `NewClient` calls `rest.HTTPClientFor`
 - `internal/query/loki/client.go`: same pattern
-- `cmd/gcx/datasources/query/codecs.go`: `queryTableCodec`, `queryGraphCodec` registration — shared by all per-kind query subcommands
-- `cmd/gcx/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go`: per-kind constructors wired under `datasources {kind} query`
+- `internal/datasources/query/codecs.go`: `queryTableCodec`, `queryGraphCodec` registration — shared by all per-kind query subcommands
+- `internal/datasources/{prometheus,loki,pyroscope,tempo}/query.go`: per-kind constructors wired under `datasources {kind} query` (generic auto-detect switch: `cmd/gcx/datasources/query.go`)
 - `internal/graph/chart.go`: `RenderChart` auto-selects line vs bar chart
 
 ---
@@ -318,7 +318,7 @@ only the wide table codec was expected to display.
 
 **Evidence:**
 - `internal/providers/slo/definitions/status.go`: `fetchMetrics` fetches all metrics unconditionally
-- `cmd/gcx/datasources/query/query.go`: query response passed to all codecs unchanged
+- `internal/datasources/prometheus/query.go`: query response passed to all codecs unchanged
 - `internal/output/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
 
 **See also:** [output.md](../design/output.md) — codec requirements by command type and mutation command output spec.
@@ -421,15 +421,18 @@ This applies to provider commands (`slo`, `synth`, `alert`) which each define a 
 
 Provider-backed resource types (SLO, Synthetic Monitoring, Alert) implement the
 `adapter.ResourceAdapter` interface to bridge their REST clients to the unified
-`resources` pipeline. Adapters self-register at `init()` time using
-`adapter.Register()` — the same database/sql driver pattern. At runtime a
+`resources` pipeline. Providers return their `adapter.Registration` values from
+`Provider.TypedRegistrations()`; the single `providers.Register()` call in the
+provider's `init()` registers them atomically (it invokes `adapter.Register()`
+internally — per CONSTITUTION § Architecture Invariants, no separate
+`adapter.Register()` calls may exist outside `providers.Register()`). At runtime a
 `ResourceClientRouter` routes each CRUD call to the correct adapter by GVK,
 falling back to the k8s dynamic client for non-provider resource types.
 
 **Key components:**
 - `adapter.ResourceAdapter` interface: `List`, `Get`, `Create`, `Update`, `Delete`, `Descriptor`, `Aliases`
 - `adapter.Factory`: lazy constructor `func(ctx context.Context) (ResourceAdapter, error)` — invoked only on first use, then cached
-- `adapter.Register()` / `adapter.AllRegistrations()`: global self-registration called from provider `init()` functions
+- `adapter.Register()` / `adapter.AllRegistrations()`: global adapter registry, populated by `providers.Register()` from each provider's `TypedRegistrations()` — provider code never calls `adapter.Register()` directly
 - `ResourceClientRouter`: routes CRUD operations by GVK; lazily initializes adapter instances; falls back to dynamic client for unregistered GVKs
 - `RegistryIndex.RegisterStatic()`: injects provider descriptors into the discovery lookup indexes so provider types appear in `resources list-types` and resolve from `resources get slos`
 
@@ -450,7 +453,7 @@ extracts and restores the numeric ID so that CRUD operations work after a K8s
 round-trip. Provider table output shows `NAME` (the slug-id) so users can
 copy-paste it directly into `get`, `update`, and `delete` commands.
 
-**Usage:** When a provider resource type needs CRUD via `gcx resources`, implement `ResourceAdapter`, call `adapter.Register()` in `init()`, and call `RegistryIndex.RegisterStatic()` in `discovery.NewDefaultRegistry`.
+**Usage:** When a provider resource type needs CRUD via `gcx resources`, implement `ResourceIdentity` on the domain type, build a `TypedCRUD[T]`-backed `adapter.Registration` (with a non-nil `Schema`), and return it from the provider's `TypedRegistrations()`. The single `providers.Register()` call in `init()` performs the registration; `discovery.NewDefaultRegistry` picks registrations up automatically via `adapter.RegisterAll` — no manual `RegistryIndex.RegisterStatic()` call is needed.
 
 ### Provider / Resources Output Consistency
 
@@ -618,15 +621,17 @@ type crudOption[T any] func(client *Client, crud *adapter.TypedCRUD[T])
 // 3. withCreate/withUpdate/withDelete set the corresponding Fn fields.
 func withCreate[T any](fn func(ctx context.Context, c *Client, item *T) (*T, error)) crudOption[T]
 
-// 4. registerOnCallResource[T] wires everything and calls adapter.Register.
-func registerOnCallResource[T any](
+// 4. buildRegistration[T] wires everything and returns an adapter.Registration.
+//    The per-type registrations are collected by buildOnCallRegistrations and
+//    returned from the provider's TypedRegistrations() — providers.Register()
+//    in init() performs the actual registration.
+func buildRegistration[T adapter.ResourceNamer](
     loader OnCallConfigLoader,
     meta   resourceMeta,
-    nameFn func(T) string,
-    listFn func(ctx context.Context, client *Client) ([]T, error),
-    getFn  func(ctx context.Context, client *Client, name string) (*T, error), // nil for list-only
+    listFn func(ctx context.Context, client OnCallAPI) ([]T, error),
+    getFn  func(ctx context.Context, client OnCallAPI, name string) (*T, error), // nil for list-only
     opts   ...crudOption[T],
-)
+) adapter.Registration
 ```
 
 **When to use:** When a provider has 4+ resource types sharing the same

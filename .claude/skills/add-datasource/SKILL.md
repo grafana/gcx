@@ -101,7 +101,16 @@ Create `internal/query/{kind}/` with:
 Use `rest.HTTPClientFor(&cfg.Config)` for the HTTP client (datasource proxy
 calls go through Grafana, which handles auth).
 
-Reference: `internal/query/prometheus/`, `internal/query/loki/`
+**Shared transport rule (AGENTS.md Key Conventions):** if the client calls
+Grafana's unified datasource query API (`/apis/query.grafana.app/.../query`,
+with the `/api/ds/query` fallback), it must reuse `internal/query/grafanaquery`
+for the HTTP transport (POST + fallback + response-size limiting) and
+`internal/query/dataframe` for the Grafana data-frame wire types — do not
+duplicate that logic or re-declare `GrafanaQueryResponse`/`DataFrame` structs
+in the new package. Seven of the nine existing query clients reuse them.
+
+Reference: `internal/query/prometheus/`, `internal/query/loki/` (both built on
+`grafanaquery` + `dataframe`)
 
 ### Step 1b: Command Constructors
 
