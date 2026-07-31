@@ -25,6 +25,32 @@ with workflow discipline and orchestration.
 **When NOT to use**: Building a provider from scratch for a product without
 a gcx client — use `/add-provider` instead.
 
+## Status: outside v1's autonomy claim — read this first
+
+**Do not run this skill autonomously, and do not trust its side-by-side
+verification steps as written.** The legacy CLI this skill ports *from* was also
+called `gcx`, and the rename collapsed both names into one string throughout these
+documents. The result is instructions that are literally self-referential:
+`gcx-provider-recipe.md` says the port needs "live API access to both gcx and
+gcx", and `templates/comparison-report.md` has old-vs-new comparison rows that are
+byte-identical. A reader cannot tell which binary any given step means.
+
+Consequences until that is disambiguated:
+
+- Every "compare old against new" step is unreliable. Two rows that read the same
+  will be filled in from the same binary, and the comparison will pass while
+  proving nothing.
+- Bare `gcx` in these documents resolves to whatever is installed on `PATH`, not
+  the binary you just built. For anything you are verifying, use `bin/gcx`.
+- The mechanical steps — package layout, `providers.Register()` +
+  `TypedRegistrations()`, adapter shape, schema/example registration — are
+  accurate and were checked against the current code. It is the *verification*
+  half that is broken.
+
+A human should drive this skill and read the comparison steps critically. Fixing
+the naming collision properly means disambiguating the legacy tool throughout the
+recipe, its four templates and this file; that is deliberately not attempted here.
+
 ## Relationship to integrate-with-gcx
 
 One-directional, so the two skills cannot bounce a port back and forth:

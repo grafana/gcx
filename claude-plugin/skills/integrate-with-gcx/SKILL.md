@@ -123,7 +123,8 @@ Never state proposed or conventional guidance as law.
 
 | Rule | Strength |
 |---|---|
-| Output-class fixture entry, token-cost/hint, availability, skill mapping | **CI-enforced** (`TestConsistency_*`) |
+| Output-class fixture entry, token cost, `llm_hint` for medium/large | **CI-enforced** — `TestConsistency_AllLeafCommandsHaveOutputClass` / `HaveTokenCost` / `NonSmallCommandsHaveLLMHint` walk every leaf and fail on a missing entry |
+| Cloud-only availability, command→skill mapping | **NOT enforced in that direction.** `TestConsistency_CloudOnlyPathsResolveToCommands` and `SkillMappingResolvesToCommands` iterate the entries you *declared* and check each resolves to a real command — they catch a stale entry after a rename, never a missing one. Adding the entry is review-enforced |
 | A `finite` leaf emits exactly one JSON value in agent mode | **CI-enforced** (`TestAgentConformance_*`) |
 | One `init()`, one `providers.Register()`; no `adapter.Register()` outside it | **CONSTITUTION** § Architecture Invariants |
 | Error summaries from the closed vocabulary | **Law, scoped to `cmd/gcx/fail/`** converters — not a constraint on arbitrary command error text |
@@ -184,18 +185,28 @@ checkout: `.claude/skills/{add-provider,add-datasource,migrate-provider}/SKILL.m
 
 > Detail, plus the CI-failure lookup table: [references/distribution-and-gates.md](references/distribution-and-gates.md)
 
-Per-leaf wiring CI will not let you skip is tabulated in the reference. The one
-gap CI does *not* catch: a new datasource kind needs the generic-dispatch switch
-in `cmd/gcx/datasources/query.go` extended by hand — registration mounts the
-typed `datasources <kind>` subcommand but not `datasources query` auto-detection.
+Per-leaf wiring CI will not let you skip is tabulated in the reference. The gap
+CI does *not* catch: registration mounts the typed `datasources <kind>` subtree,
+but the generic auto-detecting `datasources query` dispatches through a
+hand-maintained switch in `cmd/gcx/datasources/query.go`. Entering that switch is
+a **judgement, not a checkbox** — do it only if the generic
+`<uid> <expr>` form can honestly carry your query. If it cannot, add an explicit
+redirect there instead: CloudWatch does exactly that, because its query is
+structured (namespace, metric, dimensions, region, statistic, period) and no
+single `expr` string represents it. An honest redirect beats both a lossy generic
+path and the bare "not supported" default.
 
 Format the files you touched, then gate:
 
 ```bash
-gofmt -w <the .go files you edited>
+mise exec -- gofmt -w <the .go files you edited>
 mise run gate                          # fast inner loop: lint + tests + build
 GCX_AGENT_MODE=false mise run all      # before you push; subsumes the above + docs
 ```
+
+`go` and `gofmt` are supplied by mise and are not necessarily on your `PATH` —
+run them as `mise exec -- go …` / `mise exec -- gofmt …`, or use the `mise run`
+tasks, so you get the toolchain version the repo pins.
 
 Run `gate` while iterating and `all` once before pushing — `all` already
 includes validate-skills, lint, tests, build and docs, so there is no third

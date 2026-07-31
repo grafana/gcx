@@ -72,8 +72,11 @@ everything below is a wiring option within or beside them, not a new tier:
   `internal/datasources/providers/<kind>.go`. Registration mounts the typed
   `datasources <kind>` subtree automatically; it does **not** reach the generic
   auto-detecting `datasources query`, which dispatches through a hand-maintained
-  switch in `cmd/gcx/datasources/query.go`. Extend that switch too, or your kind
-  is rejected there as unsupported. No test catches this.
+  switch in `cmd/gcx/datasources/query.go`. Decide deliberately: add a case there
+  if the generic `<uid> <expr>` form can honestly carry your query, or add an
+  explicit redirect to your typed command if it cannot (CloudWatch does the
+  latter — a structured query has no single-`expr` representation). No test
+  catches either choice.
 - **Skill-only** — a workflow over existing commands ships as a bundled Agent
   Skill under `claude-plugin/skills/`, no Go code.
 - **`gcx api`** is a raw diagnostic fallback (token cost: large, exempt from the
