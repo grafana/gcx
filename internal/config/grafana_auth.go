@@ -112,8 +112,9 @@ const grafanaAuthMethodAnonymous = "anonymous"
 // its wire allowlist again on the way out.
 func (context *Context) selectGrafanaAuth() (grafanaAuthSelection, error) {
 	if context != nil && context.runtimeSecretOverrides[credentials.FieldGrafanaToken] {
-		capture.SetGrafanaAuthMethod(grafanaAuthToken.String())
-		return grafanaAuthSelection{mode: grafanaAuthToken, explicit: true}, nil
+		selection := grafanaAuthSelection{mode: grafanaAuthToken, explicit: true}
+		capture.SetGrafanaAuthMethod(grafanaAuthMethodLabel(context.Grafana, selection, nil))
+		return selection, nil
 	}
 	if context == nil {
 		return grafanaAuthSelection{mode: grafanaAuthUnknown}, nil
@@ -123,8 +124,10 @@ func (context *Context) selectGrafanaAuth() (grafanaAuthSelection, error) {
 	return selection, err
 }
 
-// grafanaAuthMethodLabel maps a selection to its telemetry label, or "" for
-// the one state that is not a decision at all: a context with no Grafana
+// grafanaAuthMethodLabel is the single derivation from a selection to its
+// telemetry label — every capture write in this file routes through it, so a
+// policy change cannot apply to one branch and miss another. It returns ""
+// for the one state that is not a decision at all: a context with no Grafana
 // block never selected anything, and recording it would erase a decision an
 // earlier load made. An unsupported auth-method IS a decision — "unknown" —
 // and a valid selection with no credential material is "anonymous", a real,

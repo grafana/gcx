@@ -173,6 +173,29 @@ func TestForceGrafanaAuthMethodOutranksConflict(t *testing.T) {
 	assert.Equal(t, "mtls", capture.CurrentGrafanaAuthMethod(), "an empty force is a no-op")
 }
 
+// The immunity runs the other way too: a Set arriving after (or racing) a
+// Force must neither overwrite it nor demote it to a conflict — otherwise a
+// config load still resolving while login records its authoritative answer
+// could erase exactly the value the field exists to report. A later Force
+// still replaces an earlier one: login's final attempt is the most final
+// answer.
+func TestSetGrafanaAuthMethodCannotDemoteAForcedValue(t *testing.T) {
+	capture.Reset()
+	t.Cleanup(capture.Reset)
+
+	capture.ForceGrafanaAuthMethod("token")
+	capture.SetGrafanaAuthMethod("oauth")
+	assert.Equal(t, "token", capture.CurrentGrafanaAuthMethod(),
+		"a differing Set must not conflict a forced value")
+
+	capture.SetGrafanaAuthMethod("token")
+	assert.Equal(t, "token", capture.CurrentGrafanaAuthMethod())
+
+	capture.ForceGrafanaAuthMethod("oauth")
+	assert.Equal(t, "oauth", capture.CurrentGrafanaAuthMethod(),
+		"only another Force may replace a forced value")
+}
+
 // Every real batch caller writes once, synchronously, after its operation has
 // finished — never from a worker goroutine. That is a property of the call
 // sites, not of this package, and it matters: a write from inside an errgroup

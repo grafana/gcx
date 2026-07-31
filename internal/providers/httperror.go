@@ -45,11 +45,8 @@ func (e ErrorResponse) message() string {
 func HandleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 	if err != nil {
-		return &gcxerrors.HTTPStatusError{
-			Status:  resp.StatusCode,
-			Message: fmt.Sprintf("request failed with status %d (could not read body: %v)", resp.StatusCode, err),
-			Cause:   err,
-		}
+		return statusError(resp.StatusCode, err,
+			"request failed with status %d (could not read body: %v)", resp.StatusCode, err)
 	}
 	return FormatError(resp.StatusCode, body)
 }
@@ -60,36 +57,36 @@ func HandleErrorResponse(resp *http.Response) error {
 // Used by clients that read a proxied response into memory as []byte before this
 // point (e.g. dual-mode datasource-proxy transports).
 //
-// The returned error is a *gcxerrors.HTTPStatusError carrying statusCode. The
-// rendered messages are load-bearing contract — converters in cmd/gcx/fail
-// string-match on them and tests pin them exactly — and must never change,
-// byte for byte.
+// Every branch returns through statusError, so a future message form cannot
+// silently lose http_status coverage. The rendered messages are load-bearing
+// contract — converters in cmd/gcx/fail string-match on them and tests pin
+// them exactly — and must never change, byte for byte.
 func FormatError(statusCode int, body []byte) error {
 	var errResp ErrorResponse
 	if err := json.Unmarshal(body, &errResp); err == nil {
 		if msg := errResp.message(); msg != "" {
 			if errResp.TraceID != "" {
-				return &gcxerrors.HTTPStatusError{
-					Status:  statusCode,
-					Message: fmt.Sprintf("request failed with status %d: %s (traceID %s)", statusCode, msg, errResp.TraceID),
-				}
+				return statusError(statusCode, nil,
+					"request failed with status %d: %s (traceID %s)", statusCode, msg, errResp.TraceID)
 			}
-			return &gcxerrors.HTTPStatusError{
-				Status:  statusCode,
-				Message: fmt.Sprintf("request failed with status %d: %s", statusCode, msg),
-			}
+			return statusError(statusCode, nil, "request failed with status %d: %s", statusCode, msg)
 		}
 	}
 
 	if len(body) > 0 {
-		return &gcxerrors.HTTPStatusError{
-			Status:  statusCode,
-			Message: fmt.Sprintf("request failed with status %d: %s", statusCode, string(body)),
-		}
+		return statusError(statusCode, nil, "request failed with status %d: %s", statusCode, string(body))
 	}
 
+	return statusError(statusCode, nil, "request failed with status %d", statusCode)
+}
+
+// statusError renders one of the message forms above into the typed carrier.
+// cause is nil for the forms that never wrapped anything, preserving each
+// call site's pre-migration unwrap shape.
+func statusError(status int, cause error, format string, args ...any) error {
 	return &gcxerrors.HTTPStatusError{
-		Status:  statusCode,
-		Message: fmt.Sprintf("request failed with status %d", statusCode),
+		Status:  status,
+		Message: fmt.Sprintf(format, args...),
+		Cause:   cause,
 	}
 }
