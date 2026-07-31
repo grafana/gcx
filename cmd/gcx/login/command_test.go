@@ -27,6 +27,7 @@ import (
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	internallogin "github.com/grafana/gcx/internal/login"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
@@ -903,6 +904,51 @@ func TestCaptureLoginTargetKindKeepsKindWhenNothingIsKnown(t *testing.T) {
 	config.CaptureTargetKind(config.TargetKindCloud)
 	captureLoginTargetKind(&internallogin.Options{})
 	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
+// Login's auth-method capture is authoritative: it forces past anything a
+// config load recorded on the way, including a conflict. Each case is seeded
+// so a helper that recorded nothing would read back the seed and fail.
+func TestCaptureLoginGrafanaAuthMethod(t *testing.T) {
+	t.Run("successful run forces the resolved method over a conflict", func(t *testing.T) {
+		capture.Reset()
+		t.Cleanup(capture.Reset)
+		capture.SetGrafanaAuthMethod("token")
+		capture.SetGrafanaAuthMethod("oauth") // conflict: reads back empty
+		require.Empty(t, capture.CurrentGrafanaAuthMethod())
+
+		captureLoginGrafanaAuthMethod(internallogin.Result{AuthMethod: "oauth"}, &internallogin.Options{})
+
+		assert.Equal(t, "oauth", capture.CurrentGrafanaAuthMethod())
+	})
+
+	t.Run("failed run reports the staged method it resolved before the gate", func(t *testing.T) {
+		capture.Reset()
+		t.Cleanup(capture.Reset)
+		capture.SetGrafanaAuthMethod("basic")
+
+		// A run rejected after auth resolution — destination validation, cloud
+		// auth — returns a zero Result but has already staged the method.
+		opts := &internallogin.Options{RetryState: internallogin.RetryState{
+			StagedContext: &config.Context{Grafana: &config.GrafanaConfig{AuthMethod: "mtls"}},
+		}}
+		captureLoginGrafanaAuthMethod(internallogin.Result{}, opts)
+
+		assert.Equal(t, "mtls", capture.CurrentGrafanaAuthMethod())
+	})
+
+	t.Run("run that failed before resolving auth forces nothing", func(t *testing.T) {
+		capture.Reset()
+		t.Cleanup(capture.Reset)
+		capture.SetGrafanaAuthMethod("basic")
+
+		captureLoginGrafanaAuthMethod(internallogin.Result{}, &internallogin.Options{RetryState: internallogin.RetryState{
+			StagedContext: &config.Context{},
+		}})
+
+		assert.Equal(t, "basic", capture.CurrentGrafanaAuthMethod(),
+			"an unresolved login must not erase what an earlier load decided")
+	})
 }
 
 func TestLoginNewContextWithoutServerReportsNoTarget(t *testing.T) {
