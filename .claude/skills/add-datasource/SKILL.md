@@ -36,7 +36,7 @@ necessity, command path, backend evidence, wiring, readiness):
 **Invoked directly** (no placement section): work through all three stages.
 Autonomy is the same as above — the Stage 1 gate is a checkpoint you satisfy, not
 an approval you wait for. Discover the plugin type, endpoints and response shapes
-from `bin/gcx datasources list -o json`, the vendor's API docs and `gcx api`
+from `bin/gcx datasources list -o json`, the vendor's API docs and `bin/gcx api`
 probes; present findings and keep going. Ask only where an unresolved answer would
 materially change the implementation — an unknown query-expression format, an
 endpoint you cannot verify. If no instance is reachable, report the live checks as
