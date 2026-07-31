@@ -35,10 +35,11 @@ major version, so the path you pick is the path forever.
 | [**Review**](#mode-review) | there is already a branch or PR to get review-ready |
 
 Start with `mise run build`, then `bin/gcx commands >/dev/null && echo ok`. Read
-`AGENTS.md` — it maps every document cited here. Use `bin/gcx` for your own
-shell checks (exercise the binary you just built, not a stale installed one);
-everything *user-facing* you author — `Example:` fields, help text, docs — says
-`gcx`.
+`AGENTS.md` — the entry point for the governing docs; paths cited below are cited
+directly, including `docs/plans/` and `docs/research/`, which its map does not
+list. Use `bin/gcx` for your own shell checks (exercise the binary you just
+built, not a stale installed one); everything *user-facing* you author —
+`Example:` fields, help text, docs — says `gcx`.
 
 ## Mode: Place
 
@@ -135,10 +136,11 @@ Never state proposed or conventional guidance as law.
 command has a `--limit`, slices a collection, stops paging early, or is bounded
 by a source cap — those mechanisms, not a guess about whether truncation is
 "likely". A caller handed a partial result with no signal reads a page as the
-whole inventory. Prefer the shared helpers in `internal/output/listmeta.go`
-where they fit; a bare-array output has no envelope to carry `list_meta`, so
-disclose another way and say so in the PR. Status:
-`docs/research/2026-07-17-global-limit-investigation.md`.
+whole inventory. *Where* to disclose depends on the output shape: an envelope
+carries `list_meta` via the shared helpers in `internal/output/listmeta.go`; a
+**released bare array gets the stderr hint only** (`output.md` §15.2) — wrapping
+it in an envelope is a breaking change, so file the migration instead of making
+it. Status: `docs/research/2026-07-17-global-limit-investigation.md`.
 
 **Empty results are schema fidelity, not a mode rule** — an array your schema
 declares must not serialize as `null` when empty, in the machine formats your
@@ -187,19 +189,20 @@ gap CI does *not* catch: a new datasource kind needs the generic-dispatch switch
 in `cmd/gcx/datasources/query.go` extended by hand — registration mounts the
 typed `datasources <kind>` subcommand but not `datasources query` auto-detection.
 
-Format the files you touched, then gate once:
+Format the files you touched, then gate:
 
 ```bash
 gofmt -w <the .go files you edited>
-mise run gate
-GCX_AGENT_MODE=false mise run all
+mise run gate                          # fast inner loop: lint + tests + build
+GCX_AGENT_MODE=false mise run all      # before you push; subsumes the above + docs
 ```
 
-`GCX_AGENT_MODE=false` is load-bearing — agent-mode detection flips output
-defaults and corrupts generated docs. Skill-only changes need
-`mise run validate-skills` plus the skills-drift test. A gate you cannot run
-locally is reported SKIPPED with the reason, never as green. Authoritative
-checklists: AGENTS.md.
+Run `gate` while iterating and `all` once before pushing — `all` already
+includes validate-skills, lint, tests, build and docs, so there is no third
+command to add. `GCX_AGENT_MODE=false` is load-bearing: agent-mode detection
+flips output defaults and corrupts generated docs. A gate you cannot run locally
+is reported SKIPPED with the reason, never as green. Authoritative checklists:
+AGENTS.md.
 
 ## Output Format
 
