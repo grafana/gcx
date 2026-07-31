@@ -5,10 +5,17 @@ one is checkable before a human looks. **Run them by trigger, not as a
 checklist:** look at what your diff actually does, run the checks that fire, fix
 what is determinate.
 
+**A trigger is a list, not a headline.** Every numbered check inside a fired
+trigger runs — finding something on check 1 does not finish the trigger. This is
+the measured failure mode: in replicated runs of this review, the checks that got
+missed were consistently the *later* ones inside a trigger whose first check had
+already produced a finding. Walk the numbers.
+
 **Do not produce a pass/n-a table.** Report only what a human still owns:
 unresolved decisions or risks · unverified assumptions · checks that failed or
 had to be skipped, with the reason · architecture deviations needing PR
-attention.
+attention. Working every check is internal; reporting is only about what is
+unresolved.
 
 | If your diff… | Run |
 |---|---|
@@ -26,43 +33,54 @@ attention.
 
 ## T1: Any new or changed leaf
 
-- **`Args:` validator declared?** `cobra.NoArgs` for a flags-only command. Root
+Four checks. Work all four.
+
+1. **`Args:` validator declared?** `cobra.NoArgs` for a flags-only command. Root
   `ValidateArgs` already rejects stray positionals for *group* commands, so the
   gap is leaves specifically: without a validator, a flags-only leaf swallows
   positional args and answers a different question than the one asked. Strong
   convention — no CI check will tell you.
-- **Output protocol class declared** in `cmd/gcx/root/testdata/output_classes.json`,
+2. **Output protocol class declared** in `cmd/gcx/root/testdata/output_classes.json`,
   and the class is the honest one. Three questions: does it finish and print a
   result (`finite`)? are files on disk the real output (`artifact` — but a
   command that writes files as a side effect and answers with a result document
   is `finite`)? does it emit events until stopped (`stream`)? Everything else is
   one of the declared exempt classes.
-- **Token cost annotated**, with an `llm_hint` for medium/large that teaches
+3. **Token cost annotated**, with an `llm_hint` for medium/large that teaches
   *narrowing* — which flags reduce the result — not just describes cost. A
   `small` annotation on a command that can dump tens of thousands of rows is a
   recurring blocker. Where a flag changes the bound, say so:
   `small (large with --all)`.
-- **Codec registered in `setup(flags)` is reachable from `RunE`.** A registered
-  codec bypassed by a direct format call is dead code — delete one of the two
-  paths.
+4. **Codec registered in `setup(flags)` is reachable from `RunE`.** Trace the
+  registration to an actual encode. A codec registered for format validation
+  whose `Encode` never runs is dead code — delete one of the two paths. (Easy to
+  skip once checks 1-3 have already produced findings; don't.)
 
 ## T2: Inputs
 
-- **Explicitly-empty string flags are usage errors.** Decide the behavior of
+Five checks. The last three are the ones runs of this review keep dropping.
+
+1. **Explicitly-empty string flags are usage errors.** Decide the behavior of
   `--flag ""` (an unset shell variable) *now*: detect it with
   `cmd.Flags().Changed(...)`, never `value != ""`. An empty filter that returns
   the unfiltered set is a correctness trap, not a no-op.
-- **Siblings agree on where validation happens.** If this command parses a
-  selector client-side and returns a quoted error, its siblings must not ship the
-  same input to the server for an opaque 400 — in both directions. Sweep the
-  sibling when you touch the family.
-- **Numeric flags:** negatives and zero handled per the documented meaning.
-- **Every input typed** with constraints, a default that has a one-line
+2. **Apply check 1 to every string flag on every command the diff touches** —
+  including the sibling you only extended. Finding the trap on the new command
+  does not mean you have checked the family; enumerate the flags and go one by
+  one.
+3. **Siblings agree on *where* validation happens.** Separate from checks 1-2:
+  if this command parses a selector client-side and returns a quoted error, its
+  siblings must not ship the same input to the server for an opaque 400 — in
+  both directions. The same bad input should fail the same way whichever command
+  the caller reached for.
+4. **Numeric flags:** negatives and zero handled per the documented meaning.
+5. **Every input typed** with constraints, a default that has a one-line
   rationale, an example, and a stated empty-value behavior. A default that dumps
   an unbounded collection is not safe; one that silently narrows is not honest.
-- Validate in `Options.Validate()` before any I/O, and make the error carry the
-  rejected value (never echoing secrets), the expected format or allowed values,
-  and a corrected invocation.
+
+Across all five: validate in `Options.Validate()` before any I/O, and make the
+error carry the rejected value (never echoing secrets), the expected format or
+allowed values, and a corrected invocation.
 
 ## T3: Completeness
 
@@ -72,11 +90,19 @@ That judgment is exactly what authors get wrong.
 
 **The honesty rule:** a caller handed fewer items than exist, with no signal,
 reads a page as the whole inventory — wrong but plausible instead of big but
-correct. Whatever mechanism you choose, the partiality must be visible in the
-payload, not only in a stderr hint.
+correct. So the partiality has to be disclosed somewhere the caller will see it.
 
-**The shared mechanism:** `internal/output/listmeta.go` — `BindListLimit` to
-bind the flag, the constructor matching your source shape
+**Where, per output shape** — `docs/design/output.md` §15.2 settles this, and it
+is not "always in the payload":
+
+| Output shape | Disclosure |
+|---|---|
+| Envelope (items + sibling keys) | `list_meta` in the payload, via the shared helpers |
+| **Bare array**, already released | **stderr hint only.** §15.2: bare arrays "cannot carry the signal; they get the stderr hint only and should migrate to an envelope when their consumers can absorb the shape change". Wrapping a released bare array in an envelope is a breaking output change — `CONSTITUTION.md` § public command surface forbids it inside a major version. Note the migration as a follow-up; do not do it in a feature PR |
+| New command, your choice of shape | choose an envelope, so the signal has somewhere to live |
+
+**The shared mechanism** (for the envelope case): `internal/output/listmeta.go` —
+`BindListLimit` to bind the flag, the constructor matching your source shape
 (`TruncateCompleteList` for cheaply-complete sources, `PagedListMeta` or
 `TruncatePagedList` for paginated ones), `AttachListMeta` to finalize, and
 `EmitListTruncationHint` after the payload.
@@ -85,11 +111,10 @@ bind the flag, the constructor matching your source shape
 **PROPOSED** (#387 Track C) and is implemented as an *opt-in* contract with two
 exemplar commands (`datasources list`, `irm oncall alert-groups list`). It is
 **not** a repo-wide requirement and **not** mandatory for every new list
-command. Prefer it where it fits — a bare-array output has no envelope to carry
-`list_meta`, and a client-side-capped source must not use the binder because
-"0 means all" would be dishonest there. If you disclose another way, say so in
-the PR. Migration plan and open questions:
-`docs/research/2026-07-17-global-limit-investigation.md`.
+command. Note also that a client-side-capped source must not use the binder,
+because "0 means all" would be dishonest there — it discloses the cap via
+`ListMeta.Cap` and the cap-variant hint instead. Migration plan and open
+questions: `docs/research/2026-07-17-global-limit-investigation.md`.
 
 Also check the zero-result path: a field your success schema declares as an
 array must not serialize as `null` when empty, in the machine formats your
@@ -215,7 +240,13 @@ Client-side filtering over a full fetch is disclosed (and ideally capped) —
 note that it means the whole result set crosses the wire on every call. If the
 backend treats repeated selectors as a union (OR) while the help reads like
 narrowing (AND), a user, or worse an agent, walks away believing something false
-about their data. Case-sensitivity: stated, and consistent with siblings.
+about their data.
+
+**Case-sensitivity is a separate check, not a footnote:** open the flag's help
+string and confirm it says whether matching is case-sensitive, and that the
+answer matches the siblings. A user narrowing on `alerts` and silently missing
+`ALERTS` has nothing to go on. This is missed more often than the AND/OR
+question above it.
 
 Push filters server-side where the API allows, or file the push-down as an
 explicit follow-up. Reject or re-fold contradictory combinations rather than

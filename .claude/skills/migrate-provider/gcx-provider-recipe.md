@@ -228,17 +228,31 @@ func Registration(loader ConfigLoader) adapter.Registration {
             }
             client := NewClient(cfg.BaseURL, cfg.Token)
             return &adapter.TypedCRUD[ResourceType]{
-                Namespace: cfg.Namespace,
-                ListFn:    client.List,
-                GetFn:     client.Get,
-                CreateFn:  client.Create,
-                UpdateFn:  client.Update,
-                DeleteFn:  client.Delete,
+                // Set Descriptor and Aliases on the CRUD too. ToRegistration()
+                // copies them onto the Registration but NOT onto the CRUD, and
+                // typedAdapter.Descriptor()/Aliases() read the CRUD's copies
+                // (internal/resources/adapter/typed.go). Omit them and the
+                // adapter's own Descriptor() is the zero value.
+                Descriptor: Descriptor(),
+                Aliases:    []string{"{alias}"},
+                Namespace:  cfg.Namespace,
+                ListFn:     client.List,
+                GetFn:      client.Get,
+                CreateFn:   client.Create,
+                UpdateFn:   client.Update,
+                DeleteFn:   client.Delete,
             }, nil
         },
     }.ToRegistration()
 }
 ```
+
+> **On `ToRegistration()`:** it is a convenience wrapper with no production
+> callers today — every shipped provider builds `adapter.Registration{...}`
+> directly, setting `Descriptor` on both the Registration and the CRUD. See
+> `internal/providers/irm/oncall_adapter.go` (`crud := &adapter.TypedCRUD[T]{…
+> Descriptor: desc}`) for the shape the repo actually uses. Either form is
+> compliant; the direct form is the one with precedent.
 
 **For numeric-ID resources**, implement `ResourceIdentity` with the slug-id
 helpers in `internal/resources/adapter/slug.go` (`ComposeName`,

@@ -126,7 +126,9 @@ with the `/api/ds/query` fallback), it must reuse `internal/query/grafanaquery`
 for the HTTP transport (POST + fallback + response-size limiting) and
 `internal/query/dataframe` for the Grafana data-frame wire types — do not
 duplicate that logic or re-declare `GrafanaQueryResponse`/`DataFrame` structs
-in the new package. Seven of the nine existing query clients reuse them.
+in the new package. Most existing query clients already reuse them — check the
+current set with `grep -rl query/grafanaquery internal/query/` rather than
+trusting a count here.
 
 Reference: `internal/query/prometheus/`, `internal/query/loki/` (both built on
 `grafanaquery` + `dataframe`)

@@ -11,7 +11,8 @@ registration, or a signal descriptor). These are not, and CI fails without them:
 | Token cost | `internal/agent/command_annotations.go`, or inline `cmd.Annotations` (signal specs use `CommandSpec.TokenCost`) | `TestConsistency_AllLeafCommandsHaveTokenCost` |
 | LLM hint (medium/large costs) | same as token cost | `TestConsistency_NonSmallCommandsHaveLLMHint` |
 | Cloud-only availability | `internal/agent/availability.go` (path prefix, covers subtrees) | `TestConsistency_CloudOnlyPathsResolveToCommands` |
-| Resource-type agent metadata | adapter `Registration.Operations`, or `internal/agent/known_resources.go` for native K8s types | `internal/agent/known_resources_test.go` |
+| Resource-type agent metadata, **native K8s types** | `internal/agent/known_resources.go` | `internal/agent/known_resources_test.go` |
+| Resource-type agent metadata, **adapter-backed** | adapter `Registration.Operations` | **nothing.** `known_resources_test.go` only walks `agent.KnownResources`; no test asserts `Operations` is populated on an adapter registration. Review-enforced only |
 | Generated reference docs | `GCX_AGENT_MODE=false mise run reference` | `mise run reference-drift` in CI |
 | Package map | `docs/architecture/project-structure.md` | AGENTS.md PR checklist step 4 (human-enforced) |
 

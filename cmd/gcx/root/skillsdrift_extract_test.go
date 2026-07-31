@@ -14,9 +14,12 @@ import (
 // When TestSkillsGcxInvocationsMatchCommandTree misbehaves, these cases
 // separate extractor bugs from genuine command-tree drift.
 //
-// The two extraction paths filter on the binary independently —
-// inlineGcxCommands on the code-span prefix, gcxArgs on the command word — so a
-// spelling added to one is not covered by the other. Both are exercised here.
+// The two extraction paths share the gcxCommandWords list but match it
+// differently — inlineGcxCommands prefix-matches the whole code span, gcxArgs
+// compares the first token after stripping env assignments and shell keywords.
+// A spelling therefore has to survive two different matchers, and only an
+// extractInvocations-level test exercises both. Fence and inline cases below are
+// deliberately paired for that reason.
 func TestExtractInvocations(t *testing.T) {
 	tests := []struct {
 		name    string

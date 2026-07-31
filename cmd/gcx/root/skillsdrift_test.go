@@ -238,8 +238,8 @@ func isGcxCommandWord(tok string) bool {
 // inlineGcxCommands returns the simple commands found in backtick code spans
 // of a prose or table line. A span opens and closes with equal-length backtick
 // runs, so double-backtick spans quoting text with backticks are matched too.
-// Only spans starting with a gcx command word (see gcxCommandPrefixes) are
-// treated as invocations; anything else (fragments like `--force` or
+// Only spans starting with a gcx command word (see gcxCommandWords) are treated
+// as invocations; anything else (fragments like `--force` or
 // `resources delete`) is a mention, not a runnable command.
 func inlineGcxCommands(line string) [][]string {
 	var cmds [][]string

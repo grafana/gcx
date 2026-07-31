@@ -190,7 +190,7 @@ Pick the loader method that matches your backend surface: `LoadGrafanaConfig`
 (stack URL + token for plugin/K8s APIs), `LoadCloudConfig` /
 `LoadCloudTokenConfig` (GCOM control plane), or `LoadProviderConfig(ctx, name)`
 (provider-specific keys declared in `ConfigKeys()`). See
-[patterns.md – Pattern 16, Provider ConfigLoader](../architecture/patterns.md)
+[patterns.md § Provider ConfigLoader](../architecture/patterns.md#provider-configloader)
 for the full method-to-consumer table.
 
 **Wiring note:** The root command adds every *registered* provider's commands

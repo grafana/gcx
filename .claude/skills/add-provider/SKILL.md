@@ -30,10 +30,15 @@ necessity, command path, backend evidence, wiring, readiness). Then:
 - Skip the Stage 2 decisions it already answers (tier, command surface, and
   whether the resource belongs in the `resources` pipeline). Answer only what is
   genuinely still open.
-- The Stage 1 and Stage 2 approval gates **do not apply on this path**. Build
-  autonomously. If something is genuinely unsettled, discover it, or ask one
-  targeted question carrying the evidence and a recommendation — never fall back
-  to a blanket approval gate.
+- The Stage 1 and Stage 2 **blocking approvals** do not apply on this path: you
+  do not wait for sign-off before implementing. Build autonomously. If something
+  is genuinely unsettled, discover it, or ask one targeted question carrying the
+  evidence and a recommendation — never fall back to a blanket approval gate.
+- **Still produce the Stage 2 deliverables** — the ADRs, the spec, and the
+  smoke-test plan. A four-bullet placement section settles the tier, the path,
+  the backend and readiness; it does not contain an auth-strategy ADR or a
+  per-stage verification plan, so those are written here, not skipped. What
+  changed is that they are reviewed with the PR instead of gating it.
 - Start at Stage 3, and use Stage 4 verification as written.
 
 **Invoked directly** (no placement section): run all four stages below,

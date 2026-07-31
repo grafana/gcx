@@ -59,9 +59,12 @@ BOUNDARIES
 
 ## 2. Field guidance
 
-**Routing metadata.** `Short` states what the command does in one line; `Long`
-adds when to use it and when not to; `Example` shows the most common real
-invocation. Follow `docs/design/help-text.md`. Check sibling vocabulary before
+**Routing metadata.** `Short` states what the command does in one line, in the
+imperative and period-terminated (`help-text.md` §8.1); `Long` adds when to use
+it and when not to; `Example` carries 3-5 invocations progressing from simple to
+complex (§8.2), the first being the most common real one. Follow
+`docs/design/help-text.md` — and if the surrounding family disagrees with it,
+see T11 rather than silently picking a side. Check sibling vocabulary before
 naming flags — if the family says `--name` for substring matching, do not
 introduce `--filter` for the same idea; if siblings document
 "case-insensitive", match it or differ explicitly. Enum values and JSON field
