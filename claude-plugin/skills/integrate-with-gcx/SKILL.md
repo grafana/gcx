@@ -1,142 +1,88 @@
 ---
 name: integrate-with-gcx
 description: >
-  Guides an engineer and their coding agent through contributing a new
-  capability to the gcx codebase itself: deciding whether a new command is
-  needed at all, choosing the backend surface and gcx wiring (provider,
-  datasource kind, signal command, resource adapter, or bundled skill),
-  passing a backend-readiness gate, writing an explicit integration contract
-  (naming, typed inputs, output class, completeness and limits, errors, token
-  cost), implementing with shared-infra reuse, and self-reviewing against
-  recurring review findings before human review. Use when working inside the
-  grafana/gcx repository to add or extend a capability. Trigger on phrases
-  like "integrate with gcx", "add my product to gcx", "new gcx command",
-  "expose this API through gcx", or "get my gcx PR ready for review". NOT for
-  operating a Grafana instance with gcx — use the gcx skill or a product skill
-  (slo-manage, synth-manage-checks, create-dashboard). NOT for porting a
-  provider from grafana-cloud-cli — use the repo's migrate-provider workflow.
+  Guides a contributor and their coding agent through adding or extending a
+  capability in the grafana/gcx codebase: deciding whether a new command is
+  needed and where it belongs (provider, datasource kind, resource adapter,
+  cloud command, or bundled skill), designing the command's agent-facing
+  contract (naming, typed inputs, output protocol class, completeness,
+  errors, token cost), implementing with shared-infrastructure reuse, and
+  catching the defect classes that recur in gcx review before a human looks.
+  Use when working inside a grafana/gcx checkout to add, extend, or review a
+  gcx capability. Trigger on phrases like "integrate with gcx", "add my
+  product to gcx", "new gcx command", "expose this API through gcx", or "get
+  my gcx PR ready for review". NOT for operating a Grafana instance with gcx
+  — use the gcx skill or a product skill (slo-manage, synth-manage-checks,
+  create-dashboard). NOT for installing or configuring gcx — use setup-gcx.
 ---
 
 # Integrate a Capability with gcx
 
-Contribute a new capability to the gcx codebase — as a domain engineer or the
-coding agent working with one — through six phases: surface necessity →
-placement and readiness → integration contract → implementation → self-review →
-preflight and PR summary. Work happens inside a grafana/gcx checkout.
+**Work autonomously.** Inspect the repo, decide, show the decision, keep going.
+This skill has no approval gates. Ask only when repository evidence genuinely
+cannot settle something ([Asking](#asking)).
 
-The premise everything below follows from: **the commands you add are tools
-that other agents will route on.** Their `Use`/`Short`/`Long`/`Example`, flag
-help, token cost, and hints are surfaced verbatim through `gcx commands` and
-`gcx help-tree` — that metadata is an operational contract, not decoration.
+The premise everything follows from: **the commands you add are tools other
+agents route on.** `Use`/`Short`/`Long`/`Example`, flag help, token cost and
+hints are surfaced verbatim through `gcx commands` and `gcx help-tree` — that
+metadata is an operational contract, not decoration. Names are frozen within a
+major version, so the path you pick is the path forever.
 
-## Core Principles
+| Mode | You are here when |
+|---|---|
+| [**Place**](#mode-place) | where this belongs is undecided |
+| [**Build**](#mode-build) | placement is known — you decided it, the user stated it, or a sibling skill sent you |
+| [**Review**](#mode-review) | there is already a branch or PR to get review-ready |
 
-1. **Hard invariants live in CONSTITUTION.md and CI — this skill is the map,
-   not the law.** The compliance order is CONSTITUTION > VISION > DESIGN
-   (`docs/design/`) > ARCHITECTURE. When this skill and a governing doc
-   disagree, the doc wins; report the discrepancy.
-2. **Released names are frozen within a major version.** Choose every command
-   path as if it were permanent — a conforming replacement can be added later,
-   but removal waits for the next major. One doc read
-   (`docs/design/command-naming.md`) is cheaper than review rounds.
-3. **Honesty over convenience.** Every limit, cap, client-side filter, and
-   token-cost claim must be visible to the caller. Absent truncation metadata
-   means "complete" — make it true.
-4. **Reuse before writing.** gcx already has shared config loading, query
-   transport, output codecs, truncation metadata, and confirmation helpers.
-   A hand-rolled copy misses every future bug fix in the shared version.
-5. **Fix pushes are a major defect source.** Re-run the scoped self-review
-   after every push, not just before the first review (SR-9).
-6. **Humans own architecture.** The placement memo and the contract worksheet
-   each get an explicit human sign-off before code. Escalate judgment calls as
-   open questions instead of settling them silently.
+Start with `mise run build`, then `bin/gcx commands >/dev/null && echo ok`. Read
+`AGENTS.md` — it maps every document cited here. Use `bin/gcx` for your own
+shell checks (exercise the binary you just built, not a stale installed one);
+everything *user-facing* you author — `Example:` fields, help text, docs — says
+`gcx`.
 
-## Prerequisites
+## Mode: Place
 
-A working grafana/gcx checkout:
+> Detail: [references/placement-and-readiness.md](references/placement-and-readiness.md)
+
+Inventory the tree first — a new leaf competes for every agent's attention:
 
 ```bash
-mise run build
-bin/gcx commands >/dev/null && echo ok
+bin/gcx help-tree
+bin/gcx commands --flat -o json
+bin/gcx resources list-types
+bin/gcx providers list
 ```
 
-Read `AGENTS.md` at the repo root first — it is the entry-point map to every
-document this skill cites.
+Settle four things and show them as a short **placement section** (bullets, not
+a document):
 
-## Phase A: Surface necessity, placement, readiness
+- **Necessity** — reuse / extend / consolidate with a sibling / new leaf / not
+  gcx. For a new leaf, name the nearest existing sibling and the one sentence an
+  agent would use to choose between them. If a person who knows the tree can't
+  say which command applies, an agent can't either.
+- **Path** — from `docs/design/command-naming.md` plus precedent in the real tree
+  and `docs/plans/list-subject-verdicts.md`.
+- **Backend + wiring** — what serves the data, verified by a probe rather than
+  assumed, and which wiring carries it. `gcx api` is a diagnostic fallback,
+  never the integration target.
+- **Readiness** — ready / backend prerequisite (named owner) / bounded bootstrap
+  / not gcx. Product teams own their API shape, auth, limits and domain data
+  reduction; gcx wraps APIs, it does not fix them.
 
-> Details and templates: [references/placement-and-readiness.md](references/placement-and-readiness.md)
+Then continue into Build, or hand off ([Handoffs](#handoffs)). Missing
+information does not stop you: discover it, or ask one targeted question.
 
-**A0 — Is a new surface needed at all?** Inventory the existing tree before
-proposing anything:
+## Mode: Build
 
-```bash
-gcx help-tree
-gcx commands --flat -o json
-gcx resources list-types
-```
+> Detail: [references/contract-and-tests.md](references/contract-and-tests.md)
 
-Decide: reuse / extend an existing leaf / consolidate with a sibling / new
-independent leaf / no new surface. For a new leaf, name the nearest existing
-sibling and write the one-sentence rule an agent would use to pick between
-them. If a human can't say definitively which command applies, an agent can't.
-
-**A1 — Backend surface.** What serves the data: Grafana K8s API (`/apis`),
-plugin/product REST API, GCOM control plane, a datasource query API, or no
-backend (client-only workflow)? Verify with a probe, don't assume.
-
-**A2 — gcx wiring.** gcx has two tiers (K8s resources, Cloud providers).
-Wiring options: no new code (dynamic resource discovery) · cloud-tier command ·
-provider commands (plain commands are first-class; adapter-backed resources
-and cross-signal `signals.Descriptor` commands are patterns within a provider,
-used only where they fit) · datasource provider · skill-only. `gcx api` is a
-diagnostic fallback, never the integration target. An adapter is never created
-merely to unlock a CRUD verb.
-
-**A3 — Backend readiness.** Product teams own their API shape, auth/RBAC,
-limits, and domain data reduction. Check owner, stability, auth boundary,
-rate/tenant limits, pagination/failure semantics, and whether gcx would have to
-bulk-page data client-side to compute what the backend should compute.
-Outcome: **ready** / **backend prerequisite (named owner)** / **bounded
-bootstrap** (explicitly experimental, no invented public contract) /
-**not gcx** (write a boundary memo, not code).
-
-**Deliverable:** the placement memo (template in the reference) — human
-sign-off before Phase B.
-
-## Phase B: Integration contract worksheet
-
-> Template and field guidance: [references/contract-and-tests.md](references/contract-and-tests.md)
-
-Fill the worksheet completely before implementing. It forces the decisions
-reviews otherwise extract one round at a time:
-
-- Purpose, stability (stable vs experimental), direct/indirect use signals,
-  when-NOT-to-use + nearest-sibling distinction.
-- Command path derived from `docs/design/command-naming.md` (placement is per
-  operation; a discovery facet with no addressable item takes an
-  `<operation>-<subject>` compound). Check the real tree for precedent.
-- `Use`/`Short`/`Long`/`Example` drafted as routing metadata; parameter names
-  consistent with sibling vocabulary; every input typed with constraints, a
-  defaulted-for-a-reason value, an example, and explicit empty-value behavior;
-  an `Args:` validator on every leaf.
-- Output protocol class (one of the eight in `docs/design/agent-mode.md`
-  §6.4), a success-schema sketch, and one representative agent-mode result.
-- Backend request mapping: endpoint, which flag feeds which param, pagination.
-- Completeness contract: complete / limited / capped — and which
-  `list_meta` constructor implements it. Silent truncation is forbidden.
-- Error contract: summary vocabulary + exit code per expected failure; invalid
-  input reports the rejected value, expected format/allowed values, and a
-  corrected call; retryability noted where the backend rate-limits.
-- Expected data size → `token_cost` (+ a narrowing-oriented `llm_hint` for
-  medium/large).
-- Auth/ownership boundary, exact shared packages to reuse, explicit non-goals.
-- The 5-row agent-routing test matrix (positive / near-miss / ambiguous /
-  malformed / large-result).
-
-**Deliverable:** the filled worksheet — human sign-off before Phase C.
-
-## Phase C: Implement with reuse
+Cover the contract before writing code — purpose, stability, use signals and
+when-NOT-to-use, routing metadata, every input typed with constraints and a
+defaulted-for-a-reason value and explicit empty-value behavior, output protocol
+class, request mapping, completeness, error recovery, token cost, reuse,
+non-goals. Cover it at the size of the change: a new flag needs three lines, a
+new provider needs all of it. **This is working knowledge, not a document to
+produce** — what you show the human is decisions, questions and risks.
 
 Search for the shared implementation before writing one:
 
@@ -147,121 +93,130 @@ grep -rn "BindListLimit\|AttachListMeta" internal/output/
 grep -rn "ConfirmDestructive" internal/providers/
 ```
 
-Rules that are enforced in review but written almost nowhere else:
+The rules that are enforced in review but written almost nowhere else — `Args:`
+validators, explicitly-empty flags, sibling validation symmetry, dead codec
+paths — are the same checks the review mode runs, so they live once, in
+[references/self-review.md](references/self-review.md). Read it now, not after
+you write the code.
 
-- **Every leaf declares an `Args:` validator** (`cobra.NoArgs` for flags-only
-  commands) — otherwise stray positionals are silently ignored and the command
-  answers a different question than asked.
-- **Explicitly-empty string flags are usage errors**: detect with
-  `cmd.Flags().Changed(...)`, never `value != ""`. An empty `--contains` from
-  an unset shell variable must not return the unfiltered set.
-- **Sibling commands agree on validation location**: if one parses input
-  client-side with a quoted error, its sibling must not proxy the same input
-  to the server for an opaque 400.
-- **Codecs are registered in `setup(flags)` AND reachable from `RunE`** — a
-  registered codec bypassed by a direct format call is dead code.
+Everything else follows the governing docs: `docs/reference/provider-guide.md`,
+AGENTS.md Key Conventions (datasource reuse), `docs/design/output.md`,
+`docs/design/safety.md`, `docs/design/errors.md`.
 
-Everything else follows the governing docs: options pattern and provider steps
-(`docs/reference/provider-guide.md`), datasource reuse rules (AGENTS.md Key
-Conventions), output and truncation (`docs/design/output.md` §11–§15), safety
-(`docs/design/safety.md`), errors (`docs/design/errors.md`).
+Close by reading your command back the way agents see it — `bin/gcx help-tree`,
+`bin/gcx commands --flat -o json` — and re-check the routing metadata against
+what renders.
 
-Close the phase by reading your command back the way agents will see it:
+## Mode: Review
+
+Resolve the real base first (stacked branches: it is not necessarily `main`),
+then run the diff-triggered checks in
+[references/self-review.md](references/self-review.md) across the full diff, and
+after a fix push across the incremental one too. Fix what is determinate;
+report what is not. Fix commits are a top defect source — re-run after every
+push, not only before the first review.
+
+## Rules at their real strength
+
+Never state proposed or conventional guidance as law.
+
+| Rule | Strength |
+|---|---|
+| Output-class fixture entry, token-cost/hint, availability, skill mapping | **CI-enforced** (`TestConsistency_*`) |
+| A `finite` leaf emits exactly one JSON value in agent mode | **CI-enforced** (`TestAgentConformance_*`) |
+| One `init()`, one `providers.Register()`; no `adapter.Register()` outside it | **CONSTITUTION** § Architecture Invariants |
+| Error summaries from the closed vocabulary | **Law, scoped to `cmd/gcx/fail/`** converters — not a constraint on arbitrary command error text |
+| Exit codes 0-6 | Real and reachable when you set it. **Documented gap:** cobra's own flag/arg errors exit 1, not 2 (`docs/design/exit-codes.md` §2.3) — don't claim 2 for a path you didn't wire |
+| `Args:` on every leaf | Strong convention; no CI check |
+| `list_meta` truncation metadata | `docs/design/output.md` §15 is **PROPOSED** and opt-in, two exemplar commands. Not repo-wide, not required for every list command |
+| Empty array serialized as `[]` not `null` | Convention with local test precedent; no doc rule |
+
+**Completeness is the honesty rule underneath §15.** Review it whenever your
+command has a `--limit`, slices a collection, stops paging early, or is bounded
+by a source cap — those mechanisms, not a guess about whether truncation is
+"likely". A caller handed a partial result with no signal reads a page as the
+whole inventory. Prefer the shared helpers in `internal/output/listmeta.go`
+where they fit; a bare-array output has no envelope to carry `list_meta`, so
+disclose another way and say so in the PR. Status:
+`docs/research/2026-07-17-global-limit-investigation.md`.
+
+**Empty results are schema fidelity, not a mode rule** — an array your schema
+declares must not serialize as `null` when empty, in the machine formats your
+command declares. Human codecs render their own empty state.
+
+**Output rules are per protocol class** — the eight classes in
+`docs/design/agent-mode.md` §6.4 do not share one JSON-document contract.
+Examples and tests follow the class (table in contract-and-tests.md).
+
+## Asking
+
+Ask when the repo, the governing docs and a verified probe cannot settle
+something that changes the work. Group related questions into one interruption,
+carrying the evidence, a recommended option, and what changes per answer.
+
+Worth asking: missing product/API facts that change behavior, auth, RBAC, limits
+or completeness · unclear ownership or API stability · genuine VISION
+uncertainty · governing docs that conflict · a novel verb or placement the naming
+guide and precedent record don't cover · a scope choice producing a materially
+different implementation. Never ask merely because the change is large or
+introduces a provider.
+
+Stop substantial work only when the request violates CONSTITUTION with no
+compliant alternative preserving the intent · a waiver or governance decision is
+required · a missing backend, auth or ownership prerequisite prevents an honest
+implementation · an unresolved user choice would materially change what is built.
+
+## Handoffs
+
+| Skill | Owns | On the way in |
+|---|---|---|
+| `add-provider` | provider package, config keys, client, adapter, staging | skips its own classification and readiness research when your placement section answers them |
+| `add-datasource` | query client, per-kind constructor, `DatasourceProvider` registration | same |
+| `migrate-provider` | porting an existing grafana-cloud-cli client | route ports straight there; it calls back only into this skill's review and naming sections |
+
+Pass the placement section forward and say which decisions are settled. If your
+harness does not expose these as skills, read the file — you are in the
+checkout: `.claude/skills/{add-provider,add-datasource,migrate-provider}/SKILL.md`.
+
+## Wiring and gates
+
+> Detail, plus the CI-failure lookup table: [references/distribution-and-gates.md](references/distribution-and-gates.md)
+
+Per-leaf wiring CI will not let you skip is tabulated in the reference. The one
+gap CI does *not* catch: a new datasource kind needs the generic-dispatch switch
+in `cmd/gcx/datasources/query.go` extended by hand — registration mounts the
+typed `datasources <kind>` subcommand but not `datasources query` auto-detection.
+
+Format the files you touched, then gate once:
 
 ```bash
-mise run build
-bin/gcx help-tree
-bin/gcx commands --flat -o json
-```
-
-— and re-check the routing contract against what actually renders.
-
-## Phase D: Self-review (SR-1…SR-11)
-
-> Full checklist with checks and fix patterns: [references/self-review-findings.md](references/self-review-findings.md)
-
-Run all eleven before requesting review: SR-1 token-cost/limit honesty ·
-SR-2 list truncation and `list_meta` · SR-3 input validation · SR-4 shared-code
-reuse · SR-5 docs regeneration and help rendering · SR-6 naming vs the frozen
-surface · SR-7 tests that cannot fail · SR-8 filtering-semantics honesty ·
-SR-9 **scoped re-review after every fix push** · SR-10 scope and disclosure ·
-SR-11 description rot.
-
-SR-9 is the highest-leverage habit: in recent integrations, fix commits have
-repeatedly introduced new findings — including outright blockers — on top of
-what they fixed. After every push, resolve the actual PR base (stacked
-branches!) and re-run SR-1…SR-8 over both the full and the incremental diff.
-
-## Phase E: Preflight
-
-> Wiring table and CI-suite meanings: [references/distribution-and-gates.md](references/distribution-and-gates.md)
-
-The per-leaf wiring CI will not let you skip: an `output_classes.json` entry,
-a token-cost annotation (+ hint if medium/large), availability/skill mappings
-where applicable, regenerated reference docs, and the package-map row. Then:
-
-```bash
-mise run lint
-go test ./cmd/gcx/root/... ./internal/agent/...
-go test ./...
-GCX_AGENT_MODE=false mise run reference
+gofmt -w <the .go files you edited>
+mise run gate
 GCX_AGENT_MODE=false mise run all
 ```
 
 `GCX_AGENT_MODE=false` is load-bearing — agent-mode detection flips output
-defaults and corrupts generated docs. A gate you cannot run locally is
-reported as SKIPPED with the reason, never as green. The authoritative
-checklists are in AGENTS.md (Mandatory Pre-Commit / Pull Request).
-
-## Phase F: PR-ready summary
+defaults and corrupts generated docs. Skill-only changes need
+`mise run validate-skills` plus the skills-drift test. A gate you cannot run
+locally is reported SKIPPED with the reason, never as green. Authoritative
+checklists: AGENTS.md.
 
 ## Output Format
 
-End with this summary (it doubles as the PR description skeleton):
+Report only what a human still owns:
 
 ```text
 INTEGRATION SUMMARY — <capability>
 
-Placement: <surface + wiring> — <two-line rationale, alternative considered>
-Readiness: <outcome; boundary items and their owners>
-Contract: <worksheet — final version, linked or inlined>
+Placement: <necessity + path + wiring> — <one-line rationale>
+Changed: <what this diff does>
+Non-goals: <out of scope; product-owned items with owners>
 
-Self-review attestation:
-  SR-1..SR-11: pass | n/a — one line of evidence each
-  Routing matrix: verified | UNVERIFIED (no harness)
-
-Open questions for reviewers: <judgment calls deliberately not settled here>
-Non-goals / deferred: <explicitly out of scope; product-owned items with owners>
-Docs touched: <generated + hand-written>
-Gates: <each gate: green | SKIPPED (reason)>
+Unresolved decisions or risks: <what a reviewer must decide, or none>
+Unverified assumptions: <claims not probed, and how to probe them, or none>
+Checks failed or skipped: <gate: reason, or none>
+Architecture deviations: <deviation + rationale, or none>
 ```
 
-Report honestly: a skipped gate is SKIPPED, an unverified matrix is
-UNVERIFIED, and open questions belong to the reviewers, not to silence.
-
-## Error Handling
-
-| Failure | Meaning | Fix |
-|---------|---------|-----|
-| `TestConsistency_AllLeafCommandsHaveOutputClass` | New leaf missing from the class fixture (or a stale entry after a rename) | Add/update the entry in `cmd/gcx/root/testdata/output_classes.json` |
-| `TestConsistency_AllLeafCommandsHaveTokenCost` / `NonSmallCommandsHaveLLMHint` | Missing agent annotations | Registry entry in `internal/agent/command_annotations.go` or inline `cmd.Annotations` |
-| `TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue` fails or times out | Usage text on stdout instead of one JSON document, or a prompt/editor survives agent mode | Return the in-band error document; decline interactivity in agent mode |
-| `TestSkillsGcxInvocationsMatchCommandTree` | A bundled-skill markdown edit references an unknown command/flag | Fix the invocation, or use a text fence / `<placeholder>` for hypotheticals |
-| `mise run reference-drift` (CI) | Generated docs not regenerated | `GCX_AGENT_MODE=false mise run reference`, commit the diff |
-| Local `mise run lint` reports findings in other worktrees | Stale golangci-lint cache | `mise exec -- golangci-lint cache clean`, re-run |
-
-## Related Skills
-
-- **gcx** — operating Grafana through gcx (resources, queries, workflows), not
-  changing gcx itself.
-- **setup-gcx** — installing and configuring gcx for an end user.
-- Product skills (`slo-manage`, `synth-manage-checks`, `create-dashboard`, …)
-  — using specific Grafana products via gcx.
-
-## References
-
-- [references/placement-and-readiness.md](references/placement-and-readiness.md) — surface necessity, the two axes, readiness gate, memo template
-- [references/contract-and-tests.md](references/contract-and-tests.md) — the worksheet, field guidance, routing matrix, test-plan bar
-- [references/self-review-findings.md](references/self-review-findings.md) — SR-1…SR-11 with concrete checks
-- [references/distribution-and-gates.md](references/distribution-and-gates.md) — per-leaf wiring, CI suites, preflight
-- In-repo: `AGENTS.md`, `CONSTITUTION.md`, `docs/design/command-naming.md`, `docs/design/output.md`, `docs/design/agent-mode.md`, `docs/reference/provider-guide.md`
+No pass/n-a checklists. An empty section is a claim — write `none` only when
+it's true.
