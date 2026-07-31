@@ -49,8 +49,13 @@ Four checks. Work all four.
 3. **Token cost annotated**, with an `llm_hint` for medium/large that teaches
   *narrowing* — which flags reduce the result — not just describes cost. A
   `small` annotation on a command that can dump tens of thousands of rows is a
-  recurring blocker. Where a flag changes the bound, say so:
-  `small (large with --all)`.
+  recurring blocker. Where a flag changes the bound you may say so in the
+  qualified form (`small (large with --all)`) — but know the trade:
+  `TestConsistency_NonSmallCommandsHaveLLMHint` matches the annotation
+  **exactly** against `"medium"` and `"large"`, so a qualified value matches
+  neither and your `llm_hint` stops being CI-enforced. Bare `medium`/`large`
+  keeps the hint covered; the qualified form is more honest about the bound and
+  moves the hint to review-only. Pick deliberately, and say which you picked.
 4. **Codec registered in `setup(flags)` is reachable from `RunE`** — on *every*
   leaf the diff touches, not just the new one. Trace each registration to an
   actual encode call: a codec registered for format validation whose `Encode`
