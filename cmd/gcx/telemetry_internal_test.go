@@ -280,7 +280,8 @@ func TestBuildUsageEventOutcomeVocabulary(t *testing.T) {
 }
 
 // error_kind has no omitempty and must stay on the wire for every outcome;
-// only the new batch fields are allowed to disappear.
+// only the optional blocks — batch, parse, failure depth, auth method — may
+// disappear.
 func TestBuildUsageEventAlwaysEmitsErrorKind(t *testing.T) {
 	for _, exitCode := range []int{0, 1, 2, 3, 4, 5, 6} {
 		isolate(t)
@@ -289,6 +290,140 @@ func TestBuildUsageEventAlwaysEmitsErrorKind(t *testing.T) {
 
 		assert.Contains(t, fields, "error_kind",
 			"error_kind must be present for exit code %d, even when empty", exitCode)
+	}
+}
+
+// http_status is a transport failure status or nothing: only 400–599 reaches
+// the wire, and everything else — no capture, a success status, a redirect,
+// out-of-protocol values — is omitted rather than coerced.
+func TestBuildUsageEventEmitsTransportHTTPStatusOnly(t *testing.T) {
+	for status, want := range map[int]any{
+		0:   nil,
+		200: nil,
+		302: nil,
+		399: nil,
+		400: float64(400),
+		401: float64(401),
+		403: float64(403),
+		500: float64(500),
+		599: float64(599),
+		600: nil,
+	} {
+		isolate(t)
+		capture.SetHTTPStatus(status)
+
+		fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), 1))
+
+		if want == nil {
+			assert.NotContains(t, fields, "http_status",
+				"captured status %d is not a transport failure and must be omitted", status)
+		} else {
+			assert.Equal(t, want, fields["http_status"], "captured status %d", status)
+		}
+	}
+}
+
+// k8s_reason reaches the wire only through the fixed vocabulary: every listed
+// reason passes, anything else collapses to "other", and no capture means no
+// field.
+func TestBuildUsageEventClampsK8sReasonToAllowlist(t *testing.T) {
+	for _, reason := range telemetry.K8sReasonLabels() {
+		if reason == telemetry.K8sReasonOther {
+			continue
+		}
+		isolate(t)
+		capture.SetK8sReason(reason)
+
+		event := buildUsageEvent(pushInfo(), time.Now(), 1)
+		assert.Equal(t, reason, event.K8sReason, "listed reason must pass through unchanged")
+	}
+
+	isolate(t)
+	capture.SetK8sReason("SomeFutureServerReason")
+	event := buildUsageEvent(pushInfo(), time.Now(), 1)
+	assert.Equal(t, telemetry.K8sReasonOther, event.K8sReason,
+		"a server-controlled reason string must never travel verbatim")
+
+	isolate(t)
+	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), 1))
+	assert.NotContains(t, fields, "k8s_reason", "no captured reason means no field")
+}
+
+// grafana_auth_method reaches the wire only through the fixed vocabulary; an
+// out-of-contract capture evidences a decision and travels as "unknown",
+// never verbatim.
+func TestBuildUsageEventClampsGrafanaAuthMethod(t *testing.T) {
+	for _, method := range telemetry.GrafanaAuthMethodLabels() {
+		isolate(t)
+		capture.SetGrafanaAuthMethod(method)
+
+		event := buildUsageEvent(pushInfo(), time.Now(), 0)
+		assert.Equal(t, method, event.GrafanaAuthMethod, "listed method must pass through unchanged")
+	}
+
+	isolate(t)
+	capture.SetGrafanaAuthMethod("Bearer secret-token-value")
+	event := buildUsageEvent(pushInfo(), time.Now(), 0)
+	assert.Equal(t, telemetry.AuthMethodUnknown, event.GrafanaAuthMethod,
+		"an arbitrary captured string must be clamped, not forwarded")
+
+	isolate(t)
+	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), 0))
+	assert.NotContains(t, fields, "grafana_auth_method", "no decided method means no field")
+}
+
+// A partial failure has no single causal status: forty-seven resources may
+// have failed forty-seven different ways, and the captured status belongs to
+// whichever error happened to surface. Both failure-depth fields are
+// suppressed — while the batch block, which is per-operation rather than
+// per-error, survives exactly as TestBuildUsageEventKeepsBatchOnPartialFailure
+// pins.
+func TestBuildUsageEventSuppressesErrorSignalsOnPartialFailure(t *testing.T) {
+	isolate(t)
+	capture.SetBatch(capture.Batch{Succeeded: 8, Failed: 2})
+	capture.SetHTTPStatus(500)
+	capture.SetK8sReason("Conflict")
+
+	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), gcxerrors.ExitPartialFailure))
+
+	assert.NotContains(t, fields, "http_status")
+	assert.NotContains(t, fields, "k8s_reason")
+	assert.Contains(t, fields, "batch_succeeded_bucket",
+		"suppression is scoped to the failure-depth fields, never the batch block")
+	assert.Equal(t, "partial_failure", fields["error_kind"])
+}
+
+// A canceled run is not a failure, so it reports no failure depth — whatever
+// a probe captured before the interrupt landed. error_kind stays on the wire
+// and empty, exactly as PR B pinned it.
+func TestBuildUsageEventSuppressesErrorSignalsOnCanceled(t *testing.T) {
+	isolate(t)
+	capture.SetHTTPStatus(502)
+	capture.SetK8sReason("Timeout")
+
+	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), gcxerrors.ExitCancelled))
+
+	assert.NotContains(t, fields, "http_status")
+	assert.NotContains(t, fields, "k8s_reason")
+	require.Contains(t, fields, "error_kind")
+	assert.Empty(t, fields["error_kind"])
+}
+
+// The auth method describes the invocation, not the failure, so it survives
+// every outcome — including the two exit codes that suppress the
+// failure-depth fields.
+func TestBuildUsageEventKeepsGrafanaAuthMethodOnEveryOutcome(t *testing.T) {
+	for _, exitCode := range []int{
+		gcxerrors.ExitSuccess, gcxerrors.ExitGeneralError, gcxerrors.ExitAuthFailure,
+		gcxerrors.ExitPartialFailure, gcxerrors.ExitCancelled,
+	} {
+		isolate(t)
+		capture.SetGrafanaAuthMethod("token")
+
+		event := buildUsageEvent(pushInfo(), time.Now(), exitCode)
+
+		assert.Equal(t, "token", event.GrafanaAuthMethod,
+			"auth method must survive exit code %d", exitCode)
 	}
 }
 
@@ -303,5 +438,7 @@ func TestBuildUsageEventAlwaysEmitsErrorKind(t *testing.T) {
 // --output is a directory cannot leak it. Both are tested there, in
 // root/telemetry_internal_test.go.
 //
-// What this layer owns is the batch block, and the tests above cover it: bucket
-// category labels only, from the declared vocabulary, and no raw batch count.
+// What this layer owns is the batch block, the failure-depth fields and the
+// auth method, and the tests above cover them: bucket category labels only,
+// the 400–599 transport filter, the k8s reason allowlist, the auth-method
+// clamp, and the exit-4/5 suppression scope.
