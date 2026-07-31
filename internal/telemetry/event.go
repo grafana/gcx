@@ -33,20 +33,23 @@ const (
 //     travel as labels from the fixed vocabulary in bucket.go. Note that two of
 //     those labels are singletons, so a batch of 0 or 1 is exactly recoverable —
 //     say "fixed categories", never "never exact". Scope this to volume rather
-//     than to numbers in general: ExitCode, DurationMS and ParseErrorDistance
-//     are all raw numbers, and they are fine because they describe the
-//     invocation, not how much of anyone's inventory it touched.
+//     than to numbers in general: ExitCode, DurationMS, HTTPStatus and
+//     ParseErrorDistance are all raw numbers, and they are fine because they
+//     describe the invocation or the protocol it spoke, not how much of anyone's
+//     inventory it touched.
 //   - A small, enumerated set of fields is derived from how the command ran
 //     rather than from a name, and each is documented on its own field below:
-//     OutputFormat (the value of --output, filtered to a fixed list of formats)
-//     and DryRun (whether the operation ran in dry-run mode). Neither says
-//     anything about the user, their organisation, or their data.
+//     OutputFormat (the value of --output, filtered to a fixed list of formats),
+//     DryRun (whether the operation ran in dry-run mode), and GrafanaAuthMethod
+//     (the authentication category selected for the Grafana connection, clamped
+//     to a fixed vocabulary). None says anything about the user, their
+//     organisation, or their data.
 //
 // Do not phrase this as "the only exception is X". That form is a promise about
 // every other field in the struct, so it has to be re-audited against the whole
 // event each time one is added — and the first version written here claimed
-// DryRun was the only one while OutputFormat sat two lines below it. Adding a
-// third such field means updating the first-run notice (firstrun.go, and
+// DryRun was the only one while OutputFormat sat two lines below it. Adding
+// another such field means updating the first-run notice (firstrun.go, and
 // bumping noticeRevision so existing installs actually see it) and the published
 // usage-statistics page.
 type Event struct {
@@ -94,6 +97,38 @@ type Event struct {
 	BatchFailedBucket    *string `json:"batch_failed_bucket,omitempty"`
 	BatchSkippedBucket   *string `json:"batch_skipped_bucket,omitempty"`
 	DryRun               *bool   `json:"dry_run,omitempty"`
+
+	// Failure depth, set only when the invocation's surfaced error carried
+	// one of these two shapes. Both are suppressed for exit code 4 — a
+	// partial failure has no single causal status — and exit code 5, because
+	// a canceled run is not a failure.
+	//
+	// HTTPStatus is the HTTP transport status of the failing request, only
+	// ever 400–599. It is never a status embedded inside a 2xx response body
+	// (a query error inside an HTTP 200 omits this field) and never a
+	// Kubernetes Status code — Kubernetes failures are described by K8sReason
+	// instead. Coverage is partial: only clients that carry a typed status
+	// reach it, so absence never means no HTTP failure occurred.
+	//
+	// K8sReason is the Kubernetes status reason of the failing API call,
+	// clamped to the fixed vocabulary in k8sreason.go. A StatusReason is a
+	// plain string a server controls, so any unlisted reason travels as
+	// "other", never verbatim.
+	HTTPStatus int    `json:"http_status,omitempty"`
+	K8sReason  string `json:"k8s_reason,omitempty"`
+
+	// GrafanaAuthMethod is the authentication category the invocation
+	// selected for its Grafana connection, clamped to the fixed vocabulary in
+	// authmethod.go — never a raw configured value, never credential
+	// material. It describes Grafana connection authentication only, not
+	// Grafana Cloud/GCOM auth. Absent means no Grafana context was selected,
+	// or several different methods were used in one invocation; "anonymous"
+	// is a valid selection with no credential material; "unknown" is a
+	// selection that could not be classified. A selected method whose
+	// credential turns out invalid still reports the method — that failure
+	// mode is the field's reason to exist. Eligible on every outcome,
+	// including success and canceled.
+	GrafanaAuthMethod string `json:"grafana_auth_method,omitempty"`
 
 	// Parse-failure capture, set only when Outcome is OutcomeParseError.
 	ParseErrorKind     string `json:"parse_error_kind,omitempty"`
