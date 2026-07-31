@@ -31,14 +31,14 @@ type RawColumn struct {
 }
 
 // ConvertResponse converts a Grafana data-frame Response into a
-// RawQueryResponse by pivoting every frame for refId "A" from
+// RawQueryResponse by pivoting every frame for the given refId from
 // column-oriented to row-oriented layout.
-func ConvertResponse(resp *Response) *RawQueryResponse {
+func ConvertResponse(resp *Response, refId string) *RawQueryResponse {
 	out := &RawQueryResponse{
 		Frames: []RawFrame{},
 	}
 
-	result, ok := resp.Results["A"]
+	result, ok := resp.Results[refId]
 	if !ok {
 		return out
 	}

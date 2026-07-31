@@ -322,7 +322,7 @@ func executeRawQuery(
 	}
 
 	// Build the full query object: inject refId and datasource, then merge
-	// user-provided fields (user fields override defaults like refId).
+	// user-provided fields (user fields may override refId).
 	fullQuery := map[string]any{
 		"refId": "A",
 		"datasource": map[string]any{
@@ -331,6 +331,14 @@ func executeRawQuery(
 		},
 	}
 	maps.Copy(fullQuery, queryObj)
+
+	// Read the effective refId after the merge — the user may have
+	// overridden it. Both the error check and response conversion must
+	// use the same key to avoid silently dropping results.
+	refId := "A"
+	if v, ok := fullQuery["refId"].(string); ok && v != "" {
+		refId = v
+	}
 
 	// Resolve time range.
 	now := time.Now()
@@ -374,7 +382,7 @@ func executeRawQuery(
 		return fmt.Errorf("failed to parse query response: %w", err)
 	}
 
-	if result, ok := grafanaResp.Results["A"]; ok && result.Error != "" {
+	if result, ok := grafanaResp.Results[refId]; ok && result.Error != "" {
 		status := result.Status
 		if status == 0 {
 			status = http.StatusBadRequest
@@ -382,7 +390,7 @@ func executeRawQuery(
 		return queryerror.New(rawType, "query", status, result.Error, result.ErrorSource)
 	}
 
-	return shared.IO.Encode(cmd.OutOrStdout(), dataframe.ConvertResponse(&grafanaResp))
+	return shared.IO.Encode(cmd.OutOrStdout(), dataframe.ConvertResponse(&grafanaResp, refId))
 }
 
 // resolveQueryJSON reads the raw query JSON from inline text, a file (@path),

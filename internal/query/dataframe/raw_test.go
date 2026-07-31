@@ -11,7 +11,7 @@ import (
 
 func TestConvertResponse_EmptyResults(t *testing.T) {
 	resp := &dataframe.Response{Results: map[string]dataframe.Result{}}
-	out := dataframe.ConvertResponse(resp)
+	out := dataframe.ConvertResponse(resp, "A")
 	assert.Empty(t, out.Frames)
 }
 
@@ -21,7 +21,7 @@ func TestConvertResponse_NoRefIdA(t *testing.T) {
 			"B": {Frames: []dataframe.Frame{}},
 		},
 	}
-	out := dataframe.ConvertResponse(resp)
+	out := dataframe.ConvertResponse(resp, "A")
 	assert.Empty(t, out.Frames)
 }
 
@@ -49,7 +49,7 @@ func TestConvertResponse_SingleFrame(t *testing.T) {
 		},
 	}
 
-	out := dataframe.ConvertResponse(resp)
+	out := dataframe.ConvertResponse(resp, "A")
 
 	require.Len(t, out.Frames, 1)
 	frame := out.Frames[0]
@@ -101,7 +101,7 @@ func TestConvertResponse_MultiFrame(t *testing.T) {
 		},
 	}
 
-	out := dataframe.ConvertResponse(resp)
+	out := dataframe.ConvertResponse(resp, "A")
 
 	require.Len(t, out.Frames, 2)
 
@@ -119,6 +119,33 @@ func TestConvertResponse_MultiFrame(t *testing.T) {
 	require.Len(t, out.Frames[1].Rows, 2)
 	assert.Equal(t, []any{"requests", float64(100)}, out.Frames[1].Rows[0])
 	assert.Equal(t, []any{"errors", float64(5)}, out.Frames[1].Rows[1])
+}
+
+func TestConvertResponse_CustomRefId(t *testing.T) {
+	resp := &dataframe.Response{
+		Results: map[string]dataframe.Result{
+			"B": {
+				Frames: []dataframe.Frame{
+					{
+						Schema: dataframe.Schema{
+							Fields: []dataframe.Field{{Name: "val", Type: "number"}},
+						},
+						Data: dataframe.Data{Values: [][]any{{float64(99)}}},
+					},
+				},
+			},
+		},
+	}
+
+	// Requesting refId "A" should return empty.
+	outA := dataframe.ConvertResponse(resp, "A")
+	assert.Empty(t, outA.Frames)
+
+	// Requesting refId "B" should return the data.
+	outB := dataframe.ConvertResponse(resp, "B")
+	require.Len(t, outB.Frames, 1)
+	require.Len(t, outB.Frames[0].Rows, 1)
+	assert.Equal(t, []any{float64(99)}, outB.Frames[0].Rows[0])
 }
 
 func TestConvertResponse_EmptyData(t *testing.T) {
@@ -139,7 +166,7 @@ func TestConvertResponse_EmptyData(t *testing.T) {
 		},
 	}
 
-	out := dataframe.ConvertResponse(resp)
+	out := dataframe.ConvertResponse(resp, "A")
 	require.Len(t, out.Frames, 1)
 	require.Len(t, out.Frames[0].Columns, 1)
 	assert.Equal(t, "value", out.Frames[0].Columns[0].Name)
@@ -163,7 +190,7 @@ func TestConvertResponse_SkipsEmptySchemaFrames(t *testing.T) {
 		},
 	}
 
-	out := dataframe.ConvertResponse(resp)
+	out := dataframe.ConvertResponse(resp, "A")
 	require.Len(t, out.Frames, 1)
 	assert.Equal(t, "x", out.Frames[0].Columns[0].Name)
 }
