@@ -51,10 +51,14 @@ Four checks. Work all four.
   `small` annotation on a command that can dump tens of thousands of rows is a
   recurring blocker. Where a flag changes the bound, say so:
   `small (large with --all)`.
-4. **Codec registered in `setup(flags)` is reachable from `RunE`.** Trace the
-  registration to an actual encode. A codec registered for format validation
-  whose `Encode` never runs is dead code — delete one of the two paths. (Easy to
-  skip once checks 1-3 have already produced findings; don't.)
+4. **Codec registered in `setup(flags)` is reachable from `RunE`** — on *every*
+  leaf the diff touches, not just the new one. Trace each registration to an
+  actual encode call: a codec registered for format validation whose `Encode`
+  never runs is dead code, so delete one of the two paths. If you extended a
+  shared command builder, this check applies to every command that mounts it.
+  In replicated runs this is the single most-missed check in this document,
+  because the dead registration usually sits in the *sibling* rather than in the
+  leaf you were thinking about.
 
 ## T2: Inputs
 
