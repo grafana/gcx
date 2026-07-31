@@ -1,10 +1,10 @@
 # Instrumentation fallback (minimal)
 
-This is a deliberately minimal fallback for when the live fetch of sigil-sdk's `llms.txt` "Path B"
+This is a deliberately minimal fallback for when the live fetch of agento11y's `llms.txt` "Path B"
 is unavailable. It carries only the highest-value pieces — the OTel provider setup (gap checklist
 #1, the silent failure) and the instrumentation preference order. For everything else (per-provider
 wrappers, framework adapters, field lists, workflow steps, content-capture modes), fetch
-`https://raw.githubusercontent.com/grafana/sigil-sdk/main/llms.txt`.
+`https://raw.githubusercontent.com/grafana/agento11y/main/llms.txt`.
 
 ## The #1 gap: OTel providers (or metrics are silently lost)
 
@@ -94,17 +94,64 @@ Use the highest-level option that exists for the app's language; do not assume s
 Use `AGENTO11Y_*` (never legacy `SIGIL_*`). The SDK reads these automatically; construct the client
 with no config when they're present.
 
+Two channels — **both are required**, they carry different data:
+- **`AGENTO11Y_*`** → generation ingest (the conversations/generations you verify with the
+  `gcx agento11y` commands).
+- **`OTEL_*`** → OTel traces/metrics (`gen_ai.client.*` latency/token/cost) that feed the
+  **Performance** view. This is the #1-gap channel: leaving it unconfigured sends spans/metrics to
+  the no-op and they vanish **silently, with no error** — and gcx cannot see this channel, so it
+  looks fine from `generations get` while Performance stays empty. Do not treat it as optional.
+
+The same `glc_…` token covers both channels.
+
 ```
+# Generation ingest (conversations/generations; verified by gcx).
+# PROTOCOL/AUTH_MODE below govern THIS channel only — the AGENTO11Y_ENDPOINT
+# API, NOT the OTLP gateway. The OTel channel's transport/auth is set entirely
+# by the OTEL_* vars and is unaffected by AGENTO11Y_PROTOCOL.
 AGENTO11Y_ENDPOINT=<your-agent-observability-api-url>
 AGENTO11Y_PROTOCOL=http
 AGENTO11Y_AUTH_MODE=basic
 AGENTO11Y_AUTH_TENANT_ID=<your-instance-id>
 AGENTO11Y_AUTH_TOKEN=<glc_... token>
 
-OTEL_EXPORTER_OTLP_ENDPOINT=<from stack OpenTelemetry card>
+# OTel traces/metrics (Performance view). Separate endpoint (the OTLP gateway),
+# separate auth — configured only via these OTEL_* vars.
+OTEL_EXPORTER_OTLP_ENDPOINT=<from the stack OTLP tile — see below>
 OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64 of "<otlp-instance-id>:<glc_... token>">
 ```
 
+> **`AGENTO11Y_PROTOCOL=http` and `AGENTO11Y_AUTH_MODE=basic` are mandatory for Grafana Cloud — not
+> optional extras.** The SDK defaults are `_DEFAULT_PROTOCOL = "grpc"` and `_DEFAULT_AUTH_MODE =
+> "none"`; against a Cloud HTTP ingest endpoint those defaults produce a **401 UNAUTHENTICATED**
+> (`grpc` speaks the wrong transport, `none` sends no auth header). If a run fails with 401 on
+> generation ingest, these two vars are almost always missing — set both. (`basic` base64-encodes
+> `tenant_id:token` into the auth header, which is why `AGENTO11Y_AUTH_TENANT_ID` is also required.)
+>
+> Note the `http` here is about the **`AGENTO11Y_ENDPOINT`** ingest API, not the OTLP gateway you see
+> in the `OTEL_*` block below — those are two different endpoints on two different channels. The OTLP
+> gateway's transport is not controlled by `AGENTO11Y_PROTOCOL` at all; it's governed by `OTEL_*`.
+
+`OTEL_EXPORTER_OTLP_HEADERS` — required when sending to the Grafana Cloud OTLP gateway: the gateway
+enforces Basic auth and the credential cannot be embedded in the URL, so without the header you get a
+401 and nothing lands. Set both `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS`.
+
+**Where to get the `OTEL_*` values (easiest — let Cloud build them for you).** Send the developer to
+the stack's OTLP tile, `https://grafana.com/orgs/<org-slug>/stacks/<stack-id>/otlp-info`:
+
+1. It already shows **`OTEL_EXPORTER_OTLP_ENDPOINT`** (e.g. `https://otlp-gateway-<region>.grafana.net/otlp`)
+   and the **Instance ID**.
+2. Under **Password / API Token**, click **"Generate now"** to mint the token.
+3. The **Environment Variables** section then fills in with all `OTEL_*` vars ready to copy —
+   including `OTEL_EXPORTER_OTLP_HEADERS` **with the base64 already computed**. Copy them straight
+   into the `.env`; no manual encoding needed. (Before generating, that section reads "Create an API
+   token first" — that's expected.)
+
+Only if you already have a raw token and instance-id and must build the header yourself, do it with
+`printf '%s' '<otlp-instance-id>:<glc_token>' | base64 | tr -d '\n'` — a trailing newline breaks the
+header. (The tile is also reachable from the plugin **Connection page**,
+`https://<stack>.grafana.net/plugins/grafana-agento11y-app`.)
+
 For the full reference — per-provider wrapper usage, every framework adapter, the complete telemetry
 field list, workflow-step schema, `set_result` field completeness, and content-capture modes — fetch
-`https://raw.githubusercontent.com/grafana/sigil-sdk/main/llms.txt`.
+`https://raw.githubusercontent.com/grafana/agento11y/main/llms.txt`.

@@ -77,6 +77,11 @@ While resources are loaded from disk, the server will use the Grafana instance
 described in the current context to access some data (example: to run queries
 when previewing dashboards).
 
+The local proxy supports token, Basic, and mTLS contexts. OAuth contexts fail
+before the server starts because this long-running process cannot yet persist
+rotated refresh-token generations safely; use a service-account token for local
+preview.
+
 Note on NFS/SMB and watch mode: fsnotify requires support from underlying
 OS to work. The current NFS and SMB protocols does not provide network level
 support for file notifications.

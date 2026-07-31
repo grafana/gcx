@@ -138,9 +138,11 @@ var commandAnnotations = map[string]annotation{
 	"gcx instrumentation clusters apps wait":      {Cost: "small"},
 
 	// top-level single commands
-	"gcx instrumentation setup":  {Cost: "medium", Hint: "<cluster> --use-defaults -o json | Docs: " + docs.KubernetesMonitoring},
-	"gcx instrumentation status": {Cost: "medium", Hint: "-o json | Docs: " + docs.KubernetesMonitoring},
-	"gcx instrumentation check":  {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds) — does not query any Grafana stack. [components] --language <lang> -o json"},
+	"gcx instrumentation setup":             {Cost: "medium", Hint: "<cluster> --use-defaults -o json | Docs: " + docs.KubernetesMonitoring},
+	"gcx instrumentation status":            {Cost: "medium", Hint: "-o json | Docs: " + docs.KubernetesMonitoring},
+	"gcx instrumentation check":             {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds) — does not query any Grafana stack. [components] --language <lang> -o json"},
+	"gcx instrumentation explain":           {Cost: "small", Hint: "Show a markdown explanation for an otel-checker finding by its explain ID (see the explain_id field in `gcx instrumentation check -o json` output). Use `gcx instrumentation list-explanations` to enumerate every registered ID."},
+	"gcx instrumentation list-explanations": {Cost: "medium", Hint: "-o json"},
 
 	// services verb group
 	"gcx instrumentation services list":    {Cost: "large", Hint: "K8s workloads discovered fleet-wide by the Beyla survey collector, for setting up instrumentation (distinct from 'gcx appo11y services', which lists telemetry-reporting services). --cluster <name> --namespace <ns> -o json"},
@@ -177,6 +179,12 @@ var commandAnnotations = map[string]annotation{
 	"gcx alert instances list":               {Cost: "large", Hint: "--state firing --group <name> -o json"},
 	"gcx alert rules get":                    {Cost: "small"},
 	"gcx alert rules list":                   {Cost: "medium", Hint: "--folder <uid> --group <name> -o json"},
+	"gcx alert ruler namespaces list":        {Cost: "small", Hint: "--datasource <uid>"},
+	"gcx alert ruler namespaces delete":      {Cost: "small", Hint: "<namespace> --datasource <uid> --force"},
+	"gcx alert ruler groups list":            {Cost: "medium", Hint: "--datasource <uid> [--namespace <ns>] -o json"},
+	"gcx alert ruler groups get":             {Cost: "medium", Hint: "<namespace> <group> --datasource <uid>"},
+	"gcx alert ruler groups upsert":          {Cost: "small", Hint: "<namespace> -f <file> --datasource <uid>"},
+	"gcx alert ruler groups delete":          {Cost: "small", Hint: "<namespace> <group> --datasource <uid> --force"},
 	"gcx alert contact-points list":          {Cost: "small"},
 	"gcx alert contact-points get":           {Cost: "small"},
 	"gcx alert contact-points create":        {Cost: "small"},
@@ -286,7 +294,8 @@ var commandAnnotations = map[string]annotation{
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
 	"gcx kg entities query":       {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s LIMIT 10\" [--since 1h] | read-only Cypher query; always include LIMIT for targeted lookups; omit for broad discovery"},
-	"gcx kg diagnose":             {Cost: "medium", Hint: "[--env <env>] | run diagnostic checks on the Knowledge Graph pipeline: stack status, sanity checks, entity counts, scopes, telemetry configs, recording rule metrics"},
+	"gcx kg entities correlate":   {Cost: "medium", Hint: "--alert-labels 'alertname=<name>,job=<job>' [--since 1h] | resolve the affected entities for a firing alert from its labels (the \"I have an alert, which entity?\" entry point) | provide alerts inline (repeatable), from an Alertmanager webhook via -f/stdin, or both | empty result exits 0 with a notice | use this instead of list/inspect when you have an alert rather than a known entity name"},
+	"gcx kg diagnose":             {Cost: "medium", Hint: "[--env <env>] | run diagnostic checks on the Knowledge Graph pipeline: stack status, sanity checks, entity counts, scopes, telemetry configs, recording rule metrics, and an aggregate instrumentation-quality summary"},
 	"gcx kg diagnose service":     {Cost: "medium", Hint: "<service-name> [--env <env>] | deep diagnosis for a specific service: entity lookup, relationships, per-service metrics, interpreted diagnosis with next steps"},
 	"gcx kg diagnose labels":      {Cost: "medium", Hint: "validate the deployment_environment → asserts_env label mapping pipeline | identifies unmapped environments and orphaned asserts_env values"},
 	"gcx kg entities list":        {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | use --property name=<value> to fetch a single entity by name | use --insight severity=critical|warning|info or --insight name=<assertion> to filter to entities with active insights (repeatable; matchers AND on the same assertion) | use --json type,name,scope when only entity identity is needed to reduce output size | run gcx kg meta scopes first to discover valid env/namespace/site values | 'gcx appo11y services list' provides a telemetry-based App Observability service inventory (instrumentation coverage) that does not require the Knowledge Graph"},
@@ -313,6 +322,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg prom-rules get":       {Cost: "small"},
 	"gcx kg prom-rules list":      {Cost: "small"},
 	"gcx kg prom-rules schema":    {Cost: "small", Hint: "live JSON Schema for Custom Prometheus rules from backend — pipe to file for editor autocomplete, or validate prom-rules YAML before upsert"},
+	"gcx kg quality list":         {Cost: "medium", Hint: "--env <env> [--namespace <ns>] [--sort asc|desc] [--failed-check <id> ...] -o json | rank entities by instrumentation quality percent; --sort asc surfaces the worst-instrumented services first; filter to specific gaps with --failed-check (e.g. span-metrics, service-graph-metrics)"},
+	"gcx kg quality get":          {Cost: "small", Hint: "<entity-name> --env <env> [--namespace <ns>] -o json | full quality report for one entity: per-check state/impact, remediation doc links, and resolved query templates"},
 	"gcx kg status":               {Cost: "small"},
 	"gcx kg suppressions upsert":  {Cost: "small", Hint: "-f suppressions.yaml (or pipe YAML via stdin) | upsert (create or update) one or more alert suppressions; never deletes remote entries absent from the file; add --dry-run to validate against the backend and preview the remote->local diff without uploading"},
 	"gcx kg suppressions delete":  {Cost: "small"},
@@ -553,7 +564,28 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y experiments update":      {Cost: "small"},
 	"gcx agento11y experiments cancel":      {Cost: "small"},
 	"gcx agento11y experiments list-scores": {Cost: "medium", Hint: "<run-id> --limit 50 -o json"},
-	"gcx agento11y experiments report":      {Cost: "medium", Hint: "<run-id> -o json"},
+	"gcx agento11y experiments get-report":  {Cost: "medium", Hint: "<run-id> -o json"},
+	"gcx agento11y experiments list-trials": {
+		Cost: "small",
+		Hint: "<run-id> -o json",
+	},
+
+	"gcx agento11y experiments test-suites list":             {Cost: "small"},
+	"gcx agento11y experiments test-suites get":              {Cost: "small", Hint: "<suite-id> -o yaml"},
+	"gcx agento11y experiments test-suites create":           {Cost: "small"},
+	"gcx agento11y experiments test-suites update":           {Cost: "small"},
+	"gcx agento11y experiments test-suites versions create":  {Cost: "small"},
+	"gcx agento11y experiments test-suites versions publish": {Cost: "small"},
+	"gcx agento11y experiments test-suites cases list":       {Cost: "small", Hint: "<suite-id> <version> -o json"},
+	"gcx agento11y experiments test-suites cases get":        {Cost: "small", Hint: "<suite-id> <version> <test-case-id> -o yaml"},
+	"gcx agento11y experiments test-suites cases upsert":     {Cost: "small"},
+	"gcx agento11y experiments test-suites cases update":     {Cost: "small"},
+	"gcx agento11y experiments test-suites cases delete":     {Cost: "small"},
+	"gcx agento11y experiments trials get":                   {Cost: "small", Hint: "<trial-id> -o yaml"},
+	"gcx agento11y experiments trials create":                {Cost: "small"},
+	"gcx agento11y experiments trials update":                {Cost: "small"},
+	"gcx agento11y experiments trials list-scores":           {Cost: "medium", Hint: "<trial-id> -o json"},
+	"gcx agento11y experiments trials list-artifacts":        {Cost: "small", Hint: "<trial-id> -o json"},
 
 	// -----------------------------------------------------------------------
 	// SLO provider

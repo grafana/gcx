@@ -110,8 +110,8 @@ func run(ctx context.Context, o *opts, cluster string, r *runner) error {
 // printHelmCommand writes the helm command to w, enriched with access-policies
 // guidance.
 //
-// In agent mode, emits a single JSON object with helmCommand, accessPoliciesURL,
-// and requiredScopes.
+// In agent mode, emits a single JSON object with the type/schema_version
+// discriminators followed by helmCommand, accessPoliciesURL, and requiredScopes.
 //
 // In human mode, emits the raw helm command followed by the required-scopes
 // list and the access-policies URL. The recommended file-source pattern is also
@@ -123,11 +123,7 @@ func printHelmCommand(w io.Writer, cmd string, orgSlug string) error {
 	policyURL := instroutput.AccessPoliciesURL(orgSlug)
 
 	if agent.IsAgentMode() {
-		env := instroutput.SetupHelmEnvelope{
-			HelmCommand:       cmd,
-			AccessPoliciesURL: policyURL,
-			RequiredScopes:    instroutput.SetupRequiredScopes,
-		}
+		env := instroutput.NewSetupHelmEnvelope(cmd, policyURL, instroutput.SetupRequiredScopes)
 		data, err := json.Marshal(env)
 		if err != nil {
 			return fmt.Errorf("setup: marshal helm command: %w", err)
@@ -164,7 +160,8 @@ func resolveDesired(o *opts, r *runner, current instrumentation.Cluster) (instru
 		return resolveInteractive(r, current)
 	default:
 		return instrumentation.Cluster{}, errors.New(
-			"setup: stdin is not a TTY; use --use-defaults for non-interactive mode")
+			"setup: interactive prompts are unavailable (stdin is not a TTY, or agent mode is active); " +
+				"use --use-defaults for non-interactive mode")
 	}
 }
 

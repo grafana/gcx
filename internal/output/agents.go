@@ -29,13 +29,29 @@ type agentsCodec struct {
 	errWriter io.Writer
 }
 
+// spillSummary is the receipt written to stdout instead of an oversized
+// payload. Because the codec's output SHAPE changes at the spill threshold,
+// the receipt carries collision-resistant discriminators so a consumer can
+// tell it apart from domain results without heuristics: Type is the fixed
+// marker, SchemaVersion versions this receipt shape, and ContentFormat names
+// the media type of the spilled file's content.
 type spillSummary struct {
+	Type          string `json:"type"`
+	SchemaVersion string `json:"schema_version"`
 	SpilledTo     string `json:"spilled_to"`
 	Bytes         int    `json:"bytes"`
+	ContentFormat string `json:"content_format"`
 	PreviewSample any    `json:"preview_sample"`
 	Message       string `json:"message"`
 	TotalItems    *int   `json:"total_items,omitempty"`
 }
+
+const (
+	// SpillReferenceType is the value of the spill receipt's "type" field.
+	SpillReferenceType = "gcx.spill_reference"
+	// spillSchemaVersion versions the spill receipt shape itself.
+	spillSchemaVersion = "1"
+)
 
 func newAgentsCodec(errWriter io.Writer) *agentsCodec {
 	if errWriter == nil {
@@ -86,8 +102,11 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 	)
 
 	s := spillSummary{
+		Type:          SpillReferenceType,
+		SchemaVersion: spillSchemaVersion,
 		SpilledTo:     f.Name(),
 		Bytes:         len(payload),
+		ContentFormat: "json",
 		PreviewSample: previewOf(value),
 		Message:       msg,
 	}
@@ -95,10 +114,15 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 		s.TotalItems = &n
 	}
 
-	fmt.Fprintf(c.errWriter,
-		"hint: response too large for stdout (%d bytes) — read %s for full data, or use -o json to force inline\n",
-		len(payload), f.Name(),
-	)
+	// Typed hint diagnostic: on a TTY this renders the familiar
+	// "hint: ..." line; in agent mode it must be a JSONL
+	// {"class":"hint",...} record so the stderr stream stays
+	// machine-parseable (FR-104). The command argument is empty because the
+	// summary already embeds the spill file path.
+	emitHint(c.errWriter,
+		fmt.Sprintf("response too large for stdout (%d bytes) — read %s for full data, or use -o json to force inline",
+			len(payload), f.Name()),
+		"")
 
 	out := json.NewEncoder(dst)
 	out.SetEscapeHTML(false)

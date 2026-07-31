@@ -146,34 +146,62 @@ func runWait(
 
 	var lastStatus instrumentation.InstrumentationStatus
 
+	// lastPollErr remembers a persistent poll failure (bad token, DNS) so the
+	// timeout terminal names the real cause instead of reporting a bare
+	// timeout with the cause buried in stderr retry lines. Cleared on any
+	// successful poll.
+	var lastPollErr error
+
+	// terminal emits the fused terminal WaitResult failure envelopes (timeout,
+	// error status, cancellation) shared with `clusters apps wait`.
+	terminal := instrOutput.WaitTerminal{
+		Target:    instrOutput.Target{Cluster: clusterName},
+		ErrPrefix: "clusters wait",
+		Start:     start,
+		Stdout:    stdout,
+		AgentMode: opts.agentMode,
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
+			// Agent mode still owes the stream its terminal event; human mode
+			// keeps the plain cancellation error the reporter renders.
+			if opts.agentMode {
+				return terminal.FinishCanceled(ctx.Err(), string(lastStatus),
+					"wait canceled before reaching a terminal status")
+			}
 			return fmt.Errorf("clusters wait: %w", ctx.Err())
 		case <-timeoutCh:
-			// Emit fused WaitResult with Error field to stdout, then
-			// return ErrWaitTimeoutEmitted so the fail converter suppresses the
-			// secondary DetailedError envelope.
+			// Emit the fused terminal WaitResult (with Error populated) to
+			// stdout. FinishTimeout returns the ErrWaitTimeoutEmitted sentinel
+			// only when that write lands intact (it suppresses the secondary
+			// error envelope); if the write itself failed the result was NOT
+			// emitted, so the write error surfaces instead.
 			timeoutMsg := fmt.Sprintf(
 				"timeout after %s waiting for cluster %q to reach INSTRUMENTED — "+
 					"alloy-daemon may not have registered with Fleet Management yet; "+
 					"check 'helm status grafana-cloud -n monitoring' and 'kubectl logs -n monitoring -l app.kubernetes.io/name=alloy-daemon --context <ctx>'",
 				opts.Timeout, clusterName)
-			result := instrOutput.WaitResultForCluster("timeout", clusterName, string(lastStatus), start)
-			result.Error = &instrOutput.WaitError{
-				Summary:  fmt.Sprintf("timeout waiting for cluster %q", clusterName),
-				Details:  timeoutMsg,
-				ExitCode: 1,
+			if lastPollErr != nil {
+				timeoutMsg = fmt.Sprintf("%s; last poll error: %v", timeoutMsg, lastPollErr)
 			}
-			_ = result.Emit(stdout, opts.agentMode)
-			return fmt.Errorf("clusters wait: %w", instrumentation.ErrWaitTimeoutEmitted)
+			return terminal.FinishTimeout(string(lastStatus),
+				fmt.Sprintf("timeout waiting for cluster %q", clusterName), timeoutMsg)
 		case <-ticker.C:
 			clusters, err := monClient.RunK8sMonitoring(ctx)
 			if err != nil {
-				fmt.Fprintf(stderr, "  poll error (retrying): %v\n", err)
+				lastPollErr = err
+				pollErr := instrOutput.WaitPollError{
+					Event:  "poll_error",
+					Target: instrOutput.Target{Cluster: clusterName},
+					Error:  err.Error(),
+				}
+				_ = pollErr.EmitTo(stderr, opts.agentMode)
 				continue
 			}
 
+			lastPollErr = nil
 			current := findClusterStatus(clusters, clusterName)
 			lastStatus = current
 
@@ -194,8 +222,15 @@ func runWait(
 				return result.Emit(stdout, opts.agentMode)
 
 			case instrumentation.WaitError:
-				// INSTRUMENTATION_ERROR must exit non-zero immediately.
-				return fmt.Errorf("clusters wait: %w", errInstrumentationError)
+				// INSTRUMENTATION_ERROR must exit non-zero immediately. Agent
+				// mode gets the fused terminal stream_end line first; human
+				// mode keeps the plain error the reporter renders.
+				if !opts.agentMode {
+					return fmt.Errorf("clusters wait: %w", errInstrumentationError)
+				}
+				return terminal.FinishErrorStatus(errInstrumentationError, string(current),
+					errInstrumentationError.Error(),
+					fmt.Sprintf("cluster %q reported status %s", clusterName, current))
 
 			default:
 				// WaitPending: continue polling (PENDING_INSTRUMENTATION, PENDING_UNINSTRUMENTATION, etc.).

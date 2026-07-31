@@ -8,7 +8,7 @@ Unset a single value in a configuration file.
 
 PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
 
-A bare path (e.g. "cloud.token") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context.
+Paths are literal: they name the exact location in the configuration file, starting from a top-level section ("stacks.<name>.", "cloud.<entry>.", "contexts.<name>.", "resources.", "current-context"). Nothing is resolved against the current context - the path you type is the path you see in "gcx config view".
 
 ```
 gcx config unset PROPERTY_NAME [flags]
@@ -21,21 +21,21 @@ gcx config unset PROPERTY_NAME [flags]
 	# Unset the "foo" context
 	gcx config unset contexts.foo
 
-	# Unset the "insecure-skip-tls-verify" flag in the current context
-	gcx config unset grafana.insecure-skip-tls-verify
+	# Unset the "insecure-skip-verify" TLS setting on the "dev-instance" stack
+	gcx config unset stacks.dev-instance.grafana.tls.insecure-skip-verify
 
-	# Unset the "insecure-skip-tls-verify" flag in the "dev-instance" context
-	gcx config unset contexts.dev-instance.grafana.insecure-skip-tls-verify
-
-	# Unset a value in the local config layer
-	gcx config unset --file local contexts.prod.cloud.token
+	# Unset a cloud entry's token in the local config layer
+	gcx config unset --file local cloud.grafana-com.token
 ```
 
 ### Options
 
 ```
-      --file string   Config layer to write to (system, user, local)
-  -h, --help          help for unset
+      --file string     Config layer to write to (system, user, local)
+  -h, --help            help for unset
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

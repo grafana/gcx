@@ -1,12 +1,19 @@
 package instrumentation
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/grafana/gcx/internal/gcxerrors"
+)
 
 // ErrWaitTimeoutEmitted is a sentinel returned by wait commands after they have
 // already emitted a fused WaitResult (with Error populated) to stdout.
-// The fail converter chain recognises this sentinel and SUPPRESSES the secondary
-// DetailedError JSON envelope — the WaitResult is the only payload.
-var ErrWaitTimeoutEmitted = errors.New("wait: timeout emitted")
+// It is an EmittedError, so the top-level reporter honors the exit code and
+// SUPPRESSES any secondary output — the WaitResult is the only payload.
+// errors.Is against this variable still works through %w wrapping (pointer
+// identity), which the wait call sites rely on.
+var ErrWaitTimeoutEmitted error = gcxerrors.NewEmittedError(
+	gcxerrors.ExitGeneralError, errors.New("wait: timeout emitted"))
 
 // WaitOutcome classifies a proto InstrumentationStatus into one of three
 // terminal states for the wait polling loop.

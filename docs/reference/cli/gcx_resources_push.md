@@ -71,12 +71,15 @@ gcx resources push [RESOURCE_SELECTOR]... [flags]
       --dry-run                         If set, the push operation will be simulated, without actually creating or updating any resources
   -h, --help                            help for push
       --include-managed                 If set, resources managed by other tools will be included in the push operation
+      --jq string                       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string                     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-concurrent int              Maximum number of concurrent operations (default 10)
       --omit-manager-fields             If set, the manager fields will not be appended to the resources
       --on-error string                 How to handle errors during resource operations:
                                           ignore — continue processing all resources and exit 0
-                                          fail   — continue processing all resources and exit 1 if any failed (default)
-                                          abort  — stop on the first error and exit 1 (default "fail")
+                                          fail   — continue processing all resources and exit 4 (partial failure) if any failed (default)
+                                          abort  — stop on the first error and exit non-zero (default "fail")
+  -o, --output string                   Output format. One of: agents, json, text, yaml (default "text")
   -p, --path strings                    Paths on disk from which to read the resources to push (default [./resources])
 ```
 

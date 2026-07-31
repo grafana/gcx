@@ -41,6 +41,85 @@ type logsHelper struct {
 	loader *providers.ConfigLoader
 }
 
+// deleteConfirmationCodec is the human "text" codec for the adaptive logs
+// delete commands. It reproduces the historical stdout confirmation line
+// ("Deleted <noun> %q") from the structured SingleMutation result, keeping
+// default human stdout byte-identical while agent mode and explicit -o
+// json/yaml get the structured document.
+type deleteConfirmationCodec struct{ noun string }
+
+func (c *deleteConfirmationCodec) Format() format.Format { return "text" }
+
+func (c *deleteConfirmationCodec) Encode(w io.Writer, v any) error {
+	m, ok := v.(cmdio.SingleMutation)
+	if !ok {
+		return fmt.Errorf("adaptive-logs: delete text codec: expected SingleMutation, got %T", v)
+	}
+	cmdio.Success(w, "Deleted %s %q", c.noun, m.Target.ID)
+	return nil
+}
+
+func (c *deleteConfirmationCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
+}
+
+// adaptiveDeleteOpts is the shared options struct for the adaptive logs
+// delete commands (exemptions, segments, drop-rules).
+type adaptiveDeleteOpts struct {
+	IO    cmdio.Options
+	Force bool
+}
+
+func (o *adaptiveDeleteOpts) setup(cmd *cobra.Command, noun string) {
+	cmd.Flags().BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The delete result is a SingleMutation document through the codec
+	// system: the text codec reproduces the historical stdout confirmation
+	// line; agent mode and explicit -o json/yaml get the structured
+	// document.
+	o.IO.RegisterCustomCodec("text", &deleteConfirmationCodec{noun: noun})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (o *adaptiveDeleteOpts) Validate() error { return o.IO.Validate() }
+
+// adaptiveDeleteCommand builds one adaptive logs delete command: confirm
+// (agent-aware), delete via del, then emit the SingleMutation result through
+// the codec system.
+func adaptiveDeleteCommand(short, noun, kind string, del func(ctx context.Context, id string) error) *cobra.Command {
+	opts := &adaptiveDeleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete ID",
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+				fmt.Sprintf("Delete %s %q?", noun, args[0]))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
+			}
+
+			if err := del(cmd.Context(), args[0]); err != nil {
+				return err
+			}
+
+			changed := true
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: kind, ID: args[0]})
+			result.Changed = &changed
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	opts.setup(cmd, noun)
+	return cmd
+}
+
 func (h *logsHelper) newClient(ctx context.Context) (*Client, error) {
 	signalAuth, err := auth.ResolveSignalAuth(ctx, h.loader, "logs")
 	if err != nil {
@@ -725,39 +804,15 @@ func (h *logsHelper) exemptionsUpdateCommand() *cobra.Command {
 
 // exemptions delete
 
-type exemptionsDeleteOpts struct{}
-
-func (o *exemptionsDeleteOpts) setup(_ *cobra.Command) {}
-
-func (o *exemptionsDeleteOpts) Validate() error { return nil }
-
 func (h *logsHelper) exemptionsDeleteCommand() *cobra.Command {
-	opts := &exemptionsDeleteOpts{}
-	cmd := &cobra.Command{
-		Use:   "delete ID",
-		Short: "Delete an adaptive log exemption.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
+	return adaptiveDeleteCommand("Delete an adaptive log exemption.", "exemption", "exemption",
+		func(ctx context.Context, id string) error {
 			crud, _, err := NewExemptionTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
-
-			if err := crud.Delete(ctx, args[0]); err != nil {
-				return err
-			}
-
-			cmdio.Success(cmd.OutOrStdout(), "Deleted exemption %q", args[0])
-			return nil
-		},
-	}
-	opts.setup(cmd)
-	return cmd
+			return crud.Delete(ctx, id)
+		})
 }
 
 // ---------------------------------------------------------------------------
@@ -983,39 +1038,15 @@ func (h *logsHelper) segmentsUpdateCommand() *cobra.Command {
 
 // segments delete
 
-type segmentsDeleteOpts struct{}
-
-func (o *segmentsDeleteOpts) setup(_ *cobra.Command) {}
-
-func (o *segmentsDeleteOpts) Validate() error { return nil }
-
 func (h *logsHelper) segmentsDeleteCommand() *cobra.Command {
-	opts := &segmentsDeleteOpts{}
-	cmd := &cobra.Command{
-		Use:   "delete ID",
-		Short: "Delete an adaptive log segment.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
+	return adaptiveDeleteCommand("Delete an adaptive log segment.", "segment", "segment",
+		func(ctx context.Context, id string) error {
 			crud, _, err := NewSegmentTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
-
-			if err := crud.Delete(ctx, args[0]); err != nil {
-				return err
-			}
-
-			cmdio.Success(cmd.OutOrStdout(), "Deleted segment %q", args[0])
-			return nil
-		},
-	}
-	opts.setup(cmd)
-	return cmd
+			return crud.Delete(ctx, id)
+		})
 }
 
 // ---------------------------------------------------------------------------
@@ -1265,7 +1296,9 @@ func (h *logsHelper) dropRulesCreateCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Created drop rule %q (id=%s)", created.Spec.Name, created.Spec.ID)
+			// Confirmation prose is a diagnostic — stderr keeps stdout a
+			// single parseable document (the created rule echo below).
+			cmdio.Success(cmd.ErrOrStderr(), "Created drop rule %q (id=%s)", created.Spec.Name, created.Spec.ID)
 			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
 		},
 	}
@@ -1331,7 +1364,9 @@ func (h *logsHelper) dropRulesUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated drop rule %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
+			// Confirmation prose is a diagnostic — stderr keeps stdout a
+			// single parseable document (the updated rule echo below).
+			cmdio.Success(cmd.ErrOrStderr(), "Updated drop rule %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
 			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
 		},
 	}
@@ -1341,37 +1376,13 @@ func (h *logsHelper) dropRulesUpdateCommand() *cobra.Command {
 
 // dropRules delete
 
-type dropRulesDeleteOpts struct{}
-
-func (o *dropRulesDeleteOpts) setup(_ *cobra.Command) {}
-
-func (o *dropRulesDeleteOpts) Validate() error { return nil }
-
 func (h *logsHelper) dropRulesDeleteCommand() *cobra.Command {
-	opts := &dropRulesDeleteOpts{}
-	cmd := &cobra.Command{
-		Use:   "delete ID",
-		Short: "Delete an adaptive log drop rule.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
+	return adaptiveDeleteCommand("Delete an adaptive log drop rule.", "drop rule", "drop-rule",
+		func(ctx context.Context, id string) error {
 			crud, _, err := NewDropRuleTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
-
-			if err := crud.Delete(ctx, args[0]); err != nil {
-				return err
-			}
-
-			cmdio.Success(cmd.OutOrStdout(), "Deleted drop rule %q", args[0])
-			return nil
-		},
-	}
-	opts.setup(cmd)
-	return cmd
+			return crud.Delete(ctx, id)
+		})
 }

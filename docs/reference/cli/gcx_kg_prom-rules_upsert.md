@@ -6,11 +6,24 @@ Upload Knowledge Graph Custom Prometheus rules from a YAML file.
 gcx kg prom-rules upsert [flags]
 ```
 
+### Examples
+
+```
+  gcx kg prom-rules upsert -f rules.yaml
+
+  # Validate against the backend and preview the diff without uploading:
+  gcx kg prom-rules upsert -f rules.yaml --dry-run
+```
+
 ### Options
 
 ```
-  -f, --file string   Input file (YAML)
-  -h, --help          help for upsert
+      --dry-run         Validate against the backend and show a diff without uploading.
+  -f, --file string     Input file (YAML), or '-' for stdin.
+  -h, --help            help for upsert
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

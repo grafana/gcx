@@ -55,6 +55,15 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Get values for a specific label
   gcx metrics labels -d UID --label job
 
+  # List labels present on a metric
+  gcx metrics labels -d UID --metric http_requests_total
+
+  # Get values a label takes on a metric
+  gcx metrics labels -d UID --metric http_requests_total --label job
+
+  # Scope with an arbitrary series selector
+  gcx metrics labels -d UID --match '{job="api"}'
+
   # Output as JSON
   gcx metrics labels -d UID -o json`,
 			},
@@ -76,6 +85,11 @@ func (p *Provider) descriptor() signals.Descriptor {
 				Build:     seriesCmd,
 				TokenCost: "medium",
 				LLMHint:   `gcx metrics series -d abc123 '{__name__="up"}' --since 1h -o json`,
+			},
+			{
+				Build:     listCmd,
+				TokenCost: "small",
+				LLMHint:   `gcx metrics list-names -d abc123 --contains request -o json`,
 			},
 		},
 		ExtraCommands: []signals.CommandBuilder{BillingCommands, CardinalityCommands},

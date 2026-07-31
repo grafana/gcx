@@ -126,6 +126,12 @@ type MutationResult struct {
 	Operation string  `json:"operation" yaml:"operation"`
 	Server    *Server `json:"server,omitempty" yaml:"server,omitempty"`
 	AuthURL   string  `json:"authUrl,omitempty" yaml:"authUrl,omitempty"`
+	// Error carries the in-band failure summary when the mutation itself
+	// persisted but a follow-up step failed (e.g. the post-mutation OAuth
+	// requirement check) and the command exits non-zero: a machine consumer
+	// reading only stdout must see why the exit code is not 0. Empty on full
+	// success.
+	Error string `json:"error,omitempty" yaml:"error,omitempty"`
 }
 
 type ValidationResult struct {
