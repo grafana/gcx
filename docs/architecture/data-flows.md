@@ -297,8 +297,8 @@ backing client is a REST adapter or the k8s dynamic client.
 
 Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query.go`. Shared query CLI utils live in `internal/datasources/query/`.
 
-**Two dispatch mechanisms, wired differently.** Adding a datasource kind means
-touching both:
+**Two dispatch mechanisms, wired differently.** Registration is required; the
+generic dispatcher is a separate, conditional decision:
 
 1. **Typed `datasources <kind>` subtrees — registry-driven.** Each kind
    implements `DatasourceProvider` (`internal/datasources/provider.go`) and

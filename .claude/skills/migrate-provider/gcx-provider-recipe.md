@@ -335,8 +335,9 @@ gcx providers list                   # new provider listed
 ### Step 8: Smoke Test (Phase 4 — MANDATORY)
 
 > **Phase 4 verification.** This step maps to Phase 4 steps 4A–4E in SKILL.md.
-> Smoke tests are MANDATORY — they MUST NOT be marked "optional" or "if live
-> instance available". If no live instance is available, block and report.
+> Smoke tests are MANDATORY to attempt and MUST NOT be silently skipped. If no
+> live instance is available, report each one UNVERIFIED with that reason and do
+> not assert parity with the legacy CLI.
 >
 > Every show/list command MUST be tested with ALL FOUR output formats:
 > `-o json`, `-o table`, `-o wide`, `-o yaml`.

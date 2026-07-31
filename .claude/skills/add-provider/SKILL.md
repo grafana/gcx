@@ -6,8 +6,8 @@ description: Use for the implementation workflow once a capability is already cl
 # Add Provider
 
 Orchestrates adding a new Grafana product provider — from API discovery through
-verified implementation. Four stages; the discovery and design gates apply to
-direct invocation only (see [Entry paths](#entry-paths)).
+verified implementation. Four stages, worked autonomously: the stage boundaries
+are checkpoints you satisfy, not approvals you wait for.
 
 ## When to Use
 
@@ -67,10 +67,37 @@ satisfy, not approvals you wait for**:
 - Stop only for a CONSTITUTION conflict with no compliant alternative, a needed
   waiver, or a missing backend/auth prerequisite.
 
+
+## The flow, however you got here
+
+```text
+contract (proportional)  →  implementation  →  Review
+```
+
+Both entry paths run all three. The contract and the review are the
+high-value part — naming against the frozen surface, typed inputs and
+explicitly-empty values, output protocol class, completeness honesty, actionable
+errors, token cost, shared-transport reuse, mutation-resistant tests — and none
+of it is a document or a gate.
+
+- **Contract, before you write code:** cover
+  `claude-plugin/skills/integrate-with-gcx/references/contract-and-tests.md`,
+  sized to the change. A one-flag addition needs three lines of it; a new
+  provider needs all of it. If you arrived from `integrate-with-gcx` the contract
+  already exists — use it, don't redo it.
+- **Review, before you call it review-ready:** run the diff-triggered checks in
+  `claude-plugin/skills/integrate-with-gcx/references/self-review.md`, and re-run
+  them after every fix push. Report only unresolved risks, unverified
+  assumptions, failed or skipped checks, and architecture deviations.
+
+Read those two files from the checkout, or via
+`gcx agent skills get integrate-with-gcx`. Skipping them is the one way to get
+this wrong while every gate stays green.
+
 ## Workflow
 
 ```
-Discover ──gate──> Design ──gate──> Implement ──gate──> Verify
+Discover ───────> Design ───────> Implement ──gate──> Verify
    │                  │                  │                  │
    v                  v                  v                  v
 research report    ADRs + spec       code per stage     smoke tests
@@ -78,8 +105,8 @@ research report    ADRs + spec       code per stage     smoke tests
 
 | Stage | Deliverable | Gate |
 |-------|-------------|------|
-| 1. Discover | `docs/research/` report | User approves findings *(direct invocation only)* |
-| 2. Design | ADRs + spec + smoke test plan | User approves design *(direct invocation only)* |
+| 1. Discover | research findings (report only if staged work needs one) | findings presented; no approval wait |
+| 2. Design | decisions + smoke test plan (ADR/spec only per the risk test) | decisions presented; no approval wait |
 | 3. Implement | Code (one stage at a time) | `mise run gate` passes per stage |
 | 4. Verify | Smoke tests + architecture doc updates | All checks green |
 
@@ -132,9 +159,11 @@ the template at `docs/_templates/research.md`. Must include:
 
 ### Gate: User Approves Research
 
-Direct-invocation path only. Present the research report; do not proceed to
-design until approved. On the `integrate-with-gcx` path this stage and its gate
-are skipped — see [Entry paths](#entry-paths).
+Present the findings and keep going — this is a checkpoint, not an approval
+wait, on either entry path. Ask only if something unresolved would materially
+change the implementation. On the `integrate-with-gcx` path the stage is skipped
+outright when the placement section already answers it — see
+[Entry paths](#entry-paths).
 
 ---
 
@@ -219,10 +248,10 @@ bin/gcx resources get {alias}
 
 ### Gate: User Approves Design
 
-Direct-invocation path only. Present ADRs and spec; do not proceed to
-implementation until approved. On the `integrate-with-gcx` path, decisions the
-placement section already settled are recorded rather than re-derived, and there
-is no approval gate — see [Entry paths](#entry-paths).
+Present the decisions — and whichever of ADR/spec the risk test actually called
+for — and keep going. No approval wait on either entry path. On the
+`integrate-with-gcx` path, decisions the placement section already settled are
+recorded rather than re-derived — see [Entry paths](#entry-paths).
 
 ---
 
@@ -288,8 +317,12 @@ format-agnostic data fetching, promql-builder for PromQL.
 
 **Agent contract**: every new leaf command has an entry in
 `cmd/gcx/root/testdata/output_classes.json` and a token-cost annotation (plus
-`llm_hint` for medium/large) — the `TestConsistency_*` and `TestAgentConformance_*`
-suites in `cmd/gcx/root/` fail CI otherwise.
+`llm_hint` whenever the worst case is medium/large) — the `TestConsistency_*` and
+`TestAgentConformance_*` suites in `cmd/gcx/root/` fail CI on a missing output
+class or token cost. The hint check is weaker: it matches the annotation exactly
+against `"medium"`/`"large"`, so a qualified cost like `small (large with --all)`
+evades it. Write the hint regardless — the rule is the worst case, not the
+spelling.
 
 **Build**: `GCX_AGENT_MODE=false mise run all` once, `gcx providers list` lists it, `config view` redacts.
 

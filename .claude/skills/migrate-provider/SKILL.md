@@ -99,9 +99,9 @@ Phase 2: Spec Planning
 Phase 3: Build
   → agent team (Core + Commands)
   → code files
-      ↓ [mise run all gate]
+      ↓ [GCX_AGENT_MODE=false mise run all gate]
 Phase 4: Verification (4A–4E)
-  → mise run all + smoke tests + adapter smoke
+  → GCX_AGENT_MODE=false mise run all + smoke tests + adapter smoke
   → comparison report + recipe update
       ↓ [user approval gate]
 ```
@@ -357,8 +357,10 @@ Smoke tests are MANDATORY for every show/list command. Each command MUST be
 tested with ALL FOUR output formats: `-o json`, `-o table`, `-o wide`,
 `-o yaml`.
 
-Smoke tests MUST NOT be marked "optional" or "if live instance available".
-If no live instance is available, Phase 4 MUST block and report the blocker
+Smoke tests MUST NOT be silently skipped or quietly downgraded.
+If no live instance is available, report every smoke test as UNVERIFIED with that
+reason and do NOT assert parity with the legacy CLI — an unverified port is an
+honest state, a claimed-but-untested one is not. Report the blocker
 to the user.
 
 ```bash
