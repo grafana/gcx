@@ -87,7 +87,7 @@ Before starting a port, answer these questions:
 
 ```
 [ ] 1. Is this resource already on K8s API?
-      Run: gcx --context=ops resources list-types | grep -i {resource}
+      Run: bin/gcx --context=ops resources list-types | grep -i {resource}
       If YES → no provider needed, it works via dynamic discovery.
 
 [ ] 2. What's the gcx source?
@@ -333,49 +333,61 @@ bin/gcx providers list                   # new provider listed
 > Every show/list command MUST be tested with ALL FOUR output formats:
 > `-o json`, `-o table`, `-o wide`, `-o yaml`.
 
-Run every command side-by-side with gcx against a real instance. Don't skip
-this — wrong endpoint names, wrapped request bodies, and response shape
-mismatches are invisible in unit tests.
+Run every command side-by-side — the **legacy** CLI at `$LEGACY_CLI` against
+**this repo's** `bin/gcx` — on a real instance. Don't skip this: wrong endpoint
+names, wrapped request bodies and response-shape mismatches are invisible in unit
+tests.
+
+Every pair below must invoke *two different binaries*. If both sides of a
+comparison read the same, the diff will report MATCH while proving nothing —
+that is the failure mode this template is written to make obvious.
 
 #### 8a. Structured Comparison (jq diff template)
 
 ```bash
-CTX=dev  # adjust to your context
+CTX=dev                      # adjust to your context
+LEGACY_CLI=/path/to/legacy   # the OLD CLI, under its own path — never `gcx`
+NEW_CLI=bin/gcx              # this repo's freshly built binary
+
+# Guard: refuse to run a comparison against one binary.
+[ "$(command -v "$LEGACY_CLI")" != "$(command -v "$NEW_CLI")" ] || {
+  echo "FATAL: LEGACY_CLI and NEW_CLI resolve to the same executable"; exit 1; }
 
 # --- List: compare resource IDs ---
-GCX_IDS=$(gcx --context=$CTX {resource} list -o json | jq -r '.[].id // .[].uid' | sort)
-GCTL_IDS=$(gcx --context=$CTX {resource} list -o json | jq -r '.[].metadata.name' | sort)
+LEGACY_IDS=$("$LEGACY_CLI" --context=$CTX {resource} list -o json | jq -r '.[].id // .[].uid' | sort)
+NEW_IDS=$("$NEW_CLI" --context=$CTX {resource} list -o json | jq -r '.[].metadata.name' | sort)
 echo "=== List ID diff ==="
-diff <(echo "$GCX_IDS") <(echo "$GCTL_IDS") && echo "MATCH" || echo "MISMATCH"
+diff <(echo "$LEGACY_IDS") <(echo "$NEW_IDS") && echo "MATCH" || echo "MISMATCH"
 
 # --- Get: compare key fields ---
 ID="<pick-an-id-from-list>"
-bin/gcx --context=$CTX {resource} get $ID -o json | jq '{title, status, labels}' > /tmp/gcx_get.json
-bin/gcx --context=$CTX {resource} get $ID -o json \
-  | jq '{title: .spec.title, status: .spec.status, labels: .metadata.labels}' > /tmp/gctl_get.json
+"$LEGACY_CLI" --context=$CTX {resource} get $ID -o json \
+  | jq '{title, status, labels}' > /tmp/legacy_get.json
+"$NEW_CLI" --context=$CTX {resource} get $ID -o json \
+  | jq '{title: .spec.title, status: .spec.status, labels: .metadata.labels}' > /tmp/new_get.json
 echo "=== Get field diff ==="
-diff /tmp/gcx_get.json /tmp/gctl_get.json && echo "MATCH" || echo "MISMATCH"
+diff /tmp/legacy_get.json /tmp/new_get.json && echo "MATCH" || echo "MISMATCH"
 
-# --- Adapter path ---
+# --- Adapter path (new side only — the legacy CLI has no resources tier) ---
 echo "=== Adapter path ==="
-bin/gcx --context=$CTX resources get {alias} > /dev/null 2>&1 && echo "resources get: OK" || echo "resources get: FAIL"
-bin/gcx --context=$CTX resources get {alias}/$ID -o json > /dev/null 2>&1 && echo "resources get/id: OK" || echo "resources get/id: FAIL"
+"$NEW_CLI" --context=$CTX resources get {alias} > /dev/null 2>&1 && echo "resources get: OK" || echo "resources get: FAIL"
+"$NEW_CLI" --context=$CTX resources get {alias}/$ID -o json > /dev/null 2>&1 && echo "resources get/id: OK" || echo "resources get/id: FAIL"
 
 # --- Ancillary commands (repeat per ancillary) ---
 echo "=== Ancillary: {subcommand} ==="
-bin/gcx --context=$CTX {resource} {subcommand} -o json | jq length
-bin/gcx --context=$CTX {resource} {subcommand} -o json | jq length
+"$LEGACY_CLI" --context=$CTX {resource} {subcommand} -o json | jq length
+"$NEW_CLI"    --context=$CTX {resource} {subcommand} -o json | jq length
 
 # --- Schema + example ---
 echo "=== Schema ==="
-bin/gcx --context=$CTX resources list-types -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
+"$NEW_CLI" --context=$CTX resources list-types -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
 echo "=== Example ==="
-bin/gcx --context=$CTX resources list-examples {alias} | head -10
+"$NEW_CLI" --context=$CTX resources list-examples {alias} | head -10
 
 # --- Output format check ---
 echo "=== Output formats ==="
 for fmt in table wide json yaml; do
-  GCX_AGENT_MODE=false bin/gcx --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
+  GCX_AGENT_MODE=false "$NEW_CLI" --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
     && echo "$fmt: OK" || echo "$fmt: FAIL"
 done
 ```
