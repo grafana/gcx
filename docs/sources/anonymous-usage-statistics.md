@@ -49,6 +49,12 @@ Each `gcx` event contains the following properties:
 | `target_kind` | Whether the target Grafana is `cloud` or `self-hosted`. Empty when no effective Grafana target could be resolved. Deliberately coarse — never the URL, hostname, or stack slug. | `cloud` |
 | `output_format` | The output format the command used. | `table`, `json` |
 
+When the command targets a datasource, this additional field is set:
+
+| Field | Description | Example |
+| :---- | :---- | :---- |
+| `datasource_plugin_type` | The Grafana datasource plugin type that was resolved. Never the datasource UID, name, or query expression. | `prometheus`, `loki`, `grafana-pyroscope-datasource` |
+
 When the invocation fails to parse, these additional fields are set. They capture what was attempted so the team can understand the differences between what users expect and what exists:
 
 | Field | Description | Example |

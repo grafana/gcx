@@ -50,6 +50,10 @@ type Event struct {
 	TargetKind   string `json:"target_kind"`
 	OutputFormat string `json:"output_format"`
 
+	// The datasource plugin type resolved during datasource commands.
+	// Empty for non-datasource commands.
+	DatasourcePluginType string `json:"datasource_plugin_type,omitempty"`
+
 	// Parse-failure capture, set only when Outcome is OutcomeParseError.
 	ParseErrorKind     string `json:"parse_error_kind,omitempty"`
 	ParseErrorParent   string `json:"parse_error_parent,omitempty"`
