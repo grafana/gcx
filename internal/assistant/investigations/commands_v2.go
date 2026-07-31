@@ -271,7 +271,7 @@ func (o *evidenceOpts) setup(flags *pflag.FlagSet) {
 func newEvidenceCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &evidenceOpts{}
 	cmd := &cobra.Command{
-		Use:   "list-evidence <id>",
+		Use:   "list-evidence <investigation-id>",
 		Short: "List panel evidence for a v2 investigation.",
 		Long: "List panel evidence for a v2 investigation — the canonical mapping from report citation keys (panel IDs like p3) to the tool and query that produced each panel. " +
 			"For raw chat-derived tool calls, use `gcx assistant investigations list-tool-calls` instead.",
