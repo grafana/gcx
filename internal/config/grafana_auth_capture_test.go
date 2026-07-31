@@ -180,11 +180,9 @@ func TestGrafanaAuthCaptureConcurrentContexts(t *testing.T) {
 		var wg sync.WaitGroup
 		for range 25 {
 			for _, ctx := range []*config.Context{&tokenCtx, &oauthCtx} {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					_, _ = ctx.EffectiveGrafanaAuthMethod()
-				}()
+				})
 			}
 		}
 		wg.Wait()
@@ -196,11 +194,9 @@ func TestGrafanaAuthCaptureConcurrentContexts(t *testing.T) {
 		resetAuthCapture(t)
 		var wg sync.WaitGroup
 		for range 50 {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				_, _ = tokenCtx.EffectiveGrafanaAuthMethod()
-			}()
+			})
 		}
 		wg.Wait()
 		assert.Equal(t, "token", capture.CurrentGrafanaAuthMethod())
