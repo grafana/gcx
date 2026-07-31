@@ -50,6 +50,11 @@ and it must survive `--json` field selection.
 Also confirm the new leaf has its entry in
 `cmd/gcx/root/testdata/output_classes.json` (CI fails without it).
 
+Also check the zero-result path: an empty collection must serialize as `[]`,
+never `null` (initialize slices; a filtered path that allocates and an
+unfiltered path that returns the input slice will diverge). Add the
+zero-result case to the output tests.
+
 ## SR-3: Input validation
 
 **Claim to falsify:** no input silently changes the question being answered.
@@ -67,6 +72,12 @@ Also confirm the new leaf has its entry in
 **Fix pattern:** validate in `Options.Validate()` before any I/O; error text
 carries the rejected value, the expected format, and a corrected example.
 
+Also check the exit code your validation path actually produces against
+`docs/design/exit-codes.md` (usage errors are exit 2). If the shared plumbing
+around you exits differently, disclose the discrepancy as an open question
+instead of silently matching or silently diverging — consistency across ~all
+commands is a maintainer-level decision, not yours to settle in one PR.
+
 ## SR-4: Shared-code reuse
 
 **Claim to falsify:** nothing in the diff re-implements shared infrastructure.
@@ -82,8 +93,11 @@ grep -rn "ConfirmDestructive" internal/providers/
 Compare against your diff: hand-rolled config loading misses the bug-fix
 families that live in the shared loader; duplicated formatters/codecs drift
 apart; a second copy of the query transport re-introduces solved problems.
-Also check the reverse: a codec you registered but never route to from `RunE`
-is dead code that reviewers will find.
+Two duplication shapes reviewers reliably find and authors reliably miss:
+- a codec/formatter that is the same type as a sibling's with only the
+  format call swapped — extract and share it;
+- a codec you registered in `setup(flags)` but never route to from `RunE`
+  (a direct format call bypasses it) — dead code, delete one of the two paths.
 
 **Fix pattern:** datasource-style commands use `dsquery.LoadContextAndConfig`;
 providers use `providers.ConfigLoader`; unified-query clients use
@@ -110,6 +124,11 @@ git diff --stat docs/reference/
 commit; `docs/architecture/project-structure.md` gets the new package row
 (AGENTS.md PR checklist step 4).
 
+Where a style guide and the entire surrounding command family disagree (e.g.
+punctuation or phrasing conventions the family never adopted), flag the
+conflict as an open question for the docs owner — do not silently follow
+either side; the guide itself may be the piece that is out of step.
+
 ## SR-6: Command naming against the frozen surface
 
 **Claim to falsify:** the proposed path complies with
@@ -130,8 +149,15 @@ why this question has repeatedly consumed multiple review rounds when left to
 review time. It is answerable in minutes from the doc plus the tree.
 
 **Fix pattern:** derive the name before writing code; record the derivation in
-the worksheet; if the guide is silent on your shape, ask for maintainer review
-explicitly rather than inventing precedent.
+the worksheet; check the adjudicated precedent record at
+`docs/plans/list-subject-verdicts.md` — it has settled dozens of borderline
+cases (in particular: filter-flag usage does NOT make a value "addressable",
+and ID-less value enumerations take the `<operation>-<subject>` compound).
+If the guide plus the precedent record still leave your shape ambiguous,
+**escalate to maintainer review as an open question — never self-adjudicate a
+novel name**; a wrong self-adjudication ships forever. Cite rules by document
+path and section only, never by PR or issue numbers from memory — a wrong
+number sends reviewers chasing ghosts.
 
 ## SR-7: Tests that cannot fail
 
@@ -159,8 +185,14 @@ away believing something false about their data. Case-sensitivity: stated, and
 consistent with siblings.
 
 **Fix pattern:** disclose in flag help; push filters server-side where the API
-allows (or file the push-down as an explicit follow-up); reject or re-fold
-contradictory combinations rather than silently OR-ing them.
+allows (or file the push-down as an explicit follow-up — note that client-side
+filtering means the full result set crosses the wire on every call); reject or
+re-fold contradictory combinations rather than silently OR-ing them.
+
+Treat API capability claims as assumptions until probed: never assert "the
+backend cannot X" as fact from reading one client file — label it an
+assumption with a verification probe, or check the vendor API docs. A false
+capability claim disposes of real design options.
 
 ## SR-9: Scoped re-review after every fix push
 
@@ -203,6 +235,17 @@ are listed as boundaries or follow-ups, not silently half-implemented.
 **Fix pattern:** the PR-ready summary template (SKILL.md Phase F) makes this
 mechanical: decided / deferred / open-questions sections, and an explicit
 non-goals list.
+
+Also sweep the bundled skills for routing your change affects:
+
+```bash
+grep -rn "<your command or the path it replaces>" claude-plugin/skills/
+```
+
+The drift test only catches invocations of commands that no longer exist — it
+does not catch skills that still steer agents to a now-suboptimal path (e.g.
+an uncapped discovery route your new command supersedes). List affected skills
+in the PR summary even if updating them is deferred.
 
 ## SR-11: Description rot
 

@@ -112,6 +112,12 @@ Outcome (one of four, written down):
    waits or ships read-only around the gap.
 3. **Bounded bootstrap** — proceed with an explicitly experimental, narrow
    surface without inventing a public contract the backend doesn't honor.
+   For capabilities that reduce/aggregate bulk data client-side, bounded
+   bootstrap additionally requires ALL of: a hard input ceiling in the
+   contract; a written statement of why the server-side alternative cannot
+   serve the need today (verified, not assumed); and a named product owner
+   for the server-side successor. Without all three, the outcome is
+   backend-prerequisite or not-gcx, not bootstrap.
 4. **Not gcx** — the capability is product-owned (e.g., client-side bulk data
    mining); write a short boundary memo instead of code.
 
