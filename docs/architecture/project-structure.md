@@ -43,6 +43,7 @@ gcx/
 │   ├── credentials/          # OS-keychain backend (zalando/go-keyring) for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
 │   ├── format/               # JSON/YAML codec, format auto-detection
 │   ├── output/               # Output codec registry (json, yaml, text, wide), field selection, user-facing messages
+│   ├── gcxerrors/            # Shared error contracts: exit codes, DetailedError + JSON error envelope, EmittedError, PartialFailureError, HTTPStatusError (typed transport-status carrier)
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
 │   ├── httputils/            # REST client helpers, request/response utilities
