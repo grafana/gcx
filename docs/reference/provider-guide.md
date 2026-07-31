@@ -193,8 +193,11 @@ Pick the loader method that matches your backend surface: `LoadGrafanaConfig`
 [patterns.md – Pattern 16, Provider ConfigLoader](../architecture/patterns.md)
 for the full method-to-consumer table.
 
-**Wiring note:** The root command automatically adds every provider's commands
-via `p.Commands()...` — you do not need to touch `cmd/gcx/root/command.go`.
+**Wiring note:** The root command adds every *registered* provider's commands
+automatically via `p.Commands()...`, so you never mount subcommands by hand.
+Registration itself only happens if the provider package is linked into the
+binary, which is what the blank import in `cmd/gcx/root/command.go` is for — add
+it once (Step 5). There is nothing else to touch in the root command.
 
 ---
 
@@ -401,13 +404,26 @@ func init() {
 }
 ```
 
-The `Register()` function appends your provider to the global registry automatically. Once registered via `init()`:
+`init()` contains this one call and nothing else: it populates both the provider
+registry and the adapter registry, calling `adapter.Register()` for each entry
+returned by `TypedRegistrations()`. Additional registration calls in `init()`
+violate CONSTITUTION.md § Architecture Invariants.
+
+Once registered via `init()`:
 - Its commands appear under `gcx`
 - Its name and description appear in `gcx providers list`
 - Its secrets are correctly redacted by `gcx config view`
 - Its config is loaded from YAML and env vars automatically
 
-This self-registration pattern (via `init()`) is handled by Go's import system — just ensure your provider package is imported somewhere in the application startup (e.g., in `cmd/gcx/root/command.go`). Reference: `internal/providers/slo/provider.go` for the full implementation.
+Self-registration only fires if the package is linked into the binary, so add a
+blank import for it in `cmd/gcx/root/command.go`:
+
+```go
+_ "github.com/grafana/gcx/internal/providers/{provider}"
+```
+
+That import is the only root-command change a provider needs. Reference:
+`internal/providers/slo/provider.go` for the full implementation.
 
 ---
 
