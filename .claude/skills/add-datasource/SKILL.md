@@ -109,11 +109,12 @@ and a recommendation:
 
 ### 1b. Research
 
-- Use `gcx api` raw calls to probe the datasource proxy API surface
+- Use `bin/gcx api` raw calls to probe the datasource proxy API surface
   (`/api/datasources/proxy/uid/{uid}/...` or `/api/datasources/uid/{uid}/resources/...`)
-- Identify query endpoints and response shapes based on the docs the user provided
-- Identify metadata endpoints (labels, series, etc.) — the user may need to provide
-  explicit information about what endpoints exist for non-query operations
+- Identify query endpoints and response shapes from the vendor's API docs or the
+  plugin's source
+- Identify metadata endpoints (labels, series, etc.) the same way; if a non-query
+  endpoint cannot be established, record it as UNVERIFIED rather than guessing
 
 ### 1c. Write Research Report
 

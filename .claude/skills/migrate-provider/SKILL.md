@@ -1,6 +1,6 @@
 ---
 name: migrate-provider
-description: Use when porting a Grafana Cloud product from grafana-cloud-cli (gcx) to gcx, when a bead task references gcx provider migration, or when user says "migrate provider", "port from gcx", "port oncall", "port k6". Not for building providers from scratch — use /add-provider for that. Placement is already settled for a port, so this skill owns it end to end; it draws only the command-naming pass and the pre-review diff checks from the integrate-with-gcx skill (bundled; `gcx agent skills get integrate-with-gcx`).
+description: Reference for porting a Grafana Cloud product from the legacy grafana-cloud-cli into a gcx provider — adapter, schema/example registration, CRUD redirect commands. HUMAN-DRIVEN: this skill is outside the integrate-with-gcx v1 autonomous workflow and must not be run end to end unattended, because the legacy CLI shared the name `gcx` and its side-by-side verification steps are ambiguous about which binary they mean. Use when a human is deliberately driving a port and says "migrate provider", "port from gcx", "port oncall", "port k6". Not for building providers from scratch — use /add-provider. Placement is already settled for a port.
 ---
 
 # Migrate Provider from gcx
@@ -45,7 +45,8 @@ One-directional, so the two skills cannot bounce a port back and forth:
 
 - **Placement is not an open question here.** An existing grafana-cloud-cli
   client already establishes the provider tier, so no placement section is
-  produced. Phases 0-4 below own the port end to end.
+  produced. Phases 0-4 below cover the port, with a human driving them — see the
+  caveat at the top of this file.
 - **`integrate-with-gcx` does not route work here**, because of the status note
   above: it tells the user a port needs a human to drive and stops. Reach this
   skill by invoking it deliberately.

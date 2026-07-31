@@ -320,7 +320,7 @@ against `"medium"`/`"large"`, so a qualified cost like `small (large with --all)
 evades it. Write the hint regardless — the rule is the worst case, not the
 spelling.
 
-**Build**: `GCX_AGENT_MODE=false mise run all` once, `gcx providers list` lists it, `config view` redacts.
+**Build**: `GCX_AGENT_MODE=false mise run all` once, then `bin/gcx providers list` lists it and `bin/gcx config view` redacts its secrets.
 
 ### 4c. Update Architecture Docs
 
