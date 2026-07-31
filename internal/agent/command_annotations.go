@@ -227,6 +227,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx frontend apps list-replay-sessions":   {Cost: "medium", Hint: "<app-name> [--since 24h] [-d <loki-uid>] -o json"},
 	"gcx frontend apps inspect-replay-session": {Cost: "small", Hint: "<app-name> <session-id> [--limit N] -o json"},
 	"gcx frontend apps inspect-replay-segment": {Cost: "small", Hint: "<app-name> <session-id> <segment-id> [--recording-id <recording-id>] [--save events.json] [-o json]"},
+	"gcx frontend apps play-replay-session":    {Cost: "medium", Hint: "<app-name> <session-id> [--port 8080] [--open]"},
 	"gcx frontend apps update":                 {Cost: "small"},
 
 	// -----------------------------------------------------------------------
