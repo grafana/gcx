@@ -50,7 +50,7 @@ instance, verifying connectivity, and confirming your credentials are working.
 
 `claude-plugin/skills/` is the current canonical portable Agent Skills bundle
 for gcx. The Claude plugin consumes that tree directly today, and the generic
-`.agents` installer exposed by `gcx skills install` reads from the same source.
+`.agents` installer exposed by `gcx agent skills install` reads from the same source.
 
 Claude-specific packaging remains under:
 

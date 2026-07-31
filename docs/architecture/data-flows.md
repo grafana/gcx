@@ -295,7 +295,7 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ## 5. QUERY Pipeline
 
-Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query/generic.go`. Shared query CLI utils live in `internal/datasources/query/`.
+Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query.go`. Shared query CLI utils live in `internal/datasources/query/`.
 
 ```
 User invocation:
@@ -417,11 +417,11 @@ User invocation:
 ```
 
 Key files:
-- `cmd/gcx/datasources/query/query.go` — shared opts, `resolveTypedArgs`, `validateDatasourceType`
-- `cmd/gcx/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go` — per-kind constructors (`PrometheusCmd`, `LokiCmd`, etc.)
-- `cmd/gcx/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
-- `cmd/gcx/datasources/query/time.go` — `ParseTime`, `ParseDuration` for flag parsing
-- `cmd/gcx/datasources/{prometheus,loki,pyroscope,tempo,generic}.go` — kind subgroups that wire in the query constructors
+- `internal/datasources/query/opts.go` + `resolve.go` — shared opts, `ResolveTypedArgs`, `ValidateDatasourceType`
+- `internal/datasources/{prometheus,loki,pyroscope,tempo}/query.go` — per-kind constructors (`QueryCmd` per kind)
+- `internal/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
+- `internal/datasources/query/time.go` — time parsing for flag values
+- `cmd/gcx/datasources/query.go` — generic auto-detecting `datasources query` that wires in the per-kind constructors
 - `internal/config/resolver.go` — `DefaultDatasourceUID(ctx, kind)` — shared 2-tier UID resolution
 - `internal/query/prometheus/client.go` — HTTP client, request construction, response conversion
 - `internal/query/prometheus/formatter.go` — table rendering (vector/matrix/scalar)
