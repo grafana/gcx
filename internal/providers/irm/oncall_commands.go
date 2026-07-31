@@ -32,10 +32,9 @@ type listOpts struct {
 
 func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 	o.Resource = resource
-	// Default codec name for CRUD list/get/list-alerts. The alert-groups
-	// command tree defaults to `text` (table); other OnCall resources
-	// continue to default to `table` per the existing convention.
-	defaultFmt := "table"
+	// Every OnCall resource command built here defaults to the `table`
+	// codec; the switch below registers the matching table/wide codecs per
+	// resource type.
 	switch resource {
 	case "integrations":
 		o.IO.RegisterCustomCodec("table", &integrationTableCodec{})
@@ -58,11 +57,8 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 		o.IO.RegisterCustomCodec("table", &webhookTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &webhookTableCodec{Wide: true})
 	case "alert-groups":
-		// alert-groups list registers a `table` codec — uniform with the
-		// CRUD-data-command default model in CONSTITUTION/DESIGN.
 		o.IO.RegisterCustomCodec("table", &alertGroupTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &alertGroupTableCodec{Wide: true})
-		defaultFmt = "table"
 	case "users":
 		o.IO.RegisterCustomCodec("table", &userTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &userTableCodec{Wide: true})
@@ -73,11 +69,9 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 	case "slack-channels":
 		o.IO.RegisterCustomCodec("table", &slackChannelTableCodec{})
 	case "alerts":
-		// Same table-codec default applies to `alert-groups list-alerts <group-id>`,
-		// which dispatches via the "alerts" case here.
+		// `alert-groups list-alerts <group-id>` dispatches via this case.
 		o.IO.RegisterCustomCodec("table", &alertTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &alertTableCodec{Wide: true})
-		defaultFmt = "table"
 	case "organizations":
 		o.IO.RegisterCustomCodec("table", &organizationTableCodec{})
 	case "resolution-notes":
@@ -87,7 +81,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 		o.IO.RegisterCustomCodec("table", &shiftSwapTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &shiftSwapTableCodec{Wide: true})
 	}
-	o.IO.DefaultFormat(defaultFmt)
+	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
@@ -112,11 +106,23 @@ func (o *mutateOpts) setup(flags *pflag.FlagSet) {
 }
 
 type deleteOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
-func (o *deleteOpts) setup(flags *pflag.FlagSet) {
+func (o *deleteOpts) setup(flags *pflag.FlagSet, label string) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The delete result is a SingleMutation document through the codec
+	// system: the default text codec reproduces the familiar
+	// "Deleted <label> <id>" line byte-for-byte; agent mode and explicit
+	// -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
+		render: func(w io.Writer, m cmdio.SingleMutation) {
+			cmdio.Success(w, "Deleted %s %s", label, m.Target.ID)
+		},
+	})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 // noListFn is a stub list function for TypedCRUD instances built by verbs
@@ -279,9 +285,11 @@ func newUpdateSubcommand[T adapter.ResourceNamer](
 }
 
 // newDeleteSubcommand creates a "delete <id>" subcommand with a confirmation
-// prompt unless --force is set.
+// prompt unless --force is set. kind is the machine-facing resource kind
+// carried in the structured result (matching the K8s envelope kind used by
+// list); label is the human noun used in the prompt and the text one-liner.
 func newDeleteSubcommand[T adapter.ResourceNamer](
-	loader OnCallConfigLoader, short, label string, crudOpts []crudOption[T],
+	loader OnCallConfigLoader, short, kind, label string, crudOpts []crudOption[T],
 ) *cobra.Command {
 	do := &deleteOpts{}
 	cmd := &cobra.Command{
@@ -289,9 +297,15 @@ func newDeleteSubcommand[T adapter.ResourceNamer](
 		Short: short,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := do.IO.Validate(); err != nil {
+				return err
+			}
+
 			id := args[0]
 
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), do.Force,
+			// The prompt and abort notice are diagnostics, not the result —
+			// stderr keeps them out of the stdout document.
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), do.Force,
 				fmt.Sprintf("Delete %s %s?", label, id))
 			if err != nil {
 				return err
@@ -310,11 +324,13 @@ func newDeleteSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Deleted %s %s", label, id)
-			return nil
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: kind, ID: id})
+			changed := true
+			result.Changed = &changed
+			return do.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
-	do.setup(cmd.Flags())
+	do.setup(cmd.Flags(), label)
 	return cmd
 }
 
@@ -375,7 +391,7 @@ func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 			}),
 		newCreateSubcommand(loader, "Create an integration.", integrationCRUDOpts()),
 		newUpdateSubcommand(loader, "Update an integration by ID.", integrationCRUDOpts()),
-		newDeleteSubcommand(loader, "Delete an integration by ID.", "integration", integrationCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete an integration by ID.", "Integration", "integration", integrationCRUDOpts()),
 	)
 	return cmd
 }
@@ -401,7 +417,7 @@ func newEscalationChainsCmd(loader OnCallConfigLoader) *cobra.Command {
 			}),
 		newCreateSubcommand(loader, "Create an escalation chain.", escalationChainCRUDOpts()),
 		newUpdateSubcommand(loader, "Update an escalation chain by ID.", escalationChainCRUDOpts()),
-		newDeleteSubcommand(loader, "Delete an escalation chain by ID.", "escalation chain", escalationChainCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete an escalation chain by ID.", "EscalationChain", "escalation chain", escalationChainCRUDOpts()),
 	)
 	return cmd
 }
@@ -426,7 +442,7 @@ func newEscalationPoliciesCmd(loader OnCallConfigLoader) *cobra.Command {
 			}),
 		newCreateSubcommand(loader, "Create an escalation policy.", escalationPolicyCRUDOpts()),
 		newUpdateSubcommand(loader, "Update an escalation policy by ID.", escalationPolicyCRUDOpts()),
-		newDeleteSubcommand(loader, "Delete an escalation policy by ID.", "escalation policy", escalationPolicyCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete an escalation policy by ID.", "EscalationPolicy", "escalation policy", escalationPolicyCRUDOpts()),
 		newEscalationStepsCmd(loader),
 	)
 	return cmd
@@ -450,7 +466,7 @@ func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
 			}),
 		newCreateSubcommand(loader, "Create a schedule.", scheduleCRUDOpts()),
 		newUpdateSubcommand(loader, "Update a schedule by ID.", scheduleCRUDOpts()),
-		newDeleteSubcommand(loader, "Delete a schedule by ID.", "schedule", scheduleCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete a schedule by ID.", "Schedule", "schedule", scheduleCRUDOpts()),
 		newScheduleListFinalShiftsCommand(loader),
 	)
 	return cmd
@@ -471,7 +487,7 @@ func newShiftsCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Shift, error) { return c.GetShift(ctx, name) }),
 		newCreateSubcommand(loader, "Create a shift.", shiftCRUDOpts()),
 		newUpdateSubcommand(loader, "Update a shift by ID.", shiftCRUDOpts()),
-		newDeleteSubcommand(loader, "Delete a shift by ID.", "shift", shiftCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete a shift by ID.", "Shift", "shift", shiftCRUDOpts()),
 	)
 	return cmd
 }
@@ -490,7 +506,7 @@ func newRoutesCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Route, error) { return c.GetRoute(ctx, name) }),
 		newCreateSubcommand(loader, "Create a route.", routeCRUDOpts()),
 		newUpdateSubcommand(loader, "Update a route by ID.", routeCRUDOpts()),
-		newDeleteSubcommand(loader, "Delete a route by ID.", "route", routeCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete a route by ID.", "Route", "route", routeCRUDOpts()),
 		newRouteFilterTypesCmd(loader),
 	)
 	return cmd
@@ -514,7 +530,7 @@ func newWebhooksCmd(loader OnCallConfigLoader) *cobra.Command {
 			}),
 		newCreateSubcommand(loader, "Create an outgoing webhook.", webhookCRUDOpts()),
 		newUpdateSubcommand(loader, "Update an outgoing webhook by ID.", webhookCRUDOpts()),
-		newDeleteSubcommand(loader, "Delete an outgoing webhook by ID.", "webhook", webhookCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete an outgoing webhook by ID.", "Webhook", "webhook", webhookCRUDOpts()),
 		newWebhookTriggersCmd(loader),
 		newWebhookPresetsCmd(loader),
 	)
@@ -616,7 +632,7 @@ func newResolutionNotesCmd(loader OnCallConfigLoader) *cobra.Command {
 			}),
 		newCreateSubcommand(loader, "Create a resolution note.", resolutionNoteCRUDOpts()),
 		newUpdateSubcommand(loader, "Update a resolution note by ID.", resolutionNoteCRUDOpts()),
-		newDeleteSubcommand(loader, "Delete a resolution note by ID.", "resolution note", resolutionNoteCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete a resolution note by ID.", "ResolutionNote", "resolution note", resolutionNoteCRUDOpts()),
 	)
 	return cmd
 }
@@ -640,7 +656,7 @@ func newShiftSwapsCmd(loader OnCallConfigLoader) *cobra.Command {
 			}),
 		newCreateSubcommand(loader, "Create a shift swap.", shiftSwapCRUDOpts()),
 		newUpdateSubcommand(loader, "Update a shift swap by ID.", shiftSwapCRUDOpts()),
-		newDeleteSubcommand(loader, "Delete a shift swap by ID.", "shift swap", shiftSwapCRUDOpts()),
+		newDeleteSubcommand(loader, "Delete a shift swap by ID.", "ShiftSwap", "shift swap", shiftSwapCRUDOpts()),
 	)
 	return cmd
 }

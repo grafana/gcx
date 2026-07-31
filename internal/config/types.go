@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/credentials"
 )
@@ -19,6 +22,10 @@ const (
 	DefaultContextName = "default"
 )
 
+// ConfigVersion is the current config format version. The legacy
+// (pre-versioned) format is detected by shape and auto-migrated on load.
+const ConfigVersion = 1
+
 // Config holds the information needed to connect to remote Grafana instances.
 type Config struct {
 	// Source contains the path to the config file parsed to populate this struct.
@@ -27,6 +34,25 @@ type Config struct {
 	// Sources lists all config files that were discovered and merged to produce
 	// this config. Populated by LoadLayered.
 	Sources []ConfigSource `json:"-" yaml:"-"`
+
+	// Version is the config format version. Version 1 is the only declared
+	// version accepted by this release; unsupported versions are rejected before
+	// migration or credential access. The field is absent on legacy configs,
+	// which the loader migrates to the current format after a safety preflight.
+	Version int64 `json:"version,omitempty" yaml:"version,omitempty"`
+
+	// Stacks is a map of Grafana stack configurations (connection, providers,
+	// per-stack resource settings), indexed by name. Contexts reference stacks
+	// by name via Context.Stack.
+	Stacks map[string]*StackConfig `json:"stacks,omitempty" yaml:"stacks,omitempty"`
+
+	// Cloud is a map of named Grafana Cloud (GCOM) auth entries. Contexts
+	// reference entries by name via Context.Cloud.
+	Cloud map[string]*CloudEntry `json:"cloud,omitempty" yaml:"cloud,omitempty"`
+
+	// Resources holds global settings for the `gcx resources` commands,
+	// applying to all stacks. Merged (union) with each stack's Resources.
+	Resources *ResourcesConfig `json:"resources,omitempty" yaml:"resources,omitempty"`
 
 	// Contexts is a map of context configurations, indexed by name.
 	Contexts map[string]*Context `json:"contexts" yaml:"contexts"`
@@ -44,17 +70,55 @@ type Config struct {
 	// of the on-disk schema.
 	keychainFields keychainBacked `json:"-" yaml:"-"`
 
-	// keychainPreserve tracks (context, field) pairs whose sentinel could not
+	// keychainPreserve tracks (owner, field) pairs whose sentinel could not
 	// be resolved at load time because the keychain was unavailable (locked
-	// session, missing DBus). Their in-memory value is cleared, but Write must
-	// round-trip the original sentinel back to disk so a transient outage never
-	// destroys the reference. Not part of the on-disk schema.
-	keychainPreserve keychainBacked `json:"-" yaml:"-"`
+	// session, missing DBus), mapped to the original sentinel string. Their
+	// in-memory value is cleared, but Write must round-trip the original
+	// sentinel back to disk so a transient outage never destroys the
+	// reference. Not part of the on-disk schema.
+	keychainPreserve keychainPreserved `json:"-" yaml:"-"`
 
 	// keychainStore holds the keychain backend so that sentinel resolution can
 	// be deferred for non-current contexts. Populated once by Load; nil when
 	// the keychain is not in use.
 	keychainStore credentials.Store `json:"-" yaml:"-"`
+
+	// sourceIdentity is the canonical identity of a single config document.
+	// Layered configs leave it empty; each stack/cloud entry retains its own
+	// sourceIdentity so credential references remain isolated after merging.
+	sourceIdentity string `json:"-" yaml:"-"`
+	sourceLayer    string `json:"-" yaml:"-"`
+
+	// sourceRevision is the SHA-256 of the exact bytes loaded from one config
+	// document. Write compares it under the canonical write lock before any
+	// keychain or filesystem mutation, preventing stale writers from restoring
+	// old credential generations or overwriting a newly upgraded schema.
+	sourceRevision    [32]byte `json:"-" yaml:"-"`
+	hasSourceRevision bool     `json:"-" yaml:"-"`
+	// expectSourceAbsent is set when Load resolved a source path but found no
+	// file. Write then installs the first document without replacement, so a
+	// file created by another process in the meantime is never overwritten.
+	expectSourceAbsent bool `json:"-" yaml:"-"`
+
+	// keychainStates records the exact bound account and original field state
+	// observed during load. It is entry/source scoped, unlike keychainFields,
+	// and is the authoritative state used by v2 reconciliation.
+	keychainStates keychainState `json:"-" yaml:"-"`
+
+	// secretMutations records explicit set/unset intent for cases where an
+	// unavailable credential is represented as an empty in-memory value and a
+	// plain value comparison cannot distinguish "unchanged" from "unset".
+	secretMutations secretMutationSet `json:"-" yaml:"-"`
+
+	// credentialOrigins snapshots plaintext secrets and their loaded destination
+	// so post-load environment/flag overrides cannot redirect them.
+	credentialOrigins credentialOriginSet `json:"-" yaml:"-"`
+
+	// migrationDeferred prevents a transiently unavailable trusted legacy
+	// sentinel from being stranded in v1, whose ordinary loader intentionally
+	// never resolves unbound references. The legacy source stays untouched and
+	// a later load retries migration when the keychain is available.
+	migrationDeferred bool `json:"-" yaml:"-"`
 }
 
 // DiagnosticsConfig controls optional local diagnostic features.
@@ -69,8 +133,8 @@ type DiagnosticsConfig struct {
 	LogDir string `json:"log-dir,omitempty" yaml:"log-dir,omitempty"`
 
 	// Telemetry controls anonymous usage telemetry: "enabled", "disabled",
-	// or "log" (prints to stderr). Overridden by the GCX_TELEMETRY and
-	// DO_NOT_TRACK environment variables.
+	// or "log" (prints to stderr). Enabled by default. Overridden by the
+	// GCX_TELEMETRY environment variable.
 	Telemetry string `json:"telemetry,omitempty" yaml:"telemetry,omitempty"`
 }
 
@@ -84,9 +148,10 @@ func (config *Config) GetCurrentContext() *Context {
 	return config.Contexts[config.CurrentContext]
 }
 
-// ResolveContext resolves keychain sentinels for a named context that was not
-// resolved during Load (i.e. a non-current context). This is a no-op when the
-// context has already been resolved or when no keychain store is available.
+// ResolveContext resolves keychain sentinels on the stack and cloud entries
+// referenced by a named context that was not resolved during Load (i.e. a
+// non-current context). This is a no-op when the referenced entries have
+// already been resolved or when no keychain store is available.
 func (config *Config) ResolveContext(name string) {
 	if config.keychainStore == nil {
 		return
@@ -95,23 +160,33 @@ func (config *Config) ResolveContext(name string) {
 	if ctx == nil {
 		return
 	}
-	backed, preserve := resolveSentinelsForContext(name, ctx, config.keychainStore)
+	backed, preserve, states := resolveSentinelsForContext(ctx, config.keychainStore)
+	config.trackKeychainResults(backed, preserve, states)
+}
+
+// trackKeychainResults merges sentinel-resolution results into the config's
+// keychain bookkeeping.
+func (config *Config) trackKeychainResults(backed keychainBacked, preserve keychainPreserved, states keychainState) {
 	if len(backed) > 0 && config.keychainFields == nil {
 		config.keychainFields = keychainBacked{}
 	}
-	for ctxName, fields := range backed {
+	for owner, fields := range backed {
 		for field := range fields {
-			config.keychainFields.mark(ctxName, field)
+			config.keychainFields.mark(owner, field)
 		}
 	}
 	if len(preserve) > 0 && config.keychainPreserve == nil {
-		config.keychainPreserve = keychainBacked{}
+		config.keychainPreserve = keychainPreserved{}
 	}
-	for ctxName, fields := range preserve {
-		for field := range fields {
-			config.keychainPreserve.mark(ctxName, field)
+	for owner, fields := range preserve {
+		for field, sentinel := range fields {
+			config.keychainPreserve.mark(owner, field, sentinel)
 		}
 	}
+	if len(states) > 0 && config.keychainStates == nil {
+		config.keychainStates = keychainState{}
+	}
+	maps.Copy(config.keychainStates, states)
 }
 
 // SetContext adds a new context to the Grafana config.
@@ -126,51 +201,114 @@ func (config *Config) SetContext(name string, makeCurrent bool, context Context)
 	if makeCurrent {
 		config.CurrentContext = name
 	}
+	config.Resolve()
 }
 
-// CloudConfig holds Grafana Cloud platform credentials and configuration.
-type CloudConfig struct {
-	// Token is a Grafana Cloud API token used to authenticate against GCOM.
-	Token string `datapolicy:"secret" env:"GRAFANA_CLOUD_TOKEN" json:"token,omitempty" yaml:"token,omitempty"`
-
-	// Stack is the Grafana Cloud stack slug (e.g. "mystack").
-	// Optional: if not set, the slug may be derived from Grafana.Server.
-	Stack string `env:"GRAFANA_CLOUD_STACK" json:"stack,omitempty" yaml:"stack,omitempty"`
-
-	// OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
-	// login`. It is used only during login. Optional: defaults to
-	// "https://grafana.com".
-	OAuthUrl string `env:"GRAFANA_CLOUD_OAUTH_URL" json:"oauth-url,omitempty" yaml:"oauth-url,omitempty"`
-
-	// APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls
-	// (stacks, regions, access policies, etc.). Every client talking to GCOM
-	// uses it. Optional: defaults to "https://grafana.com".
-	APIUrl string `env:"GRAFANA_CLOUD_API_URL" json:"api-url,omitempty" yaml:"api-url,omitempty"`
+// SetStack adds or replaces a stack entry.
+func (config *Config) SetStack(name string, stack StackConfig) {
+	if config.Stacks == nil {
+		config.Stacks = make(map[string]*StackConfig)
+	}
+	stack.sourceIdentity = config.sourceIdentity
+	stack.sourceLayer = config.sourceLayer
+	config.Stacks[name] = &stack
+	config.Resolve()
 }
 
-// Context holds the information required to connect to a remote Grafana instance.
-type Context struct {
+// SetCloudEntry adds or replaces a cloud auth entry.
+func (config *Config) SetCloudEntry(name string, entry CloudEntry) {
+	if config.Cloud == nil {
+		config.Cloud = make(map[string]*CloudEntry)
+	}
+	entry.sourceIdentity = config.sourceIdentity
+	entry.sourceLayer = config.sourceLayer
+	config.Cloud[name] = &entry
+	config.Resolve()
+}
+
+// Resolve wires each context's resolved view (stack entry, cloud entry,
+// Grafana/Providers pointers, dry-run union) from its name references.
+// Dangling references leave nil pointers; Context.Validate reports them.
+// Idempotent; must re-run after any structural mutation (merge, migration,
+// SetContext/SetStack/SetCloudEntry).
+func (config *Config) Resolve() {
+	for name, stack := range config.Stacks {
+		if stack != nil {
+			stack.Name = name
+		}
+	}
+	for name, entry := range config.Cloud {
+		if entry != nil {
+			entry.Name = name
+		}
+	}
+	for name, ctx := range config.Contexts {
+		if ctx == nil {
+			continue
+		}
+		ctx.Name = name
+		ctx.StackEntry = nil
+		ctx.Grafana = nil
+		ctx.Providers = nil
+		ctx.CloudEntry = nil
+		if ctx.Stack != "" {
+			if stack := config.Stacks[ctx.Stack]; stack != nil {
+				ctx.StackEntry = stack
+				ctx.Grafana = stack.Grafana
+				ctx.Providers = stack.Providers
+			}
+		}
+		if ctx.Cloud != "" {
+			ctx.CloudEntry = config.Cloud[ctx.Cloud]
+		}
+		ctx.assumeServerDryRun = unionDryRun(config.Resources, ctx.StackEntry)
+	}
+}
+
+// unionDryRun merges the global and per-stack assume-server-dry-run lists,
+// preserving order (global first) and dropping duplicates.
+func unionDryRun(global *ResourcesConfig, stack *StackConfig) []string {
+	var lists [][]string
+	if global != nil {
+		lists = append(lists, global.AssumeServerDryRun)
+	}
+	if stack != nil && stack.Resources != nil {
+		lists = append(lists, stack.Resources.AssumeServerDryRun)
+	}
+	var union []string
+	seen := map[string]bool{}
+	for _, list := range lists {
+		for _, item := range list {
+			if !seen[item] {
+				seen[item] = true
+				union = append(union, item)
+			}
+		}
+	}
+	return union
+}
+
+// StackConfig holds the connection and provider configuration for a single
+// Grafana stack. Contexts reference stacks by name via Context.Stack.
+type StackConfig struct {
 	Name string `json:"-" yaml:"-"`
 
+	// sourceIdentity is the canonical config document that defined this atomic
+	// entry. Credential bindings include it, preventing a same-named entry in a
+	// different file from resolving or mutating this entry's keychain records.
+	sourceIdentity string `json:"-" yaml:"-"`
+	sourceLayer    string `json:"-" yaml:"-"`
+
+	// credentialRejections is runtime-only evidence that a configured secret
+	// was deliberately withheld. Consumers must fail before network use instead
+	// of silently degrading to anonymous or empty Basic authentication.
+	credentialRejections map[credentials.Field]CredentialRejectedError `json:"-" yaml:"-"`
+
+	// Slug is the Grafana Cloud stack slug (e.g. "mystack").
+	// Optional: if not set, the slug may be derived from Grafana.Server.
+	Slug string `json:"slug,omitempty" yaml:"slug,omitempty"`
+
 	Grafana *GrafanaConfig `json:"grafana,omitempty" yaml:"grafana,omitempty"`
-
-	Cloud *CloudConfig `json:"cloud,omitempty" yaml:"cloud,omitempty"`
-
-	// DefaultPrometheusDatasource is the UID of the default Prometheus datasource to use for queries.
-	DefaultPrometheusDatasource string `json:"default-prometheus-datasource,omitempty" yaml:"default-prometheus-datasource,omitempty"`
-
-	// DefaultLokiDatasource is the UID of the default Loki datasource to use for queries.
-	DefaultLokiDatasource string `json:"default-loki-datasource,omitempty" yaml:"default-loki-datasource,omitempty"`
-
-	// DefaultPyroscopeDatasource is the UID of the default Pyroscope datasource to use for queries.
-	DefaultPyroscopeDatasource string `json:"default-pyroscope-datasource,omitempty" yaml:"default-pyroscope-datasource,omitempty"`
-
-	// DefaultTempoDatasource is the UID of the default Tempo datasource to use for queries.
-	DefaultTempoDatasource string `json:"default-tempo-datasource,omitempty" yaml:"default-tempo-datasource,omitempty"`
-
-	// Datasources holds per-kind default datasource UIDs, indexed by datasource kind (e.g. "prometheus", "loki").
-	// Takes precedence over the legacy DefaultXxxDatasource fields when both are set.
-	Datasources map[string]string `json:"datasources,omitempty" yaml:"datasources,omitempty"`
 
 	// Providers holds per-provider configuration, indexed by provider name.
 	// Each provider has a map of string key-value pairs.
@@ -178,11 +316,142 @@ type Context struct {
 	// each provider's ConfigKey metadata.
 	Providers map[string]map[string]string `json:"providers,omitempty" yaml:"providers,omitempty"`
 
-	// Resources holds settings for the `gcx resources` commands in this context.
+	// Resources holds per-stack settings for the `gcx resources` commands,
+	// merged (union) with the global Config.Resources.
 	Resources *ResourcesConfig `json:"resources,omitempty" yaml:"resources,omitempty"`
 }
 
-// ResourcesConfig holds per-context settings for the `gcx resources` commands.
+// CloudEntry holds Grafana Cloud (GCOM) platform credentials and environment
+// configuration. Entries are named and referenced by contexts via
+// Context.Cloud; several contexts typically share one entry.
+type CloudEntry struct {
+	Name string `json:"-" yaml:"-"`
+
+	// sourceIdentity is the canonical config document that defined this atomic
+	// entry. See StackConfig.sourceIdentity.
+	sourceIdentity string `json:"-" yaml:"-"`
+	sourceLayer    string `json:"-" yaml:"-"`
+
+	credentialRejections map[credentials.Field]CredentialRejectedError `json:"-" yaml:"-"`
+
+	// Token is a Grafana Cloud access policy token used to authenticate
+	// against GCOM.
+	Token string `datapolicy:"secret" env:"GRAFANA_CLOUD_TOKEN" json:"token,omitempty" yaml:"token,omitempty"`
+
+	// OAuthToken is a grafana.com OAuth access token obtained via
+	// `gcx cloud login`. The grafana.com OAuth flow issues no refresh token;
+	// on expiry the user re-runs `gcx cloud login`.
+	OAuthToken string `datapolicy:"secret" json:"oauth-token,omitempty" yaml:"oauth-token,omitempty"`
+
+	// OAuthTokenExpiresAt is the OAuthToken expiration time in RFC3339 format.
+	OAuthTokenExpiresAt string `json:"oauth-token-expires-at,omitempty" yaml:"oauth-token-expires-at,omitempty"`
+
+	// OAuthScopes is the scope set granted by the OAuth token endpoint. It may
+	// differ from the requested set and is retained so re-auth/keep operations do
+	// not discard capability metadata.
+	OAuthScopes []string `json:"oauth-scopes,omitempty" yaml:"oauth-scopes,omitempty"`
+
+	// OAuthUrl is the base URL for the OAuth login flow run by `gcx cloud
+	// login`. It is used only during login. Credential-bearing entries are
+	// materialized as a coherent OAuth/API pair: one explicit endpoint fills its
+	// missing peer; with neither set, gcx derives one unique referenced-stack
+	// Cloud environment or falls back to "https://grafana.com". Incompatible
+	// referenced environments are rejected and require separate entries.
+	OAuthUrl string `env:"GRAFANA_CLOUD_OAUTH_URL" json:"oauth-url,omitempty" yaml:"oauth-url,omitempty"`
+
+	// APIUrl is the base URL for all Grafana Cloud API (GCOM) resource calls
+	// (stacks, regions, access policies, etc.). Every client talking to GCOM uses
+	// it. It is materialized together with OAuthUrl so authentication and later
+	// API calls stay in the same Cloud environment.
+	APIUrl string `env:"GRAFANA_CLOUD_API_URL" json:"api-url,omitempty" yaml:"api-url,omitempty"`
+}
+
+// ResolveToken returns the credential to authenticate GCOM calls with: the
+// access policy token when set, else the OAuth token. An expired OAuth token
+// yields an error naming the fix — the grafana.com OAuth flow issues no
+// refresh token, so re-running the login is the only recovery. An empty
+// return with nil error means the entry holds no credential.
+func (entry *CloudEntry) ResolveToken() (string, error) {
+	if err := entry.credentialRejection(credentials.FieldCloudToken); err != nil {
+		return "", err
+	}
+	if entry.Token != "" {
+		return entry.Token, nil
+	}
+	if err := entry.credentialRejection(credentials.FieldOAuthToken); err != nil {
+		return "", err
+	}
+	if entry.OAuthToken == "" {
+		return "", nil
+	}
+	if entry.OAuthTokenExpiresAt != "" {
+		expiry, err := time.Parse(time.RFC3339, entry.OAuthTokenExpiresAt)
+		if err != nil {
+			return "", fmt.Errorf("cloud OAuth token for entry %q has an invalid expiry %q: run `gcx cloud login` to re-authenticate",
+				entry.Name, entry.OAuthTokenExpiresAt)
+		}
+		if time.Now().After(expiry) {
+			return "", fmt.Errorf("cloud OAuth token for entry %q expired at %s: run `gcx cloud login` to re-authenticate",
+				entry.Name, entry.OAuthTokenExpiresAt)
+		}
+	}
+	return entry.OAuthToken, nil
+}
+
+// Context binds a stack and (optionally) a cloud auth entry together with
+// per-context defaults such as datasource UIDs.
+type Context struct {
+	Name string `json:"-" yaml:"-"`
+
+	// Stack names the entry in Config.Stacks this context targets.
+	Stack string `json:"stack,omitempty" yaml:"stack,omitempty"`
+
+	// Cloud names the entry in Config.Cloud providing GCOM auth for this
+	// context. Optional: without it, cloud-dependent operations fail at
+	// runtime with a hint, not at validation time.
+	Cloud string `json:"cloud,omitempty" yaml:"cloud,omitempty"`
+
+	// Datasources holds per-kind default datasource UIDs, indexed by
+	// datasource kind (e.g. "prometheus", "loki").
+	Datasources map[string]string `json:"datasources,omitempty" yaml:"datasources,omitempty"`
+
+	// Resolved views, populated by Config.Resolve after decode, merge, or any
+	// structural mutation. Not part of the on-disk schema. Grafana and
+	// Providers initially share pointers with the stack entry; ParseEnvIntoContext
+	// detaches the selected context before applying process-local overrides.
+	StackEntry *StackConfig                 `json:"-" yaml:"-"`
+	CloudEntry *CloudEntry                  `json:"-" yaml:"-"`
+	Grafana    *GrafanaConfig               `json:"-" yaml:"-"`
+	Providers  map[string]map[string]string `json:"-" yaml:"-"`
+
+	// assumeServerDryRun is the resolved union of the global and per-stack
+	// assume-server-dry-run lists. Populated by Config.Resolve.
+	assumeServerDryRun []string
+
+	// envStackSlug is a process-environment override for the stack slug
+	// (GRAFANA_CLOUD_STACK), applied by ParseEnvIntoContext. It wins over the
+	// stack entry's Slug without mutating the shared stack config.
+	envStackSlug string
+
+	// runtimeSecretOverrides records credentials explicitly supplied by the
+	// process environment. Post-override binding enforcement may retain those
+	// values when an endpoint changes; every keychain-resolved value is cleared.
+	runtimeSecretOverrides map[credentials.Field]bool
+}
+
+// StackFromAutoLocal reports whether the resolved stack entry came from an
+// auto-discovered repository .gcx.yaml layer. Explicit --config/GCX_CONFIG
+// selection of the same file is deliberately not considered auto-local: that
+// selection is the user's trust decision.
+//
+// Callers should use this narrow predicate instead of trying to reconstruct
+// provenance from Config.Sources or filesystem paths. The per-entry source
+// layer is immutable load metadata and survives layered merges.
+func (context *Context) StackFromAutoLocal() bool {
+	return context != nil && context.StackEntry != nil && context.StackEntry.sourceLayer == "local"
+}
+
+// ResourcesConfig holds settings for the `gcx resources` commands.
 type ResourcesConfig struct {
 	// AssumeServerDryRun lists resources ("<resource>.<group>", e.g.
 	// "alertrules.rules.alerting.grafana.app") the user asserts honor server-side dry-run on
@@ -190,23 +459,59 @@ type ResourcesConfig struct {
 	AssumeServerDryRun []string `json:"assume-server-dry-run,omitempty" yaml:"assume-server-dry-run,omitempty"`
 }
 
-// AssumeServerDryRun returns the context's assume-server-dry-run list, or nil if unset.
+// AssumeServerDryRun returns the union of the global and per-stack
+// assume-server-dry-run lists, resolved by Config.Resolve. Nil if unset.
 func (context *Context) AssumeServerDryRun() []string {
-	if context.Resources == nil {
-		return nil
-	}
-	return context.Resources.AssumeServerDryRun
+	return context.assumeServerDryRun
 }
 
 func (context *Context) Validate(ctx context.Context) error {
-	if context.Grafana == nil || context.Grafana.IsEmpty() {
+	if context.Stack != "" && context.StackEntry == nil {
 		return ValidationError{
-			Path:    fmt.Sprintf("$.contexts.'%s'", context.Name),
-			Message: "grafana config is required",
+			Path:    fmt.Sprintf("$.contexts.'%s'.stack", context.Name),
+			Message: fmt.Sprintf("stack %q is not defined", context.Stack),
+			Suggestions: []string{
+				fmt.Sprintf("Add a `stacks.%s` entry, or point the context at an existing stack", context.Stack),
+			},
+		}
+	}
+	if context.Cloud != "" && context.CloudEntry == nil {
+		return ValidationError{
+			Path:    fmt.Sprintf("$.contexts.'%s'.cloud", context.Name),
+			Message: fmt.Sprintf("cloud entry %q is not defined", context.Cloud),
+			Suggestions: []string{
+				fmt.Sprintf("Add a `cloud.%s` entry, or run `gcx cloud login`", context.Cloud),
+			},
 		}
 	}
 
-	return context.Grafana.Validate(ctx, context.Name)
+	if context.Grafana == nil || context.Grafana.IsEmpty() {
+		return ValidationError{
+			Path:    fmt.Sprintf("$.contexts.'%s'", context.Name),
+			Message: "context references no stack with grafana config",
+			Suggestions: []string{
+				"Run `gcx login` to configure a stack for this context",
+			},
+		}
+	}
+	authSelection, err := context.selectGrafanaAuth()
+	if err != nil {
+		return err
+	}
+	if err := context.grafanaCredentialRejectionForMode(authSelection.mode); err != nil {
+		return err
+	}
+
+	return context.Grafana.validateWithAuthSelection(ctx, context.stackName(), authSelection)
+}
+
+// stackName returns the name of the stack this context references, falling
+// back to the context name for detached contexts (env-only, tests).
+func (context *Context) stackName() string {
+	if context.Stack != "" {
+		return context.Stack
+	}
+	return context.Name
 }
 
 // ToRESTConfig returns a REST config for the context.
@@ -216,12 +521,15 @@ func (context *Context) ToRESTConfig(ctx context.Context) (NamespacedRESTConfig,
 
 // IsCloud reports whether this context targets Grafana Cloud.
 // Any one of the following signals is sufficient:
-//   - Cloud.Stack is explicitly set
+//   - the stack entry's Slug is explicitly set (or GRAFANA_CLOUD_STACK is)
 //   - Grafana.StackID is non-zero
 //   - Grafana.Server hostname belongs to a Grafana-run Cloud domain
 //     (*.grafana.net, *.grafana.com, and their -dev/-ops variants)
 func (context *Context) IsCloud() bool {
-	if context.Cloud != nil && context.Cloud.Stack != "" {
+	if context.envStackSlug != "" {
+		return true
+	}
+	if context.StackEntry != nil && context.StackEntry.Slug != "" {
 		return true
 	}
 	if context.Grafana == nil {
@@ -241,12 +549,16 @@ func (context *Context) IsCloud() bool {
 }
 
 // ResolveStackSlug returns the Grafana Cloud stack slug for this context.
-// It checks Cloud.Stack first; if not set, attempts to derive the slug from
-// Grafana.Server by extracting the subdomain from *.grafana.net or *.grafana-dev.net URLs.
-// Returns "" if neither source yields a slug.
+// Resolution order: the GRAFANA_CLOUD_STACK environment override, the stack
+// entry's explicit Slug, then derivation from Grafana.Server by extracting the
+// subdomain from *.grafana.net or *.grafana-dev.net URLs.
+// Returns "" if no source yields a slug.
 func (context *Context) ResolveStackSlug() string {
-	if context.Cloud != nil && context.Cloud.Stack != "" {
-		return context.Cloud.Stack
+	if context.envStackSlug != "" {
+		return context.envStackSlug
+	}
+	if context.StackEntry != nil && context.StackEntry.Slug != "" {
+		return context.StackEntry.Slug
 	}
 
 	if context.Grafana == nil || context.Grafana.Server == "" {
@@ -382,8 +694,8 @@ func ContextNameFromServerURL(serverURL string) string {
 //     to grafana-dev.com instead of prod grafana.com.
 //  3. "https://grafana.com" as the default (prod, or non-Grafana-Cloud hosts).
 func (context *Context) ResolveCloudAPIURL() string {
-	if context.Cloud != nil && context.Cloud.APIUrl != "" {
-		return NormalizeCloudURL(context.Cloud.APIUrl)
+	if context.CloudEntry != nil && context.CloudEntry.APIUrl != "" {
+		return NormalizeCloudURL(context.CloudEntry.APIUrl)
 	}
 
 	if context.Grafana != nil {
@@ -443,8 +755,10 @@ type GrafanaConfig struct {
 	// OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
 	OAuthRefreshExpiresAt string `json:"oauth-refresh-expires-at,omitempty" yaml:"oauth-refresh-expires-at,omitempty"`
 
-	// AuthMethod is the authentication method stored by gcx login: "oauth", "token", "basic", or "mtls".
-	// Empty string is valid for legacy configs; readers should call InferredAuthMethod() in that case.
+	// AuthMethod selects "oauth", "token", "basic", or "mtls" when no complete
+	// runtime credential override supersedes it. Empty is valid for legacy configs
+	// and uses compatibility inference; consumers should use
+	// Context.EffectiveGrafanaAuthMethod instead of inspecting fields.
 	AuthMethod string `json:"auth-method,omitempty" yaml:"auth-method,omitempty"`
 
 	// OrgID specifies the organization targeted by this config.
@@ -480,8 +794,8 @@ func (grafana GrafanaConfig) validateNamespace(ctx context.Context, contextName 
 	// No StackID configured: discover it (cached, reused by resolveNamespace).
 	if _, err := discoverStackIDCached(ctx, grafana); err != nil {
 		return ValidationError{
-			Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
-			Message: fmt.Sprintf("missing contexts.%[1]s.grafana.org-id or contexts.%[1]s.grafana.stack-id", contextName),
+			Path:    fmt.Sprintf("$.stacks.'%s'.grafana", contextName),
+			Message: fmt.Sprintf("missing stacks.%[1]s.grafana.org-id or stacks.%[1]s.grafana.stack-id", contextName),
 			Suggestions: []string{
 				"Specify the Grafana Org ID for on-prem Grafana",
 				"Specify the Grafana Cloud Stack ID for Grafana Cloud",
@@ -495,8 +809,8 @@ func (grafana GrafanaConfig) validateNamespace(ctx context.Context, contextName 
 
 func (grafana GrafanaConfig) stackIDMismatchError(contextName string, discoveredStackID int64) error {
 	return ValidationError{
-		Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
-		Message: fmt.Sprintf("mismatched contexts.%[1]s.grafana.stack-id, discovered %d - was %d in config", contextName, discoveredStackID, grafana.StackID),
+		Path:    fmt.Sprintf("$.stacks.'%s'.grafana", contextName),
+		Message: fmt.Sprintf("mismatched stacks.%[1]s.grafana.stack-id, discovered %d - was %d in config", contextName, discoveredStackID, grafana.StackID),
 		Suggestions: []string{
 			"Specify the correct Grafana Cloud Stack ID for Grafana Cloud or omit the stack-id param",
 		},
@@ -504,9 +818,17 @@ func (grafana GrafanaConfig) stackIDMismatchError(contextName string, discovered
 }
 
 func (grafana GrafanaConfig) Validate(ctx context.Context, contextName string) error {
+	selection, err := selectGrafanaAuth(&grafana, nil, contextName)
+	if err != nil {
+		return err
+	}
+	return grafana.validateWithAuthSelection(ctx, contextName, selection)
+}
+
+func (grafana GrafanaConfig) validateWithAuthSelection(ctx context.Context, contextName string, selection grafanaAuthSelection) error {
 	if grafana.Server == "" {
 		return ValidationError{
-			Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
+			Path:    fmt.Sprintf("$.stacks.'%s'.grafana", contextName),
 			Message: "server is required",
 			Suggestions: []string{
 				"Set the address of the Grafana server to connect to",
@@ -514,20 +836,13 @@ func (grafana GrafanaConfig) Validate(ctx context.Context, contextName string) e
 		}
 	}
 
-	hasProxy := grafana.ProxyEndpoint != ""
-	hasOAuth := grafana.OAuthToken != ""
-	if hasProxy != hasOAuth {
-		return ValidationError{
-			Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
-			Message: "incomplete OAuth config: proxy-endpoint and oauth-token must both be set",
-			Suggestions: []string{
-				"Run `gcx login` to complete the OAuth flow",
-				"Or remove partial OAuth fields from the config",
-			},
-		}
+	if err := grafana.validateSelectedAuth(selection, contextName); err != nil {
+		return err
 	}
 
-	if err := grafana.validateNamespace(ctx, contextName); err != nil {
+	selectedGrafana := grafana
+	selectedGrafana.TLS = grafana.tlsForSelectedAuth(selection)
+	if err := selectedGrafana.validateNamespace(ctx, contextName); err != nil {
 		return err
 	}
 
@@ -543,22 +858,11 @@ func (grafana GrafanaConfig) IsEmpty() bool {
 // from populated credential fields: OAuthToken => "oauth"; APIToken => "token";
 // User or Password => "basic"; TLS with client cert => "mtls"; no credentials => "unknown".
 func (grafana GrafanaConfig) InferredAuthMethod() string {
-	if grafana.AuthMethod != "" {
-		return grafana.AuthMethod
+	selection, err := selectGrafanaAuth(&grafana, nil, "")
+	if err != nil {
+		return strings.ToLower(strings.TrimSpace(grafana.AuthMethod))
 	}
-	if grafana.OAuthToken != "" {
-		return "oauth"
-	}
-	if grafana.APIToken != "" {
-		return "token"
-	}
-	if grafana.User != "" || grafana.Password != "" {
-		return "basic"
-	}
-	if grafana.TLS != nil && (len(grafana.TLS.CertData) > 0 || grafana.TLS.CertFile != "") {
-		return "mtls"
-	}
-	return "unknown"
+	return selection.mode.String()
 }
 
 // TLS contains settings to enable transport layer security.
@@ -599,6 +903,22 @@ type TLS struct {
 	// To indicate to the server http/1.1 is preferred over http/2, set to ["http/1.1", "h2"] (though the server is free to ignore that preference).
 	// To use only http/1.1, set to ["http/1.1"].
 	NextProtos []string `json:"next-protos,omitempty" yaml:"next-protos,omitempty"`
+
+	// credentialFileSnapshots freeze the effective file-backed TLS identity
+	// observed while a credential binding is evaluated. ResolveFiles uses those
+	// captured bytes rather than re-reading the path, closing the load-to-request
+	// race where a CA or client-identity file changes after token resolution.
+	credentialFilesCaptured bool            `json:"-" yaml:"-"`
+	credentialCertFile      tlsFileSnapshot `json:"-" yaml:"-"`
+	credentialKeyFile       tlsFileSnapshot `json:"-" yaml:"-"`
+	credentialCAFile        tlsFileSnapshot `json:"-" yaml:"-"`
+}
+
+type tlsFileSnapshot struct {
+	path        string
+	fingerprint string
+	contents    []byte
+	err         error
 }
 
 // IsEmpty reports whether all TLS fields are at their zero values.
@@ -627,31 +947,49 @@ func tlsFileError(description, path string, err error) error {
 // the corresponding CertData, KeyData, and CAData fields. File-based fields
 // take precedence: if both CertFile and CertData are set, CertFile wins.
 func (cfg *TLS) ResolveFiles() error {
+	// Some runtime-only configurations have no persisted credential whose
+	// binding would have captured TLS material. Freeze their effective paths at
+	// transport construction as well, and recapture paths changed by overrides.
+	cfg.captureCredentialFileSnapshots()
 	if (cfg.CertFile != "") != (cfg.KeyFile != "") {
 		return errors.New("both cert-file and key-file must be provided together")
 	}
 	if cfg.CertFile != "" {
-		data, err := os.ReadFile(cfg.CertFile)
+		data, err := cfg.readCredentialTLSFile("client certificate", cfg.CertFile, cfg.credentialCertFile)
 		if err != nil {
-			return tlsFileError("client certificate", cfg.CertFile, err)
+			return err
 		}
 		cfg.CertData = data
 	}
 	if cfg.KeyFile != "" {
-		data, err := os.ReadFile(cfg.KeyFile)
+		data, err := cfg.readCredentialTLSFile("client key", cfg.KeyFile, cfg.credentialKeyFile)
 		if err != nil {
-			return tlsFileError("client key", cfg.KeyFile, err)
+			return err
 		}
 		cfg.KeyData = data
 	}
 	if cfg.CAFile != "" {
-		data, err := os.ReadFile(cfg.CAFile)
+		data, err := cfg.readCredentialTLSFile("CA certificate", cfg.CAFile, cfg.credentialCAFile)
 		if err != nil {
-			return tlsFileError("CA certificate", cfg.CAFile, err)
+			return err
 		}
 		cfg.CAData = data
 	}
 	return nil
+}
+
+func (cfg *TLS) readCredentialTLSFile(description, path string, captured tlsFileSnapshot) ([]byte, error) {
+	if cfg.credentialFilesCaptured && captured.path == path {
+		if captured.err != nil {
+			return nil, tlsFileError(description, path, captured.err)
+		}
+		return slices.Clone(captured.contents), nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, tlsFileError(description, path, err)
+	}
+	return data, nil
 }
 
 // ToStdTLSConfig converts the TLS configuration into a standard crypto/tls
@@ -698,7 +1036,8 @@ func (cfg *TLS) ToStdTLSConfig() (*tls.Config, error) {
 }
 
 // Minify returns a trimmed down version of the given configuration containing
-// only the current context and the relevant options it directly depends on.
+// only the current context and the relevant options it directly depends on
+// (its stack, its cloud entry, and the global resources settings).
 func Minify(config Config) (Config, error) {
 	minified := config
 
@@ -707,11 +1046,31 @@ func Minify(config Config) (Config, error) {
 	}
 
 	minified.Contexts = make(map[string]*Context, 1)
-	for name, ctx := range config.Contexts {
-		if name == minified.CurrentContext {
-			minified.Contexts[name] = ctx
+	minified.Stacks = nil
+	minified.Cloud = nil
+	cur := config.Contexts[config.CurrentContext]
+	if cur != nil {
+		minified.Contexts[config.CurrentContext] = cur
+		if stack := stackForMinifiedContext(config, cur); stack != nil {
+			minified.Stacks = map[string]*StackConfig{cur.Stack: stack}
+		}
+		if entry := config.Cloud[cur.Cloud]; cur.Cloud != "" && entry != nil {
+			minified.Cloud = map[string]*CloudEntry{cur.Cloud: entry}
 		}
 	}
 
 	return minified, nil
+}
+
+func stackForMinifiedContext(config Config, cur *Context) *StackConfig {
+	if cur.Stack == "" {
+		return nil
+	}
+	// Prefer the resolved runtime view: ParseEnvIntoContext detaches it from
+	// Config.Stacks so selected-context overrides cannot leak into a sibling,
+	// while `config view --minify` still displays the effective configuration.
+	if cur.StackEntry != nil {
+		return cur.StackEntry
+	}
+	return config.Stacks[cur.Stack]
 }

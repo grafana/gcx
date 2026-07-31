@@ -1,18 +1,20 @@
-## gcx agento11y experiments report
+## gcx agento11y experiments test-suites versions create
 
-Fetch the aggregate report for an experiment.
+Create a draft test suite version.
 
 ```
-gcx agento11y experiments report <run-id> [flags]
+gcx agento11y experiments test-suites versions create <suite-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for report
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+      --changelog string   Version changelog
+      --empty-draft        Create an empty draft instead of cloning the latest published version
+  -h, --help               help for create
+      --jq string          jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string      Output format. One of: agents, json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -29,5 +31,5 @@ gcx agento11y experiments report <run-id> [flags]
 
 ### SEE ALSO
 
-* [gcx agento11y experiments](gcx_agento11y_experiments.md)	 - Manage eval experiment runs.
+* [gcx agento11y experiments test-suites versions](gcx_agento11y_experiments_test-suites_versions.md)	 - Manage test suite versions.
 

@@ -3,7 +3,9 @@ package apps
 import (
 	"context"
 	"errors"
+	"io"
 
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instoutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/spf13/cobra"
@@ -11,18 +13,23 @@ import (
 )
 
 type removeOpts struct {
+	IO  cmdio.Options
 	yes bool
 }
 
 func (o *removeOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.yes, "yes", false, "Confirm removal of namespace app instrumentation")
+	// The remove result is a MutationResult document through the codec
+	// system: the default text codec prints the familiar one-liner; agent
+	// mode and explicit -o json/yaml get the structured document.
+	instoutput.BindMutationIO(&o.IO, flags)
 }
 
 func (o *removeOpts) Validate() error {
 	if !o.yes {
 		return errors.New("apps remove: requires --yes to proceed (this removes namespace app instrumentation)")
 	}
-	return nil
+	return o.IO.Validate()
 }
 
 // makeRemoveCmd builds the "apps remove <cluster> <namespace>" command.
@@ -60,7 +67,7 @@ This command requires --yes to proceed.`,
 			cluster := args[0]
 			namespace := args[1]
 
-			return runAppRemove(ctx, client, cluster, namespace, urls, cmd.OutOrStdout())
+			return runAppRemove(ctx, &opts.IO, client, cluster, namespace, urls, cmd.OutOrStdout())
 		},
 	}
 
@@ -72,10 +79,11 @@ This command requires --yes to proceed.`,
 // for testability with fake clients.
 func runAppRemove(
 	ctx context.Context,
+	outOpts *cmdio.Options,
 	client appsClient,
 	cluster, namespace string,
 	urls instrumentation.BackendURLs,
-	w interface{ Write(p []byte) (int, error) },
+	w io.Writer,
 ) error {
 	resp, err := client.GetAppInstrumentation(ctx, cluster)
 	if err != nil {
@@ -95,11 +103,9 @@ func runAppRemove(
 		return err
 	}
 
-	return instoutput.MutationResult{
-		Action:  "remove",
-		Target:  instoutput.Target{Cluster: cluster, Namespace: namespace},
-		Changed: true,
-	}.Emit(w)
+	result := instoutput.NewMutationResult("remove", instoutput.Target{Cluster: cluster, Namespace: namespace})
+	result.Changed = true
+	return outOpts.Encode(w, result)
 }
 
 // newRemoveCmd is a test-facing constructor that injects a pre-built appsClient

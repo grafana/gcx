@@ -11,6 +11,7 @@ import (
 
 	auth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -33,6 +34,29 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 
 type tracesHelper struct {
 	loader *providers.ConfigLoader
+}
+
+// mutationTextCodec is the human "text" codec for the adaptive traces
+// mutation commands (recommendations apply/dismiss, policies delete): those
+// commands have always reported outcomes as styled prose on stderr and
+// printed NOTHING on stdout, so the text codec keeps the default human
+// stdout byte-identical (empty) while agent mode and explicit -o json/yaml
+// get the structured mutation document.
+type mutationTextCodec struct{}
+
+func (c *mutationTextCodec) Format() format.Format { return "text" }
+
+func (c *mutationTextCodec) Encode(_ io.Writer, v any) error {
+	switch v.(type) {
+	case cmdio.SingleMutation, cmdio.BatchMutation:
+		return nil
+	default:
+		return fmt.Errorf("adaptive-traces: mutation text codec: expected mutation result, got %T", v)
+	}
+}
+
+func (c *mutationTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
 }
 
 func (h *tracesHelper) newClient(ctx context.Context) (*Client, error) {
@@ -150,15 +174,25 @@ func (c *recommendationTableCodec) Decode(_ io.Reader, _ any) error {
 // ---------------------------------------------------------------------------
 
 type recommendationsApplyOpts struct {
+	IO     cmdio.Options
 	DryRun bool
+	Force  bool
 }
 
 func (o *recommendationsApplyOpts) setup(flags *pflag.FlagSet) {
+	// The apply result is a SingleMutation document through the codec
+	// system: the text codec preserves the historical human stdout (empty —
+	// outcomes are stderr prose); agent mode and explicit -o json/yaml get
+	// the structured document.
+	o.IO.RegisterCustomCodec("text", &mutationTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview what would be applied without making changes")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func (o *recommendationsApplyOpts) Validate() error {
-	return nil
+	return o.IO.Validate()
 }
 
 //nolint:dupl // apply and dismiss are distinct commands with identical structure.
@@ -174,9 +208,20 @@ func (h *tracesHelper) recommendationsApplyCommand() *cobra.Command {
 			}
 
 			id := args[0]
+			result := cmdio.NewSingleMutation("applied", cmdio.MutationTarget{Kind: "recommendation", ID: id})
 
 			if opts.DryRun {
 				cmdio.Info(cmd.ErrOrStderr(), "[dry-run] Would apply recommendation %q", id)
+				result.DryRun = true
+				return opts.IO.Encode(cmd.OutOrStdout(), result)
+			}
+
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+				fmt.Sprintf("Apply recommendation %q?", id))
+			if err != nil {
+				return err
+			}
+			if !proceed {
 				return nil
 			}
 
@@ -192,7 +237,9 @@ func (h *tracesHelper) recommendationsApplyCommand() *cobra.Command {
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Applied recommendation %q", id)
-			return nil
+			changed := true
+			result.Changed = &changed
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -204,15 +251,25 @@ func (h *tracesHelper) recommendationsApplyCommand() *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type recommendationsDismissOpts struct {
+	IO     cmdio.Options
 	DryRun bool
+	Force  bool
 }
 
 func (o *recommendationsDismissOpts) setup(flags *pflag.FlagSet) {
+	// The dismiss result is a SingleMutation document through the codec
+	// system: the text codec preserves the historical human stdout (empty —
+	// outcomes are stderr prose); agent mode and explicit -o json/yaml get
+	// the structured document.
+	o.IO.RegisterCustomCodec("text", &mutationTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview what would be dismissed without making changes")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func (o *recommendationsDismissOpts) Validate() error {
-	return nil
+	return o.IO.Validate()
 }
 
 //nolint:dupl // dismiss and apply are distinct commands with identical structure.
@@ -228,9 +285,20 @@ func (h *tracesHelper) recommendationsDismissCommand() *cobra.Command {
 			}
 
 			id := args[0]
+			result := cmdio.NewSingleMutation("dismissed", cmdio.MutationTarget{Kind: "recommendation", ID: id})
 
 			if opts.DryRun {
 				cmdio.Info(cmd.ErrOrStderr(), "[dry-run] Would dismiss recommendation %q", id)
+				result.DryRun = true
+				return opts.IO.Encode(cmd.OutOrStdout(), result)
+			}
+
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+				fmt.Sprintf("Dismiss recommendation %q?", id))
+			if err != nil {
+				return err
+			}
+			if !proceed {
 				return nil
 			}
 
@@ -246,7 +314,9 @@ func (h *tracesHelper) recommendationsDismissCommand() *cobra.Command {
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Dismissed recommendation %q", id)
-			return nil
+			changed := true
+			result.Changed = &changed
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -516,15 +586,23 @@ func (h *tracesHelper) policiesUpdateCommand() *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type policiesDeleteOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *policiesDeleteOpts) setup(flags *pflag.FlagSet) {
+	// The delete result is a BatchMutation document through the codec
+	// system: the text codec preserves the historical human stdout (empty —
+	// per-policy outcomes are stderr prose); agent mode and explicit -o
+	// json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &mutationTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func (o *policiesDeleteOpts) Validate() error {
-	return nil
+	return o.IO.Validate()
 }
 
 func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
@@ -534,6 +612,10 @@ func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
 		Short: "Delete one or more Adaptive Traces sampling policies.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete %d policy(ies)?", len(args)))
 			if err != nil {
@@ -550,16 +632,43 @@ func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
 				return err
 			}
 
+			result := cmdio.NewBatchMutation("deleted")
 			var errs []error
 			for _, id := range args {
 				if err := crud.Delete(ctx, id); err != nil {
+					cmdio.Error(cmd.ErrOrStderr(), "Failed to delete policy %q: %v", id, err)
+					result.Summary.Failed++
+					result.Failures = append(result.Failures, cmdio.MutationFailure{
+						Target: cmdio.MutationTarget{Kind: "policy", ID: id},
+						Error:  err.Error(),
+					})
 					errs = append(errs, fmt.Errorf("deleting policy %q: %w", id, err))
 				} else {
 					cmdio.Success(cmd.ErrOrStderr(), "Deleted policy %q", id)
+					result.Summary.Succeeded++
 				}
 			}
 
-			return errors.Join(errs...)
+			if result.Summary.Failed > 0 && result.Summary.Succeeded == 0 {
+				// Total failure: nothing was deleted, so a success-shaped
+				// batch document would be misleading. Keep the classified
+				// single-error path — stdout must carry exactly one value
+				// (the reporter's error document).
+				return errors.Join(errs...)
+			}
+
+			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+				return err
+			}
+
+			if result.Summary.Failed > 0 {
+				// Partial failure: the result document (with enumerated
+				// failures) is already on stdout — EmittedError carries
+				// exit 4 without a second error document.
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+					gcxerrors.NewPartialFailureError("delete", len(args), result.Summary.Failed))
+			}
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

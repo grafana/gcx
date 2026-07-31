@@ -68,9 +68,22 @@ type errorJSON struct {
 	DocsLink    string   `json:"docsLink,omitempty"`
 }
 
+// Discriminators for the gcx-owned envelope shapes written to stdout. The
+// type marker lets a consumer dispatch on shape without heuristics; the
+// schema version covers the envelope shape itself (not the domain payload).
+const (
+	// ErrorEnvelopeType tags the {"error": {...}} document.
+	ErrorEnvelopeType = "gcx.error"
+	// PartialResultEnvelopeType tags the fused {"items": [...], "error": {...}} document.
+	PartialResultEnvelopeType = "gcx.partial_result"
+	envelopeSchemaVersion     = "1"
+)
+
 // errorEnvelope is the top-level JSON object written to stdout on error.
 type errorEnvelope struct {
-	Error errorJSON `json:"error"`
+	Type          string    `json:"type"`
+	SchemaVersion string    `json:"schema_version"`
+	Error         errorJSON `json:"error"`
 }
 
 // WriteJSON writes the error as a JSON object to the given writer.
@@ -84,6 +97,8 @@ type errorEnvelope struct {
 // follow the link (see DocsFetchSuggestion).
 func (e DetailedError) WriteJSON(w io.Writer, exitCode int) error {
 	envelope := errorEnvelope{
+		Type:          ErrorEnvelopeType,
+		SchemaVersion: envelopeSchemaVersion,
 		Error: errorJSON{
 			Summary:     e.Summary,
 			ExitCode:    exitCode,
@@ -108,12 +123,16 @@ func (e DetailedError) WriteJSON(w io.Writer, exitCode int) error {
 // the error context.
 func (e DetailedError) WriteJSONWithItems(w io.Writer, exitCode int, items any) error {
 	type combined struct {
-		Items any       `json:"items"`
-		Error errorJSON `json:"error"`
+		Type          string    `json:"type"`
+		SchemaVersion string    `json:"schema_version"`
+		Items         any       `json:"items"`
+		Error         errorJSON `json:"error"`
 	}
 
 	env := combined{
-		Items: items,
+		Type:          PartialResultEnvelopeType,
+		SchemaVersion: envelopeSchemaVersion,
+		Items:         items,
 		Error: errorJSON{
 			Summary:     e.Summary,
 			ExitCode:    exitCode,

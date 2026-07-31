@@ -44,7 +44,7 @@ agent has a clean function seam or needs a harness / full stack. For deeper run-
 (binding existing generations, cross-process verifiers) point to the per-language run skill
 (Python: `agento11y-experiments`).
 
-> Note: `agento11y-experiments` currently ships in the grafana/sigil-sdk repo
+> Note: `agento11y-experiments` currently ships in the grafana/agento11y repo
 > (`python/skills/agento11y-experiments/`), not in this gcx bundle yet — install it from there for
 > now. Consolidating it into the gcx bundle is pending.
 
@@ -71,7 +71,9 @@ the suite YAML (Steps 1–5) need nothing installed.
   developer did not configure — use their `AGENTO11Y_ENDPOINT` and `AGENTO11Y_AUTH_TOKEN`; if the
   endpoint isn't set, ask for it, do not invent one.
 - Never mint, generate, or store credentials. The developer owns the Grafana Cloud ingestion
-  token; read it from the environment or ask them to paste it — do not create one.
+  token; read it from the environment (a gitignored `.env` or an exported env var they supply
+  themselves) — **do not ask them to paste a secret token into the chat** (it is captured in the
+  transcript), and do not create one.
 - Never present the generated cases as validated. They are a draft to review and extend.
 - **The `llm_judge` uses the LLM provider the agent already uses — don't add a new one.** If the
   agent calls OpenAI, the judge calls OpenAI; if Anthropic, Anthropic. Do NOT default the judge to
@@ -442,7 +444,7 @@ If they accept:
    actually calls their agent.
 2. Preflight the environment and stop with a clear ask if anything is missing. **When you ask, tell
    the developer exactly where each value is** — for a Cloud stack they all live on the plugin
-   **Connection page**, `https://<your-stack>.grafana.net/plugins/grafana-sigil-app`:
+   **Connection page**, `https://<your-stack>.grafana.net/plugins/grafana-agento11y-app`:
    - `AGENTO11Y_ENDPOINT` = the **API URL** on that page. If unset, ask — never invent one.
    - `AGENTO11Y_AUTH_TENANT_ID` = the **Instance ID** on that page.
    - `AGENTO11Y_AUTH_TOKEN` — always required (the SDK raises before any request if it is empty).

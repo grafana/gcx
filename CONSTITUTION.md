@@ -72,6 +72,16 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   being acted on (resource selectors, UIDs, expressions, file paths) is
   positional. How to act on it (output format, concurrency, dry-run, filters)
   is a flag.
+- **The public command surface is stable within a major version.** Beginning
+  with v1.0.0, command paths, aliases, flags, and positional syntax are stable
+  within a major version. Naming consistency does not authorize breaking
+  changes: a grammar rule in this document is not by itself grounds for
+  renaming a released command. A preferred replacement may be added only while
+  the existing invocation remains functional; removal requires the next major
+  release, unless the surface was explicitly marked experimental before
+  release. The complete v1.0.0 command surface is therefore a supported
+  compatibility exception for all v1.x releases, including invocations that
+  predate or deviate from the rules above.
 
 ## Dual-Purpose Design
 
@@ -79,6 +89,22 @@ Every command serves both humans and agents. Agent mode switches defaults
 (JSON output, no color, no truncation) but does not change available
 functionality. Explicit flags always override agent mode defaults.
 Agent mode flips format and non-format defaults; explicit format flags override format choice; non-format defaults (no color, no truncation, plain-ASCII charset) apply uniformly across all formats.
+
+**The agent output contract.** When agent mode supplies the default (no
+explicit `--output`, `--json`, or `--jq`): a finite command emits exactly
+one JSON value on stdout — its result or a fused error — and the process
+exit code agrees with that outcome; a genuine stream emits typed, versioned
+JSONL with a terminal success/error event; artifact, interactive, server,
+raw-passthrough, shell-source, and prose commands follow their declared
+protocol class (`cmd/gcx/root/testdata/output_classes.json`, enforced in
+CI). stderr is advisory diagnostics — an agent never needs to parse both
+streams to understand the outcome. gcx-owned envelope shapes introduced
+under this contract (errors, spill receipts, mutation results, stream
+events) carry `type` and `schema_version` discriminators; shapes that
+shipped before the contract (IRM OnCall action envelopes, skills receipts)
+retain their locked forms until their own versioned migrations.
+(Instrumentation `MutationResult` migrated with the contract: it carries
+the discriminators as additive fields.)
 
 See [agent-mode.md](docs/design/agent-mode.md) for
 agent mode detection, behavior changes, and opt-out mechanisms.
@@ -97,7 +123,8 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 ## Push/Pull Philosophy
 
 - **Local manifests are clean, portable, and environment-agnostic.** `pull`
-  strips server-managed fields and writes a consistent format (default: YAML).
+  strips server-managed fields and writes a consistent format (default: JSON —
+  ratified from shipped behavior, #1030 Decision 2; `-o yaml` per invocation).
   `push` is idempotent (create-or-update) and treats local files as
   authoritative. The same manifests can be pushed to any Grafana instance
   via `--context` without modification.

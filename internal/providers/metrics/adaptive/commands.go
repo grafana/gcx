@@ -12,12 +12,36 @@ import (
 
 	auth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+// mutationTextCodec is the human "text" codec for the adaptive mutation
+// commands (recommendations apply, rules/segments/exemptions delete): those
+// commands have always reported outcomes as styled prose on stderr and
+// printed NOTHING on stdout, so the text codec keeps the default human
+// stdout byte-identical (empty) while agent mode and explicit -o json/yaml
+// get the structured mutation document.
+type mutationTextCodec struct{}
+
+func (c *mutationTextCodec) Format() format.Format { return "text" }
+
+func (c *mutationTextCodec) Encode(_ io.Writer, v any) error {
+	switch v.(type) {
+	case cmdio.SingleMutation, cmdio.BatchMutation:
+		return nil
+	default:
+		return fmt.Errorf("adaptive-metrics: mutation text codec: expected mutation result, got %T", v)
+	}
+}
+
+func (c *mutationTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
+}
 
 type metricsHelper struct {
 	loader *providers.ConfigLoader
@@ -131,10 +155,13 @@ func (h *metricsHelper) recommendationsListCommand() *cobra.Command {
 				fmt.Fprintf(cmd.ErrOrStderr(), "%d recommendation(s)\n", total)
 			}
 
-			if len(recs) == 0 {
-				return nil
+			// Always encode, even when empty: agent mode and explicit
+			// -o json/yaml must emit exactly one document ([] rather than
+			// nothing). The table codec prints nothing for an empty list,
+			// keeping default human stdout byte-identical.
+			if recs == nil {
+				recs = []MetricRecommendation{}
 			}
-
 			return opts.Encode(cmd.OutOrStdout(), recs)
 		},
 	}
@@ -241,6 +268,8 @@ func (h *metricsHelper) recommendationsDiffCommand() *cobra.Command {
 // recommendations apply
 
 type recommendationsApplyOpts struct {
+	cmdio.Options
+
 	All     bool
 	DryRun  bool
 	Force   bool
@@ -248,6 +277,13 @@ type recommendationsApplyOpts struct {
 }
 
 func (o *recommendationsApplyOpts) setup(flags *pflag.FlagSet) {
+	// The apply result is a mutation document through the codec system: the
+	// text codec preserves the historical human stdout (empty — outcomes are
+	// stderr prose); agent mode and explicit -o json/yaml get the structured
+	// document.
+	o.RegisterCustomCodec("text", &mutationTextCodec{})
+	o.DefaultFormat("text")
+	o.BindFlags(flags)
 	flags.BoolVar(&o.All, "all", false, "Apply all recommendations (bulk)")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview without applying")
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
@@ -255,7 +291,7 @@ func (o *recommendationsApplyOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *recommendationsApplyOpts) Validate() error {
-	return nil
+	return o.Options.Validate()
 }
 
 func (h *metricsHelper) recommendationsApplyCommand() *cobra.Command {
@@ -315,10 +351,17 @@ func applyAllRecommendations(cmd *cobra.Command, client *Client, opts *recommend
 
 	stderr := cmd.ErrOrStderr()
 
+	result := cmdio.NewBatchMutation("applied")
+	result.Summary = cmdio.MutationSummary{
+		Succeeded: counts["add"] + counts["update"] + counts["remove"],
+		Skipped:   counts["keep"],
+	}
+
 	if opts.DryRun {
 		cmdio.Info(stderr, "Dry run — would apply all recommendations (%d rules): %d add, %d update, %d remove, %d keep.",
 			len(rules), counts["add"], counts["update"], counts["remove"], counts["keep"])
-		return nil
+		result.DryRun = true
+		return opts.Encode(cmd.OutOrStdout(), result)
 	}
 
 	proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
@@ -342,7 +385,7 @@ func applyAllRecommendations(cmd *cobra.Command, client *Client, opts *recommend
 
 	cmdio.Success(stderr, "Applied all recommendations (%d rules): %d add, %d update, %d remove, %d keep.",
 		len(rules), counts["add"], counts["update"], counts["remove"], counts["keep"])
-	return nil
+	return opts.Encode(cmd.OutOrStdout(), result)
 }
 
 type applyItem struct {
@@ -408,7 +451,10 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 					item.rec.CurrentSeriesCount, item.rec.RecommendedSeriesCount)
 			}
 		}
-		return nil
+		result := cmdio.NewBatchMutation("applied")
+		result.Summary = cmdio.MutationSummary{Succeeded: actionCount, Skipped: len(items) - actionCount}
+		result.DryRun = true
+		return opts.Encode(cmd.OutOrStdout(), result)
 	}
 
 	if actionCount > 0 {
@@ -428,31 +474,67 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 		return fmt.Errorf("fetch rules ETag: %w", err)
 	}
 
+	result := cmdio.NewBatchMutation("applied")
 	var failed []string
 	for _, item := range items {
-		if !applyOneItem(ctx, cmd, client, item, opts.Segment, &rulesEtag) {
-			failed = append(failed, item.rec.Metric)
+		if item.action == "keep" {
+			cmdio.Info(stderr, "Skipping %s: keep (no change).", item.rec.Metric)
+			result.Summary.Skipped++
+			continue
 		}
+		if err := applyOneItem(ctx, cmd, client, item, opts.Segment, &rulesEtag); err != nil {
+			failed = append(failed, item.rec.Metric)
+			result.Summary.Failed++
+			result.Failures = append(result.Failures, cmdio.MutationFailure{
+				Target: cmdio.MutationTarget{Kind: "recommendation", Name: item.rec.Metric, Namespace: opts.Segment},
+				Error:  err.Error(),
+			})
+			continue
+		}
+		result.Summary.Succeeded++
 	}
 
 	if len(failed) > 0 {
+		// Keep the aggregate outcome visible to humans on the advisory
+		// stream; the structured document below carries it for machines.
+		cmdio.Error(stderr, "Failed to apply %d of %d recommendation(s): %s",
+			len(failed), len(items), strings.Join(failed, ", "))
+	}
+
+	if result.Summary.Failed > 0 && result.Summary.Succeeded == 0 {
+		// Total failure: nothing was applied, so a success-shaped batch
+		// document would be misleading. Keep the classified single-error
+		// path — stdout must carry exactly one value (the reporter's
+		// error document).
 		return fmt.Errorf("failed to apply %d of %d recommendation(s): %s",
 			len(failed), len(items), strings.Join(failed, ", "))
+	}
+
+	if err := opts.Encode(cmd.OutOrStdout(), result); err != nil {
+		return err
+	}
+
+	if len(failed) > 0 {
+		// Partial failure: the result document (with enumerated failures)
+		// is already on stdout — EmittedError carries exit 4 without a
+		// second error document.
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+			gcxerrors.NewPartialFailureError("apply", len(items), len(failed)))
 	}
 	return nil
 }
 
-func applyOneItem(ctx context.Context, cmd *cobra.Command, client *Client, item applyItem, segment string, rulesEtag *string) bool {
+// applyOneItem applies one non-keep recommendation, printing the historical
+// per-item stderr prose. It returns the failure (nil on success) so the
+// caller can aggregate the mutation result document.
+func applyOneItem(ctx context.Context, cmd *cobra.Command, client *Client, item applyItem, segment string, rulesEtag *string) error {
 	stderr := cmd.ErrOrStderr()
 	switch item.action {
-	case "keep":
-		cmdio.Info(stderr, "Skipping %s: keep (no change).", item.rec.Metric)
-
 	case "add":
 		newEtag, err := client.CreateRule(ctx, item.rec.ToRule(), *rulesEtag, segment)
 		if err != nil {
 			cmdio.Error(stderr, "Failed to create rule for %s: %v", item.rec.Metric, err)
-			return false
+			return err
 		}
 		cmdio.Success(stderr, "Created rule for %s.", item.rec.Metric)
 		*rulesEtag = newEtag
@@ -461,7 +543,7 @@ func applyOneItem(ctx context.Context, cmd *cobra.Command, client *Client, item 
 		newEtag, err := client.UpdateRule(ctx, item.rec.ToRule(), *rulesEtag, segment)
 		if err != nil {
 			cmdio.Error(stderr, "Failed to update rule for %s: %v", item.rec.Metric, err)
-			return false
+			return err
 		}
 		cmdio.Success(stderr, "Updated rule for %s.", item.rec.Metric)
 		*rulesEtag = newEtag
@@ -469,18 +551,18 @@ func applyOneItem(ctx context.Context, cmd *cobra.Command, client *Client, item 
 	case "remove":
 		if err := client.DeleteRule(ctx, item.rec.Metric, *rulesEtag, segment); err != nil {
 			cmdio.Error(stderr, "Failed to delete rule for %s: %v", item.rec.Metric, err)
-			return false
+			return err
 		}
 		cmdio.Success(stderr, "Deleted rule for %s.", item.rec.Metric)
 		// Refetch ETag after delete since delete doesn't return one.
 		_, newEtag, err := client.ListRules(ctx, segment)
 		if err != nil {
 			cmdio.Error(stderr, "Failed to refresh ETag after delete: %v. Subsequent mutations may fail.", err)
-			return false
+			return err
 		}
 		*rulesEtag = newEtag
 	}
-	return true
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -546,10 +628,11 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 			}
 
 			fmt.Fprintf(cmd.ErrOrStderr(), "%d rule(s)\n", len(rules))
-			if len(rules) == 0 {
-				return nil
-			}
 
+			// Always encode, even when empty: agent mode and explicit
+			// -o json/yaml must emit exactly one document ([] rather than
+			// nothing). The table codec prints nothing for an empty list,
+			// keeping default human stdout byte-identical.
 			return opts.Encode(cmd.OutOrStdout(), rules)
 		},
 	}
@@ -774,11 +857,20 @@ func (h *metricsHelper) rulesUpdateCommand() *cobra.Command {
 // rules delete
 
 type rulesDeleteOpts struct {
+	cmdio.Options
+
 	Segment string
 	Force   bool
 }
 
 func (o *rulesDeleteOpts) setup(flags *pflag.FlagSet) {
+	// The delete result is a SingleMutation document through the codec
+	// system: the text codec preserves the historical human stdout (empty —
+	// the confirmation is stderr prose); agent mode and explicit -o
+	// json/yaml get the structured document.
+	o.RegisterCustomCodec("text", &mutationTextCodec{})
+	o.DefaultFormat("text")
+	o.BindFlags(flags)
 	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
@@ -790,6 +882,10 @@ func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
 		Short: "Delete an aggregation rule.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			metric := args[0]
 			stderr := cmd.ErrOrStderr()
 
@@ -817,7 +913,10 @@ func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
 			} else {
 				cmdio.Success(stderr, "Deleted rule for %s.", metric)
 			}
-			return nil
+			changed := true
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "rule", Name: metric, Namespace: opts.Segment})
+			result.Changed = &changed
+			return opts.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -843,6 +942,11 @@ func (c *rulesTableCodec) Encode(w io.Writer, v any) error {
 	rules, ok := v.([]MetricRule)
 	if !ok {
 		return fmt.Errorf("adaptive-metrics: rules table codec: expected []MetricRule, got %T", v)
+	}
+	// Historical human output for an empty list is nothing on stdout (the
+	// count goes to stderr); structured formats still get [].
+	if len(rules) == 0 {
+		return nil
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -934,6 +1038,11 @@ func (c *recommendationsTableCodec) Encode(w io.Writer, v any) error {
 	recs, ok := v.([]MetricRecommendation)
 	if !ok {
 		return fmt.Errorf("adaptive-metrics: recommendations table codec: expected []MetricRecommendation, got %T", v)
+	}
+	// Historical human output for an empty list is nothing on stdout (the
+	// count goes to stderr); structured formats still get [].
+	if len(recs) == 0 {
+		return nil
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -1117,10 +1226,14 @@ func (h *metricsHelper) segmentsListCommand() *cobra.Command {
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "%d segment(s)\n", total)
 			}
-			if len(segments) == 0 {
-				return nil
-			}
 
+			// Always encode, even when empty: agent mode and explicit
+			// -o json/yaml must emit exactly one document ([] rather than
+			// nothing). The table codec prints nothing for an empty list,
+			// keeping default human stdout byte-identical.
+			if segments == nil {
+				segments = []MetricSegment{}
+			}
 			return opts.Encode(cmd.OutOrStdout(), segments)
 		},
 	}
@@ -1309,10 +1422,19 @@ func (h *metricsHelper) segmentsUpdateCommand() *cobra.Command {
 // segments delete
 
 type segmentsDeleteOpts struct {
+	cmdio.Options
+
 	Force bool
 }
 
 func (o *segmentsDeleteOpts) setup(flags *pflag.FlagSet) {
+	// The delete result is a SingleMutation document through the codec
+	// system: the text codec preserves the historical human stdout (empty —
+	// the confirmation is stderr prose); agent mode and explicit -o
+	// json/yaml get the structured document.
+	o.RegisterCustomCodec("text", &mutationTextCodec{})
+	o.DefaultFormat("text")
+	o.BindFlags(flags)
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
@@ -1323,6 +1445,10 @@ func (h *metricsHelper) segmentsDeleteCommand() *cobra.Command {
 		Short: "Delete an Adaptive Metrics segment.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			id := args[0]
 			stderr := cmd.ErrOrStderr()
 
@@ -1346,7 +1472,10 @@ func (h *metricsHelper) segmentsDeleteCommand() *cobra.Command {
 			}
 
 			cmdio.Success(stderr, "Deleted segment %s.", id)
-			return nil
+			changed := true
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "segment", ID: id})
+			result.Changed = &changed
+			return opts.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1377,6 +1506,11 @@ func (c *segmentsTableCodec) Encode(w io.Writer, v any) error {
 		} else {
 			return fmt.Errorf("adaptive-metrics: segments table codec: expected []MetricSegment, got %T", v)
 		}
+	}
+	// Historical human output for an empty list is nothing on stdout (the
+	// count goes to stderr); structured formats still get [].
+	if len(segments) == 0 {
+		return nil
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -1487,8 +1621,13 @@ func (h *metricsHelper) exemptionsListCommand() *cobra.Command {
 					total += len(entries[i].Exemptions)
 				}
 				fmt.Fprintf(cmd.ErrOrStderr(), "%d exemption(s) across %d segment(s)\n", total, len(entries))
-				if total == 0 {
-					return nil
+
+				// Always encode, even when empty: agent mode and explicit
+				// -o json/yaml must emit exactly one document. The table
+				// codec prints nothing when there are no exemption rows,
+				// keeping default human stdout byte-identical.
+				if entries == nil {
+					entries = []ExemptionsBySegmentEntry{}
 				}
 				return opts.Encode(cmd.OutOrStdout(), entries)
 			}
@@ -1509,10 +1648,14 @@ func (h *metricsHelper) exemptionsListCommand() *cobra.Command {
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "%d exemption(s)\n", total)
 			}
-			if len(exemptions) == 0 {
-				return nil
-			}
 
+			// Always encode, even when empty: agent mode and explicit
+			// -o json/yaml must emit exactly one document ([] rather than
+			// nothing). The table codec prints nothing for an empty list,
+			// keeping default human stdout byte-identical.
+			if exemptions == nil {
+				exemptions = []MetricExemption{}
+			}
 			return opts.Encode(cmd.OutOrStdout(), exemptions)
 		},
 	}
@@ -1771,11 +1914,20 @@ func (h *metricsHelper) exemptionsUpdateCommand() *cobra.Command {
 // exemptions delete
 
 type exemptionsDeleteOpts struct {
+	cmdio.Options
+
 	Segment string
 	Force   bool
 }
 
 func (o *exemptionsDeleteOpts) setup(flags *pflag.FlagSet) {
+	// The delete result is a SingleMutation document through the codec
+	// system: the text codec preserves the historical human stdout (empty —
+	// the confirmation is stderr prose); agent mode and explicit -o
+	// json/yaml get the structured document.
+	o.RegisterCustomCodec("text", &mutationTextCodec{})
+	o.DefaultFormat("text")
+	o.BindFlags(flags)
 	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
@@ -1787,6 +1939,10 @@ func (h *metricsHelper) exemptionsDeleteCommand() *cobra.Command {
 		Short: "Delete a recommendation exemption.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			id := args[0]
 			stderr := cmd.ErrOrStderr()
 
@@ -1814,7 +1970,10 @@ func (h *metricsHelper) exemptionsDeleteCommand() *cobra.Command {
 			} else {
 				cmdio.Success(stderr, "Deleted exemption %s.", id)
 			}
-			return nil
+			changed := true
+			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "exemption", ID: id, Namespace: opts.Segment})
+			result.Changed = &changed
+			return opts.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1851,6 +2010,12 @@ func (c *exemptionsTableCodec) Encode(w io.Writer, v any) error {
 }
 
 func (c *exemptionsTableCodec) encodeExemptions(w io.Writer, exemptions []MetricExemption) error {
+	// Historical human output for an empty list is nothing on stdout (the
+	// count goes to stderr); structured formats still get [].
+	if len(exemptions) == 0 {
+		return nil
+	}
+
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 
 	if c.wide {
@@ -1881,6 +2046,17 @@ func (c *exemptionsTableCodec) encodeExemptions(w io.Writer, exemptions []Metric
 }
 
 func (c *exemptionsTableCodec) encodeSegmentedExemptions(w io.Writer, entries []ExemptionsBySegmentEntry) error {
+	// Historical human output when no segment has any exemption is nothing
+	// on stdout (the count goes to stderr); structured formats still get
+	// the full entries document.
+	total := 0
+	for _, entry := range entries {
+		total += len(entry.Exemptions)
+	}
+	if total == 0 {
+		return nil
+	}
+
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 
 	if c.wide {

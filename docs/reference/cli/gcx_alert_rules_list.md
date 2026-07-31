@@ -33,5 +33,5 @@ gcx alert rules list [flags]
 
 ### SEE ALSO
 
-* [gcx alert rules](gcx_alert_rules.md)	 - Manage alert rules.
+* [gcx alert rules](gcx_alert_rules.md)	 - Inspect alert rule state and health.
 

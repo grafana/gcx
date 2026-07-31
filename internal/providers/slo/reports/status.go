@@ -121,7 +121,10 @@ metrics, and computes combined SLI and error budget per report.`,
 				return err
 			}
 
-			if len(reports) == 0 {
+			if len(reports) == 0 && (opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" || opts.IO.OutputFormat == "graph") {
+				// Prose formats keep the historical notice; structured
+				// formats (json/yaml/agents) fall through and encode the
+				// (empty) result set so stdout still carries one document.
 				cmdio.Info(cmd.OutOrStdout(), "No SLO reports found.")
 				return nil
 			}

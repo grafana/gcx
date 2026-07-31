@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
@@ -292,16 +293,19 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 				Probes:           []int64{},
 			}
 
-			if codec.Format() == "table" || codec.Format() == "wide" {
-				// Query status before rendering so we can merge it into the table.
-				var info checkStatusInfo
-				if opts.ShowStatus {
-					var err error
-					info, err = queryCheckStatus(ctx, loader, c.Job, c.Target, c.AlertSensitivity)
-					if err != nil {
-						cmdio.Warning(cmd.OutOrStdout(), "could not retrieve execution status: %v", err)
-					}
+			// Pattern 13: --show-status always fetches the execution status,
+			// regardless of the output format — codecs control display, not
+			// data acquisition. A fetch failure is a diagnostic, not the
+			// result: stderr keeps it out of the stdout document/table.
+			var info checkStatusInfo
+			if opts.ShowStatus {
+				info, err = queryCheckStatus(ctx, loader, c.Job, c.Target, c.AlertSensitivity)
+				if err != nil {
+					cmdio.Warning(cmd.ErrOrStderr(), "could not retrieve execution status: %v", err)
 				}
+			}
+
+			if codec.Format() == "table" || codec.Format() == "wide" {
 				return encodeGetTable(cmd.OutOrStdout(), c, info, codec.Format() == "wide")
 			}
 
@@ -313,6 +317,17 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 			var obj unstructured.Unstructured
 			if err := json.Unmarshal(objData, &obj); err != nil {
 				return fmt.Errorf("unmarshaling to unstructured: %w", err)
+			}
+			// Merge the fetched status into the structured output as an
+			// optional top-level status member carrying the same data the
+			// table's STATUS/SUCCESS columns render. Absent when
+			// --show-status was not set or the status fetch failed.
+			if info.Status != "" {
+				status := map[string]any{"status": info.Status}
+				if info.Success != nil {
+					status["success"] = *info.Success
+				}
+				obj.Object["status"] = status
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
 		},
@@ -326,6 +341,7 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type createOpts struct {
+	IO              cmdio.Options
 	File            string
 	ShowStatus      bool
 	ValidateTargets bool
@@ -335,11 +351,55 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the check manifest (YAML)")
 	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display check status after creation")
 	flags.BoolVar(&o.ValidateTargets, "validate-targets", false, "Pre-flight HTTP HEAD request for HTTP check targets (warning only)")
+	// The create result flows through the codec system: the default text
+	// codec reproduces the historical lines byte-for-byte; agent mode and
+	// explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &checkCreateCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func (o *createOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
+	}
+	return o.IO.Validate()
+}
+
+// checkCreateResult is the finite result document for `checks create`. It is
+// bespoke because the server-assigned check ID and slug-id resource name only
+// surface here (plus the file rewrite), so the shape carries its own
+// discriminators.
+type checkCreateResult struct {
+	Type          string `json:"type" yaml:"type"`
+	SchemaVersion string `json:"schema_version" yaml:"schema_version"`
+	Action        string `json:"action" yaml:"action"`
+	Job           string `json:"job" yaml:"job"`
+	ID            int64  `json:"id" yaml:"id"`
+	// Name is the slug-id resource name used by get/update/delete.
+	Name string `json:"name" yaml:"name"`
+	// Status is the post-create execution status (--show-status only).
+	Status string `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// checkCreateCodec is the human "text" codec for checkCreateResult values:
+// exactly the lines create has always printed on stdout.
+type checkCreateCodec struct{}
+
+func (c *checkCreateCodec) Format() format.Format { return "text" }
+
+func (c *checkCreateCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *checkCreateCodec) Encode(w io.Writer, v any) error {
+	r, ok := v.(checkCreateResult)
+	if !ok {
+		return errors.New("invalid data type for check create codec: expected checkCreateResult")
+	}
+	cmdio.Success(w, "Created check %q (id=%d)", r.Job, r.ID)
+	if r.Status != "" {
+		cmdio.Info(w, "status: %s", r.Status)
 	}
 	return nil
 }
@@ -385,15 +445,16 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 				return fmt.Errorf("check validation failed:\n  - %s", strings.Join(errs, "\n  - "))
 			}
 
-			// Warn if all probes are offline.
+			// Warn if all probes are offline. Advisory diagnostics go to
+			// stderr — stdout is reserved for the result document.
 			if AllProbesOffline(spec.Probes, probeOnlineMap) {
-				cmdio.Warning(cmd.OutOrStdout(), "all probes for check %q are offline — results will report NODATA", spec.Job)
+				cmdio.Warning(cmd.ErrOrStderr(), "all probes for check %q are offline — results will report NODATA", spec.Job)
 			}
 
 			// Optional HTTP target pre-flight.
 			if opts.ValidateTargets {
 				if err := ValidateHTTPTarget(spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
-					cmdio.Warning(cmd.OutOrStdout(), "target validation: %v", err)
+					cmdio.Warning(cmd.ErrOrStderr(), "target validation: %v", err)
 				}
 			}
 
@@ -415,23 +476,31 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 			if err != nil {
 				return fmt.Errorf("creating check %q: %w", spec.Job, err)
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Created check %q (id=%d)", spec.Job, created.Spec.checkID)
+
+			result := checkCreateResult{
+				Type:          "gcx.synth.check_create",
+				SchemaVersion: "1",
+				Action:        "created",
+				Job:           spec.Job,
+				ID:            created.Spec.checkID,
+				Name:          created.Spec.name,
+			}
 
 			// Write back the slug-id composite name so subsequent updates use the correct resource name.
 			if err := updateNameInFile(opts.File, created.Spec.name); err != nil {
-				cmdio.Warning(cmd.OutOrStdout(), "check created but could not update %s: %v", opts.File, err)
+				cmdio.Warning(cmd.ErrOrStderr(), "check created but could not update %s: %v", opts.File, err)
 			}
 
 			if opts.ShowStatus {
 				info, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target, spec.AlertSensitivity)
 				if err != nil {
-					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve check status: %v", err)
+					cmdio.Warning(cmd.ErrOrStderr(), "could not retrieve check status: %v", err)
 				} else {
-					cmdio.Info(cmd.OutOrStdout(), "status: %s", info.Status)
+					result.Status = info.Status
 				}
 			}
 
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -443,6 +512,7 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 // ---------------------------------------------------------------------------
 
 type updateOpts struct {
+	IO              cmdio.Options
 	File            string
 	ShowStatus      bool
 	ValidateTargets bool
@@ -452,11 +522,53 @@ func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the check manifest (YAML)")
 	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display the previous check status after update")
 	flags.BoolVar(&o.ValidateTargets, "validate-targets", false, "Pre-flight HTTP HEAD request for HTTP check targets (warning only)")
+	// The update result flows through the codec system: the default text
+	// codec reproduces the historical line byte-for-byte; agent mode and
+	// explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &checkUpdateCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func (o *updateOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
+	}
+	return o.IO.Validate()
+}
+
+// checkUpdateResult is the finite result document for `checks update`.
+type checkUpdateResult struct {
+	Type          string `json:"type" yaml:"type"`
+	SchemaVersion string `json:"schema_version" yaml:"schema_version"`
+	Action        string `json:"action" yaml:"action"`
+	Job           string `json:"job" yaml:"job"`
+	ID            int64  `json:"id" yaml:"id"`
+	// Name is the slug-id resource name used by get/update/delete.
+	Name string `json:"name" yaml:"name"`
+	// PreviousStatus is the pre-update execution status (--show-status only).
+	PreviousStatus string `json:"previous_status,omitempty" yaml:"previous_status,omitempty"`
+}
+
+// checkUpdateCodec is the human "text" codec for checkUpdateResult values:
+// exactly the line update has always printed on stdout.
+type checkUpdateCodec struct{}
+
+func (c *checkUpdateCodec) Format() format.Format { return "text" }
+
+func (c *checkUpdateCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *checkUpdateCodec) Encode(w io.Writer, v any) error {
+	r, ok := v.(checkUpdateResult)
+	if !ok {
+		return errors.New("invalid data type for check update codec: expected checkUpdateResult")
+	}
+	if r.PreviousStatus != "" {
+		cmdio.Success(w, "Updated check %q (id=%d) — previous status: %s", r.Job, r.ID, r.PreviousStatus)
+	} else {
+		cmdio.Success(w, "Updated check %q (id=%d)", r.Job, r.ID)
 	}
 	return nil
 }
@@ -507,15 +619,16 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 				return fmt.Errorf("check validation failed:\n  - %s", strings.Join(errs, "\n  - "))
 			}
 
-			// Warn if all probes are offline.
+			// Warn if all probes are offline. Advisory diagnostics go to
+			// stderr — stdout is reserved for the result document.
 			if AllProbesOffline(spec.Probes, probeOnlineMap) {
-				cmdio.Warning(cmd.OutOrStdout(), "all probes for check %q are offline — results will report NODATA", spec.Job)
+				cmdio.Warning(cmd.ErrOrStderr(), "all probes for check %q are offline — results will report NODATA", spec.Job)
 			}
 
 			// Optional HTTP target pre-flight.
 			if opts.ValidateTargets {
 				if err := ValidateHTTPTarget(spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
-					cmdio.Warning(cmd.OutOrStdout(), "target validation: %v", err)
+					cmdio.Warning(cmd.ErrOrStderr(), "target validation: %v", err)
 				}
 			}
 
@@ -533,30 +646,32 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 			typedObj.SetName(name)
 			typedObj.SetNamespace(namespace)
 
+			// Query the previous status before the update so it reflects the
+			// pre-update alertSensitivity threshold.
+			var prevStatus string
 			if opts.ShowStatus {
 				prevSensitivity := existingSensitivity(ctx, loader, checkID, spec.AlertSensitivity)
 				prevInfo, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target, prevSensitivity)
 				if err != nil {
-					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve previous status: %v", err)
+					cmdio.Warning(cmd.ErrOrStderr(), "could not retrieve previous status: %v", err)
 				}
-
-				if _, err := crud.Update(ctx, name, typedObj); err != nil {
-					return fmt.Errorf("updating check %d: %w", checkID, err)
-				}
-
-				if prevInfo.Status != "" {
-					cmdio.Success(cmd.OutOrStdout(), "Updated check %q (id=%d) — previous status: %s", spec.Job, checkID, prevInfo.Status)
-				} else {
-					cmdio.Success(cmd.OutOrStdout(), "Updated check %q (id=%d)", spec.Job, checkID)
-				}
-				return nil
+				prevStatus = prevInfo.Status
 			}
 
 			if _, err := crud.Update(ctx, name, typedObj); err != nil {
 				return fmt.Errorf("updating check %d: %w", checkID, err)
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Updated check %q (id=%d)", spec.Job, checkID)
-			return nil
+
+			result := checkUpdateResult{
+				Type:           "gcx.synth.check_update",
+				SchemaVersion:  "1",
+				Action:         "updated",
+				Job:            spec.Job,
+				ID:             checkID,
+				Name:           name,
+				PreviousStatus: prevStatus,
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -587,11 +702,75 @@ func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64
 // ---------------------------------------------------------------------------
 
 type deleteOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The delete result flows through the codec system: the default text
+	// codec reproduces the historical per-target lines byte-for-byte; agent
+	// mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &deleteResultCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+// deleteBatchResult is the finite result document for `checks delete` (and
+// its mirror in the probes package). Bespoke rather than a
+// cmdio.BatchMutation because the historical human output enumerates each
+// deleted target, so the result must carry them.
+type deleteBatchResult struct {
+	Type          string                  `json:"type" yaml:"type"`
+	SchemaVersion string                  `json:"schema_version" yaml:"schema_version"`
+	Action        string                  `json:"action" yaml:"action"`
+	Summary       cmdio.MutationSummary   `json:"summary" yaml:"summary"`
+	Deleted       []string                `json:"deleted" yaml:"deleted"`
+	Failures      []cmdio.MutationFailure `json:"failures" yaml:"failures"`
+}
+
+func newDeleteBatchResult() deleteBatchResult {
+	return deleteBatchResult{
+		Type:          "gcx.synth.delete_batch",
+		SchemaVersion: "1",
+		Action:        "deleted",
+		Deleted:       []string{},
+		Failures:      []cmdio.MutationFailure{},
+	}
+}
+
+// deleteResultCodec is the human "text" codec for deleteBatchResult values:
+// exactly the per-target lines delete has always printed. Failures stay on
+// stderr as diagnostics, matching the pre-codec behavior.
+type deleteResultCodec struct{}
+
+func (c *deleteResultCodec) Format() format.Format { return "text" }
+
+func (c *deleteResultCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *deleteResultCodec) Encode(w io.Writer, v any) error {
+	result, ok := v.(deleteBatchResult)
+	if !ok {
+		return errors.New("invalid data type for delete result codec: expected deleteBatchResult")
+	}
+	for _, name := range result.Deleted {
+		cmdio.Success(w, "Deleted check %s", name)
+	}
+	return nil
+}
+
+// emitPartialResult writes the completed result document (which enumerates
+// the failure) to stdout and returns the exit-4 sentinel. Call only after at
+// least one target succeeded — the cause additionally goes to stderr because
+// reportError writes nothing more for an EmittedError.
+func emitPartialResult(cmd *cobra.Command, io *cmdio.Options, result any, cause error) error {
+	cmdio.Error(cmd.ErrOrStderr(), "%v", cause)
+	if err := io.Encode(cmd.OutOrStdout(), result); err != nil {
+		return err
+	}
+	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
 }
 
 func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
@@ -601,9 +780,15 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 		Short: "Delete Synthetic Monitoring checks.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			// The prompt and the decline note are diagnostics — stderr keeps
+			// them out of the stdout result document.
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete %d check(s)?", len(args)))
 			if err != nil {
 				return err
@@ -617,15 +802,28 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
-			for _, name := range args {
+			result := newDeleteBatchResult()
+			for i, name := range args {
 				// Accepts both slug-id names (grafana-instance-health-5594) and bare numeric IDs (5594).
 				// DeleteFn extracts the numeric ID via extractIDFromSlug.
 				if err := crud.Delete(ctx, name); err != nil {
-					return fmt.Errorf("deleting check %s: %w", name, err)
+					cause := fmt.Errorf("deleting check %s: %w", name, err)
+					result.Summary.Failed++
+					result.Summary.Skipped = len(args) - i - 1
+					result.Failures = append(result.Failures, cmdio.MutationFailure{
+						Target: cmdio.MutationTarget{Kind: "Check", Name: name},
+						Error:  cause.Error(),
+					})
+					if result.Summary.Succeeded == 0 {
+						return cause
+					}
+					return emitPartialResult(cmd, &opts.IO, result, cause)
 				}
-				cmdio.Success(cmd.OutOrStdout(), "Deleted check %s", name)
+				result.Deleted = append(result.Deleted, name)
+				result.Summary.Succeeded++
 			}
-			return nil
+
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

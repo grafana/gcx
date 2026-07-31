@@ -1,4 +1,5 @@
-contexts:
+version: 1
+stacks:
   local:
     grafana:
       server: http://localhost:3000/
@@ -7,4 +8,9 @@ contexts:
     grafana:
       server: https://grafana.example.com/
       token: prod_token
+contexts:
+  local:
+    stack: local
+  prod:
+    stack: prod
 current-context: local
