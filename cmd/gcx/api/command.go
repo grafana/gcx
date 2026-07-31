@@ -12,6 +12,7 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -189,10 +190,19 @@ func outputResponse(cmd *cobra.Command, opts *apiOpts, resp *http.Response) erro
 	}
 
 	if resp.StatusCode >= 400 {
+		// Typed so the usage event can carry the status; the rendered text is
+		// unchanged, and the one-method carrier matches no error converter, so
+		// the exit code stays what the fallback path always produced.
 		if len(respBody) == 0 {
-			return fmt.Errorf("HTTP %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+			return &gcxerrors.HTTPStatusError{
+				Status:  resp.StatusCode,
+				Message: fmt.Sprintf("HTTP %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+			}
 		}
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+		return &gcxerrors.HTTPStatusError{
+			Status:  resp.StatusCode,
+			Message: fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(respBody)),
+		}
 	}
 
 	// HTML means we hit the Grafana frontend SPA, not an API endpoint.
