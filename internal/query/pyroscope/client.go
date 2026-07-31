@@ -84,6 +84,9 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	if req.MaxNodes > 0 {
 		bodyMap["maxNodes"] = strconv.FormatInt(req.MaxNodes, 10)
 	}
+	if req.Format != "" {
+		bodyMap["format"] = req.Format
+	}
 	if len(req.SpanIDs) > 0 {
 		bodyMap["spanSelector"] = req.SpanIDs
 	} else {
