@@ -297,6 +297,26 @@ backing client is a REST adapter or the k8s dynamic client.
 
 Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query.go`. Shared query CLI utils live in `internal/datasources/query/`.
 
+**Two dispatch mechanisms, wired differently.** Adding a datasource kind means
+touching both:
+
+1. **Typed `datasources <kind>` subtrees — registry-driven.** Each kind
+   implements `DatasourceProvider` (`internal/datasources/provider.go`) and
+   self-registers via `datasources.RegisterProvider()` in
+   `internal/datasources/providers/<kind>.go`. `cmd/gcx/datasources/command.go`
+   iterates `datasources.AllProviders()` and mounts every registered kind's
+   `QueryCmd` and `ExtraCommands` automatically — no per-kind wiring in the
+   command layer. Registered kinds live in `internal/datasources/providers/`;
+   read that directory rather than trusting a list here.
+2. **Generic `datasources query` — hand-maintained.** The auto-detecting command
+   resolves the datasource type over the API and then dispatches through an
+   explicit `switch` in `cmd/gcx/datasources/query.go`, which covers
+   prometheus, loki, pyroscope, influxdb and clickhouse and returns
+   "datasource type %q is not supported" for anything else. Registration does
+   **not** reach it. Kinds that are registered but absent from the switch
+   (currently athena, cloudwatch, infinity, tempo) have working typed
+   subcommands and are rejected by the generic path. No test enforces parity.
+
 ```
 User invocation:
   gcx metrics query <uid> 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
@@ -310,20 +330,20 @@ User invocation:
   │    --since          convenience: sets --from=now-{since} --to=now    │
   │                     (mutually exclusive with --from/--to)            │
   │    --step           query step / interval (e.g. "15s", "1m")         │
-  │    --limit          max log lines returned (loki and generic only;   │
-  │                     default 50; 0 = no limit)                        │
+  │    --limit          row/line cap where the kind defines one (loki,   │
+  │                     clickhouse, athena, and generic); per-kind        │
+  │                     default and meaning, 0 = no cap/enforcement       │
   │    --profile-type   required for pyroscope; also on generic          │
   │    -o               output format: table (default), graph, json, yaml│
   └───────────────────────┬──────────────────────────────────────────────┘
                           │
   ┌───────────────────────▼──────────────────────────────────────────────┐
   │ 2. Resolve datasource UID                                             │
-  │    Typed subcommands (prometheus/loki/pyroscope):                    │
+  │    Typed subcommands:                                                 │
   │      if UID positional arg provided → use directly                   │
-  │      else → config.DefaultDatasourceUID(ctx, kind):                  │
-  │        (1) ctx.Datasources[kind]         ← new config section        │
-  │        (2) ctx.DefaultPrometheusDatasource / DefaultLokiDatasource   │
-  │            / DefaultPyroscopeDatasource  ← legacy fallback           │
+  │      else → config.DefaultDatasourceUID(ctx, kind), a lookup in       │
+  │        ctx.Datasources[kind]; legacy per-kind config keys are         │
+  │        folded into that map by config migration, not resolved here    │
   │      error if still empty                                             │
   │    generic subcommand:                                               │
   │      UID positional arg required (no default resolution)             │
@@ -418,15 +438,18 @@ User invocation:
 
 Key files:
 - `internal/datasources/query/opts.go` + `resolve.go` — shared opts, `ResolveTypedArgs`, `ValidateDatasourceType`
-- `internal/datasources/{prometheus,loki,pyroscope,tempo}/query.go` — per-kind constructors (`QueryCmd` per kind)
+- `internal/datasources/provider.go` — the `DatasourceProvider` interface (`Kind`, `QueryCmd`, `ExtraCommands`)
+- `internal/datasources/providers/` — one file per registered kind, each calling `datasources.RegisterProvider()`; the authoritative list of supported kinds
+- `internal/datasources/<kind>/query.go` — per-kind `QueryCmd` constructors (tempo builds its command set in `internal/datasources/tempo/` without a `query.go`)
+- `cmd/gcx/datasources/command.go` — mounts every registered kind's subtree from `datasources.AllProviders()`
+- `cmd/gcx/datasources/query.go` — generic auto-detecting `datasources query`, with the hand-maintained type `switch`
 - `internal/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
 - `internal/datasources/query/time.go` — time parsing for flag values
-- `cmd/gcx/datasources/query.go` — generic auto-detecting `datasources query` that wires in the per-kind constructors
-- `internal/config/resolver.go` — `DefaultDatasourceUID(ctx, kind)` — shared 2-tier UID resolution
-- `internal/query/prometheus/client.go` — HTTP client, request construction, response conversion
-- `internal/query/prometheus/formatter.go` — table rendering (vector/matrix/scalar)
-- `internal/query/loki/client.go` — HTTP client, request construction, response conversion
-- `internal/query/loki/formatter.go` — log table rendering
+- `internal/config/resolver.go` — `DefaultDatasourceUID(ctx, kind)` — per-kind lookup in the context's datasources map
+- `internal/query/grafanaquery/` — shared HTTP transport for the unified datasource query API (`/apis/query.grafana.app/…` with the `/api/ds/query` fallback); do not re-implement per kind
+- `internal/query/dataframe/` — shared Grafana data-frame wire types
+- `internal/query/<kind>/client.go` — per-kind request construction and response conversion
+- `internal/query/<kind>/formatter.go` — per-kind result rendering (`internal/query/sql/` is shared by the SQL-shaped kinds)
 - `internal/graph/chart.go` — `RenderChart`, `RenderBarChart`, `RenderLineChart`
 - `internal/graph/convert.go` — `FromPrometheusResponse`, `FromLokiResponse`
 - `internal/graph/types.go` — `ChartData`, `Series`, `Point`
