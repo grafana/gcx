@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/credentials"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 )
 
 type grafanaAuthMode uint8
@@ -87,19 +88,58 @@ func selectGrafanaAuth(grafana *GrafanaConfig, stack *StackConfig, contextName s
 	return grafanaAuthSelection{mode: grafanaAuthUnknown}, nil
 }
 
+// grafanaAuthMethodAnonymous is the telemetry label for a valid selection
+// with no credential material: requests would go to Grafana unauthenticated.
+// It is deliberately not a grafanaAuthMode — the selector keeps returning
+// grafanaAuthUnknown for this state — because only telemetry needs to tell
+// "no credentials" apart from "could not classify".
+const grafanaAuthMethodAnonymous = "anonymous"
+
 // selectGrafanaAuth returns the runtime auth selection for this resolved
 // context. A non-blank GRAFANA_TOKEN is explicit invocation intent and must win
 // over a persisted auth-method from another mode. The marker lives only on the
 // resolved Context, so this derived selector can never be serialized back into
 // the stack's auth-method field.
+//
+// Every decided selection is also recorded for the anonymous usage event,
+// here rather than in any one consumer, because this method is the single
+// authority they all share: Context.Validate on the load path,
+// validatedGrafanaAuthSelection on every transport build. Recording happens
+// before credential validation on purpose — a selected method whose
+// credential turns out invalid or rejected still reports the method, which is
+// exactly the failure a Grafana auth signal exists to make visible. Only the
+// label derivation lives here; the usage-event builder clamps the value to
+// its wire allowlist again on the way out.
 func (context *Context) selectGrafanaAuth() (grafanaAuthSelection, error) {
 	if context != nil && context.runtimeSecretOverrides[credentials.FieldGrafanaToken] {
+		capture.SetGrafanaAuthMethod(grafanaAuthToken.String())
 		return grafanaAuthSelection{mode: grafanaAuthToken, explicit: true}, nil
 	}
 	if context == nil {
 		return grafanaAuthSelection{mode: grafanaAuthUnknown}, nil
 	}
-	return selectGrafanaAuth(context.Grafana, context.StackEntry, context.stackName())
+	selection, err := selectGrafanaAuth(context.Grafana, context.StackEntry, context.stackName())
+	capture.SetGrafanaAuthMethod(grafanaAuthMethodLabel(context.Grafana, selection, err))
+	return selection, err
+}
+
+// grafanaAuthMethodLabel maps a selection to its telemetry label, or "" for
+// the one state that is not a decision at all: a context with no Grafana
+// block never selected anything, and recording it would erase a decision an
+// earlier load made. An unsupported auth-method IS a decision — "unknown" —
+// and a valid selection with no credential material is "anonymous", a real,
+// distinct answer because requests then go out unauthenticated.
+func grafanaAuthMethodLabel(grafana *GrafanaConfig, selection grafanaAuthSelection, err error) string {
+	switch {
+	case grafana == nil:
+		return ""
+	case err != nil:
+		return grafanaAuthUnknown.String()
+	case selection.mode == grafanaAuthUnknown:
+		return grafanaAuthMethodAnonymous
+	default:
+		return selection.mode.String()
+	}
 }
 
 // EffectiveGrafanaAuthMethod returns the validated auth mode selected for this
