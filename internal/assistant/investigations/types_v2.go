@@ -154,3 +154,22 @@ type ScopeResponse struct {
 	TeamNames       []string `json:"teamNames,omitempty"`
 	AddedTeamNames  []string `json:"addedTeamNames,omitempty"`
 }
+
+// EvidenceItem is one panel-index entry from GET .../evidence, keyed by the
+// panel ID the report cites (e.g. "p3"). JSON tags mirror the server's
+// evidenceItem exactly: toolUseId is the only omitempty field.
+type EvidenceItem struct {
+	PanelID   string `json:"panelId"`
+	Tool      string `json:"tool"`
+	Query     string `json:"query"`
+	Epoch     int    `json:"epoch"`
+	Time      string `json:"time"`
+	ToolUseID string `json:"toolUseId,omitempty"`
+}
+
+// EvidenceResponse is the response from
+// GET /investigations/{investigationId}/evidence. Investigations with no
+// stored session return an empty list, not an error.
+type EvidenceResponse struct {
+	Evidence []EvidenceItem `json:"evidence"`
+}

@@ -332,6 +332,75 @@ func TestScope(t *testing.T) {
 	assert.Equal(t, []string{"ops"}, resp.AddedTeamNames)
 }
 
+func TestEvidence(t *testing.T) {
+	tests := []struct {
+		name     string
+		evidence []investigations.EvidenceItem
+	}{
+		{
+			name: "populated",
+			evidence: []investigations.EvidenceItem{
+				{PanelID: "p3", Tool: "prometheus", Query: "rate(http_requests_total[5m])", Epoch: 2, Time: "2026-07-20T10:00:00Z", ToolUseID: "toolu_1"},
+				{PanelID: "p4", Tool: "loki", Query: `{app="api"} |= "error"`, Epoch: 3, Time: "2026-07-20T10:05:00Z"},
+			},
+		},
+		{
+			// No stored session returns an empty list, not a 404.
+			name:     "empty",
+			evidence: []investigations.EvidenceItem{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, v2InvestigationsPath+"/inv-1/evidence", r.URL.Path)
+				assert.Empty(t, r.URL.RawQuery)
+				writeJSON(w, map[string]any{
+					"data": investigations.EvidenceResponse{Evidence: tt.evidence},
+				})
+			}))
+			resp, err := client.Evidence(t.Context(), "inv-1")
+			require.NoError(t, err)
+			assert.Equal(t, tt.evidence, resp.Evidence)
+		})
+	}
+}
+
+// TestEvidenceItem_Lossless pins the client type to the server's evidenceItem
+// schema: a full server payload must round-trip through EvidenceItem without
+// dropping or renaming fields.
+func TestEvidenceItem_Lossless(t *testing.T) {
+	serverJSON := `{
+		"panelId": "p3",
+		"tool": "prometheus",
+		"query": "rate(http_requests_total[5m])",
+		"epoch": 2,
+		"time": "2026-07-20T10:00:00Z",
+		"toolUseId": "toolu_1"
+	}`
+	var item investigations.EvidenceItem
+	require.NoError(t, json.Unmarshal([]byte(serverJSON), &item))
+	data, err := json.Marshal(item)
+	require.NoError(t, err)
+	assert.JSONEq(t, serverJSON, string(data))
+}
+
+// TestEvidenceItem_RequiredFieldsSerialized pins the required-vs-omitempty
+// split to the server's evidenceItem tags: required fields serialize even
+// when empty; toolUseId is the only omitempty field.
+func TestEvidenceItem_RequiredFieldsSerialized(t *testing.T) {
+	data, err := json.Marshal(investigations.EvidenceItem{PanelID: "p3"})
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m))
+	for _, key := range []string{"panelId", "tool", "query", "epoch", "time"} {
+		assert.Contains(t, m, key, "required evidence field %q must serialize even when empty", key)
+	}
+	assert.NotContains(t, m, "toolUseId", "toolUseId must stay omitempty like the server's")
+}
+
 func TestV2_ServerError(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
