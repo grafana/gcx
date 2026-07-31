@@ -7,10 +7,16 @@ import (
 
 // TestExtractInvocations pins the extraction behaviour of the skills drift
 // check: which parts of a skill markdown document count as gcx invocations
-// (shell fences, inline code spans) and how shell syntax within them is
-// tokenized (continuations, pipes, substitutions, quoting, placeholders).
+// (shell fences, inline code spans), which spellings of the binary count
+// (`gcx`, `bin/gcx`, `./bin/gcx` — contributor-facing skills invoke the binary
+// they just built), and how shell syntax within them is tokenized
+// (continuations, pipes, substitutions, quoting, placeholders).
 // When TestSkillsGcxInvocationsMatchCommandTree misbehaves, these cases
 // separate extractor bugs from genuine command-tree drift.
+//
+// The two extraction paths filter on the binary independently —
+// inlineGcxCommands on the code-span prefix, gcxArgs on the command word — so a
+// spelling added to one is not covered by the other. Both are exercised here.
 func TestExtractInvocations(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -50,6 +56,36 @@ func TestExtractInvocations(t *testing.T) {
 		{
 			name:    "non-gcx inline span ignored",
 			content: "use `kubectl get pods` instead\n",
+			want:    nil,
+		},
+		{
+			name:    "built binary in a shell fence",
+			content: "```bash\nbin/gcx help-tree\n```\n",
+			want:    []invocation{{line: 2, args: []string{"help-tree"}}},
+		},
+		{
+			name:    "built binary with leading ./ in a shell fence",
+			content: "```sh\n./bin/gcx providers list\n```\n",
+			want:    []invocation{{line: 2, args: []string{"providers", "list"}}},
+		},
+		{
+			name:    "built binary in an inline span",
+			content: "read it back with `bin/gcx commands --flat` first\n",
+			want:    []invocation{{line: 1, args: []string{"commands", "--flat"}}},
+		},
+		{
+			name:    "env prefix before the built binary",
+			content: "```bash\nGCX_AGENT_MODE=false bin/gcx help-tree\n```\n",
+			want:    []invocation{{line: 2, args: []string{"help-tree"}}},
+		},
+		{
+			name:    "unrelated path ending in gcx is not an invocation",
+			content: "```bash\nother/gcx help-tree\n```\n",
+			want:    nil,
+		},
+		{
+			name:    "built binary inside a non-shell fence not scanned",
+			content: "```text\nbin/gcx not-a-real-command\n```\n",
 			want:    nil,
 		},
 		{
