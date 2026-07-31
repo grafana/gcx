@@ -43,7 +43,8 @@ func TestFirstRunNoticeReshownAfterRevisionBump(t *testing.T) {
 		content []byte
 	}{
 		{"pre-revision empty file", nil},
-		{"older revision", []byte("1\n")},
+		{"revision 1", []byte("1\n")},
+		{"revision 2", []byte("2\n")},
 	} {
 		t.Run(stale.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "gcx", firstRunNoticeFileName)
@@ -83,6 +84,26 @@ func TestFirstRunNoticeDisclosesBatchSizeCategories(t *testing.T) {
 		"dry_run must be disclosed alongside the sizes")
 	assert.Contains(t, firstRunNotice, "output format",
 		"output_format is derived from --output and must be disclosed")
+}
+
+// The notice must disclose what revision 3 added: the Grafana authentication
+// category and the failure status/reason fields. The auth disclosure is kept
+// separate from the failure disclosure because they answer different
+// questions — what connected, and what went wrong — and only the failure
+// fields are suppressed for partial failures and cancellations.
+func TestFirstRunNoticeDisclosesAuthMethodAndFailureFields(t *testing.T) {
+	assert.Contains(t, firstRunNotice, "authentication category",
+		"the auth method is the new always-eligible collection in this revision")
+	assert.Contains(t, firstRunNotice, "oauth, token, basic, mtls, anonymous, or unknown",
+		"the vocabulary is closed and small enough to state in full")
+	assert.Contains(t, firstRunNotice, "never credentials",
+		"the notice must say credential values are not collected")
+	assert.Contains(t, firstRunNotice, "4xx/5xx HTTP status",
+		"the failure status must be disclosed as a bounded protocol value")
+	assert.Contains(t, firstRunNotice, "Kubernetes reason category",
+		"the reason travels as a fixed category, never a raw server string")
+	assert.Contains(t, firstRunNotice, "omitted for partial failures and cancellations",
+		"the suppression rule is part of the disclosure")
 }
 
 // The notice states what is not collected without enumerating exceptions. An
