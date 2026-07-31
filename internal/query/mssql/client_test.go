@@ -79,6 +79,43 @@ func TestQuery_SendsStringTableFormat(t *testing.T) {
 	assert.Equal(t, "mssql-uid", captured.Queries[0].Datasource.UID)
 }
 
+// TestQuery_IntervalMs verifies --step is forwarded as intervalMs when set, and
+// omitted when zero so the plugin applies its own default for the $__interval macro.
+func TestQuery_IntervalMs(t *testing.T) {
+	capture := func(t *testing.T, req mssql.QueryRequest) map[string]any {
+		t.Helper()
+		var body []byte
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ = io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"v","type":"number"}]},"data":{"values":[[1]]}}],"status":200}}}`))
+		}))
+		defer server.Close()
+
+		_, err := newTestClient(t, server.URL).Query(context.Background(), "mssql-uid", req)
+		require.NoError(t, err)
+
+		var parsed struct {
+			Queries []map[string]any `json:"queries"`
+		}
+		require.NoError(t, json.Unmarshal(body, &parsed))
+		require.Len(t, parsed.Queries, 1)
+		return parsed.Queries[0]
+	}
+
+	t.Run("set forwards intervalMs", func(t *testing.T) {
+		q := capture(t, mssql.QueryRequest{RawSQL: "SELECT 1", IntervalMs: 3600000})
+		assert.EqualValues(t, 3600000, q["intervalMs"])
+	})
+
+	t.Run("zero omits intervalMs", func(t *testing.T) {
+		q := capture(t, mssql.QueryRequest{RawSQL: "SELECT 1"})
+		_, present := q["intervalMs"]
+		assert.False(t, present, "intervalMs should be absent when unset")
+	})
+}
+
 func TestQuery_ReturnsTypedAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

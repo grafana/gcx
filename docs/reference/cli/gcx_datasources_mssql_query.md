@@ -8,7 +8,9 @@ Execute a SQL query against a Microsoft SQL Server datasource.
 
 EXPR is the SQL query to execute, passed as a positional argument or via --expr.
 Datasource is resolved from -d flag or datasources.mssql in your context.
-Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.
+Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported. Use --step
+to set the interval the $__interval / $__timeGroup(col, $__interval) macros
+resolve to (e.g. --step 1h buckets time-series results hourly).
 
 T-SQL has no LIMIT keyword. By default the result is capped with an injected
 TOP (n) clause (see --limit); use --limit 0 to disable it, or write your own
@@ -33,6 +35,9 @@ gcx datasources mssql query [EXPR] [flags]
   # With time macro and explicit datasource
   gcx datasources mssql query -d UID 'SELECT * FROM events WHERE $__timeFilter(created_at)' --since 1h
 
+  # Time-series query bucketed hourly via --step (feeds $__interval)
+  gcx datasources mssql query -d UID 'SELECT $__timeGroup(created_at, $__interval) AS t, COUNT(*) FROM events GROUP BY $__timeGroup(created_at, $__interval)' --since 24h --step 1h
+
   # Cap at 10 rows (injects TOP (10))
   gcx datasources mssql query -d UID 'SELECT * FROM dbo.WORLD_DATA' --limit 10
 
@@ -54,6 +59,7 @@ gcx datasources mssql query [EXPR] [flags]
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 

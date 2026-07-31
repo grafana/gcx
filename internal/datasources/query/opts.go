@@ -119,35 +119,14 @@ func (opts *SharedOpts) SetupExprFlag(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Expr, "expr", "", "Query expression (alternative to positional argument)")
 }
 
-// SetupOption customizes SharedOpts.Setup.
-type SetupOption func(*setupConfig)
-
-type setupConfig struct {
-	includeStep bool
-}
-
-// WithoutStep omits the --step flag. Use it for datasources where query step /
-// interval has no effect — e.g. MSSQL, whose plugin ignores the query
-// intervalMs, so advertising --step would be misleading.
-func WithoutStep() SetupOption {
-	return func(c *setupConfig) { c.includeStep = false }
-}
-
 // Setup registers shared query flags on the given flag set.
-func (opts *SharedOpts) Setup(flags *pflag.FlagSet, enableGraph bool, options ...SetupOption) {
-	cfg := setupConfig{includeStep: true}
-	for _, o := range options {
-		o(&cfg)
-	}
-
+func (opts *SharedOpts) Setup(flags *pflag.FlagSet, enableGraph bool) {
 	RegisterCodecs(&opts.IO, enableGraph)
 	opts.IO.BindFlags(flags)
 
 	opts.SetupTimeFlags(flags)
 	opts.SetupExprFlag(flags)
-	if cfg.includeStep {
-		flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
-	}
+	flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
 }
 
 // ResolveExpr resolves the query expression from either the --expr flag or a

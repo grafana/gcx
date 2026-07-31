@@ -192,7 +192,7 @@ that do not have a dedicated subcommand.`,
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
 			case "mssql":
-				resp, err := runMSSQLQuery(ctx, cfg, datasourceUID, expr, start, end)
+				resp, err := runMSSQLQuery(ctx, cfg, datasourceUID, expr, start, end, step)
 				if err != nil {
 					return err
 				}
@@ -238,16 +238,22 @@ func runClickHouseQuery(ctx context.Context, cfg config.NamespacedRESTConfig, da
 }
 
 // runMSSQLQuery executes the auto-detected mssql branch of QueryCmd.
-func runMSSQLQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time) (*querysql.QueryResponse, error) {
+func runMSSQLQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time, step time.Duration) (*querysql.QueryResponse, error) {
 	client, err := mssql.NewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
+	var intervalMs int64
+	if step > 0 {
+		intervalMs = step.Milliseconds()
+	}
+
 	resp, err := client.Query(ctx, datasourceUID, mssql.QueryRequest{
-		RawSQL: mssql.EnforceTop(expr, 100, 1000),
-		Start:  start,
-		End:    end,
+		RawSQL:     mssql.EnforceTop(expr, 100, 1000),
+		Start:      start,
+		End:        end,
+		IntervalMs: intervalMs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)

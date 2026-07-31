@@ -23,6 +23,10 @@ type QueryRequest struct {
 	RawSQL string
 	Start  time.Time
 	End    time.Time
+	// IntervalMs sets the query interval the plugin uses to resolve the
+	// $__interval / $__timeGroup(col, $__interval) macros. Zero omits it, so the
+	// plugin falls back to its own default.
+	IntervalMs int64
 }
 
 // EscapeSQLString escapes single quotes for use in a T-SQL string literal.
