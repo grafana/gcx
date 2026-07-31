@@ -178,16 +178,22 @@ type configLoader struct {
 //
 // SM token resolution priority (highest first):
 //  1. GRAFANA_PROVIDER_SYNTH_SM_TOKEN env var / providers.synth.sm-token in config
-//  2. Auto-discovery via SM register/install API — requires cloud.token + stack info from GCOM
+//  2. Auto-discovery via SM register/install API — requires a cloud token + stack info from GCOM
 //  3. Error with actionable guidance
 //
 // When auto-discovery succeeds, values are persisted to config so subsequent
 // invocations skip the API calls.
 func (l *configLoader) LoadSMConfig(ctx context.Context) (string, string, string, error) {
-	providerCfg, namespace, err := l.LoadProviderConfig(ctx, "synth")
+	snapshot, err := l.LoadDirectProviderSnapshot(ctx, providers.DirectProviderPolicy{
+		ProviderName:    "synth",
+		EndpointKeys:    []string{"sm-url"},
+		CredentialEnv:   "GRAFANA_PROVIDER_SYNTH_SM_TOKEN",
+		RejectAutoLocal: true,
+	})
 	if err != nil {
 		return "", "", "", err
 	}
+	providerCfg := snapshot.ProviderConfig
 
 	smURL := providerCfg["sm-url"]
 	smToken := providerCfg["sm-token"]
@@ -195,7 +201,7 @@ func (l *configLoader) LoadSMConfig(ctx context.Context) (string, string, string
 	// Tier 2: auto-discover SM URL from plugin settings when not explicitly configured.
 	if smURL == "" {
 		var discoverErr error
-		smURL, discoverErr = l.tryDiscoverSMURL(ctx)
+		smURL, discoverErr = l.tryDiscoverSMURL(ctx, snapshot)
 		if smURL == "" {
 			return "", "", "", fmt.Errorf("SM URL not configured: %w", discoverErr)
 		}
@@ -204,13 +210,13 @@ func (l *configLoader) LoadSMConfig(ctx context.Context) (string, string, string
 	// Tier 2: auto-discover SM token via register/install when not explicitly configured.
 	if smToken == "" {
 		var discoverErr error
-		smToken, discoverErr = l.tryDiscoverSMToken(ctx, smURL)
+		smToken, discoverErr = l.tryDiscoverSMToken(ctx, snapshot, smURL)
 		if smToken == "" {
 			return "", "", "", fmt.Errorf("SM token not configured: %w", discoverErr)
 		}
 	}
 
-	return smURL, smToken, namespace, nil
+	return smURL, smToken, snapshot.Namespace, nil
 }
 
 // LoadSMProxyConfig resolves the Grafana REST config and the SM datasource UID
@@ -250,13 +256,12 @@ func (l *configLoader) LoadSMProxyConfig(ctx context.Context) (config.Namespaced
 
 // tryDiscoverSMURL attempts to auto-discover the SM URL from Grafana plugin settings
 // and persists it to config on success. Returns empty string and the reason on failure.
-func (l *configLoader) tryDiscoverSMURL(ctx context.Context) (string, error) {
-	restCfg, err := l.LoadGrafanaConfig(ctx)
-	if err != nil {
-		return "", fmt.Errorf("no Grafana server configured: %w", err)
+func (l *configLoader) tryDiscoverSMURL(ctx context.Context, snapshot providers.DirectProviderSnapshot) (string, error) {
+	if snapshot.GrafanaConfig == nil {
+		return "", errors.New("no Grafana server configured")
 	}
 
-	discovered, err := discoverSMURL(ctx, restCfg)
+	discovered, err := discoverSMURL(ctx, *snapshot.GrafanaConfig)
 	if err != nil {
 		return "", fmt.Errorf("plugin settings query failed: %w", err)
 	}
@@ -271,8 +276,8 @@ func (l *configLoader) tryDiscoverSMURL(ctx context.Context) (string, error) {
 
 // tryDiscoverSMToken attempts to auto-discover the SM token via the SM register/install
 // API using cloud credentials from GCOM. Persists to config on success. Returns empty string and the reason on failure.
-func (l *configLoader) tryDiscoverSMToken(ctx context.Context, smURL string) (string, error) {
-	cloudCfg, err := l.LoadCloudConfig(ctx)
+func (l *configLoader) tryDiscoverSMToken(ctx context.Context, snapshot providers.DirectProviderSnapshot, smURL string) (string, error) {
+	cloudCfg, err := snapshot.ResolveCloudConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("no cloud config: %w", err)
 	}

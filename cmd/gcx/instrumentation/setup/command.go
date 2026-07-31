@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/fleet"
 	instrum "github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/spf13/cobra"
@@ -62,6 +63,16 @@ func (o *opts) setup(flags *pflag.FlagSet) {
 // dropped, so there are no conflicting pairs to check.
 func (o *opts) Validate() error {
 	return nil
+}
+
+// promptingAllowed reports whether the interactive wizard may show prompts:
+// stdin must be a real terminal AND gcx must not be running in agent mode.
+// An agent driving gcx through a PTY must never hang on y/n wizard prompts,
+// so agent mode forces the non-interactive path, which fails fast with the
+// --use-defaults guidance. Same composite guard as cmd/gcx/login and
+// cmd/gcx/dev/scaffold.
+func promptingAllowed(stdinIsTTY bool) bool {
+	return stdinIsTTY && !agent.IsAgentMode()
 }
 
 // Command returns the "gcx instrumentation setup <cluster>" cobra command.
@@ -127,7 +138,7 @@ Cloud Access Policy token scoped to metrics:read and set:alloy-data-write.`,
 				orgSlug:  r.Stack.OrgSlug,
 				stdout:   cmd.OutOrStdout(),
 				stderr:   cmd.ErrOrStderr(),
-				isTTY:    term.IsTerminal(int(os.Stdin.Fd())),
+				isTTY:    promptingAllowed(term.IsTerminal(int(os.Stdin.Fd()))),
 				promptFn: defaultPromptFn(cmd.InOrStdin(), cmd.ErrOrStderr()),
 			}
 

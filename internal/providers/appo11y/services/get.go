@@ -5,20 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
-	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
-	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/prometheus/common/model"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -133,7 +131,7 @@ func parseServiceArg(arg, flagNamespace string) (string, string, error) {
 	return ns, name, nil
 }
 
-func newGetCommand() *cobra.Command {
+func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <service> [--namespace ns]",
@@ -184,7 +182,7 @@ which family produced the numbers.`,
   # Compare a service's RED across all clusters to spot the outlier
   gcx appo11y services get faro-collector --group-by k8s_cluster_name`,
 		Args: cobra.ExactArgs(1),
-		RunE: runGet(opts),
+		RunE: runGet(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
 			agent.AnnotationLLMHint:   `Per-service RED snapshot from Tempo/OTel span metrics: rate (req/s), error rate, error percent, p50/p95/p99 latency (seconds) over --since (default 5m), scoped to inbound spans (SERVER+CONSUMER). --metrics-mode picks the family: auto (default, probes the stack), v3 (traces_span_metrics_*, OTel Collector >= 0.109 / Alloy >= 1.5), tempo (traces_spanmetrics_*, Tempo metrics-generator — Grafana Cloud default — and Beyla), otel (bare calls_total/duration_seconds_bucket, older Collector/Alloy/Agent). Pairs with 'gcx appo11y services list' to drill into a single row. Use --filter <label><op><value> (repeatable) to scope the snapshot to a subset of series — most usefully a cluster/region label (e.g. --filter k8s_cluster_name=prod-us) to break a multi-cluster service down one cluster at a time. Use --group-by <label> to instead pivot the snapshot into one RED row per distinct value of that label (comma-separated for multiple) — the outlier-finding view: 'get <name> --group-by k8s_cluster_name -o json' returns items[] each with the group's labels and RED, so you can spot which cluster/region is slow or erroring without naming them. Examples: gcx appo11y services get <name> -o json; gcx appo11y services get <ns>/<name> --since 1h -o json; gcx appo11y services get <name> --metrics-mode tempo -o json; gcx appo11y services get <name> --filter k8s_cluster_name=<cluster> -o json; gcx appo11y services get <name> --group-by k8s_cluster_name -o json`,
@@ -194,7 +192,7 @@ which family produced the numbers.`,
 	return cmd
 }
 
-func runGet(opts *getOpts) func(*cobra.Command, []string) error {
+func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		if err := opts.Validate(cmd); err != nil {
 			return err
@@ -221,21 +219,13 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 		}
 
 		ctx := cmd.Context()
-		var loader providers.ConfigLoader
 
-		cfg, err := loader.LoadGrafanaConfig(ctx)
+		cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 		if err != nil {
 			return err
 		}
 
-		var cfgCtx *internalconfig.Context
-		if fullCfg, err := loader.LoadFullConfig(ctx); err != nil {
-			logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
-		} else {
-			cfgCtx = fullCfg.GetCurrentContext()
-		}
-
-		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, &loader, opts.Datasource, cfgCtx, cfg, "prometheus")
+		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
 			return err
 		}
@@ -278,7 +268,8 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 				return err
 			}
 			if notFound {
-				return fmt.Errorf("service %q has no telemetry in the requested window (for group-by %s)", jobLabel(namespace, name), strings.Join(groupBy, ", "))
+				return notFoundEmitted(cmd.ErrOrStderr(),
+					fmt.Sprintf("service %q has no telemetry in the requested window (for group-by %s)", jobLabel(namespace, name), strings.Join(groupBy, ", ")))
 			}
 			return nil
 		}
@@ -298,7 +289,8 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 			// Align with other commands' "entity not-found" semantics:
 			// emit the snapshot (useful structure for agents) but signal
 			// failure via exit code so callers can branch on $?.
-			return fmt.Errorf("service %q has no telemetry in the requested window", jobLabel(namespace, name))
+			return notFoundEmitted(cmd.ErrOrStderr(),
+				fmt.Sprintf("service %q has no telemetry in the requested window", jobLabel(namespace, name)))
 		}
 		return nil
 	}
@@ -657,6 +649,18 @@ func selectMetadataService(metadata []Service, namespace, name string) Service {
 		return metadata[0]
 	}
 	return Service{Name: name, Namespace: namespace, Instrumented: false}
+}
+
+// notFoundEmitted converts a no-data outcome into the agent-contract error
+// shape AFTER the full result document was successfully written to stdout:
+// a typed stderr diagnostic (JSONL in agent mode, "warn: ..." on a TTY) plus
+// an EmittedError so the process still exits non-zero without reportError
+// appending a second stdout document. Previously these paths returned a bare
+// error, which corrupted agent-mode stdout with a duplicate error JSON after
+// the already-encoded result.
+func notFoundEmitted(stderr io.Writer, msg string) error {
+	cmdio.EmitWarn(stderr, msg)
+	return gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, errors.New(msg))
 }
 
 // emitNoDataHint surfaces a stderr line when neither target_info nor span

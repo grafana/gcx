@@ -190,7 +190,11 @@ shown when more results are available.`,
 				return err
 			}
 			if resp.HasMore {
-				cmdio.Warning(cmd.ErrOrStderr(), "Results truncated. %d shown, more available. Use --page-size to adjust.", len(resp.Conversations))
+				// Typed diagnostic: JSONL {"class":"warning"} in agent mode,
+				// "warn: ..." on a TTY — styled prose would pollute the
+				// machine-parseable stderr stream for agents.
+				cmdio.EmitWarn(cmd.ErrOrStderr(),
+					fmt.Sprintf("Results truncated. %d shown, more available. Use --page-size to adjust.", len(resp.Conversations)))
 			}
 			return nil
 		},

@@ -62,6 +62,7 @@ func newNotificationPoliciesGetCommand(loader GrafanaConfigLoader) *cobra.Comman
 }
 
 type notificationPoliciesSetOpts struct {
+	IO    cmdio.Options
 	File  string
 	Force bool
 }
@@ -69,6 +70,14 @@ type notificationPoliciesSetOpts struct {
 func (o *notificationPoliciesSetOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the policy tree (JSON/YAML, use - for stdin)")
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The set result is a SingleMutation document through the codec system:
+	// the default text codec prints the familiar one-line success; agent
+	// mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{line: func(cmdio.SingleMutation) string {
+		return "Notification policy updated"
+	}})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -77,11 +86,17 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 		Use:   "set",
 		Short: "Replace the entire notification policy tree.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			var policy NotificationPolicy
 			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &policy); err != nil {
 				return err
 			}
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			// The confirmation exchange is a diagnostic, not the result —
+			// stderr keeps the prompt and "Aborted." out of the stdout
+			// document.
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Replace notification policy tree? This overwrites the entire existing tree.")
 			if err != nil {
 				return err
@@ -101,8 +116,8 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 			if err := client.SetNotificationPolicy(ctx, policy); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Notification policy updated")
-			return nil
+			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "notification-policy"})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -110,11 +125,20 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 }
 
 type notificationPoliciesResetOpts struct {
+	IO    cmdio.Options
 	Force bool
 }
 
 func (o *notificationPoliciesResetOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	// The reset result is a SingleMutation document through the codec
+	// system: the default text codec prints the familiar one-line success;
+	// agent mode and explicit -o json/yaml get the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{line: func(cmdio.SingleMutation) string {
+		return "Notification policy reset to default"
+	}})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func newNotificationPoliciesResetCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -123,8 +147,14 @@ func newNotificationPoliciesResetCommand(loader GrafanaConfigLoader) *cobra.Comm
 		Use:   "reset",
 		Short: "Reset the notification policy tree to its default.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
 			ctx := cmd.Context()
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			// The confirmation exchange is a diagnostic, not the result —
+			// stderr keeps the prompt and "Aborted." out of the stdout
+			// document.
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Reset notification policy tree to default? This replaces the entire tree.")
 			if err != nil {
 				return err
@@ -143,8 +173,8 @@ func newNotificationPoliciesResetCommand(loader GrafanaConfigLoader) *cobra.Comm
 			if err := client.ResetNotificationPolicy(ctx); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Notification policy reset to default")
-			return nil
+			result := cmdio.NewSingleMutation("reset", cmdio.MutationTarget{Kind: "notification-policy"})
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

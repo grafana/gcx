@@ -5,9 +5,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/version"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,6 +54,7 @@ func TestExportPostsJSONToEndpointOverride(t *testing.T) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/gcx-usage-report", r.URL.Path)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, version.UserAgent(), r.Header.Get("User-Agent"))
 	case <-time.After(5 * time.Second):
 		t.Fatal("no request received")
 	}
@@ -117,6 +120,23 @@ func TestExportSwallowsFailures(t *testing.T) {
 
 	t.Setenv(envEndpoint, "://not a url")
 	Export(testEvent())
+}
+
+// A retryable failure (503) must produce exactly one request: the export runs
+// synchronously before CLI exit, so retries would delay every invocation
+// whenever the receiver is unavailable.
+func TestExportMakesSingleAttempt(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	t.Setenv(envEndpoint, server.URL)
+
+	Export(testEvent())
+
+	assert.EqualValues(t, 1, attempts.Load())
 }
 
 // exportTimeout is the ceiling on how long telemetry can hold up CLI exit: a

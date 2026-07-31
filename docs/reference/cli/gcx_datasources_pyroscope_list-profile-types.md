@@ -19,6 +19,9 @@ gcx datasources pyroscope list-profile-types [flags]
 	# List profile types (use datasource UID, not name)
 	gcx datasources pyroscope list-profile-types -d UID
 
+	# Search a wider window than the default last hour
+	gcx datasources pyroscope list-profile-types -d UID --since 24h
+
 	# Output as JSON
 	gcx datasources pyroscope list-profile-types -d UID -o json
 ```
@@ -26,11 +29,14 @@ gcx datasources pyroscope list-profile-types [flags]
 ### Options
 
 ```
-  -d, --datasource string   Datasource UID (required unless default-pyroscope-datasource is configured)
+  -d, --datasource string   Datasource UID (required unless datasources.pyroscope is configured)
+      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for list-profile-types
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
+      --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands

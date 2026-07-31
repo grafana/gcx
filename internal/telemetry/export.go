@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/version"
 )
 
 // defaultEndpoint is the usage-stats receiver. GCX_TELEMETRY_ENDPOINT
@@ -25,8 +25,9 @@ const exportTimeout = time.Second
 // and by the receiver's own tests); the receiver stamps receipt time itself,
 // so the payload carries no timestamp. Export never reports failure:
 // telemetry is fire-and-forget and must not affect the command's outcome. A
-// lost event is fine — the shared client may retry transient failures, but
-// exportTimeout caps the whole exchange.
+// lost event is fine: the export is a single attempt with no retries, so an
+// unreachable endpoint costs one fast failure rather than the full
+// exportTimeout, which caps the whole exchange.
 func Export(event Event) {
 	endpoint := defaultEndpoint
 	if override := os.Getenv(envEndpoint); override != "" {
@@ -45,7 +46,11 @@ func export(event Event, endpoint string) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := httputils.NewClient(httputils.ClientOpts{Timeout: exportTimeout})
+	req.Header.Set("User-Agent", version.UserAgent())
+	// Deliberately not the shared httputils client: its retry transport would
+	// burn the whole exportTimeout budget on an unreachable endpoint, and this
+	// runs synchronously before exit on every telemetry-enabled invocation.
+	client := &http.Client{Timeout: exportTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return

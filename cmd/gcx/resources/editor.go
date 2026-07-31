@@ -34,7 +34,15 @@ func editorFromEnv() editor {
 		flag = "/C"
 	}
 
-	editorName := os.Getenv("EDITOR")
+	// VISUAL outranks EDITOR per Unix convention — and the agent-mode
+	// interactive guard in edit.go treats either as "an editor is
+	// configured", so the launcher must honor both or the guard's premise
+	// is false (a VISUAL-only environment would fall back to interactive vi
+	// against piped stdio in agent mode).
+	editorName := os.Getenv("VISUAL")
+	if editorName == "" {
+		editorName = os.Getenv("EDITOR")
+	}
 	if editorName == "" {
 		editorName = platformize(defaultEditor, windowsEditor)
 	}

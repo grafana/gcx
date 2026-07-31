@@ -65,8 +65,8 @@ func TestStackTableCodec_Encode_InvalidType(t *testing.T) {
 
 func TestRegionTableCodec_Encode(t *testing.T) {
 	out, err := stacks.ExportEncodeRegionTable([]cloud.Region{
-		{Slug: "us", Name: "US Central", Description: "United States", Provider: "gcp", Status: "active"},
-		{Slug: "eu", Name: "Belgium", Description: "Europe", Provider: "gcp", Status: "active"},
+		{Slug: "us", Name: "US Central", Description: "United States", Provider: "gcp"},
+		{Slug: "eu", Name: "Belgium", Description: "Europe", Provider: "gcp"},
 	})
 
 	require.NoError(t, err)

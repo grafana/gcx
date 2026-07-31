@@ -116,18 +116,43 @@ type ServiceView struct {
 // reused by both the human-mode output text and the agent-mode JSON envelope.
 var SetupRequiredScopes = []string{"set:alloy-data-write", "metrics:read"} //nolint:gochecknoglobals // package-level constant list; Go doesn't support const slices, var is the only option
 
+// Discriminator values for the agent-mode setup helm envelope.
+const (
+	// SetupHelmEnvelopeType is the collision-resistant `type` discriminator.
+	SetupHelmEnvelopeType = "gcx.instrumentation.setup"
+
+	setupHelmSchemaVersion = "1"
+)
+
 // SetupHelmEnvelope is the agent-mode JSON envelope emitted by
 // `gcx instrumentation setup <cluster> --print-helm-only --agent`.
 //
+// Type and SchemaVersion are the agent-legible discriminators; they are
+// declared first so they serialize first on the emitted line.
 // HelmCommand is the copy-pasteable helm upgrade command string.
 // AccessPoliciesURL is the fully-qualified Grafana Cloud access-policies URL
 // with the org slug substituted; falls back to literal <your-org> when the
 // slug is unknown (empty string in OrgSlug).
 // RequiredScopes lists the Cloud Access Policy scopes required by the helm chart.
 type SetupHelmEnvelope struct {
+	Type              string   `json:"type"`
+	SchemaVersion     string   `json:"schema_version"`
 	HelmCommand       string   `json:"helmCommand"`
 	AccessPoliciesURL string   `json:"accessPoliciesURL"`
 	RequiredScopes    []string `json:"requiredScopes"`
+}
+
+// NewSetupHelmEnvelope returns a SetupHelmEnvelope with the discriminators
+// set. Construct envelopes with this so `type`/`schema_version` are never
+// forgotten.
+func NewSetupHelmEnvelope(helmCommand, accessPoliciesURL string, requiredScopes []string) SetupHelmEnvelope {
+	return SetupHelmEnvelope{
+		Type:              SetupHelmEnvelopeType,
+		SchemaVersion:     setupHelmSchemaVersion,
+		HelmCommand:       helmCommand,
+		AccessPoliciesURL: accessPoliciesURL,
+		RequiredScopes:    requiredScopes,
+	}
 }
 
 // AccessPoliciesURL returns the Grafana Cloud access-policies URL for the

@@ -40,9 +40,10 @@ func ruleStripFields() []string {
 }
 
 // NewTypedCRUD creates a TypedCRUD for Agent Observability evaluation rules.
-func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[eval.RuleDefinition], string, error) {
-	var loader providers.ConfigLoader
-
+// The loader carries the command's --config selection; adapter factories pass
+// a zero-value loader and inherit the selection threaded through ctx by the
+// resources command.
+func NewTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) (*adapter.TypedCRUD[eval.RuleDefinition], string, error) {
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load REST config for Agent Observability rules: %w", err)
@@ -76,7 +77,8 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[eval.RuleDefinition],
 // NewLazyFactory returns an adapter.Factory for Agent Observability evaluation rules.
 func NewLazyFactory() adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		crud, _, err := NewTypedCRUD(ctx)
+		var loader providers.ConfigLoader
+		crud, _, err := NewTypedCRUD(ctx, &loader)
 		if err != nil {
 			return nil, err
 		}

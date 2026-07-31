@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/grafana/gcx/internal/fleet"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instoutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
@@ -16,13 +17,18 @@ import (
 )
 
 // excludeOpts holds flag-bound options for the "services exclude" command.
-// The command takes only positional args today, so the struct is empty;
-// it exists to satisfy the canonical opts struct + setup + Validate pattern.
-type excludeOpts struct{}
+type excludeOpts struct {
+	IO cmdio.Options
+}
 
-func (o *excludeOpts) setup(_ *pflag.FlagSet) {}
+func (o *excludeOpts) setup(flags *pflag.FlagSet) {
+	// The exclude result is a MutationResult document through the codec
+	// system: the default text codec prints the familiar one-liner; agent
+	// mode and explicit -o json/yaml get the structured document.
+	instoutput.BindMutationIO(&o.IO, flags)
+}
 
-func (o *excludeOpts) Validate() error { return nil }
+func (o *excludeOpts) Validate() error { return o.IO.Validate() }
 
 func newExcludeCommand(loader fleet.ConfigLoader) *cobra.Command {
 	opts := &excludeOpts{}
@@ -59,7 +65,7 @@ Examples:
 			}
 			client := instrumentation.NewClient(r.Client)
 			urls := instrumentation.BackendURLsFromStack(r.Stack)
-			return runExclude(ctx, client, args[0], args[1], args[2], urls, instrumentation.PromHeadersFromStack(r.Stack), cmd.OutOrStdout())
+			return runExclude(ctx, &opts.IO, client, args[0], args[1], args[2], urls, instrumentation.PromHeadersFromStack(r.Stack), cmd.OutOrStdout())
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -70,6 +76,7 @@ Examples:
 // Symmetric to runInclude (see include.go for full design notes).
 func runExclude(
 	ctx context.Context,
+	outOpts *cmdio.Options,
 	client *instrumentation.Client,
 	cluster, namespace, service string,
 	urls instrumentation.BackendURLs,
@@ -98,11 +105,8 @@ func runExclude(
 	equal, _ := rmw.AppEqual(*ns, proposed)
 	if equal {
 		// Already in the desired state — idempotent no-op.
-		return instoutput.MutationResult{
-			Action:  "exclude",
-			Target:  instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service},
-			Changed: false,
-		}.Emit(out)
+		return outOpts.Encode(out, instoutput.NewMutationResult("exclude",
+			instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service}))
 	}
 
 	getFn := func(ctx context.Context) ([]instrumentation.App, error) {
@@ -131,9 +135,8 @@ func runExclude(
 		return fmt.Errorf("services exclude: %w", err)
 	}
 
-	return instoutput.MutationResult{
-		Action:  "exclude",
-		Target:  instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service},
-		Changed: true,
-	}.Emit(out)
+	result := instoutput.NewMutationResult("exclude",
+		instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service})
+	result.Changed = true
+	return outOpts.Encode(out, result)
 }

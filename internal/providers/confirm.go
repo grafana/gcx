@@ -14,7 +14,7 @@ import (
 
 // ErrAgentModeRequiresForce is returned when agent mode is active but --force
 // was not passed. Exported so callers with custom prompts can check for it.
-var ErrAgentModeRequiresForce = errors.New("destructive operation requires --force in agent mode")
+var ErrAgentModeRequiresForce = errors.New("destructive operation in agent mode: use --force to proceed")
 
 // CheckDestructiveBypass runs the bypass chain for destructive operations.
 // Returns (true, nil) if the operation should proceed without prompting
@@ -66,7 +66,8 @@ func ConfirmDestructive(in io.Reader, out io.Writer, force bool, prompt string) 
 
 	answer, err := bufio.NewReader(in).ReadString('\n')
 	if err != nil {
-		return false, fmt.Errorf("read confirmation: %w", err)
+		// Typically EOF on a closed/non-interactive stdin (scripts, CI).
+		return false, fmt.Errorf("confirmation unavailable (no interactive input): use --force to proceed: %w", err)
 	}
 
 	answer = strings.TrimSpace(strings.ToLower(answer))

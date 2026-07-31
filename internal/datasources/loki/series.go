@@ -26,7 +26,7 @@ func (opts *seriesOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
-	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-loki-datasource is configured)")
+	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	flags.StringArrayVarP(&opts.Matchers, "match", "M", nil, "LogQL stream selector (required, e.g., '{job=\"varlogs\"}')")
 }
 

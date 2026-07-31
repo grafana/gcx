@@ -206,12 +206,19 @@ func TestEncode_AgentModeHint(t *testing.T) {
 		agentMode bool
 		jsonField string // if set, pass --json flag
 		jqExpr    string // if set, pass --jq flag
+		pinned    bool   // if set, pin the default format (file-writing command)
 		wantHint  bool
 	}{
 		{
 			name:      "agent mode without --json or --jq: emits hint",
 			agentMode: true,
 			wantHint:  true,
+		},
+		{
+			name:      "agent mode + pinned default (file-writing command): hint suppressed",
+			agentMode: true,
+			pinned:    true,
+			wantHint:  false,
 		},
 		{
 			name:      "agent mode + --json field selection: hint still fires (nudges toward --jq)",
@@ -245,6 +252,9 @@ func TestEncode_AgentModeHint(t *testing.T) {
 
 			var errBuf bytes.Buffer
 			opts := &cmdio.Options{ErrWriter: &errBuf}
+			if tc.pinned {
+				opts.PinDefaultFormat("json")
+			}
 			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 			opts.BindFlags(flags)
 

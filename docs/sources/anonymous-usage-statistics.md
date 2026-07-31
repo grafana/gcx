@@ -1,5 +1,7 @@
 ---
-title: Anonymous usage statistics
+aliases:
+  - /docs/grafana-cloud/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/
+title: Usage statistics
 labels:
   products:
     - cloud
@@ -8,15 +10,15 @@ labels:
 weight: 4
 ---
 
-# Understand anonymous gcx usage collection 
+# Understand gcx usage statistics
 
-`gcx` reports anonymous usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
+`gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
 
 The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values and flag values are never sent. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
 
 {{< admonition type="note" >}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usage reporting.{{< /admonition >}}
 
-## How anonymity is guaranteed
+## Telemetry data and identifiers
 
 The only identifier is a `device_id` field: a randomly generated UUID created on first use and stored at `$XDG_STATE_HOME/gcx/device-id`. It identifies an installation of `gcx`, not a person. It's random, not derived from your hardware or account.
 
@@ -30,21 +32,21 @@ Each `gcx` event contains the following properties:
 | `version` | The version of `gcx`. | `0.4.1` |
 | `os` | Operating system. | `linux`, `darwin`, `windows` |
 | `arch` | CPU architecture. | `amd64`, `arm64` |
-| `device_id` | The random per-installation ID described in [Anonymity](#anonymity). | UUID |
+| `device_id` | The random per-installation ID described in [Telemetry data and identifiers](#telemetry-data-and-identifiers). | UUID |
 | `device_id_persisted` | Whether the device ID was read from or saved to disk. `false` means a throwaway ID was used for this invocation. | `true` |
 | `command` | The resolved command path only, no arguments are sent. | `dashboards push` |
 | `flags` | The **names** of the flags you set, sorted. No flag values are sent. | `dry-run,folder` |
 | `provider` | The resource provider the command belongs to. | `dashboards` |
 | `outcome` | How the invocation ended: `ok`, `runtime_error`, `parse_error`, or `help`. | `ok` |
 | `exit_code` | The process exit code. | `0` |
-| `error_kind` | A coarse error category when the command failed, such as `auth` or `validation`. Never an error message. | `auth` |
+| `error_kind` | A coarse error category when the command failed: `usage_error`, `auth_failure`, `partial_failure`, `version_incompatible`, or `error`. Never an error message. | `auth_failure` |
 | `duration_ms` | Total invocation duration in milliseconds. | `1234` |
 | `is_tty` | Whether `gcx` ran attached to an interactive terminal. | `false` |
 | `is_ci` | Whether a CI environment was detected. | `true` |
 | `ci_provider` | Which CI system was detected, from a fixed list of known names. `gcx` reads well-known CI environment variables to detect the provider but never sends their values. | `github_actions` |
 | `is_agent` | Whether an AI coding agent drove the invocation. | `true` |
 | `agent` | The name of the agent harness, if one was detected. | `claude-code` |
-| `target_kind` | Whether the target Grafana is `cloud` or `self-managed`. Deliberately coarse — never the URL, hostname, or stack slug. | `cloud` |
+| `target_kind` | Whether the target Grafana is `cloud` or `self-hosted`. Empty when no effective Grafana target could be resolved. Deliberately coarse — never the URL, hostname, or stack slug. | `cloud` |
 | `output_format` | The output format the command used. | `table`, `json` |
 
 When the invocation fails to parse, these additional fields are set. They capture what was attempted so the team can understand the differences between what users expect and what exists:
@@ -65,12 +67,11 @@ Some invocations never emit an event:
 
 - **Shell completion** — the completion machinery runs on every tab-press and carries no usage signal.  
 - **`gcx version`**  
-- **The `gcx telemetry` command itself** — the command that controls reporting doesn't report on itself.  
 - **Cancelled invocations** — pressing Ctrl-C emits nothing.
 
 ## Server-side enrichment
 
-Reports are received by Grafana's usage-stats service, the same service that receives anonymous usage reports from Grafana, Loki, Tempo, and Mimir. On receipt, the service adds two pieces of information derived from the connection:
+Reports are received by Grafana's usage-stats service, the same service that receives usage reports from Grafana, Loki, Tempo, and Mimir. On receipt, the service adds two pieces of information derived from the connection:
 
 - A coarse **geographic region** (for example, a country or subdivision), taken from headers added by the CDN edge.  
 - The **network organization name** from a whois lookup of the connecting IP address. For CLI traffic this typically resolves to your ISP or employer's network.

@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/cloud"
+	"github.com/grafana/gcx/internal/docs"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/stacks"
 	"github.com/grafana/gcx/internal/testutils"
@@ -89,6 +91,73 @@ func TestCreateCommand_NameAndSlugRequired(t *testing.T) {
 	}
 }
 
+func TestCreateCommand_SlugValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		slug        string
+		nameFlag    string
+		wantDetails string
+	}{
+		{"hyphen (issue #950 repro)", "my-gcx-eval", "t", "lowercase"},
+		{"uppercase with hyphen", "My-Slug", "t", "lowercase"},
+		{"underscore", "my_slug", "t", "lowercase"},
+		{"dot", "my.slug", "t", "lowercase"},
+		{"space", "my slug", "t", "lowercase"},
+		{"all uppercase", "MYSLUG", "t", "lowercase"},
+		{"explicit empty slug hits required check", "", "t", "--name and --slug are required"},
+		{"explicit empty name hits required check", "myslug", "", "--name and --slug are required"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
+				"create", "--name", tt.nameFlag, "--slug", tt.slug,
+			}, "")
+			require.Error(t, err)
+
+			var detailed *gcxerrors.DetailedError
+			require.ErrorAs(t, err, &detailed)
+			assert.Equal(t, "Invalid command usage", detailed.Summary)
+			require.NotNil(t, detailed.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+			assert.Contains(t, detailed.Details, tt.wantDetails)
+			if tt.wantDetails == "lowercase" {
+				assert.Equal(t, docs.CloudAPI, detailed.DocsLink)
+				require.NotEmpty(t, detailed.Suggestions)
+				assert.Contains(t, detailed.Suggestions[0], "--slug mygcxeval")
+			}
+		})
+	}
+}
+
+func TestCreateCommand_SlugValidation_ValidSlugsPass(t *testing.T) {
+	// Valid slugs must clear validation; --dry-run keeps the command offline
+	// (no config loader, no API call).
+	for _, slug := range []string{"mygcxeval1", "123abc"} {
+		t.Run(slug, func(t *testing.T) {
+			out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
+				"create", "--name", "My Stack", "--slug", slug, "--dry-run", "-o", "table",
+			}, "")
+			require.NoError(t, err)
+			assert.Contains(t, out, "Dry run:")
+		})
+	}
+}
+
+func TestCreateCommand_DryRun_InvalidSlugRejected(t *testing.T) {
+	// Validation must run before the dry-run branch: an invalid slug fails
+	// and no preview is rendered (issue #950 item 3).
+	out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
+		"create", "--name", "t", "--slug", "my-gcx-eval", "--dry-run", "-o", "table",
+	}, "")
+	require.Error(t, err)
+	assert.NotContains(t, out, "Dry run:")
+
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &detailed)
+	assert.Equal(t, "Invalid command usage", detailed.Summary)
+}
+
 // ---------------------------------------------------------------------------
 // create — dry-run
 // ---------------------------------------------------------------------------
@@ -146,6 +215,14 @@ func TestCreateCommand_DryRun_InvalidLabels(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `invalid label "noequalssign"`)
+
+	// Labels are validated in Validate() alongside name/slug, so a bad
+	// value is the same usage-error class with the same exit code.
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &detailed)
+	assert.Equal(t, "Invalid command usage", detailed.Summary)
+	require.NotNil(t, detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
 }
 
 func TestCreateCommand_DryRun_DoesNotCallAPI(t *testing.T) {
@@ -169,7 +246,31 @@ func TestUpdateCommand_MutualExclusion(t *testing.T) {
 	}, "")
 
 	require.Error(t, err)
-	assert.Equal(t, "--delete-protection and --no-delete-protection are mutually exclusive", err.Error())
+
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &detailed)
+	assert.Equal(t, "Invalid command usage", detailed.Summary)
+	require.NotNil(t, detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+	assert.Contains(t, detailed.Details, "--delete-protection and --no-delete-protection are mutually exclusive")
+}
+
+func TestUpdateCommand_InvalidLabels(t *testing.T) {
+	// Update's flag mistakes are the same usage-error class as create's.
+	_, err := runCmd(t, stacks.NewTestUpdateCommand(), []string{
+		"update", "mystack",
+		"--labels", "noequalssign",
+		"--dry-run", "-o", "table",
+	}, "")
+
+	require.Error(t, err)
+
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &detailed)
+	assert.Equal(t, "Invalid command usage", detailed.Summary)
+	require.NotNil(t, detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+	assert.Contains(t, detailed.Details, `invalid label "noequalssign"`)
 }
 
 func TestUpdateCommand_RequiresArg(t *testing.T) {
@@ -228,6 +329,8 @@ func TestUpdateCommand_DryRun_DoesNotCallAPI(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDeleteCommand_DryRun(t *testing.T) {
+	setAgentMode(t, false) // dry-run default format is text only outside agent mode
+
 	out, err := runCmd(t, stacks.NewTestDeleteCommand(), []string{
 		"delete", "mystack", "--dry-run",
 	}, "")

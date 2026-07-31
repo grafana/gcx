@@ -135,10 +135,10 @@ func checkSettingsStatus(resp *http.Response) error {
 }
 
 // NewTypedCRUD creates a TypedCRUD for App Observability settings.
-// It loads config via ConfigLoader (same pattern as the adapter factory).
-func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[PluginSettings], internalconfig.NamespacedRESTConfig, error) {
-	var loader providers.ConfigLoader
-
+// The loader carries the command's --config selection; adapter factories pass
+// a zero-value loader and inherit the selection (config file and context name)
+// threaded through ctx by the resources command.
+func NewTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) (*adapter.TypedCRUD[PluginSettings], internalconfig.NamespacedRESTConfig, error) {
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
 		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to load REST config for App Observability settings: %w", err)
@@ -174,7 +174,8 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[PluginSettings], inte
 // default config file when invoked.
 func NewLazyFactory() adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		crud, _, err := NewTypedCRUD(ctx)
+		var loader providers.ConfigLoader
+		crud, _, err := NewTypedCRUD(ctx, &loader)
 		if err != nil {
 			return nil, err
 		}

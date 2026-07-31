@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -35,12 +36,15 @@ const (
 	searchPath               = pluginResourcePath + "/asserts/api-server/v1/search"
 	searchAssertPath         = searchPath + "/assertions"
 	searchSamplePath         = searchPath + "/sample"
+	alertInspectionPath      = pluginResourcePath + "/asserts/api-server/v1/alert-inspection"
 	rulesPath                = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
 	ruleByNameFmt            = rulesPath + "/%s"
 	rulesSchemaPath          = rulesPath + "/schema"
+	rulesValidateSyncPath    = rulesPath + "-validate-sync"
 	modelRulesPath           = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
 	modelRulesByNameFmt      = modelRulesPath + "/%s"
 	modelRulesSchemaPath     = modelRulesPath + "/schema"
+	modelRulesValidatePath   = modelRulesPath + "-validate"
 	suppressionPath          = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
 	suppressionByNameFmt     = suppressionPath + "/%s"
 	suppressionsPath         = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
@@ -51,6 +55,11 @@ const (
 	v2TraceConfigPath        = v2ConfigPath + "/trace"
 	v2ProfileConfigPath      = v2ConfigPath + "/profile"
 	v2RelabelRulesPath       = v2ConfigPath + "/relabel-rules"
+
+	// KG entity quality reports, proxied through the asserts plugin.
+	qualityBasePath          = pluginResourcePath + "/asserts/kg-quality/v1/entities"
+	qualityReportsPath       = qualityBasePath + "/quality-reports"
+	qualityReportByEntityFmt = qualityBasePath + "/%s/%s/quality-report"
 
 	// KG Write API (K8s-style, namespaced). %s is the stacks-<id> namespace.
 	// Entity and relationship deletes use these collection paths with identity
@@ -436,28 +445,34 @@ func (c *Client) GetSuppressions(ctx context.Context) (*Suppressions, error) {
 	return &result, nil
 }
 
-// SuppressionFieldError is a single field-level validation failure reported by
-// the disabled-alerts-validate endpoint, e.g. field "disabledAlertConfigs[0].name",
+// ConfigFieldError is a single field-level validation failure reported by a
+// KG config validate endpoint, e.g. field "disabledAlertConfigs[0].name",
 // message "Missing Rule Name".
-type SuppressionFieldError struct {
+type ConfigFieldError struct {
 	Field   string
 	Message string
 }
 
-// SuppressionsValidationError is returned by ValidateSuppressions when the
-// backend rejects the payload (HTTP 422). It carries the per-field errors from
-// the server-side validator so callers can render them without a round-trip to
-// the write endpoint.
-type SuppressionsValidationError struct {
+// ConfigValidationError is returned by the Validate* methods when the backend
+// rejects a config payload (HTTP 422). It carries the per-field errors from the
+// server-side validator so callers can render them without a round-trip to the
+// write endpoint. Kind identifies the config family (e.g. "suppressions",
+// "model rules", "prom rules") for the default message.
+type ConfigValidationError struct {
 	StatusCode int
+	Kind       string
 	Message    string
-	Errors     []SuppressionFieldError
+	Errors     []ConfigFieldError
 }
 
-func (e *SuppressionsValidationError) Error() string {
+func (e *ConfigValidationError) Error() string {
 	msg := e.Message
 	if msg == "" {
-		msg = "suppressions configuration is invalid"
+		kind := e.Kind
+		if kind == "" {
+			kind = "configuration"
+		}
+		msg = kind + " configuration is invalid"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "kg: %s", msg)
@@ -468,13 +483,20 @@ func (e *SuppressionsValidationError) Error() string {
 }
 
 // HTTPStatusCode implements the interface used by internal/fail for rich errors.
-func (e *SuppressionsValidationError) HTTPStatusCode() int { return e.StatusCode }
+func (e *ConfigValidationError) HTTPStatusCode() int { return e.StatusCode }
 
 // APIServiceName implements the interface used by internal/fail for rich errors.
-func (e *SuppressionsValidationError) APIServiceName() string { return "Knowledge Graph" }
+func (e *ConfigValidationError) APIServiceName() string { return "Knowledge Graph" }
 
 // APIUserMessage implements the interface used by internal/fail for rich errors.
-func (e *SuppressionsValidationError) APIUserMessage() string { return e.Error() }
+func (e *ConfigValidationError) APIUserMessage() string { return e.Error() }
+
+// SuppressionFieldError and SuppressionsValidationError are retained as aliases
+// so existing callers and tests keep compiling; new code uses the generic types.
+type (
+	SuppressionFieldError       = ConfigFieldError
+	SuppressionsValidationError = ConfigValidationError
+)
 
 // ValidateSuppressions checks a suppression configuration against the backend's
 // server-side validator without persisting anything, via the validate-only
@@ -486,11 +508,35 @@ func (c *Client) ValidateSuppressions(ctx context.Context, s *Suppressions) erro
 	if err != nil {
 		return fmt.Errorf("kg: marshal request body: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+suppressionsValidatePath, bytes.NewReader(b))
+	return c.validateConfig(ctx, suppressionsValidatePath, "application/json", b, "suppressions")
+}
+
+// ValidateModelRules checks a model rules configuration against the backend's
+// synchronous validate-only endpoint without persisting anything. It accepts the
+// same YAML payload as create. It returns nil when valid, a
+// *ConfigValidationError on HTTP 422 (with per-field errors), or an *APIError for
+// other failures.
+func (c *Client) ValidateModelRules(ctx context.Context, yamlContent string) error {
+	return c.validateConfig(ctx, modelRulesValidatePath, "application/x-yaml", []byte(yamlContent), "model rules")
+}
+
+// ValidatePromRules checks a Custom Prometheus rules configuration against the
+// backend's synchronous validate-only endpoint (prom-rules-validate-sync, distinct
+// from the orphaned async prom-rules-validate) without persisting anything. It
+// accepts the same YAML payload as create.
+func (c *Client) ValidatePromRules(ctx context.Context, yamlContent string) error {
+	return c.validateConfig(ctx, rulesValidateSyncPath, "application/x-yaml", []byte(yamlContent), "prom rules")
+}
+
+// validateConfig POSTs a payload to a validate-only endpoint and maps the
+// response: nil on 2xx, a *ConfigValidationError on 422 (per-field errors), or a
+// generic *APIError otherwise. kind names the config family for error messages.
+func (c *Client) validateConfig(ctx context.Context, path, contentType string, body []byte, kind string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+path, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -499,7 +545,7 @@ func (c *Client) ValidateSuppressions(ctx context.Context, s *Suppressions) erro
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnprocessableEntity {
-		return parseSuppressionsValidationError(resp)
+		return parseConfigValidationError(resp, kind)
 	}
 	if resp.StatusCode >= 400 {
 		return readError(resp)
@@ -507,10 +553,10 @@ func (c *Client) ValidateSuppressions(ctx context.Context, s *Suppressions) erro
 	return nil
 }
 
-// parseSuppressionsValidationError parses the ApiError envelope returned by the
-// validate endpoint on HTTP 422 (fields message + subErrors[]{field,message}).
-// If the body is not the expected envelope, it falls back to a generic APIError.
-func parseSuppressionsValidationError(resp *http.Response) error {
+// parseConfigValidationError parses the ApiError envelope returned by a validate
+// endpoint on HTTP 422 (fields message + subErrors[]{field,message}). If the body
+// is not the expected envelope, it falls back to a generic APIError.
+func parseConfigValidationError(resp *http.Response, kind string) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return &APIError{StatusCode: resp.StatusCode}
@@ -523,9 +569,9 @@ func parseSuppressionsValidationError(resp *http.Response) error {
 		} `json:"subErrors"`
 	}
 	if jsonErr := json.Unmarshal(body, &env); jsonErr == nil && len(env.SubErrors) > 0 {
-		verr := &SuppressionsValidationError{StatusCode: resp.StatusCode, Message: env.Message}
+		verr := &ConfigValidationError{StatusCode: resp.StatusCode, Kind: kind, Message: env.Message}
 		for _, se := range env.SubErrors {
-			verr.Errors = append(verr.Errors, SuppressionFieldError{Field: se.Field, Message: se.Message})
+			verr.Errors = append(verr.Errors, ConfigFieldError{Field: se.Field, Message: se.Message})
 		}
 		return verr
 	}
@@ -537,6 +583,45 @@ func parseSuppressionsValidationError(resp *http.Response) error {
 		apiErr.rawBody = string(body)
 	}
 	return apiErr
+}
+
+// getModelRulesForDiff fetches a model rules config by name for dry-run diffing,
+// returning found=false (nil error) when the config does not exist — either a 404
+// or an empty object — so the caller can render it as an "add".
+func (c *Client) getModelRulesForDiff(ctx context.Context, name string) (*ModelRules, bool, error) {
+	var m ModelRules
+	err := c.getJSON(ctx, fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name)), &m)
+	if err != nil {
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("kg: get model rules %q: %w", name, err)
+	}
+	if m.Name == "" {
+		return nil, false, nil
+	}
+	return &m, true, nil
+}
+
+// getPromRuleForDiff fetches a Custom Prometheus rules config by name for dry-run
+// diffing, returning found=false (nil error) when the config does not exist. The
+// backend returns an empty object (200) rather than 404 for a missing name, so an
+// empty result is treated as not-found.
+func (c *Client) getPromRuleForDiff(ctx context.Context, name string) (*Rule, bool, error) {
+	var f Rule
+	err := c.getJSON(ctx, fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), &f)
+	if err != nil {
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("kg: get rule %q: %w", name, err)
+	}
+	if f.Name == "" && len(f.Groups) == 0 {
+		return nil, false, nil
+	}
+	return &f, true, nil
 }
 
 // GetRelabelRules fetches the relabel rule group of the given type.
@@ -665,6 +750,88 @@ func (c *Client) ListEntityScopes(ctx context.Context, startMs, endMs int64) (ma
 		return nil, fmt.Errorf("kg: list entity scopes: %w", err)
 	}
 	return wrapper.ScopeValues, nil
+}
+
+// ---------------------------------------------------------------------------
+// Quality reports
+// ---------------------------------------------------------------------------
+
+// QualityReportQuery holds filters for listing entity quality reports.
+type QualityReportQuery struct {
+	Type           string
+	Env            string
+	Namespace      string
+	Site           string
+	EntityName     string
+	FailedCheckIDs []string
+	SortDirection  string // "ASC" or "DESC"
+	Page           int
+	PageSize       int
+}
+
+// GetEntityQualityReport fetches the full quality report for a single entity.
+// env is required by the backend; namespace and site are optional scope filters.
+func (c *Client) GetEntityQualityReport(ctx context.Context, entityType, name, env, namespace, site string) (*QualityReport, error) {
+	path := fmt.Sprintf(qualityReportByEntityFmt, url.PathEscape(entityType), url.PathEscape(name))
+	q := url.Values{}
+	if env != "" {
+		q.Set("env", env)
+	}
+	if namespace != "" {
+		q.Set("namespace", namespace)
+	}
+	if site != "" {
+		q.Set("site", site)
+	}
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var report QualityReport
+	if err := c.getJSON(ctx, path, &report); err != nil {
+		return nil, fmt.Errorf("kg: get quality report: %w", err)
+	}
+	return &report, nil
+}
+
+// ListQualityReports fetches a page of entity quality reports matching the query.
+func (c *Client) ListQualityReports(ctx context.Context, query QualityReportQuery) (*QualityReportPage, error) {
+	q := url.Values{}
+	if query.Type != "" {
+		q.Set("type", query.Type)
+	}
+	if query.Env != "" {
+		q.Set("env", query.Env)
+	}
+	if query.Namespace != "" {
+		q.Set("namespace", query.Namespace)
+	}
+	if query.Site != "" {
+		q.Set("site", query.Site)
+	}
+	if query.EntityName != "" {
+		q.Set("entityName", query.EntityName)
+	}
+	for _, id := range query.FailedCheckIDs {
+		q.Add("failedCheckIds", id)
+	}
+	if query.SortDirection != "" {
+		q.Set("sortDirection", query.SortDirection)
+	}
+	if query.Page > 0 {
+		q.Set("page", strconv.Itoa(query.Page))
+	}
+	if query.PageSize > 0 {
+		q.Set("pageSize", strconv.Itoa(query.PageSize))
+	}
+	path := qualityReportsPath
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var page QualityReportPage
+	if err := c.getJSON(ctx, path, &page); err != nil {
+		return nil, fmt.Errorf("kg: list quality reports: %w", err)
+	}
+	return &page, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -814,6 +981,27 @@ func (c *Client) CypherSearch(ctx context.Context, req CypherSearchRequest) (*Cy
 	}
 	if result.Edges == nil {
 		result.Edges = []CypherEdge{}
+	}
+	return &result, nil
+}
+
+// Correlate resolves affected Knowledge Graph entities from firing-alert label
+// sets, using the same correlation the product uses to attach alerts to
+// entities (backs the IRM Alert Groups "Impact" tab).
+//
+// Backend: POST /v1/alert-inspection. An empty correlation is a 200 with an
+// empty Data.Entities, not a 204 — callers detect "no correlation" from the
+// payload rather than the status code.
+func (c *Client) Correlate(ctx context.Context, req AlertInspectionRequest) (*AlertInspectionResponse, error) {
+	var result AlertInspectionResponse
+	if err := c.postJSON(ctx, alertInspectionPath, req, &result); err != nil {
+		return nil, fmt.Errorf("kg: correlate: %w", err)
+	}
+	if result.Data.Entities == nil {
+		result.Data.Entities = []GraphEntity{}
+	}
+	if result.Data.Edges == nil {
+		result.Data.Edges = []CypherEdge{}
 	}
 	return &result, nil
 }
