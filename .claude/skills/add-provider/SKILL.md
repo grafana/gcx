@@ -15,8 +15,20 @@ are checkpoints you satisfy, not approvals you wait for.
 - User says "add provider", "new provider", "integrate [product]"
 - A bead task references provider implementation
 
-**When NOT to use**: If the product exposes a K8s-compatible `/apis` endpoint,
-it already works with `gcx resources` — no provider needed.
+**When NOT to use**: if all you need is standard CRUD on a type that is
+externally accessible and discoverable on `/apis` — `gcx resources` already covers
+that through dynamic discovery.
+
+That test is about CRUD, not about the whole command surface. `gcx dashboards` and
+`gcx alert` are dedicated command trees over products that *are* on `/apis`,
+because their real operations (restore a version, export a policy tree) are not
+CRUD verbs. So a K8s-backed product can still warrant commands; run the placement
+analysis rather than stopping at "it's on `/apis`".
+
+If the answer is a commands-only provider calling the K8s dynamic client, note
+that `CONSTITUTION.md` § Provider Architecture makes
+`internal/providers/dashboards/` the one documented exception (ADR 016) — a second
+requires explicit human approval and a CONSTITUTION change.
 
 ## Entry paths
 

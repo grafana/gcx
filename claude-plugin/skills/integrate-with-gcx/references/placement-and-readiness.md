@@ -52,9 +52,23 @@ Identify what actually serves the data. Verify empirically, don't assume:
 gcx has **two architectural tiers** (K8s resource tier and Cloud provider tier);
 everything below is a wiring option within or beside them, not a new tier:
 
-- **No new code** — a native K8s type on `/apis` is already discoverable and
-  manageable via `gcx resources` (dynamic discovery). At most, add agent metadata
-  for the type (see `internal/agent/known_resources.go`).
+- **No new code — for standard CRUD only.** If the type is externally accessible
+  and discoverable on `/apis`, `gcx resources` already covers get/push/pull/delete
+  through dynamic discovery. At most, add agent metadata for the type (see
+  `internal/agent/known_resources.go`).
+
+  **This settles CRUD, not the command surface.** Product-specific operations on a
+  K8s-backed product still need their own placement analysis: `gcx dashboards` and
+  `gcx alert` both exist as dedicated command trees over products that *are*
+  on `/apis`, because "restore this version", "export this policy tree" and
+  "validate this rule" are not CRUD verbs. Presence on `/apis` never by itself
+  decides that no commands are warranted.
+
+  One hard constraint if your answer is a commands-only provider calling the K8s
+  dynamic client: `CONSTITUTION.md` § Provider Architecture records
+  `internal/providers/dashboards/` as **the one documented exception** (ADR 016).
+  A second one extends that exception, so it needs explicit human approval and a
+  CONSTITUTION change — say so in the placement section rather than assuming it.
 - **Cloud-tier command** — GCOM control-plane operations mount under `gcx cloud`.
 - **Provider commands** — a product with its own REST API gets a provider
   (`internal/providers/<name>/`, 6-method interface). Within a provider, three

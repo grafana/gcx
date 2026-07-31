@@ -162,10 +162,19 @@ product-specific REST APIs and translate to/from the K8s envelope format.
 ### When to use a provider vs `resources`
 
 ```
-Does the product expose a K8s-compatible API via /apis endpoint?
-├── YES → Use `gcx resources` (no provider needed)
-└── NO  → Create a provider (wraps product's REST API)
+Do you need only standard CRUD on an externally accessible, discoverable
+/apis resource?
+├── YES → `gcx resources` covers it; no provider needed for CRUD
+└── NO  → Create a provider (wraps the product's REST API)
 ```
+
+Being on `/apis` settles CRUD, not the command surface: `gcx dashboards` and
+`gcx alert` are dedicated command trees over `/apis`-backed products, because
+their real operations are not CRUD verbs. Product-specific operations need their
+own placement analysis regardless of tier. And a commands-only provider that calls
+the K8s dynamic client extends the single documented exception in
+`CONSTITUTION.md` § Provider Architecture (`internal/providers/dashboards/`,
+ADR 016), which requires explicit human approval.
 
 See `.claude/skills/add-provider/references/decision-tree.md` for the full
 decision tree.
