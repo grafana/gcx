@@ -9,6 +9,7 @@
 package sql
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -67,4 +68,72 @@ func EnforceLimit(sql string, limit, maxLimit int, bail func(string) bool) (stri
 		limit = maxLimit
 	}
 	return trimmed + " LIMIT " + strconv.Itoa(limit) + suffix, capped
+}
+
+// EffectiveLimit clamps a requested --limit to maxLimit. It returns 0 when
+// limit <= 0, meaning row-count enforcement is disabled.
+func EffectiveLimit(limit, maxLimit int) int {
+	if limit <= 0 {
+		return 0
+	}
+	if limit > maxLimit {
+		return maxLimit
+	}
+	return limit
+}
+
+// EnforceLimitSentinel injects "LIMIT eff+1" so the caller can detect
+// truncation, where eff = min(limit, maxLimit). It returns the SQL to execute,
+// the effective row cap to display to the user (eff), and whether gcx injected
+// a fresh sentinel cap. When capped is true, run the query and pass the
+// response to (*QueryResponse).Truncate(eff): if it reports rows were
+// dropped, warn the user with TruncationHint. When capped is false
+// (enforcement disabled, statement bailed, or a user-supplied LIMIT was
+// respected) the caller must not truncate or warn — the row count already
+// reflects the user's own intent.
+//
+// Deliberately independent of EnforceLimit rather than sharing its internals:
+// the two report a fresh-injection bool with different meanings (EnforceLimit's
+// covers an existing-LIMIT clamp too; this one only covers a fresh sentinel
+// inject), and EnforceLimit's callers (mysql, postgres) already ship on the
+// simpler contract. Coupling them through one low-level helper would risk
+// silently changing that shipped behavior for an unrelated caller's benefit.
+func EnforceLimitSentinel(sql string, limit, maxLimit int, bail func(string) bool) (string, int, bool) {
+	eff := EffectiveLimit(limit, maxLimit)
+	if eff == 0 {
+		return sql, 0, false
+	}
+	if bail != nil && bail(sql) {
+		return sql, eff, false
+	}
+
+	trimmed := strings.TrimRight(sql, "; \t\n")
+	suffix := sql[len(trimmed):]
+
+	if m := limitClauseRe.FindStringSubmatchIndex(trimmed); m != nil {
+		existing, _ := strconv.Atoi(trimmed[m[2]:m[3]])
+		if existing > maxLimit {
+			return trimmed[:m[2]] + strconv.Itoa(maxLimit) + trimmed[m[3]:] + suffix, eff, false
+		}
+		return sql, eff, false
+	}
+
+	return trimmed + " LIMIT " + strconv.Itoa(eff+1) + suffix, eff, true
+}
+
+// Truncate drops rows beyond eff (the sentinel and any surplus fetched via an
+// eff+1 cap) and reports whether any rows were dropped, i.e. more rows matched
+// than are being shown. eff <= 0 is a no-op.
+func (r *QueryResponse) Truncate(eff int) bool {
+	if eff <= 0 || len(r.Rows) <= eff {
+		return false
+	}
+	r.Rows = r.Rows[:eff]
+	return true
+}
+
+// TruncationHint is the stderr message shown when gcx's row cap dropped rows.
+// It is dialect-agnostic (applies to both LIMIT and TOP datasources).
+func TruncationHint(shown, maxLimit int) string {
+	return fmt.Sprintf("showing the first %d rows; more rows match — raise --limit (max %d), pass --limit 0 to remove the cap, or add your own row limit to the query", shown, maxLimit)
 }

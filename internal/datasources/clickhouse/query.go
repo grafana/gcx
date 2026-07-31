@@ -72,7 +72,11 @@ open it in your browser after the query succeeds.`,
 				return err
 			}
 
-			sql := clickhouse.EnforceLimit(expr, limit, maxLimit)
+			// Inject LIMIT (eff+1) so we can detect and warn when our own cap hid
+			// rows; displaySQL carries the user-facing LIMIT (eff) for the Explore
+			// link so it never leaks the +1 sentinel.
+			querySQL, eff, capped := clickhouse.EnforceLimitSentinel(expr, limit, maxLimit)
+			displaySQL := clickhouse.EnforceLimit(expr, limit, maxLimit)
 
 			now := time.Now()
 			start, end, step, err := shared.ParseTimes(now)
@@ -91,7 +95,7 @@ open it in your browser after the query succeeds.`,
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, clickhouse.QueryRequest{
-				RawSQL:     sql,
+				RawSQL:     querySQL,
 				Start:      start,
 				End:        end,
 				IntervalMs: intervalMs,
@@ -100,10 +104,15 @@ open it in your browser after the query succeeds.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
+			// Drop the sentinel row and warn if our LIMIT cap hid rows; also
+			// surface any server-side plugin notices. Must run before Encode so
+			// the sentinel never reaches output.
+			dsquery.SurfaceRowLimits(cmd.ErrOrStderr(), resp, capped, eff, maxLimit)
+
 			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
-				Expr:           sql,
+				Expr:           displaySQL,
 				From:           shared.From,
 				To:             shared.To,
 				OrgID:          dsquery.OrgID(cfgCtx),

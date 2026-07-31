@@ -40,6 +40,34 @@ func TestEnforceTop(t *testing.T) {
 	}
 }
 
+func TestEnforceTopSentinel(t *testing.T) {
+	tests := []struct {
+		name       string
+		sql        string
+		limit      int
+		wantSQL    string
+		wantEff    int
+		wantCapped bool
+	}{
+		{"injects eff+1 sentinel", "SELECT * FROM dbo.t", 100, "SELECT TOP (101) * FROM dbo.t", 100, true},
+		{"sentinel at the ceiling detects >max", "SELECT * FROM dbo.t", 1000, "SELECT TOP (1001) * FROM dbo.t", 1000, true},
+		{"above ceiling clamps eff, still sentinels", "SELECT * FROM dbo.t", 99999, "SELECT TOP (1001) * FROM dbo.t", 1000, true},
+		{"limit zero disables", "SELECT * FROM dbo.t", 0, "SELECT * FROM dbo.t", 0, false},
+		{"negative limit disables", "SELECT * FROM dbo.t", -5, "SELECT * FROM dbo.t", 0, false},
+		{"existing top not sentineled", "SELECT TOP (5) * FROM dbo.t", 100, "SELECT TOP (5) * FROM dbo.t", 100, false},
+		{"cte bails", "WITH c AS (SELECT 1 AS n) SELECT * FROM c", 100, "WITH c AS (SELECT 1 AS n) SELECT * FROM c", 100, false},
+		{"offset fetch bails", "SELECT * FROM dbo.t ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY", 100, "SELECT * FROM dbo.t ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY", 100, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotSQL, gotEff, gotCapped := mssql.EnforceTopSentinel(tt.sql, tt.limit, 1000)
+			assert.Equal(t, tt.wantSQL, gotSQL)
+			assert.Equal(t, tt.wantEff, gotEff)
+			assert.Equal(t, tt.wantCapped, gotCapped)
+		})
+	}
+}
+
 func TestEscapeSQLString(t *testing.T) {
 	assert.Equal(t, "dbo", mssql.EscapeSQLString("dbo"))
 	assert.Equal(t, "O''Brien", mssql.EscapeSQLString("O'Brien"))
