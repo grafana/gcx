@@ -3,6 +3,7 @@ package gcxerrors_test
 import (
 	"errors"
 	"io"
+	"net/http"
 	"testing"
 
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -11,18 +12,18 @@ import (
 )
 
 func TestHTTPStatusErrorContract(t *testing.T) {
-	plain := &gcxerrors.HTTPStatusError{Status: 502, Message: "request failed with status 502"}
+	plain := &gcxerrors.HTTPStatusError{Status: http.StatusBadGateway, Message: "request failed with status 502"}
 	assert.Equal(t, "request failed with status 502", plain.Error(),
 		"Message is the whole rendered text, nothing is appended")
-	assert.Equal(t, 502, plain.HTTPStatusCode())
-	assert.Nil(t, errors.Unwrap(plain), "a message that never wrapped anything unwraps to nil")
+	assert.Equal(t, http.StatusBadGateway, plain.HTTPStatusCode())
+	require.NoError(t, errors.Unwrap(plain), "a message that never wrapped anything unwraps to nil")
 
-	wrapped := &gcxerrors.HTTPStatusError{Status: 500, Message: "read failed", Cause: io.ErrUnexpectedEOF}
-	assert.ErrorIs(t, wrapped, io.ErrUnexpectedEOF, "the cause chain must survive for errors.Is")
+	wrapped := &gcxerrors.HTTPStatusError{Status: http.StatusInternalServerError, Message: "read failed", Cause: io.ErrUnexpectedEOF}
+	require.ErrorIs(t, wrapped, io.ErrUnexpectedEOF, "the cause chain must survive for errors.Is")
 
 	var carrier interface{ HTTPStatusCode() int }
 	require.ErrorAs(t, error(wrapped), &carrier, "the one-method structural probe must match")
-	assert.Equal(t, 500, carrier.HTTPStatusCode())
+	assert.Equal(t, http.StatusInternalServerError, carrier.HTTPStatusCode())
 }
 
 // The exit-code taxonomy depends on this type NOT satisfying cmd/gcx/fail's
@@ -38,7 +39,7 @@ func TestHTTPStatusErrorNeverSatisfiesServiceAPIError(t *testing.T) {
 		APIServiceName() string
 		APIUserMessage() string
 	}
-	err := error(&gcxerrors.HTTPStatusError{Status: 401, Message: "request failed with status 401"})
-	assert.False(t, errors.As(err, &serviceShaped),
+	err := error(&gcxerrors.HTTPStatusError{Status: http.StatusUnauthorized, Message: "request failed with status 401"})
+	assert.NotErrorAs(t, err, &serviceShaped,
 		"HTTPStatusError must not grow APIServiceName/APIUserMessage; that changes exit codes repo-wide")
 }
