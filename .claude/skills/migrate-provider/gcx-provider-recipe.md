@@ -1,10 +1,4 @@
-# Legacy-CLI → gcx Provider Migration Recipe
-
-> **Naming hazard.** The legacy CLI this recipe ports *from* was also called
-> `gcx`, so any sentence below mentioning two `gcx`es is comparing the legacy tool
-> against this repo's binary and cannot be read literally. Use `bin/gcx` for this
-> repo. The mechanical steps are accurate; the side-by-side verification steps are
-> not disambiguated — see the status note in SKILL.md.
+# gcx → gcx Provider Migration Recipe
 
 > **Evergreen document.** Update this as providers are ported — add gotchas,
 > refine patterns, fix mistakes. Each migration agent should read this before
@@ -61,28 +55,23 @@ HTTP client reference section template that plan.md must include.
 Verify these before starting any port:
 
 ```bash
-# 1. THIS repo's binary is built and available
-mise run build
-bin/gcx --version
+# 1. gcx binary is available
+gcx --version
 
-# 2. Grafana context is configured and working, in this repo's binary
-bin/gcx config view
-bin/gcx --context=<ctx> resources list-types | head -5
+# 2. Grafana context is configured and working
+gcx config view
+gcx --context=<ctx> resources list-types | head -5
 
-# 3. The LEGACY CLI is available under its own path, and points at the same
-#    Grafana. Substitute its real location — do NOT write `gcx` here, or you will
-#    run this repo's binary twice and "compare" it against itself.
-"$LEGACY_CLI" --version
-"$LEGACY_CLI" config view
+# 3. gcx uses the same context (or configure separately)
+gcx --context=<ctx> config check
 
 # 4. Provider directory structure exists
+# Use /add-dir or create manually:
 mkdir -p internal/providers/{name}/{resource}
 ```
 
 If any of these fail, fix them before proceeding. Smoke tests (Phase 4) require
-live API access from **both** binaries — `bin/gcx` and `$LEGACY_CLI` — against the
-same Grafana instance. Keep the two invocations visibly distinct in every
-comparison you record.
+live API access to both gcx and gcx against the same Grafana instance.
 
 ---
 
@@ -115,8 +104,8 @@ Before starting a port, answer these questions:
       resolution logic in CreateFn/UpdateFn.
 
 [ ] 6. Pagination?
-      The gcx client uses manual pagination loops. Check if the API has
-      limit/offset, cursor, or Link headers. The adapter's ListFn handles this.
+      gcx uses manual pagination loops. Check if the API has limit/offset,
+      cursor, or Link headers. The adapter's ListFn must handle this.
 ```
 
 ---
@@ -223,10 +212,6 @@ import (
 // in the provider's TypedRegistrations() — the single providers.Register() call
 // in the provider's init() performs the actual registration (never call
 // adapter.Register() directly; CONSTITUTION § Architecture Invariants).
-// ConfigLoader is this package's own small interface over the provider's
-// config loading — e.g. `type ConfigLoader interface { Load(context.Context) (Config, error) }`,
-// satisfied by the provider's `configLoader` (see internal/providers/irm for a
-// worked example). It is not a type from internal/providers.
 func Registration(loader ConfigLoader) adapter.Registration {
     // ResourceType must implement adapter.ResourceIdentity
     // (GetResourceName/SetResourceName) — identity comes from the domain

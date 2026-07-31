@@ -25,32 +25,19 @@ with workflow discipline and orchestration.
 **When NOT to use**: Building a provider from scratch for a product without
 a gcx client — use `/add-provider` instead.
 
-## Status: outside v1's autonomy claim — read this first
+## Status: not covered by the integrate-with-gcx v1 workflow
 
-**Do not run this skill autonomously, and do not trust its side-by-side
-verification steps as written.** The legacy CLI this skill ports *from* was also
-called `gcx`, and the rename collapsed both names into one string throughout these
-documents. The result is instructions that are literally self-referential:
-`gcx-provider-recipe.md` says the port needs "live API access to both gcx and
-gcx", and `templates/comparison-report.md` has old-vs-new comparison rows that are
-byte-identical. A reader cannot tell which binary any given step means.
+**A human drives this skill.** The legacy CLI this skill ports *from* was also
+called `gcx`, and the rename collapsed both names throughout these documents — so
+every "compare old against new" instruction here is ambiguous about which binary
+it means, and bare `gcx` resolves to whatever is installed rather than the build
+under review. Read the comparison steps critically, use `bin/gcx` for anything you
+are verifying, and name the legacy binary's own path explicitly.
 
-Consequences until that is disambiguated:
-
-- Every "compare old against new" step is unreliable. Two rows that read the same
-  will be filled in from the same binary, and the comparison will pass while
-  proving nothing.
-- Bare `gcx` in these documents resolves to whatever is installed on `PATH`, not
-  the binary you just built. For anything you are verifying, use `bin/gcx`.
-- Of the mechanical steps, only the registration flow (`providers.Register()` +
-  `TypedRegistrations()`, and the `TypedCRUD` `Descriptor`/`Aliases` fields) was
-  checked against the current code. Package layout, schema/example registration
-  and the client translation were **not** re-verified — treat them as unaudited.
-  What is definitely broken is the *verification* half.
-
-A human should drive this skill and read the comparison steps critically. Fixing
-the naming collision properly means disambiguating the legacy tool throughout the
-recipe, its four templates and this file; that is deliberately not attempted here.
+Only the registration flow in the recipe (`providers.Register()` +
+`TypedRegistrations()`, and the `TypedCRUD` `Descriptor`/`Aliases` fields) has been
+checked against current code. Treat the rest as unaudited. Disambiguating the
+legacy tool throughout is deliberately out of scope for v1.
 
 ## Relationship to integrate-with-gcx
 

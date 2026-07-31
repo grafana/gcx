@@ -49,25 +49,18 @@ endpoint you cannot verify. If no instance is reachable, report the live checks 
 contract (proportional)  →  implementation  →  Review
 ```
 
-Both entry paths run all three. The contract and the review are the
-high-value part — naming against the frozen surface, typed inputs and
-explicitly-empty values, output protocol class, completeness honesty, actionable
-errors, token cost, shared-transport reuse, mutation-resistant tests — and none
-of it is a document or a gate.
+Both entry paths run all three, and none of them is a document or a gate:
 
-- **Contract, before you write code:** cover
-  `claude-plugin/skills/integrate-with-gcx/references/contract-and-tests.md`,
-  sized to the change. A one-flag addition needs three lines of it; a new
-  provider needs all of it. If you arrived from `integrate-with-gcx` the contract
-  already exists — use it, don't redo it.
-- **Review, before you call it review-ready:** run the diff-triggered checks in
-  `claude-plugin/skills/integrate-with-gcx/references/self-review.md`, and re-run
-  them after every fix push. Report only unresolved risks, unverified
-  assumptions, failed or skipped checks, and architecture deviations.
+- **Contract, before code** — `claude-plugin/skills/integrate-with-gcx/references/contract-and-tests.md`,
+  sized to the change. If you arrived from `integrate-with-gcx` the contract
+  already exists; use it, don't redo it.
+- **Review, before calling it review-ready** —
+  `claude-plugin/skills/integrate-with-gcx/references/self-review.md`, re-run after
+  every fix push.
 
-Read those two files from the checkout, or via
-`gcx agent skills get integrate-with-gcx`. Skipping them is the one way to get
-this wrong while every gate stays green.
+That is where the naming, typed-input, output-class, completeness, error,
+token-cost and test-quality guidance lives. Read those two rather than restating
+them here.
 
 ## Workflow
 
@@ -82,7 +75,7 @@ research report     code per step      smoke tests
 |-------|-------------|------|
 | 1. Discover | research findings | findings presented; no approval wait |
 | 2. Implement | Code (one step at a time) | `mise run gate` passes per step; `GCX_AGENT_MODE=false mise run all` once before push |
-| 3. Verify | Smoke tests + annotation check | All checks green |
+| 3. Verify | Smoke tests + annotation check | smoke tests run or reported UNVERIFIED; wiring checks pass |
 
 ### Prerequisites
 
@@ -135,8 +128,9 @@ Direct-invocation path only — see [Entry paths](#entry-paths).
 
 ### Step 1: Query Client
 
-Create `internal/query/{kind}/` with `client.go`, `types.go`, and a
-`formatter.go` for table rendering.
+Create `internal/query/{kind}/` with `client.go` and `types.go`. Add a
+`formatter.go` **only if** you define your own response type — if you reuse a
+shared one, its formatter and codecs already exist (see Step 3).
 
 **Start with the shared transport — it is the default, not an optimisation.**
 AGENTS.md Key Conventions: a client that calls Grafana's unified datasource query
@@ -377,7 +371,7 @@ GCX_AGENT_MODE=false mise run all
 mise exec -- go test ./internal/agent/...
 ```
 
-### Gate: All Green
+### Checkpoint: Verified
 
 ---
 
