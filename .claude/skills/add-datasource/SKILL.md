@@ -125,7 +125,7 @@ Document findings. Must include:
 - Available metadata operations
 - At least one successful API call result
 
-### Gate: User Approves Research
+### Checkpoint: Research Complete
 
 Direct-invocation path only — see [Entry paths](#entry-paths).
 
@@ -135,34 +135,38 @@ Direct-invocation path only — see [Entry paths](#entry-paths).
 
 ### Step 1: Query Client
 
-Create `internal/query/{kind}/` with:
+Create `internal/query/{kind}/` with `client.go`, `types.go`, and a
+`formatter.go` for table rendering.
 
-- **`client.go`** — HTTP client wrapping Grafana datasource API
-  ```go
-  type Client struct {
-      restConfig config.NamespacedRESTConfig
-      httpClient *http.Client
-  }
+**Start with the shared transport — it is the default, not an optimisation.**
+AGENTS.md Key Conventions: a client that calls Grafana's unified datasource query
+API (`/apis/query.grafana.app/.../query`, with the `/api/ds/query` fallback) must
+reuse `internal/query/grafanaquery` for the HTTP transport (POST + fallback +
+response-size limiting) and `internal/query/dataframe` for the data-frame wire
+types. Do not duplicate that logic or re-declare
+`GrafanaQueryResponse`/`DataFrame`. Check the current set with
+`grep -rl query/grafanaquery internal/query/` and copy the closest one:
 
-  func NewClient(cfg config.NamespacedRESTConfig) (*Client, error)
-  func (c *Client) Query(ctx context.Context, uid string, req QueryRequest) (*QueryResponse, error)
-  // Add Labels, Metadata, etc. as needed
-  ```
-- **`types.go`** — Request/Response structs
-- **`formatter.go`** — Table rendering functions
+```go
+type Client struct {
+    queryClient *grafanaquery.Client
+}
 
-Use `rest.HTTPClientFor(&cfg.Config)` for the HTTP client (datasource proxy
-calls go through Grafana, which handles auth).
+func NewClient(cfg config.NamespacedRESTConfig) (*Client, error)
+func (c *Client) Query(ctx context.Context, uid string, req QueryRequest) (*QueryResponse, error)
+// Add Labels, Metadata, etc. as needed
+```
 
-**Shared transport rule (AGENTS.md Key Conventions):** if the client calls
-Grafana's unified datasource query API (`/apis/query.grafana.app/.../query`,
-with the `/api/ds/query` fallback), it must reuse `internal/query/grafanaquery`
-for the HTTP transport (POST + fallback + response-size limiting) and
-`internal/query/dataframe` for the Grafana data-frame wire types — do not
-duplicate that logic or re-declare `GrafanaQueryResponse`/`DataFrame` structs
-in the new package. Most existing query clients already reuse them — check the
-current set with `grep -rl query/grafanaquery internal/query/` rather than
-trusting a count here.
+Wire types alias the shared package rather than redeclaring it
+(`type GrafanaQueryResponse = dataframe.Response`). If your results are
+table-shaped, returning `internal/query/sql`'s response type means the existing
+codecs in `internal/datasources/query/codecs.go` already handle you — a bespoke
+response type costs an arm in each of them.
+
+**Only if the datasource is not served by the unified query API** — a proxy or
+plugin-resource endpoint instead — hold the `config.NamespacedRESTConfig` and
+build the client with `rest.HTTPClientFor(&cfg.Config)` directly. Say in the PR
+which of the two shapes you used and why.
 
 Reference: `internal/query/prometheus/`, `internal/query/loki/` (both built on
 `grafanaquery` + `dataframe`)
