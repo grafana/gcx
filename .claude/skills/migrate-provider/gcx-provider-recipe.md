@@ -104,8 +104,8 @@ Before starting a port, answer these questions:
       resolution logic in CreateFn/UpdateFn.
 
 [ ] 6. Pagination?
-      gcx uses manual pagination loops. Check if the API has limit/offset,
-      cursor, or Link headers. The adapter's ListFn must handle this.
+      The gcx client uses manual pagination loops. Check if the API has
+      limit/offset, cursor, or Link headers. The adapter's ListFn handles this.
 ```
 
 ---
