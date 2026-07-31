@@ -15,28 +15,25 @@
 // depends on writes a capture, so Batch could sit next to Event and still
 // compile.
 //
-// The reason is the writers, and it is forward-looking rather than a
-// description of today. A captured fact is set wherever it is observed, which
-// for signals past this one means inside internal packages rather than the
-// command tree — and a leaf that imports nothing from gcx can absorb a writer
-// from anywhere without anyone first having to check the import graph. Keeping
-// it separate also means writing one signal does not pull the wire vocabulary
-// and the HTTP exporter in behind it.
+// The reason is the writers. A captured fact is set wherever it is observed,
+// which past the first signal means inside internal packages rather than the
+// command tree — internal/config decides the Grafana auth method, cmd/gcx/fail
+// sees the error that ended the invocation — and a leaf that imports nothing
+// from gcx can absorb a writer from anywhere without anyone first having to
+// check the import graph. Keeping it separate also means writing one signal does
+// not pull the wire vocabulary and the HTTP exporter in behind it.
 //
-// Both claims above are direction, not finished state. Today the only writer is
-// cmd/gcx/resources, and config.CapturedTargetKind and root.TelemetryInfo are
-// still read by the same buildUsageEvent without living here. Moving
-// target_kind in is tracked as #1179.
+// Still not finished state: config.CapturedTargetKind and root.TelemetryInfo are
+// read by the same buildUsageEvent without living here. Moving target_kind in is
+// tracked as #1179.
 //
-// This package holds no vocabulary: values are raw counts, booleans, and strings
-// the writer has already decided — never text taken from a server, a config
-// file, or an error message. Mapping them to the wire contract (bucket labels,
-// allowlists, the HTTP status range) belongs to the telemetry package next to
-// Event, so the privacy filtering all lives in one place and a stray write here
-// still cannot reach the wire unfiltered.
-//
-// Every value here is read by cmd/gcx's usage-event builder and must obey the
-// same privacy invariant as telemetry.Event: shape only, never content.
+// This package holds no vocabulary and makes no privacy promise of its own: a
+// slot stores whatever raw value its probe found, and for the Kubernetes reason
+// that is server-supplied text. Mapping captured values to the wire contract
+// (bucket labels, allowlists, the HTTP status range) belongs to the telemetry
+// package next to Event — that filtering is the privacy guarantee, so nothing
+// read from this package may reach the wire, a log, or any other output surface
+// without passing it.
 package capture
 
 import "sync/atomic"
@@ -153,11 +150,13 @@ func CurrentK8sReason() string {
 	return ""
 }
 
-// authMethodState is the recorded Grafana auth method plus the one fact a
-// plain last-write value cannot carry: that two writers disagreed.
+// authMethodState is the recorded Grafana auth method plus the two facts a
+// plain last-write value cannot carry: that two writers disagreed, and that
+// the value came from the one caller whose answer outranks disagreement.
 type authMethodState struct {
 	value      string
 	conflicted bool
+	forced     bool
 }
 
 // grafanaAuthMethod is the authentication method the invocation selected for
@@ -182,6 +181,9 @@ var grafanaAuthMethod atomic.Pointer[authMethodState]
 // (config check across contexts), and no single answer would be true; the
 // slot collapses to a conflict and CurrentGrafanaAuthMethod reports nothing.
 // The conflict is sticky: a later agreeing write cannot un-ask the question.
+// A forced value is immune on the other side: Set never overwrites or
+// conflicts it, so a config load racing login's authoritative answer — in
+// either interleaving — cannot demote it.
 func SetGrafanaAuthMethod(method string) {
 	if method == "" {
 		return
@@ -193,7 +195,7 @@ func SetGrafanaAuthMethod(method string) {
 			if grafanaAuthMethod.CompareAndSwap(nil, &authMethodState{value: method}) {
 				return
 			}
-		case current.conflicted || current.value == method:
+		case current.forced || current.conflicted || current.value == method:
 			return
 		default:
 			if grafanaAuthMethod.CompareAndSwap(current, &authMethodState{conflicted: true}) {
@@ -204,15 +206,20 @@ func SetGrafanaAuthMethod(method string) {
 }
 
 // ForceGrafanaAuthMethod records a decided Grafana auth method that outranks
-// everything recorded before it, including a conflict. It exists for login,
-// which resolves its method by probing: what login actually authenticated
-// with is a better answer than anything a config load captured on the way,
-// even when a mid-login retry switched methods. An empty method is ignored.
+// everything recorded before or after it by SetGrafanaAuthMethod, including a
+// conflict. It exists for login, which resolves its method by probing: what
+// login actually authenticated with is a better answer than anything a config
+// load captured on the way, even when a mid-login retry switched methods. The
+// forced state also wins races the plain store could lose — a Set retrying
+// its CompareAndSwap against this write sees the forced value and yields
+// instead of recording a conflict. A later Force replaces an earlier one
+// (login's final attempt is the most final answer). An empty method is
+// ignored.
 func ForceGrafanaAuthMethod(method string) {
 	if method == "" {
 		return
 	}
-	grafanaAuthMethod.Store(&authMethodState{value: method})
+	grafanaAuthMethod.Store(&authMethodState{value: method, forced: true})
 }
 
 // CurrentGrafanaAuthMethod returns the decided Grafana auth method, or ""
