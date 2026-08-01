@@ -47,8 +47,15 @@ CONSTITUTION change are required before building it.
 - Standard CRUD operations work via the dynamic client
 - No product-specific auth beyond the Grafana service account token
 
-**Examples**: Dashboards, Folders, AlertRules, ContactPoints — these all use
-Grafana's native K8s API and need no provider.
+**Examples**: Dashboards, Folders, AlertRules, ContactPoints all use Grafana's
+native K8s API and need no provider **for standard CRUD** — `gcx resources` covers
+get/push/pull/delete on them today.
+
+Note what that does not mean: three of those four also have provider command
+trees, because their non-CRUD operations are not reachable through `resources`
+(`gcx dashboards` for versions and snapshots, `gcx alert contact-points` /
+`alert rules` for the alerting families). Only Folders has no provider. So this
+row rules out a provider for CRUD, not for the product.
 
 ### Create a new provider when:
 
