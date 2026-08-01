@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -68,6 +69,7 @@ current-context: first
 	assert.Equal(t, 2, strings.Count(output, "Configuration:"), output)
 	assert.Equal(t, 2, strings.Count(output, "Connectivity:"), output)
 	assert.Equal(t, 2, strings.Count(output, "Grafana version:"), output)
+	assert.Equal(t, 2, strings.Count(output, "Resource discovery:"), output)
 }
 
 func TestCheckCommandPreservesCancellation(t *testing.T) {
@@ -95,7 +97,7 @@ current-context: target
 	assert.NotErrorIs(t, err, gcxerrors.ErrAlreadyReported)
 }
 
-func TestCheckCommandExitStatusTracksConnectivityAndVersion(t *testing.T) {
+func TestCheckCommandExitStatusTracksConnectivityVersionAndDiscovery(t *testing.T) {
 	clearConfigCheckEnvironment(t)
 
 	tests := []struct {
@@ -103,6 +105,7 @@ func TestCheckCommandExitStatusTracksConnectivityAndVersion(t *testing.T) {
 		handler    http.HandlerFunc
 		wantErr    bool
 		wantOutput string
+		wantExtra  string
 	}{
 		{
 			name: "success",
@@ -120,7 +123,7 @@ func TestCheckCommandExitStatusTracksConnectivityAndVersion(t *testing.T) {
 			wantOutput: "Connectivity:",
 		},
 		{
-			name: "version request failure",
+			name: "health request failure",
 			handler: checkServerHandler(func(w http.ResponseWriter) {
 				http.Error(w, `{"message":"health unavailable"}`, http.StatusServiceUnavailable)
 			}),
@@ -134,6 +137,7 @@ func TestCheckCommandExitStatusTracksConnectivityAndVersion(t *testing.T) {
 			}),
 			wantErr:    true,
 			wantOutput: "gcx requires Grafana 12.0.0 or later",
+			wantExtra:  "Resource discovery: skipped",
 		},
 	}
 
@@ -162,6 +166,9 @@ current-context: target
 				require.NoError(t, err)
 			}
 			assert.Contains(t, output, tc.wantOutput)
+			if tc.wantExtra != "" {
+				assert.Contains(t, output, tc.wantExtra)
+			}
 		})
 	}
 }
@@ -179,5 +186,190 @@ func checkServerHandler(health func(http.ResponseWriter)) http.HandlerFunc {
 		default:
 			http.NotFound(w, r)
 		}
+	}
+}
+
+// requestObservation records a single HTTP request observed by the fake
+// Grafana server so tests can assert on probe order, request counts, and the
+// bearer credential sent to each endpoint.
+type requestObservation struct {
+	path string
+	auth string
+}
+
+// newCheckProbeServer returns an httptest server whose /api/health and /apis
+// behavior are driven by the given handlers, recording every request. It is
+// safe for concurrent HTTP handler goroutines.
+func newCheckProbeServer(t *testing.T, health, apis func(http.ResponseWriter)) (*httptest.Server, func() []requestObservation) {
+	t.Helper()
+	var mu sync.Mutex
+	var observations []requestObservation
+	record := func(r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		observations = append(observations, requestObservation{
+			path: r.URL.Path,
+			auth: r.Header.Get("Authorization"),
+		})
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		record(r)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/health":
+			if health != nil {
+				health(w)
+				return
+			}
+		case "/apis":
+			if apis != nil {
+				apis(w)
+				return
+			}
+		case "/api":
+			_, _ = w.Write([]byte(`{"kind":"APIVersions","apiVersion":"v1","versions":[]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+	getObservations := func() []requestObservation {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]requestObservation(nil), observations...)
+	}
+	return server, getObservations
+}
+
+func writeCheckProbeConfig(t *testing.T, serverURL string) string {
+	t.Helper()
+	return writeCheckConfig(t, fmt.Sprintf(`version: 1
+stacks:
+  target:
+    grafana:
+      server: %q
+      org-id: 1
+      auth-method: token
+contexts:
+  target:
+    stack: target
+current-context: target
+`, serverURL))
+}
+
+func TestCheckHealthProbePrecedesResourceDiscovery(t *testing.T) {
+	clearConfigCheckEnvironment(t)
+
+	tests := []struct {
+		name          string
+		health        func(http.ResponseWriter)
+		apis          func(http.ResponseWriter)
+		wantErr       bool
+		wantExit      int
+		wantOutputs   []string
+		wantHealth    int
+		wantDiscovery int
+	}{
+		{
+			name: "health ok version 12 discovery 401",
+			health: func(w http.ResponseWriter) {
+				_, _ = w.Write([]byte(`{"version":"12.0.0"}`))
+			},
+			apis: func(w http.ResponseWriter) {
+				http.Error(w, `{"message":"unauthorized"}`, http.StatusUnauthorized)
+			},
+			wantErr:  true,
+			wantExit: gcxerrors.ExitAuthFailure,
+			wantOutputs: []string{
+				"Connectivity: online",
+				"Grafana version: 12.0.0",
+				"Resource discovery: unavailable",
+				"Unauthorized - code 401",
+				"Make sure that the configured credentials have enough permissions",
+			},
+			wantHealth:    1,
+			wantDiscovery: 1,
+		},
+		{
+			name: "fully successful",
+			health: func(w http.ResponseWriter) {
+				_, _ = w.Write([]byte(`{"version":"12.0.0"}`))
+			},
+			apis: func(w http.ResponseWriter) {
+				_, _ = w.Write([]byte(`{"kind":"APIGroupList","apiVersion":"v1","groups":[]}`))
+			},
+			wantErr: false,
+			wantOutputs: []string{
+				"Connectivity: online",
+				"Grafana version: 12.0.0",
+				"Resource discovery: available",
+			},
+			wantHealth:    1,
+			wantDiscovery: 1,
+		},
+		{
+			name: "health failure skips discovery",
+			health: func(w http.ResponseWriter) {
+				http.Error(w, `{"message":"unauthorized"}`, http.StatusUnauthorized)
+			},
+			wantErr:  true,
+			wantExit: gcxerrors.ExitGeneralError,
+			wantOutputs: []string{
+				"Connectivity:",
+				"Grafana version: skipped",
+				"Resource discovery: skipped",
+			},
+			wantHealth:    1,
+			wantDiscovery: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GRAFANA_TOKEN", "test-token")
+			server, getObs := newCheckProbeServer(t, tc.health, tc.apis)
+			path := writeCheckProbeConfig(t, server.URL)
+
+			output, err := runConfigCmd(t, "check", "--config", path)
+			if tc.wantErr {
+				require.ErrorIs(t, err, gcxerrors.ErrAlreadyReported)
+				exitCode, ok := gcxerrors.AlreadyReportedExitCode(err)
+				require.True(t, ok, "failure must retain the already-reported exit code: %v", err)
+				assert.Equal(t, tc.wantExit, exitCode)
+			} else {
+				require.NoError(t, err)
+			}
+			for _, want := range tc.wantOutputs {
+				assert.Contains(t, output, want)
+			}
+
+			obs := getObs()
+			healthCount := 0
+			discoveryCount := 0
+			seenHealth := false
+			discoveryBeforeHealth := false
+			for _, o := range obs {
+				switch o.path {
+				case "/api/health":
+					healthCount++
+					seenHealth = true
+					assert.Equal(t, "Bearer test-token", o.auth, "health must be bearer-authenticated")
+				case "/api":
+					assert.Equal(t, "Bearer test-token", o.auth, "core resource discovery must be bearer-authenticated")
+					if !seenHealth {
+						discoveryBeforeHealth = true
+					}
+				case "/apis":
+					discoveryCount++
+					assert.Equal(t, "Bearer test-token", o.auth, "discovery must be bearer-authenticated")
+					if !seenHealth {
+						discoveryBeforeHealth = true
+					}
+				}
+			}
+			assert.Equal(t, tc.wantHealth, healthCount, "unexpected /api/health request count")
+			assert.Equal(t, tc.wantDiscovery, discoveryCount, "unexpected /apis request count")
+			assert.False(t, discoveryBeforeHealth, "resource discovery probed before /api/health")
+		})
 	}
 }

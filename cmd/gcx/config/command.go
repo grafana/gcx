@@ -710,7 +710,8 @@ func checkContext(ctx context.Context, cfg *config.Config, gCtx *config.Context,
 	if err := gCtx.Validate(ctx); err != nil {
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(summarizeError(err)))
 		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
-		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped"))
+		cmdio.Warning(stdout, "Resource discovery: %s", cmdio.Yellow("skipped")+"\n")
 
 		printSuggestions(err)
 		return err
@@ -724,7 +725,8 @@ func checkContext(ctx context.Context, cfg *config.Config, gCtx *config.Context,
 		// future validation/transport drift rather than an expected branch.
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(err.Error()))
 		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
-		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped"))
+		cmdio.Warning(stdout, "Resource discovery: %s", cmdio.Yellow("skipped")+"\n")
 		return err
 	}
 	switch {
@@ -746,45 +748,57 @@ func checkContext(ctx context.Context, cfg *config.Config, gCtx *config.Context,
 	if err != nil {
 		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(err.Error()))
 		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
-		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped"))
+		cmdio.Warning(stdout, "Resource discovery: %s", cmdio.Yellow("skipped")+"\n")
 		return err
 	}
 	restCfg.WireTokenPersistence(ctx, source, gCtx.Name, gCtx.Stack, cfg.Sources)
 
-	if _, err := discovery.NewDefaultRegistry(ctx, restCfg); err != nil {
+	// Use one authenticated /api/health probe for both base Grafana connectivity
+	// and the reported version, so a healthy Grafana 12 server is never reported
+	// as a connectivity failure because its K8s-style /apis endpoint is unavailable.
+	version, raw, err := grafana.GetVersion(ctx, gCtx)
+	if err != nil {
 		cmdio.Error(stdout, "Connectivity: %s", cmdio.Red(summarizeError(err)))
-		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped"))
+		cmdio.Warning(stdout, "Resource discovery: %s", cmdio.Yellow("skipped")+"\n")
 		printSuggestions(err)
 		return err
 	}
 
 	cmdio.Success(stdout, "Connectivity: %s", cmdio.Green("online"))
 
-	version, raw, err := grafana.GetVersion(ctx, gCtx)
-	if err != nil {
-		cmdio.Error(stdout, "Grafana version: %s", cmdio.Red(summarizeError(err))+"\n")
-		printSuggestions(err)
-		return err
-	}
-
 	switch {
 	case version == nil && raw == "" && isCloud:
 		// Grafana Cloud (dev/ops) environments don't expose the version
 		// field via /api/health. Report the platform instead of a cryptic
 		// "hidden by server" line.
-		cmdio.Success(stdout, "Grafana version: %s", cmdio.Green("Grafana Cloud")+"\n")
+		cmdio.Success(stdout, "Grafana version: %s", cmdio.Green("Grafana Cloud"))
 	case version == nil && raw == "":
-		cmdio.Warning(stdout, "Grafana version: %s\n", cmdio.Yellow("hidden by server (anonymous /api/health)"))
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("hidden by server (anonymous /api/health)"))
 	case version == nil:
-		cmdio.Warning(stdout, "Grafana version: %s\n", cmdio.Yellow("unparseable: "+raw))
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("unparseable: "+raw))
 	case version.Major() < 12:
 		err := &grafana.VersionIncompatibleError{Version: version}
-		cmdio.Error(stdout, "Grafana version: %s", cmdio.Red(err.Error())+"\n")
+		cmdio.Error(stdout, "Grafana version: %s", cmdio.Red(err.Error()))
+		cmdio.Warning(stdout, "Resource discovery: %s", cmdio.Yellow("skipped")+"\n")
 		printSuggestions(err)
 		return err
 	default:
-		cmdio.Success(stdout, "Grafana version: %s", cmdio.Green(version.String())+"\n")
+		cmdio.Success(stdout, "Grafana version: %s", cmdio.Green(version.String()))
 	}
+
+	// Probe Kubernetes /apis resource discovery separately from base
+	// connectivity. A Grafana 12 server can be fully reachable (/api/health
+	// 200) while its K8s-style /apis endpoint is unavailable (e.g. 401), so
+	// discovery failures are reported on their own line — never as base
+	// connectivity.
+	if _, err := discovery.NewDefaultRegistry(ctx, restCfg); err != nil {
+		cmdio.Error(stdout, "Resource discovery: %s", cmdio.Red("unavailable: "+summarizeError(err))+"\n")
+		printSuggestions(err)
+		return err
+	}
+	cmdio.Success(stdout, "Resource discovery: %s", cmdio.Green("available")+"\n")
 
 	return nil
 }
