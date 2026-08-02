@@ -110,7 +110,8 @@ Before starting a port, answer these questions:
       resolution logic in CreateFn/UpdateFn.
 
 [ ] 6. Pagination?
-      bin/gcx uses manual pagination loops. Check if the API has limit/offset,
+      If the legacy client uses manual pagination loops, port them. Check
+      whether the API has limit/offset,
       cursor, or Link headers. The adapter's ListFn must handle this.
 ```
 
@@ -199,8 +200,8 @@ func (c *Client) List(ctx context.Context) ([]Resource, error) {
 - Error handling: return `fmt.Errorf("{provider}: {action}: %w", err)` with
   provider name prefix for debuggability
 
-**Pagination:** If gcx uses manual pagination loops, port them. If the API
-returns all results in one call, keep it simple.
+**Pagination:** If the legacy client uses manual pagination loops, port them. If
+the API returns all results in one call, keep it simple.
 
 ### Step 4: Wire adapter.go with TypedRegistration[T]
 
@@ -349,9 +350,31 @@ CTX=dev                      # adjust to your context
 LEGACY_CLI=/path/to/legacy   # the OLD CLI, under its own path — never `gcx`
 NEW_CLI=bin/gcx              # this repo's freshly built binary
 
-# Guard: refuse to run a comparison against one binary.
-[ "$(command -v "$LEGACY_CLI")" != "$(command -v "$NEW_CLI")" ] || {
-  echo "FATAL: LEGACY_CLI and NEW_CLI resolve to the same executable"; exit 1; }
+# Guard: refuse to run a comparison against this CLI on both sides. Comparing
+# the two path strings is not enough — since the rename, LEGACY_CLI can name
+# THIS CLI three different ways, each invisible to the check before it.
+for c in "$LEGACY_CLI" "$NEW_CLI"; do
+  [ -x "$c" ] || { echo "FATAL: $c is not an executable file — build bin/gcx and set LEGACY_CLI to the legacy binary's own path"; exit 1; }
+done
+# 1. Same file reached by two paths (a symlink, or /usr/local/bin/gcx -> here).
+[ ! "$LEGACY_CLI" -ef "$NEW_CLI" ] || {
+  echo "FATAL: LEGACY_CLI and NEW_CLI are the same file"; exit 1; }
+# 2. A copy of the same build under another path.
+cmp -s "$LEGACY_CLI" "$NEW_CLI" && {
+  echo "FATAL: LEGACY_CLI and NEW_CLI are byte-identical copies"; exit 1; }
+# 3. A DIFFERENT gcx build — an older install that inherited the name. Different
+#    inode and different bytes, so checks 1 and 2 both pass it. This is the
+#    likeliest form of the collision. The probe below is PARTIAL: it catches gcx
+#    builds new enough to expose 'agent skills', not ones predating it.
+"$LEGACY_CLI" agent skills list >/dev/null 2>&1 && {
+  echo "FATAL: $LEGACY_CLI answers 'agent skills list', so it is a gcx build, not the legacy CLI"; exit 1; }
+# No automated check proves the remainder, and "does it call itself gcx?" cannot
+# settle it — the legacy binary was named `gcx` too, so its own help says `gcx`.
+# Before trusting any MATCH below, confirm by hand on positive evidence: run
+# `$LEGACY_CLI --help` and check the subcommands are the legacy tool's surface
+# (the one you are porting from), and that gcx-only trees are absent — it should
+# have no `resources` tier, which is why the adapter checks below run new-side
+# only.
 
 # --- List: compare resource IDs ---
 LEGACY_IDS=$("$LEGACY_CLI" --context=$CTX {resource} list -o json | jq -r '.[].id // .[].uid' | sort)

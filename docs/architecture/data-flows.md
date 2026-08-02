@@ -315,9 +315,12 @@ generic dispatcher is a separate, conditional decision:
    and clickhouse. Registration does **not** reach it, and no test enforces
    parity, because parity is not always the right answer: the generic contract is
    `<uid> <expr>`, and a kind whose query cannot be expressed as one string does
-   not belong there. CloudWatch is handled explicitly for that reason — the switch
-   returns an error naming `datasources cloudwatch query` and its structured flags
-   (namespace, metric, dimensions, region, statistic, period). Kinds outside the
+   not belong there. CloudWatch is handled explicitly for that reason — a guard on
+   the normalized type, placed *before* expression resolution and before the
+   switch, returns an error naming `datasources cloudwatch query` and its
+   structured flags (namespace, metric, dimensions, region, statistic, period).
+   The ordering is deliberate: as a switch case the redirect would be unreachable
+   for an argument-less call, which fails in `ResolveExpr` first. Kinds outside the
    switch: athena and infinity (both `query [EXPR]`-shaped, so candidates), tempo
    (its `query` leaf takes a TraceQL expression and is built in
    `internal/datasources/tempo/search.go`, so it is a candidate too), and
@@ -337,9 +340,10 @@ User invocation:
   │    --since          convenience: sets --from=now-{since} --to=now    │
   │                     (mutually exclusive with --from/--to)            │
   │    --step           query step / interval (e.g. "15s", "1m")         │
-  │    --limit          row/line cap where the kind defines one (loki,   │
-  │                     clickhouse, athena, and generic); per-kind        │
-  │                     default and meaning, 0 = no cap/enforcement       │
+  │    --limit          command-specific: bound only on the leaves that  │
+  │                     define one, with that leaf's own default and     │
+  │                     zero semantics — read the selected leaf rather   │
+  │                     than assuming a family-wide cap                  │
   │    --profile-type   required for pyroscope; also on generic          │
   │    -o               output format: table (default), graph, json, yaml│
   └───────────────────────┬──────────────────────────────────────────────┘

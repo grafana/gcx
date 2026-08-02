@@ -26,7 +26,7 @@ CRUD verbs. So a K8s-backed product can still warrant commands; run the placemen
 analysis rather than stopping at "it's on `/apis`".
 
 If the answer is a commands-only provider calling the K8s dynamic client, note
-that `CONSTITUTION.md` § Provider Architecture makes
+that `CONSTITUTION.md` § Architecture Invariants makes
 `internal/providers/dashboards/` the one documented exception (ADR 016) — a second
 requires explicit human approval and a CONSTITUTION change.
 
@@ -59,8 +59,11 @@ necessity, command path, backend evidence, wiring, readiness). Then:
     shipping in one change does not need them.
   - **Smoke-test plan** — always, because Stage 4 executes it and the repo
     requires real-instance verification. Keep it to the commands you actually
-    implemented.
-- Start at Stage 3, and use Stage 4 verification as written.
+    implemented. This is a short command list in your working notes, not a
+    standalone document and not a human gate.
+- So: do Stage 2d (the smoke-command list) first, then Stage 3, then Stage 4
+  verification as written. Skipping straight to Stage 3 leaves Stage 4a with no
+  plan to execute.
 
 **Invoked directly** (no placement section): work through all four stages, and
 check `references/decision-tree.md` first to confirm a provider is the right
@@ -105,12 +108,12 @@ them here.
 Discover ───────> Design ───────> Implement ──gate──> Verify
    │                  │                  │                  │
    v                  v                  v                  v
-research report    ADRs + spec       code per stage     smoke tests
+research findings  decisions + plan   code per stage   smoke tests
 ```
 
 | Stage | Deliverable | Gate |
 |-------|-------------|------|
-| 1. Discover | research findings (report only if staged work needs one) | findings presented; no approval wait |
+| 1. Discover | research findings (a `docs/research/` report only when they have lasting value or staged work must resume from them) | findings presented; no approval wait |
 | 2. Design | decisions + smoke test plan (ADR/spec only per the risk test) | decisions presented; no approval wait |
 | 3. Implement | Code (one stage at a time) | `mise run gate` passes per stage |
 | 4. Verify | Smoke tests + architecture doc updates | smoke tests run or reported UNVERIFIED; wiring checks pass |
@@ -153,10 +156,13 @@ Follow `provider-discovery-guide.md` Sections 1.1–1.6:
 - Map resource relationships
 - Test API behavior with real calls
 
-### 1c. Write Research Report
+### 1c. Record findings
 
-Write findings to `docs/research/YYYY-MM-DD-{product}-provider.md` using
-the template at `docs/_templates/research.md`. Must include:
+Default to keeping findings in your working notes and the PR description. Write a
+`docs/research/YYYY-MM-DD-{product}-provider.md` report (template:
+`docs/_templates/research.md`) only when the investigation has lasting repository
+value, or when the work is staged across PRs and a fresh session has to resume
+from it. Either way, what you record must cover:
 
 - API endpoints and response shapes discovered
 - Auth model analysis
@@ -230,9 +236,11 @@ precedent planning documents.
 
 ### 2d. Write Smoke Test Plan
 
-**Every stage doc MUST include a Verification section** with concrete smoke
-test commands using real values (not placeholders). These are executed in
-Stage 4 after implementation.
+Always produce this, on both entry paths: concrete smoke test commands using real
+values (not placeholders), executed in Stage 4 after implementation. Where stage
+docs exist, each one carries its own Verification section; where they don't, the
+list lives in your working notes and the PR description. Either way Stage 4a has
+something to run.
 
 Cover only the verbs the stage actually implements — do not smoke-test CRUD
 verbs the provider doesn't expose. Destructive commands use `--force`
@@ -301,8 +309,8 @@ repeating it per stage buys nothing and costs minutes each time.
 
 ### 4a. Run Smoke Tests
 
-Execute every smoke test command from the Stage 2d verification plan against a
-real Grafana instance, using `bin/gcx` so you exercise the build under review.
+Execute every smoke test command from the Stage 2d list against a real Grafana
+instance, using `bin/gcx` so you exercise the build under review.
 Record results (pass/fail + output).
 
 If no instance or credentials are available, report every smoke test as

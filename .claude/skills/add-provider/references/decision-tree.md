@@ -32,7 +32,7 @@ and discoverable on Grafana's /apis endpoint?
               → Cannot integrate without an accessible API.
 
 NOTE: if the design that falls out is a commands-only provider calling the
-K8s dynamic client, CONSTITUTION.md § Provider Architecture records
+K8s dynamic client, CONSTITUTION.md § Architecture Invariants records
 internal/providers/dashboards/ as the ONE documented exception (ADR 016).
 A second extends that exception: explicit human approval and a
 CONSTITUTION change are required before building it.

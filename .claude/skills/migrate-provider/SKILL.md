@@ -1,6 +1,15 @@
 ---
 name: migrate-provider
-description: Reference for porting a Grafana Cloud product from the legacy grafana-cloud-cli into a gcx provider — adapter, schema/example registration, CRUD redirect commands. HUMAN-DRIVEN: this skill is outside the integrate-with-gcx v1 autonomous workflow and must not be run end to end unattended, because the legacy CLI shared the name `gcx` and its side-by-side verification steps are ambiguous about which binary they mean. Use when a human is deliberately driving a port and says "migrate provider", "port from gcx", "port oncall", "port k6". Not for building providers from scratch — use /add-provider. Placement is already settled for a port.
+description: >-
+  Reference for porting a Grafana Cloud product from the legacy
+  grafana-cloud-cli into a gcx provider — adapter, schema/example registration,
+  CRUD redirect commands. HUMAN-DRIVEN — this skill is outside the
+  integrate-with-gcx v1 autonomous workflow and must not be run end to end
+  unattended, because the legacy CLI shared the name `gcx` and its side-by-side
+  verification steps are ambiguous about which binary they mean. Use when a
+  human is deliberately driving a port and says "migrate provider", "port from
+  gcx", "port oncall", "port k6". Not for building providers from scratch — use
+  /add-provider. Placement is already settled for a port.
 ---
 
 # Migrate Provider from gcx
@@ -57,8 +66,11 @@ One-directional, so the two skills cannot bounce a port back and forth:
   Everything else — contract worksheets, placement, readiness — does not apply
   to a port.
 - Read either from the checkout at
-  `claude-plugin/skills/integrate-with-gcx/references/`, or via
-  `gcx agent skills get integrate-with-gcx`.
+  `claude-plugin/skills/integrate-with-gcx/references/self-review.md`, or via
+  `gcx agent skills get integrate-with-gcx references/self-review.md` — the
+  reference argument is required, since a bare
+  `gcx agent skills get integrate-with-gcx` returns SKILL.md, which carries
+  neither T7 nor the trigger table.
 
 ## Prerequisites
 

@@ -168,8 +168,10 @@ by a source cap — those mechanisms, not a guess about whether truncation is
 whole inventory. *Where* to disclose depends on the output shape: an envelope
 carries `list_meta` via the shared helpers in `internal/output/listmeta.go`; a
 **released bare array gets the stderr hint only** (`output.md` §15.2) — wrapping
-it in an envelope is a breaking change, so file the migration instead of making
-it. Status: `docs/research/2026-07-17-global-limit-investigation.md`.
+it in an envelope is a breaking output change, so it belongs in a deliberate
+compatibility migration with its consumers checked, not in a feature PR that
+happens to touch the command. Status:
+`docs/research/2026-07-17-global-limit-investigation.md`.
 
 **Empty results are schema fidelity, not a mode rule** — an array your schema
 declares must not serialize as `null` when empty, in the machine formats your
@@ -233,10 +235,12 @@ but the generic auto-detecting `datasources query` dispatches through a
 hand-maintained switch in `cmd/gcx/datasources/query.go`. Entering that switch is
 a **judgement, not a checkbox** — do it only if the generic
 `<uid> <expr>` form can honestly carry your query. If it cannot, add an explicit
-redirect there instead: CloudWatch does exactly that, because its query is
+redirect instead: CloudWatch does exactly that, because its query is
 structured (namespace, metric, dimensions, region, statistic, period) and no
 single `expr` string represents it. An honest redirect beats both a lossy generic
-path and the bare "not supported" default.
+path and the bare "not supported" default. The redirect goes **before** the
+switch, as a guard on the normalized type — ahead of `shared.ResolveExpr`, so an
+argument-less call still gets the redirect instead of "expression required".
 
 Format the files you touched, then gate:
 

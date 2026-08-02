@@ -30,9 +30,17 @@ parity is not always correct:
   "datasource type %q is not supported" default.
 - **It does not fit** → add an explicit redirect instead. CloudWatch is the
   worked example: its query is structured (namespace, metric, dimensions, region,
-  statistic, period), no single `expr` can carry it, so the switch returns an
+  statistic, period), no single `expr` can carry it, so the command returns an
   error naming the typed command to use. That is the honest outcome, not a
   degraded generic path.
+
+  **Where the redirect goes is load-bearing: it is a guard before the switch,
+  not a case inside it.** `RunE` normalizes the resolved type, then the
+  incompatible-kind redirect runs, and only then does `shared.ResolveExpr` parse
+  the expression and the type switch dispatch (`cmd/gcx/datasources/query.go`).
+  Put it in the switch instead and `gcx datasources query <uid>` with no
+  expression fails on "expression required" before it can name your typed
+  command — losing the redirect in exactly the invocation that needs it.
 
 Kinds currently outside the switch: athena, infinity and tempo — all three have a
 typed `query` leaf and are candidates (tempo's is built in
@@ -45,7 +53,7 @@ which is excluded by design as above.
 |-------|------------------------------------------|
 | `TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue` | Runs every finite/artifact/stream leaf with NO arguments in a fully isolated environment (empty HOME, closed stdin, 20s timeout, agent mode on). Failures: cobra usage text on stdout instead of one JSON error document; a prompt or editor that blocks (interactive paths must not block in agent mode); in-band `exitCode` disagreeing with the process exit code. |
 | `TestConsistency_*` family | The wiring table above. The error text names the file to edit. |
-| `TestSkillsGcxInvocationsMatchCommandTree` | Every gcx invocation in bundled-skill markdown — shell fences and inline backtick spans, `gcx` and `bin/gcx` forms — must resolve against the real tree. |
+| `TestSkillsGcxInvocationsMatchCommandTree` | Every gcx invocation in skill markdown — shell fences and inline backtick spans, `gcx` and `bin/gcx` forms — must resolve against the real tree. Covers **both** trees: the embedded `claude-plugin/skills/` bundle and repo-local `.claude/skills/`, each with its own extraction floor. |
 
 These enforce wiring and protocol shape only. Request mapping, filtering
 semantics, pagination and error taxonomy are proven by YOUR package tests
@@ -70,7 +78,8 @@ GCX_AGENT_MODE=false mise run all
 validate-skills, lint, tests, build and docs — you do not need to run those
 separately as well.
 
-For a skill-only change:
+For a skill-only change — both gates cover the embedded `claude-plugin/skills/`
+bundle **and** repo-local `.claude/skills/`, so either tree is checked:
 
 ```bash
 mise run validate-skills
@@ -93,10 +102,11 @@ Notes:
 | Failure | Meaning | Fix |
 |---|---|---|
 | `TestConsistency_AllLeafCommandsHaveOutputClass` | New leaf missing from the class fixture, or a stale entry after a rename | Add or update the entry in `cmd/gcx/root/testdata/output_classes.json` |
-| `TestConsistency_AllLeafCommandsHaveTokenCost` / `NonSmallCommandsHaveLLMHint` | Missing agent annotations | Registry entry in `internal/agent/command_annotations.go`, or inline `cmd.Annotations` |
+| `TestConsistency_AllLeafCommandsHaveTokenCost` | `token_cost` missing, **or** present with an invalid value — it must be a bare `small`/`medium`/`large`, or the qualified `<level> (<qualifier>)` form | Add or correct the value: registry entry in `internal/agent/command_annotations.go`, or inline `cmd.Annotations`. Read the error text — "missing" and "invalid token cost %q" are different failures |
+| `TestConsistency_NonSmallCommandsHaveLLMHint` | A bare `medium`/`large` cost with no `llm_hint` | Add the hint alongside the cost, same place |
 | `TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue` fails or times out | Usage text on stdout instead of one JSON document, or a prompt/editor survives agent mode | Return the in-band error document; never block in agent mode |
-| `TestSkillsGcxInvocationsMatchCommandTree` | A bundled-skill edit references an unknown command or flag | Fix the invocation, or use a non-shell fence / a `<placeholder>` for hypotheticals |
-| `mise run validate-skills` | Skill front matter missing `name` or `description` | Fix the front matter |
+| `TestSkillsGcxInvocationsMatchCommandTree` | A skill edit in either tree references an unknown command or flag | Fix the invocation, or use a non-shell fence / a `<placeholder>` for hypotheticals |
+| `mise run validate-skills` | Skill front matter unparseable, or missing `name` / `description`. A `description:` value containing a colon must be quoted or a `>-` block — an unquoted plain scalar with `Foo: bar` in it is invalid YAML | Fix the front matter |
 | `mise run reference-drift` (CI) | Generated docs not regenerated | `GCX_AGENT_MODE=false mise run reference`, commit the diff |
 | `mise run lint` reports findings in other worktrees | Stale golangci-lint cache | `mise exec -- golangci-lint cache clean`, re-run |
 
