@@ -173,7 +173,7 @@ Being on `/apis` settles CRUD, not the command surface: `gcx dashboards` and
 their real operations are not CRUD verbs. Product-specific operations need their
 own placement analysis regardless of tier. And a commands-only provider that calls
 the K8s dynamic client extends the single documented exception in
-`CONSTITUTION.md` § Provider Architecture (`internal/providers/dashboards/`,
+`CONSTITUTION.md` § Architecture Invariants (`internal/providers/dashboards/`,
 ADR 016), which requires explicit human approval.
 
 See `.claude/skills/add-provider/references/decision-tree.md` for the full

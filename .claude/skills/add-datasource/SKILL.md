@@ -68,7 +68,7 @@ them here.
 Discover ───────> Implement ──gate──> Verify
    │                    │                  │
    v                    v                  v
-research report     code per step      smoke tests
+research findings   code per step      smoke tests
 ```
 
 | Stage | Deliverable | Gate |
@@ -116,9 +116,11 @@ and a recommendation:
 - Identify metadata endpoints (labels, series, etc.) the same way; if a non-query
   endpoint cannot be established, record it as UNVERIFIED rather than guessing
 
-### 1c. Write Research Report
+### 1c. Record findings
 
-Document findings. Must include:
+Keep them in your working notes and the PR description; write a standalone
+`docs/research/` report only if the investigation has lasting repository value or
+staged work must resume from it. Either way, what you record must cover:
 - API endpoints and response shapes
 - Query request/response format
 - Available metadata operations
@@ -146,7 +148,18 @@ reuse `internal/query/grafanaquery` for the HTTP transport (POST + fallback +
 response-size limiting) and `internal/query/dataframe` for the data-frame wire
 types. Do not duplicate that logic or re-declare
 `GrafanaQueryResponse`/`DataFrame`. Check the current set with
-`grep -rl query/grafanaquery internal/query/` and copy the closest one:
+`grep -rl query/grafanaquery internal/query/` and copy the closest one.
+
+**Pick the client shape from what your commands actually call — there are three,
+and the middle one is the common case.** The two transports are not alternatives:
+unified query is a POST to `/apis/query.grafana.app/.../query`, while label,
+series, metadata and other discovery endpoints are proxy/resource requests
+(`/api/datasources/uid/{uid}/resources/...`) that `grafanaquery.Client` cannot
+reach — it only exposes `Execute`. The verb there is per-plugin, not always GET:
+prometheus and loki GET their label endpoints, athena POSTs a body to its
+resource endpoint (`internal/query/athena/client.go:42`).
+
+1. **Query-only** — a `query` leaf and nothing else:
 
 ```go
 type Client struct {
@@ -155,22 +168,40 @@ type Client struct {
 
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error)
 func (c *Client) Query(ctx context.Context, uid string, req QueryRequest) (*QueryResponse, error)
-// Add Labels, Metadata, etc. as needed
 ```
 
+2. **Hybrid query + discovery** — a `query` leaf *plus* `labels`/`metadata`/
+   `series`. Hold both transports; this is what every reference client with
+   non-query commands does (prometheus, loki, cloudwatch: `restConfig` +
+   `httpClient` + `queryClient`; athena: `host` + `httpClient` + `queryClient`):
+
+```go
+type Client struct {
+    restConfig  config.NamespacedRESTConfig     // or a plain host string
+    httpClient  *http.Client                    // rest.HTTPClientFor(&cfg.Config)
+    queryClient *grafanaquery.Client
+}
+
+func (c *Client) Query(ctx context.Context, uid string, req QueryRequest) (*QueryResponse, error)  // queryClient
+func (c *Client) Labels(ctx context.Context, uid string) ([]string, error)                         // httpClient
+```
+
+   Build `httpClient` with `rest.HTTPClientFor(&cfg.Config)` — a fresh
+   `http.Client` drops the kubeconfig auth and TLS wiring, so calls can fail
+   authentication or TLS depending on how the context is configured.
+
+3. **Direct-HTTP only** — the datasource is not served by the unified query API
+   at all: hold the config/host and `httpClient`, no `queryClient`.
+
+Say in the PR which shape you used and why.
+
 Wire types alias the shared package rather than redeclaring it
-(`type GrafanaQueryResponse = dataframe.Response`). If your results are
-table-shaped, returning `internal/query/sql`'s response type means the existing
-codecs in `internal/datasources/query/codecs.go` already handle you — a bespoke
-response type costs an arm in each of them.
+(`type GrafanaQueryResponse = dataframe.Response`). Response-type reuse is a
+separate decision with a codec consequence — see Step 3.
 
-**Only if the datasource is not served by the unified query API** — a proxy or
-plugin-resource endpoint instead — hold the `config.NamespacedRESTConfig` and
-build the client with `rest.HTTPClientFor(&cfg.Config)` directly. Say in the PR
-which of the two shapes you used and why.
-
-Reference: `internal/query/prometheus/`, `internal/query/loki/` (both built on
-`grafanaquery` + `dataframe`)
+Reference: `internal/query/prometheus/`, `internal/query/loki/` (hybrid, built on
+`grafanaquery` + `dataframe`), `internal/query/athena/client.go` (hybrid over a
+plain host)
 
 ### Step 1b: Command Constructors
 
@@ -226,7 +257,10 @@ Datasource is resolved from -d flag or datasources.{kind} in your context.`,
         agent.AnnotationLLMHint:   "gcx datasources {kind} query -d UID 'EXPR' -o json",
     }
 
-    shared.Setup(cmd.Flags(), true)
+    // The bool is enableGraph. Default to false: it decides whether `graph`
+    // is a valid -o value and advertised in the format help, so only pass true
+    // once a graph codec arm actually handles your response type (Step 3).
+    shared.Setup(cmd.Flags(), false)
     cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID")
     return cmd
 }
@@ -290,22 +324,46 @@ Reference: `internal/datasources/providers/prometheus.go`.
 ### Step 3: Codec dispatch — the step that breaks the default invocation
 
 `internal/datasources/query/codecs.go` ends `RegisterCodecs` with
-`ioOpts.DefaultFormat("table")`, and each codec's `Encode` is a type switch that
-falls through to `errors.New("invalid data type for query table codec")`. So if
-your client returns a **new** response type and you do not add an arm here, the
-plain `gcx datasources {kind} query …` invocation — the default, with no `-o` —
-fails at encode time. Lint and unit tests will not catch it.
+`ioOpts.DefaultFormat("table")`, so the plain `gcx datasources {kind} query …`
+invocation — no `-o` — goes through the table codec. Its `Encode` is a type
+switch that falls through to
+`errors.New("invalid data type for query table codec")` (line 59), so a **new**
+response type with no arm there fails at encode time. The wide and graph codecs
+have their own fallthrough errors (lines 92 and 156); JSON and YAML do not type
+switch at all — they delegate to the shared format codecs and serialize whatever
+they are handed, which is why the default invocation breaks while `-o json`
+looks fine. Lint and unit tests will not catch it.
 
 Two ways out, cheapest first:
 
 1. **Reuse an existing response type.** If your results are table-shaped, returning
    `internal/query/sql`'s response gets you the table and wide codecs for free.
    Verify the fit first: `internal/query/sql/parse.go` takes `Frames[0]` **only**,
-   which is honest for `sqlds`-backed datasources and wrong for any query that
-   returns one frame per series.
-2. **Add an arm to every codec** — table, wide, and graph — giving graph an
-   explicit "not supported for {kind}" error rather than letting it fall through
-   to the generic one.
+   so reuse it for genuinely SQL/`sqlds`-backed one-frame results and not for any
+   query that returns one frame per series. It also carries a graph consequence:
+   the graph codec's `*querysql.QueryResponse` arm returns "graph output is not
+   supported for SQL datasource queries", so pass `shared.Setup(flags, false)` and
+   keep `graph` off your `-o` list — athena and clickhouse both do exactly that
+   (`internal/datasources/athena/query.go:130`,
+   `internal/datasources/clickhouse/query.go:128`). Leaving graph enabled
+   advertises a format that fails with an error naming a datasource family the
+   caller never asked about.
+2. **Add an arm to every codec your type can actually reach** — table and wide
+   always, plus graph when a graph-enabled path can return your type.
+
+**On graph specifically, two different commands are in play, which is why "keep
+graph off" and "still write a graph arm" are both right.** Your *typed* command
+controls its own `-o` list via `shared.Setup(flags, enableGraph)` — keep that
+`false` unless the arm genuinely renders a chart. The *generic*
+`datasources query` is separate and passes `true`
+(`cmd/gcx/datasources/query.go:211`), so if you also add a case to its switch,
+your response type reaches the graph codec no matter what your typed command
+did. Give it an explicit "not supported for {kind}" arm there: that is why
+`*querysql.QueryResponse` has one (`internal/datasources/query/codecs.go:148`)
+even though athena and clickhouse both pass `false`. Without the arm the caller
+gets the generic "invalid data type for graph codec", which names nothing.
+If your kind is *not* in the generic switch and your typed command disables
+graph, the arm is unreachable — skip it, per self-review T1 check 4.
 
 Then trace each registration in `RegisterCodecs` to a reachable `Encode`
 (self-review T1 check 4).
@@ -329,7 +387,11 @@ Then trace each registration in `RegisterCodecs` to a reachable `Encode`
      "datasource type %q is not supported" default;
    - it cannot (a structured query with several required parameters) → add an
      explicit redirect naming your typed command and its flags, the way
-     CloudWatch does. Do not force a lossy generic path.
+     CloudWatch does. Do not force a lossy generic path. Put the redirect where
+     CloudWatch's is: a guard on the normalized type **before** the switch and
+     before `shared.ResolveExpr`. As a switch case it never fires for
+     `gcx datasources query <uid>` with no expression — that call dies on
+     "expression required" first.
 
 ### Step 5: Agent Annotations
 

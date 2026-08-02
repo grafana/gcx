@@ -3,7 +3,11 @@ package root_test
 import (
 	"fmt"
 	"io/fs"
+	"maps"
+	"os"
+	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -21,26 +25,49 @@ type driftAllowance struct {
 
 // intentionalReferences lists mentions of removed gcx commands that skills
 // reference deliberately as historical context. These are permanent
-// allowances, not drift.
+// allowances, not drift. The file is the repo-relative path reported by the
+// drift test, so an allowance is scoped to one skill tree.
 func intentionalReferences() []driftAllowance {
 	return []driftAllowance{
 		// documents the removed `irm oncall alerts` commands and points
 		// readers at `alert-groups list-alerts` instead
-		{"oncall-triage/SKILL.md", "unknown command `gcx irm oncall alerts`"},
+		{"claude-plugin/skills/oncall-triage/SKILL.md", "unknown command `gcx irm oncall alerts`"},
 	}
 }
 
 // TestSkillsGcxInvocationsMatchCommandTree extracts every gcx invocation from
-// fenced code blocks in the bundled skills and validates the command path and
-// flags against the real command tree, so skills fail CI when the CLI surface
-// moves out from under them.
+// fenced code blocks and inline spans in both skill trees and validates the
+// command path and flags against the real command tree, so skills fail CI when
+// the CLI surface moves out from under them.
+//
+// Both trees are checked: the embedded portable bundle, and the repo-local
+// contributor skills under .claude/skills, which agents load from the checkout
+// and which the bundled skills route into by path.
 func TestSkillsGcxInvocationsMatchCommandTree(t *testing.T) {
 	rootCmd := buildRootCmd()
 	rootCmd.InitDefaultHelpCmd()
 	rootCmd.InitDefaultCompletionCmd()
 
-	total := 0
+	// The bundle currently yields ~1000 invocations (~700 from fences, ~330
+	// from inline spans) and the repo-local tree ~70; the floors catch a
+	// broken fence scan or a tree that stopped being walked at all, while
+	// leaving room for skills to shrink.
+	t.Run("claude-plugin/skills", func(t *testing.T) {
+		checkSkillInvocations(t, rootCmd, "claude-plugin/skills", bundledSkillDocs(t), 500)
+	})
+	t.Run(".claude/skills", func(t *testing.T) {
+		checkSkillInvocations(t, rootCmd, ".claude/skills", repoLocalSkillDocs(t), 40)
+	})
+}
+
+// bundledSkillDocs returns the markdown of the embedded portable skill bundle,
+// keyed by repo-relative path.
+func bundledSkillDocs(t *testing.T) map[string]string {
+	t.Helper()
+
+	const label = "claude-plugin/skills"
 	skillsFS := claudeplugin.SkillsFS()
+	docs := map[string]string{}
 	err := fs.WalkDir(skillsFS, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -52,32 +79,73 @@ func TestSkillsGcxInvocationsMatchCommandTree(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		for _, inv := range extractInvocations(string(content)) {
+		docs[label+"/"+p] = string(content)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking %s: %v", label, err)
+	}
+	return docs
+}
+
+// repoLocalSkillDocs returns the markdown of the repo-local contributor skills,
+// keyed by repo-relative path.
+//
+// Only git-tracked files are read. That tree is also where a contributor's own
+// harness installs third-party skills — they are not gitignored — and a skill
+// this repo does not own must not be able to fail this repo's CI with a defect
+// no committed file can fix.
+func repoLocalSkillDocs(t *testing.T) map[string]string {
+	t.Helper()
+
+	repoRoot := filepath.Join("..", "..", "..")
+	out, err := exec.CommandContext(t.Context(), "git", "-C", repoRoot, "ls-files", "-z", "--", ".claude/skills").Output()
+	if err != nil {
+		// No git (an exported source tree, say). The bundle subtest still
+		// guards the extractor, so degrade rather than fail — but say so
+		// loudly, because this is lost coverage.
+		t.Skipf("cannot enumerate tracked .claude/skills files with git: %v", err)
+	}
+
+	docs := map[string]string{}
+	for rel := range strings.SplitSeq(strings.TrimRight(string(out), "\x00"), "\x00") {
+		if rel == "" || path.Ext(rel) != ".md" {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(repoRoot, rel))
+		if err != nil {
+			t.Fatalf("reading %s: %v", rel, err)
+		}
+		docs[rel] = string(content)
+	}
+	return docs
+}
+
+// checkSkillInvocations validates every gcx invocation in docs (repo-relative
+// path -> content) against the command tree, and guards against the extractor
+// silently matching nothing after a refactor.
+func checkSkillInvocations(t *testing.T, rootCmd *cobra.Command, label string, docs map[string]string, minInvos int) {
+	t.Helper()
+
+	total := 0
+	for _, repoPath := range slices.Sorted(maps.Keys(docs)) {
+		for _, inv := range extractInvocations(docs[repoPath]) {
 			total++
 			verr := validateInvocation(rootCmd, inv.args)
 			if verr == nil {
 				continue
 			}
 			msg := fmt.Sprintf("`%s`: %v", inv, verr)
-			if allowedDrift(p, msg) {
+			if allowedDrift(repoPath, msg) {
 				continue
 			}
-			t.Errorf("claude-plugin/skills/%s:%d: %s", p, inv.line, msg)
+			t.Errorf("%s:%d: %s", repoPath, inv.line, msg)
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walking skills FS: %v", err)
 	}
-
-	// Guard against the extractor silently matching nothing after a refactor.
-	// The bundle currently yields ~1000 invocations (~700 from fences, ~330
-	// from inline spans); 500 catches a broken fence scan or total collapse
-	// while leaving room for skills to shrink.
-	if total < 500 {
-		t.Fatalf("extracted only %d gcx invocations from bundled skills, expected around a thousand; extractor is likely broken", total)
+	if total < minInvos {
+		t.Fatalf("extracted only %d gcx invocations from %s, expected at least %d; extractor is likely broken or the tree moved", total, label, minInvos)
 	}
-	t.Logf("validated %d gcx invocations from bundled skills", total)
+	t.Logf("validated %d gcx invocations from %s", total, label)
 }
 
 // TestValidateInvocation pins the validation behaviour of the skills drift

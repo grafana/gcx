@@ -107,7 +107,7 @@ is not "always in the payload":
 | Output shape | Disclosure |
 |---|---|
 | Envelope (items + sibling keys) | `list_meta` in the payload, via the shared helpers |
-| **Bare array**, already released | **stderr hint only.** §15.2: bare arrays "cannot carry the signal; they get the stderr hint only and should migrate to an envelope when their consumers can absorb the shape change". Wrapping a released bare array in an envelope is a breaking output change — `CONSTITUTION.md` § public command surface forbids it inside a major version. Note the migration as a follow-up; do not do it in a feature PR |
+| **Bare array**, already released | **stderr hint only.** §15.2: bare arrays "cannot carry the signal; they get the stderr hint only and should migrate to an envelope when their consumers can absorb the shape change". So the envelope migration is sanctioned, but it is a breaking output change: treat it as an explicit compatibility migration — verify consumers can absorb it, and do not slip it into an unrelated feature PR. Otherwise keep the array, emit the stderr hint, and record the migration as a follow-up. (The frozen-surface rule is not the authority here — it covers command paths, aliases, flags and positional syntax. CONSTITUTION does lock payload shape in one narrower place: pre-contract envelopes named in § Dual-Purpose Design "retain their locked forms until their own versioned migrations") |
 | New command, your choice of shape | choose an envelope, so the signal has somewhere to live |
 
 **The shared mechanism** (for the envelope case): `internal/output/listmeta.go` —
