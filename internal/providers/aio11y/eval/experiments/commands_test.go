@@ -16,7 +16,7 @@ func TestCommands_HasExpectedLeaves(t *testing.T) {
 	cmd := experiments.Commands(nil)
 	require.Equal(t, "experiments", cmd.Name())
 
-	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "list-trials", "test-suites", "trials"} {
+	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "check", "list-trials", "test-suites", "trials"} {
 		c, _, err := cmd.Find([]string{sub})
 		require.NoError(t, err, "subcommand %q must exist", sub)
 		require.NotNil(t, c)
@@ -225,6 +225,191 @@ func TestReportCommand_RequiresArg(t *testing.T) {
 	assert.Contains(t, err.Error(), "accepts 1 arg")
 }
 
+// TestCheckCommand_RejectsInvalidInvocation proves every rejection happens
+// before any client call: the command group is built with a nil loader, so a
+// request would fail loudly rather than silently pass. The exit code each
+// rejection carries is asserted end to end in cmd/gcx/root.
+func TestCheckCommand_RejectsInvalidInvocation(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "missing run id",
+			args:    []string{"check"},
+			wantErr: "accepts 1 arg",
+		},
+		{
+			name:    "missing --min-pass-rate",
+			args:    []string{"check", "run-123"},
+			wantErr: `required flag(s) "min-pass-rate" not set`,
+		},
+		{
+			name:    "--min-pass-rate above 1",
+			args:    []string{"check", "run-123", "--min-pass-rate", "1.1"},
+			wantErr: "invalid --min-pass-rate value 1.1",
+		},
+		{
+			name:    "--min-pass-rate below 0",
+			args:    []string{"check", "run-123", "--min-pass-rate", "-0.5"},
+			wantErr: "invalid --min-pass-rate value -0.5",
+		},
+		{
+			name:    "--min-pass-rate NaN",
+			args:    []string{"check", "run-123", "--min-pass-rate", "NaN"},
+			wantErr: "must be a finite value from 0 through 1",
+		},
+		{
+			name:    "--min-pass-rate Inf",
+			args:    []string{"check", "run-123", "--min-pass-rate", "Inf"},
+			wantErr: "must be a finite value from 0 through 1",
+		},
+		{
+			name:    "--min-verdict-coverage above 1",
+			args:    []string{"check", "run-123", "--min-pass-rate", "0.9", "--min-verdict-coverage", "2"},
+			wantErr: "invalid --min-verdict-coverage value 2",
+		},
+		{
+			name:    "--min-verdict-coverage below 0",
+			args:    []string{"check", "run-123", "--min-pass-rate", "0.9", "--min-verdict-coverage", "-1"},
+			wantErr: "invalid --min-verdict-coverage value -1",
+		},
+		{
+			name:    "--min-verdict-coverage NaN",
+			args:    []string{"check", "run-123", "--min-pass-rate", "0.9", "--min-verdict-coverage", "NaN"},
+			wantErr: "must be a finite value from 0 through 1",
+		},
+		{
+			name:    "unknown --on-unknown mode",
+			args:    []string{"check", "run-123", "--min-pass-rate", "0.9", "--on-unknown", "ignore"},
+			wantErr: `invalid --on-unknown value "ignore"`,
+		},
+		{
+			name:    "--on-unknown is case sensitive",
+			args:    []string{"check", "run-123", "--min-pass-rate", "0.9", "--on-unknown", "FAIL"},
+			wantErr: `invalid --on-unknown value "FAIL"`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := experiments.Commands(nil)
+			cmd.SetArgs(tc.args)
+
+			var stdout, stderr bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+			// The group under test has no SilenceUsage, so cobra prints its usage
+			// text here; what matters is that no check document does.
+			assert.NotContains(t, stdout.String(), `"verdict"`,
+				"no check document may be written for an invalid invocation")
+		})
+	}
+}
+
+func TestCheckTextCodec_Format(t *testing.T) {
+	assert.Equal(t, "text", string((&experiments.CheckTextCodec{}).Format()))
+}
+
+func TestCheckTextCodec_Encode(t *testing.T) {
+	threshold := 0.9
+	actual := 0.8
+
+	tests := []struct {
+		name   string
+		result any
+		want   []string
+	}{
+		{
+			name: "threshold check reports both numbers",
+			result: &experiments.CheckResult{
+				ExperimentID:     "r-1",
+				ExperimentStatus: "completed",
+				Verdict:          experiments.CheckVerdictFail,
+				TestCaseCount:    10,
+				PassCount:        8,
+				PassDenominator:  10,
+				Checks: []experiments.Check{{
+					Name:      "min_pass_rate",
+					Verdict:   experiments.CheckVerdictFail,
+					Threshold: &threshold,
+					Actual:    &actual,
+					Observed:  "pass rate 80.00% (8/10 test cases passed on the first completed attempt)",
+				}},
+			},
+			want: []string{
+				"Experiment:", "r-1", "Status:", "completed", "Quality check:", "fail",
+				"Test cases:", "10", "Checks:", "min_pass_rate fail", "threshold 90.00%", "80.00%",
+			},
+		},
+		{
+			name: "unknown verdict is rendered as a value, passed by value",
+			result: experiments.CheckResult{
+				ExperimentID:     "r-1",
+				ExperimentStatus: "completed",
+				Verdict:          experiments.CheckVerdictFail,
+				Checks: []experiments.Check{{
+					Name:      "min_pass_rate",
+					Verdict:   experiments.CheckVerdictUnknown,
+					Threshold: &threshold,
+					Observed:  "no test case produced a pass verdict",
+				}},
+			},
+			want: []string{"min_pass_rate unknown", "no test case produced a pass verdict"},
+		},
+		{
+			name: "status check has no numbers",
+			result: &experiments.CheckResult{
+				ExperimentID:     "r-1",
+				ExperimentStatus: "failed",
+				Verdict:          experiments.CheckVerdictFail,
+				Checks: []experiments.Check{{
+					Name:     "experiment_status",
+					Verdict:  experiments.CheckVerdictFail,
+					Observed: `experiment status is "failed", not "completed"`,
+				}},
+			},
+			want: []string{"Status:", "failed", "experiment_status fail", `not "completed"`},
+		},
+		{
+			name:   "no checks still reports the verdict",
+			result: &experiments.CheckResult{ExperimentID: "r-1", Verdict: experiments.CheckVerdictPass},
+			want:   []string{"Quality check:", "pass"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			codec := &experiments.CheckTextCodec{}
+			var buf bytes.Buffer
+			require.NoError(t, codec.Encode(&buf, tc.result))
+			out := buf.String()
+			for _, s := range tc.want {
+				assert.Contains(t, out, s)
+			}
+		})
+	}
+}
+
+func TestCheckTextCodec_WrongType(t *testing.T) {
+	codec := &experiments.CheckTextCodec{}
+	var buf bytes.Buffer
+	err := codec.Encode(&buf, "not-a-check-result")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected *CheckResult")
+}
+
+func TestCheckTextCodec_Decode(t *testing.T) {
+	err := (&experiments.CheckTextCodec{}).Decode(strings.NewReader("{}"), &experiments.CheckResult{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not support decoding")
+}
+
 func TestTableCodec_Format(t *testing.T) {
 	assert.Equal(t, "table", string((&experiments.TableCodec{}).Format()))
 	assert.Equal(t, "wide", string((&experiments.TableCodec{Wide: true}).Format()))
@@ -342,6 +527,8 @@ func TestScoresTableCodec_WrongType(t *testing.T) {
 }
 
 func TestReportTextCodec_Encode(t *testing.T) {
+	passRate := 0.8
+	totalTokens := int64(42)
 	report := &experiments.ExperimentReport{
 		Run: experiments.Experiment{
 			RunID:  "r-1",
@@ -349,13 +536,15 @@ func TestReportTextCodec_Encode(t *testing.T) {
 			Status: "succeeded",
 		},
 		Summary: experiments.ExperimentReportSummary{
-			NConversations: 2,
-			NGenerations:   3,
-			NScores:        10,
-			PassRate:       0.8,
-			MeanScore:      0.72,
-			TotalCostUSD:   0.1234,
-			TotalTokens:    42,
+			NConversations:  2,
+			NGenerations:    3,
+			NScores:         10,
+			PassRate:        &passRate,
+			PassCount:       8,
+			PassDenominator: 10,
+			MeanScore:       0.72,
+			TotalCostUSD:    0.1234,
+			TotalTokens:     &totalTokens,
 		},
 		Breakdowns: experiments.ExperimentReportBreakdowns{
 			ByEvaluator: []experiments.ExperimentReportBreakdown{
@@ -378,13 +567,74 @@ func TestReportTextCodec_Encode(t *testing.T) {
 
 func TestReportTextCodec_Encode_Value(t *testing.T) {
 	// Codec should also accept a non-pointer ExperimentReport.
+	passRate := 1.0
 	report := experiments.ExperimentReport{
-		Summary: experiments.ExperimentReportSummary{NScores: 3, PassRate: 1.0},
+		Summary: experiments.ExperimentReportSummary{NScores: 3, PassRate: &passRate},
 	}
 	codec := &experiments.ReportTextCodec{}
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, report))
 	assert.Contains(t, buf.String(), "Scores:")
+}
+
+// TestReportTextCodec_NullableAggregates covers the display side of the
+// nullable aggregates: a measured 0% renders as a rate, an absent verdict says
+// so, and a present zero token count renders as 0.
+func TestReportTextCodec_NullableAggregates(t *testing.T) {
+	zeroRate := 0.0
+	zeroTokens := int64(0)
+
+	tests := []struct {
+		name    string
+		summary experiments.ExperimentReportSummary
+		want    []string
+		notWant []string
+	}{
+		{
+			name:    "measured zero pass rate renders as 0.00%",
+			summary: experiments.ExperimentReportSummary{PassRate: &zeroRate, PassDenominator: 3},
+			want:    []string{"Pass rate:", "0.00%"},
+			notWant: []string{"no pass verdict"},
+		},
+		{
+			name:    "absent pass rate renders as n/a",
+			summary: experiments.ExperimentReportSummary{},
+			want:    []string{"Pass rate:", "n/a (no pass verdict)"},
+			notWant: []string{"0.00%"},
+		},
+		{
+			// A denominator with no rate is an inconsistent payload. The line
+			// must still say what the codec knows.
+			name:    "absent pass rate with a non-zero denominator still renders a line",
+			summary: experiments.ExperimentReportSummary{PassDenominator: 3},
+			want:    []string{"Pass rate:", "n/a (no pass verdict)"},
+		},
+		{
+			name:    "present zero token count renders",
+			summary: experiments.ExperimentReportSummary{TotalTokens: &zeroTokens},
+			want:    []string{"Tokens:", "0"},
+		},
+		{
+			name:    "absent token count omits the line",
+			summary: experiments.ExperimentReportSummary{},
+			notWant: []string{"Tokens:"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			codec := &experiments.ReportTextCodec{}
+			var buf bytes.Buffer
+			require.NoError(t, codec.Encode(&buf, &experiments.ExperimentReport{Summary: tc.summary}))
+			out := buf.String()
+			for _, s := range tc.want {
+				assert.Contains(t, out, s)
+			}
+			for _, s := range tc.notWant {
+				assert.NotContains(t, out, s)
+			}
+		})
+	}
 }
 
 func TestReportTextCodec_WrongType(t *testing.T) {

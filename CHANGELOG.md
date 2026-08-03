@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Added `gcx agento11y experiments check <run-id> --min-pass-rate <0..1>`, a CI gate for offline eval runs. Exit 4 has four causes: the pass rate is below the threshold; fewer test cases produced a verdict than `--min-verdict-coverage` requires (default: all of them); the experiment finished with status failed or canceled; the experiment produced no pass verdict at all. An experiment whose evaluators emit only reward or numeric scores produces no pass verdict, so pass `--on-unknown=pass` to exit 0 for those runs.
+- **Changed:** `gcx agento11y experiments get-report -o json` now omits `pass_rate` and `total_tokens` when the server does not measure them, instead of reporting them as `0`. It also adds `pass_count` and `pass_denominator`. Text output prints `n/a (no pass verdict)` for an unmeasured pass rate and `0.00%` for a measured zero.
 - Added `gcx instrumentation explain <id>` and `gcx instrumentation list-explanations` for looking up finding explanations bundled with `otel-checker` (bumped to v0.3.1).
 - `gcx instrumentation check` now surfaces an `EXPLAIN_ID` column in table output (and `explain_id` field in JSON), feedable directly into `gcx instrumentation explain`.
 
