@@ -16,19 +16,20 @@ import (
 )
 
 type boundTestStore struct {
-	entries       map[string]string
-	getErr        error
-	setErr        error
-	setErrValue   string
-	setFailAt     int
-	setCalls      int
-	deleteErr     error
-	deleteThenErr bool
-	deleteFailAt  int
-	deleteCalls   int
-	gets          []string
-	sets          []string
-	deletes       []string
+	entries        map[string]string
+	getErr         error
+	getErrAfterSet error
+	setErr         error
+	setErrValue    string
+	setFailAt      int
+	setCalls       int
+	deleteErr      error
+	deleteThenErr  bool
+	deleteFailAt   int
+	deleteCalls    int
+	gets           []string
+	sets           []string
+	deletes        []string
 }
 
 type boundTestLogger struct {
@@ -56,6 +57,9 @@ func (s *boundTestStore) Get(key string) (string, error) {
 	s.gets = append(s.gets, key)
 	if s.getErr != nil {
 		return "", s.getErr
+	}
+	if s.getErrAfterSet != nil && s.setCalls > 0 {
+		return "", s.getErrAfterSet
 	}
 	value, ok := s.entries[key]
 	if !ok {
@@ -1089,6 +1093,12 @@ func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing
 				store.setFailAt = 2
 			},
 		},
+		{
+			name: "write is not retrievable",
+			setup: func(store *boundTestStore) {
+				store.getErrAfterSet = credentials.ErrNotFound
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1104,6 +1114,9 @@ func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing
 
 			err := Write(context.Background(), ExplicitConfigFile(path), cfg)
 			require.Error(t, err)
+			if tt.name == "write is not retrievable" {
+				require.ErrorContains(t, err, "verify keychain entry")
+			}
 			raw, readErr := os.ReadFile(path)
 			require.NoError(t, readErr)
 			assert.Equal(t, original, raw)

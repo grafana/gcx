@@ -1350,6 +1350,20 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 				account: boundRef.Account, previouslySet: false,
 				owner: owner, field: field,
 			})
+			stored, err := txn.store.Get(boundRef.Account)
+			if err != nil {
+				txn.log.Warn("could not verify keychain entry after write",
+					"owner", owner,
+					"field", string(field),
+					"error", err.Error())
+				return credentials.BoundReference{}, false, fmt.Errorf("verify keychain entry for %q field %q after write: %w", owner, field, err)
+			}
+			if stored != value {
+				txn.log.Warn("keychain entry did not round-trip after write",
+					"owner", owner,
+					"field", string(field))
+				return credentials.BoundReference{}, false, fmt.Errorf("verify keychain entry for %q field %q after write: stored value did not match", owner, field)
+			}
 			return boundRef, true, nil
 		}
 		if errors.Is(err, credentials.ErrUnavailable) {
