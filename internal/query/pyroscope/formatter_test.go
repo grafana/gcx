@@ -255,7 +255,7 @@ func TestFormatSeriesTableWide(t *testing.T) {
 	}
 }
 
-func TestFormatProfileStatsTable(t *testing.T) {
+func TestFormatDataRangeTable(t *testing.T) {
 	tests := []struct {
 		name     string
 		resp     *pyroscope.ProfileStatsResponse
@@ -291,7 +291,7 @@ func TestFormatProfileStatsTable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, pyroscope.FormatProfileStatsTable(&buf, tt.resp))
+			require.NoError(t, pyroscope.FormatDataRangeTable(&buf, tt.resp))
 			for _, want := range tt.contains {
 				assert.Contains(t, buf.String(), want)
 			}

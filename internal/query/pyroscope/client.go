@@ -148,7 +148,7 @@ func (c *Client) GetProfileStats(ctx context.Context, datasourceUID string) (*Pr
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get profile stats: %w", err)
+		return nil, fmt.Errorf("data range request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -158,7 +158,7 @@ func (c *Client) GetProfileStats(ctx context.Context, datasourceUID string) (*Pr
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("pyroscope", "profile stats query", resp.StatusCode, respBody)
+		return nil, queryerror.FromBody("pyroscope", "data range query", resp.StatusCode, respBody)
 	}
 
 	var result ProfileStatsResponse

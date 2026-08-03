@@ -41,8 +41,9 @@ func FormatPprofWriteTable(w io.Writer, result *PprofWriteResult) error {
 	return t.Render(w)
 }
 
-// FormatProfileStatsTable formats datasource ingestion stats as a single-row table.
-func FormatProfileStatsTable(w io.Writer, resp *ProfileStatsResponse) error {
+// FormatDataRangeTable renders the datasource's data range (from the
+// GetProfileStats RPC) as a single-row table.
+func FormatDataRangeTable(w io.Writer, resp *ProfileStatsResponse) error {
 	t := style.NewTable("DATA_INGESTED", "OLDEST_PROFILE", "NEWEST_PROFILE")
 
 	// The server omits zero times (proto-JSON), and may report a zero oldest

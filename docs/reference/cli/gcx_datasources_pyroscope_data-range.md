@@ -1,35 +1,37 @@
-## gcx datasources pyroscope stats
+## gcx datasources pyroscope data-range
 
-Show ingestion stats (data ingested, oldest/newest profile times)
+Show the range of profiling data the datasource holds
 
 ### Synopsis
 
-Show ingestion stats for a Pyroscope datasource: whether any profiling data was ever ingested, and the oldest and newest profile times.
+Show the range of profiling data a Pyroscope datasource holds: whether any data was ever ingested, and the oldest and newest profile times. The range covers everything behind the datasource (the whole tenant), not any particular service or label selector.
 
-Use this to disambiguate empty query results: if no data was ever ingested, fix ingestion before adjusting selectors; otherwise the oldest/newest bounds show the actual queryable time window.
+Use this to disambiguate empty query results: if no data was ever ingested, fix ingestion before adjusting selectors; otherwise the oldest/newest bounds show the currently queryable window.
+
+Note that data-ingested is a lifetime flag: it stays true even after all data has aged out of the retention period (31 days by default, tenant-configurable), in which case the bounds render as '-' (0 in JSON). Older backends may also report an unknown oldest bound the same way.
 
 If gcx auto-discovers the datasource from your Grafana Cloud stack, the discovered datasource UID may be saved to your gcx configuration for future commands.
 
 ```
-gcx datasources pyroscope stats [flags]
+gcx datasources pyroscope data-range [flags]
 ```
 
 ### Examples
 
 ```
 
-	# Check whether the datasource is receiving profiling data
-	gcx datasources pyroscope stats -d UID
+	# Check whether the datasource holds profiling data, and for what range
+	gcx datasources pyroscope data-range -d UID
 
 	# Output as JSON (times are milliseconds since epoch)
-	gcx datasources pyroscope stats -d UID -o json
+	gcx datasources pyroscope data-range -d UID -o json
 ```
 
 ### Options
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.pyroscope is configured)
-  -h, --help                help for stats
+  -h, --help                help for data-range
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
