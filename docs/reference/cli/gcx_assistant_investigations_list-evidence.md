@@ -1,23 +1,22 @@
-## gcx assistant investigations get
+## gcx assistant investigations list-evidence
 
-Get investigation detail.
+List panel evidence for a v2 investigation.
 
 ### Synopsis
 
-Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise. v2 output includes both identifiers: investigationId, and the backing chatId that the chat, narrative, and tools subcommands key on.
+List panel evidence for a v2 investigation — the canonical mapping from report citation keys (panel IDs like p3) to the tool and query that produced each panel. For raw chat-derived tool calls, use `gcx assistant investigations list-tool-calls` instead.
 
 ```
-gcx assistant investigations get <id> [flags]
+gcx assistant investigations list-evidence <investigation-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for list-evidence
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --open            Open the investigation in the default browser
-  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
