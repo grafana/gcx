@@ -149,6 +149,17 @@ additional list calls are made (NC-005).
 **Output shape:**
 - Single resource: `{"field": "value", ...}` (flat object, only selected fields)
 - List/collection: `{"items": [{"field": "value"}, ...]}`
+- Provider list envelope: the wrapper key is preserved. A single-key envelope
+  (`{"datasources": [...]}`) is detected structurally. A multi-key envelope
+  that carries list-level metadata alongside the items (e.g.
+  `{"investigations": [...], "total": 42}`) must opt in by implementing
+  `output.ListEnvelope` (`ListItemsKey() string` — satisfied structurally, so
+  result types need no import). Selection applies per item under the declared
+  key; metadata siblings pass through unchanged. `--json ?` discovers
+  item-level fields for both shapes (reflecting on the declared slice field
+  when the list is empty), and the agent-mode spill summary previews and
+  counts the envelope's items. Detail objects that merely contain a nested
+  array are never treated as envelopes — descent is explicit, not heuristic.
 
 **Backward compatibility:** `-o json` is unchanged — it still produces the full
 resource object. `--json` is an independent mechanism (NC-002).
