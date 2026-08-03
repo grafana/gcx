@@ -16,19 +16,22 @@ import (
 )
 
 type boundTestStore struct {
-	entries       map[string]string
-	getErr        error
-	setErr        error
-	setErrValue   string
-	setFailAt     int
-	setCalls      int
-	deleteErr     error
-	deleteThenErr bool
-	deleteFailAt  int
-	deleteCalls   int
-	gets          []string
-	sets          []string
-	deletes       []string
+	entries          map[string]string
+	getErr           error
+	getErrAfterSet   error
+	getErrAfterSetAt int
+	setErr           error
+	setErrValue      string
+	setStoredValue   string
+	setFailAt        int
+	setCalls         int
+	deleteErr        error
+	deleteThenErr    bool
+	deleteFailAt     int
+	deleteCalls      int
+	gets             []string
+	sets             []string
+	deletes          []string
 }
 
 type boundTestLogger struct {
@@ -57,6 +60,9 @@ func (s *boundTestStore) Get(key string) (string, error) {
 	if s.getErr != nil {
 		return "", s.getErr
 	}
+	if s.getErrAfterSet != nil && s.setCalls == s.getErrAfterSetAt {
+		return "", s.getErrAfterSet
+	}
 	value, ok := s.entries[key]
 	if !ok {
 		return "", credentials.ErrNotFound
@@ -72,7 +78,11 @@ func (s *boundTestStore) Set(key, value string) error {
 		return s.setErr
 	}
 	s.sets = append(s.sets, key)
-	s.entries[key] = value
+	if s.setStoredValue != "" {
+		s.entries[key] = s.setStoredValue
+	} else {
+		s.entries[key] = value
+	}
 	return nil
 }
 
@@ -1073,14 +1083,16 @@ func TestRuntimeExplicitCredentialOnSharedStackIsNotClearedByOtherContext(t *tes
 
 func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing.T) {
 	tests := []struct {
-		name  string
-		setup func(*boundTestStore)
+		name          string
+		setup         func(*boundTestStore)
+		expectedError string
 	}{
 		{
 			name: "get",
 			setup: func(store *boundTestStore) {
 				store.getErr = errors.New("generic get failure")
 			},
+			expectedError: "inspect keychain entry",
 		},
 		{
 			name: "second set",
@@ -1088,6 +1100,14 @@ func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing
 				store.setErr = errors.New("generic set failure")
 				store.setFailAt = 2
 			},
+			expectedError: "write keychain entry",
+		},
+		{
+			name: "write returns a different value",
+			setup: func(store *boundTestStore) {
+				store.setStoredValue = "different value"
+			},
+			expectedError: "stored value did not match",
 		},
 	}
 	for _, tt := range tests {
@@ -1104,6 +1124,7 @@ func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing
 
 			err := Write(context.Background(), ExplicitConfigFile(path), cfg)
 			require.Error(t, err)
+			require.ErrorContains(t, err, tt.expectedError)
 			raw, readErr := os.ReadFile(path)
 			require.NoError(t, readErr)
 			assert.Equal(t, original, raw)
@@ -1113,6 +1134,23 @@ func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing
 			assert.Empty(t, cfg.Stacks["default"].sourceIdentity)
 		})
 	}
+}
+
+func TestBoundKeychainUnreadableNewCredentialFallsBackAfterConfirmedCleanup(t *testing.T) {
+	store := newBoundTestStore()
+	store.getErrAfterSet = credentials.ErrUnavailable
+	store.getErrAfterSetAt = 1
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := boundStackTestConfig("https://example.invalid", "api-token")
+
+	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "api-token")
+	assert.NotContains(t, string(raw), "keychain:gcx:v2:")
+	assert.Empty(t, store.entries, "the unverifiable keychain generation must be removed before plaintext fallback")
+	assert.Equal(t, 1, store.deleteCalls, "the failed verification must perform its own confirmed cleanup")
 }
 
 func TestBoundKeychainWriteUnavailableFallsBackOnlyForNewCredential(t *testing.T) {
