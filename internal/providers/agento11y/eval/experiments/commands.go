@@ -6,13 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -44,6 +48,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newCancelCommand(loader),
 		newListScoresCommand(loader),
 		newGetReportCommand(loader),
+		newCheckCommand(loader),
 		newListTrialsCommand(loader),
 		newTestSuitesCommand(loader),
 		newTrialsCommand(loader),
@@ -446,6 +451,212 @@ func newGetReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// --- check ---
+
+type checkOpts struct {
+	IO                 cmdio.Options
+	MinPassRate        float64
+	MinVerdictCoverage float64
+	OnUnknown          string
+	Wait               bool
+	Timeout            time.Duration
+	// flags is the set setup bound, kept so Validate can ask which flags were
+	// passed at all: --min-pass-rate carries no gate when omitted, and its zero
+	// default is a real threshold, so the value alone cannot say which of the
+	// two the caller meant.
+	flags          *pflag.FlagSet
+	minPassRateSet bool
+}
+
+func (o *checkOpts) setup(flags *pflag.FlagSet) {
+	o.flags = flags
+	o.IO.RegisterCustomCodec("text", &CheckTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+	flags.Float64Var(&o.MinPassRate, "min-pass-rate", 0,
+		"Lowest acceptable pass rate, 0..1. When omitted, the pass rate is not checked. "+
+			"Zero accepts any measured rate; a rate that cannot be measured is still graded "+
+			"by --on-unknown. See --help for how pass_rate is measured.")
+	flags.Float64Var(&o.MinVerdictCoverage, "min-verdict-coverage", 1,
+		"Lowest acceptable share of test cases that produced a pass or fail verdict, 0..1. "+
+			"Set to 0 to skip this check.")
+	// One line rather than the indented block --on-error uses: cobra appends its
+	// own (default "fail") to the last line, which would land beside the pass row
+	// and read as though pass were the default.
+	flags.StringVar(&o.OnUnknown, "on-unknown", onUnknownFail,
+		"Verdict for a check that could not measure what it grades: fail (exit 4) or pass (exit 0).")
+	flags.BoolVar(&o.Wait, "wait", false,
+		"Poll every 5 seconds until the experiment finishes, then grade it.")
+	flags.DurationVar(&o.Timeout, "timeout", 10*time.Minute,
+		"Maximum time to wait for the experiment to finish. Needs --wait.")
+}
+
+func (o *checkOpts) Validate(cmd *cobra.Command) error {
+	o.minPassRateSet = o.flags.Changed("min-pass-rate")
+	if err := validateRateFlag(cmd, "--min-pass-rate", o.MinPassRate); err != nil {
+		return err
+	}
+	if err := validateRateFlag(cmd, "--min-verdict-coverage", o.MinVerdictCoverage); err != nil {
+		return err
+	}
+	if err := validateOnUnknown(o.OnUnknown); err != nil {
+		return fail.NewCommandUsageError(cmd, "", err)
+	}
+	if o.flags.Changed("timeout") && !o.Wait {
+		return fail.NewCommandUsageError(cmd, "--timeout needs --wait", nil)
+	}
+	if o.Wait && o.Timeout <= 0 {
+		return fail.NewCommandUsageError(cmd,
+			fmt.Sprintf("invalid --timeout value %s: must be positive", o.Timeout), nil)
+	}
+	return o.IO.Validate()
+}
+
+// spec resolves the validated flags into the thresholds evaluateChecks applies.
+func (o *checkOpts) spec() checkSpec {
+	spec := checkSpec{
+		MinVerdictCoverage: o.MinVerdictCoverage,
+		OnUnknown:          o.OnUnknown,
+	}
+	if o.minPassRateSet {
+		rate := o.MinPassRate
+		spec.MinPassRate = &rate
+	}
+	return spec
+}
+
+// validateRateFlag rejects a rate outside 0 through 1. Go's float flag parser
+// accepts NaN and Inf, and a range comparison alone catches neither, so this
+// function rejects them explicitly.
+func validateRateFlag(cmd *cobra.Command, name string, value float64) error {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		return fail.NewCommandUsageError(cmd,
+			fmt.Sprintf("invalid %s value %v: must be a finite value from 0 through 1, for example %s 0.9", name, value, name),
+			nil)
+	}
+	return nil
+}
+
+func newCheckCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &checkOpts{}
+	cmd := &cobra.Command{
+		Use:   "check <run-id>",
+		Short: "Grade a finished experiment against quality thresholds for CI.",
+		Long: `Compare a finished experiment against quality thresholds and exit non-zero
+when the experiment falls short, so a CI job fails on a regression.
+
+The main threshold, --min-pass-rate, applies to the report's pass_rate: of the
+test cases that produced a verdict, the share that passed on the first
+completed attempt. The denominator counts test cases, not trials. For the
+all-trials figure, read rows[].summary.trial_pass_rate from get-report -o json.
+When --min-pass-rate is omitted, the pass rate is not checked; the gate is then
+the run's status plus, by default, full verdict coverage.
+
+A test case whose trials all failed produces no verdict, so it changes neither
+side of that fraction. Take a run where every trial failed for 90 of its 100
+test cases: if the surviving 10 all passed, the report says 100%.
+--min-verdict-coverage rejects that run by requiring a minimum share of the
+suite to have produced a verdict. It defaults to 1, the whole suite.
+
+With --wait the command polls the experiment every 5 seconds until it finishes,
+up to --timeout (default 10m; raise it for a long suite), and then grades it.
+Without --wait an unfinished experiment exits 1 immediately.
+
+Exit codes:
+  0  every threshold met
+  1  general error, including an experiment that has not finished yet and a
+     --wait that timed out
+  2  a flag value is invalid, or --timeout is used without --wait
+  4  the run missed a threshold; or the experiment finished with status failed
+     or canceled; or a check could not measure what it grades while
+     --on-unknown=fail (the default)
+
+A check that cannot measure what it grades reports the verdict unknown, and
+--on-unknown decides those runs: fail (the default) exits 4, and pass exits 0.
+Two cases reach it. An experiment whose evaluators emit only reward or numeric
+scores produces no pass or fail verdict, so there is no pass rate and no
+coverage to measure. A server that does not report the size of the suite leaves
+coverage unmeasurable on its own.`,
+		Example: `  # Fail the build when fewer than 90% of test cases pass
+  gcx agento11y experiments check <run-id> --min-pass-rate 0.9
+
+  # The run completed and every test case produced a verdict, no rate threshold
+  gcx agento11y experiments check <run-id>
+
+  # The harness is still running: wait for the run to finish, then gate
+  gcx agento11y experiments check <run-id> --wait --timeout 30m --min-pass-rate 0.9
+
+  # Machine-readable verdict for a CI step summary
+  gcx agento11y experiments check <run-id> --min-pass-rate 0.9 -o json
+
+  # Accept a run where a fifth of the test cases produced no verdict
+  gcx agento11y experiments check <run-id> --min-pass-rate 0.9 --min-verdict-coverage 0.8
+
+  # Reward-scored experiment: no pass or fail verdict exists, so do not fail on it
+  gcx agento11y experiments check <run-id> --min-pass-rate 0.9 --on-unknown pass`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(cmd); err != nil {
+				return err
+			}
+
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			if opts.Wait {
+				if err := waitForFinished(cmd.Context(), client, args[0], opts.Timeout, waitPollInterval, cmd.ErrOrStderr()); err != nil {
+					return err
+				}
+			}
+			report, err := client.GetReport(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+
+			// Refuse to grade an unfinished experiment: exit 1 and write no
+			// check document. See checkStatusError for why.
+			if err := checkStatusError(args[0], report.Experiment.Status); err != nil {
+				return err
+			}
+
+			return emitCheckResult(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, evaluateChecks(report, opts.spec()))
+		},
+	}
+	opts.setup(cmd.Flags())
+	// The call fails only for a flag that does not exist, which cannot happen
+	// right after setup bound it.
+	if err := cmd.RegisterFlagCompletionFunc("on-unknown", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{onUnknownFail, onUnknownPass}, cobra.ShellCompDirectiveNoFileComp
+	}); err != nil {
+		panic(err)
+	}
+	return cmd
+}
+
+// emitCheckResult writes the single check document through the codec system,
+// then maps a non-passing verdict to the partial-failure exit code so the
+// process exit agrees with the verdict in the payload.
+//
+// The document is already on stdout, so the error is an EmittedError: the
+// top-level reporter honors the code and writes nothing more, which keeps the
+// one-JSON-value contract intact. EmittedError also suppresses the reporter's
+// stderr rendering, hence the explicit warn line.
+//
+// An encode failure returns the write error instead, because the stream is
+// already broken.
+func emitCheckResult(stdout, stderr io.Writer, opts *checkOpts, result CheckResult) error {
+	if err := opts.IO.Encode(stdout, result); err != nil {
+		return err
+	}
+	if result.Verdict == CheckVerdictPass {
+		return nil
+	}
+	summary := checkFailureSummary(result)
+	cmdio.EmitWarn(stderr, summary)
+	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(summary))
 }
 
 // --- test-suites ---
@@ -1538,5 +1749,55 @@ func coverageNote(coverage string) string {
 }
 
 func (c *ReportTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
+}
+
+// CheckTextCodec renders a check result as a compact summary followed by one
+// line per check, so a human reading CI logs sees the verdict first and the
+// evidence right below it.
+type CheckTextCodec struct{}
+
+func (c *CheckTextCodec) Format() format.Format {
+	return "text"
+}
+
+func (c *CheckTextCodec) Encode(w io.Writer, v any) error {
+	var r *CheckResult
+	switch val := v.(type) {
+	case *CheckResult:
+		r = val
+	case CheckResult:
+		r = &val
+	default:
+		return errors.New("invalid data type for check text codec: expected *CheckResult")
+	}
+	if r == nil {
+		return errors.New("invalid data type for check text codec: expected *CheckResult")
+	}
+
+	const labelFmt = "%-15s %s\n"
+	if r.ExperimentID != "" {
+		fmt.Fprintf(w, labelFmt, "Experiment:", r.ExperimentID)
+	}
+	if r.ExperimentStatus != "" {
+		fmt.Fprintf(w, labelFmt, "Status:", r.ExperimentStatus)
+	}
+	fmt.Fprintf(w, labelFmt, "Quality check:", string(r.Verdict))
+	if r.TestCaseCount > 0 {
+		fmt.Fprintf(w, labelFmt, "Test cases:", strconv.Itoa(r.TestCaseCount))
+	}
+
+	if len(r.Checks) == 0 {
+		return nil
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Checks:")
+	for _, check := range r.Checks {
+		fmt.Fprintf(w, "  %s\n", checkDetail(check))
+	}
+	return nil
+}
+
+func (c *CheckTextCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("text format does not support decoding")
 }

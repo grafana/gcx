@@ -1,5 +1,9 @@
 ## Unreleased
 
+### New features
+
+- agento11y: add `gcx agento11y experiments check <run-id> --min-pass-rate <0..1>` for CI gates on offline evaluation runs. Exit 4 indicates a failed or canceled experiment, a pass rate below the threshold, insufficient verdict coverage, or no pass verdict. Use `--on-unknown=pass` for evaluators that emit only reward or numeric scores. Without `--min-pass-rate`, the gate checks completion and verdict coverage. `--wait` polls every five seconds until completion (default timeout: 10m); timeout exits 1.
+
 ### Fixes
 
 - instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.

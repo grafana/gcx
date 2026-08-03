@@ -559,11 +559,17 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y collections add-conversations":   {Cost: "small"},
 	"gcx agento11y collections remove-conversation": {Cost: "small"},
 
-	"gcx agento11y experiments list":        {Cost: "small"},
-	"gcx agento11y experiments get":         {Cost: "small"},
-	"gcx agento11y experiments create":      {Cost: "small"},
-	"gcx agento11y experiments update":      {Cost: "small"},
-	"gcx agento11y experiments cancel":      {Cost: "small"},
+	"gcx agento11y experiments list":   {Cost: "small"},
+	"gcx agento11y experiments get":    {Cost: "small"},
+	"gcx agento11y experiments create": {Cost: "small"},
+	"gcx agento11y experiments update": {Cost: "small"},
+	"gcx agento11y experiments cancel": {Cost: "small"},
+	"gcx agento11y experiments check": {
+		Cost: "small",
+		Hint: "<run-id> --min-pass-rate 0.9 -o json. Exit 4 means the run missed a threshold, ended with " +
+			"status failed or canceled, or produced no pass or fail verdict; add --on-unknown=pass to exit " +
+			"0 in that last case. Add --wait to poll until the run finishes.",
+	},
 	"gcx agento11y experiments list-scores": {Cost: "medium", Hint: "<run-id> --limit 50 -o json"},
 	"gcx agento11y experiments get-report":  {Cost: "medium", Hint: "<run-id> -o json"},
 	"gcx agento11y experiments list-trials": {

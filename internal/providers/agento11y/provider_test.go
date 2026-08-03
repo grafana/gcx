@@ -3,6 +3,7 @@ package agento11y_test
 import (
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers/agento11y"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -40,6 +41,17 @@ func TestAgento11yProvider_Commands(t *testing.T) {
 	for _, exp := range []string{"list", "get", "search"} {
 		assert.Contains(t, convSubNames, exp)
 	}
+}
+
+// TestAgento11yProvider_ExperimentsHintAdvertisesCheck keeps agent discovery of
+// the CI quality check honest. That the hint's flags exist is checked for every
+// command by TestConsistency_LLMHintFlagsExist in cmd/gcx/root.
+func TestAgento11yProvider_ExperimentsHintAdvertisesCheck(t *testing.T) {
+	experimentsCmd := findSubcommand((&agento11y.Agento11yProvider{}).Commands()[0], "experiments")
+	require.NotNil(t, experimentsCmd)
+
+	hint := experimentsCmd.Annotations[agent.AnnotationLLMHint]
+	assert.Contains(t, hint, "gcx agento11y experiments check <run-id> --min-pass-rate")
 }
 
 func commandNames(cmd *cobra.Command) []string {

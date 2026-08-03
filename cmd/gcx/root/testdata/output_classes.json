@@ -27,6 +27,7 @@
  "gcx agento11y evaluators test": "finite",
  "gcx agento11y evaluators upsert": "finite",
  "gcx agento11y experiments cancel": "finite",
+ "gcx agento11y experiments check": "finite",
  "gcx agento11y experiments create": "finite",
  "gcx agento11y experiments get": "finite",
  "gcx agento11y experiments get-report": "finite",
