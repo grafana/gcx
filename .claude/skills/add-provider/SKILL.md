@@ -244,8 +244,9 @@ something to run.
 
 Cover only the verbs the stage actually implements — do not smoke-test CRUD
 verbs the provider doesn't expose. Destructive commands use `--force`
-(never `--yes`; see `docs/design/safety.md` §3.2). Example pattern (replace
-with real product/resource names in actual spec):
+(never `--yes`; see `docs/design/safety.md` §3.2). Mark in the plan which
+commands mutate state, so Stage 4a knows what it needs confirmed before running.
+Example pattern (replace with real product/resource names in actual spec):
 ```bash
 # Provider appears in list
 bin/gcx providers list | grep {name}
@@ -312,6 +313,15 @@ repeating it per stage buys nothing and costs minutes each time.
 Execute every smoke test command from the Stage 2d list against a real Grafana
 instance, using `bin/gcx` so you exercise the build under review.
 Record results (pass/fail + output).
+
+**Read-only tests run freely; confirm the mutating ones first.** `list`, `get`,
+`providers list` and `config view` need no permission. A smoke test that creates,
+updates or deletes state runs only after you show the user the exact commands and
+name the instance they will hit, and they agree. That includes
+`delete <test-id> --force`: `--force` exists precisely to skip gcx's interactive
+confirmation, so on this path your question is the only confirmation left. If the
+answer is no, or you cannot reach the user, report those tests UNVERIFIED per
+below rather than running them.
 
 If no instance or credentials are available, report every smoke test as
 **UNVERIFIED** with that reason, and say what a reviewer must run before merge.

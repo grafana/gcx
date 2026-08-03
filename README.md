@@ -21,6 +21,10 @@ gcx is a CLI for Grafana — Cloud, Enterprise, and OSS alike. It gives you and 
 
 gcx works with any agentic coding tool. It ships with a suite of agent skills for common workflows like alert investigation, dashboard creation and GitOps, SLO management, and observability setup - ready to use out of the box.
 
+Contributing a new Grafana domain capability to gcx? Ask your coding agent to
+use [`integrate-with-gcx`](claude-plugin/skills/integrate-with-gcx/SKILL.md)
+before choosing a command, provider, or datasource path.
+
 ## Quick Start
 
 ```sh
@@ -309,7 +313,14 @@ debug-with-grafana         yes          Structured workflow for investigating ap
 ....
 ```
 
-Install the bundle into `~/.agents/skills` with:
+Install only the contributor workflow with:
+
+```sh
+gcx agent skills install integrate-with-gcx
+```
+
+Or install the full bundle into `~/.agents/skills` with:
+
 ```sh
 gcx agent skills install --all
 ```
@@ -320,6 +331,12 @@ version, `gcx` may show an interactive reminder suggesting:
 ```sh
 gcx agent skills update
 ```
+
+`update` refreshes skills that are already installed; it does not add newly
+bundled skills. After upgrading `gcx`, install a new skill by name. To refresh
+existing skills and add every newly bundled one, run `gcx agent skills update`
+followed by `gcx agent skills install --all` — `install --all` on its own stops
+with an error if any already-installed skill differs from the new bundle.
 
 To disable that reminder entirely, set:
 

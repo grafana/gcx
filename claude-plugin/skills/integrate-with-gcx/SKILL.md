@@ -64,11 +64,15 @@ a document):
 - **Path** — from `docs/design/command-naming.md` plus precedent in the real tree
   and `docs/plans/list-subject-verdicts.md`.
 - **Backend + wiring** — what serves the data, verified by a probe rather than
-  assumed, and which wiring carries it. `gcx api` is a diagnostic fallback,
-  never the integration target.
+  assumed, and which wiring carries it. A probe that is unavailable, inconclusive
+  or outside the target you were placed in scope for is reported `UNVERIFIED` —
+  never run, and never read as a negative result. `gcx api` is a diagnostic
+  fallback, never the integration target.
 - **Readiness** — ready / backend prerequisite (named owner) / bounded bootstrap
-  / not gcx. Product teams own their API shape, auth, limits and domain data
-  reduction; gcx wraps APIs, it does not fix them.
+  / not gcx. Unknown route, payload, auth, limits or pagination means **backend
+  prerequisite**; there is no "ready, pending verification". Product teams own
+  their API shape, auth, limits and domain data reduction; gcx wraps APIs, it
+  does not fix them.
 
 Missing information does not stop you: discover it, or ask one targeted question.
 

@@ -126,9 +126,26 @@ domain-specific data reduction. Before designing commands, answer:
 - **Data reduction** — would gcx have to page unbounded data client-side to
   compute something the backend should compute? That work belongs server-side.
 
+**Unknown is not ready.** Answer each question above from the product's docs, its
+source, or a probe you actually ran — not from what the API plausibly does. If the
+route, payload shape, auth, limits or pagination behaviour is still unknown when
+you write the outcome down, the outcome is **backend prerequisite** (or bounded
+bootstrap, where all three of its conditions hold). There is no "ready, pending
+verification": that phrasing turns an open question into a commitment the backend
+has not made, and the contract built on it inherits the guess.
+
+**A probe that did not run is not evidence.** If a probe is unavailable,
+inconclusive, or outside the target you were placed in scope for, do not run it
+and do not read its absence as a negative result — a product that is plan-gated,
+disabled on the configured stack, or served in a different tenant looks identical
+to a product that has no API at all. Record the exact probe a reviewer should run
+as `UNVERIFIED` in the placement section, and carry it into the
+`Unverified assumptions` line of the final summary.
+
 Outcome (one of four, written down):
 
-1. **Ready** — proceed to the contract (contract-and-tests.md).
+1. **Ready** — every question above answered from evidence. Proceed to the
+   contract (contract-and-tests.md).
 2. **Backend prerequisite** — name the owner and the missing piece; gcx work
    waits or ships read-only around the gap.
 3. **Bounded bootstrap** — proceed with an explicitly experimental, narrow
@@ -159,6 +176,7 @@ Capability: <one line>
 - Readiness: <ready|backend-prerequisite(owner)|bounded-bootstrap|not-gcx>
     boundary items: <auth/RBAC, limits, pagination, data reduction — or none>
 
+UNVERIFIED: <probes not run or inconclusive, and what a reviewer must run — or none>
 Unresolved: <what evidence could not settle — or none>
 ```
 
