@@ -112,17 +112,21 @@ TypedCRUD).
 
 ## Validation
 
-Before committing to a provider, verify with a real API call:
+Before committing to a provider, verify with a real API call. Probe through
+`bin/gcx api`, which takes the base URL and credentials from the configured
+context, so no token reaches the command line or the process table:
 
 ```bash
 # Test if the K8s API serves it (if yes → no provider needed for CRUD;
 #  non-CRUD operations still need placement analysis)
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "$GRAFANA_URL/apis/" | jq '.groups[].name' | grep {product}
+bin/gcx api /apis/ --jq '.groups[].name' | grep {product}
 
 # Test plugin API (if this works → provider needed)
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "$GRAFANA_URL/api/plugins/{product}-app/resources/v1/"
+bin/gcx api /api/plugins/{product}-app/resources/v1/
 ```
 
-If neither works, investigate the product's source code for route registration.
+A probe that returns nothing is not proof the product has no API — it may be
+plan-gated, disabled on the configured stack, or served in another tenant. Treat
+an empty result as inconclusive: investigate the product's source code for route
+registration, and record the probe as `UNVERIFIED` if you could not run it
+against a stack where the product is enabled.
