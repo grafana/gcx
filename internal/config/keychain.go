@@ -1485,8 +1485,8 @@ func (txn *keychainWriteTransaction) commit(warningWriter io.Writer) error {
 	}
 	if txn.plaintextFallback {
 		txn.warnUnavailableOnce(func() {
-			const message = "credential store unavailable; credentials remain in plaintext on disk"
-			const hint = "install or unlock your OS credential store (Keychain, Credential Manager, or Secret Service) to enable encrypted credential storage"
+			const message = "credential store could not securely store the credential; credentials remain in plaintext on disk"
+			const hint = "verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage"
 			if warningWriter != nil {
 				fmt.Fprintf(warningWriter, "Warning: %s; %s\n", message, hint)
 				return

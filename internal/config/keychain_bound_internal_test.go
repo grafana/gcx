@@ -1153,6 +1153,31 @@ func TestBoundKeychainUnreadableNewCredentialFallsBackAfterConfirmedCleanup(t *t
 	assert.Equal(t, 1, store.deleteCalls, "the failed verification must perform its own confirmed cleanup")
 }
 
+func TestBoundKeychainVerifyAndCleanupFailureRollsBackStagedWrite(t *testing.T) {
+	store := newBoundTestStore()
+	store.getErrAfterSet = errors.New("injected verification failure")
+	store.getErrAfterSetAt = 1
+	store.deleteErr = errors.New("injected cleanup failure")
+	store.deleteFailAt = 1
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	original := []byte("version: 1\ncontexts: {}\ncurrent-context: \"\"\n")
+	require.NoError(t, os.WriteFile(path, original, 0o600))
+	cfg := boundStackTestConfig("https://example.invalid", "api-token")
+
+	err := Write(context.Background(), ExplicitConfigFile(path), cfg)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "injected verification failure")
+	assert.ErrorContains(t, err, "injected cleanup failure")
+	raw, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	assert.Equal(t, original, raw)
+	assert.Empty(t, store.entries, "rollback must retain ownership after the immediate cleanup fails")
+	assert.Equal(t, 2, store.deleteCalls, "the failed immediate cleanup must be retried by rollback")
+	assert.Equal(t, "api-token", cfg.Stacks["default"].Grafana.APIToken)
+	assert.Empty(t, cfg.Stacks["default"].sourceIdentity)
+}
+
 func TestBoundKeychainWriteUnavailableFallsBackOnlyForNewCredential(t *testing.T) {
 	store := newBoundTestStore()
 	store.setErr = credentials.ErrUnavailable
@@ -1304,7 +1329,7 @@ func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T)
 	txn.plaintextFallback = true
 
 	require.NoError(t, txn.commit(&warnings))
-	assert.Equal(t, "Warning: credential store unavailable; credentials remain in plaintext on disk; install or unlock your OS credential store (Keychain, Credential Manager, or Secret Service) to enable encrypted credential storage\n", warnings.String())
+	assert.Equal(t, "Warning: credential store could not securely store the credential; credentials remain in plaintext on disk; verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage\n", warnings.String())
 	assert.Empty(t, logger.warnings, "the request-scoped warning must not be duplicated through structured logging")
 
 	txn = newKeychainWriteTransaction(newBoundTestStore(), logger)
@@ -1312,7 +1337,7 @@ func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T)
 	txn.plaintextFallback = true
 
 	require.NoError(t, txn.commit(nil))
-	require.Equal(t, []string{"credential store unavailable; credentials remain in plaintext on disk"}, logger.warnings)
+	require.Equal(t, []string{"credential store could not securely store the credential; credentials remain in plaintext on disk"}, logger.warnings)
 
 	logger.warnings = nil
 	store := newBoundTestStore()
@@ -1323,7 +1348,7 @@ func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T)
 	txn.deferDelete("old-account", "stack:default", credentials.FieldGrafanaToken)
 
 	require.Error(t, txn.commit(nil))
-	assert.NotContains(t, logger.warnings, "credential store unavailable; credentials remain in plaintext on disk",
+	assert.NotContains(t, logger.warnings, "credential store could not securely store the credential; credentials remain in plaintext on disk",
 		"a failed commit must not claim plaintext fallback succeeded")
 }
 

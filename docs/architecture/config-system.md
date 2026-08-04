@@ -278,11 +278,11 @@ target source before encoding. Its keychain reconcile pass is mutation-aware:
 
 Credential writes are a staged transaction. A new or rotated value is written
 under a fresh random generation and read back before the config is replaced. If
-that immediate verification finds a brand-new generation missing or the store
-unavailable, gcx first confirms deletion of the staged generation and then keeps
-the new value in plaintext rather than writing a sentinel that a later command
-cannot resolve. A mismatched readback, an unknown read failure, or an
-unconfirmed cleanup fails the write closed. The new config
+the store cannot retain or read back a brand-new credential with no prior
+keychain reference, gcx first confirms deletion of the staged generation and
+then keeps the new value in plaintext rather than writing a sentinel that a
+later command cannot resolve. A mismatched readback, an unknown read failure,
+or an unconfirmed cleanup fails the write closed. The new config
 is written to a temporary file, synced, renamed, and followed by a parent
 directory sync. A failure before rename removes the staged generation; a
 failure after rename but before confirmed durability preserves both generations
