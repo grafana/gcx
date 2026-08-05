@@ -226,8 +226,24 @@ Reference: `internal/datasources/providers/prometheus.go`.
    `gcx datasources list -o json` and add a mapping in
    `internal/datasources/query/resolve.go` if they don't match. Without this,
    auto-discovery and datasource type validation will fail silently.
-3. Optionally add to the auto-detecting `datasources query` switch in
-   `cmd/gcx/datasources/query.go`
+3. **Routing for the auto-detecting `datasources query`** — registration mounts
+   your typed `datasources <kind>` subtree but does not reach the generic
+   command, which routes through the tables in
+   `cmd/gcx/datasources/query_routes.go`. Add exactly one entry, keyed by the
+   normalized kind:
+   - the generic `<uid> <expr>` form can honestly carry your query → add a
+     `dispatch` entry plus a small handler alongside the existing ones;
+   - it cannot, because your query takes structured parameters no single
+     expression represents → add a `redirects` entry built with
+     `structuredQueryRedirect`, naming your typed command. CloudWatch is the
+     worked example.
+
+   Adding neither is also a choice: your kind then reports as unsupported. Make
+   it deliberately — a caller who reasonably reaches for `datasources query`
+   gets a dead end. The two tables must stay disjoint and keyed by normalized
+   kinds; `query_routes_internal_test.go` enforces both, and the supported-kind
+   list in the unsupported-type error is derived, so there is nothing to
+   hand-update.
 
 ### Step 4: Agent Annotations
 

@@ -866,7 +866,9 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 | `internal/query/loki/types.go` | Request/response types for Loki |
 | `internal/query/loki/formatter.go` | Table/text formatting for Loki responses |
 | `cmd/gcx/datasources/command.go` | `datasources` command group (list, get, prometheus, loki, pyroscope, tempo, generic subcommands) |
-| `cmd/gcx/datasources/query/` | Per-kind `query` subcommand constructors and shared infrastructure (codecs, time parsing) |
+| `cmd/gcx/datasources/query.go` | Auto-detecting `datasources query` — options, ordering, one encode |
+| `cmd/gcx/datasources/query_routes.go` | Routing tables for the auto-detecting query: per-kind dispatch handlers, typed-command redirects, derived supported-kind list |
+| `internal/datasources/query/` | Shared query CLI infrastructure (opts, codecs, time parsing, kind normalization) |
 
 ### Deep Link URLs
 
