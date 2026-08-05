@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/elasticsearch"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -46,6 +48,41 @@ func TestGraphCodecRejectsUnsupportedResponseTypes(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Infinity")
 	})
+}
+
+func TestQueryCodecsElasticsearchMetrics(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterCodecs(ioOpts, true)
+		return ioOpts
+	}
+
+	resp := &elasticsearch.MetricsResponse{
+		Series: []elasticsearch.MetricSeries{{
+			Name:       "tempo",
+			Timestamps: []time.Time{time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)},
+			Values:     []*float64{ptrFloat(8)},
+		}},
+	}
+
+	t.Run("table codec renders series rows", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("table").Encode(&out, resp))
+		assert.Contains(t, out.String(), "tempo")
+		assert.Contains(t, out.String(), "8")
+	})
+
+	t.Run("graph codec renders a chart", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("graph").Encode(&out, resp))
+		assert.Contains(t, out.String(), "tempo")
+	})
+}
+
+func ptrFloat(f float64) *float64 {
+	v := f
+	return &v
 }
 
 func TestQueryJSONCodecInfluxDBTimestamps(t *testing.T) {
