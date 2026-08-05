@@ -564,11 +564,16 @@ they're removed.
 
 ### Singleton resources use `show`, not `get`
 
+> **Superseded:** The singleton/show policy in this subsection and the taxonomy
+> immediately below did not become the command-naming rule. The canonical guide
+> now uses `get` for a singleton; see
+> [command-naming.md](../design/command-naming.md).
+
 Resources with no ID and no list (e.g., `appo11y overrides`, `appo11y
 settings`) use `show` to distinguish from the adapter `get` which implies
 "by ID." This is codified as the **singleton rule** in the verb taxonomy.
 
-### New verb taxonomy rules
+### New verb taxonomy rules (superseded)
 
 Three rules added to `docs/design/naming.md`:
 

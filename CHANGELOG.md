@@ -1,3 +1,28 @@
+## Unreleased
+
+- Added `gcx instrumentation explain <id>` and `gcx instrumentation list-explanations` for looking up finding explanations bundled with `otel-checker` (bumped to v0.3.1).
+- `gcx instrumentation check` now surfaces an `EXPLAIN_ID` column in table output (and `explain_id` field in JSON), feedable directly into `gcx instrumentation explain`.
+
+## v1.0.0 (2026-07-28)
+
+### Features
+
+- alert: add ruler subtree for datasource-managed rule writes
+- kg: add `entities correlate` to resolve entities from alert labels
+- kg: add entity quality reports (`kg quality`), folded into `kg diagnose`
+
+### Fixes
+
+- alert: make GMA alert rules modifiable via the resources tier
+- cloud: drop status/createdAt/updatedAt from stack regions output
+- aio11y: point plugin id at renamed grafana-agento11y-app
+
+### Docs
+
+- GA: remove public preview warnings, add GA notes across docs and README
+- skills: harden agento11y-instrument and agento11y-prod-setup guidance
+- stop prescribing Editor/Admin for service-account tokens; installation fixes
+
 ## v0.6.0 (2026-07-24)
 
 ### Breaking changes
@@ -102,8 +127,6 @@
 - Refine output formatting (format and jq handling)
 - Remove obsolete publish-technical-documentation workflows
 
-
-## Unreleased
 
 ## v0.4.1 (2026-06-23)
 

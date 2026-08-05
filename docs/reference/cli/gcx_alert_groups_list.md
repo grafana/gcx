@@ -30,5 +30,5 @@ gcx alert groups list [flags]
 
 ### SEE ALSO
 
-* [gcx alert groups](gcx_alert_groups.md)	 - Manage alert rule groups.
+* [gcx alert groups](gcx_alert_groups.md)	 - Inspect alert rule groups and their evaluation status.
 

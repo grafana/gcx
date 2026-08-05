@@ -16,19 +16,22 @@ import (
 )
 
 type boundTestStore struct {
-	entries       map[string]string
-	getErr        error
-	setErr        error
-	setErrValue   string
-	setFailAt     int
-	setCalls      int
-	deleteErr     error
-	deleteThenErr bool
-	deleteFailAt  int
-	deleteCalls   int
-	gets          []string
-	sets          []string
-	deletes       []string
+	entries          map[string]string
+	getErr           error
+	getErrAfterSet   error
+	getErrAfterSetAt int
+	setErr           error
+	setErrValue      string
+	setStoredValue   string
+	setFailAt        int
+	setCalls         int
+	deleteErr        error
+	deleteThenErr    bool
+	deleteFailAt     int
+	deleteCalls      int
+	gets             []string
+	sets             []string
+	deletes          []string
 }
 
 type boundTestLogger struct {
@@ -57,6 +60,9 @@ func (s *boundTestStore) Get(key string) (string, error) {
 	if s.getErr != nil {
 		return "", s.getErr
 	}
+	if s.getErrAfterSet != nil && s.setCalls == s.getErrAfterSetAt {
+		return "", s.getErrAfterSet
+	}
 	value, ok := s.entries[key]
 	if !ok {
 		return "", credentials.ErrNotFound
@@ -72,7 +78,11 @@ func (s *boundTestStore) Set(key, value string) error {
 		return s.setErr
 	}
 	s.sets = append(s.sets, key)
-	s.entries[key] = value
+	if s.setStoredValue != "" {
+		s.entries[key] = s.setStoredValue
+	} else {
+		s.entries[key] = value
+	}
 	return nil
 }
 
@@ -1073,14 +1083,16 @@ func TestRuntimeExplicitCredentialOnSharedStackIsNotClearedByOtherContext(t *tes
 
 func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing.T) {
 	tests := []struct {
-		name  string
-		setup func(*boundTestStore)
+		name          string
+		setup         func(*boundTestStore)
+		expectedError string
 	}{
 		{
 			name: "get",
 			setup: func(store *boundTestStore) {
 				store.getErr = errors.New("generic get failure")
 			},
+			expectedError: "inspect keychain entry",
 		},
 		{
 			name: "second set",
@@ -1088,6 +1100,14 @@ func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing
 				store.setErr = errors.New("generic set failure")
 				store.setFailAt = 2
 			},
+			expectedError: "write keychain entry",
+		},
+		{
+			name: "write returns a different value",
+			setup: func(store *boundTestStore) {
+				store.setStoredValue = "different value"
+			},
+			expectedError: "stored value did not match",
 		},
 	}
 	for _, tt := range tests {
@@ -1104,6 +1124,7 @@ func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing
 
 			err := Write(context.Background(), ExplicitConfigFile(path), cfg)
 			require.Error(t, err)
+			require.ErrorContains(t, err, tt.expectedError)
 			raw, readErr := os.ReadFile(path)
 			require.NoError(t, readErr)
 			assert.Equal(t, original, raw)
@@ -1113,6 +1134,48 @@ func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing
 			assert.Empty(t, cfg.Stacks["default"].sourceIdentity)
 		})
 	}
+}
+
+func TestBoundKeychainUnreadableNewCredentialFallsBackAfterConfirmedCleanup(t *testing.T) {
+	store := newBoundTestStore()
+	store.getErrAfterSet = credentials.ErrUnavailable
+	store.getErrAfterSetAt = 1
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := boundStackTestConfig("https://example.invalid", "api-token")
+
+	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "api-token")
+	assert.NotContains(t, string(raw), "keychain:gcx:v2:")
+	assert.Empty(t, store.entries, "the unverifiable keychain generation must be removed before plaintext fallback")
+	assert.Equal(t, 1, store.deleteCalls, "the failed verification must perform its own confirmed cleanup")
+}
+
+func TestBoundKeychainVerifyAndCleanupFailureRollsBackStagedWrite(t *testing.T) {
+	store := newBoundTestStore()
+	store.getErrAfterSet = errors.New("injected verification failure")
+	store.getErrAfterSetAt = 1
+	store.deleteErr = errors.New("injected cleanup failure")
+	store.deleteFailAt = 1
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	original := []byte("version: 1\ncontexts: {}\ncurrent-context: \"\"\n")
+	require.NoError(t, os.WriteFile(path, original, 0o600))
+	cfg := boundStackTestConfig("https://example.invalid", "api-token")
+
+	err := Write(context.Background(), ExplicitConfigFile(path), cfg)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "injected verification failure")
+	require.ErrorContains(t, err, "injected cleanup failure")
+	raw, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	assert.Equal(t, original, raw)
+	assert.Empty(t, store.entries, "rollback must retain ownership after the immediate cleanup fails")
+	assert.Equal(t, 2, store.deleteCalls, "the failed immediate cleanup must be retried by rollback")
+	assert.Equal(t, "api-token", cfg.Stacks["default"].Grafana.APIToken)
+	assert.Empty(t, cfg.Stacks["default"].sourceIdentity)
 }
 
 func TestBoundKeychainWriteUnavailableFallsBackOnlyForNewCredential(t *testing.T) {
@@ -1266,7 +1329,7 @@ func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T)
 	txn.plaintextFallback = true
 
 	require.NoError(t, txn.commit(&warnings))
-	assert.Equal(t, "Warning: credential store unavailable; credentials remain in plaintext on disk; install or unlock your OS credential store (Keychain, Credential Manager, or Secret Service) to enable encrypted credential storage\n", warnings.String())
+	assert.Equal(t, "Warning: credential store could not securely store the credential; credentials remain in plaintext on disk; verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage\n", warnings.String())
 	assert.Empty(t, logger.warnings, "the request-scoped warning must not be duplicated through structured logging")
 
 	txn = newKeychainWriteTransaction(newBoundTestStore(), logger)
@@ -1274,7 +1337,7 @@ func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T)
 	txn.plaintextFallback = true
 
 	require.NoError(t, txn.commit(nil))
-	require.Equal(t, []string{"credential store unavailable; credentials remain in plaintext on disk"}, logger.warnings)
+	require.Equal(t, []string{"credential store could not securely store the credential; credentials remain in plaintext on disk"}, logger.warnings)
 
 	logger.warnings = nil
 	store := newBoundTestStore()
@@ -1285,7 +1348,7 @@ func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T)
 	txn.deferDelete("old-account", "stack:default", credentials.FieldGrafanaToken)
 
 	require.Error(t, txn.commit(nil))
-	assert.NotContains(t, logger.warnings, "credential store unavailable; credentials remain in plaintext on disk",
+	assert.NotContains(t, logger.warnings, "credential store could not securely store the credential; credentials remain in plaintext on disk",
 		"a failed commit must not claim plaintext fallback succeeded")
 }
 

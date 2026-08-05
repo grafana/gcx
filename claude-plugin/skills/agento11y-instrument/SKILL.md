@@ -14,7 +14,7 @@ description: >
   lost. Also checks agent_version (required for per-version Performance charts), set_result
   completeness, SYNC vs STREAM, parent_generation_ids DAG links, and workflow-step coverage.
   Recommends changes citing file:line and, only with explicit confirmation, applies minimal
-  diffs that don't change app behavior. Pulls SDK reference from sigil-sdk's llms.txt rather
+  diffs that don't change app behavior. Pulls SDK reference from agento11y's llms.txt rather
   than restating it, and hands off to `agento11y-test-starter` once data flows. It does NOT
   write test suites or set up tenant evaluations, rules, or guards — offline test suites are
   `agento11y-test-starter`, tenant eval rules + guards are `agento11y-prod-setup`;
@@ -38,7 +38,7 @@ this skill adds over the static instrumentation prompt is two things a prompt ca
    Diagnose the next gap from what's missing, not from guesswork.
 
 The SDK reference (env vars, provider snippets, field lists, framework adapters, workflow steps)
-lives in sigil-sdk's `llms.txt` "Path B". Fetch it rather than restating it here; this file holds
+lives in agento11y's `llms.txt` "Path B". Fetch it rather than restating it here; this file holds
 the flow and the decision logic. A minimal fallback lives in
 [references/instrumentation.md](references/instrumentation.md) for when the fetch is unavailable.
 
@@ -230,11 +230,11 @@ the fetched llms.txt (locate it by its heading — do not trust line numbers, th
 | 0 | **The `.env` actually takes effect.** Confirm the app loads its own `.env` by an explicit path (not a bare `load_dotenv()` resolved by CWD) **and** that it wins over vars already in the environment. Verify by printing `os.environ["AGENTO11Y_ENDPOINT"]` / `OTEL_EXPORTER_OTLP_ENDPOINT` **after** all imports, not before | **`import litellm` (and some other libs) inject localhost OTLP/ingest defaults into `os.environ` at import time** (`OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4318`, `AGENTO11Y_ENDPOINT=localhost:8080`). A plain `load_dotenv()` does **not** override already-set vars → the Cloud endpoints in `.env` never apply and everything ships to localhost, returning **200 OK** if a local stack is up. Zero error signal, and gcx against the Cloud tenant shows nothing. Fix: `load_dotenv(<path-relative-to-__file__>, override=True)` before constructing providers/client. A bare `load_dotenv()` also resolves the wrong `.env` by CWD | "Environment" |
 | 1 | OTel TracerProvider **and** MeterProvider created before the SDK client (verify by construction + Performance view / OTLP POSTs — **not** via gcx, which can't see OTel; see Step 5) | spans/metrics go to no-op → all latency/token/cost metrics lost. The #1 failure. | "OTel setup (required)" |
 | 2 | Providers shut down after `shutdown()` | last batch of spans/metrics dropped on exit | "OTel setup (required)" |
-| 3 | `agent_name` + `agent_version` set on generations / handlers | per-version Performance charts break (join on `gen_ai.agent.version`) | "Sigil architecture and ingest model", "Telemetry fields to prioritize" |
+| 3 | `agent_name` + `agent_version` set on generations / handlers | per-version Performance charts break (join on `gen_ai.agent.version`) | "Agent Observability architecture and ingest model", "Telemetry fields to prioritize" |
 | 4 | `set_result`/`SetResult` includes response_id, response_model, finish/stop reason, full token usage (incl. `cache_read_input_tokens`, `cache_write_input_tokens`, `reasoning_tokens`), **and `input`/`output` populated with `Message` objects** (system+user prompt in `input`, model reply in `output`) | charts/cost blank; wrong `cache_creation_input_tokens` name silently ignored; **empty `input`/`output` → the conversation thread shows "No messages in this turn" — tokens land but there is no visible prompt/response** | "Implementation rules", "Telemetry fields to prioritize" |
 | 5 | `rec.err()`/`Err()` checked after the recorder closes | SDK validation/enqueue errors are silent → generations never arrive, no signal | "Implementation rules" |
-| 6 | SYNC (non-stream) vs STREAM (stream) set correctly | streaming metrics (TTFT) corrupted | "Sigil architecture and ingest model", "Implementation rules" |
-| 6b | `operation_name` is a **recognized** value — `generateText` (SYNC default), `streamText` (STREAM default), `embeddings`, `execute_tool`, `framework_chain`, `framework_retriever`. Best: omit it and take the SDK default. Do **not** invent one like `"chat"` | the span reaches Tempo but the UI classifies `gen_ai.operation.name` as `unknown` → the conversation renders a synthetic generation node **with no attached span** → the trace does not show in the conversation and the "T" (trace) icon is absent, even though `trace_id`/`span_id` are set. Silent, like #1 | "Sigil architecture and ingest model", "Implementation rules" |
+| 6 | SYNC (non-stream) vs STREAM (stream) set correctly | streaming metrics (TTFT) corrupted | "Agent Observability architecture and ingest model", "Implementation rules" |
+| 6b | `operation_name` is a **recognized** value — `generateText` (SYNC default), `streamText` (STREAM default), `embeddings`, `execute_tool`, `framework_chain`, `framework_retriever`. Best: omit it and take the SDK default. Do **not** invent one like `"chat"` | the span reaches Tempo but the UI classifies `gen_ai.operation.name` as `unknown` → the conversation renders a synthetic generation node **with no attached span** → the trace does not show in the conversation and the "T" (trace) icon is absent, even though `trace_id`/`span_id` are set. Silent, like #1 | "Agent Observability architecture and ingest model", "Implementation rules" |
 | 7 | `parent_generation_ids` set on multi-agent / fan-in generations | no dependency DAG; upstream eval failures don't propagate | "Multi-agent dependency tracking" |
 | 8 | Workflow steps emitted for agentic pipelines with non-LLM nodes | execution graph invisible; node input/output state lost. Use the adapter if one exists, else `enqueue_workflow_step`; never both for one node (duplicates) | "Workflow step instrumentation (agentic pipelines)" |
 | 9 | Env vars are `AGENTO11Y_*` (not legacy `SIGIL_*`); client built config-free when env present | drift; duplicated config | "Environment" |
@@ -329,7 +329,7 @@ before-traffic vs after-traffic.
 ## Note — keeping this skill in sync
 
 The SDK reference (env vars, provider snippets, field lists, workflow-step schema, adapter matrix) is
-intentionally **not** duplicated here — it lives in sigil-sdk's `llms.txt` "Path B" and the
+intentionally **not** duplicated here — it lives in agento11y's `llms.txt` "Path B" and the
 per-language READMEs, which are the shipped source of truth. This skill holds only decision logic
 (state classification + gap checklist + the gcx verification loop). When a user-facing semantic
 changes (new SDK field, renamed env var, new framework adapter), update `llms.txt` (and its onboarding

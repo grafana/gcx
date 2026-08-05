@@ -72,6 +72,16 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   being acted on (resource selectors, UIDs, expressions, file paths) is
   positional. How to act on it (output format, concurrency, dry-run, filters)
   is a flag.
+- **The public command surface is stable within a major version.** Beginning
+  with v1.0.0, command paths, aliases, flags, and positional syntax are stable
+  within a major version. Naming consistency does not authorize breaking
+  changes: a grammar rule in this document is not by itself grounds for
+  renaming a released command. A preferred replacement may be added only while
+  the existing invocation remains functional; removal requires the next major
+  release, unless the surface was explicitly marked experimental before
+  release. The complete v1.0.0 command surface is therefore a supported
+  compatibility exception for all v1.x releases, including invocations that
+  predate or deviate from the rules above.
 
 ## Dual-Purpose Design
 
