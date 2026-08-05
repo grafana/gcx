@@ -9,6 +9,8 @@ newest first. Plugin-internal fields (_source, sort, highlight) are omitted.
 
 EXPR is a Lucene query string; omit it to match all documents in the time range.
 Datasource is resolved from -d flag or datasources.elasticsearch in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.
 
 ```
 gcx datasources elasticsearch logs [EXPR] [flags]
@@ -26,6 +28,12 @@ gcx datasources elasticsearch logs [EXPR] [flags]
 
   # Output as JSON
   gcx datasources elasticsearch logs -d UID 'app:frontend' -o json
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources elasticsearch logs 'level:error' --since 1h --share-link
+
+  # Continue the same log search in Grafana Explore
+  gcx datasources elasticsearch logs 'level:error' --since 1h --open
 ```
 
 ### Options
@@ -38,7 +46,9 @@ gcx datasources elasticsearch logs [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Max log lines to return (capped at 1000) (default 100)
+      --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+      --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --time-field string   Time field used for range filtering (default "@timestamp")

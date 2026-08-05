@@ -10,6 +10,8 @@ EXPR is a Lucene query string (e.g. 'app:frontend AND level:error'); omit it to
 match all documents in the time range. The index pattern comes from the
 datasource configuration.
 Datasource is resolved from -d flag or datasources.elasticsearch in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.
 
 ```
 gcx datasources elasticsearch query [EXPR] [flags]
@@ -27,6 +29,12 @@ gcx datasources elasticsearch query [EXPR] [flags]
 
   # Output as JSON, limit results
   gcx datasources elasticsearch query -d UID 'datacenter:us-east' --size 20 -o json
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources elasticsearch query 'level:error' --since 1h --share-link
+
+  # Continue the same search in Grafana Explore
+  gcx datasources elasticsearch query 'level:error' --since 1h --open
 ```
 
 ### Options
@@ -38,7 +46,9 @@ gcx datasources elasticsearch query [EXPR] [flags]
   -h, --help                help for query
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+      --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --size int            Max documents to return (capped at 1000) (default 100)
       --step string         Query step (e.g., '15s', '1m')

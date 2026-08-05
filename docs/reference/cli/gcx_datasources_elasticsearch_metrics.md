@@ -10,6 +10,8 @@ into series by a terms field.
 EXPR is a Lucene query string scoping the documents; omit it to aggregate all.
 Returns (time, value, series) rows. Use --step to control bucket size.
 Datasource is resolved from -d flag or datasources.elasticsearch in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.
 
 ```
 gcx datasources elasticsearch metrics [EXPR] [flags]
@@ -27,6 +29,12 @@ gcx datasources elasticsearch metrics [EXPR] [flags]
 
   # Average value of a numeric field
   gcx datasources elasticsearch metrics --agg avg --field duration_ms --since 1h -o json
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources elasticsearch metrics 'level:error' --since 6h --share-link
+
+  # Continue the same aggregation in Grafana Explore
+  gcx datasources elasticsearch metrics 'level:error' --since 6h --open
 ```
 
 ### Options
@@ -42,7 +50,9 @@ gcx datasources elasticsearch metrics [EXPR] [flags]
   -h, --help                help for metrics
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+      --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --time-field string   Time field for the date histogram (default "@timestamp")
