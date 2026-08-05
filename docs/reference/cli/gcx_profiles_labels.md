@@ -6,8 +6,11 @@ List labels or label values
 
 List all labels or get values for a specific label from a Pyroscope datasource.
 
+EXPR is an optional label selector (e.g., '{service_name="frontend"}') that
+scopes the results to matching series.
+
 ```
-gcx profiles labels [flags]
+gcx profiles labels [EXPR] [flags]
 ```
 
 ### Examples
@@ -28,6 +31,7 @@ gcx profiles labels [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.pyroscope is configured)
+      --expr string         Label selector to scope the results (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for labels
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.

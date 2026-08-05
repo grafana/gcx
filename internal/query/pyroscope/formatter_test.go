@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -253,4 +254,40 @@ func TestFormatSeriesTableWide(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFormatQueryTableWide(t *testing.T) {
+	longName := strings.Repeat("a", 70)
+
+	t.Run("untruncated names with self and total percentages", func(t *testing.T) {
+		resp := &pyroscope.QueryResponse{
+			Flamegraph: &pyroscope.Flamegraph{
+				Names: []string{"total", longName, "short"},
+				Levels: []pyroscope.Level{
+					{Values: []string{"0", "100", "0", "0"}},
+					{Values: []string{"0", "100", "60", "1"}},
+					{Values: []string{"0", "40", "40", "2"}},
+				},
+				Total:   100,
+				MaxSelf: 60,
+			},
+		}
+
+		var buf bytes.Buffer
+		require.NoError(t, pyroscope.FormatQueryTableWide(&buf, resp))
+		out := buf.String()
+
+		assert.Contains(t, out, "SELF%")
+		assert.Contains(t, out, "TOTAL%")
+		assert.Contains(t, out, longName, "wide output must not truncate function names")
+		assert.Contains(t, out, "60.00%")
+		assert.Contains(t, out, "100.00%")
+		assert.Contains(t, out, "40.00%")
+	})
+
+	t.Run("empty flamegraph", func(t *testing.T) {
+		var buf bytes.Buffer
+		require.NoError(t, pyroscope.FormatQueryTableWide(&buf, &pyroscope.QueryResponse{}))
+		assert.Contains(t, buf.String(), "(no profile data)")
+	})
 }

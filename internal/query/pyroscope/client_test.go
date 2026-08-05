@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -363,166 +364,220 @@ func TestClient_Query_RequestFields(t *testing.T) {
 	}
 }
 
+// protoBytesFields collects all occurrences of a length-delimited field from
+// a binary protobuf message.
+func protoBytesFields(body []byte, field protowire.Number) [][]byte {
+	var out [][]byte
+	for len(body) > 0 {
+		num, typ, n := protowire.ConsumeTag(body)
+		if n < 0 {
+			return out
+		}
+		body = body[n:]
+		if typ == protowire.BytesType {
+			v, vn := protowire.ConsumeBytes(body)
+			if vn < 0 {
+				return out
+			}
+			body = body[vn:]
+			if num == field {
+				out = append(out, v)
+			}
+			continue
+		}
+		if n = protowire.ConsumeFieldValue(num, typ, body); n < 0 {
+			return out
+		}
+		body = body[n:]
+	}
+	return out
+}
+
+func protoStringFields(body []byte, field protowire.Number) []string {
+	raw := protoBytesFields(body, field)
+	out := make([]string, len(raw))
+	for i, v := range raw {
+		out[i] = string(v)
+	}
+	return out
+}
+
+// protoVarintField returns the last occurrence of a varint field and whether
+// it was present.
+func protoVarintField(body []byte, field protowire.Number) (uint64, bool) {
+	var val uint64
+	var found bool
+	for len(body) > 0 {
+		num, typ, n := protowire.ConsumeTag(body)
+		if n < 0 {
+			return val, found
+		}
+		body = body[n:]
+		if typ == protowire.VarintType {
+			v, vn := protowire.ConsumeVarint(body)
+			if vn < 0 {
+				return val, found
+			}
+			body = body[vn:]
+			if num == field {
+				val, found = v, true
+			}
+			continue
+		}
+		if n = protowire.ConsumeFieldValue(num, typ, body); n < 0 {
+			return val, found
+		}
+		body = body[n:]
+	}
+	return val, found
+}
+
+// buildStacktracesPprofResponse wraps raw profile bytes in a binary
+// SelectMergeStacktracesResponse (field 5 = PprofProfile{1: profile}).
+func buildStacktracesPprofResponse(profile []byte) []byte {
+	var inner []byte
+	inner = protowire.AppendTag(inner, 1, protowire.BytesType)
+	inner = protowire.AppendBytes(inner, profile)
+	var msg []byte
+	msg = protowire.AppendTag(msg, 5, protowire.BytesType)
+	msg = protowire.AppendBytes(msg, inner)
+	return msg
+}
+
+// fakeProfileProto is a minimal valid binary protobuf that stands in for a
+// google.pprof.Profile; it carries one string-table entry (field 6 = "cpu").
+func fakeProfileProto() []byte {
+	var b []byte
+	b = protowire.AppendTag(b, 6, protowire.BytesType)
+	b = protowire.AppendString(b, "cpu")
+	return b
+}
+
+func requireGzippedProfile(t *testing.T, got []byte) {
+	t.Helper()
+	gz, err := gzip.NewReader(bytes.NewReader(got))
+	require.NoError(t, err, "response should be gzip-compressed")
+	decompressed, err := io.ReadAll(gz)
+	require.NoError(t, err)
+	assert.Equal(t, fakeProfileProto(), decompressed)
+}
+
 func TestClient_Pprof(t *testing.T) {
-	// fakeProfileProto is a minimal valid binary protobuf that stands in for a
-	// google.pprof.Profile; it carries one string-table entry (field 6 = "cpu").
-	fakeProfileProto := func() []byte {
-		var b []byte
-		b = protowire.AppendTag(b, 6, protowire.BytesType)
-		b = protowire.AppendString(b, "cpu")
-		return b
-	}()
-
-	tests := []struct {
-		name     string
-		req      pyroscope.PprofRequest
-		handler  http.HandlerFunc
-		wantGzip bool
-		wantErr  bool
-	}{
-		{
-			name: "returns gzip-compressed profile proto",
-			req: pyroscope.PprofRequest{
-				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-				LabelSelector: `{service_name="frontend"}`,
-			},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/SelectMergeProfile")
-				assert.Equal(t, "application/proto", r.Header.Get("Content-Type"))
-
-				// Decode the request proto and verify key fields.
-				body, _ := io.ReadAll(r.Body)
-				b := body
-				for len(b) > 0 {
-					num, typ, n := protowire.ConsumeTag(b)
-					b = b[n:]
-					switch {
-					case num == 1 && typ == protowire.BytesType:
-						v, n := protowire.ConsumeString(b)
-						b = b[n:]
-						assert.Equal(t, "process_cpu:cpu:nanoseconds:cpu:nanoseconds", v)
-					case num == 2 && typ == protowire.BytesType:
-						v, n := protowire.ConsumeString(b)
-						b = b[n:]
-						assert.Equal(t, `{service_name="frontend"}`, v)
-					default:
-						n := protowire.ConsumeFieldValue(num, typ, b)
-						if n < 0 {
-							break
-						}
-						b = b[n:]
-					}
-				}
-
-				w.Header().Set("Content-Type", "application/proto")
-				_, _ = w.Write(fakeProfileProto)
-			},
-			wantGzip: true,
-		},
-		{
-			name: "max_nodes field encoded when set",
-			req: pyroscope.PprofRequest{
-				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-				LabelSelector: `{}`,
-				MaxNodes:      512,
-			},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				body, _ := io.ReadAll(r.Body)
-				b := body
-				foundMaxNodes := false
-				for len(b) > 0 {
-					num, typ, n := protowire.ConsumeTag(b)
-					b = b[n:]
-					if num == 5 && typ == protowire.VarintType {
-						v, n := protowire.ConsumeVarint(b)
-						b = b[n:]
-						assert.Equal(t, uint64(512), v)
-						foundMaxNodes = true
-					} else {
-						n := protowire.ConsumeFieldValue(num, typ, b)
-						if n < 0 {
-							break
-						}
-						b = b[n:]
-					}
-				}
-				assert.True(t, foundMaxNodes, "max_nodes field (5) should be present")
-				w.Header().Set("Content-Type", "application/proto")
-				_, _ = w.Write(fakeProfileProto)
-			},
-			wantGzip: true,
-		},
-		{
-			name: "trace_id_selector fields encoded when set",
-			req: pyroscope.PprofRequest{
-				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-				LabelSelector: `{}`,
-				TraceIDs:      []string{"4bf92f3577b34da6a3ce929d0e0e4736", "7c9e66797425440de944be07fc1f90ae"},
-			},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				body, _ := io.ReadAll(r.Body)
-				b := body
-				var traceIDs []string
-				for len(b) > 0 {
-					num, typ, n := protowire.ConsumeTag(b)
-					b = b[n:]
-					if num == 8 && typ == protowire.BytesType {
-						v, n := protowire.ConsumeString(b)
-						b = b[n:]
-						traceIDs = append(traceIDs, v)
-					} else {
-						n := protowire.ConsumeFieldValue(num, typ, b)
-						if n < 0 {
-							break
-						}
-						b = b[n:]
-					}
-				}
-				assert.Equal(t, []string{"4bf92f3577b34da6a3ce929d0e0e4736", "7c9e66797425440de944be07fc1f90ae"}, traceIDs)
-				w.Header().Set("Content-Type", "application/proto")
-				_, _ = w.Write(fakeProfileProto)
-			},
-			wantGzip: true,
-		},
-		{
-			name: "server error is surfaced",
-			req: pyroscope.PprofRequest{
-				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-				LabelSelector: `{}`,
-			},
-			handler: func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte(`internal error`))
-			},
-			wantErr: true,
+	req := pyroscope.PprofRequest{
+		ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+		LabelSelector: `{service_name="frontend"}`,
+		MaxNodes:      512,
+		ProfileIDs:    []string{"550e8400-e29b-41d4-a716-446655440000"},
+		TraceIDs:      []string{"4bf92f3577b34da6a3ce929d0e0e4736", "7c9e66797425440de944be07fc1f90ae"},
+		StackTraceSelector: &pyroscope.StackTraceSelector{
+			CallSite: []pyroscope.Location{{Name: "main.run"}, {Name: "main.handler"}},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.handler)
-			defer server.Close()
+	// assertCommonFields checks the field numbers shared by both request
+	// messages (1-5) plus the selector fields at their per-message positions.
+	assertCommonFields := func(t *testing.T, body []byte, stsField, profileIDField, traceIDField protowire.Number) {
+		t.Helper()
+		assert.Equal(t, []string{"process_cpu:cpu:nanoseconds:cpu:nanoseconds"}, protoStringFields(body, 1))
+		assert.Equal(t, []string{`{service_name="frontend"}`}, protoStringFields(body, 2))
+		maxNodes, ok := protoVarintField(body, 5)
+		assert.True(t, ok, "max_nodes should be encoded")
+		assert.Equal(t, uint64(512), maxNodes)
+		assert.Equal(t, []string{"550e8400-e29b-41d4-a716-446655440000"}, protoStringFields(body, profileIDField))
+		assert.Equal(t, []string{"4bf92f3577b34da6a3ce929d0e0e4736", "7c9e66797425440de944be07fc1f90ae"}, protoStringFields(body, traceIDField))
 
-			client := newTestClient(t, server)
-			got, err := client.Pprof(context.Background(), "test-uid", tt.req)
+		selectors := protoBytesFields(body, stsField)
+		if assert.Len(t, selectors, 1, "stack_trace_selector should be encoded once") {
+			locations := protoBytesFields(selectors[0], 1)
+			names := make([]string, 0, len(locations))
+			for _, loc := range locations {
+				names = append(names, protoStringFields(loc, 1)...)
+			}
+			assert.Equal(t, []string{"main.run", "main.handler"}, names)
+		}
+	}
 
-			if tt.wantErr {
-				require.Error(t, err)
+	t.Run("resolved via SelectMergeStacktraces with format pprof", func(t *testing.T) {
+		var stacktracesCalls, legacyCalls int
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Equal(t, "application/proto", r.Header.Get("Content-Type"))
+			if !assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/SelectMergeStacktraces") {
+				legacyCalls++
 				return
 			}
-			require.NoError(t, err)
+			stacktracesCalls++
 
-			if tt.wantGzip {
-				// Verify the response is gzip-compressed and decompresses to our proto.
-				gz, err := gzip.NewReader(bytes.NewReader(got))
-				require.NoError(t, err, "response should be gzip-compressed")
-				decompressed, err := io.ReadAll(gz)
-				require.NoError(t, err)
-				assert.Equal(t, fakeProfileProto, decompressed)
+			body, _ := io.ReadAll(r.Body)
+			format, ok := protoVarintField(body, 6)
+			assert.True(t, ok, "format field should be encoded")
+			assert.Equal(t, uint64(4), format, "format should be PROFILE_FORMAT_PPROF")
+			assertCommonFields(t, body, 7, 8, 10)
+
+			w.Header().Set("Content-Type", "application/proto")
+			_, _ = w.Write(buildStacktracesPprofResponse(fakeProfileProto()))
+		}))
+		defer server.Close()
+
+		got, err := newTestClient(t, server).Pprof(context.Background(), "test-uid", req)
+		require.NoError(t, err)
+		requireGzippedProfile(t, got)
+		assert.Equal(t, 1, stacktracesCalls)
+		assert.Equal(t, 0, legacyCalls)
+	})
+
+	t.Run("falls back to SelectMergeProfile when pprof payload absent", func(t *testing.T) {
+		var legacyCalls int
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/proto")
+			if strings.Contains(r.URL.Path, "SelectMergeProfile") {
+				legacyCalls++
+				body, _ := io.ReadAll(r.Body)
+				assertCommonFields(t, body, 6, 7, 8)
+				_, _ = w.Write(fakeProfileProto())
+				return
 			}
-		})
-	}
+			// Old backend: format field ignored, flamegraph (field 1) returned.
+			var msg []byte
+			msg = protowire.AppendTag(msg, 1, protowire.BytesType)
+			msg = protowire.AppendBytes(msg, []byte{})
+			_, _ = w.Write(msg)
+		}))
+		defer server.Close()
+
+		got, err := newTestClient(t, server).Pprof(context.Background(), "test-uid", req)
+		require.NoError(t, err)
+		requireGzippedProfile(t, got)
+		assert.Equal(t, 1, legacyCalls)
+	})
+
+	t.Run("falls back to SelectMergeProfile when the request is rejected", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "SelectMergeProfile") {
+				w.Header().Set("Content-Type", "application/proto")
+				_, _ = w.Write(fakeProfileProto())
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`unknown field`))
+		}))
+		defer server.Close()
+
+		got, err := newTestClient(t, server).Pprof(context.Background(), "test-uid", req)
+		require.NoError(t, err)
+		requireGzippedProfile(t, got)
+	})
+
+	t.Run("server error on both endpoints is surfaced", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`internal error`))
+		}))
+		defer server.Close()
+
+		_, err := newTestClient(t, server).Pprof(context.Background(), "test-uid", req)
+		require.Error(t, err)
+	})
 }
 
 func TestClient_SelectHeatmap(t *testing.T) {

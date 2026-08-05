@@ -20,8 +20,7 @@ type QueryRequest struct {
 }
 
 // StackTraceSelector mirrors querier.v1.StackTraceSelector. Only the CallSite
-// variant is supported on the SelectMergeStacktraces RPC; GoPGO selection
-// lives on the SelectMergeProfile (pprof export) path.
+// variant is supported; GoPGO selection is not exposed by the CLI.
 type StackTraceSelector struct {
 	CallSite []Location `json:"callSite,omitempty"`
 }
@@ -235,12 +234,14 @@ func (p TimePoint) FloatValue() float64 {
 
 // PprofRequest represents a request to fetch a profile in pprof binary format.
 type PprofRequest struct {
-	ProfileTypeID string
-	LabelSelector string
-	Start         time.Time
-	End           time.Time
-	MaxNodes      int64
-	TraceIDs      []string
+	ProfileTypeID      string
+	LabelSelector      string
+	Start              time.Time
+	End                time.Time
+	MaxNodes           int64
+	ProfileIDs         []string
+	TraceIDs           []string
+	StackTraceSelector *StackTraceSelector
 }
 
 // PprofWriteResult is the structured output emitted after writing a pprof binary to disk.

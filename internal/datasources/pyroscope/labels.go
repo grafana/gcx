@@ -22,6 +22,7 @@ type pyroscopeLabelsOpts struct {
 	IO         cmdio.Options
 	Datasource string
 	Label      string
+	Expr       string
 }
 
 func (opts *pyroscopeLabelsOpts) setup(flags *pflag.FlagSet) {
@@ -31,6 +32,7 @@ func (opts *pyroscopeLabelsOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
+	flags.StringVar(&opts.Expr, "expr", "", "Label selector to scope the results (alternative to positional argument)")
 	opts.SetupTimeFlags(flags)
 }
 
@@ -41,13 +43,31 @@ func (opts *pyroscopeLabelsOpts) Validate() error {
 	return opts.ValidateTimeRange()
 }
 
+// resolveExpr resolves the optional label selector from the positional
+// argument or --expr. Unlike query commands, no selector is a valid input.
+func (opts *pyroscopeLabelsOpts) resolveExpr(args []string) (string, error) {
+	if opts.Expr != "" && len(args) > 0 {
+		return "", errors.New("provide the selector as a positional argument or via --expr, not both")
+	}
+	if opts.Expr != "" {
+		return opts.Expr, nil
+	}
+	if len(args) > 0 {
+		return args[0], nil
+	}
+	return "", nil
+}
+
 func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pyroscopeLabelsOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "labels",
+		Use:   "labels [EXPR]",
 		Short: "List labels or label values",
-		Long:  "List all labels or get values for a specific label from a Pyroscope datasource.",
+		Long: `List all labels or get values for a specific label from a Pyroscope datasource.
+
+EXPR is an optional label selector (e.g., '{service_name="frontend"}') that
+scopes the results to matching series.`,
 		Example: `
 	# List all labels (use datasource UID, not name)
 	gcx datasources pyroscope labels -d UID
@@ -55,13 +75,25 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	# Get values for a specific label
 	gcx datasources pyroscope labels -d UID --label service_name
 
+	# Labels present on series matching a selector
+	gcx datasources pyroscope labels -d UID '{service_name="frontend"}'
+
+	# Values of a label, scoped to a selector
+	gcx datasources pyroscope labels -d UID '{namespace="prod"}' -l service_name
+
 	# Search a wider window than the default last hour
 	gcx datasources pyroscope labels -d UID --since 24h
 
 	# Output as JSON
 	gcx datasources pyroscope labels -d UID -o json`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: cobra.RangeArgs(0, 1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			expr, err := opts.resolveExpr(args)
+			if err != nil {
 				return err
 			}
 
@@ -87,18 +119,24 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
+			var matchers []string
+			if expr != "" {
+				matchers = []string{expr}
+			}
+
 			if opts.Label != "" {
 				resp, err := client.LabelValues(ctx, datasourceUID, pyroscope.LabelValuesRequest{
-					Name:  opts.Label,
-					Start: start,
-					End:   end,
+					Name:     opts.Label,
+					Matchers: matchers,
+					Start:    start,
+					End:      end,
 				})
 				if err != nil {
 					return fmt.Errorf("failed to get label values: %w", err)
 				}
 
 				if len(resp.Names) == 0 {
-					emitEmptyWindowHint(cmd.ErrOrStderr(), fmt.Sprintf("values for label %q", opts.Label), start, end, opts.IsRange())
+					emitEmptyWindowHint(cmd.ErrOrStderr(), scopedSubject(fmt.Sprintf("values for label %q", opts.Label), expr), start, end, opts.IsRange())
 				}
 				if opts.IO.OutputFormat == "table" {
 					return pyroscope.FormatLabelsTable(cmd.OutOrStdout(), resp.Names)
@@ -107,15 +145,16 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			resp, err := client.LabelNames(ctx, datasourceUID, pyroscope.LabelNamesRequest{
-				Start: start,
-				End:   end,
+				Matchers: matchers,
+				Start:    start,
+				End:      end,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to get labels: %w", err)
 			}
 
 			if len(resp.Names) == 0 {
-				emitEmptyWindowHint(cmd.ErrOrStderr(), "labels", start, end, opts.IsRange())
+				emitEmptyWindowHint(cmd.ErrOrStderr(), scopedSubject("labels", expr), start, end, opts.IsRange())
 			}
 			if opts.IO.OutputFormat == "table" {
 				return pyroscope.FormatLabelsTable(cmd.OutOrStdout(), resp.Names)
@@ -126,11 +165,20 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources pyroscope labels -d UID --since 1h -o json",
+		agent.AnnotationLLMHint:   "gcx datasources pyroscope labels -d UID '{service_name=\"frontend\"}' --since 1h -o json",
 	}
 
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// scopedSubject appends the selector to an empty-window hint subject when the
+// request was selector-scoped.
+func scopedSubject(subject, expr string) string {
+	if expr == "" {
+		return subject
+	}
+	return subject + " matching " + expr
 }
 
 type pyroscopeLabelsTableCodec struct{}

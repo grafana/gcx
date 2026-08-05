@@ -225,12 +225,14 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 					return fmt.Errorf("%s already exists; use --pprof-overwrite to overwrite", dest)
 				}
 				data, err := client.Pprof(ctx, datasourceUID, pyroscope.PprofRequest{
-					LabelSelector: expr,
-					ProfileTypeID: opts.ProfileType,
-					Start:         start,
-					End:           end,
-					MaxNodes:      opts.MaxNodes,
-					TraceIDs:      opts.TraceIDs,
+					LabelSelector:      expr,
+					ProfileTypeID:      opts.ProfileType,
+					Start:              start,
+					End:                end,
+					MaxNodes:           opts.MaxNodes,
+					ProfileIDs:         opts.ProfileIDs,
+					TraceIDs:           opts.TraceIDs,
+					StackTraceSelector: opts.stackTraceSelector(),
 				})
 				if err != nil {
 					return fmt.Errorf("pprof fetch failed: %w", err)
