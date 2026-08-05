@@ -38,7 +38,9 @@ func ListDatasetsCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "List datasets in a BigQuery project",
 		Long: `List datasets (schemas) in a BigQuery project via INFORMATION_SCHEMA.SCHEMATA.
 
-When --project is omitted, the datasource's default project is queried.`,
+When --project is omitted, the datasource's default project is queried.
+
+At most 1000 datasets are returned; additional datasets are not listed.`,
 		Example: `
   # List datasets in the default project
   gcx datasources bigquery list-datasets
@@ -72,8 +74,9 @@ When --project is omitted, the datasource's default project is queried.`,
 			}
 
 			sql := fmt.Sprintf(
-				"SELECT schema_name FROM %s.SCHEMATA ORDER BY schema_name LIMIT 1000",
+				"SELECT schema_name FROM %s.SCHEMATA ORDER BY schema_name LIMIT %d",
 				bigquery.InfoSchemaPrefix(opts.Project, ""),
+				bigquery.MetadataRowLimit,
 			)
 
 			client, err := bigquery.NewClient(cfg)

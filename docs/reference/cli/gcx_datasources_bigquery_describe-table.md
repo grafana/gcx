@@ -11,6 +11,8 @@ The dataset is required, supplied either in the table name (DATASET.TABLE or
 PROJECT.DATASET.TABLE) or via --dataset. When the project is omitted, the
 datasource's default project is used.
 
+At most 1000 columns are returned; wider tables are truncated.
+
 ```
 gcx datasources bigquery describe-table TABLE [flags]
 ```

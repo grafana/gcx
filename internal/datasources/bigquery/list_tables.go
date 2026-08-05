@@ -42,7 +42,9 @@ func ListTablesCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `List tables in a BigQuery dataset via INFORMATION_SCHEMA.TABLES.
 
 --dataset is required. When --project is omitted, the datasource's default
-project is used. Run 'list-datasets' to discover available datasets.`,
+project is used. Run 'list-datasets' to discover available datasets.
+
+At most 1000 tables are returned; additional tables are not listed.`,
 		Example: `
   # List tables in a dataset (default project)
   gcx datasources bigquery list-tables --dataset my_dataset
@@ -83,8 +85,9 @@ project is used. Run 'list-datasets' to discover available datasets.`,
 			}
 
 			sql := fmt.Sprintf(
-				"SELECT table_name, table_type FROM %s.TABLES ORDER BY table_name LIMIT 1000",
+				"SELECT table_name, table_type FROM %s.TABLES ORDER BY table_name LIMIT %d",
 				bigquery.InfoSchemaPrefix(opts.Project, opts.Dataset),
+				bigquery.MetadataRowLimit,
 			)
 
 			client, err := bigquery.NewClient(cfg)
