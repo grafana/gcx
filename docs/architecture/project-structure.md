@@ -104,6 +104,7 @@ gcx/
 │   │   ├── loki/             # Loki HTTP client (log + metric queries)
 │   │   └── clickhouse/       # ClickHouse HTTP client
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
+│   ├── onboard/              # Cloud datasource onboarding core (result types, naming/collision, rollback, shared progress)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
