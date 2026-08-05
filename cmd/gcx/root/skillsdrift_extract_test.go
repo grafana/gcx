@@ -1,9 +1,52 @@
 package root_test
 
 import (
+	"maps"
 	"reflect"
+	"slices"
 	"testing"
+	"testing/fstest"
 )
+
+// TestSkillDocsFromFS pins that the skill walk reaches nested reference
+// markdown, not just the SKILL.md at each root.
+//
+// This is the assertion that used to be an invocation-count floor. A floor
+// guarded the same regression only by accident — it noticed that the total had
+// dropped — while also snapshotting how much the skills happened to say, so it
+// rotted on every rewrite and blocked consolidation. A synthetic tree tests the
+// traversal directly and stays true no matter how the real skills change.
+func TestSkillDocsFromFS(t *testing.T) {
+	fsys := fstest.MapFS{
+		"alpha/SKILL.md":                  {Data: []byte("# alpha\n")},
+		"alpha/references/deep.md":        {Data: []byte("# deep\n")},
+		"alpha/references/nested/more.md": {Data: []byte("# more\n")},
+		"beta/SKILL.md":                   {Data: []byte("# beta\n")},
+		"beta/assets/template.txt":        {Data: []byte("not markdown\n")},
+		"beta/scripts/run.sh":             {Data: []byte("#!/bin/sh\n")},
+		"README.md":                       {Data: []byte("# top level\n")},
+	}
+
+	docs, err := skillDocsFromFS(fsys, "tree")
+	if err != nil {
+		t.Fatalf("skillDocsFromFS() error = %v", err)
+	}
+
+	want := []string{
+		"tree/README.md",
+		"tree/alpha/SKILL.md",
+		"tree/alpha/references/deep.md",
+		"tree/alpha/references/nested/more.md",
+		"tree/beta/SKILL.md",
+	}
+	if got := slices.Sorted(maps.Keys(docs)); !reflect.DeepEqual(got, want) {
+		t.Errorf("skillDocsFromFS() keys = %v, want %v", got, want)
+	}
+
+	if got := docs["tree/alpha/references/nested/more.md"]; got != "# more\n" {
+		t.Errorf("nested reference content = %q, want %q", got, "# more\n")
+	}
+}
 
 // TestExtractInvocations pins the extraction behaviour of the skills drift
 // check: which parts of a skill markdown document count as gcx invocations

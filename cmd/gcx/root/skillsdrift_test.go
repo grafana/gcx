@@ -48,15 +48,20 @@ func TestSkillsGcxInvocationsMatchCommandTree(t *testing.T) {
 	rootCmd.InitDefaultHelpCmd()
 	rootCmd.InitDefaultCompletionCmd()
 
-	// The bundle currently yields ~1000 invocations (~700 from fences, ~330
-	// from inline spans) and the repo-local tree ~70; the floors catch a
-	// broken fence scan or a tree that stopped being walked at all, while
-	// leaving room for skills to shrink.
+	// Guarded without invocation-count floors on purpose. A floor is a
+	// snapshot of how much the skills currently happen to say, so it either
+	// rots as they are rewritten or blocks legitimate consolidation.
+	// Coverage is layered instead: TestSkillDocsFromFS proves the walk reaches
+	// nested reference markdown, TestExtractInvocations proves extraction from
+	// fences and inline spans, and checkSkillInvocations asserts below that
+	// each tree was actually discovered and scanned.
 	t.Run("claude-plugin/skills", func(t *testing.T) {
-		checkSkillInvocations(t, rootCmd, "claude-plugin/skills", bundledSkillDocs(t), 500)
+		docs, roots := bundledSkillDocs(t), bundledSkillRoots(t)
+		checkSkillInvocations(t, rootCmd, "claude-plugin/skills", docs, roots)
 	})
 	t.Run(".claude/skills", func(t *testing.T) {
-		checkSkillInvocations(t, rootCmd, ".claude/skills", repoLocalSkillDocs(t), 40)
+		docs, roots := repoLocalSkillDocs(t)
+		checkSkillInvocations(t, rootCmd, ".claude/skills", docs, roots)
 	})
 }
 
@@ -66,16 +71,52 @@ func bundledSkillDocs(t *testing.T) map[string]string {
 	t.Helper()
 
 	const label = "claude-plugin/skills"
-	skillsFS := claudeplugin.SkillsFS()
+	docs, err := skillDocsFromFS(claudeplugin.SkillsFS(), label)
+	if err != nil {
+		t.Fatalf("walking %s: %v", label, err)
+	}
+	return docs
+}
+
+// bundledSkillRoots returns the skill directory names in the embedded bundle,
+// read from the FS root rather than from the markdown walk under test — so a
+// walk that stopped recursing is still caught.
+func bundledSkillRoots(t *testing.T) []string {
+	t.Helper()
+
+	entries, err := fs.ReadDir(claudeplugin.SkillsFS(), ".")
+	if err != nil {
+		t.Fatalf("reading bundled skill roots: %v", err)
+	}
+
+	var roots []string
+	for _, e := range entries {
+		if e.IsDir() {
+			roots = append(roots, e.Name())
+		}
+	}
+	if len(roots) == 0 {
+		t.Fatal("found no skill directories in the embedded bundle")
+	}
+	return roots
+}
+
+// skillDocsFromFS returns every markdown file in fsys, keyed by label-prefixed
+// repo-relative path.
+//
+// A skill is SKILL.md *plus* its references/, and the references are where most
+// invocations live, so this has to recurse rather than match SKILL.md at each
+// root. TestSkillDocsFromFS pins that.
+func skillDocsFromFS(fsys fs.FS, label string) (map[string]string, error) {
 	docs := map[string]string{}
-	err := fs.WalkDir(skillsFS, ".", func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() || path.Ext(p) != ".md" {
 			return nil
 		}
-		content, err := fs.ReadFile(skillsFS, p)
+		content, err := fs.ReadFile(fsys, p)
 		if err != nil {
 			return err
 		}
@@ -83,19 +124,21 @@ func bundledSkillDocs(t *testing.T) map[string]string {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("walking %s: %v", label, err)
+		return nil, err
 	}
-	return docs
+	return docs, nil
 }
 
-// repoLocalSkillDocs returns the markdown of the repo-local contributor skills,
-// keyed by repo-relative path.
+// repoLocalSkillDocs returns the markdown of the repo-local contributor skills
+// keyed by repo-relative path, plus the skill roots that markdown is expected to
+// cover.
 //
-// Only git-tracked files are read. That tree is also where a contributor's own
-// harness installs third-party skills — they are not gitignored — and a skill
-// this repo does not own must not be able to fail this repo's CI with a defect
-// no committed file can fix.
-func repoLocalSkillDocs(t *testing.T) map[string]string {
+// Only git-tracked files are read, and the roots are derived from the same
+// tracked listing. That tree is also where a contributor's own harness installs
+// third-party skills — they are not gitignored — and a skill this repo does not
+// own must not be able to fail this repo's CI with a defect no committed file
+// can fix. Deriving roots from disk instead would reintroduce exactly that.
+func repoLocalSkillDocs(t *testing.T) (map[string]string, []string) {
 	t.Helper()
 
 	repoRoot := filepath.Join("..", "..", "..")
@@ -108,8 +151,19 @@ func repoLocalSkillDocs(t *testing.T) map[string]string {
 	}
 
 	docs := map[string]string{}
+	rootSet := map[string]bool{}
 	for rel := range strings.SplitSeq(strings.TrimRight(string(out), "\x00"), "\x00") {
-		if rel == "" || path.Ext(rel) != ".md" {
+		if rel == "" {
+			continue
+		}
+		// ".claude/skills/<root>/SKILL.md" — a tracked SKILL.md directly under a
+		// directory is what makes it a skill this repo owns. Exactly four
+		// segments: a deeper SKILL.md is a nested sub-skill, and treating its
+		// grandparent as a root would demand a SKILL.md that need not exist.
+		if parts := strings.Split(rel, "/"); len(parts) == 4 && parts[3] == "SKILL.md" {
+			rootSet[parts[2]] = true
+		}
+		if path.Ext(rel) != ".md" {
 			continue
 		}
 		content, err := os.ReadFile(filepath.Join(repoRoot, rel))
@@ -118,14 +172,31 @@ func repoLocalSkillDocs(t *testing.T) map[string]string {
 		}
 		docs[rel] = string(content)
 	}
-	return docs
+	return docs, slices.Sorted(maps.Keys(rootSet))
 }
 
 // checkSkillInvocations validates every gcx invocation in docs (repo-relative
-// path -> content) against the command tree, and guards against the extractor
-// silently matching nothing after a refactor.
-func checkSkillInvocations(t *testing.T, rootCmd *cobra.Command, label string, docs map[string]string, minInvos int) {
+// path -> content) against the command tree, and guards against the whole check
+// silently passing because nothing was scanned.
+//
+// The guards are deliberately count-independent: that every skill root
+// contributed its SKILL.md (so no root was skipped), and that the tree produced
+// at least one invocation (so extraction did not collapse to nothing). How many
+// invocations a skill contains is the skill author's business.
+//
+// Scope of the root check, stated honestly: it catches a root that produced no
+// SKILL.md at all. It does NOT catch a walk that recurses one level and stops,
+// because that still yields every root's SKILL.md while missing every
+// references/ file — TestSkillDocsFromFS is what covers depth, against a
+// synthetic FS. And for the repo-local tree the git listing supplies both roots
+// and docs, so there the check is a consistency assertion that stays correct if
+// that ever becomes a walk.
+func checkSkillInvocations(t *testing.T, rootCmd *cobra.Command, label string, docs map[string]string, roots []string) {
 	t.Helper()
+
+	if len(docs) == 0 {
+		t.Fatalf("discovered no markdown in %s; the tree moved or stopped being walked", label)
+	}
 
 	total := 0
 	for _, repoPath := range slices.Sorted(maps.Keys(docs)) {
@@ -142,10 +213,17 @@ func checkSkillInvocations(t *testing.T, rootCmd *cobra.Command, label string, d
 			t.Errorf("%s:%d: %s", repoPath, inv.line, msg)
 		}
 	}
-	if total < minInvos {
-		t.Fatalf("extracted only %d gcx invocations from %s, expected at least %d; extractor is likely broken or the tree moved", total, label, minInvos)
+
+	for _, root := range roots {
+		if _, ok := docs[label+"/"+root+"/SKILL.md"]; !ok {
+			t.Errorf("%s/%s/SKILL.md was not discovered; that skill is unscanned", label, root)
+		}
 	}
-	t.Logf("validated %d gcx invocations from %s", total, label)
+
+	if total == 0 {
+		t.Fatalf("extracted no gcx invocations from %s; extraction is broken", label)
+	}
+	t.Logf("validated %d gcx invocations from %d markdown files in %s", total, len(docs), label)
 }
 
 // TestValidateInvocation pins the validation behaviour of the skills drift
