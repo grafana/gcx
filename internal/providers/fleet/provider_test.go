@@ -244,10 +244,19 @@ func TestPipelineTableCodec_Encode(t *testing.T) {
 // TestPipelineTableCodec_WideShowsConfigType asserts the wide table surfaces the
 // pipeline config type, so OTel pipelines are distinguishable from Alloy ones.
 // An empty configType (the Alloy default) renders as "-".
+//
+// The assertions index the column, and the fixtures carry no hyphen in their ID
+// or name: a plain substring check for "-" passes on any row that contains a
+// hyphen anywhere, whatever the codec renders in the config type column.
 func TestPipelineTableCodec_WideShowsConfigType(t *testing.T) {
+	// Wide columns: ID, NAME, ENABLED, CONFIG TYPE, MATCHERS.
+	const configTypeColumn = 3
+
+	// Both rows declare a matcher, so the only "-" a correct codec emits is the
+	// empty config type of the Alloy row.
 	pipelines := []fleet.Pipeline{
-		{ID: "p-1", Name: "otel-one", Enabled: new(true), ConfigType: "CONFIG_TYPE_OTEL"},
-		{ID: "p-2", Name: "alloy-one", Enabled: new(true)},
+		{ID: "p1", Name: "otelone", Enabled: new(true), ConfigType: "CONFIG_TYPE_OTEL", Matchers: []string{"env=prod"}},
+		{ID: "p2", Name: "alloyone", Enabled: new(true), Matchers: []string{"env=dev"}},
 	}
 
 	var buf bytes.Buffer
@@ -256,11 +265,17 @@ func TestPipelineTableCodec_WideShowsConfigType(t *testing.T) {
 
 	output := buf.String()
 	assert.Contains(t, output, "CONFIG TYPE", "wide header should include CONFIG TYPE")
-	assert.Contains(t, output, "CONFIG_TYPE_OTEL", "OTel pipeline should show its config type")
 
 	lines := strings.Split(strings.TrimSpace(output), "\n")
-	require.GreaterOrEqual(t, len(lines), 3)
-	assert.Contains(t, lines[2], "-", "empty configType should render as -")
+	require.Len(t, lines, 3, "header + 2 data rows")
+
+	otelRow := strings.Fields(lines[1])
+	require.Len(t, otelRow, 5)
+	assert.Equal(t, "CONFIG_TYPE_OTEL", otelRow[configTypeColumn], "OTel pipeline should show its config type")
+
+	alloyRow := strings.Fields(lines[2])
+	require.Len(t, alloyRow, 5)
+	assert.Equal(t, "-", alloyRow[configTypeColumn], "empty configType should render as -")
 }
 
 func TestPipelineTableCodec_WrongType(t *testing.T) {

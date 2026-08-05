@@ -193,6 +193,28 @@ func TestClient_UpdatePipeline(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestClient_ListPipelines_PreservesConfigType is a regression test for the list
+// path, which feeds the wide table: configType must survive the list decode, or
+// OTel pipelines stay indistinguishable from Alloy ones in gcx output.
+func TestClient_ListPipelines_PreservesConfigType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"pipelines": []map[string]any{
+				{"id": "otel-1", "name": "otel-pipeline", "configType": "CONFIG_TYPE_OTEL"},
+				{"id": "alloy-1", "name": "alloy-pipeline"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	pipelines, err := client.ListPipelines(context.Background())
+	require.NoError(t, err)
+	require.Len(t, pipelines, 2)
+	assert.Equal(t, "CONFIG_TYPE_OTEL", pipelines[0].ConfigType, "configType must survive the list decode")
+	assert.Empty(t, pipelines[1].ConfigType, "a pipeline without configType decodes to the empty Alloy default")
+}
+
 // TestClient_GetPipeline_PreservesConfigType is a regression test for the OTel
 // pipeline bug: a Fleet API response carrying "configType":"CONFIG_TYPE_OTEL"
 // must not lose that field on decode, otherwise valid OTel YAML is later treated
@@ -214,6 +236,38 @@ func TestClient_GetPipeline_PreservesConfigType(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.Equal(t, "CONFIG_TYPE_OTEL", p.ConfigType, "configType must survive API decode")
+}
+
+// TestClient_CreatePipeline_SendsConfigType is a regression test: a new OTel
+// pipeline must send "configType":"CONFIG_TYPE_OTEL", otherwise Fleet validates
+// the OTel YAML as Alloy River and rejects the request.
+func TestClient_CreatePipeline_SendsConfigType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+
+		var p fleet.Pipeline
+		assert.NoError(t, json.Unmarshal(body["pipeline"], &p))
+		assert.Equal(t, "CONFIG_TYPE_OTEL", p.ConfigType, "configType must be sent on create")
+
+		writeJSON(w, map[string]any{
+			"id":         "otel-1",
+			"name":       "macos_endpoint_otel",
+			"configType": "CONFIG_TYPE_OTEL",
+			"contents":   "receivers: {}",
+		})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	created, err := client.CreatePipeline(context.Background(), fleet.Pipeline{
+		Name:       "macos_endpoint_otel",
+		Contents:   "receivers: {}",
+		ConfigType: "CONFIG_TYPE_OTEL",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created)
+	assert.Equal(t, "CONFIG_TYPE_OTEL", created.ConfigType, "configType must survive the create response decode")
 }
 
 // TestClient_UpdatePipeline_SendsConfigType is a regression test: an OTel
