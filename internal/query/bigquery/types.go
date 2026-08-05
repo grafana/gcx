@@ -10,8 +10,16 @@ import (
 	querysql "github.com/grafana/gcx/internal/query/sql"
 )
 
-// DatasourceType is the Grafana plugin ID for BigQuery datasources.
-const DatasourceType = "grafana-bigquery-datasource"
+const (
+	// DatasourceType is the Grafana plugin ID for BigQuery datasources.
+	DatasourceType = "grafana-bigquery-datasource"
+	// QueryFormatTable selects the datasource query API's table (row/column)
+	// response format, matching the other SQL datasources.
+	QueryFormatTable = 1
+	// MetadataRowLimit caps the rows returned by the INFORMATION_SCHEMA
+	// discovery queries (list-datasets, list-tables, describe-table).
+	MetadataRowLimit = 1000
+)
 
 // EscapeSQLString escapes single quotes for use in SQL string literals.
 func EscapeSQLString(s string) string {

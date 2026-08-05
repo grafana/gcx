@@ -43,7 +43,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 				"refId":      "A",
 				"datasource": map[string]any{"type": DatasourceType, "uid": datasourceUID},
 				"rawSql":     req.RawSQL,
-				"format":     1,
+				"format":     QueryFormatTable,
 			},
 		},
 		"from": from,

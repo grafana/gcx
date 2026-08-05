@@ -8,6 +8,8 @@ List datasets (schemas) in a BigQuery project via INFORMATION_SCHEMA.SCHEMATA.
 
 When --project is omitted, the datasource's default project is queried.
 
+At most 1000 datasets are returned; additional datasets are not listed.
+
 ```
 gcx datasources bigquery list-datasets [flags]
 ```

@@ -44,7 +44,9 @@ INFORMATION_SCHEMA.COLUMNS.
 
 The dataset is required, supplied either in the table name (DATASET.TABLE or
 PROJECT.DATASET.TABLE) or via --dataset. When the project is omitted, the
-datasource's default project is used.`,
+datasource's default project is used.
+
+At most 1000 columns are returned; wider tables are truncated.`,
 		Example: `
   # Describe a table in a dataset (default project; equivalent forms)
   gcx datasources bigquery describe-table my_dataset.events
@@ -108,14 +110,16 @@ datasource's default project is used.`,
 			if err := bigquery.ValidateName(dataset, "dataset"); err != nil {
 				return err
 			}
-			if err := bigquery.ValidateName(table, "table"); err != nil {
-				return err
-			}
+			// The table name is compared as a SQL string literal (not
+			// interpolated as an identifier), so EscapeSQLString is sufficient.
+			// Deliberately not identifier-validated — that would reject legit
+			// BigQuery flexible table names containing hyphens for no benefit.
 
 			sql := fmt.Sprintf(
-				"SELECT column_name, data_type, is_nullable FROM %s.COLUMNS WHERE table_name = '%s' ORDER BY ordinal_position LIMIT 1000",
+				"SELECT column_name, data_type, is_nullable FROM %s.COLUMNS WHERE table_name = '%s' ORDER BY ordinal_position LIMIT %d",
 				bigquery.InfoSchemaPrefix(project, dataset),
 				bigquery.EscapeSQLString(table),
+				bigquery.MetadataRowLimit,
 			)
 
 			client, err := bigquery.NewClient(cfg)

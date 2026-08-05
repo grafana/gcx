@@ -9,6 +9,8 @@ List tables in a BigQuery dataset via INFORMATION_SCHEMA.TABLES.
 --dataset is required. When --project is omitted, the datasource's default
 project is used. Run 'list-datasets' to discover available datasets.
 
+At most 1000 tables are returned; additional tables are not listed.
+
 ```
 gcx datasources bigquery list-tables [flags]
 ```
