@@ -171,6 +171,34 @@ func TestEnforceLimit(t *testing.T) {
 			100,
 			"SELECT * FROM t\nLIMIT 100 OFFSET 10",
 		},
+		// DML, scripting and remaining DDL statements: appending a LIMIT makes
+		// a correct statement fail with a syntax error.
+		{"bail on DML INSERT", "INSERT INTO t (a) VALUES (1)", 100, "INSERT INTO t (a) VALUES (1)"},
+		{"bail on DML UPDATE", "UPDATE t SET a = 1 WHERE b = 2", 100, "UPDATE t SET a = 1 WHERE b = 2"},
+		{"bail on DML DELETE", "DELETE FROM t WHERE x = 1", 100, "DELETE FROM t WHERE x = 1"},
+		{"bail on DML MERGE", "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a", 100, "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a"},
+		{"bail on DDL TRUNCATE", "TRUNCATE TABLE t", 100, "TRUNCATE TABLE t"},
+		{"bail on scripting BEGIN", "BEGIN SELECT 1; END", 100, "BEGIN SELECT 1; END"},
+		{"bail on scripting DECLARE", "DECLARE x INT64 DEFAULT 1", 100, "DECLARE x INT64 DEFAULT 1"},
+		{"bail on procedure CALL", "CALL mydataset.myprocedure(1)", 100, "CALL mydataset.myprocedure(1)"},
+		{"bail on lowercase DML delete", "delete from t where x = 1", 100, "delete from t where x = 1"},
+		{"bail on DROP", "DROP TABLE t", 100, "DROP TABLE t"},
+		{"bail on ALTER", "ALTER TABLE t ADD COLUMN a INT64", 100, "ALTER TABLE t ADD COLUMN a INT64"},
+		{"bail on SHOW", "SHOW TABLES", 100, "SHOW TABLES"},
+		// DML keywords must stay anchored: they are legal mid-query identifiers
+		// and clause words, so they must not suppress the row cap.
+		{
+			"appends LIMIT when DELETE appears mid-query",
+			"SELECT deleted_at\nFROM t\nWHERE action = 'delete'",
+			100,
+			"SELECT deleted_at\nFROM t\nWHERE action = 'delete' LIMIT 100",
+		},
+		{
+			"appends LIMIT when UPDATE appears on a later line",
+			"SELECT a\nFROM t\nORDER BY updated_at",
+			100,
+			"SELECT a\nFROM t\nORDER BY updated_at LIMIT 100",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
