@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -437,5 +439,196 @@ func TestPrintRemoteSessionHint(t *testing.T) {
 			assert.Contains(t, out, "ssh -L 54321:127.0.0.1:54321")
 			assert.Contains(t, out, "gcx login --oauth-manual")
 		})
+	}
+}
+
+// TestStartPasteWatcherRequiresRemoteSession pins the gate on the paste race:
+// it must not take over the terminal for a local login or in agent mode.
+func TestStartPasteWatcherRequiresRemoteSession(t *testing.T) {
+	tests := []struct {
+		name      string
+		env       map[string]string
+		wantStart bool
+	}{
+		{
+			name:      "local session",
+			env:       map[string]string{},
+			wantStart: false,
+		},
+		{
+			name:      "agent mode",
+			env:       map[string]string{"SSH_CONNECTION": "10.0.0.1 1 10.0.0.2 22", "GCX_AGENT_MODE": "1"},
+			wantStart: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, name := range []string{"SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"} {
+				t.Setenv(name, "")
+			}
+			t.Setenv("GCX_AGENT_MODE", "0")
+			for name, value := range tc.env {
+				t.Setenv(name, value)
+			}
+			agent.ResetForTesting()
+			t.Cleanup(agent.ResetForTesting)
+
+			var writer bytes.Buffer
+			watcher := auth.StartPasteWatcher(&writer, 54321)
+			if watcher != nil {
+				defer watcher.Close()
+			}
+			assert.Equal(t, tc.wantStart, watcher != nil)
+			if watcher == nil {
+				assert.Zero(t, writer.Len(), "a watcher that does not start prints nothing")
+			}
+		})
+	}
+}
+
+// remoteSessionForTest makes IsRemoteSession report true and agent mode false,
+// which is the only state in which the paste watcher starts.
+func remoteSessionForTest(t *testing.T) {
+	t.Helper()
+	t.Setenv("SSH_CONNECTION", "10.0.0.1 51234 10.0.0.2 22")
+	t.Setenv("SSH_CLIENT", "")
+	t.Setenv("SSH_TTY", "")
+	t.Setenv("GCX_AGENT_MODE", "0")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+}
+
+// TestPasteWatcherCloseReleasesTheTerminal pins the property that makes the
+// paste race safe: Close must unblock the pending read and wait for the reader
+// goroutine. A stale reader would compete with the prompts that run after
+// login.
+func TestPasteWatcherCloseReleasesTheTerminal(t *testing.T) {
+	remoteSessionForTest(t)
+
+	reader, writerEnd, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = writerEnd.Close() })
+	restore := auth.SwapPasteTerminal(reader, true)
+	t.Cleanup(restore)
+
+	var out bytes.Buffer
+	watcher := auth.StartPasteWatcher(&out, 54321)
+	require.NotNil(t, watcher)
+	assert.Contains(t, out.String(), "-L 54321:127.0.0.1:54321")
+	assert.Contains(t, out.String(), "Redirect URL")
+
+	// Close must return, which it only can once the reader goroutine ended.
+	done := make(chan struct{})
+	go func() {
+		watcher.Close()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not release the terminal reader")
+	}
+}
+
+// TestPasteWatcherDeliversAndRejects covers both watcher outcomes: a usable
+// redirect URL reaches the caller, and an unusable one re-prompts instead of
+// ending the flow, because the callback server is still listening.
+func TestPasteWatcherDeliversAndRejects(t *testing.T) {
+	remoteSessionForTest(t)
+
+	reader, writerEnd, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = writerEnd.Close() })
+	restore := auth.SwapPasteTerminal(reader, true)
+	t.Cleanup(restore)
+
+	var out bytes.Buffer
+	watcher := auth.StartPasteWatcher(&out, 54321)
+	require.NotNil(t, watcher)
+	t.Cleanup(watcher.Close)
+
+	// An unusable line must not deliver a value, and must re-prompt.
+	_, err = writerEnd.WriteString("not-a-url\n")
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return strings.Contains(out.String(), "That URL did not work")
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.Contains(t, out.String(), "Redirect URL")
+
+	select {
+	case <-watcher.Values():
+		t.Fatal("an unusable line must not deliver a value")
+	default:
+	}
+
+	// A usable line reaches the caller.
+	_, err = writerEnd.WriteString("http://127.0.0.1:54321/callback?code=c1&state=s1\n")
+	require.NoError(t, err)
+	select {
+	case values := <-watcher.Values():
+		assert.Equal(t, "c1", values.Get("code"))
+		assert.Equal(t, "s1", values.Get("state"))
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watcher did not deliver the pasted URL")
+	}
+}
+
+// TestPasteWatcherRejectionDoesNotEchoTheURL keeps the no-echo rule on the
+// re-prompt path: the pasted line holds a single-use authorization code.
+func TestPasteWatcherRejectionDoesNotEchoTheURL(t *testing.T) {
+	remoteSessionForTest(t)
+
+	const secret = "SECRETCODE"
+
+	reader, writerEnd, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = writerEnd.Close() })
+	restore := auth.SwapPasteTerminal(reader, true)
+	t.Cleanup(restore)
+
+	var out bytes.Buffer
+	watcher := auth.StartPasteWatcher(&out, 54321)
+	require.NotNil(t, watcher)
+	t.Cleanup(watcher.Close)
+
+	_, err = writerEnd.WriteString("http://127.0.0.1:54321/callback-" + secret + "\n")
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return strings.Contains(out.String(), "That URL did not work")
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.NotContains(t, out.String(), secret)
+}
+
+// TestOpenPasteTerminalReadIsCancellable is the regression guard for the trap
+// that makes the paste race hang: File.Fd puts the descriptor back into
+// blocking mode, the read then blocks inside the syscall instead of the
+// poller, and Close can no longer stop it. The login hangs forever after the
+// browser callback arrives.
+//
+// The test needs a controlling terminal, so it skips where there is none.
+func TestOpenPasteTerminalReadIsCancellable(t *testing.T) {
+	tty, ok := auth.OpenPasteTerminal()
+	if !ok {
+		t.Skip("no controlling terminal available")
+	}
+
+	read := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 1)
+		_, err := tty.Read(buf)
+		read <- err
+	}()
+
+	// Give the goroutine time to enter the read before closing.
+	time.Sleep(100 * time.Millisecond)
+	require.NoError(t, tty.Close())
+
+	select {
+	case err := <-read:
+		require.ErrorIs(t, err, os.ErrClosed)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not unblock the read: the descriptor is in blocking mode, " +
+			"which makes the paste race hang after the browser callback arrives")
 	}
 }

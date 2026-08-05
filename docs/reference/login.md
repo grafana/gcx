@@ -57,43 +57,55 @@ be loaded normally.
 
 The OAuth callback server listens on `127.0.0.1` on the computer that runs gcx.
 When you run gcx over SSH, the browser on your own computer cannot open that
-address, and the login never completes. gcx detects an SSH session and prints
-the two options below.
+address.
 
-**Option A — forward the port.** Use this when you control the SSH session.
+**You do not need a flag, and you do not need to restart.** gcx detects the SSH
+session, keeps the callback server listening, and also reads a pasted redirect
+URL. It accepts whichever arrives first:
 
-```bash
-# On your own computer:
-ssh -L 54321:127.0.0.1:54321 remote-host
+```
+Note: gcx runs in an SSH session.
+The browser on your computer cannot open the callback address on this host.
+Do one of these two steps. gcx accepts the one that completes first.
 
-# On the remote host:
-gcx login my-stack --server https://my-stack.grafana.net --oauth --oauth-callback-port 54321
+  1. Add a port forward to this SSH session. Press Enter, then press ~C,
+     then type this line:
+       -L 54321:127.0.0.1:54321
+
+  2. Approve the login in the browser on your computer. The browser then
+     goes to an address that does not load. Copy that address and paste it
+     here.
+
+Redirect URL (or wait for the browser):
 ```
 
-**Option B — paste the redirect URL.** Use this when you cannot forward a port.
+**Option 1 — add a forward to the running session.** `~C` is the OpenSSH escape
+that opens a command line for `-L`, `-R`, and `-D`. It needs no reconnect and no
+hostname, and gcx keeps waiting, so the login completes as soon as the browser
+reaches the forwarded port. The escape only works after a newline, so press
+Enter first.
+
+**Option 2 — paste the redirect URL.** Approve in the browser, let it fail to
+load `http://127.0.0.1:<port>/callback?...`, copy the whole address, and paste
+it at the prompt. If the address does not work, gcx says why and asks again; the
+callback server stays up the whole time.
+
+Do these steps quickly. The authorization code expires.
+
+**`--oauth-manual` for scripts and terminals with no `/dev/tty`.** The flag
+starts no callback server at all and only reads the pasted URL:
 
 ```bash
 gcx login my-stack --server https://my-stack.grafana.net --oauth-manual
 ```
 
-gcx prints a login URL and waits. The steps are:
-
-1. Open the printed URL in the browser on your own computer.
-2. Check that the browser shows the same verification code. Then approve.
-3. The browser goes to `http://127.0.0.1:54321/callback?...` and does not load.
-   This is correct. gcx does not listen on that address.
-4. Copy the full address from the browser address bar.
-5. Paste the address at the `Redirect URL:` prompt in the terminal.
-
-Do these steps quickly. The authorization code expires.
-
-`--oauth-manual` implies `--oauth`. It is mutually exclusive with
-`--oauth-callback-port`, because manual mode starts no callback server. The
+It implies `--oauth` and is mutually exclusive with `--oauth-callback-port`. The
 same flag works on `gcx cloud login`, and one choice covers both the stack step
-and the Cloud follow-up step.
+and the Cloud follow-up step. You do not need it for an ordinary interactive SSH
+login — the prompt above appears on its own.
 
 **Close other `gcx login` sessions on the browser computer first.** A gcx login
-that already listens on port 54321 there receives the callback, rejects it on
+that already listens on the same port there receives the callback, rejects it on
 the state check, and ends its own flow. Your paste still succeeds, but the
 other login does not.
 
@@ -358,7 +370,7 @@ Each entry pairs the error you see with what it means and how to fix it.
 
 4. **OAuth over SSH never completes; the browser shows `ERR_CONNECTION_REFUSED` on 127.0.0.1**
     - *Means:* the callback server listens on the loopback address of the remote host. The browser on your own computer cannot reach it.
-    - *Fix:* Re-run with `--oauth-manual` and paste the redirect URL, or forward the callback port with `ssh -L`. See [Remote host or SSH session](#remote-host-or-ssh-session).
+    - *Fix:* This is expected. Copy that address from the browser and paste it at the `Redirect URL` prompt, or add a port forward to the running session with `~C`. See [Remote host or SSH session](#remote-host-or-ssh-session). If gcx printed no prompt, it found no `/dev/tty`; re-run with `--oauth-manual`.
 
 5. **`Permission Required` on the OAuth consent page (`gcx User` role / `grafana-assistant-app.tokens.gcx:access`)**
     - *Means:* your Grafana user lacks the `grafana-assistant-app.tokens.gcx:access` permission that gates gcx token minting. The **gcx User** role granting it is normally auto-assigned to Viewer and above, but the instance may run a grafana-assistant-app version older than 2.0.26 (role does not exist yet) or have customized basic-role grants.

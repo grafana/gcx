@@ -262,9 +262,35 @@ byte-identical to the one on the authorize request, so both come from one
 string. Port 54321 is the first port of the normal auto-pick range, so manual
 mode presents no `redirect_uri` shape that grafana.com has not already seen.
 
-gcx also prints an SSH hint on the normal callback path when
-`terminal.IsRemoteSession()` reports an SSH session. The hint offers the
-`ssh -L` port forward and `--oauth-manual`.
+### The paste race on the callback path
+
+`--oauth-manual` is the scripted form. Interactively, an SSH user needs no flag:
+when `terminal.IsRemoteSession()` reports an SSH session and gcx is not in agent
+mode, `startPasteWatcher` (`internal/auth/paste.go`) keeps the callback server
+listening **and** reads a pasted redirect URL. The `select` in
+`runWithCallbackServer` takes whichever completes first, so adding a port
+forward and pasting are both live at once and neither needs a restart. A URL
+that does not work re-prompts instead of ending the flow, because the callback
+server is still up.
+
+The watcher reads a separately opened `/dev/tty`, never `os.Stdin`. Go keeps the
+standard streams out of its poller, so a blocking read on `os.Stdin` cannot be
+cancelled; a stale reader would then compete with the `huh` prompts that run
+after login. A file from `os.OpenFile` is non-blocking and registered with the
+poller, so `Close` unblocks the pending read, and `Close` waits for the reader
+goroutine to end.
+
+One trap guards that property: **never call `File.Fd` on this file.** `Fd` puts
+the descriptor back into blocking mode, the read then blocks inside the syscall
+rather than the poller, and `Close` can no longer stop it — the login hangs
+forever once the browser callback arrives.
+`TestOpenPasteTerminalReadIsCancellable` is the regression guard, and it is also
+why the opener does not call `term.IsTerminal`: `/dev/tty` is the controlling
+terminal by definition, and the open fails when the process has none.
+
+When the watcher cannot start (no `/dev/tty`, agent mode), gcx falls back to
+`printRemoteSessionHint`, which offers the `ssh -L` port forward and
+`--oauth-manual`.
 
 The token exchange response carries an `api_endpoint` field, stored as
 `GrafanaConfig.ProxyEndpoint`. All subsequent API traffic is routed through
@@ -399,6 +425,8 @@ internal/auth/
                       callback and the manual paste path
   manual.go           Manual paste mode: redirect-URL parsing, line reader,
                       SSH hint
+  paste.go            Paste watcher: reads a redirect URL from /dev/tty while
+                      the callback server also listens
   gcom.go             Direct Grafana Cloud OAuth PKCE flow and response metadata
   transport.go        RefreshTransport, StoredTokens, TokenRefresher,
                       TokenLocker, TokenReloader, DoRefresh

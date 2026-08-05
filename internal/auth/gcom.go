@@ -139,10 +139,7 @@ func (f *GCOMFlow) runManual(ctx context.Context) (*GCOMResult, error) {
 
 	result, cerr := f.handleGCOMCallbackParams(ctx, values, state, codeVerifier, redirectURI)
 	if cerr != nil {
-		if errors.Is(cerr.err, ErrStateMismatch) {
-			return nil, errManualForeignState
-		}
-		return nil, cerr.err
+		return nil, pasteRejection(cerr.err)
 	}
 
 	fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
@@ -188,17 +185,32 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
 	}
 
-	printRemoteSessionHint(f.writer, port, "gcx cloud login --oauth-manual")
+	// Over SSH the browser cannot reach the callback address. Accept a pasted
+	// redirect URL alongside the callback so the user never has to restart.
+	paste := startPasteWatcher(f.writer, port)
+	defer paste.Close()
+	if paste == nil {
+		printRemoteSessionHint(f.writer, port, "gcx cloud login --oauth-manual")
+		fmt.Fprintln(f.writer, "Waiting for authentication...")
+	}
 
-	fmt.Fprintln(f.writer, "Waiting for authentication...")
-
-	select {
-	case result := <-resultCh:
-		return result, nil
-	case err := <-errCh:
-		return nil, err
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	for {
+		select {
+		case result := <-resultCh:
+			return result, nil
+		case err := <-errCh:
+			return nil, err
+		case values := <-paste.Values():
+			result, cerr := f.handleGCOMCallbackParams(ctx, values, state, codeVerifier, redirectURI)
+			if cerr != nil {
+				paste.Reject(pasteRejection(cerr.err))
+				continue
+			}
+			fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
+			return result, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 }
 
