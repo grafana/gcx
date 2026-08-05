@@ -291,7 +291,8 @@ terminal charts (`internal/graph`). The `query` command registers custom codecs
 - `internal/query/prometheus/client.go`: `NewClient` calls `rest.HTTPClientFor`
 - `internal/query/loki/client.go`: same pattern
 - `internal/datasources/query/codecs.go`: `queryTableCodec`, `queryGraphCodec` registration — shared by all per-kind query subcommands
-- `internal/datasources/{prometheus,loki,pyroscope,tempo}/query.go`: per-kind constructors wired under `datasources {kind} query` (generic auto-detect switch: `cmd/gcx/datasources/query.go`)
+- `internal/datasources/{prometheus,loki,pyroscope,clickhouse,postgres,...}/query.go`: per-kind constructors wired under `datasources {kind} query`
+- `cmd/gcx/datasources/query_routes.go`: the auto-detecting `datasources query` picks a client from a routing table keyed by normalized kind — a kind is either expression-dispatchable or redirect-only, never both
 - `internal/graph/chart.go`: `RenderChart` auto-selects line vs bar chart
 
 ---
@@ -318,7 +319,7 @@ only the wide table codec was expected to display.
 
 **Evidence:**
 - `internal/providers/slo/definitions/status.go`: `fetchMetrics` fetches all metrics unconditionally
-- `internal/datasources/prometheus/query.go`: query response passed to all codecs unchanged
+- `cmd/gcx/datasources/query.go`: query response passed to all codecs unchanged
 - `internal/output/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
 
 **See also:** [output.md](../design/output.md) — codec requirements by command type and mutation command output spec.

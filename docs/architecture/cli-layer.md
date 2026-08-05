@@ -286,8 +286,8 @@ cmd/gcx/
 │   ├── command.go           datasources group (list, get, query)
 │   ├── list.go              datasources list
 │   ├── get.go               datasources get
-│   └── query/
-│       └── generic.go       GenericCmd() — auto-detecting query (imports shared infra from internal/datasources/query/)
+│   ├── query.go             QueryCmd() — auto-detecting query (shared infra from internal/datasources/query/)
+│   └── query_routes.go      per-kind dispatch handlers and typed-command redirects
 ├── providers/
 │   └── command.go           providers command — lists registered providers
 ├── setup/
