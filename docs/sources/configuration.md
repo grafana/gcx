@@ -131,10 +131,12 @@ Use these commands to check the configuration:
 gcx config check
 ```
 
-The check covers every configured context before returning. It exits non-zero
-when the current context is invalid or any context fails configuration,
-authentication setup, connectivity, or Grafana version checks, so it is safe to
-use as a deployment gate.
+The check covers every configured context before returning. It uses the
+authenticated Grafana health endpoint for connectivity and version, then
+reports Kubernetes-style resource discovery separately. It exits non-zero when
+the current context is invalid or any context fails configuration,
+authentication setup, connectivity, version, or resource discovery checks, so
+it is safe to use as a deployment gate.
 
 List existing contexts:
 
