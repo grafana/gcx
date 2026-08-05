@@ -21,6 +21,12 @@ func wantAlwaysPresent() []string {
 	}
 }
 
+func wantDatasourceQueryOnly() []string {
+	return []string{
+		"datasource_plugin_type",
+	}
+}
+
 func wantParseErrorOnly() []string {
 	return []string{
 		"parse_error_kind", "parse_error_parent", "parse_error_token",
@@ -39,44 +45,62 @@ func marshalKeys(t *testing.T, ev telemetry.Event) map[string]any {
 
 func TestEventFieldInventory(t *testing.T) {
 	full := telemetry.Event{
-		Service:            telemetry.ServiceName,
-		Version:            "0.4.1",
-		OS:                 "linux",
-		Arch:               "arm64",
-		DeviceID:           "00000000-0000-4000-8000-000000000000",
-		DeviceIDPersisted:  true,
-		Command:            "dashboards push",
-		Flags:              "dry-run,folder",
-		Provider:           "dashboards",
-		Outcome:            telemetry.OutcomeParseError,
-		ExitCode:           2,
-		ErrorKind:          "usage_error",
-		DurationMS:         1234,
-		IsTTY:              true,
-		IsCI:               true,
-		CIProvider:         "github_actions",
-		IsAgent:            true,
-		Agent:              "claude-code",
-		TargetKind:         "cloud",
-		OutputFormat:       "json",
-		ParseErrorKind:     "unknown_command",
-		ParseErrorParent:   "dashboards",
-		ParseErrorToken:    "serch",
-		AttemptedCommand:   "dashboards serch",
-		ParseErrorFlags:    "verbsoe",
-		ParseErrorNearest:  "search",
-		ParseErrorDistance: 2,
+		Service:              telemetry.ServiceName,
+		Version:              "0.4.1",
+		OS:                   "linux",
+		Arch:                 "arm64",
+		DeviceID:             "00000000-0000-4000-8000-000000000000",
+		DeviceIDPersisted:    true,
+		Command:              "dashboards push",
+		Flags:                "dry-run,folder",
+		Provider:             "dashboards",
+		Outcome:              telemetry.OutcomeParseError,
+		ExitCode:             2,
+		ErrorKind:            "usage_error",
+		DurationMS:           1234,
+		IsTTY:                true,
+		IsCI:                 true,
+		CIProvider:           "github_actions",
+		IsAgent:              true,
+		Agent:                "claude-code",
+		TargetKind:           "cloud",
+		OutputFormat:         "json",
+		DatasourcePluginType: "prometheus",
+		ParseErrorKind:       "unknown_command",
+		ParseErrorParent:     "dashboards",
+		ParseErrorToken:      "serch",
+		AttemptedCommand:     "dashboards serch",
+		ParseErrorFlags:      "verbsoe",
+		ParseErrorNearest:    "search",
+		ParseErrorDistance:   2,
 	}
 
 	got := marshalKeys(t, full)
-	want := append(wantAlwaysPresent(), wantParseErrorOnly()...)
+	want := append(wantAlwaysPresent(), wantDatasourceQueryOnly()...)
+	want = append(want, wantParseErrorOnly()...)
 	assert.ElementsMatch(t, want, keys(got), "full event must emit exactly the documented field set")
 }
 
 func TestEventOmitsParseFieldsWhenUnset(t *testing.T) {
 	got := marshalKeys(t, telemetry.Event{Outcome: telemetry.OutcomeOK})
 	assert.ElementsMatch(t, wantAlwaysPresent(), keys(got),
-		"non-parse-error events must omit parse_error_* and keep all other fields, even zero-valued")
+		"non-query, non-parse-error events must omit datasource_plugin_type and parse_error_* and keep all other fields, even zero-valued")
+}
+
+func TestEventOmitsDatasourcePluginTypeWhenUnset(t *testing.T) {
+	got := marshalKeys(t, telemetry.Event{Outcome: telemetry.OutcomeOK})
+	assert.NotContains(t, keys(got), "datasource_plugin_type",
+		"non-query events must omit datasource_plugin_type")
+}
+
+func TestEventCarriesDatasourcePluginType(t *testing.T) {
+	got := marshalKeys(t, telemetry.Event{
+		Outcome:              telemetry.OutcomeOK,
+		DatasourcePluginType: "loki",
+	})
+	want := append(wantAlwaysPresent(), wantDatasourceQueryOnly()...)
+	assert.ElementsMatch(t, want, keys(got),
+		"query events must include datasource_plugin_type and omit parse_error_*")
 }
 
 func TestEventNoNearMatchDistanceSurvives(t *testing.T) {
