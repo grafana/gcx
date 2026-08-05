@@ -191,6 +191,8 @@ func NormalizeKind(pluginID string) string {
 		return "infinity"
 	case "synthetic-monitoring-datasource":
 		return "synthetic-monitoring"
+	case "stackdriver":
+		return "cloudmonitoring"
 	default:
 		if isPromFlavor(pluginID) {
 			return "prometheus"
