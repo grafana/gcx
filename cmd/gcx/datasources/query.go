@@ -3,6 +3,7 @@ package datasources
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
@@ -87,7 +88,8 @@ func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
 
 	dispatch, ok := o.routes.dispatch[dsType]
 	if !ok {
-		return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb, clickhouse)", dsType)
+		return fmt.Errorf("datasource type %q is not supported (supported: %s)",
+			dsType, strings.Join(o.routes.supportedKinds(), ", "))
 	}
 
 	resp, err := dispatch(ctx, genericQueryRequest{
