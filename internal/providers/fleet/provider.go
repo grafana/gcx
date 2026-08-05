@@ -897,7 +897,7 @@ func (c *PipelineTableCodec) Encode(w io.Writer, v any) error {
 
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("ID", "NAME", "ENABLED", "MATCHERS")
+		t = style.NewTable("ID", "NAME", "ENABLED", "CONFIG TYPE", "MATCHERS")
 	} else {
 		t = style.NewTable("ID", "NAME", "ENABLED")
 	}
@@ -912,7 +912,11 @@ func (c *PipelineTableCodec) Encode(w io.Writer, v any) error {
 			if matchers == "" {
 				matchers = "-"
 			}
-			t.Row(p.ID, p.Name, enabled, matchers)
+			configType := p.ConfigType
+			if configType == "" {
+				configType = "-"
+			}
+			t.Row(p.ID, p.Name, enabled, configType, matchers)
 		} else {
 			t.Row(p.ID, p.Name, enabled)
 		}
@@ -1335,10 +1339,11 @@ func pipelineSchema() json.RawMessage {
 			"spec": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"name":     map[string]any{"type": "string"},
-					"enabled":  map[string]any{"type": "boolean"},
-					"contents": map[string]any{"type": "string"},
-					"matchers": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"name":       map[string]any{"type": "string"},
+					"enabled":    map[string]any{"type": "boolean"},
+					"configType": map[string]any{"type": "string", "enum": []string{"CONFIG_TYPE_ALLOY", "CONFIG_TYPE_OTEL"}},
+					"contents":   map[string]any{"type": "string"},
+					"matchers":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				},
 				"required": []string{"name", "contents"},
 			},
@@ -1360,10 +1365,11 @@ func pipelineExample() json.RawMessage {
 			"name": "my-pipeline",
 		},
 		"spec": map[string]any{
-			"name":     "my-pipeline",
-			"enabled":  true,
-			"contents": "logging { level = \"info\" }",
-			"matchers": []string{"collector.os=linux"},
+			"name":       "my-pipeline",
+			"enabled":    true,
+			"configType": "CONFIG_TYPE_ALLOY",
+			"contents":   "logging { level = \"info\" }",
+			"matchers":   []string{"collector.os=linux"},
 		},
 	}
 	b, err := json.Marshal(example)
