@@ -19,6 +19,10 @@ import (
 // (Client.Search or Client.Logs).
 type searchFn func(ctx context.Context, c *elasticsearch.Client, dsUID string, req elasticsearch.SearchRequest) (*querysql.QueryResponse, error)
 
+// searchExploreFn builds the Grafana Explore URL matching a document-search
+// command's query model (QueryExploreURL or LogsExploreURL).
+type searchExploreFn func(host string, base dsquery.ExploreQuery, req elasticsearch.SearchRequest) string
+
 // searchOpts are the flags shared by the query and logs commands.
 type searchOpts struct {
 	dsquery.SharedOpts
@@ -46,12 +50,15 @@ type searchCmdSpec struct {
 	use, short, long, example string
 	sizeFlag, sizeUsage       string
 	tokenCost, llmHint        string
+	exploreSubject            string
 	search                    searchFn
+	explore                   searchExploreFn
 }
 
 // newSearchCmd builds a document-search command from a spec.
 func newSearchCmd(loader *providers.ConfigLoader, spec searchCmdSpec) *cobra.Command {
 	opts := &searchOpts{}
+	share := &dsquery.ExploreLinkOpts{}
 
 	cmd := &cobra.Command{
 		Use:     spec.use,
@@ -63,7 +70,7 @@ func newSearchCmd(loader *providers.ConfigLoader, spec searchCmdSpec) *cobra.Com
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			return runSearch(cmd, args, loader, &opts.SharedOpts, opts.Datasource, opts.Size, opts.TimeField, spec.search)
+			return runSearch(cmd, args, loader, opts, *share, spec)
 		},
 	}
 
@@ -76,6 +83,7 @@ func newSearchCmd(loader *providers.ConfigLoader, spec searchCmdSpec) *cobra.Com
 	cmd.Flags().StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.elasticsearch is configured)")
 	cmd.Flags().IntVar(&opts.Size, spec.sizeFlag, defaultSize, spec.sizeUsage)
 	cmd.Flags().StringVar(&opts.TimeField, "time-field", elasticsearch.DefaultTimeField, "Time field used for range filtering")
+	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd
 }
@@ -84,14 +92,28 @@ func newSearchCmd(loader *providers.ConfigLoader, spec searchCmdSpec) *cobra.Com
 // needs before it calls the client: the Lucene expression, the resolved
 // datasource, the effective time range, and a ready client.
 type resolvedQuery struct {
-	Expr          string
-	CfgCtx        *config.Context
-	Cfg           config.NamespacedRESTConfig
-	DatasourceUID string
-	Start         time.Time
-	End           time.Time
-	StepMs        int64
-	Client        *elasticsearch.Client
+	Expr           string
+	CfgCtx         *config.Context
+	Cfg            config.NamespacedRESTConfig
+	DatasourceUID  string
+	DatasourceType string
+	Start          time.Time
+	End            time.Time
+	StepMs         int64
+	Client         *elasticsearch.Client
+}
+
+// ExploreBase returns the datasource and time-range state an Explore link
+// builder needs. Expr stays empty: the Lucene expression travels inside the
+// plugin query model, not in the shared ExploreQuery field.
+func (r *resolvedQuery) ExploreBase(opts *dsquery.SharedOpts) dsquery.ExploreQuery {
+	return dsquery.ExploreQuery{
+		DatasourceUID:  r.DatasourceUID,
+		DatasourceType: r.DatasourceType,
+		From:           opts.From,
+		To:             opts.To,
+		OrgID:          dsquery.OrgID(r.CfgCtx),
+	}
 }
 
 // prepareQuery resolves the optional Lucene expression, the datasource, the
@@ -114,7 +136,7 @@ func prepareQuery(cmd *cobra.Command, args []string, loader *providers.ConfigLoa
 		return nil, err
 	}
 
-	datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "elasticsearch")
+	datasourceUID, dsType, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "elasticsearch")
 	if err != nil {
 		return nil, err
 	}
@@ -135,13 +157,14 @@ func prepareQuery(cmd *cobra.Command, args []string, loader *providers.ConfigLoa
 	}
 
 	resolved := &resolvedQuery{
-		Expr:          expr,
-		CfgCtx:        cfgCtx,
-		Cfg:           cfg,
-		DatasourceUID: datasourceUID,
-		Start:         start,
-		End:           end,
-		Client:        client,
+		Expr:           expr,
+		CfgCtx:         cfgCtx,
+		Cfg:            cfg,
+		DatasourceUID:  datasourceUID,
+		DatasourceType: dsType,
+		Start:          start,
+		End:            end,
+		Client:         client,
 	}
 	if step > 0 {
 		resolved.StepMs = step.Milliseconds()
@@ -150,25 +173,35 @@ func prepareQuery(cmd *cobra.Command, args []string, loader *providers.ConfigLoa
 }
 
 // runSearch is the shared execution path for the query and logs commands:
-// prepare the invocation, then run the given search and encode its result.
-func runSearch(cmd *cobra.Command, args []string, loader *providers.ConfigLoader, opts *dsquery.SharedOpts, datasource string, size int, timeField string, search searchFn) error {
-	resolved, err := prepareQuery(cmd, args, loader, opts, datasource)
+// prepare the invocation, run the search, encode its result, then handle the
+// optional Grafana Explore link.
+func runSearch(cmd *cobra.Command, args []string, loader *providers.ConfigLoader, opts *searchOpts, share dsquery.ExploreLinkOpts, spec searchCmdSpec) error {
+	resolved, err := prepareQuery(cmd, args, loader, &opts.SharedOpts, opts.Datasource)
 	if err != nil {
 		return err
 	}
 
 	req := elasticsearch.SearchRequest{
 		Query:     resolved.Expr,
-		Size:      size,
-		TimeField: timeField,
+		Size:      opts.Size,
+		TimeField: opts.TimeField,
 		Start:     resolved.Start,
 		End:       resolved.End,
 		StepMs:    resolved.StepMs,
 	}
-	resp, err := search(cmd.Context(), resolved.Client, resolved.DatasourceUID, req)
+	resp, err := spec.search(cmd.Context(), resolved.Client, resolved.DatasourceUID, req)
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
 	}
 
-	return opts.IO.Encode(cmd.OutOrStdout(), resp)
+	exploreURL := spec.explore(resolved.Cfg.GrafanaURL, resolved.ExploreBase(&opts.SharedOpts), req)
+	unavailableMsg, failedOpenMsg := dsquery.ExploreMessages(spec.exploreSubject)
+
+	return dsquery.EncodeAndHandleExplore(cmd, func() error {
+		return opts.IO.Encode(cmd.OutOrStdout(), resp)
+	}, share, dsquery.ExploreLink{
+		URL:            exploreURL,
+		UnavailableMsg: unavailableMsg,
+		FailedOpenMsg:  failedOpenMsg,
+	})
 }

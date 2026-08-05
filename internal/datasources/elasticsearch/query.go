@@ -25,7 +25,9 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 EXPR is a Lucene query string (e.g. 'app:frontend AND level:error'); omit it to
 match all documents in the time range. The index pattern comes from the
 datasource configuration.
-Datasource is resolved from -d flag or datasources.elasticsearch in your context.`,
+Datasource is resolved from -d flag or datasources.elasticsearch in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.`,
 		example: `
   # Match all documents in the last hour
   gcx datasources elasticsearch query --since 1h
@@ -34,13 +36,21 @@ Datasource is resolved from -d flag or datasources.elasticsearch in your context
   gcx datasources elasticsearch query -d UID 'app:frontend AND level:error' --since 1h
 
   # Output as JSON, limit results
-  gcx datasources elasticsearch query -d UID 'datacenter:us-east' --size 20 -o json`,
-		sizeFlag:  "size",
-		sizeUsage: fmt.Sprintf("Max documents to return (capped at %d)", maxSize),
-		tokenCost: "large",
-		llmHint:   `gcx datasources elasticsearch query -d UID 'app:frontend AND level:error' --since 1h --size 20`,
+  gcx datasources elasticsearch query -d UID 'datacenter:us-east' --size 20 -o json
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources elasticsearch query 'level:error' --since 1h --share-link
+
+  # Continue the same search in Grafana Explore
+  gcx datasources elasticsearch query 'level:error' --since 1h --open`,
+		sizeFlag:       "size",
+		sizeUsage:      fmt.Sprintf("Max documents to return (capped at %d)", maxSize),
+		tokenCost:      "large",
+		llmHint:        `gcx datasources elasticsearch query -d UID 'app:frontend AND level:error' --since 1h --size 20`,
+		exploreSubject: "query",
 		search: func(ctx context.Context, c *elasticsearch.Client, uid string, req elasticsearch.SearchRequest) (*querysql.QueryResponse, error) {
 			return c.Search(ctx, uid, req)
 		},
+		explore: QueryExploreURL,
 	})
 }

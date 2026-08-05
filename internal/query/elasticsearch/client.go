@@ -49,38 +49,37 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	}, nil
 }
 
-// Search executes a Lucene query returning matching documents (raw_data).
-func (c *Client) Search(ctx context.Context, dsUID string, req SearchRequest) (*querysql.QueryResponse, error) {
+// SearchQueryModel returns the Elasticsearch plugin query model for a document
+// search (the raw_data metric type).
+//
+// Client.Search and the Explore link builder both call this, so the query the
+// CLI sends and the query Explore opens cannot drift apart. The time range is
+// not part of the model: the request body carries it for the client, and the
+// pane range carries it for Explore.
+func SearchQueryModel(dsUID string, req SearchRequest) map[string]any {
 	metric := map[string]any{
 		"id":       "1",
 		"type":     "raw_data",
 		"settings": map[string]any{"size": strconv.Itoa(req.Size)},
 	}
-	resp, err := c.runQuery(ctx, dsUID, "query", req.Query, req.TimeField, metric, nil, req.Start, req.End, orDefaultStep(req.StepMs))
-	if err != nil {
-		return nil, err
-	}
-	return convertTimeColumns(resp), nil
+	return queryModel(dsUID, req.Query, req.TimeField, metric, nil, orDefaultStep(req.StepMs))
 }
 
-// Logs executes a Lucene query using the plugin's logs metric type: newest
-// documents first, with log-oriented field handling.
-func (c *Client) Logs(ctx context.Context, dsUID string, req SearchRequest) (*querysql.QueryResponse, error) {
+// LogsQueryModel returns the Elasticsearch plugin query model for a log search
+// (the logs metric type). Client.Logs and the Explore link builder both call it.
+func LogsQueryModel(dsUID string, req SearchRequest) map[string]any {
 	metric := map[string]any{
 		"id":       "1",
 		"type":     "logs",
 		"settings": map[string]any{"limit": strconv.Itoa(req.Size)},
 	}
-	resp, err := c.runQuery(ctx, dsUID, "logs", req.Query, req.TimeField, metric, nil, req.Start, req.End, orDefaultStep(req.StepMs))
-	if err != nil {
-		return nil, err
-	}
-	return convertTimeColumns(trimLogsColumns(resp)), nil
+	return queryModel(dsUID, req.Query, req.TimeField, metric, nil, orDefaultStep(req.StepMs))
 }
 
-// Aggregations executes a metric aggregation bucketed by a date histogram and
-// optionally split by a terms group, one series per group.
-func (c *Client) Aggregations(ctx context.Context, dsUID string, req AggsRequest) (*MetricsResponse, error) {
+// AggsQueryModel returns the Elasticsearch plugin query model for a metric
+// aggregation over a date histogram, optionally split by a terms bucket.
+// Client.Aggregations and the Explore link builder both call it.
+func AggsQueryModel(dsUID string, req AggsRequest) map[string]any {
 	metric := map[string]any{"id": "1", "type": req.Agg}
 	if req.Field != "" {
 		metric["field"] = req.Field
@@ -117,27 +116,15 @@ func (c *Client) Aggregations(ctx context.Context, dsUID string, req AggsRequest
 		stepMs = intervalMsFor(req.Start, req.End)
 	}
 
-	body, err := c.executeQuery(ctx, dsUID, "metrics", req.Query, req.TimeField, metric, bucketAggs, req.Start, req.End, stepMs)
-	if err != nil {
-		return nil, err
-	}
-	return parseAggsResponse(body)
+	return queryModel(dsUID, req.Query, req.TimeField, metric, bucketAggs, stepMs)
 }
 
-// runQuery executes a single-metric query and parses the first frame as a table.
-func (c *Client) runQuery(ctx context.Context, dsUID, operation, query, timeField string, metric map[string]any, bucketAggs []any, start, end time.Time, stepMs int64) (*querysql.QueryResponse, error) {
-	body, err := c.executeQuery(ctx, dsUID, operation, query, timeField, metric, bucketAggs, start, end, stepMs)
-	if err != nil {
-		return nil, err
-	}
-	return querysql.ParseResponse(body, "elasticsearch")
-}
-
-func (c *Client) executeQuery(ctx context.Context, dsUID, operation, query, timeField string, metric map[string]any, bucketAggs []any, start, end time.Time, stepMs int64) ([]byte, error) {
+// queryModel assembles the fields every Elasticsearch query model shares.
+func queryModel(dsUID, query, timeField string, metric map[string]any, bucketAggs []any, stepMs int64) map[string]any {
 	if bucketAggs == nil {
 		bucketAggs = []any{}
 	}
-	q := map[string]any{
+	return map[string]any{
 		"refId":      "A",
 		"datasource": map[string]any{"type": pluginID, "uid": dsUID},
 		"query":      query,
@@ -150,7 +137,47 @@ func (c *Client) executeQuery(ctx context.Context, dsUID, operation, query, time
 		"intervalMs":    stepMs,
 		"maxDataPoints": 1000,
 	}
+}
 
+// Search executes a Lucene query returning matching documents (raw_data).
+func (c *Client) Search(ctx context.Context, dsUID string, req SearchRequest) (*querysql.QueryResponse, error) {
+	resp, err := c.runQuery(ctx, "query", SearchQueryModel(dsUID, req), req.Start, req.End)
+	if err != nil {
+		return nil, err
+	}
+	return convertTimeColumns(resp), nil
+}
+
+// Logs executes a Lucene query using the plugin's logs metric type: newest
+// documents first, with log-oriented field handling.
+func (c *Client) Logs(ctx context.Context, dsUID string, req SearchRequest) (*querysql.QueryResponse, error) {
+	resp, err := c.runQuery(ctx, "logs", LogsQueryModel(dsUID, req), req.Start, req.End)
+	if err != nil {
+		return nil, err
+	}
+	return convertTimeColumns(trimLogsColumns(resp)), nil
+}
+
+// Aggregations executes a metric aggregation bucketed by a date histogram and
+// optionally split by a terms group, one series per group.
+func (c *Client) Aggregations(ctx context.Context, dsUID string, req AggsRequest) (*MetricsResponse, error) {
+	body, err := c.executeQuery(ctx, "metrics", AggsQueryModel(dsUID, req), req.Start, req.End)
+	if err != nil {
+		return nil, err
+	}
+	return parseAggsResponse(body)
+}
+
+// runQuery executes a single-metric query and parses the first frame as a table.
+func (c *Client) runQuery(ctx context.Context, operation string, q map[string]any, start, end time.Time) (*querysql.QueryResponse, error) {
+	body, err := c.executeQuery(ctx, operation, q, start, end)
+	if err != nil {
+		return nil, err
+	}
+	return querysql.ParseResponse(body, "elasticsearch")
+}
+
+func (c *Client) executeQuery(ctx context.Context, operation string, q map[string]any, start, end time.Time) ([]byte, error) {
 	bodyMap := map[string]any{
 		"queries": []any{q},
 		"from":    strconv.FormatInt(start.UnixMilli(), 10),

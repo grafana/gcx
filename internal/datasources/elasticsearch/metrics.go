@@ -42,6 +42,7 @@ func (opts *metricsOpts) Validate() error {
 // MetricsCmd returns the `metrics` subcommand for an Elasticsearch datasource parent.
 func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &metricsOpts{}
+	share := &dsquery.ExploreLinkOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "metrics [EXPR]",
@@ -51,7 +52,9 @@ into series by a terms field.
 
 EXPR is a Lucene query string scoping the documents; omit it to aggregate all.
 Returns (time, value, series) rows. Use --step to control bucket size.
-Datasource is resolved from -d flag or datasources.elasticsearch in your context.`,
+Datasource is resolved from -d flag or datasources.elasticsearch in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.`,
 		Example: `
   # Document count over time
   gcx datasources elasticsearch metrics --since 6h
@@ -60,7 +63,13 @@ Datasource is resolved from -d flag or datasources.elasticsearch in your context
   gcx datasources elasticsearch metrics 'level:error' --group-by app.keyword --since 6h
 
   # Average value of a numeric field
-  gcx datasources elasticsearch metrics --agg avg --field duration_ms --since 1h -o json`,
+  gcx datasources elasticsearch metrics --agg avg --field duration_ms --since 1h -o json
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources elasticsearch metrics 'level:error' --since 6h --share-link
+
+  # Continue the same aggregation in Grafana Explore
+  gcx datasources elasticsearch metrics 'level:error' --since 6h --open`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -89,7 +98,16 @@ Datasource is resolved from -d flag or datasources.elasticsearch in your context
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			exploreURL := MetricsExploreURL(resolved.Cfg.GrafanaURL, resolved.ExploreBase(&opts.SharedOpts), req)
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("metric query")
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			}, *share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 
@@ -99,6 +117,7 @@ Datasource is resolved from -d flag or datasources.elasticsearch in your context
 	}
 
 	opts.setup(cmd.Flags())
+	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd
 }
