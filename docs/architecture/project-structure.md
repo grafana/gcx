@@ -37,6 +37,7 @@ gcx/
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
+│   ├── cloudcli/             # Generic cloud CLI exec wrapper (az/aws/gcloud — Ensure + Run/RunJSON, injectable runner for tests)
 │   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and instrumentation provider)
 │   ├── config/               # Config loading, context management, auth types (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
 │   │   └── testdata/         # YAML fixtures for config unit tests
