@@ -189,6 +189,16 @@ func printManualInstructions(w io.Writer, authURL, verification string) {
 // URL holds a single-use code.
 const manualCallbackHygieneNotice = "The URL that you pasted holds a single-use code. Clear the terminal if other people can read it."
 
+// pasteRejection turns a callback error into the message shown before gcx asks
+// for another redirect URL. A state mismatch on a paste nearly always means the
+// URL came from a different login attempt, so say that instead of naming CSRF.
+func pasteRejection(err error) error {
+	if errors.Is(err, ErrStateMismatch) {
+		return errManualForeignState
+	}
+	return err
+}
+
 // errManualForeignState replaces the generic CSRF message on the paste path,
 // where a state mismatch nearly always means the user pasted a URL from a
 // different login attempt.
