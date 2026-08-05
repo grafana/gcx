@@ -233,6 +233,39 @@ used as the base URL for the token exchange — is validated by
 prevents an attacker who controls the browser redirect from steering the
 token exchange at a hostile host.
 
+### Manual callback (no local listener)
+
+`--oauth-manual` runs the same flow without a callback server. It exists for
+the remote case: gcx over SSH, browser on the user's own computer. A different
+bind address cannot solve that case — the plugin hard-codes `127.0.0.1` in the
+callback URL and only accepts a port between 1024 and 65535.
+
+In manual mode gcx prints the consent URL with a fixed `callback_port=54321`,
+opens no browser, and reads one line from stdin. The browser really navigates
+to the callback address and fails to connect, so the complete redirect URL —
+including `code`, `state`, `endpoint`, and `instanceEndpoint` — stays in the
+address bar. That failed navigation is the mechanism, not a defect.
+
+`ParseCallbackInput` in `internal/auth/manual.go` turns the pasted line into
+`url.Values` and does nothing else. Every semantic check runs in
+`handleCallbackParams` (`internal/auth/callback.go`), which the HTTP handler
+uses as well, so the state check, the PKCE exchange, and endpoint validation
+cannot diverge between the two paths.
+
+The pasted URL never carries the `code_verifier`, so a leaked scrollback alone
+cannot mint a token. gcx prints a reminder to clear the terminal after a
+successful paste, and no error message ever echoes the pasted string.
+
+The GCOM flow (`internal/auth/gcom.go`) has the same mode. There the fixed
+port matters for a second reason: the token exchange must send a `redirect_uri`
+byte-identical to the one on the authorize request, so both come from one
+string. Port 54321 is the first port of the normal auto-pick range, so manual
+mode presents no `redirect_uri` shape that grafana.com has not already seen.
+
+gcx also prints an SSH hint on the normal callback path when
+`terminal.IsRemoteSession()` reports an SSH session. The hint offers the
+`ssh -L` port forward and `--oauth-manual`.
+
 The token exchange response carries an `api_endpoint` field, stored as
 `GrafanaConfig.ProxyEndpoint`. All subsequent API traffic is routed through
 that endpoint (see OAuth proxy routing below). Exact implementation lives in
@@ -362,6 +395,10 @@ sequenceDiagram
 internal/auth/
   flow.go             OAuth PKCE flow, callback server, exchange,
                       state/endpoint validation
+  callback.go         Shared callback-parameter handling for both the HTTP
+                      callback and the manual paste path
+  manual.go           Manual paste mode: redirect-URL parsing, line reader,
+                      SSH hint
   gcom.go             Direct Grafana Cloud OAuth PKCE flow and response metadata
   transport.go        RefreshTransport, StoredTokens, TokenRefresher,
                       TokenLocker, TokenReloader, DoRefresh

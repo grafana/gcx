@@ -84,7 +84,16 @@ type Inputs struct {
 	// Zero means auto-pick from the default range. Useful when only specific
 	// ports are forwarded between a remote dev host and the user's browser.
 	OAuthCallbackPort int
-	Yes               bool
+	// OAuthManual completes the OAuth flow without a callback server. gcx
+	// prints the login URL and reads the redirect URL that the user copies
+	// from the browser address bar. It is mutually exclusive with
+	// OAuthCallbackPort.
+	OAuthManual bool
+	// Reader supplies the pasted redirect URL for OAuthManual. It is never
+	// defaulted to os.Stdin here: internal/login is UI-free (NC-001) and never
+	// touches process streams. CLI callers pass cmd.InOrStdin().
+	Reader io.Reader
+	Yes    bool
 	// UseCloudInstanceSelector is only used internally to mark the case in which
 	// a user explicitly left the server empty to be directed to the cloud
 	// instance selector
@@ -657,7 +666,18 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		if w == nil {
 			w = io.Discard
 		}
-		flow := opts.NewAuthFlow(opts.Server, auth.Options{Writer: w, Port: opts.OAuthCallbackPort})
+		// Manual OAuth reads the pasted redirect URL. internal/login must not
+		// reach for os.Stdin itself, so a missing reader is a programmer error
+		// rather than a silent fallback.
+		if opts.OAuthManual && opts.Reader == nil {
+			return "", nil, errors.New("manual OAuth requires an input reader")
+		}
+		flow := opts.NewAuthFlow(opts.Server, auth.Options{
+			Writer: w,
+			Reader: opts.Reader,
+			Port:   opts.OAuthCallbackPort,
+			Manual: opts.OAuthManual,
+		})
 		result, err := flow.Run(ctx)
 		if err != nil {
 			return "", nil, fmt.Errorf("OAuth flow failed: %w", err)
