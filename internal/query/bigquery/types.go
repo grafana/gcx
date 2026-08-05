@@ -100,7 +100,13 @@ func InfoSchemaPrefix(project, dataset string) string {
 // limitBailRe matches statements where appending a LIMIT would be invalid or
 // meaningless (DDL, metadata statements, or a query that already paginates via
 // LIMIT ... OFFSET).
-var limitBailRe = regexp.MustCompile(`(?im)(\bLIMIT\s+\d+\s+OFFSET\b|^\s*EXPLAIN\b|^\s*DESC(RIBE)?\b|^\s*SHOW\b|^\s*CREATE\b|^\s*DROP\b|^\s*ALTER\b)`)
+//
+// The statement-leading keywords are anchored with \A so they only match at the
+// start of the whole statement. Do NOT use the (?m) flag here: it would make ^
+// match at every line start, so a multi-line query such as
+// "SELECT … \nORDER BY ts\nDESC" would silently bail out and lose its row cap.
+// The LIMIT … OFFSET branch is deliberately unanchored — it must match anywhere.
+var limitBailRe = regexp.MustCompile(`(?i)(\bLIMIT\s+\d+\s+OFFSET\b|\A\s*(?:EXPLAIN|DESC(?:RIBE)?|SHOW|CREATE|DROP|ALTER)\b)`)
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds.
 // If limit is 0, enforcement is disabled (pass-through).
