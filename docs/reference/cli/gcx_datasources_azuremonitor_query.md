@@ -18,6 +18,9 @@ Datasource is resolved from -d flag or datasources.azuremonitor in your context.
 Note: datasources configured with "Current User" (Azure AD passthrough)
 authentication cannot be queried with API tokens or service accounts.
 
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.
+
 ```
 gcx datasources azuremonitor query [flags]
 ```
@@ -41,6 +44,16 @@ gcx datasources azuremonitor query [flags]
   gcx datasources azuremonitor query -d UID --subscription SUB_ID \
     --resource-group my-rg --namespace Microsoft.Compute/virtualMachines \
     --resource my-vm --metric 'Percentage CPU' -o json
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources azuremonitor query -d UID --subscription SUB_ID \
+    --resource-group my-rg --namespace Microsoft.Compute/virtualMachines \
+    --resource my-vm --metric 'Percentage CPU' --since 1h --share-link
+
+  # Open the executed query in Grafana Explore
+  gcx datasources azuremonitor query -d UID --subscription SUB_ID \
+    --resource-group my-rg --namespace Microsoft.Compute/virtualMachines \
+    --resource my-vm --metric 'Percentage CPU' --since 1h --open
 ```
 
 ### Options
@@ -55,10 +68,12 @@ gcx datasources azuremonitor query [flags]
       --json string                 Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --metric string               Metric name, e.g. Transactions (required)
       --namespace string            Metric namespace, e.g. Microsoft.Storage/storageAccounts (required)
+      --open                        Open the executed query in Grafana Explore
   -o, --output string               Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --region string               Azure region, e.g. uksouth (optional; used for multi-resource queries)
       --resource string             Azure resource name; use the slash form for sub-resources, e.g. mystorage/blobServices/default (required)
       --resource-group string       Azure resource group name (required)
+      --share-link                  Print the Grafana Explore URL for the executed query to stderr
       --since string                Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --subscription string         Azure subscription ID (defaults to the datasource's default subscription)
       --time-grain string           Time grain as an ISO 8601 duration (e.g. PT1M, PT1H) or "auto" to fit the time range (default "auto")

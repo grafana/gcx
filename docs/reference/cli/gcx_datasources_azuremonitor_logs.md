@@ -13,6 +13,9 @@ list-resources to discover workspaces (type Microsoft.OperationalInsights/worksp
 
 Datasource is resolved from -d flag or datasources.azuremonitor in your context.
 
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.
+
 ```
 gcx datasources azuremonitor logs KQL [flags]
 ```
@@ -32,6 +35,14 @@ gcx datasources azuremonitor logs KQL [flags]
   # Output as JSON
   gcx datasources azuremonitor logs 'AppTraces | take 5' -d UID \
     --subscription SUB_ID --resource-group my-rg --workspace my-workspace -o json
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources azuremonitor logs 'AppRequests | take 10' -d UID \
+    --subscription SUB_ID --resource-group my-rg --workspace my-workspace --share-link
+
+  # Open the executed query in Grafana Explore
+  gcx datasources azuremonitor logs 'AppRequests | take 10' -d UID \
+    --subscription SUB_ID --resource-group my-rg --workspace my-workspace --open
 ```
 
 ### Options
@@ -42,8 +53,10 @@ gcx datasources azuremonitor logs KQL [flags]
   -h, --help                    help for logs
       --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --open                    Open the executed query in Grafana Explore
   -o, --output string           Output format. One of: agents, json, table, wide, yaml (default "table")
       --resource-group string   Azure resource group of the workspace (required)
+      --share-link              Print the Grafana Explore URL for the executed query to stderr
       --since string            Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --subscription string     Azure subscription ID (required)
       --to string               End time (RFC3339, Unix timestamp, or relative like 'now')
