@@ -141,6 +141,36 @@ func TestEnforceLimit(t *testing.T) {
 		{"bail on LIMIT OFFSET", "SELECT * FROM t LIMIT 100 OFFSET 10", 100, "SELECT * FROM t LIMIT 100 OFFSET 10"},
 		{"bail on EXPLAIN", "EXPLAIN SELECT * FROM t", 100, "EXPLAIN SELECT * FROM t"},
 		{"bail on DDL CREATE", "CREATE TABLE t AS SELECT 1", 100, "CREATE TABLE t AS SELECT 1"},
+		{"bail on leading DESCRIBE", "DESCRIBE mydataset.mytable", 100, "DESCRIBE mydataset.mytable"},
+		{"bail on leading DESC", "DESC mydataset.mytable", 100, "DESC mydataset.mytable"},
+		{"bail on leading whitespace before DESCRIBE", "\n  DESCRIBE mydataset.mytable", 100, "\n  DESCRIBE mydataset.mytable"},
+		{"bail on lowercase leading describe", "describe mydataset.mytable", 100, "describe mydataset.mytable"},
+		// Statement-leading keywords must not match mid-statement line starts.
+		// Before the \A anchor these multi-line queries silently lost their cap.
+		{
+			"appends LIMIT to multi-line ORDER BY DESC",
+			"SELECT * FROM `p.d.events`\nORDER BY ts\nDESC",
+			100,
+			"SELECT * FROM `p.d.events`\nORDER BY ts\nDESC LIMIT 100",
+		},
+		{
+			"appends LIMIT when DESC ends a line",
+			"SELECT * FROM t\nORDER BY ts DESC",
+			100,
+			"SELECT * FROM t\nORDER BY ts DESC LIMIT 100",
+		},
+		{
+			"appends LIMIT to multi-line window function with DESC on its own line",
+			"SELECT ROW_NUMBER() OVER (\n  ORDER BY ts\n  DESC\n) AS rn FROM t",
+			100,
+			"SELECT ROW_NUMBER() OVER (\n  ORDER BY ts\n  DESC\n) AS rn FROM t LIMIT 100",
+		},
+		{
+			"bail on LIMIT OFFSET remains unanchored across lines",
+			"SELECT * FROM t\nLIMIT 100 OFFSET 10",
+			100,
+			"SELECT * FROM t\nLIMIT 100 OFFSET 10",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
