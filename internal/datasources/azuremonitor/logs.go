@@ -18,6 +18,7 @@ type logsOpts struct {
 	dsquery.TimeRangeOpts
 
 	IO            cmdio.Options
+	Share         dsquery.ExploreLinkOpts
 	Datasource    string
 	Subscription  string
 	ResourceGroup string
@@ -28,6 +29,7 @@ func (opts *logsOpts) setup(flags *pflag.FlagSet) {
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
 	opts.SetupTimeFlags(flags)
+	opts.Share.Setup(flags, "executed query")
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.azuremonitor is configured)")
 	flags.StringVar(&opts.Subscription, "subscription", "", "Azure subscription ID (required)")
@@ -68,7 +70,10 @@ KQL is the query expression, e.g. 'AppRequests | take 10'. The workspace is
 identified by --subscription, --resource-group, and --workspace; use
 list-resources to discover workspaces (type Microsoft.OperationalInsights/workspaces).
 
-Datasource is resolved from -d flag or datasources.azuremonitor in your context.`,
+Datasource is resolved from -d flag or datasources.azuremonitor in your context.
+
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.`,
 		Example: `
   # Query a workspace
   gcx datasources azuremonitor logs 'AppRequests | take 10' -d UID \
@@ -80,7 +85,15 @@ Datasource is resolved from -d flag or datasources.azuremonitor in your context.
 
   # Output as JSON
   gcx datasources azuremonitor logs 'AppTraces | take 5' -d UID \
-    --subscription SUB_ID --resource-group my-rg --workspace my-workspace -o json`,
+    --subscription SUB_ID --resource-group my-rg --workspace my-workspace -o json
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources azuremonitor logs 'AppRequests | take 10' -d UID \
+    --subscription SUB_ID --resource-group my-rg --workspace my-workspace --share-link
+
+  # Open the executed query in Grafana Explore
+  gcx datasources azuremonitor logs 'AppRequests | take 10' -d UID \
+    --subscription SUB_ID --resource-group my-rg --workspace my-workspace --open`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -94,7 +107,7 @@ Datasource is resolved from -d flag or datasources.azuremonitor in your context.
 				return err
 			}
 
-			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "azuremonitor")
+			datasourceUID, dsType, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "azuremonitor")
 			if err != nil {
 				return err
 			}
@@ -128,7 +141,22 @@ Datasource is resolved from -d flag or datasources.azuremonitor in your context.
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+				DatasourceUID:  datasourceUID,
+				DatasourceType: dsType,
+				From:           opts.From,
+				To:             opts.To,
+				OrgID:          dsquery.OrgID(cfgCtx),
+			}, req)
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			}, opts.Share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 

@@ -16,6 +16,7 @@ import (
 
 type resourceGraphOpts struct {
 	IO            cmdio.Options
+	Share         dsquery.ExploreLinkOpts
 	Datasource    string
 	Subscriptions []string
 }
@@ -23,6 +24,7 @@ type resourceGraphOpts struct {
 func (opts *resourceGraphOpts) setup(flags *pflag.FlagSet) {
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
+	opts.Share.Setup(flags, "executed query")
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.azuremonitor is configured)")
 	flags.StringArrayVar(&opts.Subscriptions, "subscription", nil, "Azure subscription ID to query (repeatable; at least one required)")
@@ -51,7 +53,10 @@ Azure's inventory of resources across subscriptions.
 KQL is the query expression, e.g. 'Resources | project name, type | limit 10'.
 Pass --subscription (repeatable) to scope the query.
 
-Datasource is resolved from -d flag or datasources.azuremonitor in your context.`,
+Datasource is resolved from -d flag or datasources.azuremonitor in your context.
+
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.`,
 		Example: `
   # List resources by type
   gcx datasources azuremonitor resource-graph \
@@ -60,7 +65,15 @@ Datasource is resolved from -d flag or datasources.azuremonitor in your context.
 
   # Query across multiple subscriptions, output as JSON
   gcx datasources azuremonitor resource-graph 'Resources | project name, type, location' \
-    -d UID --subscription SUB_A --subscription SUB_B -o json`,
+    -d UID --subscription SUB_A --subscription SUB_B -o json
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources azuremonitor resource-graph 'Resources | project name, type' \
+    -d UID --subscription SUB_ID --share-link
+
+  # Open the executed query in Grafana Explore
+  gcx datasources azuremonitor resource-graph 'Resources | project name, type' \
+    -d UID --subscription SUB_ID --open`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -74,7 +87,7 @@ Datasource is resolved from -d flag or datasources.azuremonitor in your context.
 				return err
 			}
 
-			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "azuremonitor")
+			datasourceUID, dsType, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "azuremonitor")
 			if err != nil {
 				return err
 			}
@@ -99,7 +112,22 @@ Datasource is resolved from -d flag or datasources.azuremonitor in your context.
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			// The command exposes no time flags, so the Explore pane falls
+			// back to the default lookback window.
+			exploreURL := ResourceGraphExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+				DatasourceUID:  datasourceUID,
+				DatasourceType: dsType,
+				OrgID:          dsquery.OrgID(cfgCtx),
+			}, req)
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			}, opts.Share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 

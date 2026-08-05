@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +24,13 @@ const (
 
 	// pluginID is the Grafana Azure Monitor datasource plugin ID.
 	pluginID = "grafana-azure-monitor-datasource"
+
+	// maxDataPoints caps the number of points the plugin returns per series.
+	maxDataPoints = 1000
+
+	// resourceGraphIntervalMs is the fixed interval used for Resource Graph
+	// queries, whose results are not time-scoped.
+	resourceGraphIntervalMs = 60_000
 )
 
 // Client executes Azure Monitor metric queries and Azure Resource Manager
@@ -51,60 +56,8 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 
 // Query executes an Azure Monitor metrics query via the Grafana datasource query API.
 func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*QueryResponse, error) {
-	// Sort dimensions so the request body is deterministic; Azure treats the
-	// filter list as unordered.
-	filters := make([]any, 0, len(req.DimensionFilters))
-	for _, dim := range slices.Sorted(maps.Keys(req.DimensionFilters)) {
-		filters = append(filters, map[string]any{
-			"dimension": dim,
-			"operator":  "eq",
-			"filters":   []string{req.DimensionFilters[dim]},
-		})
-	}
-
-	resource := map[string]any{
-		"resourceGroup":   req.ResourceGroup,
-		"resourceName":    req.ResourceName,
-		"metricNamespace": req.MetricNamespace,
-	}
-	if req.Region != "" {
-		resource["region"] = req.Region
-	}
-
-	azm := map[string]any{
-		"resources":        []any{resource},
-		"metricNamespace":  req.MetricNamespace,
-		"metricName":       req.MetricName,
-		"aggregation":      req.Aggregation,
-		"timeGrain":        req.TimeGrain,
-		"dimensionFilters": filters,
-	}
-	if req.Region != "" {
-		azm["region"] = req.Region
-	}
-	if req.Top != "" {
-		azm["top"] = req.Top
-	}
-
-	query := map[string]any{
-		"refId":     "A",
-		"queryType": "Azure Monitor",
-		// The plugin backend builds the ARM URL from the query-level
-		// subscription field, not from resources[].subscription. Moving this
-		// into the resource entry produces a malformed ARM request
-		// (InvalidSubscriptionId).
-		"subscription": req.Subscription,
-		"datasource": map[string]any{
-			"type": pluginID,
-			"uid":  dsUID,
-		},
-		"azureMonitor":  azm,
-		"intervalMs":    intervalMsFor(req.Start, req.End),
-		"maxDataPoints": 1000,
-	}
-
 	bodyMap := map[string]any{
-		"queries": []any{query},
+		"queries": []any{MetricsQueryModel(dsUID, req)},
 		"from":    strconv.FormatInt(req.Start.UnixMilli(), 10),
 		"to":      strconv.FormatInt(req.End.UnixMilli(), 10),
 	}
@@ -135,50 +88,13 @@ func simplifyQueryError(err error) error {
 // LogsQuery executes a KQL query against a Log Analytics workspace via the
 // Grafana datasource query API.
 func (c *Client) LogsQuery(ctx context.Context, dsUID string, req LogsQueryRequest) (*TableResponse, error) {
-	workspaceURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.OperationalInsights/workspaces/%s",
-		req.Subscription, req.ResourceGroup, req.Workspace)
-
-	query := map[string]any{
-		"refId":     "A",
-		"queryType": "Azure Log Analytics",
-		"datasource": map[string]any{
-			"type": pluginID,
-			"uid":  dsUID,
-		},
-		"azureLogAnalytics": map[string]any{
-			"resources":    []string{workspaceURI},
-			"query":        req.Query,
-			"resultFormat": "table",
-		},
-		"intervalMs":    intervalMsFor(req.Start, req.End),
-		"maxDataPoints": 1000,
-	}
-
-	return c.executeTableQuery(ctx, query, req.Start, req.End, "logs")
+	return c.executeTableQuery(ctx, LogsQueryModel(dsUID, req), req.Start, req.End, "logs")
 }
 
 // ResourceGraphQuery executes a KQL query against Azure Resource Graph via the
 // Grafana datasource query API.
 func (c *Client) ResourceGraphQuery(ctx context.Context, dsUID string, req ResourceGraphRequest) (*TableResponse, error) {
-	query := map[string]any{
-		"refId":     "A",
-		"queryType": "Azure Resource Graph",
-		"datasource": map[string]any{
-			"type": pluginID,
-			"uid":  dsUID,
-		},
-		// Unlike metrics (query-level "subscription", singular), Resource
-		// Graph reads a query-level "subscriptions" array.
-		"subscriptions": req.Subscriptions,
-		"azureResourceGraph": map[string]any{
-			"query":        req.Query,
-			"resultFormat": "table",
-		},
-		"intervalMs":    60_000,
-		"maxDataPoints": 1000,
-	}
-
-	return c.executeTableQuery(ctx, query, req.Start, req.End, "resource-graph")
+	return c.executeTableQuery(ctx, ResourceGraphQueryModel(dsUID, req), req.Start, req.End, "resource-graph")
 }
 
 func (c *Client) executeTableQuery(ctx context.Context, query map[string]any, start, end time.Time, operation string) (*TableResponse, error) {

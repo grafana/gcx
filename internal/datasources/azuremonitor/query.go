@@ -18,6 +18,7 @@ type queryOpts struct {
 	dsquery.TimeRangeOpts
 
 	IO            cmdio.Options
+	Share         dsquery.ExploreLinkOpts
 	Datasource    string
 	Subscription  string
 	ResourceGroup string
@@ -35,6 +36,7 @@ func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	dsquery.RegisterCodecs(&opts.IO, true)
 	opts.IO.BindFlags(flags)
 	opts.SetupTimeFlags(flags)
+	opts.Share.Setup(flags, "executed query")
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.azuremonitor is configured)")
 	flags.StringVar(&opts.Subscription, "subscription", "", "Azure subscription ID (defaults to the datasource's default subscription)")
@@ -93,7 +95,10 @@ list-metrics subcommands to discover valid flag values.
 
 Datasource is resolved from -d flag or datasources.azuremonitor in your context.
 Note: datasources configured with "Current User" (Azure AD passthrough)
-authentication cannot be queried with API tokens or service accounts.`,
+authentication cannot be queried with API tokens or service accounts.
+
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.`,
 		Example: `
   # Query a storage account metric
   gcx datasources azuremonitor query -d UID --subscription SUB_ID \
@@ -109,7 +114,17 @@ authentication cannot be queried with API tokens or service accounts.`,
   # Output as JSON
   gcx datasources azuremonitor query -d UID --subscription SUB_ID \
     --resource-group my-rg --namespace Microsoft.Compute/virtualMachines \
-    --resource my-vm --metric 'Percentage CPU' -o json`,
+    --resource my-vm --metric 'Percentage CPU' -o json
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources azuremonitor query -d UID --subscription SUB_ID \
+    --resource-group my-rg --namespace Microsoft.Compute/virtualMachines \
+    --resource my-vm --metric 'Percentage CPU' --since 1h --share-link
+
+  # Open the executed query in Grafana Explore
+  gcx datasources azuremonitor query -d UID --subscription SUB_ID \
+    --resource-group my-rg --namespace Microsoft.Compute/virtualMachines \
+    --resource my-vm --metric 'Percentage CPU' --since 1h --open`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
@@ -123,7 +138,7 @@ authentication cannot be queried with API tokens or service accounts.`,
 				return err
 			}
 
-			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "azuremonitor")
+			datasourceUID, dsType, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "azuremonitor")
 			if err != nil {
 				return err
 			}
@@ -168,7 +183,24 @@ authentication cannot be queried with API tokens or service accounts.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			// req carries the resolved subscription, so the Explore link
+			// always names the subscription the query actually used.
+			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+				DatasourceUID:  datasourceUID,
+				DatasourceType: dsType,
+				From:           opts.From,
+				To:             opts.To,
+				OrgID:          dsquery.OrgID(cfgCtx),
+			}, req)
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			}, opts.Share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 
