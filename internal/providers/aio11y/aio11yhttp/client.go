@@ -18,7 +18,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-const pluginBasePath = "/api/plugins/grafana-sigil-app/resources"
+const pluginBasePath = "/api/plugins/grafana-agento11y-app/resources"
 
 // Client is a base HTTP client for the Agent Observability plugin API.
 type Client struct {

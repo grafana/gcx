@@ -77,13 +77,10 @@ type StackInfo struct {
 // Region describes a Grafana Cloud stack region as returned by the GCOM API.
 type Region struct {
 	ID          int    `json:"id"`
-	Status      string `json:"status"`
 	Slug        string `json:"slug"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Provider    string `json:"provider"`
-	CreatedAt   string `json:"createdAt,omitempty"`
-	UpdatedAt   string `json:"updatedAt,omitempty"`
 }
 
 // CreateStackRequest is the request body for creating a new Grafana Cloud stack.

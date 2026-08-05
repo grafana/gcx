@@ -788,7 +788,6 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Details: k8sErr.Cause.Error(),
 			Suggestions: []string{
 				"Confirm the Grafana stack is on version 12 or later",
-				"Confirm the Grafana token has the role required to call /apis (Admin or Editor)",
 				"Check network/proxy access to " + k8sErr.Server,
 			},
 			DocsLink: docs.GrafanaInstallation,
@@ -867,7 +866,6 @@ func convertHealthCheckError(err *login.HealthCheckError) *gcxerrors.DetailedErr
 			Suggestions: []string{
 				"Confirm the Grafana service-account token belongs to the target stack",
 				"Confirm the token has not expired or been revoked",
-				"Confirm the service-account role grants Admin or Editor as required",
 				reauthSuggestion,
 			},
 			DocsLink: docs.ServiceAccounts,

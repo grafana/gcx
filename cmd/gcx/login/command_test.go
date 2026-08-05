@@ -828,6 +828,237 @@ func TestLoadLoginSourceContextAppliesEnvToPositionalTarget(t *testing.T) {
 	assert.Equal(t, "target-env-token", sourceCtx.Grafana.APIToken)
 }
 
+func TestLoadLoginSourceContextClassifiesUnmatchedServerForTelemetry(t *testing.T) {
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_STACK")
+	unsetEnvForTest(t, "GRAFANA_STACK_ID")
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("onprem", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "http://localhost:3000", OrgID: 1}})
+	seed.SetContext("onprem", true, config.Context{Stack: "onprem"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	// Logging in to a cloud stack no context describes: the load above classifies
+	// the current self-hosted context and the reload that would correct it is
+	// skipped, so telemetry has to be reclassified from the requested server or
+	// this cloud login is counted as self-hosted.
+	flags := &loginOpts{
+		Config: configcmd.Options{ConfigFile: path},
+		Server: "https://newstack.grafana.net",
+	}
+	_, sourceCtx, _, err := loadLoginSourceContext(t.Context(), flags, "")
+	require.NoError(t, err)
+	require.Nil(t, sourceCtx)
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
+func TestCaptureLoginTargetKind(t *testing.T) {
+	// Each case is seeded with the opposite kind, so a helper that recorded
+	// nothing would read back the seed and fail rather than pass by accident.
+	tests := []struct {
+		name string
+		seed config.TargetKind
+		opts internallogin.Options
+		want string
+	}{
+		{
+			name: "resolved cloud target wins over the URL",
+			// --cloud, or detection recognising a Cloud stack behind a custom
+			// domain: the hostname alone would read as self-hosted.
+			seed: config.TargetKindSelfHosted,
+			opts: internallogin.Options{Inputs: internallogin.Inputs{Target: internallogin.TargetCloud, Server: "https://grafana.mycorp.example"}},
+			want: "cloud",
+		},
+		{
+			name: "resolved on-prem target wins over the URL",
+			seed: config.TargetKindCloud,
+			opts: internallogin.Options{Inputs: internallogin.Inputs{Target: internallogin.TargetOnPrem, Server: "https://mystack.grafana.net"}},
+			want: "self-hosted",
+		},
+		{
+			name: "undetected target falls back to the server hostname",
+			seed: config.TargetKindSelfHosted,
+			opts: internallogin.Options{Inputs: internallogin.Inputs{Server: "https://mystack.grafana.net"}},
+			want: "cloud",
+		},
+		{
+			name: "schemeless server is normalized before classifying",
+			seed: config.TargetKindSelfHosted,
+			opts: internallogin.Options{Inputs: internallogin.Inputs{Server: "mystack.grafana.net"}},
+			want: "cloud",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config.CaptureTargetKind(tt.seed)
+			captureLoginTargetKind(&tt.opts)
+			assert.Equal(t, tt.want, config.CapturedTargetKind())
+		})
+	}
+}
+
+func TestCaptureLoginTargetKindKeepsKindWhenNothingIsKnown(t *testing.T) {
+	config.CaptureTargetKind(config.TargetKindCloud)
+	captureLoginTargetKind(&internallogin.Options{})
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
+func TestLoginNewContextWithoutServerReportsNoTarget(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("onprem", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "http://localhost:3000", OrgID: 1}})
+	seed.SetContext("dev", true, config.Context{Stack: "onprem"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"brand-new-context", "--config", path, "--yes"})
+
+	// A brand-new context with no --server: nothing is known about the target,
+	// so the self-hosted context that happens to be current must not be
+	// reported in its place.
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "server")
+	assert.Empty(t, config.CapturedTargetKind())
+}
+
+func TestLoginRejectedStoredTokenReportsRequestedTarget(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("onprem", config.StackConfig{
+		Grafana: &config.GrafanaConfig{Server: "http://localhost:3000", OrgID: 1, APIToken: "stored"},
+	})
+	seed.SetContext("dev", true, config.Context{Stack: "onprem"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"dev", "--server", "https://newstack.grafana.net", "--config", path, "--yes"})
+
+	// The stored token cannot be reused for the new destination, which returns
+	// well before target detection. The event must still describe the cloud
+	// stack that was requested, not the self-hosted server being replaced.
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "Stored Grafana token cannot be reused")
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
+func TestRunLoginLoopReportsDetectedCloudTargetOnCustomDomain(t *testing.T) {
+	// Seeded with the kind the hostname implies, so only a value taken from the
+	// resolved target can satisfy this.
+	config.CaptureTargetKind(config.TargetKindSelfHosted)
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetContext(t.Context())
+
+	detected := false
+	opts := &internallogin.Options{
+		Inputs: internallogin.Inputs{
+			Server:      "https://grafana.mycorp.example",
+			ContextName: "dev",
+		},
+		// A Cloud stack behind a custom domain — invisible to any hostname
+		// heuristic, and the reason the recapture after login.Run exists.
+		Hooks: internallogin.Hooks{
+			DetectFn: func(context.Context, string) (internallogin.Target, error) {
+				detected = true
+				return internallogin.TargetCloud, nil
+			},
+		},
+	}
+
+	// Non-interactive, and a Cloud target with no cloud credential, so Run
+	// returns a missing-input error before attempting any network call.
+	err := runLoginLoop(cmd, &loginOpts{}, opts, nil, nil, false, nil, false)
+	require.Error(t, err)
+	require.True(t, detected, "detection did not run; the test no longer covers the recapture")
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
+func TestLoginRejectedByServerOverridePreflightReportsRequestedTarget(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "https://old.example.invalid"}})
+	seed.SetContext("default", true, config.Context{Stack: "default"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"default", "--server", "https://newstack.grafana.net", "--token", "fresh", "--config", path, "--yes"})
+
+	// The preflight rejects re-pointing the context, so the login never reaches
+	// detection. Telemetry must still describe the cloud stack the user aimed at
+	// rather than the self-hosted server the existing context holds.
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "--allow-server-override")
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
+func TestLoginForcedCloudTargetOnCustomDomainReportsCloud(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "http://localhost:3000"}})
+	seed.SetContext("default", true, config.Context{Stack: "default"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"default", "--cloud", "--server", "https://grafana.mycorp.example", "--token", "fresh", "--config", path, "--yes"})
+
+	// --cloud forces the target, so a hostname that looks nothing like Cloud must
+	// not be classified from the URL. The preflight stops the login before any
+	// network call.
+	err := cmd.ExecuteContext(t.Context())
+	require.Error(t, err)
+	assert.Equal(t, "cloud", config.CapturedTargetKind())
+}
+
 func TestPersistedLoginSourceContextIgnoresRuntimeEnvironmentOverrides(t *testing.T) {
 	t.Setenv("GRAFANA_SERVER", "https://runtime.invalid")
 	t.Setenv("GRAFANA_CLOUD_API_URL", "https://grafana-ops.com")
@@ -1366,16 +1597,21 @@ contexts:
 }
 
 func TestLoginRejectsFreshCredentialsForAutoLocalBeforeNetwork(t *testing.T) {
+	// wantKind is the telemetry target kind the rejection must report. This gate
+	// runs before any config is read, so only the flags can supply it: --server
+	// points at the local test server, and --cloud outranks it.
 	tests := []struct {
-		name string
-		env  string
-		args []string
+		name     string
+		env      string
+		args     []string
+		wantKind string
 	}{
-		{name: "Grafana token flag", args: []string{"--token", "fresh-grafana-token"}},
-		{name: "Grafana token environment", env: "GRAFANA_TOKEN"},
-		{name: "Grafana OAuth", args: []string{"--oauth"}},
-		{name: "Cloud token flag", args: []string{"--cloud-token", "fresh-cloud-token"}},
-		{name: "Cloud token environment", env: "GRAFANA_CLOUD_TOKEN"},
+		{name: "Grafana token flag", args: []string{"--token", "fresh-grafana-token"}, wantKind: "self-hosted"},
+		{name: "Grafana token environment", env: "GRAFANA_TOKEN", wantKind: "self-hosted"},
+		{name: "Grafana OAuth", args: []string{"--oauth"}, wantKind: "self-hosted"},
+		{name: "Cloud token flag", args: []string{"--cloud-token", "fresh-cloud-token"}, wantKind: "self-hosted"},
+		{name: "Cloud token environment", env: "GRAFANA_CLOUD_TOKEN", wantKind: "self-hosted"},
+		{name: "Cloud target forced", args: []string{"--cloud", "--cloud-token", "fresh-cloud-token"}, wantKind: "cloud"},
 	}
 
 	for _, tt := range tests {
@@ -1384,6 +1620,14 @@ func TestLoginRejectsFreshCredentialsForAutoLocalBeforeNetwork(t *testing.T) {
 			if tt.env != "" {
 				t.Setenv(tt.env, "fresh-environment-token")
 			}
+
+			// Seed the opposite kind, so reporting the requested one cannot be a
+			// leftover value from an earlier case.
+			seed := config.TargetKindCloud
+			if tt.wantKind == "cloud" {
+				seed = config.TargetKindSelfHosted
+			}
+			config.CaptureTargetKind(seed)
 
 			var requests atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -1420,6 +1664,8 @@ current-context: default
 			require.ErrorContains(t, err, "auto-discovered repository config")
 			require.ErrorContains(t, err, "--config "+localPath)
 			assert.Zero(t, requests.Load(), "fresh credentials must fail before target detection or validation")
+			assert.Equal(t, tt.wantKind, config.CapturedTargetKind(),
+				"the earliest rejection gate must still report the requested target")
 			raw, readErr := os.ReadFile(localPath)
 			require.NoError(t, readErr)
 			assert.Equal(t, original, raw)

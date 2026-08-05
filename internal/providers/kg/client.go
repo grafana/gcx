@@ -36,6 +36,7 @@ const (
 	searchPath               = pluginResourcePath + "/asserts/api-server/v1/search"
 	searchAssertPath         = searchPath + "/assertions"
 	searchSamplePath         = searchPath + "/sample"
+	alertInspectionPath      = pluginResourcePath + "/asserts/api-server/v1/alert-inspection"
 	rulesPath                = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
 	ruleByNameFmt            = rulesPath + "/%s"
 	rulesSchemaPath          = rulesPath + "/schema"
@@ -54,6 +55,11 @@ const (
 	v2TraceConfigPath        = v2ConfigPath + "/trace"
 	v2ProfileConfigPath      = v2ConfigPath + "/profile"
 	v2RelabelRulesPath       = v2ConfigPath + "/relabel-rules"
+
+	// KG entity quality reports, proxied through the asserts plugin.
+	qualityBasePath          = pluginResourcePath + "/asserts/kg-quality/v1/entities"
+	qualityReportsPath       = qualityBasePath + "/quality-reports"
+	qualityReportByEntityFmt = qualityBasePath + "/%s/%s/quality-report"
 
 	// KG Write API (K8s-style, namespaced). %s is the stacks-<id> namespace.
 	// Entity and relationship deletes use these collection paths with identity
@@ -747,6 +753,88 @@ func (c *Client) ListEntityScopes(ctx context.Context, startMs, endMs int64) (ma
 }
 
 // ---------------------------------------------------------------------------
+// Quality reports
+// ---------------------------------------------------------------------------
+
+// QualityReportQuery holds filters for listing entity quality reports.
+type QualityReportQuery struct {
+	Type           string
+	Env            string
+	Namespace      string
+	Site           string
+	EntityName     string
+	FailedCheckIDs []string
+	SortDirection  string // "ASC" or "DESC"
+	Page           int
+	PageSize       int
+}
+
+// GetEntityQualityReport fetches the full quality report for a single entity.
+// env is required by the backend; namespace and site are optional scope filters.
+func (c *Client) GetEntityQualityReport(ctx context.Context, entityType, name, env, namespace, site string) (*QualityReport, error) {
+	path := fmt.Sprintf(qualityReportByEntityFmt, url.PathEscape(entityType), url.PathEscape(name))
+	q := url.Values{}
+	if env != "" {
+		q.Set("env", env)
+	}
+	if namespace != "" {
+		q.Set("namespace", namespace)
+	}
+	if site != "" {
+		q.Set("site", site)
+	}
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var report QualityReport
+	if err := c.getJSON(ctx, path, &report); err != nil {
+		return nil, fmt.Errorf("kg: get quality report: %w", err)
+	}
+	return &report, nil
+}
+
+// ListQualityReports fetches a page of entity quality reports matching the query.
+func (c *Client) ListQualityReports(ctx context.Context, query QualityReportQuery) (*QualityReportPage, error) {
+	q := url.Values{}
+	if query.Type != "" {
+		q.Set("type", query.Type)
+	}
+	if query.Env != "" {
+		q.Set("env", query.Env)
+	}
+	if query.Namespace != "" {
+		q.Set("namespace", query.Namespace)
+	}
+	if query.Site != "" {
+		q.Set("site", query.Site)
+	}
+	if query.EntityName != "" {
+		q.Set("entityName", query.EntityName)
+	}
+	for _, id := range query.FailedCheckIDs {
+		q.Add("failedCheckIds", id)
+	}
+	if query.SortDirection != "" {
+		q.Set("sortDirection", query.SortDirection)
+	}
+	if query.Page > 0 {
+		q.Set("page", strconv.Itoa(query.Page))
+	}
+	if query.PageSize > 0 {
+		q.Set("pageSize", strconv.Itoa(query.PageSize))
+	}
+	path := qualityReportsPath
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var page QualityReportPage
+	if err := c.getJSON(ctx, path, &page); err != nil {
+		return nil, fmt.Errorf("kg: list quality reports: %w", err)
+	}
+	return &page, nil
+}
+
+// ---------------------------------------------------------------------------
 // Assertions operations
 // ---------------------------------------------------------------------------
 
@@ -893,6 +981,27 @@ func (c *Client) CypherSearch(ctx context.Context, req CypherSearchRequest) (*Cy
 	}
 	if result.Edges == nil {
 		result.Edges = []CypherEdge{}
+	}
+	return &result, nil
+}
+
+// Correlate resolves affected Knowledge Graph entities from firing-alert label
+// sets, using the same correlation the product uses to attach alerts to
+// entities (backs the IRM Alert Groups "Impact" tab).
+//
+// Backend: POST /v1/alert-inspection. An empty correlation is a 200 with an
+// empty Data.Entities, not a 204 — callers detect "no correlation" from the
+// payload rather than the status code.
+func (c *Client) Correlate(ctx context.Context, req AlertInspectionRequest) (*AlertInspectionResponse, error) {
+	var result AlertInspectionResponse
+	if err := c.postJSON(ctx, alertInspectionPath, req, &result); err != nil {
+		return nil, fmt.Errorf("kg: correlate: %w", err)
+	}
+	if result.Data.Entities == nil {
+		result.Data.Entities = []GraphEntity{}
+	}
+	if result.Data.Edges == nil {
+		result.Data.Edges = []CypherEdge{}
 	}
 	return &result, nil
 }

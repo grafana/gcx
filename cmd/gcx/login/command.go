@@ -161,6 +161,12 @@ Auth sources (for non-interactive use):
 //nolint:gocyclo,maintidx // Login deliberately keeps trust preflight, auth selection, and retry setup in one auditable flow.
 func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	ctx := cmd.Context()
+	// The auto-discovered-config credential rejection below is the earliest gate
+	// that can end a login, and it runs before any config is read — so there is
+	// nothing but the flags to go on. Record what they ask for here; the
+	// context-derived capture after the load refines it for logins that get that
+	// far, and login.Run's detection overrides both.
+	captureRequestedLoginTargetKind(flags, nil)
 	preflightTarget, targetIsDeterministic, err := flags.Config.PreflightLoginMutationTarget()
 	if err != nil {
 		return err
@@ -189,6 +195,12 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Every gate between here and login.Run — mutation planning, auto-local
+	// credential policy, binding verification, the server-override preflight —
+	// can reject the login before detection ever runs. Record what the
+	// invocation asked for now, so those refusals report the target the user
+	// aimed at instead of the one the current context happens to hold.
+	captureRequestedLoginTargetKind(flags, sourceCtx)
 	mutationTarget, err := flags.Config.PlanLoginMutation(cfg, contextName, config.LoginMutationUnified)
 	if err != nil {
 		return err
@@ -448,6 +460,35 @@ func enforceAutoLocalCredentialPolicy(opts *login.Options, sourceCtx *config.Con
 	return nil
 }
 
+// captureRequestedLoginTargetKind records the target the invocation asked for,
+// before any gate that could reject the login. --cloud and --server name a
+// target explicitly and outrank the context the preceding config load
+// classified; with neither, that context is the target and its classification
+// stands.
+func captureRequestedLoginTargetKind(flags *loginOpts, sourceCtx *config.Context) {
+	if flags.Cloud {
+		config.CaptureTargetKind(config.TargetKindCloud)
+		return
+	}
+	config.CaptureTargetKindForServer(login.NormalizeServerURL(requestedLoginServer(flags.Server, sourceCtx)))
+}
+
+// captureLoginTargetKind records the telemetry target kind for this login.
+// A resolved target — forced by --cloud or established by detection inside
+// login.Run — is authoritative. Until one exists the requested server's
+// hostname is the only signal available, normalized the same way Run
+// normalizes it so a schemeless cloud URL is not read as self-hosted.
+func captureLoginTargetKind(opts *login.Options) {
+	switch opts.Target {
+	case login.TargetCloud:
+		config.CaptureTargetKind(config.TargetKindCloud)
+	case login.TargetOnPrem:
+		config.CaptureTargetKind(config.TargetKindSelfHosted)
+	case login.TargetUnknown:
+		config.CaptureTargetKindForServer(login.NormalizeServerURL(opts.Server))
+	}
+}
+
 func runLoginLoop(
 	cmd *cobra.Command,
 	flags *loginOpts,
@@ -465,6 +506,11 @@ func runLoginLoop(
 			}
 		}
 		result, err := login.Run(cmd.Context(), opts)
+		// Run resolves opts.Target by detection when it was not forced, and the
+		// resolution survives the sentinel retries below. It outranks anything
+		// derived from the URL: a custom domain fronting a Cloud stack is only
+		// recognisable once detection has run.
+		captureLoginTargetKind(opts)
 		if err == nil {
 			if shouldWarnRuntimeOnlyDestination(runtimeDestinationFromEnvironment, result) {
 				warnRuntimeOnlyDestination(cmd.ErrOrStderr())
@@ -725,6 +771,16 @@ func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName s
 	selectionServer := requestedLoginServer(flags.Server, nil)
 	sourceCtx, resolvedName := resolveSourceContext(cfg, contextName, selectionServer)
 	if sourceCtx == nil {
+		// No configured context describes the requested server, so the reload
+		// below is skipped and the telemetry kind captured by the load above
+		// still describes whichever context was current.
+		if selectionServer == "" {
+			// A new context with no server yet: nothing about the target is
+			// known, and an unrelated context must not stand in for it.
+			config.ClearCapturedTargetKind()
+		} else {
+			config.CaptureTargetKindForServer(selectionServer)
+		}
 		return cfg, sourceCtx, resolvedName, nil
 	}
 

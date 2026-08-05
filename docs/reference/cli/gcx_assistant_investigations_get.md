@@ -4,7 +4,7 @@ Get investigation detail.
 
 ### Synopsis
 
-Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise.
+Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise. v2 output includes both identifiers: investigationId, and the backing chatId that the chat, narrative, and tools subcommands key on.
 
 ```
 gcx assistant investigations get <id> [flags]

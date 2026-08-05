@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
@@ -17,6 +18,8 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 	"k8s.io/client-go/rest"
 )
+
+const utf8LabelNamesCapability = "allow-utf8-labelnames=true"
 
 // Client is a client for executing Pyroscope queries via Grafana's datasource API.
 type Client struct {
@@ -30,11 +33,34 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
+	httpClient.Transport = &clientCapabilitiesTransport{base: httpClient.Transport}
 
 	return &Client{
 		restConfig: cfg,
 		httpClient: httpClient,
 	}, nil
+}
+
+// clientCapabilitiesTransport advertises Pyroscope features supported by gcx.
+type clientCapabilitiesTransport struct {
+	base http.RoundTripper
+}
+
+func (t *clientCapabilitiesTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+
+	clone := req.Clone(req.Context())
+	for _, value := range clone.Header.Values("Accept") {
+		if strings.Contains(value, utf8LabelNamesCapability) {
+			return base.RoundTrip(clone)
+		}
+	}
+	clone.Header.Add("Accept", "*/*;"+utf8LabelNamesCapability)
+
+	return base.RoundTrip(clone)
 }
 
 // Query executes a Pyroscope profile query against the specified datasource.

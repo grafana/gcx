@@ -134,7 +134,7 @@ See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation wi
 
 - **Idempotent by default**: `push` is create-or-update. Safe to run repeatedly.
 - **Dry-run available**: `push` and `delete` accept `--dry-run`.
-- **Prompt before destructive ops**: `delete` prompts unless `--force` or `GCX_AUTO_APPROVE`. Agent mode auto-approves.
+- **Prompt before destructive operations**: cloud provider delete commands prompt for confirmation unless `--force` or `GCX_AUTO_APPROVE`; agent mode requires `--force`. `resources delete` has no prompt yet (coming in [#241](https://github.com/grafana/gcx/issues/241)) — type-only selectors require `--force` (`--yes` also enables it).
 - **No prompt for reversible ops**: push, pull, config changes do not prompt.
 
 See [docs/design/safety.md](docs/design/safety.md) for implementation patterns and flag precedence.
@@ -158,4 +158,5 @@ Prescriptive implementation rules live in [docs/design/](docs/design/), split by
 | [provider-checklist.md](docs/design/provider-checklist.md) | Provider UX compliance (architecture patterns in [patterns.md](docs/architecture/patterns.md)) |
 | [help-text.md](docs/design/help-text.md) | Command descriptions, examples format |
 | [naming.md](docs/design/naming.md) | Resource kinds, file naming, config keys, flags |
+| [command-naming.md](docs/design/command-naming.md) | Canonical command verbs and placement |
 | [environment-variables.md](docs/design/environment-variables.md) | Canonical environment variable reference |

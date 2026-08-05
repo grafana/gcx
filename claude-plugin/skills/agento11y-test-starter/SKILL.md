@@ -44,7 +44,7 @@ agent has a clean function seam or needs a harness / full stack. For deeper run-
 (binding existing generations, cross-process verifiers) point to the per-language run skill
 (Python: `agento11y-experiments`).
 
-> Note: `agento11y-experiments` currently ships in the grafana/sigil-sdk repo
+> Note: `agento11y-experiments` currently ships in the grafana/agento11y repo
 > (`python/skills/agento11y-experiments/`), not in this gcx bundle yet — install it from there for
 > now. Consolidating it into the gcx bundle is pending.
 
@@ -444,7 +444,7 @@ If they accept:
    actually calls their agent.
 2. Preflight the environment and stop with a clear ask if anything is missing. **When you ask, tell
    the developer exactly where each value is** — for a Cloud stack they all live on the plugin
-   **Connection page**, `https://<your-stack>.grafana.net/plugins/grafana-sigil-app`:
+   **Connection page**, `https://<your-stack>.grafana.net/plugins/grafana-agento11y-app`:
    - `AGENTO11Y_ENDPOINT` = the **API URL** on that page. If unset, ask — never invent one.
    - `AGENTO11Y_AUTH_TENANT_ID` = the **Instance ID** on that page.
    - `AGENTO11Y_AUTH_TOKEN` — always required (the SDK raises before any request if it is empty).
