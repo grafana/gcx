@@ -80,6 +80,15 @@ func TestPyroscopeQueryOptsValidateSelectors(t *testing.T) {
 			args:    []string{"--span-id", "00f067aa0ba902b7", "-o", "pprof"},
 			wantErr: "--span-id is not supported with -o pprof",
 		},
+		{
+			name: "trace selector with dot",
+			args: []string{"--trace-id", "4bf92f3577b34da6a3ce929d0e0e4736", "-o", "dot"},
+		},
+		{
+			name:    "span ID with dot",
+			args:    []string{"--span-id", "00f067aa0ba902b7", "-o", "dot"},
+			wantErr: "--span-id is not supported with -o dot",
+		},
 	}
 
 	for _, tt := range tests {

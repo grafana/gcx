@@ -636,3 +636,69 @@ func TestClient_SelectHeatmap(t *testing.T) {
 		})
 	}
 }
+
+func TestClient_Query_DotFormat(t *testing.T) {
+	const dotGraph = `digraph "main" { N1 [label="hot 10s (90%)"] }`
+
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		wantDot string
+		wantFg  bool
+		wantErr string
+	}{
+		{
+			name: "pure v2 returns dot",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				var body map[string]any
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.Equal(t, pyroscope.ProfileFormatDot, body["format"])
+				_, hasMaxNodes := body["maxNodes"]
+				assert.False(t, hasMaxNodes, "maxNodes must be omitted when zero so the server picks DOT defaults")
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"dot": "digraph \"main\" { N1 [label=\"hot 10s (90%)\"] }"}`))
+			},
+			wantDot: dotGraph,
+		},
+		{
+			name: "dual downgrade returns flamegraph instead",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"flamegraph":{"names":["total"],"levels":[],"total":"0","maxSelf":"0"}}`))
+			},
+			wantFg: true,
+		},
+		{
+			name: "v1 rejection is surfaced",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotImplemented)
+				_, _ = w.Write([]byte(`{"code":"unimplemented","message":"dot format is only supported with the v2 query backend"}`))
+			},
+			wantErr: "dot format is only supported",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			resp, err := client.Query(context.Background(), "test-uid", pyroscope.QueryRequest{
+				LabelSelector: `{service_name="frontend"}`,
+				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				Format:        pyroscope.ProfileFormatDot,
+			})
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantDot, resp.Dot)
+			assert.Equal(t, tt.wantFg, resp.Flamegraph != nil)
+		})
+	}
+}
