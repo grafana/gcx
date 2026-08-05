@@ -28,7 +28,7 @@ func TestQueryRoutesTablesAreDisjoint(t *testing.T) {
 func TestQueryRoutesKeysAreNormalizedKinds(t *testing.T) {
 	routes := newQueryRoutes()
 
-	for _, kind := range allRoutedKinds(routes) {
+	for _, kind := range routes.supportedKinds() {
 		assert.Equalf(t, kind, dsquery.NormalizeKind(kind),
 			"route key %q is not a normalized kind", kind)
 	}
@@ -68,14 +68,15 @@ func TestStructuredQueryRedirectMatchesShippedCloudWatchText(t *testing.T) {
 	assert.Equal(t, want, newQueryRoutes().redirects["cloudwatch"])
 }
 
-func allRoutedKinds(routes queryRoutes) []string {
-	kinds := make([]string, 0, len(routes.dispatch)+len(routes.redirects))
-	for kind := range routes.dispatch {
-		kinds = append(kinds, kind)
-	}
-	for kind := range routes.redirects {
-		kinds = append(kinds, kind)
-	}
+// The supported list is derived, so it cannot drift from the tables again.
+func TestQueryRoutesSupportedKindsIsTheSortedUnion(t *testing.T) {
+	routes := newQueryRoutes()
 
-	return kinds
+	assert.Equal(t,
+		[]string{"clickhouse", "cloudwatch", "influxdb", "loki", "postgres", "prometheus", "pyroscope"},
+		routes.supportedKinds())
+
+	assert.Len(t, routes.supportedKinds(), len(routes.dispatch)+len(routes.redirects),
+		"every routed kind appears exactly once")
+	assert.IsIncreasing(t, routes.supportedKinds(), "the list must be deterministic")
 }

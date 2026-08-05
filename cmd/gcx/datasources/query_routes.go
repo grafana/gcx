@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
@@ -92,6 +93,24 @@ func newQueryRoutes() queryRoutes {
 			),
 		},
 	}
+}
+
+// supportedKinds returns every kind the command routes — expression-dispatchable
+// and redirect-only alike — sorted, for the unsupported-type message. Deriving
+// it is the point of #1137: the hand-maintained list had already drifted, and a
+// caller told a kind is unsupported is better served by the full set gcx knows
+// how to handle than by the subset that happens to take an expression.
+func (r queryRoutes) supportedKinds() []string {
+	kinds := make([]string, 0, len(r.dispatch)+len(r.redirects))
+	for kind := range r.dispatch {
+		kinds = append(kinds, kind)
+	}
+	for kind := range r.redirects {
+		kinds = append(kinds, kind)
+	}
+	slices.Sort(kinds)
+
+	return kinds
 }
 
 // structuredQueryRedirect builds the message for a kind whose query takes
