@@ -90,17 +90,18 @@ type Experiment struct {
 	Metadata     map[string]any        `json:"metadata,omitempty"`
 
 	// Server-managed fields.
-	ExperimentID string     `json:"experiment_id,omitempty"`
-	RunID        string     `json:"run_id,omitempty"`
-	TenantID     string     `json:"tenant_id,omitempty"`
-	Status       string     `json:"status,omitempty"`
-	ScoreCount   int        `json:"score_count,omitempty"`
-	Error        string     `json:"error,omitempty"`
-	CreatedBy    string     `json:"created_by,omitempty"`
-	CreatedAt    time.Time  `json:"created_at,omitzero"`
-	UpdatedAt    time.Time  `json:"updated_at,omitzero"`
-	StartedAt    *time.Time `json:"started_at,omitempty"`
-	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+	ExperimentID      string     `json:"experiment_id,omitempty"`
+	RunID             string     `json:"run_id,omitempty"`
+	TenantID          string     `json:"tenant_id,omitempty"`
+	Status            string     `json:"status,omitempty"`
+	ScoreCount        int        `json:"score_count,omitempty"`
+	PlannedTrialCount *int       `json:"planned_trial_count,omitempty"`
+	Error             string     `json:"error,omitempty"`
+	CreatedBy         string     `json:"created_by,omitempty"`
+	CreatedAt         time.Time  `json:"created_at,omitzero"`
+	UpdatedAt         time.Time  `json:"updated_at,omitzero"`
+	StartedAt         *time.Time `json:"started_at,omitempty"`
+	CompletedAt       *time.Time `json:"completed_at,omitempty"`
 }
 
 func (e Experiment) ID() string {
