@@ -1,9 +1,7 @@
 package elasticsearch
 
 import (
-	"errors"
 	"fmt"
-	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -69,56 +67,24 @@ Datasource is resolved from -d flag or datasources.elasticsearch in your context
 				return err
 			}
 
-			expr := opts.Expr
-			if len(args) == 1 {
-				if expr != "" {
-					return errors.New("provide the expression as a positional argument or via --expr, not both")
-				}
-				expr = args[0]
-			}
-
-			ctx := cmd.Context()
-
-			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
+			resolved, err := prepareQuery(cmd, args, loader, &opts.SharedOpts, opts.Datasource)
 			if err != nil {
 				return err
-			}
-
-			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "elasticsearch")
-			if err != nil {
-				return err
-			}
-
-			now := time.Now()
-			start, end, step, err := opts.ParseTimes(now)
-			if err != nil {
-				return err
-			}
-			if start.IsZero() && end.IsZero() {
-				end = now
-				start = now.Add(-1 * time.Hour)
-			}
-
-			client, err := elasticsearch.NewClient(cfg)
-			if err != nil {
-				return fmt.Errorf("failed to create client: %w", err)
 			}
 
 			req := elasticsearch.AggsRequest{
-				Query:     expr,
+				Query:     resolved.Expr,
 				Agg:       opts.Agg,
 				Field:     opts.Field,
 				GroupBy:   opts.GroupBy,
 				GroupSize: opts.GroupSize,
 				TimeField: opts.TimeField,
-				Start:     start,
-				End:       end,
-			}
-			if step > 0 {
-				req.StepMs = step.Milliseconds()
+				Start:     resolved.Start,
+				End:       resolved.End,
+				StepMs:    resolved.StepMs,
 			}
 
-			resp, err := client.Aggregations(ctx, datasourceUID, req)
+			resp, err := resolved.Client.Aggregations(cmd.Context(), resolved.DatasourceUID, req)
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/elasticsearch"
@@ -79,15 +80,29 @@ func newSearchCmd(loader *providers.ConfigLoader, spec searchCmdSpec) *cobra.Com
 	return cmd
 }
 
-// runSearch is the shared execution path for the query and logs commands:
-// resolve the optional Lucene expression, the datasource, and the time range,
-// then run the given search and encode its result.
-func runSearch(cmd *cobra.Command, args []string, loader *providers.ConfigLoader, opts *dsquery.SharedOpts, datasource string, size int, timeField string, search searchFn) error {
+// resolvedQuery is the per-invocation state every Elasticsearch query command
+// needs before it calls the client: the Lucene expression, the resolved
+// datasource, the effective time range, and a ready client.
+type resolvedQuery struct {
+	Expr          string
+	CfgCtx        *config.Context
+	Cfg           config.NamespacedRESTConfig
+	DatasourceUID string
+	Start         time.Time
+	End           time.Time
+	StepMs        int64
+	Client        *elasticsearch.Client
+}
+
+// prepareQuery resolves the optional Lucene expression, the datasource, the
+// default time range, and the query client. The query, logs, and metrics
+// commands all need this same block before they call the client.
+func prepareQuery(cmd *cobra.Command, args []string, loader *providers.ConfigLoader, opts *dsquery.SharedOpts, datasource string) (*resolvedQuery, error) {
 	// EXPR is optional: an empty Lucene query matches all documents.
 	expr := opts.Expr
 	if len(args) == 1 {
 		if expr != "" {
-			return errors.New("provide the expression as a positional argument or via --expr, not both")
+			return nil, errors.New("provide the expression as a positional argument or via --expr, not both")
 		}
 		expr = args[0]
 	}
@@ -96,18 +111,18 @@ func runSearch(cmd *cobra.Command, args []string, loader *providers.ConfigLoader
 
 	cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "elasticsearch")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	now := time.Now()
 	start, end, step, err := opts.ParseTimes(now)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if start.IsZero() && end.IsZero() {
 		end = now
@@ -116,20 +131,41 @@ func runSearch(cmd *cobra.Command, args []string, loader *providers.ConfigLoader
 
 	client, err := elasticsearch.NewClient(cfg)
 	if err != nil {
-		return fmt.Errorf("failed to create client: %w", err)
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	resolved := &resolvedQuery{
+		Expr:          expr,
+		CfgCtx:        cfgCtx,
+		Cfg:           cfg,
+		DatasourceUID: datasourceUID,
+		Start:         start,
+		End:           end,
+		Client:        client,
+	}
+	if step > 0 {
+		resolved.StepMs = step.Milliseconds()
+	}
+	return resolved, nil
+}
+
+// runSearch is the shared execution path for the query and logs commands:
+// prepare the invocation, then run the given search and encode its result.
+func runSearch(cmd *cobra.Command, args []string, loader *providers.ConfigLoader, opts *dsquery.SharedOpts, datasource string, size int, timeField string, search searchFn) error {
+	resolved, err := prepareQuery(cmd, args, loader, opts, datasource)
+	if err != nil {
+		return err
 	}
 
 	req := elasticsearch.SearchRequest{
-		Query:     expr,
+		Query:     resolved.Expr,
 		Size:      size,
 		TimeField: timeField,
-		Start:     start,
-		End:       end,
+		Start:     resolved.Start,
+		End:       resolved.End,
+		StepMs:    resolved.StepMs,
 	}
-	if step > 0 {
-		req.StepMs = step.Milliseconds()
-	}
-	resp, err := search(ctx, client, datasourceUID, req)
+	resp, err := search(cmd.Context(), resolved.Client, resolved.DatasourceUID, req)
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
 	}
