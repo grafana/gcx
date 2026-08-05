@@ -177,7 +177,11 @@ Every query-class leaf command must build a Grafana Explore URL. Users rely on
 `--share-link` to hand a query to a colleague, and on `--open` to continue in
 the UI. A datasource that omits this is inconsistent with the rest of the CLI.
 
-Create `internal/datasources/{kind}/explore.go`:
+Create `internal/datasources/{kind}/explore.go`. Pick the shape that matches how
+the datasource carries its query.
+
+**Shape A — expression datasources** (SQL, PromQL, LogQL, TraceQL). The whole
+query is one string, so `dsquery.ExploreQuery.Expr` holds it.
 
 ```go
 package {kind}
@@ -206,6 +210,46 @@ func QueryExploreURL(host string, query dsquery.ExploreQuery) string {
 }
 ```
 
+Reference: `internal/datasources/clickhouse/explore.go`.
+
+**Shape B — structured datasources** (CloudWatch, Cloud Monitoring, Azure
+Monitor, Elasticsearch). The query is a set of typed fields — project, metric,
+namespace, aggregation, group-bys, filters — not one string. Take the client's
+request struct as a third parameter. Do not flatten it into `Expr` and re-parse
+it: that loses information and defeats the shared builder.
+
+```go
+// QueryExploreURL builds a Grafana Explore URL for a {Name} query.
+// base supplies the datasource UID, the time range and the org ID.
+// base.Expr is unused — the query lives in req.
+func QueryExploreURL(host string, base dsquery.ExploreQuery, req {kind}client.QueryRequest) string {
+    if strings.TrimSpace(host) == "" || base.DatasourceUID == "" || req.Project == "" {
+        return ""
+    }
+
+    from, to := dsquery.ExploreRange(base.From, base.To, false)
+    model := {kind}client.BuildQueryModel(base.DatasourceUID, req)
+
+    return dsquery.BuildExploreURL(host, base.OrgID,
+        dsquery.SinglePane(base.DatasourceUID, []any{model}, from, to, nil), nil)
+}
+```
+
+Reference: `internal/datasources/cloudwatch/explore.go`.
+
+**Guard the fields the datasource actually requires — not `Expr` by reflex.**
+Always check `host` and `DatasourceUID`. Beyond that:
+
+- Shape A: guard `Expr`, unless an empty query is meaningful. An empty
+  Elasticsearch Lucene expression matches every document, so an `Expr` guard
+  there suppresses the link for a legal invocation.
+- Shape B: guard the required request fields (project + metric type,
+  subscription + metric name, and so on). `Expr` is empty by design. Never
+  guard it.
+
+Return `""` when a required field is missing. The caller warns the user; a
+missing link does not fail the command.
+
 Then wire it into the command's `RunE`:
 
 ```go
@@ -217,6 +261,7 @@ share.Setup(cmd.Flags(), "executed query")   // next to shared.Setup(...)
 Replace the direct `IO.Encode(...)` return with:
 
 ```go
+// Shape A — the query is the Expr string:
 exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
     DatasourceUID:  datasourceUID,
     DatasourceType: dsType,
@@ -225,6 +270,17 @@ exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
     To:             shared.To,
     OrgID:          dsquery.OrgID(cfgCtx),
 })
+
+// Shape B — pass the same req the client executed, so the link and the
+// query can never disagree. Leave Expr unset.
+exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+    DatasourceUID:  datasourceUID,
+    DatasourceType: dsType,
+    From:           shared.From,
+    To:             shared.To,
+    OrgID:          dsquery.OrgID(cfgCtx),
+}, req)
+
 unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
 
 return dsquery.EncodeAndHandleExplore(cmd, func() error {
@@ -397,12 +453,18 @@ go test ./internal/agent/...
 |------|----------|----------------------|-------------|-----------------|
 | prometheus | `internal/datasources/prometheus/` | `internal/datasources/providers/prometheus.go` | `internal/query/prometheus/` | `internal/datasources/prometheus/explore.go` |
 | loki | `internal/datasources/loki/` | `internal/datasources/providers/loki.go` | `internal/query/loki/` | `internal/datasources/loki/explore.go` |
-| clickhouse | `internal/datasources/clickhouse/` | `internal/datasources/providers/clickhouse.go` | `internal/query/clickhouse/` | `internal/datasources/clickhouse/explore.go` |
+| clickhouse | `internal/datasources/clickhouse/` | `internal/datasources/providers/clickhouse.go` | `internal/query/clickhouse/` | `internal/datasources/clickhouse/explore.go` (Shape A) |
+| cloudwatch | `internal/datasources/cloudwatch/` | `internal/datasources/providers/cloudwatch.go` | `internal/query/cloudwatch/` | `internal/datasources/cloudwatch/explore.go` (Shape B) |
 | pyroscope | `internal/datasources/pyroscope/` | `internal/datasources/providers/pyroscope.go` | `internal/query/pyroscope/` | — |
 | tempo | `internal/datasources/tempo/` | `internal/datasources/providers/tempo.go` | `internal/query/tempo/` | `internal/datasources/tempo/explore.go` |
 
-Use `clickhouse` as the reference for a SQL datasource, and `prometheus` for a
-metrics datasource.
+Use `clickhouse` as the reference for an expression datasource (Shape A), and
+`cloudwatch` for a structured datasource (Shape B).
+
+Note: `cloudwatch`'s Explore map has drifted from its client — the client sends
+`expression` and `metricQueryType`, the Explore map omits them. Copy its
+signature shape, not its map. The drift is the reason the shared-builder rule
+above exists.
 
 ## Common Pitfalls
 
