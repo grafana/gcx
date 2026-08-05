@@ -75,6 +75,12 @@ that do not have a dedicated subcommand.`,
 					"use `gcx datasources cloudwatch query --namespace ... --metric ... --region ...` instead")
 			}
 
+			if dsType == "azuremonitor" {
+				return errors.New("queries against Azure Monitor are structured (subscription, resource group, resource, namespace, metric, aggregation); " +
+					"the generic `gcx datasources query <uid> <expr>` form can't carry them — " +
+					"use `gcx datasources azuremonitor query --subscription ... --resource-group ... --resource ... --namespace ... --metric ...` instead")
+			}
+
 			expr, err := shared.ResolveExpr(args, 1)
 			if err != nil {
 				return err
