@@ -507,11 +507,108 @@ func TestClient_GetReport(t *testing.T) {
 	assert.Equal(t, "exp-1", report.Run.Name)
 	assert.Equal(t, 10, report.Summary.NScores)
 	assert.Equal(t, 2, report.Summary.NConversations)
-	assert.InDelta(t, 0.8, report.Summary.PassRate, 1e-9)
+	require.NotNil(t, report.Summary.PassRate)
+	assert.InDelta(t, 0.8, *report.Summary.PassRate, 1e-9)
 	require.Len(t, report.Breakdowns.ByEvaluator, 1)
 	assert.Equal(t, "ev-1", report.Breakdowns.ByEvaluator[0].Key)
 	require.Len(t, report.Points, 1)
 	assert.Equal(t, "quality", report.Points[0].ScoreKey)
+}
+
+// TestClient_GetReport_NullableSummaryAggregates pins the decode side of the
+// Sigil wire contract: pass_rate and total_tokens are omitempty pointers on
+// the server, so an absent key means "not measured" and must not decode as a
+// measured zero. pass_denominator distinguishes the two cases and is always
+// present on the wire.
+func TestClient_GetReport_NullableSummaryAggregates(t *testing.T) {
+	tests := []struct {
+		name                string
+		summary             map[string]any
+		wantPassRate        *float64
+		wantPassCount       int
+		wantPassDenominator int
+		wantTotalTokens     *int64
+	}{
+		{
+			name:    "absent pass_rate and total_tokens decode as nil",
+			summary: map[string]any{"pass_count": 0, "pass_denominator": 0},
+		},
+		{
+			name: "measured zero pass rate and zero tokens decode as non-nil zero",
+			summary: map[string]any{
+				"pass_rate":        0,
+				"pass_count":       0,
+				"pass_denominator": 3,
+				"total_tokens":     0,
+			},
+			wantPassRate:        new(0.0),
+			wantPassDenominator: 3,
+			wantTotalTokens:     new(int64(0)),
+		},
+		{
+			name: "measured pass rate carries counts",
+			summary: map[string]any{
+				"pass_rate":        0.8,
+				"pass_count":       8,
+				"pass_denominator": 10,
+				"total_tokens":     42,
+			},
+			wantPassRate:        new(0.8),
+			wantPassCount:       8,
+			wantPassDenominator: 10,
+			wantTotalTokens:     new(int64(42)),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				writeJSON(w, map[string]any{
+					"experiment": map[string]any{"experiment_id": "r-1", "status": "completed"},
+					"summary":    tc.summary,
+				})
+			}))
+
+			report, err := client.GetReport(context.Background(), "r-1")
+			require.NoError(t, err)
+
+			if tc.wantPassRate == nil {
+				assert.Nil(t, report.Summary.PassRate)
+			} else {
+				require.NotNil(t, report.Summary.PassRate)
+				assert.InDelta(t, *tc.wantPassRate, *report.Summary.PassRate, 1e-9)
+			}
+			if tc.wantTotalTokens == nil {
+				assert.Nil(t, report.Summary.TotalTokens)
+			} else {
+				require.NotNil(t, report.Summary.TotalTokens)
+				assert.Equal(t, *tc.wantTotalTokens, *report.Summary.TotalTokens)
+			}
+			assert.Equal(t, tc.wantPassCount, report.Summary.PassCount)
+			assert.Equal(t, tc.wantPassDenominator, report.Summary.PassDenominator)
+		})
+	}
+}
+
+// TestExperimentReportSummary_ReencodesVerdictlessCounts proves the output
+// side of the same contract: a report with no verdict re-encodes with a null
+// pass_rate and a present zero pass_denominator, so `-o json` consumers can
+// still tell "no verdict" from "0% measured".
+func TestExperimentReportSummary_ReencodesVerdictlessCounts(t *testing.T) {
+	raw, err := json.Marshal(experiments.ExperimentReportSummary{})
+	require.NoError(t, err)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+
+	passRate, ok := decoded["pass_rate"]
+	assert.False(t, ok, "absent pass rate must not be encoded as a number")
+	assert.Nil(t, passRate)
+	assert.InDelta(t, 0.0, decoded["pass_count"], 1e-9)
+	assert.InDelta(t, 0.0, decoded["pass_denominator"], 1e-9)
+	_, ok = decoded["total_tokens"]
+	assert.False(t, ok, "absent total tokens must not be encoded as a number")
 }
 
 func TestClient_GetReport_NotFound(t *testing.T) {

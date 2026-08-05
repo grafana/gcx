@@ -194,16 +194,21 @@ type ExperimentReport struct {
 }
 
 // ExperimentReportSummary holds aggregate counts for an experiment.
+//
+// PassRate and TotalTokens are pointers because the server sends them as
+// omitempty pointers: an absent pass_rate means no test case produced a pass or
+// fail verdict (reward-only and numeric-only runs), which is not the same as a
+// measured 0%. PassDenominator is what distinguishes the two.
 type ExperimentReportSummary struct {
-	NConversations int     `json:"n_conversations"`
-	NGenerations   int     `json:"n_generations"`
-	NScores        int     `json:"n_scores"`
-	PassRate       float64 `json:"pass_rate"`
-	MeanScore      float64 `json:"mean_score"`
-	TotalCostUSD   float64 `json:"total_cost_usd"`
-	TotalTokens    int64   `json:"total_tokens"`
+	NConversations int      `json:"n_conversations"`
+	NGenerations   int      `json:"n_generations"`
+	NScores        int      `json:"n_scores"`
+	PassRate       *float64 `json:"pass_rate,omitempty"`
+	MeanScore      float64  `json:"mean_score"`
+	TotalCostUSD   float64  `json:"total_cost_usd"`
+	TotalTokens    *int64   `json:"total_tokens,omitempty"`
 
-	TestCaseCount  int                `json:"test_case_count,omitempty"`
+	TestCaseCount  int                `json:"test_case_count"`
 	TrialCount     int                `json:"trial_count,omitempty"`
 	CompletedCount int                `json:"completed_count,omitempty"`
 	FailedCount    int                `json:"failed_count,omitempty"`
@@ -212,6 +217,13 @@ type ExperimentReportSummary struct {
 	PassPowerK     map[string]float64 `json:"pass_power_k,omitempty"`
 	FinalScoreAvg  *float64           `json:"final_score_avg,omitempty"`
 	TotalCost      *float64           `json:"total_cost,omitempty"`
+
+	// PassCount and PassDenominator carry no omitempty, and neither does
+	// TestCaseCount above: the check command grades the ratio
+	// pass_denominator / test_case_count, so both have to survive re-encoding
+	// through -o json even when they are zero.
+	PassCount       int `json:"pass_count"`
+	PassDenominator int `json:"pass_denominator"`
 }
 
 // ExperimentReportBreakdowns holds aggregate breakdowns grouped by dimension.

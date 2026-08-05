@@ -33,7 +33,7 @@ All commands live under `gcx agento11y`. Use `gcx agento11y <subcommand> --help`
 | `rules` | List, get, create, update, delete evaluation rules |
 | `templates` | List, get built-in evaluator templates |
 | `judge` | List judge providers and models |
-| `experiments` | List, get, create, update, cancel runs; `list-scores` and `report` |
+| `experiments` | List, get, create, update, cancel runs; `list-scores`, `get-report`, and `check` (CI quality gate: exits 4 when the run misses a threshold, ends with status failed or canceled, or produces no pass or fail verdict) |
 
 Delete commands (`evaluators delete`, `rules delete`) require `--force` to skip confirmation in agent mode (there is no `-f` shorthand on delete). List first to confirm the target ID:
 

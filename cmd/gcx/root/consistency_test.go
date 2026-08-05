@@ -2,12 +2,14 @@ package root_test
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
 
 func isLeaf(cmd *cobra.Command) bool {
@@ -211,4 +213,55 @@ func TestConsistency_SkillMappingResolvesToCommands(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestConsistency_LLMHintFlagsExist parses every LLM hint back against the real
+// command tree. A hint is the invocation an agent copies, so a flag that does
+// not exist sends the agent straight into a usage error.
+func TestConsistency_LLMHintFlagsExist(t *testing.T) {
+	rootCmd := buildRootCmd()
+
+	agent.WalkCommands(rootCmd, func(cmd *cobra.Command) {
+		hint := cmd.Annotations[agent.AnnotationLLMHint]
+		if hint == "" || cmd.Hidden {
+			return
+		}
+		t.Run(cmd.CommandPath(), func(t *testing.T) {
+			for invocation := range strings.SplitSeq(hint, ";") {
+				fields := strings.Fields(invocation)
+				if len(fields) == 0 || fields[0] != "gcx" {
+					continue
+				}
+				target, path := resolveHintCommand(t, rootCmd, fields[1:])
+				for _, field := range fields[1:] {
+					name, ok := strings.CutPrefix(field, "--")
+					if !ok {
+						continue
+					}
+					name = strings.SplitN(name, "=", 2)[0]
+					if target.Flags().Lookup(name) == nil {
+						t.Errorf("hint for %s uses unknown flag --%s (resolved command: gcx %s)",
+							cmd.CommandPath(), name, path)
+					}
+				}
+			}
+		})
+	})
+}
+
+// resolveHintCommand walks the leading non-flag words of a hint invocation down
+// the command tree, so a group-level hint is checked against the subcommand it
+// actually names.
+func resolveHintCommand(t *testing.T, rootCmd *cobra.Command, fields []string) (*cobra.Command, string) {
+	t.Helper()
+	words := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if strings.HasPrefix(field, "-") {
+			break
+		}
+		words = append(words, field)
+	}
+	target, _, err := rootCmd.Find(words)
+	require.NoError(t, err)
+	return target, strings.Join(words, " ")
 }
