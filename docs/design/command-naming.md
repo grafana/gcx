@@ -93,6 +93,82 @@ vocabulary and intentional aliases are documented in
 Do not characterize query commands as side-effect-free: supporting work such as
 datasource discovery may persist configuration.
 
+## Query variants
+
+A datasource or provider may offer more than one way to be queried. Decide
+between one command and several by comparing what the caller must supply and
+what they get back, not by counting backend APIs.
+
+Variants that share an expression operand, take substantially the same required
+inputs, and return the same success output model are one `query` command with a
+typed `--mode`. Two leaves that differ only in presentation give a caller, and
+an agent selecting a command, a coin flip with no rule for choosing. Use one
+flag name per knob across modes: the same value must not be `--size` in one mode
+and `--limit` in another.
+
+Variants that require materially different identities or inputs, or that return
+a different success output model, take their own `<target> query` path, or an
+approved shorthand from the set above where one already fits. A target that
+needs its own identity arguments is not a mode of another command.
+
+Compare the caller-facing contract, not the backend payload. Two variants that
+build different requests internally but answer the same expression with the same
+documented result are one command. Two that return different result models are
+not, even when both are the same output protocol class; protocol class does not
+decide this.
+
+`--mode` is a closed, validated enum with a documented default. Reject an
+unknown, whitespace-only, or explicitly empty value with an error naming the
+rejected value and the allowed values, as `--on-error` does in
+`cmd/gcx/resources/onerror.go`. `--mode` selects which query runs; `--output`
+selects how the result is presented. Where the backend already determines the
+variant — InfluxDB's query language is read from the datasource record — the
+caller has nothing to choose and no flag is added.
+
+`<target>` names the query surface: the expression language and API being
+queried. It nests inside the command's existing area, so for a datasource kind
+the path is `gcx datasources <kind> <target> query`. This is a query-variant
+placement rule, deliberately distinct from
+[placement by required identity](#place-each-operation-by-the-identity-it-requires)
+below — a query surface is not an independently identifiable resource, so
+neither the noun-group test nor the `<operation>-<subject>` compound test
+decides it. Reading a query target as a discovery facet and producing
+`query-<target>` is the wrong outcome: the operation is `query`, and the target
+says which surface it runs against. A bare `<target>` leaf is equally wrong
+unless that name is already in the shorthand set above.
+
+This rule authorizes that nesting and nothing else. It does not authorize a new
+top-level command: bare top-level verbs remain the closed enumeration in
+[CONSTITUTION.md § CLI Grammar](../../CONSTITUTION.md#cli-grammar), and the
+`$AREA $NOUN $VERB` shape at the top of this guide still governs. Everything
+under `gcx datasources <kind>` is flat today, so the nesting is an
+owner-approved pattern introduced with this rule rather than an inference from
+any shipped command. As with every rule here, it binds new work and does not
+license renaming a released variant.
+
+The two shapes below were decided as owner on the pull requests that raised the
+question. They are the canonical spellings for that work, not commands available
+today:
+
+```shell
+gcx datasources elasticsearch query 'status:500'
+gcx datasources elasticsearch query 'level:error' --mode logs
+
+gcx datasources azuremonitor query --subscription SUB_ID \
+  --resource-group RG --resource NAME --namespace NAMESPACE --metric METRIC
+gcx datasources azuremonitor logs query KQL
+gcx datasources azuremonitor resource-graph query KQL
+```
+
+Elasticsearch documents and logs share the Lucene expression, the time controls
+and the result model, so they are one command with `--mode` defaulting to
+`documents`; that they build different requests internally is not the test. Its
+`metrics` leaf stays separate: different inputs, a different result model, and
+`metrics` is already in the shorthand set. Azure Monitor keeps the structured
+metrics query as its primary `query`, while logs require a workspace identity
+and Resource Graph requires a subscription list, so each of those is its own
+target path.
+
 ## View verbs
 
 Default to `get` for a straight read. Use a view verb such as `status`,
