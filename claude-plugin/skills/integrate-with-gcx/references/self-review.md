@@ -1,5 +1,17 @@
 # Diff-Triggered Review
 
+Contents:
+- [Evidence discipline](#evidence-discipline) — read first; it governs what any
+  check below is allowed to conclude
+- [Trigger table](#which-triggers-fire) — which checks fire for your diff
+- [T1](#t1-any-new-or-changed-leaf) leaves · [T2](#t2-inputs) inputs ·
+  [T3](#t3-completeness) completeness · [T4](#t4-errors) errors ·
+  [T5](#t5-shared-infrastructure) shared infra ·
+  [T6](#t6-description-rot-and-scope) description rot ·
+  [T7](#t7-naming-against-the-frozen-surface) naming ·
+  [T8](#t8-tests-that-cannot-fail) tests · [T9](#t9-filtering-semantics) filtering ·
+  [T10](#t10-fix-pushes) fix pushes · [T11](#t11-skills-and-generated-docs) skills and docs
+
 These are the defect classes that repeatedly consume gcx review rounds. Every
 one is checkable before a human looks. **Run them by trigger, not as a
 checklist:** look at what your diff actually does, run the checks that fire, fix
@@ -16,6 +28,34 @@ unresolved decisions or risks · unverified assumptions · checks that failed or
 had to be skipped, with the reason · architecture deviations needing PR
 attention. Working every check is internal; reporting is only about what is
 unresolved.
+
+## Evidence discipline
+
+Match your evidence to the boundary you are making a claim about. A false
+blocker costs more than a missed nit: the author has to disprove it, and every
+other finding in your report inherits the doubt.
+
+- **A helper-level claim** — this regex, this parser, this formatter — is proven
+  by a helper test or by static reading of the helper. That is sufficient; you do
+  not need to drive a command to say a regex fails to match `LIMIT ALL`.
+- **A command-level claim** — "this flag reaches the request unvalidated", "this
+  link carries the wrong range", "this input is accepted" — needs either
+  execution through the public path (the freshly built `bin/gcx`, or
+  `Execute`/`ExecuteC` on the real command), **or** a demonstrated reachable call
+  chain: show that flag binding and `Validate()` actually leave the state your
+  test constructed.
+
+That second half is where this goes wrong in practice. `Validate()` often
+*resolves* inputs rather than only checking them — a time-range validator that
+turns `--since 6h` into a concrete `From` timestamp means a test setting
+`From: ""` directly is exercising a state the command never produces. Read what
+`Validate()` writes back before trusting a constructed struct.
+
+Anything you could not establish either way is labeled **hypothesis** or
+**UNVERIFIED**, carrying the exact probe a reviewer should run. Both are useful
+review output. Neither is a blocker.
+
+## Which triggers fire
 
 | If your diff… | Run |
 |---|---|
@@ -69,14 +109,22 @@ Four checks. Work all four.
 
 Five checks. The last three are the ones runs of this review keep dropping.
 
-1. **Explicitly-empty string flags are usage errors.** Decide the behavior of
-  `--flag ""` (an unset shell variable) *now*: detect it with
-  `cmd.Flags().Changed(...)`, never `value != ""`. An empty filter that returns
-  the unfiltered set is a correctness trap, not a no-op.
-2. **Apply check 1 to every string flag on every command the diff touches** —
-  including the sibling you only extended. Finding the trap on the new command
-  does not mean you have checked the family; enumerate the flags and go one by
-  one.
+1. **Decide `--flag ""` deliberately, and reject it where empty is wrong.** An
+  explicitly empty or whitespace-only value (an unset shell variable) is a usage
+  error when the input is **required**, is **syntactically invalid**,
+  **broadens or switches scope**, or **violates the documented contract**. Two
+  worked cases, both real: a value that silently selects a *different* subject
+  returns well-formed data from the wrong place — wrong data, not a no-op; a
+  value that drops a path segment widens the query from one group to the whole
+  parent. Detect these with `cmd.Flags().Changed(...)`, which is the only thing
+  that separates an explicit `""` from an omitted flag.
+2. **Scope, not universality.** This is not a mandate to plumb `Changed()`
+  through every optional string flag. Where empty has an explicitly documented
+  safe meaning, `value != ""` is correct — and the flag help has to say so.
+  Enumerate the string flags on the commands the diff touches, including the
+  sibling you only extended, and classify each as required / scope-affecting /
+  safely-empty. That classification is the deliverable; a blanket answer in
+  either direction is the defect.
 3. **Siblings agree on *where* validation happens.** Separate from checks 1-2:
   if this command parses a selector client-side and returns a quoted error, its
   siblings must not ship the same input to the server for an opaque 400 — in
@@ -87,9 +135,12 @@ Five checks. The last three are the ones runs of this review keep dropping.
   rationale, an example, and a stated empty-value behavior. A default that dumps
   an unbounded collection is not safe; one that silently narrows is not honest.
 
-Across all five: validate in `Options.Validate()` before any I/O, and make the
-error carry the rejected value (never echoing secrets), the expected format or
-allowed values, and a corrected invocation.
+Across all five: **command-owned static validation** runs in
+`Options.Validate()` before any I/O. Semantic validation that genuinely needs
+resolved backend information may run after resolution — what must not happen is a
+statically-decidable rejection arriving after network calls. Make the error carry
+the rejected value (never echoing secrets), the expected format or allowed
+values, and a corrected invocation.
 
 ## T3: Completeness
 
@@ -117,10 +168,10 @@ is not "always in the payload":
 `EmitListTruncationHint` after the payload.
 
 **Its status, stated accurately:** `docs/design/output.md` §15 is marked
-**PROPOSED** (#387 Track C) and is implemented as an *opt-in* contract with two
-exemplar commands (`datasources list`, `irm oncall alert-groups list`). It is
-**not** a repo-wide requirement and **not** mandatory for every new list
-command. Note also that a client-side-capped source must not use the binder,
+**PROPOSED** (#387 Track C) and is implemented as an *opt-in* contract, migrated
+so far only to the exemplar commands §15 names — read it there, since which
+commands have migrated changes as the contract rolls out. It is **not** a
+repo-wide requirement and **not** mandatory for every new list command. Note also that a client-side-capped source must not use the binder,
 because "0 means all" would be dishonest there — it discloses the cap via
 `ListMeta.Cap` and the cap-variant hint instead. Migration plan and open
 questions: `docs/research/2026-07-17-global-limit-investigation.md`.
@@ -198,8 +249,11 @@ Released names are frozen within the major version — a wrong name is not
 fixable later, which is why this question has repeatedly consumed review rounds
 when left to review time. It is answerable in minutes.
 
-Read the placement rule (per operation, not per subject) and the catalog-facet
-rule in `docs/design/command-naming.md`, then check the real tree:
+Read the placement rule (per operation, not per subject), the catalog-facet rule,
+and — if you are adding a second way to query the same backend — the
+**§Query variants** rule in `docs/design/command-naming.md`, which decides
+between one `query` leaf with a typed `--mode` and distinct `<target> query`
+paths. Then check the real tree:
 
 ```bash
 bin/gcx help-tree
@@ -228,12 +282,35 @@ field, if a param never reached the request, if the limit were ignored — would
 the suite go red? A test that asserts a flag exists, or constructs opts without
 driving the command, passes under all of those defects.
 
-Plan per command: request mapping against an `httptest` capture server (method,
-path, params asserted) · validation before I/O (bad input fails with no network
-call) · explicitly-empty flag cases · pagination boundaries, has-more signals
-and the cap path · the zero-result case · error paths mapping to the declared
-summaries and exit codes · destructive confirmation where applicable (`--force`,
+The behaviors to cover: request mapping against an `httptest` capture server
+(method, path, params asserted) · validation before I/O (bad input fails with no
+network call) · explicitly-empty flag cases · pagination boundaries, has-more
+signals and the cap path · the zero-result case · error paths mapping to the
+declared summaries and exit codes · destructive confirmation (`--force`,
 `GCX_AUTO_APPROVE`, agent mode declining without `--force`).
+
+**Scope the ask by distinct behavior, not by leaf count.** That list is not a
+matrix to fill in per command. Test each distinct behavior, endpoint, or shared
+constructor **once**. Shared client, transport and codec behavior belongs in the
+shared package's tests — do not re-assert it per leaf, and never ask for a
+duplicate of a client test that already pins the wire shape.
+
+Per leaf, cover only what can differ between leaves:
+
+1. Cobra flag binding and argument handling.
+2. Static validation before I/O.
+3. Request construction the command itself performs.
+4. Warnings, routing, and output destination (stdout vs stderr).
+
+Leaves sharing one constructor share one table-driven suite. Pagination and
+destructive confirmation apply only where the command implements them — a
+command with no `--limit` needs no pagination test.
+
+Before reporting "untested", name the exact untested boundary. Missing coverage
+in sibling commands is worth reporting as context, and may reveal family-wide
+debt — but it never excuses new code from the coverage the current contract
+requires. Test shared behavior once, then add only the leaf-specific wiring
+regression.
 
 Output-mode tests follow the **protocol class** — there is no single
 JSON-document contract across all eight (see contract-and-tests.md). Pin agent
@@ -290,6 +367,12 @@ git diff <last-reviewed-sha>...HEAD
 
 Diff any shared or generated file a merge commit touched against the base, to
 catch resurrected stale content.
+
+A fix round is also where evidence rots fastest: a finding you verified against
+the previous head may no longer reproduce. Re-check command-level claims against
+the current tree ([Evidence discipline](#evidence-discipline)) before repeating
+them, and withdraw the ones that no longer hold — explicitly, so the author knows
+they are closed rather than forgotten.
 
 ## T11: Skills and generated docs
 

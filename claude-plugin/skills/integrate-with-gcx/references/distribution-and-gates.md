@@ -1,5 +1,13 @@
 # Wiring, Gates, and Preflight
 
+Contents:
+1. [Per-leaf wiring that cannot be skipped](#per-leaf-wiring-that-cannot-be-skipped)
+   — including [the gap CI does not cover](#the-gap-ci-does-not-cover-and-it-is-a-judgement-call)
+2. [What the root conformance suites do to your command](#what-the-root-conformance-suites-do-to-your-command)
+3. [Preflight](#preflight)
+4. [When CI fails](#when-ci-fails)
+5. [Read the built contract the way agents will](#read-the-built-contract-the-way-agents-will)
+
 ## Per-leaf wiring that cannot be skipped
 
 Adding a command to the tree is automatic (provider `Commands()`, datasource
@@ -18,7 +26,9 @@ column literally — some rows are CI-enforced and some only look like it:
 | Generated reference docs | `GCX_AGENT_MODE=false mise run reference` | `mise run reference-drift` in CI |
 | Package map | `docs/architecture/project-structure.md` | AGENTS.md PR checklist step 4 (human-enforced) |
 
-**The gap CI does not cover, and it is a judgement call.** A new datasource kind
+### The gap CI does not cover, and it is a judgement call
+
+A new datasource kind
 is mounted as `datasources <kind>` automatically from
 `datasources.AllProviders()`, but the generic auto-detecting `datasources query`
 dispatches through a hand-maintained switch in `cmd/gcx/datasources/query.go`.
@@ -34,18 +44,33 @@ parity is not always correct:
   error naming the typed command to use. That is the honest outcome, not a
   degraded generic path.
 
-  **Where the redirect goes is load-bearing: it is a guard before the switch,
-  not a case inside it.** `RunE` normalizes the resolved type, then the
-  incompatible-kind redirect runs, and only then does `shared.ResolveExpr` parse
-  the expression and the type switch dispatch (`cmd/gcx/datasources/query.go`).
-  Put it in the switch instead and `gcx datasources query <uid>` with no
+  **The durable requirement is ordering: a redirect has to run before the
+  expression is resolved.** Otherwise `gcx datasources query <uid>` with no
   expression fails on "expression required" before it can name your typed
   command — losing the redirect in exactly the invocation that needs it.
 
-Kinds currently outside the switch: athena, infinity and tempo — all three have a
-typed `query` leaf and are candidates (tempo's is built in
-`internal/datasources/tempo/search.go` rather than a `query.go`) — plus cloudwatch,
-which is excluded by design as above.
+  As the code stands today that means a guard placed ahead of both
+  `shared.ResolveExpr` and the type switch in `cmd/gcx/datasources/query.go`.
+  That placement is a property of the current hand-written `RunE`, not policy: if
+  routing becomes declarative the mechanism changes while the ordering
+  requirement does not. Read the function before copying the shape.
+
+To see which kinds are currently outside the switch, derive it rather than
+trusting a list here — it changes with every datasource PR:
+
+```bash
+rg -n 'RegisterProvider' internal/datasources/providers  # registered kinds
+rg -n 'case "' cmd/gcx/datasources/query.go              # kinds it dispatches
+```
+
+Match on the registration call rather than listing the directory — that package
+also holds non-kind files, so a file listing overstates the set.
+
+The difference is the candidate set, minus the kinds excluded by design (a
+structured query has no single-`expr` representation, so it gets a redirect).
+A typed `query` leaf is not always in a `query.go` — tempo builds its own in
+`internal/datasources/tempo/search.go` — so confirm the leaf exists before
+treating a kind as a candidate.
 
 ## What the root conformance suites do to your command
 
@@ -53,7 +78,7 @@ which is excluded by design as above.
 |-------|------------------------------------------|
 | `TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue` | Runs every finite/artifact/stream leaf with NO arguments in a fully isolated environment (empty HOME, closed stdin, 20s timeout, agent mode on). Failures: cobra usage text on stdout instead of one JSON error document; a prompt or editor that blocks (interactive paths must not block in agent mode); in-band `exitCode` disagreeing with the process exit code. |
 | `TestConsistency_*` family | The wiring table above. The error text names the file to edit. |
-| `TestSkillsGcxInvocationsMatchCommandTree` | Every gcx invocation in skill markdown — shell fences and inline backtick spans, `gcx` and `bin/gcx` forms — must resolve against the real tree. Covers **both** trees: the embedded `claude-plugin/skills/` bundle and repo-local `.claude/skills/`, each with its own extraction floor. |
+| `TestSkillsGcxInvocationsMatchCommandTree` | Every gcx invocation in skill markdown — shell fences and inline backtick spans, `gcx` and `bin/gcx` forms — must resolve against the real tree. Covers **both** trees: the embedded `claude-plugin/skills/` bundle and repo-local `.claude/skills/`. Each tree must yield discovered documents, a `SKILL.md` per skill root, and at least one invocation — there is no invocation-count floor. |
 
 These enforce wiring and protocol shape only. Request mapping, filtering
 semantics, pagination and error taxonomy are proven by YOUR package tests
@@ -83,8 +108,14 @@ bundle **and** repo-local `.claude/skills/`, so either tree is checked:
 
 ```bash
 mise run validate-skills
-mise exec -- go test ./cmd/gcx/root/ -run TestSkillsGcxInvocations
+mise exec -- go test ./cmd/gcx/root/ \
+  -run 'TestSkillsGcxInvocationsMatchCommandTree|TestSkillDocsFromFS|TestExtractInvocations|TestValidateInvocation'
 ```
+
+All four matter and they fail for different reasons: the first validates your
+invocations against the real tree, `TestSkillDocsFromFS` proves the walk still
+reaches nested `references/` markdown, and the last two pin extraction and
+validation behaviour so you can tell an extractor bug from genuine drift.
 
 Notes:
 

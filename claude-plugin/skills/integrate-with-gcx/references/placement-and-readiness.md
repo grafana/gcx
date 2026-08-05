@@ -85,12 +85,11 @@ everything below is a wiring option within or beside them, not a new tier:
   `DatasourceProvider` (`internal/datasources/provider.go`) and self-registers in
   `internal/datasources/providers/<kind>.go`. Registration mounts the typed
   `datasources <kind>` subtree automatically; it does **not** reach the generic
-  auto-detecting `datasources query`, which dispatches through a hand-maintained
-  switch in `cmd/gcx/datasources/query.go`. Decide deliberately: add a case there
-  if the generic `<uid> <expr>` form can honestly carry your query, or add an
-  explicit redirect to your typed command if it cannot (CloudWatch does the
-  latter — a structured query has no single-`expr` representation). No test
-  catches either choice.
+  auto-detecting `datasources query`. That second decision is a judgement no test
+  catches: add a case if the generic `<uid> <expr>` form can honestly carry your
+  query, or an explicit redirect to your typed command if it cannot. Reasoning,
+  the worked CloudWatch example and the ordering requirement:
+  [distribution-and-gates.md § The gap CI does not cover](distribution-and-gates.md#the-gap-ci-does-not-cover-and-it-is-a-judgement-call).
 - **Skill-only** — a workflow over existing commands ships as a bundled Agent
   Skill under `claude-plugin/skills/`, no Go code.
 - **`gcx api`** is a raw diagnostic fallback (token cost: large, exempt from the
@@ -106,7 +105,7 @@ everything below is a wiring option within or beside them, not a new tier:
 | Cloud provider | single `providers.Register()` in `init()` + blank import in `cmd/gcx/root/command.go` | `internal/providers/slo/provider.go` | docs/reference/provider-guide.md, docs/design/provider-checklist.md |
 | Adapter-backed resource | returned from `Provider.TypedRegistrations()` — never call `adapter.Register()` directly | `internal/providers/irm/oncall_adapter.go` | docs/architecture/patterns.md §16-18, CONSTITUTION § Architecture Invariants |
 | Signal command | `signals.Descriptor` + `signals.Command()` | `internal/providers/metrics/provider.go` | ARCHITECTURE.md §3 |
-| Datasource kind | `datasources.RegisterProvider()` in `internal/datasources/providers/<kind>.go` (package already blank-imported). The generic-dispatch switch in `cmd/gcx/datasources/query.go` is a **separate, conditional** decision — a case if `<uid> <expr>` fits, an explicit redirect if it does not | `internal/datasources/providers/prometheus.go` | ADR 001, docs/architecture/patterns.md §12 |
+| Datasource kind | `datasources.RegisterProvider()` in `internal/datasources/providers/<kind>.go` (package already blank-imported). Generic dispatch is a **separate, conditional** decision — a case if `<uid> <expr>` fits, an explicit redirect if it does not ([detail](distribution-and-gates.md#the-gap-ci-does-not-cover-and-it-is-a-judgement-call)) | `internal/datasources/providers/prometheus.go` | ADR 001, docs/architecture/patterns.md §12 |
 | Bundled skill | directory under `claude-plugin/skills/` (auto-embedded) + row in `claude-plugin/README.md` | any sibling skill | AGENTS.md Key Conventions |
 
 ## 5. Backend-readiness gate
@@ -126,13 +125,34 @@ domain-specific data reduction. Before designing commands, answer:
 - **Data reduction** — would gcx have to page unbounded data client-side to
   compute something the backend should compute? That work belongs server-side.
 
-**Unknown is not ready.** Answer each question above from the product's docs, its
-source, or a probe you actually ran — not from what the API plausibly does. If the
-route, payload shape, auth, limits or pagination behaviour is still unknown when
-you write the outcome down, the outcome is **backend prerequisite** (or bounded
-bootstrap, where all three of its conditions hold). There is no "ready, pending
-verification": that phrasing turns an open question into a commitment the backend
-has not made, and the contract built on it inherits the guess.
+**Unknowns block by material risk, not by category.** Answer the questions above
+from the product's docs, its source, or a probe you actually ran — not from what
+the API plausibly does. Then weigh what is still unknown.
+
+An unknown makes the outcome **backend prerequisite** (or bounded bootstrap,
+where all three of its conditions hold) when it bears on any of:
+
+- **API ownership or stability** — an unidentified owner, or an internal or
+  experimental API, cannot be wrapped in a public contract. This one is easy to
+  wave through as "just paperwork"; it is not. It decides whether the surface you
+  build can be supported at all.
+- **Authentication or RBAC** — including whether existing gcx auth reaches it.
+- **Security or sensitive data** — anything needing redaction rules.
+- **Mutation safety** — what a partial or retried write does.
+- **Correctness of the result** — an unknown route or payload shape, or any
+  semantics you would otherwise be guessing. You cannot write an honest client
+  against a request you have not seen.
+- **Bounded completeness** — limits and pagination behaviour that decide whether
+  your output is partial, and whether you can disclose that honestly
+  ([self-review.md](self-review.md) T3).
+
+For those, there is no "ready, pending verification": that phrasing turns an open
+question into a commitment the backend has not made, and the contract built on it
+inherits the guess.
+
+Every other unknown is recorded as `UNVERIFIED` with the exact probe a reviewer
+should run, and the work proceeds. An unmeasured rate limit on a read-only
+discovery command is a risk to disclose, not a reason to stop.
 
 **A probe that did not run is not evidence.** If a probe is unavailable,
 inconclusive, or outside the target you were placed in scope for, do not run it
@@ -144,8 +164,10 @@ as `UNVERIFIED` in the placement section, and carry it into the
 
 Outcome (one of four, written down):
 
-1. **Ready** — every question above answered from evidence. Proceed to the
-   contract (contract-and-tests.md).
+1. **Ready** — every **material-risk** question above resolved from evidence.
+   Non-material unknowns may remain, recorded as `UNVERIFIED` with their probes;
+   they do not downgrade the outcome. Proceed to the contract
+   (contract-and-tests.md).
 2. **Backend prerequisite** — name the owner and the missing piece; gcx work
    waits or ships read-only around the gap.
 3. **Bounded bootstrap** — proceed with an explicitly experimental, narrow

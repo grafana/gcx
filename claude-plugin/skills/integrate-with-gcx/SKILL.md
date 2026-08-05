@@ -69,10 +69,15 @@ a document):
   never run, and never read as a negative result. `gcx api` is a diagnostic
   fallback, never the integration target.
 - **Readiness** — ready / backend prerequisite (named owner) / bounded bootstrap
-  / not gcx. Unknown route, payload, auth, limits or pagination means **backend
-  prerequisite**; there is no "ready, pending verification". Product teams own
-  their API shape, auth, limits and domain data reduction; gcx wraps APIs, it
-  does not fix them.
+  / not gcx. Unknowns block by **material risk**, not by category: an unknown
+  bearing on API ownership or stability, auth/RBAC, security, mutation safety,
+  correctness (including an unseen route or payload) or bounded completeness
+  means **backend prerequisite**, and for those there is no "ready, pending
+  verification". Any other unknown is recorded `UNVERIFIED` with its probe and
+  the work continues. Full list in
+  [references/placement-and-readiness.md](references/placement-and-readiness.md).
+  Product teams own their API shape, auth, limits and domain data reduction; gcx
+  wraps APIs, it does not fix them.
 
 Missing information does not stop you: discover it, or ask one targeted question.
 
@@ -155,27 +160,25 @@ Never state proposed or conventional guidance as law.
 | Rule | Strength |
 |---|---|
 | Output-class fixture entry, token cost | **CI-enforced** — `TestConsistency_AllLeafCommandsHaveOutputClass` / `HaveTokenCost` walk every leaf and fail on a missing entry |
-| `llm_hint` whenever the worst case is medium/large | **Required, only partly CI-enforced.** `NonSmallCommandsHaveLLMHint` matches the annotation *exactly* against `"medium"`/`"large"`, so a qualified cost (`small (large with --all)`) evades the check. Write the hint anyway — the rule is about the worst case, not the annotation's spelling |
+| `llm_hint` whenever the worst case is medium/large | **Required, only partly CI-enforced** — `NonSmallCommandsHaveLLMHint` matches `"medium"`/`"large"` exactly, so a qualified cost evades it. Write the hint anyway; the rule is about the worst case, not the spelling. Trade-off in [references/self-review.md](references/self-review.md) T1.3 |
 | Cloud-only availability, command→skill mapping | **NOT enforced in that direction.** `TestConsistency_CloudOnlyPathsResolveToCommands` and `SkillMappingResolvesToCommands` iterate the entries you *declared* and check each resolves to a real command — they catch a stale entry after a rename, never a missing one. Adding the entry is review-enforced |
 | A `finite` leaf emits exactly one JSON value in agent mode | **CI-enforced** (`TestAgentConformance_*`) |
 | One `init()`, one `providers.Register()`; no `adapter.Register()` outside it | **CONSTITUTION** § Architecture Invariants |
 | Error summaries from the closed vocabulary | **Law, scoped to `cmd/gcx/fail/`** converters — not a constraint on arbitrary command error text |
 | Exit codes 0-6 | Real and reachable when you set it. **Documented gap:** cobra's own flag/arg errors exit 1, not 2 (`docs/design/exit-codes.md` §2.3) — don't claim 2 for a path you didn't wire |
 | `Args:` on every leaf | Strong convention; no CI check |
-| `list_meta` truncation metadata | `docs/design/output.md` §15 is **PROPOSED** and opt-in, two exemplar commands. Not repo-wide, not required for every list command |
+| `list_meta` truncation metadata | `docs/design/output.md` §15 is **PROPOSED** and opt-in. Not repo-wide, not required for every list command |
 | Empty array serialized as `[]` not `null` | Convention with local test precedent; no doc rule |
 
-**Completeness is the honesty rule underneath §15.** Review it whenever your
-command has a `--limit`, slices a collection, stops paging early, or is bounded
-by a source cap — those mechanisms, not a guess about whether truncation is
-"likely". A caller handed a partial result with no signal reads a page as the
-whole inventory. *Where* to disclose depends on the output shape: an envelope
-carries `list_meta` via the shared helpers in `internal/output/listmeta.go`; a
-**released bare array gets the stderr hint only** (`output.md` §15.2) — wrapping
-it in an envelope is a breaking output change, so it belongs in a deliberate
-compatibility migration with its consumers checked, not in a feature PR that
-happens to touch the command. Status:
-`docs/research/2026-07-17-global-limit-investigation.md`.
+**Completeness is the honesty rule underneath §15.** A caller handed a partial
+result with no signal reads a page as the whole inventory — wrong but plausible
+instead of big but correct. The trigger is the mechanism (a `--limit`, a slice, an
+early paging stop, a source cap), never a guess about whether truncation is
+"likely". *Where* to disclose depends on the output shape: an envelope carries
+`list_meta`, but a **released bare array gets the stderr hint only** — wrapping it
+in an envelope is a breaking output change belonging to a deliberate
+compatibility migration, not a feature PR. Shared helpers, §15's real status and
+the full shape table: [references/self-review.md](references/self-review.md) T3.
 
 **Empty results are schema fidelity, not a mode rule** — an array your schema
 declares must not serialize as `null` when empty, in the machine formats your
@@ -233,18 +236,13 @@ user it needs a human to drive, and point them at
 
 > Detail, plus the CI-failure lookup table: [references/distribution-and-gates.md](references/distribution-and-gates.md)
 
-Per-leaf wiring CI will not let you skip is tabulated in the reference. The gap
-CI does *not* catch: registration mounts the typed `datasources <kind>` subtree,
-but the generic auto-detecting `datasources query` dispatches through a
-hand-maintained switch in `cmd/gcx/datasources/query.go`. Entering that switch is
-a **judgement, not a checkbox** — do it only if the generic
-`<uid> <expr>` form can honestly carry your query. If it cannot, add an explicit
-redirect instead: CloudWatch does exactly that, because its query is
-structured (namespace, metric, dimensions, region, statistic, period) and no
-single `expr` string represents it. An honest redirect beats both a lossy generic
-path and the bare "not supported" default. The redirect goes **before** the
-switch, as a guard on the normalized type — ahead of `shared.ResolveExpr`, so an
-argument-less call still gets the redirect instead of "expression required".
+Per-leaf wiring CI will not let you skip is tabulated in the reference, along
+with the one gap CI does *not* catch: registration mounts the typed
+`datasources <kind>` subtree, but reaching the generic auto-detecting
+`datasources query` is a separate **judgement, not a checkbox** — a case if the
+`<uid> <expr>` form can honestly carry your query, an explicit redirect if it
+cannot. Both the reasoning and the ordering requirement are in the reference; get
+them from there rather than from memory.
 
 Format the files you touched, then gate:
 
@@ -254,16 +252,12 @@ mise run gate                          # fast inner loop: lint + tests + build
 GCX_AGENT_MODE=false mise run all      # before you push; subsumes the above + docs
 ```
 
-`go` and `gofmt` are supplied by mise and are not necessarily on your `PATH` —
-run them as `mise exec -- go …` / `mise exec -- gofmt …`, or use the `mise run`
-tasks, so you get the toolchain version the repo pins.
-
-Run `gate` while iterating and `all` once before pushing — `all` already
-includes validate-skills, lint, tests, build and docs, so there is no third
-command to add. `GCX_AGENT_MODE=false` is load-bearing: agent-mode detection
-flips output defaults and corrupts generated docs. A gate you cannot run locally
-is reported SKIPPED with the reason, never as green. Authoritative checklists:
-AGENTS.md.
+`go` and `gofmt` come from mise and may not be on your `PATH` — run them as
+`mise exec -- …` so you get the pinned toolchain. `GCX_AGENT_MODE=false` is
+load-bearing: agent-mode detection flips output defaults and corrupts generated
+docs. A gate you cannot run locally is reported SKIPPED with the reason, never as
+green. Skill-only changes and the CI-failure lookup table are in the reference;
+the authoritative checklists are in AGENTS.md.
 
 ## Output Format
 
