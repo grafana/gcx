@@ -47,9 +47,19 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	}, nil
 }
 
-// Query executes a time-series list query via the Grafana datasource query API.
-func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*QueryResponse, error) {
-	// Sort filter keys so the request body is deterministic; the filters are
+// BuildQueryModel renders the query model that the Grafana Google Cloud
+// Monitoring plugin expects for a timeSeriesList query.
+//
+// Both Query (for the request body) and the Explore URL builder in
+// internal/datasources/cloudmonitoring call this function, so the two query
+// shapes cannot drift apart. Explore rejects or silently misreads a shape that
+// differs from the plugin's own model.
+//
+// The model carries no time range: the request body carries from/to, and an
+// Explore pane carries its own range. Start and End on req are therefore
+// ignored here.
+func BuildQueryModel(dsUID string, req QueryRequest) map[string]any {
+	// Sort filter keys so the query model is deterministic; the filters are
 	// ANDed, so order doesn't change the result.
 	filters := make([]string, 0, 3+4*len(req.Filters))
 	filters = append(filters, "metric.type", "=", req.MetricType)
@@ -67,7 +77,7 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 		alignmentPeriod = "cloud-monitoring-auto"
 	}
 
-	query := map[string]any{
+	return map[string]any{
 		"refId":     "A",
 		"queryType": "timeSeriesList",
 		"datasource": map[string]any{
@@ -85,9 +95,12 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 		"intervalMs":    60_000,
 		"maxDataPoints": 1000,
 	}
+}
 
+// Query executes a time-series list query via the Grafana datasource query API.
+func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*QueryResponse, error) {
 	bodyMap := map[string]any{
-		"queries": []any{query},
+		"queries": []any{BuildQueryModel(dsUID, req)},
 		"from":    strconv.FormatInt(req.Start.UnixMilli(), 10),
 		"to":      strconv.FormatInt(req.End.UnixMilli(), 10),
 	}

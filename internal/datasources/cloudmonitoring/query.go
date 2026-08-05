@@ -62,6 +62,7 @@ func (opts *queryOpts) Validate() error {
 // QueryCmd returns the `query` subcommand for a Google Cloud Monitoring datasource.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &queryOpts{}
+	share := &dsquery.ExploreLinkOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "query",
@@ -73,11 +74,24 @@ expression language. Use --group-by to split the result into one series per
 label value, and --filter to narrow by labels.
 
 Use list-projects and list-metrics to discover valid flag values.
-Datasource is resolved from -d flag or datasources.cloudmonitoring in your context.`,
+Datasource is resolved from -d flag or datasources.cloudmonitoring in your context.
+
+Use --share-link to print the equivalent Grafana Explore URL after the query,
+or --open to open it in your browser. Note: when no --from/--to/--since flags
+are provided, the link encodes "now-1h"/"now" (relative), not the absolute
+window the CLI just queried.`,
 		Example: `
   # CPU utilization across a project
   gcx datasources cloudmonitoring query -d UID --project my-project \
     --metric compute.googleapis.com/instance/cpu/utilization --since 1h
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources cloudmonitoring query -d UID --project my-project \
+    --metric compute.googleapis.com/instance/cpu/utilization --since 1h --share-link
+
+  # Run the query and continue in Grafana Explore
+  gcx datasources cloudmonitoring query -d UID --project my-project \
+    --metric compute.googleapis.com/instance/cpu/utilization --since 1h --open
 
   # Split by instance, mean-reduced
   gcx datasources cloudmonitoring query -d UID --project my-project \
@@ -100,7 +114,7 @@ Datasource is resolved from -d flag or datasources.cloudmonitoring in your conte
 				return err
 			}
 
-			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "cloudmonitoring")
+			datasourceUID, dsType, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "cloudmonitoring")
 			if err != nil {
 				return err
 			}
@@ -120,7 +134,7 @@ Datasource is resolved from -d flag or datasources.cloudmonitoring in your conte
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			resp, err := client.Query(ctx, datasourceUID, gcmclient.QueryRequest{
+			req := gcmclient.QueryRequest{
 				Project:         opts.Project,
 				MetricType:      opts.Metric,
 				Reducer:         opts.Reducer,
@@ -130,12 +144,29 @@ Datasource is resolved from -d flag or datasources.cloudmonitoring in your conte
 				Filters:         opts.Filters,
 				Start:           start,
 				End:             end,
-			})
+			}
+
+			resp, err := client.Query(ctx, datasourceUID, req)
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+				DatasourceUID:  datasourceUID,
+				DatasourceType: dsType,
+				From:           opts.From,
+				To:             opts.To,
+				OrgID:          dsquery.OrgID(cfgCtx),
+			}, req)
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			}, *share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 
@@ -145,6 +176,7 @@ Datasource is resolved from -d flag or datasources.cloudmonitoring in your conte
 	}
 
 	opts.setup(cmd.Flags())
+	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd
 }
