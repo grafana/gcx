@@ -299,6 +299,212 @@ func TestGenericQueryCloudWatchShortCircuit(t *testing.T) {
 	}
 }
 
+// TestRawQueryFlagMutualExclusion verifies --query is mutually exclusive with
+// positional EXPR and --expr.
+func TestRawQueryFlagMutualExclusion(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		expectErr string
+	}{
+		{
+			name:      "--query + positional EXPR rejected",
+			args:      []string{"query", "uid", "some-expr", "--query", `{"type":"json"}`},
+			expectErr: "--query is mutually exclusive with a positional EXPR argument",
+		},
+		{
+			name:      "--query + --expr rejected",
+			args:      []string{"query", "uid", "--query", `{"type":"json"}`, "--expr", "up"},
+			expectErr: "--query is mutually exclusive with --expr",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := executeQueryCommand(t, datasources.QueryCmd(), tt.args)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectErr)
+		})
+	}
+}
+
+// TestRawQueryInvalidJSON verifies --query rejects malformed JSON.
+func TestRawQueryInvalidJSON(t *testing.T) {
+	server := newDatasourceTypeOnlyServer(t, "yesoreyeram-infinity-datasource")
+	defer server.Close()
+	configFile := newConfigFileForServer(t, server.URL)
+
+	err := executeQueryCommand(t, datasources.QueryCmd(), []string{
+		"query", "uid", "--query", `{invalid`, "--config", configFile,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid --query JSON")
+}
+
+// TestRawQuerySendsCorrectBody verifies the raw query path sends a well-formed
+// Grafana query envelope with user fields merged.
+func TestRawQuerySendsCorrectBody(t *testing.T) {
+	var capturedBody map[string]any
+	server := newQueryCaptureServer(t, "yesoreyeram-infinity-datasource", func(_ string, body map[string]any) {
+		capturedBody = body
+	})
+	defer server.Close()
+
+	configFile := newConfigFileForServer(t, server.URL)
+
+	err := executeQueryCommand(t, datasources.QueryCmd(), []string{
+		"query", "uid",
+		"--query", `{"type":"json","source":"url","url":"https://example.com/api","format":"table"}`,
+		"--since", "1h",
+		"--config", configFile,
+		"-o", "json",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, capturedBody)
+
+	// Verify queries array is present.
+	queries, ok := capturedBody["queries"].([]any)
+	require.True(t, ok, "expected queries array")
+	require.Len(t, queries, 1)
+
+	query, ok := queries[0].(map[string]any)
+	require.True(t, ok)
+
+	// Verify injected fields.
+	assert.Equal(t, "A", query["refId"])
+	ds, ok := query["datasource"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "yesoreyeram-infinity-datasource", ds["type"])
+	assert.Equal(t, "uid", ds["uid"])
+
+	// Verify user-provided fields are merged.
+	assert.Equal(t, "json", query["type"])
+	assert.Equal(t, "url", query["source"])
+	assert.Equal(t, "https://example.com/api", query["url"])
+	assert.Equal(t, "table", query["format"])
+
+	// Verify time range is present.
+	start := parseUnixMillisField(t, capturedBody, "from")
+	end := parseUnixMillisField(t, capturedBody, "to")
+	assert.WithinDuration(t, end.Add(-time.Hour), start, time.Second)
+}
+
+// TestRawQueryFromFile verifies --query @file reads from a file.
+func TestRawQueryFromFile(t *testing.T) {
+	var capturedBody map[string]any
+	server := newQueryCaptureServer(t, "yesoreyeram-infinity-datasource", func(_ string, body map[string]any) {
+		capturedBody = body
+	})
+	defer server.Close()
+
+	configFile := newConfigFileForServer(t, server.URL)
+	queryFile := testutils.CreateTempFile(t, `{"type":"json","source":"url","format":"table"}`)
+
+	err := executeQueryCommand(t, datasources.QueryCmd(), []string{
+		"query", "uid",
+		"--query", "@" + queryFile,
+		"--since", "30m",
+		"--config", configFile,
+		"-o", "json",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, capturedBody)
+
+	queries, ok := capturedBody["queries"].([]any)
+	require.True(t, ok, "expected queries array")
+	query, ok := queries[0].(map[string]any)
+	require.True(t, ok, "expected query object")
+	assert.Equal(t, "json", query["type"])
+	assert.Equal(t, "url", query["source"])
+}
+
+// TestRawQueryFromStdin verifies --query @- reads from stdin.
+func TestRawQueryFromStdin(t *testing.T) {
+	var capturedBody map[string]any
+	server := newQueryCaptureServer(t, "yesoreyeram-infinity-datasource", func(_ string, body map[string]any) {
+		capturedBody = body
+	})
+	defer server.Close()
+
+	configFile := newConfigFileForServer(t, server.URL)
+
+	cmd := datasources.QueryCmd()
+	root := helperRoot(cmd)
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetIn(strings.NewReader(`{"type":"json","source":"inline","format":"table"}`))
+	root.SetArgs([]string{
+		"query", "uid",
+		"--query", "@-",
+		"--since", "1h",
+		"--config", configFile,
+		"-o", "json",
+	})
+
+	err := root.Execute()
+	require.NoError(t, err)
+	require.NotNil(t, capturedBody)
+
+	queries, ok := capturedBody["queries"].([]any)
+	require.True(t, ok, "expected queries array")
+	query, ok := queries[0].(map[string]any)
+	require.True(t, ok, "expected query object")
+	assert.Equal(t, "json", query["type"])
+	assert.Equal(t, "inline", query["source"])
+}
+
+// TestRawQueryFileNotFound verifies --query @nonexistent fails clearly.
+func TestRawQueryFileNotFound(t *testing.T) {
+	server := newDatasourceTypeOnlyServer(t, "yesoreyeram-infinity-datasource")
+	defer server.Close()
+	configFile := newConfigFileForServer(t, server.URL)
+
+	err := executeQueryCommand(t, datasources.QueryCmd(), []string{
+		"query", "uid", "--query", "@/nonexistent/query.json", "--config", configFile,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read query file")
+}
+
+// TestRawQueryDefaultTimeRange verifies that omitting --from/--to defaults
+// to "now-1h" / "now".
+func TestRawQueryDefaultTimeRange(t *testing.T) {
+	var capturedBody map[string]any
+	server := newQueryCaptureServer(t, "yesoreyeram-infinity-datasource", func(_ string, body map[string]any) {
+		capturedBody = body
+	})
+	defer server.Close()
+
+	configFile := newConfigFileForServer(t, server.URL)
+
+	err := executeQueryCommand(t, datasources.QueryCmd(), []string{
+		"query", "uid",
+		"--query", `{"type":"json"}`,
+		"--config", configFile,
+		"-o", "json",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, capturedBody)
+
+	assert.Equal(t, "now-1h", capturedBody["from"])
+	assert.Equal(t, "now", capturedBody["to"])
+}
+
+// TestRawQueryUnsupportedTypeHint verifies the error message for unsupported
+// datasource types now suggests --query.
+func TestRawQueryUnsupportedTypeHint(t *testing.T) {
+	server := newDatasourceTypeOnlyServer(t, "yesoreyeram-infinity-datasource")
+	defer server.Close()
+	configFile := newConfigFileForServer(t, server.URL)
+
+	err := executeQueryCommand(t, datasources.QueryCmd(), []string{
+		"query", "uid", "some-expr", "--config", configFile,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--query")
+}
+
 // Pins shared.Validate() running before any HTTP or short-circuit branch.
 func TestGenericQueryFlagValidationPrecedence(t *testing.T) {
 	tests := []struct {
