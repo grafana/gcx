@@ -90,7 +90,9 @@ gcx/
 │   ├── docs/                 # Canonical Grafana documentation URL registry (markdown links surfaced via DetailedError.DocsLink and agent llm_hints)
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
+│   │   ├── athena/           # Athena datasource commands (query, list-catalogs, list-databases, list-tables, describe-table, explore)
 │   │   ├── azuremonitor/     # Azure Monitor CLI commands (query, logs, resource-graph, list-subscriptions, list-resource-groups, list-resources, list-metrics)
+│   │   ├── bigquery/         # BigQuery datasource commands (query, list-datasets, list-tables, describe-table, explore)
 │   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   │   ├── cloudmonitoring/  # Google Cloud Monitoring CLI commands (query, list-projects, list-metrics)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
@@ -109,9 +111,11 @@ gcx/
 │   │   ├── influxdb/         # InfluxDB HTTP query client
 │   │   ├── infinity/         # Infinity HTTP query client
 │   │   ├── loki/             # Loki HTTP client (log + metric queries)
+│   │   ├── athena/           # Athena SQL query client
+│   │   ├── bigquery/         # BigQuery SQL query client
+│   │   ├── clickhouse/       # ClickHouse HTTP client
 │   │   ├── mysql/            # MySQL HTTP query client (raw SQL via unified query API)
-│   │   ├── postgres/         # PostgreSQL HTTP query client (raw SQL via unified query API)
-│   │   └── clickhouse/       # ClickHouse HTTP client
+│   │   └── postgres/         # PostgreSQL HTTP query client (raw SQL via unified query API)
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
