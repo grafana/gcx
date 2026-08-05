@@ -1002,6 +1002,251 @@ scoped to the entries in the input file, without uploading.`,
 	return cmd
 }
 
+func newNotificationsCommand(loader RESTConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "notifications",
+		Short: "Manage alert notification configs in the Knowledge Graph.",
+		Long: `Manage alert notification configs (AlertConfig) in the Knowledge Graph.
+
+These govern how matched alerts notify — the labels an alert must match, extra
+alert labels and annotations to attach, the "for" duration, and the silenced
+flag. Distinct from "gcx kg suppressions", which manages disabled-alert configs.`,
+	}
+
+	listOpts := &notificationsListOpts{}
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List alert notification configs, optionally filtered by category.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := listOpts.IO.Validate(); err != nil {
+				return err
+			}
+			category := NotificationCategory(listOpts.Category)
+			if listOpts.Category != "" && !category.IsValid() {
+				return fmt.Errorf("invalid --category %q: must be one of request, resource, health, slo", listOpts.Category)
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			configs, err := client.ListNotifications(cmd.Context(), category)
+			if err != nil {
+				return err
+			}
+			return listOpts.IO.Encode(cmd.OutOrStdout(), configs.AlertConfigs)
+		},
+	}
+	listOpts.setup(listCmd.Flags())
+
+	getOpts := &notificationsGetOpts{}
+	getCmd := &cobra.Command{
+		Use:   "get <name>",
+		Short: "Get an alert notification config by name.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := getOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			config, err := client.GetNotification(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return getOpts.IO.Encode(cmd.OutOrStdout(), config)
+		},
+	}
+	getOpts.setup(getCmd.Flags())
+
+	createOpts := &notificationsCreateOpts{}
+	createCmd := &cobra.Command{
+		Use:   "upsert",
+		Short: "Upsert (create or update) one or more alert notification configs from a YAML file or stdin.",
+		Long: `Upsert (create or update) one or more alert notification configs from a YAML file or stdin.
+
+Applies the entries in the input file, creating each config when absent or
+updating it when present. Remote configs absent from the file are never
+deleted.`,
+		Example: `  gcx kg notifications upsert -f notifications.yaml
+
+  echo 'alertConfigs:
+    - name: api-server-latency
+      matchLabels:
+        asserts_slo_name: api-server-latency
+      for: 5m
+      silenced: false' | gcx kg notifications upsert`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := createOpts.IO.Validate(); err != nil {
+				return err
+			}
+			data, err := readFileOrStdin(cmd, createOpts.File)
+			if err != nil {
+				return err
+			}
+			var configs AlertConfigs
+			if err := yaml.Unmarshal(data, &configs); err != nil {
+				return fmt.Errorf("failed to parse notifications file: %w", err)
+			}
+			if len(configs.AlertConfigs) == 0 {
+				return errors.New("no notification configs found in file")
+			}
+			for i, ac := range configs.AlertConfigs {
+				if ac.Name == "" {
+					return fmt.Errorf("notification config %d has an empty name", i)
+				}
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			total := len(configs.AlertConfigs)
+			result := cmdio.NewBatchMutation("upserted")
+			for i, ac := range configs.AlertConfigs {
+				if err := client.UpsertNotification(cmd.Context(), ac); err != nil {
+					failure := fmt.Errorf("failed to upsert notification config %q (%d/%d succeeded): %w", ac.Name, i, total, err)
+					if i == 0 {
+						// Nothing succeeded: no result document is owed, so the
+						// standard error path emits the single error document
+						// (agent mode) or stderr rendering (human).
+						return failure
+					}
+					// Partial failure: the loop stops at the first error, so
+					// entries after it were never attempted (skipped).
+					result.Summary = cmdio.MutationSummary{Succeeded: i, Failed: 1, Skipped: total - i - 1}
+					result.Failures = append(result.Failures, cmdio.MutationFailure{
+						Target: cmdio.MutationTarget{Kind: "AlertConfig", Name: ac.Name},
+						Error:  err.Error(),
+					})
+					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Error())
+					if encErr := createOpts.IO.Encode(cmd.OutOrStdout(), result); encErr != nil {
+						return encErr
+					}
+					// The result document (with the enumerated failure) is
+					// already on stdout — EmittedError carries exit 4 without a
+					// second error document.
+					return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, failure)
+				}
+			}
+			result.Summary = cmdio.MutationSummary{Succeeded: total}
+			return createOpts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	createOpts.setup(createCmd.Flags())
+
+	deleteOpts := &guardedDeleteOpts{}
+	deleteCmd := &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete an alert notification config by name.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runGuardedDelete(cmd, deleteOpts, loader, "AlertConfig", args[0],
+				fmt.Sprintf("Delete notification config %q?", args[0]),
+				func(ctx context.Context, client *Client) error {
+					return client.DeleteNotification(ctx, args[0])
+				})
+		},
+	}
+	deleteOpts.setup(deleteCmd.Flags(), func(w io.Writer, m cmdio.SingleMutation) {
+		cmdio.Success(w, "Notification config %q deleted", m.Target.Name)
+	})
+
+	cmd.AddCommand(listCmd, getCmd, createCmd, deleteCmd)
+	return cmd
+}
+
+type notificationsListOpts struct {
+	Category string
+	IO       cmdio.Options
+}
+
+func (o *notificationsListOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVar(&o.Category, "category", "", "Filter by category: request, resource, health, or slo.")
+	o.IO.RegisterCustomCodec("table", &NotificationTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+type notificationsGetOpts struct {
+	IO cmdio.Options
+}
+
+func (o *notificationsGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
+type notificationsCreateOpts struct {
+	File string
+	IO   cmdio.Options
+}
+
+func (o *notificationsCreateOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin. Reads from stdin if omitted.")
+	o.IO.RegisterCustomCodec("text", &NotificationsUpsertTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+// NotificationsUpsertTextCodec renders the `notifications upsert` write result
+// (a cmdio.BatchMutation) as the styled one-line summary in the default text
+// format, while -o json/yaml emit the structured mutation document.
+type NotificationsUpsertTextCodec struct{}
+
+func (c *NotificationsUpsertTextCodec) Format() format.Format { return "text" }
+
+func (c *NotificationsUpsertTextCodec) Encode(w io.Writer, v any) error {
+	result, ok := v.(cmdio.BatchMutation)
+	if !ok {
+		return errors.New("invalid data type for text codec: expected cmdio.BatchMutation")
+	}
+	if result.Summary.Failed > 0 {
+		cmdio.Warning(w, "%d notification config(s) upserted, %d failed (%d skipped)",
+			result.Summary.Succeeded, result.Summary.Failed, result.Summary.Skipped)
+		return nil
+	}
+	cmdio.Success(w, "%d notification config(s) upserted", result.Summary.Succeeded)
+	return nil
+}
+
+func (c *NotificationsUpsertTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
+}
+
+// NotificationTableCodec renders alert notification configs as a table.
+type NotificationTableCodec struct{}
+
+func (c *NotificationTableCodec) Format() format.Format { return "table" }
+
+func (c *NotificationTableCodec) Encode(w io.Writer, v any) error {
+	configs, ok := v.([]AlertConfig)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []AlertConfig")
+	}
+	t := style.NewTable("NAME", "MATCH LABELS", "FOR", "SILENCED")
+	for _, ac := range configs {
+		t.Row(ac.Name, scopeStr(ac.MatchLabels), ac.For, strconv.FormatBool(ac.Silenced))
+	}
+	return t.Render(w)
+}
+
+func (c *NotificationTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
 type suppressionsCreateOpts struct {
 	File   string
 	DryRun bool
