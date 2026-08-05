@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/athena"
+	"github.com/grafana/gcx/internal/query/bigquery"
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/cloudwatch"
 	"github.com/grafana/gcx/internal/query/infinity"
@@ -53,6 +54,12 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return clickhouse.FormatDescribeTableTable(w, resp)
 	case athena.StringList:
 		return athena.FormatStringList(w, resp.Items, resp.Header)
+	case bigquery.StringList:
+		return bigquery.FormatStringList(w, resp.Items, resp.Header)
+	case []bigquery.TableInfo:
+		return bigquery.FormatListTablesTable(w, resp)
+	case []bigquery.ColumnInfo:
+		return bigquery.FormatDescribeTableTable(w, resp)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatTable(w, resp)
 	default:
@@ -86,6 +93,12 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return querysql.FormatWideTable(w, resp)
 	case athena.StringList:
 		return athena.FormatStringList(w, resp.Items, resp.Header)
+	case bigquery.StringList:
+		return bigquery.FormatStringList(w, resp.Items, resp.Header)
+	case []bigquery.TableInfo:
+		return bigquery.FormatListTablesTable(w, resp)
+	case []bigquery.ColumnInfo:
+		return bigquery.FormatDescribeTableTable(w, resp)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatWide(w, resp)
 	default:
@@ -152,6 +165,12 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		return errors.New("graph output is not supported for ClickHouse describe-table; use -o table/json/yaml")
 	case athena.StringList:
 		return errors.New("graph output is not supported for Athena discovery; use -o table/json/yaml")
+	case bigquery.StringList:
+		return errors.New("graph output is not supported for BigQuery list-datasets; use -o table/json/yaml")
+	case []bigquery.TableInfo:
+		return errors.New("graph output is not supported for BigQuery list-tables; use -o table/json/yaml")
+	case []bigquery.ColumnInfo:
+		return errors.New("graph output is not supported for BigQuery describe-table; use -o table/json/yaml")
 	default:
 		return errors.New("invalid data type for graph codec")
 	}
