@@ -634,3 +634,78 @@ func TestSelectCloudLoginEndpointsKeepsOAuthAndAPICoherent(t *testing.T) {
 		})
 	}
 }
+
+// TestCloudLoginManualReachesGCOMOptions confirms --oauth-manual reaches the
+// OAuth flow with a reader, so the user can paste the redirect URL on a remote
+// host (issue #1135).
+func TestCloudLoginManualReachesGCOMOptions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("version: 1\ncontexts:\n  default: {}\ncurrent-context: default\n"), 0o600))
+
+	var gotOpts auth.GCOMOptions
+	previousFactory := newGCOMOAuthFlow
+	newGCOMOAuthFlow = func(opts auth.GCOMOptions) gcomOAuthFlow {
+		gotOpts = opts
+		return gcomOAuthFlowFunc(func(context.Context) (*auth.GCOMResult, error) {
+			return &auth.GCOMResult{AccessToken: "oauth-access", ExpiresAt: "2030-01-01T00:00:00Z", Scope: "stacks:read"}, nil
+		})
+	}
+	t.Cleanup(func() { newGCOMOAuthFlow = previousFactory })
+
+	cmd := loginCmd()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--config", path, "--oauth-manual"})
+	require.NoError(t, cmd.ExecuteContext(t.Context()))
+
+	assert.True(t, gotOpts.Manual)
+	assert.NotNil(t, gotOpts.Reader)
+}
+
+// TestCloudLoginOptsValidateRejectsManualWithToken pins that --oauth-manual is
+// meaningless together with a Cloud Access Policy token.
+func TestCloudLoginOptsValidateRejectsManualWithToken(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		cloudToken  string
+		oauthManual bool
+		wantErr     string
+	}{
+		{
+			name:        "manual with cloud token",
+			cloudToken:  "glc_abc123",
+			oauthManual: true,
+			wantErr:     "--oauth-manual has no effect with --cloud-token",
+		},
+		{
+			name:        "manual alone",
+			oauthManual: true,
+		},
+		{
+			name:       "cloud token alone",
+			cloudToken: "glc_abc123",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := &loginOpts{
+				oauthURL:    "https://grafana.com",
+				apiURL:      "https://grafana.com",
+				scopes:      auth.DefaultGCOMScopes(),
+				cloudToken:  tt.cloudToken,
+				oauthManual: tt.oauthManual,
+			}
+			err := opts.Validate()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
