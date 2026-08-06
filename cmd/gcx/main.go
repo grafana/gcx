@@ -76,7 +76,12 @@ func main() {
 	// prefer sticking to err != nil format, than optimizing for calling exitWith
 	// once
 	if err := root.ValidateArgs(cmd, os.Args[1:]); err != nil {
-		exitWith(cmd, interrupted(ctx), rearmed, start, reportError(err, boolFlags, subCmds))
+		// reportError first: Go evaluates arguments left to right, so passing
+		// it inline would read ctx.Err() before reportError writes to stderr
+		// and to the agent log. An interrupt arriving during that write would
+		// then be missed, and the export would run under the wrong disposition.
+		exitCode := reportError(err, boolFlags, subCmds)
+		exitWith(cmd, interrupted(ctx), rearmed, start, exitCode)
 	}
 
 	err := cmd.ExecuteContext(ctx)
@@ -91,7 +96,9 @@ func main() {
 		exitWith(cmd, interrupted(ctx), rearmed, start, gcxerrors.ExitCancelled)
 	}
 
-	exitWith(cmd, interrupted(ctx), rearmed, start, reportError(err, boolFlags, subCmds))
+	// Same ordering as the ValidateArgs call above, for the same reason.
+	exitCode := reportError(err, boolFlags, subCmds)
+	exitWith(cmd, interrupted(ctx), rearmed, start, exitCode)
 }
 
 // interrupted reports whether a signal has cancelled this invocation. Only
@@ -142,6 +149,16 @@ func isSilentCancellation(ctx context.Context, err error) bool {
 // exitWith waits for that to have happened before the export, so main and this
 // function never race over the disposition.
 //
+// The default action is right for a run the user is abandoning and wrong for
+// one that finished anyway. A command can absorb the interrupt and complete: gcx
+// dev serve shuts its HTTP server down on ctx.Done and returns nil, so it
+// reaches here interrupted and successful. Leaving the default action in place
+// there lets a second Ctrl-C — the ordinary way to stop a dev server — kill a
+// run that already wrote its result, and the shell reads status 130 instead of
+// the code that agrees with that result. abandonsExport holds the exact
+// condition; every other interrupted invocation holds SIGINT again for the
+// length of the export.
+//
 // It takes whether the invocation was interrupted as a bool rather than the
 // invocation context on purpose. The export must not inherit that context: for
 // the case this whole path exists to report, the context is already cancelled,
@@ -149,9 +166,34 @@ func isSilentCancellation(ctx context.Context, err error) bool {
 func exitWith(cmd *cobra.Command, interrupted bool, rearmed <-chan struct{}, start time.Time, exitCode int) {
 	if interrupted {
 		<-rearmed
+
+		if !abandonsExport(interrupted, exitCode) {
+			signal.Ignore(os.Interrupt)
+		}
 	}
 	emitUsageEvent(cmd, start, exitCode)
 	os.Exit(exitCode)
+}
+
+// abandonsExport reports whether the user is trying to abandon this invocation,
+// which is the only case that leaves the restored default signal action in place
+// for the usage export.
+//
+// Both halves are load-bearing. "An interrupt arrived" alone is not enough,
+// because a command can absorb the interrupt and still finish its work: gcx dev
+// serve shuts its HTTP server down on ctx.Done and returns nil, so it reaches
+// here interrupted and successful. Letting the default action stand there lets a
+// second Ctrl-C — the ordinary way to stop a dev server — kill a run that
+// already succeeded, and the shell reads status 130 instead of 0. That breaks
+// gcx dev serve && next for a run with nothing wrong with it.
+//
+// The exit code is the whole answer to "is there something to abandon": every
+// route that abandons an invocation ends at ExitCancelled, and every route that
+// completed one ends somewhere else. Testing the code rather than the route
+// also keeps this from drifting out of step with the status the process really
+// returns.
+func abandonsExport(interrupted bool, exitCode int) bool {
+	return interrupted && exitCode == gcxerrors.ExitCancelled
 }
 
 // preParseAgentFlag scans os.Args for --agent / --agent=true / --agent=false

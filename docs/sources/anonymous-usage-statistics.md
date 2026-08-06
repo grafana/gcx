@@ -83,10 +83,11 @@ These fields are easy to misread, so the following constraints are part of the c
 
 An invocation that stopped before it finished reports `outcome: canceled` with `exit_code: 5`, and `error_kind` present but empty, because a stop is not a kind of failure. No new property is collected — a canceled invocation carries exactly the same fields as any other, and like every other event it is sent on a best-effort basis: pressing Ctrl-C a second time ends the process immediately, before the report is sent.
 
-Two things this value does *not* tell you:
+Three things this value does *not* tell you:
 
 - **It is not always your Ctrl-C.** Any invocation whose exit code is `5` reports `canceled`, which includes a confirmation prompt you declined and a task the server itself reported as canceled. The field records that the invocation stopped early, not who stopped it.
-- **Not every interrupted command reports it.** Commands that treat an interrupt as a clean shutdown — `gcx resources serve`, for example — finish normally when you press Ctrl-C, so they report `ok` with `exit_code: 0` like any other successful run.
+- **Not every interrupted command reports it.** Commands that treat an interrupt as a clean shutdown — `gcx dev serve`, for example — finish normally when you press Ctrl-C, so they report `ok` with `exit_code: 0` like any other successful run.
+- **Only Ctrl-C is caught.** `gcx` installs a handler for `SIGINT` alone. A `SIGTERM` or a `SIGKILL` ends the process at once, before any report is built, so the invocation reports nothing at all. Orchestrators and CI runners usually stop a process with `SIGTERM`, so `canceled` undercounts the invocations that stopped early in those environments.
 
 If your first-ever `gcx` command is one you interrupt, the one-time notice described in [Opt out](#opt-out) is printed after the interrupt, because that invocation does report. The notice comes first and the export is attempted after it, so the notice records the attempt rather than a delivery: as above, the report is best-effort and may never arrive.
 
