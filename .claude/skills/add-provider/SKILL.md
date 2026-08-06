@@ -1,6 +1,6 @@
 ---
 name: add-provider
-description: Use for the implementation workflow once a capability is already classified as a Grafana Cloud product provider (SLO, OnCall, Synthetic Monitoring, k6, ML, etc.) — provider package, commands, config keys, optional resource adapters. Trigger on "add provider", "new provider", "build the [product] provider". NOT for deciding whether something should be a provider at all, for integration contracts, or for pre-review self-checks — use the integrate-with-gcx skill for those (bundled; `gcx agent skills get integrate-with-gcx`).
+description: Use for the implementation workflow once a capability is already classified as a Grafana Cloud product provider (SLO, OnCall, Synthetic Monitoring, k6, ML, etc.) — provider package, commands, config keys, optional resource adapters. Trigger on "add provider", "new provider", "build the [product] provider". NOT for deciding whether something should be a provider at all, for integration contracts, or for pre-review self-checks — use the repo-local integrate-with-gcx contributor skill for those.
 ---
 
 # Add Provider
@@ -91,11 +91,11 @@ contract (proportional)  →  implementation  →  Review
 
 Both entry paths run all three, and none of them is a document or a gate:
 
-- **Contract, before code** — `claude-plugin/skills/integrate-with-gcx/references/contract-and-tests.md`,
+- **Contract, before code** — `.claude/skills/integrate-with-gcx/references/contract-and-tests.md`,
   sized to the change. If you arrived from `integrate-with-gcx` the contract
   already exists; use it, don't redo it.
 - **Review, before calling it review-ready** —
-  `claude-plugin/skills/integrate-with-gcx/references/self-review.md`, re-run after
+  `.claude/skills/integrate-with-gcx/references/self-review.md`, re-run after
   every fix push.
 
 That is where the naming, typed-input, output-class, completeness, error,

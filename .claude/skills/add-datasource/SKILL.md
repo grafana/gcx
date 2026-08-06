@@ -1,6 +1,6 @@
 ---
 name: add-datasource
-description: Use for the implementation workflow once a capability is already classified as a new gcx datasource type (e.g., Elasticsearch, CloudWatch, InfluxDB) — query client, command constructors, DatasourceProvider registration. Trigger on "add datasource", "new datasource type". NOT for deciding the integration tier, integration contracts, or pre-review self-checks — use the integrate-with-gcx skill for those (bundled; `gcx agent skills get integrate-with-gcx`).
+description: Use for the implementation workflow once a capability is already classified as a new gcx datasource type (e.g., Elasticsearch, CloudWatch, InfluxDB) — query client, command constructors, DatasourceProvider registration. Trigger on "add datasource", "new datasource type". NOT for deciding the integration tier, integration contracts, or pre-review self-checks — use the repo-local integrate-with-gcx contributor skill for those.
 ---
 
 # Add Datasource Type
@@ -51,11 +51,11 @@ contract (proportional)  →  implementation  →  Review
 
 Both entry paths run all three, and none of them is a document or a gate:
 
-- **Contract, before code** — `claude-plugin/skills/integrate-with-gcx/references/contract-and-tests.md`,
+- **Contract, before code** — `.claude/skills/integrate-with-gcx/references/contract-and-tests.md`,
   sized to the change. If you arrived from `integrate-with-gcx` the contract
   already exists; use it, don't redo it.
 - **Review, before calling it review-ready** —
-  `claude-plugin/skills/integrate-with-gcx/references/self-review.md`, re-run after
+  `.claude/skills/integrate-with-gcx/references/self-review.md`, re-run after
   every fix push.
 
 That is where the naming, typed-input, output-class, completeness, error,

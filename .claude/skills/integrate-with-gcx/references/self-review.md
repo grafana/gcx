@@ -69,7 +69,7 @@ review output. Neither is a blocker.
 | adds tests | [T8](#t8-tests-that-cannot-fail) |
 | filters, matches, or searches | [T9](#t9-filtering-semantics) |
 | is a fix pushed in response to review | [T10](#t10-fix-pushes) |
-| touches bundled skills or generated docs | [T11](#t11-skills-and-generated-docs) |
+| touches either skill tree or generated docs | [T11](#t11-skills-and-generated-docs) |
 
 ## T1: Any new or changed leaf
 
@@ -388,10 +388,11 @@ unless backticked. Help text carrying a removed config key or a stale default is
 a regression multiplier — it lands on several generated pages at once. New
 packages get a row in `docs/architecture/project-structure.md`.
 
-Sweep the bundled skills for routing your change affects:
+Sweep both the portable user skills and repo-local contributor skills for
+routing your change affects:
 
 ```bash
-grep -rn "<your command or the path it replaces>" claude-plugin/skills/
+rg -n "<your command or the path it replaces>" claude-plugin/skills .claude/skills
 ```
 
 The drift test only catches invocations of commands that no longer exist — it

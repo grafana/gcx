@@ -91,7 +91,6 @@ canonical portable skill bundle.
 | `synth-manage-checks` | Create, update, pull, push, and delete Synthetic Monitoring checks |
 | `gcx-observability` | Roll out end-to-end observability: instrumentation, SLOs, alerts, synth, k6, IRM, dashboards, and cost optimization |
 | `gcx-demo` | Run a narrated, read-only demo tour of gcx across every Grafana Cloud product area — for customer or colleague presentations |
-| `integrate-with-gcx` | Contribute a new capability to the gcx codebase: placement and readiness, integration contract, self-review against recurring review findings, and PR preflight |
 
 ## Agents
 

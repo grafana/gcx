@@ -41,8 +41,7 @@ func intentionalReferences() []driftAllowance {
 // the CLI surface moves out from under them.
 //
 // Both trees are checked: the embedded portable bundle, and the repo-local
-// contributor skills under .claude/skills, which agents load from the checkout
-// and which the bundled skills route into by path.
+// contributor skills under .claude/skills, which agents load from the checkout.
 func TestSkillsGcxInvocationsMatchCommandTree(t *testing.T) {
 	rootCmd := buildRootCmd()
 	rootCmd.InitDefaultHelpCmd()

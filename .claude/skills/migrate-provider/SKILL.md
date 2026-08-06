@@ -65,12 +65,9 @@ One-directional, so the two skills cannot bounce a port back and forth:
   diff-triggered review before requesting human review (`self-review.md`).
   Everything else — contract worksheets, placement, readiness — does not apply
   to a port.
-- Read either from the checkout at
-  `claude-plugin/skills/integrate-with-gcx/references/self-review.md`, or via
-  `gcx agent skills get integrate-with-gcx references/self-review.md` — the
-  reference argument is required, since a bare
-  `gcx agent skills get integrate-with-gcx` returns SKILL.md, which carries
-  neither T7 nor the trigger table.
+- Read from the checkout at
+  `.claude/skills/integrate-with-gcx/references/self-review.md`, which carries
+  T7 and the trigger table.
 
 ## Prerequisites
 
