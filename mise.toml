@@ -101,7 +101,7 @@ echo "Git commit template configured"
 """
 
 [tasks.tag]
-description = "Bump version, generate changelog, tag, and push. Usage: mise run tag -- <major|minor|patch>"
+description = "Bump version, verify changelog entry, and push release branch. Usage: mise run tag -- <major|minor|patch>"
 run = "./scripts/tag.sh"
 
 # =============================================================================
