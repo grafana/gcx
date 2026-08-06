@@ -151,6 +151,15 @@ func TestCanceledInvocationIsReportedAndSecondSignalTerminates(t *testing.T) {
 	duration, ok := fields["duration_ms"].(float64)
 	require.True(t, ok, "duration_ms missing from %v", fields)
 	assert.Positive(t, duration, "a canceled invocation must report the time it really ran")
+
+	// A canceled run is not a failure: whatever a probe captured before the
+	// interrupt landed, neither failure-depth field may travel. The auth
+	// category is not a failure fact and stays — the context was resolved
+	// before the hanging request was ever sent.
+	assert.NotContains(t, fields, "http_status")
+	assert.NotContains(t, fields, "k8s_reason")
+	assert.Equal(t, "token", fields["grafana_auth_method"],
+		"cancellation must not suppress the auth category")
 }
 
 // TestFinishedRunSurvivesInterruptDuringExport pins the other half of the
@@ -257,11 +266,22 @@ func TestUsageEventUnchangedForSuccessAndFailure(t *testing.T) {
 			assert.Equal(t, tc.wantErrorKind, fields["error_kind"])
 			assert.InDelta(t, float64(tc.wantExitCode), fields["exit_code"], 0)
 
+			// The child's config selects auth-method token (with GRAFANA_TOKEN
+			// set), so the auth category rides every outcome; gcx api talks
+			// plain HTTP, so no Kubernetes reason can appear on either.
+			assert.Equal(t, "token", fields["grafana_auth_method"],
+				"a resolved Grafana context reports its auth category on any outcome")
+			assert.NotContains(t, fields, "k8s_reason")
+
 			if tc.wantExitCode == gcxerrors.ExitSuccess {
+				assert.NotContains(t, fields, "http_status",
+					"a successful request carries no failure status")
 				assert.Contains(t, helper.stdout.String(), "database",
 					"the response belongs on stdout")
 				return
 			}
+			assert.InDelta(t, float64(tc.status), fields["http_status"], 0,
+				"the failing request's transport status must reach the event")
 			assert.Empty(t, helper.stdout.String(),
 				"a failed command writes no result document in human mode")
 			assert.NotEmpty(t, helper.stderr.String(),

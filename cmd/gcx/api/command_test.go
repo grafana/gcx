@@ -229,8 +229,13 @@ func TestOutputResponse_ErrorWithBody(t *testing.T) {
 
 	err := outputResponse(cmd, opts, resp)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "HTTP 404")
-	assert.Contains(t, err.Error(), "not found")
+	// The exact rendered form, not a substring: the message predates the typed
+	// status and must survive it byte for byte.
+	assert.Equal(t, `HTTP 404: {"error":"not found"}`, err.Error())
+
+	var carrier interface{ HTTPStatusCode() int }
+	require.ErrorAs(t, err, &carrier, "gcx api failures must carry their status for the usage event")
+	assert.Equal(t, http.StatusNotFound, carrier.HTTPStatusCode())
 }
 
 func TestOutputResponse_ErrorWithoutBody(t *testing.T) {
@@ -244,8 +249,11 @@ func TestOutputResponse_ErrorWithoutBody(t *testing.T) {
 
 	err := outputResponse(cmd, opts, resp)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "HTTP 404")
-	assert.Contains(t, err.Error(), "Not Found")
+	assert.Equal(t, "HTTP 404 Not Found", err.Error())
+
+	var carrier interface{ HTTPStatusCode() int }
+	require.ErrorAs(t, err, &carrier)
+	assert.Equal(t, http.StatusNotFound, carrier.HTTPStatusCode())
 }
 
 func TestDoRequest_ContentTypeOnlyWithBody(t *testing.T) {

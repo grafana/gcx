@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/login"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -489,6 +490,27 @@ func captureLoginTargetKind(opts *login.Options) {
 	}
 }
 
+// captureLoginGrafanaAuthMethod records the Grafana auth method this login
+// actually resolved, beside the target-kind capture and with the same
+// authority: login authenticates by probing rather than by selecting from
+// config, so what it resolved outranks whatever a load captured on the way —
+// including a conflict from a re-auth that switched methods mid-loop, which
+// is why this forces instead of setting.
+//
+// On success the result carries the method. On failure the staged context
+// does, whenever the run got past auth resolution: resolveGrafanaAuth
+// populates StagedContext.Grafana before the destination-validation and
+// cloud-auth gates, so a login rejected there still reports the method it
+// resolved. Both values are login-authored from the fixed vocabulary; a run
+// that failed before resolving auth leaves both empty and forces nothing.
+func captureLoginGrafanaAuthMethod(result login.Result, opts *login.Options) {
+	method := result.AuthMethod
+	if method == "" && opts.StagedContext != nil && opts.StagedContext.Grafana != nil {
+		method = opts.StagedContext.Grafana.AuthMethod
+	}
+	capture.ForceGrafanaAuthMethod(method)
+}
+
 func runLoginLoop(
 	cmd *cobra.Command,
 	flags *loginOpts,
@@ -511,6 +533,7 @@ func runLoginLoop(
 		// derived from the URL: a custom domain fronting a Cloud stack is only
 		// recognisable once detection has run.
 		captureLoginTargetKind(opts)
+		captureLoginGrafanaAuthMethod(result, opts)
 		if err == nil {
 			if shouldWarnRuntimeOnlyDestination(runtimeDestinationFromEnvironment, result) {
 				warnRuntimeOnlyDestination(cmd.ErrOrStderr())

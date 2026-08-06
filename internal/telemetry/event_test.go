@@ -38,6 +38,21 @@ func wantBatchOnly() []string {
 	}
 }
 
+// wantErrorSignalsOnly are the failure-depth fields, set only when the
+// surfaced error carried a transport HTTP status or a Kubernetes reason, and
+// suppressed for exit codes 4 and 5. Unlike the batch block they do not
+// travel together: most failures carry exactly one of the two shapes.
+func wantErrorSignalsOnly() []string {
+	return []string{"http_status", "k8s_reason"}
+}
+
+// wantGrafanaAuthOnly is the auth-method field, present whenever a Grafana
+// auth selection was decided — on any outcome, including success and
+// canceled — and absent when none was, so it is not part of the error group.
+func wantGrafanaAuthOnly() []string {
+	return []string{"grafana_auth_method"}
+}
+
 func marshalKeys(t *testing.T, ev telemetry.Event) map[string]any {
 	t.Helper()
 	data, err := json.Marshal(ev)
@@ -82,11 +97,17 @@ func TestEventFieldInventory(t *testing.T) {
 		BatchFailedBucket:    strPtr(telemetry.BucketZero),
 		BatchSkippedBucket:   strPtr(telemetry.BucketZero),
 		DryRun:               &appliedRun,
+
+		HTTPStatus:        403,
+		K8sReason:         "NotFound",
+		GrafanaAuthMethod: "token",
 	}
 
 	got := marshalKeys(t, full)
 	want := append(wantAlwaysPresent(), wantParseErrorOnly()...)
 	want = append(want, wantBatchOnly()...)
+	want = append(want, wantErrorSignalsOnly()...)
+	want = append(want, wantGrafanaAuthOnly()...)
 	assert.ElementsMatch(t, want, keys(got), "full event must emit exactly the documented field set")
 }
 
@@ -103,6 +124,43 @@ func TestEventOmitsBatchFieldsWhenUnset(t *testing.T) {
 	for _, field := range wantBatchOnly() {
 		assert.NotContains(t, got, field, "non-batch events must omit every batch field")
 	}
+}
+
+// Absence is meaningful for all three new optional fields: no status found,
+// no Kubernetes reason found, no auth selection decided. Zero values must
+// vanish rather than travel as 0 or "".
+func TestEventOmitsErrorSignalAndAuthFieldsWhenUnset(t *testing.T) {
+	got := marshalKeys(t, telemetry.Event{Outcome: telemetry.OutcomeOK})
+	for _, field := range append(wantErrorSignalsOnly(), wantGrafanaAuthOnly()...) {
+		assert.NotContains(t, got, field, "events without the signal must omit the field entirely")
+	}
+}
+
+func TestK8sReasonLabelClampsToVocabulary(t *testing.T) {
+	assert.Empty(t, telemetry.K8sReasonLabel(""), "no reason found means the field is omitted, not sent as unknown")
+	assert.Equal(t, telemetry.K8sReasonOther, telemetry.K8sReasonLabel("SomeFutureReason"),
+		"a StatusReason is a server-controlled string and must never travel verbatim")
+	assert.Equal(t, "StorageReadError", telemetry.K8sReasonLabel("StorageReadError"),
+		"the vocabulary holds wire values: the Go identifier is StatusReasonStoreReadError")
+
+	for _, label := range telemetry.K8sReasonLabels() {
+		if label == telemetry.K8sReasonOther {
+			continue
+		}
+		assert.Equal(t, label, telemetry.K8sReasonLabel(label), "every listed reason passes through unchanged")
+	}
+	assert.Len(t, telemetry.K8sReasonLabels(), 20, "19 reasons plus the other sentinel is the receiver-gated contract")
+}
+
+func TestGrafanaAuthMethodLabelClampsToVocabulary(t *testing.T) {
+	assert.Empty(t, telemetry.GrafanaAuthMethodLabel(""), "no decision means the field is omitted")
+	assert.Equal(t, telemetry.AuthMethodUnknown, telemetry.GrafanaAuthMethodLabel("Bearer xyz"),
+		"an out-of-contract value evidences a decision but must not travel verbatim")
+
+	for _, label := range telemetry.GrafanaAuthMethodLabels() {
+		assert.Equal(t, label, telemetry.GrafanaAuthMethodLabel(label), "every listed method passes through unchanged")
+	}
+	assert.Len(t, telemetry.GrafanaAuthMethodLabels(), 6, "six values is the receiver-gated contract")
 }
 
 // The zero bucket and a false dry-run are real answers, so omitempty must not
