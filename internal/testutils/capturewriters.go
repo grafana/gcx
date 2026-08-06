@@ -67,15 +67,14 @@ func CaptureWriters(t *testing.T, root, pkgPath string, funcNames ...string) map
 	return writers
 }
 
-// skipWalkDir reports whether the writer walk must not descend into a
-// directory. It takes the path as well as the name so a nested module is
-// recognised by its own go.mod rather than by a name this repository would have
-// to keep a list of.
+// skipWalkDir reports whether the walk must not descend into a directory. It
+// takes the path as well as the name so a nested module is recognised by its
+// own go.mod rather than by a name this list would have to keep up with.
 //
 // The dot-prefix rule is the one that matters in practice. This repository puts
 // git worktrees under .claude/worktrees, and a worktree holds a second copy of
-// every file in the tree — including the one legitimate writer. Walking into
-// one makes a guard report the same file twice and fail with a message about "a
+// every file in the tree — including every legitimate writer. Walking into one
+// makes a guard report the same file twice and fail with a message about "a
 // writer elsewhere" that names the file it was already expecting. CI has no
 // worktrees, so only the local pre-commit gate breaks, which is the worst place
 // for a false alarm. Skipping dot- and underscore-prefixed directories matches
@@ -92,7 +91,6 @@ func skipWalkDir(path, name string) bool {
 	// this repository's code, and a checkout of this repository placed inside
 	// the tree would otherwise duplicate every writer.
 	_, err := os.Stat(filepath.Join(path, "go.mod"))
-
 	return err == nil
 }
 

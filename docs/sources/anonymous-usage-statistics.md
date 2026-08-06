@@ -89,7 +89,7 @@ Three things this value does *not* tell you:
 - **Not every interrupted command reports it.** Commands that treat an interrupt as a clean shutdown — `gcx dev serve`, for example — finish normally when you press Ctrl-C, so they report `ok` with `exit_code: 0` like any other successful run.
 - **Only Ctrl-C is caught.** `gcx` installs a handler for `SIGINT` alone. A `SIGTERM` or a `SIGKILL` ends the process at once, before any report is built, so the invocation reports nothing at all. Orchestrators and CI runners usually stop a process with `SIGTERM`, so `canceled` undercounts the invocations that stopped early in those environments.
 
-If your first-ever `gcx` command is one you interrupt, the one-time notice described in [Opt out](#opt-out) is printed after the interrupt, because that invocation does report. The notice comes first and the export is attempted after it, so the notice records the attempt rather than a delivery: as above, the report is best-effort and may never arrive.
+If your first-ever `gcx` command is one you interrupt, the notice described in [The one-time notice](#the-one-time-notice) is printed after the interrupt, because that invocation does report. The notice comes first and the export is attempted after it, so the notice records the attempt rather than a delivery: as above, the report is best-effort and may never arrive.
 
 This moves the denominator of every outcome rate in two ways, so compare rates within a `version` rather than across the version where `canceled` first appears:
 
@@ -140,6 +140,24 @@ Some invocations never emit an event:
 - **`gcx version`**  
 - **Invocations that failed to parse** — an unknown command or flag reports nothing today, which is why the `parse_error_*` properties above are not yet populated.
 
+## How the report is sent
+
+One invocation sends at most one report. `gcx` does not batch events, does not queue them for a later run, and does not start a background process that outlives the command.
+
+| Property | Value |
+| --- | --- |
+| Destination | `https://stats.grafana.org/gcx-usage-report` |
+| Method | A single `POST` with the event as a JSON object |
+| Attempts | One. A failed report is never retried and never stored. |
+| Timing | Synchronous, after the command wrote its output and before the process exits |
+| Time limit | One second for the whole exchange, including DNS, TCP, and TLS |
+
+The report is sent synchronously, so the invocation can take up to one extra second before it exits. In normal conditions the cost is much smaller, and an endpoint that refuses the connection or fails to resolve costs almost nothing, because the failure is immediate.
+
+One case does cost the full second on every invocation: a network that drops the packets silently instead of refusing them. Some corporate firewalls do this. If you block the destination that way, each `gcx` invocation waits out the one-second limit before it exits. To avoid the delay, opt out with `GCX_TELEMETRY=disabled` instead of blocking the address. An opted-out invocation builds no event and opens no connection.
+
+To send the report somewhere else, set `GCX_TELEMETRY_ENDPOINT` to another URL. This changes the destination only. It is not an opt-out, and the value is used as given.
+
 ## Server-side enrichment
 
 Reports are received by Grafana's usage-stats service, the same service that receives usage reports from Grafana, Loki, Tempo, and Mimir. On receipt, the service adds two pieces of information derived from the connection:
@@ -177,3 +195,14 @@ diagnostics:
 ```
 
 Opting out disables reporting entirely. No event is constructed and nothing is sent.
+
+### The one-time notice
+
+`gcx` prints a short notice to stderr the first time it reports an invocation. The notice states what is collected and how to opt out. It is printed after the command's own output, so it never mixes into a result document on stdout.
+
+The notice is shown at most once for each revision of its text. `gcx` records the revision it showed in `$XDG_STATE_HOME/gcx/telemetry-notice-shown`, which is `~/.local/state/gcx/telemetry-notice-shown` on most systems. Delete that file to see the notice again. When the text changes in a material way, the revision changes with it, and the notice is shown once more — including to installations that already ran `gcx`.
+
+Two limits are worth stating plainly:
+
+- **The notice is only printed to an interactive terminal.** It is skipped when stderr is not a terminal, when `gcx` detects a CI environment, and when `gcx` runs in agent mode. Those invocations still report. So a CI job or a coding agent can report usage statistics without the notice ever appearing. If you run `gcx` in either environment, opt out in the configuration file or in the environment of the job.
+- **The first report is sent by the same invocation that prints the notice.** The notice comes first and the report follows, in one process. So reading the notice tells you that one invocation has already reported. Every invocation after it obeys the opt-out you choose.
