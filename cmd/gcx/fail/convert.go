@@ -230,18 +230,25 @@ func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
 }
 
 // keychainLockedSuggestions returns the remedies for a locked keychain on the
-// given operating system.
+// given operating system. The Secret Service remedies name no unlock command
+// on purpose. The correct command depends on the session: a service manager
+// can hold the org.freedesktop.secrets name and refuse to yield it, and the
+// daemon accepts the password only on standard input without a trailing
+// newline. A command that silently does nothing is worse than no command, so
+// the full procedure lives in the documentation.
 func keychainLockedSuggestions(goos string) []string {
 	switch goos {
 	case "dragonfly", "freebsd", "linux", "netbsd", "openbsd":
 		return []string{
-			"Unlock the keyring, then retry: systemd-ask-password 'Keyring password: ' | tr -d '\\n' | gnome-keyring-daemon --replace --daemonize --unlock",
+			"Unlock the keyring, then retry the command",
 			"Run gcx from a desktop session, where a password prompt can appear",
 			"Check the lock state: busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked",
+			"Supply the credential in an environment variable, such as GRAFANA_TOKEN, if you cannot unlock the keyring on this host",
 		}
 	default:
 		return []string{
 			"Unlock the OS keychain, then retry the command",
+			"Supply the credential in an environment variable, such as GRAFANA_TOKEN, if you cannot unlock the keychain on this host",
 		}
 	}
 }
