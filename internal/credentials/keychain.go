@@ -104,14 +104,10 @@ func nativeKeyringBackendLocked(err error, goos string) bool {
 	// go-keyring returns errors from godbus without a stable exported wrapper
 	// at this boundary. Match the signatures that mean the collection is
 	// locked, or that the unlock prompt returned no unlocked collection.
-	// go-keyring v0.2.8 reports a dismissed prompt as the unlock failure,
-	// because it discards the dismissal flag. The dismissal signature is
-	// defensive cover for a backend that reports the dismissal directly.
 	message := strings.ToLower(err.Error())
 	for _, signature := range []string{
 		"org.freedesktop.secret.error.islocked",
 		"failed to unlock correct collection",
-		"prompt dismissed",
 	} {
 		if strings.Contains(message, signature) {
 			return true

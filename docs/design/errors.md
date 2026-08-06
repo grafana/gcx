@@ -163,6 +163,7 @@ Adding a new summary requires a PR amending this list.
 | `Invalid command usage` | Wrong flags, conflicting flags, missing required args |
 | `Invalid configuration` | Bad config file, unresolvable context |
 | `Authentication failed` | Token expired or missing |
+| `Keychain locked` | The OS keychain answers, but its collection is locked, so gcx cannot store or read the credential |
 | `Authorization failed` | Permission denied (403) |
 | `Resource not found` | 404 or client-side not-found detection |
 | `Resource conflict` | Optimistic lock / RMW conflict, or an API-reported conflict whose exact cause is not machine-discriminable (e.g. GCOM stack 409s) |
