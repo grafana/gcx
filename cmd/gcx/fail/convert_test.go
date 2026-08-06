@@ -1406,20 +1406,21 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 	}
 }
 
-// wantKeychainLockedSuggestions mirrors the platform split in the converter:
-// only the freedesktop Secret Service has a shell command that unlocks the
-// keyring.
+// wantKeychainLockedSuggestions mirrors the platform split in the converter.
+// Only the freedesktop Secret Service exposes a lock-state command.
 func wantKeychainLockedSuggestions() []string {
 	switch runtime.GOOS {
 	case "dragonfly", "freebsd", "linux", "netbsd", "openbsd":
 		return []string{
-			"Unlock the keyring, then retry: systemd-ask-password 'Keyring password: ' | tr -d '\\n' | gnome-keyring-daemon --replace --daemonize --unlock",
+			"Unlock the keyring, then retry the command",
 			"Run gcx from a desktop session, where a password prompt can appear",
 			"Check the lock state: busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked",
+			"Supply the credential in an environment variable, such as GRAFANA_TOKEN, if you cannot unlock the keyring on this host",
 		}
 	default:
 		return []string{
 			"Unlock the OS keychain, then retry the command",
+			"Supply the credential in an environment variable, such as GRAFANA_TOKEN, if you cannot unlock the keychain on this host",
 		}
 	}
 }

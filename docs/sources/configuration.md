@@ -72,24 +72,8 @@ read a credential fails with a `Keychain locked` error. A headless or SSH
 session on Linux causes this most often: the keyring daemon runs, but no prompt
 can unlock the collection. To recover, do one of these steps:
 
-- Unlock the keyring, then run the command again:
-  ```bash
-  systemd-ask-password 'Keyring password: ' | tr -d '\n' | gnome-keyring-daemon --replace --daemonize --unlock
-  ```
-  `gnome-keyring-daemon --unlock` reads the password from standard input, and
-  it shows no prompt. You must pipe the password in, because `--daemonize`
-  makes the process fork. A password that you type does not reach the child
-  process. The password must also carry no trailing newline, which is the
-  reason for the `tr` filter.
-
-  In bash, you can prompt with `read` instead:
-  ```bash
-  read -rsp 'Keyring password: ' PW && printf '%s' "$PW" | gnome-keyring-daemon --replace --daemonize --unlock
-  ```
-  In zsh, the same prompt uses a different syntax:
-  ```zsh
-  read -rs "PW?Keyring password: " && printf '%s' "$PW" | gnome-keyring-daemon --replace --daemonize --unlock
-  ```
+- Unlock the keyring, then run the command again. See
+  [Unlock a GNOME keyring in a headless session](#unlock-a-gnome-keyring-in-a-headless-session).
 - Run `gcx` from a desktop session that can show a password prompt.
 - Supply the credential through an environment variable, such as `GRAFANA_TOKEN`.
 
@@ -149,6 +133,59 @@ gcx config set contexts.staging.stack staging
 ```
 
 Note that in these examples, `default` and `staging` are the context and stack names.
+
+## Unlock a GNOME keyring in a headless session
+
+A headless or SSH session runs no agent that can answer the unlock prompt, so
+the login collection stays locked. Read the lock state first:
+
+```shell
+busctl --user get-property org.freedesktop.secrets \
+  /org/freedesktop/secrets/collection/login \
+  org.freedesktop.Secret.Collection Locked
+```
+
+`b true` means the collection is locked. To unlock it, obey three constraints:
+
+- `gnome-keyring-daemon --unlock` reads the password from standard input, and
+  it shows no prompt.
+- `--daemonize` makes the process fork. A password that you type does not reach
+  the child process, so you must pipe the password in.
+- The password must carry no trailing newline. A password with a newline leaves
+  the collection locked, and the command reports no error.
+
+In bash:
+
+```bash
+read -rsp 'Keyring password: ' PW && printf '%s' "$PW" | gnome-keyring-daemon --replace --daemonize --unlock
+```
+
+In zsh, the prompt uses a different syntax:
+
+```zsh
+read -rs "PW?Keyring password: " && printf '%s' "$PW" | gnome-keyring-daemon --replace --daemonize --unlock
+```
+
+Read the lock state again to confirm the result. `b false` means the collection
+is unlocked.
+
+If the state does not change, compare the owner of the `org.freedesktop.secrets`
+name before and after:
+
+```shell
+busctl --user list | grep org.freedesktop.secrets
+```
+
+An unchanged owner means `--replace` did not take the name. A service manager
+that runs the keyring daemon can hold the name and refuse to yield it. Stop that
+service first, then start a daemon that reads the password:
+
+```shell
+systemctl --user stop gnome-keyring-daemon.service gnome-keyring-daemon.socket
+```
+
+If you cannot unlock the keyring on the host, supply the credential through an
+environment variable such as `GRAFANA_TOKEN` instead.
 
 ## Useful commands
 
