@@ -226,8 +226,9 @@ re-deriving them. If your harness does not expose these as skills, read the file
 you are in the checkout: `.claude/skills/{add-provider,add-datasource}/SKILL.md`.
 
 **Migration is out of scope for this version.** Porting a provider from the legacy
-CLI is a separate, human-driven workflow whose non-registration steps are not
-fully audited. Do not route a port through this skill autonomously — tell the
+CLI is not covered: `migrate-provider` documents its own naming collision with the
+legacy tool (both were called `gcx`), which makes its side-by-side verification
+steps ambiguous. Do not route a port through this skill autonomously — tell the
 user it needs a human to drive, and point them at
 `.claude/skills/migrate-provider/SKILL.md` and its status note.
 

@@ -93,6 +93,39 @@ vocabulary and intentional aliases are documented in
 Do not characterize query commands as side-effect-free: supporting work such as
 datasource discovery may persist configuration.
 
+### Query variants
+
+A backend may offer more than one way to be queried. Decide between one command
+and several by comparing contracts, not by counting APIs.
+
+Variants sharing an expression language, substantially the same required inputs,
+and the same success schema use **one `query` command with a typed `--mode`**.
+Use one flag name per knob across modes: the same value must not be `--size` in
+one mode and `--limit` in another.
+
+Variants requiring materially different identities, request contracts, or result
+schemas use **distinct `<target> query` paths**, or an explicitly approved
+shorthand from the set above.
+
+`<target>` names the **query surface** — the expression language and API being
+queried — and nests inside the command's existing area: for a datasource kind,
+`gcx datasources <kind> <target> query`. This is a query-variant placement rule
+and is deliberately distinct from
+[placement by required identity](#place-each-operation-by-the-identity-it-requires)
+below: a query surface is not an independently identifiable resource, so neither
+the noun-group test nor the `<operation>-<subject>` compound test decides it.
+Reading a query target as a discovery facet and producing `query-<target>` is the
+wrong outcome — the operation is `query`, and the target says which surface it
+runs against.
+
+This rule authorizes that nesting only. It does **not** authorize a new top-level
+command: bare top-level verbs remain the closed enumeration in
+[CONSTITUTION.md § CLI Grammar](../../CONSTITUTION.md#cli-grammar), and the
+`$AREA $NOUN $VERB` shape at the top of this guide still governs. Existing paths
+such as `gcx dashboards versions restore` show the nesting is representable, but
+per the opening of this guide a shipped command is not automatic precedent — the
+authorization comes from this rule, not from them.
+
 ## View verbs
 
 Default to `get` for a straight read. Use a view verb such as `status`,

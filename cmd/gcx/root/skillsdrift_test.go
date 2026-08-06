@@ -143,7 +143,10 @@ func repoLocalSkillDocs(t *testing.T) (map[string]string, []string) {
 	repoRoot := filepath.Join("..", "..", "..")
 	out, err := exec.CommandContext(t.Context(), "git", "-C", repoRoot, "ls-files", "-z", "--", ".claude/skills").Output()
 	if err != nil {
-		t.Fatalf("cannot enumerate tracked .claude/skills files with git: %v", err)
+		// No git (an exported source tree, say). The bundle subtest still
+		// guards the extractor, so degrade rather than fail — but say so
+		// loudly, because this is lost coverage.
+		t.Skipf("cannot enumerate tracked .claude/skills files with git: %v", err)
 	}
 
 	docs := map[string]string{}

@@ -5,28 +5,31 @@ description: >-
   grafana-cloud-cli into a gcx provider — adapter, schema/example registration,
   CRUD redirect commands. HUMAN-DRIVEN — this skill is outside the
   integrate-with-gcx v1 autonomous workflow and must not be run end to end
-  unattended because its non-registration steps have not been fully audited.
-  Use when a human is deliberately driving a port and says "migrate provider",
-  "port from gcx", "port oncall", "port k6". Not for building providers from
-  scratch — use /add-provider. Recheck present-day placement before porting.
+  unattended, because the legacy CLI shared the name `gcx` and its side-by-side
+  verification steps are ambiguous about which binary they mean. Use when a
+  human is deliberately driving a port and says "migrate provider", "port from
+  gcx", "port oncall", "port k6". Not for building providers from scratch — use
+  /add-provider. Placement is already settled for a port.
 ---
 
-# Migrate a Provider from the Legacy CLI
+# Migrate Provider from gcx
 
-Port an existing `grafana-cloud-cli` resource client into this repository's gcx
-provider system — core adapter, schema/example registration, CRUD redirect
-commands, and ancillary subcommands.
+Port an existing gcx resource client into a gcx provider — core adapter,
+schema/example registration, CRUD redirect commands, and ancillary subcommands.
 
 > **Read this before the recipe. A human drives this skill; it is not covered by
-> the integrate-with-gcx v1 workflow.** In these instructions, "legacy CLI"
-> means `grafana-cloud-cli`, whose binary was also named `gcx`; "gcx" means this
-> repository's `bin/gcx`. Use `bin/gcx` for the build under review, and name the
-> legacy binary's own path explicitly.
+> the integrate-with-gcx v1 workflow.** The legacy CLI this skill ports *from* was
+> also called `gcx`, and the rename collapsed both names throughout these
+> documents — so every "compare old against new" instruction is ambiguous about
+> which binary it means, and a bare `gcx` runs whatever is installed rather than
+> the build under review. Use `bin/gcx` for anything you are verifying, and name
+> the legacy binary's own path explicitly.
 >
 > Of the recipe's mechanical steps, only the registration flow
 > (`providers.Register()` + `TypedRegistrations()`, and the `TypedCRUD`
 > `Descriptor`/`Aliases` fields) has been checked against current code. Treat the
-> rest as unaudited and verify as you go.
+> rest as unaudited and verify as you go. Disambiguating the legacy tool
+> throughout is out of scope for v1.
 
 **Before starting:** read `gcx-provider-recipe.md` front to back for the
 mechanical steps, subject to the caveat above. This skill wraps it with workflow
@@ -38,21 +41,21 @@ discipline and orchestration.
 
 ## When to Use
 
-- Porting a legacy `grafana-cloud-cli` resource client into current gcx
-- A bead task references legacy provider migration
+- Porting a gcx resource client to gcx
+- A bead task references gcx provider migration
 - User says "migrate provider", "port from gcx", "port oncall", "port k6"
 
 **When NOT to use**: Building a provider from scratch for a product without
-a legacy CLI client — use `/add-provider` instead.
+a gcx client — use `/add-provider` instead.
 
 ## Relationship to integrate-with-gcx
 
 One-directional, so the two skills cannot bounce a port back and forth:
 
-- **Recheck placement before porting.** A legacy client proves that an API
-  existed; it does not prove that the provider tier is still the right home.
-  Check current `/apis` CRUD coverage and inventory the non-CRUD operations. A
-  human confirms provider-tier placement before Phases 0-4 continue.
+- **Placement is not an open question here.** An existing grafana-cloud-cli
+  client already establishes the provider tier, so no placement section is
+  produced. Phases 0-4 below cover the port, with a human driving them — see the
+  caveat at the top of this file.
 - **`integrate-with-gcx` does not route work here**, because of the status note
   above: it tells the user a port needs a human to drive and stops. Reach this
   skill by invoking it deliberately.
@@ -60,8 +63,8 @@ One-directional, so the two skills cannot bounce a port back and forth:
   the ported command surface (`self-review.md` T7 — released names are frozen,
   and a port is where a legacy name most often gets carried in), and the
   diff-triggered review before requesting human review (`self-review.md`).
-  Contract worksheets and the general readiness workflow do not apply to a
-  port; the placement recheck above is still required.
+  Everything else — contract worksheets, placement, readiness — does not apply
+  to a port.
 - Read from the checkout at
   `.claude/skills/integrate-with-gcx/references/self-review.md`, which carries
   T7 and the trigger table.
@@ -70,19 +73,19 @@ One-directional, so the two skills cannot bounce a port back and forth:
 
 Before invoking this skill, ensure:
 
-1. **Current gcx binary built** — `bin/gcx --version` must succeed.
-2. **Grafana context configured** — `bin/gcx config view` must show a working
+1. **gcx binary available** — `gcx --version` must succeed.
+2. **Grafana context configured** — `gcx config view` must show a working
    context with server URL and token.
 3. **Provider directory exists** — create `internal/providers/{name}` before
    starting the port.
 4. **Live API access** — smoke tests (Phase 4) require a real Grafana instance.
-   Verify connectivity: `bin/gcx --context=<ctx> resources list-types`.
+   Verify connectivity: `gcx --context=<ctx> resources list-types`.
 
 ## Pipeline Overview
 
 ```
 Phase 0: Requirements Gathering (autonomous)
-  → context bundle (legacy source + compliance + pattern ref)
+  → context bundle (source + compliance + pattern ref)
       ↓ [no gate — feeds Phase 1]
 Phase 1: Design Discovery (interactive, 1A–1D)
   → ADR in docs/adrs/{provider}/
@@ -102,7 +105,7 @@ Phase 4: Verification (4A–4E)
 
 | Phase | Agent Strategy | Receives | Produces | Gate |
 |-------|---------------|----------|----------|------|
-| 0: Requirements | Lead (autonomous) | legacy source + compliance docs | Context bundle | None (feeds Phase 1) |
+| 0: Requirements | Lead (autonomous) | gcx source + compliance docs | Context bundle | None (feeds Phase 1) |
 | 1: Design | Lead (interactive) | Context bundle | ADR | User approves ADR |
 | 2: Spec Planning | Lead (or `/plan-spec`) | ADR + context bundle | spec.md, plan.md, tasks.md | User approves spec package |
 | 3: Build | Agent team (Core + Commands) or `/build-spec` | Spec package | Provider code | `GCX_AGENT_MODE=false mise run all` passes |
@@ -122,7 +125,7 @@ Phases are **strictly sequential**. Each phase is separated by a gate that
 Phase 0 is fully autonomous — no user interaction required. The output is a
 context bundle, not a design proposal.
 
-### 0.1: Read the Legacy CLI Source
+### 0.1: Read gcx Source
 
 Read the grafana-cloud-cli source for the target provider. Identify every
 subcommand, API endpoint, type definition, and auth mechanism.
@@ -154,7 +157,7 @@ Identify and read the closest existing gcx provider as a pattern reference:
 ### 0.4: Produce Context Bundle
 
 The context bundle contains:
-1. **Source summary** — every legacy CLI subcommand mapped to its proposed gcx equivalent or "Deferred" with rationale
+1. **Source summary** — every gcx subcommand mapped with proposed gcx equivalent or "Deferred" with rationale
 2. **Compliance notes** — applicable rules per document with section references (filled checklist from 0.2)
 3. **Pattern reference** — which existing provider to follow and why
 
@@ -408,10 +411,10 @@ action before continuing.
 
 | Red Flag | Rationalization | STOP. Do this instead |
 |---|---|---|
-| **Inferring response envelope shapes** instead of copying from the legacy CLI source | "The response shape is obvious from the type definition" | Copy deserialization code verbatim from the legacy CLI. If it does `json.Unmarshal(body, &slice)`, do the same. Never wrap in a struct unless the source does. |
-| **Copying the legacy client verbatim** — embedding `*grafana.Client`, using `c.Get()`/`c.Post()` | "The legacy client already works, adapting it would just introduce bugs" | Translate to gcx's typed HTTP client pattern. Read recipe Step 3 and the current provider guide. |
-| **Skipping the source audit** — jumping to implementation | "I can see the important commands, a full audit is redundant" | Phase 0 is required. Every legacy CLI subcommand must appear in the source summary. |
-| **Guessing endpoint names or paths** | "The endpoint pattern is obvious from the resource name" | Read the legacy CLI source for exact paths. Never guess. |
+| **Inferring response envelope shapes** instead of copying from gcx source | "The response shape is obvious from the type definition" | Copy deserialization code verbatim from gcx. If gcx does `json.Unmarshal(body, &slice)`, do the same. Never wrap in a struct unless the source does. |
+| **Copying gcx client verbatim** — embedding `*grafana.Client`, using `c.Get()`/`c.Post()` | "The gcx client already works, adapting it would just introduce bugs" | Translate to a typed HTTP client (plain `http.Client` + named endpoint methods). Read recipe Step 3. |
+| **Skipping the source audit** — jumping to implementation | "I can see the important commands, a full audit is redundant" | Phase 0 is required. Every gcx subcommand must appear in the source summary. |
+| **Guessing endpoint names or paths** | "The endpoint pattern is obvious from the resource name" | Read the gcx source for exact paths. Never guess. |
 | **Skipping smoke tests** — marking Phase 4 complete without running commands | "The unit tests pass, so the implementation is correct" | Smoke tests are mandatory. Block and tell the user if no live instance is available. |
 | **Builder reading verification tasks** — checking smoke commands during Phase 3 | "I need to check what smoke tests will run to make sure my code will pass" | Builders receive spec + plan + implementation tasks. Not verification tasks. |
 | **Build-Commands starting before Build-Core completes** | "I can start on the command structure while Core finishes types" | Wait for Build-Core to complete. Commands depend on adapter interfaces. |
