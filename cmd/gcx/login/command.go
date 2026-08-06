@@ -73,7 +73,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.Cloud, "cloud", false, "Force Grafana Cloud target (skip auto-detection)")
 	flags.BoolVar(&opts.Yes, "yes", false, "Non-interactive: skip optional prompts and use defaults")
 	flags.BoolVar(&opts.AllowServerOverride, "allow-server-override", false, "Allow re-pointing an existing context at a different server URL")
-	flags.IntVar(&opts.OAuthCallbackPort, "oauth-callback-port", 0, "Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser")
+	flags.IntVar(&opts.OAuthCallbackPort, "oauth-callback-port", 0, "Fixed local port for the OAuth callback server, used by every browser OAuth step including the Grafana Cloud one (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser")
 	flags.BoolVar(&opts.OAuthManual, "oauth-manual", false, "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer. Implies --oauth")
 	flags.IntVar(&opts.OrgID, "org-id", 0, "Grafana organization ID (defaults to 1 for on-prem)")
 }
@@ -107,7 +107,7 @@ func (opts *loginOpts) Validate(args []string) error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
 	}
-	if opts.OAuthCallbackPort < 0 || opts.OAuthCallbackPort > 65535 {
+	if err := internalauth.ValidateCallbackPort(opts.OAuthCallbackPort); err != nil {
 		return gcxerrors.DetailedError{
 			Summary: "invalid --oauth-callback-port",
 			Details: fmt.Sprintf("Port must be between 1 and 65535 (or 0 to auto-pick); got %d.", opts.OAuthCallbackPort),
@@ -1224,6 +1224,11 @@ func runCloudOAuth(ctx context.Context, opts *login.Options) error {
 		GCOMURL:  oauthURL,
 		Scopes:   internalauth.DefaultGCOMScopes(),
 		Writer:   opts.Writer,
+		// A fixed callback port is a property of the machine gcx runs on, not
+		// of one OAuth leg, so the Cloud step honours it too. Without this the
+		// Cloud step auto-picked and a user who could only reach one forwarded
+		// port never got past it.
+		Port: opts.OAuthCallbackPort,
 		// One manual choice covers both the stack step and the Cloud step:
 		// the browser is on another computer for both.
 		Manual: opts.OAuthManual,

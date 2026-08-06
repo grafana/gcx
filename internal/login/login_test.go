@@ -1929,3 +1929,39 @@ func TestRun_ManualOAuthWithoutReaderFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "reader")
 	assert.False(t, called, "the auth flow must not start without a reader")
 }
+
+// The stack leg is the half of #1148 that already worked. Pinned so the fix to
+// the Cloud leg cannot regress it, and so both legs are covered by a test.
+func TestRun_OAuthCallbackPortReachesAuthOptions(t *testing.T) {
+	var buf bytes.Buffer
+	var got auth.Options
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:            "https://grafana.example.com",
+			Target:            login.TargetOnPrem,
+			UseOAuth:          true,
+			OAuthCallbackPort: 8250,
+			Writer:            &buf,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(t.TempDir()),
+			NewAuthFlow: func(_ string, ao auth.Options) login.AuthFlow {
+				got = ao
+				return &stubAuthFlow{result: &auth.Result{
+					Token:            "gat_test",
+					APIEndpoint:      "https://grafana.example.com/api",
+					InstanceEndpoint: "https://grafana.example.com",
+				}}
+			},
+			ValidateFn: noopValidate,
+		},
+		RetryState: login.RetryState{StagedContext: &config.Context{}},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+
+	assert.Equal(t, 8250, got.Port, "the requested callback port must reach the stack OAuth flow")
+	assert.False(t, got.Manual)
+}

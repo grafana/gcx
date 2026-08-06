@@ -104,6 +104,20 @@ same flag works on `gcx cloud login`, and one choice covers both the stack step
 and the Cloud follow-up step. You do not need it for an ordinary interactive SSH
 login — the prompt above appears on its own.
 
+**`--oauth-callback-port` fixes the port for every OAuth step.** Where only
+specific ports are forwarded between the remote host and your browser, pin the
+one that is reachable:
+
+```bash
+gcx login my-stack --server https://my-stack.grafana.net --oauth \
+  --oauth-callback-port 8250
+```
+
+A Grafana Cloud login runs two browser steps — the stack step and the
+grafana.com step — and both use this port, one after the other. The same flag
+is available on `gcx cloud login` for the standalone Cloud flow. Without the
+flag gcx picks a free port from `54321-54399`, which stays the default.
+
 **gcx stops waiting eventually.** A login that never receives a matching
 callback gives up after ten minutes rather than waiting forever. Run the
 command again to start a fresh one.

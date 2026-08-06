@@ -123,6 +123,12 @@ func NewFlow(endpoint string, opts Options) *Flow {
 
 // Run executes the authentication flow.
 func (f *Flow) Run(ctx context.Context) (*Result, error) {
+	// Checked up front, not left to the bind, so an unusable port fails before
+	// any browser or network side effect on either flow.
+	if err := ValidateCallbackPort(f.opts.Port); err != nil {
+		return nil, err
+	}
+
 	if f.opts.Manual {
 		if f.opts.Port != 0 {
 			return nil, errors.New("manual OAuth does not use a callback port")
@@ -528,7 +534,23 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 	return &result, nil
 }
 
+// ValidateCallbackPort reports whether port is usable as a fixed OAuth callback
+// port. Zero means "pick one automatically" from 54321-54399.
+//
+// This is only the numeric rule. It lives here so that every command exposing a
+// callback-port flag accepts exactly the same values; each command layer adds
+// its own guidance to the error it returns.
+func ValidateCallbackPort(port int) error {
+	if port < 0 || port > 65535 {
+		return fmt.Errorf("callback port must be between 1 and 65535 (or 0 to auto-pick); got %d", port)
+	}
+	return nil
+}
+
 func listenOnCallbackPort(ctx context.Context, bindAddress string, fixedPort int) (net.Listener, int, error) {
+	if err := ValidateCallbackPort(fixedPort); err != nil {
+		return nil, 0, err
+	}
 	var lc net.ListenConfig
 	if fixedPort != 0 {
 		listener, err := lc.Listen(ctx, "tcp", fmt.Sprintf("%s:%d", bindAddress, fixedPort))

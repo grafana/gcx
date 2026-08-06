@@ -157,6 +157,15 @@ Direct Cloud OAuth stores the OAuth token, expiry, granted scopes, and endpoint
 pair, but it is experimental and not every Cloud product command supports it
 yet. Use a CAP for full compatibility.
 
+Browser OAuth completes over a short-lived callback server on `127.0.0.1`. When
+only specific ports are forwarded between the machine running gcx and your
+browser, pin one with `--oauth-callback-port`. It applies to every OAuth step of
+a login, and both `gcx login` and `gcx cloud login` accept it:
+
+```bash
+gcx login my-stack --server https://my-stack.grafana.net --oauth --oauth-callback-port 8250
+```
+
 `gcx` derives the Cloud stack slug from `--server` when possible. Set it explicitly only for custom domains where gcx cannot derive it:
 
 ```bash
