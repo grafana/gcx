@@ -1413,7 +1413,7 @@ func wantKeychainLockedSuggestions() []string {
 	switch runtime.GOOS {
 	case "dragonfly", "freebsd", "linux", "netbsd", "openbsd":
 		return []string{
-			"Unlock the keyring from a terminal, then retry: gnome-keyring-daemon --replace --daemonize --unlock",
+			"Unlock the keyring, then retry: read -rsp 'Keyring password: ' PW && printf '%s' \"$PW\" | gnome-keyring-daemon --replace --daemonize --unlock",
 			"Run gcx from a desktop session, where a password prompt can appear",
 			"Check the lock state: busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked",
 		}
