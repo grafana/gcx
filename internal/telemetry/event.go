@@ -10,6 +10,12 @@ const (
 	OutcomeRuntimeError = "runtime_error"
 	OutcomeParseError   = "parse_error"
 	OutcomeHelp         = "help"
+	// OutcomeCanceled is any invocation whose final exit code is
+	// gcxerrors.ExitCancelled: an interrupt, a declined confirmation prompt, a
+	// server-reported cancellation. The event records that the invocation
+	// stopped early, never who or what stopped it. Stopping early is not a
+	// failure, so ErrorKind stays empty — still on the wire, as for ok and help.
+	OutcomeCanceled = "canceled"
 )
 
 // Event is the flat wide event describing one gcx invocation. Field names

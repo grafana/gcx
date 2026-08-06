@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/agentlog"
 	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/grafana/gcx/internal/terminal"
@@ -108,6 +109,13 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		event.Outcome = telemetry.OutcomeHelp
 	case exitCode == 0:
 		event.Outcome = telemetry.OutcomeOK
+	case exitCode == gcxerrors.ExitCancelled:
+		// Classified on the final exit code, not on how it was reached, so an
+		// interrupt, a declined confirmation prompt and a server-reported
+		// cancellation all report the same outcome — and the event does not say
+		// which. Stopping early is not a failure, so error_kind stays empty; it
+		// has no omitempty, so the field is still on the wire.
+		event.Outcome = telemetry.OutcomeCanceled
 	default:
 		event.Outcome = telemetry.OutcomeRuntimeError
 		event.ErrorKind = agentlog.KindFromExitCode(exitCode)
