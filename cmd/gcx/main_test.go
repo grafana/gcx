@@ -153,6 +153,55 @@ func TestReportErrorEmittedCancellationKeepsExitFive(t *testing.T) {
 	}
 }
 
+// TestAbandonsExport pins the full matrix that decides whether exitWith may
+// disarm the signal handler. The process-level tests cover the two diagonal
+// cases against a real binary; this covers the other two, which no command in
+// the tree can reach without a second subprocess harness.
+//
+// The interrupted-and-successful row is the one worth stating out loud. gcx dev
+// serve shuts its HTTP server down on ctx.Done and returns nil, so one Ctrl-C
+// leaves it interrupted and successful. Disarming there lets the second Ctrl-C
+// — the ordinary way to stop a dev server — terminate a run that succeeded, and
+// the shell reads status 130 instead of 0.
+func TestAbandonsExport(t *testing.T) {
+	cases := []struct {
+		name        string
+		interrupted bool
+		exitCode    int
+		want        bool
+	}{
+		{
+			name:        "interrupted and canceled",
+			interrupted: true, exitCode: gcxerrors.ExitCancelled, want: true,
+		},
+		{
+			name:        "interrupted but successful",
+			interrupted: true, exitCode: gcxerrors.ExitSuccess, want: false,
+		},
+		{
+			name:        "interrupted but failed",
+			interrupted: true, exitCode: gcxerrors.ExitGeneralError, want: false,
+		},
+		{
+			name:        "canceled without an interrupt",
+			interrupted: false, exitCode: gcxerrors.ExitCancelled, want: false,
+		},
+		{
+			name:        "neither",
+			interrupted: false, exitCode: gcxerrors.ExitSuccess, want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := abandonsExport(tc.interrupted, tc.exitCode); got != tc.want {
+				t.Fatalf("abandonsExport(%t, %d) = %t, want %t",
+					tc.interrupted, tc.exitCode, got, tc.want)
+			}
+		})
+	}
+}
+
 const (
 	configCheckProcessHelper       = "GCX_CONFIG_CHECK_PROCESS_HELPER"
 	configSetFallbackProcessHelper = "GCX_CONFIG_SET_FALLBACK_PROCESS_HELPER"
