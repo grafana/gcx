@@ -34,6 +34,10 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- credentials: a locked OS keychain is now a separate, fatal failure class. gcx stops the command and does not write the credential in plaintext. The error tells you how to unlock the keyring. A locked GNOME keyring in a headless or SSH session previously caused a silent plaintext fallback.
+
 ### New features
 
 - Record the size of batch resource operations (`resources push`, `pull`, `delete`, `validate`) in usage telemetry events, as fixed size categories rather than counts, alongside whether the operation ran in dry-run mode. The first-run telemetry notice is revised to cover this and is shown again on installs that already saw the previous wording. See [Anonymous usage statistics](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/).

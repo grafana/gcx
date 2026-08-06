@@ -1,10 +1,57 @@
 package credentials_test
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/grafana/gcx/internal/credentials"
 )
+
+// TestExportedKeychainSentinelsStayDistinct protects the public contract that
+// callers use to decide between a plaintext fallback and a hard failure.
+func TestExportedKeychainSentinelsStayDistinct(t *testing.T) {
+	cases := []struct {
+		name string
+		a, b error
+	}{
+		{name: "locked and unavailable", a: credentials.ErrLocked, b: credentials.ErrUnavailable},
+		{name: "locked and not found", a: credentials.ErrLocked, b: credentials.ErrNotFound},
+		{name: "unavailable and not found", a: credentials.ErrUnavailable, b: credentials.ErrNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if errors.Is(tc.a, tc.b) {
+				t.Errorf("errors.Is(%v, %v) = true; want false", tc.a, tc.b)
+			}
+			if errors.Is(tc.b, tc.a) {
+				t.Errorf("errors.Is(%v, %v) = true; want false", tc.b, tc.a)
+			}
+		})
+	}
+}
+
+// TestWrappedErrLockedStaysLocked makes sure a caller that wraps the sentinel
+// keeps the locked classification, and never gains the unavailable one.
+func TestWrappedErrLockedStaysLocked(t *testing.T) {
+	wrapped := fmt.Errorf("read grafana token: %w", credentials.ErrLocked)
+	if !errors.Is(wrapped, credentials.ErrLocked) {
+		t.Error("wrapped error lost the locked classification")
+	}
+	if errors.Is(wrapped, credentials.ErrUnavailable) {
+		t.Error("wrapped locked error must not report an unavailable keychain")
+	}
+	if errors.Is(wrapped, credentials.ErrNotFound) {
+		t.Error("wrapped locked error must not report a missing entry")
+	}
+}
+
+// TestErrLockedMessage pins the sentinel text used in user-facing output.
+func TestErrLockedMessage(t *testing.T) {
+	if got, want := credentials.ErrLocked.Error(), "credentials: keychain locked"; got != want {
+		t.Errorf("ErrLocked.Error() = %q, want %q", got, want)
+	}
+}
 
 func TestFormatSentinel(t *testing.T) {
 	got := credentials.FormatSentinel("production", credentials.FieldOAuthToken)
