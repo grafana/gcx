@@ -101,10 +101,10 @@ what they get back, not by counting backend APIs.
 
 Variants that share an expression operand, take substantially the same required
 inputs, and return the same success output model are one `query` command with a
-typed `--mode`. Two leaves that differ only in presentation give a caller, and
-an agent selecting a command, a coin flip with no rule for choosing. Use one
-flag name per knob across modes: the same value must not be `--size` in one mode
-and `--limit` in another.
+typed `--mode`. Separate leaves with the same caller-facing contract give
+callers and agents a coin flip with no rule for choosing. Use one flag name per
+knob across modes: the same value must not be `--size` in one mode and
+`--limit` in another.
 
 Variants that require materially different identities or inputs, or that return
 a different success output model, take their own `<target> query` path, or an
@@ -124,6 +124,12 @@ documented result are one command. Two that return different result models are
 not, even when both are the same output protocol class; protocol class does not
 decide this.
 
+The subject stays positional in every variant, per
+[CONSTITUTION.md § CLI Grammar](../../CONSTITUTION.md#cli-grammar): the metric,
+expression or query text is the operand, and the identity that scopes it is
+flags. `gcx datasources cloudwatch query` is flag-only and shipped in v1.0.0,
+so it is a compatibility exception, not a shape to copy.
+
 `--mode` is a closed, validated enum with a documented default. Reject an
 unknown, whitespace-only, or explicitly empty value with an error naming the
 rejected value and the allowed values, as `--on-error` does in
@@ -131,6 +137,12 @@ rejected value and the allowed values, as `--on-error` does in
 selects how the result is presented. Where the backend already determines the
 variant — InfluxDB's query language is read from the datasource record — the
 caller has nothing to choose and no flag is added.
+
+A kind that gains a `--mode` must keep it reachable from the auto-detecting
+`gcx datasources query`, which already carries kind-specific knobs. Silently
+answering with the default mode there, while the typed command honours the
+flag, splits one contract across two paths. If the generic form cannot carry
+the mode, redirect it to the typed command instead.
 
 `<target>` names the query surface: the expression language and API being
 queried. It nests inside the command's existing area, so for a datasource kind
@@ -163,20 +175,23 @@ today:
 gcx datasources elasticsearch query 'status:500'
 gcx datasources elasticsearch query 'level:error' --mode logs
 
-gcx datasources azuremonitor query --subscription SUB_ID \
-  --resource-group RG --resource NAME --namespace NAMESPACE --metric METRIC
-gcx datasources azuremonitor logs query KQL
-gcx datasources azuremonitor resource-graph query KQL
+gcx datasources azuremonitor query METRIC \
+  --subscription SUB_ID --resource-group RG \
+  --resource NAME --namespace NAMESPACE
+gcx datasources azuremonitor logs query KQL \
+  --subscription SUB_ID --resource-group RG --workspace WORKSPACE
+gcx datasources azuremonitor resource-graph query KQL \
+  --subscription SUB_ID
 ```
 
 Elasticsearch documents and logs share the Lucene expression, the time controls
 and the result model, so they are one command with `--mode` defaulting to
 `documents`; that they build different requests internally is not the test. Its
 `metrics` leaf stays separate: different inputs, a different result model, and
-`metrics` is already in the shorthand set. Azure Monitor keeps the structured
-metrics query as its primary `query`, while logs require a workspace identity
-and Resource Graph requires a subscription list, so each of those is its own
-target path.
+`metrics` is already in the shorthand set. Azure Monitor keeps the metric query
+as its primary `query`, with the metric positional and its resource identity in
+flags, while logs require a workspace identity and Resource Graph requires a
+subscription list, so each of those is its own target path.
 
 ## View verbs
 
