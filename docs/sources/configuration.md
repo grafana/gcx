@@ -74,9 +74,22 @@ can unlock the collection. To recover, do one of these steps:
 
 - Unlock the keyring, then run the command again:
   ```bash
+  systemd-ask-password 'Keyring password: ' | tr -d '\n' | gnome-keyring-daemon --replace --daemonize --unlock
+  ```
+  `gnome-keyring-daemon --unlock` reads the password from standard input, and
+  it shows no prompt. You must pipe the password in, because `--daemonize`
+  makes the process fork. A password that you type does not reach the child
+  process. The password must also carry no trailing newline, which is the
+  reason for the `tr` filter.
+
+  In bash, you can prompt with `read` instead:
+  ```bash
   read -rsp 'Keyring password: ' PW && printf '%s' "$PW" | gnome-keyring-daemon --replace --daemonize --unlock
   ```
-  `gnome-keyring-daemon --unlock` reads the password from standard input. It shows no prompt. `--daemonize` makes the process fork, so a password that you type does not reach it. You must pipe the password in.
+  In zsh, the same prompt uses a different syntax:
+  ```zsh
+  read -rs "PW?Keyring password: " && printf '%s' "$PW" | gnome-keyring-daemon --replace --daemonize --unlock
+  ```
 - Run `gcx` from a desktop session that can show a password prompt.
 - Supply the credential through an environment variable, such as `GRAFANA_TOKEN`.
 
