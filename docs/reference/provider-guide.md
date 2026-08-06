@@ -539,6 +539,9 @@ func (m *mockProvider) ShortDesc() string                    { return m.shortDes
 func (m *mockProvider) Commands() []*cobra.Command           { return m.commands }
 func (m *mockProvider) Validate(cfg map[string]string) error { return m.validateFn(cfg) }
 func (m *mockProvider) ConfigKeys() []providers.ConfigKey    { return m.configKeys }
+func (m *mockProvider) TypedRegistrations() []adapter.Registration {
+    return nil
+}
 ```
 
 Test the interface contract directly:

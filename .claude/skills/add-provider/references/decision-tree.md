@@ -105,10 +105,14 @@ TypedCRUD).
 
 | Auth Model | ConfigKeys | Implementation |
 |------------|-----------|----------------|
-| Same Grafana SA token, same server | Empty `[]` | Read `curCtx.Grafana.Token` directly |
-| Same token, different base path | Empty `[]` | Construct URL from `curCtx.Grafana.Server` + product path |
-| Separate product token | `[{Name: "token", Secret: true}]` | Read from provider config |
-| Separate service URL + token | `[{Name: "url"}, {Name: "token", Secret: true}]` | Full separate client |
+| Same Grafana SA token, same server | Empty `[]` | Resolve with `ConfigLoader.LoadGrafanaConfig` |
+| Same token, different base path | Empty `[]` | Resolve with `LoadGrafanaConfig`, then derive the product path from that snapshot |
+| Separate product token | `[{Name: "token", Secret: true}]` | Resolve with `ConfigLoader.LoadProviderConfig` |
+| Separate service URL + token | `[{Name: "url"}, {Name: "token", Secret: true}]` | Resolve with `ConfigLoader.LoadDirectProviderSnapshot` |
+
+Provider code never reads context credentials directly. Use the matching
+`providers.ConfigLoader` method and the client-construction guidance in
+`docs/reference/provider-guide.md` Steps 4 and 4b.
 
 ## Validation
 

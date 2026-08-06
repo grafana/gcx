@@ -33,12 +33,24 @@ func main() {
 		fmt.Fprintf(os.Stderr, "walk %s: %v\n", bundleRoot, err)
 		os.Exit(1)
 	}
+	if len(bundled) == 0 {
+		fmt.Fprintf(os.Stderr, "no SKILL.md files found under %s\n", bundleRoot)
+		os.Exit(1)
+	}
 
 	// Only git-tracked files in the repo-local tree: it is also where a
 	// contributor's own harness installs third-party skills (they are not
 	// gitignored), and a skill this repo does not own must not be able to fail
 	// this repo's build with a defect no committed file can fix.
-	repoLocal, repoLocalErr := trackedSkillFilesUnder(repoLocalRoot)
+	repoLocal, err := trackedSkillFilesUnder(repoLocalRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "list tracked files under %s: %v\n", repoLocalRoot, err)
+		os.Exit(1)
+	}
+	if len(repoLocal) == 0 {
+		fmt.Fprintf(os.Stderr, "no tracked SKILL.md files found under %s\n", repoLocalRoot)
+		os.Exit(1)
+	}
 
 	var failures []string
 	for _, path := range append(bundled, repoLocal...) {
@@ -52,13 +64,6 @@ func main() {
 			fmt.Fprintln(os.Stderr, failure)
 		}
 		os.Exit(1)
-	}
-
-	// Never report a tree as validated when it was not walked.
-	if repoLocalErr != nil {
-		fmt.Fprintf(os.Stderr, "SKIPPED %s: cannot list tracked files: %v\n", repoLocalRoot, repoLocalErr)
-		_, _ = fmt.Fprintf(os.Stdout, "validated %s; SKIPPED %s\n", bundleRoot, repoLocalRoot)
-		return
 	}
 
 	_, _ = fmt.Fprintf(os.Stdout, "validated %s, %s\n", bundleRoot, repoLocalRoot)

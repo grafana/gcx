@@ -249,11 +249,8 @@ Released names are frozen within the major version — a wrong name is not
 fixable later, which is why this question has repeatedly consumed review rounds
 when left to review time. It is answerable in minutes.
 
-Read the placement rule (per operation, not per subject), the catalog-facet rule,
-and — if you are adding a second way to query the same backend — the
-**§Query variants** rule in `docs/design/command-naming.md`, which decides
-between one `query` leaf with a typed `--mode` and distinct `<target> query`
-paths. Then check the real tree:
+Read the placement rule (per operation, not per subject) and the catalog-facet
+rule in `docs/design/command-naming.md`, then check the real tree:
 
 ```bash
 bin/gcx help-tree

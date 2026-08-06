@@ -1,4 +1,4 @@
-# gcx → gcx Provider Migration Recipe
+# Legacy grafana-cloud-cli → gcx Provider Migration Recipe
 
 > **Evergreen document.** Update this as providers are ported — add gotchas,
 > refine patterns, fix mistakes. Each migration agent should read this before
@@ -6,14 +6,14 @@
 
 ## Overview
 
-This recipe covers porting a gcx resource client (`pkg/grafana/{resource}/`)
-into a gcx provider (`internal/providers/{name}/`). It's a streamlined
-path that skips API discovery (gcx already has working clients) and focuses on
-the mechanical translation.
+This recipe covers porting a legacy `grafana-cloud-cli` resource client
+(`pkg/grafana/{resource}/`) into a gcx provider
+(`internal/providers/{name}/`). It starts from a working legacy client and
+focuses on the mechanical translation after present-day placement is confirmed.
 
-**When to use this recipe:** Porting a gcx resource to gcx.
+**When to use this recipe:** Porting a legacy CLI resource to gcx.
 **When to use `/add-provider` instead:** Building a provider from scratch for a
-product that doesn't have a gcx client.
+product that doesn't have a legacy CLI client.
 
 ## Skill Structure
 
@@ -86,11 +86,13 @@ than asserting parity.
 Before starting a port, answer these questions:
 
 ```
-[ ] 1. Is this resource already on K8s API?
+[ ] 1. Is this resource externally accessible and discoverable on /apis?
       Run: bin/gcx --context=ops resources list-types | grep -i {resource}
-      If YES → no provider needed, it works via dynamic discovery.
+      If YES → gcx resources already covers standard CRUD. Inventory the
+      legacy non-CRUD operations separately and recheck whether dedicated
+      provider commands are still needed.
 
-[ ] 2. What's the gcx source?
+[ ] 2. Where is the legacy CLI source?
       Client: pkg/grafana/{resource}/client.go
       Types:  pkg/grafana/{resource}/types.go (or inline in client.go)
       Cmd:    cmd/resources/{resource}.go (or cmd/observability/ or cmd/oncall/)
@@ -102,7 +104,8 @@ Before starting a port, answer these questions:
 
 [ ] 4. ID scheme?
       String UID:  metadata.name = uid (standard path)
-      Integer ID:  metadata.name = strconv.Itoa(id) (needs int→string mapping)
+      Integer ID:  prefer slug-id when a stable user-facing label exists;
+                   accept bare numeric ID as input and as the no-label fallback
       Composite:   metadata.name = slug-id or similar (document the scheme)
 
 [ ] 5. Does it have cross-references?
@@ -125,32 +128,34 @@ Before starting a port, answer these questions:
 internal/providers/{name}/
 ├── provider.go           # Provider interface + init() registration
 ├── {resource}/
-│   ├── types.go          # API structs (copy from gcx, adjust json tags if needed)
-│   ├── client.go         # HTTP client (adapt from gcx)
+│   ├── types.go          # API structs (copy from the legacy CLI; adjust tags if needed)
+│   ├── client.go         # HTTP client (adapt from the legacy CLI)
 │   ├── adapter.go        # TypedRegistration[T] wiring
 │   └── client_test.go    # httptest-based tests
 ```
 
 **If adding to an existing provider** (e.g., adding a resource to `grafana` or
-`iam`), skip creating `provider.go` — just add the resource subpackage and
-register in the existing `init()`.
+`iam`), skip creating `provider.go`. Add the resource subpackage and return its
+registration from the provider's existing `TypedRegistrations()` method. Do not
+add another registration call to `init()`.
 
 ### Step 2: Port types.go
 
-Copy structs from `gcx/pkg/grafana/{resource}/`. Adjustments:
+Copy structs from the legacy CLI's `pkg/grafana/{resource}/`. Adjustments:
 
-- **Keep json tags exactly as gcx has them** — these match the API response
+- **Keep json tags exactly as the legacy CLI has them** — these match the API response
   format and must round-trip losslessly through pull → edit → push.
-- **Remove gcx-specific helpers** (e.g., `func (t *Type) ResourceID() string`)
-  — these are replaced by the adapter's `NameFn`.
+- **Replace legacy identity helpers** (e.g., `func (t *Type) ResourceID() string`)
+  with `GetResourceName()` and `SetResourceName(string)` on the domain type, plus
+  a compile-time `adapter.ResourceIdentity` assertion.
 - **Keep all fields** — don't prune "unnecessary" fields. The user may need them.
 
 ### Step 3: Port client.go
 
-Translate from gcx's `grafana.Client` to gcx's HTTP pattern:
+Translate from the legacy CLI's `grafana.Client` to gcx's HTTP pattern:
 
 ```go
-// gcx pattern (before):
+// Legacy CLI pattern (before):
 type Client struct {
     *grafana.Client  // embeds base client with .Get/.Post/.Put/.Delete
 }
@@ -159,8 +164,8 @@ func NewClient(baseURL, token string) *Client {
     return &Client{grafana.NewClient(baseURL, token)}
 }
 
-func (c *Client) ListResources(ctx context.Context) ([]Resource, error) {
-    var result []Resource
+func (c *Client) ListResources(ctx context.Context) ([]ResourceType, error) {
+    var result []ResourceType
     err := c.Get(ctx, "/api/path", &result)
     return result, err
 }
@@ -174,15 +179,15 @@ type Client struct {
     http    *http.Client
 }
 
-func NewClient(baseURL, token string) *Client {
+func NewClient(ctx context.Context, baseURL, token string) *Client {
     return &Client{
         baseURL: strings.TrimRight(baseURL, "/"),
         token:   token,
-        http:    &http.Client{Timeout: 30 * time.Second},
+        http:    httputils.NewDefaultClient(ctx),
     }
 }
 
-func (c *Client) List(ctx context.Context) ([]Resource, error) {
+func (c *Client) List(ctx context.Context) ([]ResourceType, error) {
     req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/path", nil)
     if err != nil {
         return nil, err
@@ -196,9 +201,15 @@ func (c *Client) List(ctx context.Context) ([]Resource, error) {
 **Key differences:**
 - No embedded base client — each provider owns its HTTP calls
 - Explicit `context.Context` on all methods
-- Direct `http.NewRequestWithContext` instead of gcx's `.Get()` wrapper
+- `httputils.NewDefaultClient(ctx)` supplies gcx's standard timeout, logging,
+  TLS defaults, and insecure-payload debug support
+- Direct `http.NewRequestWithContext` instead of the legacy CLI's `.Get()` wrapper
 - Error handling: return `fmt.Errorf("{provider}: {action}: %w", err)` with
   provider name prefix for debuggability
+
+Follow `docs/reference/provider-guide.md` Step 4b for the auth-mode-specific
+client choice; use `cloudCfg.HTTPClient(ctx)` when `LoadCloudConfig` is
+available.
 
 **Pagination:** If the legacy client uses manual pagination loops, port them. If
 the API returns all results in one call, keep it simple.
@@ -215,11 +226,16 @@ import (
     "github.com/grafana/gcx/internal/resources/adapter"
 )
 
+// ClientLoader is the resource-specific seam shared by commands and adapters.
+// The function passed by the provider delegates config and auth resolution to
+// providers.ConfigLoader.
+type ClientLoader func(ctx context.Context) (*Client, string, error)
+
 // Registration returns the typed registration for this resource. Collect these
 // in the provider's TypedRegistrations() — the single providers.Register() call
 // in the provider's init() performs the actual registration (never call
 // adapter.Register() directly; CONSTITUTION § Architecture Invariants).
-func Registration(loader ConfigLoader) adapter.Registration {
+func Registration(loadClient ClientLoader) adapter.Registration {
     // ResourceType must implement adapter.ResourceIdentity
     // (GetResourceName/SetResourceName) — identity comes from the domain
     // type, not function pointers (CONSTITUTION § Architecture Invariants).
@@ -229,11 +245,10 @@ func Registration(loader ConfigLoader) adapter.Registration {
         GVK:        GVK(),
         Schema:     resourceSchema(), // required, non-nil
         Factory: func(ctx context.Context) (*adapter.TypedCRUD[ResourceType], error) {
-            cfg, err := loader.Load(ctx)
+            client, namespace, err := loadClient(ctx)
             if err != nil {
                 return nil, err
             }
-            client := NewClient(cfg.BaseURL, cfg.Token)
             return &adapter.TypedCRUD[ResourceType]{
                 // Set Descriptor and Aliases on the CRUD too. ToRegistration()
                 // copies them onto the Registration but NOT onto the CRUD, and
@@ -242,17 +257,40 @@ func Registration(loader ConfigLoader) adapter.Registration {
                 // adapter's own Descriptor() is the zero value.
                 Descriptor: Descriptor(),
                 Aliases:    []string{"{alias}"},
-                Namespace:  cfg.Namespace,
-                ListFn:     client.List,
-                GetFn:      client.Get,
-                CreateFn:   client.Create,
-                UpdateFn:   client.Update,
-                DeleteFn:   client.Delete,
+                Namespace:  namespace,
+                // LimitedListFn adapts a simple full-list client to TypedCRUD's
+                // (ctx, limit) signature. If the backend accepts a limit, wire a
+                // direct function that passes it through instead.
+                ListFn: adapter.LimitedListFn(client.List),
+                GetFn: func(ctx context.Context, name string) (*ResourceType, error) {
+                    return client.Get(ctx, name)
+                },
+                CreateFn: func(ctx context.Context, item *ResourceType) (*ResourceType, error) {
+                    return client.Create(ctx, item)
+                },
+                UpdateFn: func(ctx context.Context, name string, item *ResourceType) (*ResourceType, error) {
+                    return client.Update(ctx, name, item)
+                },
+                DeleteFn: func(ctx context.Context, name string) error {
+                    return client.Delete(ctx, name)
+                },
             }, nil
         },
     }.ToRegistration()
 }
 ```
+
+The closures above show the signatures `TypedCRUD` requires. If a legacy
+client uses numeric IDs, value parameters, or omits `name`, adapt that mismatch
+inside the closure; assign a method directly only when its signature matches.
+
+`ClientLoader` is a resource-local function type, not a method on
+`providers.ConfigLoader`. Pass a provider-local method that delegates to the
+real loader method for that auth model (`LoadGrafanaConfig`, `LoadCloudConfig`,
+`LoadProviderConfig`, or `LoadDirectProviderSnapshot`) and constructs the client
+according to `docs/reference/provider-guide.md` Steps 4 and 4b. There is no
+generic `ConfigLoader.Load`. See `internal/providers/irm/config.go` and
+`oncall_adapter.go` for the production shape.
 
 > **On `ToRegistration()`:** it is a convenience wrapper with no production
 > callers today — every shipped provider builds `adapter.Registration{...}`
@@ -261,9 +299,11 @@ func Registration(loader ConfigLoader) adapter.Registration {
 > Descriptor: desc}`) for the shape the repo actually uses. Either form is
 > compliant; the direct form is the one with precedent.
 
-**For numeric-ID resources**, implement `ResourceIdentity` with the slug-id
-helpers in `internal/resources/adapter/slug.go` (`ComposeName`,
-`ExtractIDFromSlug`) so `metadata.name` stays human-readable.
+**For numeric-ID resources with a stable user-facing label**, implement
+`ResourceIdentity` with the slug-id helpers in
+`internal/resources/adapter/slug.go` (`SlugifyName`, `ComposeName`,
+`ExtractIDFromSlug`) so `metadata.name` stays human-readable. Accept a bare
+numeric ID as input and use it as the fallback when no stable label exists.
 
 ### Step 5: Register in init()
 
@@ -279,13 +319,20 @@ func init() {
     providers.Register(&Provider{})
 }
 
+// configLoader embeds the canonical loader. Implement one distinctly named
+// client-loading method per resource using the matching providers.ConfigLoader
+// method described above.
+type configLoader struct {
+    providers.ConfigLoader
+}
+
 // TypedRegistrations collects the adapter registrations for this provider's
-// resources. Construct the config loader here and thread it into each
-// resource's Registration() — the loader is not registered separately.
+// resources. Construct the provider-local client loader here and thread it into
+// each resource's Registration() — the loader is not registered separately.
 func (p *Provider) TypedRegistrations() []adapter.Registration {
     loader := &configLoader{}
     return []adapter.Registration{
-        {resource}.Registration(loader),
+        {resource}.Registration(loader.Load{Resource}Client),
         // ...one entry per adapter-backed resource
     }
 }
@@ -421,7 +468,7 @@ Copy the output from 8a into the conversation. For each comparison:
 
 | Check | Expected | Action if fails |
 |-------|----------|-----------------|
-| List ID diff | `MATCH` | Fix ListFn or adapter NameFn |
+| List ID diff | `MATCH` | Fix `ListFn` or the type's `GetResourceName()` implementation |
 | Get field diff | `MATCH` (computed fields like `durationSeconds` may differ by seconds) | Fix types or ToResource mapping |
 | Adapter path | `OK` | Fix resource_adapter registration |
 | Ancillary counts | Equal | Fix endpoint name or response parsing |
@@ -452,16 +499,17 @@ that only surfaced during smoke testing:
 
 ### ID Mapping
 
-- **Integer IDs** (annotations, reports, teams): Store as `metadata.name =
-  strconv.Itoa(id)`. The adapter's GetFn parses it back:
-  `id, _ := strconv.ParseInt(name, 10, 64)`.
+- **Integer IDs** (annotations, reports, teams): prefer a slug-id name when the
+  API exposes a stable user-facing label. Accept a bare numeric ID as input and
+  use it as `metadata.name` only when no stable label exists. Restore the API ID
+  with `ExtractIDFromSlug` or `ExtractInt64IDFromSlug`.
 - **Slug+ID composites**: Some resources use `slug-123` patterns. Document the
   scheme in the adapter so future maintainers know how to decompose.
 
 ### Pagination
 
-- gcx's `ListAll` pattern uses page+limit loops. Port these directly — don't
-  try to be clever with streaming or lazy evaluation.
+- The legacy CLI's `ListAll` pattern uses page+limit loops. Port these directly
+  — don't try to be clever with streaming or lazy evaluation.
 - Some APIs return wrapped responses (`{"items": [...], "totalCount": N}`).
   Define a `listResponse` struct per resource — don't try to share across types.
 
@@ -481,8 +529,9 @@ that only surfaced during smoke testing:
   via the query-string language, e.g. `label:"security"`. Undocumented
   services like `SeveritiesService` and `IncidentContextService` 404 under
   `/v1` and stay on the unversioned base path.)
-- gcx's `GetIncident` fetches all incidents (limit 100) and filters client-side.
-  The actual API has a `GetIncident` endpoint — use it directly for O(1) lookups.
+- The legacy CLI's `GetIncident` fetches all incidents (limit 100) and filters
+  client-side. The actual API has a `GetIncident` endpoint — use it directly for
+  O(1) lookups.
 - The IRM API only supports status updates via `UpdateStatus` — there is no
   general-purpose PUT/PATCH for incident fields. The adapter's Update method
   extracts the status field and calls UpdateStatus.
@@ -507,20 +556,22 @@ that only surfaced during smoke testing:
 - The `perfsprint` linter enforces `errors.New` over `fmt.Errorf` for strings
   without format verbs — easy to miss when porting `fmt.Errorf("...")` patterns.
 - The `usestdlibvars` linter enforces `http.StatusCreated` etc. instead of
-  raw `201`/`204`/`404` literals — gcx uses raw numbers everywhere.
-- **gcx `k6 token` vs gcx `k6 auth token`**: gcx exposes token exchange
-  as a top-level `token` subcommand; gcx nests it under `auth token`.
+  raw `201`/`204`/`404` literals — the legacy CLI uses raw numbers in many
+  places.
+- **Legacy `$LEGACY_CLI k6 token` vs current `bin/gcx k6 auth token`**: the
+  legacy CLI exposes token exchange as a top-level `token` subcommand; gcx
+  nests it under `auth token`.
   Both print the short-lived API token to stdout.
 - **Schedules `delete` takes `<load-test-id>` not `<schedule-id>`**: This
   is consistent with the API — delete is keyed on the load test, not the
-  schedule object. This is also how gcx does it.
+  schedule object. Preserve that behavior from the legacy CLI.
 - **`runs` appears in two places**: `k6 runs list` (top-level) and
   `k6 testrun runs list` (nested under testrun). Both delegate to the same
   underlying run listing function. The duplication is intentional — the
   `testrun` sub-tree groups CRD-related operations together.
-- **gcx `schema` / `example` subcommands**: gcx exposes per-resource `schema`
-  and `example` subcommands under each resource group. gcx covers these
-  via `resources list-types` and `resources list-examples` at the global level.
+- **Legacy `schema` / `example` subcommands**: the legacy CLI exposes these
+  under each resource group. gcx covers them through
+  `resources list-types` and `resources list-examples` at the global level.
   These are NOT missing — the coverage is different but equivalent.
 
 ### Multi-Resource Providers (OnCall pattern)
@@ -555,7 +606,7 @@ that only surfaced during smoke testing:
   - CRUD: `/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app`
   - Sourcemaps: `/api/plugins/grafana-kowalski-app/resources/api/v1/app/{id}/sourcemaps`
 - Auth: standard Grafana SA token via `rest.HTTPClientFor` — no separate token needed.
-- **API quirks preserved from gcx source:**
+- **API quirks preserved from the legacy CLI source:**
   - Create MUST strip `ExtraLogLabels` (API returns 409) and `Settings` (API returns 500).
   - Update MUST strip `Settings` (API returns 500).
   - Create response is incomplete (missing `collectEndpointURL`, `appKey`) — must re-fetch
@@ -577,9 +628,9 @@ that only surfaced during smoke testing:
 
 ### Response Shape Differences
 
-- Some gcx clients unwrap response envelopes (e.g., `response.Data`) while
-  others return the raw response. Check the gcx client carefully — the types
-  you port must match what the API actually returns, not what gcx exposes.
+- Some legacy clients unwrap response envelopes (e.g., `response.Data`) while
+  others return the raw response. Check the legacy client carefully — the types
+  you port must match what the API actually returns, not what it exposes.
 
 ### Separate API URLs (Fleet, OnCall)
 
@@ -630,7 +681,7 @@ that only surfaced during smoke testing:
 **k6** (multi-tenant auth):
 - Two auth modes: org-level and stack-level
 - Separate API domain (not Grafana stack URL)
-- Check gcx's `k6/client_envvar_test.go` for auth resolution logic
+- Check the legacy CLI's `k6/client_envvar_test.go` for auth resolution logic
 
 **Fleet/Alloy** (4 sub-resource types):
 - All share same base URL and auth
@@ -640,16 +691,16 @@ that only surfaced during smoke testing:
 
 ## Relationship to /add-provider Skill
 
-This recipe is for **porting existing gcx clients**. The `/add-provider` skill
-is for **building providers from scratch**. Key differences:
+This recipe is for **porting existing legacy CLI clients**. The `/add-provider`
+skill is for **building providers from scratch**. Key differences:
 
 | Aspect | This Recipe | /add-provider Skill |
 |--------|-------------|---------------------|
-| API discovery | Skip — gcx has working client | Full discovery phase |
-| Types | Copy from gcx | Derive from OpenAPI/source |
-| Client | Adapt from gcx | Hand-write from scratch |
+| API discovery | Skip — the legacy CLI has a working client | Full discovery phase |
+| Types | Copy from the legacy CLI | Derive from OpenAPI/source |
+| Client | Adapt from the legacy CLI | Hand-write from scratch |
 | Design doc | Optional (pattern is known) | Required per stage |
-| Auth | Copy gcx's auth model | Investigate from scratch |
+| Auth | Copy the legacy CLI's auth model | Investigate from scratch |
 
 After porting, the provider must pass Phase 4 verification (SKILL.md steps
 4A–4E) including mandatory smoke tests with all four output formats.
