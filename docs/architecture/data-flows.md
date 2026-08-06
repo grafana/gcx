@@ -295,7 +295,7 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ## 5. QUERY Pipeline
 
-Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query/generic.go`. Shared query CLI utils live in `internal/datasources/query/`.
+Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query.go`. Shared query CLI utils live in `internal/datasources/query/`.
 
 ```
 User invocation:
@@ -417,11 +417,13 @@ User invocation:
 ```
 
 Key files:
-- `cmd/gcx/datasources/query/query.go` — shared opts, `resolveTypedArgs`, `validateDatasourceType`
-- `cmd/gcx/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go` — per-kind constructors (`PrometheusCmd`, `LokiCmd`, etc.)
-- `cmd/gcx/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
-- `cmd/gcx/datasources/query/time.go` — `ParseTime`, `ParseDuration` for flag parsing
-- `cmd/gcx/datasources/{prometheus,loki,pyroscope,tempo,generic}.go` — kind subgroups that wire in the query constructors
+- `cmd/gcx/datasources/query.go` — the auto-detecting `datasources query`: options struct, and the fixed validate → resolve type → redirect → expression → times → dispatch order
+- `cmd/gcx/datasources/query_routes.go` — the routing tables (dispatch handlers and typed-command redirects) plus the derived supported-kind list
+- `internal/datasources/query/opts.go` — `SharedOpts`, `ResolveExpr`, `ParseTimes`
+- `internal/datasources/query/resolve.go` — `NormalizeKind`, `GetDatasourceType`, `ResolveTypedArgs`, `ValidateDatasourceType`
+- `internal/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
+- `internal/datasources/query/time.go` — `ParseTime`, `ParseDuration` for flag parsing
+- `internal/datasources/{prometheus,loki,pyroscope,clickhouse,...}/query.go` — per-kind typed `query` constructors, mounted by `DatasourceProvider` registration
 - `internal/config/resolver.go` — `DefaultDatasourceUID(ctx, kind)` — shared 2-tier UID resolution
 - `internal/query/prometheus/client.go` — HTTP client, request construction, response conversion
 - `internal/query/prometheus/formatter.go` — table rendering (vector/matrix/scalar)
