@@ -6,6 +6,5 @@ package assistant
 var (
 	NewAssistantStreamingHTTPClient              = newAssistantStreamingHTTPClient
 	NewAssistantStreamingHTTPClientForRESTConfig = newAssistantStreamingHTTPClientForRESTConfig
-	RequireGrafanaCloud                          = requireGrafanaCloud
 	ResolveAssistantClientOptions                = resolveAssistantClientOptions
 )

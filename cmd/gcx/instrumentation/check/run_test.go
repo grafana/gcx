@@ -208,14 +208,16 @@ func TestRunWith_EmptyReporterReturnsNonNilSlices(t *testing.T) {
 
 func TestCheckTableCodec_Encode(t *testing.T) {
 	codec := &CheckTableCodec{}
-	results := otelutils.Results{
-		Checks:   []otelutils.ComponentResult{{Component: "SDK", Message: "service.name set"}},
-		Warnings: []otelutils.ComponentResult{{Component: "Collector", Message: "missing receiver"}},
-		Errors:   []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no instance id"}},
+	envelope := ResultsWithFixPlan{
+		Results: otelutils.Results{
+			Checks:   []otelutils.ComponentResult{{Component: "SDK", Message: "service.name set"}},
+			Warnings: []otelutils.ComponentResult{{Component: "Collector", Message: "missing receiver"}},
+			Errors:   []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no instance id"}},
+		},
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, results))
+	require.NoError(t, codec.Encode(&buf, envelope))
 
 	out := buf.String()
 	// All three rows present, in failure-first order.
@@ -231,7 +233,7 @@ func TestCheckTableCodec_WrongType(t *testing.T) {
 	codec := &CheckTableCodec{}
 	err := codec.Encode(&bytes.Buffer{}, "nope")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "otelutils.Results")
+	assert.Contains(t, err.Error(), "ResultsWithFixPlan")
 }
 
 // ─── Command smoke test ──────────────────────────────────────────────────────
@@ -240,7 +242,7 @@ func TestCheckTableCodec_WrongType(t *testing.T) {
 // Avoids actually running otel-checker (which would touch real env vars).
 
 func TestCommand_RejectsUnsupportedLanguage(t *testing.T) {
-	cmd := Command()
+	cmd := Command(nil)
 	cmd.SetArgs([]string{"sdk", "--language=rust"})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -251,7 +253,7 @@ func TestCommand_RejectsUnsupportedLanguage(t *testing.T) {
 }
 
 func TestCommand_RejectsMissingLanguage(t *testing.T) {
-	cmd := Command()
+	cmd := Command(nil)
 	cmd.SetArgs([]string{"sdk"})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -259,4 +261,99 @@ func TestCommand_RejectsMissingLanguage(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--language is required")
+}
+
+// ─── Fix-plan flag interactions ──────────────────────────────────────────────
+
+func TestCommand_FixPlanSubflagsRequireParent(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"agent-id alone", []string{"collector", "--agent-id=grafana_dashboarding"}, "--agent-id requires --fix-plan"},
+		{"print-prompt alone", []string{"collector", "--print-prompt"}, "--print-prompt requires --fix-plan"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := Command(nil)
+			cmd.SetArgs(tc.args)
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+// ─── ResultsWithFixPlan / codec envelope ─────────────────────────────────────
+
+func TestCheckTableCodec_RendersFixPlanBelowTable(t *testing.T) {
+	envelope := ResultsWithFixPlan{
+		Results: otelutils.Results{
+			Errors: []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no headers", ExplainID: "grafana-cloud.headers.missing-auth"}},
+		},
+		FixPlan: &FixPlanEnvelope{
+			Source:  "assistant",
+			Content: "# Fix plan\n\n1. Set the header.\n",
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&CheckTableCodec{}).Encode(&buf, envelope))
+
+	out := buf.String()
+	assert.Contains(t, out, "FAIL")
+	assert.Contains(t, out, "grafana-cloud.headers.missing-auth")
+	assert.Contains(t, out, "Fix plan")
+	// Plan follows the table (raw markdown since buf isn't a TTY).
+	assert.Less(t, strings.Index(out, "FAIL"), strings.Index(out, "Fix plan"),
+		"table must come before plan, got:\n%s", out)
+}
+
+func TestCheckTableCodec_LocalFallbackNoticePrinted(t *testing.T) {
+	envelope := ResultsWithFixPlan{
+		Results: otelutils.Results{
+			Errors: []otelutils.ComponentResult{{Component: "SDK", Message: "x", ExplainID: "y"}},
+		},
+		FixPlan: &FixPlanEnvelope{
+			Source:   "local",
+			Fallback: true,
+			Reason:   "not a Grafana Cloud stack",
+			Content:  "# Combined fix\n\nApply the sections.\n",
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&CheckTableCodec{}).Encode(&buf, envelope))
+	out := buf.String()
+	assert.Contains(t, out, "Grafana Assistant not available")
+	assert.Contains(t, out, "not a Grafana Cloud stack")
+	assert.Contains(t, out, "Combined fix")
+}
+
+// TestCheckTableCodec_PreviewNoticePrinted guards the --print-prompt UX:
+// when the envelope carries Preview=true, the codec must announce that
+// Assistant was NOT called before dumping the prompt body. Otherwise a
+// user skimming stdout can mistake the raw prompt for a real fix plan.
+func TestCheckTableCodec_PreviewNoticePrinted(t *testing.T) {
+	envelope := ResultsWithFixPlan{
+		Results: otelutils.Results{
+			Errors: []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no headers", ExplainID: "grafana-cloud.headers.missing-auth"}},
+		},
+		FixPlan: &FixPlanEnvelope{
+			Source:  "assistant",
+			Preview: true,
+			Content: "You are helping fix OpenTelemetry instrumentation problems...",
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&CheckTableCodec{}).Encode(&buf, envelope))
+	out := buf.String()
+	assert.Contains(t, out, "Prompt preview")
+	assert.Contains(t, out, "Grafana Assistant was NOT called")
+	assert.Contains(t, out, "no billing")
+	// Preview notice must sit before the prompt body.
+	assert.Less(t, strings.Index(out, "Prompt preview"), strings.Index(out, "You are helping fix"),
+		"preview notice must precede the prompt body")
 }

@@ -1,0 +1,158 @@
+//nolint:testpackage // white-box testing: uses unexported promptRunner/cloudChecker seams on Options.
+package fixplan
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/grafana/gcx/internal/providers"
+	assistantprov "github.com/grafana/gcx/internal/providers/assistant"
+	otelutils "github.com/grafana/otel-checker/checks/utils"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// A single real explain ID we use across tests. Picking from the registry
+// (instead of a hardcoded string) keeps the tests robust across doc renames.
+func firstRealExplainID(t *testing.T) string {
+	t.Helper()
+	res := otelutils.Results{
+		Errors: []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no headers", ExplainID: "grafana-cloud.headers.missing-auth"}},
+	}
+	docs := resolveDocs(collectFindings(res))
+	require.NotEmpty(t, docs, "expected the seed ID to resolve to a real doc")
+	return docs[0].ID
+}
+
+func TestGenerate_EmptyResults(t *testing.T) {
+	plan, err := Generate(context.Background(), otelutils.Results{}, Options{})
+	require.NoError(t, err)
+	assert.True(t, plan.Empty)
+	assert.Empty(t, plan.Content)
+}
+
+func TestGenerate_LocalWhenNoLoader(t *testing.T) {
+	id := firstRealExplainID(t)
+	results := otelutils.Results{
+		Errors: []otelutils.ComponentResult{
+			{Component: "Grafana Cloud", Message: "no headers", ExplainID: id},
+		},
+	}
+	plan, err := Generate(context.Background(), results, Options{Loader: nil})
+	require.NoError(t, err)
+	assert.Equal(t, SourceLocal, plan.Source)
+	assert.False(t, plan.Fallback)
+	assert.NotEmpty(t, plan.Content)
+	assert.Contains(t, plan.DocsUsed, id)
+}
+
+func TestGenerate_PrintPromptSkipsAssistant(t *testing.T) {
+	id := firstRealExplainID(t)
+	results := otelutils.Results{
+		Errors: []otelutils.ComponentResult{
+			{Component: "Grafana Cloud", Message: "no headers", ExplainID: id},
+		},
+	}
+	called := false
+	opts := Options{
+		Loader:          &providers.ConfigLoader{},
+		PrintPromptOnly: true,
+		promptRunner: func(context.Context, *providers.ConfigLoader, assistantprov.PromptRequest) (assistantprov.PromptResponse, error) {
+			called = true
+			return assistantprov.PromptResponse{}, nil
+		},
+		cloudChecker: func(context.Context, *providers.ConfigLoader) error { return nil },
+	}
+	plan, err := Generate(context.Background(), results, opts)
+	require.NoError(t, err)
+	assert.Equal(t, SourceAssistant, plan.Source)
+	assert.True(t, plan.Preview, "PrintPromptOnly must mark the Plan as Preview")
+	assert.False(t, called, "PrintPromptOnly must not invoke Assistant")
+	assert.Contains(t, plan.Content, "# Findings")
+	assert.Contains(t, plan.Content, "# Instructions")
+}
+
+func TestGenerate_AssistantHappyPath(t *testing.T) {
+	id := firstRealExplainID(t)
+	results := otelutils.Results{
+		Errors: []otelutils.ComponentResult{
+			{Component: "Grafana Cloud", Message: "no headers", ExplainID: id},
+		},
+	}
+	var gotReq assistantprov.PromptRequest
+	opts := Options{
+		Loader: &providers.ConfigLoader{},
+		promptRunner: func(_ context.Context, _ *providers.ConfigLoader, req assistantprov.PromptRequest) (assistantprov.PromptResponse, error) {
+			gotReq = req
+			return assistantprov.PromptResponse{Response: "# Fix plan\n\n1. Do X.\n", ContextID: "ctx-1"}, nil
+		},
+		cloudChecker: func(context.Context, *providers.ConfigLoader) error { return nil },
+	}
+	plan, err := Generate(context.Background(), results, opts)
+	require.NoError(t, err)
+	assert.Equal(t, SourceAssistant, plan.Source)
+	assert.Contains(t, plan.Content, "1. Do X.")
+	assert.Contains(t, gotReq.Message, "# Findings", "prompt runner should receive the built prompt")
+	assert.False(t, plan.Fallback)
+	assert.False(t, plan.Preview, "a live Assistant response is not a preview")
+
+	// Fix-plan opts into non-interactive auto-approve since the prompt is
+	// pure synthesis and there's no stdin to prompt on. Guards against a
+	// silent regression back to the fail-closed reject default (which
+	// server-side surfaces as HTTP 500).
+	_, ok := gotReq.ApprovalHandler.(assistantprov.AlwaysApprove)
+	assert.True(t, ok, "fix-plan should pass AlwaysApprove{} to RunPrompt (got %T)", gotReq.ApprovalHandler)
+
+	// Fix-plan must NOT persist its own conversation context ID — that
+	// would hijack the user's `gcx assistant prompt --continue` state.
+	assert.False(t, gotReq.PersistContextID, "fix-plan must not persist context ID")
+}
+
+func TestGenerate_FallsBackWhenNotCloud(t *testing.T) {
+	id := firstRealExplainID(t)
+	results := otelutils.Results{
+		Errors: []otelutils.ComponentResult{
+			{Component: "Grafana Cloud", Message: "no headers", ExplainID: id},
+		},
+	}
+	runnerCalled := false
+	opts := Options{
+		Loader: &providers.ConfigLoader{},
+		promptRunner: func(context.Context, *providers.ConfigLoader, assistantprov.PromptRequest) (assistantprov.PromptResponse, error) {
+			runnerCalled = true
+			return assistantprov.PromptResponse{}, nil
+		},
+		cloudChecker: func(context.Context, *providers.ConfigLoader) error {
+			return errors.New("current context is not a Grafana Cloud stack")
+		},
+	}
+	plan, err := Generate(context.Background(), results, opts)
+	require.NoError(t, err)
+	assert.Equal(t, SourceLocal, plan.Source)
+	assert.True(t, plan.Fallback)
+	assert.Contains(t, plan.Reason, "not a Grafana Cloud stack")
+	assert.False(t, runnerCalled, "Assistant must not be called when Cloud check fails")
+	assert.Contains(t, plan.Content, "# Combined fix")
+}
+
+func TestGenerate_FallsBackWhenAssistantFails(t *testing.T) {
+	id := firstRealExplainID(t)
+	results := otelutils.Results{
+		Errors: []otelutils.ComponentResult{
+			{Component: "Grafana Cloud", Message: "no headers", ExplainID: id},
+		},
+	}
+	opts := Options{
+		Loader: &providers.ConfigLoader{},
+		promptRunner: func(context.Context, *providers.ConfigLoader, assistantprov.PromptRequest) (assistantprov.PromptResponse, error) {
+			return assistantprov.PromptResponse{}, errors.New("network unreachable")
+		},
+		cloudChecker: func(context.Context, *providers.ConfigLoader) error { return nil },
+	}
+	plan, err := Generate(context.Background(), results, opts)
+	require.NoError(t, err, "runner errors should surface via Fallback, not a fatal error")
+	assert.Equal(t, SourceLocal, plan.Source)
+	assert.True(t, plan.Fallback)
+	assert.Contains(t, plan.Reason, "network unreachable")
+}

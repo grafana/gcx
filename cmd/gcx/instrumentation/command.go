@@ -72,7 +72,7 @@ The instrumentation command tree provides:
 	cmd.AddCommand(
 		setup.Command(loader),
 		status.Command(loader),
-		check.Command(),
+		check.Command(loader),
 		explain.Command(),
 		explain.ListCommand(),
 		clusters.Command(loader),
