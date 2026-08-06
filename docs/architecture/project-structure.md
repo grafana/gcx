@@ -107,7 +107,7 @@ gcx/
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
 │   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
-│   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, flat-JSON HTTP export)
+│   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, flat-JSON HTTP export, api-request sanitization via closed vocabularies)
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer
