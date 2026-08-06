@@ -23,12 +23,17 @@ func (p *Pipeline) SetResourceName(name string) {
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Pipeline struct {
-	ID       string         `json:"id,omitempty"`
-	Name     string         `json:"name"`
-	Enabled  *bool          `json:"enabled,omitempty"`
-	Contents string         `json:"contents"`
-	Matchers []string       `json:"matchers,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	ID      string `json:"id,omitempty"`
+	Name    string `json:"name"`
+	Enabled *bool  `json:"enabled,omitempty"`
+	// ConfigType selects how Fleet interprets Contents: "CONFIG_TYPE_ALLOY"
+	// (Alloy River, the default when empty) or "CONFIG_TYPE_OTEL" (OTel
+	// Collector YAML). It must round-trip through every serialization path —
+	// dropping it makes Fleet treat OTel YAML as Alloy River and reject it.
+	ConfigType string         `json:"configType,omitempty"`
+	Contents   string         `json:"contents"`
+	Matchers   []string       `json:"matchers,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
 }
 
 // GetResourceName returns the slug-id composite name for the collector.

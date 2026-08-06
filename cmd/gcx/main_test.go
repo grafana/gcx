@@ -66,7 +66,7 @@ const (
 
 func TestConfigSetPlaintextFallbackWarningProcess(t *testing.T) {
 	const token = "synthetic-plaintext-fallback-token"
-	const warning = "Warning: credential store unavailable; credentials remain in plaintext on disk; install or unlock your OS credential store (Keychain, Credential Manager, or Secret Service) to enable encrypted credential storage"
+	const warning = "Warning: credential store could not securely store the credential; credentials remain in plaintext on disk; verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage"
 
 	for _, agentMode := range []string{"false", "true"} {
 		t.Run("agent-mode="+agentMode, func(t *testing.T) {
