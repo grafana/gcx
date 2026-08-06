@@ -39,7 +39,12 @@ func runGenericSilenced(t *testing.T, f *fakeGrafana, args ...string) (string, e
 	root.SetIn(strings.NewReader(""))
 	root.SetArgs(append(args, "--config", configFile))
 
-	return stdout.String(), root.Execute()
+	// Execute first: `return stdout.String(), root.Execute()` would snapshot
+	// stdout before the command ran, and every assertion on it would be
+	// vacuous. Go evaluates return operands left to right.
+	err := root.Execute()
+
+	return stdout.String(), err
 }
 
 func TestGenericQueryUnsupportedKindMessage_HumanMode(t *testing.T) {
