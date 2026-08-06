@@ -208,9 +208,10 @@ func (c *Client) List(ctx context.Context) ([]ResourceType, error) {
   provider name prefix for debuggability
 
 Follow `docs/reference/provider-guide.md` Step 4b for the destination-driven
-client choice. `cloudCfg.HTTPClient(ctx)` is right for the Cloud host that
-snapshot resolved; it does not inspect the URL you call, so a product API on its
-own domain still needs `httputils.NewDefaultClient(ctx)`.
+client choice: pick from the URL the request actually goes to.
+`cloudCfg.HTTPClient(ctx)` never inspects that URL, so it is right only for
+requests to `cfg.Host` — a product API on its own domain needs
+`httputils.NewDefaultClient(ctx)`.
 
 **Pagination:** If the legacy client uses manual pagination loops, port them. If
 the API returns all results in one call, keep it simple.
@@ -659,7 +660,7 @@ that only surfaced during smoke testing:
   others return the raw response. Check the legacy client carefully — the types
   you port must match what the API actually returns, not what it exposes.
 
-### Separate API URLs (Fleet, OnCall)
+### Separate API URLs (Fleet)
 
 - Fleet Management uses a separate API URL, not the Grafana instance URL, but it
   does **not** take that URL from provider config: `FleetProvider.ConfigKeys()`
@@ -682,7 +683,7 @@ that only surfaced during smoke testing:
 | synth | checks, probes | ✅ existing | — | Reference impl, refactored to TypedAdapter in Phase 0 |
 | slo | definitions, reports | ✅ existing | — | Reference impl |
 | alert | rules, groups | ✅ existing | — | Read-only, expanding in Phase 2 |
-| oncall | 12 sub-resources | ✅ done (2026-03-20) | Claude | All 12 sub-resources, iterator pagination, auto-discovery of OnCall URL |
+| oncall | 12 sub-resources | ✅ done (2026-03-20) | Claude | All 12 sub-resources, iterator pagination. Now reached through the IRM plugin resource path on the stack host — the URL auto-discovery this row originally described is gone |
 | incidents | incidents | ✅ done (2026-03-20) | Claude | IRM plugin API, gRPC-style POST endpoints |
 | k6 | projects, tests, runs, envs, schedules, load-zones, envvars | ✅ done + verified (2026-03-24) | Claude | Token exchange auth, separate API domain. Full command tree verified live against dev context. Schedules, load-zones, and testrun CRD commands added beyond original scope. |
 | fleet | pipelines, collectors, tenant | ✅ done (2026-03-20) | Claude | gRPC/Connect API, separate URL + basic auth, 3 resource types |

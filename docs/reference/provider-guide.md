@@ -308,14 +308,13 @@ Is this request addressed to cfg.Host?
        → httputils.NewDefaultClient(ctx) — never rest.HTTPClientFor
 ```
 
-`cloudCfg.HTTPClient(ctx)` implements that choice **only for requests aimed at
-the host `cloudCfg` itself describes**. It switches on whether the snapshot
-carries a `RESTConfig`, not on the URL you are about to call
-(`internal/providers/configloader.go`), so it cannot detect a mismatch: hand it
-an external product URL while a `RESTConfig` is present and it returns the k8s
-transport, which attaches Grafana credentials to a third-party host. Use it for
-the Cloud destination it resolved, and construct the client yourself — with
-`httputils.NewDefaultClient(ctx)` — for any other host.
+Decide from the URL you are actually about to request. `cloudCfg.HTTPClient(ctx)`
+cannot make that decision for you: it branches on whether the snapshot carries a
+`RESTConfig`, never on the target URL (`internal/providers/configloader.go`), so
+handing it a product URL on another host while a `RESTConfig` is present returns
+the k8s transport and attaches Grafana credentials to a third party. Use it for
+requests to `cfg.Host`; use `httputils.NewDefaultClient(ctx)` for a different
+product host.
 
 ### Via CloudRESTConfig (preferred)
 
@@ -333,11 +332,18 @@ func newClient(ctx context.Context, loader *providers.ConfigLoader) (*Client, er
 }
 ```
 
-`CloudRESTConfig.HTTPClient(ctx)` selects the client based on auth mode:
-- **SA token** (`RESTConfig == nil`) → `httputils.NewDefaultClient(ctx)` — no
-  auth injection, provider sets its own headers per request
-- **OAuth proxy** (`RESTConfig != nil`) → `rest.HTTPClientFor` — RefreshTransport
-  handles gat_ token renewal; the proxy adds provider auth server-side
+`CloudRESTConfig.HTTPClient(ctx)` branches only on whether the snapshot carries
+a `RESTConfig` — it is not an auth-mode switch, and `RESTConfig != nil` does not
+mean OAuth. `LoadCloudConfig` populates it whenever the context has any non-empty
+`Grafana` credentials, so a plain SA-token context also yields a non-nil
+`RESTConfig`:
+- `RESTConfig == nil` → `httputils.NewDefaultClient(ctx)` — no auth injection,
+  provider sets its own headers per request
+- `RESTConfig != nil` → `rest.HTTPClientFor` — k8s transport, which injects the
+  Grafana bearer token; RefreshTransport handles `gat_` renewal
+
+Because that branch ignores the URL, it is only safe when the request is going to
+`cfg.Host`. For any other host, build the client yourself.
 
 Both paths carry `LoggingRoundTripper` and respect `--insecure-log-http-payload`.
 

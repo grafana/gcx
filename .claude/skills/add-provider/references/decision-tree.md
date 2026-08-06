@@ -66,7 +66,7 @@ row rules out a provider for CRUD, not for the product.
 - The product has multiple related resource types that should be grouped
 
 **Examples**: SLO (plugin API, custom status commands), Synthetic Monitoring
-(separate service URL + token), OnCall (separate API).
+(separate service URL + token), OnCall (IRM plugin resources on the stack host).
 
 **Adapters are conditional, not mandatory.** Plain provider commands are valid
 and first-class on their own — an adapter must never be created merely to
@@ -110,7 +110,7 @@ take the transport from that destination — not the other way round.
 |------------|-----------|--------------|-----------|
 | Grafana API on the stack host, SA token (including a different base path on that host) | Empty `[]` | `LoadGrafanaConfig` | `rest.HTTPClientFor` — destination is `cfg.Host` |
 | Grafana Cloud org-level operation | Empty `[]` | `LoadCloudTokenConfig` | `httputils.NewDefaultClient(ctx)` |
-| Grafana Cloud operation targeting a stack | Empty `[]` | `LoadCloudConfig` | `cloudCfg.HTTPClient(ctx)`, but only for the host that snapshot describes |
+| Grafana Cloud operation targeting a stack | Empty `[]` | `LoadCloudConfig` | `cloudCfg.HTTPClient(ctx)` for requests to `cfg.Host`; `httputils.NewDefaultClient(ctx)` for any other host |
 | Product API authenticated directly, endpoint fixed or configurable | `[{Name: "token", Secret: true}]`, plus `{Name: "url"}` if the endpoint is configurable | `LoadDirectProviderSnapshot` | `httputils.NewDefaultClient(ctx)` |
 
 Provider code never reads context credentials directly. Direct-auth product APIs

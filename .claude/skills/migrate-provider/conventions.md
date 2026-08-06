@@ -79,7 +79,7 @@ diagnose issues during smoke tests without cluttering normal output.
 ```go
 slog.Debug("fleet: listing pipelines", "url", c.baseURL+"/pipelines")
 slog.Debug("k6: token exchange complete", "orgID", orgID, "stackID", stackID)
-slog.Debug("oncall: auto-discovered URL", "url", onCallURL, "source", source)
+slog.Debug("oncall: listing schedules", "path", BasePath+"/schedules")
 ```
 
 **Guidelines:**
