@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -142,7 +143,7 @@ func TestNothingOutsideResourcesWritesBatchCapture(t *testing.T) {
 			return walkErr
 		}
 		if d.IsDir() {
-			if name := d.Name(); name == ".git" || name == "vendor" || name == "node_modules" {
+			if path != root && skipWalkDir(path, d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -175,6 +176,34 @@ func TestNothingOutsideResourcesWritesBatchCapture(t *testing.T) {
 	assert.ElementsMatch(t, []string{filepath.Join("cmd", "gcx", "resources", "dryrun.go")}, writers,
 		"capture.SetBatch must only be written through captureBatchVolume; a direct writer elsewhere "+
 			"bypasses the call-site pin and can make read-only commands report volume")
+}
+
+// skipWalkDir reports whether the writer walk must not descend into a
+// directory. It takes the path as well as the name so a nested module is
+// recognised by its own go.mod rather than by a name this repository would have
+// to keep a list of.
+//
+// The dot-prefix rule is the one that matters in practice. This repository puts
+// git worktrees under .claude/worktrees, and a worktree holds a second copy of
+// every file in the tree — including the one legitimate writer. Walking into
+// one makes the guard report the same file twice and fail with a message about
+// "a writer elsewhere" that names the file it was already expecting. CI has no
+// worktrees, so only the local pre-commit gate breaks, which is the worst place
+// for a false alarm. Skipping dot- and underscore-prefixed directories matches
+// what the go tool itself ignores, and dropping the nested modules takes the
+// walk from about 7000 files back to the module's own 1200.
+func skipWalkDir(path, name string) bool {
+	if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+		return true
+	}
+	if name == "vendor" || name == "node_modules" || name == "testdata" {
+		return true
+	}
+	// A directory with its own go.mod is a separate module: its files are not
+	// this repository's code, and a checkout of this repository placed inside
+	// the tree would otherwise duplicate every writer.
+	_, err := os.Stat(filepath.Join(path, "go.mod"))
+	return err == nil
 }
 
 // callsCaptureSetBatch reports whether the file calls SetBatch on the capture
