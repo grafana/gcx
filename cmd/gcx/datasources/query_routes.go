@@ -95,11 +95,15 @@ func newQueryRoutes() queryRoutes {
 	}
 }
 
-// supportedKinds returns every kind the command routes — expression-dispatchable
+// supportedKinds returns every kind this command routes — expression-dispatchable
 // and redirect-only alike — sorted, for the unsupported-type message. Deriving
-// it is the point of #1137: the hand-maintained list had already drifted, and a
-// caller told a kind is unsupported is better served by the full set gcx knows
-// how to handle than by the subset that happens to take an expression.
+// it is the point of #1137: the hand-maintained list had already drifted.
+//
+// Scope, precisely: these are the kinds `gcx datasources query` handles, not
+// every kind gcx can query. Kinds with a typed `gcx datasources <kind> query`
+// but no entry here (tempo, athena, infinity) are absent by construction.
+// Redirect-only kinds are present because this command does handle them — by
+// naming the typed command — even though it never runs their query.
 func (r queryRoutes) supportedKinds() []string {
 	kinds := make([]string, 0, len(r.dispatch)+len(r.redirects))
 	for kind := range r.dispatch {

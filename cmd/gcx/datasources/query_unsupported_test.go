@@ -51,11 +51,13 @@ func TestGenericQueryUnsupportedKindMessage_HumanMode(t *testing.T) {
 	assert.Empty(t, stdout, "a failed query writes no partial document to stdout")
 }
 
-// Agent mode must not reword or truncate the message, and must not leave a
-// half-written document behind. The in-band JSON error envelope is assembled by
-// the production root reporter, which this package-level root does not mount;
-// what is pinned here is the text that reporter receives.
-func TestGenericQueryUnsupportedKindMessage_AgentMode(t *testing.T) {
+// run has no agent-mode branch, so this cannot prove the message survives the
+// agents codec — the in-band JSON error envelope is assembled by the production
+// root reporter, and TestAgentConformance_* in cmd/gcx/root covers that. What
+// this pins is narrower and still worth pinning: enabling agent mode changes
+// neither the text the reporter receives nor the fact that stdout stays empty,
+// so a future agent-mode branch in this command cannot quietly diverge.
+func TestGenericQueryUnsupportedKindMessage_AgentModeDoesNotDivergeFromHuman(t *testing.T) {
 	testutils.SetAgentMode(t, true)
 
 	f := &fakeGrafana{t: t, dsType: "tempo"}

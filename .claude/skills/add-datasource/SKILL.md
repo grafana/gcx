@@ -402,9 +402,16 @@ Then trace each registration in `RegisterCodecs` to a reachable `Encode`
    Adding neither is also a choice: your kind then reports as unsupported. Make
    it deliberately — a caller who reasonably reaches for `datasources query`
    gets a dead end. The two tables must stay disjoint and keyed by normalized
-   kinds; `query_routes_internal_test.go` enforces both, and the supported-kind
-   list in the unsupported-type error is derived, so there is nothing to
-   hand-update.
+   kinds; `query_routes_internal_test.go` enforces both.
+
+   The supported-kind list in the unsupported-type error is derived from the
+   tables, so you never edit that string. You **do** update the two places that
+   pin its exact value, because it is user-visible text on a GA path and is
+   deliberately not free to drift:
+   `TestQueryRoutesSupportedKindsIsTheSortedUnion` in
+   `query_routes_internal_test.go`, and `wantUnsupportedMessage` in
+   `query_unsupported_test.go`. Both fail with the old and new lists side by
+   side, so the update is mechanical.
 
 ### Step 5: Agent Annotations
 
