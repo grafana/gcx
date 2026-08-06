@@ -85,6 +85,10 @@ const (
 	// IRMInvoice documents how Grafana IRM is billed per monthly active user.
 	IRMInvoice = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice.md"
 
+	// Configuration documents the gcx config file, including how gcx stores
+	// credentials in the OS keychain and how to unlock a locked keyring.
+	Configuration = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/configuration.md"
+
 	// ConfigMigration documents migrating a legacy (unversioned) gcx config
 	// to the version 1 stacks/cloud/contexts format, including the manual
 	// field mapping. Referenced by the loader's automatic migration on both
@@ -125,6 +129,7 @@ func All() []string {
 		SyntheticMonitoringInvoice,
 		PerformanceTestingInvoice,
 		IRMInvoice,
+		Configuration,
 		AnonymousUsageStats,
 		CloudAPI,
 	}

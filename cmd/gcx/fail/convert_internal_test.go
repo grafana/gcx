@@ -8,33 +8,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A suggestion must never name an unlock command. The correct command depends
-// on the session. A service manager can hold the org.freedesktop.secrets name
-// and refuse to yield it, and the daemon accepts the password only on standard
-// input without a trailing newline. A command that silently does nothing is
-// worse than no command.
-func TestKeychainLockedSuggestionsNameNoUnlockCommand(t *testing.T) {
-	platforms := []string{"linux", "freebsd", "netbsd", "openbsd", "dragonfly", "darwin", "windows"}
-	for _, goos := range platforms {
-		t.Run(goos, func(t *testing.T) {
-			suggestions := keychainLockedSuggestions(goos)
-			require.NotEmpty(t, suggestions)
-			for _, suggestion := range suggestions {
-				assert.NotContains(t, suggestion, "gnome-keyring-daemon")
-				assert.NotContains(t, suggestion, "systemd-ask-password")
-			}
-		})
+// TestKeychainLockedSuggestions checks the invariants of the locked-keychain
+// remedies on every platform. A suggestion must never name an unlock command,
+// because the correct command depends on the session; the documentation holds
+// the procedure. Every platform must also offer an escape route for a host
+// that the user cannot unlock, such as a continuous integration runner. Only
+// the freedesktop Secret Service exposes a lock-state command.
+func TestKeychainLockedSuggestions(t *testing.T) {
+	tests := map[string]struct {
+		goos          string
+		wantLockState bool
+	}{
+		"linux":     {goos: "linux", wantLockState: true},
+		"freebsd":   {goos: "freebsd", wantLockState: true},
+		"netbsd":    {goos: "netbsd", wantLockState: true},
+		"openbsd":   {goos: "openbsd", wantLockState: true},
+		"dragonfly": {goos: "dragonfly", wantLockState: true},
+		"darwin":    {goos: "darwin", wantLockState: false},
+		"windows":   {goos: "windows", wantLockState: false},
 	}
-}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			suggestions := keychainLockedSuggestions(test.goos)
+			require.NotEmpty(t, suggestions)
 
-// Every platform must offer an escape route for a host with no keyring that
-// the user can unlock, such as a continuous integration runner.
-func TestKeychainLockedSuggestionsOfferAnEnvironmentVariable(t *testing.T) {
-	platforms := []string{"linux", "freebsd", "netbsd", "openbsd", "dragonfly", "darwin", "windows"}
-	for _, goos := range platforms {
-		t.Run(goos, func(t *testing.T) {
-			joined := strings.Join(keychainLockedSuggestions(goos), "\n")
+			joined := strings.Join(suggestions, "\n")
+			assert.NotContains(t, joined, "gnome-keyring-daemon")
+			assert.NotContains(t, joined, "systemd-ask-password")
 			assert.Contains(t, joined, "GRAFANA_TOKEN")
+			assert.Equal(t, test.wantLockState, strings.Contains(joined, "busctl"))
 		})
 	}
 }

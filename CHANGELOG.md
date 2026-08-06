@@ -36,7 +36,7 @@
 
 ### Breaking changes
 
-- credentials: a locked OS keychain is now a separate, fatal failure class. gcx stops the command and does not write the credential in plaintext. The error tells you how to unlock the keyring. A locked GNOME keyring in a headless or SSH session previously caused a silent plaintext fallback.
+- credentials: a locked OS keychain is now a separate, fatal failure class (`Keychain locked`). gcx stops the command instead of writing the credential in plaintext, and the error explains how to unlock the keyring. Previously an `org.freedesktop.Secret.Error.IsLocked` error counted as an unavailable keychain, which permitted a plaintext write. An unlock failure in a headless or SSH session was already fatal, but reported only the raw library message.
 
 ### New features
 

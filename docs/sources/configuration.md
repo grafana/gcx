@@ -145,40 +145,25 @@ busctl --user get-property org.freedesktop.secrets \
   org.freedesktop.Secret.Collection Locked
 ```
 
-`b true` means the collection is locked. To unlock it, obey three constraints:
+`b true` means the collection is locked. To unlock it, pipe the password into
+the daemon. `gnome-keyring-daemon --unlock` shows no prompt of its own, and
+`--daemonize` forks the process, so a password that you type never reaches it.
+A trailing newline leaves the collection locked and reports no error, so this
+recipe uses `printf` instead of `echo`:
 
-- `gnome-keyring-daemon --unlock` reads the password from standard input, and
-  it shows no prompt.
-- `--daemonize` makes the process fork. A password that you type does not reach
-  the child process, so you must pipe the password in.
-- The password must carry no trailing newline. A password with a newline leaves
-  the collection locked, and the command reports no error.
-
-In bash:
-
-```bash
-read -rsp 'Keyring password: ' PW && printf '%s' "$PW" | gnome-keyring-daemon --replace --daemonize --unlock
-```
-
-In zsh, the prompt uses a different syntax:
-
-```zsh
-read -rs "PW?Keyring password: " && printf '%s' "$PW" | gnome-keyring-daemon --replace --daemonize --unlock
+```shell
+stty -echo; printf 'Keyring password: '; read -r PW; stty echo; echo
+printf '%s' "$PW" | gnome-keyring-daemon --replace --daemonize --unlock
+unset PW
 ```
 
 Read the lock state again to confirm the result. `b false` means the collection
 is unlocked.
 
-If the state does not change, compare the owner of the `org.freedesktop.secrets`
-name before and after:
-
-```shell
-busctl --user list | grep org.freedesktop.secrets
-```
-
-An unchanged owner means `--replace` did not take the name. A service manager
-that runs the keyring daemon can hold the name and refuse to yield it. Stop that
-service first, then start a daemon that reads the password:
+If the state does not change, `--replace` did not take the
+`org.freedesktop.secrets` name. A service manager that runs the keyring daemon
+can hold the name and refuse to yield it. Stop that service, then run the unlock
+recipe again:
 
 ```shell
 systemctl --user stop gnome-keyring-daemon.service gnome-keyring-daemon.socket
