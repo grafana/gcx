@@ -24,9 +24,10 @@ const probeAccount = "__gcx_probe__"
 type keychainStore struct{}
 
 // Open returns a Store backed by the OS keychain. If no working backend is
-// reachable (unsupported platform, headless box, missing DBus, locked
-// session), it returns a Store that reports ErrUnavailable on every operation
-// so callers can fall back to plaintext.
+// reachable (unsupported platform, headless box, missing DBus), it returns a
+// Store that reports ErrUnavailable on every operation so callers can fall
+// back to plaintext. If the backend is reachable but locked, every operation
+// reports ErrLocked instead, so no secret ever falls back to plaintext.
 func Open() Store {
 	// Probe with a read for an account we never write. A working backend
 	// returns ErrNotFound; an unreachable one returns a transport/platform
@@ -70,19 +71,49 @@ func (keychainStore) Delete(key string) error {
 // normalizeKeyringError converts only errors that prove the native credential
 // backend is unreachable in the current session into ErrUnavailable. In
 // particular, value-size, input, permission-policy, and unknown errors remain
-// fatal so callers never silently downgrade them to plaintext.
+// fatal so callers never silently downgrade them to plaintext. Errors that
+// prove the backend exists but is locked become ErrLocked, which stays fatal.
 func normalizeKeyringError(err error) error {
 	return normalizeKeyringErrorForOS(err, runtime.GOOS)
 }
 
 func normalizeKeyringErrorForOS(err error, goos string) error {
-	if err == nil || errors.Is(err, ErrUnavailable) || errors.Is(err, keyring.ErrSetDataTooBig) {
+	if err == nil || errors.Is(err, ErrUnavailable) || errors.Is(err, ErrLocked) ||
+		errors.Is(err, keyring.ErrSetDataTooBig) {
 		return err
+	}
+	// A locked backend is a reachable backend. Classify it before the
+	// unavailability check so it never downgrades to a plaintext fallback.
+	if nativeKeyringBackendLocked(err, goos) {
+		return fmt.Errorf("%w: %w", ErrLocked, err)
 	}
 	if nativeKeyringBackendUnavailable(err, goos) {
 		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	return err
+}
+
+// nativeKeyringBackendLocked reports whether the error proves that a working
+// Secret Service exists, but the collection stayed locked. This happens on a
+// headless or remote session, where no agent can answer the unlock prompt.
+func nativeKeyringBackendLocked(err error, goos string) bool {
+	if !usesSecretService(goos) {
+		return false
+	}
+
+	// go-keyring returns errors from godbus without a stable exported wrapper
+	// at this boundary. Match the signatures that mean the collection is
+	// locked, or that the unlock prompt returned no unlocked collection.
+	message := strings.ToLower(err.Error())
+	for _, signature := range []string{
+		"org.freedesktop.secret.error.islocked",
+		"failed to unlock correct collection",
+	} {
+		if strings.Contains(message, signature) {
+			return true
+		}
+	}
+	return false
 }
 
 func nativeKeyringBackendUnavailable(err error, goos string) bool {
@@ -116,7 +147,6 @@ func nativeKeyringBackendUnavailable(err error, goos string) bool {
 		"org.freedesktop.dbus.error.noserver",
 		"org.freedesktop.dbus.error.disconnected",
 		"org.freedesktop.dbus.error.noreply",
-		"org.freedesktop.secret.error.islocked",
 		"org.freedesktop.secret.error.nosession",
 		"the name org.freedesktop.secrets was not provided",
 		"object does not exist at path",

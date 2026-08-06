@@ -249,15 +249,22 @@ Loading steps (in `Load`):
    keychain item withholds the plaintext value in memory and records the missing
    state; the original on-disk sentinel survives unrelated writes so the field
    remains visibly configured and repairable. An unavailable keychain likewise
-   preserves the sentinel for an unchanged write. Under `go test`, the default
-   store is unavailable, so test binaries never prompt the OS keychain.
+   preserves the sentinel for an unchanged write. A locked keychain also
+   preserves the sentinel, and records the rejection reason `the OS keychain is
+   locked`, so the user knows to unlock the keyring before the next attempt.
+   Under `go test`, the default store is unavailable, so test binaries never
+   prompt the OS keychain.
 8. **Migrate plaintext token-shaped secrets**: plaintext values in tracked stack
    and Cloud fields are staged under a newly generated bound account and the
    file is rewritten with
    `keychain:gcx:v2:<binding-digest>:<random-generation>`. The binding covers
    the canonical source, exact owner kind/name, exact field, and normalized
    destination. An incomplete binding or unavailable keychain leaves the value
-   in plaintext with a warning.
+   in plaintext with a warning. A locked keychain stops the migration write with
+   the same warning, but it never authorizes a plaintext fallback elsewhere: an
+   explicit write, such as `gcx login` or `gcx config set`, fails on a locked
+   backend. The user must unlock the keychain, or must run gcx from a desktop
+   session that can answer the unlock prompt.
 9. Apply each `Override` function in order, then lazily resolve a context selected
    by an override
 10. On `ValidationError`, annotate the error with YAML source information
@@ -295,15 +302,18 @@ creating an old-YAML-to-missing-keychain reference.
 
 When the keychain reports a narrowly classified unavailable backend, a
 brand-new credential with no prior keychain reference may remain plaintext on
-disk; gcx warns at most once per process. Known locked/unreachable native
-backend failures are normalized at write time as unavailable, not just during
-the initial read probe. Replacing or deleting an existing generation, replacing
-a missing or rejected sentinel, and value-size, policy, cancellation, or
-unknown backend failures all fail closed. Silently continuing in those cases
-could orphan the only resolvable credential, leave an old credential active, or
-downgrade a credential for an unrelated backend error. Secret-less writes skip
-the keychain entirely (`hasSecretsToReconcile`), so they never probe the OS
-backend.
+disk; gcx warns at most once per process. Known unreachable native backend
+failures are normalized at write time as unavailable, not just during the
+initial read probe. A native failure that proves a reachable but locked backend
+normalizes to a separate locked class (`credentials.ErrLocked`), which stays
+fatal at read time and at write time. A locked backend, replacing or deleting
+an existing generation, replacing a missing or rejected sentinel, and
+value-size, policy, cancellation, or unknown backend failures all fail closed.
+Silently continuing in those cases could orphan the only resolvable credential,
+leave an old credential active, downgrade a credential for an unrelated backend
+error, or write a secret in plaintext while a real secret backend exists.
+Secret-less writes skip the keychain entirely (`hasSecretsToReconcile`), so they
+never probe the OS backend.
 
 ---
 

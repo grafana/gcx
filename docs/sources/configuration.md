@@ -66,6 +66,17 @@ exact owner kind and name, exact secret field, and normalized destination. Copyi
 file does not make its stored credentials portable; authenticate the copied
 file separately.
 
+If the OS credential store is locked, `gcx` does not write your credential in
+plaintext, because a real credential store exists. A command that must store or
+read a credential fails with a `Keychain locked` error. A headless or SSH
+session on Linux causes this most often: the keyring daemon runs, but no prompt
+can unlock the collection. To recover, do one of these steps:
+
+- Unlock the keyring, then run the command again. See
+  [Unlock a GNOME keyring in a headless session](#unlock-a-gnome-keyring-in-a-headless-session).
+- Run `gcx` from a desktop session that can show a password prompt.
+- Supply the credential through an environment variable, such as `GRAFANA_TOKEN`.
+
 An automatically discovered repository `.gcx.yaml` cannot attach tokens,
 passwords, or client-certificate files from your environment, login flags, or
 prompts to destinations the file supplies. It also cannot implicitly combine a
@@ -122,6 +133,44 @@ gcx config set contexts.staging.stack staging
 ```
 
 Note that in these examples, `default` and `staging` are the context and stack names.
+
+## Unlock a GNOME keyring in a headless session
+
+A headless or SSH session runs no agent that can answer the unlock prompt, so
+the login collection stays locked. Read the lock state first:
+
+```shell
+busctl --user get-property org.freedesktop.secrets \
+  /org/freedesktop/secrets/collection/login \
+  org.freedesktop.Secret.Collection Locked
+```
+
+`b true` means the collection is locked. To unlock it, pipe the password into
+the daemon. `gnome-keyring-daemon --unlock` shows no prompt of its own, and
+`--daemonize` forks the process, so a password that you type never reaches it.
+A trailing newline leaves the collection locked and reports no error, so this
+recipe uses `printf` instead of `echo`:
+
+```shell
+stty -echo; printf 'Keyring password: '; read -r PW; stty echo; echo
+printf '%s' "$PW" | gnome-keyring-daemon --replace --daemonize --unlock
+unset PW
+```
+
+Read the lock state again to confirm the result. `b false` means the collection
+is unlocked.
+
+If the state does not change, `--replace` did not take the
+`org.freedesktop.secrets` name. A service manager that runs the keyring daemon
+can hold the name and refuse to yield it. Stop that service, then run the unlock
+recipe again:
+
+```shell
+systemctl --user stop gnome-keyring-daemon.service gnome-keyring-daemon.socket
+```
+
+If you cannot unlock the keyring on the host, supply the credential through an
+environment variable such as `GRAFANA_TOKEN` instead.
 
 ## Useful commands
 
