@@ -2,6 +2,7 @@
 
 - Added `gcx instrumentation explain <id>` and `gcx instrumentation list-explanations` for looking up finding explanations bundled with `otel-checker` (bumped to v0.3.1).
 - `gcx instrumentation check` now surfaces an `EXPLAIN_ID` column in table output (and `explain_id` field in JSON), feedable directly into `gcx instrumentation explain`.
+- credentials: a locked OS keychain is now a separate, fatal failure class. gcx stops the command and does not write the credential in plaintext. The error tells you how to unlock the keyring. A locked GNOME keyring in a headless or SSH session previously caused a silent plaintext fallback.
 
 ## v1.0.0 (2026-07-28)
 

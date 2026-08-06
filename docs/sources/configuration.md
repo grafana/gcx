@@ -66,6 +66,16 @@ exact owner kind and name, exact secret field, and normalized destination. Copyi
 file does not make its stored credentials portable; authenticate the copied
 file separately.
 
+If the OS credential store is locked, `gcx` does not write your credential in
+plaintext, because a real credential store exists. A command that must store or
+read a credential fails with a `Keychain locked` error. A headless or SSH
+session on Linux causes this most often: the keyring daemon runs, but no prompt
+can unlock the collection. To recover, do one of these steps:
+
+- Unlock the keyring, then run the command again: `gnome-keyring-daemon --replace --daemonize --unlock`.
+- Run `gcx` from a desktop session that can show a password prompt.
+- Supply the credential through an environment variable, such as `GRAFANA_TOKEN`.
+
 An automatically discovered repository `.gcx.yaml` cannot attach tokens,
 passwords, or client-certificate files from your environment, login flags, or
 prompts to destinations the file supplies. It also cannot implicitly combine a

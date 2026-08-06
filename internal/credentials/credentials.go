@@ -75,6 +75,13 @@ var ErrNotFound = errors.New("credentials: entry not found")
 // should fall back to plaintext.
 var ErrUnavailable = errors.New("credentials: keychain unavailable")
 
+// ErrLocked is returned when the OS keychain is reachable but locked, and no
+// prompt can unlock it in the current session. It is deliberately distinct from
+// ErrUnavailable: a locked keychain proves that a real secret backend exists,
+// so callers must not fall back to plaintext. Callers must fail and ask the
+// user to unlock the keychain.
+var ErrLocked = errors.New("credentials: keychain locked")
+
 // Store is the minimal interface for a secret backend.
 type Store interface {
 	Get(key string) (string, error)

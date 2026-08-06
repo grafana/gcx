@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/fleet"
@@ -1343,5 +1345,81 @@ func TestErrorToDetailedError_EmittedErrorSuppressesEnvelope(t *testing.T) {
 			assert.Nil(t, fail.ErrorToDetailedError(tt.err),
 				"an EmittedError anywhere in the chain must suppress the secondary envelope")
 		})
+	}
+}
+
+// TestErrorToDetailedError_KeychainLocked asserts that a locked OS keychain
+// produces an actionable envelope, and that the other credentials sentinels do
+// not claim it. The locked error stays fatal, because gcx must not write the
+// secret in plaintext when a real keychain exists.
+func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
+	lockedErr := fmt.Errorf("%w: %s", credentials.ErrLocked,
+		"failed to unlock correct collection '/org/freedesktop/secrets/collection/login'")
+
+	tests := []struct {
+		name       string
+		err        error
+		wantLocked bool
+	}{
+		{
+			name:       "bare ErrLocked",
+			err:        credentials.ErrLocked,
+			wantLocked: true,
+		},
+		{
+			name: "deeply wrapped ErrLocked",
+			err: fmt.Errorf("writing config: %w",
+				fmt.Errorf("inspect keychain entry for %q field %q: %w",
+					"stack:opstest", "oauth-token", lockedErr)),
+			wantLocked: true,
+		},
+		{
+			name:       "ErrUnavailable is not a locked keychain",
+			err:        fmt.Errorf("writing config: %w", credentials.ErrUnavailable),
+			wantLocked: false,
+		},
+		{
+			name:       "ErrNotFound is not a locked keychain",
+			err:        fmt.Errorf("writing config: %w", credentials.ErrNotFound),
+			wantLocked: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tt.err)
+			require.NotNil(t, got)
+
+			if !tt.wantLocked {
+				assert.NotEqual(t, "Keychain locked", got.Summary)
+				return
+			}
+
+			assert.Equal(t, "Keychain locked", got.Summary)
+			assert.Equal(t,
+				"The OS keychain is reachable, but it is locked. gcx does not write the credential in plaintext.",
+				got.Details)
+			require.Error(t, got.Parent)
+			require.ErrorIs(t, got.Parent, credentials.ErrLocked)
+			assert.Equal(t, wantKeychainLockedSuggestions(), got.Suggestions)
+		})
+	}
+}
+
+// wantKeychainLockedSuggestions mirrors the platform split in the converter:
+// only the freedesktop Secret Service has a shell command that unlocks the
+// keyring.
+func wantKeychainLockedSuggestions() []string {
+	switch runtime.GOOS {
+	case "dragonfly", "freebsd", "linux", "netbsd", "openbsd":
+		return []string{
+			"Unlock the keyring, then retry: gnome-keyring-daemon --replace --daemonize --unlock",
+			"Run gcx from a desktop session, where a password prompt can appear",
+			"Check the lock state: busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked",
+		}
+	default:
+		return []string{
+			"Unlock the OS keychain, then retry the command",
+		}
 	}
 }
