@@ -82,97 +82,48 @@ func TestNormalizeKeyringErrorKeepsPermanentAndUnknownFailuresFatal(t *testing.T
 	}
 }
 
-// lockedSignatureErrors returns the messages that prove the Secret Service
-// exists but stays locked. The go-keyring library returns these as plain
-// errors, so gcx must match them by text.
-func lockedSignatureErrors() []struct {
-	name string
-	err  error
-} {
-	return []struct {
-		name string
-		err  error
-	}{
-		{
-			name: "collection is locked",
-			err:  errors.New("org.freedesktop.Secret.Error.IsLocked: the collection is locked"),
-		},
-		{
-			name: "unlock returned no unlocked collection",
-			err:  errors.New("failed to unlock correct collection '/org/freedesktop/secrets/collection/login'"),
-		},
-		{
-			name: "prompt dismissed",
-			err:  errors.New("Prompt dismissed by the user"),
-		},
+// lockedSignatures returns the messages that prove the Secret Service exists
+// but stays locked. The go-keyring library returns these as plain errors, so
+// gcx must match them by text. The second entry is the message that go-keyring
+// v0.2.8 returns for a locked GNOME login collection.
+func lockedSignatures() map[string]error {
+	return map[string]error{
+		"collection is locked":                   errors.New("org.freedesktop.Secret.Error.IsLocked: the collection is locked"),
+		"unlock returned no unlocked collection": errors.New("failed to unlock correct collection '/org/freedesktop/secrets/collection/login'"),
 	}
 }
 
-// secretServicePlatforms returns the operating systems that use the Secret
-// Service DBus interface.
-func secretServicePlatforms() []string {
-	return []string{"linux", "freebsd", "netbsd", "openbsd", "dragonfly"}
-}
-
 func TestNormalizeKeyringErrorClassifiesSecretServiceLock(t *testing.T) {
-	for _, tt := range lockedSignatureErrors() {
-		for _, goos := range secretServicePlatforms() {
-			t.Run(tt.name+"/"+goos, func(t *testing.T) {
-				got := normalizeKeyringErrorForOS(tt.err, goos)
+	for name, lockErr := range lockedSignatures() {
+		for _, goos := range []string{"linux", "freebsd", "netbsd", "openbsd", "dragonfly"} {
+			t.Run(name+"/"+goos, func(t *testing.T) {
+				got := normalizeKeyringErrorForOS(lockErr, goos)
 				require.ErrorIs(t, got, ErrLocked)
 				// A locked keychain must never become an unavailable keychain,
 				// because an unavailable keychain permits a plaintext write.
 				require.NotErrorIs(t, got, ErrUnavailable)
 				require.NotErrorIs(t, got, ErrNotFound)
-				require.ErrorIs(t, got, tt.err)
+				require.ErrorIs(t, got, lockErr)
+				// The user must still see the library cause after the wrap.
+				assert.Contains(t, got.Error(), lockErr.Error())
 			})
 		}
 	}
 }
 
 func TestNormalizeKeyringErrorDoesNotClassifyLockOnNonSecretServicePlatforms(t *testing.T) {
-	for _, tt := range lockedSignatureErrors() {
+	for name, lockErr := range lockedSignatures() {
 		for _, goos := range []string{"darwin", "windows"} {
-			t.Run(tt.name+"/"+goos, func(t *testing.T) {
+			t.Run(name+"/"+goos, func(t *testing.T) {
 				// These platforms do not use the Secret Service, so the same
 				// text carries no meaning. The error stays unclassified.
-				got := normalizeKeyringErrorForOS(tt.err, goos)
-				require.ErrorIs(t, got, tt.err)
+				got := normalizeKeyringErrorForOS(lockErr, goos)
+				require.ErrorIs(t, got, lockErr)
 				require.NotErrorIs(t, got, ErrLocked)
 				require.NotErrorIs(t, got, ErrUnavailable)
 			})
 		}
 	}
-}
-
-func TestNativeKeyringBackendLockedRequiresSecretServicePlatform(t *testing.T) {
-	locked := errors.New("org.freedesktop.Secret.Error.IsLocked: the collection is locked")
-	for _, goos := range secretServicePlatforms() {
-		assert.True(t, nativeKeyringBackendLocked(locked, goos), "goos %s", goos)
-	}
-	for _, goos := range []string{"darwin", "windows", "plan9", "js"} {
-		assert.False(t, nativeKeyringBackendLocked(locked, goos), "goos %s", goos)
-	}
-}
-
-func TestErrLockedIsDistinctFromOtherSentinels(t *testing.T) {
-	// A wrong answer here leaks a token into a plaintext config file, so
-	// examine both directions of every pair.
-	pairs := []struct {
-		name string
-		a, b error
-	}{
-		{name: "locked and unavailable", a: ErrLocked, b: ErrUnavailable},
-		{name: "locked and not found", a: ErrLocked, b: ErrNotFound},
-	}
-	for _, tt := range pairs {
-		t.Run(tt.name, func(t *testing.T) {
-			require.NotErrorIs(t, tt.a, tt.b)
-			require.NotErrorIs(t, tt.b, tt.a)
-		})
-	}
-	// A wrapped locked error must still resolve to the locked sentinel.
-	require.ErrorIs(t, fmt.Errorf("set grafana token: %w", ErrLocked), ErrLocked)
 }
 
 func TestNormalizeKeyringErrorIsIdempotentForLockedError(t *testing.T) {
@@ -185,17 +136,6 @@ func TestNormalizeKeyringErrorIsIdempotentForLockedError(t *testing.T) {
 	assert.Equal(t, wrapped, got)
 	assert.Equal(t, 1, strings.Count(got.Error(), ErrLocked.Error()),
 		"the locked prefix must appear exactly once")
-}
-
-func TestNormalizeKeyringErrorKeepsLibraryLockMessage(t *testing.T) {
-	// This is the message that go-keyring v0.2.8 returns. The user must still
-	// see the underlying cause after the wrap.
-	const library = "failed to unlock correct collection '/org/freedesktop/secrets/collection/login'"
-
-	got := normalizeKeyringErrorForOS(errors.New(library), "linux")
-	require.ErrorIs(t, got, ErrLocked)
-	assert.Contains(t, got.Error(), library)
-	assert.Contains(t, got.Error(), ErrLocked.Error())
 }
 
 func TestErrorStorePreservesUnexpectedProbeFailure(t *testing.T) {

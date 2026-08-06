@@ -226,16 +226,14 @@ func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
 		Details:     "The OS keychain is reachable, but it is locked. gcx does not write the credential in plaintext.",
 		Parent:      err,
 		Suggestions: keychainLockedSuggestions(runtime.GOOS),
+		DocsLink:    docs.Configuration,
 	}, true
 }
 
 // keychainLockedSuggestions returns the remedies for a locked keychain on the
-// given operating system. The Secret Service remedies name no unlock command
-// on purpose. The correct command depends on the session: a service manager
-// can hold the org.freedesktop.secrets name and refuse to yield it, and the
-// daemon accepts the password only on standard input without a trailing
-// newline. A command that silently does nothing is worse than no command, so
-// the full procedure lives in the documentation.
+// given operating system. The remedies name no unlock command on purpose,
+// because the correct command depends on the session. The documentation holds
+// the full procedure.
 func keychainLockedSuggestions(goos string) []string {
 	switch goos {
 	case "dragonfly", "freebsd", "linux", "netbsd", "openbsd":

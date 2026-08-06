@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -1401,26 +1400,9 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 				got.Details)
 			require.Error(t, got.Parent)
 			require.ErrorIs(t, got.Parent, credentials.ErrLocked)
-			assert.Equal(t, wantKeychainLockedSuggestions(), got.Suggestions)
+			assert.Equal(t, docs.Configuration, got.DocsLink)
+			// convert_internal_test.go pins the per-platform suggestions.
+			assert.NotEmpty(t, got.Suggestions)
 		})
-	}
-}
-
-// wantKeychainLockedSuggestions mirrors the platform split in the converter.
-// Only the freedesktop Secret Service exposes a lock-state command.
-func wantKeychainLockedSuggestions() []string {
-	switch runtime.GOOS {
-	case "dragonfly", "freebsd", "linux", "netbsd", "openbsd":
-		return []string{
-			"Unlock the keyring, then retry the command",
-			"Run gcx from a desktop session, where a password prompt can appear",
-			"Check the lock state: busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked",
-			"Supply the credential in an environment variable, such as GRAFANA_TOKEN, if you cannot unlock the keyring on this host",
-		}
-	default:
-		return []string{
-			"Unlock the OS keychain, then retry the command",
-			"Supply the credential in an environment variable, such as GRAFANA_TOKEN, if you cannot unlock the keychain on this host",
-		}
 	}
 }
