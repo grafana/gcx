@@ -32,6 +32,87 @@ func TestFirstRunNoticeShownOnceThenSuppressed(t *testing.T) {
 	assert.Empty(t, second.String(), "flag file must suppress the notice")
 }
 
+// An install that already saw an earlier notice must see a revised one. This is
+// the upgrade path: before revisions existed the flag file was written empty, so
+// every existing install holds one, and without this the amended disclosure
+// would only ever reach brand-new installs while the collection behind it had
+// already changed for everyone.
+func TestFirstRunNoticeReshownAfterRevisionBump(t *testing.T) {
+	for _, stale := range []struct {
+		name    string
+		content []byte
+	}{
+		{"pre-revision empty file", nil},
+		{"older revision", []byte("1\n")},
+	} {
+		t.Run(stale.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "gcx", firstRunNoticeFileName)
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+			require.NoError(t, os.WriteFile(path, stale.content, 0o600))
+
+			var out strings.Builder
+			maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
+			assert.Equal(t, firstRunNotice, out.String(),
+				"a changed disclosure must reach installs that saw an earlier one")
+
+			recorded, err := os.ReadFile(path)
+			require.NoError(t, err)
+			assert.Equal(t, noticeRevision, strings.TrimSpace(string(recorded)),
+				"the flag file must record the revision just shown")
+
+			var again strings.Builder
+			maybeShowFirstRunNotice(&again, ModeEnabled, true, false, false, path)
+			assert.Empty(t, again.String(), "the revised notice must then be suppressed")
+		})
+	}
+}
+
+// The notice must disclose what this revision actually added.
+//
+// Revision 2 exists because batch size categories started being collected, so a
+// notice that mentions only the output format and dry-run state discloses the
+// trimmings and omits the headline. That was the shape of the first draft.
+func TestFirstRunNoticeDisclosesBatchSizeCategories(t *testing.T) {
+	assert.Contains(t, firstRunNotice, "size categories",
+		"the batch size categories are the new collection in this revision")
+	assert.Contains(t, firstRunNotice, "succeeded, failed and skipped",
+		"say which counts are categorised, not just that sizes are collected")
+	assert.Contains(t, firstRunNotice, `"0" and "1"`,
+		"the singleton categories are exact, so the notice must say so")
+	assert.Contains(t, firstRunNotice, "dry-run mode",
+		"dry_run must be disclosed alongside the sizes")
+	assert.Contains(t, firstRunNotice, "output format",
+		"output_format is derived from --output and must be disclosed")
+}
+
+// The notice states what is not collected without enumerating exceptions. An
+// enumeration has to be re-audited against the whole event every time a field is
+// added, and the first one shipped was already wrong: it claimed --dry-run was
+// the only flag-derived value while output_format sat beside it.
+func TestFirstRunNoticeStatesExclusionsWithoutEnumeratingExceptions(t *testing.T) {
+	assert.NotContains(t, firstRunNotice, "one exception",
+		"do not enumerate exceptions; name what is collected")
+	assert.Contains(t, firstRunNotice, "by name only",
+		"the notice must still state that flags are recorded by name")
+	assert.Contains(t, firstRunNotice, "no raw batch or resource counts",
+		"the notice must say batch counts are not sent")
+	assert.NotContains(t, firstRunNotice, "raw counts of anything",
+		"the event does carry other numbers (duration_ms, exit_code), so the promise "+
+			"must stay scoped to batch and resource counts")
+	for _, excluded := range []string{"arguments", "free-form flag values", "resource names"} {
+		assert.Contains(t, firstRunNotice, excluded,
+			"the notice must name what is not collected")
+	}
+}
+
+// "rehearsal" overstated what dry_run means: pull is read-only and always
+// reports false, so false does not imply a real change. The notice must not
+// reintroduce that framing.
+func TestFirstRunNoticeDoesNotEquateDryRunWithRehearsalVersusChange(t *testing.T) {
+	assert.NotContains(t, firstRunNotice, "rather than a real change",
+		"dry_run=false does not imply mutation; pull is read-only and always false")
+}
+
 func TestFirstRunNoticeSuppressedWhenNotInteractive(t *testing.T) {
 	tests := []struct {
 		name                 string

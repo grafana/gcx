@@ -133,6 +133,17 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
+			// Always dry-run: the request above sets DryRun unconditionally,
+			// so validate's volume is never "resources managed". The counts come
+			// from the completed validation pass, which is the operation here;
+			// validate's own JSON document reports only failures and skips, so
+			// the success count is deliberately not read back from the output.
+			captureBatchVolume(cmdio.MutationSummary{
+				Succeeded: summary.SuccessCount(),
+				Failed:    summary.FailedCount(),
+				Skipped:   summary.SkippedCount(),
+			}, true, err)
+
 			if err := reportValidation(cmd.OutOrStdout(), opts.IO, summary); err != nil {
 				return err
 			}
