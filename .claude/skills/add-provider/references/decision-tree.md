@@ -103,12 +103,24 @@ TypedCRUD).
 
 ## Auth Decision Matrix
 
-| Auth Model | ConfigKeys | Implementation |
-|------------|-----------|----------------|
-| Same Grafana SA token, same server | Empty `[]` | Read `curCtx.Grafana.Token` directly |
-| Same token, different base path | Empty `[]` | Construct URL from `curCtx.Grafana.Server` + product path |
-| Separate product token | `[{Name: "token", Secret: true}]` | Read from provider config |
-| Separate service URL + token | `[{Name: "url"}, {Name: "token", Secret: true}]` | Full separate client |
+Pick the row by **where the request goes and which credential it carries**, then
+take the transport from that destination — not the other way round.
+
+| Auth model | ConfigKeys | Resolve with | Transport |
+|------------|-----------|--------------|-----------|
+| Grafana API on the stack host, SA token (including a different base path on that host) | Empty `[]` | `LoadGrafanaConfig` | `rest.HTTPClientFor` — destination is `cfg.Host` |
+| Grafana Cloud org-level operation | Empty `[]` | `LoadCloudTokenConfig` | `httputils.NewDefaultClient(ctx)` |
+| Grafana Cloud operation targeting a stack | Empty `[]` | `LoadCloudConfig` | `cloudCfg.HTTPClient(ctx)` — resolves both |
+| Product API authenticated directly, endpoint fixed or configurable | `[{Name: "token", Secret: true}]`, plus `{Name: "url"}` if the endpoint is configurable | `LoadDirectProviderSnapshot` | `httputils.NewDefaultClient(ctx)` |
+
+Provider code never reads context credentials directly. Direct-auth product APIs
+go through `LoadDirectProviderSnapshot` even when the endpoint is not
+configurable: it runs the endpoint/credential trust checks before any credential
+reaches provider code, and it is what every shipped direct-auth provider uses
+(`internal/providers/{synth,faro,k6}`). `LoadProviderConfig` returns the raw
+provider config map and performs no such check — use it for non-credential
+values, not to obtain a token. Client construction: `docs/reference/provider-guide.md`
+Steps 4 and 4b.
 
 ## Validation
 

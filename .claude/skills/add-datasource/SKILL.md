@@ -1,6 +1,6 @@
 ---
 name: add-datasource
-description: Use for the implementation workflow once a capability is already classified as a new gcx datasource type (e.g., Elasticsearch, CloudWatch, InfluxDB) — query client, command constructors, DatasourceProvider registration. Trigger on "add datasource", "new datasource type". NOT for deciding the integration tier, integration contracts, or pre-review self-checks — use the repo-local integrate-with-gcx contributor skill for those.
+description: Use for the implementation workflow that adds gcx CLI support for a datasource type not registered in internal/datasources/providers — query client, command constructors, DatasourceProvider registration. Trigger on "add support for an unsupported datasource type" or "new datasource type". NOT for creating or configuring a datasource instance in a Grafana stack (that is the shipped `gcx datasources create`), NOT for extending an already-registered kind, and NOT for deciding the integration tier or contract or running pre-review self-checks — use the existing kind's implementation or the repo-local integrate-with-gcx contributor skill instead.
 ---
 
 # Add Datasource Type
@@ -11,13 +11,20 @@ are checkpoints you satisfy, not approvals you wait for.
 
 ## When to Use
 
-- User wants to add CLI support for a new Grafana datasource type
-- User says "add datasource", "new datasource type"
+- User wants gcx CLI support for a datasource type gcx does not yet support
+- User says "add support for an unsupported datasource type", "new datasource type"
 - A task references datasource type implementation
 
-**When NOT to use**: If the datasource is Prometheus, Loki, Pyroscope, or Tempo —
-those already exist. If the product is a Grafana Cloud product (not a datasource),
-use `/add-provider` instead.
+**When NOT to use**:
+
+- **The user wants a datasource instance, not a type.** "Add a datasource" most
+  often means creating or configuring one in a Grafana stack — that is
+  `gcx datasources create` / `update`, already shipped. This skill writes Go
+  code to teach gcx a new *kind*. Confirm which one is meant before starting.
+- The kind is already registered under `internal/datasources/providers/` —
+  extend that implementation instead of adding a duplicate.
+- The product is a Grafana Cloud product, not a datasource — use
+  `/add-provider`.
 
 ## Entry paths
 
@@ -316,8 +323,9 @@ func (p *{kind}DSProvider) ExtraCommands(loader *providers.ConfigLoader) []*cobr
 
 The `DatasourceProvider` interface is defined in
 `internal/datasources/provider.go`. The `loader` is supplied by the mounting
-code in `cmd/gcx/datasources/command.go`, which binds `--config`/`--context`
-on each provider sub-command. Forward it to each command constructor.
+code in `cmd/gcx/datasources/command.go`, which binds `--config` on each
+provider sub-command. The root owns `--context` and passes its value through the
+command context. Forward the loader to each command constructor.
 
 Reference: `internal/datasources/providers/prometheus.go`.
 
@@ -459,5 +467,5 @@ mise exec -- go test ./internal/agent/...
 |---------|------------|
 | Datasource proxy path varies | Check if `/api/datasources/proxy/uid/` or `/api/datasources/uid/.../resources/` |
 | Plugin ID vs short kind | Add mapping to `NormalizeKind()` in `internal/datasources/query/resolve.go` |
-| Missing agent annotations | New leaf commands must appear in `internal/agent/command_annotations.go` |
+| Missing agent annotations | Every leaf needs a `token_cost` annotation on the built command. Setting it inline via `cmd.Annotations` in the constructor satisfies this, as does an entry in `internal/agent/command_annotations.go` — `agent.ApplyAnnotations` merges that map into the tree at startup. Per-kind datasource leaves normally do it inline |
 | PersistentPreRun chain | Always propagate to root in the DatasourceProvider parent command |

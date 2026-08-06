@@ -289,22 +289,31 @@ Reference: `internal/providers/slo/definitions/status.go`, `internal/query/prome
 
 ## Step 4b: HTTP Client Construction
 
-The right HTTP client depends on the **active auth mode**, not on whether the
-target is an "external" domain. The decision tree:
+The right HTTP client depends on **where the request actually goes**, per
+[CONSTITUTION.md § Architecture Invariants](../../CONSTITUTION.md): a request to
+any host other than `cfg.Host` must use `httputils.NewDefaultClient(ctx)` and
+never `rest.HTTPClientFor()`, because the k8s transport injects the Grafana
+bearer token on every outgoing request and that conflicts with the product's own
+auth. The auth mode matters only because it can change the destination — in
+OAuth proxy mode the request is addressed to the Grafana host, which is why the
+k8s transport is correct there and only there.
 
 ```
 Using LoadCloudConfig?  ──yes──▶  cloudCfg.HTTPClient(ctx)   ← always correct
                                     │
-                                    ├─ SA token mode  → httputils.NewDefaultClient(ctx)
-                                    └─ OAuth proxy mode → rest.HTTPClientFor (proxy adds provider auth)
+                                    ├─ SA token mode → direct to the product host
+                                    │                  → httputils.NewDefaultClient(ctx)
+                                    └─ OAuth proxy mode → destination is the Grafana host
+                                                          → rest.HTTPClientFor (proxy adds provider auth)
 
 Not using LoadCloudConfig?  ──────▶  httputils.NewDefaultClient(ctx)
 (token passed directly to NewClient)
 ```
 
 **Always prefer `cloudCfg.HTTPClient(ctx)`** when `LoadCloudConfig` is available
-— it picks the right client for the active auth mode automatically, including
-future proxy routing changes.
+— it resolves destination and transport together, so it stays correct if proxy
+routing changes. Choosing the transport yourself means asserting the
+destination yourself.
 
 ### Via CloudRESTConfig (preferred)
 
@@ -539,6 +548,9 @@ func (m *mockProvider) ShortDesc() string                    { return m.shortDes
 func (m *mockProvider) Commands() []*cobra.Command           { return m.commands }
 func (m *mockProvider) Validate(cfg map[string]string) error { return m.validateFn(cfg) }
 func (m *mockProvider) ConfigKeys() []providers.ConfigKey    { return m.configKeys }
+func (m *mockProvider) TypedRegistrations() []adapter.Registration {
+    return nil
+}
 ```
 
 Test the interface contract directly:
