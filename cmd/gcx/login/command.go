@@ -123,16 +123,13 @@ func (opts *loginOpts) Validate(args []string) error {
 			},
 		}
 	}
-	return nil
-}
-
-// applyOAuthManualImplication makes --oauth-manual a complete selection, so
-// every gate that inspects OAuth sees the fresh-credential intent. It must run
-// before the auto-local credential gates in runLogin.
-func applyOAuthManualImplication(opts *loginOpts) {
+	// --oauth-manual is a complete selection on its own. Fold it into OAuth
+	// here, after the conflict checks above, so the opts are self-consistent for
+	// every gate that reads OAuth later.
 	if opts.OAuthManual {
 		opts.OAuth = true
 	}
+	return nil
 }
 
 // Command returns the `login` Cobra command.
@@ -183,9 +180,6 @@ Auth sources (for non-interactive use):
 //nolint:gocyclo,maintidx // Login deliberately keeps trust preflight, auth selection, and retry setup in one auditable flow.
 func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	ctx := cmd.Context()
-	// --oauth-manual is a complete selection on its own. Fold it into OAuth
-	// before any gate below reads flags.OAuth.
-	applyOAuthManualImplication(flags)
 	// The auto-discovered-config credential rejection below is the earliest gate
 	// that can end a login, and it runs before any config is read — so there is
 	// nothing but the flags to go on. Record what they ask for here; the

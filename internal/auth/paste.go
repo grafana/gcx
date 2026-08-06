@@ -25,7 +25,10 @@ import (
 type pasteWatcher struct {
 	tty    *os.File
 	writer io.Writer
-	values chan url.Values
+	values chan pastedInput
+	// stop closes first in Close. The reader goroutine selects on it while it
+	// delivers, so a caller that has stopped reading cannot wedge the send.
+	stop chan struct{}
 	// done closes when the reader goroutine has ended. Close waits on it, so
 	// the terminal has exactly one reader again by the time Close returns.
 	done chan struct{}
@@ -48,7 +51,8 @@ func startPasteWatcher(w io.Writer, port int) *pasteWatcher {
 	watcher := &pasteWatcher{
 		tty:    tty,
 		writer: w,
-		values: make(chan url.Values, 1),
+		values: make(chan pastedInput, 1),
+		stop:   make(chan struct{}),
 		done:   make(chan struct{}),
 	}
 	watcher.printInstructions(port)
@@ -91,9 +95,20 @@ var openPasteTerminal = func() (*os.File, bool) { //nolint:gochecknoglobals // t
 	return tty, true
 }
 
-// Values reports parsed redirect URLs. A nil watcher returns a nil channel,
-// which blocks forever in a select — exactly the "no paste path" behaviour.
-func (p *pasteWatcher) Values() <-chan url.Values {
+// pastedInput is one line that the user pasted: the parsed query parameters, or
+// the error that says why the line was not usable.
+//
+// The watcher delivers the parse error instead of printing it, because the
+// caller writes to the same terminal. One goroutine therefore owns every
+// message, and the two cannot interleave.
+type pastedInput struct {
+	Values url.Values
+	Err    error
+}
+
+// Input reports each pasted line. A nil watcher returns a nil channel, which
+// blocks forever in a select — exactly the "no paste path" behaviour.
+func (p *pasteWatcher) Input() <-chan pastedInput {
 	if p == nil {
 		return nil
 	}
@@ -108,7 +123,7 @@ func (p *pasteWatcher) Reject(err error) {
 		return
 	}
 	fmt.Fprintf(p.writer, "\nThat URL did not work: %v\n", err)
-	fmt.Fprint(p.writer, "Redirect URL (or wait for the browser): ")
+	fmt.Fprint(p.writer, pastePrompt)
 }
 
 // closeGrace bounds the wait for the reader goroutine. Closing a pollable file
@@ -125,6 +140,7 @@ func (p *pasteWatcher) Close() {
 	if p == nil {
 		return
 	}
+	close(p.stop)
 	_ = p.tty.Close()
 	select {
 	case <-p.done:
@@ -143,21 +159,22 @@ func (p *pasteWatcher) run() {
 			return
 		}
 
+		// Keep reading after a delivery. The caller runs the semantic checks
+		// (state, code, token exchange) and calls Reject when they fail, which
+		// re-prompts. That prompt needs a reader. Without one the next pasted
+		// line stays in the terminal buffer, and the shell reads it after gcx
+		// exits, which writes the authorization code into the shell history.
 		values, err := ParseCallbackInput(line)
-		if err != nil {
-			p.Reject(err)
-			continue
+		select {
+		case p.values <- pastedInput{Values: values, Err: err}:
+		case <-p.stop:
+			return
 		}
-
-		p.values <- values
-		return
 	}
 }
 
 func (p *pasteWatcher) printInstructions(port int) {
-	fmt.Fprintln(p.writer)
-	fmt.Fprintln(p.writer, "Note: gcx runs in an SSH session.")
-	fmt.Fprintln(p.writer, "The browser on your computer cannot open the callback address on this host.")
+	printRemoteSessionPreamble(p.writer)
 	fmt.Fprintln(p.writer, "Do one of these two steps. gcx accepts the one that completes first.")
 	fmt.Fprintln(p.writer)
 	fmt.Fprintln(p.writer, "  1. Add a port forward to this SSH session. Press Enter, then press ~C,")
@@ -168,5 +185,5 @@ func (p *pasteWatcher) printInstructions(port int) {
 	fmt.Fprintln(p.writer, "     goes to an address that does not load. Copy that address and paste it")
 	fmt.Fprintln(p.writer, "     here.")
 	fmt.Fprintln(p.writer)
-	fmt.Fprint(p.writer, "Redirect URL (or wait for the browser): ")
+	fmt.Fprint(p.writer, pastePrompt)
 }

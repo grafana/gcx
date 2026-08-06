@@ -200,8 +200,12 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 			return result, nil
 		case err := <-errCh:
 			return nil, err
-		case values := <-paste.Values():
-			result, cerr := f.handleGCOMCallbackParams(ctx, values, state, codeVerifier, redirectURI)
+		case pasted := <-paste.Input():
+			if pasted.Err != nil {
+				paste.Reject(pasted.Err)
+				continue
+			}
+			result, cerr := f.handleGCOMCallbackParams(ctx, pasted.Values, state, codeVerifier, redirectURI)
 			if cerr != nil {
 				paste.Reject(pasteRejection(cerr.err))
 				continue
