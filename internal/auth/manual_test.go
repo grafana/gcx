@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -548,29 +549,80 @@ func TestPasteWatcherDeliversAndRejects(t *testing.T) {
 	require.NotNil(t, watcher)
 	t.Cleanup(watcher.Close)
 
-	// An unusable line must not deliver a value, and must re-prompt.
+	// An unusable line reaches the caller as an error, not as parameters. The
+	// caller then re-prompts, because the callback server is still listening.
 	_, err = writerEnd.WriteString("not-a-url\n")
 	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		return strings.Contains(out.String(), "That URL did not work")
-	}, 5*time.Second, 10*time.Millisecond)
-	assert.Contains(t, out.String(), "Redirect URL")
-
 	select {
-	case <-watcher.Values():
-		t.Fatal("an unusable line must not deliver a value")
-	default:
+	case pasted := <-watcher.Input():
+		require.Error(t, pasted.Err)
+		assert.Nil(t, pasted.Values)
+		watcher.Reject(pasted.Err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watcher did not report the unusable line")
 	}
+	assert.Contains(t, out.String(), "That URL did not work")
+	assert.Contains(t, out.String(), "Redirect URL")
 
 	// A usable line reaches the caller.
 	_, err = writerEnd.WriteString("http://127.0.0.1:54321/callback?code=c1&state=s1\n")
 	require.NoError(t, err)
 	select {
-	case values := <-watcher.Values():
-		assert.Equal(t, "c1", values.Get("code"))
-		assert.Equal(t, "s1", values.Get("state"))
+	case pasted := <-watcher.Input():
+		require.NoError(t, pasted.Err)
+		assert.Equal(t, "c1", pasted.Values.Get("code"))
+		assert.Equal(t, "s1", pasted.Values.Get("state"))
 	case <-time.After(5 * time.Second):
 		t.Fatal("the watcher did not deliver the pasted URL")
+	}
+}
+
+// TestPasteWatcherKeepsReadingAfterCallerRejection is the regression guard for
+// a reader that stopped after the first delivery.
+//
+// The watcher only parses. The caller runs the semantic checks (state, code,
+// token exchange) and calls Reject when they fail, which re-prompts. A watcher
+// that returned after the first delivery left that prompt with no reader: the
+// second pasted line stayed in the terminal buffer, and the shell read it once
+// gcx exited, which wrote the authorization code into the shell history.
+func TestPasteWatcherKeepsReadingAfterCallerRejection(t *testing.T) {
+	remoteSessionForTest(t)
+
+	reader, writerEnd, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = writerEnd.Close() })
+	restore := auth.SwapPasteTerminal(reader, true)
+	t.Cleanup(restore)
+
+	var out bytes.Buffer
+	watcher := auth.StartPasteWatcher(&out, 54321)
+	require.NotNil(t, watcher)
+	t.Cleanup(watcher.Close)
+
+	// The first URL parses and reaches the caller.
+	_, err = writerEnd.WriteString("http://127.0.0.1:54321/callback?code=c1&state=stale\n")
+	require.NoError(t, err)
+	select {
+	case pasted := <-watcher.Input():
+		require.NoError(t, pasted.Err)
+		assert.Equal(t, "stale", pasted.Values.Get("state"))
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watcher did not deliver the first pasted URL")
+	}
+
+	// The caller rejects it, exactly as a state mismatch does in the flow.
+	watcher.Reject(errors.New("the pasted URL belongs to a different login attempt"))
+
+	// The re-prompt must have a reader, so a second paste must also arrive.
+	_, err = writerEnd.WriteString("http://127.0.0.1:54321/callback?code=c2&state=fresh\n")
+	require.NoError(t, err)
+	select {
+	case pasted := <-watcher.Input():
+		require.NoError(t, pasted.Err)
+		assert.Equal(t, "c2", pasted.Values.Get("code"))
+		assert.Equal(t, "fresh", pasted.Values.Get("state"))
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watcher stopped reading after the caller rejected the first URL")
 	}
 }
 
@@ -594,9 +646,15 @@ func TestPasteWatcherRejectionDoesNotEchoTheURL(t *testing.T) {
 
 	_, err = writerEnd.WriteString("http://127.0.0.1:54321/callback-" + secret + "\n")
 	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		return strings.Contains(out.String(), "That URL did not work")
-	}, 5*time.Second, 10*time.Millisecond)
+	select {
+	case pasted := <-watcher.Input():
+		require.Error(t, pasted.Err)
+		assert.NotContains(t, pasted.Err.Error(), secret)
+		watcher.Reject(pasted.Err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watcher did not report the unusable line")
+	}
+	assert.Contains(t, out.String(), "That URL did not work")
 	assert.NotContains(t, out.String(), secret)
 }
 

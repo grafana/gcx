@@ -1987,6 +1987,11 @@ func TestLoginOptsValidate(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+			// --oauth-manual is a complete selection on its own, so Validate
+			// must leave OAuth set for every gate that reads it later.
+			if tt.oauthManualFlag {
+				assert.True(t, opts.OAuth, "Validate must fold --oauth-manual into OAuth")
+			}
 		})
 	}
 }
@@ -2327,35 +2332,6 @@ func TestOAuthManualFlagParses(t *testing.T) {
 			opts.setup(flags)
 			require.NoError(t, flags.Parse(tt.args))
 			assert.Equal(t, tt.wantManual, opts.OAuthManual)
-		})
-	}
-}
-
-// TestApplyOAuthManualImplication pins that --oauth-manual is a complete
-// selection: every downstream gate reads flags.OAuth, so the implication must
-// run before them.
-func TestApplyOAuthManualImplication(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		manual    bool
-		oauth     bool
-		wantOAuth bool
-	}{
-		{name: "neither", manual: false, oauth: false, wantOAuth: false},
-		{name: "manual_only", manual: true, oauth: false, wantOAuth: true},
-		{name: "both", manual: true, oauth: true, wantOAuth: true},
-		{name: "oauth_only", manual: false, oauth: true, wantOAuth: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			opts := &loginOpts{OAuth: tt.oauth, OAuthManual: tt.manual}
-			applyOAuthManualImplication(opts)
-			assert.Equal(t, tt.wantOAuth, opts.OAuth)
 		})
 	}
 }

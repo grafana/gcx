@@ -216,8 +216,12 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 			return result, nil
 		case err := <-errCh:
 			return nil, err
-		case values := <-paste.Values():
-			result, cerr := handleCallbackParams(ctx, values, state, codeVerifier)
+		case pasted := <-paste.Input():
+			if pasted.Err != nil {
+				paste.Reject(pasted.Err)
+				continue
+			}
+			result, cerr := handleCallbackParams(ctx, pasted.Values, state, codeVerifier)
 			if cerr != nil {
 				paste.Reject(pasteRejection(cerr.err))
 				continue

@@ -27,6 +27,9 @@ func PrintRemoteSessionHint(w io.Writer, port int, command string) {
 // PasteWatcher exposes the unexported watcher type for black-box tests.
 type PasteWatcher = pasteWatcher
 
+// PastedInput exposes one watcher delivery for black-box tests.
+type PastedInput = pastedInput
+
 // StartPasteWatcher exposes the unexported startPasteWatcher. It returns nil
 // when the paste path does not apply.
 func StartPasteWatcher(w io.Writer, port int) *PasteWatcher {

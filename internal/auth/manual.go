@@ -129,19 +129,31 @@ func readLineContext(ctx context.Context, r io.Reader) (string, error) {
 	}
 }
 
-// printRemoteSessionHint explains how to finish the flow when gcx runs on a
-// remote host. It prints nothing for a local session. command is the exact
-// invocation to repeat, for example "gcx login --oauth-manual".
-func printRemoteSessionHint(w io.Writer, port int, command string) {
+// printRemoteSessionPreamble states why the browser cannot reach the callback
+// address. Every remote-session message opens with it. It prints nothing, and
+// reports false, for a local session.
+func printRemoteSessionPreamble(w io.Writer) bool {
 	if !terminal.IsRemoteSession() {
-		return
+		return false
 	}
 
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Note: gcx runs in an SSH session.")
 	fmt.Fprintln(w, "The browser on your computer cannot open the callback address on this host.")
+	return true
+}
+
+// printRemoteSessionHint explains how to finish the flow when gcx runs on a
+// remote host and has no terminal to read a pasted URL from. It prints nothing
+// for a local session. command is the exact invocation to repeat, for example
+// "gcx login --oauth-manual".
+func printRemoteSessionHint(w io.Writer, port int, command string) {
+	if !printRemoteSessionPreamble(w) {
+		return
+	}
+
 	fmt.Fprintln(w, "Do one of these two steps:")
-	fmt.Fprintf(w, "  1. Forward the port. On your computer, run:\n")
+	fmt.Fprintln(w, "  1. Forward the port. On your computer, run:")
 	fmt.Fprintf(w, "       ssh -L %d:127.0.0.1:%d REMOTE_HOST\n", port, port)
 	fmt.Fprintf(w, "  2. Stop this command. Run it again with %s.\n", command)
 	fmt.Fprintln(w, "     gcx then prints the login URL. You copy the redirect URL from the")
@@ -153,37 +165,37 @@ func printRemoteSessionHint(w io.Writer, port int, command string) {
 // verification is the code that the consent page shows. Pass an empty string
 // for a flow that does not show one.
 func printManualInstructions(w io.Writer, authURL, verification string) {
-	steps := [][]string{
-		{
-			"Open this URL in a browser on your computer:",
-			"  " + authURL,
-		},
-	}
-	if verification != "" {
-		steps = append(steps, []string{
-			"Verification code: " + verification,
-			"Make sure that the browser shows the same code. Then approve.",
-		})
-	}
-	steps = append(steps,
-		[]string{"The browser goes to an address that does not load. This is correct."},
-		[]string{
-			"Copy the full address from the browser address bar.",
-			"Do these steps quickly. The code expires.",
-		},
-	)
-
 	fmt.Fprintln(w, "Manual OAuth mode. gcx does not start a callback server.")
 	fmt.Fprintln(w)
-	for i, lines := range steps {
-		fmt.Fprintf(w, "%d. %s\n", i+1, lines[0])
-		for _, line := range lines[1:] {
-			fmt.Fprintf(w, "   %s\n", line)
-		}
+
+	step := 1
+	fmt.Fprintf(w, "%d. Open this URL in a browser on your computer:\n", step)
+	fmt.Fprintf(w, "     %s\n\n", authURL)
+
+	if verification != "" {
+		step++
+		fmt.Fprintf(w, "%d. Verification code: %s\n", step, verification)
+		fmt.Fprintln(w, "   Make sure that the browser shows the same code. Then approve.")
 		fmt.Fprintln(w)
 	}
-	fmt.Fprint(w, "Redirect URL: ")
+
+	step++
+	fmt.Fprintf(w, "%d. The browser goes to an address that does not load. This is correct.\n\n", step)
+
+	step++
+	fmt.Fprintf(w, "%d. Copy the full address from the browser address bar.\n", step)
+	fmt.Fprintln(w, "   Do these steps quickly. The code expires.")
+	fmt.Fprintln(w)
+	fmt.Fprint(w, manualRedirectPrompt)
 }
+
+// manualRedirectPrompt asks for the pasted URL when gcx runs no callback
+// server. pastePrompt is the variant for the race against a live callback.
+const manualRedirectPrompt = "Redirect URL: "
+
+// pastePrompt asks for the pasted URL while a callback server still listens, so
+// it names the second route too.
+const pastePrompt = "Redirect URL (or wait for the browser): "
 
 // manualCallbackHygieneNotice tells the user to clear the terminal. The pasted
 // URL holds a single-use code.
