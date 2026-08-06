@@ -102,7 +102,6 @@ func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
 		profileType: o.profileType,
 		maxNodes:    o.maxNodes,
 		limit:       o.limit,
-		warn:        cmd.ErrOrStderr(),
 	})
 	if err != nil {
 		return err

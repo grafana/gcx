@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 	"time"
 
@@ -50,12 +49,12 @@ type genericQueryRequest struct {
 	profileType string
 	maxNodes    int64
 	limit       int
-
-	// warn is the command's stderr. No kind on main emits a warning during a
-	// generic query, but the SQL kinds cap an oversized LIMIT and must say so
-	// without polluting the stdout document, so the seam lives here.
-	warn io.Writer
 }
+
+// A handler that needs to warn (a SQL kind capping an oversized LIMIT, say)
+// adds a `warn io.Writer` field here and the command fills it from
+// cmd.ErrOrStderr(). Left out until something reads it, so the seam arrives
+// with its first user and its first test rather than ahead of both.
 
 // queryDispatch runs the generic form for one kind and returns the value the
 // command will encode. Handlers must not encode or print: the command owns
@@ -93,11 +92,15 @@ func newQueryRoutes() queryRoutes {
 	}
 }
 
-// supportedKinds returns every kind the command routes — expression-dispatchable
+// supportedKinds returns every kind this command routes — expression-dispatchable
 // and redirect-only alike — sorted, for the unsupported-type message. Deriving
-// it is the point of #1137: the hand-maintained list had already drifted, and a
-// caller told a kind is unsupported is better served by the full set gcx knows
-// how to handle than by the subset that happens to take an expression.
+// it is the point of #1137: the hand-maintained list had already drifted.
+//
+// Scope, precisely: these are the kinds `gcx datasources query` handles, not
+// every kind gcx can query. Kinds with a typed `gcx datasources <kind> query`
+// but no entry here (tempo, athena, infinity) are absent by construction.
+// Redirect-only kinds are present because this command does handle them — by
+// naming the typed command — even though it never runs their query.
 func (r queryRoutes) supportedKinds() []string {
 	kinds := make([]string, 0, len(r.dispatch)+len(r.redirects))
 	for kind := range r.dispatch {

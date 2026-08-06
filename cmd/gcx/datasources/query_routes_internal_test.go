@@ -6,6 +6,7 @@ package datasources
 // command actually looks up, and that no entry is a usable-looking blank.
 
 import (
+	"strings"
 	"testing"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -25,12 +26,21 @@ func TestQueryRoutesTablesAreDisjoint(t *testing.T) {
 
 // Keys must be what dsquery.NormalizeKind produces, not raw plugin IDs — a
 // route keyed "grafana-pyroscope-datasource" would never be reached.
+//
+// The fixed-point check alone is weak: NormalizeKind returns anything it does
+// not recognize unchanged, so it only catches the plugin IDs already in its
+// switch. The shape check carries the rest, because every raw Grafana plugin ID
+// this command sees is either "grafana-*" or "*-datasource".
 func TestQueryRoutesKeysAreNormalizedKinds(t *testing.T) {
 	routes := newQueryRoutes()
 
 	for _, kind := range routes.supportedKinds() {
 		assert.Equalf(t, kind, dsquery.NormalizeKind(kind),
 			"route key %q is not a normalized kind", kind)
+		assert.Falsef(t, strings.HasPrefix(kind, "grafana-"),
+			"route key %q looks like a raw plugin ID, not a normalized kind", kind)
+		assert.Falsef(t, strings.HasSuffix(kind, "-datasource"),
+			"route key %q looks like a raw plugin ID, not a normalized kind", kind)
 	}
 }
 
