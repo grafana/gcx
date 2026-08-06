@@ -104,10 +104,14 @@ same flag works on `gcx cloud login`, and one choice covers both the stack step
 and the Cloud follow-up step. You do not need it for an ordinary interactive SSH
 login — the prompt above appears on its own.
 
-**Close other `gcx login` sessions on the browser computer first.** A gcx login
-that already listens on the same port there receives the callback, rejects it on
-the state check, and ends its own flow. Your paste still succeeds, but the
-other login does not.
+**gcx stops waiting eventually.** A login that never receives a matching
+callback gives up after ten minutes rather than waiting forever. Run the
+command again to start a fresh one.
+
+**Another `gcx login` on the same port is harmless.** If a second login is
+already listening on that port, it answers the callback, sees that the `state`
+does not match its own, and ignores it. It keeps waiting for its own callback,
+and so does this one. A callback only ends the login that started it.
 
 **Terminal hygiene.** The pasted URL holds a single-use authorization code and
 the state value. It does not hold the PKCE code verifier or a token, so the

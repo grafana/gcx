@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net/url"
@@ -10,7 +11,36 @@ import (
 // ErrStateMismatch reports that the callback state does not match the state
 // gcx generated. The manual paste path wraps it with its own guidance: there,
 // a mismatch nearly always means the URL came from a different login attempt.
-var ErrStateMismatch = errors.New("invalid state - possible CSRF attack")
+//
+// The wording deliberately does not name CSRF. A loopback listener is reachable
+// by any local process, and in unified login the previous OAuth leg's callback
+// often lands on the next leg's port, so a mismatch is far more often a stale
+// tab than an attack. Naming an attack made an ordinary failure get reported as
+// a security incident.
+var ErrStateMismatch = errors.New("callback state does not match this login attempt")
+
+// callbackBelongsToFlow reports whether a callback carries the state that this
+// flow generated.
+//
+// This is the ownership test, and passing it is the only thing that may consume
+// a flow's one-shot completion path. Both the HTTP handler and the pasted-URL
+// path call it before they claim, so the two cannot drift on what counts as
+// "ours". The comparison is constant time: the state is the secret an attacker
+// would be guessing.
+func callbackBelongsToFlow(q url.Values, expectedState string) bool {
+	got := q.Get("state")
+	if got == "" || expectedState == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(expectedState)) == 1
+}
+
+// foreignCallbackPage is shown in the browser for a callback that does not
+// belong to the sign-in that is waiting. It names the likely cause instead of
+// an attack, and it says the waiting sign-in is unaffected, because it is.
+const foreignCallbackPage = "This callback does not belong to the sign-in waiting in your terminal. " +
+	"It is most likely from an earlier login attempt or a reloaded tab. " +
+	"The sign-in in your terminal is still running — approve it from the URL that terminal printed."
 
 // callbackError pairs the error reported to the caller with the short message
 // rendered on the browser error page. The manual paste path uses only err.
@@ -31,8 +61,11 @@ func (e *callbackError) Unwrap() error { return e.err }
 // ParseCallbackInput. Keeping one implementation stops the two paths from
 // diverging on the state check, the PKCE exchange, or endpoint validation.
 func handleCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier string) (*Result, *callbackError) {
-	if q.Get("state") != expectedState {
-		return nil, &callbackError{err: ErrStateMismatch, page: "Invalid state parameter"}
+	// Callers gate on callbackBelongsToFlow before claiming the flow, so this
+	// re-check is defence in depth: no caller may reach the exchange with a
+	// callback that is not ours.
+	if !callbackBelongsToFlow(q, expectedState) {
+		return nil, &callbackError{err: ErrStateMismatch, page: foreignCallbackPage}
 	}
 
 	if errMsg := q.Get("error"); errMsg != "" {
@@ -86,8 +119,8 @@ func handleCallbackParams(ctx context.Context, q url.Values, expectedState, code
 // handleCallbackParams. redirectURI must be byte-identical to the redirect_uri
 // sent on the authorize request, because GCOM rejects the exchange otherwise.
 func (f *GCOMFlow) handleGCOMCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier, redirectURI string) (*GCOMResult, *callbackError) {
-	if q.Get("state") != expectedState {
-		return nil, &callbackError{err: ErrStateMismatch, page: "Invalid state parameter"}
+	if !callbackBelongsToFlow(q, expectedState) {
+		return nil, &callbackError{err: ErrStateMismatch, page: foreignCallbackPage}
 	}
 
 	if errMsg := q.Get("error"); errMsg != "" {

@@ -209,7 +209,8 @@ sequenceDiagram
     Browser->>Grafana: User approves consent
     Grafana->>Browser: Redirect 127.0.0.1:PORT/callback<br/>?code&state&endpoint
     Browser->>Callback: GET /callback?code&state&endpoint
-    Callback->>Callback: Validate state (CSRF)<br/>and endpoint (trusted domain)
+    Callback->>Callback: Check method, then state<br/>(ownership), then claim the flow
+    Callback->>Callback: Validate endpoint<br/>(trusted domain)
     Callback->>Backend: POST endpoint/api/cli/v1/auth/exchange<br/>{code, code_verifier}
     Backend->>Callback: gat_ access token,<br/>gar_ refresh token, expiries
     Callback->>gcx: Deliver Result via channel
@@ -232,6 +233,41 @@ used as the base URL for the token exchange — is validated by
 (`.grafana.net`, `.grafana-dev.net`, `.grafana-ops.net`) plus loopback. This
 prevents an attacker who controls the browser redirect from steering the
 token exchange at a hostile host.
+
+### Callback ownership
+
+A loopback listener is reachable by every process on the machine, so arriving
+at the callback address cannot be what entitles a request to finish a login.
+`callbackArbiter` (`internal/auth/arbiter.go`) is the single authority that
+decides which request may run the token exchange, and the handler consults it
+only after the request has proved it belongs to this flow:
+
+| Request | Response | Effect on the flow |
+|---|---|---|
+| Not `GET` | `405` with `Allow: GET` | none |
+| `state` missing or not ours | `400` and a browser page | none |
+| Ours, flow already claimed | `410 Gone` | none — replay stays rejected |
+| Ours, deadline already passed | `410 Gone` | none |
+| Ours, first to arrive | success or error page | terminal |
+
+Ordering is the point. The guard used to be a `sync.Once` claimed on arrival,
+ahead of the state check, so any request at all consumed it and ended the
+login — and the genuine callback that followed was answered with `410 Gone`.
+In a unified Cloud login the two legs run back to back over the same port
+range, so a reloaded tab from the first leg routinely aborted the second.
+
+The arbiter is shared rather than per-path because the paste fallback below
+runs concurrently with the listener: `claimPastedCallback` applies the same
+ownership test and takes the same claim, so a pasted URL and a browser
+callback can never both exchange the same authorization code. Only the paste
+path can `release` a claim — it re-prompts after a failed attempt, and the
+next attempt has to be able to claim.
+
+The arbiter also owns the wait bound. Every flow gives up after
+`defaultCallbackAcquireTimeout` if nothing valid arrives; a granted claim
+stops that clock, so an exchange in flight is never cut off. Rejected requests
+deliberately do not extend it, or a local process could keep a login alive
+indefinitely.
 
 ### Manual callback (no local listener)
 

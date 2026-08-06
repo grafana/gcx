@@ -21,7 +21,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/deeplink"
@@ -98,6 +97,9 @@ type Flow struct {
 	opts     Options
 	writer   io.Writer
 	reader   io.Reader
+	// acquireTimeout bounds the wait for a callback that belongs to this flow.
+	// Set from defaultCallbackAcquireTimeout; tests shorten it per instance.
+	acquireTimeout time.Duration
 }
 
 // NewFlow creates a new authentication flow for the given Grafana endpoint.
@@ -116,7 +118,7 @@ func NewFlow(endpoint string, opts Options) *Flow {
 	if r == nil {
 		r = os.Stdin
 	}
-	return &Flow{endpoint: endpoint, opts: opts, writer: w, reader: r}
+	return &Flow{endpoint: endpoint, opts: opts, writer: w, reader: r, acquireTimeout: defaultCallbackAcquireTimeout}
 }
 
 // Run executes the authentication flow.
@@ -142,8 +144,17 @@ func (f *Flow) runManual(ctx context.Context) (*Result, error) {
 	authURL := f.buildAuthURL(manualCallbackPort, state, codeChallenge)
 	printManualInstructions(f.writer, authURL, verificationCode(codeChallenge))
 
-	line, err := readLineContext(ctx, f.reader)
+	// Bound the read, not the exchange: manual mode has no listener to time
+	// out, so without this the flow waits on the terminal forever. The
+	// exchange below keeps the caller's context and its own 30s timeout.
+	readCtx, cancelRead := context.WithTimeout(ctx, f.acquireTimeout)
+	defer cancelRead()
+
+	line, err := readLineContext(readCtx, f.reader)
 	if err != nil {
+		if ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+			return nil, errCallbackTimeout(f.acquireTimeout)
+		}
 		return nil, err
 	}
 
@@ -178,7 +189,11 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 
 	resultCh := make(chan *Result, 1)
 	errCh := make(chan error, 1)
-	server := f.startCallbackServer(ctx, listener, state, codeVerifier, resultCh, errCh)
+	// One arbiter for every path that can complete this flow: the HTTP
+	// handler below, the paste watcher further down, and the deadline.
+	arb := newCallbackArbiter(f.acquireTimeout)
+	defer arb.stop()
+	server := f.startCallbackServer(ctx, listener, state, codeVerifier, arb, resultCh, errCh)
 
 	defer func() { //nolint:contextcheck // intentionally use Background for graceful shutdown after ctx cancellation
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -221,13 +236,26 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 				paste.Reject(pasted.Err)
 				continue
 			}
+			switch claimPastedCallback(arb, pasted.Values, state) {
+			case pasteForeign:
+				paste.Reject(errManualForeignState)
+				continue
+			case pasteSuperseded:
+				continue
+			case pasteClaimed:
+			}
 			result, cerr := handleCallbackParams(ctx, pasted.Values, state, codeVerifier)
 			if cerr != nil {
+				// Hand the flow back so the next paste can claim it.
+				arb.release()
 				paste.Reject(pasteRejection(cerr.err))
 				continue
 			}
+			arb.settle()
 			fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
 			return result, nil
+		case <-arb.expired():
+			return nil, errCallbackTimeout(f.acquireTimeout)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -271,8 +299,8 @@ func newFlowSecrets() (string, string, string, error) {
 	return state, codeVerifier, generateCodeChallenge(codeVerifier), nil
 }
 
-func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier string, resultCh chan<- *Result, errCh chan<- error) *http.Server {
-	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
+func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier string, arb *callbackArbiter, resultCh chan<- *Result, errCh chan<- error) *http.Server {
+	return newCallbackServer(listener, expectedState, arb, errCh, func(w http.ResponseWriter, r *http.Request) {
 		result, cerr := handleCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier)
 		if cerr != nil {
 			errCh <- cerr.err
@@ -285,22 +313,56 @@ func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, e
 	})
 }
 
-// newCallbackServer binds a single-use /callback handler to listener and starts
-// serving in a goroutine. handle runs at most once; replayed callbacks get 410
-// Gone. Serve errors are reported on errCh.
-func newCallbackServer(listener net.Listener, errCh chan<- error, handle http.HandlerFunc) *http.Server {
-	var once sync.Once
-
+// newCallbackServer binds the /callback handler to listener and starts serving
+// in a goroutine. Serve errors are reported on errCh.
+//
+// The handler answers every request, but only a request that belongs to this
+// flow may consume it. Ordering matters and is the whole of the fix for #1147:
+// the guard used to be claimed on arrival, ahead of the state check, so any
+// unrelated request aborted the login and left the real callback to be answered
+// with 410 Gone.
+//
+//	non-GET           -> 405 Allow: GET      no claim, flow untouched
+//	state not ours    -> 400 + browser page  no claim, flow untouched
+//	already claimed   -> 410 Gone            replay stays rejected
+//	deadline passed   -> 410 Gone            flow already gave up
+//	ours and first    -> handle(), terminal
+func newCallbackServer(listener net.Listener, expectedState string, arb *callbackArbiter, errCh chan<- error, handle http.HandlerFunc) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		handled := false
-		once.Do(func() {
-			handled = true
-			handle(w, r)
-		})
-		if !handled {
-			http.Error(w, "Authentication already processed", http.StatusGone)
+		// An explicit check, not a "GET /callback" ServeMux pattern: that
+		// pattern also matches HEAD, which would let a HEAD request run the
+		// token exchange as a side effect.
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
 		}
+
+		// Ownership decides who may consume the flow. Anything else is
+		// answered and forgotten: a loopback listener is reachable by every
+		// local process, and in unified login the first OAuth leg's callback
+		// commonly lands on the second leg's port.
+		if !callbackBelongsToFlow(r.URL.Query(), expectedState) {
+			renderErrorPage(w, foreignCallbackPage)
+			return
+		}
+
+		switch arb.claim() {
+		case claimTaken:
+			http.Error(w, "Authentication already processed", http.StatusGone)
+			return
+		case claimExpired:
+			http.Error(w, "This sign-in timed out. Run the command again.", http.StatusGone)
+			return
+		case claimGranted:
+		}
+
+		// Deferred so a panic inside handle cannot strand the flow in the
+		// claimed state, waiting out its deadline for a result that will
+		// never arrive.
+		defer arb.settle()
+		handle(w, r)
 	})
 
 	server := &http.Server{

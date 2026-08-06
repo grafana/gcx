@@ -81,6 +81,9 @@ type GCOMFlow struct {
 	opts   GCOMOptions
 	writer io.Writer
 	reader io.Reader
+	// acquireTimeout bounds the wait for a callback that belongs to this flow.
+	// Set from defaultCallbackAcquireTimeout; tests shorten it per instance.
+	acquireTimeout time.Duration
 }
 
 // NewGCOMFlow creates a new GCOM OAuth2 PKCE flow.
@@ -96,7 +99,7 @@ func NewGCOMFlow(opts GCOMOptions) *GCOMFlow {
 	if r == nil {
 		r = os.Stdin
 	}
-	return &GCOMFlow{opts: opts, writer: w, reader: r}
+	return &GCOMFlow{opts: opts, writer: w, reader: r, acquireTimeout: defaultCallbackAcquireTimeout}
 }
 
 // Run executes the GCOM OAuth2 PKCE flow.
@@ -104,7 +107,6 @@ func (f *GCOMFlow) Run(ctx context.Context) (*GCOMResult, error) {
 	if err := validateGCOMURL(f.opts.GCOMURL); err != nil {
 		return nil, fmt.Errorf("invalid GCOM URL: %w", err)
 	}
-
 	if f.opts.Manual {
 		return f.runManual(ctx)
 	}
@@ -127,8 +129,16 @@ func (f *GCOMFlow) runManual(ctx context.Context) (*GCOMResult, error) {
 	authURL := f.buildAuthURL(redirectURI, state, codeChallenge)
 	printManualInstructions(f.writer, authURL, "")
 
-	line, err := readLineContext(ctx, f.reader)
+	// Bound the read, not the exchange: manual mode has no listener to time
+	// out, so without this the flow waits on the terminal forever.
+	readCtx, cancelRead := context.WithTimeout(ctx, f.acquireTimeout)
+	defer cancelRead()
+
+	line, err := readLineContext(readCtx, f.reader)
 	if err != nil {
+		if ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+			return nil, errCallbackTimeout(f.acquireTimeout)
+		}
 		return nil, err
 	}
 
@@ -162,7 +172,9 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 
 	resultCh := make(chan *GCOMResult, 1)
 	errCh := make(chan error, 1)
-	server := f.startGCOMCallbackServer(ctx, listener, state, codeVerifier, redirectURI, resultCh, errCh)
+	arb := newCallbackArbiter(f.acquireTimeout)
+	defer arb.stop()
+	server := f.startGCOMCallbackServer(ctx, listener, state, codeVerifier, redirectURI, arb, resultCh, errCh)
 
 	// A fresh context is intentional: the request context may already be
 	// cancelled by the time we shut down, and graceful shutdown needs its own
@@ -205,13 +217,25 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 				paste.Reject(pasted.Err)
 				continue
 			}
+			switch claimPastedCallback(arb, pasted.Values, state) {
+			case pasteForeign:
+				paste.Reject(errManualForeignState)
+				continue
+			case pasteSuperseded:
+				continue
+			case pasteClaimed:
+			}
 			result, cerr := f.handleGCOMCallbackParams(ctx, pasted.Values, state, codeVerifier, redirectURI)
 			if cerr != nil {
+				arb.release()
 				paste.Reject(pasteRejection(cerr.err))
 				continue
 			}
+			arb.settle()
 			fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
 			return result, nil
+		case <-arb.expired():
+			return nil, errCallbackTimeout(f.acquireTimeout)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -234,8 +258,8 @@ func (f *GCOMFlow) buildAuthURL(redirectURI, state, codeChallenge string) string
 	)
 }
 
-func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, resultCh chan<- *GCOMResult, errCh chan<- error) *http.Server {
-	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
+func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, arb *callbackArbiter, resultCh chan<- *GCOMResult, errCh chan<- error) *http.Server {
+	return newCallbackServer(listener, expectedState, arb, errCh, func(w http.ResponseWriter, r *http.Request) {
 		result, cerr := f.handleGCOMCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier, redirectURI)
 		if cerr != nil {
 			errCh <- cerr.err
