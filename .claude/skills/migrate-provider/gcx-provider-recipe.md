@@ -208,8 +208,9 @@ func (c *Client) List(ctx context.Context) ([]ResourceType, error) {
   provider name prefix for debuggability
 
 Follow `docs/reference/provider-guide.md` Step 4b for the destination-driven
-client choice; use `cloudCfg.HTTPClient(ctx)` when `LoadCloudConfig` is
-available.
+client choice. `cloudCfg.HTTPClient(ctx)` is right for the Cloud host that
+snapshot resolved; it does not inspect the URL you call, so a product API on its
+own domain still needs `httputils.NewDefaultClient(ctx)`.
 
 **Pagination:** If the legacy client uses manual pagination loops, port them. If
 the API returns all results in one call, keep it simple.
@@ -244,6 +245,10 @@ func Registration(loadClient ClientLoader) adapter.Registration {
         Aliases:    []string{"{alias}"},
         GVK:        GVK(),
         Schema:     resourceSchema(), // required, non-nil
+        // Required for writable resources. CONSTITUTION § Architecture
+        // Invariants permits a nil Example only when the resource has no
+        // Create/Update support, because the example is the push template.
+        Example: resourceExample(),
         Factory: func(ctx context.Context) (*adapter.TypedCRUD[ResourceType], error) {
             client, namespace, err := loadClient(ctx)
             if err != nil {
@@ -423,18 +428,32 @@ cmp -s "$LEGACY_CLI" "$NEW_CLI" && {
 # have no `resources` tier, which is why the adapter checks below run new-side
 # only.
 
+# Both sides must succeed before any diff means anything. Two failed commands
+# produce two empty outputs, and `diff` reports those as identical — a MATCH
+# that proves nothing. Check status explicitly; pipefail keeps a failing CLI
+# from being masked by a successful `jq`.
+set -o pipefail
+
 # --- List: compare resource IDs ---
-LEGACY_IDS=$("$LEGACY_CLI" --context=$CTX {resource} list -o json | jq -r '.[].id // .[].uid' | sort)
-NEW_IDS=$("$NEW_CLI" --context=$CTX {resource} list -o json | jq -r '.[].metadata.name' | sort)
+"$LEGACY_CLI" --context=$CTX {resource} list -o json > /tmp/legacy_list.json \
+  || { echo "List: LEGACY COMMAND FAILED — no comparison possible"; exit 1; }
+"$NEW_CLI" --context=$CTX {resource} list -o json > /tmp/new_list.json \
+  || { echo "List: NEW COMMAND FAILED — no comparison possible"; exit 1; }
+LEGACY_IDS=$(jq -r '.[].id // .[].uid' /tmp/legacy_list.json | sort)
+NEW_IDS=$(jq -r '.[].metadata.name' /tmp/new_list.json | sort)
+[ -n "$LEGACY_IDS" ] || { echo "List: legacy returned zero ids — pick a context with data"; exit 1; }
 echo "=== List ID diff ==="
 diff <(echo "$LEGACY_IDS") <(echo "$NEW_IDS") && echo "MATCH" || echo "MISMATCH"
 
 # --- Get: compare key fields ---
 ID="<pick-an-id-from-list>"
 "$LEGACY_CLI" --context=$CTX {resource} get $ID -o json \
-  | jq '{title, status, labels}' > /tmp/legacy_get.json
+  | jq '{title, status, labels}' > /tmp/legacy_get.json \
+  || { echo "Get: LEGACY COMMAND FAILED — no comparison possible"; exit 1; }
 "$NEW_CLI" --context=$CTX {resource} get $ID -o json \
-  | jq '{title: .spec.title, status: .spec.status, labels: .metadata.labels}' > /tmp/new_get.json
+  | jq '{title: .spec.title, status: .spec.status, labels: .metadata.labels}' > /tmp/new_get.json \
+  || { echo "Get: NEW COMMAND FAILED — no comparison possible"; exit 1; }
+[ -s /tmp/legacy_get.json ] || { echo "Get: legacy produced no output"; exit 1; }
 echo "=== Get field diff ==="
 diff /tmp/legacy_get.json /tmp/new_get.json && echo "MATCH" || echo "MISMATCH"
 
@@ -552,8 +571,12 @@ that only surfaced during smoke testing:
 - Auth requires a two-step token exchange: AP token → k6 v3 token via
   `PUT /v3/account/grafana-app/start` with `X-Grafana-Key`, `X-Stack-Id`,
   `X-Grafana-Service-Token` headers.
-- The stack ID can be parsed from the gcx namespace (`stack-{id}`),
-  avoiding the need for a separate GCOM call.
+- The stack ID is not simply "parse the namespace". k6 resolves credentials and
+  destination through `LoadDirectProviderSnapshot` and caches the resolved stack
+  id (`cached-stack-id` in `internal/providers/k6/cache.go`); the namespace is
+  parsed and validated only on the proxy path
+  (`internal/providers/k6/resource_adapter.go`). Read that resolution before
+  assuming a `stack-{id}` namespace is the source of truth.
 - The org ID (needed for env vars) comes from the auth response, not config.
 - The `perfsprint` linter enforces `errors.New` over `fmt.Errorf` for strings
   without format verbs — easy to miss when porting `fmt.Errorf("...")` patterns.
@@ -585,9 +608,11 @@ that only surfaced during smoke testing:
   with different kinds (Integration, Schedule, AlertGroup, etc.).
 - Use `oncall-*` prefixed aliases to avoid conflicts with core resource types
   (e.g., `oncall-teams` not `teams` to avoid clashing with K8s-native resources).
-- The `X-Grafana-Url` header must use canonical Go form (`X-Grafana-Url` not
+- Any custom header must be written in canonical Go form (`X-Grafana-Url`, not
   `X-Grafana-URL`) or the `canonicalheader` linter will flag it. httptest servers
-  receive the canonical form regardless of how you set it.
+  receive the canonical form regardless of how you set it. (The IRM client no
+  longer sends `X-Grafana-Url` at all — the rule is what generalizes, not that
+  header.)
 
 ### Plugin Proxy APIs (Knowledge Graph / Asserts)
 

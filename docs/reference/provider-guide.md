@@ -299,21 +299,23 @@ OAuth proxy mode the request is addressed to the Grafana host, which is why the
 k8s transport is correct there and only there.
 
 ```
-Using LoadCloudConfig?  ──yes──▶  cloudCfg.HTTPClient(ctx)   ← always correct
-                                    │
-                                    ├─ SA token mode → direct to the product host
-                                    │                  → httputils.NewDefaultClient(ctx)
-                                    └─ OAuth proxy mode → destination is the Grafana host
-                                                          → rest.HTTPClientFor (proxy adds provider auth)
-
-Not using LoadCloudConfig?  ──────▶  httputils.NewDefaultClient(ctx)
-(token passed directly to NewClient)
+Is this request addressed to cfg.Host?
+  │
+  ├─ yes (Grafana API, or a Cloud call routed through the Grafana OAuth proxy)
+  │    → rest.HTTPClientFor — the injected Grafana bearer token is the right credential
+  │
+  └─ no (product API on its own host: api.k6.io, Fleet, SM, …)
+       → httputils.NewDefaultClient(ctx) — never rest.HTTPClientFor
 ```
 
-**Always prefer `cloudCfg.HTTPClient(ctx)`** when `LoadCloudConfig` is available
-— it resolves destination and transport together, so it stays correct if proxy
-routing changes. Choosing the transport yourself means asserting the
-destination yourself.
+`cloudCfg.HTTPClient(ctx)` implements that choice **only for requests aimed at
+the host `cloudCfg` itself describes**. It switches on whether the snapshot
+carries a `RESTConfig`, not on the URL you are about to call
+(`internal/providers/configloader.go`), so it cannot detect a mismatch: hand it
+an external product URL while a `RESTConfig` is present and it returns the k8s
+transport, which attaches Grafana credentials to a third-party host. Use it for
+the Cloud destination it resolved, and construct the client yourself — with
+`httputils.NewDefaultClient(ctx)` — for any other host.
 
 ### Via CloudRESTConfig (preferred)
 

@@ -110,7 +110,7 @@ take the transport from that destination — not the other way round.
 |------------|-----------|--------------|-----------|
 | Grafana API on the stack host, SA token (including a different base path on that host) | Empty `[]` | `LoadGrafanaConfig` | `rest.HTTPClientFor` — destination is `cfg.Host` |
 | Grafana Cloud org-level operation | Empty `[]` | `LoadCloudTokenConfig` | `httputils.NewDefaultClient(ctx)` |
-| Grafana Cloud operation targeting a stack | Empty `[]` | `LoadCloudConfig` | `cloudCfg.HTTPClient(ctx)` — resolves both |
+| Grafana Cloud operation targeting a stack | Empty `[]` | `LoadCloudConfig` | `cloudCfg.HTTPClient(ctx)`, but only for the host that snapshot describes |
 | Product API authenticated directly, endpoint fixed or configurable | `[{Name: "token", Secret: true}]`, plus `{Name: "url"}` if the endpoint is configurable | `LoadDirectProviderSnapshot` | `httputils.NewDefaultClient(ctx)` |
 
 Provider code never reads context credentials directly. Direct-auth product APIs
