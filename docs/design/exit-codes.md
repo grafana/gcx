@@ -57,15 +57,21 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
   `errors.Is(err, context.Canceled)`, so cancellations classified deeper in the
   converter chain depend on the toolchain in use.
 - SIGINT is handled via `signal.NotifyContext` in `main.go`, which cancels the
-  context and produces exit code 5. For an invocation that was interrupted,
+  context and produces exit code 5. For an invocation the user is abandoning,
   `exitWith` calls the returned stop function before the synchronous usage
   export — not from a defer, which `os.Exit` would skip — so a second Ctrl-C
-  ends a process still waiting on that export instead of being swallowed. Two
-  limits: `signal.Stop` restores the disposition the process started with, so a
-  background job of a non-interactive shell (which inherits SIGINT as
-  `SIG_IGN`) still ignores the second interrupt; and the call is deliberately
-  skipped when the invocation was not interrupted, so a stray SIGINT cannot
-  kill a command that already finished and is only waiting out its export.
+  ends a process still waiting on that export instead of being swallowed.
+  `abandonsExport` decides that, and it requires both that a signal arrived and
+  that the final exit code is 5. The exit code is what distinguishes an
+  abandoned invocation from a completed one, so a command that absorbs the
+  interrupt and still finishes — `gcx dev serve` shuts its HTTP server down on
+  `ctx.Done` and returns `nil` — keeps the handler installed and exits with the
+  code that agrees with what it printed, rather than dying by signal with
+  status 130. Two limits remain: `signal.Stop` restores the disposition the
+  process started with, so a background job of a non-interactive shell (which
+  inherits SIGINT as `SIG_IGN`) still ignores the second interrupt; and only
+  SIGINT is caught at all, so a SIGTERM ends the process before any of this
+  runs.
 - Exit code 6 (version incompatible) is set by `convertVersionErrors` when
   Grafana version < 12 is detected.
 
