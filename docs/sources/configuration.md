@@ -72,7 +72,7 @@ read a credential fails with a `Keychain locked` error. A headless or SSH
 session on Linux causes this most often: the keyring daemon runs, but no prompt
 can unlock the collection. To recover, do one of these steps:
 
-- Unlock the keyring, then run the command again: `gnome-keyring-daemon --replace --daemonize --unlock`.
+- Unlock the keyring, then run the command again: `gnome-keyring-daemon --replace --daemonize --unlock`. This command reads the password from standard input. Run it from an interactive terminal, or supply the password on standard input.
 - Run `gcx` from a desktop session that can show a password prompt.
 - Supply the credential through an environment variable, such as `GRAFANA_TOKEN`.
 
