@@ -111,6 +111,13 @@ a different success output model, take their own `<target> query` path, or an
 approved shorthand from the set above where one already fits. A target that
 needs its own identity arguments is not a mode of another command.
 
+One variant is the family's primary query and keeps the bare `<kind> query`
+path: the one a caller who names no target means. Choose it once, state it in
+the command's `Long`, and spell every other variant as a mode or a target. This
+is what decides an otherwise symmetric pair — two variants can both have their
+own inputs and result model, and one of them still has to be the default the
+family answers to.
+
 Compare the caller-facing contract, not the backend payload. Two variants that
 build different requests internally but answer the same expression with the same
 documented result are one command. Two that return different result models are
@@ -140,11 +147,13 @@ unless that name is already in the shorthand set above.
 This rule authorizes that nesting and nothing else. It does not authorize a new
 top-level command: bare top-level verbs remain the closed enumeration in
 [CONSTITUTION.md § CLI Grammar](../../CONSTITUTION.md#cli-grammar), and the
-`$AREA $NOUN $VERB` shape at the top of this guide still governs. Everything
-under `gcx datasources <kind>` is flat today, so the nesting is an
-owner-approved pattern introduced with this rule rather than an inference from
-any shipped command. As with every rule here, it binds new work and does not
-license renaming a released variant.
+`$AREA $NOUN $VERB` shape at the top of this guide still governs. Nesting under
+a datasource kind is otherwise almost unused — `gcx datasources pyroscope
+exemplars profile` and `… exemplars span` are the only shipped instance, and
+[the list-subject verdicts](../plans/list-subject-verdicts.md) defer their
+convergence rather than ratify them — so the authorization here comes from
+this rule, not from reading them as precedent. As with every rule here, it
+binds new work and does not license renaming a released variant.
 
 The two shapes below were decided as owner on the pull requests that raised the
 question. They are the canonical spellings for that work, not commands available
