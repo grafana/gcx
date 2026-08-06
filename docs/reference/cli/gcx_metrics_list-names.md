@@ -5,8 +5,9 @@ List metric names
 ### Synopsis
 
 List metric names from a Prometheus datasource via the label values endpoint for `__name__`.
-Scope the server-side lookup with --match selectors; filter names client-side
-with --prefix, --suffix, and --contains, which combine with AND.
+Scope the server-side lookup with --match selectors; narrow names with --prefix,
+--suffix, and --contains, which combine with AND and are pushed down to the
+server as `__name__` regex matchers in match[].
 Output is capped at 100 names by default; pass --limit 0 for the full list.
 
 ```

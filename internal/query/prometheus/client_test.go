@@ -103,13 +103,32 @@ func TestClient_LabelValues_Match(t *testing.T) {
 
 	client := newTestClient(t, srv.URL)
 
-	resp, err := client.LabelValues(context.Background(), "prom-uid", "job", []string{"http_requests_total"})
+	resp, err := client.LabelValues(context.Background(), "prom-uid", "job", []string{"http_requests_total"}, 0)
 	require.NoError(t, err)
 
 	assert.Equal(t, "/api/datasources/uid/prom-uid/resources/api/v1/label/job/values", capturedPath)
 	assert.Equal(t, []string{"http_requests_total"}, capturedQuery["match[]"])
+	assert.NotContains(t, capturedQuery, "limit", "limit <= 0 must not send a limit param")
 	require.NotNil(t, resp)
 	assert.Equal(t, []string{"api", "worker"}, resp.Data)
+}
+
+func TestClient_LabelValues_Limit(t *testing.T) {
+	var capturedQuery url.Values
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["api"]}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+
+	_, err := client.LabelValues(context.Background(), "prom-uid", "job", nil, 5)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"5"}, capturedQuery["limit"])
 }
 
 func TestClient_LabelValues_NoMatch(t *testing.T) {
@@ -124,7 +143,7 @@ func TestClient_LabelValues_NoMatch(t *testing.T) {
 
 	client := newTestClient(t, srv.URL)
 
-	_, err := client.LabelValues(context.Background(), "prom-uid", "job", nil)
+	_, err := client.LabelValues(context.Background(), "prom-uid", "job", nil, 0)
 	require.NoError(t, err)
 
 	assert.Empty(t, capturedRawQuery)

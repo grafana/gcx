@@ -192,7 +192,7 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 			}
 
 			if opts.Label != "" {
-				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label, selectors)
+				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label, selectors, 0)
 				if err != nil {
 					return fmt.Errorf("failed to get label values: %w", err)
 				}

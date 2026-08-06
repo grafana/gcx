@@ -146,8 +146,11 @@ func (c *Client) Labels(ctx context.Context, datasourceUID string, match []strin
 }
 
 // LabelValues returns values for a specific label. Optional match selectors
-// scope the result to values present on matching series.
-func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName string, match []string) (*LabelsResponse, error) {
+// scope the result to values present on matching series. A positive limit is
+// sent as the endpoint's limit query param so the server truncates the value
+// set; limit <= 0 sends no limit param. Backends that predate the param
+// ignore it and return the full set.
+func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName string, match []string, limit int) (*LabelsResponse, error) {
 	apiPath := c.buildLabelValuesPath(datasourceUID, labelName)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
@@ -156,6 +159,11 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName strin
 	}
 
 	addMatchParams(httpReq, match)
+	if limit > 0 {
+		q := httpReq.URL.Query()
+		q.Set("limit", strconv.Itoa(limit))
+		httpReq.URL.RawQuery = q.Encode()
+	}
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
