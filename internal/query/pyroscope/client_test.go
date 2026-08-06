@@ -636,3 +636,96 @@ func TestClient_SelectHeatmap(t *testing.T) {
 		})
 	}
 }
+
+func TestClient_GetProfileStats(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		want    *pyroscope.ProfileStatsResponse
+		wantErr bool
+	}{
+		{
+			name: "decodes stats with data ingested",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/GetProfileStats")
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+				var body map[string]any
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.Empty(t, body, "request body must be an empty object")
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"dataIngested":true,"oldestProfileTime":"1711800000000","newestProfileTime":"1711886400000"}`))
+			},
+			want: &pyroscope.ProfileStatsResponse{
+				DataIngested:      true,
+				OldestProfileTime: 1711800000000,
+				NewestProfileTime: 1711886400000,
+			},
+		},
+		{
+			name: "empty response means no data ingested",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{}`))
+			},
+			want: &pyroscope.ProfileStatsResponse{},
+		},
+		{
+			name: "v1 no-data sentinel bounds are normalized to zero",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"dataIngested":false,"oldestProfileTime":"9223372036854775807","newestProfileTime":"-9223372036854775808"}`))
+			},
+			want: &pyroscope.ProfileStatsResponse{},
+		},
+		{
+			name: "numeric wire form decodes",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"dataIngested":true,"oldestProfileTime":1711800000000,"newestProfileTime":1711886400000}`))
+			},
+			want: &pyroscope.ProfileStatsResponse{
+				DataIngested:      true,
+				OldestProfileTime: 1711800000000,
+				NewestProfileTime: 1711886400000,
+			},
+		},
+		{
+			name: "server error is surfaced",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"code": "internal", "message": "boom"}`))
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			resp, err := client.GetProfileStats(context.Background(), "test-uid")
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, resp)
+		})
+	}
+}
+
+func TestProfileStatsResponse_MarshalJSON_EmitsNumbers(t *testing.T) {
+	out, err := json.Marshal(&pyroscope.ProfileStatsResponse{
+		DataIngested:      true,
+		OldestProfileTime: 1711800000000,
+		NewestProfileTime: 1711886400000,
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"dataIngested":true,"oldestProfileTime":1711800000000,"newestProfileTime":1711886400000}`, string(out))
+}

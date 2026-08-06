@@ -2,7 +2,10 @@ package pyroscope
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -58,6 +61,51 @@ type Level struct {
 type ProfileTypesRequest struct {
 	Start time.Time
 	End   time.Time
+}
+
+// ProfileStatsResponse mirrors types.v1.GetProfileStatsResponse. Times are
+// milliseconds since epoch, zero when unknown. The wire encodes int64 as
+// proto-JSON strings; UnmarshalJSON accepts both string and number forms so
+// that gcx's own JSON output re-encodes them as plain numbers, consistent
+// with the other profiles commands.
+type ProfileStatsResponse struct {
+	DataIngested      bool  `json:"dataIngested"`
+	OldestProfileTime int64 `json:"oldestProfileTime"`
+	NewestProfileTime int64 `json:"newestProfileTime"`
+}
+
+// UnmarshalJSON decodes proto-JSON int64 fields that may arrive as strings.
+func (r *ProfileStatsResponse) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		DataIngested      bool            `json:"dataIngested"`
+		OldestProfileTime json.RawMessage `json:"oldestProfileTime"`
+		NewestProfileTime json.RawMessage `json:"newestProfileTime"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	oldest, err := parseProtoInt64(aux.OldestProfileTime)
+	if err != nil {
+		return fmt.Errorf("oldestProfileTime: %w", err)
+	}
+	newest, err := parseProtoInt64(aux.NewestProfileTime)
+	if err != nil {
+		return fmt.Errorf("newestProfileTime: %w", err)
+	}
+	r.DataIngested = aux.DataIngested
+	r.OldestProfileTime = oldest
+	r.NewestProfileTime = newest
+	return nil
+}
+
+// parseProtoInt64 parses a proto-JSON int64, which may be encoded as a JSON
+// string or number; absent or null values parse as zero.
+func parseProtoInt64(raw json.RawMessage) (int64, error) {
+	s := strings.TrimSpace(string(raw))
+	if s == "" || s == "null" {
+		return 0, nil
+	}
+	return strconv.ParseInt(strings.Trim(s, `"`), 10, 64)
 }
 
 // ProfileTypesResponse represents the response from a profile types query.
