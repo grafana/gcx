@@ -44,7 +44,6 @@ func NewCallbackArbiter(timeout time.Duration) *CallbackArbiter { return newCall
 // Claim, Settle, Release, Expired and Stop expose the arbiter's contract.
 func (a *callbackArbiter) Claim() CallbackClaim     { return a.claim() }
 func (a *callbackArbiter) Settle()                  { a.settle() }
-func (a *callbackArbiter) Release() bool            { return a.release() }
 func (a *callbackArbiter) Expired() <-chan struct{} { return a.expired() }
 func (a *callbackArbiter) Stop()                    { a.stop() }
 func (a *callbackArbiter) DeadlineReached()         { a.deadlineReached() }
@@ -58,21 +57,6 @@ func (a *callbackArbiter) IsExchanging() bool {
 // and the paste path.
 func CallbackBelongsToFlow(q url.Values, expectedState string) bool {
 	return callbackBelongsToFlow(q, expectedState)
-}
-
-// PasteDisposition and its values expose the paste path's claim decision.
-type PasteDisposition = pasteDisposition
-
-const (
-	PasteForeign    = pasteForeign
-	PasteSuperseded = pasteSuperseded
-	PasteExpired    = pasteExpired
-	PasteClaimed    = pasteClaimed
-)
-
-// ClaimPastedCallback exposes the real paste-path gate.
-func ClaimPastedCallback(arb *CallbackArbiter, values url.Values, expectedState string) PasteDisposition {
-	return claimPastedCallback(arb, values, expectedState)
 }
 
 // ForeignCallbackPage exposes the browser copy for a callback that is not ours.

@@ -267,49 +267,39 @@ func (f *Flow) resolvePaste(ctx context.Context, arb *callbackArbiter, paste *pa
 		return pasteKeepWaiting[Result]()
 	}
 
-	switch claimPastedCallback(arb, pasted.Values, state) {
-	case pasteForeign:
-		paste.Reject(errManualForeignState)
-		return pasteKeepWaiting[Result]()
-	case pasteSuperseded:
-		fmt.Fprintln(f.writer, pasteSupersededNotice)
-		return pasteKeepWaiting[Result]()
-	case pasteExpired:
-		// The expiry case ends the flow on the next turn of the loop, with the
-		// timeout error. Prompting again here would be a lie.
-		return pasteKeepWaiting[Result]()
-	case pasteClaimed:
-	}
-
-	result, cerr := handleCallbackParams(ctx, pasted.Values, state, codeVerifier)
-	switch {
-	case cerr == nil:
-		arb.settle()
-		fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
-		return pasteOutcome[Result]{done: true, result: result}
-	case cerr.spent:
-		// The code reached the token endpoint. Releasing the flow would let the
-		// browser callback — carrying that same code — exchange it a second
-		// time, so this ends the login. Another paste could not help anyway:
-		// the code is gone.
-		arb.settle()
-		return pasteOutcome[Result]{done: true, err: cerr.err}
-	case !arb.release():
-		// The deadline landed between the claim above and this release, so the
-		// flow is over; do not prompt for input it can no longer accept.
-		//
-		// Narrow by construction rather than by luck: every failure that can
-		// reach here is a parameter check that runs with no I/O, so the window
-		// is the few instructions between claim and release. The long-running
-		// case — a failed token exchange — is spent and returns above. There is
-		// no direct test for this arm for that reason; the state machine it
-		// relies on is pinned by TestCallbackArbiter_DeadlineDuringExchange-
-		// ExpiresOnRelease.
-		return pasteKeepWaiting[Result]()
-	default:
+	// Validate before claiming. Everything rejected here is retryable and has
+	// touched nothing, so the flow must stay open for the browser callback and
+	// for another paste. Claiming first would let an unusable paste — the
+	// authorize URL pasted by mistake, which carries our state but no code —
+	// own the flow just long enough for the real callback to be answered 410
+	// Gone and lost.
+	params, cerr := validateCallbackParams(pasted.Values, state)
+	if cerr != nil {
 		paste.Reject(pasteRejection(cerr.err))
 		return pasteKeepWaiting[Result]()
 	}
+
+	switch arb.claim() {
+	case claimTaken:
+		fmt.Fprintln(f.writer, pasteSupersededNotice)
+		return pasteKeepWaiting[Result]()
+	case claimExpired:
+		// The expiry case ends the flow on the next turn of the loop, with the
+		// timeout error. Prompting again here would be a lie.
+		return pasteKeepWaiting[Result]()
+	case claimGranted:
+	}
+
+	// Past this point the code is on the wire, so every outcome is terminal.
+	// The flow is never handed back: the browser callback carries the same
+	// code, and reopening would let it be exchanged twice.
+	defer arb.settle()
+	result, cerr := completeCallback(ctx, params, codeVerifier)
+	if cerr != nil {
+		return pasteOutcome[Result]{done: true, err: cerr.err}
+	}
+	fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
+	return pasteOutcome[Result]{done: true, result: result}
 }
 
 // buildAuthURL renders the plugin consent URL for the given callback port.
@@ -420,6 +410,9 @@ func newCallbackServer(listener net.Listener, expectedState string, arb *callbac
 		// granted claim disarms the deadline — hang the flow forever.
 		defer func() {
 			if rec := recover(); rec != nil {
+				// Answer the browser too. Returning without writing sends an
+				// empty 200, so the user would see a blank success.
+				http.Error(w, "Internal error", http.StatusInternalServerError)
 				// The panic value is not reported: it can carry request data.
 				select {
 				case errCh <- errors.New("callback handler failed"):

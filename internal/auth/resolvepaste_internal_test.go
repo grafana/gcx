@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -348,15 +349,58 @@ func TestGCOMResolvePaste_MatchesTheStackLegBranchForBranch(t *testing.T) {
 	}
 }
 
-// release is a no-op on a flow nobody claimed, and reports the flow open.
-func TestCallbackArbiterRelease_WithoutAClaimIsANoOp(t *testing.T) {
+// Regression: an unusable paste must never own the flow, even briefly.
+//
+// It used to claim before anything checked it was usable, so a paste carrying
+// our state but no code — the authorize URL pasted by mistake — owned the flow
+// just long enough for the genuine browser callback to be answered 410 Gone and
+// lost for good, after which the paste released and the login waited out its
+// deadline. Same shape as #1147: something that is not the legitimate
+// completion consuming the one-shot.
+func TestResolvePaste_UnusablePasteNeverBurnsTheBrowserCallback(t *testing.T) {
+	const state = "our-state"
+	exchange := stackExchange(t, http.StatusOK)
+
+	out := &lockedBuffer{}
+	f := &Flow{writer: out}
 	arb := newCallbackArbiter(time.Hour)
 	t.Cleanup(arb.stop)
 
-	assert.True(t, arb.release(), "an unclaimed flow is still open")
-	assert.Equal(t, claimGranted, arb.claim())
+	listener, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test listener
+	require.NoError(t, err)
 
-	arb.settle()
-	assert.False(t, arb.release(), "a finished flow is not reopened by a stray release")
-	assert.Equal(t, claimTaken, arb.claim())
+	resultCh := make(chan *Result, 1)
+	errCh := make(chan error, 1)
+	server := f.startCallbackServer(t.Context(), listener, state, "verifier", arb, resultCh, errCh, nil)
+	t.Cleanup(func() { _ = server.Close() })
+
+	// Our state, no code. Retryable, so it must be rejected without claiming.
+	got := f.resolvePaste(t.Context(), arb, pasteTerminal(out),
+		pastedInput{Values: url.Values{"state": {state}}}, state, "verifier")
+	require.False(t, got.done)
+	assert.Contains(t, out.String(), "That URL did not work")
+
+	// The genuine browser callback must still be accepted.
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+		"http://"+listener.Addr().String()+"/callback?"+url.Values{
+			"state":            {state},
+			"code":             {"real-code"},
+			"endpoint":         {exchange.URL},
+			"instanceEndpoint": {"https://mystack.grafana.net"},
+		}.Encode(), nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	status := resp.StatusCode
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusOK, status, "an unusable paste must not cost the real callback")
+
+	select {
+	case res := <-resultCh:
+		assert.Equal(t, "gat_test_token", res.Token)
+	case err := <-errCh:
+		t.Fatalf("the browser callback should have completed the login: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the browser callback never completed the login")
+	}
 }

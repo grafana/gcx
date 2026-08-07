@@ -1341,7 +1341,17 @@ func cloudEndpointRequestDiffers(opts *login.Options, entry *config.CloudEntry, 
 // first option as the default, so a remote session promotes manual OAuth: the
 // browser there runs on another computer and cannot reach the local callback
 // address.
-func grafanaAuthOptions(target login.Target, hasMTLS, remote bool) []huh.Option[string] {
+//
+// fixedPort drops manual OAuth from the menu entirely. The two are mutually
+// exclusive — manual mode starts no callback server — and Validate has already
+// run by the time this menu appears, so offering the pair here would let the
+// user pick a combination that can only fail afterwards. In a remote session
+// manual OAuth is the *default*, so this is not a corner the user has to go
+// looking for.
+func grafanaAuthOptions(target login.Target, hasMTLS, remote, fixedPort bool) []huh.Option[string] {
+	if fixedPort {
+		remote = false
+	}
 	tokenOption := huh.NewOption("Service account token (requires permissions for managing service accounts)", "token")
 	oauthOption := huh.NewOption("OAuth (browser) — recommended for cloud stacks; experimental on some configurations, fall back to a service account token if you hit issues", "oauth")
 	oauthManualOption := huh.NewOption("OAuth (browser on another computer) — gcx prints a URL; you paste the redirect URL back. Use this over SSH", "oauth-manual")
@@ -1357,10 +1367,19 @@ func grafanaAuthOptions(target login.Target, hasMTLS, remote bool) []huh.Option[
 		if remote {
 			return []huh.Option[string]{oauthManualOption, oauthOption, tokenOption}
 		}
+		if fixedPort {
+			return []huh.Option[string]{oauthOption, tokenOption}
+		}
 		return []huh.Option[string]{oauthOption, oauthManualOption, tokenOption}
 	default: // TargetUnknown
 		if hasMTLS {
+			if fixedPort {
+				return []huh.Option[string]{mtlsOption, tokenOption, oauthOption}
+			}
 			return []huh.Option[string]{mtlsOption, tokenOption, oauthOption, oauthManualOption}
+		}
+		if fixedPort {
+			return []huh.Option[string]{tokenOption, oauthOption}
 		}
 		return []huh.Option[string]{tokenOption, oauthOption, oauthManualOption}
 	}
@@ -1376,7 +1395,7 @@ func askGrafanaAuth(opts *login.Options, existingToken string) error {
 		return nil // resolveGrafanaAuth will pick up the TLS case.
 	}
 
-	options := grafanaAuthOptions(opts.Target, hasMTLS, terminal.IsRemoteSession())
+	options := grafanaAuthOptions(opts.Target, hasMTLS, terminal.IsRemoteSession(), opts.OAuthCallbackPort != 0)
 
 	// Default to the first option in the menu: OAuth for Cloud, mTLS when certs
 	// are present (non-Cloud), token otherwise. Deriving from options[0] keeps

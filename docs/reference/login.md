@@ -113,8 +113,10 @@ gcx login my-stack --server https://my-stack.grafana.net --oauth \
   --oauth-callback-port 8250
 ```
 
-A Grafana Cloud login runs two browser steps — the stack step and the
-grafana.com step — and both use this port, one after the other. The same flag
+A Grafana Cloud login can involve two browser steps — the stack step and,
+if you choose it at the Cloud prompt, the grafana.com step. Both use this port,
+one after the other. The Cloud step is optional: `--yes` skips it, as does
+picking anything other than OAuth at that prompt. The same flag
 is available on `gcx cloud login` for the standalone Cloud flow. Without the
 flag gcx picks a free port from `54321-54399`, which stays the default.
 

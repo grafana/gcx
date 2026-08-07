@@ -2342,11 +2342,12 @@ func TestGrafanaAuthOptions(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		target  internallogin.Target
-		hasMTLS bool
-		remote  bool
-		want    []string
+		name      string
+		target    internallogin.Target
+		hasMTLS   bool
+		fixedPort bool
+		remote    bool
+		want      []string
 	}{
 		{
 			name:   "cloud_local",
@@ -2381,13 +2382,38 @@ func TestGrafanaAuthOptions(t *testing.T) {
 			hasMTLS: true,
 			want:    []string{"mtls", "token"},
 		},
+		{
+			// A fixed callback port and manual OAuth are mutually exclusive,
+			// and Validate has already run by the time this menu appears — so
+			// offering manual here would only let the user pick a combination
+			// that fails afterwards.
+			name:      "cloud_with_fixed_port_hides_manual",
+			target:    internallogin.TargetCloud,
+			fixedPort: true,
+			want:      []string{"oauth", "token"},
+		},
+		{
+			// Even in a remote session, where manual OAuth is normally the
+			// promoted default.
+			name:      "remote_cloud_with_fixed_port_hides_manual",
+			target:    internallogin.TargetCloud,
+			remote:    true,
+			fixedPort: true,
+			want:      []string{"oauth", "token"},
+		},
+		{
+			name:      "unknown_with_fixed_port_hides_manual",
+			target:    internallogin.TargetUnknown,
+			fixedPort: true,
+			want:      []string{"token", "oauth"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			options := grafanaAuthOptions(tt.target, tt.hasMTLS, tt.remote)
+			options := grafanaAuthOptions(tt.target, tt.hasMTLS, tt.remote, tt.fixedPort)
 			values := make([]string, 0, len(options))
 			for _, option := range options {
 				values = append(values, option.Value)

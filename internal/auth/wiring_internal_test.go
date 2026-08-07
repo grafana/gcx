@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -70,11 +71,13 @@ func TestHTTPAndPasteGatesShareOneArbiter(t *testing.T) {
 			}
 		})
 
-		wg.Go(func() { // the pasted redirect URL
+		wg.Go(func() { // the pasted redirect URL, through the real gate
 			<-start
-			if claimPastedCallback(arb, pasted, state) == pasteClaimed {
+			f := &Flow{writer: io.Discard}
+			out := f.resolvePaste(context.Background(), arb, nil,
+				pastedInput{Values: pasted}, state, "verifier")
+			if out.done && out.err == nil {
 				countExchange()
-				arb.settle()
 			}
 		})
 
@@ -134,7 +137,9 @@ func TestHTTPAndPasteGatesAgreeOnOwnership(t *testing.T) {
 
 	// The same wrong state pasted: rejected, and the flow is still untouched.
 	foreign := url.Values{"state": {"someone-elses"}, "code": {"x"}}
-	assert.Equal(t, pasteForeign, claimPastedCallback(arb, foreign, state))
+	f := &Flow{writer: io.Discard}
+	out := f.resolvePaste(t.Context(), arb, nil, pastedInput{Values: foreign}, state, "verifier")
+	assert.False(t, out.done, "a foreign paste must not end the flow")
 
 	// After both, the legitimate callback still owns the flow.
 	assert.Equal(t, claimGranted, arb.claim())
@@ -171,9 +176,16 @@ func TestCallbackHandlerPanicStillEndsTheFlow(t *testing.T) {
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
 		"http://"+listener.Addr().String()+"/callback?state="+url.QueryEscape(state)+"&code=x", nil)
 	require.NoError(t, err)
-	if resp, doErr := http.DefaultClient.Do(req); doErr == nil {
-		_ = resp.Body.Close()
-	}
+	resp, doErr := http.DefaultClient.Do(req)
+	require.NoError(t, doErr)
+	status := resp.StatusCode
+	require.NoError(t, resp.Body.Close())
+
+	// Recovering the panic means the handler returns normally, and a handler
+	// that returns without writing sends an empty 200 — so the browser would
+	// show a blank success for a login that failed.
+	assert.Equal(t, http.StatusInternalServerError, status,
+		"a recovered panic must not look like success in the browser")
 
 	select {
 	case err := <-errCh:

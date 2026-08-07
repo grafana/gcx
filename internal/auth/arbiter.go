@@ -2,7 +2,6 @@ package auth
 
 import (
 	"fmt"
-	"net/url"
 	"sync"
 	"time"
 )
@@ -53,14 +52,10 @@ const (
 // and aborted the login. Ownership belongs to the state check, not to whoever
 // knocks first.
 type callbackArbiter struct {
-	mu    sync.Mutex
-	state arbiterState
-	// lateDeadline records that the deadline fired while an exchange held the
-	// flow. release then expires the flow instead of reopening it, so repeated
-	// failing attempts cannot extend the wait without bound.
-	lateDeadline bool
-	timer        *time.Timer
-	expiry       chan struct{}
+	mu     sync.Mutex
+	state  arbiterState
+	timer  *time.Timer
+	expiry chan struct{}
 }
 
 // newCallbackArbiter starts the acquisition deadline. The deadline is absolute:
@@ -101,35 +96,6 @@ func (a *callbackArbiter) settle() {
 	}
 }
 
-// release hands the flow back after a claimed attempt failed *without putting
-// the authorization code on the wire*. Only the paste path uses it: gcx asks
-// for another redirect URL, so the next attempt has to be able to claim.
-//
-// A spent code must never be released. Reopening the flow after the code
-// reached the token endpoint would let the browser callback — which carries
-// that same code — claim and exchange it a second time.
-//
-// It reports whether the flow is still open. If the deadline passed while the
-// attempt was running, the flow expires here instead of reopening, and the
-// caller must not prompt for input it can no longer accept.
-func (a *callbackArbiter) release() bool {
-	a.mu.Lock()
-	if a.state != arbiterExchanging {
-		open := a.state == arbiterIdle
-		a.mu.Unlock()
-		return open
-	}
-	if a.lateDeadline {
-		a.state = arbiterExpired
-		a.mu.Unlock()
-		close(a.expiry)
-		return false
-	}
-	a.state = arbiterIdle
-	a.mu.Unlock()
-	return true
-}
-
 // expired closes once the acquisition deadline has passed with no claim holding
 // the flow. The flow selects on it alongside the result and error channels.
 func (a *callbackArbiter) expired() <-chan struct{} { return a.expiry }
@@ -146,10 +112,9 @@ func (a *callbackArbiter) deadlineReached() {
 	case arbiterIdle:
 		a.state = arbiterExpired
 	case arbiterExchanging:
-		// A claim is mid-exchange. Cutting it off here could throw away a
-		// token the server has already issued, and the exchange carries its
-		// own timeout, so let it finish. release settles the outcome.
-		a.lateDeadline = true
+		// A claim is mid-exchange. Cutting it off could throw away a token the
+		// server has already issued, and the exchange carries its own timeout,
+		// so let it finish; it always delivers a result or an error.
 		a.mu.Unlock()
 		return
 	case arbiterDone, arbiterExpired:
@@ -166,46 +131,6 @@ func (a *callbackArbiter) deadlineReached() {
 // redirect URL, where no browser ever reaches gcx.
 func errCallbackTimeout(d time.Duration) error {
 	return fmt.Errorf("timed out after %s waiting for the sign-in to complete", d)
-}
-
-// pasteDisposition is what a flow should do with a pasted redirect URL.
-type pasteDisposition int
-
-const (
-	// pasteForeign means the URL is from another login attempt. The callback
-	// server is still listening, so the flow re-prompts rather than ending.
-	pasteForeign pasteDisposition = iota
-	// pasteSuperseded means the browser callback got there first and is being
-	// processed. Its result or error will end the flow, but the user is owed a
-	// word about why their paste went nowhere.
-	pasteSuperseded
-	// pasteExpired means the deadline passed. The expiry case ends the flow on
-	// the next turn of the loop, so this needs no message of its own.
-	pasteExpired
-	// pasteClaimed means the caller owns the flow and must run the exchange.
-	pasteClaimed
-)
-
-// claimPastedCallback is the paste path's twin of the gate inside
-// newCallbackServer: the same ownership test, then the same arbiter.
-//
-// Both live here, and both take the arbiter as an argument, because the two
-// paths run concurrently — over SSH gcx listens for a callback and reads a
-// pasted URL at once. If they used separate guards, a pasted URL and a browser
-// callback could each start a token exchange for the same authorization code.
-func claimPastedCallback(arb *callbackArbiter, values url.Values, expectedState string) pasteDisposition {
-	if !callbackBelongsToFlow(values, expectedState) {
-		return pasteForeign
-	}
-	switch arb.claim() {
-	case claimGranted:
-		return pasteClaimed
-	case claimExpired:
-		return pasteExpired
-	case claimTaken:
-		return pasteSuperseded
-	}
-	return pasteSuperseded
 }
 
 // pasteOutcome is what resolvePaste decided about one delivered redirect URL.

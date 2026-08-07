@@ -56,72 +56,6 @@ func TestCallbackArbiter_ConcurrentClaimsGrantExactlyOne(t *testing.T) {
 	assert.Equal(t, 1, granted, "exactly one claimant may run the exchange")
 }
 
-// The SSH flow listens for a browser callback and reads a pasted URL at the
-// same time. Both must go through this arbiter or the same authorization code
-// gets exchanged twice.
-func TestCallbackArbiter_HTTPAndPasteCannotBothClaim(t *testing.T) {
-	const state = "state-belonging-to-this-flow"
-	values := url.Values{"state": {state}, "code": {"authcode"}}
-
-	for range 200 { // repeat: this is a race, not a sequence
-		arb := auth.NewCallbackArbiter(testDeadline)
-
-		var (
-			start          = make(chan struct{})
-			wg             sync.WaitGroup
-			mu             sync.Mutex
-			exchangeOwners int
-		)
-
-		wg.Go(func() { // the HTTP callback handler's claim
-			<-start
-			if arb.Claim() == auth.ClaimGranted {
-				mu.Lock()
-				exchangeOwners++
-				mu.Unlock()
-			}
-		})
-		wg.Go(func() { // the pasted redirect URL's claim
-			<-start
-			if auth.ClaimPastedCallback(arb, values, state) == auth.PasteClaimed {
-				mu.Lock()
-				exchangeOwners++
-				mu.Unlock()
-			}
-		})
-
-		close(start)
-		wg.Wait()
-		arb.Stop()
-
-		require.Equal(t, 1, exchangeOwners, "HTTP and paste must share one arbiter")
-	}
-}
-
-func TestClaimPastedCallback_ForeignURLNeverClaims(t *testing.T) {
-	arb := auth.NewCallbackArbiter(testDeadline)
-	t.Cleanup(arb.Stop)
-
-	foreign := url.Values{"state": {"from-another-login"}, "code": {"authcode"}}
-	assert.Equal(t, auth.PasteForeign, auth.ClaimPastedCallback(arb, foreign, "ours"))
-
-	missing := url.Values{"code": {"authcode"}}
-	assert.Equal(t, auth.PasteForeign, auth.ClaimPastedCallback(arb, missing, "ours"))
-
-	// The flow must still be claimable: rejecting a foreign URL may not consume it.
-	assert.Equal(t, auth.ClaimGranted, arb.Claim())
-}
-
-func TestCallbackArbiter_ReleaseReopensForAnotherPaste(t *testing.T) {
-	arb := auth.NewCallbackArbiter(testDeadline)
-	t.Cleanup(arb.Stop)
-
-	require.Equal(t, auth.ClaimGranted, arb.Claim())
-	arb.Release() // the exchange failed; gcx re-prompts
-
-	assert.Equal(t, auth.ClaimGranted, arb.Claim(), "a retry after a failed paste can claim again")
-}
-
 func TestCallbackArbiter_ExpiresWhenNoCallbackArrives(t *testing.T) {
 	arb := auth.NewCallbackArbiter(time.Millisecond)
 	t.Cleanup(arb.Stop)
@@ -169,29 +103,6 @@ func TestCallbackArbiter_ClaimRacingDeadlineHasOneOutcome(t *testing.T) {
 		}
 		arb.Stop()
 	}
-}
-
-// The deadline is absolute. A paste that keeps failing may not extend it.
-func TestCallbackArbiter_DeadlineDuringExchangeExpiresOnRelease(t *testing.T) {
-	arb := auth.NewCallbackArbiter(testDeadline)
-	t.Cleanup(arb.Stop)
-
-	require.Equal(t, auth.ClaimGranted, arb.Claim())
-
-	arb.DeadlineReached() // fires while the exchange holds the flow
-	select {
-	case <-arb.Expired():
-		t.Fatal("an in-flight exchange must be allowed to finish")
-	default:
-	}
-
-	arb.Release() // the exchange failed, and the deadline has passed
-	select {
-	case <-arb.Expired():
-	case <-time.After(5 * time.Second):
-		t.Fatal("a failed retry after the deadline must end the flow")
-	}
-	assert.Equal(t, auth.ClaimExpired, arb.Claim())
 }
 
 func TestCallbackArbiter_DeadlineAfterSuccessIsIgnored(t *testing.T) {

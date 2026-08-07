@@ -79,10 +79,25 @@ func (e *callbackError) Unwrap() error { return e.err }
 // manual paste fallback: q comes either from r.URL.Query() or from
 // ParseCallbackInput. Keeping one implementation stops the two paths from
 // diverging on the state check, the PKCE exchange, or endpoint validation.
-func handleCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier string) (*Result, *callbackError) {
-	// Callers gate on callbackBelongsToFlow before claiming the flow, so this
-	// re-check is defence in depth: no caller may reach the exchange with a
-	// callback that is not ours.
+// callbackParams is a redirect that has passed every check that can be made
+// without contacting the token endpoint.
+type callbackParams struct {
+	code             string
+	endpoint         string
+	instanceEndpoint string
+	device           string
+}
+
+// validateCallbackParams checks a redirect without any side effect. Everything
+// it rejects is retryable: nothing has been sent anywhere, so a caller that can
+// ask for another URL may do so.
+//
+// It is separate from completeCallback so a caller can establish that a
+// callback is usable *before* claiming the flow. Claiming first means an
+// unusable paste — the authorize URL pasted by mistake, say, which carries our
+// state but no code — briefly owns the flow, and a real browser callback
+// arriving in that window is answered 410 Gone and lost for good.
+func validateCallbackParams(q url.Values, expectedState string) (*callbackParams, *callbackError) {
 	if !callbackBelongsToFlow(q, expectedState) {
 		return nil, &callbackError{err: ErrStateMismatch, page: foreignCallbackPage}
 	}
@@ -105,13 +120,23 @@ func handleCallbackParams(ctx context.Context, q url.Values, expectedState, code
 		return nil, &callbackError{err: fmt.Errorf("invalid API endpoint: %w", err), page: "Invalid API endpoint"}
 	}
 
-	exchangeResult, err := exchangeCodeForToken(ctx, endpoint, code, codeVerifier)
+	return &callbackParams{
+		code:             code,
+		endpoint:         endpoint,
+		instanceEndpoint: q.Get("instanceEndpoint"),
+		device:           q.Get("device"),
+	}, nil
+}
+
+// completeCallback exchanges the authorization code. Every error it returns is
+// spent: the code has been sent to the token endpoint and can never be retried.
+func completeCallback(ctx context.Context, p *callbackParams, codeVerifier string) (*Result, *callbackError) {
+	exchangeResult, err := exchangeCodeForToken(ctx, p.endpoint, p.code, codeVerifier)
 	if err != nil {
 		return nil, &callbackError{err: fmt.Errorf("token exchange failed: %w", err), page: "Token exchange failed", spent: true}
 	}
 
-	instanceEndpoint := q.Get("instanceEndpoint")
-	instanceEndpointURL, err := url.Parse(instanceEndpoint)
+	instanceEndpointURL, err := url.Parse(p.instanceEndpoint)
 	if err != nil {
 		return nil, &callbackError{err: fmt.Errorf("invalid endpoint url: %w", err), page: "Invalid instance endpoint passed", spent: true}
 	}
@@ -126,19 +151,30 @@ func handleCallbackParams(ctx context.Context, q url.Values, expectedState, code
 	return &Result{
 		Token:            exchangeResult.Data.Token,
 		Email:            exchangeResult.Data.Email,
-		DeviceName:       q.Get("device"),
+		DeviceName:       p.device,
 		APIEndpoint:      exchangeResult.Data.APIEndpoint,
 		ExpiresAt:        exchangeResult.Data.ExpiresAt,
 		RefreshToken:     exchangeResult.Data.RefreshToken,
 		RefreshExpiresAt: exchangeResult.Data.RefreshExpiresAt,
-		InstanceEndpoint: instanceEndpoint,
+		InstanceEndpoint: p.instanceEndpoint,
 	}, nil
+}
+
+// handleCallbackParams validates and then exchanges, for callers that treat any
+// failure as terminal. The HTTP handler is one: a callback carrying our state is
+// ours whatever is wrong with it.
+func handleCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier string) (*Result, *callbackError) {
+	p, cerr := validateCallbackParams(q, expectedState)
+	if cerr != nil {
+		return nil, cerr
+	}
+	return completeCallback(ctx, p, codeVerifier)
 }
 
 // handleGCOMCallbackParams is the grafana.com equivalent of
 // handleCallbackParams. redirectURI must be byte-identical to the redirect_uri
 // sent on the authorize request, because GCOM rejects the exchange otherwise.
-func (f *GCOMFlow) handleGCOMCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier, redirectURI string) (*GCOMResult, *callbackError) {
+func (f *GCOMFlow) validateGCOMCallbackParams(q url.Values, expectedState string) (*callbackParams, *callbackError) {
 	if !callbackBelongsToFlow(q, expectedState) {
 		return nil, &callbackError{err: ErrStateMismatch, page: foreignCallbackPage}
 	}
@@ -153,10 +189,26 @@ func (f *GCOMFlow) handleGCOMCallbackParams(ctx context.Context, q url.Values, e
 		return nil, &callbackError{err: errors.New("no authorization code received"), page: "No authorization code received"}
 	}
 
-	result, err := f.exchangeGCOMToken(ctx, code, codeVerifier, redirectURI)
+	return &callbackParams{code: code}, nil
+}
+
+// completeGCOMCallback exchanges the code. redirectURI must be byte-identical to
+// the one on the authorize request, because GCOM rejects the exchange otherwise.
+// Every error it returns is spent.
+func (f *GCOMFlow) completeGCOMCallback(ctx context.Context, p *callbackParams, codeVerifier, redirectURI string) (*GCOMResult, *callbackError) {
+	result, err := f.exchangeGCOMToken(ctx, p.code, codeVerifier, redirectURI)
 	if err != nil {
 		return nil, &callbackError{err: fmt.Errorf("token exchange failed: %w", err), page: "Token exchange failed", spent: true}
 	}
-
 	return result, nil
+}
+
+// handleGCOMCallbackParams is the grafana.com equivalent of
+// handleCallbackParams: validate then exchange, every failure terminal.
+func (f *GCOMFlow) handleGCOMCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier, redirectURI string) (*GCOMResult, *callbackError) {
+	p, cerr := f.validateGCOMCallbackParams(q, expectedState)
+	if cerr != nil {
+		return nil, cerr
+	}
+	return f.completeGCOMCallback(ctx, p, codeVerifier, redirectURI)
 }

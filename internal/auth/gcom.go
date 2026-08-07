@@ -264,35 +264,30 @@ func (f *GCOMFlow) resolvePaste(ctx context.Context, arb *callbackArbiter, paste
 		return pasteKeepWaiting[GCOMResult]()
 	}
 
-	switch claimPastedCallback(arb, pasted.Values, state) {
-	case pasteForeign:
-		paste.Reject(errManualForeignState)
-		return pasteKeepWaiting[GCOMResult]()
-	case pasteSuperseded:
-		fmt.Fprintln(f.writer, pasteSupersededNotice)
-		return pasteKeepWaiting[GCOMResult]()
-	case pasteExpired:
-		return pasteKeepWaiting[GCOMResult]()
-	case pasteClaimed:
-	}
-
-	result, cerr := f.handleGCOMCallbackParams(ctx, pasted.Values, state, codeVerifier, redirectURI)
-	switch {
-	case cerr == nil:
-		arb.settle()
-		fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
-		return pasteOutcome[GCOMResult]{done: true, result: result}
-	case cerr.spent:
-		arb.settle()
-		return pasteOutcome[GCOMResult]{done: true, err: cerr.err}
-	case !arb.release():
-		// See Flow.resolvePaste: a narrow claim-to-release window, deliberately
-		// left without a direct test.
-		return pasteKeepWaiting[GCOMResult]()
-	default:
+	// See Flow.resolvePaste: validate before claiming, so an unusable paste
+	// cannot burn the browser callback.
+	params, cerr := f.validateGCOMCallbackParams(pasted.Values, state)
+	if cerr != nil {
 		paste.Reject(pasteRejection(cerr.err))
 		return pasteKeepWaiting[GCOMResult]()
 	}
+
+	switch arb.claim() {
+	case claimTaken:
+		fmt.Fprintln(f.writer, pasteSupersededNotice)
+		return pasteKeepWaiting[GCOMResult]()
+	case claimExpired:
+		return pasteKeepWaiting[GCOMResult]()
+	case claimGranted:
+	}
+
+	defer arb.settle()
+	result, cerr := f.completeGCOMCallback(ctx, params, codeVerifier, redirectURI)
+	if cerr != nil {
+		return pasteOutcome[GCOMResult]{done: true, err: cerr.err}
+	}
+	fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
+	return pasteOutcome[GCOMResult]{done: true, result: result}
 }
 
 // buildAuthURL renders the GCOM authorize URL. redirectURI must be the exact
