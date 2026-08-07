@@ -271,3 +271,49 @@ func TestManualFlowRun_HasNoReadDeadline(t *testing.T) {
 		t.Fatal("cancelling the context must end manual mode")
 	}
 }
+
+// The Cloud leg's manual mode must be unbounded for the same reason as the
+// stack leg's. Reverting only one of the two used to leave no test failing.
+func TestGCOMManualFlowRun_HasNoReadDeadline(t *testing.T) {
+	testutils.SetAgentMode(t, true)
+
+	blocked, writeEnd := io.Pipe()
+	t.Cleanup(func() { _ = writeEnd.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	writer := &syncWriter{}
+	flow := auth.NewGCOMFlow(auth.GCOMOptions{
+		ClientID: "gcx", GCOMURL: "https://grafana.com",
+		Manual: true, Reader: blocked, Writer: writer,
+	})
+	auth.SetGCOMAcquireTimeout(flow, 50*time.Millisecond)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := flow.Run(ctx)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("manual mode must not time out on its own read; got %v", err)
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(10 * time.Second):
+		t.Fatal("cancelling the context must end manual mode")
+	}
+}
+
+// docs/reference/login.md and docs/architecture/auth-system.md both state this
+// number to users. Pin it so the docs cannot silently drift from the code.
+func TestDefaultCallbackAcquireTimeoutIsThirtyMinutes(t *testing.T) {
+	assert.Equal(t, 30*time.Minute, auth.DefaultCallbackAcquireTimeout,
+		"the wait bound is documented in login.md and auth-system.md; update both if you change it")
+}

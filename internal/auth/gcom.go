@@ -67,6 +67,13 @@ type GCOMOptions struct {
 	// automatically. A user who fixes the port for unified login means it for
 	// every browser OAuth leg, not just the first one; only specific ports are
 	// forwarded between a remote host and the browser.
+	//
+	// Any port is safe here. grafana.com matches a loopback redirect_uri on
+	// scheme, host and path and ignores the port (RFC 8252 §7.3), so a port
+	// outside the 54321-54399 auto-pick range is accepted. That rule was added
+	// alongside the PKCE flow this client uses; see grafana-com#19063,
+	// matchesRedirectUri in packages/grafana-com-lib/src/url.ts. The path must
+	// still match, which is why /callback is fixed.
 	Port int
 
 	// Writer for user-facing messages. Defaults to os.Stderr.
@@ -279,6 +286,8 @@ func (f *GCOMFlow) resolvePaste(ctx context.Context, arb *callbackArbiter, paste
 		arb.settle()
 		return pasteOutcome[GCOMResult]{done: true, err: cerr.err}
 	case !arb.release():
+		// See Flow.resolvePaste: a narrow claim-to-release window, deliberately
+		// left without a direct test.
 		return pasteKeepWaiting[GCOMResult]()
 	default:
 		paste.Reject(pasteRejection(cerr.err))

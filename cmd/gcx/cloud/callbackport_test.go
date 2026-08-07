@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/auth"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -65,9 +66,10 @@ func TestCloudLoginDefaultsToAutomaticPortSelection(t *testing.T) {
 // Every rejection has to happen before the browser opens or a listener binds.
 func TestCloudLoginRejectsUnusablePortCombinationsBeforeStartingOAuth(t *testing.T) {
 	tests := []struct {
-		name    string
-		args    []string
-		wantErr string
+		name            string
+		args            []string
+		wantErr         string
+		wantSuggestions bool
 	}{
 		{
 			name:    "port below range",
@@ -82,14 +84,16 @@ func TestCloudLoginRejectsUnusablePortCombinationsBeforeStartingOAuth(t *testing
 		{
 			// A Cloud Access Policy token skips OAuth entirely, so this
 			// command has no callback server for the port to apply to.
-			name:    "port with a cloud token",
-			args:    []string{"--cloud-token", "glc_abc", "--oauth-callback-port", "8250"},
-			wantErr: "conflicting OAuth callback options",
+			name:            "port with a cloud token",
+			wantSuggestions: true,
+			args:            []string{"--cloud-token", "glc_abc", "--oauth-callback-port", "8250"},
+			wantErr:         "conflicting OAuth callback options",
 		},
 		{
-			name:    "port with manual mode",
-			args:    []string{"--oauth-manual", "--oauth-callback-port", "8250"},
-			wantErr: "there is no port to fix",
+			name:            "port with manual mode",
+			wantSuggestions: true,
+			args:            []string{"--oauth-manual", "--oauth-callback-port", "8250"},
+			wantErr:         "there is no port to fix",
 		},
 	}
 
@@ -106,6 +110,15 @@ func TestCloudLoginRejectsUnusablePortCombinationsBeforeStartingOAuth(t *testing
 			err := cmd.ExecuteContext(t.Context())
 			require.ErrorContains(t, err, tt.wantErr)
 			assert.False(t, *started, "validation must fail before any browser or network side effect")
+
+			// Structure, not just wording: the point of this change is that
+			// `gcx cloud login` gives the same shape of help as `gcx login`.
+			var detailed gcxerrors.DetailedError
+			require.ErrorAs(t, err, &detailed, "port rejections must carry actionable guidance")
+			assert.NotEmpty(t, detailed.Summary)
+			if tt.wantSuggestions {
+				assert.NotEmpty(t, detailed.Suggestions, "a conflict must tell the user how to resolve it")
+			}
 		})
 	}
 }

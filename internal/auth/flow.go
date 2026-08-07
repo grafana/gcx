@@ -295,8 +295,16 @@ func (f *Flow) resolvePaste(ctx context.Context, arb *callbackArbiter, paste *pa
 		arb.settle()
 		return pasteOutcome[Result]{done: true, err: cerr.err}
 	case !arb.release():
-		// The deadline passed while this attempt was running. Do not prompt for
-		// input that can no longer be accepted.
+		// The deadline landed between the claim above and this release, so the
+		// flow is over; do not prompt for input it can no longer accept.
+		//
+		// Narrow by construction rather than by luck: every failure that can
+		// reach here is a parameter check that runs with no I/O, so the window
+		// is the few instructions between claim and release. The long-running
+		// case — a failed token exchange — is spent and returns above. There is
+		// no direct test for this arm for that reason; the state machine it
+		// relies on is pinned by TestCallbackArbiter_DeadlineDuringExchange-
+		// ExpiresOnRelease.
 		return pasteKeepWaiting[Result]()
 	default:
 		paste.Reject(pasteRejection(cerr.err))

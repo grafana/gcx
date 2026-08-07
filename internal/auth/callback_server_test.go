@@ -314,15 +314,20 @@ func TestCallbackServer_ReplayIsRejectedWhileTheFirstExchangeRuns(t *testing.T) 
 	defer cancel()
 
 	release := make(chan struct{})
-	// Released on every exit path: an early t.Fatal would otherwise leave the
-	// exchange handler parked, and httptest.Server.Close waits for outstanding
-	// requests, hanging the whole test binary instead of reporting the failure.
 	var releaseOnce sync.Once
 	releaseExchange := func() { releaseOnce.Do(func() { close(release) }) }
-	t.Cleanup(releaseExchange)
 
 	entered := make(chan struct{}, 1)
 	flow := startStackFlow(t, ctx, release, entered)
+
+	// Registered *after* startStackFlow, and that ordering is the whole point.
+	// t.Cleanup is LIFO, and startStackFlow registers the httptest server's
+	// Close, which waits for outstanding requests. So the release has to run
+	// first, which means it has to be registered last. Registering it before —
+	// the obvious-looking order — deadlocks the entire test binary on any early
+	// t.Fatal instead of reporting the failure, which is the exact hang this is
+	// meant to prevent.
+	t.Cleanup(releaseExchange)
 
 	// Issued from a goroutine because the exchange is held open below, so this
 	// request does not return until the test releases it. No assertions here:

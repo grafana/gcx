@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -103,10 +104,14 @@ func TestHTTPAndPasteGatesAgreeOnOwnership(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // no context plumbing needed for a test listener
 	require.NoError(t, err)
 
-	handled := false
+	// atomic, not a plain bool: this is written on the server's goroutine and
+	// read on the test's. It does not race today only because the handler is
+	// never reached, so a regression that made it reachable would surface as a
+	// race-detector failure instead of the assertion this test is here for.
+	var handled atomic.Bool
 	errCh := make(chan error, 1)
 	server := newCallbackServer(listener, state, arb, errCh, nil, func(w http.ResponseWriter, _ *http.Request) {
-		handled = true
+		handled.Store(true)
 		w.WriteHeader(http.StatusOK)
 	})
 	t.Cleanup(func() {
@@ -125,7 +130,7 @@ func TestHTTPAndPasteGatesAgreeOnOwnership(t *testing.T) {
 	status := resp.StatusCode
 	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusBadRequest, status)
-	assert.False(t, handled, "a foreign callback must not reach the exchange")
+	assert.False(t, handled.Load(), "a foreign callback must not reach the exchange")
 
 	// The same wrong state pasted: rejected, and the flow is still untouched.
 	foreign := url.Values{"state": {"someone-elses"}, "code": {"x"}}

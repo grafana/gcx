@@ -219,25 +219,6 @@ func TestResolvePaste_ExpiredDoesNotPromptForInputItCannotAccept(t *testing.T) {
 	assert.Empty(t, out.String(), "the expiry case reports the timeout; this must stay quiet")
 }
 
-func TestResolvePaste_DeadlineDuringExchangeSkipsTheReprompt(t *testing.T) {
-	out := &lockedBuffer{}
-	arb := newCallbackArbiter(time.Hour)
-	t.Cleanup(arb.stop)
-
-	// Claim, then let the deadline land mid-exchange, then fail before spending
-	// the code. release() must expire the flow rather than reopen it.
-	require.Equal(t, claimGranted, arb.claim())
-	arb.deadlineReached()
-	require.False(t, arb.release(), "a late deadline must close the flow on release")
-
-	select {
-	case <-arb.expired():
-	default:
-		t.Fatal("the flow must have expired")
-	}
-	assert.NotContains(t, out.String(), "Redirect URL")
-}
-
 // Both legs must agree branch for branch, so the grafana.com one is driven
 // through the same set. A divergence here is how the HTTP/paste split in the
 // first round of this work went unnoticed.
@@ -256,6 +237,7 @@ func TestGCOMResolvePaste_MatchesTheStackLegBranchForBranch(t *testing.T) {
 		wantErr      bool
 		wantOutput   string
 		wantNoOutput string
+		wantToken    string
 		// wantClaimable is the verdict a later claim should get.
 		wantClaim callbackClaim
 	}{
@@ -265,6 +247,7 @@ func TestGCOMResolvePaste_MatchesTheStackLegBranchForBranch(t *testing.T) {
 			input:       pastedInput{Values: ours},
 			wantDone:    true,
 			wantOutput:  "single-use code",
+			wantToken:   "glc_test_token",
 			wantClaim:   claimTaken,
 		},
 		{
@@ -345,6 +328,10 @@ func TestGCOMResolvePaste_MatchesTheStackLegBranchForBranch(t *testing.T) {
 				flowState, "verifier", redirectURI)
 
 			assert.Equal(t, tt.wantDone, got.done)
+			if tt.wantToken != "" {
+				require.NotNil(t, got.result)
+				assert.Equal(t, tt.wantToken, got.result.AccessToken)
+			}
 			if tt.wantErr {
 				require.Error(t, got.err)
 			} else {
