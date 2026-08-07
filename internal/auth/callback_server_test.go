@@ -314,6 +314,13 @@ func TestCallbackServer_ReplayIsRejectedWhileTheFirstExchangeRuns(t *testing.T) 
 	defer cancel()
 
 	release := make(chan struct{})
+	// Released on every exit path: an early t.Fatal would otherwise leave the
+	// exchange handler parked, and httptest.Server.Close waits for outstanding
+	// requests, hanging the whole test binary instead of reporting the failure.
+	var releaseOnce sync.Once
+	releaseExchange := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(releaseExchange)
+
 	entered := make(chan struct{}, 1)
 	flow := startStackFlow(t, ctx, release, entered)
 
@@ -342,7 +349,7 @@ func TestCallbackServer_ReplayIsRejectedWhileTheFirstExchangeRuns(t *testing.T) 
 	// The flow is claimed and mid-exchange. A replay must not start a second one.
 	assert.Equal(t, http.StatusGone, get(t, ctx, flow.callbackURL(flow.validQuery())).status)
 
-	close(release)
+	releaseExchange()
 	<-firstCallback
 
 	outcome := <-flow.results
@@ -547,4 +554,39 @@ func TestGCOMCallbackServer_ForeignCallbackDoesNotConsumeTheFlow(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the Cloud leg did not complete")
 	}
+}
+
+// A discarded callback used to be completely invisible: nothing in the browser
+// said the login was unaffected, and nothing in the terminal said a request had
+// arrived at all. With a 30-minute bound, silence is a long time to stare at.
+func TestCallbackServer_ForeignCallbackIsAnnouncedOnceAndReadsAsBenign(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	flow := startStackFlow(t, ctx, nil, nil)
+
+	got := get(t, ctx, flow.callbackURL(url.Values{"state": {"from-an-earlier-attempt"}, "code": {"stale"}}))
+
+	// The browser page must not read as a failed login: this callback changed
+	// nothing, and the sign-in it belongs to is still running.
+	assert.NotContains(t, got.body, "Authentication Failed")
+	assert.NotContains(t, got.body, "try again")
+	assert.Contains(t, got.body, "still running")
+
+	// The terminal says something, exactly once, from the flow's own goroutine.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && !strings.Contains(flow.writer.String(), "Ignored a request") {
+		time.Sleep(2 * time.Millisecond)
+	}
+	assert.Contains(t, flow.writer.String(), "Ignored a request",
+		"the user must learn that a stray callback arrived")
+
+	for range 3 {
+		_ = get(t, ctx, flow.callbackURL(url.Values{"state": {"another"}, "code": {"stale"}}))
+	}
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, 1, strings.Count(flow.writer.String(), "Ignored a request"),
+		"a flood of stray callbacks must not flood the terminal")
+
+	requireStillRunning(t, flow)
 }

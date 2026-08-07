@@ -233,22 +233,41 @@ func TestValidateCallbackPort(t *testing.T) {
 	}
 }
 
-// Manual mode has no listener to time out, so its bound is on the read.
-func TestManualFlowRun_TimesOutWaitingForAPastedURL(t *testing.T) {
+// Manual mode is deliberately unbounded: readLineContext cannot cancel the
+// terminal read it wraps, so a deadline there would return while an abandoned
+// goroutine still owned the terminal and the user's half-typed redirect URL —
+// carrying a live authorization code — would land in the shell.
+func TestManualFlowRun_HasNoReadDeadline(t *testing.T) {
 	testutils.SetAgentMode(t, true)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 
 	blocked, writeEnd := io.Pipe()
 	t.Cleanup(func() { _ = writeEnd.Close() })
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	writer := &syncWriter{}
 	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{Manual: true, Reader: blocked, Writer: writer})
-	auth.SetAcquireTimeout(flow, 150*time.Millisecond)
+	auth.SetAcquireTimeout(flow, 50*time.Millisecond)
 
-	_, err := flow.Run(ctx)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "timed out")
-	assert.NoError(t, ctx.Err(), "the bound must be the flow's own, not the caller's context")
+	done := make(chan error, 1)
+	go func() {
+		_, err := flow.Run(ctx)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("manual mode must not time out on its own read; got %v", err)
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	// Only the caller's context ends it.
+	cancel()
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(10 * time.Second):
+		t.Fatal("cancelling the context must end manual mode")
+	}
 }

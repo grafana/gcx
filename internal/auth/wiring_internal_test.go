@@ -45,7 +45,7 @@ func TestHTTPAndPasteGatesShareOneArbiter(t *testing.T) {
 		require.NoError(t, err)
 
 		errCh := make(chan error, 1)
-		server := newCallbackServer(listener, state, arb, errCh, func(w http.ResponseWriter, _ *http.Request) {
+		server := newCallbackServer(listener, state, arb, errCh, nil, func(w http.ResponseWriter, _ *http.Request) {
 			countExchange()
 			w.WriteHeader(http.StatusOK)
 		})
@@ -105,7 +105,7 @@ func TestHTTPAndPasteGatesAgreeOnOwnership(t *testing.T) {
 
 	handled := false
 	errCh := make(chan error, 1)
-	server := newCallbackServer(listener, state, arb, errCh, func(w http.ResponseWriter, _ *http.Request) {
+	server := newCallbackServer(listener, state, arb, errCh, nil, func(w http.ResponseWriter, _ *http.Request) {
 		handled = true
 		w.WriteHeader(http.StatusOK)
 	})
@@ -138,5 +138,43 @@ func TestHTTPAndPasteGatesAgreeOnOwnership(t *testing.T) {
 	case err := <-errCh:
 		t.Fatalf("a foreign request must not report an error on the flow: %v", err)
 	default:
+	}
+}
+
+// A granted claim disarms the deadline, so a handler that claims and then never
+// delivers would hang the flow forever. net/http recovers a panic per
+// connection, which is exactly how that happens by accident.
+func TestCallbackHandlerPanicStillEndsTheFlow(t *testing.T) {
+	const state = "state-for-this-flow"
+
+	arb := newCallbackArbiter(time.Hour)
+	t.Cleanup(arb.stop)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // no context plumbing needed for a test listener
+	require.NoError(t, err)
+
+	errCh := make(chan error, 1)
+	server := newCallbackServer(listener, state, arb, errCh, nil, func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	})
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+	})
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+		"http://"+listener.Addr().String()+"/callback?state="+url.QueryEscape(state)+"&code=x", nil)
+	require.NoError(t, err)
+	if resp, doErr := http.DefaultClient.Do(req); doErr == nil {
+		_ = resp.Body.Close()
+	}
+
+	select {
+	case err := <-errCh:
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "boom", "the panic value may carry request data")
+	case <-time.After(10 * time.Second):
+		t.Fatal("a panicking handler must still end the flow, not hang it")
 	}
 }

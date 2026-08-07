@@ -260,16 +260,32 @@ range, so a reloaded tab from the first leg routinely aborted the second.
 
 The arbiter is shared rather than per-path because the paste fallback below
 runs concurrently with the listener: `claimPastedCallback` applies the same
-ownership test and takes the same claim, so a pasted URL and a browser
-callback can never both exchange the same authorization code. Only the paste
-path can `release` a claim — it re-prompts after a failed attempt, and the
-next attempt has to be able to claim.
+ownership test and takes the same claim, so at most one exchange is ever in
+flight.
+
+Only the paste path can `release` a claim, and only when the attempt failed
+*before* the authorization code reached the token endpoint — `callbackError`
+carries a `spent` flag for that. gcx re-prompts for a malformed URL, because
+nothing was consumed; it ends the flow when the exchange itself failed, because
+the browser callback carries the same code and reopening would let it be
+exchanged twice. An authorization server that detects a replayed code is
+entitled to revoke what it already issued (RFC 6819 §4.4.1.1).
 
 The arbiter also owns the wait bound. Every flow gives up after
-`defaultCallbackAcquireTimeout` if nothing valid arrives; a granted claim
-stops that clock, so an exchange in flight is never cut off. Rejected requests
-deliberately do not extend it, or a local process could keep a login alive
-indefinitely.
+`defaultCallbackAcquireTimeout` if nothing valid arrives, and the bound exists
+to stop an unattended hang rather than to hurry the user, so it is set well past
+any interactive round trip. A granted claim stops that clock, so an exchange in
+flight is never cut off, and the handler recovers a panic into an error rather
+than leaving a claimed flow with nothing to deliver. Rejected requests
+deliberately do not extend the clock, or a local process could keep a login
+alive indefinitely; they do wake the flow once, so it can tell the user a stray
+callback arrived.
+
+`--oauth-manual` has no such bound. Its read cannot be cancelled — a blocking
+read on the process's own terminal is not interruptible in Go — so a deadline
+there would return while an abandoned goroutine still owned the terminal, and
+the half-typed redirect URL would land in the shell with a live authorization
+code in it.
 
 ### Manual callback (no local listener)
 

@@ -145,16 +145,10 @@ func (f *GCOMFlow) runManual(ctx context.Context) (*GCOMResult, error) {
 	authURL := f.buildAuthURL(redirectURI, state, codeChallenge)
 	printManualInstructions(f.writer, authURL, "")
 
-	// Bound the read, not the exchange: manual mode has no listener to time
-	// out, so without this the flow waits on the terminal forever.
-	readCtx, cancelRead := context.WithTimeout(ctx, f.acquireTimeout)
-	defer cancelRead()
-
-	line, err := readLineContext(readCtx, f.reader)
+	// Deliberately unbounded apart from ctx; see Flow.runManual for why a
+	// deadline on an uncancellable terminal read is worse than no deadline.
+	line, err := readLineContext(ctx, f.reader)
 	if err != nil {
-		if ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
-			return nil, errCallbackTimeout(f.acquireTimeout)
-		}
 		return nil, err
 	}
 
@@ -196,9 +190,10 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 
 	resultCh := make(chan *GCOMResult, 1)
 	errCh := make(chan error, 1)
+	ignored := make(chan struct{}, 1)
 	arb := newCallbackArbiter(f.acquireTimeout)
 	defer arb.stop()
-	server := f.startGCOMCallbackServer(ctx, listener, state, codeVerifier, redirectURI, arb, resultCh, errCh)
+	server := f.startGCOMCallbackServer(ctx, listener, state, codeVerifier, redirectURI, arb, resultCh, errCh, ignored)
 
 	// A fresh context is intentional: the request context may already be
 	// cancelled by the time we shut down, and graceful shutdown needs its own
@@ -230,6 +225,7 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 		fmt.Fprintln(f.writer, "Waiting for authentication...")
 	}
 
+	announcedIgnored := false
 	for {
 		select {
 		case result := <-resultCh:
@@ -237,32 +233,56 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 		case err := <-errCh:
 			return nil, err
 		case pasted := <-paste.Input():
-			if pasted.Err != nil {
-				paste.Reject(pasted.Err)
-				continue
+			if out := f.resolvePaste(ctx, arb, paste, pasted, state, codeVerifier, redirectURI); out.done {
+				return out.result, out.err
 			}
-			switch claimPastedCallback(arb, pasted.Values, state) {
-			case pasteForeign:
-				paste.Reject(errManualForeignState)
-				continue
-			case pasteSuperseded:
-				continue
-			case pasteClaimed:
+		case <-ignored:
+			if !announcedIgnored {
+				announcedIgnored = true
+				fmt.Fprintln(f.writer, ignoredCallbackNotice)
 			}
-			result, cerr := f.handleGCOMCallbackParams(ctx, pasted.Values, state, codeVerifier, redirectURI)
-			if cerr != nil {
-				arb.release()
-				paste.Reject(pasteRejection(cerr.err))
-				continue
-			}
-			arb.settle()
-			fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
-			return result, nil
 		case <-arb.expired():
 			return nil, errCallbackTimeout(f.acquireTimeout)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+}
+
+// resolvePaste is Flow.resolvePaste for the grafana.com leg. The two must agree
+// on every branch, so keep them in step.
+func (f *GCOMFlow) resolvePaste(ctx context.Context, arb *callbackArbiter, paste *pasteWatcher, pasted pastedInput, state, codeVerifier, redirectURI string) pasteOutcome[GCOMResult] {
+	if pasted.Err != nil {
+		paste.Reject(pasted.Err)
+		return pasteKeepWaiting[GCOMResult]()
+	}
+
+	switch claimPastedCallback(arb, pasted.Values, state) {
+	case pasteForeign:
+		paste.Reject(errManualForeignState)
+		return pasteKeepWaiting[GCOMResult]()
+	case pasteSuperseded:
+		fmt.Fprintln(f.writer, pasteSupersededNotice)
+		return pasteKeepWaiting[GCOMResult]()
+	case pasteExpired:
+		return pasteKeepWaiting[GCOMResult]()
+	case pasteClaimed:
+	}
+
+	result, cerr := f.handleGCOMCallbackParams(ctx, pasted.Values, state, codeVerifier, redirectURI)
+	switch {
+	case cerr == nil:
+		arb.settle()
+		fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
+		return pasteOutcome[GCOMResult]{done: true, result: result}
+	case cerr.spent:
+		arb.settle()
+		return pasteOutcome[GCOMResult]{done: true, err: cerr.err}
+	case !arb.release():
+		return pasteKeepWaiting[GCOMResult]()
+	default:
+		paste.Reject(pasteRejection(cerr.err))
+		return pasteKeepWaiting[GCOMResult]()
 	}
 }
 
@@ -282,8 +302,8 @@ func (f *GCOMFlow) buildAuthURL(redirectURI, state, codeChallenge string) string
 	)
 }
 
-func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, arb *callbackArbiter, resultCh chan<- *GCOMResult, errCh chan<- error) *http.Server {
-	return newCallbackServer(listener, expectedState, arb, errCh, func(w http.ResponseWriter, r *http.Request) {
+func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, arb *callbackArbiter, resultCh chan<- *GCOMResult, errCh chan<- error, ignored chan<- struct{}) *http.Server {
+	return newCallbackServer(listener, expectedState, arb, errCh, ignored, func(w http.ResponseWriter, r *http.Request) {
 		result, cerr := f.handleGCOMCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier, redirectURI)
 		if cerr != nil {
 			errCh <- cerr.err

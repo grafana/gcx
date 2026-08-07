@@ -119,13 +119,21 @@ is available on `gcx cloud login` for the standalone Cloud flow. Without the
 flag gcx picks a free port from `54321-54399`, which stays the default.
 
 **gcx stops waiting eventually.** A login that never receives a matching
-callback gives up after ten minutes rather than waiting forever. Run the
-command again to start a fresh one.
+callback gives up after 30 minutes rather than waiting forever. The bound is
+there to stop an unattended command hanging, not to hurry you along, so it sits
+well past any normal sign-in. `--oauth-manual` has no such bound — press Ctrl-C
+to abandon it — because gcx cannot take back a half-typed paste.
 
-**Another `gcx login` on the same port is harmless.** If a second login is
-already listening on that port, it answers the callback, sees that the `state`
-does not match its own, and ignores it. It keeps waiting for its own callback,
-and so does this one. A callback only ends the login that started it.
+**A second `gcx login` on the same port no longer breaks.** A gcx that includes
+this fix answers a callback meant for another login, sees that the `state` is
+not its own, ignores it, and keeps waiting. A callback only ends the login that
+started it.
+
+That protection lives in the gcx that receives the stray callback, which is the
+one on the *browser* computer — often a different, older install. Against a gcx
+released before this fix, a stray callback still aborts it with
+`invalid state - possible CSRF attack`. Close other logins on that machine, or
+upgrade it, if you rely on them surviving.
 
 **Terminal hygiene.** The pasted URL holds a single-use authorization code and
 the state value. It does not hold the PKCE code verifier or a token, so the

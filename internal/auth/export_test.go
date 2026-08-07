@@ -44,7 +44,7 @@ func NewCallbackArbiter(timeout time.Duration) *CallbackArbiter { return newCall
 // Claim, Settle, Release, Expired and Stop expose the arbiter's contract.
 func (a *callbackArbiter) Claim() CallbackClaim     { return a.claim() }
 func (a *callbackArbiter) Settle()                  { a.settle() }
-func (a *callbackArbiter) Release()                 { a.release() }
+func (a *callbackArbiter) Release() bool            { return a.release() }
 func (a *callbackArbiter) Expired() <-chan struct{} { return a.expired() }
 func (a *callbackArbiter) Stop()                    { a.stop() }
 func (a *callbackArbiter) DeadlineReached()         { a.deadlineReached() }
@@ -66,6 +66,7 @@ type PasteDisposition = pasteDisposition
 const (
 	PasteForeign    = pasteForeign
 	PasteSuperseded = pasteSuperseded
+	PasteExpired    = pasteExpired
 	PasteClaimed    = pasteClaimed
 )
 

@@ -42,11 +42,30 @@ const foreignCallbackPage = "This callback does not belong to the sign-in waitin
 	"It is most likely from an earlier login attempt or a reloaded tab. " +
 	"The sign-in in your terminal is still running — approve it from the URL that terminal printed."
 
+// ignoredCallbackNotice is printed once, by the flow's own goroutine, when a
+// request to the callback address was answered and discarded. Without it a
+// login that is being probed — or that received a denial the provider failed to
+// stamp with our state — shows nothing at all until the deadline.
+const ignoredCallbackNotice = "Ignored a request to the callback address that does not belong to this sign-in. Still waiting."
+
+// pasteSupersededNotice explains a pasted URL that arrived after the browser
+// callback had already claimed the flow. Every delivered line gets an answer;
+// silence here reads as a freeze.
+const pasteSupersededNotice = "The browser callback arrived first. Finishing that one."
+
 // callbackError pairs the error reported to the caller with the short message
 // rendered on the browser error page. The manual paste path uses only err.
 type callbackError struct {
 	err  error
 	page string
+	// spent records that the authorization code was sent to the token
+	// endpoint before this error. A spent code can never be redeemed again —
+	// the server may already have consumed it, and an authorization server
+	// that detects a replay is entitled to revoke whatever it issued
+	// (RFC 6819 §4.4.1.1). So a spent failure ends the flow on every path:
+	// re-prompting for the same URL could only produce a second exchange of
+	// the same code.
+	spent bool
 }
 
 func (e *callbackError) Error() string { return e.err.Error() }
@@ -88,18 +107,19 @@ func handleCallbackParams(ctx context.Context, q url.Values, expectedState, code
 
 	exchangeResult, err := exchangeCodeForToken(ctx, endpoint, code, codeVerifier)
 	if err != nil {
-		return nil, &callbackError{err: fmt.Errorf("token exchange failed: %w", err), page: "Token exchange failed"}
+		return nil, &callbackError{err: fmt.Errorf("token exchange failed: %w", err), page: "Token exchange failed", spent: true}
 	}
 
 	instanceEndpoint := q.Get("instanceEndpoint")
 	instanceEndpointURL, err := url.Parse(instanceEndpoint)
 	if err != nil {
-		return nil, &callbackError{err: fmt.Errorf("invalid endpoint url: %w", err), page: "Invalid instance endpoint passed"}
+		return nil, &callbackError{err: fmt.Errorf("invalid endpoint url: %w", err), page: "Invalid instance endpoint passed", spent: true}
 	}
 	if instanceEndpointURL.Scheme != "https" {
 		return nil, &callbackError{
-			err:  fmt.Errorf("invalid endpoint scheme: expected 'https', got '%s'", instanceEndpointURL.Scheme),
-			page: "Invalid instance endpoint: needs to be an HTTPS URL",
+			err:   fmt.Errorf("invalid endpoint scheme: expected 'https', got '%s'", instanceEndpointURL.Scheme),
+			page:  "Invalid instance endpoint: needs to be an HTTPS URL",
+			spent: true,
 		}
 	}
 
@@ -135,7 +155,7 @@ func (f *GCOMFlow) handleGCOMCallbackParams(ctx context.Context, q url.Values, e
 
 	result, err := f.exchangeGCOMToken(ctx, code, codeVerifier, redirectURI)
 	if err != nil {
-		return nil, &callbackError{err: fmt.Errorf("token exchange failed: %w", err), page: "Token exchange failed"}
+		return nil, &callbackError{err: fmt.Errorf("token exchange failed: %w", err), page: "Token exchange failed", spent: true}
 	}
 
 	return result, nil

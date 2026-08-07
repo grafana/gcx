@@ -11,9 +11,13 @@ import (
 // that belongs to it. Without a bound the only limit is context cancellation,
 // so a login that never receives a valid callback waits forever.
 //
-// Ten minutes is generous for a consent page that may involve SSO and MFA, and
-// for the remote case where the user copies a URL between two computers.
-const defaultCallbackAcquireTimeout = 10 * time.Minute
+// This exists to stop an unattended hang, not to hurry the user along, so it is
+// set well past any interactive round trip. The clock starts when the listener
+// binds and covers the whole consent flow — SSO, MFA, and, in the remote case,
+// copying a URL between two computers — and the authorization code is minted at
+// the *end* of that, so a bound tight enough to be a nuisance would reject
+// perfectly good logins.
+const defaultCallbackAcquireTimeout = 30 * time.Minute
 
 // callbackClaim reports whether a completion path may run the token exchange.
 type callbackClaim int
@@ -97,24 +101,33 @@ func (a *callbackArbiter) settle() {
 	}
 }
 
-// release hands the flow back after a claimed attempt failed without ending it.
-// Only the paste path uses it: gcx asks for another redirect URL, so the next
-// attempt has to be able to claim. If the deadline passed while the attempt was
-// running, the flow expires instead of reopening.
-func (a *callbackArbiter) release() {
+// release hands the flow back after a claimed attempt failed *without putting
+// the authorization code on the wire*. Only the paste path uses it: gcx asks
+// for another redirect URL, so the next attempt has to be able to claim.
+//
+// A spent code must never be released. Reopening the flow after the code
+// reached the token endpoint would let the browser callback — which carries
+// that same code — claim and exchange it a second time.
+//
+// It reports whether the flow is still open. If the deadline passed while the
+// attempt was running, the flow expires here instead of reopening, and the
+// caller must not prompt for input it can no longer accept.
+func (a *callbackArbiter) release() bool {
 	a.mu.Lock()
 	if a.state != arbiterExchanging {
+		open := a.state == arbiterIdle
 		a.mu.Unlock()
-		return
+		return open
 	}
 	if a.lateDeadline {
 		a.state = arbiterExpired
 		a.mu.Unlock()
 		close(a.expiry)
-		return
+		return false
 	}
 	a.state = arbiterIdle
 	a.mu.Unlock()
+	return true
 }
 
 // expired closes once the acquisition deadline has passed with no claim holding
@@ -149,8 +162,10 @@ func (a *callbackArbiter) deadlineReached() {
 
 // errCallbackTimeout reports that no callback belonging to this flow arrived in
 // time. It names no state, code, or token.
+// It says "sign-in" rather than "browser": the same bound covers the pasted
+// redirect URL, where no browser ever reaches gcx.
 func errCallbackTimeout(d time.Duration) error {
-	return fmt.Errorf("timed out after %s waiting for the browser to complete sign-in", d)
+	return fmt.Errorf("timed out after %s waiting for the sign-in to complete", d)
 }
 
 // pasteDisposition is what a flow should do with a pasted redirect URL.
@@ -160,9 +175,13 @@ const (
 	// pasteForeign means the URL is from another login attempt. The callback
 	// server is still listening, so the flow re-prompts rather than ending.
 	pasteForeign pasteDisposition = iota
-	// pasteSuperseded means the browser callback got there first, or the
-	// deadline passed. Another select case already carries the outcome.
+	// pasteSuperseded means the browser callback got there first and is being
+	// processed. Its result or error will end the flow, but the user is owed a
+	// word about why their paste went nowhere.
 	pasteSuperseded
+	// pasteExpired means the deadline passed. The expiry case ends the flow on
+	// the next turn of the loop, so this needs no message of its own.
+	pasteExpired
 	// pasteClaimed means the caller owns the flow and must run the exchange.
 	pasteClaimed
 )
@@ -178,8 +197,28 @@ func claimPastedCallback(arb *callbackArbiter, values url.Values, expectedState 
 	if !callbackBelongsToFlow(values, expectedState) {
 		return pasteForeign
 	}
-	if arb.claim() != claimGranted {
+	switch arb.claim() {
+	case claimGranted:
+		return pasteClaimed
+	case claimExpired:
+		return pasteExpired
+	case claimTaken:
 		return pasteSuperseded
 	}
-	return pasteClaimed
+	return pasteSuperseded
 }
+
+// pasteOutcome is what resolvePaste decided about one delivered redirect URL.
+// A zero value means "keep waiting": the watcher has already been told why, and
+// the run loop goes back to the select.
+//
+// It is one value rather than a (result, error) pair because "nothing happened,
+// carry on" is a third case that neither of those can express.
+type pasteOutcome[T any] struct {
+	done   bool
+	result *T
+	err    error
+}
+
+// pasteKeepWaiting is the zero outcome, named for readability at the call site.
+func pasteKeepWaiting[T any]() pasteOutcome[T] { return pasteOutcome[T]{} }

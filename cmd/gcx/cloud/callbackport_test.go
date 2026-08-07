@@ -84,7 +84,7 @@ func TestCloudLoginRejectsUnusablePortCombinationsBeforeStartingOAuth(t *testing
 			// command has no callback server for the port to apply to.
 			name:    "port with a cloud token",
 			args:    []string{"--cloud-token", "glc_abc", "--oauth-callback-port", "8250"},
-			wantErr: "--oauth-callback-port has no effect with --cloud-token",
+			wantErr: "conflicting OAuth callback options",
 		},
 		{
 			name:    "port with manual mode",

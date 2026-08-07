@@ -150,17 +150,14 @@ func (f *Flow) runManual(ctx context.Context) (*Result, error) {
 	authURL := f.buildAuthURL(manualCallbackPort, state, codeChallenge)
 	printManualInstructions(f.writer, authURL, verificationCode(codeChallenge))
 
-	// Bound the read, not the exchange: manual mode has no listener to time
-	// out, so without this the flow waits on the terminal forever. The
-	// exchange below keeps the caller's context and its own 30s timeout.
-	readCtx, cancelRead := context.WithTimeout(ctx, f.acquireTimeout)
-	defer cancelRead()
-
-	line, err := readLineContext(readCtx, f.reader)
+	// Deliberately unbounded apart from ctx. readLineContext cannot cancel the
+	// read it wraps — a blocking read on the process's own terminal is not
+	// interruptible in Go — so a deadline here would return while an abandoned
+	// goroutine still owned the terminal. The URL the user was midway through
+	// pasting would then land in the shell, writing a live authorization code
+	// into shell history. Ctrl-C is the bound for manual mode.
+	line, err := readLineContext(ctx, f.reader)
 	if err != nil {
-		if ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
-			return nil, errCallbackTimeout(f.acquireTimeout)
-		}
 		return nil, err
 	}
 
@@ -195,11 +192,12 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 
 	resultCh := make(chan *Result, 1)
 	errCh := make(chan error, 1)
+	ignored := make(chan struct{}, 1)
 	// One arbiter for every path that can complete this flow: the HTTP
 	// handler below, the paste watcher further down, and the deadline.
 	arb := newCallbackArbiter(f.acquireTimeout)
 	defer arb.stop()
-	server := f.startCallbackServer(ctx, listener, state, codeVerifier, arb, resultCh, errCh)
+	server := f.startCallbackServer(ctx, listener, state, codeVerifier, arb, resultCh, errCh, ignored)
 
 	defer func() { //nolint:contextcheck // intentionally use Background for graceful shutdown after ctx cancellation
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -231,6 +229,7 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 		fmt.Fprintln(f.writer, "Waiting for authentication...")
 	}
 
+	announcedIgnored := false
 	for {
 		select {
 		case result := <-resultCh:
@@ -238,33 +237,70 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 		case err := <-errCh:
 			return nil, err
 		case pasted := <-paste.Input():
-			if pasted.Err != nil {
-				paste.Reject(pasted.Err)
-				continue
+			if out := f.resolvePaste(ctx, arb, paste, pasted, state, codeVerifier); out.done {
+				return out.result, out.err
 			}
-			switch claimPastedCallback(arb, pasted.Values, state) {
-			case pasteForeign:
-				paste.Reject(errManualForeignState)
-				continue
-			case pasteSuperseded:
-				continue
-			case pasteClaimed:
+		case <-ignored:
+			if !announcedIgnored {
+				announcedIgnored = true
+				fmt.Fprintln(f.writer, ignoredCallbackNotice)
 			}
-			result, cerr := handleCallbackParams(ctx, pasted.Values, state, codeVerifier)
-			if cerr != nil {
-				// Hand the flow back so the next paste can claim it.
-				arb.release()
-				paste.Reject(pasteRejection(cerr.err))
-				continue
-			}
-			arb.settle()
-			fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
-			return result, nil
 		case <-arb.expired():
 			return nil, errCallbackTimeout(f.acquireTimeout)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+}
+
+// resolvePaste runs one delivered redirect URL through the ownership gate, the
+// arbiter, and — when it owns the flow — the token exchange. done reports
+// whether the flow finished; when it is false the watcher has already been told
+// why, and the loop keeps waiting.
+//
+// It lives outside the select so both the wiring and every branch of it can be
+// tested without a live browser: startPasteWatcher needs a real terminal and a
+// non-agent session, which no test can supply without opening a browser window.
+func (f *Flow) resolvePaste(ctx context.Context, arb *callbackArbiter, paste *pasteWatcher, pasted pastedInput, state, codeVerifier string) pasteOutcome[Result] {
+	if pasted.Err != nil {
+		paste.Reject(pasted.Err)
+		return pasteKeepWaiting[Result]()
+	}
+
+	switch claimPastedCallback(arb, pasted.Values, state) {
+	case pasteForeign:
+		paste.Reject(errManualForeignState)
+		return pasteKeepWaiting[Result]()
+	case pasteSuperseded:
+		fmt.Fprintln(f.writer, pasteSupersededNotice)
+		return pasteKeepWaiting[Result]()
+	case pasteExpired:
+		// The expiry case ends the flow on the next turn of the loop, with the
+		// timeout error. Prompting again here would be a lie.
+		return pasteKeepWaiting[Result]()
+	case pasteClaimed:
+	}
+
+	result, cerr := handleCallbackParams(ctx, pasted.Values, state, codeVerifier)
+	switch {
+	case cerr == nil:
+		arb.settle()
+		fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
+		return pasteOutcome[Result]{done: true, result: result}
+	case cerr.spent:
+		// The code reached the token endpoint. Releasing the flow would let the
+		// browser callback — carrying that same code — exchange it a second
+		// time, so this ends the login. Another paste could not help anyway:
+		// the code is gone.
+		arb.settle()
+		return pasteOutcome[Result]{done: true, err: cerr.err}
+	case !arb.release():
+		// The deadline passed while this attempt was running. Do not prompt for
+		// input that can no longer be accepted.
+		return pasteKeepWaiting[Result]()
+	default:
+		paste.Reject(pasteRejection(cerr.err))
+		return pasteKeepWaiting[Result]()
 	}
 }
 
@@ -305,8 +341,8 @@ func newFlowSecrets() (string, string, string, error) {
 	return state, codeVerifier, generateCodeChallenge(codeVerifier), nil
 }
 
-func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier string, arb *callbackArbiter, resultCh chan<- *Result, errCh chan<- error) *http.Server {
-	return newCallbackServer(listener, expectedState, arb, errCh, func(w http.ResponseWriter, r *http.Request) {
+func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier string, arb *callbackArbiter, resultCh chan<- *Result, errCh chan<- error, ignored chan<- struct{}) *http.Server {
+	return newCallbackServer(listener, expectedState, arb, errCh, ignored, func(w http.ResponseWriter, r *http.Request) {
 		result, cerr := handleCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier)
 		if cerr != nil {
 			errCh <- cerr.err
@@ -333,7 +369,7 @@ func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, e
 //	already claimed   -> 410 Gone            replay stays rejected
 //	deadline passed   -> 410 Gone            flow already gave up
 //	ours and first    -> handle(), terminal
-func newCallbackServer(listener net.Listener, expectedState string, arb *callbackArbiter, errCh chan<- error, handle http.HandlerFunc) *http.Server {
+func newCallbackServer(listener net.Listener, expectedState string, arb *callbackArbiter, errCh chan<- error, ignored chan<- struct{}, handle http.HandlerFunc) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		// An explicit check, not a "GET /callback" ServeMux pattern: that
@@ -342,6 +378,7 @@ func newCallbackServer(listener net.Listener, expectedState string, arb *callbac
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			notifyIgnored(ignored)
 			return
 		}
 
@@ -349,8 +386,13 @@ func newCallbackServer(listener net.Listener, expectedState string, arb *callbac
 		// answered and forgotten: a loopback listener is reachable by every
 		// local process, and in unified login the first OAuth leg's callback
 		// commonly lands on the second leg's port.
+		//
+		// A notice page, not the error page: for the user standing in front of
+		// the browser this is a stale tab, not a failed login, and the sign-in
+		// they care about is still running in their terminal.
 		if !callbackBelongsToFlow(r.URL.Query(), expectedState) {
-			renderErrorPage(w, foreignCallbackPage)
+			renderNoticePage(w, foreignCallbackPage)
+			notifyIgnored(ignored)
 			return
 		}
 
@@ -364,10 +406,20 @@ func newCallbackServer(listener net.Listener, expectedState string, arb *callbac
 		case claimGranted:
 		}
 
-		// Deferred so a panic inside handle cannot strand the flow in the
-		// claimed state, waiting out its deadline for a result that will
-		// never arrive.
-		defer arb.settle()
+		// handle owns the flow from here, so it must always produce an
+		// outcome. net/http recovers a panic per connection, which would
+		// otherwise leave nothing on resultCh or errCh and — because a
+		// granted claim disarms the deadline — hang the flow forever.
+		defer func() {
+			if rec := recover(); rec != nil {
+				// The panic value is not reported: it can carry request data.
+				select {
+				case errCh <- errors.New("callback handler failed"):
+				default:
+				}
+			}
+			arb.settle()
+		}()
 		handle(w, r)
 	})
 
@@ -384,6 +436,20 @@ func newCallbackServer(listener net.Listener, expectedState string, arb *callbac
 	}()
 
 	return server
+}
+
+// notifyIgnored tells the flow that a request was answered and discarded, so
+// the flow's own goroutine can say so once. The send never blocks and never
+// carries request data: the handler runs on the server's goroutine and must not
+// touch the writer the flow owns, nor wedge if nobody is listening.
+func notifyIgnored(ignored chan<- struct{}) {
+	if ignored == nil {
+		return
+	}
+	select {
+	case ignored <- struct{}{}:
+	default:
+	}
 }
 
 var allowedDomainSuffixes = []string{ //nolint:gochecknoglobals
@@ -615,6 +681,23 @@ func renderSuccessPage(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, nil); err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	_, _ = w.Write(buf.Bytes())
+}
+
+// renderNoticePage answers a request that gcx deliberately did nothing with.
+// It is not renderErrorPage: that template says "Authentication Failed" and
+// tells the reader to try again, which is wrong and alarming for a stale tab
+// that did not affect any login.
+func renderNoticePage(w http.ResponseWriter, message string) {
+	tmpl := template.Must(template.ParseFS(templateFS, "templates/notice.html"))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusBadRequest)
+	data := struct{ Message string }{Message: message}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
