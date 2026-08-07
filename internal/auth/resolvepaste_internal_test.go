@@ -238,28 +238,138 @@ func TestResolvePaste_DeadlineDuringExchangeSkipsTheReprompt(t *testing.T) {
 	assert.NotContains(t, out.String(), "Redirect URL")
 }
 
-// Both legs must agree branch for branch; the grafana.com one is pinned too.
-func TestGCOMResolvePaste_SpentCodeEndsTheFlow(t *testing.T) {
-	var srv *httptest.Server
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/oauth2/token", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadGateway)
-	})
-	srv = httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
+// Both legs must agree branch for branch, so the grafana.com one is driven
+// through the same set. A divergence here is how the HTTP/paste split in the
+// first round of this work went unnoticed.
+func TestGCOMResolvePaste_MatchesTheStackLegBranchForBranch(t *testing.T) {
+	const redirectURI = "http://127.0.0.1:54321/callback"
+	ours := url.Values{"state": {flowState}, "code": {"cloud-code"}}
 
-	out := &lockedBuffer{}
-	f := &GCOMFlow{opts: GCOMOptions{ClientID: "gcx", GCOMURL: srv.URL}, writer: out}
+	tests := []struct {
+		name string
+		// tokenStatus drives the fake grafana.com token endpoint.
+		tokenStatus int
+		input       pastedInput
+		// arrange runs before resolvePaste to put the arbiter in a given state.
+		arrange      func(*callbackArbiter)
+		wantDone     bool
+		wantErr      bool
+		wantOutput   string
+		wantNoOutput string
+		// wantClaimable is the verdict a later claim should get.
+		wantClaim callbackClaim
+	}{
+		{
+			name:        "success settles the flow",
+			tokenStatus: http.StatusOK,
+			input:       pastedInput{Values: ours},
+			wantDone:    true,
+			wantOutput:  "single-use code",
+			wantClaim:   claimTaken,
+		},
+		{
+			name:         "a spent code ends the flow and stays closed",
+			tokenStatus:  http.StatusBadGateway,
+			input:        pastedInput{Values: ours},
+			wantDone:     true,
+			wantErr:      true,
+			wantNoOutput: "Redirect URL",
+			wantClaim:    claimTaken,
+		},
+		{
+			name:        "a failure before the exchange re-prompts",
+			tokenStatus: http.StatusOK,
+			// Our state but no code: rejected before anything is sent.
+			input:      pastedInput{Values: url.Values{"state": {flowState}}},
+			wantOutput: "Redirect URL",
+			wantClaim:  claimGranted,
+		},
+		{
+			name:        "a foreign URL never claims",
+			tokenStatus: http.StatusOK,
+			input:       pastedInput{Values: url.Values{"state": {"another-login"}, "code": {"x"}}},
+			wantOutput:  "different login attempt",
+			wantClaim:   claimGranted,
+		},
+		{
+			name:        "a parse error re-prompts",
+			tokenStatus: http.StatusOK,
+			input:       pastedInput{Err: errManualForeignState},
+			wantOutput:  "That URL did not work",
+			wantClaim:   claimGranted,
+		},
+		{
+			name:        "losing to the browser says so",
+			tokenStatus: http.StatusOK,
+			input:       pastedInput{Values: ours},
+			arrange:     func(a *callbackArbiter) { a.claim() },
+			wantOutput:  "browser callback arrived first",
+			wantClaim:   claimTaken,
+		},
+		{
+			name:         "after the deadline it stays quiet",
+			tokenStatus:  http.StatusOK,
+			input:        pastedInput{Values: ours},
+			arrange:      func(a *callbackArbiter) { a.deadlineReached() },
+			wantNoOutput: "Redirect URL",
+			wantClaim:    claimExpired,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/api/oauth2/token", func(w http.ResponseWriter, _ *http.Request) {
+				if tt.tokenStatus != http.StatusOK {
+					w.WriteHeader(tt.tokenStatus)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"access_token": "glc_test_token",
+					"scope":        "stacks:read",
+				})
+			})
+			srv := httptest.NewServer(mux)
+			t.Cleanup(srv.Close)
+
+			out := &lockedBuffer{}
+			f := &GCOMFlow{opts: GCOMOptions{ClientID: "gcx", GCOMURL: srv.URL}, writer: out}
+			arb := newCallbackArbiter(time.Hour)
+			t.Cleanup(arb.stop)
+			if tt.arrange != nil {
+				tt.arrange(arb)
+			}
+
+			got := f.resolvePaste(context.Background(), arb, pasteTerminal(out), tt.input,
+				flowState, "verifier", redirectURI)
+
+			assert.Equal(t, tt.wantDone, got.done)
+			if tt.wantErr {
+				require.Error(t, got.err)
+			} else {
+				require.NoError(t, got.err)
+			}
+			if tt.wantOutput != "" {
+				assert.Contains(t, out.String(), tt.wantOutput)
+			}
+			if tt.wantNoOutput != "" {
+				assert.NotContains(t, out.String(), tt.wantNoOutput)
+			}
+			assert.Equal(t, tt.wantClaim, arb.claim())
+		})
+	}
+}
+
+// release is a no-op on a flow nobody claimed, and reports the flow open.
+func TestCallbackArbiterRelease_WithoutAClaimIsANoOp(t *testing.T) {
 	arb := newCallbackArbiter(time.Hour)
 	t.Cleanup(arb.stop)
 
-	values := url.Values{"state": {flowState}, "code": {"cloud-code"}}
-	got := f.resolvePaste(
-		context.Background(), arb, pasteTerminal(out), pastedInput{Values: values},
-		flowState, "verifier", "http://127.0.0.1:54321/callback")
+	assert.True(t, arb.release(), "an unclaimed flow is still open")
+	assert.Equal(t, claimGranted, arb.claim())
 
-	require.True(t, got.done)
-	require.Error(t, got.err)
-	assert.Equal(t, claimTaken, arb.claim(), "a spent Cloud code must not be exchangeable again")
-	assert.NotContains(t, out.String(), "Redirect URL")
+	arb.settle()
+	assert.False(t, arb.release(), "a finished flow is not reopened by a stray release")
+	assert.Equal(t, claimTaken, arb.claim())
 }
