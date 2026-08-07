@@ -20,11 +20,12 @@ import (
 )
 
 type loginOpts struct {
-	oauthURL    string
-	apiURL      string
-	scopes      []string
-	cloudToken  string
-	oauthManual bool
+	oauthURL          string
+	apiURL            string
+	scopes            []string
+	cloudToken        string
+	oauthManual       bool
+	oauthCallbackPort int
 }
 
 type gcomOAuthFlow interface {
@@ -42,8 +43,11 @@ func (opts *loginOpts) bindFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.apiURL, "api-url", "https://grafana.com", "Base URL for Grafana Cloud API resource calls (stacks etc.)")
 	flags.StringSliceVar(&opts.scopes, "scope", auth.DefaultGCOMScopes(), "OAuth2 scopes to request")
 	flags.BoolVar(&opts.oauthManual, "oauth-manual", false, "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer")
+	flags.IntVar(&opts.oauthCallbackPort, "oauth-callback-port", 0, "Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser")
 }
 
+// Validate rejects every unusable combination before Run, so an invalid flag
+// never costs the user a browser window or a half-finished OAuth flow.
 func (opts *loginOpts) Validate() error {
 	if opts.oauthURL == "" {
 		return errors.New("--oauth-url must not be empty")
@@ -56,6 +60,39 @@ func (opts *loginOpts) Validate() error {
 	}
 	if opts.cloudToken != "" && opts.oauthManual {
 		return errors.New("--oauth-manual has no effect with --cloud-token")
+	}
+	// The same guidance `gcx login` gives for the same mistakes: one shared
+	// numeric rule, and errors of the same shape, so which command the user
+	// typed does not change the quality of the help.
+	if err := auth.ValidateCallbackPort(opts.oauthCallbackPort); err != nil {
+		return gcxerrors.DetailedError{
+			Summary: "invalid --oauth-callback-port",
+			Details: fmt.Sprintf("Port must be between 1 and 65535 (or 0 to auto-pick); got %d.", opts.oauthCallbackPort),
+		}
+	}
+	// This command runs one OAuth leg and nothing else, so a callback port is
+	// meaningless once either flag has removed the callback server. Unified
+	// `gcx login` is different: there a Cloud token can coexist with a port
+	// that the stack OAuth leg still needs.
+	if opts.cloudToken != "" && opts.oauthCallbackPort != 0 {
+		return gcxerrors.DetailedError{
+			Summary: "conflicting OAuth callback options",
+			Details: "--cloud-token skips the browser flow entirely, so this command starts no callback server for --oauth-callback-port to apply to.",
+			Suggestions: []string{
+				"Drop --oauth-callback-port and keep using --cloud-token",
+				"Or drop --cloud-token to authenticate through the browser on that port",
+			},
+		}
+	}
+	if opts.oauthManual && opts.oauthCallbackPort != 0 {
+		return gcxerrors.DetailedError{
+			Summary: "conflicting OAuth callback options",
+			Details: "--oauth-manual completes the flow without a callback server, so there is no port to fix with --oauth-callback-port.",
+			Suggestions: []string{
+				"Use --oauth-manual alone and paste the redirect URL",
+				"Or use --oauth-callback-port <port> alone and forward that port with ssh -L",
+			},
+		}
 	}
 	return nil
 }
@@ -273,6 +310,7 @@ func runOAuthLogin(
 		GCOMURL:  opts.oauthURL,
 		Scopes:   opts.scopes,
 		Writer:   stderr,
+		Port:     opts.oauthCallbackPort,
 		Manual:   opts.oauthManual,
 		Reader:   stdin,
 	})

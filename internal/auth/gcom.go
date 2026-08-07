@@ -62,6 +62,20 @@ type GCOMOptions struct {
 	// Scopes is the list of OAuth2 scopes to request.
 	Scopes []string
 
+	// Port specifies a fixed port for the callback server, mirroring
+	// Options.Port on the stack flow. If 0, an available port is found
+	// automatically. A user who fixes the port for unified login means it for
+	// every browser OAuth leg, not just the first one; only specific ports are
+	// forwarded between a remote host and the browser.
+	//
+	// Any port is safe here. grafana.com matches a loopback redirect_uri on
+	// scheme, host and path and ignores the port (RFC 8252 §7.3), so a port
+	// outside the 54321-54399 auto-pick range is accepted. That rule was added
+	// alongside the PKCE flow this client uses; see grafana-com#19063,
+	// matchesRedirectUri in packages/grafana-com-lib/src/url.ts. The path must
+	// still match, which is why /callback is fixed.
+	Port int
+
 	// Writer for user-facing messages. Defaults to os.Stderr.
 	Writer io.Writer
 
@@ -81,6 +95,9 @@ type GCOMFlow struct {
 	opts   GCOMOptions
 	writer io.Writer
 	reader io.Reader
+	// acquireTimeout bounds the wait for a callback that belongs to this flow.
+	// Set from defaultCallbackAcquireTimeout; tests shorten it per instance.
+	acquireTimeout time.Duration
 }
 
 // NewGCOMFlow creates a new GCOM OAuth2 PKCE flow.
@@ -96,7 +113,7 @@ func NewGCOMFlow(opts GCOMOptions) *GCOMFlow {
 	if r == nil {
 		r = os.Stdin
 	}
-	return &GCOMFlow{opts: opts, writer: w, reader: r}
+	return &GCOMFlow{opts: opts, writer: w, reader: r, acquireTimeout: defaultCallbackAcquireTimeout}
 }
 
 // Run executes the GCOM OAuth2 PKCE flow.
@@ -104,8 +121,16 @@ func (f *GCOMFlow) Run(ctx context.Context) (*GCOMResult, error) {
 	if err := validateGCOMURL(f.opts.GCOMURL); err != nil {
 		return nil, fmt.Errorf("invalid GCOM URL: %w", err)
 	}
+	if err := ValidateCallbackPort(f.opts.Port); err != nil {
+		return nil, err
+	}
 
 	if f.opts.Manual {
+		// Same rule as the stack flow: manual mode starts no listener, so a
+		// fixed port would be silently ignored.
+		if f.opts.Port != 0 {
+			return nil, errors.New("manual OAuth does not use a callback port")
+		}
 		return f.runManual(ctx)
 	}
 	return f.runWithCallbackServer(ctx)
@@ -127,6 +152,8 @@ func (f *GCOMFlow) runManual(ctx context.Context) (*GCOMResult, error) {
 	authURL := f.buildAuthURL(redirectURI, state, codeChallenge)
 	printManualInstructions(f.writer, authURL, "")
 
+	// Deliberately unbounded apart from ctx; see Flow.runManual for why a
+	// deadline on an uncancellable terminal read is worse than no deadline.
 	line, err := readLineContext(ctx, f.reader)
 	if err != nil {
 		return nil, err
@@ -147,9 +174,15 @@ func (f *GCOMFlow) runManual(ctx context.Context) (*GCOMResult, error) {
 }
 
 func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, error) {
-	listener, port, err := listenOnCallbackPort(ctx, "127.0.0.1", 0)
+	listener, port, err := listenOnCallbackPort(ctx, "127.0.0.1", f.opts.Port)
 	if err != nil {
-		return nil, fmt.Errorf("no available port: %w", err)
+		// A fixed port that is taken is the user's own choice failing, and the
+		// bind error already names it. Only the auto-pick exhaustion needs the
+		// extra framing.
+		if f.opts.Port == 0 {
+			return nil, fmt.Errorf("no available port: %w", err)
+		}
+		return nil, err
 	}
 
 	state, codeVerifier, codeChallenge, err := newFlowSecrets()
@@ -158,11 +191,16 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 		return nil, err
 	}
 
+	// Built once from the bound port and shared by the authorize URL and the
+	// token exchange: GCOM rejects the exchange unless the two are identical.
 	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", port)
 
 	resultCh := make(chan *GCOMResult, 1)
 	errCh := make(chan error, 1)
-	server := f.startGCOMCallbackServer(ctx, listener, state, codeVerifier, redirectURI, resultCh, errCh)
+	ignored := make(chan struct{}, 1)
+	arb := newCallbackArbiter(f.acquireTimeout)
+	defer arb.stop()
+	server := f.startGCOMCallbackServer(ctx, listener, state, codeVerifier, redirectURI, arb, resultCh, errCh, ignored)
 
 	// A fresh context is intentional: the request context may already be
 	// cancelled by the time we shut down, and graceful shutdown needs its own
@@ -194,6 +232,7 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 		fmt.Fprintln(f.writer, "Waiting for authentication...")
 	}
 
+	announcedIgnored := false
 	for {
 		select {
 		case result := <-resultCh:
@@ -201,21 +240,54 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 		case err := <-errCh:
 			return nil, err
 		case pasted := <-paste.Input():
-			if pasted.Err != nil {
-				paste.Reject(pasted.Err)
-				continue
+			if out := f.resolvePaste(ctx, arb, paste, pasted, state, codeVerifier, redirectURI); out.done {
+				return out.result, out.err
 			}
-			result, cerr := f.handleGCOMCallbackParams(ctx, pasted.Values, state, codeVerifier, redirectURI)
-			if cerr != nil {
-				paste.Reject(pasteRejection(cerr.err))
-				continue
+		case <-ignored:
+			if !announcedIgnored {
+				announcedIgnored = true
+				fmt.Fprintln(f.writer, ignoredCallbackNotice)
 			}
-			fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
-			return result, nil
+		case <-arb.expired():
+			return nil, errCallbackTimeout(f.acquireTimeout)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
+}
+
+// resolvePaste is Flow.resolvePaste for the grafana.com leg. The two must agree
+// on every branch, so keep them in step.
+func (f *GCOMFlow) resolvePaste(ctx context.Context, arb *callbackArbiter, paste *pasteWatcher, pasted pastedInput, state, codeVerifier, redirectURI string) pasteOutcome[GCOMResult] {
+	if pasted.Err != nil {
+		paste.Reject(pasted.Err)
+		return pasteKeepWaiting[GCOMResult]()
+	}
+
+	// See Flow.resolvePaste: validate before claiming, so an unusable paste
+	// cannot burn the browser callback.
+	params, cerr := f.validateGCOMCallbackParams(pasted.Values, state)
+	if cerr != nil {
+		paste.Reject(pasteRejection(cerr.err))
+		return pasteKeepWaiting[GCOMResult]()
+	}
+
+	switch arb.claim() {
+	case claimTaken:
+		fmt.Fprintln(f.writer, pasteSupersededNotice)
+		return pasteKeepWaiting[GCOMResult]()
+	case claimExpired:
+		return pasteKeepWaiting[GCOMResult]()
+	case claimGranted:
+	}
+
+	defer arb.settle()
+	result, cerr := f.completeGCOMCallback(ctx, params, codeVerifier, redirectURI)
+	if cerr != nil {
+		return pasteOutcome[GCOMResult]{done: true, err: cerr.err}
+	}
+	fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
+	return pasteOutcome[GCOMResult]{done: true, result: result}
 }
 
 // buildAuthURL renders the GCOM authorize URL. redirectURI must be the exact
@@ -234,8 +306,8 @@ func (f *GCOMFlow) buildAuthURL(redirectURI, state, codeChallenge string) string
 	)
 }
 
-func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, resultCh chan<- *GCOMResult, errCh chan<- error) *http.Server {
-	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
+func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, arb *callbackArbiter, resultCh chan<- *GCOMResult, errCh chan<- error, ignored chan<- struct{}) *http.Server {
+	return newCallbackServer(listener, expectedState, arb, errCh, ignored, func(w http.ResponseWriter, r *http.Request) {
 		result, cerr := f.handleGCOMCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier, redirectURI)
 		if cerr != nil {
 			errCh <- cerr.err

@@ -49,7 +49,7 @@ gcx login [CONTEXT_NAME] [flags]
       --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --oauth                     Authenticate via browser-based OAuth (recommended for Grafana Cloud). Works non-interactively and in agent mode: opens a browser for the user to approve.
-      --oauth-callback-port int   Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser
+      --oauth-callback-port int   Fixed local port for the OAuth callback server, used by every browser OAuth step including the Grafana Cloud one (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser
       --oauth-manual              Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer. Implies --oauth
       --org-id int                Grafana organization ID (defaults to 1 for on-prem)
   -o, --output string             Output format. One of: agents, json, text, yaml (default "text")

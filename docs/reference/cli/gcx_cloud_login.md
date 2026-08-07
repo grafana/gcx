@@ -40,14 +40,15 @@ gcx cloud login [flags]
 ### Options
 
 ```
-      --api-url string       Base URL for Grafana Cloud API resource calls (stacks etc.) (default "https://grafana.com")
-      --cloud-token string   Cloud Access Policy token (skips interactive OAuth flow)
-      --config string        Path to the configuration file to use
-      --context string       Name of the context to use
-  -h, --help                 help for login
-      --oauth-manual         Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer
-      --oauth-url string     Base URL for the OAuth login flow (used only by this command) (default "https://grafana.com")
-      --scope strings        OAuth2 scopes to request (default [stacks:read,stacks:write,stacks:delete,metrics:write,logs:write,traces:write,fleet-management:read,fleet-management:write])
+      --api-url string            Base URL for Grafana Cloud API resource calls (stacks etc.) (default "https://grafana.com")
+      --cloud-token string        Cloud Access Policy token (skips interactive OAuth flow)
+      --config string             Path to the configuration file to use
+      --context string            Name of the context to use
+  -h, --help                      help for login
+      --oauth-callback-port int   Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser
+      --oauth-manual              Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer
+      --oauth-url string          Base URL for the OAuth login flow (used only by this command) (default "https://grafana.com")
+      --scope strings             OAuth2 scopes to request (default [stacks:read,stacks:write,stacks:delete,metrics:write,logs:write,traces:write,fleet-management:read,fleet-management:write])
 ```
 
 ### Options inherited from parent commands

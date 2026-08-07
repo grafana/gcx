@@ -73,7 +73,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.Cloud, "cloud", false, "Force Grafana Cloud target (skip auto-detection)")
 	flags.BoolVar(&opts.Yes, "yes", false, "Non-interactive: skip optional prompts and use defaults")
 	flags.BoolVar(&opts.AllowServerOverride, "allow-server-override", false, "Allow re-pointing an existing context at a different server URL")
-	flags.IntVar(&opts.OAuthCallbackPort, "oauth-callback-port", 0, "Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser")
+	flags.IntVar(&opts.OAuthCallbackPort, "oauth-callback-port", 0, "Fixed local port for the OAuth callback server, used by every browser OAuth step including the Grafana Cloud one (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser")
 	flags.BoolVar(&opts.OAuthManual, "oauth-manual", false, "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer. Implies --oauth")
 	flags.IntVar(&opts.OrgID, "org-id", 0, "Grafana organization ID (defaults to 1 for on-prem)")
 }
@@ -107,7 +107,7 @@ func (opts *loginOpts) Validate(args []string) error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
 	}
-	if opts.OAuthCallbackPort < 0 || opts.OAuthCallbackPort > 65535 {
+	if err := internalauth.ValidateCallbackPort(opts.OAuthCallbackPort); err != nil {
 		return gcxerrors.DetailedError{
 			Summary: "invalid --oauth-callback-port",
 			Details: fmt.Sprintf("Port must be between 1 and 65535 (or 0 to auto-pick); got %d.", opts.OAuthCallbackPort),
@@ -1224,6 +1224,11 @@ func runCloudOAuth(ctx context.Context, opts *login.Options) error {
 		GCOMURL:  oauthURL,
 		Scopes:   internalauth.DefaultGCOMScopes(),
 		Writer:   opts.Writer,
+		// A fixed callback port is a property of the machine gcx runs on, not
+		// of one OAuth leg, so the Cloud step honours it too. Without this the
+		// Cloud step auto-picked and a user who could only reach one forwarded
+		// port never got past it.
+		Port: opts.OAuthCallbackPort,
 		// One manual choice covers both the stack step and the Cloud step:
 		// the browser is on another computer for both.
 		Manual: opts.OAuthManual,
@@ -1336,7 +1341,17 @@ func cloudEndpointRequestDiffers(opts *login.Options, entry *config.CloudEntry, 
 // first option as the default, so a remote session promotes manual OAuth: the
 // browser there runs on another computer and cannot reach the local callback
 // address.
-func grafanaAuthOptions(target login.Target, hasMTLS, remote bool) []huh.Option[string] {
+//
+// fixedPort drops manual OAuth from the menu entirely. The two are mutually
+// exclusive — manual mode starts no callback server — and Validate has already
+// run by the time this menu appears, so offering the pair here would let the
+// user pick a combination that can only fail afterwards. In a remote session
+// manual OAuth is the *default*, so this is not a corner the user has to go
+// looking for.
+func grafanaAuthOptions(target login.Target, hasMTLS, remote, fixedPort bool) []huh.Option[string] {
+	if fixedPort {
+		remote = false
+	}
 	tokenOption := huh.NewOption("Service account token (requires permissions for managing service accounts)", "token")
 	oauthOption := huh.NewOption("OAuth (browser) — recommended for cloud stacks; experimental on some configurations, fall back to a service account token if you hit issues", "oauth")
 	oauthManualOption := huh.NewOption("OAuth (browser on another computer) — gcx prints a URL; you paste the redirect URL back. Use this over SSH", "oauth-manual")
@@ -1352,10 +1367,19 @@ func grafanaAuthOptions(target login.Target, hasMTLS, remote bool) []huh.Option[
 		if remote {
 			return []huh.Option[string]{oauthManualOption, oauthOption, tokenOption}
 		}
+		if fixedPort {
+			return []huh.Option[string]{oauthOption, tokenOption}
+		}
 		return []huh.Option[string]{oauthOption, oauthManualOption, tokenOption}
 	default: // TargetUnknown
 		if hasMTLS {
+			if fixedPort {
+				return []huh.Option[string]{mtlsOption, tokenOption, oauthOption}
+			}
 			return []huh.Option[string]{mtlsOption, tokenOption, oauthOption, oauthManualOption}
+		}
+		if fixedPort {
+			return []huh.Option[string]{tokenOption, oauthOption}
 		}
 		return []huh.Option[string]{tokenOption, oauthOption, oauthManualOption}
 	}
@@ -1371,7 +1395,7 @@ func askGrafanaAuth(opts *login.Options, existingToken string) error {
 		return nil // resolveGrafanaAuth will pick up the TLS case.
 	}
 
-	options := grafanaAuthOptions(opts.Target, hasMTLS, terminal.IsRemoteSession())
+	options := grafanaAuthOptions(opts.Target, hasMTLS, terminal.IsRemoteSession(), opts.OAuthCallbackPort != 0)
 
 	// Default to the first option in the menu: OAuth for Cloud, mTLS when certs
 	// are present (non-Cloud), token otherwise. Deriving from options[0] keeps

@@ -104,10 +104,38 @@ same flag works on `gcx cloud login`, and one choice covers both the stack step
 and the Cloud follow-up step. You do not need it for an ordinary interactive SSH
 login — the prompt above appears on its own.
 
-**Close other `gcx login` sessions on the browser computer first.** A gcx login
-that already listens on the same port there receives the callback, rejects it on
-the state check, and ends its own flow. Your paste still succeeds, but the
-other login does not.
+**`--oauth-callback-port` fixes the port for every OAuth step.** Where only
+specific ports are forwarded between the remote host and your browser, pin the
+one that is reachable:
+
+```bash
+gcx login my-stack --server https://my-stack.grafana.net --oauth \
+  --oauth-callback-port 8250
+```
+
+A Grafana Cloud login can involve two browser steps — the stack step and,
+if you choose it at the Cloud prompt, the grafana.com step. Both use this port,
+one after the other. The Cloud step is optional: `--yes` skips it, as does
+picking anything other than OAuth at that prompt. The same flag
+is available on `gcx cloud login` for the standalone Cloud flow. Without the
+flag gcx picks a free port from `54321-54399`, which stays the default.
+
+**gcx stops waiting eventually.** A login that never receives a matching
+callback gives up after 30 minutes rather than waiting forever. The bound is
+there to stop an unattended command hanging, not to hurry you along, so it sits
+well past any normal sign-in. `--oauth-manual` has no such bound — press Ctrl-C
+to abandon it — because gcx cannot take back a half-typed paste.
+
+**A second `gcx login` on the same port no longer breaks.** A gcx that includes
+this fix answers a callback meant for another login, sees that the `state` is
+not its own, ignores it, and keeps waiting. A callback only ends the login that
+started it.
+
+That protection lives in the gcx that receives the stray callback, which is the
+one on the *browser* computer — often a different, older install. Against a gcx
+released before this fix, a stray callback still aborts it with
+`invalid state - possible CSRF attack`. Close other logins on that machine, or
+upgrade it, if you rely on them surviving.
 
 **Terminal hygiene.** The pasted URL holds a single-use authorization code and
 the state value. It does not hold the PKCE code verifier or a token, so the
