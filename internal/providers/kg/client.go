@@ -128,8 +128,14 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("kg: failed to create HTTP client: %w", err)
 	}
+	// Fail loudly on a CLI-options parse error instead of silently ignoring an
+	// explicitly requested datasource-proxy override.
+	cliOpts, err := config.LoadCLIOptions()
+	if err != nil {
+		return nil, fmt.Errorf("kg: load CLI options: %w", err)
+	}
 	basePath := pluginResourcePath
-	if cliOpts, err := config.LoadCLIOptions(); err == nil && cliOpts.KGDatasourceUID != "" {
+	if cliOpts.KGDatasourceUID != "" {
 		uid := cliOpts.KGDatasourceUID
 		if uid == "1" || uid == "true" {
 			uid = defaultKGDatasourceUID

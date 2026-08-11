@@ -95,6 +95,104 @@ func TestClient_BasePath_DatasourceProxyOverride(t *testing.T) {
 	}
 }
 
+// TestClient_BasePath_OverrideAllBuilders exercises one representative of each
+// request-construction path (getJSON, postJSON/doJSON, doYAML, doJSONStatus,
+// and the manual DELETE builder with query params) under the datasource-proxy
+// override, so a builder that misses c.url cannot slip through.
+func TestClient_BasePath_OverrideAllBuilders(t *testing.T) {
+	const proxyBase = "/api/datasources/proxy/uid/my-kg-ds"
+
+	var gotPath, gotQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		writeJSON(w, map[string]any{})
+	}))
+	defer server.Close()
+
+	t.Setenv("GCX_KG_DATASOURCE_UID", "my-kg-ds")
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "stack-123",
+	}
+	client, err := kg.NewClient(cfg)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		call      func() error
+		wantPath  string
+		wantQuery string
+	}{
+		{
+			name: "getJSON (GetStatus)",
+			call: func() error {
+				_, err := client.GetStatus(t.Context())
+				return err
+			},
+			wantPath: proxyBase + "/asserts/api-server/v1/stack/status",
+		},
+		{
+			name: "postJSON (Search)",
+			call: func() error {
+				_, err := client.Search(t.Context(), kg.SearchRequest{})
+				return err
+			},
+			wantPath: proxyBase + "/asserts/api-server/v1/search",
+		},
+		{
+			name: "doYAML (UploadPromRules)",
+			call: func() error {
+				return client.UploadPromRules(t.Context(), "name: test")
+			},
+			wantPath: proxyBase + "/asserts/api-server/v1/config/prom-rules",
+		},
+		{
+			name: "doJSONStatus (UpsertEntity)",
+			call: func() error {
+				_, _, err := client.UpsertEntity(t.Context(), kg.EntityWriteRequest{
+					Domain: "custom", Type: "Service", Name: "svc",
+				})
+				return err
+			},
+			wantPath: proxyBase + "/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/entities",
+		},
+		{
+			name: "manual DELETE with query (DeleteEntity)",
+			call: func() error {
+				return client.DeleteEntity(t.Context(), "custom", "Service", "svc", map[string]string{"env": "prod"})
+			},
+			wantPath:  proxyBase + "/apis/kg.grafana.com/v1alpha1/namespaces/stack-123/entities",
+			wantQuery: "domain=custom&name=svc&scope%5Benv%5D=prod&type=Service",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotPath, gotQuery = "", ""
+			require.NoError(t, tt.call())
+			assert.Equal(t, tt.wantPath, gotPath)
+			if tt.wantQuery != "" {
+				assert.Equal(t, tt.wantQuery, gotQuery)
+			}
+		})
+	}
+}
+
+// TestNewClient_CLIOptionsParseError guards against a CLI-options parse error
+// silently disabling an explicitly requested datasource-proxy override:
+// NewClient must fail loudly instead.
+func TestNewClient_CLIOptionsParseError(t *testing.T) {
+	t.Setenv("GCX_AUTO_APPROVE", "notabool")
+	t.Setenv("GCX_KG_DATASOURCE_UID", "my-kg-ds")
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: "http://example.invalid"},
+		Namespace: "stack-123",
+	}
+	_, err := kg.NewClient(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "GCX_AUTO_APPROVE")
+}
+
 func TestClient_GetStatus(t *testing.T) {
 	tests := []struct {
 		name    string
