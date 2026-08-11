@@ -70,6 +70,62 @@ current-context: first
 	assert.Equal(t, 2, strings.Count(output, "Grafana version:"), output)
 }
 
+func TestCheckCommandScopesValidationToExplicitContext(t *testing.T) {
+	clearConfigCheckEnvironment(t)
+	t.Setenv("GRAFANA_TOKEN", "test-token")
+	server := httptest.NewServer(checkServerHandler(func(w http.ResponseWriter) {
+		_, _ = w.Write([]byte(`{"version":"12.0.0"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	path := writeCheckConfig(t, fmt.Sprintf(`version: 1
+stacks:
+  target:
+    grafana:
+      server: %q
+      org-id: 1
+      auth-method: token
+contexts:
+  default: {}
+  target:
+    stack: target
+current-context: default
+`, server.URL))
+
+	output, err := runConfigCmd(t, "check", "--config", path, "--context", "target")
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "Current context: target")
+	assert.Contains(t, output, "Context: target")
+	assert.NotContains(t, output, "Context: default")
+	assert.Equal(t, 1, strings.Count(output, "Configuration:"), output)
+}
+
+func TestCheckCommandScopesFailuresToExplicitContext(t *testing.T) {
+	clearConfigCheckEnvironment(t)
+	path := writeCheckConfig(t, `version: 1
+stacks:
+  default:
+    grafana:
+      server: http://127.0.0.1:1
+      org-id: 1
+      auth-method: token
+contexts:
+  default:
+    stack: default
+  target: {}
+current-context: default
+`)
+
+	output, err := runConfigCmd(t, "check", "--config", path, "--context", "target")
+
+	require.ErrorIs(t, err, gcxerrors.ErrAlreadyReported)
+	require.ErrorContains(t, err, "1 configuration check(s) failed")
+	assert.Contains(t, output, "Context: target")
+	assert.NotContains(t, output, "Context: default")
+	assert.Equal(t, 1, strings.Count(output, "Configuration:"), output)
+}
+
 func TestCheckCommandPreservesCancellation(t *testing.T) {
 	clearConfigCheckEnvironment(t)
 	t.Setenv("GRAFANA_TOKEN", "test-token")
