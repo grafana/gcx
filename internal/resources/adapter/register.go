@@ -22,8 +22,8 @@ type Registration struct {
 	Descriptor  resources.Descriptor
 	Aliases     []string
 	GVK         schema.GroupVersionKind
-	Schema      json.RawMessage                // Required JSON Schema for this resource type (per CONSTITUTION.md). MAY be nil for read-only resources.
-	Example     json.RawMessage                // Required example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
+	Schema      json.RawMessage                // Required, non-nil JSON Schema for this resource type (per CONSTITUTION.md).
+	Example     json.RawMessage                // Example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
 	Operations  map[string]agent.OperationHint // Agent metadata: per-operation token cost and hint, keyed by "get", "push", "pull", "delete".
 	URLTemplate string                         // URL path template for deep links (e.g., "/a/grafana-slo-app/slo/{name}"). Empty means no deep link.
 }
@@ -34,7 +34,9 @@ type Registration struct {
 var registrations []Registration
 
 // Register adds an adapter registration to the global registry.
-// Providers call this from their init() function alongside providers.Register().
+// It is invoked by providers.Register() for each entry returned by
+// Provider.TypedRegistrations() — provider code must not call it directly
+// (CONSTITUTION.md § Architecture Invariants, unified provider registration).
 func Register(reg Registration) {
 	registrations = append(registrations, reg)
 }
