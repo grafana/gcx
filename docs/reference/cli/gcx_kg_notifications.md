@@ -31,6 +31,8 @@ flag. Distinct from "gcx kg suppressions", which manages disabled-alert configs.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
+* [gcx kg notifications delete](gcx_kg_notifications_delete.md)	 - Delete an alert notification config by name.
 * [gcx kg notifications get](gcx_kg_notifications_get.md)	 - Get an alert notification config by name.
 * [gcx kg notifications list](gcx_kg_notifications_list.md)	 - List alert notification configs, optionally filtered by category.
+* [gcx kg notifications upsert](gcx_kg_notifications_upsert.md)	 - Upsert (create or update) one or more alert notification configs from a YAML file or stdin.
 

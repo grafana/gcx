@@ -92,6 +92,41 @@ func TestClient_GetNotification(t *testing.T) {
 	})
 }
 
+func TestClient_UpsertNotification(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.True(t, strings.HasSuffix(r.URL.Path, "/config/alert"),
+			"single-item upsert must use the singular path, got %q", r.URL.Path)
+		var got kg.AlertConfig
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+		assert.Equal(t, "api-server-latency", got.Name)
+		assert.Equal(t, "5m", got.For)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	client := newTestClient(t, server)
+
+	err := client.UpsertNotification(t.Context(), kg.AlertConfig{
+		Name:        "api-server-latency",
+		MatchLabels: map[string]string{"asserts_slo_name": "api-server-latency"},
+		For:         "5m",
+	})
+	require.NoError(t, err)
+}
+
+func TestClient_DeleteNotification(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.True(t, strings.HasSuffix(r.URL.Path, "/config/alert/my-config"),
+			"unexpected path %q", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	client := newTestClient(t, server)
+
+	require.NoError(t, client.DeleteNotification(t.Context(), "my-config"))
+}
+
 // --- Command tests ---
 
 func TestNotifications_List_Table(t *testing.T) {
@@ -199,4 +234,85 @@ func TestNotifications_Get_HitAndMiss(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found")
 	})
+}
+
+func TestNotifications_Upsert_Batch(t *testing.T) {
+	var upserted []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.True(t, strings.HasSuffix(r.URL.Path, "/config/alert"), "unexpected path %q", r.URL.Path)
+		var got kg.AlertConfig
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+		upserted = append(upserted, got.Name)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	const in = `alertConfigs:
+  - name: first
+    matchLabels:
+      job: a
+    for: 5m
+  - name: second
+    silenced: true
+`
+	var stdout bytes.Buffer
+	cmd := kg.NewNotificationsCommand(writeLoaderFor(server))
+	cmd.SetArgs([]string{"upsert", "-f", "-"})
+	cmd.SetIn(bytes.NewBufferString(in))
+	cmd.SetOut(&stdout)
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, []string{"first", "second"}, upserted)
+	assert.Contains(t, stdout.String(), "2 notification config(s) upserted")
+}
+
+func TestNotifications_Upsert_EmptyFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("server must not be hit when the file has no configs")
+	}))
+	defer server.Close()
+
+	cmd := kg.NewNotificationsCommand(writeLoaderFor(server))
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"upsert", "-f", "-"})
+	cmd.SetIn(bytes.NewBufferString("alertConfigs: []\n"))
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no notification configs found")
+}
+
+func TestNotifications_Upsert_EmptyName(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("server must not be hit when an entry has an empty name")
+	}))
+	defer server.Close()
+
+	cmd := kg.NewNotificationsCommand(writeLoaderFor(server))
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"upsert", "-f", "-"})
+	// Second entry has no name; validation must fail before any request.
+	cmd.SetIn(bytes.NewBufferString("alertConfigs:\n  - name: ok\n  - matchLabels:\n      alertname: A\n"))
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "notification config 1 has an empty name")
+}
+
+func TestNotifications_Delete(t *testing.T) {
+	var deleted string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		deleted = strings.TrimPrefix(r.URL.Path[strings.LastIndex(r.URL.Path, "/config/alert/")+len("/config/alert/"):], "")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var stdout bytes.Buffer
+	cmd := kg.NewNotificationsCommand(writeLoaderFor(server))
+	cmd.SetArgs([]string{"delete", "my-config", "--force"})
+	cmd.SetOut(&stdout)
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "my-config", deleted)
+	assert.Contains(t, stdout.String(), "deleted")
 }
