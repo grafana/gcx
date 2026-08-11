@@ -65,9 +65,11 @@ type ProfileTypesRequest struct {
 
 // ProfileStatsResponse mirrors types.v1.GetProfileStatsResponse. Times are
 // milliseconds since epoch, zero when unknown. The wire encodes int64 as
-// proto-JSON strings; UnmarshalJSON accepts both string and number forms so
-// that gcx's own JSON output re-encodes them as plain numbers, consistent
-// with the other profiles commands.
+// proto-JSON strings; UnmarshalJSON accepts both string and number forms,
+// and gcx's own JSON output deliberately re-encodes them as plain numbers
+// so consumers don't have to parse a string. A `json:",string"` tag cannot
+// replace this: it rejects the number form on input and emits strings on
+// output.
 type ProfileStatsResponse struct {
 	DataIngested      bool  `json:"dataIngested"`
 	OldestProfileTime int64 `json:"oldestProfileTime"`
@@ -101,11 +103,11 @@ func (r *ProfileStatsResponse) UnmarshalJSON(data []byte) error {
 // parseProtoInt64 parses a proto-JSON int64, which may be encoded as a JSON
 // string or number; absent or null values parse as zero.
 func parseProtoInt64(raw json.RawMessage) (int64, error) {
-	s := strings.TrimSpace(string(raw))
+	s := strings.Trim(strings.TrimSpace(string(raw)), `"`)
 	if s == "" || s == "null" {
 		return 0, nil
 	}
-	return strconv.ParseInt(strings.Trim(s, `"`), 10, 64)
+	return strconv.ParseInt(s, 10, 64)
 }
 
 // ProfileTypesResponse represents the response from a profile types query.

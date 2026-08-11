@@ -673,6 +673,14 @@ func TestClient_GetProfileStats(t *testing.T) {
 			want: &pyroscope.ProfileStatsResponse{},
 		},
 		{
+			name: "empty-string time fields parse as zero",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"dataIngested":false,"oldestProfileTime":"","newestProfileTime":""}`))
+			},
+			want: &pyroscope.ProfileStatsResponse{},
+		},
+		{
 			name: "v1 no-data sentinel bounds are normalized to zero",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
