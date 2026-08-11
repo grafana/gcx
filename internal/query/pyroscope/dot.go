@@ -7,7 +7,11 @@ import "regexp"
 // them roughly halves the payload while keeping function names, file:line
 // locations, self/cumulative values, and caller-callee edges intact — the
 // same cleanup the Grafana Assistant applies before LLM analysis.
-var dotNoiseRe = regexp.MustCompile(`(fontsize=\d+ )|(id="node\d+" )|(labeltooltip=".*?\)" )|(tooltip=".*?\)" )|(shape=box )|(fillcolor="#\w{6}")|(color="#\w{6}" )`)
+// Each quoted value is bounded to its own attribute with [^"]* so a value
+// missing the expected terminator can never swallow neighboring attributes;
+// color values are matched by attribute rather than by hex shape so named
+// and short-hex colors are stripped too.
+var dotNoiseRe = regexp.MustCompile(`(fontsize=\d+ )|(id="node\d+" )|(labeltooltip="[^"]*" )|(tooltip="[^"]*" )|(shape=box )|(fillcolor="[^"]*")|(color="[^"]*" )`)
 
 // CleanDot strips visual-only attributes from a DOT profile call graph.
 func CleanDot(dot string) string {

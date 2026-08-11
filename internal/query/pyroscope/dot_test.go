@@ -26,3 +26,15 @@ func TestDotHasNodes(t *testing.T) {
 	assert.False(t, pyroscope.DotHasNodes(`digraph "main" { subgraph cluster_L { "File: main" [label="empty"] } }`))
 	assert.False(t, pyroscope.DotHasNodes(""))
 }
+
+func TestCleanDotBoundedPatterns(t *testing.T) {
+	// A tooltip without the usual "(...)"-terminated value must not swallow
+	// the attributes that follow it.
+	in := `N2 [label="keep" tooltip="no parenthesis here" shape=box color="red" fillcolor="#abc"]`
+	got := pyroscope.CleanDot(in)
+
+	assert.Contains(t, got, `label="keep"`, "neighboring attributes must survive an unusual tooltip value")
+	assert.NotContains(t, got, "tooltip=")
+	assert.NotContains(t, got, `color="red"`, "named colors are noise too")
+	assert.NotContains(t, got, `fillcolor="#abc"`, "short-hex colors are noise too")
+}
