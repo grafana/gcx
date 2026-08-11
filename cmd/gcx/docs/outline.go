@@ -68,9 +68,9 @@ func outlineCommand() *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			doc, err := grafanadocs.FetchDoc(cmd.Context(), opts.url)
+			doc, err := fetchDoc(cmd.Context(), opts.url)
 			if err != nil {
-				return err
+				return cleanFetchErr(opts.url, err)
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), outlineResult{
 				URL:      doc.URL,
