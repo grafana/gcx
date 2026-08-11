@@ -1017,6 +1017,7 @@ flag. Distinct from "gcx kg suppressions", which manages disabled-alert configs.
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List alert notification configs, optionally filtered by category.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := listOpts.IO.Validate(); err != nil {
 				return err
@@ -1037,7 +1038,12 @@ flag. Distinct from "gcx kg suppressions", which manages disabled-alert configs.
 			if err != nil {
 				return err
 			}
-			return listOpts.IO.Encode(cmd.OutOrStdout(), configs.AlertConfigs)
+			items := configs.AlertConfigs
+			if items == nil {
+				// Zero results must serialize as [] in machine formats, not null.
+				items = []AlertConfig{}
+			}
+			return listOpts.IO.Encode(cmd.OutOrStdout(), items)
 		},
 	}
 	listOpts.setup(listCmd.Flags())
@@ -1078,7 +1084,7 @@ type notificationsListOpts struct {
 }
 
 func (o *notificationsListOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVar(&o.Category, "category", "", "Filter by category: request, resource, health, or slo.")
+	flags.StringVar(&o.Category, "category", "", "Filter by category: request, resource, health, or slo (server-side, exact match). Empty or omitted lists all categories.")
 	o.IO.RegisterCustomCodec("table", &NotificationTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)

@@ -146,6 +146,23 @@ func TestNotifications_List_InvalidCategory(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid --category")
 }
 
+func TestNotifications_List_ZeroResults(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// No alertConfigs key: the decoded slice is nil, which must still
+		// serialize as [] in machine formats, never null.
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	var stdout bytes.Buffer
+	cmd := kg.NewNotificationsCommand(writeLoaderFor(server))
+	cmd.SetArgs([]string{"list", "-o", "json"})
+	cmd.SetOut(&stdout)
+	require.NoError(t, cmd.Execute())
+	assert.JSONEq(t, `[]`, stdout.String())
+}
+
 func TestNotifications_Get_HitAndMiss(t *testing.T) {
 	newServer := func() *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

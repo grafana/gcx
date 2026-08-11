@@ -9,7 +9,7 @@ gcx kg notifications list [flags]
 ### Options
 
 ```
-      --category string   Filter by category: request, resource, health, or slo.
+      --category string   Filter by category: request, resource, health, or slo (server-side, exact match). Empty or omitted lists all categories.
   -h, --help              help for list
       --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
