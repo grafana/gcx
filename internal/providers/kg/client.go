@@ -21,43 +21,57 @@ import (
 // ruleFetchConcurrency caps parallel GetRule calls during ListRules fan-out.
 const ruleFetchConcurrency = 10
 
+// pluginResourcePath is the default base path for all KG API traffic: the
+// grafana-asserts-app plugin's resource proxy. The endpoint paths below are
+// relative to a base path so the client can swap in the KG datasource proxy
+// (/api/datasources/proxy/uid/<uid>), which mirrors all of the plugin's
+// /resources routes — see NewClient and GCX_KG_DATASOURCE_UID.
 const pluginResourcePath = "/api/plugins/grafana-asserts-app/resources"
 
+// datasourceProxyPathFmt is the base path for KG API traffic routed through
+// the KG datasource proxy instead of the plugin resource proxy. %s is the
+// datasource UID.
+const datasourceProxyPathFmt = "/api/datasources/proxy/uid/%s"
+
+// defaultKGDatasourceUID is the default UID the KG datasource is provisioned
+// with; used when GCX_KG_DATASOURCE_UID is set to "1" or "true".
+const defaultKGDatasourceUID = "grafana-knowledgegraph-datasource"
+
 const (
-	statusPath               = pluginResourcePath + "/asserts/api-server/v1/stack/status"
-	entitiesPath             = pluginResourcePath + "/asserts/api-server/v1/entity/info"
-	entityTypesPath          = pluginResourcePath + "/asserts/api-server/v1/entity_type"
+	statusPath               = "/asserts/api-server/v1/stack/status"
+	entitiesPath             = "/asserts/api-server/v1/entity/info"
+	entityTypesPath          = "/asserts/api-server/v1/entity_type"
 	entityCountPath          = entityTypesPath + "/count"
-	scopesPath               = pluginResourcePath + "/asserts/api-server/v1/entity_scope"
-	assertionsPath           = pluginResourcePath + "/asserts/api-server/v1/assertions"
+	scopesPath               = "/asserts/api-server/v1/entity_scope"
+	assertionsPath           = "/asserts/api-server/v1/assertions"
 	assertMetricPath         = assertionsPath + "/entity-metric"
 	assertLLMPath            = assertionsPath + "/llm-summary"
-	sourceMetricPath         = pluginResourcePath + "/asserts/api-server/v1/assertion/source-metrics"
-	searchPath               = pluginResourcePath + "/asserts/api-server/v1/search"
+	sourceMetricPath         = "/asserts/api-server/v1/assertion/source-metrics"
+	searchPath               = "/asserts/api-server/v1/search"
 	searchAssertPath         = searchPath + "/assertions"
 	searchSamplePath         = searchPath + "/sample"
-	alertInspectionPath      = pluginResourcePath + "/asserts/api-server/v1/alert-inspection"
-	rulesPath                = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
+	alertInspectionPath      = "/asserts/api-server/v1/alert-inspection"
+	rulesPath                = "/asserts/api-server/v1/config/prom-rules"
 	ruleByNameFmt            = rulesPath + "/%s"
 	rulesSchemaPath          = rulesPath + "/schema"
 	rulesValidateSyncPath    = rulesPath + "-validate-sync"
-	modelRulesPath           = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
+	modelRulesPath           = "/asserts/api-server/v1/config/model-rules"
 	modelRulesByNameFmt      = modelRulesPath + "/%s"
 	modelRulesSchemaPath     = modelRulesPath + "/schema"
 	modelRulesValidatePath   = modelRulesPath + "-validate"
-	suppressionPath          = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
+	suppressionPath          = "/asserts/api-server/v1/config/disabled-alert"
 	suppressionByNameFmt     = suppressionPath + "/%s"
-	suppressionsPath         = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
+	suppressionsPath         = "/asserts/api-server/v1/config/disabled-alerts"
 	suppressionsValidatePath = suppressionsPath + "-validate"
-	entityLookupPath         = pluginResourcePath + "/asserts/api-server/v1/entity"
-	v2ConfigPath             = pluginResourcePath + "/asserts/api-server/v2/config"
+	entityLookupPath         = "/asserts/api-server/v1/entity"
+	v2ConfigPath             = "/asserts/api-server/v2/config"
 	v2LogConfigPath          = v2ConfigPath + "/log"
 	v2TraceConfigPath        = v2ConfigPath + "/trace"
 	v2ProfileConfigPath      = v2ConfigPath + "/profile"
 	v2RelabelRulesPath       = v2ConfigPath + "/relabel-rules"
 
-	// KG entity quality reports, proxied through the asserts plugin.
-	qualityBasePath          = pluginResourcePath + "/asserts/kg-quality/v1/entities"
+	// KG entity quality reports.
+	qualityBasePath          = "/asserts/kg-quality/v1/entities"
 	qualityReportsPath       = qualityBasePath + "/quality-reports"
 	qualityReportByEntityFmt = qualityBasePath + "/%s/%s/quality-report"
 
@@ -66,13 +80,13 @@ const (
 	// in the query string (type/name are not path segments), so names containing
 	// '/' are addressable without Tomcat rejecting encoded solidus.
 	//
-	// Routed through the asserts plugin's resource proxy: the plugin backend
-	// forwards unmatched resource paths to the asserts cell gateway with the
-	// stack's Basic auth, and the gateway maps /apis/kg.grafana.com/* to the
-	// KG api-server. The bare /apis/kg.grafana.com group is not registered
-	// with Grafana's API aggregator, so it is not reachable on the stack URL
-	// directly.
-	kgWriteAPIBase     = pluginResourcePath + "/apis/kg.grafana.com/v1alpha1/namespaces/%s"
+	// Routed through the asserts plugin's resource proxy (or the KG datasource
+	// proxy, which mirrors it): the backend forwards unmatched resource paths
+	// to the asserts cell gateway with the stack's Basic auth, and the gateway
+	// maps /apis/kg.grafana.com/* to the KG api-server. The bare
+	// /apis/kg.grafana.com group is not registered with Grafana's API
+	// aggregator, so it is not reachable on the stack URL directly.
+	kgWriteAPIBase     = "/apis/kg.grafana.com/v1alpha1/namespaces/%s"
 	kgEntitiesPathFmt  = kgWriteAPIBase + "/entities"
 	kgRelationshipsFmt = kgWriteAPIBase + "/relationships"
 )
@@ -99,21 +113,41 @@ func (t RelabelRuleType) IsValid() bool {
 type Client struct {
 	httpClient *http.Client
 	host       string
+	basePath   string
 	namespace  string
 }
 
 // NewClient creates a new KG client from the given REST config.
+//
+// By default all requests go through the grafana-asserts-app plugin resource
+// proxy. When GCX_KG_DATASOURCE_UID is set (development escape hatch), they
+// route through the KG datasource proxy instead, which mirrors all of the
+// plugin's /resources routes.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
 		return nil, fmt.Errorf("kg: failed to create HTTP client: %w", err)
 	}
-	return &Client{httpClient: httpClient, host: cfg.Host, namespace: cfg.Namespace}, nil
+	basePath := pluginResourcePath
+	if cliOpts, err := config.LoadCLIOptions(); err == nil && cliOpts.KGDatasourceUID != "" {
+		uid := cliOpts.KGDatasourceUID
+		if uid == "1" || uid == "true" {
+			uid = defaultKGDatasourceUID
+		}
+		basePath = fmt.Sprintf(datasourceProxyPathFmt, url.PathEscape(uid))
+	}
+	return &Client{httpClient: httpClient, host: cfg.Host, basePath: basePath, namespace: cfg.Namespace}, nil
+}
+
+// url builds the absolute request URL for an endpoint path (which may already
+// carry a query string) by prepending the host and active base path.
+func (c *Client) url(path string) string {
+	return c.host + c.basePath + path
 }
 
 // getJSON performs a GET request and decodes the JSON response into v.
 func (c *Client) getJSON(ctx context.Context, path string, v any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url(path), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
@@ -147,7 +181,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, v any) e
 		bodyReader = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.host+path, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, c.url(path), bodyReader)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
@@ -181,7 +215,7 @@ func (c *Client) doJSONStatus(ctx context.Context, method, path string, body, v 
 		}
 		bodyReader = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.host+path, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, c.url(path), bodyReader)
 	if err != nil {
 		return 0, fmt.Errorf("kg: create request: %w", err)
 	}
@@ -206,7 +240,7 @@ func (c *Client) doJSONStatus(ctx context.Context, method, path string, body, v 
 
 // doYAML performs an HTTP request with a YAML body.
 func (c *Client) doYAML(ctx context.Context, method, path, yamlContent string) error {
-	req, err := http.NewRequestWithContext(ctx, method, c.host+path, strings.NewReader(yamlContent))
+	req, err := http.NewRequestWithContext(ctx, method, c.url(path), strings.NewReader(yamlContent))
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
@@ -385,7 +419,7 @@ func (c *Client) GetModelRulesSchema(ctx context.Context) (map[string]any, error
 // DeleteModelRules deletes a custom model rules configuration by name.
 func (c *Client) DeleteModelRules(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.host+fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name)), nil)
+		c.url(fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name))), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
@@ -421,7 +455,7 @@ func (c *Client) UpsertSuppression(ctx context.Context, s Suppression) error {
 // DeleteSuppression deletes a single suppression by name.
 func (c *Client) DeleteSuppression(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.host+fmt.Sprintf(suppressionByNameFmt, url.PathEscape(name)), nil)
+		c.url(fmt.Sprintf(suppressionByNameFmt, url.PathEscape(name))), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
@@ -532,7 +566,7 @@ func (c *Client) ValidatePromRules(ctx context.Context, yamlContent string) erro
 // response: nil on 2xx, a *ConfigValidationError on 422 (per-field errors), or a
 // generic *APIError otherwise. kind names the config family for error messages.
 func (c *Client) validateConfig(ctx context.Context, path, contentType string, body []byte, kind string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url(path), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
@@ -631,7 +665,7 @@ func (c *Client) GetRelabelRules(ctx context.Context, t RelabelRuleType) (map[st
 		return nil, fmt.Errorf("kg: invalid relabel rule type %q", t)
 	}
 	path := v2RelabelRulesPath + "/" + string(t)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url(path), nil)
 	if err != nil {
 		return nil, fmt.Errorf("kg: create request: %w", err)
 	}
@@ -704,7 +738,7 @@ func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scop
 		q.Set("domain", domain)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+entityLookupPath+"?"+q.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url(entityLookupPath+"?"+q.Encode()), nil)
 	if err != nil {
 		return nil, fmt.Errorf("kg: create request: %w", err)
 	}
@@ -1065,7 +1099,7 @@ func (c *Client) ListRules(ctx context.Context) ([]Rule, error) {
 // Backend: DELETE /v1/config/prom-rules/{name}.
 func (c *Client) DeleteRule(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.host+fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), nil)
+		c.url(fmt.Sprintf(ruleByNameFmt, url.PathEscape(name))), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
@@ -1128,7 +1162,7 @@ func (c *Client) DeleteRelationship(ctx context.Context, relType string, from, t
 	}
 	addRef("from", from)
 	addRef("to", to)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.host+path+"?"+q.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.url(path)+"?"+q.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
@@ -1172,7 +1206,7 @@ func (c *Client) DeleteEntity(ctx context.Context, domain, entityType, name stri
 	for k, v := range scope {
 		q.Set("scope["+k+"]", v)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.host+path+"?"+q.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.url(path)+"?"+q.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}

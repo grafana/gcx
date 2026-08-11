@@ -17,6 +17,9 @@ import (
 
 func newTestClient(t *testing.T, server *httptest.Server) *kg.Client {
 	t.Helper()
+	// Pin the default plugin-proxy route so a developer's exported
+	// GCX_KG_DATASOURCE_UID cannot flip path expectations in this suite.
+	t.Setenv("GCX_KG_DATASOURCE_UID", "")
 	cfg := config.NamespacedRESTConfig{
 		Config:    rest.Config{Host: server.URL},
 		Namespace: "stack-123",
@@ -30,6 +33,65 @@ func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		panic(err)
+	}
+}
+
+func TestClient_BasePath_PluginDefault(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		writeJSON(w, kg.Status{Status: "complete"})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	_, err := client.GetStatus(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status", gotPath)
+}
+
+func TestClient_BasePath_DatasourceProxyOverride(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		wantPath string
+	}{
+		{
+			name:     "explicit uid",
+			envValue: "my-kg-ds",
+			wantPath: "/api/datasources/proxy/uid/my-kg-ds/asserts/api-server/v1/stack/status",
+		},
+		{
+			name:     "1 uses default provisioned uid",
+			envValue: "1",
+			wantPath: "/api/datasources/proxy/uid/grafana-knowledgegraph-datasource/asserts/api-server/v1/stack/status",
+		},
+		{
+			name:     "true uses default provisioned uid",
+			envValue: "true",
+			wantPath: "/api/datasources/proxy/uid/grafana-knowledgegraph-datasource/asserts/api-server/v1/stack/status",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotPath string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				writeJSON(w, kg.Status{Status: "complete"})
+			}))
+			defer server.Close()
+
+			t.Setenv("GCX_KG_DATASOURCE_UID", tt.envValue)
+			cfg := config.NamespacedRESTConfig{
+				Config:    rest.Config{Host: server.URL},
+				Namespace: "stack-123",
+			}
+			client, err := kg.NewClient(cfg)
+			require.NoError(t, err)
+			_, err = client.GetStatus(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantPath, gotPath)
+		})
 	}
 }
 
