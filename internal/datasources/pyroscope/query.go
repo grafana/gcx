@@ -1,6 +1,7 @@
 package pyroscope
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/pyroscope"
+	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -33,7 +35,13 @@ func (c *pprofCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // dotCodec is a sentinel codec that registers "dot" as a valid -o format.
-// DOT output is written directly in the command; Encode is never reached.
+// DOT output is deliberately written in RunE rather than here: the response
+// shape is backend-dependent (pure v2 returns dot; v1-v2-dual silently
+// substitutes a flame graph; v1 rejects the format), and the fallback
+// branches emit stderr hints, which Encode cannot do — it only receives the
+// stdout writer. Moving the rendering here would split that dispatch across
+// two files. Revisit if the codec interface ever grows a diagnostics
+// channel.
 type dotCodec struct{}
 
 func (c *dotCodec) Format() format.Format { return "dot" }
@@ -124,9 +132,29 @@ func (opts *pyroscopeQueryOpts) Validate(flags *pflag.FlagSet) error {
 
 // isDotUnsupportedErr reports whether the error is the v1 read path's
 // explicit rejection of PROFILE_FORMAT_DOT ("dot format is only supported
-// with the v2 query backend").
+// with the v2 query backend"). The message match is scoped to the typed
+// APIError's server message (the IsParseError pattern) so gcx-side error
+// wrapping can never satisfy it.
 func isDotUnsupportedErr(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "dot format is only supported")
+	var apiErr *queryerror.APIError
+	return errors.As(err, &apiErr) && strings.Contains(apiErr.Message, "dot format is only supported")
+}
+
+// queryDotV1Fallback retries a DOT-rejected query against a v1 backend
+// without the format field and renders the standard table. An explicit
+// --max-nodes survives the fallback; only the dot-mode 0 (server-side graph
+// default) is replaced by the regular table default.
+func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyroscope.Client, datasourceUID string, req pyroscope.QueryRequest) error {
+	cmdio.EmitHint(cmd.ErrOrStderr(), "backend does not support DOT output (requires -architecture.storage=v2); showing table instead", "")
+	req.Format = ""
+	if !cmd.Flags().Changed("max-nodes") {
+		req.MaxNodes = defaultMaxNodes
+	}
+	resp, err := client.Query(ctx, datasourceUID, req)
+	if err != nil {
+		return fmt.Errorf("query failed: %w", err)
+	}
+	return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 }
 
 // stackTraceSelector builds the StackTraceSelector message from the
@@ -307,16 +335,7 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 			resp, err := client.Query(ctx, datasourceUID, req)
 			if err != nil {
 				if isDot && isDotUnsupportedErr(err) {
-					// v1 read path rejects the format field outright; retry
-					// without it and fall back to the table rendering.
-					cmdio.EmitHint(cmd.ErrOrStderr(), "backend does not support DOT output (requires -architecture.storage=v2); showing table instead", "")
-					req.Format = ""
-					req.MaxNodes = defaultMaxNodes
-					resp, err = client.Query(ctx, datasourceUID, req)
-					if err != nil {
-						return fmt.Errorf("query failed: %w", err)
-					}
-					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+					return queryDotV1Fallback(ctx, cmd, client, datasourceUID, req)
 				}
 				return fmt.Errorf("query failed: %w", err)
 			}
