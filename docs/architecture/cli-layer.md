@@ -565,6 +565,18 @@ When `JSONFields` is set, callers should use `NewFieldSelectCodec(opts.IO.JSONFi
 instead of `opts.IO.Codec()`. When `JSONDiscovery` is set, callers should
 print available fields via `DiscoverFields()` and exit early (exit 0).
 
+**List envelopes.** Field selection and discovery descend into provider list
+results rather than operating on the wrapper object: a single-key envelope
+(`{"datasources": [...]}`) is detected structurally, and a multi-key envelope
+carrying list-level metadata (e.g. `{"investigations": [...], "total": 42}`)
+opts in by implementing `output.ListEnvelope` (`ListItemsKey() string`,
+satisfied structurally — no import of `internal/output` needed). The declared
+key and metadata siblings are preserved in field-selected output, discovery
+samples item fields (reflecting on the declared slice field when the list is
+empty), and the agents codec's spill summary previews and counts the
+envelope's items. The opt-in is deliberate: a structural multi-key heuristic
+would misclassify detail objects that happen to contain one nested array.
+
 Built-in codecs: `json` and `yaml` (always available). Commands register additional ones (e.g. `text`, `wide`, `graph`) by calling `RegisterCustomCodec` before `BindFlags`.
 
 The `graph` codec is a special-purpose output format available on per-kind `query` subcommands (`metrics query`, `logs query`, `profiles metrics`, etc.) and `synth checks status`. It renders Prometheus or Loki query results (or check status metrics) as a terminal line chart using `ntcharts` and `lipgloss` (via `internal/graph`). Terminal width is detected at render time via `golang.org/x/term`.

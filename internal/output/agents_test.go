@@ -91,6 +91,42 @@ func TestAgentsCodec_BelowThreshold_NoDiscriminator(t *testing.T) {
 	assert.Equal(t, []map[string]any{{"name": "alpha"}}, value)
 }
 
+func TestAgentsCodec_Spill_ListEnvelope(t *testing.T) {
+	// A ListEnvelope spill must preview and count the items under the
+	// declared key, not treat the envelope as an opaque struct.
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "50")
+	t.Setenv("TMPDIR", t.TempDir())
+
+	codec := cmdio.NewAgentsCodecForTesting()
+
+	value := &listEnvelopeResult{
+		Investigations: []listEnvelopeItem{
+			{UID: "a", Name: "one", Type: "x"},
+			{UID: "b", Name: "two", Type: "y"},
+			{UID: "c", Name: "three", Type: "z"},
+			{UID: "d", Name: "four", Type: "w"},
+		},
+		Total: 42,
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, value))
+
+	var summary map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
+
+	require.Contains(t, summary, "spilled_to")
+	assert.EqualValues(t, len(value.Investigations), summary["total_items"],
+		"total_items must count envelope items, not envelope keys")
+
+	preview, ok := summary["preview_sample"].([]any)
+	require.True(t, ok, "preview must be the item array, got %T", summary["preview_sample"])
+	require.Len(t, preview, 3)
+	first, ok := preview[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "a", first["uid"])
+}
+
 func TestAgentsCodec_NonSlice_OmitsItems(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
 	t.Setenv("TMPDIR", t.TempDir())

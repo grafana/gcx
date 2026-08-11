@@ -51,7 +51,7 @@ mise run docs        # Generate + build all documentation
 
 **Without mise**: replace with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`. Lint runs in Go **module mode** (`golangci-lint`'s `modules-download-mode: readonly`), so no `vendor/` directory is needed locally — the module cache (`go mod download`, run automatically on worktree entry) is sufficient.
 
-> **Agent environments**: always prefix with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults in `mise run docs`, producing wrong CLI reference docs.
+> **Agent environments**: always prefix `mise run docs`, `mise run reference`, and `mise run all` with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults, producing wrong CLI reference docs. The `tests` tasks pin `GCX_AGENT_MODE=false` themselves, so `mise run tests` needs no prefix.
 
 ## Testing
 
@@ -75,7 +75,7 @@ cmd/gcx/
   commands/     Commands catalog (agent metadata)
   helptree/     Help tree for agent context
   setup/        Onboarding (gcx setup status)
-  instrumentation/  Instrumentation Hub commands (clusters, services, setup wizard, status)
+  instrumentation/  Instrumentation Hub commands (clusters, services, setup wizard, status, check, explain, list-explanations)
   skills/       Portable Agent Skills installer for .agents-compatible tools (install/update/list/get/uninstall; get reads bundled SKILL.md or references without installing)
   dev/          Developer tools (import, scaffold, generate, lint, serve)
   fail/         Structured error conversion
@@ -87,7 +87,7 @@ internal/        Non-public packages — full annotated map: docs/architecture/p
 
 | Task | Read first | Then |
 |------|-----------|------|
-| **Adding a new command** | [DESIGN.md](DESIGN.md) (grammar, output model) | [docs/design/](docs/design/) for implementation rules, [ARCHITECTURE.md](ARCHITECTURE.md) § CLI layer |
+| **Adding a new command** | [docs/design/command-naming.md](docs/design/command-naming.md) (verb + placement), [DESIGN.md](DESIGN.md) (grammar, output model) | [docs/design/](docs/design/) for implementation rules, [ARCHITECTURE.md](ARCHITECTURE.md) § CLI layer |
 | **Adding a new provider** | [ARCHITECTURE.md](ARCHITECTURE.md) § Provider System | [docs/reference/provider-guide.md](docs/reference/provider-guide.md), [docs/design/provider-checklist.md](docs/design/provider-checklist.md) |
 | **Adding a signal provider command** | [ARCHITECTURE.md](ARCHITECTURE.md) § Signal Providers | Existing signal provider code for the SharedOpts pattern |
 | **Modifying resource handling** | [ARCHITECTURE.md](ARCHITECTURE.md) § Resources Pipeline | [docs/architecture/resource-model.md](docs/architecture/resource-model.md), [docs/architecture/data-flows.md](docs/architecture/data-flows.md) |

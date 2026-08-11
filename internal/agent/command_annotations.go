@@ -36,6 +36,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant investigations get":             {Cost: "medium", Hint: "<id> -o json"},
 	"gcx assistant investigations get-narrative":   {Cost: "medium", Hint: "<id>; assistant-authored prose only (no tool plumbing)"},
 	"gcx assistant investigations list":            {Cost: "small"},
+	"gcx assistant investigations list-evidence":   {Cost: "medium", Hint: "<investigation-id> -o json; canonical panel citation index for the report (panelId -> tool + query)"},
 	"gcx assistant investigations list-messages":   {Cost: "large", Hint: "<id> [--role=user|assistant|tool] [--include-hidden] -o json; full v2 chat thread with tool calls and results"},
 	"gcx assistant investigations list-tool-calls": {Cost: "medium", Hint: "<id> [--name=<tool>] -o json; tool calls with results"},
 	"gcx assistant investigations mode":            {Cost: "small"},
@@ -138,9 +139,11 @@ var commandAnnotations = map[string]annotation{
 	"gcx instrumentation clusters apps wait":      {Cost: "small"},
 
 	// top-level single commands
-	"gcx instrumentation setup":  {Cost: "medium", Hint: "<cluster> --use-defaults -o json | Docs: " + docs.KubernetesMonitoring},
-	"gcx instrumentation status": {Cost: "medium", Hint: "-o json | Docs: " + docs.KubernetesMonitoring},
-	"gcx instrumentation check":  {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds) — does not query any Grafana stack. [components] --language <lang> -o json"},
+	"gcx instrumentation setup":             {Cost: "medium", Hint: "<cluster> --use-defaults -o json | Docs: " + docs.KubernetesMonitoring},
+	"gcx instrumentation status":            {Cost: "medium", Hint: "-o json | Docs: " + docs.KubernetesMonitoring},
+	"gcx instrumentation check":             {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds) — does not query any Grafana stack. [components] --language <lang> -o json"},
+	"gcx instrumentation explain":           {Cost: "small", Hint: "Show a markdown explanation for an otel-checker finding by its explain ID (see the explain_id field in `gcx instrumentation check -o json` output). Use `gcx instrumentation list-explanations` to enumerate every registered ID."},
+	"gcx instrumentation list-explanations": {Cost: "medium", Hint: "-o json"},
 
 	// services verb group
 	"gcx instrumentation services list":    {Cost: "large", Hint: "K8s workloads discovered fleet-wide by the Beyla survey collector, for setting up instrumentation (distinct from 'gcx appo11y services', which lists telemetry-reporting services). --cluster <name> --namespace <ns> -o json"},

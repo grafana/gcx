@@ -9,6 +9,9 @@ Before implementing features or commands, read:
 - [CONSTITUTION.md](CONSTITUTION.md) — invariants you must not violate
 - [docs/design/](docs/design/) — prescriptive UX implementation rules (output, errors, agent mode, naming, …)
 
+Naming a command? Start with the
+[command naming and placement guide](docs/design/command-naming.md).
+
 ## Issue Tracking
 
 Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues).

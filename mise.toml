@@ -35,12 +35,19 @@ run = "go run ./scripts/validate-skills"
 description = "Run all tests (CLI + linter rules)"
 depends = ["tests:cli", "tests:linter"]
 
+# GCX_AGENT_MODE is pinned on the leaf tasks (mise env does not propagate
+# through `depends`). Without it, agent-mode auto-detection picks up CLAUDECODE
+# and friends from the developer's shell and flips confirm-prompt behaviour to
+# "requires --force", failing tests that exercise the prompts. CI has no such
+# env, so this keeps local runs honest.
 [tasks."tests:cli"]
 description = "Run CLI tests"
+env = { GCX_AGENT_MODE = "false" }
 run = "go test ./..."
 
 [tasks."tests:linter"]
 description = "Run linter rules tests"
+env = { GCX_AGENT_MODE = "false" }
 run = "go run ./cmd/gcx/ dev lint test ./internal/linter/bundle/gcx/"
 
 [tasks.build]
