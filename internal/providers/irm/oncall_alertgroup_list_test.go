@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/testutils"
@@ -218,6 +219,44 @@ func TestAlertGroupList_LegacyPath_LimitZeroDrainsFully(t *testing.T) {
 	}
 	if strings.Contains(stderr, "showing first") {
 		t.Errorf("unexpected truncation hint on stderr:\n%s", stderr)
+	}
+}
+
+// TestAlertGroupList_LegacyPath_NotesUnsupportedFilters: the SA-token path
+// speaks the OnCall public API, which has none of the internal API's option
+// filters and only a lower bound on started_at. Every dropped filter must be
+// named in the note so the user knows the result set is broader than asked
+// for — silently ignoring them would be a wrong answer, not a partial one.
+func TestAlertGroupList_LegacyPath_NotesUnsupportedFilters(t *testing.T) {
+	fake := &fakeLegacyListAPI{items: []AlertGroup{{PK: "AG1"}}}
+	_, stderr := runAlertGroupList(t, fake,
+		"--escalation-chain", "EC1",
+		"--acknowledged-by", "U1",
+		"--resolved-by", "U2",
+		"--from", "2026-01-01T00:00:00Z",
+		"--to", "2026-01-31T00:00:00Z",
+		"--resolved-from", "2026-01-01T00:00:00Z",
+		"--resolved-to", "2026-01-31T00:00:00Z",
+	)
+
+	for _, want := range []string{
+		"--escalation-chain", "--acknowledged-by", "--resolved-by",
+		"--to", "--resolved-from", "--resolved-to",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr missing %q in the unsupported-filter note:\n%s", want, stderr)
+		}
+	}
+	// --from survives: the public API does understand a started_at lower
+	// bound, so it must be applied rather than dropped.
+	if strings.Contains(stderr, "does not honor: --from") {
+		t.Errorf("--from reported unsupported, but it maps onto started_after:\n%s", stderr)
+	}
+	if fake.gotCfg.StartedAfter == nil {
+		t.Fatal("StartedAfter = nil, want --from applied as the public API's lower bound")
+	}
+	if got := fake.gotCfg.StartedAfter.UTC().Format(time.RFC3339); got != "2026-01-01T00:00:00Z" {
+		t.Errorf("StartedAfter = %s, want 2026-01-01T00:00:00Z", got)
 	}
 }
 

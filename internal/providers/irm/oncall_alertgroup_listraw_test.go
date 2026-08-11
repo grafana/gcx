@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -24,6 +26,9 @@ type alertGroupPage struct {
 type pagedServerState struct {
 	requests     int
 	firstPerPage string
+	// firstQuery is the full query string of the first alertgroups request,
+	// so filter tests can assert the exact wire encoding.
+	firstQuery url.Values
 }
 
 // newPagedAlertGroupsServer serves the OnCall internal alertgroups endpoint
@@ -44,7 +49,8 @@ func newPagedAlertGroupsServer(t *testing.T, pages []alertGroupPage) (*httptest.
 	mux.HandleFunc(BasePath+"/alertgroups/", func(w http.ResponseWriter, r *http.Request) {
 		state.requests++
 		if state.requests == 1 {
-			state.firstPerPage = r.URL.Query().Get("perpage")
+			state.firstQuery = r.URL.Query()
+			state.firstPerPage = state.firstQuery.Get("perpage")
 		}
 		pageNum := 1
 		if p := r.URL.Query().Get("page"); p != "" {
@@ -223,6 +229,108 @@ func TestAlertGroupList_RichPath_EndToEndHTTP_DrainedOvershoot(t *testing.T) {
 	want := "hint: showing first 3 of 4. See all results with: gcx irm oncall alert-groups list --limit 0"
 	if !strings.Contains(stderr, want) {
 		t.Errorf("stderr missing known-total truncation hint %q:\n%s", want, stderr)
+	}
+}
+
+// TestAlertGroupList_FilterQueryParams pins the wire encoding of the filter
+// flags added to close the escalation-chain gap (grafana/gcx#1156). Each
+// option filter is sent as a REPEATED param, never comma-joined — matching
+// team/integration — and the two daterange filters are sent as the naive-UTC
+// `<from>_<to>` pair the internal API expects. `--to` on its own still sends a
+// pair, with the start defaulted to the unix epoch.
+//
+// Assertions are per-key so the always-present defaults (status, is_root,
+// perpage) don't have to be restated in every case.
+func TestAlertGroupList_FilterQueryParams(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want url.Values
+	}{
+		{
+			name: "escalation chains repeat, never comma-joined",
+			args: []string{"--escalation-chain", "EC1,EC2"},
+			want: url.Values{"escalation_chain": {"EC1", "EC2"}},
+		},
+		{
+			name: "repeated flag occurrences accumulate",
+			args: []string{"--escalation-chain", "EC1", "--escalation-chain", "EC2"},
+			want: url.Values{"escalation_chain": {"EC1", "EC2"}},
+		},
+		{
+			name: "acknowledged-by and resolved-by",
+			args: []string{"--acknowledged-by", "U1,U2", "--resolved-by", "U3"},
+			want: url.Values{
+				"acknowledged_by": {"U1", "U2"},
+				"resolved_by":     {"U3"},
+			},
+		},
+		{
+			name: "started-at window from an absolute --from/--to pair",
+			args: []string{"--from", "2026-01-01T00:00:00Z", "--to", "2026-01-31T12:00:00Z"},
+			want: url.Values{"started_at": {"2026-01-01T00:00:00_2026-01-31T12:00:00"}},
+		},
+		{
+			name: "--from accepts a unix timestamp",
+			args: []string{"--from", "1767225600", "--to", "2026-01-31T12:00:00Z"},
+			want: url.Values{"started_at": {"2026-01-01T00:00:00_2026-01-31T12:00:00"}},
+		},
+		{
+			name: "--to alone defaults the start to the unix epoch",
+			args: []string{"--to", "2026-01-31T12:00:00Z"},
+			want: url.Values{"started_at": {"1970-01-01T00:00:00_2026-01-31T12:00:00"}},
+		},
+		{
+			name: "resolved-at window is a separate param",
+			args: []string{"--resolved-from", "2026-01-01T00:00:00Z", "--resolved-to", "2026-01-31T12:00:00Z"},
+			want: url.Values{"resolved_at": {"2026-01-01T00:00:00_2026-01-31T12:00:00"}},
+		},
+		{
+			name: "no time flags means no daterange params",
+			args: []string{"--escalation-chain", "EC1"},
+			want: url.Values{"started_at": nil, "resolved_at": nil},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, state := newPagedAlertGroupsServer(t, []alertGroupPage{{items: rawAlertGroups(1)}})
+			runAlertGroupList(t, onCallClientFor(srv), tc.args...)
+
+			if state.firstQuery == nil {
+				t.Fatal("no alertgroups request observed")
+			}
+			for key, want := range tc.want {
+				if got := state.firstQuery[key]; !reflect.DeepEqual(got, want) {
+					t.Errorf("query[%q] = %v, want %v (full query: %v)", key, got, want, state.firstQuery)
+				}
+			}
+		})
+	}
+}
+
+// TestAlertGroupList_MaxAgeAndFromAreMutuallyExclusive: both compile into the
+// same started_at range param, so the combination is rejected at validation
+// time — before any config or network work.
+func TestAlertGroupList_MaxAgeAndFromAreMutuallyExclusive(t *testing.T) {
+	srv, state := newPagedAlertGroupsServer(t, []alertGroupPage{{items: rawAlertGroups(1)}})
+	resetAgentMode(t)
+
+	cmd := newAlertGroupListCommand(&fakeLoader{client: onCallClientFor(srv)})
+	cmd.SetOut(&strings.Builder{})
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"-o", "json", "--max-age", "24h", "--from", "now-30d"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() = nil, want a mutual-exclusion error")
+	}
+	const want = "--max-age cannot be combined with --from or --to: both bound the started-at window"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+	if state.requests != 0 {
+		t.Errorf("requests = %d, want 0 (validation must fire before any network work)", state.requests)
 	}
 }
 
