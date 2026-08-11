@@ -62,13 +62,13 @@ const (
 	KubernetesMonitoring = "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring.md"
 
 	// AdaptiveMetrics documents Adaptive Metrics cost control.
-	AdaptiveMetrics = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/metrics-costs/control-metrics-usage-via-adaptive-metrics.md"
+	AdaptiveMetrics = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-metrics.md"
 
 	// AdaptiveLogs documents Adaptive Logs cost control.
-	AdaptiveLogs = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/logs-costs/adaptive-logs.md"
+	AdaptiveLogs = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-logs.md"
 
 	// AdaptiveTraces documents reducing traces costs (Adaptive Traces).
-	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/traces-costs.md"
+	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-traces.md"
 
 	// AssistantPricing documents Grafana Assistant token-based pricing,
 	// which explicitly counts usage made through the gcx CLI.
