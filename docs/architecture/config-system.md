@@ -866,7 +866,9 @@ affect command behavior but are not tied to any specific Grafana context.
 ```go
 // internal/config/cli_options.go
 type CLIOptions struct {
-    AutoApprove bool `env:"GCX_AUTO_APPROVE"`
+    AutoApprove           bool   `env:"GCX_AUTO_APPROVE"`
+    DisableUpdateNotifier string `env:"GCX_NO_UPDATE_NOTIFIER"`
+    KGDatasourceUID       string `env:"GCX_KG_DATASOURCE_UID"`
 }
 
 func LoadCLIOptions() (CLIOptions, error)
@@ -880,10 +882,17 @@ independently — they do not read from the config file or affect any context.
 **Current usage:** The `delete` command calls `LoadCLIOptions()` in its `RunE`
 and, when `AutoApprove` is true (or `--yes`/`-y` is passed), automatically
 enables the `--force` flag for non-interactive operation in CI/CD pipelines.
+The KG provider's client calls `LoadCLIOptions()` in its constructor and, when
+`KGDatasourceUID` is set, routes all KG API traffic through the KG datasource
+proxy instead of the asserts plugin resource proxy (development escape hatch;
+a parse error fails client construction rather than silently dropping the
+override).
 
 | Env Var | CLI Flag | Effect |
 |---------|----------|--------|
 | `GCX_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
+| `GCX_NO_UPDATE_NOTIFIER` | — | Disables the periodic gcx/skill update notifier |
+| `GCX_KG_DATASOURCE_UID` | — | Dev-only: KG traffic via datasource proxy (`1`/`true` = default UID `grafana-knowledgegraph-datasource`) |
 
 See [environment-variables.md](../design/environment-variables.md) for the full environment
 variable reference.

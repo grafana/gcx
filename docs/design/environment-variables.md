@@ -46,6 +46,7 @@ stack because its TLS and proxy settings affect the transport.
 | `GCX_TELEMETRY` | global | `enabled`, `disabled`, or `log`; takes precedence over `DO_NOT_TRACK` and config |
 | `DO_NOT_TRACK` | global | Disable anonymous telemetry when `1` or `true` unless `GCX_TELEMETRY` overrides it |
 | `GCX_NO_UPDATE_NOTIFIER` | global | Disable the periodic gcx/skill update notifier when non-empty |
+| `GCX_KG_DATASOURCE_UID` | global | Development-only: route KG API traffic through the KG datasource proxy instead of the asserts plugin resource proxy |
 | `NO_COLOR` | global | Disable color output ([no-color.org](https://no-color.org/)) |
 
 ### Provider Variables
@@ -69,8 +70,9 @@ See [../architecture/config-system.md](../architecture/config-system.md) for the
 | Variable | Effect | Documentation |
 |----------|--------|---------------|
 | `GCX_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See `docs/reference/environment-variables/` |
+| `GCX_KG_DATASOURCE_UID` | Route all KG API traffic through the KG datasource proxy (`/api/datasources/proxy/uid/<uid>`) instead of the `grafana-asserts-app` plugin resource proxy. Development escape hatch. `1`/`true` selects the default provisioned UID (`grafana-knowledgegraph-datasource`); any other value is used as the datasource UID verbatim | See `docs/reference/environment-variables/` |
 
-Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
+`GCX_AUTO_APPROVE` accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 
 **Implementation:** `internal/config/cli_options.go` - `CLIOptions` struct loaded via `LoadCLIOptions()`
 
