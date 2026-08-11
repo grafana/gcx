@@ -180,17 +180,19 @@ func TestClient_Cases(t *testing.T) {
 }
 
 func TestClient_Get(t *testing.T) {
+	planned := 4
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiments/r-1", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
 		writeJSON(w, experiments.Experiment{
-			RunID:     "r-1",
-			Name:      "exp-1",
-			Status:    "running",
-			Source:    "external",
-			CreatedAt: time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC),
+			RunID:             "r-1",
+			Name:              "exp-1",
+			Status:            "running",
+			PlannedTrialCount: &planned,
+			Source:            "external",
+			CreatedAt:         time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC),
 		})
 	}))
 
@@ -198,6 +200,8 @@ func TestClient_Get(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "r-1", exp.RunID)
 	assert.Equal(t, "external", exp.Source)
+	require.NotNil(t, exp.PlannedTrialCount)
+	assert.Equal(t, 4, *exp.PlannedTrialCount)
 }
 
 func TestClient_Trials(t *testing.T) {
