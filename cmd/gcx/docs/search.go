@@ -79,6 +79,10 @@ func searchCommand(loader *indexLoader) *cobra.Command {
 
   # Return more results as JSON
   gcx docs search dashboards --limit 10 -o json`,
+		// ArbitraryArgs (rather than ExactArgs(1)) lets a multi-word query be
+		// passed unquoted — `gcx docs search rate limiting` — by joining the
+		// args into a single phrase. The empty-query case is caught in
+		// Validate. Sibling commands that take a single URL use ExactArgs(1).
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.query = strings.Join(args, " ")

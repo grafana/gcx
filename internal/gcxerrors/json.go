@@ -28,6 +28,11 @@ func stripBoxChars(s string) string {
 // treat as actionable, so the URL is intentionally duplicated here as a
 // self-contained, fetchable instruction. It points at `gcx docs get`, which
 // fetches the page as bounded, cleaned markdown in-CLI (no browser needed).
+//
+// The url is embedded verbatim into a suggested shell command, so callers MUST
+// pass a trusted, constant value (the docs.* registry constants) — never
+// user-supplied input, which could inject shell metacharacters into a
+// copy-pasteable command.
 func DocsFetchSuggestion(url string) string {
 	return "If the cause isn't clear from the details, read the documentation with 'gcx docs get " + url + "' for guidance before retrying."
 }

@@ -66,9 +66,9 @@ func getCommand() *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			doc, err := grafanadocs.FetchDoc(cmd.Context(), opts.url)
+			doc, err := fetchDoc(cmd.Context(), opts.url)
 			if err != nil {
-				return err
+				return cleanFetchErr(opts.url, err)
 			}
 			res := grafanadocs.Excerpt(doc, grafanadocs.ExcerptOpts{
 				Section: opts.section,

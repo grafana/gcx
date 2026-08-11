@@ -28,11 +28,14 @@ var commandAnnotations = map[string]annotation{
 	// Core CLI commands (cmd/gcx/)
 	// -----------------------------------------------------------------------
 
-	// docs — Grafana documentation lookup (read-only, no auth required)
-	"gcx docs search":   {Cost: "small", Hint: "search Grafana docs by keyword; --product <name> --limit 10 -o json. For curated canonical URLs run 'gcx docs links'"},
+	// docs — Grafana documentation lookup (read-only, no auth required).
+	// search/products pay a one-time index download (up to ~10 MiB) on the
+	// first call; get/outline fetch a single page (capped at 2 MiB). links is
+	// served from a built-in registry with no network, so it alone is "small".
+	"gcx docs search":   {Cost: "medium", Hint: "search Grafana docs by keyword; first call downloads the docs index. --product <name> --limit 10 -o json. For curated canonical URLs run 'gcx docs links'"},
 	"gcx docs get":      {Cost: "medium", Hint: "fetch a doc page as bounded markdown; --section <heading> --offset 0 --limit 80 -o json"},
-	"gcx docs outline":  {Cost: "small", Hint: "list headings of a doc page to target sections with 'gcx docs get --section'"},
-	"gcx docs products": {Cost: "small", Hint: "list indexed doc products with entry counts"},
+	"gcx docs outline":  {Cost: "medium", Hint: "fetch a doc page and list its headings to target sections with 'gcx docs get --section'"},
+	"gcx docs products": {Cost: "medium", Hint: "list indexed doc products with entry counts; first call downloads the docs index"},
 	"gcx docs links":    {Cost: "small", Hint: "list curated canonical doc URLs (no network); pipe a URL into 'gcx docs get' to read content"},
 
 	"gcx api": {Cost: "large", Hint: "Run gcx help-tree --depth 1 to discover dedicated commands. Prefer gcx slo, gcx metrics query, gcx logs query, gcx alert, etc. Reserve gcx api for endpoints without a dedicated command. Example: GET /api/health -o json"},

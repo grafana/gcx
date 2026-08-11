@@ -4,11 +4,29 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/grafana/mcp-doc-server/pkg/grafanadocs"
 	"github.com/spf13/cobra"
 )
+
+// fetchDoc is the seam through which get/outline reach the network. It points
+// at grafanadocs.FetchDoc in production and is replaced in tests so the
+// success paths can be exercised without a live fetch (mirroring the
+// CommandWithIndex hook used for the index-backed commands).
+var fetchDoc = grafanadocs.FetchDoc
+
+// cleanFetchErr rewrites a grafanadocs fetch error into product-facing
+// language: it adds the URL for context and strips the internal
+// "grafanadocs:" package prefix so users and agents see a clean message
+// (for example, `rejected host "evil.com" (only grafana.com allowed)`) rather
+// than a leaked implementation detail. The library exposes no sentinel errors
+// to match on, so the descriptive message text is preserved as-is.
+func cleanFetchErr(rawURL string, err error) error {
+	msg := strings.ReplaceAll(err.Error(), "grafanadocs: ", "")
+	return fmt.Errorf("fetching %s: %s", rawURL, msg)
+}
 
 // indexLoader provides lazy, once-only loading of the documentation index.
 // The index is fetched on the first subcommand that needs it (search,
@@ -24,6 +42,9 @@ type indexLoader struct {
 
 func (l *indexLoader) get(ctx context.Context) (*grafanadocs.Index, error) {
 	l.once.Do(func() {
+		// DOCS_INDEX_URL is an unadvertised override for pointing at a mirror
+		// or a fixture during testing; it is intentionally not a user-facing
+		// flag. Any value must still be an https URL (enforced by LoadIndex).
 		url := grafanadocs.DefaultIndexURL
 		if override := os.Getenv("DOCS_INDEX_URL"); override != "" {
 			url = override
