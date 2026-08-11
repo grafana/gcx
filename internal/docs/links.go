@@ -116,7 +116,10 @@ type NamedLink struct {
 
 // AllNamed returns every documentation link in the registry paired with its
 // name, in a stable order. This is the single source of truth for the link
-// set; All derives from it.
+// set; All derives from it. Every constant defined above must appear here so
+// that a canonical URL surfaced to an agent (via help text, an llm_hint
+// annotation, or a DetailedError.DocsLink) is always discoverable through
+// `gcx docs links`.
 func AllNamed() []NamedLink {
 	return []NamedLink{
 		{Name: "ServiceAccounts", URL: ServiceAccounts},
@@ -133,33 +136,25 @@ func AllNamed() []NamedLink {
 		{Name: "AdaptiveMetrics", URL: AdaptiveMetrics},
 		{Name: "AdaptiveLogs", URL: AdaptiveLogs},
 		{Name: "AdaptiveTraces", URL: AdaptiveTraces},
+		{Name: "AssistantPricing", URL: AssistantPricing},
+		{Name: "SyntheticMonitoringInvoice", URL: SyntheticMonitoringInvoice},
+		{Name: "PerformanceTestingInvoice", URL: PerformanceTestingInvoice},
+		{Name: "IRMInvoice", URL: IRMInvoice},
+		{Name: "Keychain", URL: Keychain},
+		{Name: "ConfigMigration", URL: ConfigMigration},
+		{Name: "AnonymousUsageStats", URL: AnonymousUsageStats},
+		{Name: "CloudAPI", URL: CloudAPI},
 	}
 }
 
-// All returns every documentation URL in the registry. Used by the
-// link-validity test to assert the entire set is well-formed Markdown.
+// All returns every documentation URL in the registry, derived from AllNamed
+// so the two never drift. Used by the link-validity test to assert the entire
+// set is well-formed Markdown.
 func All() []string {
-	return []string{
-		ServiceAccounts,
-		AccessPolicies,
-		GrafanaInstallation,
-		PromQL,
-		LogQL,
-		TraceQL,
-		PyroscopeQueries,
-		DashboardJSONModel,
-		SyntheticMonitoring,
-		FleetManagement,
-		KubernetesMonitoring,
-		AdaptiveMetrics,
-		AdaptiveLogs,
-		AdaptiveTraces,
-		AssistantPricing,
-		SyntheticMonitoringInvoice,
-		PerformanceTestingInvoice,
-		IRMInvoice,
-		Keychain,
-		AnonymousUsageStats,
-		CloudAPI,
+	named := AllNamed()
+	urls := make([]string, len(named))
+	for i, l := range named {
+		urls[i] = l.URL
 	}
+	return urls
 }
