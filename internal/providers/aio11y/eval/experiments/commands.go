@@ -1227,7 +1227,7 @@ func (c *TrialsTableCodec) Encode(w io.Writer, v any) error {
 	}
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("TRIAL-ID", "EXPERIMENT-ID", "TEST-CASE-ID", "ATTEMPT", "STATUS", "CONVERSATION", "TRACE", "DURATION-MS", "CREATED", "COMPLETED", "ERROR")
+		t = style.NewTable("TRIAL-ID", "EXPERIMENT-ID", "TEST-CASE-ID", "ATTEMPT", "STATUS", "CONVERSATION", "TRACE", "TOTAL-TOKENS", "DURATION-MS", "CREATED", "COMPLETED", "ERROR")
 	} else {
 		t = style.NewTable("TRIAL-ID", "EXPERIMENT-ID", "TEST-CASE-ID", "ATTEMPT", "STATUS", "CONVERSATION", "TRACE")
 	}
@@ -1249,11 +1249,15 @@ func (c *TrialsTableCodec) Encode(w io.Writer, v any) error {
 			if trial.DurationMS != nil {
 				duration = strconv.FormatInt(*trial.DurationMS, 10)
 			}
+			totalTokens := "-"
+			if trial.TotalTokens != nil {
+				totalTokens = strconv.FormatInt(*trial.TotalTokens, 10)
+			}
 			completed := "-"
 			if trial.CompletedAt != nil {
 				completed = aio11yhttp.FormatTime(*trial.CompletedAt)
 			}
-			t.Row(trial.TrialID, trial.ExperimentID, trial.TestCaseID, strconv.Itoa(trial.Attempt), status, conversation, trace, duration, aio11yhttp.FormatTime(trial.CreatedAt), completed, aio11yhttp.Truncate(trial.Error, 40))
+			t.Row(trial.TrialID, trial.ExperimentID, trial.TestCaseID, strconv.Itoa(trial.Attempt), status, conversation, trace, totalTokens, duration, aio11yhttp.FormatTime(trial.CreatedAt), completed, aio11yhttp.Truncate(trial.Error, 40))
 		} else {
 			t.Row(trial.TrialID, trial.ExperimentID, trial.TestCaseID, strconv.Itoa(trial.Attempt), status, conversation, trace)
 		}
@@ -1330,14 +1334,21 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("EXPERIMENT-ID", "NAME", "STATUS", "SUITE", "VERSION", "TAGS", "SCORES", "CREATED", "COMPLETED", "DESCRIPTION", "ERROR")
+		t = style.NewTable("EXPERIMENT-ID", "NAME", "STATUS", "SUITE", "VERSION", "TAGS", "TRIALS", "PASS", "CREATED", "COMPLETED", "DESCRIPTION", "ERROR")
 	} else {
-		t = style.NewTable("EXPERIMENT-ID", "NAME", "STATUS", "SUITE", "VERSION", "TAGS", "SCORES", "CREATED")
+		t = style.NewTable("EXPERIMENT-ID", "NAME", "STATUS", "SUITE", "VERSION", "TRIALS", "PASS", "CREATED")
 	}
 
 	for _, exp := range items {
 		id := exp.ID()
-		scores := strconv.Itoa(exp.ScoreCount)
+		trials := "-"
+		pass := "-"
+		if exp.Result != nil {
+			trials = strconv.Itoa(exp.Result.TrialCount)
+			if exp.Result.PassRate != nil {
+				pass = fmt.Sprintf("%.2f%%", *exp.Result.PassRate*100)
+			}
+		}
 		suite := exp.SuiteID
 		if suite == "" {
 			suite = "-"
@@ -1356,9 +1367,17 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 			if exp.CompletedAt != nil {
 				completed = aio11yhttp.FormatTime(*exp.CompletedAt)
 			}
-			t.Row(id, exp.Name, status, suite, version, tags, scores, aio11yhttp.FormatTime(exp.CreatedAt), completed, aio11yhttp.Truncate(exp.Description, 40), aio11yhttp.Truncate(exp.Error, 40))
+			// The rollup can fail on its own while the experiment succeeds.
+			// TRIALS and PASS then render "-" like an experiment with no
+			// trials, so without this fallback the stored reason never
+			// reaches the table.
+			failure := exp.Error
+			if failure == "" {
+				failure = exp.ResultError
+			}
+			t.Row(id, exp.Name, status, suite, version, tags, trials, pass, aio11yhttp.FormatTime(exp.CreatedAt), completed, aio11yhttp.Truncate(exp.Description, 40), aio11yhttp.Truncate(failure, 40))
 		} else {
-			t.Row(id, exp.Name, status, suite, version, tags, scores, aio11yhttp.FormatTime(exp.CreatedAt))
+			t.Row(id, exp.Name, status, suite, version, trials, pass, aio11yhttp.FormatTime(exp.CreatedAt))
 		}
 	}
 	return t.Render(w)
@@ -1436,7 +1455,7 @@ func (c *ScoresTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // ReportTextCodec renders an *ExperimentReport (or ExperimentReport) as a
-// human-readable summary with per-breakdown totals.
+// human-readable summary.
 type ReportTextCodec struct{}
 
 func (c *ReportTextCodec) Format() format.Format {
@@ -1458,102 +1477,64 @@ func (c *ReportTextCodec) Encode(w io.Writer, v any) error {
 	}
 
 	const labelFmt = "%-15s %s\n"
-	run := r.Experiment
-	if run.ID() == "" {
-		run = r.Run
+	exp := r.Experiment
+	if exp.ID() != "" {
+		fmt.Fprintf(w, labelFmt, "Experiment:", exp.ID())
 	}
-	if run.ID() != "" {
-		fmt.Fprintf(w, labelFmt, "Experiment:", run.ID())
+	if exp.Name != "" {
+		fmt.Fprintf(w, labelFmt, "Name:", exp.Name)
 	}
-	if run.Name != "" {
-		fmt.Fprintf(w, labelFmt, "Name:", run.Name)
+	if exp.Status != "" {
+		fmt.Fprintf(w, labelFmt, "Status:", exp.Status)
 	}
-	if run.Status != "" {
-		fmt.Fprintf(w, labelFmt, "Status:", run.Status)
+	if exp.Error != "" {
+		fmt.Fprintf(w, labelFmt, "Error:", exp.Error)
 	}
 	s := r.Summary
-	if s.TestCaseCount > 0 || s.TrialCount > 0 {
-		fmt.Fprintf(w, labelFmt, "Test cases:", strconv.Itoa(s.TestCaseCount))
-		fmt.Fprintf(w, labelFmt, "Trials:", strconv.Itoa(s.TrialCount))
-		fmt.Fprintf(w, labelFmt, "Completed:", strconv.Itoa(s.CompletedCount))
-		if s.FailedCount > 0 {
-			fmt.Fprintf(w, labelFmt, "Failed:", strconv.Itoa(s.FailedCount))
-		}
-		if s.CanceledCount > 0 {
-			fmt.Fprintf(w, labelFmt, "Canceled:", strconv.Itoa(s.CanceledCount))
-		}
+	fmt.Fprintf(w, labelFmt, "Test cases:", strconv.Itoa(s.TestCaseCount))
+	fmt.Fprintf(w, labelFmt, "Trials:", strconv.Itoa(s.TrialCount))
+	fmt.Fprintf(w, labelFmt, "Completed:", strconv.Itoa(s.CompletedCount))
+	if s.FailedCount > 0 {
+		fmt.Fprintf(w, labelFmt, "Failed:", strconv.Itoa(s.FailedCount))
 	}
-	if s.NScores > 0 {
-		fmt.Fprintf(w, labelFmt, "Scores:", strconv.Itoa(s.NScores))
+	if s.CanceledCount > 0 {
+		fmt.Fprintf(w, labelFmt, "Canceled:", strconv.Itoa(s.CanceledCount))
 	}
-	if s.NConversations > 0 {
-		fmt.Fprintf(w, labelFmt, "Conversations:", strconv.Itoa(s.NConversations))
+
+	passRate := "-"
+	if s.PassRate != nil {
+		passRate = fmt.Sprintf("%.2f%%", *s.PassRate*100)
 	}
-	if s.NGenerations > 0 {
-		fmt.Fprintf(w, labelFmt, "Generations:", strconv.Itoa(s.NGenerations))
-	}
-	if s.PassRate > 0 {
-		fmt.Fprintf(w, labelFmt, "Pass rate:", fmt.Sprintf("%.2f%%", s.PassRate*100))
-	}
-	if s.MeanScore > 0 {
-		fmt.Fprintf(w, labelFmt, "Mean score:", fmt.Sprintf("%g", s.MeanScore))
-	}
+	fmt.Fprintf(w, labelFmt, "Pass rate:", passRate)
+
 	if s.FinalScoreAvg != nil {
 		fmt.Fprintf(w, labelFmt, "Final avg:", fmt.Sprintf("%g", *s.FinalScoreAvg))
 	}
-	if s.TotalCostUSD > 0 {
-		fmt.Fprintf(w, labelFmt, "Cost:", fmt.Sprintf("$%.4f", s.TotalCostUSD))
-	} else if s.TotalCost != nil {
-		fmt.Fprintf(w, labelFmt, "Cost:", fmt.Sprintf("$%.4f", *s.TotalCost))
-	}
-	if s.TotalTokens > 0 {
-		fmt.Fprintf(w, labelFmt, "Tokens:", strconv.FormatInt(s.TotalTokens, 10))
-	}
 
-	breakdowns := reportBreakdownRows(r.Breakdowns)
-	if len(breakdowns) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Breakdowns:")
-		for _, row := range breakdowns {
-			b := row.breakdown
-			key := b.Key
-			if key == "" {
-				key = "-"
-			}
-			fmt.Fprintf(w, "  %s/%s: count=%d", row.group, key, b.Count)
-			if b.Count > 0 {
-				fmt.Fprintf(w, " pass_rate=%.2f%% mean_score=%g", b.PassRate*100, b.MeanScore)
-			}
-			if b.TotalCostUSD > 0 {
-				fmt.Fprintf(w, " cost=$%.4f", b.TotalCostUSD)
-			}
-			if b.TotalTokens > 0 {
-				fmt.Fprintf(w, " tokens=%d", b.TotalTokens)
-			}
-			fmt.Fprintln(w)
-		}
+	cost := "-"
+	if s.TotalCost != nil {
+		cost = fmt.Sprintf("$%.4f%s", *s.TotalCost, coverageNote(s.CostCoverage))
 	}
+	fmt.Fprintf(w, labelFmt, "Cost:", cost)
+
+	tokens := "-"
+	if s.TotalTokens != nil {
+		tokens = strconv.FormatInt(*s.TotalTokens, 10) + coverageNote(s.TokenCoverage)
+	}
+	fmt.Fprintf(w, labelFmt, "Tokens:", tokens)
 	return nil
 }
 
-type reportBreakdownRow struct {
-	group     string
-	breakdown ExperimentReportBreakdown
-}
-
-func reportBreakdownRows(b ExperimentReportBreakdowns) []reportBreakdownRow {
-	rows := []reportBreakdownRow{}
-	add := func(group string, items []ExperimentReportBreakdown) {
-		for _, item := range items {
-			rows = append(rows, reportBreakdownRow{group: group, breakdown: item})
-		}
+// coverageNote flags a total whose inputs were not all reported, so a reader
+// does not take a low number for a complete one. The API pairs a token total
+// with coverage "none" when it summed input and output tokens because no trial
+// carried a total of its own. It returns an empty coverage on the progress
+// snapshot of a running experiment.
+func coverageNote(coverage string) string {
+	if coverage == "" || coverage == "complete" {
+		return ""
 	}
-	add("task", b.ByTask)
-	add("category", b.ByCategory)
-	add("evaluator", b.ByEvaluator)
-	add("score_key", b.ByScoreKey)
-	add("evaluator_score_key", b.ByEvaluatorScoreKey)
-	return rows
+	return " (coverage: " + coverage + ")"
 }
 
 func (c *ReportTextCodec) Decode(_ io.Reader, _ any) error {
