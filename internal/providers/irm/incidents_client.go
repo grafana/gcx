@@ -2,12 +2,14 @@ package irm
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -62,38 +64,14 @@ func pirHookRank(hookID string) int {
 	}
 }
 
-// isPIRHookID reports whether a hook run can carry a PIR link.
-func isPIRHookID(hookID string) bool { return pirHookRank(hookID) > 0 }
-
-// pirCandidate is a PIR link found on one hook run, with the keys used to
-// choose between links when an incident has more than one.
-type pirCandidate struct {
-	url     string
-	lastRun time.Time
-	hookID  string
-}
-
-// beats reports whether c should win over other. The most recent run wins;
-// ties fall back to hook rank and then to the URL itself, so the choice does
-// not depend on the order the API happened to return the runs in.
-func (c pirCandidate) beats(other pirCandidate) bool {
-	switch {
-	case other.url == "":
-		return true
-	case !c.lastRun.Equal(other.lastRun):
-		return c.lastRun.After(other.lastRun)
-	case pirHookRank(c.hookID) != pirHookRank(other.hookID):
-		return pirHookRank(c.hookID) > pirHookRank(other.hookID)
-	default:
-		return c.url < other.url
-	}
-}
-
-// pirURLFromHookRun returns the PIR document URL a single hook run recorded.
-// The fileURL metadata field is what IRM's PIR bookmarks read; metadata.URL is
-// a fallback for a partial run that recorded only the URL.
-func pirURLFromHookRun(run HookRun) string {
-	if run.Metadata == nil {
+// pirURL returns the PIR document URL a hook run recorded, or "" if it is not
+// a PIR-creating hook or recorded no link. The fileURL field is what IRM's PIR
+// bookmarks read; metadata.url is the same value on a full run and covers a
+// partial one that recorded only the URL. Restricting this to PIR hooks matters
+// for that fallback: other integrations put their Slack, Meet and GitHub links
+// in the very same field.
+func pirURL(run HookRun) string {
+	if pirHookRank(run.HookID) == 0 || run.Metadata == nil {
 		return ""
 	}
 	for _, f := range run.Metadata.Fields {
@@ -106,24 +84,30 @@ func pirURLFromHookRun(run HookRun) string {
 
 // pirURLFromHookRuns returns the PIR document URL for an incident, or "" when
 // it has no PIR document. An incident can carry several PIR links — both hooks
-// ran, or one was re-run — and the API does not order hook runs, so the link is
-// picked deterministically rather than taking whichever arrived first.
+// ran, or one was re-run — and the API returns hook runs unordered, so the most
+// recent one wins and equal timestamps fall back to hook rank and then to the
+// URL itself. That keeps repeated calls for one incident in agreement.
 func pirURLFromHookRuns(runs []HookRun) string {
-	var best pirCandidate
+	candidates := make([]HookRun, 0, len(runs))
 	for _, run := range runs {
-		if !isPIRHookID(run.HookID) {
-			continue
-		}
-		candidate := pirCandidate{
-			url:     pirURLFromHookRun(run),
-			lastRun: time.Time(run.LastRun),
-			hookID:  run.HookID,
-		}
-		if candidate.url != "" && candidate.beats(best) {
-			best = candidate
+		if pirURL(run) != "" {
+			candidates = append(candidates, run)
 		}
 	}
-	return best.url
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	slices.SortFunc(candidates, func(a, b HookRun) int {
+		if c := time.Time(b.LastRun).Compare(time.Time(a.LastRun)); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(pirHookRank(b.HookID), pirHookRank(a.HookID)); c != 0 {
+			return c
+		}
+		return cmp.Compare(pirURL(a), pirURL(b))
+	})
+	return pirURL(candidates[0])
 }
 
 // Client is an HTTP client for the Grafana IRM Incidents API.

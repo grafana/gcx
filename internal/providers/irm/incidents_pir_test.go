@@ -23,22 +23,19 @@ func pirHookRun(hookID string) map[string]any {
 	return pirHookRunAt(hookID, pirDocURL, "")
 }
 
-// pirHookRunAt builds a hook run carrying a specific fileURL and lastRun. An
-// empty lastRun omits the field, as the API does for a hook that never ran.
+// pirHookRunAt builds a hook run carrying a specific fileURL and lastRun.
 func pirHookRunAt(hookID, fileURL, lastRun string) map[string]any {
-	run := map[string]any{
-		"hookID": hookID,
+	return map[string]any{
+		"hookID":  hookID,
+		"lastRun": lastRun,
 		"metadata": map[string]any{
+			"url": fileURL,
 			"fields": []map[string]any{
 				{"key": "documentTitle", "value": "PIR: Boom"},
 				{"key": "fileURL", "value": fileURL},
 			},
 		},
 	}
-	if lastRun != "" {
-		run["lastRun"] = lastRun
-	}
-	return run
 }
 
 // TestGetPIRURL covers resolving the PIR document link from an incident's
@@ -101,29 +98,39 @@ func TestGetPIRURL(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "falls back to metadata URL when no fileURL field was recorded",
+			name: "falls back to metadata url when no fileURL field was recorded",
 			hookRuns: []map[string]any{{
 				"hookID":   "grate.googleworkspace.copyTemplate",
-				"metadata": map[string]any{"URL": pirDocURL},
+				"metadata": map[string]any{"url": pirDocURL},
 			}},
 			want: pirDocURL,
 		},
 		{
-			name: "fileURL field wins over metadata URL",
+			name: "fileURL field wins over metadata url",
 			hookRuns: []map[string]any{{
 				"hookID": "grate.googleworkspace.copyTemplate",
 				"metadata": map[string]any{
-					"URL":    "https://docs.google.com/document/d/stale/edit",
+					"url":    "https://docs.google.com/document/d/stale/edit",
 					"fields": []map[string]any{{"key": "fileURL", "value": pirDocURL}},
 				},
 			}},
 			want: pirDocURL,
 		},
 		{
-			name: "a lastRun gcx cannot parse does not fail the lookup",
+			// Other integrations record their own links in the same place.
+			name: "a non-PIR hook's metadata url is not mistaken for a PIR",
+			hookRuns: []map[string]any{{
+				"hookID":   "grate.irm.slack.createChannel",
+				"metadata": map[string]any{"url": "https://slack.com/app_redirect?channel=C123"},
+			}},
+			want: "",
+		},
+		{
+			// The API sends "" for a timestamp it has no value for.
+			name: "an empty lastRun does not fail the lookup",
 			hookRuns: []map[string]any{{
 				"hookID":   "grate.google.copyFile",
-				"lastRun":  1755000000,
+				"lastRun":  "",
 				"metadata": map[string]any{"fields": []map[string]any{{"key": "fileURL", "value": pirDocURL}}},
 			}},
 			want: pirDocURL,
@@ -159,10 +166,11 @@ func TestGetPIRURLIsDeterministic(t *testing.T) {
 		want     string
 	}{
 		{
+			// Microsecond precision, as the API reports it.
 			name: "the most recent run wins over an older one",
 			hookRuns: []map[string]any{
-				pirHookRunAt("grate.google.copyFile", olderURL, "2026-08-01T10:00:00Z"),
-				pirHookRunAt("grate.googleworkspace.copyTemplate", newerURL, "2026-08-04T09:30:00Z"),
+				pirHookRunAt("grate.google.copyFile", olderURL, "2026-08-06T16:43:38.932849Z"),
+				pirHookRunAt("grate.googleworkspace.copyTemplate", newerURL, "2026-08-06T16:43:43.375365Z"),
 			},
 			want: newerURL,
 		},
