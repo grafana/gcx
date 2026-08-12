@@ -97,6 +97,29 @@ func TestGenerate_FallsBackWhenNotCloud(t *testing.T) {
 	assert.Contains(t, plan.Content, "# Combined fix")
 }
 
+func TestGenerate_ContextCanceledPropagates(t *testing.T) {
+	id := firstRealExplainID(t)
+	results := otelutils.Results{
+		Errors: []otelutils.ComponentResult{
+			{Component: "Grafana Cloud", Message: "no headers", ExplainID: id},
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	opts := Options{
+		Loader: &providers.ConfigLoader{},
+		promptRunner: func(context.Context, *providers.ConfigLoader, string) (string, error) {
+			return "", context.Canceled
+		},
+		cloudChecker: func(context.Context, *providers.ConfigLoader) error { return nil },
+	}
+	_, err := Generate(ctx, results, opts)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, context.Canceled),
+		"context.Canceled from the runner must propagate rather than silently fall back to local, got %v", err)
+}
+
 func TestGenerate_FallsBackWhenAssistantFails(t *testing.T) {
 	id := firstRealExplainID(t)
 	results := otelutils.Results{

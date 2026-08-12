@@ -15,10 +15,16 @@ import (
 
 // ResultsWithFixPlan is the JSON/YAML envelope emitted by `gcx instrumentation
 // check`. When --fix-plan is not set, FixPlan is nil and the JSON serialization
-// matches the pre-fixplan shape (`otelutils.Results` fields as top-level keys)
-// thanks to the embedded struct.
+// matches the pre-fixplan shape (`otelutils.Results` fields as top-level keys).
+//
+// Fields are declared explicitly rather than via an embedded otelutils.Results
+// so that reflect-based JSON field discovery (cmdio.MakeFieldValidator, which
+// powers `--json <field>`) sees them: reflect.Type.Fields does not yield
+// promoted fields from anonymous embeds.
 type ResultsWithFixPlan struct {
-	otelutils.Results
+	Checks   []otelutils.ComponentResult `json:"checks" yaml:"checks"`
+	Warnings []otelutils.ComponentResult `json:"warnings" yaml:"warnings"`
+	Errors   []otelutils.ComponentResult `json:"errors" yaml:"errors"`
 
 	FixPlan *FixPlanEnvelope `json:"fix_plan,omitempty" yaml:"fix_plan,omitempty"`
 }
@@ -69,16 +75,15 @@ func (c *CheckTableCodec) Encode(w io.Writer, v any) error {
 	if !ok {
 		return errCheckTableCodecExpectedResults
 	}
-	results := envelope.Results
 
 	t := style.NewTable("STATUS", "COMPONENT", "MESSAGE", "EXPLAIN_ID")
-	for _, r := range results.Errors {
+	for _, r := range envelope.Errors {
 		t.Row("FAIL", r.Component, r.Message, r.ExplainID)
 	}
-	for _, r := range results.Warnings {
+	for _, r := range envelope.Warnings {
 		t.Row("WARN", r.Component, r.Message, r.ExplainID)
 	}
-	for _, r := range results.Checks {
+	for _, r := range envelope.Checks {
 		t.Row("OK", r.Component, r.Message, r.ExplainID)
 	}
 	if err := t.Render(w); err != nil {

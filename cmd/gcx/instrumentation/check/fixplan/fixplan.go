@@ -65,6 +65,9 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 	if opts.Loader != nil {
 		cloudErr := checkCloud(ctx, opts)
 		if cloudErr != nil {
+			if errors.Is(cloudErr, context.Canceled) {
+				return Plan{}, cloudErr
+			}
 			// Intentional fallback: Assistant isn't reachable, but the
 			// local aggregator still produces a useful plan. Surface the
 			// reason via Plan.Reason instead of a fatal error.
@@ -83,6 +86,14 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 		}
 		response, err := runner(ctx, opts.Loader, prompt)
 		if err != nil {
+			// A ctrl+C during the assistant call should surface as a real
+			// cancellation, not as a Fallback plan that hides why the run
+			// stopped. Check both the returned error and the context state
+			// because the assistant SDK may return its own error string
+			// rather than propagating context.Canceled directly.
+			if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+				return Plan{}, err
+			}
 			// Same fallback contract as the Cloud-check branch above:
 			// the assistant call failed, but the local aggregator still
 			// produces a usable plan. Surface the reason on Plan.Reason
@@ -133,7 +144,9 @@ func runAssistant(ctx context.Context, loader *providers.ConfigLoader, message s
 	case result.TimedOut:
 		return "", errors.New("assistant: request timed out")
 	case result.Canceled:
-		return "", errors.New("assistant: request canceled")
+		// Return context.Canceled so callers can errors.Is-detect the
+		// cancellation and skip the local-fallback path.
+		return "", context.Canceled
 	case result.Failed:
 		return "", fmt.Errorf("assistant: %s", result.ErrorMessage)
 	default:

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	cmdio "github.com/grafana/gcx/internal/output"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -209,11 +210,9 @@ func TestRunWith_EmptyReporterReturnsNonNilSlices(t *testing.T) {
 func TestCheckTableCodec_Encode(t *testing.T) {
 	codec := &CheckTableCodec{}
 	envelope := ResultsWithFixPlan{
-		Results: otelutils.Results{
-			Checks:   []otelutils.ComponentResult{{Component: "SDK", Message: "service.name set"}},
-			Warnings: []otelutils.ComponentResult{{Component: "Collector", Message: "missing receiver"}},
-			Errors:   []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no instance id"}},
-		},
+		Checks:   []otelutils.ComponentResult{{Component: "SDK", Message: "service.name set"}},
+		Warnings: []otelutils.ComponentResult{{Component: "Collector", Message: "missing receiver"}},
+		Errors:   []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no instance id"}},
 	}
 
 	var buf bytes.Buffer
@@ -227,6 +226,18 @@ func TestCheckTableCodec_Encode(t *testing.T) {
 		"WARN row must precede OK row, got:\n%s", out)
 	assert.Contains(t, out, "Grafana Cloud")
 	assert.Contains(t, out, "no instance id")
+}
+
+// TestResultsWithFixPlan_JSONFieldValidatorSeesAllFields guards against a
+// regression where ResultsWithFixPlan re-embeds otelutils.Results and the
+// promoted `checks`/`warnings`/`errors` fields become invisible to
+// MakeFieldValidator (reflect.Type.Fields doesn't yield promoted fields).
+// The bug's user-visible symptom is `--json checks` failing as "unknown field"
+// even though the field is present in the JSON output.
+func TestResultsWithFixPlan_JSONFieldValidatorSeesAllFields(t *testing.T) {
+	validator := cmdio.MakeFieldValidator(ResultsWithFixPlan{})
+	require.NotNil(t, validator, "validator must be non-nil for a struct type")
+	require.NoError(t, validator([]string{"checks", "warnings", "errors", "fix_plan"}))
 }
 
 func TestCheckTableCodec_WrongType(t *testing.T) {
@@ -267,9 +278,7 @@ func TestCommand_RejectsMissingLanguage(t *testing.T) {
 
 func TestCheckTableCodec_RendersFixPlanBelowTable(t *testing.T) {
 	envelope := ResultsWithFixPlan{
-		Results: otelutils.Results{
-			Errors: []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no headers", ExplainID: "grafana-cloud.headers.missing-auth"}},
-		},
+		Errors: []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no headers", ExplainID: "grafana-cloud.headers.missing-auth"}},
 		FixPlan: &FixPlanEnvelope{
 			Source:  "assistant",
 			Content: "# Fix plan\n\n1. Set the header.\n",
@@ -289,9 +298,7 @@ func TestCheckTableCodec_RendersFixPlanBelowTable(t *testing.T) {
 
 func TestCheckTableCodec_LocalFallbackNoticePrinted(t *testing.T) {
 	envelope := ResultsWithFixPlan{
-		Results: otelutils.Results{
-			Errors: []otelutils.ComponentResult{{Component: "SDK", Message: "x", ExplainID: "y"}},
-		},
+		Errors: []otelutils.ComponentResult{{Component: "SDK", Message: "x", ExplainID: "y"}},
 		FixPlan: &FixPlanEnvelope{
 			Source:   "local",
 			Fallback: true,

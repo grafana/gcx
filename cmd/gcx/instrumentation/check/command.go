@@ -166,7 +166,11 @@ Powered by github.com/grafana/otel-checker.`,
 
 			results := runWith(cmd.Context(), opts.toCommands(), c, cmd.ErrOrStderr())
 
-			envelope := ResultsWithFixPlan{Results: results}
+			envelope := ResultsWithFixPlan{
+				Checks:   results.Checks,
+				Warnings: results.Warnings,
+				Errors:   results.Errors,
+			}
 
 			if opts.FixPlan {
 				plan, err := fixplan.Generate(cmd.Context(), results, fixplan.Options{
