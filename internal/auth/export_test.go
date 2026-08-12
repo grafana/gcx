@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"io"
+	"net/url"
 	"os"
 )
 
@@ -49,4 +50,33 @@ func SwapPasteTerminal(f *os.File, ok bool) func() {
 // verify that a pending read on it is actually cancellable.
 func OpenPasteTerminal() (*os.File, bool) {
 	return openPasteTerminal()
+}
+
+// FlushTerminalInput exposes the terminal input flush that Close runs.
+func FlushTerminalInput(f *os.File) error {
+	return flushTerminalInput(f)
+}
+
+// ExchangeGuard exposes the single-use guard for black-box tests.
+type ExchangeGuard = exchangeGuard
+
+// ClaimExchange exposes the claim on the guard. A nil guard always grants it.
+func ClaimExchange(g *ExchangeGuard) bool {
+	return g.claim()
+}
+
+// ErrExchangeClaimed exposes the sentinel that the losing route returns.
+var ErrExchangeClaimed = errExchangeClaimed
+
+// ErrStateMismatch exposes the CSRF sentinel for black-box tests.
+var ErrStateMismatch = errStateMismatch
+
+// HandleCallbackParams exposes the shared parameter handler so a test can prove
+// that a taken guard stops the second token exchange.
+func HandleCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier string, guard *ExchangeGuard) error {
+	_, cerr := handleCallbackParams(ctx, q, expectedState, codeVerifier, guard)
+	if cerr == nil {
+		return nil
+	}
+	return cerr.err
 }

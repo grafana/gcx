@@ -137,8 +137,8 @@ func (p *pasteWatcher) Reject(err error) {
 // short delay, never to a login that hangs forever.
 const closeGrace = 2 * time.Second
 
-// Close stops the watcher and releases the terminal. Closing a pollable file
-// unblocks the pending read, and Close waits for the reader goroutine to end.
+// Close stops the watcher and releases the terminal. It ends the pending read,
+// waits for the reader goroutine, and discards what the terminal still holds.
 // The terminal therefore has exactly one reader again before login continues to
 // the prompts that follow.
 func (p *pasteWatcher) Close() {
@@ -146,11 +146,22 @@ func (p *pasteWatcher) Close() {
 		return
 	}
 	close(p.stop)
-	_ = p.tty.Close()
+
+	// A deadline in the past ends the pending read at once, because the file is
+	// registered with the poller. Close the file only after the flush below: a
+	// closed descriptor accepts no ioctl.
+	_ = p.tty.SetReadDeadline(time.Now())
 	select {
 	case <-p.done:
 	case <-time.After(closeGrace):
 	}
+
+	// Discard what the user typed without a newline. A terminal in canonical
+	// mode holds that text in its input queue, and the shell reads it once gcx
+	// exits. A partly typed redirect URL would then enter the shell history,
+	// which is the leak that the whole paste route exists to avoid.
+	_ = flushTerminalInput(p.tty)
+	_ = p.tty.Close()
 }
 
 func (p *pasteWatcher) run() {

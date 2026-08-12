@@ -140,9 +140,11 @@ func (f *Flow) runManual(ctx context.Context) (*Result, error) {
 	}
 
 	authURL := f.buildAuthURL(manualCallbackPort, state, codeChallenge)
+	// No callback server runs here, so no route can race the paste. A nil guard
+	// always grants the claim.
 	return runManualPaste(ctx, f.writer, f.reader, authURL, verificationCode(codeChallenge),
 		func(q url.Values) (*Result, *callbackError) {
-			return handleCallbackParams(ctx, q, state, codeVerifier)
+			return handleCallbackParams(ctx, q, state, codeVerifier, nil)
 		})
 }
 
@@ -163,7 +165,10 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 
 	resultCh := make(chan *Result, 1)
 	errCh := make(chan error, 1)
-	server := f.startCallbackServer(ctx, listener, state, codeVerifier, resultCh, errCh)
+	// The callback server and the paste reader accept the same single-use code,
+	// so one guard decides which route exchanges it.
+	guard := &exchangeGuard{}
+	server := f.startCallbackServer(ctx, listener, state, codeVerifier, guard, resultCh, errCh)
 
 	defer func() { //nolint:contextcheck // intentionally use Background for graceful shutdown after ctx cancellation
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -197,7 +202,7 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 
 	return awaitCallbackOrPaste(ctx, f.writer, paste, resultCh, errCh,
 		func(q url.Values) (*Result, *callbackError) {
-			return handleCallbackParams(ctx, q, state, codeVerifier)
+			return handleCallbackParams(ctx, q, state, codeVerifier, guard)
 		})
 }
 
@@ -238,10 +243,16 @@ func newFlowSecrets() (string, string, string, error) {
 	return state, codeVerifier, generateCodeChallenge(codeVerifier), nil
 }
 
-func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier string, resultCh chan<- *Result, errCh chan<- error) *http.Server {
+func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier string, guard *exchangeGuard, resultCh chan<- *Result, errCh chan<- error) *http.Server {
 	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
-		result, cerr := handleCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier)
+		result, cerr := handleCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier, guard)
 		if cerr != nil {
+			if errors.Is(cerr.err, errExchangeClaimed) {
+				// The paste route won the race, and the login is complete. Do
+				// not send to errCh: that would end a flow that succeeded.
+				renderSuccessPage(w)
+				return
+			}
 			errCh <- cerr.err
 			renderErrorPage(w, cerr.page)
 			return

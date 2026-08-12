@@ -738,6 +738,99 @@ func TestPasteWatcherRejectionDoesNotEchoTheURL(t *testing.T) {
 	assert.NotContains(t, out.String(), secret)
 }
 
+// TestExchangeGuardGrantsOneClaim covers the guard that stops the second token
+// exchange. The callback server and the paste reader accept the same
+// single-use code, so only one of them may exchange it.
+func TestExchangeGuardGrantsOneClaim(t *testing.T) {
+	t.Parallel()
+
+	guard := &auth.ExchangeGuard{}
+	assert.True(t, auth.ClaimExchange(guard), "the first route must get the claim")
+	assert.False(t, auth.ClaimExchange(guard), "the second route must not get the claim")
+
+	// The manual flow runs no callback server, so it passes a nil guard.
+	assert.True(t, auth.ClaimExchange(nil), "a nil guard must always grant the claim")
+}
+
+// TestTakenGuardStopsTheSecondExchange proves that the loser of the race never
+// reaches the token exchange. Before the guard, the loser ran the exchange,
+// received "token exchange failed" for a code that the winner had already
+// used, and reported that failure to the user one moment before the success.
+func TestTakenGuardStopsTheSecondExchange(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	server := newExchangeServer(t, &calls)
+
+	values := url.Values{}
+	values.Set("code", "auth-code")
+	values.Set("state", "the-state")
+	values.Set("endpoint", server.URL)
+	values.Set("instanceEndpoint", "https://mystack.grafana.net")
+
+	guard := &auth.ExchangeGuard{}
+
+	// The winner exchanges the code.
+	require.NoError(t, auth.HandleCallbackParams(context.Background(), values, "the-state", "verifier", guard))
+	assert.Equal(t, int32(1), calls.Load())
+
+	// The loser must stop before the exchange, and it must report the sentinel
+	// so the caller stays silent.
+	err := auth.HandleCallbackParams(context.Background(), values, "the-state", "verifier", guard)
+	require.ErrorIs(t, err, auth.ErrExchangeClaimed)
+	assert.Equal(t, int32(1), calls.Load(), "the loser must not run a second exchange")
+}
+
+// TestGuardClaimFollowsTheStateCheck pins the order of the two checks. A URL
+// from an older attempt fails the state check, so it must leave the claim for
+// the real callback. A guard that the wrong URL consumed would block the login.
+func TestGuardClaimFollowsTheStateCheck(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	server := newExchangeServer(t, &calls)
+
+	stale := url.Values{}
+	stale.Set("code", "old-code")
+	stale.Set("state", "state-from-another-attempt")
+	stale.Set("endpoint", server.URL)
+	stale.Set("instanceEndpoint", "https://mystack.grafana.net")
+
+	guard := &auth.ExchangeGuard{}
+	err := auth.HandleCallbackParams(context.Background(), stale, "the-state", "verifier", guard)
+	require.ErrorIs(t, err, auth.ErrStateMismatch)
+
+	// The claim must still be free for the real callback.
+	assert.True(t, auth.ClaimExchange(guard), "a state mismatch must not consume the claim")
+}
+
+// TestFlushTerminalInputHandlesANonTerminal covers the flush that Close runs.
+// The pipe in these tests is not a terminal, so the flush reports an error. It
+// must not panic, because Close ignores that error.
+func TestFlushTerminalInputHandlesANonTerminal(t *testing.T) {
+	t.Parallel()
+
+	reader, writerEnd, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = writerEnd.Close() })
+	t.Cleanup(func() { _ = reader.Close() })
+
+	assert.NotPanics(t, func() { _ = auth.FlushTerminalInput(reader) })
+}
+
+// TestFlushTerminalInputClearsTheQueue runs the flush on a real controlling
+// terminal. The flush discards what the user typed without a newline, which the
+// shell would otherwise read after gcx exits.
+func TestFlushTerminalInputClearsTheQueue(t *testing.T) {
+	tty, ok := auth.OpenPasteTerminal()
+	if !ok {
+		t.Skip("no controlling terminal available")
+	}
+	t.Cleanup(func() { _ = tty.Close() })
+
+	require.NoError(t, auth.FlushTerminalInput(tty))
+}
+
 // TestOpenPasteTerminalReadIsCancellable is the regression guard for the trap
 // that makes the paste race hang: File.Fd puts the descriptor back into
 // blocking mode, the read then blocks inside the syscall instead of the

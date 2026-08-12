@@ -285,6 +285,22 @@ Two reader rules keep the two routes from interfering:
   and keeps waiting for the callback. A silent stop left the prompt on screen
   with no reader behind it.
 
+Both routes accept the same single-use authorization code, so `exchangeGuard`
+decides which one exchanges it. The claim runs after the state check and the
+code check, never before: a URL from an older attempt must not consume the claim
+that the real callback needs. The loser returns `errExchangeClaimed`, which no
+caller shows to the user. The paste branch stays silent, and the HTTP handler
+renders the success page instead of a message on `errCh`.
+
+`Close` ends the read with a deadline in the past, waits for the reader
+goroutine, and then calls `flushTerminalInput`. A terminal in canonical mode
+delivers a line only after a newline, so text that the user typed without one is
+unreachable by a read. The shell reads that text once gcx exits, which is how a
+partly typed redirect URL would enter the shell history. `flush_linux.go` uses
+`TCFLSH` with `TCIFLUSH`, `flush_bsd.go` uses `TIOCFLUSH` with `FREAD`, and
+`flush_other.go` does nothing. All of them use `SyscallConn`, never `File.Fd`,
+for the reason in the next paragraph.
+
 The watcher reads a separately opened `/dev/tty`, never `os.Stdin`. Go keeps the
 standard streams out of its poller, so a blocking read on `os.Stdin` cannot be
 cancelled; a stale reader would then compete with the `huh` prompts that run
@@ -439,6 +455,9 @@ internal/auth/
                       SSH hint
   paste.go            Paste watcher: reads a redirect URL from /dev/tty while
                       the callback server also listens
+  flush_linux.go      Terminal input flush, one file for each platform family.
+  flush_bsd.go        Close calls it, so text without a newline never reaches
+  flush_other.go      the shell after gcx exits.
   gcom.go             Direct Grafana Cloud OAuth PKCE flow and response metadata
   transport.go        RefreshTransport, StoredTokens, TokenRefresher,
                       TokenLocker, TokenReloader, DoRefresh

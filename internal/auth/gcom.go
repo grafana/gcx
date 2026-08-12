@@ -125,9 +125,11 @@ func (f *GCOMFlow) runManual(ctx context.Context) (*GCOMResult, error) {
 	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", manualCallbackPort)
 
 	authURL := f.buildAuthURL(redirectURI, state, codeChallenge)
+	// No callback server runs here, so no route can race the paste. A nil guard
+	// always grants the claim.
 	return runManualPaste(ctx, f.writer, f.reader, authURL, "",
 		func(q url.Values) (*GCOMResult, *callbackError) {
-			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI)
+			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI, nil)
 		})
 }
 
@@ -147,7 +149,10 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 
 	resultCh := make(chan *GCOMResult, 1)
 	errCh := make(chan error, 1)
-	server := f.startGCOMCallbackServer(ctx, listener, state, codeVerifier, redirectURI, resultCh, errCh)
+	// The callback server and the paste reader accept the same single-use code,
+	// so one guard decides which route exchanges it.
+	guard := &exchangeGuard{}
+	server := f.startGCOMCallbackServer(ctx, listener, state, codeVerifier, redirectURI, guard, resultCh, errCh)
 
 	// A fresh context is intentional: the request context may already be
 	// cancelled by the time we shut down, and graceful shutdown needs its own
@@ -181,7 +186,7 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 
 	return awaitCallbackOrPaste(ctx, f.writer, paste, resultCh, errCh,
 		func(q url.Values) (*GCOMResult, *callbackError) {
-			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI)
+			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI, guard)
 		})
 }
 
@@ -201,10 +206,16 @@ func (f *GCOMFlow) buildAuthURL(redirectURI, state, codeChallenge string) string
 	)
 }
 
-func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, resultCh chan<- *GCOMResult, errCh chan<- error) *http.Server {
+func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, guard *exchangeGuard, resultCh chan<- *GCOMResult, errCh chan<- error) *http.Server {
 	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
-		result, cerr := f.handleGCOMCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier, redirectURI)
+		result, cerr := f.handleGCOMCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier, redirectURI, guard)
 		if cerr != nil {
+			if errors.Is(cerr.err, errExchangeClaimed) {
+				// The paste route won the race, and the login is complete. Do
+				// not send to errCh: that would end a flow that succeeded.
+				renderSuccessPage(w)
+				return
+			}
 			errCh <- cerr.err
 			renderErrorPage(w, cerr.page)
 			return

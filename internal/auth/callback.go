@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"sync/atomic"
 )
 
 // errStateMismatch reports that the callback state does not match the state
@@ -19,6 +20,30 @@ var errStateMismatch = errors.New("invalid state - possible CSRF attack")
 type callbackError struct {
 	err  error
 	page string
+}
+
+// errExchangeClaimed reports that the other route already exchanged the
+// authorization code. No caller shows this error to the user: the route that
+// won the race delivers the result.
+var errExchangeClaimed = errors.New("another route already exchanged the authorization code")
+
+// exchangeGuard lets one route exchange the authorization code. The callback
+// server and the paste reader accept the same code, and the code is single-use,
+// so a second exchange always fails. Without the guard the loser reported that
+// failure to the user, one moment before the winner reported success.
+//
+// A nil guard always grants the claim. The manual paste flow runs no callback
+// server, so it has no race to guard.
+type exchangeGuard struct{ taken atomic.Bool }
+
+// claim reports whether the caller may run the token exchange. Call it after
+// the state check and the code check, never before: a pasted URL from an older
+// attempt must not consume the claim that the real callback needs.
+func (g *exchangeGuard) claim() bool {
+	if g == nil {
+		return true
+	}
+	return g.taken.CompareAndSwap(false, true)
 }
 
 // checkCallbackBasics runs the three checks that every flow shares: the state
@@ -121,6 +146,11 @@ func awaitCallbackOrPaste[T any](
 			}
 			result, cerr := handle(pasted.Values)
 			if cerr != nil {
+				if errors.Is(cerr.err, errExchangeClaimed) {
+					// The callback server won the race. Its result is already on
+					// its way, so say nothing and let the next round deliver it.
+					continue
+				}
 				paste.Reject(pasteRejection(cerr.err))
 				continue
 			}
@@ -138,7 +168,7 @@ func awaitCallbackOrPaste[T any](
 // manual paste fallback: q comes either from r.URL.Query() or from
 // ParseCallbackInput. Keeping one implementation stops the two paths from
 // diverging on the state check, the PKCE exchange, or endpoint validation.
-func handleCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier string) (*Result, *callbackError) {
+func handleCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier string, guard *exchangeGuard) (*Result, *callbackError) {
 	code, cerr := checkCallbackBasics(q, expectedState)
 	if cerr != nil {
 		return nil, cerr
@@ -150,6 +180,10 @@ func handleCallbackParams(ctx context.Context, q url.Values, expectedState, code
 	}
 	if err := ValidateEndpointURL(endpoint); err != nil {
 		return nil, &callbackError{err: fmt.Errorf("invalid API endpoint: %w", err), page: "Invalid API endpoint"}
+	}
+
+	if !guard.claim() {
+		return nil, &callbackError{err: errExchangeClaimed, page: "The login already completed in the terminal."}
 	}
 
 	exchangeResult, err := exchangeCodeForToken(ctx, endpoint, code, codeVerifier)
@@ -184,10 +218,14 @@ func handleCallbackParams(ctx context.Context, q url.Values, expectedState, code
 // handleGCOMCallbackParams is the grafana.com equivalent of
 // handleCallbackParams. redirectURI must be byte-identical to the redirect_uri
 // sent on the authorize request, because GCOM rejects the exchange otherwise.
-func (f *GCOMFlow) handleGCOMCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier, redirectURI string) (*GCOMResult, *callbackError) {
+func (f *GCOMFlow) handleGCOMCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier, redirectURI string, guard *exchangeGuard) (*GCOMResult, *callbackError) {
 	code, cerr := checkCallbackBasics(q, expectedState)
 	if cerr != nil {
 		return nil, cerr
+	}
+
+	if !guard.claim() {
+		return nil, &callbackError{err: errExchangeClaimed, page: "The login already completed in the terminal."}
 	}
 
 	result, err := f.exchangeGCOMToken(ctx, code, codeVerifier, redirectURI)
