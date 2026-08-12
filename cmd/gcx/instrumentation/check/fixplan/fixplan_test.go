@@ -115,8 +115,8 @@ func TestGenerate_ContextCanceledPropagates(t *testing.T) {
 	}
 	_, err := Generate(ctx, results, opts)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, context.Canceled),
-		"context.Canceled from the runner must propagate rather than silently fall back to local, got %v", err)
+	assert.ErrorIs(t, err, context.Canceled,
+		"context.Canceled from the runner must propagate rather than silently fall back to local")
 }
 
 func TestGenerate_FallsBackWhenAssistantFails(t *testing.T) {

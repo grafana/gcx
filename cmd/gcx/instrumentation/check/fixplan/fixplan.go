@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/gcx/internal/assistant"
 	"github.com/grafana/gcx/internal/providers"
 	assistantprov "github.com/grafana/gcx/internal/providers/assistant"
+	otelexplain "github.com/grafana/otel-checker/checks/explain"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 )
 
@@ -65,64 +66,61 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 
 	prompt := buildPrompt(findings, docs)
 
-	// Try Assistant first when a loader is provided.
-	if opts.Loader != nil {
-		cloudErr := checkCloud(ctx, opts)
-		if cloudErr != nil {
-			if errors.Is(cloudErr, context.Canceled) {
-				return Plan{}, cloudErr
-			}
-			// Intentional fallback: Assistant isn't reachable, but the
-			// local aggregator still produces a useful plan. Surface the
-			// reason via Plan.Reason instead of a fatal error.
-			return Plan{ //nolint:nilerr // fallback is intentional; reason is preserved on Plan.
-				Source:   SourceLocal,
-				Content:  buildLocalPlan(findings, docs),
-				DocsUsed: docIDs,
-				Fallback: true,
-				Reason:   cloudErr.Error(),
-			}, nil
-		}
+	// No loader — go straight to local, no Assistant attempt.
+	if opts.Loader == nil {
+		return localPlan(findings, docs, docIDs, false, ""), nil
+	}
+	return tryAssistant(ctx, opts, findings, docs, docIDs, prompt)
+}
 
-		runner := opts.promptRunner
-		if runner == nil {
-			runner = runAssistant
+// tryAssistant runs the Assistant path: cloud precondition, then a prompt
+// call. On success returns the Assistant response as an SourceAssistant
+// plan; on non-cancellation errors falls back to the local aggregator with
+// the reason preserved; on cancellation propagates the error.
+func tryAssistant(ctx context.Context, opts Options, findings []Finding, docs []otelexplain.Doc, docIDs []string, prompt string) (Plan, error) {
+	if cloudErr := checkCloud(ctx, opts); cloudErr != nil {
+		if errors.Is(cloudErr, context.Canceled) {
+			return Plan{}, cloudErr
 		}
-		response, err := runner(ctx, opts.Loader, prompt)
-		if err != nil {
-			// A ctrl+C during the assistant call should surface as a real
-			// cancellation, not as a Fallback plan that hides why the run
-			// stopped. Check both the returned error and the context state
-			// because the assistant SDK may return its own error string
-			// rather than propagating context.Canceled directly.
-			if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
-				return Plan{}, err
-			}
-			// Same fallback contract as the Cloud-check branch above:
-			// the assistant call failed, but the local aggregator still
-			// produces a usable plan. Surface the reason on Plan.Reason
-			// rather than treating it as fatal.
-			return Plan{
-				Source:   SourceLocal,
-				Content:  buildLocalPlan(findings, docs),
-				DocsUsed: docIDs,
-				Fallback: true,
-				Reason:   fmt.Sprintf("Assistant request failed: %s", err),
-			}, nil
-		}
-		return Plan{
-			Source:   SourceAssistant,
-			Content:  response,
-			DocsUsed: docIDs,
-		}, nil
+		// Intentional fallback: Assistant isn't reachable, but the
+		// local aggregator still produces a useful plan.
+		return localPlan(findings, docs, docIDs, true, cloudErr.Error()), nil
 	}
 
-	// No loader — go straight to local.
+	runner := opts.promptRunner
+	if runner == nil {
+		runner = runAssistant
+	}
+	response, err := runner(ctx, opts.Loader, prompt)
+	if err != nil {
+		// A ctrl+C during the assistant call should surface as a real
+		// cancellation, not as a Fallback plan that hides why the run
+		// stopped. Check both the returned error and the context state
+		// because the assistant SDK may return its own error string
+		// rather than propagating context.Canceled directly.
+		if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+			return Plan{}, err
+		}
+		return localPlan(findings, docs, docIDs, true, fmt.Sprintf("Assistant request failed: %s", err)), nil
+	}
+	return Plan{
+		Source:   SourceAssistant,
+		Content:  response,
+		DocsUsed: docIDs,
+	}, nil
+}
+
+// localPlan builds a Plan sourced from the local aggregator. When
+// fallback is true, the plan represents a degraded Assistant attempt and
+// reason explains why.
+func localPlan(findings []Finding, docs []otelexplain.Doc, docIDs []string, fallback bool, reason string) Plan {
 	return Plan{
 		Source:   SourceLocal,
 		Content:  buildLocalPlan(findings, docs),
 		DocsUsed: docIDs,
-	}, nil
+		Fallback: fallback,
+		Reason:   reason,
+	}
 }
 
 // runAssistant is the default promptRunner. It resolves client options,

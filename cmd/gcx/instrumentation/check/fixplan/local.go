@@ -17,13 +17,12 @@ const howToFixHeader = "## How to fix"
 // violation — no otel-checker@v0.3.1 doc omits it). Leading and trailing
 // whitespace on the returned block is trimmed.
 func extractHowToFix(body string) string {
-	idx := strings.Index(body, howToFixHeader)
-	if idx < 0 {
+	_, after, ok := strings.Cut(body, howToFixHeader)
+	if !ok {
 		return strings.TrimSpace(body)
 	}
-	after := body[idx+len(howToFixHeader):]
-	if end := strings.Index(after, "\n## "); end >= 0 {
-		after = after[:end]
+	if before, _, hasNext := strings.Cut(after, "\n## "); hasNext {
+		after = before
 	}
 	return strings.TrimSpace(after)
 }

@@ -362,4 +362,3 @@ func TestEmitFixPlanNotice(t *testing.T) {
 		})
 	}
 }
-

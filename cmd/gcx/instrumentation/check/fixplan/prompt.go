@@ -26,9 +26,13 @@ type Finding struct {
 	ExplainID string
 }
 
-// collectFindings returns findings that carry an explain ID that we know
-// how to look up. Successful checks are excluded — they don't need a plan.
-// Order is errors first, then warnings, both preserving source order.
+// collectFindings returns every error and warning as a Finding, tagged
+// with "FAIL" or "WARN" respectively. Successful checks are excluded —
+// they don't need a plan. Findings without an ExplainID are still
+// included; buildLocalPlan groups them under a separate "orphans"
+// section, and the Assistant prompt lists them alongside the resolved
+// docs. Order is errors first, then warnings, both preserving source
+// order.
 func collectFindings(results otelutils.Results) []Finding {
 	out := make([]Finding, 0, len(results.Errors)+len(results.Warnings))
 	for _, r := range results.Errors {
