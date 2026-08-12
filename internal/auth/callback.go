@@ -8,10 +8,11 @@ import (
 	"net/url"
 )
 
-// ErrStateMismatch reports that the callback state does not match the state
-// gcx generated. The manual paste path wraps it with its own guidance: there,
-// a mismatch nearly always means the URL came from a different login attempt.
-var ErrStateMismatch = errors.New("invalid state - possible CSRF attack")
+// errStateMismatch reports that the callback state does not match the state
+// gcx generated. The manual paste path replaces it with its own guidance:
+// there, a mismatch nearly always means the URL came from a different login
+// attempt.
+var errStateMismatch = errors.New("invalid state - possible CSRF attack")
 
 // callbackError pairs the error reported to the caller with the short message
 // rendered on the browser error page. The manual paste path uses only err.
@@ -20,16 +21,12 @@ type callbackError struct {
 	page string
 }
 
-func (e *callbackError) Error() string { return e.err.Error() }
-
-func (e *callbackError) Unwrap() error { return e.err }
-
 // checkCallbackBasics runs the three checks that every flow shares: the state
 // must match, the provider must report no error, and an authorization code must
 // be present. It returns that code.
 func checkCallbackBasics(q url.Values, expectedState string) (string, *callbackError) {
 	if q.Get("state") != expectedState {
-		return "", &callbackError{err: ErrStateMismatch, page: "Invalid state parameter"}
+		return "", &callbackError{err: errStateMismatch, page: "Invalid state parameter"}
 	}
 
 	if errMsg := q.Get("error"); errMsg != "" {

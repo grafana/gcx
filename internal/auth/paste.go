@@ -158,10 +158,12 @@ func (p *pasteWatcher) run() {
 
 	for {
 		line, err := readLine(p.tty)
-		if p.stopped() {
+		select {
+		case <-p.stop:
 			// Close shut the terminal, which caused this read error. The caller
 			// already has a result or an error of its own, so stop quietly.
 			return
+		default:
 		}
 		if err != nil {
 			// The user pressed Ctrl-D, or the terminal reported an error. Say
@@ -189,18 +191,6 @@ func (p *pasteWatcher) run() {
 		if !p.deliver(pastedInput{Values: values, Err: err}) {
 			return
 		}
-	}
-}
-
-// stopped reports whether Close has run. The reader checks it before it acts on
-// a read error, because Close shuts the terminal and that read error is the
-// expected result.
-func (p *pasteWatcher) stopped() bool {
-	select {
-	case <-p.stop:
-		return true
-	default:
-		return false
 	}
 }
 

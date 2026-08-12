@@ -205,14 +205,11 @@ const manualCallbackHygieneNotice = "The URL that you pasted holds a single-use 
 // for another redirect URL. A state mismatch on a paste nearly always means the
 // URL came from a different login attempt, so say that instead of naming CSRF.
 func pasteRejection(err error) error {
-	if errors.Is(err, ErrStateMismatch) {
+	if errors.Is(err, errStateMismatch) {
 		return errManualForeignState
 	}
 	return err
 }
 
-// errManualForeignState replaces the generic CSRF message on the paste path,
-// where a state mismatch nearly always means the user pasted a URL from a
-// different login attempt.
 var errManualForeignState = errors.New(
 	"the pasted URL belongs to a different login attempt: run the command again and paste the URL from this attempt")
