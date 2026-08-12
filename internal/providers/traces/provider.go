@@ -88,6 +88,18 @@ func (p *Provider) descriptor() signals.Descriptor {
   # With an explicit datasource UID, JSON output
   gcx traces diff -d UID <trace-a> <trace-b> -o json`,
 			},
+			{
+				Build:     dstempo.BaselineCmd,
+				TokenCost: "medium",
+				LLMHint:   "gcx traces baseline -d abc123 <trace-id> -o json",
+				Example: `
+  # Find healthy baseline candidates for a trace, then diff against one
+  gcx traces baseline <trace-id>
+  gcx traces diff <trace-id> <candidate>
+
+  # Widen the window to 6h before and after the seed, output JSON
+  gcx traces baseline <trace-id> --window 6h -o json`,
+			},
 		},
 		Adaptive: &signals.AdaptiveSpec{
 			Build: adaptivetraces.Commands,

@@ -39,11 +39,41 @@ type SearchResponse struct {
 
 // SearchTrace represents a single trace in the search results.
 type SearchTrace struct {
+	TraceID           string                  `json:"traceID"`
+	RootServiceName   string                  `json:"rootServiceName"`
+	RootTraceName     string                  `json:"rootTraceName"`
+	StartTimeUnixNano string                  `json:"startTimeUnixNano"`
+	DurationMs        int                     `json:"durationMs"`
+	ServiceStats      map[string]ServiceStats `json:"serviceStats,omitempty"`
+}
+
+// ServiceStats holds per-service span and error counts returned in Tempo search
+// result metadata.
+type ServiceStats struct {
+	SpanCount  int `json:"spanCount,omitempty"`
+	ErrorCount int `json:"errorCount,omitempty"`
+}
+
+// BaselineCandidate is a baseline candidate with structural context
+// (per-candidate span/service counts) for comparison against the seed trace.
+type BaselineCandidate struct {
 	TraceID           string `json:"traceID"`
 	RootServiceName   string `json:"rootServiceName"`
 	RootTraceName     string `json:"rootTraceName"`
 	StartTimeUnixNano string `json:"startTimeUnixNano"`
 	DurationMs        int    `json:"durationMs"`
+	SpanCount         int    `json:"spanCount"`
+	ServiceCount      int    `json:"serviceCount"`
+}
+
+// BaselineResult is the baseline-candidate list for a seed trace, in the order
+// returned by search, including the seed's structural profile for context.
+type BaselineResult struct {
+	SeedTraceID      string              `json:"seedTraceID"`
+	SeedSpanCount    int                 `json:"seedSpanCount"`
+	SeedServiceCount int                 `json:"seedServiceCount"`
+	Query            string              `json:"query"`
+	Candidates       []BaselineCandidate `json:"candidates"`
 }
 
 // GetTraceRequest represents a request to retrieve a single trace by ID.
