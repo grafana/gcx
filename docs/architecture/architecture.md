@@ -677,7 +677,7 @@ Files most important for understanding the codebase. Organized by architectural 
 
 | File | Purpose |
 |------|---------|
-| `cmd/gcx/fail/detailed.go` | DetailedError type (rich error rendering) |
+| `internal/gcxerrors/detailed.go` | DetailedError type (rich error rendering) |
 | `cmd/gcx/fail/convert.go` | ErrorToDetailedError (error type dispatch) |
 
 ### Provider System
@@ -866,7 +866,7 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 | `internal/query/loki/types.go` | Request/response types for Loki |
 | `internal/query/loki/formatter.go` | Table/text formatting for Loki responses |
 | `cmd/gcx/datasources/command.go` | `datasources` command group (list, get, prometheus, loki, pyroscope, tempo, generic subcommands) |
-| `cmd/gcx/datasources/query/` | Per-kind `query` subcommand constructors and shared infrastructure (codecs, time parsing) |
+| `internal/datasources/query/` | Shared query CLI infrastructure (opts, codecs, resolution, time parsing); per-kind constructors live in `internal/datasources/{kind}/` |
 
 ### Deep Link URLs
 

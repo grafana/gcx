@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: mise run deps
 
-      - name: Validate bundled skills
+      - name: Validate skill front matter
         run: mise run validate-skills
 
       - name: Run golangci-lint

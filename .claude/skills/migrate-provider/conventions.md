@@ -1,7 +1,8 @@
 # Go Conventions for Provider Ports
 
 Conventions and linter gotchas discovered during provider migrations.
-Reference: `internal/providers/incidents/` for working examples.
+Reference: the `internal/providers/irm/incidents_*.go` files for working
+examples.
 
 ## API Group Naming
 
@@ -78,7 +79,7 @@ diagnose issues during smoke tests without cluttering normal output.
 ```go
 slog.Debug("fleet: listing pipelines", "url", c.baseURL+"/pipelines")
 slog.Debug("k6: token exchange complete", "orgID", orgID, "stackID", stackID)
-slog.Debug("oncall: auto-discovered URL", "url", onCallURL, "source", source)
+slog.Debug("oncall: listing schedules", "path", BasePath+"/schedules")
 ```
 
 **Guidelines:**
@@ -98,17 +99,21 @@ GCX_AGENT_MODE=false mise run lint   # after agent phases
 
 ## Schema + Example Registration
 
-Add `Schema` and `Example` to `adapter.Registration` in `init()`:
+Set `Schema` and `Example` on the `adapter.Registration` values the provider
+returns from `TypedRegistrations()` (the single `providers.Register()` call in
+`init()` performs the registration — never call `adapter.Register()` directly):
 
 ```go
-adapter.Register(adapter.Registration{
-    Factory:    NewAdapterFactory(loader),
-    Descriptor: staticDescriptor,
-    Aliases:    staticAliases,
-    GVK:        staticDescriptor.GroupVersionKind(),
-    Schema:     resourceSchema(),   // json.RawMessage
-    Example:    resourceExample(),  // json.RawMessage
-})
+func (p *Provider) TypedRegistrations() []adapter.Registration {
+    return []adapter.Registration{{
+        Factory:    NewAdapterFactory(loader),
+        Descriptor: staticDescriptor,
+        Aliases:    staticAliases,
+        GVK:        staticDescriptor.GroupVersionKind(),
+        Schema:     resourceSchema(),   // json.RawMessage — required, non-nil
+        Example:    resourceExample(),  // json.RawMessage — MAY be nil for read-only resources
+    }}
+}
 ```
 
 **Schema**: static `map[string]any` with JSON Schema structure. Include

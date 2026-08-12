@@ -272,10 +272,12 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	// Also registered last to see the full command tree.
 	rootCmd.AddCommand(helptree.Command(rootCmd))
 
-	// Note: Provider adapter factories are registered via adapter.Register()
-	// in each provider's init() function (same pattern as providers.Register).
-	// The discovery.Registry picks them up via adapter.RegisterAll() when
-	// resource commands create a registry instance.
+	// Note: Provider adapter factories are registered by providers.Register()
+	// in each provider's init(), which consumes Provider.TypedRegistrations()
+	// (no separate adapter.Register() calls exist outside it — see
+	// CONSTITUTION.md § Architecture Invariants). The discovery.Registry picks
+	// them up via adapter.RegisterAll() when resource commands create a
+	// registry instance.
 
 	rootCmd.PersistentFlags().BoolVar(&noColors, "no-color", noColors, "Disable color output")
 	rootCmd.PersistentFlags().BoolVar(&noTruncate, "no-truncate", false, "Disable table column truncation (auto-enabled when stdout is piped)")
