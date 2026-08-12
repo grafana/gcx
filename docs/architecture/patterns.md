@@ -729,7 +729,7 @@ c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s/%s/apply", recsPath, id), nil)
 - `internal/providers/metrics/adaptive/client.go`: `ruleByMetricFmt`, `exemptionByIDFmt`
 - `internal/providers/slo/definitions/client.go`: `sloByUUIDFmt`
 - `internal/providers/kg/client.go`: `ruleByNameFmt`, `suppressionByNameFmt`
-- `internal/providers/aio11y/*/client.go`: `conversationByIDFmt`, `generationByIDFmt`, `ruleByIDFmt`, `templateByIDFmt`, `evaluatorByIDFmt`
+- `internal/providers/agento11y/*/client.go`: `conversationByIDFmt`, `generationByIDFmt`, `ruleByIDFmt`, `templateByIDFmt`, `evaluatorByIDFmt`
 
 ---
 

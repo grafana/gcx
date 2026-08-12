@@ -20,7 +20,7 @@
 /internal/providers/instrumentation/ @grafana/grafana-gcx @grafana/o11y-ingest
 /internal/providers/kg/ @grafana/grafana-gcx @grafana/asserts-team
 /internal/providers/appo11y/ @grafana/grafana-gcx @grafana/app-o11y-visualizations
-/internal/providers/aio11y/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/internal/providers/agento11y/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /internal/providers/logs/ @grafana/grafana-gcx @grafana/loki-team
 /internal/providers/metrics/ @grafana/grafana-gcx @grafana/cortex-team
 /internal/providers/profiles/ @grafana/grafana-gcx @grafana/pyroscope-team
