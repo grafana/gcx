@@ -31,12 +31,8 @@ type checkOpts struct {
 	// Components is parsed from the positional argument; empty means "all".
 	Components []string
 
-	// Fix-plan flags. FixPlan gates the whole feature; the others are
-	// only meaningful when FixPlan is true.
-	FixPlan        bool
-	AgentID        string
-	PrintPrompt    bool
-	TimeoutSeconds int
+	// FixPlan turns on the fix-plan aggregation after the checker runs.
+	FixPlan bool
 }
 
 func (o *checkOpts) setup(flags *pflag.FlagSet) {
@@ -64,12 +60,6 @@ func (o *checkOpts) setup(flags *pflag.FlagSet) {
 		"After running the checks, synthesize a single fix plan for every finding. "+
 			"Uses Grafana Assistant when the current context is a Grafana Cloud stack (billable); "+
 			"falls back to a local aggregation of the explanation docs otherwise.")
-	flags.StringVar(&o.AgentID, "agent-id", "",
-		"With --fix-plan: target a specific Grafana Assistant agent (defaults to the CLI agent).")
-	flags.BoolVar(&o.PrintPrompt, "print-prompt", false,
-		"With --fix-plan: build and print the Assistant prompt to stdout, then exit. Assistant is NOT called; no billing.")
-	flags.IntVar(&o.TimeoutSeconds, "assistant-timeout", 0,
-		"With --fix-plan: Grafana Assistant response timeout in seconds. 0 uses the library default (300s).")
 }
 
 // Validate finalizes opts after flag parsing and runs the otel-checker
@@ -79,17 +69,6 @@ func (o *checkOpts) setup(flags *pflag.FlagSet) {
 func (o *checkOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
-	}
-
-	if !o.FixPlan {
-		// Reject fix-plan sub-flags when the parent flag is off so users get
-		// a clear error rather than silently ignored flags.
-		if o.AgentID != "" {
-			return errors.New("--agent-id requires --fix-plan")
-		}
-		if o.PrintPrompt {
-			return errors.New("--print-prompt requires --fix-plan")
-		}
 	}
 
 	cmd := o.toCommands()
@@ -191,28 +170,18 @@ Powered by github.com/grafana/otel-checker.`,
 
 			if opts.FixPlan {
 				plan, err := fixplan.Generate(cmd.Context(), results, fixplan.Options{
-					Loader:          loader,
-					AgentID:         opts.AgentID,
-					TimeoutSeconds:  opts.TimeoutSeconds,
-					PrintPromptOnly: opts.PrintPrompt,
+					Loader: loader,
 				})
 				if err != nil {
 					return fmt.Errorf("instrumentation check: fix-plan: %w", err)
 				}
-				switch {
-				case plan.Empty && opts.PrintPrompt:
-					// --print-prompt with nothing to build a prompt for:
-					// note it explicitly rather than leaving the user with
-					// silent no-op output.
-					cmdio.EmitNote(cmd.ErrOrStderr(), "no findings — nothing to build a prompt for")
-				case !plan.Empty:
+				if !plan.Empty {
 					envelope.FixPlan = &FixPlanEnvelope{
 						Source:   string(plan.Source),
 						Content:  plan.Content,
 						DocsUsed: plan.DocsUsed,
 						Fallback: plan.Fallback,
 						Reason:   plan.Reason,
-						Preview:  plan.Preview,
 					}
 				}
 			}

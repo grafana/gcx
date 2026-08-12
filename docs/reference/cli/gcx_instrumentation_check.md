@@ -32,8 +32,6 @@ gcx instrumentation check [components] [flags]
 ### Options
 
 ```
-      --agent-id string                With --fix-plan: target a specific Grafana Assistant agent (defaults to the CLI agent).
-      --assistant-timeout int          With --fix-plan: Grafana Assistant response timeout in seconds. 0 uses the library default (300s).
       --collector-config-path string   Path to the OpenTelemetry Collector config file.
       --debug                          Print additional diagnostic output from the checker.
       --fix-plan                       After running the checks, synthesize a single fix plan for every finding. Uses Grafana Assistant when the current context is a Grafana Cloud stack (billable); falls back to a local aggregation of the explanation docs otherwise.
@@ -45,7 +43,6 @@ gcx instrumentation check [components] [flags]
       --manual-instrumentation         Application is using manual instrumentation (JS only).
   -o, --output string                  Output format. One of: agents, json, table, wide, yaml (default "table")
       --package-json-path string       Path to package.json for JS dependency checks.
-      --print-prompt                   With --fix-plan: build and print the Assistant prompt to stdout, then exit. Assistant is NOT called; no billing.
 ```
 
 ### Options inherited from parent commands

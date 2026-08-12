@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/grafana/gcx/internal/assistant"
 	"github.com/grafana/gcx/internal/providers"
 	assistantprov "github.com/grafana/gcx/internal/providers/assistant"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
@@ -24,12 +25,11 @@ const (
 // findings that need a fix plan; callers should skip rendering in that case.
 type Plan struct {
 	Source   Source
-	Content  string   // markdown (or the raw prompt when Preview == true)
+	Content  string   // markdown fix plan
 	DocsUsed []string // explain IDs the plan consulted
 	Empty    bool     // true when there are no error/warning findings
 	Fallback bool     // true when Assistant was requested but local was used
 	Reason   string   // when Fallback: one-line human explanation
-	Preview  bool     // true when Content holds the built Assistant prompt (--print-prompt), not a real plan
 }
 
 // Options configures Generate. All optional; sensible defaults are applied.
@@ -38,19 +38,8 @@ type Options struct {
 	// path. Required when Assistant may be called.
 	Loader *providers.ConfigLoader
 
-	// AgentID selects a specialist Assistant agent. Empty → default.
-	AgentID string
-
-	// TimeoutSeconds bounds the Assistant streaming call. ≤0 → 300s.
-	TimeoutSeconds int
-
-	// PrintPromptOnly returns the built Assistant prompt without calling
-	// Assistant. Content is the prompt text; Source is set to
-	// SourceAssistant. No Assistant tokens are consumed.
-	PrintPromptOnly bool
-
-	// promptRunner is the injection seam for tests. Nil → assistantprov.RunPrompt.
-	promptRunner func(context.Context, *providers.ConfigLoader, assistantprov.PromptRequest) (assistantprov.PromptResponse, error)
+	// promptRunner is the injection seam for tests. Nil → runAssistant.
+	promptRunner func(ctx context.Context, loader *providers.ConfigLoader, message string) (string, error)
 
 	// cloudChecker is the injection seam for tests. Nil → real config load.
 	cloudChecker func(context.Context, *providers.ConfigLoader) error
@@ -72,17 +61,6 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 
 	prompt := buildPrompt(findings, docs)
 
-	if opts.PrintPromptOnly {
-		// Preview keeps JSON consumers and the human codec able to tell
-		// "this is the prompt we would have sent" apart from a real plan.
-		return Plan{
-			Source:   SourceAssistant,
-			Content:  prompt,
-			DocsUsed: docIDs,
-			Preview:  true,
-		}, nil
-	}
-
 	// Try Assistant first when a loader is provided.
 	if opts.Loader != nil {
 		cloudErr := checkCloud(ctx, opts)
@@ -101,22 +79,9 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 
 		runner := opts.promptRunner
 		if runner == nil {
-			runner = assistantprov.RunPrompt
+			runner = runAssistant
 		}
-		resp, err := runner(ctx, opts.Loader, assistantprov.PromptRequest{
-			Message:        prompt,
-			AgentID:        opts.AgentID,
-			TimeoutSeconds: opts.TimeoutSeconds,
-			// Opt in to auto-approve: the fix-plan prompt asks for markdown
-			// synthesis, not tool calls, and there is no interactive stdin
-			// here. RunPrompt's fail-closed default would deny any approval
-			// request, which manifests server-side as "HTTP 500: Permission
-			// check failed" on Grafana Cloud.
-			ApprovalHandler: assistantprov.AlwaysApprove{},
-			// PersistContextID left false: fix-plan does not do
-			// continuation, so we must not overwrite the last-context-ID
-			// the user may be building via `gcx assistant prompt --continue`.
-		})
+		response, err := runner(ctx, opts.Loader, prompt)
 		if err != nil {
 			// Same fallback contract as the Cloud-check branch above:
 			// the assistant call failed, but the local aggregator still
@@ -132,7 +97,7 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 		}
 		return Plan{
 			Source:   SourceAssistant,
-			Content:  resp.Response,
+			Content:  response,
 			DocsUsed: docIDs,
 		}, nil
 	}
@@ -145,6 +110,43 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 	}, nil
 }
 
+// runAssistant is the default promptRunner. It resolves client options,
+// opens a streaming chat with auto-approve, and returns the assembled
+// response text.
+//
+// Auto-approve is intentional: the fix-plan prompt asks for markdown
+// synthesis, not tool calls, and there is no interactive stdin here. Bare
+// c.Chat is `ChatWithApproval(..., nil)`, which auto-DENIES every approval
+// request — and, in practice on Grafana Cloud, surfaces those denials as
+// an unhelpful "HTTP 500: Permission check failed" rather than a clean
+// stream error. Passing alwaysApprove{} avoids that.
+func runAssistant(ctx context.Context, loader *providers.ConfigLoader, message string) (string, error) {
+	clientOpts, err := assistantprov.ResolveClientOptions(ctx, loader, 0, "")
+	if err != nil {
+		return "", err
+	}
+	c := assistant.New(clientOpts) //nolint:contextcheck // assistant.New does not accept context; ctx is threaded into ChatWithApproval below.
+	result := c.ChatWithApproval(ctx, message, assistant.StreamOptions{}, alwaysApprove{})
+	switch {
+	case result.Completed:
+		return result.Response, nil
+	case result.TimedOut:
+		return "", errors.New("assistant: request timed out")
+	case result.Canceled:
+		return "", errors.New("assistant: request canceled")
+	case result.Failed:
+		return "", fmt.Errorf("assistant: %s", result.ErrorMessage)
+	default:
+		return "", errors.New("assistant: stream ended without completion")
+	}
+}
+
+// alwaysApprove approves every tool-approval request. See runAssistant for
+// the rationale.
+type alwaysApprove struct{}
+
+func (alwaysApprove) HandleApproval(_ assistant.ApprovalRequest) bool { return true }
+
 // checkCloud runs the Grafana-Cloud precondition for the Assistant path.
 // It resolves the current context and returns a user-facing error string
 // when Assistant isn't reachable. Returns nil on success.
@@ -152,8 +154,7 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 // Uses LoadConfigTolerant so a strict-validator failure (missing token,
 // bad path, malformed context) still produces a useful "Assistant not
 // available: <reason>" fallback rather than making that config error look
-// like an Assistant error. If the caller genuinely reaches Assistant with
-// bad auth, RunPrompt surfaces the real error later.
+// like an Assistant error.
 func checkCloud(ctx context.Context, opts Options) error {
 	if opts.cloudChecker != nil {
 		return opts.cloudChecker(ctx, opts.Loader)

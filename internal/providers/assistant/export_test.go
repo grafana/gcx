@@ -6,5 +6,4 @@ package assistant
 var (
 	NewAssistantStreamingHTTPClient              = newAssistantStreamingHTTPClient
 	NewAssistantStreamingHTTPClientForRESTConfig = newAssistantStreamingHTTPClientForRESTConfig
-	ResolveAssistantClientOptions                = resolveAssistantClientOptions
 )

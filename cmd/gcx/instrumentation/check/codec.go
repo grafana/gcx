@@ -28,18 +28,12 @@ type ResultsWithFixPlan struct {
 // Source is "assistant" when Grafana Assistant produced the plan and "local"
 // when the local aggregator did. Fallback is true only in the second case
 // (Assistant was requested but unreachable); Reason explains why.
-//
-// Preview is true only when the caller ran with --print-prompt: in that mode
-// Content holds the raw prompt that WOULD have been sent to Assistant, no
-// Assistant call was made, and no billing occurred. JSON consumers use this
-// flag to distinguish a preview from a real plan.
 type FixPlanEnvelope struct {
 	Source   string   `json:"source" yaml:"source"`
 	Content  string   `json:"content" yaml:"content"`
 	DocsUsed []string `json:"docs_used,omitempty" yaml:"docs_used,omitempty"`
 	Fallback bool     `json:"fallback,omitempty" yaml:"fallback,omitempty"`
 	Reason   string   `json:"reason,omitempty" yaml:"reason,omitempty"`
-	Preview  bool     `json:"preview,omitempty" yaml:"preview,omitempty"`
 }
 
 // CheckTableCodec renders otelutils.Results as a grouped status/component/
@@ -114,18 +108,15 @@ func renderFixPlan(w io.Writer, plan *FixPlanEnvelope) error {
 	if _, err := fmt.Fprintln(w); err != nil {
 		return err
 	}
-	switch {
-	case plan.Preview:
-		fmt.Fprintln(w, "Prompt preview — Grafana Assistant was NOT called; no billing.")
-		fmt.Fprintln(w)
-	case plan.Source == "local":
+	switch plan.Source {
+	case "local":
 		if plan.Fallback && plan.Reason != "" {
 			fmt.Fprintf(w, "Grafana Assistant not available (%s). Showing combined explanation docs instead — no AI reasoning applied.\n\n", plan.Reason)
 		} else {
 			fmt.Fprintln(w, "Showing combined explanation docs — no AI reasoning applied.")
 			fmt.Fprintln(w)
 		}
-	case plan.Source == "assistant":
+	case "assistant":
 		// No leading notice; Assistant output speaks for itself.
 	}
 

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers"
-	assistantprov "github.com/grafana/gcx/internal/providers/assistant"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,32 +46,6 @@ func TestGenerate_LocalWhenNoLoader(t *testing.T) {
 	assert.Contains(t, plan.DocsUsed, id)
 }
 
-func TestGenerate_PrintPromptSkipsAssistant(t *testing.T) {
-	id := firstRealExplainID(t)
-	results := otelutils.Results{
-		Errors: []otelutils.ComponentResult{
-			{Component: "Grafana Cloud", Message: "no headers", ExplainID: id},
-		},
-	}
-	called := false
-	opts := Options{
-		Loader:          &providers.ConfigLoader{},
-		PrintPromptOnly: true,
-		promptRunner: func(context.Context, *providers.ConfigLoader, assistantprov.PromptRequest) (assistantprov.PromptResponse, error) {
-			called = true
-			return assistantprov.PromptResponse{}, nil
-		},
-		cloudChecker: func(context.Context, *providers.ConfigLoader) error { return nil },
-	}
-	plan, err := Generate(context.Background(), results, opts)
-	require.NoError(t, err)
-	assert.Equal(t, SourceAssistant, plan.Source)
-	assert.True(t, plan.Preview, "PrintPromptOnly must mark the Plan as Preview")
-	assert.False(t, called, "PrintPromptOnly must not invoke Assistant")
-	assert.Contains(t, plan.Content, "# Findings")
-	assert.Contains(t, plan.Content, "# Instructions")
-}
-
 func TestGenerate_AssistantHappyPath(t *testing.T) {
 	id := firstRealExplainID(t)
 	results := otelutils.Results{
@@ -80,12 +53,12 @@ func TestGenerate_AssistantHappyPath(t *testing.T) {
 			{Component: "Grafana Cloud", Message: "no headers", ExplainID: id},
 		},
 	}
-	var gotReq assistantprov.PromptRequest
+	var gotMessage string
 	opts := Options{
 		Loader: &providers.ConfigLoader{},
-		promptRunner: func(_ context.Context, _ *providers.ConfigLoader, req assistantprov.PromptRequest) (assistantprov.PromptResponse, error) {
-			gotReq = req
-			return assistantprov.PromptResponse{Response: "# Fix plan\n\n1. Do X.\n", ContextID: "ctx-1"}, nil
+		promptRunner: func(_ context.Context, _ *providers.ConfigLoader, message string) (string, error) {
+			gotMessage = message
+			return "# Fix plan\n\n1. Do X.\n", nil
 		},
 		cloudChecker: func(context.Context, *providers.ConfigLoader) error { return nil },
 	}
@@ -93,20 +66,8 @@ func TestGenerate_AssistantHappyPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, SourceAssistant, plan.Source)
 	assert.Contains(t, plan.Content, "1. Do X.")
-	assert.Contains(t, gotReq.Message, "# Findings", "prompt runner should receive the built prompt")
+	assert.Contains(t, gotMessage, "# Findings", "prompt runner should receive the built prompt")
 	assert.False(t, plan.Fallback)
-	assert.False(t, plan.Preview, "a live Assistant response is not a preview")
-
-	// Fix-plan opts into non-interactive auto-approve since the prompt is
-	// pure synthesis and there's no stdin to prompt on. Guards against a
-	// silent regression back to the fail-closed reject default (which
-	// server-side surfaces as HTTP 500).
-	_, ok := gotReq.ApprovalHandler.(assistantprov.AlwaysApprove)
-	assert.True(t, ok, "fix-plan should pass AlwaysApprove{} to RunPrompt (got %T)", gotReq.ApprovalHandler)
-
-	// Fix-plan must NOT persist its own conversation context ID — that
-	// would hijack the user's `gcx assistant prompt --continue` state.
-	assert.False(t, gotReq.PersistContextID, "fix-plan must not persist context ID")
 }
 
 func TestGenerate_FallsBackWhenNotCloud(t *testing.T) {
@@ -119,9 +80,9 @@ func TestGenerate_FallsBackWhenNotCloud(t *testing.T) {
 	runnerCalled := false
 	opts := Options{
 		Loader: &providers.ConfigLoader{},
-		promptRunner: func(context.Context, *providers.ConfigLoader, assistantprov.PromptRequest) (assistantprov.PromptResponse, error) {
+		promptRunner: func(context.Context, *providers.ConfigLoader, string) (string, error) {
 			runnerCalled = true
-			return assistantprov.PromptResponse{}, nil
+			return "", nil
 		},
 		cloudChecker: func(context.Context, *providers.ConfigLoader) error {
 			return errors.New("current context is not a Grafana Cloud stack")
@@ -145,8 +106,8 @@ func TestGenerate_FallsBackWhenAssistantFails(t *testing.T) {
 	}
 	opts := Options{
 		Loader: &providers.ConfigLoader{},
-		promptRunner: func(context.Context, *providers.ConfigLoader, assistantprov.PromptRequest) (assistantprov.PromptResponse, error) {
-			return assistantprov.PromptResponse{}, errors.New("network unreachable")
+		promptRunner: func(context.Context, *providers.ConfigLoader, string) (string, error) {
+			return "", errors.New("network unreachable")
 		},
 		cloudChecker: func(context.Context, *providers.ConfigLoader) error { return nil },
 	}
