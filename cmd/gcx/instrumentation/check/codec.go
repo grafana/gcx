@@ -4,13 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
-	"github.com/charmbracelet/glamour"
+	"github.com/grafana/gcx/cmd/gcx/instrumentation/check/fixplan"
 	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/style"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
-	"golang.org/x/term"
 )
 
 // ResultsWithFixPlan is the JSON/YAML envelope emitted by `gcx instrumentation
@@ -26,20 +25,7 @@ type ResultsWithFixPlan struct {
 	Warnings []otelutils.ComponentResult `json:"warnings" yaml:"warnings"`
 	Errors   []otelutils.ComponentResult `json:"errors" yaml:"errors"`
 
-	FixPlan *FixPlanEnvelope `json:"fix_plan,omitempty" yaml:"fix_plan,omitempty"`
-}
-
-// FixPlanEnvelope carries the fix-plan output.
-//
-// Source is "assistant" when Grafana Assistant produced the plan and "local"
-// when the local aggregator did. Fallback is true only in the second case
-// (Assistant was requested but unreachable); Reason explains why.
-type FixPlanEnvelope struct {
-	Source   string   `json:"source" yaml:"source"`
-	Content  string   `json:"content" yaml:"content"`
-	DocsUsed []string `json:"docs_used,omitempty" yaml:"docs_used,omitempty"`
-	Fallback bool     `json:"fallback,omitempty" yaml:"fallback,omitempty"`
-	Reason   string   `json:"reason,omitempty" yaml:"reason,omitempty"`
+	FixPlan *fixplan.Plan `json:"fix_plan,omitempty" yaml:"fix_plan,omitempty"`
 }
 
 // CheckTableCodec renders otelutils.Results as a grouped status/component/
@@ -100,54 +86,33 @@ func (c *CheckTableCodec) Decode(_ io.Reader, _ any) error {
 	return errCheckTableCodecNoDecode
 }
 
-// renderFixPlan prints a separator, a source notice, and the plan body.
-// When the destination is a terminal AND styled output is enabled (respecting
-// --no-color / NO_COLOR), the plan (markdown) is styled via glamour;
-// otherwise the raw markdown is written so piping, no-color mode, and tests
-// stay clean.
+// renderFixPlan prints a blank separator line then the plan body via
+// style.RenderMarkdown (glamour-styled on a TTY, raw markdown otherwise).
 //
-// Word wrap is disabled (WithWordWrap(0)) so shell commands, env-var
-// examples, and URLs in the plan stay on one logical line for click-through
-// and copy/paste.
-func renderFixPlan(w io.Writer, plan *FixPlanEnvelope) error {
+// Source diagnostics ("Grafana Assistant not available (...)" etc.) are
+// intentionally NOT written here — they go to stderr via EmitFixPlanNotice
+// so a `gcx instrumentation check --fix-plan > out.md` redirect captures
+// just the plan body.
+func renderFixPlan(w io.Writer, plan *fixplan.Plan) error {
 	if _, err := fmt.Fprintln(w); err != nil {
 		return err
 	}
-	switch plan.Source {
-	case "local":
-		if plan.Fallback && plan.Reason != "" {
-			fmt.Fprintf(w, "Grafana Assistant not available (%s). Showing combined explanation docs instead — no AI reasoning applied.\n\n", plan.Reason)
-		} else {
-			fmt.Fprintln(w, "Showing combined explanation docs — no AI reasoning applied.")
-			fmt.Fprintln(w)
-		}
-	case "assistant":
-		// No leading notice; Assistant output speaks for itself.
-	}
-
-	if isTerminalWriter(w) && style.IsStylingEnabled() {
-		r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(0))
-		if err == nil {
-			if out, err := r.Render(plan.Content); err == nil {
-				_, err := fmt.Fprint(w, out)
-				return err
-			}
-		}
-		// Fall through to raw markdown if glamour construction or render fails.
-	}
-	_, err := fmt.Fprint(w, plan.Content)
-	return err
+	return style.RenderMarkdown(w, plan.Content)
 }
 
-// isTerminalWriter reports whether w is an *os.File attached to a terminal.
-// Buffers, pipes, and non-file writers are treated as non-terminal so raw
-// markdown flows through cleanly.
-func isTerminalWriter(w io.Writer) bool {
-	f, ok := w.(*os.File)
-	if !ok {
-		return false
+// EmitFixPlanNotice writes a one-line diagnostic to stderr explaining which
+// fix-plan path was taken (Assistant vs local aggregation), and why when
+// falling back. Nothing is emitted when Assistant produced the plan — the
+// content speaks for itself — nor when the plan is empty/nil.
+func EmitFixPlanNotice(stderr io.Writer, plan *fixplan.Plan) {
+	if plan == nil || plan.Source != fixplan.SourceLocal {
+		return
 	}
-	return term.IsTerminal(int(f.Fd()))
+	if plan.Fallback && plan.Reason != "" {
+		cmdio.EmitNote(stderr, fmt.Sprintf("Grafana Assistant not available (%s). Showing combined explanation docs instead — no AI reasoning applied.", plan.Reason))
+		return
+	}
+	cmdio.EmitNote(stderr, "Showing combined explanation docs — no AI reasoning applied.")
 }
 
 var (

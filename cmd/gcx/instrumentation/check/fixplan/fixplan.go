@@ -21,15 +21,19 @@ const (
 	SourceLocal     Source = "local"
 )
 
-// Plan is the output of Generate. Empty (Empty == true) when there are no
-// findings that need a fix plan; callers should skip rendering in that case.
+// Plan is the output of Generate — also the on-wire shape of the fix_plan
+// envelope emitted under -o json/yaml.
+//
+// Empty (Empty == true) means there were no findings that need a fix plan;
+// callers should skip rendering and attach nothing on the wire. Empty is
+// json:"-" because it's an internal signal, not part of the payload.
 type Plan struct {
-	Source   Source
-	Content  string   // markdown fix plan
-	DocsUsed []string // explain IDs the plan consulted
-	Empty    bool     // true when there are no error/warning findings
-	Fallback bool     // true when Assistant was requested but local was used
-	Reason   string   // when Fallback: one-line human explanation
+	Source   Source   `json:"source" yaml:"source"`
+	Content  string   `json:"content" yaml:"content"` // markdown fix plan
+	DocsUsed []string `json:"docs_used,omitempty" yaml:"docs_used,omitempty"`
+	Empty    bool     `json:"-" yaml:"-"`
+	Fallback bool     `json:"fallback,omitempty" yaml:"fallback,omitempty"` // true when Assistant was requested but local was used
+	Reason   string   `json:"reason,omitempty" yaml:"reason,omitempty"`     // when Fallback: one-line human explanation
 }
 
 // Options configures Generate. All optional; sensible defaults are applied.

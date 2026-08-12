@@ -180,13 +180,8 @@ Powered by github.com/grafana/otel-checker.`,
 					return fmt.Errorf("instrumentation check: fix-plan: %w", err)
 				}
 				if !plan.Empty {
-					envelope.FixPlan = &FixPlanEnvelope{
-						Source:   string(plan.Source),
-						Content:  plan.Content,
-						DocsUsed: plan.DocsUsed,
-						Fallback: plan.Fallback,
-						Reason:   plan.Reason,
-					}
+					envelope.FixPlan = &plan
+					EmitFixPlanNotice(cmd.ErrOrStderr(), &plan)
 				}
 			}
 
