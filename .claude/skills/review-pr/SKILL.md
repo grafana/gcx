@@ -20,9 +20,24 @@ It defines no checks of its own. Run the checks where they already live:
 Authors are asked to run the same triggers before pushing. Assume they did, and
 that anything you find there was missed rather than dismissed.
 
-Generate findings with `/code-review`, then rank and report them as below. The
-same skill runs from a developer's machine and from the review workflow, so a PR
-gets the same treatment either way.
+## Two passes, one set of findings
+
+Run both, then combine them:
+
+1. **`/code-review`** for correctness bugs. Do not pass `--comment` — the
+   findings have to come back to you, not go straight to the PR, or there is
+   nothing left to merge.
+2. **The triggers above** that fire for this diff, plus the compliance
+   hierarchy.
+
+Then reconcile before anything is reported. Drop duplicates, keeping whichever
+statement of the finding is more precise about the failure. Where the two passes
+disagree — one calls something a bug, the other calls the same code correct —
+resolve it against the code and report one conclusion. Never post both sides of
+a contradiction and leave the author to arbitrate.
+
+The same skill runs from a developer's machine and from the review workflow, so a
+PR gets the same treatment either way.
 
 ## What blocks a merge here
 
