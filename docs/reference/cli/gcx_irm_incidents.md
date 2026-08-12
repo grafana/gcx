@@ -27,6 +27,7 @@ Manage incidents.
 * [gcx irm incidents close](gcx_irm_incidents_close.md)	 - Close (resolve) an incident.
 * [gcx irm incidents create](gcx_irm_incidents_create.md)	 - Create a new incident from a file.
 * [gcx irm incidents get](gcx_irm_incidents_get.md)	 - Get a single incident by ID.
+* [gcx irm incidents get-pir](gcx_irm_incidents_get-pir.md)	 - Get the post-incident review (PIR) document URL for an incident.
 * [gcx irm incidents list](gcx_irm_incidents_list.md)	 - List incidents.
 * [gcx irm incidents list-activity](gcx_irm_incidents_list-activity.md)	 - List activity items for an incident.
 * [gcx irm incidents list-contexts](gcx_irm_incidents_list-contexts.md)	 - List contexts attached to an incident.

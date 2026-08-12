@@ -38,7 +38,41 @@ const (
 	actAddPath        = incidentBasePath + "/ActivityService.AddActivity"
 	sevGetPath        = incidentLegacyBasePath + "/SeveritiesService.GetOrgSeverities"
 	ctxQueryPath      = incidentLegacyBasePath + "/IncidentContextService.QueryIncidentContext"
+	// IntegrationService is likewise not part of the documented v1 API and
+	// is served from the unversioned base path.
+	hookRunsPath = incidentLegacyBasePath + "/IntegrationService.GetHookRuns"
 )
+
+// pirFileURLField is the hook-run metadata field holding the document URL.
+const pirFileURLField = "fileURL"
+
+// isPIRHookID reports whether the hook copies a post-incident review template
+// into a document. PIRs are optional and only the Google Workspace integration
+// creates them, so these are the only hook runs that can carry a PIR link.
+func isPIRHookID(hookID string) bool {
+	switch hookID {
+	case "grate.google.copyFile", "grate.googleworkspace.copyTemplate":
+		return true
+	default:
+		return false
+	}
+}
+
+// pirURLFromHookRuns returns the PIR document URL recorded on a PIR-creating
+// hook run, or "" when the incident has no PIR document.
+func pirURLFromHookRuns(runs []HookRun) string {
+	for _, run := range runs {
+		if !isPIRHookID(run.HookID) || run.Metadata == nil {
+			continue
+		}
+		for _, f := range run.Metadata.Fields {
+			if f.Key == pirFileURLField && f.Value != "" {
+				return f.Value
+			}
+		}
+	}
+	return ""
+}
 
 // Client is an HTTP client for the Grafana IRM Incidents API.
 type IncidentClient struct {
@@ -512,6 +546,50 @@ func (c *IncidentClient) GetSeverities(ctx context.Context) ([]Severity, error) 
 	}
 
 	return result.Severities, nil
+}
+
+// GetHookRuns returns the integration hook runs recorded against an incident.
+func (c *IncidentClient) GetHookRuns(ctx context.Context, incidentID string) ([]HookRun, error) {
+	if incidentID == "" {
+		return nil, errors.New("incidents: GetHookRuns: incidentID is required")
+	}
+
+	body, err := json.Marshal(getHookRunsRequest{IncidentID: incidentID})
+	if err != nil {
+		return nil, fmt.Errorf("incidents: marshal hook runs request: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, hookRunsPath, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("incidents: get hook runs for %s: %w", incidentID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, providers.HandleErrorResponse(resp)
+	}
+
+	var result getHookRunsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("incidents: decode hook runs response: %w", err)
+	}
+	// The API can report failure in-band on a 200 response.
+	if result.Error != "" {
+		return nil, fmt.Errorf("incidents: get hook runs for %s: %s", incidentID, result.Error)
+	}
+
+	return result.HookRuns, nil
+}
+
+// GetPIRURL resolves the post-incident review document URL for an incident.
+// The URL is not part of the incident payload: it is recorded on the hook run
+// of the integration that created the PIR. Returns "" when there is no PIR.
+func (c *IncidentClient) GetPIRURL(ctx context.Context, incidentID string) (string, error) {
+	runs, err := c.GetHookRuns(ctx, incidentID)
+	if err != nil {
+		return "", err
+	}
+	return pirURLFromHookRuns(runs), nil
 }
 
 // queryIncidentPreviews fetches a single page. cursor is nil for the first
