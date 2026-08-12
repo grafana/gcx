@@ -223,6 +223,11 @@ func TestFlowRun_ManualRejectsForeignState(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "different login attempt")
 	assert.Equal(t, int32(0), calls.Load(), "the exchange must not run on a state mismatch")
+
+	// A state mismatch is the failure that leaves the most on screen: the code
+	// stays in the scrollback, and the user runs the command again. The notice
+	// must therefore cover the failure paths, not the success path alone.
+	assert.Contains(t, writer.String(), "single-use code")
 }
 
 func TestFlowRun_ManualDoesNotBindAPort(t *testing.T) {
@@ -623,6 +628,81 @@ func TestPasteWatcherKeepsReadingAfterCallerRejection(t *testing.T) {
 		assert.Equal(t, "fresh", pasted.Values.Get("state"))
 	case <-time.After(5 * time.Second):
 		t.Fatal("the watcher stopped reading after the caller rejected the first URL")
+	}
+}
+
+// TestPasteWatcherDropsTheEmptyLine covers the Enter that step 1 of the
+// instructions asks for. The user presses Enter, then presses ~C, to add a port
+// forward to the running SSH session. A watcher that parsed that empty line
+// answered "That URL did not work: no URL supplied" on the route that the
+// instructions recommend first.
+func TestPasteWatcherDropsTheEmptyLine(t *testing.T) {
+	remoteSessionForTest(t)
+
+	reader, writerEnd, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = writerEnd.Close() })
+	restore := auth.SwapPasteTerminal(reader, true)
+	t.Cleanup(restore)
+
+	var out bytes.Buffer
+	watcher := auth.StartPasteWatcher(&out, 54321)
+	require.NotNil(t, watcher)
+	t.Cleanup(watcher.Close)
+
+	// A bare Enter, and a line of spaces, must both reach the caller as nothing.
+	_, err = writerEnd.WriteString("\n   \n")
+	require.NoError(t, err)
+
+	// The next real URL must still arrive. That both proves the reader survived
+	// the empty lines and gives the empty lines time to reach the watcher.
+	_, err = writerEnd.WriteString("http://127.0.0.1:54321/callback?code=c1&state=s1\n")
+	require.NoError(t, err)
+	select {
+	case pasted := <-watcher.Input():
+		require.NoError(t, pasted.Err)
+		assert.False(t, pasted.Closed)
+		assert.Equal(t, "c1", pasted.Values.Get("code"))
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watcher did not deliver the pasted URL after the empty lines")
+	}
+	assert.NotContains(t, out.String(), "That URL did not work")
+}
+
+// TestPasteWatcherReportsThatTheReaderEnded covers Ctrl-D and a terminal that
+// reports an error. A watcher that returned without a word left the prompt
+// "Redirect URL (or wait for the browser):" on screen with no reader behind it.
+// The caller must learn that the paste route ended, so it can say so and keep
+// waiting for the callback.
+func TestPasteWatcherReportsThatTheReaderEnded(t *testing.T) {
+	remoteSessionForTest(t)
+
+	reader, writerEnd, err := os.Pipe()
+	require.NoError(t, err)
+	restore := auth.SwapPasteTerminal(reader, true)
+	t.Cleanup(restore)
+
+	var out bytes.Buffer
+	watcher := auth.StartPasteWatcher(&out, 54321)
+	require.NotNil(t, watcher)
+	t.Cleanup(watcher.Close)
+
+	// Closing the write end is the pipe equivalent of Ctrl-D on a terminal.
+	require.NoError(t, writerEnd.Close())
+
+	select {
+	case pasted := <-watcher.Input():
+		assert.True(t, pasted.Closed, "the watcher must report that the reader ended")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watcher ended without a word: the prompt keeps no reader")
+	}
+
+	// The reader must not spin on the permanent read error. No second report
+	// may arrive.
+	select {
+	case pasted := <-watcher.Input():
+		t.Fatalf("the watcher kept reading after the terminal ended: %+v", pasted)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 

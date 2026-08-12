@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -104,6 +105,10 @@ var openPasteTerminal = func() (*os.File, bool) { //nolint:gochecknoglobals // t
 type pastedInput struct {
 	Values url.Values
 	Err    error
+	// Closed reports that the reader ended, because the user pressed Ctrl-D or
+	// the terminal reported an error. No further line arrives. The caller says
+	// so and keeps waiting for the callback server.
+	Closed bool
 }
 
 // Input reports each pasted line. A nil watcher returns a nil channel, which
@@ -153,10 +158,26 @@ func (p *pasteWatcher) run() {
 
 	for {
 		line, err := readLine(p.tty)
-		if err != nil {
-			// The terminal closed, or the flow ended. Stop quietly: the caller
-			// already has a result or an error of its own.
+		if p.stopped() {
+			// Close shut the terminal, which caused this read error. The caller
+			// already has a result or an error of its own, so stop quietly.
 			return
+		}
+		if err != nil {
+			// The user pressed Ctrl-D, or the terminal reported an error. Say
+			// so and stop. A silent stop left the prompt on screen with no
+			// reader behind it, and a retry would spin on a terminal that
+			// reports the same error forever.
+			p.deliver(pastedInput{Closed: true})
+			return
+		}
+
+		// Step 1 of the instructions asks the user to press Enter before the
+		// SSH escape ~C. Drop that empty line: a rejection on the route that the
+		// instructions recommend first is wrong, and the ssh escape prompt owns
+		// the terminal at that moment.
+		if strings.TrimSpace(line) == "" {
+			continue
 		}
 
 		// Keep reading after a delivery. The caller runs the semantic checks
@@ -165,11 +186,32 @@ func (p *pasteWatcher) run() {
 		// line stays in the terminal buffer, and the shell reads it after gcx
 		// exits, which writes the authorization code into the shell history.
 		values, err := ParseCallbackInput(line)
-		select {
-		case p.values <- pastedInput{Values: values, Err: err}:
-		case <-p.stop:
+		if !p.deliver(pastedInput{Values: values, Err: err}) {
 			return
 		}
+	}
+}
+
+// stopped reports whether Close has run. The reader checks it before it acts on
+// a read error, because Close shuts the terminal and that read error is the
+// expected result.
+func (p *pasteWatcher) stopped() bool {
+	select {
+	case <-p.stop:
+		return true
+	default:
+		return false
+	}
+}
+
+// deliver sends one result to the caller. It reports false when Close ran
+// first, so a caller that stopped reading cannot wedge the send.
+func (p *pasteWatcher) deliver(in pastedInput) bool {
+	select {
+	case p.values <- in:
+		return true
+	case <-p.stop:
+		return false
 	}
 }
 
