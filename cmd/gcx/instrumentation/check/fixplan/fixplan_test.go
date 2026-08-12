@@ -7,21 +7,20 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers"
+	otelexplain "github.com/grafana/otel-checker/checks/explain"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// A single real explain ID we use across tests. Picking from the registry
-// (instead of a hardcoded string) keeps the tests robust across doc renames.
+// firstRealExplainID returns any real explain ID from the registry. Reading
+// from otelexplain.All() (rather than a hardcoded ID) keeps the tests robust
+// across doc renames.
 func firstRealExplainID(t *testing.T) string {
 	t.Helper()
-	res := otelutils.Results{
-		Errors: []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no headers", ExplainID: "grafana-cloud.headers.missing-auth"}},
-	}
-	docs := resolveDocs(collectFindings(res))
-	require.NotEmpty(t, docs, "expected the seed ID to resolve to a real doc")
-	return docs[0].ID
+	ids := otelexplain.All()
+	require.NotEmpty(t, ids, "explain registry must be non-empty")
+	return ids[0]
 }
 
 func TestGenerate_EmptyResults(t *testing.T) {

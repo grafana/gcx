@@ -134,6 +134,9 @@
 - Refine output formatting (format and jq handling)
 - Remove obsolete publish-technical-documentation workflows
 
+
+## Unreleased
+
 ## v0.4.1 (2026-06-23)
 
 - **Breaking:** `--log-http-payload` has been renamed to `--insecure-log-http-payload`. The old flag name now exits with an error naming the replacement. Payload-dump behavior is unchanged — credentials, cookies, OAuth refresh tokens, and request bodies still appear in the dump when the flag is set. A startup warning is now printed to stderr when the flag is active.

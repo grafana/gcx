@@ -2,32 +2,28 @@ package fixplan
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	otelexplain "github.com/grafana/otel-checker/checks/explain"
 )
 
-// howToFixHeading matches a markdown H2 header whose text starts with
-// "how to fix" (case-insensitive). Explain docs conventionally use exactly
-// "## How to fix", but we tolerate light variation.
-var howToFixHeading = regexp.MustCompile(`(?im)^##\s+how to fix\b.*$`)
+// howToFixHeader is the section header every otel-checker explain doc
+// includes by convention. Kept as a literal string (no regex) because the
+// upstream shape is stable.
+const howToFixHeader = "## How to fix"
 
-// nextH2 matches any subsequent markdown H2 header, used to bound the
-// extracted section body.
-var nextH2 = regexp.MustCompile(`(?m)^##\s+.*$`)
-
-// extractHowToFix returns the body of the doc's "## How to fix" section, or
-// the whole body when no such section exists. Leading and trailing
+// extractHowToFix returns the body of the doc's "## How to fix" section,
+// or the whole body as a fallback when the header is missing (invariant
+// violation — no otel-checker@v0.3.1 doc omits it). Leading and trailing
 // whitespace on the returned block is trimmed.
 func extractHowToFix(body string) string {
-	loc := howToFixHeading.FindStringIndex(body)
-	if loc == nil {
+	idx := strings.Index(body, howToFixHeader)
+	if idx < 0 {
 		return strings.TrimSpace(body)
 	}
-	after := body[loc[1]:]
-	if end := nextH2.FindStringIndex(after); end != nil {
-		after = after[:end[0]]
+	after := body[idx+len(howToFixHeader):]
+	if end := strings.Index(after, "\n## "); end >= 0 {
+		after = after[:end]
 	}
 	return strings.TrimSpace(after)
 }

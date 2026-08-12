@@ -44,7 +44,7 @@ func TestResolveDocs_DedupsAndSorts(t *testing.T) {
 	// actual data. Emitting the same ID twice should collapse.
 	ids := otelexplain.All()
 	require.GreaterOrEqual(t, len(ids), 2, "registry must have at least 2 docs to run this test")
-	pick := []string{ids[3], ids[0], ids[3]} // out of order + duplicate
+	pick := []string{ids[1], ids[0], ids[1]} // out of order + duplicate
 	findings := make([]Finding, len(pick))
 	for i, id := range pick {
 		findings[i] = Finding{Severity: "FAIL", Component: "x", Message: "m", ExplainID: id}

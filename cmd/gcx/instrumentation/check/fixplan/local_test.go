@@ -35,12 +35,6 @@ func TestExtractHowToFix_FallsBackWhenSectionMissing(t *testing.T) {
 	assert.Equal(t, "Just some prose with no How-to-fix heading.", got)
 }
 
-func TestExtractHowToFix_CaseInsensitive(t *testing.T) {
-	body := "## HOW TO FIX\ndo the thing\n"
-	got := extractHowToFix(body)
-	assert.Equal(t, "do the thing", got)
-}
-
 func TestExtractHowToFix_HandlesLastSection(t *testing.T) {
 	// No terminating H2 — the "How to fix" section should run to end of body.
 	body := "## How to fix\nend of doc\n"
