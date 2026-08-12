@@ -219,3 +219,16 @@ func RegisterCodecs(ioOpts *cmdio.Options, enableGraph bool) {
 	}
 	ioOpts.DefaultFormat("table")
 }
+
+// RegisterStructuredCodecs registers only the JSON and YAML codecs (default
+// JSON) — no table, wide, or graph. Use it for datasource commands whose
+// payload is an opaque or free-form structure with no meaningful tabular
+// projection, e.g. the experimental Tempo trace-diff patch. The table/wide
+// codecs switch on concrete response types and reject anything else with
+// "invalid data type", so advertising them for such commands would surface a
+// runtime error on a documented output path.
+func RegisterStructuredCodecs(ioOpts *cmdio.Options) {
+	ioOpts.RegisterCustomCodec("json", &queryJSONCodec{inner: format.NewJSONCodec()})
+	ioOpts.RegisterCustomCodec("yaml", &queryYAMLCodec{inner: format.NewYAMLCodec()})
+	ioOpts.DefaultFormat("json")
+}

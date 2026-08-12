@@ -499,6 +499,70 @@ func TestMetricsInstant(t *testing.T) {
 	}
 }
 
+func TestDiff(t *testing.T) {
+	tests := []struct {
+		name    string
+		req     tempo.DiffRequest
+		handler http.HandlerFunc
+		wantErr bool
+	}{
+		{
+			name: "posts base and compare trace ids without format or time bounds",
+			req:  tempo.DiffRequest{BaseTraceID: "aaa", CompareTraceID: "bbb"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Contains(t, r.URL.Path, "/api/datasources/proxy/uid/tempo-ds/api/v2/traces/diff")
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				var payload map[string]any
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+				base, _ := payload["base"].(map[string]any)
+				compare, _ := payload["compare"].(map[string]any)
+				assert.Equal(t, "aaa", base["traceId"])
+				assert.Equal(t, "bbb", compare["traceId"])
+				_, hasFormat := payload["format"]
+				assert.False(t, hasFormat)
+				_, hasStart := base["start"]
+				assert.False(t, hasStart)
+				writeJSON(t, w, map[string]any{"summary": map[string]any{"verdict": "regression"}})
+			},
+		},
+		{
+			name: "includes time bounds when set",
+			req:  tempo.DiffRequest{BaseTraceID: "a", CompareTraceID: "b", Start: time.Unix(1700000000, 0), End: time.Unix(1700003600, 0)},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				var payload map[string]any
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+				base, _ := payload["base"].(map[string]any)
+				assert.EqualValues(t, 1700000000, base["start"])
+				assert.EqualValues(t, 1700003600, base["end"])
+				writeJSON(t, w, map[string]any{"summary": map[string]any{}})
+			},
+		},
+		{
+			name: "absent endpoint surfaces error",
+			req:  tempo.DiffRequest{BaseTraceID: "a", CompareTraceID: "b"},
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"message":"not found"}`))
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client := testClient(t, tc.handler)
+			resp, err := client.Diff(context.Background(), "tempo-ds", tc.req)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.NotNil(t, resp)
+		})
+	}
+}
+
 func TestValidateTagScope(t *testing.T) {
 	tests := []struct {
 		name    string

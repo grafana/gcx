@@ -64,6 +64,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertRequiredFlagErrors,                   // Cobra required-flag errors — must appear before generic checks
 		convertConfigErrors,                         // Config-related
 		convertAuthErrors,                           // Auth-related (expired tokens)
+		convertUnavailableEndpoint,                  // Experimental/Cloud-only endpoint route absent
 		convertQueryErrors,                          // Datasource query errors
 		convertDatasourceErrors,                     // Grafana datasource REST API errors
 		convertServiceAPIErrors,                     // Other structured HTTP API errors
@@ -259,6 +260,63 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return &gcxerrors.DetailedError{
 		Parent:  err,
 		Summary: fmt.Sprintf("API error: %s - code %d", reason, code),
+	}, true
+}
+
+// convertUnavailableEndpoint renders a route-absent response from an endpoint
+// flagged Cloud-only and/or experimental (via APIError.WithAvailability) into
+// an actionable, hedged error. It is datasource-agnostic: any client that marks
+// its error gets consistent handling. A 404 can also mean the requested
+// resource was not found, so the message stays hedged rather than asserting
+// unavailability.
+func convertUnavailableEndpoint(err error) (*gcxerrors.DetailedError, bool) {
+	apiErr := &queryerror.APIError{}
+	if !errors.As(err, &apiErr) {
+		return nil, false
+	}
+	if !apiErr.CloudOnly && !apiErr.Experimental {
+		return nil, false
+	}
+	// Only claim unavailability when confident. A 404 is ambiguous: a truly
+	// absent route returns Go's "404 page not found", whereas a present route
+	// with a missing resource (e.g. an unknown trace ID) returns a
+	// datasource-specific body. Method-not-allowed and not-implemented reliably
+	// indicate a route/shape mismatch. Ambiguous cases fall through to the
+	// normal query-error path so a missing trace is not mislabelled.
+	confident := false
+	switch apiErr.StatusCode {
+	case http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		confident = true
+	case http.StatusNotFound:
+		confident = strings.Contains(strings.ToLower(apiErr.Message), "page not found")
+	}
+	if !confident {
+		return nil, false
+	}
+
+	endpoint := strings.TrimSpace(apiErr.Datasource + " " + apiErr.Operation)
+	if endpoint == "" {
+		endpoint = "requested"
+	}
+
+	var note string
+	switch {
+	case apiErr.CloudOnly && apiErr.Experimental:
+		note = "This is an experimental, Grafana Cloud-only endpoint"
+	case apiErr.CloudOnly:
+		note = "This is a Grafana Cloud-only endpoint"
+	default:
+		note = "This is an experimental endpoint"
+	}
+
+	return &gcxerrors.DetailedError{
+		Parent:  err,
+		Summary: fmt.Sprintf("The %s endpoint is not available here", endpoint),
+		Details: fmt.Sprintf("HTTP %d from the %s endpoint", apiErr.StatusCode, endpoint),
+		Suggestions: []string{
+			note + "; it may be unavailable on this deployment or version",
+			"Confirm your context targets a datasource that supports it",
+		},
 	}, true
 }
 

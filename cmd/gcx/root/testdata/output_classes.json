@@ -510,6 +510,7 @@
  "gcx traces adaptive recommendations apply": "finite",
  "gcx traces adaptive recommendations dismiss": "finite",
  "gcx traces adaptive recommendations list": "finite",
+ "gcx traces diff": "finite",
  "gcx traces get": "finite",
  "gcx traces labels": "finite",
  "gcx traces metrics": "finite",
