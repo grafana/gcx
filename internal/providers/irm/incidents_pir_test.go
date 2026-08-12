@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,15 +20,25 @@ const pirDocURL = "https://docs.google.com/document/d/abc123/edit"
 
 // pirHookRun builds a hook run carrying a fileURL metadata field.
 func pirHookRun(hookID string) map[string]any {
-	return map[string]any{
+	return pirHookRunAt(hookID, pirDocURL, "")
+}
+
+// pirHookRunAt builds a hook run carrying a specific fileURL and lastRun. An
+// empty lastRun omits the field, as the API does for a hook that never ran.
+func pirHookRunAt(hookID, fileURL, lastRun string) map[string]any {
+	run := map[string]any{
 		"hookID": hookID,
 		"metadata": map[string]any{
 			"fields": []map[string]any{
 				{"key": "documentTitle", "value": "PIR: Boom"},
-				{"key": "fileURL", "value": pirDocURL},
+				{"key": "fileURL", "value": fileURL},
 			},
 		},
 	}
+	if lastRun != "" {
+		run["lastRun"] = lastRun
+	}
+	return run
 }
 
 // TestGetPIRURL covers resolving the PIR document link from an incident's
@@ -89,6 +100,34 @@ func TestGetPIRURL(t *testing.T) {
 			}}},
 			want: "",
 		},
+		{
+			name: "falls back to metadata URL when no fileURL field was recorded",
+			hookRuns: []map[string]any{{
+				"hookID":   "grate.googleworkspace.copyTemplate",
+				"metadata": map[string]any{"URL": pirDocURL},
+			}},
+			want: pirDocURL,
+		},
+		{
+			name: "fileURL field wins over metadata URL",
+			hookRuns: []map[string]any{{
+				"hookID": "grate.googleworkspace.copyTemplate",
+				"metadata": map[string]any{
+					"URL":    "https://docs.google.com/document/d/stale/edit",
+					"fields": []map[string]any{{"key": "fileURL", "value": pirDocURL}},
+				},
+			}},
+			want: pirDocURL,
+		},
+		{
+			name: "a lastRun gcx cannot parse does not fail the lookup",
+			hookRuns: []map[string]any{{
+				"hookID":   "grate.google.copyFile",
+				"lastRun":  1755000000,
+				"metadata": map[string]any{"fields": []map[string]any{{"key": "fileURL", "value": pirDocURL}}},
+			}},
+			want: pirDocURL,
+		},
 	}
 
 	for _, tt := range tests {
@@ -101,6 +140,71 @@ func TestGetPIRURL(t *testing.T) {
 			got, err := newTestClient(t, server).GetPIRURL(t.Context(), "inc-1")
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestGetPIRURLIsDeterministic pins which link is chosen when an incident
+// carries more than one. The API does not order hook runs, so the same
+// incident has to resolve to the same URL whatever order they arrive in.
+func TestGetPIRURLIsDeterministic(t *testing.T) {
+	const (
+		olderURL = "https://docs.google.com/document/d/older/edit"
+		newerURL = "https://docs.google.com/document/d/newer/edit"
+	)
+
+	tests := []struct {
+		name     string
+		hookRuns []map[string]any
+		want     string
+	}{
+		{
+			name: "the most recent run wins over an older one",
+			hookRuns: []map[string]any{
+				pirHookRunAt("grate.google.copyFile", olderURL, "2026-08-01T10:00:00Z"),
+				pirHookRunAt("grate.googleworkspace.copyTemplate", newerURL, "2026-08-04T09:30:00Z"),
+			},
+			want: newerURL,
+		},
+		{
+			name: "a re-run of the same hook resolves to its latest copy",
+			hookRuns: []map[string]any{
+				pirHookRunAt("grate.googleworkspace.copyTemplate", olderURL, "2026-08-01T10:00:00Z"),
+				pirHookRunAt("grate.googleworkspace.copyTemplate", newerURL, "2026-08-02T10:00:00Z"),
+			},
+			want: newerURL,
+		},
+		{
+			name: "with no timestamps to compare the PIR-specific hook wins",
+			hookRuns: []map[string]any{
+				pirHookRunAt("grate.google.copyFile", olderURL, ""),
+				pirHookRunAt("grate.googleworkspace.copyTemplate", newerURL, ""),
+			},
+			want: newerURL,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, reversed := range []bool{false, true} {
+				name := "as returned"
+				runs := slices.Clone(tt.hookRuns)
+				if reversed {
+					name = "reversed"
+					slices.Reverse(runs)
+				}
+
+				t.Run(name, func(t *testing.T) {
+					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+						writeJSON(w, map[string]any{"hookRuns": runs})
+					}))
+					defer server.Close()
+
+					got, err := newTestClient(t, server).GetPIRURL(t.Context(), "inc-1")
+					require.NoError(t, err)
+					assert.Equal(t, tt.want, got)
+				})
+			}
 		})
 	}
 }
@@ -211,13 +315,14 @@ func TestIncidentsGetPIROutputContract(t *testing.T) {
 			wantPIR:  pirDocURL,
 		},
 		{
-			name:      "agent mode reports a missing PIR as an empty pirURL",
+			// The empty pirURL already carries this, so stderr stays quiet.
+			name:      "agent mode reports a missing PIR as an empty pirURL and no note",
 			agentMode: true,
 			args:      []string{"inc-1"},
 			hookRuns:  []map[string]any{},
 			wantJSON:  true,
 			wantPIR:   "",
-			wantNote:  true,
+			wantNote:  false,
 		},
 	}
 

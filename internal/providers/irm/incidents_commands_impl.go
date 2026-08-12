@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -313,6 +314,9 @@ Google Workspace integration creates them, so the link exists only where that
 integration ran. It is recorded on the hook run that copied the PIR template,
 which this command reads and resolves.
 
+An incident can have more than one PIR document if the template was copied
+again; the most recently created one is reported.
+
 An incident without a PIR document prints nothing and exits 0.`
 
 // NewGetPIRCommand builds `incidents get-pir <incident-id>`. A PIR is derived
@@ -350,8 +354,9 @@ func NewGetPIRCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			// Absence is a normal outcome, not an error — the note is a
-			// diagnostic so it stays out of the stdout result.
-			if url == "" {
+			// diagnostic so it stays out of the stdout result. Agents read the
+			// empty pirURL instead, and stderr stays quiet for them.
+			if url == "" && !agent.IsAgentMode() {
 				cmdio.Info(cmd.ErrOrStderr(),
 					"Incident %s has no PIR document (only the Google Workspace integration creates them).",
 					incidentID)

@@ -28,6 +28,24 @@ func (ft FlexTime) MarshalJSON() ([]byte, error) {
 	return t.MarshalJSON()
 }
 
+// LenientTime is a time.Time for fields whose wire type is not pinned by the
+// API surface gcx consumes. Unlike [FlexTime] it never fails to decode: an
+// unexpected shape yields the zero time instead of an error, so a field read
+// only as a hint cannot fail the request that carries it.
+type LenientTime time.Time
+
+func (lt *LenientTime) UnmarshalJSON(data []byte) error {
+	var t time.Time
+	if err := t.UnmarshalJSON(data); err == nil {
+		*lt = LenientTime(t)
+	}
+	return nil
+}
+
+func (lt LenientTime) MarshalJSON() ([]byte, error) {
+	return time.Time(lt).MarshalJSON()
+}
+
 // GetResourceName returns the incident ID.
 func (i Incident) GetResourceName() string { return i.IncidentID }
 
@@ -110,9 +128,11 @@ type HookRunField struct {
 	Value string `json:"value"`
 }
 
-// HookRunMetadata carries what a hook run recorded about its result.
+// HookRunMetadata carries what a hook run recorded about its result. The
+// template-copying hooks set both URL and a fileURL entry in Fields.
 type HookRunMetadata struct {
 	Fields []HookRunField `json:"fields,omitempty"`
+	URL    string         `json:"URL,omitempty"`
 }
 
 // HookRun is a single integration hook execution against an incident. Only
@@ -120,6 +140,7 @@ type HookRunMetadata struct {
 type HookRun struct {
 	HookID   string           `json:"hookID"`
 	Metadata *HookRunMetadata `json:"metadata,omitempty"`
+	LastRun  LenientTime      `json:"lastRun,omitzero"`
 }
 
 // getHookRunsRequest is the request body for IntegrationService.GetHookRuns.

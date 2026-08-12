@@ -46,32 +46,84 @@ const (
 // pirFileURLField is the hook-run metadata field holding the document URL.
 const pirFileURLField = "fileURL"
 
-// isPIRHookID reports whether the hook copies a post-incident review template
-// into a document. PIRs are optional and only the Google Workspace integration
-// creates them, so these are the only hook runs that can carry a PIR link.
-func isPIRHookID(hookID string) bool {
+// pirHookRank ranks the hooks that copy a post-incident review template into a
+// document, and reports 0 for every other hook. PIRs are optional and only the
+// Google Workspace integration creates them, so these are the only hook runs
+// that can carry a PIR link. copyTemplate outranks copyFile: it is the
+// PIR-specific hook, where copyFile is the older general file copy.
+func pirHookRank(hookID string) int {
 	switch hookID {
-	case "grate.google.copyFile", "grate.googleworkspace.copyTemplate":
-		return true
+	case "grate.googleworkspace.copyTemplate":
+		return 2
+	case "grate.google.copyFile":
+		return 1
 	default:
-		return false
+		return 0
 	}
 }
 
-// pirURLFromHookRuns returns the PIR document URL recorded on a PIR-creating
-// hook run, or "" when the incident has no PIR document.
-func pirURLFromHookRuns(runs []HookRun) string {
-	for _, run := range runs {
-		if !isPIRHookID(run.HookID) || run.Metadata == nil {
-			continue
-		}
-		for _, f := range run.Metadata.Fields {
-			if f.Key == pirFileURLField && f.Value != "" {
-				return f.Value
-			}
+// isPIRHookID reports whether a hook run can carry a PIR link.
+func isPIRHookID(hookID string) bool { return pirHookRank(hookID) > 0 }
+
+// pirCandidate is a PIR link found on one hook run, with the keys used to
+// choose between links when an incident has more than one.
+type pirCandidate struct {
+	url     string
+	lastRun time.Time
+	hookID  string
+}
+
+// beats reports whether c should win over other. The most recent run wins;
+// ties fall back to hook rank and then to the URL itself, so the choice does
+// not depend on the order the API happened to return the runs in.
+func (c pirCandidate) beats(other pirCandidate) bool {
+	switch {
+	case other.url == "":
+		return true
+	case !c.lastRun.Equal(other.lastRun):
+		return c.lastRun.After(other.lastRun)
+	case pirHookRank(c.hookID) != pirHookRank(other.hookID):
+		return pirHookRank(c.hookID) > pirHookRank(other.hookID)
+	default:
+		return c.url < other.url
+	}
+}
+
+// pirURLFromHookRun returns the PIR document URL a single hook run recorded.
+// The fileURL metadata field is what IRM's PIR bookmarks read; metadata.URL is
+// a fallback for a partial run that recorded only the URL.
+func pirURLFromHookRun(run HookRun) string {
+	if run.Metadata == nil {
+		return ""
+	}
+	for _, f := range run.Metadata.Fields {
+		if f.Key == pirFileURLField && f.Value != "" {
+			return f.Value
 		}
 	}
-	return ""
+	return run.Metadata.URL
+}
+
+// pirURLFromHookRuns returns the PIR document URL for an incident, or "" when
+// it has no PIR document. An incident can carry several PIR links — both hooks
+// ran, or one was re-run — and the API does not order hook runs, so the link is
+// picked deterministically rather than taking whichever arrived first.
+func pirURLFromHookRuns(runs []HookRun) string {
+	var best pirCandidate
+	for _, run := range runs {
+		if !isPIRHookID(run.HookID) {
+			continue
+		}
+		candidate := pirCandidate{
+			url:     pirURLFromHookRun(run),
+			lastRun: time.Time(run.LastRun),
+			hookID:  run.HookID,
+		}
+		if candidate.url != "" && candidate.beats(best) {
+			best = candidate
+		}
+	}
+	return best.url
 }
 
 // Client is an HTTP client for the Grafana IRM Incidents API.

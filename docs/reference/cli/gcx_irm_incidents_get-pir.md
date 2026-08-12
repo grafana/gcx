@@ -11,6 +11,9 @@ Google Workspace integration creates them, so the link exists only where that
 integration ran. It is recorded on the hook run that copied the PIR template,
 which this command reads and resolves.
 
+An incident can have more than one PIR document if the template was copied
+again; the most recently created one is reported.
+
 An incident without a PIR document prints nothing and exits 0.
 
 ```
