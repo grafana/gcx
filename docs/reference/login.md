@@ -90,6 +90,10 @@ load `http://127.0.0.1:<port>/callback?...`, copy the whole address, and paste
 it at the prompt. If the address does not work, gcx says why and asks again; the
 callback server stays up the whole time.
 
+The prompt ignores an empty line, so the Enter that Option 1 needs costs
+nothing. Ctrl-D ends the paste route; gcx says so and keeps waiting for the
+browser.
+
 Do these steps quickly. The authorization code expires.
 
 **`--oauth-manual` for scripts and terminals with no `/dev/tty`.** The flag
@@ -113,7 +117,8 @@ other login does not.
 the state value. It does not hold the PKCE code verifier or a token, so the
 code alone cannot mint a token. gcx reads it from a prompt, so it never enters
 your shell history. It does stay in the terminal scrollback and in the browser
-history. Clear the terminal if other people can read it.
+history. gcx prints the reminder once a URL reaches the screen, whether the
+login succeeds or fails. Clear the terminal if other people can read it.
 
 ### Service account token
 

@@ -253,8 +253,10 @@ uses as well, so the state check, the PKCE exchange, and endpoint validation
 cannot diverge between the two paths.
 
 The pasted URL never carries the `code_verifier`, so a leaked scrollback alone
-cannot mint a token. gcx prints a reminder to clear the terminal after a
-successful paste, and no error message ever echoes the pasted string.
+cannot mint a token. gcx prints a reminder to clear the terminal once a URL
+reaches the screen. The reminder covers the failure paths too, because a state
+mismatch leaves the code in the scrollback and the user then runs the command
+again. No error message ever echoes the pasted string.
 
 The GCOM flow (`internal/auth/gcom.go`) has the same mode. There the fixed
 port matters for a second reason: the token exchange must send a `redirect_uri`
@@ -272,6 +274,16 @@ listening **and** reads a pasted redirect URL. The `select` in
 forward and pasting are both live at once and neither needs a restart. A URL
 that does not work re-prompts instead of ending the flow, because the callback
 server is still up.
+
+Two reader rules keep the two routes from interfering:
+
+- The watcher drops an empty line. Option 1 asks the user to press Enter before
+  the `~C` escape, so a rejection there would answer the recommended route with
+  an error.
+- The watcher reports `Closed` when the read ends, which Ctrl-D and a broken
+  terminal both cause. `awaitCallbackOrPaste` states that the paste route ended
+  and keeps waiting for the callback. A silent stop left the prompt on screen
+  with no reader behind it.
 
 The watcher reads a separately opened `/dev/tty`, never `os.Stdin`. Go keeps the
 standard streams out of its poller, so a blocking read on `os.Stdin` cannot be

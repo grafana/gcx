@@ -125,25 +125,10 @@ func (f *GCOMFlow) runManual(ctx context.Context) (*GCOMResult, error) {
 	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", manualCallbackPort)
 
 	authURL := f.buildAuthURL(redirectURI, state, codeChallenge)
-	printManualInstructions(f.writer, authURL, "")
-
-	line, err := readLineContext(ctx, f.reader)
-	if err != nil {
-		return nil, err
-	}
-
-	values, err := ParseCallbackInput(line)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the redirect URL: %w", err)
-	}
-
-	result, cerr := f.handleGCOMCallbackParams(ctx, values, state, codeVerifier, redirectURI)
-	if cerr != nil {
-		return nil, pasteRejection(cerr.err)
-	}
-
-	fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
-	return result, nil
+	return runManualPaste(ctx, f.writer, f.reader, authURL, "",
+		func(q url.Values) (*GCOMResult, *callbackError) {
+			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI)
+		})
 }
 
 func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, error) {
@@ -194,28 +179,10 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 		fmt.Fprintln(f.writer, "Waiting for authentication...")
 	}
 
-	for {
-		select {
-		case result := <-resultCh:
-			return result, nil
-		case err := <-errCh:
-			return nil, err
-		case pasted := <-paste.Input():
-			if pasted.Err != nil {
-				paste.Reject(pasted.Err)
-				continue
-			}
-			result, cerr := f.handleGCOMCallbackParams(ctx, pasted.Values, state, codeVerifier, redirectURI)
-			if cerr != nil {
-				paste.Reject(pasteRejection(cerr.err))
-				continue
-			}
-			fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
-			return result, nil
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
+	return awaitCallbackOrPaste(ctx, f.writer, paste, resultCh, errCh,
+		func(q url.Values) (*GCOMResult, *callbackError) {
+			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI)
+		})
 }
 
 // buildAuthURL renders the GCOM authorize URL. redirectURI must be the exact

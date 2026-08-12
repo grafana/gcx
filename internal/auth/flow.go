@@ -140,25 +140,10 @@ func (f *Flow) runManual(ctx context.Context) (*Result, error) {
 	}
 
 	authURL := f.buildAuthURL(manualCallbackPort, state, codeChallenge)
-	printManualInstructions(f.writer, authURL, verificationCode(codeChallenge))
-
-	line, err := readLineContext(ctx, f.reader)
-	if err != nil {
-		return nil, err
-	}
-
-	values, err := ParseCallbackInput(line)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the redirect URL: %w", err)
-	}
-
-	result, cerr := handleCallbackParams(ctx, values, state, codeVerifier)
-	if cerr != nil {
-		return nil, pasteRejection(cerr.err)
-	}
-
-	fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
-	return result, nil
+	return runManualPaste(ctx, f.writer, f.reader, authURL, verificationCode(codeChallenge),
+		func(q url.Values) (*Result, *callbackError) {
+			return handleCallbackParams(ctx, q, state, codeVerifier)
+		})
 }
 
 func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
@@ -210,28 +195,10 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 		fmt.Fprintln(f.writer, "Waiting for authentication...")
 	}
 
-	for {
-		select {
-		case result := <-resultCh:
-			return result, nil
-		case err := <-errCh:
-			return nil, err
-		case pasted := <-paste.Input():
-			if pasted.Err != nil {
-				paste.Reject(pasted.Err)
-				continue
-			}
-			result, cerr := handleCallbackParams(ctx, pasted.Values, state, codeVerifier)
-			if cerr != nil {
-				paste.Reject(pasteRejection(cerr.err))
-				continue
-			}
-			fmt.Fprintln(f.writer, manualCallbackHygieneNotice)
-			return result, nil
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
+	return awaitCallbackOrPaste(ctx, f.writer, paste, resultCh, errCh,
+		func(q url.Values) (*Result, *callbackError) {
+			return handleCallbackParams(ctx, q, state, codeVerifier)
+		})
 }
 
 // buildAuthURL renders the plugin consent URL for the given callback port.
