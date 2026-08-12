@@ -24,6 +24,7 @@ func (m *ManagerFieldsAppender) Process(r *resources.Resource) error {
 	r.Raw.SetManagerProperties(utils.ManagerProperties{
 		Kind:     resources.ResourceManagerKind,
 		Identity: "gcx", // TODO: use version information to set the identity.
+		AllowsEdits: true,
 	})
 
 	// TODO: should we set timestamp & checksum as well?
