@@ -41,6 +41,24 @@ func FormatPprofWriteTable(w io.Writer, result *PprofWriteResult) error {
 	return t.Render(w)
 }
 
+// FormatDataRangeTable renders the datasource's data range (from the
+// GetProfileStats RPC) as a single-row table.
+func FormatDataRangeTable(w io.Writer, resp *ProfileStatsResponse) error {
+	t := style.NewTable("DATA_INGESTED", "OLDEST_PROFILE", "NEWEST_PROFILE")
+
+	// The server omits zero times (proto-JSON), and may report a zero oldest
+	// time even when data was ingested — render those as "-" rather than 1970.
+	formatMs := func(ms int64) string {
+		if ms == 0 {
+			return "-"
+		}
+		return time.UnixMilli(ms).UTC().Format(time.RFC3339)
+	}
+	t.Row(strconv.FormatBool(resp.DataIngested), formatMs(resp.OldestProfileTime), formatMs(resp.NewestProfileTime))
+
+	return t.Render(w)
+}
+
 // FormatProfileTypesTable formats profile types as a table.
 func FormatProfileTypesTable(w io.Writer, resp *ProfileTypesResponse) error {
 	t := style.NewTable("ID", "NAME", "SAMPLE_TYPE", "SAMPLE_UNIT")
