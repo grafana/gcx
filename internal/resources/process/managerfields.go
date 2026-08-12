@@ -2,8 +2,16 @@ package process
 
 import (
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/version"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
 )
+
+// ManagerIdentity returns the manager identity that gcx writes on a pushed resource.
+// The value carries the gcx version, so an operator can see which build pushed the
+// resource. A build without version information reports "gcx/SNAPSHOT".
+func ManagerIdentity() string {
+	return "gcx/" + version.Get()
+}
 
 // ManagerFieldsAppender is a processor that appends manager and source fields to a resource.
 // It will return an error if the resource is already managed by another manager.
@@ -23,11 +31,13 @@ func (m *ManagerFieldsAppender) Process(r *resources.Resource) error {
 
 	r.Raw.SetManagerProperties(utils.ManagerProperties{
 		Kind:        resources.ResourceManagerKind,
-		Identity:    "gcx", // TODO: use version information to set the identity.
+		Identity:    ManagerIdentity(),
 		AllowsEdits: true,
 	})
 
-	// TODO: should we set timestamp & checksum as well?
+	// The checksum and the timestamp stay empty. Grafana uses both fields to
+	// reconcile a resource from a source over time. gcx pushes one time per
+	// command, and no gcx code reads the two fields back.
 	r.Raw.SetSourceProperties(utils.SourceProperties{
 		Path: r.Source.String(),
 	})
