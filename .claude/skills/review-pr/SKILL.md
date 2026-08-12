@@ -20,6 +20,42 @@ It defines no checks of its own. Run the checks where they already live:
 Authors are asked to run the same triggers before pushing. Assume they did, and
 that anything you find there was missed rather than dismissed.
 
+Generate findings with `/code-review`, then rank and report them as below. The
+same skill runs from a developer's machine and from the review workflow, so a PR
+gets the same treatment either way.
+
+## What blocks a merge here
+
+The severity split matters more than any single finding, because it decides what
+the author has to act on. Reserve the blocking tier for:
+
+- Violations of `CONSTITUTION.md` or `DESIGN.md`. This includes the agent output
+  contract — a command declared `finite` in
+  `cmd/gcx/root/testdata/output_classes.json` must emit exactly one JSON value on
+  stdout, so a flag that writes to a file and leaves stdout empty is a violation,
+  not a nit — and stdout/stderr routing, where a status or fallback notice on
+  stdout lands inside a user's redirected output.
+- Regressions to a released command surface: a removed or narrowed flag value, a
+  changed exit code, or an output shape existing `--json` or `--jq` callers
+  depend on. The surface is stable within a major version.
+- Behaviour that changes inside a diff described as a refactor or an extraction.
+- A credential — token, authorization code, password — that an error message
+  echoes back, or that a prompt leaves in the terminal's input queue when the
+  flow exits early, where the shell reads it after gcx exits. Where a diff adds a
+  control for this, check that it fires on every exit path and not only on
+  success.
+
+Naming, structure, duplication, and test-shape findings are nits at most, even
+when the argument for them is strong.
+
+## Do not report
+
+- Anything CI already enforces: `mise run lint`, the test suite,
+  `reference-drift`, `validate-skills`, and the conformance suites in
+  `cmd/gcx/root/`.
+- Generated files under `docs/reference/cli/`, and anything in `vendor/`.
+- Missing test coverage in files the diff did not touch.
+
 ## Report shape
 
 1. **Intent** — the problem and how the change solves it. Say whether the
@@ -76,6 +112,28 @@ against the problem, not against a line count.
 behaviour outranks a violation a maintainer can waive by writing the waiver into
 the PR. Say which is which — otherwise five blocking findings read as a heavier
 verdict than the change deserves.
+
+## When a workflow invoked this
+
+Unattended, four things change. Everything else is the same review.
+
+- **Post without asking.** The offer below exists because a human is present.
+  In CI nobody can answer, and the trigger is the consent.
+- **Never approve or request changes.** Post as a comment whatever you found.
+  Whether a finding is cheap enough to merge over is a judgement about the
+  author's time that an unattended run cannot make.
+- **Drop what you could not establish** rather than labelling it unverified.
+  There is no author in the loop to answer a speculative finding, and a wrong
+  one costs them a public round of disproof.
+- **Tighter caps**: at most three blocking findings and eight comments in total.
+  Drop the tail rather than downgrading it, and say in the summary that you did.
+- **Close the summary with exactly this line**, so an author who pushes a fix
+  knows how to ask again:
+
+  > Comment `@claude review` for a fresh review.
+
+Silence is a valid result. If nothing meets the bar, say the diff looked clean
+in one line and stop. Do not manufacture a finding.
 
 ## Offering to post the review
 
