@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	goio "io"
+	"maps"
 	"reflect"
 	"sort"
 	"strings"
@@ -126,6 +127,24 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 	default:
 		// For arbitrary types: marshal → map → extract fields.
 		m, err := toMap(value)
+		if err == nil {
+			// Explicitly-marked list envelope (e.g. {"investigations": [...],
+			// "total": 42}): apply field selection per item under the declared
+			// key and pass every other key through untouched as list-level
+			// metadata.
+			if env, ok := value.(ListEnvelope); ok {
+				key := env.ListItemsKey()
+				items := toSliceOfMaps(m[key])
+				extracted := make([]map[string]any, len(items))
+				for i, item := range items {
+					extracted[i] = extractFields(item, c.fields)
+				}
+				out := make(map[string]any, len(m))
+				maps.Copy(out, m)
+				out[key] = extracted
+				return c.json.Encode(dst, out)
+			}
+		}
 		if err != nil {
 			// toMap fails when value is an array/slice (JSON is [...] not {...}).
 			// Fall back to marshaling as an array of objects.
@@ -180,6 +199,17 @@ func (c *FieldSelectCodec) envelopeFieldSelection(m map[string]any) (map[string]
 			extracted[i] = extractFields(item, c.fields)
 		}
 		out := map[string]any{key: extracted}
+		attachListMetaEntry(out, m)
+		return out, true
+	}
+
+	// A single-key envelope whose items are scalars (e.g. {"data": ["a"],
+	// "list_meta": {...}}) never matches singleKeyItems, but a truncated page
+	// must keep its reserved metadata under field selection all the same.
+	// Scalar items have no fields to select into, so selection runs on the
+	// whole envelope and the reserved entry is re-attached.
+	if hasListMetaEntry(m) && singleKeyScalarArray(m) {
+		out := extractFields(m, c.fields)
 		attachListMetaEntry(out, m)
 		return out, true
 	}
@@ -319,6 +349,18 @@ func paginationMetadataValuePresent(value any) bool {
 	return true
 }
 
+// ListEnvelope marks a list-result type whose items live under the returned
+// JSON key, with any sibling keys carrying list-level metadata (e.g. a
+// pagination total). Multi-key list envelopes must implement this so that
+// --json field selection and discovery operate on the items rather than the
+// envelope; single-key envelopes are detected structurally and need no
+// marker. The interface is satisfied structurally, so result types do not
+// need to import this package.
+type ListEnvelope interface {
+	// ListItemsKey returns the JSON key under which the item array lives.
+	ListItemsKey() string
+}
+
 // singleKeyItems reports whether m is a single-key list envelope: exactly one
 // key whose value is an array of objects (or an empty array), optionally
 // accompanied by the reserved ListMetaKey truncation-metadata object.
@@ -346,6 +388,24 @@ func singleKeyItems(m map[string]any) (string, []map[string]any, bool) {
 		return key, items, true
 	}
 	return "", nil, false
+}
+
+// singleKeyScalarArray reports whether m is a single-key envelope (excluding
+// a reserved ListMetaKey entry) whose value is an array not composed entirely
+// of objects — the shape a []string list envelope normalizes to. Empty arrays
+// are not scalar: they satisfy singleKeyItems.
+func singleKeyScalarArray(m map[string]any) bool {
+	if nonListMetaKeyCount(m) != 1 {
+		return false
+	}
+	for key, raw := range m {
+		if isListMetaEntry(key, raw) {
+			continue
+		}
+		arr, ok := raw.([]any)
+		return ok && len(toSliceOfMaps(arr)) != len(arr)
+	}
+	return false
 }
 
 // nonListMetaKeyCount counts m's keys excluding a reserved ListMetaKey entry

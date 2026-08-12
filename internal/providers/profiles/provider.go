@@ -120,6 +120,17 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Output as JSON for scripting
   gcx profiles exemplars profile '{}' --since 30m -o json`,
 			},
+			{
+				Build:     dspyroscope.DataRangeCmd,
+				TokenCost: "small",
+				LLMHint:   "gcx profiles data-range -d abc123 -o json",
+				Example: `
+  # Check whether the datasource holds profiling data, and for what range
+  gcx profiles data-range -d UID
+
+  # Output as JSON (times are milliseconds since epoch)
+  gcx profiles data-range -d UID -o json`,
+			},
 		},
 		ExtraCommands: []signals.CommandBuilder{func(*providers.ConfigLoader) *cobra.Command {
 			return adaptiveStubCmd()

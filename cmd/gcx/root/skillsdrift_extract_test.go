@@ -1,16 +1,68 @@
 package root_test
 
 import (
+	"maps"
 	"reflect"
+	"slices"
 	"testing"
+	"testing/fstest"
 )
+
+// TestSkillDocsFromFS pins that the skill walk reaches nested reference
+// markdown, not just the SKILL.md at each root.
+//
+// This is the assertion that used to be an invocation-count floor. A floor
+// guarded the same regression only by accident — it noticed that the total had
+// dropped — while also snapshotting how much the skills happened to say, so it
+// rotted on every rewrite and blocked consolidation. A synthetic tree tests the
+// traversal directly and stays true no matter how the real skills change.
+func TestSkillDocsFromFS(t *testing.T) {
+	fsys := fstest.MapFS{
+		"alpha/SKILL.md":                  {Data: []byte("# alpha\n")},
+		"alpha/references/deep.md":        {Data: []byte("# deep\n")},
+		"alpha/references/nested/more.md": {Data: []byte("# more\n")},
+		"beta/SKILL.md":                   {Data: []byte("# beta\n")},
+		"beta/assets/template.txt":        {Data: []byte("not markdown\n")},
+		"beta/scripts/run.sh":             {Data: []byte("#!/bin/sh\n")},
+		"README.md":                       {Data: []byte("# top level\n")},
+	}
+
+	docs, err := skillDocsFromFS(fsys, "tree")
+	if err != nil {
+		t.Fatalf("skillDocsFromFS() error = %v", err)
+	}
+
+	want := []string{
+		"tree/README.md",
+		"tree/alpha/SKILL.md",
+		"tree/alpha/references/deep.md",
+		"tree/alpha/references/nested/more.md",
+		"tree/beta/SKILL.md",
+	}
+	if got := slices.Sorted(maps.Keys(docs)); !reflect.DeepEqual(got, want) {
+		t.Errorf("skillDocsFromFS() keys = %v, want %v", got, want)
+	}
+
+	if got := docs["tree/alpha/references/nested/more.md"]; got != "# more\n" {
+		t.Errorf("nested reference content = %q, want %q", got, "# more\n")
+	}
+}
 
 // TestExtractInvocations pins the extraction behaviour of the skills drift
 // check: which parts of a skill markdown document count as gcx invocations
-// (shell fences, inline code spans) and how shell syntax within them is
-// tokenized (continuations, pipes, substitutions, quoting, placeholders).
+// (shell fences, inline code spans), which spellings of the binary count
+// (`gcx`, `bin/gcx`, `./bin/gcx` — contributor-facing skills invoke the binary
+// they just built), and how shell syntax within them is tokenized
+// (continuations, pipes, substitutions, quoting, placeholders).
 // When TestSkillsGcxInvocationsMatchCommandTree misbehaves, these cases
 // separate extractor bugs from genuine command-tree drift.
+//
+// The two extraction paths share the gcxCommandWords list but match it
+// differently — inlineGcxCommands prefix-matches the whole code span, gcxArgs
+// compares the first token after stripping env assignments and shell keywords.
+// A spelling therefore has to survive two different matchers, and only an
+// extractInvocations-level test exercises both. Fence and inline cases below are
+// deliberately paired for that reason.
 func TestExtractInvocations(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -50,6 +102,36 @@ func TestExtractInvocations(t *testing.T) {
 		{
 			name:    "non-gcx inline span ignored",
 			content: "use `kubectl get pods` instead\n",
+			want:    nil,
+		},
+		{
+			name:    "built binary in a shell fence",
+			content: "```bash\nbin/gcx help-tree\n```\n",
+			want:    []invocation{{line: 2, args: []string{"help-tree"}}},
+		},
+		{
+			name:    "built binary with leading ./ in a shell fence",
+			content: "```sh\n./bin/gcx providers list\n```\n",
+			want:    []invocation{{line: 2, args: []string{"providers", "list"}}},
+		},
+		{
+			name:    "built binary in an inline span",
+			content: "read it back with `bin/gcx commands --flat` first\n",
+			want:    []invocation{{line: 1, args: []string{"commands", "--flat"}}},
+		},
+		{
+			name:    "env prefix before the built binary",
+			content: "```bash\nGCX_AGENT_MODE=false bin/gcx help-tree\n```\n",
+			want:    []invocation{{line: 2, args: []string{"help-tree"}}},
+		},
+		{
+			name:    "unrelated path ending in gcx is not an invocation",
+			content: "```bash\nother/gcx help-tree\n```\n",
+			want:    nil,
+		},
+		{
+			name:    "built binary inside a non-shell fence not scanned",
+			content: "```text\nbin/gcx not-a-real-command\n```\n",
 			want:    nil,
 		},
 		{

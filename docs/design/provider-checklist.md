@@ -11,12 +11,12 @@ UX requirements. All items are unless marked otherwise.
 
 ### Interface Compliance
 
-- [ ] Struct implements all five `Provider` interface methods
+- [ ] Struct implements all six `Provider` interface methods (including `TypedRegistrations()`; `nil` is valid for commands-only providers)
 - [ ] `Name()` is lowercase, unique, and stable (it's the config map key)
 - [ ] All config keys are declared in `ConfigKeys()`
 - [ ] Secret keys (passwords, tokens, API keys) have `Secret: true`
 - [ ] `Validate()` returns error pointing to `gcx config set ...`
-- [ ] Provider added to `internal/providers/registry.go:All()`
+- [ ] Provider self-registers via a single `providers.Register()` in `init()` + blank import in `cmd/gcx/root/command.go` (no separate `adapter.Register()` calls)
 
 ### UX Compliance
 
@@ -76,7 +76,7 @@ Commands that are **exempt** from K8s wrapping:
 - [ ] `mise run build` succeeds
 - [ ] `mise run tests` passes with no regressions
 - [ ] `mise run lint` passes
-- [ ] `gcx providers` lists the new provider
+- [ ] `gcx providers list` lists the new provider
 - [ ] `gcx config view` redacts secrets correctly
 
 ---

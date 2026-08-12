@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/grafana/gcx/internal/format"
 )
@@ -138,9 +139,53 @@ func spillThreshold() int {
 	return defaultSpillBytes
 }
 
+// listEnvelopeItemsValue resolves the item slice of a ListEnvelope value by
+// its declared JSON key. Returns an invalid Value when value is not a
+// ListEnvelope or has no matching exported slice field.
+func listEnvelopeItemsValue(value any) reflect.Value {
+	env, ok := value.(ListEnvelope)
+	if !ok {
+		return reflect.Value{}
+	}
+	v := reflect.ValueOf(value)
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return reflect.Value{}
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return reflect.Value{}
+	}
+	key := env.ListItemsKey()
+	t := v.Type()
+	for i := range t.NumField() {
+		f := t.Field(i)
+		if !f.IsExported() || f.Type.Kind() != reflect.Slice {
+			continue
+		}
+		tag := f.Tag.Get("json")
+		if tag == "-" {
+			continue
+		}
+		name, _, _ := strings.Cut(tag, ",")
+		if name == "" {
+			name = f.Name
+		}
+		if name == key {
+			return v.Field(i)
+		}
+	}
+	return reflect.Value{}
+}
+
 // itemCount returns the length of slice/array values and a true bool.
-// Also handles structs with an Items slice field (e.g. unstructured.UnstructuredList).
+// Also handles structs with an Items slice field (e.g. unstructured.UnstructuredList)
+// and ListEnvelope wrappers (item slice under the declared key).
 func itemCount(value any) (int, bool) {
+	if items := listEnvelopeItemsValue(value); items.IsValid() {
+		return items.Len(), true
+	}
 	v := reflect.ValueOf(value)
 	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
@@ -160,19 +205,23 @@ func itemCount(value any) (int, bool) {
 	return 0, false
 }
 
-// previewOf returns the first spillPreviewItems elements for slices/lists,
-// the sorted top-level key names for map shapes, or nil for other shapes.
+// previewOf returns the first spillPreviewItems elements for slices/lists
+// (including ListEnvelope item slices), the sorted top-level key names for
+// map shapes, or nil for other shapes.
 func previewOf(value any) any {
+	take := func(slice reflect.Value) any {
+		n := min(slice.Len(), spillPreviewItems)
+		return slice.Slice(0, n).Interface()
+	}
+	if items := listEnvelopeItemsValue(value); items.IsValid() {
+		return take(items)
+	}
 	v := reflect.ValueOf(value)
 	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
 			return nil
 		}
 		v = v.Elem()
-	}
-	take := func(slice reflect.Value) any {
-		n := min(slice.Len(), spillPreviewItems)
-		return slice.Slice(0, n).Interface()
 	}
 	switch v.Kind() {
 	case reflect.Slice, reflect.Array:

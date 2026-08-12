@@ -1,5 +1,11 @@
 ## Unreleased
 
+### Breaking changes
+
+- `gcx agento11y collections add-conversations` and `gcx agento11y collections remove-conversation` emit `type: gcx.agento11y.collection_membership` instead of `gcx.aio11y.collection_membership`. `schema_version` stays `1` and no fields changed. Scripts that rely on `type` must accept the new value.
+
+### Features
+
 - Added `gcx instrumentation explain <id>` and `gcx instrumentation list-explanations` for looking up finding explanations bundled with `otel-checker` (bumped to v0.3.1).
 - `gcx instrumentation check` now surfaces an `EXPLAIN_ID` column in table output (and `explain_id` field in JSON), feedable directly into `gcx instrumentation explain`.
 - Added `--fix-plan` to `gcx instrumentation check`: synthesizes a single fix plan covering every finding. Uses Grafana Assistant when the current context is a Grafana Cloud stack (billable); falls back to a local aggregation of the explanation docs' "How to fix" sections on OSS/Enterprise or when Assistant is unreachable.
