@@ -2336,6 +2336,32 @@ func TestOAuthManualFlagParses(t *testing.T) {
 	}
 }
 
+// TestOAuthTokenConflictNamesEveryFlag pins the conflict message. The condition
+// covers --oauth-manual too, so a message that names --oauth alone reports a
+// flag that the user never typed.
+func TestOAuthTokenConflictNamesEveryFlag(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		opts *loginOpts
+	}{
+		{name: "oauth_with_token", opts: &loginOpts{OAuth: true, Token: "glsa_example"}},
+		{name: "oauth_manual_with_token", opts: &loginOpts{OAuthManual: true, Token: "glsa_example"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tt.opts.Validate(nil)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "--oauth-manual")
+			assert.Contains(t, err.Error(), "--token")
+		})
+	}
+}
+
 // TestGrafanaAuthOptions pins the auth-method menu order. The caller
 // highlights options[0], so the order decides the default.
 func TestGrafanaAuthOptions(t *testing.T) {

@@ -98,7 +98,7 @@ func (opts *loginOpts) Validate(args []string) error {
 	if (opts.OAuth || opts.OAuthManual) && opts.Token != "" {
 		return gcxerrors.DetailedError{
 			Summary: "conflicting authentication methods",
-			Details: "--oauth and --token are mutually exclusive. OAuth authenticates via browser; --token uses a service account token.",
+			Details: "--oauth, --oauth-manual and --token are mutually exclusive. OAuth authenticates via browser; --token uses a service account token.",
 			Suggestions: []string{
 				"Use --oauth for browser-based login, or --token <token> for a service account token",
 			},
