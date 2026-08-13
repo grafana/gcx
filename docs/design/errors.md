@@ -34,7 +34,7 @@ Error: File not found
 └─
 ```
 
-Reference: `cmd/gcx/fail/detailed.go`
+Reference: `internal/gcxerrors/detailed.go`
 
 ### 4.2 Writing Good Suggestions
 
