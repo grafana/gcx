@@ -14,7 +14,7 @@ weight: 4
 
 `gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
 
-The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values and flag values are never sent. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
+The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values and flag values are never sent. The one exception is query commands, which send a digest of the query expression — never the query itself; see [Query digests](#query-digests). Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
 
 {{< admonition type="note" >}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usage reporting.{{< /admonition >}}
 
@@ -48,6 +48,7 @@ Each `gcx` event contains the following properties:
 | `agent` | The name of the agent harness, if one was detected. | `claude-code` |
 | `target_kind` | Whether the target Grafana is `cloud` or `self-hosted`. Empty when no effective Grafana target could be resolved. Deliberately coarse — never the URL, hostname, or stack slug. | `cloud` |
 | `output_format` | The output format the command used. | `table`, `json` |
+| `query_digest` | On query commands only, a truncated SHA-256 digest of the query expression. See [Query digests](#query-digests). Never the query itself. | `a1b2c3d4e5f60718` |
 
 When the invocation fails to parse, these additional fields are set. They capture what was attempted so the team can understand the differences between what users expect and what exists:
 
@@ -60,6 +61,10 @@ When the invocation fails to parse, these additional fields are set. They captur
 | `parse_error_flags` | The **names** of unknown flags. No flag values are sent. | `verbsoe` |
 | `parse_error_nearest` | The nearest real command or flag name, if one is close. | `search` |
 | `parse_error_distance` | The edit distance to the nearest real name, or `-1` if there is no near match. | `2` |
+
+## Query digests
+
+Commands that run a query (for example `gcx datasources query` and the typed datasource query subcommands) send a `query_digest`: a SHA-256 of the query expression, truncated to 16 hexadecimal characters. It lets us count how often the same query is re-run — for example, an AI agent re-issuing an identical query many times in a short window — without sending the query text. The raw query itself, whitespace aside, is never stored, logged, or transmitted by `gcx`.
 
 ## Invocations that report nothing
 

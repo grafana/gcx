@@ -6,6 +6,7 @@ import (
 	"time"
 
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/spf13/pflag"
 )
 
@@ -141,10 +142,13 @@ func (opts *SharedOpts) ResolveExpr(args []string, exprArgIndex int) (string, er
 	if !haveFlag && !haveArg {
 		return "", errors.New("expression is required: provide it as a positional argument or via --expr")
 	}
-	if haveFlag {
-		return opts.Expr, nil
+	expr := opts.Expr
+	if !haveFlag {
+		expr = args[exprArgIndex]
 	}
-	return args[exprArgIndex], nil
+	// Digest of the query for usage stats — never the raw query.
+	telemetry.CaptureQuery(expr)
+	return expr, nil
 }
 
 // Validate validates shared flags and resolves --since into From/To.

@@ -20,7 +20,8 @@ const (
 // names, hostnames, or anything else that identifies a person, an
 // organisation, or their data. Flags holds flag NAMES only; Command is the
 // resolved command path only. The parse_error_* fields are shape-filtered
-// before they are set (see #578).
+// before they are set (see #578). QueryDigest is the one exception: a hash of
+// the query expression, sent only by query commands.
 type Event struct {
 	// Envelope.
 	Service string `json:"service"`
@@ -49,6 +50,9 @@ type Event struct {
 	Agent        string `json:"agent"`
 	TargetKind   string `json:"target_kind"`
 	OutputFormat string `json:"output_format"`
+
+	// Query commands only; a hash of the query expression.
+	QueryDigest string `json:"query_digest,omitempty"`
 
 	// Parse-failure capture, set only when Outcome is OutcomeParseError.
 	ParseErrorKind     string `json:"parse_error_kind,omitempty"`

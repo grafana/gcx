@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -293,6 +294,23 @@ func TestResolveExpr(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// TestResolveExprCapturesQueryDigest pins the telemetry plumbing: a resolved
+// expression is fed to telemetry.CaptureQuery so a digest rides the usage
+// event. It asserts capture happened and is query-specific.
+func TestResolveExprCapturesQueryDigest(t *testing.T) {
+	opts := &dsquery.SharedOpts{}
+	_, err := opts.ResolveExpr([]string{"up"}, 0)
+	require.NoError(t, err)
+	digestUp := telemetry.QueryDigest()
+	require.NotEmpty(t, digestUp, "resolving an expression must capture a digest")
+
+	opts2 := &dsquery.SharedOpts{Expr: "down"}
+	_, err = opts2.ResolveExpr(nil, 0)
+	require.NoError(t, err)
+	assert.NotEqual(t, digestUp, telemetry.QueryDigest(),
+		"distinct queries must capture distinct digests")
 }
 
 func TestResolveDatasourceFlag(t *testing.T) {

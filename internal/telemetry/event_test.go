@@ -66,10 +66,12 @@ func TestEventFieldInventory(t *testing.T) {
 		ParseErrorFlags:    "verbsoe",
 		ParseErrorNearest:  "search",
 		ParseErrorDistance: 2,
+		QueryDigest:        "0123456789abcdef",
 	}
 
 	got := marshalKeys(t, full)
 	want := append(wantAlwaysPresent(), wantParseErrorOnly()...)
+	want = append(want, "query_digest")
 	assert.ElementsMatch(t, want, keys(got), "full event must emit exactly the documented field set")
 }
 
@@ -77,6 +79,8 @@ func TestEventOmitsParseFieldsWhenUnset(t *testing.T) {
 	got := marshalKeys(t, telemetry.Event{Outcome: telemetry.OutcomeOK})
 	assert.ElementsMatch(t, wantAlwaysPresent(), keys(got),
 		"non-parse-error events must omit parse_error_* and keep all other fields, even zero-valued")
+	assert.NotContains(t, keys(got), "query_digest",
+		"non-query events must omit query_digest")
 }
 
 func TestEventNoNearMatchDistanceSurvives(t *testing.T) {
