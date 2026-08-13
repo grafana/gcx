@@ -45,7 +45,7 @@ func TestIsAgentMode(t *testing.T) {
 		},
 		{
 			name:     "CODEX_THREAD_ID set to a thread ID",
-			envVars:  map[string]string{"CODEX_THREAD_ID": "0198a213-9f2c-7e33-b7c5-3a1d4e5f6a7b"},
+			envVars:  map[string]string{"CODEX_THREAD_ID": "some-thread-id"},
 			wantMode: true,
 		},
 		{
@@ -235,7 +235,7 @@ func TestName(t *testing.T) {
 		},
 		{
 			name:    "CODEX_THREAD_ID names codex",
-			envVars: map[string]string{"CODEX_THREAD_ID": "0198a213-9f2c-7e33-b7c5-3a1d4e5f6a7b"},
+			envVars: map[string]string{"CODEX_THREAD_ID": "some-thread-id"},
 			want:    "codex",
 		},
 		{
