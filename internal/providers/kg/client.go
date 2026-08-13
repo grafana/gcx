@@ -50,8 +50,11 @@ const (
 	suppressionsPath         = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
 	suppressionsValidatePath = suppressionsPath + "-validate"
 	// Alert notification configs (AlertConfigController). Structural twin of the
-	// disabled-alert (suppression) endpoints, but with a richer DTO. Reads use
-	// the plural /alerts collection, with optional per-category suffixes.
+	// disabled-alert (suppression) endpoints, but a POST-based upsert and with a
+	// richer DTO. Writes and single deletes use the singular /alert path; reads
+	// use the plural /alerts collection, with optional per-category suffixes.
+	alertConfigPath         = pluginResourcePath + "/asserts/api-server/v1/config/alert"
+	alertConfigByNameFmt    = alertConfigPath + "/%s"
 	alertConfigsPath        = pluginResourcePath + "/asserts/api-server/v1/config/alerts"
 	alertConfigsCategoryFmt = alertConfigsPath + "/%s"
 	entityLookupPath        = pluginResourcePath + "/asserts/api-server/v1/entity"
@@ -524,6 +527,30 @@ func (c *Client) GetNotification(ctx context.Context, name string) (*AlertConfig
 		}
 	}
 	return nil, &APIError{StatusCode: http.StatusNotFound, message: fmt.Sprintf("notification config %q not found", name)}
+}
+
+// UpsertNotification creates or updates a single alert notification config
+// without affecting others, via the single-item POST endpoint.
+func (c *Client) UpsertNotification(ctx context.Context, cfg AlertConfig) error {
+	return c.postJSON(ctx, alertConfigPath, cfg, nil)
+}
+
+// DeleteNotification deletes a single alert notification config by name.
+func (c *Client) DeleteNotification(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+		c.host+fmt.Sprintf(alertConfigByNameFmt, url.PathEscape(name)), nil)
+	if err != nil {
+		return fmt.Errorf("kg: create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return readError(resp)
+	}
+	return nil
 }
 
 // ConfigFieldError is a single field-level validation failure reported by a
