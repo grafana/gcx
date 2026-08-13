@@ -162,6 +162,52 @@ func TestFirstRunNoticeSkippedWhenStateHomeUnknown(t *testing.T) {
 	assert.Empty(t, out.String(), "unknown state home must skip the notice, not repeat it")
 }
 
+// A state file that cannot be read back must suppress the notice rather than
+// re-show it forever. Mode 0200 is the case that bites: the read fails but the
+// write succeeds, so a check that only looked at read success would rewrite the
+// flag and print the notice on every single interactive run, with nothing the
+// user could do about it.
+func TestFirstRunNoticeSkippedWhenStateFileUnreadable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission checks do not apply to root")
+	}
+	path := filepath.Join(t.TempDir(), "gcx", firstRunNoticeFileName)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(t, os.WriteFile(path, []byte(noticeRevision+"\n"), 0o200))
+
+	var out strings.Builder
+	maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
+	assert.Empty(t, out.String(), "an unreadable flag file must skip the notice, not repeat it")
+}
+
+// noticeRevision has to move whenever the notice's substance changes, or a
+// revised disclosure ships under the consent people already accepted. Nothing
+// mechanical tied the two together: every other assertion in this file is a
+// Contains, so a contributor could add a newly collected field to the notice,
+// leave the revision at 2, and no test would fail.
+//
+// Pinning the exact text closes that. Any edit fails here, which forces the
+// author to make the revision decision deliberately instead of by omission.
+func TestFirstRunNoticeTextIsPinnedToItsRevision(t *testing.T) {
+	const pinnedRevision = "2"
+	const pinnedNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect arguments, free-form flag values, or resource names, and no raw batch or resource counts. Flags you set are recorded by name only.
+
+For the resource commands that work on batches, we record fixed size categories for the operation's succeeded, failed and skipped portions, rather than numbers. What each portion counts depends on the command: for some it is individual resources, for others whole resource types. Two of those categories, "0" and "1", cover a single value each; the rest are ranges. We also record the output format used, and whether the operation ran in dry-run mode.
+You can opt out by setting GCX_TELEMETRY=disabled, or adding to your gcx config file:
+  diagnostics:
+    telemetry: disabled
+Find out more at https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/
+`
+
+	require.Equal(t, pinnedRevision, noticeRevision,
+		"noticeRevision moved: update pinnedNotice below to the text this revision shows")
+	assert.Equal(t, pinnedNotice, firstRunNotice,
+		"the notice text changed. If the change alters what is collected or how it is "+
+			"described, bump noticeRevision so existing installs see the new disclosure, "+
+			"then update this pin. If it is purely cosmetic, update the pin alone and say so "+
+			"in the commit message")
+}
+
 func TestFirstRunNoticeSkippedWhenStateDirUnwritable(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("permission checks do not apply to root")

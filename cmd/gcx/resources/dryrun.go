@@ -104,6 +104,22 @@ func captureBatchVolume(summary cmdio.MutationSummary, dryRun bool, opErr error)
 	})
 }
 
+// summaryCounts reads an OperationSummary's three counters into the shared
+// MutationSummary.
+//
+// One copy of this conversion, so the counts validate captures for telemetry
+// cannot drift from the ones push and delete print. It deliberately stops at
+// the counts: callers that need enumerated failures go through
+// batchMutationFromSummary, and the telemetry path must not build resource
+// kinds and names it would only discard.
+func summaryCounts(summary *remote.OperationSummary) cmdio.MutationSummary {
+	return cmdio.MutationSummary{
+		Succeeded: summary.SuccessCount(),
+		Failed:    summary.FailedCount(),
+		Skipped:   summary.SkippedCount(),
+	}
+}
+
 // batchMutationFromSummary converts an OperationSummary into the shared
 // BatchMutation result: counts plus enumerated failures (successes and skips
 // are counted, not listed). This value is what push/delete write to stdout
@@ -111,11 +127,7 @@ func captureBatchVolume(summary cmdio.MutationSummary, dryRun bool, opErr error)
 // the structured document; the text codec below reproduces the human line.
 func batchMutationFromSummary(action string, summary *remote.OperationSummary, dryRun bool) cmdio.BatchMutation {
 	result := cmdio.NewBatchMutation(action)
-	result.Summary = cmdio.MutationSummary{
-		Succeeded: summary.SuccessCount(),
-		Failed:    summary.FailedCount(),
-		Skipped:   summary.SkippedCount(),
-	}
+	result.Summary = summaryCounts(summary)
 	result.DryRun = dryRun
 	for _, failure := range summary.Failures() {
 		target := cmdio.MutationTarget{}

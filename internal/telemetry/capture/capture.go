@@ -10,11 +10,27 @@
 // package is that pattern given one home, so the next signal does not add a
 // fourth bespoke global to a fourth unrelated package.
 //
-// This package deliberately imports nothing from gcx, so any package can write
-// to it without risking an import cycle, and it holds no vocabulary: values are
-// raw counts and booleans. Mapping them to the wire contract (bucket labels,
-// allowlists) belongs to the telemetry package next to Event, so the privacy
-// filtering all lives in one place.
+// Be accurate about why this is its own package rather than living beside Event
+// in internal/telemetry: it is not an import cycle. Nothing internal/telemetry
+// depends on writes a capture, so Batch could sit next to Event and still
+// compile.
+//
+// The reason is the writers, and it is forward-looking rather than a
+// description of today. A captured fact is set wherever it is observed, which
+// for signals past this one means inside internal packages rather than the
+// command tree — and a leaf that imports nothing from gcx can absorb a writer
+// from anywhere without anyone first having to check the import graph. Keeping
+// it separate also means writing one signal does not pull the wire vocabulary
+// and the HTTP exporter in behind it.
+//
+// Both claims above are direction, not finished state. Today the only writer is
+// cmd/gcx/resources, and config.CapturedTargetKind and root.TelemetryInfo are
+// still read by the same buildUsageEvent without living here. Moving
+// target_kind in is tracked as #1179.
+//
+// This package holds no vocabulary: values are raw counts and booleans. Mapping
+// them to the wire contract (bucket labels, allowlists) belongs to the telemetry
+// package next to Event, so the privacy filtering all lives in one place.
 //
 // Every value here is read by cmd/gcx's usage-event builder and must obey the
 // same privacy invariant as telemetry.Event: shape only, never content.

@@ -1,8 +1,10 @@
 package telemetry
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,7 +84,32 @@ func maybeShowFirstRunNotice(w io.Writer, mode Mode, isTTY, isCI, isAgent bool, 
 	// A file written for the current revision means this disclosure has been
 	// shown. An older file (including the empty one written before revisions
 	// existed) means the notice has changed since, so show it again.
-	if data, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(data)) == noticeRevision {
+	//
+	// Any read failure other than "not there" suppresses too. Testing the
+	// content rather than mere existence means a state file that cannot be read
+	// back would otherwise re-show the notice on every single run with no way
+	// to stop it: a write-only file (mode 0200) fails the read but accepts the
+	// write, so the flag never takes effect. Skipping beats repeating, matching
+	// the unwritable-dir behaviour below.
+	//
+	// The cost is that an unreadable flag file suppresses the disclosure for
+	// good, and never showing a consent notice is the worse failure in the
+	// abstract. It is still the right trade here, because a file that exists but
+	// cannot be read is nearly always one an earlier run created after showing
+	// the notice — a `sudo -E gcx` leaving a root-owned file in the user's state
+	// dir is the realistic way to get here — so suppressing withholds a
+	// disclosure that was already made, while the alternative nags forever.
+	//
+	// This cannot catch a file that reads back clean but does not persist — a
+	// symlink to /dev/null reads as empty with no error, so it looks exactly
+	// like the pre-revision flag file we deliberately re-show for. That is
+	// inherent to keying the decision on content, which is what lets a revised
+	// disclosure reach installs that already have a flag file.
+	data, err := os.ReadFile(path)
+	switch {
+	case err == nil && strings.TrimSpace(string(data)) == noticeRevision:
+		return
+	case err != nil && !errors.Is(err, fs.ErrNotExist):
 		return
 	}
 	// Record before showing: when the state dir is unwritable, skipping the

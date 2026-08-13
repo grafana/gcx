@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/cmd/gcx/root"
+	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/stretchr/testify/assert"
@@ -15,11 +16,34 @@ import (
 // isolate points the device-id and notice files at a temp dir so building an
 // event never reads or writes the developer's real telemetry state, and clears
 // any capture left behind by another case.
+//
+// Deliberately hand-rolled rather than calling testutils.SandboxConfigEnv,
+// which covers strictly more (HOME, the config dirs, agent mode). This package
+// cannot import internal/testutils at all: its package init() unsets
+// GCX_AGENT_MODE process-wide, and the subprocess tests in main_test.go re-exec
+// this very test binary with GCX_AGENT_MODE=true to assert agent-mode output.
+// The child's init would wipe the variable before the helper runs, so importing
+// testutils anywhere in this package turns those tests red with human-formatted
+// output. Verified: the swap fails TestConfigCheckProcessExit and
+// TestConfigSetPlaintextFallbackWarningProcess.
+//
+// buildUsageEvent reads a second process-global besides this package's, so
+// target_kind is cleared here too: it is set by whichever case last loaded a
+// config and would otherwise bleed into unrelated cases, which is the exact
+// cross-case leak this helper exists to stop.
+//
+// The gap that remains is real but currently unasserted: buildUsageEvent also
+// derives IsAgent and Agent from agent.IsAgentMode(), IsCI and CIProvider from
+// telemetry.DetectCI(), and IsTTY from the real stdout. No case here asserts on
+// any of those. A case that does must pin them locally — it cannot reach for
+// the shared sandbox.
 func isolate(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	capture.Reset()
 	t.Cleanup(capture.Reset)
+	internalconfig.ClearCapturedTargetKind()
+	t.Cleanup(internalconfig.ClearCapturedTargetKind)
 }
 
 func pushInfo() *root.TelemetryInfo {

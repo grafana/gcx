@@ -94,6 +94,9 @@ func TestResolvedOutputFormat_AllowlistsFormatsAndDropsPaths(t *testing.T) {
 // it reports is a wire-contract change, not part of adding batch volume. It
 // matters because correlating batch volume against output_format is one of the
 // first questions the new fields invite, and the answer is currently skewed.
+//
+// Tracked in #1178. This test asserts the wrong answer on purpose, so invert it
+// as part of that fix rather than reading it as the intended contract.
 func TestResolvedOutputFormat_JSONFlagIsNotReflected(t *testing.T) {
 	_, get, _ := telemetryTestTree()
 	get.Flags().String("output", "text", "")
