@@ -40,6 +40,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
+
 ## v1.0.0 (2026-07-28)
 
 ### Features

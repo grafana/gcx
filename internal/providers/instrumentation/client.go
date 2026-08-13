@@ -3,6 +3,7 @@ package instrumentation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -50,6 +51,8 @@ type BackendURLs struct {
 	TempoUsername     string `json:"tempo_username"`
 	PyroscopeURL      string `json:"pyroscope_url"`
 	PyroscopeUsername string `json:"pyroscope_username"`
+	OTLPURL           string `json:"otlp_url,omitempty"`
+	OTLPUsername      string `json:"otlp_username,omitempty"`
 }
 
 // BackendURLsFromStack resolves datasource write endpoints from the Grafana
@@ -65,7 +68,41 @@ func BackendURLsFromStack(stack cloud.StackInfo) BackendURLs {
 		TempoUsername:     strconv.Itoa(stack.HTInstanceID),
 		PyroscopeURL:      appendPath(stack.HPInstanceURL, "/ingest"),
 		PyroscopeUsername: strconv.Itoa(stack.HPInstanceID),
+		OTLPURL:           otlpGatewayURL(stack),
+		OTLPUsername:      strconv.Itoa(stack.ID),
 	}
+}
+
+// otlpGatewayURL derives the OTLP gateway endpoint, which GCOM does not return.
+func otlpGatewayURL(stack cloud.StackInfo) string {
+	if stack.RegionSlug == "" {
+		return ""
+	}
+	domain := grafanaCloudDomain(
+		stack.HMInstancePromURL, stack.HLInstanceURL, stack.HTInstanceURL, stack.HPInstanceURL)
+	if domain == "" {
+		return ""
+	}
+	return "https://otlp-gateway-" + stack.RegionSlug + "." + domain + "/otlp"
+}
+
+// grafanaCloudDomain returns the base domain (host minus its first DNS label) of
+// the first usable ingest URL, e.g. "grafana.net" from a "prometheus-...grafana.net" host.
+func grafanaCloudDomain(ingestURLs ...string) string {
+	for _, raw := range ingestURLs {
+		if raw == "" {
+			continue
+		}
+		u, err := url.Parse(raw)
+		if err != nil {
+			continue
+		}
+		host := u.Hostname()
+		if i := strings.Index(host, "."); i >= 0 && i < len(host)-1 {
+			return host[i+1:]
+		}
+	}
+	return ""
 }
 
 // FleetManagement holds the fleet management connection parameters used by the
@@ -317,6 +354,10 @@ func (c *Client) GetAppInstrumentation(ctx context.Context, clusterName string) 
 // SetAppInstrumentation sets app instrumentation configuration for the given cluster.
 // The namespaces slice is a whole-list replacement of the cluster's app config.
 func (c *Client) SetAppInstrumentation(ctx context.Context, clusterName string, namespaces []App, urls BackendURLs) error {
+	if urls.OTLPURL == "" {
+		return errors.New("SetAppInstrumentation: could not resolve the OTLP gateway URL for this stack (region slug or ingest URLs missing from stack info)")
+	}
+
 	wireNS := make([]wireAppNamespace, 0, len(namespaces))
 	for _, ns := range namespaces {
 		apps := make([]wireAppOverride, 0, len(ns.Apps))

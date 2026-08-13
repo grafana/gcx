@@ -48,18 +48,19 @@ func runServiceMutation(t *testing.T, verb string, outOpts *cmdio.Options) (stri
 	ts := srv.start(t)
 	client := makeIncludeClient(t, ts.URL)
 
+	urls := instrumentation.BackendURLs{OTLPURL: "https://otlp-gateway.example/otlp"}
 	var out bytes.Buffer
 	var err error
 	switch verb {
 	case "include":
 		err = services.RunInclude(context.Background(), outOpts, client, "c1", "grotshop", "frontend",
-			instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+			urls, instrumentation.PromHeaders{}, &out)
 	case "exclude":
 		err = services.RunExclude(context.Background(), outOpts, client, "c1", "grotshop", "frontend",
-			instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+			urls, instrumentation.PromHeaders{}, &out)
 	case "clear":
 		err = services.RunClear(context.Background(), outOpts, client, "c1", "grotshop", "frontend",
-			instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+			urls, instrumentation.PromHeaders{}, &out)
 	default:
 		t.Fatalf("unknown verb %q", verb)
 	}

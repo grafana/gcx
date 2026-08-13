@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/stretchr/testify/assert"
@@ -168,7 +169,8 @@ func TestClient_SetAppInstrumentation(t *testing.T) {
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
-			err := client.SetAppInstrumentation(context.Background(), tt.clusterName, tt.namespaces, instrumentation.BackendURLs{})
+			urls := instrumentation.BackendURLs{OTLPURL: "https://otlp-gateway.example/otlp"}
+			err := client.SetAppInstrumentation(context.Background(), tt.clusterName, tt.namespaces, urls)
 
 			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/SetAppInstrumentation")
 			assert.Contains(t, cr.Body, tt.clusterName)
@@ -180,6 +182,70 @@ func TestClient_SetAppInstrumentation(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// SetAppInstrumentation rejects empty otlp_url/otlp_username with HTTP 400, so
+// BackendURLs must reach the wire.
+func TestClient_SetAppInstrumentation_SendsBackendURLs(t *testing.T) {
+	handler, cr := captureHandler(t, http.StatusOK, `{}`)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	urls := instrumentation.BackendURLs{
+		MimirURL:     "https://prometheus.example/api/prom/push",
+		OTLPURL:      "https://otlp-gateway.example/otlp",
+		OTLPUsername: "1075384",
+	}
+	err := newTestClient(srv.URL).SetAppInstrumentation(
+		context.Background(), "prod-1",
+		[]instrumentation.App{{Name: "default"}}, urls)
+	require.NoError(t, err)
+
+	assert.Contains(t, cr.Body, `"otlp_url":"https://otlp-gateway.example/otlp"`)
+	assert.Contains(t, cr.Body, `"otlp_username":"1075384"`)
+	assert.Contains(t, cr.Body, `"mimir_url":"https://prometheus.example/api/prom/push"`)
+}
+
+// An unresolved OTLP URL is rejected before any request is sent, so the caller
+// gets an actionable error instead of the server's opaque HTTP 400.
+func TestClient_SetAppInstrumentation_EmptyOTLPURLFailsFast(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("server must not be called when the OTLP URL is unresolved")
+	}))
+	defer srv.Close()
+
+	err := newTestClient(srv.URL).SetAppInstrumentation(
+		context.Background(), "prod-1",
+		[]instrumentation.App{{Name: "default"}}, instrumentation.BackendURLs{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "OTLP gateway URL")
+}
+
+func TestBackendURLsFromStack_OTLP(t *testing.T) {
+	got := instrumentation.BackendURLsFromStack(cloud.StackInfo{
+		ID:                1075384,
+		RegionSlug:        "prod-us-east-0",
+		HMInstancePromURL: "https://prometheus-prod-13-prod-us-east-0.grafana.net",
+	})
+	assert.Equal(t, "https://otlp-gateway-prod-us-east-0.grafana.net/otlp", got.OTLPURL)
+	assert.Equal(t, "1075384", got.OTLPUsername)
+
+	// Domain follows the environment rather than defaulting to prod.
+	got = instrumentation.BackendURLsFromStack(cloud.StackInfo{
+		RegionSlug:        "dev-us-central-0",
+		HMInstancePromURL: "https://prometheus-dev-01-dev-us-central-0.grafana-dev.net",
+	})
+	assert.Equal(t, "https://otlp-gateway-dev-us-central-0.grafana-dev.net/otlp", got.OTLPURL)
+
+	// Domain sourced from a non-metrics ingest URL when the prom URL is absent.
+	got = instrumentation.BackendURLsFromStack(cloud.StackInfo{
+		RegionSlug:    "prod-us-east-0",
+		HLInstanceURL: "https://logs-prod-006.grafana.net",
+	})
+	assert.Equal(t, "https://otlp-gateway-prod-us-east-0.grafana.net/otlp", got.OTLPURL)
+
+	assert.Empty(t, instrumentation.BackendURLsFromStack(cloud.StackInfo{}).OTLPURL)
+	assert.Empty(t, instrumentation.BackendURLsFromStack(cloud.StackInfo{RegionSlug: "prod-us-east-0"}).OTLPURL)
 }
 
 func TestClient_GetK8SInstrumentation(t *testing.T) {
@@ -268,6 +334,8 @@ func TestClient_SetK8SInstrumentation(t *testing.T) {
 
 			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/SetK8SInstrumentation")
 			assert.Contains(t, cr.Body, tt.clusterName)
+			assert.NotContains(t, cr.Body, "otlp_url")
+			assert.NotContains(t, cr.Body, "otlp_username")
 
 			if tt.wantErr {
 				require.Error(t, err)
