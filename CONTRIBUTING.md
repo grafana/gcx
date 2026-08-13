@@ -12,6 +12,14 @@ Before implementing features or commands, read:
 Naming a command? Start with the
 [command naming and placement guide](docs/design/command-naming.md).
 
+Adding, extending, or reviewing a gcx capability — a provider, datasource kind,
+resource adapter, cloud command, or bundled skill? Ask your coding agent to use
+the [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md) skill. It
+settles whether a new command is warranted at all and where it belongs, then
+designs the command's agent-facing contract before any code gets written. It
+hands implementation off to `add-provider` or `add-datasource` where those
+apply, and runs a pre-review self-check over the finished diff.
+
 ## Issue Tracking
 
 Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues).
