@@ -2,13 +2,13 @@ package root_test
 
 // Regression tests for issue #1048: explicit --config must reach the direct
 // `gcx appo11y` commands (services, overrides, settings) — the same defect
-// class as #951/aio11y, with two extra config-backed surfaces to guard:
+// class as #951/agento11y, with two extra config-backed surfaces to guard:
 // datasource resolution (the query body's datasource UID and the /series
 // path both come from the selected config) and the best-effort datasource
 // UID save-back (which must write to the selected config file, not the
 // default one).
 //
-// The harness mirrors aio11y_config_routing_test.go (same package): the real
+// The harness mirrors agento11y_config_routing_test.go (same package): the real
 // root command tree via root.NewCommandForTest, two recording servers A and B
 // behind config files with distinct URLs, bearer tokens, and stack IDs. The
 // stack IDs make routing observable in the services query path itself

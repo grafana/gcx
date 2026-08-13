@@ -254,3 +254,47 @@ func TestFormatSeriesTableWide(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatDataRangeTable(t *testing.T) {
+	tests := []struct {
+		name     string
+		resp     *pyroscope.ProfileStatsResponse
+		contains []string
+	}{
+		{
+			name: "data ingested renders RFC3339 bounds",
+			resp: &pyroscope.ProfileStatsResponse{
+				DataIngested:      true,
+				OldestProfileTime: 1711800000000,
+				NewestProfileTime: 1711886400000,
+			},
+			contains: []string{
+				"DATA_INGESTED", "OLDEST_PROFILE", "NEWEST_PROFILE",
+				"true", "2024-03-30T12:00:00Z", "2024-03-31T12:00:00Z",
+			},
+		},
+		{
+			name:     "no data ingested renders placeholders",
+			resp:     &pyroscope.ProfileStatsResponse{},
+			contains: []string{"false", "-"},
+		},
+		{
+			name: "zero oldest time renders placeholder even when ingested",
+			resp: &pyroscope.ProfileStatsResponse{
+				DataIngested:      true,
+				NewestProfileTime: 1711886400000,
+			},
+			contains: []string{"true", "-", "2024-03-31T12:00:00Z"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			require.NoError(t, pyroscope.FormatDataRangeTable(&buf, tt.resp))
+			for _, want := range tt.contains {
+				assert.Contains(t, buf.String(), want)
+			}
+		})
+	}
+}
