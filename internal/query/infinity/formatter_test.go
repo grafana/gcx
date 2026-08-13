@@ -3,7 +3,9 @@ package infinity_test
 import (
 	"bytes"
 	"testing"
+	"time"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -96,4 +98,58 @@ func TestFormatTable(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFormatArrow(t *testing.T) {
+	resp := &infinity.QueryResponse{
+		Columns: []infinity.Column{
+			{Name: "host", Type: "string"},
+			{Name: "status", Type: "number"},
+			{Name: "up", Type: "boolean"},
+			{Name: "checked_at", Type: "time"},
+		},
+		Rows: [][]any{
+			{"server-1", float64(200), true, float64(1700000000000)},
+			{"server-2", float64(500), false, float64(1700000060000)},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, infinity.FormatArrow(&buf, resp))
+
+	headers, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"HOST", "STATUS", "UP", "CHECKED_AT"}, headers)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "server-1", rows[0][0])
+	assert.InEpsilon(t, 200.0, rows[0][1], 0.0001)
+	assert.Equal(t, true, rows[0][2])
+	assert.Equal(t, time.UnixMilli(1700000000000).UTC(), rows[0][3])
+}
+
+func TestFormatArrow_RowShorterThanColumns(t *testing.T) {
+	resp := &infinity.QueryResponse{
+		Columns: []infinity.Column{
+			{Name: "host", Type: "string"},
+			{Name: "status", Type: "number"},
+		},
+		Rows: [][]any{
+			{"server-1"}, // missing the trailing "status" cell
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, infinity.FormatArrow(&buf, resp))
+
+	_, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "server-1", rows[0][0])
+	assert.Nil(t, rows[0][1])
+}
+
+func TestFormatArrow_NoData(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, infinity.FormatArrow(&buf, &infinity.QueryResponse{}))
+	assert.Empty(t, buf.String())
 }

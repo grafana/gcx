@@ -9,7 +9,7 @@ Advanced patterns for querying Prometheus and Loki datasources with gcx.
 - [Loki Query Patterns](#loki-query-patterns) - stream selectors, log metric queries
 - [Prometheus Datasource Operations](#prometheus-datasource-operations) - label/metadata discovery workflow
 - [Loki Datasource Operations](#loki-datasource-operations) - label/series discovery workflow
-- [Output Formats](#output-formats) - table, wide, JSON shapes, `--json` field selection
+- [Output Formats](#output-formats) - table, wide, JSON shapes, Arrow for DuckDB analysis, `--json` field selection
 - [Performance Tips](#performance-tips) - Loki series limits, distributed-request counting, indexed vs structured-metadata vs parsed labels
 - [Comparison Queries](#comparison-queries) - comparing now vs a past instant
 
@@ -348,6 +348,47 @@ JSON structure:
 }
 ```
 
+### Arrow Format (for SQL-based analysis)
+
+`-o arrow` gives one row per series/label-combination, one column per label
+plus TIMESTAMP/VALUE — same shape as the wide table, but as real typed Arrow
+columns (timestamps, floats) instead of stringified cells. It's the
+preferred format for filtering, aggregating, or joining query results in
+DuckDB — better than a python or jq script, and better than `-o json`/`-o
+csv` for this because DuckDB gets real types with zero inference (no
+guessing whether a column is a number or a timestamp from its text).
+
+gcx picks the right Arrow IPC variant automatically: the streaming format
+when stdout is a pipe, the file format (footer, random access) when it's
+redirected to disk. Either way, DuckDB reads it the same way — you don't
+have to know or care which one you got:
+
+```bash
+# Requires the community arrow extension (not DuckDB's bundled one):
+duckdb -c "INSTALL arrow FROM community; LOAD arrow;"
+
+# Piped straight in — DuckDB auto-detects the streaming format
+gcx metrics query -d <uid> 'up' -o arrow 2>/dev/null | \
+  duckdb -unsigned -c "LOAD arrow; SELECT * FROM read_arrow('/dev/stdin') WHERE VALUE = 0"
+
+# Aggregate a range query by label — top offenders by mean value
+gcx metrics query -d <uid> \
+  'rate(http_requests_total{status=~"5.."}[5m])' \
+  --from now-1h --to now --step 1m -o arrow 2>/dev/null | \
+  duckdb -unsigned -c "LOAD arrow; SELECT job, avg(VALUE) AS avg_rate FROM read_arrow('/dev/stdin') GROUP BY job ORDER BY avg_rate DESC"
+
+# Or persist to a file first (gcx writes the file-format variant since
+# stdout is a regular file here), then query it directly by path
+gcx metrics query -d <uid> 'up' -o arrow 2>/dev/null > up.arrow
+duckdb -unsigned -c "LOAD arrow; SELECT count(*) FROM read_arrow('up.arrow') WHERE VALUE = 0"
+```
+
+Covers every response type `-o table` does — Prometheus, Loki (log and
+metric queries), Tempo (search, metrics, and get-trace as flat span
+records — no ASCII tree connectors baked into a column), Infinity,
+InfluxDB, SQL (ClickHouse/Athena), ClickHouse table/column discovery,
+Athena discovery, and CloudWatch.
+
 ### Field Selection
 
 Use `--json` to select fields without external tools:
@@ -358,14 +399,16 @@ gcx metrics query -d <uid> 'up' --json list
 
 # Select specific fields
 gcx metrics query -d <uid> 'up' --json metric,value
-
-# For complex filtering, pipe to python3 (jq may not be installed)
-gcx metrics query -d <uid> 'up' -o json 2>/dev/null | \
-  python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data['data']['result']))"
 ```
 
-> **Piping caution**: Never use `2>&1` when piping gcx JSON output — gcx writes
-> hints to stderr that break JSON parsers. Use `2>/dev/null` instead.
+`--json` is for trimming a JSON payload down to a couple of fields. For
+anything beyond that — filtering, aggregation, grouping, joining multiple
+queries — reach for `-o arrow | duckdb` above instead of a python or jq
+script.
+
+> **Piping caution**: Never use `2>&1` when piping gcx output through an
+> external tool (duckdb, jq, python) — gcx writes hints to stderr that break
+> JSON/Arrow parsers. Use `2>/dev/null` instead.
 
 ## Performance Tips
 

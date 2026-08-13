@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-logfmt/logfmt"
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/style"
 )
@@ -44,11 +45,15 @@ func (c *rawQueryCodec) Decode(io.Reader, any) error {
 
 type displayLogEntry struct {
 	Timestamp string
-	Level     string
-	Source    string
-	Message   string
-	Details   string
-	Stream    map[string]string
+	// TimestampTime is the same instant as Timestamp, kept as a real
+	// time.Time (zero value if e.Timestamp failed to parse) so Arrow's
+	// Timestamp columns don't have to re-parse the human-formatted string.
+	TimestampTime time.Time
+	Level         string
+	Source        string
+	Message       string
+	Details       string
+	Stream        map[string]string
 }
 
 func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
@@ -149,6 +154,65 @@ func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
 	return t.Render(w)
 }
 
+// FormatQueryArrow formats a QueryResponse as an Arrow IPC payload, one
+// column per stream label — the same column layout as FormatQueryTableWide,
+// with TIME as a real timestamp column instead of a formatted string.
+func FormatQueryArrow(w io.Writer, resp *QueryResponse) error {
+	entries := buildDisplayEntries(resp)
+	if len(entries) == 0 {
+		return nil
+	}
+
+	labelNames := collectStreamLabelNames(resp.Data.Result)
+	hasLevel := anyEntry(entries, func(e displayLogEntry) string { return e.Level })
+	hasSource := anyEntry(entries, func(e displayLogEntry) string { return e.Source })
+	hasDetails := anyEntry(entries, func(e displayLogEntry) string { return e.Details })
+
+	fields := []arrowtable.Field{arrowtable.Timestamp("TIME")}
+	if hasLevel {
+		fields = append(fields, arrowtable.Utf8("LEVEL"))
+	}
+	if hasSource {
+		fields = append(fields, arrowtable.Utf8("SOURCE"))
+	}
+	for _, name := range labelNames {
+		fields = append(fields, arrowtable.Utf8(strings.ToUpper(name)))
+	}
+	fields = append(fields, arrowtable.Utf8("MESSAGE"))
+	if hasDetails {
+		fields = append(fields, arrowtable.Utf8("DETAILS"))
+	}
+
+	b := arrowtable.NewBuilder(fields)
+	for _, entry := range entries {
+		row := make([]any, 0, len(fields))
+		row = append(row, timeOrNil(entry.TimestampTime))
+		if hasLevel {
+			row = append(row, entry.Level)
+		}
+		if hasSource {
+			row = append(row, entry.Source)
+		}
+		for _, name := range labelNames {
+			row = append(row, entry.Stream[name])
+		}
+		row = append(row, entry.Message)
+		if hasDetails {
+			row = append(row, entry.Details)
+		}
+		b.Row(row...)
+	}
+
+	return b.Write(w)
+}
+
+func timeOrNil(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t
+}
+
 // FormatQueryRaw prints only the original log line bodies.
 func FormatQueryRaw(w io.Writer, resp *QueryResponse) error {
 	if resp == nil || len(resp.Data.Result) == 0 {
@@ -243,6 +307,96 @@ func FormatMetricQueryTable(w io.Writer, resp *MetricQueryResponse) error {
 	return t.Render(w)
 }
 
+// FormatMetricQueryArrow formats a MetricQueryResponse as an Arrow IPC
+// payload: TIMESTAMP, VALUE, and one column per metric label — the same
+// layout as FormatMetricQueryTable, with real types instead of strings.
+func FormatMetricQueryArrow(w io.Writer, resp *MetricQueryResponse) error {
+	if len(resp.Data.Result) == 0 {
+		return nil
+	}
+
+	labelNames := collectMetricLabelNames(resp.Data.Result)
+	fields := make([]arrowtable.Field, 0, len(labelNames)+2)
+	fields = append(fields, arrowtable.Timestamp("TIMESTAMP"), arrowtable.Float64("VALUE"))
+	for _, name := range labelNames {
+		fields = append(fields, arrowtable.Utf8(strings.ToUpper(name)))
+	}
+	b := arrowtable.NewBuilder(fields)
+
+	appendMetricRow := func(metric map[string]string, point []any) {
+		ts, val := parseMetricPoint(point)
+		row := make([]any, 0, len(labelNames)+2)
+		row = append(row, ts, val)
+		for _, name := range labelNames {
+			row = append(row, metric[name])
+		}
+		b.Row(row...)
+	}
+
+	for _, sample := range resp.Data.Result {
+		if len(sample.Values) > 0 {
+			for _, v := range sample.Values {
+				if len(v) < 2 {
+					continue
+				}
+				appendMetricRow(sample.Metric, v)
+			}
+		} else if len(sample.Value) >= 2 {
+			appendMetricRow(sample.Metric, sample.Value)
+		}
+	}
+
+	return b.Write(w)
+}
+
+// parseMetricPoint converts a [timestamp, value] pair (Unix-epoch-seconds,
+// float or numeric string — same wire shape Prometheus uses) into a
+// (time.Time, float64) row, returning nils for a malformed or missing pair
+// rather than desyncing the row's column count.
+func parseMetricPoint(point []any) (any, any) {
+	if len(point) < 2 {
+		return nil, nil
+	}
+	var ts, val any
+	if t, ok := parseEpochSeconds(point[0]); ok {
+		ts = t
+	}
+	if f, ok := parseFloatAny(point[1]); ok {
+		val = f
+	}
+	return ts, val
+}
+
+func parseEpochSeconds(v any) (time.Time, bool) {
+	switch ts := v.(type) {
+	case float64:
+		return time.Unix(int64(ts), int64((ts-float64(int64(ts)))*1e9)).UTC(), true
+	case string:
+		f, err := strconv.ParseFloat(ts, 64)
+		if err != nil {
+			return time.Time{}, false
+		}
+		return time.Unix(int64(f), int64((f-float64(int64(f)))*1e9)).UTC(), true
+	default:
+		return time.Time{}, false
+	}
+}
+
+func parseFloatAny(v any) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case string:
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
+	}
+}
+
 func buildDisplayEntries(resp *QueryResponse) []displayLogEntry {
 	if resp == nil {
 		return nil
@@ -259,9 +413,10 @@ func buildDisplayEntries(resp *QueryResponse) []displayLogEntry {
 
 func newDisplayLogEntry(stream map[string]string, e LogEntry) displayLogEntry {
 	entry := displayLogEntry{
-		Timestamp: formatHumanTimestamp(e.Timestamp),
-		Message:   e.Line,
-		Stream:    stream,
+		Timestamp:     formatHumanTimestamp(e.Timestamp),
+		TimestampTime: parseLokiTimestamp(e.Timestamp),
+		Message:       e.Line,
+		Stream:        stream,
 	}
 
 	fields := promoteBodyFields(&entry, e.Line)
@@ -574,6 +729,16 @@ func formatHumanTimestamp(raw string) string {
 		return raw
 	}
 	return time.Unix(0, nanos).UTC().Format(time.RFC3339Nano)
+}
+
+// parseLokiTimestamp parses a Loki nanosecond-epoch timestamp string into a
+// time.Time, returning the zero value if raw isn't a valid integer.
+func parseLokiTimestamp(raw string) time.Time {
+	nanos, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	return time.Unix(0, nanos).UTC()
 }
 
 func collectMetricLabelNames(samples []MetricQuerySample) []string {

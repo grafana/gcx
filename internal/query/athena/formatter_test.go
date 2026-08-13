@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/query/athena"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,5 +26,25 @@ func TestFormatStringList(t *testing.T) {
 		err := athena.FormatStringList(&buf, []string{}, "EMPTY")
 		require.NoError(t, err)
 		assert.Contains(t, buf.String(), "No data")
+	})
+}
+
+func TestFormatStringListArrow(t *testing.T) {
+	t.Run("renders items", func(t *testing.T) {
+		var buf bytes.Buffer
+		require.NoError(t, athena.FormatStringListArrow(&buf, []string{"alpha", "beta"}, "CATALOG"))
+
+		headers, rows, err := arrowtable.ReadStream(&buf)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"CATALOG"}, headers)
+		require.Len(t, rows, 2)
+		assert.Equal(t, "alpha", rows[0][0])
+		assert.Equal(t, "beta", rows[1][0])
+	})
+
+	t.Run("empty result", func(t *testing.T) {
+		var buf bytes.Buffer
+		require.NoError(t, athena.FormatStringListArrow(&buf, []string{}, "EMPTY"))
+		assert.Empty(t, buf.String())
 	})
 }

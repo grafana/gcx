@@ -428,8 +428,16 @@ Recommended next actions:
   2. <Additional action>
 ```
 
-Use `-o graph` for any visualizations shared with the user. Use `-o json` for
-data retrieved for your own analysis.
+Use `-o graph` for any visualizations shared with the user. When you need to
+filter, aggregate, or otherwise manipulate query results for your own
+analysis, pipe `-o arrow` into DuckDB (see
+[`references/query-patterns.md`](references/query-patterns.md#arrow-format-for-sql-based-analysis))
+rather than writing a python or jq script — it's SQL against real typed
+columns instead of ad hoc parsing, with no type inference needed on read.
+Fall back to `-o json` only when you need structure Arrow's flat columns
+don't carry (e.g. Loki's `structuredMetadata`/`parsed` fields, which the
+Arrow log formatter surfaces flattened into DETAILS rather than as nested
+data).
 
 ---
 

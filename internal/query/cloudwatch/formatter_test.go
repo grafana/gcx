@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/query/cloudwatch"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func makeTestResponse(name string, ts []time.Time, vals []*float64) *cloudwatch.QueryResponse {
+func makeTestResponse(name string, ts []time.Time, vals []*float64) *cloudwatch.QueryResponse { //nolint:unparam // name mirrors Frame.Name for test-helper readability even though every current caller passes "".
 	return &cloudwatch.QueryResponse{
 		Frames: []cloudwatch.Frame{
 			{
@@ -95,6 +96,49 @@ func TestFormatWide_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, cloudwatch.FormatWide(&buf, &cloudwatch.QueryResponse{}))
 	assert.Contains(t, buf.String(), "No data")
+}
+
+func TestFormatArrow_HasLabelColumn(t *testing.T) {
+	resp := &cloudwatch.QueryResponse{
+		Frames: []cloudwatch.Frame{
+			{
+				Name:       "CPUUtilization",
+				Labels:     map[string]string{"InstanceId": "i-abc"},
+				Timestamps: []time.Time{ts("2026-05-17T00:00:00Z")},
+				Values:     []*float64{pf(10.0)},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, cloudwatch.FormatArrow(&buf, resp))
+
+	headers, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"TIMESTAMP", "VALUE", "SERIES", "LABEL"}, headers)
+	require.Len(t, rows, 1)
+	assert.Equal(t, ts("2026-05-17T00:00:00Z"), rows[0][0])
+	assert.InEpsilon(t, 10.0, rows[0][1], 0.0001)
+	assert.Equal(t, "CPUUtilization", rows[0][2])
+	assert.Contains(t, rows[0][3], "InstanceId")
+}
+
+func TestFormatArrow_NilValueBecomesNull(t *testing.T) {
+	resp := makeTestResponse("", []time.Time{ts("2026-05-17T00:00:00Z")}, []*float64{nil})
+
+	var buf bytes.Buffer
+	require.NoError(t, cloudwatch.FormatArrow(&buf, resp))
+
+	_, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Nil(t, rows[0][1])
+}
+
+func TestFormatArrow_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, cloudwatch.FormatArrow(&buf, &cloudwatch.QueryResponse{}))
+	assert.Empty(t, buf.String())
 }
 
 func TestFormatNamespaces_Populated(t *testing.T) {

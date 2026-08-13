@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/style"
 )
 
@@ -32,6 +33,30 @@ func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
 	}
 
 	return t.Render(w)
+}
+
+// FormatArrow formats a Pyroscope query response as an Arrow IPC payload of
+// its top functions — same data as FormatQueryTable (via ExtractTopFunctions),
+// but with real int64/float64 columns and no 60-char name truncation (that
+// truncation exists only for terminal width, not for analysis).
+func FormatArrow(w io.Writer, resp *QueryResponse) error {
+	if resp.Flamegraph == nil || len(resp.Flamegraph.Names) == 0 {
+		return nil
+	}
+
+	samples := ExtractTopFunctions(resp.Flamegraph, 20)
+
+	b := arrowtable.NewBuilder([]arrowtable.Field{
+		arrowtable.Utf8("FUNCTION"),
+		arrowtable.Int64("SELF"),
+		arrowtable.Int64("TOTAL"),
+		arrowtable.Float64("PERCENTAGE"),
+	})
+	for _, s := range samples {
+		b.Row(s.Name, s.Self, s.Total, s.Percentage)
+	}
+
+	return b.Write(w)
 }
 
 // FormatPprofWriteTable formats the result of writing a pprof binary as a single-row table.
