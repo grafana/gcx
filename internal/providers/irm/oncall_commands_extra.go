@@ -146,7 +146,7 @@ func (w timeWindow) encode() string {
 // serves both the started-at and resolved-at pairs.
 func resolveTimeWindow(fromFlag, toFlag, from, to string, now time.Time) (*timeWindow, error) {
 	if from == "" && to == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil window signals "no filter supplied"; callers check for nil.
 	}
 	w := &timeWindow{From: time.Unix(0, 0).UTC(), To: now}
 	if from != "" {
