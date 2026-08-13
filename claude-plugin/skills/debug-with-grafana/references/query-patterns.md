@@ -9,7 +9,7 @@ Advanced patterns for querying Prometheus and Loki datasources with gcx.
 - [Loki Query Patterns](#loki-query-patterns) - stream selectors, log metric queries
 - [Prometheus Datasource Operations](#prometheus-datasource-operations) - label/metadata discovery workflow
 - [Loki Datasource Operations](#loki-datasource-operations) - label/series discovery workflow
-- [Output Formats](#output-formats) - table, wide, JSON shapes, `--json` field selection
+- [Output Formats](#output-formats) - table, wide, JSON shapes, CSV for DuckDB analysis, `--json` field selection
 - [Performance Tips](#performance-tips) - Loki series limits, distributed-request counting, indexed vs structured-metadata vs parsed labels
 - [Comparison Queries](#comparison-queries) - comparing now vs a past instant
 
@@ -348,6 +348,37 @@ JSON structure:
 }
 ```
 
+### CSV Format (for SQL-based analysis)
+
+`-o csv` gives one row per series/label-combination, same columns as `-o wide`
+(one column per label, plus TIMESTAMP/VALUE). Available for Prometheus, Loki
+log queries, Tempo search, Infinity, SQL, Athena discovery, and CloudWatch —
+not for hierarchical shapes like `traces get`, which stays JSON/table-only.
+
+Pipe it straight into DuckDB — this is the preferred way to filter, aggregate,
+join, or otherwise manipulate query results, not a python or jq script:
+
+```bash
+# Filter to series still down, via stdin
+gcx metrics query -d <uid> 'up' -o csv 2>/dev/null | \
+  duckdb -c "SELECT * FROM read_csv('/dev/stdin') WHERE VALUE = 0"
+
+# Aggregate a range query by label — top offenders by mean value
+gcx metrics query -d <uid> \
+  'rate(http_requests_total{status=~"5.."}[5m])' \
+  --from now-1h --to now --step 1m -o csv 2>/dev/null | \
+  duckdb -c "SELECT job, avg(VALUE) AS avg_rate FROM read_csv('/dev/stdin') GROUP BY job ORDER BY avg_rate DESC"
+
+# Or persist to a file first, then query it (and re-query without re-running gcx)
+gcx metrics query -d <uid> 'up' -o csv 2>/dev/null > /tmp/up.csv
+duckdb -c "SELECT count(*) FROM read_csv('/tmp/up.csv') WHERE VALUE = 0"
+```
+
+DuckDB infers real column types (timestamps, numbers) from the CSV, so
+comparisons, `GROUP BY`, and joins across two query results (e.g. errors vs.
+latency in the same window) work directly in SQL instead of hand-rolled
+parsing.
+
 ### Field Selection
 
 Use `--json` to select fields without external tools:
@@ -358,14 +389,15 @@ gcx metrics query -d <uid> 'up' --json list
 
 # Select specific fields
 gcx metrics query -d <uid> 'up' --json metric,value
-
-# For complex filtering, pipe to python3 (jq may not be installed)
-gcx metrics query -d <uid> 'up' -o json 2>/dev/null | \
-  python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data['data']['result']))"
 ```
 
-> **Piping caution**: Never use `2>&1` when piping gcx JSON output — gcx writes
-> hints to stderr that break JSON parsers. Use `2>/dev/null` instead.
+`--json` is for trimming a JSON payload down to a couple of fields. For
+anything beyond that — filtering, aggregation, grouping, joining multiple
+queries — reach for `-o csv | duckdb` above instead of a python or jq script.
+
+> **Piping caution**: Never use `2>&1` when piping gcx output through an
+> external tool (duckdb, jq, python) — gcx writes hints to stderr that break
+> JSON/CSV parsers. Use `2>/dev/null` instead.
 
 ## Performance Tips
 
