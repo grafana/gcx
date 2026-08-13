@@ -97,3 +97,28 @@ func TestFormatTable(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatCSV(t *testing.T) {
+	resp := &infinity.QueryResponse{
+		Columns: []infinity.Column{
+			{Name: "host", Type: "string"},
+			{Name: "status", Type: "number"},
+		},
+		Rows: [][]any{
+			{"server-1", float64(200)},
+			{"server-2", float64(500)},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, infinity.FormatCSV(&buf, resp))
+
+	want := "HOST,STATUS\nserver-1,200\nserver-2,500\n"
+	assert.Equal(t, want, buf.String())
+}
+
+func TestFormatCSV_NoData(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, infinity.FormatCSV(&buf, &infinity.QueryResponse{}))
+	assert.Empty(t, buf.String())
+}

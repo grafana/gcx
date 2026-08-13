@@ -107,6 +107,21 @@ func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
 		return nil
 	}
 
+	return buildQueryWideTable(resp, entries).Render(w)
+}
+
+// FormatQueryCSV formats a QueryResponse as CSV, one column per stream label —
+// the same column layout as FormatQueryTableWide.
+func FormatQueryCSV(w io.Writer, resp *QueryResponse) error {
+	entries := buildDisplayEntries(resp)
+	if len(entries) == 0 {
+		return nil
+	}
+
+	return buildQueryWideTable(resp, entries).RenderCSV(w)
+}
+
+func buildQueryWideTable(resp *QueryResponse, entries []displayLogEntry) *style.TableBuilder {
 	labelNames := collectStreamLabelNames(resp.Data.Result)
 	hasLevel := anyEntry(entries, func(e displayLogEntry) string { return e.Level })
 	hasSource := anyEntry(entries, func(e displayLogEntry) string { return e.Source })
@@ -146,7 +161,7 @@ func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
 		t.Row(row...)
 	}
 
-	return t.Render(w)
+	return t
 }
 
 // FormatQueryRaw prints only the original log line bodies.

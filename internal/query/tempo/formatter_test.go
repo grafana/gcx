@@ -70,6 +70,28 @@ func TestFormatSearchTable_Empty(t *testing.T) {
 	assert.Len(t, lines, 1)
 }
 
+func TestFormatSearchCSV(t *testing.T) {
+	resp := &tempo.SearchResponse{
+		Traces: []tempo.SearchTrace{
+			{
+				TraceID:           "abc123",
+				RootServiceName:   "frontend",
+				RootTraceName:     "GET /api/users",
+				StartTimeUnixNano: "1700000000000000000",
+				DurationMs:        42,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatSearchCSV(&buf, resp))
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, 2)
+	assert.Equal(t, "TRACE_ID,SERVICE,NAME,DURATION,START", lines[0])
+	assert.Contains(t, lines[1], "abc123,frontend,GET /api/users,42ms,")
+}
+
 func TestFormatTagsTable(t *testing.T) {
 	resp := &tempo.TagsResponse{
 		Scopes: []tempo.TagScope{
