@@ -80,13 +80,15 @@ when the argument for them is strong.
    DESIGN.md. Behaviour that changes silently inside a change described as a
    refactor belongs here, as does a call to a function, field, or option that
    does not exist.
-3. **Other** — should be fixed, does not block. Includes documentation that
-   contradicts the code it describes.
+3. **Other findings** — everything that does not block, worst first. Includes
+   documentation that contradicts the code it describes. Give a finding the
+   space its argument needs and no more: some take a paragraph, most take a
+   line. The label carries the difference, so a one-line nit and a
+   worth-fixing defect can sit in the same list.
 4. **Over-engineering** — findings from T12 and T5, ranked and capped below.
 5. **The smaller version** — one consolidated remedy. Omit when section 4 is
    empty.
-6. **Smaller points** — one line each, no discussion.
-7. **Verdict** — approve or request changes, naming the findings that drive it.
+6. **Verdict** — approve or request changes, naming the findings that drive it.
    If you would merge a reduced version, say so and say how much smaller.
 
 ## Rules that keep the report honest
@@ -105,8 +107,8 @@ five complaints about one file.
 4. Tests and unreachable branches
 
 Break ties by line count. Cap the section at six findings; the rest go to
-section 6, one line each. The ranking is mechanical on purpose, so two reviewers
-produce the same order.
+section 3 as one-line nits. The ranking is mechanical on purpose, so two
+reviewers produce the same order.
 
 **Give one remedy, not one per finding.** Section 5 is an ordered list of
 concrete deletions and merges resolving everything in section 4, with the
@@ -130,7 +132,7 @@ verdict than the change deserves.
 
 ## When a workflow invoked this
 
-Unattended, four things change. Everything else is the same review.
+Unattended, five things change. Everything else is the same review.
 
 - **Post without asking.** The offer below exists because a human is present.
   In CI nobody can answer, and the trigger is the consent.
@@ -228,9 +230,9 @@ judgement call:
 | Section | Label | Means |
 |---|---|---|
 | 2 Blocking | `**required**` | fix before merge |
-| 3 Other | `**recommended**` | should fix, does not block the merge |
+| 3 Other findings | `**recommended**` | should fix, does not block the merge |
+| 3 Other findings | `**nit**` | take it or leave it |
 | 4 Over-engineering | `**followup**` | fine to defer to its own PR |
-| 6 Smaller points | `**nit**` | take it or leave it |
 
 Written out:
 

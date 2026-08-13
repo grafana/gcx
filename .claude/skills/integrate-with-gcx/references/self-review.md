@@ -418,18 +418,24 @@ Three checks. They ask whether the surface should exist, not whether it works.
 Duplication of something the repo already has is [T5](#t5-shared-infrastructure),
 not this trigger.
 
-1. **Count the call sites now.** Aim for three before an abstraction — an
-  interface, a wrapper type, a factory, a config option, a plugin seam — earns
-  its place. One caller means write it inline and extract when the second
-  arrives; the second caller's needs are what should choose the signature. Read
-  every field of a new options or request struct and name the caller that sets
-  it. A field nothing sets is the strongest evidence in this whole document,
-  and it usually drags dead branches behind it: a `Continue` flag nobody sets
-  keeps a disk read, an error path, and a test alive.
-2. **Check your own PR body for the admission.** If you wrote that the new entry
-  point exists "so other command trees can…", or "to avoid duplicating X in
-  future", that is this check failing in your own words. Name the second caller
-  and link it, or cut the generality and say what you cut.
+1. **Count the call sites now.** An abstraction — an interface, a wrapper type,
+  a factory, a config option, a plugin seam — needs a second real caller before
+  it earns its place. One caller means write it inline and extract when the
+  second arrives, because the second caller's needs are what should choose the
+  signature; guessing them from one example is how a seam ends up fitting
+  neither. Read every field of a new options or request struct and name the
+  caller that sets it. A field nothing sets is the strongest evidence in this
+  whole document, and it usually drags dead branches behind it: a `Continue`
+  flag nobody sets keeps a disk read, an error path, and a test alive.
+2. **Read the PR body both ways.** If you wrote that the new entry point exists
+  "so other command trees can…", or "to avoid duplicating X in future", that is
+  this check failing in your own words: name the second caller and link it, or
+  cut the generality and say what you cut. Reviewing someone else's diff, read
+  the description and the existing comment thread for the opposite case — a
+  deviation the author already explained and chose deliberately. Raising it
+  again as a finding costs a round and reads as not having looked. Where the
+  reasoning is there but wrong, argue with the reasoning rather than reporting
+  the deviation as though it were unnoticed.
 3. **Delete guards for states that cannot occur.** Before you keep a fallback,
   read the thing that produces the input: the pinned dependency's data, the
   caller that builds the struct, the validator that already rejected it. A
@@ -438,6 +444,7 @@ not this trigger.
   question from [T8](#t8-tests-that-cannot-fail) — T8 asks whether a test would
   catch a real defect, T12 asks whether the input exists at all. A test whose
   fixture the code will never see is a finding under both.
+
 Close by stating the smaller version in the PR body: the deletions and merges
 that would resolve every finding above and in T5, and the resulting size change.
 Reviewers compute this anyway. Writing it yourself turns a review round into a
