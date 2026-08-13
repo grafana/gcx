@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
@@ -157,12 +158,11 @@ func TestAlertGroupListOptsValidate(t *testing.T) {
 	}
 }
 
-// TestAlertGroupListOptsValidateTimeWindows covers the time-window guardrails
-// added with --from/--to and --resolved-from/--resolved-to: --max-age and
-// --from/--to both compile into started_at so they cannot be combined,
-// unparseable expressions are rejected by name, and an inverted window is an
-// error rather than a silently empty result. All must fire before any config
-// or network work.
+// TestAlertGroupListOptsValidateTimeWindows covers the --max-age/--from/--to
+// mutual exclusion: both compile into started_at so they cannot be combined.
+// Unparseable and inverted windows are covered by
+// TestResolveAlertGroupListFiltersTimeWindows — resolveAlertGroupListFilters
+// rejects those, still before any config or network work.
 func TestAlertGroupListOptsValidateTimeWindows(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -180,6 +180,43 @@ func TestAlertGroupListOptsValidateTimeWindows(t *testing.T) {
 			in:      &alertGroupListOpts{MaxAge: "24h", To: "now-7d"},
 			wantErr: "--max-age cannot be combined with --from or --to: both bound the started-at window",
 		},
+		{
+			name: "max-age alone still accepted",
+			in:   &alertGroupListOpts{MaxAge: "24h"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.in.Validate()
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() = nil, want error %q", tc.wantErr)
+			}
+			if err.Error() != tc.wantErr {
+				t.Fatalf("Validate() error = %q, want %q", err.Error(), tc.wantErr)
+			}
+		})
+	}
+}
+
+// TestResolveAlertGroupListFiltersTimeWindows covers the time-window
+// guardrails on --from/--to and --resolved-from/--resolved-to: unparseable
+// expressions are rejected by flag name, and an inverted window is an error
+// rather than a silently empty result. resolveAlertGroupListFilters runs
+// before any config or network work, so these still fire early.
+func TestResolveAlertGroupListFiltersTimeWindows(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		in      *alertGroupListOpts
+		wantErr string // exact message; empty means resolution must pass
+	}{
 		{
 			name:    "unparseable from rejected by flag name",
 			in:      &alertGroupListOpts{From: "last tuesday"},
@@ -214,10 +251,6 @@ func TestAlertGroupListOptsValidateTimeWindows(t *testing.T) {
 			},
 		},
 		{
-			name: "max-age alone still accepted",
-			in:   &alertGroupListOpts{MaxAge: "24h"},
-		},
-		{
 			// --to alone is legal: the start defaults to the unix epoch, so
 			// the pair the API requires is still well-defined.
 			name: "to alone accepted",
@@ -227,18 +260,23 @@ func TestAlertGroupListOptsValidateTimeWindows(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := tc.in.Validate()
+			// resolveAlertGroupListFilters needs a command for the
+			// "did the user pass --state explicitly" check; bind the flags
+			// to a throwaway opts so tc.in keeps its field values.
+			cmd := &cobra.Command{}
+			(&alertGroupListOpts{}).setup(cmd.Flags())
+			_, err := resolveAlertGroupListFilters(cmd, tc.in)
 			if tc.wantErr == "" {
 				if err != nil {
-					t.Fatalf("Validate() = %v, want nil", err)
+					t.Fatalf("resolveAlertGroupListFilters() = %v, want nil", err)
 				}
 				return
 			}
 			if err == nil {
-				t.Fatalf("Validate() = nil, want error %q", tc.wantErr)
+				t.Fatalf("resolveAlertGroupListFilters() = nil, want error %q", tc.wantErr)
 			}
 			if err.Error() != tc.wantErr {
-				t.Fatalf("Validate() error = %q, want %q", err.Error(), tc.wantErr)
+				t.Fatalf("resolveAlertGroupListFilters() error = %q, want %q", err.Error(), tc.wantErr)
 			}
 		})
 	}
