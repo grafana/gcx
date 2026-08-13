@@ -27,13 +27,18 @@ gcx configured with an active context that targets a Grafana stack with OnCall e
 gcx irm oncall alert-groups list
 ```
 
-Default filter: `state in {firing, acknowledged, silenced}` and `is_root=true` (matches the OnCall UI). See `--help` for the full flag set; common narrowers are `--state`, `--team <PK>`, `--integration <PK>`, `--mine`, `--max-age 24h`. Team / integration filters take PKs, not names — resolve first:
+Default filter: `state in {firing, acknowledged, silenced}` and `is_root=true` (matches the OnCall UI). See `--help` for the full flag set; common narrowers are `--state`, `--team <PK>`, `--integration <PK>`, `--escalation-chain <ID>`, `--mine`, `--max-age 24h`. Team / integration / chain filters take IDs, not names — resolve first:
 
 ```bash
 gcx irm oncall teams list -o json | jq -r '.[] | "\(.metadata.name): \(.spec.name)"' | grep -i "my team"
+gcx irm oncall escalation-chains list
 ```
 
+To attribute alert load to a rotation, filter by escalation chain, not integration: one integration routes through several chains to several schedules, and the alert group record carries no chain field of its own. Chain-filtered queries over the same integration return disjoint subsets.
+
 Escape hatches: `--all` (drops both defaults — returns resolved + child groups), `--include-child-groups`, `--state resolved`.
+
+For a historical window use `--from` / `--to` (RFC3339, unix timestamp, or `now-30d`); `--max-age` only anchors to now, and the two cannot be combined. `--resolved-from` / `--resolved-to` bound resolved_at instead. `--acknowledged-by <user-id>` / `--resolved-by <user-id>` attribute handling to a person.
 
 Default table: `ID TITLE SEVERITY STATE TEAM SUBJECT AGE`. `-o wide` adds `RULE` (Grafana rule URL) and `ALERTS` (group-wide count). Use `-o wide` when the user needs the rule pivot.
 
