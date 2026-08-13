@@ -225,13 +225,14 @@ codec or formatter that is the same type as a sibling's with only the format cal
 swapped (extract and share it), and a hand-rolled config loader that misses
 every bug fix living in the shared one.
 
-The same rule covers small utilities, where it is missed more often because the
-copy looks too short to matter. `internal/shared` has duration and time parsing
-(`ParseDuration` takes `d`/`w`/`y` and compounds, which `time.ParseDuration`
-does not), `internal/terminal` has TTY detection, `internal/style` wraps
-markdown rendering and tables, `internal/output` owns diagnostics routing. A
-local reimplementation is usually the weaker one, and the two drift. Where you
-reimplemented deliberately, cite what you rejected and why.
+The same rule covers small utilities. Authors miss it more often there, because
+a short copy looks too small to matter. Four packages already hold the common
+ones. `internal/shared` parses durations and times, and its `ParseDuration`
+accepts `d`, `w`, `y` and compound values that `time.ParseDuration` rejects.
+`internal/terminal` detects a TTY. `internal/style` renders markdown and tables.
+`internal/output` routes diagnostics. A local copy is usually the weaker of the
+two, and the two then diverge. Where you rewrote one on purpose, name what you
+rejected and why.
 
 ## T6: Description rot and scope
 
@@ -418,34 +419,33 @@ Three checks. They ask whether the surface should exist, not whether it works.
 Duplication of something the repo already has is [T5](#t5-shared-infrastructure),
 not this trigger.
 
-1. **Count the call sites now.** An abstraction — an interface, a wrapper type,
-  a factory, a config option, a plugin seam — needs a second real caller before
-  it earns its place. One caller means write it inline and extract when the
-  second arrives, because the second caller's needs are what should choose the
-  signature; guessing them from one example is how a seam ends up fitting
-  neither. Read every field of a new options or request struct and name the
-  caller that sets it. A field nothing sets is the strongest evidence in this
-  whole document, and it usually drags dead branches behind it: a `Continue`
-  flag nobody sets keeps a disk read, an error path, and a test alive.
-2. **Read the PR body both ways.** If you wrote that the new entry point exists
-  "so other command trees can…", or "to avoid duplicating X in future", that is
-  this check failing in your own words: name the second caller and link it, or
-  cut the generality and say what you cut. Reviewing someone else's diff, read
-  the description and the existing comment thread for the opposite case — a
-  deviation the author already explained and chose deliberately. Raising it
-  again as a finding costs a round and reads as not having looked. Where the
-  reasoning is there but wrong, argue with the reasoning rather than reporting
-  the deviation as though it were unnoticed.
+1. **Count the call sites now.** An abstraction needs a second real caller
+  before you add it. That covers an interface, a wrapper type, a factory, a
+  config option, and a plugin seam. With one caller, write the code inline, and
+  extract it when the second caller arrives. The second caller's needs are what
+  should shape the signature, and you cannot predict them from one example. Then
+  read every field of a new options or request struct, and name the caller that
+  sets it. A field that nothing sets is the strongest evidence in this document.
+  It usually keeps dead code alive as well: a `Continue` flag that nothing sets
+  still holds a disk read, an error path, and a test in the tree.
+2. **Read the PR body both ways.** As the author: if you wrote that the new
+  entry point exists "so other command trees can…", or "to avoid duplicating X
+  in future", you have just failed this check in your own words. Name the second
+  caller and link it, or remove the generality and say what you removed. As a
+  reviewer: read the description and the existing comments for the opposite
+  case, a deviation the author already explained and chose on purpose. Reporting
+  it again wastes a review round and shows you did not read the thread. Where
+  the reasoning is present but wrong, argue against the reasoning instead.
 3. **Delete guards for states that cannot occur.** Before you keep a fallback,
-  read the thing that produces the input: the pinned dependency's data, the
-  caller that builds the struct, the validator that already rejected it. A
-  tolerant parser for a heading that every bundled doc already carries is a
-  branch that can never run, plus the tests that "cover" it. This is a different
-  question from [T8](#t8-tests-that-cannot-fail) — T8 asks whether a test would
-  catch a real defect, T12 asks whether the input exists at all. A test whose
-  fixture the code will never see is a finding under both.
+  read what produces the input: the pinned dependency's data, the caller that
+  builds the struct, or the validator that already rejected it. Take a tolerant
+  parser for a heading that every bundled doc already carries. That branch can
+  never run, and neither can the tests that claim to cover it. This is a
+  different question from [T8](#t8-tests-that-cannot-fail). T8 asks whether a
+  test would catch a real defect. T12 asks whether the input exists at all. A
+  test whose fixture the code will never see is a finding under both.
 
 Close by stating the smaller version in the PR body: the deletions and merges
 that would resolve every finding above and in T5, and the resulting size change.
-Reviewers compute this anyway. Writing it yourself turns a review round into a
-decision.
+A reviewer works this out anyway. Writing it yourself turns a review round into
+a decision.
