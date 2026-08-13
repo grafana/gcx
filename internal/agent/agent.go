@@ -11,16 +11,36 @@ import (
 	"strings"
 )
 
+// harnessEnvVar describes an environment variable that signals a specific
+// agent harness.
+type harnessEnvVar struct {
+	envVar, name string
+	// nonEmpty matches on any non-empty value instead of a truthy one, for
+	// harnesses that set an identifier (e.g. a thread ID) rather than a flag.
+	nonEmpty bool
+}
+
+// detected reports whether the harness env var is set to a matching value.
+func (h harnessEnvVar) detected() bool {
+	v := os.Getenv(h.envVar)
+	if h.nonEmpty {
+		return v != ""
+	}
+
+	return isTruthy(v)
+}
+
 // Environment variables that signal agent mode, with the harness name each
 // one identifies. GCX_AGENT_MODE is handled separately (it is an explicit
 // override, not a harness signal).
-var harnessEnvVars = []struct{ envVar, name string }{ //nolint:gochecknoglobals
-	{"CLAUDECODE", "claude-code"},
-	{"CLAUDE_CODE", "claude-code"},
-	{"CURSOR_AGENT", "cursor"},
-	{"GITHUB_COPILOT", "github-copilot"},
-	{"AMAZON_Q", "amazon-q"},
-	{"OPENCODE", "opencode"},
+var harnessEnvVars = []harnessEnvVar{ //nolint:gochecknoglobals
+	{envVar: "CLAUDECODE", name: "claude-code"},
+	{envVar: "CLAUDE_CODE", name: "claude-code"},
+	{envVar: "CURSOR_AGENT", name: "cursor"},
+	{envVar: "GITHUB_COPILOT", name: "github-copilot"},
+	{envVar: "AMAZON_Q", name: "amazon-q"},
+	{envVar: "OPENCODE", name: "opencode"},
+	{envVar: "CODEX_THREAD_ID", name: "codex", nonEmpty: true},
 }
 
 var (
@@ -79,9 +99,9 @@ func detectFromEnv() {
 		}
 	}
 
-	// Check harness env vars for a truthy value.
+	// Check harness env vars for a matching value.
 	for _, h := range harnessEnvVars {
-		if isTruthy(os.Getenv(h.envVar)) {
+		if h.detected() {
 			detectedFromEnv = true
 			agentMode = true
 
@@ -96,7 +116,7 @@ func detectFromEnv() {
 // should combine it with [IsAgentMode].
 func Name() string {
 	for _, h := range harnessEnvVars {
-		if isTruthy(os.Getenv(h.envVar)) {
+		if h.detected() {
 			return h.name
 		}
 	}
