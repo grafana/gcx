@@ -3,8 +3,13 @@ package root_test
 import (
 	"fmt"
 	"io/fs"
+	"maps"
+	"os"
+	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -20,63 +25,201 @@ type driftAllowance struct {
 
 // intentionalReferences lists mentions of removed gcx commands that skills
 // reference deliberately as historical context. These are permanent
-// allowances, not drift.
+// allowances, not drift. The file is the repo-relative path reported by the
+// drift test, so an allowance is scoped to one skill tree.
 func intentionalReferences() []driftAllowance {
 	return []driftAllowance{
 		// documents the removed `irm oncall alerts` commands and points
 		// readers at `alert-groups list-alerts` instead
-		{"oncall-triage/SKILL.md", "unknown command `gcx irm oncall alerts`"},
+		{"claude-plugin/skills/oncall-triage/SKILL.md", "unknown command `gcx irm oncall alerts`"},
 	}
 }
 
 // TestSkillsGcxInvocationsMatchCommandTree extracts every gcx invocation from
-// fenced code blocks in the bundled skills and validates the command path and
-// flags against the real command tree, so skills fail CI when the CLI surface
-// moves out from under them.
+// fenced code blocks and inline spans in both skill trees and validates the
+// command path and flags against the real command tree, so skills fail CI when
+// the CLI surface moves out from under them.
+//
+// Both trees are checked: the embedded portable bundle, and the repo-local
+// contributor skills under .claude/skills, which agents load from the checkout.
 func TestSkillsGcxInvocationsMatchCommandTree(t *testing.T) {
 	rootCmd := buildRootCmd()
 	rootCmd.InitDefaultHelpCmd()
 	rootCmd.InitDefaultCompletionCmd()
 
-	total := 0
-	skillsFS := claudeplugin.SkillsFS()
-	err := fs.WalkDir(skillsFS, ".", func(p string, d fs.DirEntry, err error) error {
+	// Guarded without invocation-count floors on purpose. A floor is a
+	// snapshot of how much the skills currently happen to say, so it either
+	// rots as they are rewritten or blocks legitimate consolidation.
+	// Coverage is layered instead: TestSkillDocsFromFS proves the walk reaches
+	// nested reference markdown, TestExtractInvocations proves extraction from
+	// fences and inline spans, and checkSkillInvocations asserts below that
+	// each tree was actually discovered and scanned.
+	t.Run("claude-plugin/skills", func(t *testing.T) {
+		docs, roots := bundledSkillDocs(t), bundledSkillRoots(t)
+		checkSkillInvocations(t, rootCmd, "claude-plugin/skills", docs, roots)
+	})
+	t.Run(".claude/skills", func(t *testing.T) {
+		docs, roots := repoLocalSkillDocs(t)
+		checkSkillInvocations(t, rootCmd, ".claude/skills", docs, roots)
+	})
+}
+
+// bundledSkillDocs returns the markdown of the embedded portable skill bundle,
+// keyed by repo-relative path.
+func bundledSkillDocs(t *testing.T) map[string]string {
+	t.Helper()
+
+	const label = "claude-plugin/skills"
+	docs, err := skillDocsFromFS(claudeplugin.SkillsFS(), label)
+	if err != nil {
+		t.Fatalf("walking %s: %v", label, err)
+	}
+	return docs
+}
+
+// bundledSkillRoots returns the skill directory names in the embedded bundle,
+// read from the FS root rather than from the markdown walk under test — so a
+// walk that stopped recursing is still caught.
+func bundledSkillRoots(t *testing.T) []string {
+	t.Helper()
+
+	entries, err := fs.ReadDir(claudeplugin.SkillsFS(), ".")
+	if err != nil {
+		t.Fatalf("reading bundled skill roots: %v", err)
+	}
+
+	var roots []string
+	for _, e := range entries {
+		if e.IsDir() {
+			roots = append(roots, e.Name())
+		}
+	}
+	if len(roots) == 0 {
+		t.Fatal("found no skill directories in the embedded bundle")
+	}
+	return roots
+}
+
+// skillDocsFromFS returns every markdown file in fsys, keyed by label-prefixed
+// repo-relative path.
+//
+// A skill is SKILL.md *plus* its references/, and the references are where most
+// invocations live, so this has to recurse rather than match SKILL.md at each
+// root. TestSkillDocsFromFS pins that.
+func skillDocsFromFS(fsys fs.FS, label string) (map[string]string, error) {
+	docs := map[string]string{}
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() || path.Ext(p) != ".md" {
 			return nil
 		}
-		content, err := fs.ReadFile(skillsFS, p)
+		content, err := fs.ReadFile(fsys, p)
 		if err != nil {
 			return err
 		}
-		for _, inv := range extractInvocations(string(content)) {
+		docs[label+"/"+p] = string(content)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return docs, nil
+}
+
+// repoLocalSkillDocs returns the markdown of the repo-local contributor skills
+// keyed by repo-relative path, plus the skill roots that markdown is expected to
+// cover.
+//
+// Only git-tracked files are read, and the roots are derived from the same
+// tracked listing. That tree is also where a contributor's own harness installs
+// third-party skills — they are not gitignored — and a skill this repo does not
+// own must not be able to fail this repo's CI with a defect no committed file
+// can fix. Deriving roots from disk instead would reintroduce exactly that.
+func repoLocalSkillDocs(t *testing.T) (map[string]string, []string) {
+	t.Helper()
+
+	repoRoot := filepath.Join("..", "..", "..")
+	out, err := exec.CommandContext(t.Context(), "git", "-C", repoRoot, "ls-files", "-z", "--", ".claude/skills").Output()
+	if err != nil {
+		t.Fatalf("cannot enumerate tracked .claude/skills files with git: %v", err)
+	}
+
+	docs := map[string]string{}
+	rootSet := map[string]bool{}
+	for rel := range strings.SplitSeq(strings.TrimRight(string(out), "\x00"), "\x00") {
+		if rel == "" {
+			continue
+		}
+		// ".claude/skills/<root>/SKILL.md" — a tracked SKILL.md directly under a
+		// directory is what makes it a skill this repo owns. Exactly four
+		// segments: a deeper SKILL.md is a nested sub-skill, and treating its
+		// grandparent as a root would demand a SKILL.md that need not exist.
+		if parts := strings.Split(rel, "/"); len(parts) == 4 && parts[3] == "SKILL.md" {
+			rootSet[parts[2]] = true
+		}
+		if path.Ext(rel) != ".md" {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(repoRoot, rel))
+		if err != nil {
+			t.Fatalf("reading %s: %v", rel, err)
+		}
+		docs[rel] = string(content)
+	}
+	return docs, slices.Sorted(maps.Keys(rootSet))
+}
+
+// checkSkillInvocations validates every gcx invocation in docs (repo-relative
+// path -> content) against the command tree, and guards against the whole check
+// silently passing because nothing was scanned.
+//
+// The guards are deliberately count-independent: that every skill root
+// contributed its SKILL.md (so no root was skipped), and that the tree produced
+// at least one invocation (so extraction did not collapse to nothing). How many
+// invocations a skill contains is the skill author's business.
+//
+// Scope of the root check, stated honestly: it catches a root that produced no
+// SKILL.md at all. It does NOT catch a walk that recurses one level and stops,
+// because that still yields every root's SKILL.md while missing every
+// references/ file — TestSkillDocsFromFS is what covers depth, against a
+// synthetic FS. And for the repo-local tree the git listing supplies both roots
+// and docs, so there the check is a consistency assertion that stays correct if
+// that ever becomes a walk.
+func checkSkillInvocations(t *testing.T, rootCmd *cobra.Command, label string, docs map[string]string, roots []string) {
+	t.Helper()
+
+	if len(docs) == 0 {
+		t.Fatalf("discovered no markdown in %s; the tree moved or stopped being walked", label)
+	}
+
+	total := 0
+	for _, repoPath := range slices.Sorted(maps.Keys(docs)) {
+		for _, inv := range extractInvocations(docs[repoPath]) {
 			total++
 			verr := validateInvocation(rootCmd, inv.args)
 			if verr == nil {
 				continue
 			}
 			msg := fmt.Sprintf("`%s`: %v", inv, verr)
-			if allowedDrift(p, msg) {
+			if allowedDrift(repoPath, msg) {
 				continue
 			}
-			t.Errorf("claude-plugin/skills/%s:%d: %s", p, inv.line, msg)
+			t.Errorf("%s:%d: %s", repoPath, inv.line, msg)
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walking skills FS: %v", err)
 	}
 
-	// Guard against the extractor silently matching nothing after a refactor.
-	// The bundle currently yields ~1000 invocations (~700 from fences, ~330
-	// from inline spans); 500 catches a broken fence scan or total collapse
-	// while leaving room for skills to shrink.
-	if total < 500 {
-		t.Fatalf("extracted only %d gcx invocations from bundled skills, expected around a thousand; extractor is likely broken", total)
+	for _, root := range roots {
+		if _, ok := docs[label+"/"+root+"/SKILL.md"]; !ok {
+			t.Errorf("%s/%s/SKILL.md was not discovered; that skill is unscanned", label, root)
+		}
 	}
-	t.Logf("validated %d gcx invocations from bundled skills", total)
+
+	if total == 0 {
+		t.Fatalf("extracted no gcx invocations from %s; extraction is broken", label)
+	}
+	t.Logf("validated %d gcx invocations from %d markdown files in %s", total, len(docs), label)
 }
 
 // TestValidateInvocation pins the validation behaviour of the skills drift
@@ -220,12 +363,26 @@ func extractInvocations(content string) []invocation {
 	return invs
 }
 
+// gcxCommandWords lists the ways a skill can spell an invocation of this CLI.
+// Contributor-facing skills use the built binary (`bin/gcx …`) because
+// exercising a fresh build is the point; end-user skills use the installed
+// `gcx`. Both resolve against the same command tree, so both are validated.
+func gcxCommandWords() []string {
+	return []string{"gcx", "bin/gcx", "./bin/gcx"}
+}
+
+// isGcxCommandWord reports whether tok is one of the accepted spellings of the
+// gcx binary in command position.
+func isGcxCommandWord(tok string) bool {
+	return slices.Contains(gcxCommandWords(), tok)
+}
+
 // inlineGcxCommands returns the simple commands found in backtick code spans
 // of a prose or table line. A span opens and closes with equal-length backtick
 // runs, so double-backtick spans quoting text with backticks are matched too.
-// Only spans starting with "gcx " are treated as invocations; anything else
-// (fragments like `--force` or `resources delete`) is a mention, not a
-// runnable command.
+// Only spans starting with a gcx command word (see gcxCommandWords) are treated
+// as invocations; anything else (fragments like `--force` or
+// `resources delete`) is a mention, not a runnable command.
 func inlineGcxCommands(line string) [][]string {
 	var cmds [][]string
 	for i := 0; i < len(line); {
@@ -244,8 +401,11 @@ func inlineGcxCommands(line string) [][]string {
 		}
 		content := strings.TrimSpace(line[i : i+end])
 		i += end + len(delim)
-		if strings.HasPrefix(content, "gcx ") {
-			cmds = append(cmds, parseCommands(content)...)
+		for _, w := range gcxCommandWords() {
+			if strings.HasPrefix(content, w+" ") {
+				cmds = append(cmds, parseCommands(content)...)
+				break
+			}
 		}
 	}
 	return cmds
@@ -257,7 +417,7 @@ func gcxArgs(tokens []string) ([]string, bool) {
 	for len(tokens) > 0 && (envAssignRe.MatchString(tokens[0]) || isShellKeyword(tokens[0])) {
 		tokens = tokens[1:]
 	}
-	if len(tokens) == 0 || tokens[0] != "gcx" {
+	if len(tokens) == 0 || !isGcxCommandWord(tokens[0]) {
 		return nil, false
 	}
 	return tokens[1:], true
