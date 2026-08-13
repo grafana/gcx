@@ -17,6 +17,25 @@ func FormatTable(w io.Writer, resp *QueryResponse) error {
 		return nil
 	}
 
+	return buildTable(resp).Render(w)
+}
+
+// FormatWideTable formats a QueryResponse as a wide table. SQL datasource
+// results are inherently flat, so this delegates to FormatTable.
+func FormatWideTable(w io.Writer, resp *QueryResponse) error {
+	return FormatTable(w, resp)
+}
+
+// FormatCSV formats a QueryResponse as CSV, same columns as FormatTable.
+func FormatCSV(w io.Writer, resp *QueryResponse) error {
+	if len(resp.Rows) == 0 {
+		return nil
+	}
+
+	return buildTable(resp).RenderCSV(w)
+}
+
+func buildTable(resp *QueryResponse) *style.TableBuilder {
 	timeColumns := make(map[int]bool, len(resp.Columns))
 	headers := make([]string, len(resp.Columns))
 	for i, col := range resp.Columns {
@@ -38,13 +57,7 @@ func FormatTable(w io.Writer, resp *QueryResponse) error {
 		}
 		t.Row(vals...)
 	}
-	return t.Render(w)
-}
-
-// FormatWideTable formats a QueryResponse as a wide table. SQL datasource
-// results are inherently flat, so this delegates to FormatTable.
-func FormatWideTable(w io.Writer, resp *QueryResponse) error {
-	return FormatTable(w, resp)
+	return t
 }
 
 func formatTimestamp(v any) string {

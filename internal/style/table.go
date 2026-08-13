@@ -1,6 +1,7 @@
 package style
 
 import (
+	"encoding/csv"
 	"fmt"
 	"io"
 	"strings"
@@ -61,6 +62,27 @@ func (tb *TableBuilder) Render(w io.Writer) error {
 		return tb.renderPlain(w)
 	}
 	return tb.renderStyled(w)
+}
+
+// RenderCSV writes the table as CSV (RFC 4180 via encoding/csv), headers
+// first. Unlike Render, this ignores styling and MultilineCells entirely —
+// encoding/csv already quotes any cell value containing commas, quotes, or
+// newlines, so embedded newlines survive as valid multi-line CSV fields
+// rather than being flattened.
+func (tb *TableBuilder) RenderCSV(w io.Writer) error {
+	cw := csv.NewWriter(w)
+	if len(tb.headers) > 0 {
+		if err := cw.Write(tb.headers); err != nil {
+			return err
+		}
+	}
+	for _, row := range tb.rows {
+		if err := cw.Write(row); err != nil {
+			return err
+		}
+	}
+	cw.Flush()
+	return cw.Error()
 }
 
 func (tb *TableBuilder) renderPlain(w io.Writer) error {

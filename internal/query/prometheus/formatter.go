@@ -42,15 +42,37 @@ func FormatWideTable(w io.Writer, resp *QueryResponse) error {
 		return nil
 	}
 
+	t, err := buildWideTable(resp)
+	if err != nil {
+		return err
+	}
+	return t.Render(w)
+}
+
+// FormatCSV formats a QueryResponse as CSV, one column per label plus
+// TIMESTAMP and VALUE — the same column layout as FormatWideTable.
+func FormatCSV(w io.Writer, resp *QueryResponse) error {
+	if len(resp.Data.Result) == 0 {
+		return nil
+	}
+
+	t, err := buildWideTable(resp)
+	if err != nil {
+		return err
+	}
+	return t.RenderCSV(w)
+}
+
+func buildWideTable(resp *QueryResponse) (*style.TableBuilder, error) {
 	switch resp.Data.ResultType {
 	case "vector":
-		return formatVectorWideTable(w, resp)
+		return buildVectorWideTable(resp), nil
 	case "matrix":
-		return formatMatrixWideTable(w, resp)
+		return buildMatrixWideTable(resp), nil
 	case "scalar":
-		return formatScalarTable(w, resp)
+		return buildScalarTable(resp), nil
 	default:
-		return fmt.Errorf("unsupported result type: %s", resp.Data.ResultType)
+		return nil, fmt.Errorf("unsupported result type: %s", resp.Data.ResultType)
 	}
 }
 
@@ -87,7 +109,7 @@ func formatMatrixTable(w io.Writer, resp *QueryResponse) error {
 	return t.Render(w)
 }
 
-func formatVectorWideTable(w io.Writer, resp *QueryResponse) error {
+func buildVectorWideTable(resp *QueryResponse) *style.TableBuilder {
 	labelNames := collectLabelNames(resp.Data.Result)
 
 	header := make([]string, 0, len(labelNames)+2)
@@ -111,10 +133,10 @@ func formatVectorWideTable(w io.Writer, resp *QueryResponse) error {
 		t.Row(row...)
 	}
 
-	return t.Render(w)
+	return t
 }
 
-func formatMatrixWideTable(w io.Writer, resp *QueryResponse) error {
+func buildMatrixWideTable(resp *QueryResponse) *style.TableBuilder {
 	labelNames := collectLabelNames(resp.Data.Result)
 
 	header := make([]string, 0, len(labelNames)+2)
@@ -140,10 +162,10 @@ func formatMatrixWideTable(w io.Writer, resp *QueryResponse) error {
 		}
 	}
 
-	return t.Render(w)
+	return t
 }
 
-func formatScalarTable(w io.Writer, resp *QueryResponse) error {
+func buildScalarTable(resp *QueryResponse) *style.TableBuilder {
 	t := style.NewTable("TIMESTAMP", "VALUE")
 
 	for _, sample := range resp.Data.Result {
@@ -154,7 +176,11 @@ func formatScalarTable(w io.Writer, resp *QueryResponse) error {
 		}
 	}
 
-	return t.Render(w)
+	return t
+}
+
+func formatScalarTable(w io.Writer, resp *QueryResponse) error {
+	return buildScalarTable(resp).Render(w)
 }
 
 func collectLabelNames(samples []Sample) []string {

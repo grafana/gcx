@@ -25,6 +25,16 @@ const invalidPercentCell = "—"
 
 // FormatSearchTable formats a search response as a table.
 func FormatSearchTable(w io.Writer, resp *SearchResponse) error {
+	return buildSearchTable(resp).Render(w)
+}
+
+// FormatSearchCSV formats a search response as CSV, same columns as
+// FormatSearchTable.
+func FormatSearchCSV(w io.Writer, resp *SearchResponse) error {
+	return buildSearchTable(resp).RenderCSV(w)
+}
+
+func buildSearchTable(resp *SearchResponse) *style.TableBuilder {
 	tbl := style.NewTable("TRACE_ID", "SERVICE", "NAME", "DURATION", "START")
 
 	for _, tr := range resp.Traces {
@@ -37,7 +47,7 @@ func FormatSearchTable(w io.Writer, resp *SearchResponse) error {
 		)
 	}
 
-	return tbl.Render(w)
+	return tbl
 }
 
 // FormatBaselineTable formats baseline candidates as a table, with a header

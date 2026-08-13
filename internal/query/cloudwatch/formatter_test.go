@@ -97,6 +97,31 @@ func TestFormatWide_Empty(t *testing.T) {
 	assert.Contains(t, buf.String(), "No data")
 }
 
+func TestFormatCSV_HasLabelColumn(t *testing.T) {
+	resp := &cloudwatch.QueryResponse{
+		Frames: []cloudwatch.Frame{
+			{
+				Name:       "CPUUtilization",
+				Labels:     map[string]string{"InstanceId": "i-abc"},
+				Timestamps: []time.Time{ts("2026-05-17T00:00:00Z")},
+				Values:     []*float64{pf(10.0)},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, cloudwatch.FormatCSV(&buf, resp))
+	out := buf.String()
+	assert.Contains(t, out, "TIMESTAMP,VALUE,SERIES,LABEL")
+	assert.Contains(t, out, "InstanceId")
+}
+
+func TestFormatCSV_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, cloudwatch.FormatCSV(&buf, &cloudwatch.QueryResponse{}))
+	assert.Empty(t, buf.String())
+}
+
 func TestFormatNamespaces_Populated(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, cloudwatch.FormatNamespaces(&buf, []string{"AWS/EC2", "AWS/Lambda"}))

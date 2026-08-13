@@ -38,6 +38,19 @@ func FormatWide(w io.Writer, resp *QueryResponse) error {
 		return nil
 	}
 
+	return buildWideTable(resp).Render(w)
+}
+
+// FormatCSV renders query results as CSV, same columns as FormatWide.
+func FormatCSV(w io.Writer, resp *QueryResponse) error {
+	if len(resp.Frames) == 0 {
+		return nil
+	}
+
+	return buildWideTable(resp).RenderCSV(w)
+}
+
+func buildWideTable(resp *QueryResponse) *style.TableBuilder {
 	t := style.NewTable("TIMESTAMP", "VALUE", "SERIES", "LABEL")
 	for _, frame := range resp.Frames {
 		label := frameLabel(frame)
@@ -50,7 +63,7 @@ func FormatWide(w io.Writer, resp *QueryResponse) error {
 			t.Row(ts.Format("2006-01-02T15:04:05Z07:00"), val, label, labelStr)
 		}
 	}
-	return t.Render(w)
+	return t
 }
 
 // FormatNamespaces renders a list of CloudWatch namespaces.

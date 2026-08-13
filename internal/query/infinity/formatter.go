@@ -15,6 +15,19 @@ func FormatTable(w io.Writer, resp *QueryResponse) error {
 		return nil
 	}
 
+	return buildTable(resp).Render(w)
+}
+
+// FormatCSV renders a QueryResponse as CSV, same columns as FormatTable.
+func FormatCSV(w io.Writer, resp *QueryResponse) error {
+	if len(resp.Rows) == 0 {
+		return nil
+	}
+
+	return buildTable(resp).RenderCSV(w)
+}
+
+func buildTable(resp *QueryResponse) *style.TableBuilder {
 	headers := make([]string, len(resp.Columns))
 	for i, col := range resp.Columns {
 		headers[i] = strings.ToUpper(col.Name)
@@ -29,5 +42,5 @@ func FormatTable(w io.Writer, resp *QueryResponse) error {
 		t.Row(cells...)
 	}
 
-	return t.Render(w)
+	return t
 }

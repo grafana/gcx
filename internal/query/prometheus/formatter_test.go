@@ -81,3 +81,43 @@ func TestFormatVectorTableVariants(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatCSV(t *testing.T) {
+	resp := &prometheus.QueryResponse{
+		Status: "success",
+		Data: prometheus.ResultData{
+			ResultType: "vector",
+			Result: []prometheus.Sample{
+				{
+					Metric: map[string]string{
+						"instance": "localhost:9090",
+						"job":      "prometheus",
+					},
+					Value: []any{float64(1700000000), "1"},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, prometheus.FormatCSV(&buf, resp))
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, 2)
+	assert.Equal(t, "INSTANCE,JOB,TIMESTAMP,VALUE", lines[0])
+	assert.Equal(t, "localhost:9090,prometheus,2023-11-14T22:13:20Z,1", lines[1])
+}
+
+func TestFormatCSV_NoData(t *testing.T) {
+	resp := &prometheus.QueryResponse{
+		Status: "success",
+		Data: prometheus.ResultData{
+			ResultType: "vector",
+			Result:     nil,
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, prometheus.FormatCSV(&buf, resp))
+	assert.Empty(t, buf.String())
+}
