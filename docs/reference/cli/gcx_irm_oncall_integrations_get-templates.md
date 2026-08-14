@@ -12,7 +12,7 @@ rendering for each channel (web, phone call, Short Message Service, email,
 Slack, and Microsoft Teams).
 
 The command emits the whole template document. Edit that document, then pass
-it back through set-templates.
+it back through update-templates.
 
 ```
 gcx irm oncall integrations get-templates <id> [flags]
