@@ -400,10 +400,11 @@ func (c *IncidentClient) Create(ctx context.Context, inc *Incident) (*Incident, 
 }
 
 // resolveSeverityLabel returns the severity label the caller asked for.
-// spec.severityID has precedence: when it is not empty, the organization
-// severity list resolves it to a label, and gcx ignores spec.severity.
-// spec.severity holds the label directly. An empty result means the caller
-// asked for no severity.
+// A hand-written spec.severityID has precedence: when it is not empty, the
+// organization severity list resolves it to a label, and gcx ignores
+// spec.severity. A pulled manifest carries spec.severity alone, because the
+// pull removes spec.severityID. An empty result means the caller asked for no
+// severity.
 func (c *IncidentClient) resolveSeverityLabel(ctx context.Context, inc *Incident) (string, error) {
 	if inc.SeverityID == "" {
 		return inc.Severity, nil

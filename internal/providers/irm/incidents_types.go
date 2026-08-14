@@ -48,10 +48,10 @@ type Incident struct {
 	// Severity is the display label, for example "Critical". gcx ignores it
 	// when SeverityID is not empty.
 	Severity string `json:"severity,omitempty"`
-	// SeverityID is the severity identifier. It has precedence over Severity:
-	// when it is not empty, gcx resolves the label from the organization
-	// severity list. A pulled incident carries both fields, so an edit of
-	// SeverityID alone must still reach the server.
+	// SeverityID is the severity identifier of the organization. A
+	// hand-written manifest can carry it, and gcx then resolves the label from
+	// the organization severity list. A pulled manifest carries the label
+	// alone, because the pull removes this field.
 	SeverityID              string               `json:"severityID,omitempty"`
 	IsDrill                 bool                 `json:"isDrill"`
 	IncidentType            string               `json:"incidentType,omitempty"`

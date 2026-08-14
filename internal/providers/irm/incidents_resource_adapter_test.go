@@ -299,6 +299,51 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	assert.Equal(t, originalInc.Description, restored.Description)
 }
 
+// TestResourceAdapter_PullDropsSeverityID proves that a pulled manifest
+// carries the severity label alone. A manifest with both fields makes an edit
+// of the label unreachable, because severityID has precedence in the client.
+func TestResourceAdapter_PullDropsSeverityID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "IncidentsService.GetIncident") {
+			writeJSON(w, map[string]any{
+				"incident": map[string]any{
+					"incidentID": "inc-1", "title": "Outage", "status": "active",
+					"severity": "Major", "severityID": "sev-2",
+				},
+			})
+			return
+		}
+		writeJSON(w, map[string]any{
+			"incidentPreviews": []map[string]any{
+				{
+					"incidentID": "inc-1", "title": "Outage", "status": "active",
+					"severityLabel": "Major", "severityID": "sev-2",
+				},
+			},
+			"cursor": map[string]any{"hasMore": false},
+		})
+	}))
+	defer server.Close()
+
+	a := newTestAdapter(t, server, "stack-123")
+
+	got, err := a.Get(t.Context(), "inc-1", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	list, err := a.List(t.Context(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, list.Items, 1)
+
+	for name, obj := range map[string]*unstructured.Unstructured{"get": got, "list": &list.Items[0]} {
+		spec, found, err := unstructured.NestedMap(obj.Object, "spec")
+		require.NoError(t, err)
+		require.True(t, found, "%s: spec field should be present", name)
+		assert.Equal(t, "Major", spec["severity"], "%s: the pull keeps the severity label", name)
+		assert.NotContains(t, spec, "severityID", "%s: the pull removes severityID", name)
+		assert.NotContains(t, spec, "incidentID", "%s: the pull removes incidentID", name)
+	}
+}
+
 func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{

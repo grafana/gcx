@@ -146,7 +146,12 @@ func newIncidentCRUD(client *IncidentClient, namespace string, query IncidentQue
 		DeleteFn: func(_ context.Context, _ string) error {
 			return errors.New("incidents: delete is not supported by the IRM API")
 		},
-		StripFields: []string{"incidentID"},
+		// The pull removes severityID next to incidentID. A manifest that
+		// carries the identifier and the label together makes an edit of the
+		// label unreachable, because the identifier has precedence in the
+		// client. The identifiers are also specific to one organization, so a
+		// manifest that carries one does not push to a second stack.
+		StripFields: []string{"incidentID", "severityID"},
 		Namespace:   namespace,
 		Descriptor:  incidentStaticDescriptor,
 	}
