@@ -32,84 +32,136 @@ func (f *fakeDiscoveryAPI) ListWebhookPresets(context.Context) ([]WebhookPreset,
 	return []WebhookPreset{{ID: "grafana_assistant", Name: "Grafana Assistant"}}, nil
 }
 
-func runDiscoveryCmd(t *testing.T, build func(OnCallConfigLoader) *cobra.Command, args ...string) (string, error) {
+// newDiscoveryParent mounts one catalog pair under a parent command. The
+// caller keeps the returned instance, so both invocations of the catalog run
+// against the same command tree.
+func newDiscoveryParent(t *testing.T, build func(OnCallConfigLoader) []*cobra.Command) *cobra.Command {
 	t.Helper()
-	cmd := build(&fakeLoader{client: &fakeDiscoveryAPI{}})
+	parent := &cobra.Command{Use: "parent"}
+	parent.AddCommand(build(&fakeLoader{client: &fakeDiscoveryAPI{}})...)
+	return parent
+}
+
+// runDiscoveryCmd executes args against an existing command tree.
+func runDiscoveryCmd(t *testing.T, parent *cobra.Command, args ...string) (string, error) {
+	t.Helper()
 	out := &bytes.Buffer{}
-	cmd.SetOut(out)
-	cmd.SetErr(out)
-	cmd.SetArgs(args)
-	err := cmd.ExecuteContext(context.Background())
+	parent.SetOut(out)
+	parent.SetErr(out)
+	parent.SetArgs(args)
+	err := parent.ExecuteContext(context.Background())
 	return out.String(), err
 }
 
-// TestDiscoveryGroupListsByDefault is the regression test for the reported
-// defect: the parent name reads as a command that discovers something, but it
-// printed help and demanded a further `list`.
-func TestDiscoveryGroupListsByDefault(t *testing.T) {
+// TestDiscoveryCatalogHasBothInvocations checks the two spellings of each
+// catalog: the canonical `list-<subject>` compound, and the older
+// `<subject> list` noun group that shipped.
+func TestDiscoveryCatalogHasBothInvocations(t *testing.T) {
 	tests := []struct {
-		name  string
-		build func(OnCallConfigLoader) *cobra.Command
-		want  string
+		name     string
+		build    func(OnCallConfigLoader) []*cobra.Command
+		compound string
+		noun     string
+		want     string
 	}{
-		{name: "escalation policy steps", build: newEscalationStepsCmd, want: "Declare incident"},
-		{name: "route filter types", build: newRouteFilterTypesCmd, want: "Regular expression"},
-		{name: "webhook triggers", build: newWebhookTriggersCmd, want: "Incident changed"},
-		{name: "webhook presets", build: newWebhookPresetsCmd, want: "grafana_assistant"},
+		{
+			name:     "escalation policy steps",
+			build:    newEscalationStepCmds,
+			compound: "list-step-types",
+			noun:     "steps",
+			want:     "Declare incident",
+		},
+		{
+			name:     "route filter types",
+			build:    newRouteFilterTypeCmds,
+			compound: "list-filter-types",
+			noun:     "filter-types",
+			want:     "Regular expression",
+		},
+		{
+			name:     "webhook triggers",
+			build:    newWebhookTriggerCmds,
+			compound: "list-triggers",
+			noun:     "triggers",
+			want:     "Incident changed",
+		},
+		{
+			name:     "webhook presets",
+			build:    newWebhookPresetCmds,
+			compound: "list-presets",
+			noun:     "presets",
+			want:     "grafana_assistant",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resetAgentMode(t)
+			parent := newDiscoveryParent(t, tt.build)
 
-			bare, err := runDiscoveryCmd(t, tt.build)
+			compound, err := runDiscoveryCmd(t, parent, tt.compound)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(bare, tt.want) {
-				t.Errorf("the bare command did not list the catalog, got %q", bare)
+			if !strings.Contains(compound, tt.want) {
+				t.Errorf("`%s` did not list the catalog, got %q", tt.compound, compound)
 			}
 
-			// The `list` child shipped, so it must keep working.
-			withList, err := runDiscoveryCmd(t, tt.build, "list")
+			nounGroup, err := runDiscoveryCmd(t, parent, tt.noun, "list")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(withList, tt.want) {
-				t.Errorf("`list` did not list the catalog, got %q", withList)
+			if !strings.Contains(nounGroup, tt.want) {
+				t.Errorf("`%s list` did not list the catalog, got %q", tt.noun, nounGroup)
 			}
 		})
 	}
 }
 
-// TestDiscoveryGroupFlagsAreIndependent guards the two flag sets: the parent
-// and the child each carry their own options, so a format chosen on one never
-// leaks into the other.
-func TestDiscoveryGroupFlagsAreIndependent(t *testing.T) {
+// TestDiscoveryFlagsAreIndependent guards the two flag sets. Both invocations
+// run against one command tree, so the test fails if the compound command and
+// the `list` child share a single discoveryListOpts.
+func TestDiscoveryFlagsAreIndependent(t *testing.T) {
 	resetAgentMode(t)
+	parent := newDiscoveryParent(t, newEscalationStepCmds)
 
-	out, err := runDiscoveryCmd(t, newEscalationStepsCmd, "-o", "json")
+	out, err := runDiscoveryCmd(t, parent, "list-step-types", "-o", "json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(strings.TrimSpace(out), "[") {
-		t.Errorf("expected JSON from the bare command, got %q", out)
+		t.Errorf("expected JSON from `list-step-types`, got %q", out)
 	}
 
-	table, err := runDiscoveryCmd(t, newEscalationStepsCmd, "list")
+	table, err := runDiscoveryCmd(t, parent, "steps", "list")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(table, "DISPLAY NAME") {
-		t.Errorf("expected the table from `list`, got %q", table)
+		t.Errorf("expected the table from `steps list`, got %q", table)
 	}
 }
 
-func TestDiscoveryGroupRejectsPositionalArgs(t *testing.T) {
-	resetAgentMode(t)
+// TestDiscoveryNounGroupIsNotRunnable keeps the noun group a group. A runnable
+// bare noun leaf breaks the $AREA $NOUN $VERB grammar, and it also hides the
+// enriched usage error that cmd/gcx/root/validation.go gives for a group.
+func TestDiscoveryNounGroupIsNotRunnable(t *testing.T) {
+	parent := newDiscoveryParent(t, newEscalationStepCmds)
 
-	_, err := runDiscoveryCmd(t, newEscalationStepsCmd, "unexpected")
-	if err == nil {
+	steps, _, err := parent.Find([]string{"steps"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if steps.Runnable() {
+		t.Error("the `steps` noun group must not run on its own")
+	}
+}
+
+func TestDiscoveryRejectsPositionalArgs(t *testing.T) {
+	resetAgentMode(t)
+	parent := newDiscoveryParent(t, newEscalationStepCmds)
+
+	if _, err := runDiscoveryCmd(t, parent, "list-step-types", "unexpected"); err == nil {
 		t.Error("expected an error for an unknown positional argument")
 	}
 }
