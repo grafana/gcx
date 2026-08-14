@@ -142,9 +142,11 @@ test_report_warns_on_shadow() {
 
 	assert_contains "$out" "Your shell runs a different gcx" \
 		"report_resolution warns when another copy comes first"
-	assert_contains "$out" "$tmp/new/gcx (gcx version 1.0.0)" \
+	# Anchor the label prefix. Without it, a swap of the two paths inside
+	# warn_shadowed keeps every substring present, and the test stays green.
+	assert_contains "$out" "Installed now:  $tmp/new/gcx (gcx version 1.0.0)" \
 		"the warning names the installed path and version"
-	assert_contains "$out" "$tmp/old/gcx (gcx version 0.4.2)" \
+	assert_contains "$out" "Shell runs:     $tmp/old/gcx (gcx version 0.4.2)" \
 		"the warning names the shadowing path and version"
 	assert_contains "$out" "rm $tmp/old/gcx" \
 		"the warning gives the removal command"

@@ -200,7 +200,7 @@ get_latest_version() {
     if [ -n "$auth_header" ]; then
         response=$(curl -fsSL -H "$auth_header" "$url") || err "Failed to fetch latest release from GitHub API."
     else
-        response=$(curl -fsSL "$url") || err "Failed to fetch latest release from GitHub API. If rate-limited, set GITHUB_TOKEN or VERSION."
+        response=$(curl -fsSL "$url") || err "Failed to fetch latest release from GitHub API. If rate-limited, set GITHUB_TOKEN or GCX_VERSION."
     fi
 
     tag=$(printf '%s' "$response" | grep '"tag_name"' | sed 's/.*"tag_name": *"//;s/".*//')
