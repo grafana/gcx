@@ -12,7 +12,7 @@ import (
 // truncation metadata. The field-selection and discovery paths in this
 // package treat the key specially:
 //
-//   - `--json field1,field2` selection re-attaches the metadata object to the
+//   - `--json <path>,<path>` selection re-attaches the metadata object to the
 //     output, so the truncation signal survives field selection;
 //   - `--json list` / `--json ?` discovery samples the first item and never
 //     lists `list_meta.*` paths;

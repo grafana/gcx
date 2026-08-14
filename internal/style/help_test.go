@@ -29,7 +29,7 @@ func TestHelpFunc_JSONTipShownWhenFlagExists(t *testing.T) {
 
 	assert.Contains(t, buf.String(), "Tip:")
 	assert.Contains(t, buf.String(), "--json list")
-	assert.Contains(t, buf.String(), "--json field1,field2")
+	assert.Contains(t, buf.String(), "--json <path>,<path>")
 }
 
 func TestHelpFunc_JSONTipHiddenWhenNoFlag(t *testing.T) {
