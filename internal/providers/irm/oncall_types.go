@@ -181,7 +181,7 @@ type OnCallAPI interface {
 	ListUserGroups(ctx context.Context) ([]UserGroup, error)
 	ListSlackChannels(ctx context.Context) ([]SlackChannel, error)
 
-	SyncPlugin(ctx context.Context) (*PluginSyncResult, error)
+	SyncPlugin(ctx context.Context) error
 
 	ListAlerts(ctx context.Context, alertGroupID string, opts ...ListOption) ([]Alert, error)
 	GetAlert(ctx context.Context, id string) (*Alert, error)
@@ -253,12 +253,10 @@ type Integration struct {
 	AlertGroupLabels any    `json:"alert_group_labels,omitempty"`
 }
 
-// PluginSyncResult is the answer of the IRM plugin sync endpoint. The endpoint
-// can answer with an empty body, so both fields are optional.
-type PluginSyncResult struct {
-	// Message is the human-readable answer of the backend, for example
-	// "Sync request processed successfully".
-	Message string `json:"message,omitempty"`
+// pluginSyncResponse is the answer of the IRM plugin sync endpoint. The
+// endpoint can answer with an empty body, and the free-form success text of a
+// full answer has no caller, so the client reads the failure field alone.
+type pluginSyncResponse struct {
 	// Error carries a failure that the backend reports in-band on a 2xx
 	// response.
 	Error string `json:"error,omitempty"`
