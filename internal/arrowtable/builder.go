@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -53,6 +54,14 @@ func Timestamp(name string) Field {
 // Boolean declares a nullable boolean column.
 func Boolean(name string) Field {
 	return Field{Name: name, Type: arrow.FixedWidthTypes.Boolean, Nullable: true}
+}
+
+// MapUtf8 declares a nullable Map(Utf8, Utf8) column — for a label/dimension
+// set whose keys vary per row. DuckDB reads this as a native
+// MAP(VARCHAR, VARCHAR), queryable with `col['key']` / map_extract, instead
+// of string-parsing a formatted "k=v,k2=v2" cell.
+func MapUtf8(name string) Field {
+	return Field{Name: name, Type: arrow.MapOf(arrow.BinaryTypes.String, arrow.BinaryTypes.String), Nullable: true}
 }
 
 // Builder accumulates typed rows for a fixed schema and writes them as a
@@ -127,8 +136,35 @@ func appendValue(fb array.Builder, v any) {
 		} else {
 			bld.AppendNull()
 		}
+	case *array.MapBuilder:
+		appendMapValue(bld, v)
 	default:
 		fb.AppendNull()
+	}
+}
+
+// appendMapValue appends a map[string]string as one Map(Utf8, Utf8) row,
+// keys sorted for deterministic output. A nil map appends null — distinct
+// from an empty, non-nil map, which appends a valid zero-entry map.
+func appendMapValue(bld *array.MapBuilder, v any) {
+	m, ok := v.(map[string]string)
+	if !ok || m == nil {
+		bld.AppendNull()
+		return
+	}
+
+	bld.Append(true)
+	keyB, _ := bld.KeyBuilder().(*array.StringBuilder)
+	valB, _ := bld.ItemBuilder().(*array.StringBuilder)
+
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		keyB.Append(k)
+		valB.Append(m[k])
 	}
 }
 

@@ -106,6 +106,27 @@ func TestReadStream_RoundTrip(t *testing.T) {
 	assert.Equal(t, []any{"prod-us", nil, ts}, rows[1])
 }
 
+func TestReadStream_MapColumn(t *testing.T) {
+	b := arrowtable.NewBuilder([]arrowtable.Field{
+		arrowtable.Utf8("SERIES"),
+		arrowtable.MapUtf8("LABELS"),
+	})
+	b.Row("CPUUtilization", map[string]string{"InstanceId": "i-abc", "Region": "us-east-1"})
+	b.Row("EmptyLabels", map[string]string{})
+	b.Row("NoLabels", map[string]string(nil))
+
+	var buf bytes.Buffer
+	require.NoError(t, b.Write(&buf))
+
+	headers, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"SERIES", "LABELS"}, headers)
+	require.Len(t, rows, 3)
+	assert.Equal(t, map[string]string{"InstanceId": "i-abc", "Region": "us-east-1"}, rows[0][1])
+	assert.Equal(t, map[string]string{}, rows[1][1])
+	assert.Nil(t, rows[2][1])
+}
+
 func TestBuilder_Row_TypeMismatchAppendsNull(t *testing.T) {
 	b := arrowtable.NewBuilder([]arrowtable.Field{
 		arrowtable.Float64("VALUE"),

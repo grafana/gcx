@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeTestResponse(name string, ts []time.Time, vals []*float64) *cloudwatch.QueryResponse { //nolint:unparam // name mirrors Frame.Name for test-helper readability even though every current caller passes "".
+func makeTestResponse(name string, ts []time.Time, vals []*float64) *cloudwatch.QueryResponse {
 	return &cloudwatch.QueryResponse{
 		Frames: []cloudwatch.Frame{
 			{
@@ -120,7 +120,19 @@ func TestFormatArrow_HasLabelColumn(t *testing.T) {
 	assert.Equal(t, ts("2026-05-17T00:00:00Z"), rows[0][0])
 	assert.InEpsilon(t, 10.0, rows[0][1], 0.0001)
 	assert.Equal(t, "CPUUtilization", rows[0][2])
-	assert.Contains(t, rows[0][3], "InstanceId")
+	assert.Equal(t, map[string]string{"InstanceId": "i-abc"}, rows[0][3])
+}
+
+func TestFormatArrow_NoLabelsIsNullMap(t *testing.T) {
+	resp := makeTestResponse("solo", []time.Time{ts("2026-05-17T00:00:00Z")}, []*float64{pf(1.0)})
+
+	var buf bytes.Buffer
+	require.NoError(t, cloudwatch.FormatArrow(&buf, resp))
+
+	_, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Nil(t, rows[0][3])
 }
 
 func TestFormatArrow_NilValueBecomesNull(t *testing.T) {
