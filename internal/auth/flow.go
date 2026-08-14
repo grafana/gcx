@@ -121,6 +121,18 @@ func NewFlow(endpoint string, opts Options) *Flow {
 
 // Run executes the authentication flow.
 func (f *Flow) Run(ctx context.Context) (*Result, error) {
+	// A Grafana Cloud portal root has no grafana-assistant-app route, so the
+	// browser would land on a page that does not exist while this flow waited
+	// for a callback that never arrives. Refuse before anything opens.
+	//
+	// Only an explicit endpoint is checked. An empty endpoint falls back to the
+	// grafana.com launch page below, which is the deliberate instance-selector
+	// path. Hosts outside the portal set are not rejected here, because custom
+	// Cloud domains do serve the route.
+	if err := rejectPortalEndpoint(f.endpoint); err != nil {
+		return nil, err
+	}
+
 	if f.opts.Manual {
 		if f.opts.Port != 0 {
 			return nil, errors.New("manual OAuth does not use a callback port")
@@ -332,10 +344,52 @@ func ValidateEndpointURL(endpoint string) error {
 	return fmt.Errorf("endpoint host %q is not a trusted Grafana domain", hostname)
 }
 
+// Keep this list aligned with the gcomRoot values in
+// internal/config.grafanaCloudStackSuffixes. The config package uses this list
+// to detect a portal and its own table to name the related stack URL suffix.
 var allowedGCOMHosts = []string{ //nolint:gochecknoglobals
 	"grafana.com",
 	"grafana-dev.com",
 	"grafana-ops.com",
+}
+
+// rejectPortalEndpoint returns an error when endpoint names a Grafana Cloud
+// portal root. An empty endpoint and every non-portal host return nil.
+func rejectPortalEndpoint(endpoint string) error {
+	if endpoint == "" {
+		return nil
+	}
+
+	host := endpointHostname(endpoint)
+	if !IsGCOMHost(host) {
+		return nil
+	}
+
+	return errors.New(host + " is a Grafana Cloud portal, not a Grafana stack: browser login needs the stack URL")
+}
+
+// endpointHostname returns the hostname of endpoint, or "" when the URL does
+// not parse. A malformed endpoint is not the portal check's concern; it fails
+// later with a message about the endpoint itself.
+func endpointHostname(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
+}
+
+// IsGCOMHost reports whether host is a Grafana Cloud portal root such as
+// grafana.com. A portal root manages stacks; it is not a Grafana stack
+// endpoint itself, so it can never serve as a Grafana server URL. The caller
+// must supply a bare hostname without a port. Matching is case-insensitive.
+//
+// This is the single source of truth for the portal roots. internal/config
+// wraps it for the login path, which cannot reach it the other way round:
+// internal/config imports internal/auth, and internal/auth imports no gcx
+// package.
+func IsGCOMHost(host string) bool {
+	return slices.Contains(allowedGCOMHosts, strings.ToLower(host))
 }
 
 // validateGCOMURL checks that the given URL points at a trusted Grafana Cloud
@@ -361,7 +415,7 @@ func validateGCOMURL(rawURL string) error {
 		return fmt.Errorf("URL must use HTTPS, got %q", u.Scheme)
 	}
 
-	if slices.Contains(allowedGCOMHosts, hostname) {
+	if IsGCOMHost(hostname) {
 		return nil
 	}
 

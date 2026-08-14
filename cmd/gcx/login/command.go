@@ -69,9 +69,9 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.DefaultFormat("text")
 	opts.IO.BindFlags(flags)
 
-	flags.StringVar(&opts.Server, "server", "", "Grafana server URL (e.g. https://my-stack.grafana.net)")
+	flags.StringVar(&opts.Server, "server", "", "Grafana stack URL (e.g. https://my-stack.grafana.net), not the grafana.com portal")
 	flags.StringVar(&opts.Token, "token", "", "Grafana service account token")
-	flags.StringVar(&opts.CloudToken, "cloud-token", "", "Grafana Cloud API token (enables Cloud management features)")
+	flags.StringVar(&opts.CloudToken, "cloud-token", "", "Grafana Cloud access-policy token for the Cloud product commands (does not authenticate the Grafana instance)")
 	flags.StringVar(&opts.CloudAPIURL, "cloud-api-url", "", "Override Grafana Cloud API URL")
 	flags.BoolVar(&opts.OAuth, "oauth", false, "Authenticate via browser-based OAuth (recommended for Grafana Cloud). Works non-interactively and in agent mode: opens a browser for the user to approve.")
 	flags.BoolVar(&opts.BasicAuth, "basic-auth", false, "Authenticate with a Grafana username and password (GRAFANA_USER / GRAFANA_PASSWORD, or interactive prompts)")
@@ -179,12 +179,20 @@ Pass CONTEXT_NAME to target a specific context:
 Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
-Auth sources (for non-interactive use):
+--server takes the URL of a Grafana stack, such as https://my-stack.grafana.net.
+It does not take the Grafana Cloud portal at grafana.com, which manages stacks
+but serves no Grafana instance API.
+
+Grafana instance authentication (choose one, for non-interactive use):
   --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
   --basic-auth   Grafana username/password. Use --user or GRAFANA_USER, and GRAFANA_PASSWORD.
   --token        Grafana service-account token (created inside the Grafana instance).
                  See: ` + docs.ServiceAccounts + `
+
+Grafana Cloud platform credential (optional, and in addition to the above):
   --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
+                 It authenticates the Cloud product commands: sm, k6, irm, and slo.
+                 It cannot authenticate the Grafana instance, so pass --oauth or --token as well.
                  See: ` + docs.AccessPolicies,
 		Example: `  gcx login
   gcx login prod
@@ -192,6 +200,7 @@ Auth sources (for non-interactive use):
   gcx login prod --server https://prod.grafana.net --oauth
   gcx login local --server https://grafana.example.com --basic-auth --user admin
   gcx login --yes prod --token glsa_xxx
+  gcx login --yes prod --server https://prod.grafana.net --token glsa_xxx --cloud-token glc_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.UserSet = cmd.Flags().Changed("user")
@@ -1637,7 +1646,8 @@ func structuredMissingFieldsError(e *login.ErrNeedInput) error {
 			suggestions = append(suggestions,
 				"Pass --basic-auth --user <username> and set GRAFANA_PASSWORD for Basic authentication",
 				"Pass --oauth to authenticate via browser (recommended for Grafana Cloud; opens a browser for the user to approve, works in agent mode)",
-				"Pass --token <token> (or set the GRAFANA_TOKEN env var) for a service account token, or configure TLS client certs for mTLS auth (GRAFANA_TLS_CERT_FILE / GRAFANA_TLS_KEY_FILE env vars, or gcx config set stacks.<name>.grafana.tls.cert-file ...)")
+				"Pass --token <token> (or set the GRAFANA_TOKEN env var) for a service account token, or configure TLS client certs for mTLS auth (GRAFANA_TLS_CERT_FILE / GRAFANA_TLS_KEY_FILE env vars, or gcx config set stacks.<name>.grafana.tls.cert-file ...)",
+				"A Cloud access-policy token (--cloud-token) does not satisfy this: it authenticates the Cloud product commands, not the Grafana instance")
 		case "basic-credentials":
 			suggestions = append(suggestions, "Pass --basic-auth --user <username> (or set GRAFANA_USER) and set GRAFANA_PASSWORD, or run interactively")
 		case "cloud-token":
