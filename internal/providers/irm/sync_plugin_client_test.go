@@ -62,7 +62,7 @@ func TestSyncPluginResponses(t *testing.T) {
 		{
 			name:    "403 with a backend message",
 			status:  http.StatusForbidden,
-			body:    `{"detail":"permission denied"}`,
+			body:    `{"error":"permission denied"}`,
 			wantErr: "permission denied",
 		},
 	}
