@@ -495,13 +495,13 @@ func (c *IncidentClient) resolveSeverityLabel(ctx context.Context, inc *Incident
 // incident. severity is the display label, not the identifier.
 func (c *IncidentClient) UpdateSeverity(ctx context.Context, id, severity string) (*Incident, error) {
 	req := updateSeverityRequest{IncidentID: id, Severity: severity}
-	return c.updateIncidentField(ctx, incUpdateSeverityMethod, req, "update severity")
+	return c.updateIncidentField(ctx, incUpdateSeverityMethod, id, req, "update severity")
 }
 
 // UpdateTitle sets the title of an incident and returns the updated incident.
 func (c *IncidentClient) UpdateTitle(ctx context.Context, id, title string) (*Incident, error) {
 	req := updateTitleRequest{IncidentID: id, Title: title}
-	return c.updateIncidentField(ctx, incUpdateTitleMethod, req, "update title")
+	return c.updateIncidentField(ctx, incUpdateTitleMethod, id, req, "update title")
 }
 
 // Update applies every field of inc that the IRM API exposes as its own
@@ -510,35 +510,56 @@ func (c *IncidentClient) UpdateTitle(ctx context.Context, id, title string) (*In
 // skips each field that the caller left empty or that already matches the
 // server. Nothing enforces the required fields of the schema on push, so a
 // manifest without a status must not send an empty status.
+//
+// A call that fails after an earlier call succeeded leaves the incident
+// between the two states. Update then reports the incident as the server
+// holds it, next to an error that names the fields it did apply.
 func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (*Incident, error) {
 	current, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	if inc.Status != "" && !strings.EqualFold(current.Status, inc.Status) {
-		current, err = c.UpdateStatus(ctx, id, inc.Status)
-		if err != nil {
+	var applied []string
+	// fail reports a half-applied update: the incident as it stands on the
+	// server, and the fields that reached it before the failure.
+	fail := func(field string, err error) (*Incident, error) {
+		if len(applied) == 0 {
 			return nil, err
 		}
+		return current, fmt.Errorf("incidents: update %s: gcx applied the %s, but the %s update failed: %w",
+			id, strings.Join(applied, " and the "), field, err)
+	}
+
+	if inc.Status != "" && !strings.EqualFold(current.Status, inc.Status) {
+		updated, err := c.UpdateStatus(ctx, id, inc.Status)
+		if err != nil {
+			return fail("status", err)
+		}
+		current = updated
+		applied = append(applied, "status")
 	}
 
 	if inc.Title != "" && inc.Title != current.Title {
-		current, err = c.UpdateTitle(ctx, id, inc.Title)
+		updated, err := c.UpdateTitle(ctx, id, inc.Title)
 		if err != nil {
-			return nil, err
+			return fail("title", err)
 		}
+		current = updated
+		applied = append(applied, "title")
 	}
 
 	label, err := c.resolveSeverityLabel(ctx, inc)
 	if err != nil {
-		return nil, err
+		return fail("severity", err)
 	}
 	if label != "" && !strings.EqualFold(current.Severity, label) {
-		current, err = c.UpdateSeverity(ctx, id, label)
+		updated, err := c.UpdateSeverity(ctx, id, label)
 		if err != nil {
-			return nil, err
+			return fail("severity", err)
 		}
+		current = updated
+		applied = append(applied, "severity")
 	}
 
 	return current, nil
@@ -549,8 +570,9 @@ func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (
 //
 // IncidentsService answers on the versioned base path. A Grafana build that
 // predates that path answers on the unversioned one, so a 404 on the first
-// path retries on the second.
-func (c *IncidentClient) updateIncidentField(ctx context.Context, method string, req any, description string) (*Incident, error) {
+// path retries on the second. A 404 on both paths is not a missing route: the
+// incident does not exist, and GetIncident reports that state the same way.
+func (c *IncidentClient) updateIncidentField(ctx context.Context, method, id string, req any, description string) (*Incident, error) {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("incidents: marshal %s request: %w", description, err)
@@ -565,6 +587,10 @@ func (c *IncidentClient) updateIncidentField(ctx context.Context, method string,
 		resp, err = c.doRequest(ctx, incidentLegacyBasePath+"/"+method, bytes.NewReader(data))
 		if err != nil {
 			return nil, fmt.Errorf("incidents: %s: %w", description, err)
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			resp.Body.Close()
+			return nil, fmt.Errorf("incidents: %s %s: %w", description, id, ErrNotFound)
 		}
 	}
 	defer resp.Body.Close()
@@ -583,7 +609,7 @@ func (c *IncidentClient) updateIncidentField(ctx context.Context, method string,
 // UpdateStatus updates an incident's status and returns the updated incident.
 func (c *IncidentClient) UpdateStatus(ctx context.Context, id, status string) (*Incident, error) {
 	req := updateStatusRequest{IncidentID: id, Status: status}
-	return c.updateIncidentField(ctx, incUpdateStatusMethod, req, "update status")
+	return c.updateIncidentField(ctx, incUpdateStatusMethod, id, req, "update status")
 }
 
 // QueryActivity retrieves the activity timeline for an incident.
