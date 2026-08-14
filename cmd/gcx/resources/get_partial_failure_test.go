@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -121,6 +122,52 @@ func TestGetPartialFailure_AtomicStdout(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestGetPartialFailure_AbsentFieldFails pins that the agent-mode fused
+// envelope obeys the same --json contract as the success path: a path that no
+// resource carries is a caller error. The envelope route once null-filled
+// such a path, so the same flag on the same command behaved differently when
+// one resource failed.
+func TestGetPartialFailure_AbsentFieldFails(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	item := unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "dashboard.grafana.app/v1alpha1",
+		"kind":       "Dashboard",
+		"metadata":   map[string]any{"name": "alpha"},
+	}}
+
+	flags := pflag.NewFlagSet("get", pflag.ContinueOnError)
+	opts := resources.NewGetOptsForTest(flags)
+	if err := flags.Set("json", "name"); err != nil {
+		t.Fatalf("set --json: %v", err)
+	}
+	if err := opts.Validate(); err != nil {
+		t.Fatalf("Validate() = %v", err)
+	}
+
+	summary := &remote.OperationSummary{}
+	summary.RecordSuccess()
+	summary.RecordFailure(nil, errors.New("boom"))
+	res := &resources.FetchResponse{PullSummary: summary}
+	output := unstructured.UnstructuredList{Items: []unstructured.Unstructured{item}}
+
+	var stdout, stderr bytes.Buffer
+	opts.IO.ErrWriter = &stderr
+	err := resources.WriteGetOutputForTest(&stdout, &stderr, opts, res, output)
+
+	var fieldErr cmdio.UnknownFieldSelectionError
+	if !errors.As(err, &fieldErr) {
+		t.Fatalf("writeGetOutput() error = %T (%v), want cmdio.UnknownFieldSelectionError", err, err)
+	}
+	if !strings.Contains(fieldErr.Error(), "metadata.name") {
+		t.Fatalf("error = %q, want the real path metadata.name", fieldErr.Error())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty for a rejected selection", stdout.String())
 	}
 }
 
