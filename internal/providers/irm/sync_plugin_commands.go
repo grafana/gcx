@@ -10,9 +10,11 @@ import (
 
 // IRM keeps its own copy of the Grafana users and teams, and refreshes it on
 // a schedule. Until that refresh lands, an IRM object that references a new
-// team or user fails with "Object does not exist". A script therefore cannot
-// sequence "create the team" then "create the schedule of that team" without
-// a way to force the refresh.
+// team or user fails with "Object does not exist". This command starts the
+// refresh, so a script does not have to wait for the next scheduled refresh.
+// The backend refreshes in the background. A successful call therefore does
+// not prove that the copy is current: a create can still fail, and the caller
+// must retry it after a short delay.
 
 type syncPluginOpts struct {
 	IO cmdio.Options
