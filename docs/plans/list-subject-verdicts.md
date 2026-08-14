@@ -148,7 +148,12 @@ recorded verbatim.
 ## Non-members, for the record
 
 `gcx irm incidents severities list` keeps its noun group under the ADR §8 catalog-children
-carve-out (no parent identity in the addressing path). Wave-1 keeps adjacent to this family:
+carve-out (no parent identity in the addressing path). **Superseded (PR #1193):** the maintainer
+supersedes the ADR §8 catalog-children carve-out for the Incident Response and Management (IRM)
+area, so every catalog in that area uses the compound `list-<subject>` spelling; the four OnCall
+catalogs (`escalation-policies list-step-types`, `routes list-filter-types`,
+`webhooks list-triggers`, `webhooks list-presets`) take the compound spelling now, and
+`severities` follows in a separate change. Wave-1 keeps adjacent to this family:
 `agento11y saved-conversations collections` (collections are independently addressable;
 panel split) and the pyroscope `exemplars profile`/`span` pair (shared builder mounted under
 two trees; convergence deferred to the profiles batch). See the wave-1 PR bodies (#1013,
