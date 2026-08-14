@@ -353,11 +353,12 @@ JSON structure:
 Use `--json` to select fields without external tools:
 
 ```bash
-# Discover available fields
+# Discover the available paths
 gcx metrics query -d <uid> 'up' --json list
 
-# Select specific fields
-gcx metrics query -d <uid> 'up' --json metric,value
+# Select the samples. They live under data.result[], which --json does not
+# reach, so use --jq for this command.
+gcx metrics query -d <uid> 'up' --jq '.data.result[] | {metric, value}'
 
 # For complex filtering, pipe to python3 (jq may not be installed)
 gcx metrics query -d <uid> 'up' -o json 2>/dev/null | \
