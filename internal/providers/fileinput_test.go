@@ -59,20 +59,35 @@ spec:
 			want: scheduleDoc{Name: "my schedule", Spec: map[string]any{"name": "inner"}},
 		},
 		{
-			name: "envelope with a null spec keeps the whole document",
+			name: "envelope with a null spec is rejected, and the error names the source",
 			input: `kind: Schedule
-name: my schedule
 spec: null
 `,
-			want: scheduleDoc{Name: "my schedule"},
+			wantErr: "stdin: the document sets apiVersion or kind, but it carries no object-valued spec field",
 		},
 		{
-			name: "envelope with a non-object spec keeps the whole document",
+			name: "envelope with a non-object spec is rejected",
 			input: `kind: Schedule
-name: my schedule
 spec: plain
 `,
-			want: scheduleDoc{Name: "my schedule", Spec: "plain"},
+			wantErr: "carries no object-valued spec field",
+		},
+		{
+			name: "envelope with an empty spec is rejected",
+			input: `apiVersion: oncall.ext.grafana.app/v1alpha1
+kind: Schedule
+spec: {}
+`,
+			wantErr: "carries no object-valued spec field",
+		},
+		{
+			name: "envelope with no spec key is rejected",
+			input: `apiVersion: oncall.ext.grafana.app/v1alpha1
+kind: Schedule
+metadata:
+  name: probe
+`,
+			wantErr: "carries no object-valued spec field",
 		},
 		{
 			name:    "empty input",

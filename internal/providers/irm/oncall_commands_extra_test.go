@@ -735,8 +735,9 @@ func (f *fakeTimezoneAPI) ListFilterEvents(_ context.Context, _, userTZ, _ strin
 }
 
 // TestScheduleListFinalShiftsTimezone pins issue #1185 problem 2: the command
-// must send an IANA timezone that the API accepts, never the local zone name
-// "Local" that time.Now().Location() reports.
+// must send a timezone that the API accepts, never the local zone name "Local"
+// that time.Now().Location() reports when TZ is unset. The API renders every
+// shift boundary in this zone, so each fallback to UTC must warn.
 func TestScheduleListFinalShiftsTimezone(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -745,6 +746,7 @@ func TestScheduleListFinalShiftsTimezone(t *testing.T) {
 		args         []string
 		wantTZ       string
 		wantGetCalls int
+		wantWarn     string
 		wantErr      string
 	}{
 		{
@@ -755,33 +757,39 @@ func TestScheduleListFinalShiftsTimezone(t *testing.T) {
 			wantGetCalls: 0,
 		},
 		{
+			// Validate does not check the name against the tz database, so an
+			// unknown name reaches the API, which adjudicates it.
+			name:         "an unknown name reaches the API unchanged",
+			args:         []string{"--timezone", "Mars/Olympus"},
+			wantTZ:       "Mars/Olympus",
+			wantGetCalls: 0,
+		},
+		{
 			name:         "falls back to the timezone of the schedule",
 			scheduleTZ:   "Europe/Amsterdam",
 			wantTZ:       "Europe/Amsterdam",
 			wantGetCalls: 1,
 		},
 		{
-			name:         "falls back to UTC when the schedule has no timezone",
+			name:         "warns and uses UTC when the schedule has no timezone",
 			scheduleTZ:   "",
 			wantTZ:       "UTC",
 			wantGetCalls: 1,
+			wantWarn:     "schedule SCHED1 declares no timezone",
 		},
 		{
-			name:         "falls back to UTC when the schedule lookup fails",
+			name:         "warns and uses UTC when the schedule lookup fails",
 			scheduleErr:  errors.New("boom"),
 			wantTZ:       "UTC",
 			wantGetCalls: 1,
+			wantWarn:     "cannot read the timezone of schedule SCHED1",
 		},
 		{
-			name:    "rejects an unknown timezone",
-			args:    []string{"--timezone", "Mars/Olympus"},
-			wantErr: "invalid --timezone",
-		},
-		{
-			// time.LoadLocation resolves "Local", but the API rejects it.
+			// Go names the zone of the host "Local" when TZ is unset. The API
+			// rejects that name, so the command rejects it first.
 			name:    "rejects the local zone name",
 			args:    []string{"--timezone", "Local"},
-			wantErr: "invalid --timezone",
+			wantErr: `invalid --timezone "Local"`,
 		},
 	}
 
@@ -791,7 +799,7 @@ func TestScheduleListFinalShiftsTimezone(t *testing.T) {
 
 			fake := &fakeTimezoneAPI{scheduleTZ: tt.scheduleTZ, scheduleErr: tt.scheduleErr}
 			args := append([]string{"list-final-shifts", "SCHED1", "-o", "json"}, tt.args...)
-			_, _, err := runNounCmd(t, func() *cobra.Command {
+			_, stderr, err := runNounCmd(t, func() *cobra.Command {
 				return newSchedulesCmd(&fakeLoader{client: fake})
 			}, "", args...)
 
@@ -801,6 +809,11 @@ func TestScheduleListFinalShiftsTimezone(t *testing.T) {
 				}
 				if fake.gotTZ != "" {
 					t.Errorf("request sent with timezone %q, want no request", fake.gotTZ)
+				}
+				// Validate runs before any client call, so a rejected value
+				// must not reach the schedule lookup either.
+				if fake.getCalls != 0 {
+					t.Errorf("GetSchedule calls = %d, want 0", fake.getCalls)
 				}
 				return
 			}
@@ -813,6 +826,15 @@ func TestScheduleListFinalShiftsTimezone(t *testing.T) {
 			}
 			if fake.getCalls != tt.wantGetCalls {
 				t.Errorf("GetSchedule calls = %d, want %d", fake.getCalls, tt.wantGetCalls)
+			}
+			if tt.wantWarn == "" {
+				if stderr != "" {
+					t.Errorf("stderr = %q, want no diagnostic", stderr)
+				}
+				return
+			}
+			if !strings.Contains(stderr, tt.wantWarn) {
+				t.Errorf("stderr = %q, want it to contain %q", stderr, tt.wantWarn)
 			}
 		})
 	}
