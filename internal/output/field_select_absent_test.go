@@ -8,6 +8,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // oncallUser mirrors the shape of `gcx irm oncall users list`: the fields a
@@ -41,6 +42,25 @@ type nestedOmitemptyItem struct {
 	Spec struct {
 		Tags []string `json:"tags,omitempty"`
 	} `json:"spec"`
+}
+
+// twoNameItem declares the same leaf name under two paths, so the suggestion
+// must name both.
+type twoNameItem struct {
+	Metadata struct {
+		Name string `json:"name"`
+	} `json:"metadata"`
+	Spec struct {
+		Name string `json:"name"`
+	} `json:"spec"`
+}
+
+// arrayItem holds its values inside an array, which field selection cannot
+// walk into.
+type arrayItem struct {
+	Rows []struct {
+		Value string `json:"value"`
+	} `json:"rows"`
 }
 
 // TestLeafNameInsteadOfPathFails is the regression test for the reported
@@ -83,10 +103,10 @@ func TestAbsentFieldSelection(t *testing.T) {
 		wantOK bool
 	}{
 		{
-			name:   "an empty result set proves nothing about the field names",
-			fields: []string{"username"},
-			value:  []oncallUser{},
-			wantOK: true,
+			name:    "an empty result set still answers from the item type",
+			fields:  []string{"username"},
+			value:   []oncallUser{},
+			wantErr: "unknown field(s) in --json: username. Did you mean spec.username?",
 		},
 		{
 			name:   "a path only some objects carry is kept",
@@ -116,22 +136,16 @@ func TestAbsentFieldSelection(t *testing.T) {
 			wantOK: true,
 		},
 		{
-			name:   "an empty object proves nothing about the field names",
+			name:   "an empty object declares no type, so the path is kept",
 			fields: []string{"anything"},
 			value:  map[string]any{},
 			wantOK: true,
 		},
 		{
-			name:    "a path that exists in no object fails",
-			fields:  []string{"a", "missing"},
-			value:   []map[string]any{{"a": 1}, {"a": 2}},
-			wantErr: "unknown field(s) in --json: missing",
-		},
-		{
-			name:    "a dotted path the caller wrote gets no candidate",
-			fields:  []string{"spec.nope"},
-			value:   []map[string]any{{"spec": map[string]any{"username": "ward"}}},
-			wantErr: "unknown field(s) in --json: spec.nope. Run --json list",
+			name:   "a dynamic map declares no type, so the path is kept",
+			fields: []string{"a", "missing"},
+			value:  []map[string]any{{"a": 1}, {"a": 2}},
+			wantOK: true,
 		},
 		{
 			name:    "a path the item type does not declare fails",
@@ -140,20 +154,28 @@ func TestAbsentFieldSelection(t *testing.T) {
 			wantErr: "unknown field(s) in --json: bogus",
 		},
 		{
-			name:   "each absent name keeps its own candidates",
-			fields: []string{"username", "bogus"},
-			value: []map[string]any{
-				{"spec": map[string]any{"username": "ward"}},
-			},
+			name:    "a dotted path the caller wrote gets no candidate",
+			fields:  []string{"spec.nope"},
+			value:   []oncallUser{{}},
+			wantErr: "unknown field(s) in --json: spec.nope. Run --json list",
+		},
+		{
+			name:    "each absent name keeps its own candidates",
+			fields:  []string{"username", "bogus"},
+			value:   newOnCallUsers("ward"),
 			wantErr: "unknown field(s) in --json: username, bogus. Did you mean spec.username for username?",
 		},
 		{
-			name:   "a leaf name that matches two paths names both",
-			fields: []string{"name"},
-			value: []map[string]any{
-				{"spec": map[string]any{"name": "a"}, "metadata": map[string]any{"name": "b"}},
-			},
+			name:    "a leaf name that matches two paths names both",
+			fields:  []string{"name"},
+			value:   []twoNameItem{{}},
 			wantErr: "Did you mean metadata.name, spec.name?",
+		},
+		{
+			name:    "a path that continues past an array names --jq",
+			fields:  []string{"rows.value"},
+			value:   []arrayItem{{}},
+			wantErr: "--json cannot reach a value inside an array: rows.value. Use --jq",
 		},
 	}
 
@@ -187,16 +209,76 @@ func TestValidatorAcceptsDeclaredPaths(t *testing.T) {
 	assert.Contains(t, err.Error(), "Did you mean spec.tags?")
 }
 
+// TestValidatorRejectsPathInsideArray covers the validator route for a path
+// that continues past an array. The message must name --jq, because --json
+// cannot reach such a value.
+func TestValidatorRejectsPathInsideArray(t *testing.T) {
+	validator := cmdio.MakeFieldValidator(arrayItem{})
+	require.NotNil(t, validator)
+
+	err := validator([]string{"rows.value"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--json cannot reach a value inside an array: rows.value")
+	assert.Contains(t, err.Error(), "--jq")
+}
+
+// TestEmptyTypedListRejectsUnknownPath is the `gcx datasources list --json
+// bogus` case against an empty result set. The item type is reachable through
+// the envelope, so the answer must not depend on how many rows the server
+// returned.
+func TestEmptyTypedListRejectsUnknownPath(t *testing.T) {
+	type datasource struct {
+		UID  string `json:"uid"`
+		Name string `json:"name"`
+	}
+	// The command emits an empty array, never null, for an empty page.
+	envelope := struct {
+		Datasources []datasource `json:"datasources"`
+	}{Datasources: []datasource{}}
+
+	codec := cmdio.NewFieldSelectCodec([]string{"bogus"})
+	var buf bytes.Buffer
+	err := codec.Encode(&buf, &envelope)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown field(s) in --json: bogus")
+	assert.Empty(t, buf.String(), "a rejected selection must write nothing")
+
+	// The same flag must be accepted for a declared path, empty set or not.
+	okCodec := cmdio.NewFieldSelectCodec([]string{"uid"})
+	buf.Reset()
+	require.NoError(t, okCodec.Encode(&buf, &envelope))
+	assert.JSONEq(t, `{"datasources":[]}`, buf.String())
+}
+
 // TestAbsentFieldSelectionOnSingleObject covers the single-object branches,
 // which take a different route through Encode than the list branches.
 func TestAbsentFieldSelectionOnSingleObject(t *testing.T) {
 	codec := cmdio.NewFieldSelectCodec([]string{"username"})
 
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, map[string]any{
-		"spec": map[string]any{"username": "ward"},
-	})
+	err := codec.Encode(&buf, oncallUser{})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Did you mean spec.username?")
+}
+
+// TestUnstructuredSingleObjectKeepsUnsetPath is the regression test for the
+// single-resource route of `gcx resources get`. The route encodes one
+// unstructured item, which declares no type, so an unset omitempty path such
+// as spec.tags must keep its null and exit 0. The list route keeps it too,
+// because some other object carries the key.
+func TestUnstructuredSingleObjectKeepsUnsetPath(t *testing.T) {
+	codec := cmdio.NewFieldSelectCodec([]string{"spec.tags"})
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "untagged"},
+		"spec":     map[string]any{"title": "Untagged"},
+	}}))
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	assert.Contains(t, got, "spec.tags")
+	assert.Nil(t, got["spec.tags"])
 }
