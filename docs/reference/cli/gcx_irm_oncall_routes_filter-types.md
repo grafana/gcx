@@ -23,5 +23,5 @@ Discover route filtering term types.
 ### SEE ALSO
 
 * [gcx irm oncall routes](gcx_irm_oncall_routes.md)	 - Manage OnCall routes.
-* [gcx irm oncall routes filter-types list](gcx_irm_oncall_routes_filter-types_list.md)	 - List allowed values for a route's filtering_term_type field.
+* [gcx irm oncall routes filter-types list](gcx_irm_oncall_routes_filter-types_list.md)	 - List allowed values for a route's filtering_term_type field (older spelling; use `routes list-filter-types`).
 

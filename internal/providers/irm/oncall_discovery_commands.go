@@ -38,6 +38,9 @@ func (o *discoveryListOpts) setup(flags *pflag.FlagSet, codec format.Codec) {
 // invocations. The struct keeps each text next to the field that names its
 // purpose, because the builder takes several strings of the same type.
 type discoveryCatalog[T any] struct {
+	// parent is the resource noun that owns the catalog, for example
+	// "escalation-policies".
+	parent string
 	// command is the canonical compound command, for example
 	// "list-step-types".
 	command string
@@ -54,6 +57,14 @@ type discoveryCatalog[T any] struct {
 
 	codec format.Codec
 	fetch func(ctx context.Context, client OnCallAPI) ([]T, error)
+}
+
+// legacyShort gives the older `<noun> list` child a one-line help that names
+// the current spelling, so a person who reads the parent help sees which of
+// the two invocations to use.
+func (c discoveryCatalog[T]) legacyShort() string {
+	return strings.TrimSuffix(c.short, ".") +
+		" (older spelling; use `" + c.parent + " " + c.command + "`)."
 }
 
 // newListCmd builds a command that fetches the catalog and emits it through
@@ -102,7 +113,7 @@ func newDiscoveryCmds[T any](loader OnCallConfigLoader, c discoveryCatalog[T]) [
 		Use:   c.noun,
 		Short: c.groupShort,
 	}
-	group.AddCommand(c.newListCmd(loader, "list", c.short))
+	group.AddCommand(c.newListCmd(loader, "list", c.legacyShort()))
 
 	return []*cobra.Command{
 		c.newListCmd(loader, c.command, c.short),
@@ -114,6 +125,7 @@ func newDiscoveryCmds[T any](loader OnCallConfigLoader, c discoveryCatalog[T]) [
 // older `escalation-policies steps` noun group.
 func newEscalationStepCmds(loader OnCallConfigLoader) []*cobra.Command {
 	return newDiscoveryCmds(loader, discoveryCatalog[EscalationStepOption]{
+		parent:     "escalation-policies",
 		command:    "list-step-types",
 		noun:       "steps",
 		groupShort: "Discover allowed escalation policy step types.",
@@ -141,6 +153,7 @@ func newEscalationStepCmds(loader OnCallConfigLoader) []*cobra.Command {
 // `webhooks triggers` noun group.
 func newWebhookTriggerCmds(loader OnCallConfigLoader) []*cobra.Command {
 	return newDiscoveryCmds(loader, discoveryCatalog[WebhookTriggerOption]{
+		parent:     "webhooks",
 		command:    "list-triggers",
 		noun:       "triggers",
 		groupShort: "Discover allowed webhook trigger types.",
@@ -168,6 +181,7 @@ func newWebhookTriggerCmds(loader OnCallConfigLoader) []*cobra.Command {
 // `webhooks presets` noun group.
 func newWebhookPresetCmds(loader OnCallConfigLoader) []*cobra.Command {
 	return newDiscoveryCmds(loader, discoveryCatalog[WebhookPreset]{
+		parent:     "webhooks",
 		command:    "list-presets",
 		noun:       "presets",
 		groupShort: "Discover webhook configuration presets.",
@@ -194,6 +208,7 @@ func newWebhookPresetCmds(loader OnCallConfigLoader) []*cobra.Command {
 // `routes filter-types` noun group.
 func newRouteFilterTypeCmds(loader OnCallConfigLoader) []*cobra.Command {
 	return newDiscoveryCmds(loader, discoveryCatalog[RouteFilterType]{
+		parent:     "routes",
 		command:    "list-filter-types",
 		noun:       "filter-types",
 		groupShort: "Discover route filtering term types.",

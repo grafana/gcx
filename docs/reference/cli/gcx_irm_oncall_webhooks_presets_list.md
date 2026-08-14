@@ -1,6 +1,6 @@
 ## gcx irm oncall webhooks presets list
 
-List webhook preset IDs (e.g. grafana_assistant) and their allowed triggers.
+List webhook preset IDs (e.g. grafana_assistant) and their allowed triggers (older spelling; use `webhooks list-presets`).
 
 ### Synopsis
 
