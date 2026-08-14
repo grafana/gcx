@@ -13,7 +13,7 @@ package output_test
 //     THEN stdout contains {"items": [{"metadata.name": "..."}, ...]}
 //   - GIVEN a gcx command that returns resource data
 //     WHEN --json nonexistent is provided
-//     THEN the command fails and the error names the offending field
+//     THEN stdout contains a JSON object where nonexistent is null
 //   - GIVEN a gcx command
 //     WHEN both --json field1 and -o yaml are provided
 //     THEN the command exits with a usage error
@@ -137,16 +137,17 @@ func TestJSONFieldSelection_MultipleResources(t *testing.T) {
 	assert.NotContains(t, second, "namespace")
 }
 
-// TestJSONFieldSelection_AbsentFieldIsAnError verifies that a requested field
-// that exists in no emitted object fails the command instead of producing one
-// null per row.
+// TestJSONFieldSelection_AbsentFieldIsNull verifies that a requested field
+// that exists in no emitted unstructured object stays a null. gcx rejects a
+// path only when a declared type denies it, and an unstructured object
+// declares no type.
 //
 // Acceptance criterion:
 //
 //	GIVEN a gcx command that returns resource data
 //	WHEN --json nonexistent is provided
-//	THEN the command fails and the error names the offending field
-func TestJSONFieldSelection_AbsentFieldIsAnError(t *testing.T) {
+//	THEN stdout contains a JSON object where nonexistent is null
+func TestJSONFieldSelection_AbsentFieldIsNull(t *testing.T) {
 	codec := cmdio.NewFieldSelectCodec([]string{"name", "nonexistent"})
 
 	item := unstructured.Unstructured{Object: map[string]any{
@@ -154,10 +155,14 @@ func TestJSONFieldSelection_AbsentFieldIsAnError(t *testing.T) {
 	}}
 
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, item)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown field(s) in --json: nonexistent")
-	assert.Contains(t, err.Error(), "--json list")
+	require.NoError(t, codec.Encode(&buf, item))
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	assert.Equal(t, "my-dashboard", got["name"])
+	val, exists := got["nonexistent"]
+	assert.True(t, exists, "an absent field must stay in the output")
+	assert.Nil(t, val)
 }
 
 // TestJSONFieldSelection_NullValueIsNull verifies the other half: a path that

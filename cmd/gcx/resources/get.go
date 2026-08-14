@@ -407,15 +407,11 @@ func writeFieldSelect(out, stderr io.Writer, opts *getOpts, res *FetchResponse, 
 	// path returned nil and the process exited 0 despite the embedded
 	// exitCode 4.
 	if hasPartialFailure && agent.IsAgentMode() {
-		objs := make([]map[string]any, len(output.Items))
+		// The resources are unstructured, so they declare no type and gcx
+		// rejects no path here — the success path rejects none either.
+		itemMaps := make([]map[string]any, len(output.Items))
 		for i, item := range output.Items {
-			objs[i] = item.Object
-		}
-		// Field selection runs through the same route as the success path, so
-		// a path that no resource carries fails here too.
-		itemMaps, selErr := cmdio.SelectFields(objs, codec.Fields())
-		if selErr != nil {
-			return selErr
+			itemMaps[i] = cmdio.ExtractFields(item.Object, codec.Fields())
 		}
 		errSummary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
 		detErr := gcxerrors.DetailedError{Summary: errSummary}

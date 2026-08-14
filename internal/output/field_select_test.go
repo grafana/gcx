@@ -11,15 +11,15 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// TestFieldSelectCodec_SingleUnstructured covers the unstructured route. An
+// unstructured object declares no type, so gcx rejects no path here: every
+// path that resolves nowhere keeps its null and the command exits 0.
 func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 	tests := []struct {
 		name       string
 		fields     []string
 		obj        map[string]any
 		wantFields map[string]any
-		// wantErr is the substring the error must carry. A path that exists
-		// in no object is a caller error, not a null.
-		wantErr string
 	}{
 		{
 			name:   "extracts requested top-level fields",
@@ -35,10 +35,10 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 			},
 		},
 		{
-			name:    "a field that exists nowhere is an error",
-			fields:  []string{"nonexistent"},
-			obj:     map[string]any{"name": "foo"},
-			wantErr: "unknown field(s) in --json: nonexistent",
+			name:       "a field that exists nowhere stays a null",
+			fields:     []string{"nonexistent"},
+			obj:        map[string]any{"name": "foo"},
+			wantFields: map[string]any{"nonexistent": nil},
 		},
 		{
 			name:   "dot-notation resolves nested field",
@@ -64,28 +64,33 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 			},
 		},
 		{
-			name:    "dot-notation on a missing nested key is an error",
-			fields:  []string{"metadata.missing"},
-			obj:     map[string]any{"metadata": map[string]any{"name": "my-dashboard"}},
-			wantErr: "unknown field(s) in --json: metadata.missing",
+			name:       "dot-notation on a missing nested key stays a null",
+			fields:     []string{"metadata.missing"},
+			obj:        map[string]any{"metadata": map[string]any{"name": "my-dashboard"}},
+			wantFields: map[string]any{"metadata.missing": nil},
 		},
 		{
-			name:    "dot-notation through a non-map intermediate is an error",
-			fields:  []string{"spec.title.nested"},
-			obj:     map[string]any{"spec": map[string]any{"title": "My Dashboard"}},
-			wantErr: "unknown field(s) in --json: spec.title.nested",
+			name:       "dot-notation through a non-map intermediate stays a null",
+			fields:     []string{"spec.title.nested"},
+			obj:        map[string]any{"spec": map[string]any{"title": "My Dashboard"}},
+			wantFields: map[string]any{"spec.title.nested": nil},
 		},
 		{
-			name:    "one bad name among good ones is still an error",
-			fields:  []string{"name", "missing"},
-			obj:     map[string]any{"name": "foo"},
-			wantErr: "unknown field(s) in --json: missing",
+			// A typed route names the real path instead — see
+			// TestLeafNameInsteadOfPathFails.
+			name:       "a leaf name typed instead of a path stays a null",
+			fields:     []string{"username"},
+			obj:        map[string]any{"spec": map[string]any{"username": "ward"}},
+			wantFields: map[string]any{"username": nil},
 		},
 		{
-			name:    "a leaf name typed instead of a path names the path",
-			fields:  []string{"username"},
-			obj:     map[string]any{"spec": map[string]any{"username": "ward"}},
-			wantErr: "Did you mean spec.username?",
+			name:   "one absent name among present ones keeps them all",
+			fields: []string{"name", "missing"},
+			obj:    map[string]any{"name": "foo"},
+			wantFields: map[string]any{
+				"name":    "foo",
+				"missing": nil,
+			},
 		},
 	}
 
@@ -95,13 +100,7 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 
 			item := unstructured.Unstructured{Object: tc.obj}
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, item)
-			if tc.wantErr != "" {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tc.wantErr)
-				return
-			}
-			require.NoError(t, err)
+			require.NoError(t, codec.Encode(&buf, item))
 
 			var got map[string]any
 			require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
