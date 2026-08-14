@@ -82,13 +82,13 @@ func TestIntegrationGetTemplatesCommand(t *testing.T) {
 	}
 }
 
-func TestIntegrationSetTemplatesCommand(t *testing.T) {
+func TestIntegrationUpdateTemplatesCommand(t *testing.T) {
 	resetAgentMode(t)
 
 	fake := &fakeIntegrationAPI{}
 	manifest := writeManifest(t, `{"phone_call_title_template":"Kritieke melding","future_field":"kept"}`)
 
-	out, err := runIntegrationsCmd(t, fake, "set-templates", "CH1", "-f", manifest, "-o", "json")
+	out, err := runIntegrationsCmd(t, fake, "update-templates", "CH1", "-f", manifest, "-o", "json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,10 +107,10 @@ func TestIntegrationSetTemplatesCommand(t *testing.T) {
 	}
 }
 
-func TestIntegrationSetTemplatesRequiresFilename(t *testing.T) {
+func TestIntegrationUpdateTemplatesRequiresFilename(t *testing.T) {
 	resetAgentMode(t)
 
-	_, err := runIntegrationsCmd(t, &fakeIntegrationAPI{}, "set-templates", "CH1")
+	_, err := runIntegrationsCmd(t, &fakeIntegrationAPI{}, "update-templates", "CH1")
 	if err == nil || !strings.Contains(err.Error(), "--filename is required") {
 		t.Errorf("expected missing-filename error, got %v", err)
 	}

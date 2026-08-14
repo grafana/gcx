@@ -392,7 +392,7 @@ func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 		newUpdateSubcommand(loader, "Update an integration by ID.", integrationCRUDOpts()),
 		newDeleteSubcommand(loader, "Delete an integration by ID.", "Integration", "integration", integrationCRUDOpts()),
 		newIntegrationGetTemplatesCmd(loader),
-		newIntegrationSetTemplatesCmd(loader),
+		newIntegrationUpdateTemplatesCmd(loader),
 		newIntegrationStartMaintenanceCmd(loader),
 		newIntegrationStopMaintenanceCmd(loader),
 	)
