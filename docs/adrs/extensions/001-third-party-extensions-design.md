@@ -1,4 +1,4 @@
-# Third-party extensions: manifest-driven install, no credential handoff
+# Third-party extensions
 
 **Created**: 2026-08-14
 **Status**: proposed
