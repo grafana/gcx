@@ -850,12 +850,15 @@ func (c *OnCallClient) SyncPlugin(ctx context.Context) (*PluginSyncResult, error
 		return nil, providers.HandleErrorResponse(resp)
 	}
 
-	// The backend can accept the request and refresh in the background, so the
-	// answer can be a 202 or a 204 with no body at all. The decode is therefore
-	// a best effort: a body that is absent, or that this client does not
-	// recognise, leaves the result empty and the request still succeeds.
+	// The backend can accept the request and refresh the copy later, so the
+	// answer can be a 202 or a 204 with no body at all. An absent body is a
+	// success: there is nothing to read, and the check below has nothing to
+	// reject. A body that this client cannot read is different: the check
+	// never runs on it, so this call cannot claim success.
 	var result PluginSyncResult
-	_ = json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("irm: sync plugin: decode response: %w", err)
+	}
 
 	// The backend can report a failure in-band on a 2xx response, the way the
 	// incident query endpoint does. Only an explicit error field is a failure:

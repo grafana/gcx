@@ -34,8 +34,10 @@ func TestSyncPluginRequest(t *testing.T) {
 }
 
 // TestSyncPluginResponses covers the answers that the endpoint can send.
-// Nobody verified the real shape, so the client accepts every 2xx status code,
-// tolerates an empty body, and fails only on an explicit in-band error field.
+// Nobody verified the real shape, so the client accepts every 2xx status code
+// and tolerates an absent body. The client fails on an explicit in-band error
+// field, and on a body that it cannot read: an unreadable body never reaches
+// the in-band check, so the client cannot report success.
 func TestSyncPluginResponses(t *testing.T) {
 	t.Parallel()
 
@@ -75,6 +77,24 @@ func TestSyncPluginResponses(t *testing.T) {
 			status:  http.StatusOK,
 			body:    `{"error":"sync is already running"}`,
 			wantErr: "sync is already running",
+		},
+		{
+			name:    "200 with a body that is not JSON",
+			status:  http.StatusOK,
+			body:    "<html>gateway</html>",
+			wantErr: "decode response",
+		},
+		{
+			name:    "200 with a JSON body that is not an object",
+			status:  http.StatusOK,
+			body:    `["sync"]`,
+			wantErr: "decode response",
+		},
+		{
+			name:    "200 with an error field that is not a string",
+			status:  http.StatusOK,
+			body:    `{"error":{"code":409}}`,
+			wantErr: "decode response",
 		},
 		{
 			name:    "403 with a backend message",
