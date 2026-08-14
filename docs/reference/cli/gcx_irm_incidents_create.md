@@ -18,6 +18,10 @@ gcx irm incidents create [flags]
   spec:
     title: "Service degradation in production"
     status: active
+    # The display label, not the identifier. Run
+    # 'gcx irm incidents severities list' for the valid values.
+    # severityID has precedence: gcx ignores severity when you set both.
+    severity: Minor
     isDrill: false
     incidentType: internal
     labels:
