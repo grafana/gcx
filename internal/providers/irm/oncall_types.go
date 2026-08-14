@@ -131,6 +131,7 @@ type OnCallAPI interface {
 	CreateEscalationPolicy(ctx context.Context, p EscalationPolicy) (*EscalationPolicy, error)
 	UpdateEscalationPolicy(ctx context.Context, id string, p EscalationPolicy) (*EscalationPolicy, error)
 	DeleteEscalationPolicy(ctx context.Context, id string) error
+	MoveEscalationPolicy(ctx context.Context, id string, position int) error
 	ListEscalationStepOptions(ctx context.Context) ([]EscalationStepOption, error)
 
 	ListSchedules(ctx context.Context) ([]Schedule, error)
@@ -151,6 +152,7 @@ type OnCallAPI interface {
 	CreateRoute(ctx context.Context, r Route) (*Route, error)
 	UpdateRoute(ctx context.Context, id string, r Route) (*Route, error)
 	DeleteRoute(ctx context.Context, id string) error
+	MoveRoute(ctx context.Context, id string, position int) error
 	ListRouteFilterTypes(ctx context.Context) ([]RouteFilterType, error)
 
 	ListWebhooks(ctx context.Context) ([]Webhook, error)
@@ -271,6 +273,11 @@ type EscalationPolicy struct {
 	CustomWebhook       any    `json:"custom_webhook,omitempty"`
 	Important           bool   `json:"important,omitempty"`
 	Severity            string `json:"severity,omitempty"`
+	// Position is the zero-based index of this step inside its escalation
+	// chain. An escalation chain is an ordered sequence, so the position is
+	// part of the meaning of a step. A pointer keeps position 0 (the first
+	// step) distinct from an absent position.
+	Position *int `json:"position,omitempty"`
 }
 
 //nolint:recvcheck
@@ -313,6 +320,11 @@ type Route struct {
 	FilteringTermType   any    `json:"filtering_term_type,omitempty"`
 	IsDefault           bool   `json:"is_default,omitempty"`
 	FilteringLabels     any    `json:"filtering_labels,omitempty"`
+	// Position is the zero-based index of this route inside its integration.
+	// Routes match from the top down, and the first match wins, so the
+	// position is part of the meaning of a route. A pointer keeps position 0
+	// (the first route) distinct from an absent position.
+	Position *int `json:"position,omitempty"`
 }
 
 // WebhookIntegrationFilter is the list of integration IDs that may trigger a
