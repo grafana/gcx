@@ -2,8 +2,10 @@ package irm_test
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -342,6 +344,54 @@ func TestResourceAdapter_PullDropsSeverityID(t *testing.T) {
 		assert.NotContains(t, spec, "severityID", "%s: the pull removes severityID", name)
 		assert.NotContains(t, spec, "incidentID", "%s: the pull removes incidentID", name)
 	}
+}
+
+// TestBothAccessPathsEmitTheSameSpecKeys proves that the two access paths
+// describe one incident with one key set. `gcx irm incidents get|create|update`
+// converts with ToResource, and `gcx resources get|list|pull` converts through
+// the adapter. CONSTITUTION.md requires the two outputs to be identical, so a
+// `--jq .spec.severityID` caller gets one answer, whichever command produced
+// the manifest.
+func TestBothAccessPathsEmitTheSameSpecKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"incident": map[string]any{
+				"incidentID": "inc-1", "title": "Outage", "status": "active",
+				"severity": "Major", "severityID": "sev-2",
+				"incidentType": "internal", "description": "the disk is full",
+				"labels": []map[string]any{{"key": "team", "label": "platform"}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	// The resources path.
+	a := newTestAdapter(t, server, "stack-123")
+	viaAdapter, err := a.Get(t.Context(), "inc-1", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	// The provider path.
+	inc, err := newTestClient(t, server).Get(t.Context(), "inc-1")
+	require.NoError(t, err)
+	res, err := irm.ToResource(*inc, "stack-123")
+	require.NoError(t, err)
+	viaProvider := res.ToUnstructured()
+
+	adapterKeys := specKeys(t, viaAdapter)
+	providerKeys := specKeys(t, &viaProvider)
+	assert.Equal(t, adapterKeys, providerKeys, "the two access paths must emit the same spec keys")
+	assert.NotContains(t, adapterKeys, "severityID")
+	assert.NotContains(t, adapterKeys, "incidentID")
+}
+
+// specKeys returns the sorted spec keys of a manifest.
+func specKeys(t *testing.T, obj *unstructured.Unstructured) []string {
+	t.Helper()
+	spec, found, err := unstructured.NestedMap(obj.Object, "spec")
+	require.NoError(t, err)
+	require.True(t, found, "spec field should be present")
+	keys := slices.Sorted(maps.Keys(spec))
+	return keys
 }
 
 func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {
