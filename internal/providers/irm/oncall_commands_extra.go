@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -51,11 +52,23 @@ type alertGroupListOpts struct {
 	States             []string
 	Teams              []string
 	Integrations       []string
+	EscalationChains   []string
+	AcknowledgedBy     []string
+	ResolvedBy         []string
 	Mine               bool
 	WithResolutionNote bool
 	HasRelatedIncident bool
 	All                bool
 	IncludeChildGroups bool
+
+	// Absolute time windows. From/To bound started_at, ResolvedFrom/ResolvedTo
+	// bound resolved_at. Unlike --max-age (which only ever anchors to now),
+	// these can express a historical window. Values accept RFC3339, a unix
+	// timestamp, or a relative expression like `now-7d` (shared.ParseTime).
+	From         string
+	To           string
+	ResolvedFrom string
+	ResolvedTo   string
 }
 
 func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
@@ -69,6 +82,13 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVar(&o.States, "state", nil, "Filter by state (firing|acknowledged|resolved|silenced; repeatable, comma-separated). Default: firing,acknowledged,silenced")
 	flags.StringSliceVar(&o.Teams, "team", nil, "Filter by team PK (repeatable, comma-separated)")
 	flags.StringSliceVar(&o.Integrations, "integration", nil, "Filter by integration PK (repeatable, comma-separated)")
+	flags.StringSliceVar(&o.EscalationChains, "escalation-chain", nil, "Filter by escalation chain ID (repeatable, comma-separated; see: gcx irm oncall escalation-chains list)")
+	flags.StringSliceVar(&o.AcknowledgedBy, "acknowledged-by", nil, "Filter by acknowledging user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
+	flags.StringSliceVar(&o.ResolvedBy, "resolved-by", nil, "Filter by resolving user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
+	flags.StringVar(&o.From, "from", "", "Start of the started-at window (RFC3339, unix timestamp, or relative e.g. now-30d); cannot be combined with --max-age")
+	flags.StringVar(&o.To, "to", "", "End of the started-at window (RFC3339, unix timestamp, or relative e.g. now-7d); defaults to now")
+	flags.StringVar(&o.ResolvedFrom, "resolved-from", "", "Start of the resolved-at window (RFC3339, unix timestamp, or relative e.g. now-30d)")
+	flags.StringVar(&o.ResolvedTo, "resolved-to", "", "End of the resolved-at window (RFC3339, unix timestamp, or relative e.g. now-7d); defaults to now")
 	flags.BoolVar(&o.Mine, "mine", false, "Limit to alert groups for the authenticated user")
 	flags.BoolVar(&o.WithResolutionNote, "with-resolution-note", false, "Limit to alert groups that have a resolution note")
 	flags.BoolVar(&o.HasRelatedIncident, "has-related-incident", false, "Limit to alert groups linked to an incident")
@@ -87,7 +107,76 @@ func (o *alertGroupListOpts) Validate() error {
 	if o.Limit < 0 {
 		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 means as many results as the safety cap allows)", o.Limit)
 	}
+	// --max-age and --from/--to both compile into the same started_at range
+	// param, so combining them would be ambiguous.
+	if o.MaxAge != "" && (o.From != "" || o.To != "") {
+		return errors.New("--max-age cannot be combined with --from or --to: both bound the started-at window")
+	}
+	// Fail on unparseable or inverted windows here — before any config or
+	// network work — rather than letting them reach the API as a silently
+	// empty result.
+	now := time.Now()
+	if _, _, err := resolveTimeWindow("from", "to", o.From, o.To, now); err != nil {
+		return err
+	}
+	if _, _, err := resolveTimeWindow("resolved-from", "resolved-to", o.ResolvedFrom, o.ResolvedTo, now); err != nil {
+		return err
+	}
 	return nil
+}
+
+// timeWindow is a resolved absolute range, ready to be rendered into the OnCall
+// internal API's `<from>_<to>` date-range param encoding.
+type timeWindow struct {
+	From time.Time
+	To   time.Time
+}
+
+// onCallDateRangeLayout is the timestamp format the OnCall internal API's
+// daterange filters expect: naive UTC, no zone suffix.
+const onCallDateRangeLayout = "2006-01-02T15:04:05"
+
+// encode renders the window as the `<from>_<to>` pair the OnCall daterange
+// filters (started_at, resolved_at) take.
+func (w timeWindow) encode() string {
+	return w.From.UTC().Format(onCallDateRangeLayout) + "_" + w.To.UTC().Format(onCallDateRangeLayout)
+}
+
+// resolveTimeWindow turns a pair of user-supplied time expressions into an
+// absolute window, accepting RFC3339, a unix timestamp, or a relative
+// expression like `now-7d` (shared.ParseTime). The bool result is false when
+// neither end was supplied (no window to filter on).
+//
+// The OnCall daterange params require both ends, so a one-sided window is
+// completed rather than rejected: an omitted end becomes now, and an omitted
+// start becomes the unix epoch — comfortably before any alert group could
+// exist. fromFlag/toFlag name the flags in error messages so the same helper
+// serves both the started-at and resolved-at pairs.
+func resolveTimeWindow(fromFlag, toFlag, from, to string, now time.Time) (timeWindow, bool, error) {
+	if from == "" && to == "" {
+		return timeWindow{}, false, nil
+	}
+	w := timeWindow{From: time.Unix(0, 0).UTC(), To: now}
+	if from != "" {
+		t, err := shared.ParseTime(from, now)
+		if err != nil {
+			return timeWindow{}, false, fmt.Errorf("invalid --%s value: %w", fromFlag, err)
+		}
+		w.From = t
+	}
+	if to != "" {
+		t, err := shared.ParseTime(to, now)
+		if err != nil {
+			return timeWindow{}, false, fmt.Errorf("invalid --%s value: %w", toFlag, err)
+		}
+		w.To = t
+	}
+	if w.To.Before(w.From) {
+		return timeWindow{}, false, fmt.Errorf("invalid time range: --%s (%s) is after --%s (%s)",
+			fromFlag, w.From.UTC().Format(time.RFC3339),
+			toFlag, w.To.UTC().Format(time.RFC3339))
+	}
+	return w, true, nil
 }
 
 // stateNameToInt translates a user-facing state name into the OnCall internal
@@ -140,14 +229,25 @@ func newAlertGroupsCommand(loader OnCallConfigLoader) *cobra.Command {
 // and the alternate-implementation fallback (listAlertGroupsLegacy — e.g.
 // test doubles; not reachable via the production loader today).
 type alertGroupListFilters struct {
-	MaxAge             string
 	Statuses           []int
 	IsRoot             *bool
 	Teams              []string
 	Integrations       []string
+	EscalationChains   []string
+	AcknowledgedBy     []string
+	ResolvedBy         []string
 	Mine               bool
 	WithResolutionNote bool
 	HasRelatedIncident bool
+
+	// StartedAt is the resolved started_at window. Both --max-age and
+	// --from/--to compile into it (Validate rejects the combination), so
+	// downstream callers see one absolute range regardless of how the user
+	// expressed it. Nil means unfiltered.
+	StartedAt *timeWindow
+	// ResolvedAt is the resolved resolved_at window from
+	// --resolved-from/--resolved-to. Nil means unfiltered.
+	ResolvedAt *timeWindow
 }
 
 // resolveAlertGroupListFilters validates and normalizes the user-facing flag
@@ -157,14 +257,45 @@ type alertGroupListFilters struct {
 //   - --all bypasses both defaults,
 //   - --include-child-groups drops is_root but keeps the status default,
 //   - explicit --state always wins (still subject to --include-child-groups for is_root).
+//
+// It also collapses the three time expressions (--max-age, --from/--to,
+// --resolved-from/--resolved-to) into absolute windows so neither transport
+// path has to parse user input.
 func resolveAlertGroupListFilters(cmd *cobra.Command, opts *alertGroupListOpts) (alertGroupListFilters, error) {
 	out := alertGroupListFilters{
-		MaxAge:             opts.MaxAge,
 		Teams:              opts.Teams,
 		Integrations:       opts.Integrations,
+		EscalationChains:   opts.EscalationChains,
+		AcknowledgedBy:     opts.AcknowledgedBy,
+		ResolvedBy:         opts.ResolvedBy,
 		Mine:               opts.Mine,
 		WithResolutionNote: opts.WithResolutionNote,
 		HasRelatedIncident: opts.HasRelatedIncident,
+	}
+
+	now := time.Now()
+	switch {
+	case opts.MaxAge != "":
+		dur, err := parseDuration(opts.MaxAge)
+		if err != nil {
+			return out, fmt.Errorf("invalid --max-age value %q: %w", opts.MaxAge, err)
+		}
+		out.StartedAt = &timeWindow{From: now.Add(-dur), To: now}
+	default:
+		w, ok, err := resolveTimeWindow("from", "to", opts.From, opts.To, now)
+		if err != nil {
+			return out, err
+		}
+		if ok {
+			out.StartedAt = &w
+		}
+	}
+	resolved, ok, err := resolveTimeWindow("resolved-from", "resolved-to", opts.ResolvedFrom, opts.ResolvedTo, now)
+	if err != nil {
+		return out, err
+	}
+	if ok {
+		out.ResolvedAt = &resolved
 	}
 
 	// Translate user-facing state names into the internal wire encoding.
@@ -205,14 +336,39 @@ firing, acknowledged, or silenced state. Resolved groups are excluded.
 
 Use --all to bypass these defaults entirely (returns resolved and child groups too).
 Use --state to override the status filter (e.g. --state firing,acknowledged).
-Use --include-child-groups to keep the status default but include child groups.`
+Use --include-child-groups to keep the status default but include child groups.
+
+Alert group records carry no escalation chain field, so --escalation-chain is the
+only way to attribute alert load to the rotation that was actually paged. It is not
+interchangeable with --integration: one integration routes to several chains.
+
+--max-age anchors to now; use --from/--to for a historical started-at window, and
+--resolved-from/--resolved-to for a resolved-at window. They accept RFC3339, a unix
+timestamp, or a relative expression like now-30d. --max-age and --from/--to cannot
+be combined.`
+
+const alertGroupListExample = `  # List firing, acknowledged, and silenced root groups
+  gcx irm oncall alert-groups list
+
+  # Narrow to one team, most recent day
+  gcx irm oncall alert-groups list --team <team-id> --max-age 24h
+
+  # Attribute load to a rotation (chain IDs: gcx irm oncall escalation-chains list)
+  gcx irm oncall alert-groups list --escalation-chain <chain-id> --all
+
+  # Historical window, including resolved groups
+  gcx irm oncall alert-groups list --from now-30d --to now-7d --all
+
+  # Groups resolved last week by a given user
+  gcx irm oncall alert-groups list --resolved-by <user-id> --resolved-from now-7d --all`
 
 func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 	opts := &alertGroupListOpts{}
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List alert groups.",
-		Long:  alertGroupListLong,
+		Use:     "list",
+		Short:   "List alert groups.",
+		Long:    alertGroupListLong,
+		Example: alertGroupListExample,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -346,7 +502,7 @@ const alertGroupListFilterMaxLen = 80
 // If the rendered summary exceeds alertGroupListFilterMaxLen, falls back to a
 // short "<N filters>" summary.
 func stringifyAlertGroupListFilters(opts *alertGroupListOpts) string {
-	parts := make([]string, 0, 8)
+	parts := make([]string, 0, 16)
 	if len(opts.States) > 0 {
 		parts = append(parts, "status="+strings.Join(opts.States, ","))
 	}
@@ -356,8 +512,29 @@ func stringifyAlertGroupListFilters(opts *alertGroupListOpts) string {
 	if len(opts.Integrations) > 0 {
 		parts = append(parts, "integration="+strings.Join(opts.Integrations, ","))
 	}
+	if len(opts.EscalationChains) > 0 {
+		parts = append(parts, "escalation-chain="+strings.Join(opts.EscalationChains, ","))
+	}
+	if len(opts.AcknowledgedBy) > 0 {
+		parts = append(parts, "acknowledged-by="+strings.Join(opts.AcknowledgedBy, ","))
+	}
+	if len(opts.ResolvedBy) > 0 {
+		parts = append(parts, "resolved-by="+strings.Join(opts.ResolvedBy, ","))
+	}
 	if opts.MaxAge != "" {
 		parts = append(parts, "max-age="+opts.MaxAge)
+	}
+	if opts.From != "" {
+		parts = append(parts, "from="+opts.From)
+	}
+	if opts.To != "" {
+		parts = append(parts, "to="+opts.To)
+	}
+	if opts.ResolvedFrom != "" {
+		parts = append(parts, "resolved-from="+opts.ResolvedFrom)
+	}
+	if opts.ResolvedTo != "" {
+		parts = append(parts, "resolved-to="+opts.ResolvedTo)
 	}
 	if opts.Mine {
 		parts = append(parts, "mine")
@@ -397,9 +574,16 @@ func stringifyAlertGroupListFilters(opts *alertGroupListOpts) string {
 // silent in the "user passed --all and nothing else" case.
 func alertGroupListHasExplicitFilter(opts *alertGroupListOpts) bool {
 	return opts.MaxAge != "" ||
+		opts.From != "" ||
+		opts.To != "" ||
+		opts.ResolvedFrom != "" ||
+		opts.ResolvedTo != "" ||
 		len(opts.States) > 0 ||
 		len(opts.Teams) > 0 ||
 		len(opts.Integrations) > 0 ||
+		len(opts.EscalationChains) > 0 ||
+		len(opts.AcknowledgedBy) > 0 ||
+		len(opts.ResolvedBy) > 0 ||
 		opts.Mine ||
 		opts.WithResolutionNote ||
 		opts.HasRelatedIncident ||
@@ -494,13 +678,10 @@ func emitListAlertsLinkHints(stderr io.Writer, ruleUID string) {
 // we surface a `note:` warning here so the user knows.
 func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters alertGroupListFilters, client OnCallAPI, namespace string) error {
 	var listOpts []ListOption
-	if filters.MaxAge != "" {
-		dur, err := parseDuration(filters.MaxAge)
-		if err != nil {
-			return fmt.Errorf("invalid --max-age value %q: %w", filters.MaxAge, err)
-		}
-		cutoff := time.Now().UTC().Add(-dur)
-		listOpts = append(listOpts, WithStartedAfter(cutoff))
+	// The public API only understands a lower bound on started_at, so a
+	// resolved window contributes its start and the note below owns the rest.
+	if filters.StartedAt != nil {
+		listOpts = append(listOpts, WithStartedAfter(filters.StartedAt.From.UTC()))
 	}
 	if len(filters.Statuses) > 0 {
 		listOpts = append(listOpts, WithStatuses(filters.Statuses...))
@@ -520,9 +701,10 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	}
 
 	// Surface unsupported-filter warnings once at the command edge — the
-	// public API doesn't speak is_root, mine, with_resolution_note, or
-	// has_related_incident. Honor what we can and tell the user about the
-	// rest.
+	// public API doesn't speak is_root, mine, with_resolution_note,
+	// has_related_incident, the escalation_chain / acknowledged_by /
+	// resolved_by option filters, or either daterange's upper bound. Honor
+	// what we can and tell the user about the rest.
 	var unsupported []string
 	if filters.IsRoot != nil {
 		unsupported = append(unsupported, "is_root (root-only / include-child-groups)")
@@ -535,6 +717,26 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	}
 	if filters.HasRelatedIncident {
 		unsupported = append(unsupported, "--has-related-incident")
+	}
+	if len(filters.EscalationChains) > 0 {
+		unsupported = append(unsupported, "--escalation-chain")
+	}
+	if len(filters.AcknowledgedBy) > 0 {
+		unsupported = append(unsupported, "--acknowledged-by")
+	}
+	if len(filters.ResolvedBy) > 0 {
+		unsupported = append(unsupported, "--resolved-by")
+	}
+	// --from's lower bound survives as started_after above; the upper bound
+	// and the whole resolved_at window have no public-API equivalent.
+	if opts.To != "" {
+		unsupported = append(unsupported, "--to")
+	}
+	if opts.ResolvedFrom != "" {
+		unsupported = append(unsupported, "--resolved-from")
+	}
+	if opts.ResolvedTo != "" {
+		unsupported = append(unsupported, "--resolved-to")
 	}
 	if len(unsupported) > 0 {
 		// Centralised note emission. Agent mode renders
@@ -632,15 +834,11 @@ type alertGroupPageInfo struct {
 // docs/research/2026-07-17-global-limit-investigation.md § 6.
 func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroupListFilters, limit int) ([]json.RawMessage, alertGroupPageInfo, error) {
 	params := url.Values{}
-	if filters.MaxAge != "" {
-		dur, err := parseDuration(filters.MaxAge)
-		if err != nil {
-			return nil, alertGroupPageInfo{}, fmt.Errorf("invalid --max-age value %q: %w", filters.MaxAge, err)
-		}
-		const layout = "2006-01-02T15:04:05"
-		start := time.Now().UTC().Add(-dur).Format(layout)
-		end := time.Now().UTC().Format(layout)
-		params.Set("started_at", start+"_"+end)
+	if w := filters.StartedAt; w != nil {
+		params.Set("started_at", w.encode())
+	}
+	if w := filters.ResolvedAt; w != nil {
+		params.Set("resolved_at", w.encode())
 	}
 	for _, s := range filters.Statuses {
 		params.Add("status", strconv.Itoa(s))
@@ -657,6 +855,15 @@ func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroup
 	}
 	for _, i := range filters.Integrations {
 		params.Add("integration", i)
+	}
+	for _, e := range filters.EscalationChains {
+		params.Add("escalation_chain", e)
+	}
+	for _, u := range filters.AcknowledgedBy {
+		params.Add("acknowledged_by", u)
+	}
+	for _, u := range filters.ResolvedBy {
+		params.Add("resolved_by", u)
 	}
 	if filters.Mine {
 		params.Set("mine", "true")

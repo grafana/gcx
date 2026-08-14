@@ -10,7 +10,8 @@ Contents:
   [T6](#t6-description-rot-and-scope) description rot ·
   [T7](#t7-naming-against-the-frozen-surface) naming ·
   [T8](#t8-tests-that-cannot-fail) tests · [T9](#t9-filtering-semantics) filtering ·
-  [T10](#t10-fix-pushes) fix pushes · [T11](#t11-skills-and-generated-docs) skills and docs
+  [T10](#t10-fix-pushes) fix pushes · [T11](#t11-skills-and-generated-docs) skills and docs ·
+  [T12](#t12-over-engineering) over-engineering
 
 These are the defect classes that repeatedly consume gcx review rounds. Every
 one is checkable before a human looks. **Run them by trigger, not as a
@@ -63,13 +64,14 @@ review output. Neither is a blocker.
 | adds or changes a flag or positional | [T2](#t2-inputs) |
 | returns a collection, or has a `--limit`, slice, early paging stop, or source cap | [T3](#t3-completeness) |
 | adds or changes an error path | [T4](#t4-errors) |
-| writes a client, codec, config loader, or HTTP transport | [T5](#t5-shared-infrastructure) |
+| writes a client, codec, config loader, HTTP transport, or any utility helper | [T5](#t5-shared-infrastructure) |
 | changes behavior of an already-shipped command | [T6](#t6-description-rot-and-scope) |
 | introduces or renames a command path | [T7](#t7-naming-against-the-frozen-surface) |
 | adds tests | [T8](#t8-tests-that-cannot-fail) |
 | filters, matches, or searches | [T9](#t9-filtering-semantics) |
 | is a fix pushed in response to review | [T10](#t10-fix-pushes) |
 | touches either skill tree or generated docs | [T11](#t11-skills-and-generated-docs) |
+| adds an interface, exported symbol, flag, package, or dependency | [T12](#t12-over-engineering) |
 
 ## T1: Any new or changed leaf
 
@@ -222,6 +224,15 @@ Two duplication shapes reviewers reliably find and authors reliably miss: a
 codec or formatter that is the same type as a sibling's with only the format call
 swapped (extract and share it), and a hand-rolled config loader that misses
 every bug fix living in the shared one.
+
+The same rule covers small utilities. Authors miss it more often there, because
+a short copy looks too small to matter. Four packages already hold the common
+ones. `internal/shared` parses durations and times, and its `ParseDuration`
+accepts `d`, `w`, `y` and compound values that `time.ParseDuration` rejects.
+`internal/terminal` detects a TTY. `internal/style` renders markdown and tables.
+`internal/output` routes diagnostics. A local copy is usually the weaker of the
+two, and the two then diverge. Where you rewrote one on purpose, name what you
+rejected and why.
 
 ## T6: Description rot and scope
 
@@ -401,3 +412,40 @@ Where a style guide and the entire surrounding command family disagree — a
 punctuation or phrasing convention the family never adopted — raise the conflict
 for the docs owner rather than silently following either side. The guide itself
 may be the piece that is out of step.
+
+## T12: Over-engineering
+
+Three checks. They ask whether the surface should exist, not whether it works.
+Duplication of something the repo already has is [T5](#t5-shared-infrastructure),
+not this trigger.
+
+1. **Count the call sites now.** An abstraction needs a second real caller
+  before you add it. That covers an interface, a wrapper type, a factory, a
+  config option, and a plugin seam. With one caller, write the code inline, and
+  extract it when the second caller arrives. The second caller's needs are what
+  should shape the signature, and you cannot predict them from one example. Then
+  read every field of a new options or request struct, and name the caller that
+  sets it. A field that nothing sets is the strongest evidence in this document.
+  It usually keeps dead code alive as well: a `Continue` flag that nothing sets
+  still holds a disk read, an error path, and a test in the tree.
+2. **Read the PR body both ways.** As the author: if you wrote that the new
+  entry point exists "so other command trees can…", or "to avoid duplicating X
+  in future", you have just failed this check in your own words. Name the second
+  caller and link it, or remove the generality and say what you removed. As a
+  reviewer: read the description and the existing comments for the opposite
+  case, a deviation the author already explained and chose on purpose. Reporting
+  it again wastes a review round and shows you did not read the thread. Where
+  the reasoning is present but wrong, argue against the reasoning instead.
+3. **Delete guards for states that cannot occur.** Before you keep a fallback,
+  read what produces the input: the pinned dependency's data, the caller that
+  builds the struct, or the validator that already rejected it. Take a tolerant
+  parser for a heading that every bundled doc already carries. That branch can
+  never run, and neither can the tests that claim to cover it. This is a
+  different question from [T8](#t8-tests-that-cannot-fail). T8 asks whether a
+  test would catch a real defect. T12 asks whether the input exists at all. A
+  test whose fixture the code will never see is a finding under both.
+
+Close by stating the smaller version in the PR body: the deletions and merges
+that would resolve every finding above and in T5, and the resulting size change.
+A reviewer works this out anyway. Writing it yourself turns a review round into
+a decision.

@@ -770,7 +770,9 @@ Validation happens in two places:
    `LoadConfigTolerant`; `config set` and `config unset` use `LoadForWrite` to
    load only the selected raw destination layer. These paths parse the schema
    but do not require every context to be operational, so users can repair
-   partially valid configurations without flattening layered state.
+   partially valid configurations without flattening layered state. `config
+   check` validates every configured context by default; an explicit
+   `--context` scopes validation to the selected context.
 
 2. **Strict load** (`LoadConfig`): used by `resources` commands. Calls
    `ctx.Validate()` which enforces:
