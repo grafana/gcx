@@ -10,8 +10,9 @@ An escalation chain runs its steps in order, so the position decides when a
 step fires. The position is zero-based: 0 is the first step. The backend
 renumbers the other steps of the chain.
 
-Set the order at create time through the position field of the spec. Use this
-command to change the order afterwards.
+The position field of the spec behaves differently on create: the backend
+reads it as an insertion point, and it moves the step that holds that position,
+and every later step, one place down. Use this command to set a known index.
 
 ```
 gcx irm oncall escalation-policies update-position <id> [flags]
@@ -24,7 +25,7 @@ gcx irm oncall escalation-policies update-position <id> [flags]
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
-      --position int    Zero-based target position
+      --position int    Zero-based target position (required)
 ```
 
 ### Options inherited from parent commands
