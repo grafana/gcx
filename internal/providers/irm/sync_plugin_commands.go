@@ -59,7 +59,7 @@ successful call does not prove that the copy is already current.`,
 				return err
 			}
 
-			if _, err := client.SyncPlugin(ctx); err != nil {
+			if err := client.SyncPlugin(ctx); err != nil {
 				return err
 			}
 

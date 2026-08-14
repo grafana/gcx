@@ -21,7 +21,7 @@ func TestSyncPluginRequest(t *testing.T) {
 		io.WriteString(w, `{"message":"Sync request processed successfully"}`) //nolint:errcheck
 	}))
 
-	if _, err := client.SyncPlugin(context.Background()); err != nil {
+	if err := client.SyncPlugin(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if gotMethod != http.MethodPost {
@@ -42,17 +42,15 @@ func TestSyncPluginResponses(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		status      int
-		body        string
-		wantErr     string
-		wantMessage string
+		name    string
+		status  int
+		body    string
+		wantErr string
 	}{
 		{
-			name:        "200 with a JSON body",
-			status:      http.StatusOK,
-			body:        `{"message":"Sync request processed successfully","status":"success"}`,
-			wantMessage: "Sync request processed successfully",
+			name:   "200 with a JSON body",
+			status: http.StatusOK,
+			body:   `{"message":"Sync request processed successfully","status":"success"}`,
 		},
 		{
 			name:   "200 with an empty body",
@@ -67,10 +65,9 @@ func TestSyncPluginResponses(t *testing.T) {
 			status: http.StatusNoContent,
 		},
 		{
-			name:        "200 with an unknown status token",
-			status:      http.StatusOK,
-			body:        `{"message":"sync queued","status":"queued"}`,
-			wantMessage: "sync queued",
+			name:   "200 with an unknown status token",
+			status: http.StatusOK,
+			body:   `{"message":"sync queued","status":"queued"}`,
 		},
 		{
 			name:    "200 with an in-band error field",
@@ -116,7 +113,7 @@ func TestSyncPluginResponses(t *testing.T) {
 				io.WriteString(w, tt.body) //nolint:errcheck
 			}))
 
-			got, err := client.SyncPlugin(context.Background())
+			err := client.SyncPlugin(context.Background())
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("expected an error that contains %q, got none", tt.wantErr)
@@ -128,9 +125,6 @@ func TestSyncPluginResponses(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
-			}
-			if got.Message != tt.wantMessage {
-				t.Errorf("got message %q, want %q", got.Message, tt.wantMessage)
 			}
 		})
 	}
