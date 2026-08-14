@@ -29,5 +29,5 @@ gcx irm oncall escalation-policies steps list [flags]
 
 ### SEE ALSO
 
-* [gcx irm oncall escalation-policies steps](gcx_irm_oncall_escalation-policies_steps.md)	 - Discover allowed escalation policy step types.
+* [gcx irm oncall escalation-policies steps](gcx_irm_oncall_escalation-policies_steps.md)	 - List allowed escalation policy step types.
 

@@ -34,95 +34,102 @@ func (o *discoveryListOpts) setup(flags *pflag.FlagSet, codec format.Codec) {
 	o.IO.BindFlags(flags)
 }
 
-// newDiscoveryListCmd builds a `list` command that fetches a catalog via
-// fetch and emits it through the codec system.
-func newDiscoveryListCmd[T any](
-	loader OnCallConfigLoader, short string, codec format.Codec,
+// bindDiscoveryList turns cmd into a command that fetches a catalog via fetch
+// and emits it through the codec system. Each command gets its own opts and
+// its own flag set, so a parent and its `list` child never share flag state.
+func bindDiscoveryList[T any](
+	cmd *cobra.Command, loader OnCallConfigLoader, codec format.Codec,
 	fetch func(ctx context.Context, client OnCallAPI) ([]T, error),
-) *cobra.Command {
+) {
 	opts := &discoveryListOpts{}
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: short,
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
-			client, _, err := loader.LoadOnCallClient(ctx)
-			if err != nil {
-				return err
-			}
-			items, err := fetch(ctx, client)
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
-		},
+	cmd.Args = cobra.NoArgs
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		if err := opts.IO.Validate(); err != nil {
+			return err
+		}
+		ctx := cmd.Context()
+		client, _, err := loader.LoadOnCallClient(ctx)
+		if err != nil {
+			return err
+		}
+		items, err := fetch(ctx, client)
+		if err != nil {
+			return err
+		}
+		return opts.IO.Encode(cmd.OutOrStdout(), items)
 	}
 	opts.setup(cmd.Flags(), codec)
-	return cmd
+}
+
+// newDiscoveryCmd builds a discovery command tree. The parent lists the
+// catalog itself, and it keeps a `list` child that does the same thing.
+//
+// The parent name reads as a command that discovers something, so printing
+// help there and demanding a further `list` costs the caller a round trip for
+// no gain. The `list` child stays, because it shipped and the command surface
+// is stable within a major version.
+func newDiscoveryCmd[T any](
+	loader OnCallConfigLoader, use, groupShort, listShort string, codec format.Codec,
+	fetch func(ctx context.Context, client OnCallAPI) ([]T, error),
+) *cobra.Command {
+	group := &cobra.Command{
+		Use:   use,
+		Short: groupShort,
+	}
+	bindDiscoveryList(group, loader, codec, fetch)
+
+	list := &cobra.Command{
+		Use:   "list",
+		Short: listShort,
+	}
+	bindDiscoveryList(list, loader, codec, fetch)
+
+	group.AddCommand(list)
+	return group
 }
 
 // newEscalationStepsCmd returns the `escalation-policies steps` command tree.
 func newEscalationStepsCmd(loader OnCallConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "steps",
-		Short: "Discover allowed escalation policy step types.",
-	}
-	cmd.AddCommand(newDiscoveryListCmd(loader,
+	return newDiscoveryCmd(loader, "steps",
+		"List allowed escalation policy step types.",
 		"List allowed values for an escalation policy's step field.",
 		&escalationStepOptionTableCodec{},
 		func(ctx context.Context, client OnCallAPI) ([]EscalationStepOption, error) {
 			return client.ListEscalationStepOptions(ctx)
-		}))
-	return cmd
+		})
 }
 
 // newWebhookTriggersCmd returns the `webhooks triggers` command tree.
 func newWebhookTriggersCmd(loader OnCallConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "triggers",
-		Short: "Discover allowed webhook trigger types.",
-	}
-	cmd.AddCommand(newDiscoveryListCmd(loader,
+	return newDiscoveryCmd(loader, "triggers",
+		"List allowed webhook trigger types.",
 		"List allowed values for a webhook's trigger_type field.",
 		&webhookTriggerOptionTableCodec{},
 		func(ctx context.Context, client OnCallAPI) ([]WebhookTriggerOption, error) {
 			return client.ListWebhookTriggerOptions(ctx)
-		}))
-	return cmd
+		})
 }
 
 // newWebhookPresetsCmd returns the `webhooks presets` command tree.
 func newWebhookPresetsCmd(loader OnCallConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "presets",
-		Short: "Discover webhook configuration presets.",
-	}
-	cmd.AddCommand(newDiscoveryListCmd(loader,
+	return newDiscoveryCmd(loader, "presets",
+		"List webhook configuration presets.",
 		"List webhook preset IDs (e.g. grafana_assistant) and their allowed triggers.",
 		&webhookPresetTableCodec{},
 		func(ctx context.Context, client OnCallAPI) ([]WebhookPreset, error) {
 			return client.ListWebhookPresets(ctx)
-		}))
-	return cmd
+		})
 }
 
 // newRouteFilterTypesCmd returns the `routes filter-types` command tree.
 func newRouteFilterTypesCmd(loader OnCallConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "filter-types",
-		Short: "Discover route filtering term types.",
-	}
-	cmd.AddCommand(newDiscoveryListCmd(loader,
+	return newDiscoveryCmd(loader, "filter-types",
+		"List route filtering term types.",
 		"List allowed values for a route's filtering_term_type field.",
 		&routeFilterTypeTableCodec{},
 		func(ctx context.Context, client OnCallAPI) ([]RouteFilterType, error) {
 			return client.ListRouteFilterTypes(ctx)
-		}))
-	return cmd
+		})
 }
 
 // --- Table codecs ---

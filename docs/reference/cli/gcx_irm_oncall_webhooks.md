@@ -27,7 +27,7 @@ Manage outgoing webhooks.
 * [gcx irm oncall webhooks delete](gcx_irm_oncall_webhooks_delete.md)	 - Delete an outgoing webhook by ID.
 * [gcx irm oncall webhooks get](gcx_irm_oncall_webhooks_get.md)	 - Get an outgoing webhook by ID.
 * [gcx irm oncall webhooks list](gcx_irm_oncall_webhooks_list.md)	 - List outgoing webhooks.
-* [gcx irm oncall webhooks presets](gcx_irm_oncall_webhooks_presets.md)	 - Discover webhook configuration presets.
-* [gcx irm oncall webhooks triggers](gcx_irm_oncall_webhooks_triggers.md)	 - Discover allowed webhook trigger types.
+* [gcx irm oncall webhooks presets](gcx_irm_oncall_webhooks_presets.md)	 - List webhook configuration presets.
+* [gcx irm oncall webhooks triggers](gcx_irm_oncall_webhooks_triggers.md)	 - List allowed webhook trigger types.
 * [gcx irm oncall webhooks update](gcx_irm_oncall_webhooks_update.md)	 - Update an outgoing webhook by ID.
 
