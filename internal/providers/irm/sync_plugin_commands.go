@@ -14,11 +14,11 @@ import (
 // sequence "create the team" then "create the schedule of that team" without
 // a way to force the refresh.
 
-type pluginSyncOpts struct {
+type syncPluginOpts struct {
 	IO cmdio.Options
 }
 
-func (o *pluginSyncOpts) setup(flags *pflag.FlagSet) {
+func (o *syncPluginOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
 		render: func(w io.Writer, _ cmdio.SingleMutation) {
 			cmdio.Success(w, "Requested a sync of the IRM plugin")
@@ -28,19 +28,10 @@ func (o *pluginSyncOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newPluginCmd(loader OnCallConfigLoader) *cobra.Command {
+func newSyncPluginCommand(loader OnCallConfigLoader) *cobra.Command {
+	opts := &syncPluginOpts{}
 	cmd := &cobra.Command{
-		Use:   "plugin",
-		Short: "Manage the IRM plugin itself.",
-	}
-	cmd.AddCommand(newPluginSyncCommand(loader))
-	return cmd
-}
-
-func newPluginSyncCommand(loader OnCallConfigLoader) *cobra.Command {
-	opts := &pluginSyncOpts{}
-	cmd := &cobra.Command{
-		Use:   "sync",
+		Use:   "sync-plugin",
 		Short: "Refresh the IRM copy of the Grafana users and teams.",
 		Long: `Refresh the IRM copy of the Grafana users and teams.
 
