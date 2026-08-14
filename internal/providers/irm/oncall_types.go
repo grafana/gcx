@@ -121,7 +121,7 @@ type OnCallAPI interface {
 	DeleteIntegration(ctx context.Context, id string) error
 	GetIntegrationTemplates(ctx context.Context, id string) (map[string]any, error)
 	UpdateIntegrationTemplates(ctx context.Context, id string, templates map[string]any) (map[string]any, error)
-	StartIntegrationMaintenance(ctx context.Context, id string, mode, durationSeconds int) error
+	StartIntegrationMaintenance(ctx context.Context, id string, mode MaintenanceMode, durationSeconds int) error
 	StopIntegrationMaintenance(ctx context.Context, id string) error
 
 	ListEscalationChains(ctx context.Context) ([]EscalationChain, error)
@@ -269,10 +269,10 @@ const (
 	MaintenanceModeMaintenance MaintenanceMode = 1
 )
 
-// MaintenanceModeNames maps the flag value a caller types to the wire value.
+// maintenanceModeNames maps the flag value a caller types to the wire value.
 //
 //nolint:gochecknoglobals // a lookup table, written once at package level
-var MaintenanceModeNames = map[string]MaintenanceMode{
+var maintenanceModeNames = map[string]MaintenanceMode{
 	"debug":       MaintenanceModeDebug,
 	"maintenance": MaintenanceModeMaintenance,
 }

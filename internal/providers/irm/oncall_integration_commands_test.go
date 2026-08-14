@@ -17,7 +17,7 @@ type fakeIntegrationAPI struct {
 	templates    map[string]any
 	gotID        string
 	gotTemplates map[string]any
-	gotMode      int
+	gotMode      MaintenanceMode
 	gotDuration  int
 	stopped      []string
 	err          error
@@ -34,7 +34,7 @@ func (f *fakeIntegrationAPI) UpdateIntegrationTemplates(_ context.Context, id st
 	return t, f.err
 }
 
-func (f *fakeIntegrationAPI) StartIntegrationMaintenance(_ context.Context, id string, mode, duration int) error {
+func (f *fakeIntegrationAPI) StartIntegrationMaintenance(_ context.Context, id string, mode MaintenanceMode, duration int) error {
 	f.gotID = id
 	f.gotMode = mode
 	f.gotDuration = duration
@@ -122,19 +122,19 @@ func TestIntegrationStartMaintenanceCommand(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     []string
-		wantMode int
+		wantMode MaintenanceMode
 		wantSecs int
 	}{
 		{
 			name:     "defaults to maintenance mode for one hour",
 			args:     []string{"start-maintenance", "CH1"},
-			wantMode: int(MaintenanceModeMaintenance),
+			wantMode: MaintenanceModeMaintenance,
 			wantSecs: 3600,
 		},
 		{
 			name:     "explicit debug mode and duration",
 			args:     []string{"start-maintenance", "CH1", "--mode", "debug", "--duration", "10800"},
-			wantMode: int(MaintenanceModeDebug),
+			wantMode: MaintenanceModeDebug,
 			wantSecs: 10800,
 		},
 	}

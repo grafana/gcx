@@ -101,11 +101,11 @@ func TestStartIntegrationMaintenance(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		mode     int
+		mode     irm.MaintenanceMode
 		duration int
 	}{
-		{name: "debug mode", mode: int(irm.MaintenanceModeDebug), duration: 3600},
-		{name: "maintenance mode", mode: int(irm.MaintenanceModeMaintenance), duration: 10800},
+		{name: "debug mode", mode: irm.MaintenanceModeDebug, duration: 3600},
+		{name: "maintenance mode", mode: irm.MaintenanceModeMaintenance, duration: 10800},
 	}
 
 	for _, tt := range tests {
@@ -133,7 +133,7 @@ func TestStartIntegrationMaintenance(t *testing.T) {
 			if gotPath != wantPath {
 				t.Errorf("got path %q, want %q", gotPath, wantPath)
 			}
-			if gotBody["mode"] != tt.mode || gotBody["duration"] != tt.duration {
+			if gotBody["mode"] != int(tt.mode) || gotBody["duration"] != tt.duration {
 				t.Errorf("unexpected body %v", gotBody)
 			}
 		})

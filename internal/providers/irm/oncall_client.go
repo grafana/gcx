@@ -367,8 +367,11 @@ func (c *OnCallClient) UpdateIntegrationTemplates(ctx context.Context, id string
 // StartIntegrationMaintenance puts an integration into maintenance for the
 // given number of seconds. mode selects the maintenance behaviour; see
 // MaintenanceMode.
-func (c *OnCallClient) StartIntegrationMaintenance(ctx context.Context, id string, mode, durationSeconds int) error {
-	body := map[string]int{"mode": mode, "duration": durationSeconds}
+func (c *OnCallClient) StartIntegrationMaintenance(ctx context.Context, id string, mode MaintenanceMode, durationSeconds int) error {
+	body := struct {
+		Mode     MaintenanceMode `json:"mode"`
+		Duration int             `json:"duration"`
+	}{Mode: mode, Duration: durationSeconds}
 	return c.integrationAction(ctx, id, "start_maintenance", body, "start integration maintenance")
 }
 
