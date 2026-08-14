@@ -28,8 +28,8 @@ Manage OnCall integrations.
 * [gcx irm oncall integrations get](gcx_irm_oncall_integrations_get.md)	 - Get an integration by ID.
 * [gcx irm oncall integrations get-templates](gcx_irm_oncall_integrations_get-templates.md)	 - Get the alert templates of an integration.
 * [gcx irm oncall integrations list](gcx_irm_oncall_integrations_list.md)	 - List OnCall integrations.
-* [gcx irm oncall integrations set-templates](gcx_irm_oncall_integrations_set-templates.md)	 - Replace the alert templates of an integration.
 * [gcx irm oncall integrations start-maintenance](gcx_irm_oncall_integrations_start-maintenance.md)	 - Start maintenance on an integration.
 * [gcx irm oncall integrations stop-maintenance](gcx_irm_oncall_integrations_stop-maintenance.md)	 - Stop maintenance on an integration.
 * [gcx irm oncall integrations update](gcx_irm_oncall_integrations_update.md)	 - Update an integration by ID.
+* [gcx irm oncall integrations update-templates](gcx_irm_oncall_integrations_update-templates.md)	 - Replace the alert templates of an integration.
 

@@ -19,7 +19,7 @@ import (
 // per the sub-resource rule in CONSTITUTION.md.
 
 // ---------------------------------------------------------------------------
-// integrations get-templates / set-templates
+// integrations get-templates / update-templates
 // ---------------------------------------------------------------------------
 
 func newIntegrationGetTemplatesCmd(loader OnCallConfigLoader) *cobra.Command {
@@ -35,7 +35,7 @@ rendering for each channel (web, phone call, Short Message Service, email,
 Slack, and Microsoft Teams).
 
 The command emits the whole template document. Edit that document, then pass
-it back through set-templates.`,
+it back through update-templates.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -59,16 +59,16 @@ it back through set-templates.`,
 	return cmd
 }
 
-func newIntegrationSetTemplatesCmd(loader OnCallConfigLoader) *cobra.Command {
+func newIntegrationUpdateTemplatesCmd(loader OnCallConfigLoader) *cobra.Command {
 	opts := &mutateOpts{}
 	cmd := &cobra.Command{
-		Use:   "set-templates <id>",
+		Use:   "update-templates <id>",
 		Short: "Replace the alert templates of an integration.",
 		Long: `Replace the alert templates of an integration.
 
 The file holds the template document as get-templates emits it. Every field
 travels to the backend unchanged, so a field that this build does not know
-about still survives a get, an edit, and a set.
+about still survives a get, an edit, and an update.
 
 The command emits the stored document.`,
 		Args: cobra.ExactArgs(1),

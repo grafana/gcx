@@ -1,4 +1,4 @@
-## gcx irm oncall integrations set-templates
+## gcx irm oncall integrations update-templates
 
 Replace the alert templates of an integration.
 
@@ -8,19 +8,19 @@ Replace the alert templates of an integration.
 
 The file holds the template document as get-templates emits it. Every field
 travels to the backend unchanged, so a field that this build does not know
-about still survives a get, an edit, and a set.
+about still survives a get, an edit, and an update.
 
 The command emits the stored document.
 
 ```
-gcx irm oncall integrations set-templates <id> [flags]
+gcx irm oncall integrations update-templates <id> [flags]
 ```
 
 ### Options
 
 ```
   -f, --filename string   File containing the resource definition (JSON/YAML, use - for stdin)
-  -h, --help              help for set-templates
+  -h, --help              help for update-templates
       --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
