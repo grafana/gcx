@@ -54,27 +54,42 @@ curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh
 ```
 
 Downloads the latest release, verifies the SHA-256 checksum, and installs to
-`~/.local/bin`. Override the location with `INSTALL_DIR`:
+`~/.local/bin`. Override the location with `GCX_INSTALL_DIR`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | GCX_INSTALL_DIR=/usr/local/bin sh
 ```
+
+To upgrade, run the same command again, then check `gcx --version`. If the
+version does not change, you have a second `gcx` earlier in your `PATH` — run
+`which -a gcx` and see
+[The version does not change after an upgrade](docs/sources/installation.md#the-version-does-not-change-after-an-upgrade).
 
 **Homebrew (macOS and Linux):**
 
 ```bash
-brew install grafana/grafana/gcx
+brew install gcx
 ```
 
-Compiles from source on your machine (requires Homebrew's `go`, installed
-automatically as a build dependency). First install takes ~30–60 seconds
-while Go fetches dependencies; subsequent upgrades are faster.
+Installs the `gcx` formula from homebrew-core. Homebrew has a prebuilt bottle
+for macOS and Linux, so the install takes seconds and needs no tap.
 
 To update to the latest version:
 
 ```bash
 brew update && brew upgrade gcx
 ```
+
+The Grafana tap also carries `gcx`. Use it if you want Homebrew to compile the
+binary on your machine:
+
+```bash
+brew install grafana/grafana/gcx
+```
+
+That build needs Homebrew's `go`, which Homebrew installs as a build
+dependency. The first install takes 30–60 seconds while Go fetches
+dependencies.
 
 **Pre-built binary (Linux/macOS/Windows):**
 
