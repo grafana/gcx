@@ -95,7 +95,7 @@ internal/        Non-public packages — full annotated map: docs/architecture/p
 | **Fixing a bug** | [ARCHITECTURE.md](ARCHITECTURE.md) for the relevant subsystem | Jump directly to the deep-dive doc for that domain |
 | **Planning a new feature** | [VISION.md](VISION.md) (does it belong?), [CONSTITUTION.md](CONSTITUTION.md) (can we build it within the rules?) | [DESIGN.md](DESIGN.md) for UX, [ARCHITECTURE.md](ARCHITECTURE.md) for structure |
 | **Adding, extending, or reviewing a gcx capability (domain teams)** | Read the repo-local [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md) contributor skill first — it covers necessity, placement, readiness, contract, and self-review | [docs/design/command-naming.md](docs/design/command-naming.md), [docs/reference/provider-guide.md](docs/reference/provider-guide.md) |
-| **Reviewing a PR** | [Compliance Hierarchy](#compliance-hierarchy) below | Check all 4 levels in order |
+| **Reviewing someone else's PR** | The repo-local [`review-pr`](.claude/skills/review-pr/SKILL.md) skill — report shape, over-engineering rubric, lock-in ranking | [Compliance Hierarchy](#compliance-hierarchy) below — check all 4 levels in order |
 
 ## Compliance Hierarchy
 

@@ -65,6 +65,29 @@ func TestStringifyAlertGroupListFilters(t *testing.T) {
 			want: "team=prod-sre, include-child-groups",
 		},
 		{
+			name: "escalation-chain augments default",
+			in:   &alertGroupListOpts{EscalationChains: []string{"EC1", "EC2"}},
+			want: "default + escalation-chain=EC1,EC2",
+		},
+		{
+			name: "acknowledged-by and resolved-by",
+			in: &alertGroupListOpts{
+				AcknowledgedBy: []string{"U1"},
+				ResolvedBy:     []string{"U2"},
+			},
+			want: "default + acknowledged-by=U1, resolved-by=U2",
+		},
+		{
+			name: "started-at window renders the raw expressions",
+			in:   &alertGroupListOpts{From: "now-30d", To: "now-7d"},
+			want: "default + from=now-30d, to=now-7d",
+		},
+		{
+			name: "resolved-at window",
+			in:   &alertGroupListOpts{ResolvedFrom: "now-7d", ResolvedTo: "now"},
+			want: "default + resolved-from=now-7d, resolved-to=now",
+		},
+		{
 			name: "many filters collapse to count",
 			in: &alertGroupListOpts{
 				States:             []string{"firing", "acknowledged", "silenced"},
@@ -134,6 +157,93 @@ func TestAlertGroupListOptsValidate(t *testing.T) {
 	}
 }
 
+// TestAlertGroupListOptsValidateTimeWindows covers the time-window guardrails
+// added with --from/--to and --resolved-from/--resolved-to: --max-age and
+// --from/--to both compile into started_at so they cannot be combined,
+// unparseable expressions are rejected by name, and an inverted window is an
+// error rather than a silently empty result. All must fire before any config
+// or network work.
+func TestAlertGroupListOptsValidateTimeWindows(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		in      *alertGroupListOpts
+		wantErr string // exact message; empty means Validate must pass
+	}{
+		{
+			name:    "max-age with from rejected",
+			in:      &alertGroupListOpts{MaxAge: "24h", From: "now-30d"},
+			wantErr: "--max-age cannot be combined with --from or --to: both bound the started-at window",
+		},
+		{
+			name:    "max-age with to rejected",
+			in:      &alertGroupListOpts{MaxAge: "24h", To: "now-7d"},
+			wantErr: "--max-age cannot be combined with --from or --to: both bound the started-at window",
+		},
+		{
+			name:    "unparseable from rejected by flag name",
+			in:      &alertGroupListOpts{From: "last tuesday"},
+			wantErr: "invalid --from value: unable to parse time: last tuesday",
+		},
+		{
+			name:    "unparseable resolved-to rejected by flag name",
+			in:      &alertGroupListOpts{ResolvedTo: "yesterday"},
+			wantErr: "invalid --resolved-to value: unable to parse time: yesterday",
+		},
+		{
+			name: "inverted started-at window rejected",
+			in: &alertGroupListOpts{
+				From: "2026-01-31T00:00:00Z",
+				To:   "2026-01-01T00:00:00Z",
+			},
+			wantErr: "invalid time range: --from (2026-01-31T00:00:00Z) is after --to (2026-01-01T00:00:00Z)",
+		},
+		{
+			name: "inverted resolved-at window rejected",
+			in: &alertGroupListOpts{
+				ResolvedFrom: "2026-01-31T00:00:00Z",
+				ResolvedTo:   "2026-01-01T00:00:00Z",
+			},
+			wantErr: "invalid time range: --resolved-from (2026-01-31T00:00:00Z) is after --resolved-to (2026-01-01T00:00:00Z)",
+		},
+		{
+			name: "both windows, valid, accepted",
+			in: &alertGroupListOpts{
+				From: "now-30d", To: "now-7d",
+				ResolvedFrom: "now-30d", ResolvedTo: "now",
+			},
+		},
+		{
+			name: "max-age alone still accepted",
+			in:   &alertGroupListOpts{MaxAge: "24h"},
+		},
+		{
+			// --to alone is legal: the start defaults to the unix epoch, so
+			// the pair the API requires is still well-defined.
+			name: "to alone accepted",
+			in:   &alertGroupListOpts{To: "now-7d"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.in.Validate()
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() = nil, want error %q", tc.wantErr)
+			}
+			if err.Error() != tc.wantErr {
+				t.Fatalf("Validate() error = %q, want %q", err.Error(), tc.wantErr)
+			}
+		})
+	}
+}
+
 // TestAlertGroupListHasExplicitFilter — silent-on-`--all` decision predicate.
 func TestAlertGroupListHasExplicitFilter(t *testing.T) {
 	t.Parallel()
@@ -145,7 +255,14 @@ func TestAlertGroupListHasExplicitFilter(t *testing.T) {
 		{"empty", &alertGroupListOpts{}, false},
 		{"all alone", &alertGroupListOpts{All: true}, false},
 		{"team", &alertGroupListOpts{Teams: []string{"x"}}, true},
+		{"escalation-chain", &alertGroupListOpts{EscalationChains: []string{"EC1"}}, true},
+		{"acknowledged-by", &alertGroupListOpts{AcknowledgedBy: []string{"U1"}}, true},
+		{"resolved-by", &alertGroupListOpts{ResolvedBy: []string{"U1"}}, true},
 		{"max-age", &alertGroupListOpts{MaxAge: "1h"}, true},
+		{"from", &alertGroupListOpts{From: "now-7d"}, true},
+		{"to", &alertGroupListOpts{To: "now-1h"}, true},
+		{"resolved-from", &alertGroupListOpts{ResolvedFrom: "now-7d"}, true},
+		{"resolved-to", &alertGroupListOpts{ResolvedTo: "now-1h"}, true},
 		{"mine", &alertGroupListOpts{Mine: true}, true},
 		{"include-child-groups", &alertGroupListOpts{IncludeChildGroups: true}, true},
 		{"all + team", &alertGroupListOpts{All: true, Teams: []string{"x"}}, true},

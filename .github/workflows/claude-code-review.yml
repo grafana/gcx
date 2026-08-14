@@ -6,27 +6,55 @@ on:
       - opened           # Non-draft PR opened
       - ready_for_review  # Draft PR marked ready
       - unlabeled        # Re-review when 'claude-reviewed' label is removed
+  issue_comment:
+    types:
+      - created          # Re-review on '@claude review'
 
 jobs:
   claude-review:
-    # Run on opened/ready_for_review (if not draft), or on unlabeled only if
-    # the removed label is 'claude-reviewed' (manual re-review trigger).
-    # Skip all bot PRs (Renovate, etc.) — user.type is 'Bot' for
-    # GitHub App accounts, 'User' for humans.
+    # Two entry points.
+    #
+    # pull_request: opened/ready_for_review (if not draft), or unlabeled only
+    # when the removed label is 'claude-reviewed'. Skip all bot PRs (Renovate,
+    # etc.) — user.type is 'Bot' for GitHub App accounts, 'User' for humans.
+    #
+    # issue_comment: a top-level '@claude review' on a PR, matching the command
+    # people know from the Code Review docs. Without this the comment fell
+    # through to claude.yml, which runs a general-purpose session instead of the
+    # review. gcx is a public repo, so the comment path carries the same
+    # author-association guard as claude.yml: without it any commenter could
+    # mint a Vault secret.
     if: |
-      github.event.pull_request.user.type != 'Bot' &&
-      github.event.pull_request.draft == false &&
-      (github.event.action != 'unlabeled' || github.event.label.name == 'claude-reviewed')
+      (github.event_name == 'pull_request' &&
+        github.event.pull_request.user.type != 'Bot' &&
+        github.event.pull_request.draft == false &&
+        (github.event.action != 'unlabeled' || github.event.label.name == 'claude-reviewed')) ||
+      (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != null &&
+        startsWith(github.event.comment.body, '@claude review') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
       id-token: write
     steps:
+      # One number for both entry points: pull_request carries it on the PR,
+      # issue_comment on the issue.
+      - name: Resolve pull request number
+        id: pr
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 1
+          # A pull_request event checks out the merge ref already. An
+          # issue_comment event would otherwise check out the default branch,
+          # so the review would grep the base instead of the PR's code.
+          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/merge', steps.pr.outputs.number) || github.ref }}
 
       - name: Get Vault secrets
         id: get-secrets
@@ -44,13 +72,39 @@ jobs:
         with:
           anthropic_api_key: ${{ fromJSON(steps.get-secrets.outputs.secrets).ANTHROPIC_API_KEY }}
           use_sticky_comment: true
+          # Buffer findings and classify them before posting, so severity
+          # labelling comes from the action rather than from prompt discipline.
+          classify_inline_comments: true
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          claude_args: '--allowedTools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr review:*),mcp__github_inline_comment__create_inline_comment"'
+          # The review process lives in the repo-local review-pr skill, so a PR
+          # gets the same treatment whether a developer runs it locally or this
+          # workflow runs it. The skill carries the severity split, the skip
+          # rules, the report shape, and the unattended-run overrides.
+          #
+          # /code-review runs without --comment on purpose: its findings must
+          # come back into the session so they can be merged with the skill's
+          # checks before anything is posted.
+          prompt: |
+            Review ${{ github.repository }}/pull/${{ steps.pr.outputs.number }}
+            by following .claude/skills/review-pr/SKILL.md, including its
+            "When a workflow invoked this" section.
+
+            Run two passes. Use the /code-review:code-review skill for
+            correctness bugs, without --comment so its findings return to you.
+            Separately run the checks the review-pr skill routes you to.
+
+            Base the report on both sets combined: drop duplicates, and where
+            the two disagree, resolve it against the code and report one
+            conclusion rather than both. Then post what survives.
+          # Pin the model instead of inheriting the action's default. That
+          # default moves as new models ship, so review behaviour changes with
+          # no commit to point at. Pinning keeps runs reproducible and makes
+          # each upgrade an explicit change someone reviewed.
+          claude_args: '--model claude-opus-5 --allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr review:*),mcp__github_inline_comment__create_inline_comment"'
 
       - name: Add claude-reviewed label
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr edit "${{ github.event.pull_request.number }}" --add-label claude-reviewed
+        run: gh pr edit "${{ steps.pr.outputs.number }}" --add-label claude-reviewed
