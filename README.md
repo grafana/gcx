@@ -404,6 +404,11 @@ the corresponding feature toggle. Per-command declaration of these
 requirements (min version, feature toggles) is tracked in
 [#989](https://github.com/grafana/gcx/issues/989).
 
+**Version support policy:** gcx supports the current Grafana major version,
+plus the previous major for 3 months after the new one ships. This is
+stricter than [Grafana's own version support policy](https://grafana.com/docs/grafana/latest/upgrade-guide/when-to-upgrade/#what-to-know-about-version-support) —
+gcx has to drop old API paths before Grafana itself can remove them.
+
 ### Feature availability by deployment
 
 | Feature | Commands | OSS | Enterprise | Cloud | BYOC |
