@@ -2,8 +2,25 @@
 
 List webhook preset IDs (e.g. grafana_assistant) and their allowed triggers.
 
+### Synopsis
+
+List the presets that an outgoing webhook accepts. A preset fills a group of webhook fields, and it limits the trigger types of the webhook. Put the preset ID in the preset field of a webhook manifest.
+
 ```
 gcx irm oncall webhooks list-presets [flags]
+```
+
+### Examples
+
+```
+  # List the webhook presets
+  gcx irm oncall webhooks list-presets
+
+  # Read the trigger types that one preset allows
+  gcx irm oncall webhooks list-presets -o json | jq -r '.[] | select(.id == "grafana_assistant") | .trigger_types'
+
+  # Put the preset ID in the preset field of webhook.yaml, then create the webhook
+  gcx irm oncall webhooks create -f webhook.yaml
 ```
 
 ### Options
