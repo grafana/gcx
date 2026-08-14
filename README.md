@@ -68,18 +68,28 @@ version does not change, you have a second `gcx` earlier in your `PATH` — run
 **Homebrew (macOS and Linux):**
 
 ```bash
-brew install grafana/grafana/gcx
+brew install gcx
 ```
 
-Compiles from source on your machine (requires Homebrew's `go`, installed
-automatically as a build dependency). First install takes ~30–60 seconds
-while Go fetches dependencies; subsequent upgrades are faster.
+Installs the `gcx` formula from homebrew-core. Homebrew has a prebuilt bottle
+for macOS and Linux, so the install takes seconds and needs no tap.
 
 To update to the latest version:
 
 ```bash
 brew update && brew upgrade gcx
 ```
+
+The Grafana tap also carries `gcx`. Use it if you want Homebrew to compile the
+binary on your machine:
+
+```bash
+brew install grafana/grafana/gcx
+```
+
+That build needs Homebrew's `go`, which Homebrew installs as a build
+dependency. The first install takes 30–60 seconds while Go fetches
+dependencies.
 
 **Pre-built binary (Linux/macOS/Windows):**
 

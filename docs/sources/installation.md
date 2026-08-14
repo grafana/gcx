@@ -83,17 +83,29 @@ To install `gcx` with Homebrew run:
 brew install gcx
 ```
 
+This command installs the `gcx` formula from homebrew-core. Homebrew has a prebuilt bottle for macOS and Linux, so the install takes seconds. You do not need to add a tap.
+
 To upgrade an existing installation:
 
 ```shell
 brew upgrade gcx
 ```
 
-Homebrew builds `gcx` from source on your machine, as it pulls `go` as a build dependency.
-The first install usually takes 30 to 60 seconds, and later upgrades reuse the Homebrew download cache.
+### Install from the Grafana tap
 
-This option avoids macOS Gatekeeper because it doesn't download a prebuilt binary. You
-won't need to work around notarisation.
+The Grafana tap also carries `gcx`. Use the tap if you want Homebrew to compile the binary on your machine:
+
+```shell
+brew install grafana/grafana/gcx
+```
+
+Homebrew installs `go` as a build dependency for this formula. The first install usually takes 30 to 60 seconds, and later upgrades reuse the Homebrew download cache.
+
+Install `gcx` from one source only. Two Homebrew formulas with the same name conflict with each other.
+
+### Homebrew and macOS Gatekeeper
+
+Both Homebrew methods avoid the macOS Gatekeeper problem. Homebrew does not set the quarantine attribute on the files that it installs, so you do not need to work around notarisation.
 
 ## Install a prebuilt binary
 
@@ -125,10 +137,10 @@ go install github.com/grafana/gcx/cmd/gcx@latest
 
 ## The version does not change after an upgrade
 
-This page lists five install methods. Each one writes `gcx` to a different
-directory. If you use two methods, you get two copies. Your shell runs the copy
-in the directory that comes first in `PATH`, and an upgrade of the other copy
-changes nothing that you can see.
+This page lists several install methods, and they write `gcx` to different
+directories. If you use two methods, you get two copies. Your shell runs the
+copy in the directory that comes first in `PATH`, and an upgrade of the other
+copy changes nothing that you can see.
 
 List every copy:
 
@@ -163,7 +175,7 @@ macOS quarantines any downloaded binary by default. Since `gcx` release binaries
 - **Intel macOS**: A dialog says, *"Apple could not verify 'gcx' is free of malware…"*, and the binary doesn't run.
 - **Apple Silicon (M-series) macOS**: The binary exits immediately with `killed: 9` and no visible dialog.
 
-**Homebrew users are not affected**. Since it compiles `gcx` from source on your machine, no pre-built binary is downloaded and no `xattr` is set.
+**Homebrew users are not affected**. Homebrew does not set the `xattr` on the files that it installs.
 
 ### Bypass the macOS gatekeeper
 
