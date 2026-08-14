@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/irm"
+	"github.com/spf13/cobra"
 )
 
 // severityServer records every incident call and answers CreateIncident with
@@ -236,6 +237,38 @@ func TestCreateReportsTheIncidentAfterAFailedSeverityUpdate(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("expected %q in the error, got %v", want, err)
 		}
+	}
+}
+
+const createSeverityManifest = `apiVersion: incident.ext.grafana.app/v1alpha1
+kind: Incident
+metadata:
+  name: my-incident
+spec:
+  title: "probe"
+  status: active
+  severity: Critical
+`
+
+// TestCreateCommandKeepsTheRepairErrorAlone covers the second failure path of
+// the create command. The incident exists, so the command must not report a
+// failed create next to the repair command that the client error carries.
+func TestCreateCommandKeepsTheRepairErrorAlone(t *testing.T) {
+	srv := &severityServer{title: "probe", failSeverityUpdate: true}
+	server := httptest.NewServer(srv.handler(t))
+	t.Cleanup(server.Close)
+
+	_, _, err := runIncidentCmd(t, func() *cobra.Command {
+		return irm.NewCreateCommand(incidentLoader(server))
+	}, createSeverityManifest, "-f", "-")
+	if err == nil {
+		t.Fatal("expected the failed-severity error")
+	}
+	if strings.Contains(err.Error(), "failed to create incident") {
+		t.Errorf("the incident exists, so the error must not report a failed create: %v", err)
+	}
+	if !strings.Contains(err.Error(), "incident 1 exists") {
+		t.Errorf("expected the repair error of the client, got %v", err)
 	}
 }
 
