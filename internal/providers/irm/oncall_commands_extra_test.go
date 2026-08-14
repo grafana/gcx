@@ -3,11 +3,14 @@ package irm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
@@ -705,4 +708,112 @@ func TestEmitWarnEmitNote_Format(t *testing.T) {
 			t.Errorf("emitNote agent mode: summary want %q, got %v", "rate limited", got)
 		}
 	})
+}
+
+// fakeTimezoneAPI records the timezone that list-final-shifts sends and serves
+// the schedule that the command falls back to.
+type fakeTimezoneAPI struct {
+	OnCallAPI
+
+	scheduleTZ  string
+	scheduleErr error
+	gotTZ       string
+	getCalls    int
+}
+
+func (f *fakeTimezoneAPI) GetSchedule(_ context.Context, id string) (*Schedule, error) {
+	f.getCalls++
+	if f.scheduleErr != nil {
+		return nil, f.scheduleErr
+	}
+	return &Schedule{ID: id, Name: "probe", TimeZone: f.scheduleTZ}, nil
+}
+
+func (f *fakeTimezoneAPI) ListFilterEvents(_ context.Context, _, userTZ, _ string, _ int) (*FilterEventsResponse, error) {
+	f.gotTZ = userTZ
+	return &FilterEventsResponse{}, nil
+}
+
+// TestScheduleListFinalShiftsTimezone pins issue #1185 problem 2: the command
+// must send an IANA timezone that the API accepts, never the local zone name
+// "Local" that time.Now().Location() reports.
+func TestScheduleListFinalShiftsTimezone(t *testing.T) {
+	tests := []struct {
+		name         string
+		scheduleTZ   string
+		scheduleErr  error
+		args         []string
+		wantTZ       string
+		wantGetCalls int
+		wantErr      string
+	}{
+		{
+			name:         "flag wins over the schedule",
+			scheduleTZ:   "Europe/Amsterdam",
+			args:         []string{"--timezone", "America/New_York"},
+			wantTZ:       "America/New_York",
+			wantGetCalls: 0,
+		},
+		{
+			name:         "falls back to the timezone of the schedule",
+			scheduleTZ:   "Europe/Amsterdam",
+			wantTZ:       "Europe/Amsterdam",
+			wantGetCalls: 1,
+		},
+		{
+			name:         "falls back to UTC when the schedule has no timezone",
+			scheduleTZ:   "",
+			wantTZ:       "UTC",
+			wantGetCalls: 1,
+		},
+		{
+			name:         "falls back to UTC when the schedule lookup fails",
+			scheduleErr:  errors.New("boom"),
+			wantTZ:       "UTC",
+			wantGetCalls: 1,
+		},
+		{
+			name:    "rejects an unknown timezone",
+			args:    []string{"--timezone", "Mars/Olympus"},
+			wantErr: "invalid --timezone",
+		},
+		{
+			// time.LoadLocation resolves "Local", but the API rejects it.
+			name:    "rejects the local zone name",
+			args:    []string{"--timezone", "Local"},
+			wantErr: "invalid --timezone",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setAgentMode(t, false)
+
+			fake := &fakeTimezoneAPI{scheduleTZ: tt.scheduleTZ, scheduleErr: tt.scheduleErr}
+			args := append([]string{"list-final-shifts", "SCHED1", "-o", "json"}, tt.args...)
+			_, _, err := runNounCmd(t, func() *cobra.Command {
+				return newSchedulesCmd(&fakeLoader{client: fake})
+			}, "", args...)
+
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want it to contain %q", err, tt.wantErr)
+				}
+				if fake.gotTZ != "" {
+					t.Errorf("request sent with timezone %q, want no request", fake.gotTZ)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("error = %v, want nil", err)
+			}
+			if fake.gotTZ != tt.wantTZ {
+				t.Errorf("user_tz = %q, want %q", fake.gotTZ, tt.wantTZ)
+			}
+			if fake.getCalls != tt.wantGetCalls {
+				t.Errorf("GetSchedule calls = %d, want %d", fake.getCalls, tt.wantGetCalls)
+			}
+		})
+	}
 }

@@ -1321,9 +1321,10 @@ func fetchAlertsRichConcurrent(ctx context.Context, c RichAlertGroupReader, ids 
 // ---------------------------------------------------------------------------
 
 type finalShiftsOpts struct {
-	IO    cmdio.Options
-	Start string
-	End   string
+	IO       cmdio.Options
+	Start    string
+	End      string
+	Timezone string
 }
 
 func (o *finalShiftsOpts) setup(flags *pflag.FlagSet) {
@@ -1337,6 +1338,42 @@ func (o *finalShiftsOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Start, "start", o.Start, "Start date (YYYY-MM-DD)")
 	flags.StringVar(&o.End, "end", o.End, "End date (YYYY-MM-DD)")
+	flags.StringVar(&o.Timezone, "timezone", "",
+		"IANA timezone for the shift boundaries (default: the timezone of the schedule, else UTC)")
+}
+
+// Validate rejects a timezone that the tzdata of the platform does not know,
+// so the caller reads a local error instead of the "Invalid timezone" answer
+// of the API. It also rejects "Local", which time.LoadLocation resolves from
+// the clock of the host but the API does not accept — that name is the value
+// that issue #1185 reports.
+func (o *finalShiftsOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	if o.Timezone == "" {
+		return nil
+	}
+	if _, err := time.LoadLocation(o.Timezone); err != nil || o.Timezone == "Local" {
+		return fmt.Errorf("invalid --timezone %q: expected an IANA name such as Europe/Amsterdam", o.Timezone)
+	}
+	return nil
+}
+
+// resolveTimezone picks the timezone that the final-shifts request carries.
+// The API rejects the Go local-zone name ("Local"), so the command never
+// derives the value from the clock of the host: the flag wins, then the
+// timezone of the schedule, then UTC. A failed schedule lookup falls back to
+// UTC — the request that follows reports any real connection problem.
+func resolveTimezone(ctx context.Context, client OnCallAPI, flagValue, scheduleID string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	schedule, err := client.GetSchedule(ctx, scheduleID)
+	if err == nil && schedule != nil && schedule.TimeZone != "" {
+		return schedule.TimeZone
+	}
+	return "UTC"
 }
 
 // newScheduleListFinalShiftsCommand builds `schedules list-final-shifts
@@ -1350,7 +1387,7 @@ func newScheduleListFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command
 		Short: "List final shifts for a schedule.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 
@@ -1372,7 +1409,7 @@ func newScheduleListFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command
 				return errors.New("--end must be after --start")
 			}
 
-			tz := time.Now().Location().String()
+			tz := resolveTimezone(cmd.Context(), client, opts.Timezone, args[0])
 			result, err := client.ListFilterEvents(cmd.Context(), args[0], tz, opts.Start, days)
 			if err != nil {
 				return err
