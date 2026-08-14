@@ -538,7 +538,7 @@ Embedded in command opts structs to add `--output / -o` and `--json` flag suppor
 ```go
 type Options struct {
     OutputFormat  string
-    JSONFields    []string   // set when --json field1,field2 is used
+    JSONFields    []string   // set when --json <path>,<path> is used
     JSONDiscovery bool       // set when --json ? is used
     IsPiped       bool       // true when stdout is not a TTY (from terminal.IsPiped())
     NoTruncate    bool       // true when --no-truncate or stdout is piped

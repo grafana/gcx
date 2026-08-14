@@ -213,7 +213,7 @@ emit nothing.
 
 **Relationship to `--json`:** `--jq` strictly subsumes `--json` field
 selection. Combining the two is rejected to keep the model simple — anything
-`--json field1,field2` does, `{field1: .field1, field2: .field2}` does in jq.
+`--json <path>,<path>` does, `{path1: .path1, path2: .path2}` does in jq.
 
 **Agents codec:** `--jq` bypasses the agents codec's spill-to-tempfile
 behavior. A caller using `--jq` wants the transformed results in-stream, not a
@@ -452,7 +452,7 @@ Rules baked into the helper:
 The reserved key is transparent to field selection and discovery
 (`internal/output/field_select.go`, `format.go`):
 
-- `--json field1,field2` on a truncated envelope selects from the **items**
+- `--json <path>,<path>` on a truncated envelope selects from the **items**
   and **re-attaches** `list_meta` to the output — the truncation signal
   survives selection.
 - `--json list` / `--json ?` discovery samples the first item; `list_meta.*`

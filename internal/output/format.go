@@ -261,7 +261,7 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 
 	// In agent mode, nudge toward --json field selection / --jq transformation
 	// whenever the resolved codec is JSON-like (json or agents format). The
-	// hint still fires when --json field1,field2 is in use — the caller may
+	// hint still fires when --json <path>,<path> is in use — the caller may
 	// not realize --jq exists for transformation (group_by, filter, count).
 	// Suppressed when --jq is already in use (caller already has the more
 	// powerful tool) or when --json list is requested (discovery output is
