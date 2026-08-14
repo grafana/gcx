@@ -505,11 +505,11 @@ func (o *checkOpts) Validate(cmd *cobra.Command) error {
 		return fail.NewCommandUsageError(cmd, "", err)
 	}
 	if o.flags.Changed("timeout") && !o.Wait {
-		return fail.NewCommandUsageError(cmd, "--timeout needs --wait", nil)
+		return fail.NewCommandUsageError(cmd, "--timeout needs --wait, for example --wait --timeout 30m", nil)
 	}
 	if o.Wait && o.Timeout <= 0 {
 		return fail.NewCommandUsageError(cmd,
-			fmt.Sprintf("invalid --timeout value %s: must be positive", o.Timeout), nil)
+			fmt.Sprintf("invalid --timeout value %s: must be positive, for example --timeout 30m", o.Timeout), nil)
 	}
 	return o.IO.Validate()
 }

@@ -389,41 +389,16 @@ func TestEvaluateChecks_Status(t *testing.T) {
 }
 
 func TestEvaluateChecks_Identity(t *testing.T) {
-	tests := []struct {
-		name        string
-		report      *ExperimentReport
-		wantID      string
-		wantStatus  string
-		wantVerdict CheckVerdict
-	}{
-		{
-			name:        "the experiment field carries the identity",
-			report:      checkReport("completed", ExperimentReportSummary{PassRate: new(0.5), PassCount: 1, PassDenominator: 2}),
-			wantID:      "r-1",
-			wantStatus:  "completed",
-			wantVerdict: CheckVerdictPass,
-		},
-		{
-			// Defence in depth: the command never reaches here with a nil report,
-			// and an empty status must still fail rather than grade nothing.
-			name:        "a nil report fails on status",
-			report:      nil,
-			wantVerdict: CheckVerdictFail,
-		},
-	}
+	report := checkReport("completed", ExperimentReportSummary{PassRate: new(0.5), PassCount: 1, PassDenominator: 2})
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			result := evaluateChecks(tc.report, checkSpec{MinPassRate: new(0.5)})
+	result := evaluateChecks(report, checkSpec{MinPassRate: new(0.5)})
 
-			assert.Equal(t, tc.wantID, result.ExperimentID)
-			assert.Equal(t, tc.wantStatus, result.ExperimentStatus)
-			assert.Equal(t, tc.wantVerdict, result.Verdict)
-			// Consumers dispatch on these, so every result carries them.
-			assert.Equal(t, "gcx.agento11y.experiment_check", result.Type)
-			assert.Equal(t, "1", result.SchemaVersion)
-		})
-	}
+	assert.Equal(t, "r-1", result.ExperimentID)
+	assert.Equal(t, "completed", result.ExperimentStatus)
+	assert.Equal(t, CheckVerdictPass, result.Verdict)
+	// Consumers dispatch on these, so every result carries them.
+	assert.Equal(t, "gcx.agento11y.experiment_check", result.Type)
+	assert.Equal(t, "1", result.SchemaVersion)
 }
 
 func TestEvaluateChecks_ThresholdIsCopiedNotAliased(t *testing.T) {

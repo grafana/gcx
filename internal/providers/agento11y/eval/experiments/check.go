@@ -175,9 +175,6 @@ func checkStatusError(runID, status string) error {
 // Thresholds are compared with strict less-than, so --min-pass-rate 0.9 accepts
 // exactly 0.9.
 func evaluateChecks(report *ExperimentReport, spec checkSpec) CheckResult {
-	if report == nil {
-		report = &ExperimentReport{}
-	}
 	run := report.Experiment
 	summary := report.Summary
 	result := newCheckResult(run, summary)
