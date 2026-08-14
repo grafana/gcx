@@ -53,8 +53,6 @@ Plugins live in their own folder, no PATH involved. Each plugin's `plugin.yaml` 
 
 ### Naming and invocation
 
-**Status: locked in (2026-08-14).**
-
 A new top-level area, `ext` (package `cmd/gcx/ext`, sitting next to `dev`/`config`/`agent`):
 
 ```
@@ -79,8 +77,6 @@ Two other ways to invoke extensions were considered and turned down - see "Expli
 
 ### Discovery at runtime
 
-**Status: locked in (2026-08-14).**
-
 No PATH scanning - that would pollute the user's PATH and risk clashing with unrelated programs. Instead, a dedicated gcx folder, matching how config already works (`internal/config/loader.go`):
 
 - `~/.config/gcx/extensions/<name>/<version>/` - the extracted files.
@@ -88,8 +84,6 @@ No PATH scanning - that would pollute the user's PATH and risk clashing with unr
 - A new `GCX_EXTENSIONS_DIR` env var can override the folder, matching `GCX_CONFIG`.
 
 ### Manifest and distribution
-
-**Status: locked in (2026-08-14).**
 
 Each extension ships a `gcx-extension.yaml` file at its root, matching gcx's own Kubernetes-style shape:
 
@@ -128,8 +122,6 @@ An author can also add an optional `telemetry` block to opt out of usage reporti
 
 ### Authoring experience
 
-**Status: locked in (2026-08-14).**
-
 The smallest possible extension is one program (or script) plus one `gcx-extension.yaml` file. There's no required file name (unlike `gh-<name>` etc) since gcx finds extensions through the manifest.
 
 **No scaffolding tool in v1, for any language.** The manifest format already works for any language for free - a `platforms` entry just points at a binary, and the `script` field covers anything that doesn't need a build step. So "any language can write an extension" costs nothing extra; gcx just runs whatever `bin` or `script` says. An author writes their own manifest and program by hand and copies gcx's own `.goreleaser.yaml` as a starting point for building it. No template generator ships with v1.
@@ -146,8 +138,6 @@ A future `gcx ext scaffold` is a reasonable next step later - see "Explicitly ou
 
 ### Reaching Grafana and Cloud APIs
 
-**Status: locked in (2026-08-14).**
-
 gcx already has commands that talk to Grafana and Cloud APIs as the logged-in user - `gcx api` (raw passthrough), `gcx resources get`/`list`, and every provider command with `--output json`. An extension that needs that data just runs the `gcx` binary itself and reads its JSON output, the same way gh extensions usually call `gh api`/`gh issue list --json` instead of handling GitHub auth on their own.
 
 How: when `gcx ext <name>` runs an extension, it sets `GCX_EXT_GCX_BIN` on its environment - the path to the `gcx` binary doing the running (same idea as Docker's `DOCKER_CLI_PLUGIN_ORIGINAL_CLI_COMMAND`). An extension that wants Grafana data runs `$GCX_EXT_GCX_BIN resources get ... --output json` (or any other command) as its own subprocess, and gets whatever auth and refresh logic gcx already handles. No new credential code, no permissions model, no token freshness to worry about - because the extension never touches a token.
@@ -155,8 +145,6 @@ How: when `gcx ext <name>` runs an extension, it sets `GCX_EXT_GCX_BIN` on its e
 One known gap, accepted for v1: this doesn't help an extension that wants a raw token for its own HTTP client - a different language's SDK, say, or a request shaped like nothing gcx already has a command for. That's a real need, but not a confirmed one yet. Better to solve it properly later if a real extension author hits this wall than build credential-handling machinery against a guess now.
 
 ### Usage telemetry
-
-**Status: locked in (2026-08-14).**
 
 gcx already sends anonymous usage telemetry for every command (`internal/telemetry`). Each invocation emits one event carrying things like the resolved command path, whether it succeeded, how long it took, and a random per-install ID that isn't tied to any account. The user can turn this off entirely (`telemetry: disabled` in config, or `GCX_TELEMETRY`). Extension dispatch hooks into this exact same pipeline - same event shape, same opt-out - rather than building a separate one.
 
