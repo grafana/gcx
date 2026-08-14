@@ -118,11 +118,13 @@ A script extension that needs no build step can skip `platforms` and just set `s
 - **A direct URL to the manifest** - any static host works, no API needed. This is the real answer to "don't force a hosting location": nothing here is GitHub-specific.
 - **A git URL** (any host) - clones or fetches with the user's own `git`, then reads the manifest from the repo. No GitHub API call anywhere.
 
-What happens on install: fetch the manifest, check it's valid and that gcx is new enough, find the row matching the current OS/arch, show an install plan (name, version, homepage, download URL, checksum), ask for confirmation (same rule as deleting cloud resources - skip with `--force`/`--yes`/`GCX_AUTO_APPROVE`, and agent mode always needs `--force`), download, check the checksum (fail hard on any mismatch or if it's missing - this is the direct fix for the bug Helm had), extract, and write the `index.json` entry. Nothing runs at install time - actually using the extension (`gcx ext <name>`) always happens later, as its own step.
+What happens on install: fetch the manifest, check it's valid and that gcx is new enough, find the row matching the current OS/arch, show an install plan (name, version, homepage, download URL, checksum), ask for confirmation (same rule as deleting cloud resources - skip with `--force`/`--yes`/`GCX_AUTO_APPROVE`, and agent mode always needs `--force`), download, check the checksum (fail hard on any mismatch or if it's missing), extract, and write the `index.json` entry. Nothing runs at install time - actually using the extension (`gcx ext <name>`) always happens later, as its own step.
 
 Cross-platform support works like krew: the author lists a URL and checksum per platform, and gcx just picks the right one - no download logic the author has to write, and no "compile it yourself" fallback (to minimise scope). gcx's own release pipeline already builds for the same 6 platforms and writes checksums, so an author using Go can copy gcx's own `.goreleaser.yaml` and get this almost for free. If no platform row matches, install just fails - there's no fallback to building from source, so there's only one install code path to maintain.
 
 Manifests are written by hand for v1 - the author fills in `platforms` and its checksums themselves (easy to copy from GoReleaser's own checksum file). Auto-generating this is a later step - see "Explicitly out of scope for v1."
+
+An author can also add an optional `telemetry` block to opt out of usage reporting - see "Usage telemetry" below.
 
 ### Authoring experience
 
@@ -151,6 +153,25 @@ gcx already has commands that talk to Grafana and Cloud APIs as the logged-in us
 How: when `gcx ext <name>` runs an extension, it sets `GCX_EXT_GCX_BIN` on its environment - the path to the `gcx` binary doing the running (same idea as Docker's `DOCKER_CLI_PLUGIN_ORIGINAL_CLI_COMMAND`). An extension that wants Grafana data runs `$GCX_EXT_GCX_BIN resources get ... --output json` (or any other command) as its own subprocess, and gets whatever auth and refresh logic gcx already handles. No new credential code, no permissions model, no token freshness to worry about - because the extension never touches a token.
 
 One known gap, accepted for v1: this doesn't help an extension that wants a raw token for its own HTTP client - a different language's SDK, say, or a request shaped like nothing gcx already has a command for. That's a real need, but not a confirmed one yet. Better to solve it properly later if a real extension author hits this wall than build credential-handling machinery against a guess now.
+
+### Usage telemetry
+
+**Status: locked in (2026-08-14).**
+
+gcx already sends anonymous usage telemetry for every command (`internal/telemetry`). Each invocation emits one event carrying things like the resolved command path, whether it succeeded, how long it took, and a random per-install ID that isn't tied to any account. The user can turn this off entirely (`telemetry: disabled` in config, or `GCX_TELEMETRY`). Extension dispatch hooks into this exact same pipeline - same event shape, same opt-out - rather than building a separate one.
+
+What gets recorded is narrow and specific: **`gcx ext <name>` - the command and the extension's name, and nothing else.** Any arguments after the name are never recorded, for the same reason gcx never records flag values today - they're free-form and could contain anything.
+
+Before recording the name, gcx checks it against the installed extensions in `index.json`. If it doesn't match anything actually installed - a typo, or garbage - it's dropped, the same way an unmatched built-in command is today (gcx already avoids recording raw mistyped text; this reuses that exact handling). Only a name that matches something the user genuinely installed gets recorded.
+
+That name is recorded as plain text, not hashed - on purpose, so gcx can actually see which extensions are popular, which needs a readable name rather than an opaque value nobody can look up. **This is a deliberate, narrow exception to gcx's existing telemetry rule that no field may identify a person or an organisation** - a real extension name can reveal what tooling an org has built, and that's accepted here as a trade-off, not an oversight. The thing that keeps this bounded: an author can opt their extension's name out of being recorded at all, with a new manifest field:
+
+```yaml
+telemetry:
+  reportUsage: false   # default true
+```
+
+This is the main safeguard for anyone who doesn't want their extension's name showing up in gcx's stats - since the default is now to report it, this flag is the one lever an author has, not just a nice-to-have.
 
 ### Explicitly out of scope for v1
 
@@ -183,6 +204,7 @@ One known gap, accepted for v1: this doesn't help an extension that wants a raw 
 - `go.mod` - confirms `github.com/Masterminds/semver/v3` is already there.
 - `CONSTITUTION.md` (CLI grammar section) - needs the naming-clash note above.
 - `docs/design/exit-codes.md` - needs the `raw`-class exemption gap documented.
+- `cmd/gcx/root/telemetry.go` and `internal/telemetry/event.go` - the existing telemetry pipeline `gcx ext <name>` hooks into; recording the extension name needs the `index.json` lookup wired in here.
 
 For the later `gcx ext scaffold` (not needed for v1): `cmd/gcx/dev/scaffold.go` (+ `cmd/gcx/dev/templates/`) - the template pattern to reuse when it's built.
 
@@ -193,6 +215,7 @@ For the later `gcx ext scaffold` (not needed for v1): `cmd/gcx/dev/scaffold.go` 
 - Test a git-URL install and a direct-manifest-URL install against a scratch repo, to confirm nothing GitHub-specific gets hit.
 - Test that a checksum mismatch, and a missing checksum, both fail hard.
 - Test that `GCX_EXT_GCX_BIN` is set correctly when an extension runs, and that a script extension calling `$GCX_EXT_GCX_BIN resources get ... --output json` (or similar) works using the user's own logged-in session.
+- Test that running an installed extension records a telemetry event with the extension's name; test that running an unmatched/typo'd name (or one whose manifest sets `telemetry.reportUsage: false`) records nothing.
 - `go test ./cmd/gcx/ext/... ./internal/ext/...`, then a full `mise run gate`, before calling this done.
 
 ## Implementation Plan
@@ -211,7 +234,7 @@ A sequence of small PRs, each one buildable and testable on its own. Nothing get
 
 **PR 5 — Uninstall and update.** Small, since install and the index already exist by now.
 
-**PR 6 — Wire it into the CLI** (`cmd/gcx/ext`). The `install`/`list`/`uninstall`/`update` subcommands, the plain `gcx ext <name>` dispatch (`DisableFlagParsing`, runs the extension as a subprocess, sets `GCX_EXT_GCX_BIN`), mounting `ext` in `cmd/gcx/root/command.go`, the `"gcx ext": "raw"` entry in `output_classes.json`, and a CLI reference doc regen. This is the first PR where the feature actually works end to end - but since all the logic already landed in PRs 1-5, this one stays thin wiring, matching the rule that `cmd/` code is wiring only.
+**PR 6 — Wire it into the CLI** (`cmd/gcx/ext`). The `install`/`list`/`uninstall`/`update` subcommands, the plain `gcx ext <name>` dispatch (`DisableFlagParsing`, runs the extension as a subprocess, sets `GCX_EXT_GCX_BIN`), the telemetry hook (verify `<name>` against `index.json`, record `gcx ext <name>` unless the manifest sets `telemetry.reportUsage: false`), mounting `ext` in `cmd/gcx/root/command.go`, the `"gcx ext": "raw"` entry in `output_classes.json`, and a CLI reference doc regen. This is the first PR where the feature actually works end to end - but since all the logic already landed in PRs 1-5, this one stays thin wiring, matching the rule that `cmd/` code is wiring only.
 
 **PR 7 — Update the architecture docs.** Add `cmd/gcx/ext`/`internal/ext` to the package map in `docs/architecture/project-structure.md`, per CLAUDE.md's rule that architecture docs must stay current.
 
