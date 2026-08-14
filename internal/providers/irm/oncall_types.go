@@ -279,15 +279,6 @@ var maintenanceModeNames = map[string]MaintenanceMode{
 	"maintenance": MaintenanceModeMaintenance,
 }
 
-// pluginSyncResponse is the answer of the IRM plugin sync endpoint. The
-// endpoint can answer with an empty body, and the free-form success text of a
-// full answer has no caller, so the client reads the failure field alone.
-type pluginSyncResponse struct {
-	// Error carries a failure that the backend reports in-band on a 2xx
-	// response.
-	Error string `json:"error,omitempty"`
-}
-
 //nolint:recvcheck
 type EscalationChain struct {
 	ID   string `json:"id,omitempty"`
