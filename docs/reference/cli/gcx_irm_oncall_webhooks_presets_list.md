@@ -29,5 +29,5 @@ gcx irm oncall webhooks presets list [flags]
 
 ### SEE ALSO
 
-* [gcx irm oncall webhooks presets](gcx_irm_oncall_webhooks_presets.md)	 - List webhook configuration presets.
+* [gcx irm oncall webhooks presets](gcx_irm_oncall_webhooks_presets.md)	 - Discover webhook configuration presets.
 
