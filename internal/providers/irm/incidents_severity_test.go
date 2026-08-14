@@ -311,15 +311,15 @@ func TestUpdateFieldReportsAMissingIncident(t *testing.T) {
 }
 
 // TestUpdateReportsAHalfAppliedChange covers a failure after an earlier field
-// reached the server. The caller needs the incident as the server holds it,
-// and the name of the field that gcx applied.
+// reached the server. The incident stands between two states, so gcx returns
+// no incident, and the error names the field that gcx applied.
 func TestUpdateReportsAHalfAppliedChange(t *testing.T) {
 	t.Parallel()
 
 	srv := &severityServer{title: "old title", status: "active", failTitleUpdate: true}
 	client := newSeverityTestClient(t, srv)
 
-	got, err := client.Update(context.Background(), "1", &irm.Incident{
+	got, _, err := client.Update(context.Background(), "1", &irm.Incident{
 		Status:   "resolved",
 		Title:    "new title",
 		Severity: "Critical",
@@ -327,8 +327,8 @@ func TestUpdateReportsAHalfAppliedChange(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error from the failed title update")
 	}
-	if got == nil || got.Status != "resolved" {
-		t.Fatalf("expected the incident with the applied status next to the error, got %+v", got)
+	if got != nil {
+		t.Fatalf("expected no incident next to the error, got %+v", got)
 	}
 	for _, want := range []string{"update 1", "gcx applied the status", "title update failed"} {
 		if !strings.Contains(err.Error(), want) {
@@ -343,6 +343,41 @@ func TestUpdateReportsAHalfAppliedChange(t *testing.T) {
 	}
 }
 
+// TestUpdateRejectsAnUnknownSeverityIDBeforeItWrites covers a manifest with an
+// unknown spec.severityID. The resolve reads only, so it runs before the first
+// write: the IRM API cannot undo a write that a later step abandons. The error
+// must not report a failed severity update either, because gcx tried none.
+func TestUpdateRejectsAnUnknownSeverityIDBeforeItWrites(t *testing.T) {
+	t.Parallel()
+
+	srv := &severityServer{
+		title:      "old title",
+		status:     "active",
+		severities: []map[string]any{{"severityID": "sev-1", "displayLabel": "Critical", "level": 1}},
+	}
+	client := newSeverityTestClient(t, srv)
+
+	got, _, err := client.Update(context.Background(), "1", &irm.Incident{
+		Status:     "resolved",
+		Title:      "new title",
+		SeverityID: "does-not-exist",
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown severityID") {
+		t.Fatalf("expected an unknown-severityID error, got %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected no incident, got %+v", got)
+	}
+	if strings.Contains(err.Error(), "update failed") {
+		t.Errorf("gcx tried no update, so the error must not report one: %v", err)
+	}
+	for _, call := range srv.calls {
+		if strings.HasPrefix(call, "IncidentsService.Update") {
+			t.Fatalf("the client wrote before it resolved the severity: %v", srv.calls)
+		}
+	}
+}
+
 // TestUpdateReportsTheFirstFailureAlone covers a failure before any field
 // reached the server: the error stands on its own, and there is no incident
 // to report.
@@ -352,7 +387,7 @@ func TestUpdateReportsTheFirstFailureAlone(t *testing.T) {
 	srv := &severityServer{title: "old title", status: "active", failTitleUpdate: true}
 	client := newSeverityTestClient(t, srv)
 
-	got, err := client.Update(context.Background(), "1", &irm.Incident{Title: "new title"})
+	got, _, err := client.Update(context.Background(), "1", &irm.Incident{Title: "new title"})
 	if err == nil {
 		t.Fatal("expected an error from the failed title update")
 	}
@@ -418,13 +453,16 @@ func TestUpdateAppliesEveryChangedField(t *testing.T) {
 	srv := &severityServer{title: "old title"}
 	client := newSeverityTestClient(t, srv)
 
-	got, err := client.Update(context.Background(), "1", &irm.Incident{
+	got, changed, err := client.Update(context.Background(), "1", &irm.Incident{
 		Status:   "active",
 		Title:    "new title",
 		Severity: "Critical",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Join(changed, ",") != "status,title,severity" {
+		t.Errorf("got changed fields %v, want status, title and severity", changed)
 	}
 
 	want := []string{
@@ -472,12 +510,16 @@ func TestUpdateSkipsUnchangedFields(t *testing.T) {
 			}
 			client := newSeverityTestClient(t, srv)
 
-			if _, err := client.Update(context.Background(), "1", &irm.Incident{
+			_, changed, err := client.Update(context.Background(), "1", &irm.Incident{
 				Status:   tt.status,
 				Title:    "same title",
 				Severity: "Critical",
-			}); err != nil {
+			})
+			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(changed) != 0 {
+				t.Errorf("got changed fields %v, want none", changed)
 			}
 
 			want := []string{"IncidentsService.GetIncident"}
@@ -497,7 +539,7 @@ func TestUpdateSkipsAnEmptyStatus(t *testing.T) {
 	srv := &severityServer{title: "old title", status: "active"}
 	client := newSeverityTestClient(t, srv)
 
-	if _, err := client.Update(context.Background(), "1", &irm.Incident{
+	if _, _, err := client.Update(context.Background(), "1", &irm.Incident{
 		Title:    "new title",
 		Severity: "Critical",
 	}); err != nil {
