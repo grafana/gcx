@@ -27,7 +27,7 @@ Manage escalation policies.
 * [gcx irm oncall escalation-policies delete](gcx_irm_oncall_escalation-policies_delete.md)	 - Delete an escalation policy by ID.
 * [gcx irm oncall escalation-policies get](gcx_irm_oncall_escalation-policies_get.md)	 - Get an escalation policy by ID.
 * [gcx irm oncall escalation-policies list](gcx_irm_oncall_escalation-policies_list.md)	 - List escalation policies.
-* [gcx irm oncall escalation-policies move](gcx_irm_oncall_escalation-policies_move.md)	 - Move an escalation step to a position in its chain.
 * [gcx irm oncall escalation-policies steps](gcx_irm_oncall_escalation-policies_steps.md)	 - Discover allowed escalation policy step types.
 * [gcx irm oncall escalation-policies update](gcx_irm_oncall_escalation-policies_update.md)	 - Update an escalation policy by ID.
+* [gcx irm oncall escalation-policies update-position](gcx_irm_oncall_escalation-policies_update-position.md)	 - Update the position of an escalation step in its chain.
 
