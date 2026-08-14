@@ -454,7 +454,7 @@ Rules baked into the helper:
 The reserved key is transparent to field selection and discovery
 (`internal/output/field_select.go`, `format.go`):
 
-- `--json field1,field2` on a truncated envelope selects from the **items**
+- `--json <path>,<path>` on a truncated envelope selects from the **items**
   and **re-attaches** `list_meta` to the output — the truncation signal
   survives selection.
 - `--json list` / `--json ?` discovery samples the first item; `list_meta.*`

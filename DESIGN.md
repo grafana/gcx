@@ -60,7 +60,7 @@ Default formats by command type:
 | `push`, `pull`, `delete` | Status messages | Operations, not data |
 | Agent mode | `agents` | Compact JSON with temp-file spill |
 
-The `--json field1,field2` flag selects specific fields. `--json ?` discovers available field paths.
+The `--json <path>,<path>` flag selects specific field paths. `--json ?` discovers available field paths.
 
 See [docs/design/output.md](docs/design/output.md) for codec implementation, status messages, and mutation summaries.
 

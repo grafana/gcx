@@ -108,7 +108,7 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return nil
 			}
 
-			// --json field1,field2: use FieldSelectCodec for output.
+			// --json <path>,<path>: use FieldSelectCodec for output.
 			if len(opts.IO.JSONFields) > 0 {
 				codec := cmdio.NewFieldSelectCodec(opts.IO.JSONFields)
 				items := make([]map[string]any, 0, len(res))
