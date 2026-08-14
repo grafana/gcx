@@ -390,8 +390,7 @@ func specKeys(t *testing.T, obj *unstructured.Unstructured) []string {
 	spec, found, err := unstructured.NestedMap(obj.Object, "spec")
 	require.NoError(t, err)
 	require.True(t, found, "spec field should be present")
-	keys := slices.Sorted(maps.Keys(spec))
-	return keys
+	return slices.Sorted(maps.Keys(spec))
 }
 
 func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {

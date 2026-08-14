@@ -467,21 +467,20 @@ func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (
 	}
 
 	var applied []string
-	// fail reports a half-applied update: the fields that reached the server
-	// before the failure. The incident stands between two states, so gcx
-	// returns no incident.
-	fail := func(field string, err error) (*Incident, []string, error) {
+	// fail builds the error of a half-applied update: it names the fields that
+	// reached the server before the failure.
+	fail := func(field string, err error) error {
 		if len(applied) == 0 {
-			return nil, nil, err
+			return err
 		}
-		return nil, nil, fmt.Errorf("incidents: update %s: gcx applied the %s, but the %s update failed: %w",
+		return fmt.Errorf("incidents: update %s: gcx applied the %s, but the %s update failed: %w",
 			id, strings.Join(applied, " and the "), field, err)
 	}
 
 	if inc.Status != "" && !strings.EqualFold(current.Status, inc.Status) {
 		updated, err := c.UpdateStatus(ctx, id, inc.Status)
 		if err != nil {
-			return fail("status", err)
+			return nil, nil, fail("status", err)
 		}
 		current = updated
 		applied = append(applied, "status")
@@ -490,7 +489,7 @@ func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (
 	if inc.Title != "" && inc.Title != current.Title {
 		updated, err := c.UpdateTitle(ctx, id, inc.Title)
 		if err != nil {
-			return fail("title", err)
+			return nil, nil, fail("title", err)
 		}
 		current = updated
 		applied = append(applied, "title")
@@ -499,7 +498,7 @@ func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (
 	if label != "" && !strings.EqualFold(current.Severity, label) {
 		updated, err := c.UpdateSeverity(ctx, id, label)
 		if err != nil {
-			return fail("severity", err)
+			return nil, nil, fail("severity", err)
 		}
 		current = updated
 		applied = append(applied, "severity")
