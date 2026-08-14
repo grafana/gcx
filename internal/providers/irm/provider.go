@@ -58,11 +58,11 @@ See ` + docs.IRMInvoice + `.`,
 		newResolutionNotesCmd(loader),
 		newShiftSwapsCmd(loader),
 		newEscalateCommand(loader),
+		newSyncPluginCommand(loader),
 	)
 
 	irmCmd.AddCommand(oncallCmd)
 	irmCmd.AddCommand(newIncidentsCmd(loader))
-	irmCmd.AddCommand(newSyncPluginCommand(loader))
 
 	return []*cobra.Command{irmCmd}
 }
