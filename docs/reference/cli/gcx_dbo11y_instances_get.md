@@ -10,7 +10,12 @@ The argument is the instance's service_name (the identifier "gcx dbo11y
 instances list" reports as NAME). Health comes from pg_up and the exporter's
 own scrape metrics; connections and wait events come from pg_stat_activity;
 top queries are ranked by time share (seconds of database time spent per
-second) from pg_stat_statements over --window (default 5m).
+second) from pg_stat_statements over --since (default 5m).
+
+--filter only scopes the pg_stat_activity/pg_stat_statements queries
+(connections, wait events, longest transaction, top queries) — health and
+inventory metadata (pg_up, exporter scrape stats, instance metadata) don't
+carry a datname label and are unaffected.
 
 ```
 gcx dbo11y instances get <name> [flags]
@@ -24,9 +29,9 @@ gcx dbo11y instances get <name> [flags]
   gcx dbo11y instances get quickpizza-db
 
   # Widen the query window and show more top queries
-  gcx dbo11y instances get quickpizza-db --window 1h --top 20
+  gcx dbo11y instances get quickpizza-db --since 1h --top 20
 
-  # Scope to a single database on a multi-database instance
+  # Scope connections/queries to a single database on a multi-database instance
   gcx dbo11y instances get quickpizza-db --filter datname=payments
 
   # JSON for scripting
@@ -37,13 +42,13 @@ gcx dbo11y instances get <name> [flags]
 
 ```
   -d, --datasource string    Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
-      --filter stringArray   Scope the snapshot to series matching a label matcher, e.g. --filter datname=payments (repeatable)
+      --filter stringArray   Scope the pg_stat_activity/pg_stat_statements queries (connections, wait events, longest transaction, top queries) to series matching a label matcher, e.g. --filter datname=payments (repeatable). Does not affect health/inventory metrics (pg_up, exporter scrape stats, instance metadata), which don't carry a datname label
   -h, --help                 help for get
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
+      --since string         Rate window applied to pg_stat_statements (e.g. 1m, 5m, 1h) — PromQL duration syntax (default "5m")
       --top int              Limit the number of top queries returned, ranked by time share (0 = unlimited) (default 10)
-      --window string        Rate window applied to pg_stat_statements (e.g. 1m, 5m, 1h) — PromQL duration syntax (default "5m")
 ```
 
 ### Options inherited from parent commands

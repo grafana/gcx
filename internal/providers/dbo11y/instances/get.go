@@ -24,7 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// defaultQueryWindow is the rate window for pg_stat_statements when --window
+// defaultQueryWindow is the rate window for pg_stat_statements when --since
 // isn't set. 5m mirrors appo11y's defaultRedWindow.
 const defaultQueryWindow = "5m"
 
@@ -35,7 +35,7 @@ const defaultTopQueriesLimit = 10
 type getOpts struct {
 	IO         cmdio.Options
 	Datasource string
-	Window     string
+	Since      string
 	Top        int
 	Filters    []string
 }
@@ -47,20 +47,20 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
-	flags.StringVar(&o.Window, "window", defaultQueryWindow, "Rate window applied to pg_stat_statements (e.g. 1m, 5m, 1h) — PromQL duration syntax")
+	flags.StringVar(&o.Since, "since", defaultQueryWindow, "Rate window applied to pg_stat_statements (e.g. 1m, 5m, 1h) — PromQL duration syntax")
 	flags.IntVar(&o.Top, "top", defaultTopQueriesLimit, "Limit the number of top queries returned, ranked by time share (0 = unlimited)")
-	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the snapshot to series matching a label matcher, e.g. --filter datname=payments (repeatable)")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the pg_stat_activity/pg_stat_statements queries (connections, wait events, longest transaction, top queries) to series matching a label matcher, e.g. --filter datname=payments (repeatable). Does not affect health/inventory metrics (pg_up, exporter scrape stats, instance metadata), which don't carry a datname label")
 }
 
 func (o *getOpts) Validate(cmd *cobra.Command) error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
-	if strings.TrimSpace(o.Window) == "" {
-		return fail.NewCommandUsageError(cmd, "--window must not be empty", nil)
+	if strings.TrimSpace(o.Since) == "" {
+		return fail.NewCommandUsageError(cmd, "--since must not be empty", nil)
 	}
-	if _, err := model.ParseDuration(o.Window); err != nil {
-		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--window %q is not a valid PromQL duration", o.Window), err)
+	if _, err := model.ParseDuration(o.Since); err != nil {
+		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
 	}
 	if o.Top < 0 {
 		return fail.NewCommandUsageError(cmd, "--top must be zero or positive", nil)
@@ -79,15 +79,20 @@ The argument is the instance's service_name (the identifier "gcx dbo11y
 instances list" reports as NAME). Health comes from pg_up and the exporter's
 own scrape metrics; connections and wait events come from pg_stat_activity;
 top queries are ranked by time share (seconds of database time spent per
-second) from pg_stat_statements over --window (default 5m).`,
+second) from pg_stat_statements over --since (default 5m).
+
+--filter only scopes the pg_stat_activity/pg_stat_statements queries
+(connections, wait events, longest transaction, top queries) — health and
+inventory metadata (pg_up, exporter scrape stats, instance metadata) don't
+carry a datname label and are unaffected.`,
 		Example: `
   # Health, connections, wait events, and top queries for one instance
   gcx dbo11y instances get quickpizza-db
 
   # Widen the query window and show more top queries
-  gcx dbo11y instances get quickpizza-db --window 1h --top 20
+  gcx dbo11y instances get quickpizza-db --since 1h --top 20
 
-  # Scope to a single database on a multi-database instance
+  # Scope connections/queries to a single database on a multi-database instance
   gcx dbo11y instances get quickpizza-db --filter datname=payments
 
   # JSON for scripting
@@ -96,7 +101,7 @@ second) from pg_stat_statements over --window (default 5m).`,
 		RunE: runGet(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot: pg_up/scrape health, connection counts by state, active wait events (wait_event_type/wait_event), longest running transaction, and top queries by time share from pg_stat_statements over --window (default 5m). Pairs with 'gcx dbo11y instances list' to find instance names. Use --filter <label><op><value> (repeatable) to scope to one database on a multi-database instance, e.g. --filter datname=payments. Examples: gcx dbo11y instances get <name> -o json; gcx dbo11y instances get <name> --window 1h --top 20 -o json`,
+			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot: pg_up/scrape health, connection counts by state, active wait events (wait_event_type/wait_event), longest running transaction, and top queries by time share from pg_stat_statements over --since (default 5m). Pairs with 'gcx dbo11y instances list' to find instance names. Use --filter <label><op><value> (repeatable) to scope the pg_stat_activity/pg_stat_statements queries to one database on a multi-database instance, e.g. --filter datname=payments — health/inventory metrics don't carry that label and are unaffected. Examples: gcx dbo11y instances get <name> -o json; gcx dbo11y instances get <name> --since 1h --top 20 -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -134,7 +139,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			return fmt.Errorf("failed to create prometheus client: %w", err)
 		}
 
-		detail, err := fetchInstanceDetail(ctx, client, datasourceUID, name, opts.Window, opts.Top, matchers)
+		detail, truncated, err := fetchInstanceDetail(ctx, client, datasourceUID, name, opts.Since, opts.Top, matchers)
 		if err != nil {
 			return err
 		}
@@ -144,6 +149,11 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			cmdio.EmitHint(cmd.ErrOrStderr(),
 				fmt.Sprintf("no telemetry found for %q in the requested window", name),
 				"gcx dbo11y instances list")
+		}
+		if truncated {
+			cmdio.EmitHint(cmd.ErrOrStderr(),
+				fmt.Sprintf("showing top %d queries by time share", opts.Top),
+				fmt.Sprintf("gcx dbo11y instances get %s --top %d", name, opts.Top*2))
 		}
 		if err := opts.IO.Encode(cmd.OutOrStdout(), detail); err != nil {
 			return err
@@ -158,8 +168,11 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 
 // fetchInstanceDetail runs the metadata, health, connections, wait-events,
 // longest-tx, and top-queries queries in parallel and folds the responses
-// into one InstanceDetail.
-func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasourceUID, name, window string, top int, matchers []Matcher) (*InstanceDetail, error) {
+// into one InstanceDetail. matchers only scope the pg_stat_activity/
+// pg_stat_statements queries (connections, wait events, longest tx, top
+// queries) — metadata and health/exporter metrics don't carry labels like
+// datname, so applying arbitrary matchers there would silently zero them out.
+func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasourceUID, name, window string, top int, matchers []Matcher) (*InstanceDetail, bool, error) {
 	var (
 		metadataResp                                   *prometheus.QueryResponse
 		upResp, scrapeErrResp, scrapeDurResp           *prometheus.QueryResponse
@@ -169,16 +182,16 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildConnectionInfoQuery(append([]Matcher{{Label: serviceNameLabel, Op: "=", Value: name}}, matchers...))
+		return buildConnectionInfoQuery([]Matcher{{Label: serviceNameLabel, Op: "=", Value: name}})
 	}, &metadataResp))
 	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildUpQuery(pgUpMetric, name, matchers)
+		return buildUpQuery(pgUpMetric, name, nil)
 	}, &upResp))
 	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildUpQuery(pgScrapeErrorMetric, name, matchers)
+		return buildUpQuery(pgScrapeErrorMetric, name, nil)
 	}, &scrapeErrResp))
 	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildUpQuery(pgScrapeDurationMetric, name, matchers)
+		return buildUpQuery(pgScrapeDurationMetric, name, nil)
 	}, &scrapeDurResp))
 	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
 		return buildConnectionsByStateQuery(name, matchers)
@@ -199,12 +212,12 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 		return buildTopQueriesRateQuery(pgStatStatementsRows, name, window, matchers)
 	}, &rowsResp))
 	if err := eg.Wait(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	metadata, err := parseInstancesResponse(metadataResp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse instance metadata: %w", err)
+		return nil, false, fmt.Errorf("failed to parse instance metadata: %w", err)
 	}
 	inst := Instance{Name: name}
 	if len(metadata) > 0 {
@@ -219,6 +232,7 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 	calls := bucketByQueryKey(callsResp)
 	seconds := bucketByQueryKey(secondsResp)
 	rows := bucketByQueryKey(rowsResp)
+	topQueries, truncated := mergeTopQueries(calls, seconds, rows, top)
 
 	return &InstanceDetail{
 		Instance: inst,
@@ -235,8 +249,8 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 		HasLongestTx:     hasLongestTx,
 		Connections:      parseConnectionsByState(connectionsResp),
 		WaitEvents:       parseWaitEvents(waitEventsResp),
-		TopQueries:       mergeTopQueries(calls, seconds, rows, top),
-	}, nil
+		TopQueries:       topQueries,
+	}, truncated, nil
 }
 
 // queryInto returns an errgroup task that builds a PromQL expression via

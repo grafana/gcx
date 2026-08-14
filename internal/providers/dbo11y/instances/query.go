@@ -11,6 +11,7 @@ package instances
 import (
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -153,12 +154,34 @@ func parseFilters(raw []string) ([]Matcher, error) {
 	return out, nil
 }
 
+// connectionInfoPromotedLabels are the database_observability_connection_info
+// labels already surfaced as typed Instance fields. Excluded from the
+// catch-all Labels map so a row doesn't carry each value twice — once typed,
+// once raw — and so the "unknown" provider sentinel (stripped from the typed
+// fields by orEmpty) doesn't reappear verbatim in Labels.
+func connectionInfoPromotedLabels() map[string]struct{} {
+	return map[string]struct{}{
+		"__name__":               {},
+		serviceNameLabel:         {},
+		"service_namespace":      {},
+		"engine":                 {},
+		"engine_version":         {},
+		"deployment_environment": {},
+		"instance":               {},
+		"db_instance_identifier": {},
+		"provider_name":          {},
+		"provider_account":       {},
+		"provider_region":        {},
+	}
+}
+
 // parseInstancesResponse converts a database_observability_connection_info
 // instant-query result into a sorted slice of Instance.
 func parseInstancesResponse(resp *prometheus.QueryResponse) ([]Instance, error) {
 	if resp == nil {
 		return nil, errors.New("nil query response")
 	}
+	promoted := connectionInfoPromotedLabels()
 	out := make([]Instance, 0, len(resp.Data.Result))
 	for _, sample := range resp.Data.Result {
 		name := sample.Metric[serviceNameLabel]
@@ -167,7 +190,7 @@ func parseInstancesResponse(resp *prometheus.QueryResponse) ([]Instance, error) 
 		}
 		labels := map[string]string{}
 		for k, v := range sample.Metric {
-			if k == "__name__" || k == serviceNameLabel || v == "" {
+			if _, skip := promoted[k]; skip || v == "" {
 				continue
 			}
 			labels[k] = v
@@ -345,7 +368,7 @@ func sampleScalar(sample prometheus.Sample) (float64, bool) {
 		return 0, false
 	}
 	f, err := strconv.ParseFloat(str, 64)
-	if err != nil {
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
 		return 0, false
 	}
 	return f, true
@@ -432,8 +455,10 @@ func bucketByQueryKey(resp *prometheus.QueryResponse) map[queryKey]float64 {
 // and sorts by time share (seconds of DB time spent per second) descending —
 // the same "where is the time going" ranking appo11y's operations view uses,
 // applied to SQL statements instead of RPC operations. limit caps the
-// returned rows to the busiest N; 0 means unlimited.
-func mergeTopQueries(calls, seconds, rows map[queryKey]float64, limit int) []TopQuery {
+// returned rows to the busiest N; 0 means unlimited. The second return value
+// reports whether rows were dropped by the cap, so callers can hint at it
+// (mirroring instances list's --limit truncation hint).
+func mergeTopQueries(calls, seconds, rows map[queryKey]float64, limit int) ([]TopQuery, bool) {
 	keys := make(map[queryKey]struct{}, len(calls)+len(seconds)+len(rows))
 	for k := range calls {
 		keys[k] = struct{}{}
@@ -477,8 +502,10 @@ func mergeTopQueries(calls, seconds, rows map[queryKey]float64, limit int) []Top
 		}
 		return out[i].Datname < out[j].Datname
 	})
+	truncated := false
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
+		truncated = true
 	}
-	return out
+	return out, truncated
 }

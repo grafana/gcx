@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -38,12 +39,12 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", instancesListDefaultLimit, "Limit the number of instances returned (0 = unlimited)")
 }
 
-func (o *listOpts) Validate() error {
+func (o *listOpts) Validate(cmd *cobra.Command) error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
 	if o.Limit < 0 {
-		return errors.New("--limit must be zero or positive")
+		return fail.NewCommandUsageError(cmd, "--limit must be zero or positive", nil)
 	}
 	return nil
 }
@@ -84,8 +85,12 @@ connections, wait events, and top queries by time share.`,
 
 func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {
-		if err := opts.Validate(); err != nil {
+		if err := opts.Validate(cmd); err != nil {
 			return err
+		}
+		matchers, err := parseFilters(opts.Filters)
+		if err != nil {
+			return fail.NewCommandUsageError(cmd, "", err)
 		}
 
 		ctx := cmd.Context()
@@ -96,11 +101,6 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		}
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
-		if err != nil {
-			return err
-		}
-
-		matchers, err := parseFilters(opts.Filters)
 		if err != nil {
 			return err
 		}

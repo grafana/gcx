@@ -141,6 +141,11 @@ func TestParseInstancesResponse(t *testing.T) {
 	if got.ProviderName != "" || got.InstanceIdentifier != "" || got.ProviderRegion != "" {
 		t.Errorf("expected \"unknown\" provider fields to map to empty string, got %+v", got)
 	}
+	for _, promotedKey := range []string{"engine", "engine_version", "deployment_environment", "instance", "db_instance_identifier", "provider_name", "provider_account", "provider_region", "service_namespace"} {
+		if _, dup := got.Labels[promotedKey]; dup {
+			t.Errorf("expected label %q to be promoted to a typed field, not duplicated in Labels: %+v", promotedKey, got.Labels)
+		}
+	}
 }
 
 func TestParseInstancesResponse_SkipsSamplesWithoutServiceName(t *testing.T) {
@@ -154,6 +159,19 @@ func TestParseInstancesResponse_SkipsSamplesWithoutServiceName(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Fatalf("len(items) = %d, want 0", len(items))
+	}
+}
+
+func TestSampleScalar_RejectsNaNAndInf(t *testing.T) {
+	// postgres_exporter maps SQL NULL to NaN (e.g. pg_stat_activity_max_tx_duration
+	// with no open transaction), which must read as "no data", not a real 0/NaN
+	// value — a NaN reaching the JSON encoder fails the whole command.
+	cases := []string{"NaN", "+Inf", "-Inf"}
+	for _, v := range cases {
+		sample := prometheus.Sample{Value: []any{float64(0), v}}
+		if _, ok := sampleScalar(sample); ok {
+			t.Errorf("sampleScalar(%q) = ok, want !ok", v)
+		}
 	}
 }
 
@@ -191,7 +209,10 @@ func TestMergeTopQueries(t *testing.T) {
 		{queryID: "1", datname: "db"}: 100,
 	}
 
-	got := mergeTopQueries(calls, seconds, rows, 0)
+	got, truncated := mergeTopQueries(calls, seconds, rows, 0)
+	if truncated {
+		t.Error("expected truncated = false when limit is 0 (unlimited)")
+	}
 	if len(got) != 2 {
 		t.Fatalf("len(got) = %d, want 2", len(got))
 	}
@@ -221,7 +242,10 @@ func TestMergeTopQueries_Limit(t *testing.T) {
 		{queryID: "2"}: 2,
 		{queryID: "3"}: 1,
 	}
-	got := mergeTopQueries(calls, seconds, nil, 2)
+	got, truncated := mergeTopQueries(calls, seconds, nil, 2)
+	if !truncated {
+		t.Error("expected truncated = true when 3 rows exceed limit 2")
+	}
 	if len(got) != 2 {
 		t.Fatalf("len(got) = %d, want 2", len(got))
 	}
