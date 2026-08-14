@@ -28,6 +28,21 @@ func newOnCallUsers(names ...string) []oncallUser {
 	return users
 }
 
+// omitemptyItem holds a field that a row leaves out when it is empty. The
+// type still declares the field, so selection must keep it.
+type omitemptyItem struct {
+	Name string   `json:"name"`
+	Tags []string `json:"tags,omitempty"`
+}
+
+// nestedOmitemptyItem puts the same field one level down, so the walk into
+// the field type is exercised as well.
+type nestedOmitemptyItem struct {
+	Spec struct {
+		Tags []string `json:"tags,omitempty"`
+	} `json:"spec"`
+}
+
 // TestLeafNameInsteadOfPathFails is the regression test for the reported
 // defect. `--json username,email` returned one null per row and no error, so
 // a script that searched the result found nothing and reported zero.
@@ -39,7 +54,7 @@ func TestLeafNameInsteadOfPathFails(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown field(s) in --json: username, email")
-	assert.Contains(t, err.Error(), "Did you mean spec.username, spec.email?")
+	assert.Contains(t, err.Error(), "Did you mean spec.username for username; spec.email for email?")
 	assert.Contains(t, err.Error(), "--json list")
 	assert.Empty(t, buf.String(), "a rejected selection must write nothing")
 }
@@ -89,6 +104,24 @@ func TestAbsentFieldSelection(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "an omitempty field that no row emits is kept",
+			fields: []string{"name", "tags"},
+			value:  []omitemptyItem{{Name: "a"}, {Name: "b"}},
+			wantOK: true,
+		},
+		{
+			name:   "an omitempty field under a nested path is kept",
+			fields: []string{"spec.tags"},
+			value:  []nestedOmitemptyItem{{}},
+			wantOK: true,
+		},
+		{
+			name:   "an empty object proves nothing about the field names",
+			fields: []string{"anything"},
+			value:  map[string]any{},
+			wantOK: true,
+		},
+		{
 			name:    "a path that exists in no object fails",
 			fields:  []string{"a", "missing"},
 			value:   []map[string]any{{"a": 1}, {"a": 2}},
@@ -99,6 +132,20 @@ func TestAbsentFieldSelection(t *testing.T) {
 			fields:  []string{"spec.nope"},
 			value:   []map[string]any{{"spec": map[string]any{"username": "ward"}}},
 			wantErr: "unknown field(s) in --json: spec.nope. Run --json list",
+		},
+		{
+			name:    "a path the item type does not declare fails",
+			fields:  []string{"bogus"},
+			value:   []omitemptyItem{{Name: "a"}},
+			wantErr: "unknown field(s) in --json: bogus",
+		},
+		{
+			name:   "each absent name keeps its own candidates",
+			fields: []string{"username", "bogus"},
+			value: []map[string]any{
+				{"spec": map[string]any{"username": "ward"}},
+			},
+			wantErr: "unknown field(s) in --json: username, bogus. Did you mean spec.username for username?",
 		},
 		{
 			name:   "a leaf name that matches two paths names both",
@@ -124,6 +171,20 @@ func TestAbsentFieldSelection(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+// TestValidatorAcceptsDeclaredPaths covers the validator route: it must
+// accept an omitempty field and a nested path that the type declares, and it
+// must name the real path for a leaf name.
+func TestValidatorAcceptsDeclaredPaths(t *testing.T) {
+	validator := cmdio.MakeFieldValidator(nestedOmitemptyItem{})
+	require.NotNil(t, validator)
+
+	require.NoError(t, validator([]string{"spec.tags"}))
+
+	err := validator([]string{"tags"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Did you mean spec.tags?")
 }
 
 // TestAbsentFieldSelectionOnSingleObject covers the single-object branches,
