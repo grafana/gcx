@@ -53,17 +53,17 @@ func runDiscoveryCmd(t *testing.T, parent *cobra.Command, args ...string) (strin
 	return out.String(), err
 }
 
-// TestDiscoveryCatalogHasBothInvocations checks the two spellings of each
-// catalog: the canonical `list-<subject>` compound, and the older
-// `<subject> list` noun group that shipped.
-func TestDiscoveryCatalogHasBothInvocations(t *testing.T) {
-	tests := []struct {
-		name     string
-		build    func(OnCallConfigLoader) []*cobra.Command
-		compound string
-		noun     string
-		want     string
-	}{
+type discoveryCase struct {
+	name     string
+	build    func(OnCallConfigLoader) []*cobra.Command
+	compound string
+	noun     string
+	want     string
+}
+
+// discoveryCases lists the four catalogs and the two spellings of each.
+func discoveryCases() []discoveryCase {
+	return []discoveryCase{
 		{
 			name:     "escalation policy steps",
 			build:    newEscalationStepCmds,
@@ -93,8 +93,13 @@ func TestDiscoveryCatalogHasBothInvocations(t *testing.T) {
 			want:     "grafana_assistant",
 		},
 	}
+}
 
-	for _, tt := range tests {
+// TestDiscoveryCatalogHasBothInvocations checks the two spellings of each
+// catalog: the canonical `list-<subject>` compound, and the older
+// `<subject> list` noun group that shipped.
+func TestDiscoveryCatalogHasBothInvocations(t *testing.T) {
+	for _, tt := range discoveryCases() {
 		t.Run(tt.name, func(t *testing.T) {
 			resetAgentMode(t)
 			parent := newDiscoveryParent(t, tt.build)
@@ -154,6 +159,31 @@ func TestDiscoveryNounGroupIsNotRunnable(t *testing.T) {
 	}
 	if steps.Runnable() {
 		t.Error("the `steps` noun group must not run on its own")
+	}
+}
+
+// TestDiscoveryCompoundHasFullHelp holds the compound commands to the help
+// text contract in docs/design/help-text.md: a Long of 2 sentences or more,
+// and 3 examples or more.
+func TestDiscoveryCompoundHasFullHelp(t *testing.T) {
+	for _, tt := range discoveryCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := newDiscoveryParent(t, tt.build)
+			cmd, _, err := parent.Find([]string{tt.compound})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if got := strings.Count(cmd.Long, ". "); got < 1 {
+				t.Errorf("`%s` needs a Long of 2 sentences or more, got %q", tt.compound, cmd.Long)
+			}
+			if got := strings.Count(cmd.Example, "#"); got < 3 {
+				t.Errorf("`%s` needs 3 examples or more, got %q", tt.compound, cmd.Example)
+			}
+			if !strings.Contains(cmd.Example, tt.compound) {
+				t.Errorf("the examples of `%s` must call the command, got %q", tt.compound, cmd.Example)
+			}
+		})
 	}
 }
 
