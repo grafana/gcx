@@ -136,7 +136,7 @@ gcx resources get dashboards/my-dash --json ?
 
 | Value | Behavior |
 |-------|----------|
-| `--json path1,path2` | Emit JSON with only those field paths. A path that exists and holds null renders as `null`. A path that neither the item type nor any emitted object carries is a usage error that names the real dotted paths ending with the same leaf name |
+| `--json <path>,<path>` | Emit JSON with only those field paths. A path that exists and holds null renders as `null`. A path that the declared item type denies, and that no emitted object carries, is a usage error that names the real dotted paths ending with the same leaf name. A path that continues past an array is a usage error that names `--jq` |
 | `--json ?` | Print available field paths (one per line, sorted) and exit 0 |
 | `--json` + `-o json` | Allowed — both request JSON, no conflict |
 | `--json` + `-o <non-json>` | Usage error — field selection requires JSON output |
@@ -148,12 +148,23 @@ additional list calls are made (NC-005).
 
 **A path is required, not a leaf name.** `--json username` on a resource whose
 username lives at `spec.username` fails with the real path in the message. The
-rejection is per-path existence, and the declared item type is the authority:
-a field that the type declares but that no row emits — an `omitempty` field
-that holds its zero value everywhere — keeps its `null`. Where there is no
-declared type, the emitted keys decide across the whole result set, so a
-heterogeneous list keeps a path that only some objects carry. A result set
-with no keys at all skips the rejection.
+rejection is per-path existence, and the declared item type is the only
+authority:
+
+- A field that the type declares but that no row emits — an `omitempty` field
+  that holds its zero value everywhere — keeps its `null`.
+- Where there is no declared type (an unstructured resource, a dynamic map),
+  gcx rejects nothing: every requested path keeps its `null`, whatever the
+  result set holds.
+- A path that any emitted object carries is real, so a heterogeneous list
+  keeps a path that only some objects carry.
+- The result set size does not change the answer. An empty page of a typed
+  list rejects the same paths as a full page.
+
+**`--json` cannot reach a value inside an array.** Field selection walks maps
+only, so a path that continues past an array — `data.result.metric` on a
+Prometheus query result — is a usage error that names `--jq`. Use
+`--jq '.data.result[].metric'` for such a value.
 
 **Output shape:**
 - Single resource: `{"field": "value", ...}` (flat object, only selected fields)
