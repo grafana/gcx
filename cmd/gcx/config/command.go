@@ -544,11 +544,15 @@ func listContextsCmd(configOpts *Options) *cobra.Command {
 
 func checkCmd(configOpts *Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "check",
-		Args:    cobra.NoArgs,
-		Short:   "Check the current configuration for issues",
-		Long:    "Check the current configuration for issues.",
-		Example: "\n\tgcx config check",
+		Use:   "check",
+		Args:  cobra.NoArgs,
+		Short: "Check configuration contexts for issues",
+		Long: `Check configured contexts for issues.
+
+Without --context, checks every configured context. With --context, checks only the selected context.`,
+		Example: `
+	gcx config check
+	gcx config check --context production`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
 			if err != nil {
@@ -593,22 +597,25 @@ func checkCmd(configOpts *Options) *cobra.Command {
 			// Check contexts concurrently, each into its own buffer. Goroutines
 			// return nil and stash real errors per-index so one failing context
 			// never cancels the others (matches the prior serial semantics).
-			// Names are sorted and buffers flushed in that order, so output is
-			// deterministic (the prior serial loop ranged a map, so ordering was
-			// previously non-deterministic).
-			names := make([]string, 0, len(cfg.Contexts))
-			for name := range cfg.Contexts {
-				names = append(names, name)
+			// Without --context, names are sorted and buffers flushed in that
+			// order, so output is deterministic (the prior serial loop ranged a
+			// map, so ordering was previously non-deterministic). An explicit
+			// --context scopes the diagnostic to the selected context.
+			names := []string{cfg.CurrentContext}
+			if configOpts.Context == "" {
+				names = make([]string, 0, len(cfg.Contexts))
+				for name := range cfg.Contexts {
+					names = append(names, name)
+				}
+				sort.Strings(names)
 			}
-			sort.Strings(names)
 
-			// Load resolves only the current context eagerly. config check
-			// validates every context, so resolve the deferred keychain
-			// references up front — this mutates cfg's keychain bookkeeping and
-			// so cannot run inside the concurrent checks below. Missing or
-			// foreign references become typed rejection evidence and are
-			// therefore reported with connectivity skipped instead of being
-			// sent upstream.
+			// Load resolves only the selected context eagerly. Resolve the
+			// remaining contexts that this invocation will validate up front:
+			// this mutates cfg's keychain bookkeeping and so cannot run inside
+			// the concurrent checks below. Missing or foreign references become
+			// typed rejection evidence and are therefore reported with
+			// connectivity skipped instead of being sent upstream.
 			for _, name := range names {
 				cfg.ResolveContext(name)
 			}

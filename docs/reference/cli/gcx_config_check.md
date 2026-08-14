@@ -1,10 +1,12 @@
 ## gcx config check
 
-Check the current configuration for issues
+Check configuration contexts for issues
 
 ### Synopsis
 
-Check the current configuration for issues.
+Check configured contexts for issues.
+
+Without --context, checks every configured context. With --context, checks only the selected context.
 
 ```
 gcx config check [flags]
@@ -15,6 +17,7 @@ gcx config check [flags]
 ```
 
 	gcx config check
+	gcx config check --context production
 ```
 
 ### Options
