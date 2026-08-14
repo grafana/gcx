@@ -28,5 +28,6 @@ Manage OnCall routes.
 * [gcx irm oncall routes filter-types](gcx_irm_oncall_routes_filter-types.md)	 - Discover route filtering term types.
 * [gcx irm oncall routes get](gcx_irm_oncall_routes_get.md)	 - Get a route by ID.
 * [gcx irm oncall routes list](gcx_irm_oncall_routes_list.md)	 - List OnCall routes.
+* [gcx irm oncall routes move](gcx_irm_oncall_routes_move.md)	 - Move a route to a position in its integration.
 * [gcx irm oncall routes update](gcx_irm_oncall_routes_update.md)	 - Update a route by ID.
 

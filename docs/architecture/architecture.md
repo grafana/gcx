@@ -810,6 +810,7 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 | `internal/providers/irm/provider.go` | `IRMProvider` implementing the `providers.Provider` interface (registers `gcx irm` with `oncall` and `incidents` subcommands) |
 | `internal/providers/irm/oncall_client.go` | OnCall REST client |
 | `internal/providers/irm/oncall_commands.go` | OnCall CLI commands (schedules, integrations, escalation chains) |
+| `internal/providers/irm/oncall_move_commands.go` | The `move` verb of the ordered resources (escalation policies, routes) |
 | `internal/providers/irm/oncall_adapter.go` | Resource adapter for OnCall resources |
 | `internal/providers/irm/incidents_client.go` | Incidents REST client |
 | `internal/providers/irm/incidents_commands.go` | IRM Incidents CLI commands (list, get, create, close, open, list-activity, list-contexts, activity add, severities, update) |
