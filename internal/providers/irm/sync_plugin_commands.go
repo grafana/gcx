@@ -1,10 +1,8 @@
 package irm
 
 import (
-	"errors"
 	"io"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -16,45 +14,19 @@ import (
 // sequence "create the team" then "create the schedule of that team" without
 // a way to force the refresh.
 
-// syncPluginResult is the result document of `gcx irm sync-plugin`: the shared
-// single-mutation document plus the message of the backend. The backend can
-// distinguish "sync request processed" from "sync already running", so the
-// message reaches the caller. The field is absent when the backend sends none.
-type syncPluginResult struct {
-	cmdio.SingleMutation
-
-	Message string `json:"message,omitempty" yaml:"message,omitempty"`
-}
-
-// syncPluginTextCodec renders the human one-liner for syncPluginResult. The
-// shared singleMutationTextCodec accepts a bare cmdio.SingleMutation only.
-type syncPluginTextCodec struct{}
-
-func (c *syncPluginTextCodec) Format() format.Format { return "text" }
-
-func (c *syncPluginTextCodec) Decode(io.Reader, any) error {
-	return errors.New("text codec does not support decoding")
-}
-
-func (c *syncPluginTextCodec) Encode(w io.Writer, v any) error {
-	result, ok := v.(syncPluginResult)
-	if !ok {
-		return errors.New("invalid data type for text codec: expected syncPluginResult")
-	}
-	if result.Message != "" {
-		cmdio.Success(w, "Requested a sync of the IRM plugin: %s", result.Message)
-		return nil
-	}
-	cmdio.Success(w, "Requested a sync of the IRM plugin")
-	return nil
-}
-
 type syncPluginOpts struct {
 	IO cmdio.Options
 }
 
 func (o *syncPluginOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("text", &syncPluginTextCodec{})
+	// The result is a SingleMutation document through the codec system: the
+	// text codec prints the human one-liner, and agent mode or an explicit
+	// -o json/yaml gets the structured document.
+	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
+		render: func(w io.Writer, _ cmdio.SingleMutation) {
+			cmdio.Success(w, "Requested a sync of the IRM plugin")
+		},
+	})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 }
@@ -87,22 +59,16 @@ successful call does not prove that the copy is already current.`,
 				return err
 			}
 
-			synced, err := client.SyncPlugin(ctx)
-			if err != nil {
+			if _, err := client.SyncPlugin(ctx); err != nil {
 				return err
 			}
 
 			// Changed stays unset: the backend reports that it accepted the
 			// request, not whether the copy changed.
-			result := syncPluginResult{
-				SingleMutation: cmdio.NewSingleMutation("sync-requested", cmdio.MutationTarget{
-					Kind: "Plugin",
-					Name: "grafana-irm-app",
-				}),
-			}
-			if synced != nil {
-				result.Message = synced.Message
-			}
+			result := cmdio.NewSingleMutation("sync-requested", cmdio.MutationTarget{
+				Kind: "Plugin",
+				Name: "grafana-irm-app",
+			})
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
