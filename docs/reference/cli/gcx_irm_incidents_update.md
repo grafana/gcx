@@ -10,7 +10,8 @@ The severity is the display label, not the identifier. Run
 `gcx irm incidents severities list` for the labels of your organization.
 
 gcx reads the incident first, so a value that already matches causes no write.
-The command emits the incident.
+The command prints one line that names the fields it changed. Use -o json or
+-o yaml for the incident manifest.
 
 ```
 gcx irm incidents update <id> [flags]
@@ -32,7 +33,7 @@ gcx irm incidents update <id> [flags]
   -h, --help              help for update
       --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
       --severity string   New severity label (run 'gcx irm incidents severities list' for the valid values)
       --title string      New title
 ```

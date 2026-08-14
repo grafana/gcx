@@ -3,7 +3,10 @@ package irm
 import (
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 
+	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -18,14 +21,34 @@ type incidentUpdateOpts struct {
 	IO       cmdio.Options
 	Severity string
 	Title    string
+
+	// id and changed carry the result of the update to the text codec: the
+	// success line names the incident and the fields that gcx changed.
+	id      string
+	changed []string
 }
 
 func (o *incidentUpdateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
+	// update is a mutation command, so the human default is one success line
+	// (docs/design/output.md § 11), the way `incidents close` prints one. The
+	// encoded document stays the incident manifest, so -o json and -o yaml
+	// emit what `gcx resources get` emits for the same incident.
+	o.IO.RegisterCustomCodec("text", &incidentUpdateTextCodec{render: o.report})
+	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Severity, "severity", "",
 		"New severity label (run 'gcx irm incidents severities list' for the valid values)")
 	flags.StringVar(&o.Title, "title", "", "New title")
+}
+
+// report writes the success line. gcx reads the incident first and skips a
+// field that already matches, so a run can change nothing at all.
+func (o *incidentUpdateOpts) report(w io.Writer) {
+	if len(o.changed) == 0 {
+		cmdio.Info(w, "Incident %s already carries the requested values", o.id)
+		return
+	}
+	cmdio.Success(w, "Updated incident %s (%s)", o.id, strings.Join(o.changed, ", "))
 }
 
 // Validate rejects an empty value on a flag the caller set. The Incident
@@ -45,6 +68,25 @@ func (o *incidentUpdateOpts) Validate(flags *pflag.FlagSet) error {
 	return nil
 }
 
+// incidentUpdateTextCodec renders the human result of `incidents update`: one
+// line that names the incident and the fields that gcx changed. The value
+// that Encode receives is the incident manifest, which the json and the yaml
+// codec emit unchanged.
+type incidentUpdateTextCodec struct {
+	render func(w io.Writer)
+}
+
+func (c *incidentUpdateTextCodec) Format() format.Format { return "text" }
+
+func (c *incidentUpdateTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *incidentUpdateTextCodec) Encode(w io.Writer, _ any) error {
+	c.render(w)
+	return nil
+}
+
 func NewUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &incidentUpdateOpts{}
 	cmd := &cobra.Command{
@@ -56,7 +98,8 @@ The severity is the display label, not the identifier. Run
 ` + "`gcx irm incidents severities list`" + ` for the labels of your organization.
 
 gcx reads the incident first, so a value that already matches causes no write.
-The command emits the incident.`,
+The command prints one line that names the fields it changed. Use -o json or
+-o yaml for the incident manifest.`,
 		Example: `  # Raise the severity of an incident:
   gcx irm incidents update 4 --severity Critical
 
@@ -72,7 +115,7 @@ The command emits the incident.`,
 			}
 
 			ctx := cmd.Context()
-			id := args[0]
+			opts.id = args[0]
 
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
@@ -87,10 +130,11 @@ The command emits the incident.`,
 			// Update skips an empty field and a field that already matches, so
 			// one call covers both flags. Validate rejects an explicit empty
 			// value, so an empty field here is an omitted flag.
-			inc, err := client.Update(ctx, id, &Incident{Title: opts.Title, Severity: opts.Severity})
+			inc, changed, err := client.Update(ctx, opts.id, &Incident{Title: opts.Title, Severity: opts.Severity})
 			if err != nil {
 				return err
 			}
+			opts.changed = changed
 
 			res, err := ToResource(*inc, restCfg.Namespace)
 			if err != nil {

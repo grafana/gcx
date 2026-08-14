@@ -53,7 +53,7 @@ func TestIncidentUpdateCommand(t *testing.T) {
 				"IncidentsService.GetIncident",
 				"IncidentsService.UpdateSeverity",
 			},
-			wantOut: []string{"severity: Critical"},
+			wantOut: []string{"Updated incident 4 (severity)"},
 		},
 		{
 			name: "title only",
@@ -62,18 +62,18 @@ func TestIncidentUpdateCommand(t *testing.T) {
 				"IncidentsService.GetIncident",
 				"IncidentsService.UpdateTitle",
 			},
-			wantOut: []string{"Checkout latency above the objective"},
+			wantOut: []string{"Updated incident 4 (title)"},
 		},
 		{
 			name: "both fields",
 			args: []string{"4", "--title", "new title", "--severity", "Major"},
-			// The title runs first, so the echoed incident carries both.
+			// The title runs before the severity.
 			wantCalls: []string{
 				"IncidentsService.GetIncident",
 				"IncidentsService.UpdateTitle",
 				"IncidentsService.UpdateSeverity",
 			},
-			wantOut: []string{"new title", "severity: Major"},
+			wantOut: []string{"Updated incident 4 (title, severity)"},
 		},
 	}
 
@@ -137,6 +137,46 @@ func TestIncidentUpdateCommandRejectsBadFlags(t *testing.T) {
 			}
 			if len(srv.calls) != 0 {
 				t.Errorf("the command called the backend on a bad flag: %v", srv.calls)
+			}
+		})
+	}
+}
+
+// TestIncidentUpdateCommandOutputFormats covers the two output cases that
+// TestIncidentUpdateCommand does not reach: a run that changes nothing, and
+// the manifest that -o yaml emits.
+func TestIncidentUpdateCommandOutputFormats(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    string
+		notWant string
+	}{
+		{
+			name:    "a value that already matches changes nothing",
+			args:    []string{"4", "--title", "old title"},
+			want:    "Incident 4 already carries the requested values\n",
+			notWant: "Updated incident",
+		},
+		{
+			name: "-o yaml emits the manifest",
+			args: []string{"4", "--severity", "Critical", "-o", "yaml"},
+			want: "apiVersion: incident.ext.grafana.app/v1alpha1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := &severityServer{title: "old title"}
+			out, err := runIncidentUpdateCmd(t, srv, tt.args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out, tt.want) {
+				t.Errorf("expected %q in the output, got %q", tt.want, out)
+			}
+			if tt.notWant != "" && strings.Contains(out, tt.notWant) {
+				t.Errorf("did not expect %q in the output, got %q", tt.notWant, out)
 			}
 		})
 	}
