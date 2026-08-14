@@ -15,14 +15,13 @@ import (
 type fakePluginAPI struct {
 	OnCallAPI
 
-	calls  int
-	result *PluginSyncResult
-	err    error
+	calls int
+	err   error
 }
 
-func (f *fakePluginAPI) SyncPlugin(context.Context) (*PluginSyncResult, error) {
+func (f *fakePluginAPI) SyncPlugin(context.Context) error {
 	f.calls++
-	return f.result, f.err
+	return f.err
 }
 
 func runSyncPluginCmd(t *testing.T, fake *fakePluginAPI, args ...string) (string, error) {
@@ -36,12 +35,11 @@ func runSyncPluginCmd(t *testing.T, fake *fakePluginAPI, args ...string) (string
 	return out.String(), err
 }
 
-// TestSyncPluginCommandText proves that the human line reports the request,
-// and that the free-form answer of the backend does not reach it.
+// TestSyncPluginCommandText proves that the human line reports the request.
 func TestSyncPluginCommandText(t *testing.T) {
 	resetAgentMode(t)
 
-	fake := &fakePluginAPI{result: &PluginSyncResult{Message: "Sync request processed successfully"}}
+	fake := &fakePluginAPI{}
 	out, err := runSyncPluginCmd(t, fake)
 	if err != nil {
 		t.Fatal(err)
@@ -53,9 +51,6 @@ func TestSyncPluginCommandText(t *testing.T) {
 	if !strings.Contains(out, want) {
 		t.Errorf("expected %q, got %q", want, out)
 	}
-	if strings.Contains(out, "Sync request processed successfully") {
-		t.Errorf("expected no backend message, got %q", out)
-	}
 }
 
 // TestSyncPluginCommandStructuredResult proves that the structured result is a
@@ -63,7 +58,7 @@ func TestSyncPluginCommandText(t *testing.T) {
 func TestSyncPluginCommandStructuredResult(t *testing.T) {
 	resetAgentMode(t)
 
-	fake := &fakePluginAPI{result: &PluginSyncResult{Message: "Sync request processed successfully"}}
+	fake := &fakePluginAPI{}
 	out, err := runSyncPluginCmd(t, fake, "-o", "json")
 	if err != nil {
 		t.Fatal(err)
