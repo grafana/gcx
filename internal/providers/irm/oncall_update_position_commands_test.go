@@ -94,14 +94,28 @@ func TestUpdatePositionCommand(t *testing.T) {
 	}
 }
 
-func TestUpdatePositionCommandRequiresPosition(t *testing.T) {
+// Cobra enforces the flag, so an omitted --position fails before Validate
+// runs. Validate only rejects a negative value. An explicit --position 0 is a
+// valid request for the first slot, so neither check refuses it.
+func TestUpdatePositionCommandRejectsInvalidPosition(t *testing.T) {
 	tests := []struct {
-		name string
-		noun string
-		args []string
+		name    string
+		noun    string
+		args    []string
+		wantErr string
 	}{
-		{name: "escalation policy without --position", noun: "escalation-policies", args: []string{"update-position", "EP1"}},
-		{name: "route with a negative --position", noun: "routes", args: []string{"update-position", "R1", "--position", "-1"}},
+		{
+			name:    "escalation policy without --position",
+			noun:    "escalation-policies",
+			args:    []string{"update-position", "EP1"},
+			wantErr: `required flag(s) "position" not set`,
+		},
+		{
+			name:    "route with a negative --position",
+			noun:    "routes",
+			args:    []string{"update-position", "R1", "--position", "-1"},
+			wantErr: "--position must be zero or greater",
+		},
 	}
 
 	for _, tt := range tests {
@@ -110,13 +124,41 @@ func TestUpdatePositionCommandRequiresPosition(t *testing.T) {
 
 			fake := &fakeMoveAPI{}
 			_, err := runUpdatePositionCmd(t, tt.noun, fake, tt.args...)
-			if err == nil || !strings.Contains(err.Error(), "--position is required") {
-				t.Errorf("expected a missing-position error, got %v", err)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("expected an error that contains %q, got %v", tt.wantErr, err)
 			}
 			if fake.called {
 				t.Error("the command called the backend despite an invalid position")
 			}
 		})
+	}
+}
+
+// The help must not advertise a default that the command rejects, and it must
+// not repeat the requirement that MarkFlagRequired already states.
+func TestUpdatePositionCommandFlagHelp(t *testing.T) {
+	resetAgentMode(t)
+
+	out, err := runUpdatePositionCmd(t, "escalation-policies", &fakeMoveAPI{}, "update-position", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var line string
+	for l := range strings.SplitSeq(out, "\n") {
+		if strings.Contains(l, "--position") {
+			line = l
+			break
+		}
+	}
+	if line == "" {
+		t.Fatalf("the help misses the --position flag: %q", out)
+	}
+	if strings.Contains(line, "(default") {
+		t.Errorf("the flag help advertises a default: %q", line)
+	}
+	if strings.Contains(line, "(required)") {
+		t.Errorf("the flag usage repeats the required marker: %q", line)
 	}
 }
 
