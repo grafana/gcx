@@ -51,20 +51,6 @@ func encodeWithJSONFlag(t *testing.T, jsonFlag string, value any) string {
 	return buf.String()
 }
 
-// encodeWithJSONFlagErr is encodeWithJSONFlag for the cases that must fail:
-// a requested path that exists in no emitted object.
-func encodeWithJSONFlagErr(t *testing.T, jsonFlag string, value any) error {
-	t.Helper()
-	opts := &cmdio.Options{}
-	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	opts.BindFlags(flags)
-	require.NoError(t, flags.Set("json", jsonFlag))
-	require.NoError(t, opts.Validate())
-
-	var buf bytes.Buffer
-	return opts.Encode(&buf, value)
-}
-
 // TestFieldSelectionOnTruncatedEnvelope reproduces PR988 defect (b): with a
 // list_meta sibling present, `--limit 1 --json uid` must still select from
 // the ITEMS ({"datasources":[{"uid":"ds-01"}]}), not treat the envelope as a
@@ -271,11 +257,12 @@ func TestFieldSelectionOnDynamicMapWithoutListMeta(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	assert.Contains(t, result, "items")
 
-	// Per-item selection would have reached uid. It does not, so uid is a
-	// path that exists nowhere.
-	err := encodeWithJSONFlagErr(t, "uid", env)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown field(s) in --json: uid")
+	// Per-item selection would have reached uid. It does not, and a dynamic
+	// map declares no type, so uid keeps its null.
+	out = encodeWithJSONFlag(t, "uid", env)
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Contains(t, result, "uid")
+	assert.Nil(t, result["uid"], "whole-object selection is the pinned behavior for maps without list_meta")
 }
 
 // TestFieldSelectionOnDynamicMapNonReservedListMeta: a list_meta key whose
@@ -293,9 +280,10 @@ func TestFieldSelectionOnDynamicMapNonReservedListMeta(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	assert.Equal(t, "not-an-object", result["list_meta"])
 
-	err := encodeWithJSONFlagErr(t, "uid", env)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown field(s) in --json: uid")
+	out = encodeWithJSONFlag(t, "uid", env)
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Contains(t, result, "uid")
+	assert.Nil(t, result["uid"])
 }
 
 // TestDiscoveryOnDynamicMapEnvelope covers the direct-map fast path in
