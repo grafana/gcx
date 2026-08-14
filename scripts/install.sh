@@ -5,9 +5,12 @@
 #   curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | sh
 #
 # Environment variables:
-#   INSTALL_DIR    Directory to install into (default: $HOME/.local/bin)
-#   VERSION        Specific version to install, without v prefix (default: latest)
-#   GITHUB_TOKEN   GitHub token for API requests (avoids rate limits)
+#   GCX_INSTALL_DIR  Directory to install into (default: $HOME/.local/bin)
+#   GCX_VERSION      Specific version to install, without v prefix (default: latest)
+#   GITHUB_TOKEN     GitHub token for API requests (avoids rate limits)
+#
+# INSTALL_DIR and VERSION still work. The GCX_ names take precedence, because
+# INSTALL_DIR and VERSION are common names that a caller can already export.
 
 set -eu
 
@@ -93,6 +96,100 @@ print_path_instructions() {
     esac
 }
 
+# Print the path of the first executable named $1 on PATH.
+# Return 1 when PATH holds no such executable.
+#
+# This walks PATH instead of calling `command -v`. The script looks the binary
+# up before the copy and after it, and a shell can serve the second lookup from
+# its command hash table. A stale hash is the exact failure this check reports,
+# so the check must not depend on one.
+resolve_on_path() {
+    _name="$1"
+    _saved_ifs="$IFS"
+    set -f # A PATH entry must not expand as a glob.
+    IFS=:
+    for _dir in $PATH; do
+        [ -n "$_dir" ] || _dir="."
+        if [ -f "${_dir}/${_name}" ] && [ -x "${_dir}/${_name}" ]; then
+            IFS="$_saved_ifs"
+            set +f
+            printf '%s\n' "${_dir}/${_name}"
+            return 0
+        fi
+    done
+    IFS="$_saved_ifs"
+    set +f
+    return 1
+}
+
+# Print the first line that "$1 --version" writes.
+# Print "unknown version" when the binary does not answer.
+binary_version() {
+    _out=$("$1" --version 2>/dev/null | head -1) || _out=""
+    if [ -n "$_out" ]; then
+        printf '%s\n' "$_out"
+    else
+        printf '%s\n' "unknown version"
+    fi
+}
+
+# Print the command that removes the binary at $1.
+removal_command() {
+    case "$1" in
+        /opt/homebrew/* | /usr/local/Cellar/* | /home/linuxbrew/*)
+            printf '%s\n' "brew uninstall ${BINARY_NAME}"
+            ;;
+        *)
+            printf '%s\n' "rm ${1}"
+            ;;
+    esac
+}
+
+# Report that the shell runs a different binary than the one just installed.
+warn_shadowed() {
+    _target="$1"
+    _other="$2"
+
+    echo ""
+    warn "Your shell runs a different ${BINARY_NAME}."
+    echo ""
+    info "Installed now:  ${_target} ($(binary_version "$_target"))"
+    info "Shell runs:     ${_other} ($(binary_version "$_other"))"
+    echo ""
+    info "The other copy comes earlier in your PATH. Remove it with:"
+    echo ""
+    info "  $(removal_command "$_other")"
+    echo ""
+    info "Then run 'hash -r', or open a new terminal."
+}
+
+# Report which binary the shell will run after the install.
+# $1 is the install directory. $2 is the binary that PATH resolved to before
+# the install, or an empty string.
+report_resolution() {
+    _install_dir="$1"
+    _previous_path="$2"
+    _target="${_install_dir}/${BINARY_NAME}"
+
+    _resolved=$(resolve_on_path "$BINARY_NAME") || _resolved=""
+
+    case ":${PATH}:" in
+        *":${_install_dir}:"*) _dir_on_path=1 ;;
+        *) _dir_on_path=0 ;;
+    esac
+
+    if [ "$_dir_on_path" -eq 0 ]; then
+        print_path_instructions "$_install_dir"
+    fi
+
+    if [ -n "$_resolved" ] && [ "$_resolved" != "$_target" ]; then
+        warn_shadowed "$_target" "$_resolved"
+    elif [ -n "$_previous_path" ] && [ "$_previous_path" != "$_target" ]; then
+        echo ""
+        info "Run 'hash -r', or open a new terminal, to pick up the new path."
+    fi
+}
+
 get_latest_version() {
     url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
     auth_header=""
@@ -140,14 +237,22 @@ main() {
     os=$(detect_os)
     arch=$(detect_arch)
 
-    if [ -n "${VERSION:-}" ]; then
-        version="${VERSION#v}"
+    # Record the binary that PATH resolves to now, before the copy replaces it.
+    previous_path=$(resolve_on_path "$BINARY_NAME") || previous_path=""
+    previous_version=""
+    if [ -n "$previous_path" ]; then
+        previous_version=$(binary_version "$previous_path")
+    fi
+
+    requested_version="${GCX_VERSION:-${VERSION:-}}"
+    if [ -n "$requested_version" ]; then
+        version="${requested_version#v}"
     else
         info "Fetching latest release..."
         version=$(get_latest_version)
     fi
 
-    install_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+    install_dir="${GCX_INSTALL_DIR:-${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}}"
     archive="${BINARY_NAME}_${version}_${os}_${arch}.tar.gz"
     base_url="https://github.com/${GITHUB_REPO}/releases/download/v${version}"
 
@@ -189,22 +294,25 @@ main() {
 
     # Verify installation.
     if "${install_dir}/${BINARY_NAME}" --version >/dev/null 2>&1; then
-        installed_version=$("${install_dir}/${BINARY_NAME}" --version 2>&1 | head -1)
-        info "Installed: ${installed_version}"
+        installed_version=$(binary_version "${install_dir}/${BINARY_NAME}")
+        if [ -n "$previous_version" ] && [ "$previous_version" != "$installed_version" ]; then
+            info "Installed: ${installed_version} (replaces: ${previous_version})"
+        else
+            info "Installed: ${installed_version}"
+        fi
     else
         info "Installed ${BINARY_NAME} to ${install_dir}/${BINARY_NAME}"
     fi
 
-    # Check if install dir is in PATH.
-    case ":${PATH}:" in
-        *":${install_dir}:"*) ;;
-        *)
-            print_path_instructions "$install_dir"
-            ;;
-    esac
+    # Report which binary the shell runs. The copy above can land behind an
+    # older binary that PATH resolves first, and the user then sees no change.
+    report_resolution "$install_dir" "$previous_path"
 
     echo ""
     info "To uninstall: rm ${install_dir}/${BINARY_NAME}"
 }
 
-main "$@"
+# The test file sources this script to call the functions on their own.
+if [ "${GCX_INSTALL_SH_LIB:-}" != "1" ]; then
+    main "$@"
+fi

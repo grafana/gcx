@@ -54,11 +54,16 @@ curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh
 ```
 
 Downloads the latest release, verifies the SHA-256 checksum, and installs to
-`~/.local/bin`. Override the location with `INSTALL_DIR`:
+`~/.local/bin`. Override the location with `GCX_INSTALL_DIR`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | GCX_INSTALL_DIR=/usr/local/bin sh
 ```
+
+To upgrade, run the same command again, then check `gcx --version`. If the
+version does not change, you have a second `gcx` earlier in your `PATH` — run
+`which -a gcx` and see
+[The version does not change after an upgrade](docs/sources/installation.md#the-version-does-not-change-after-an-upgrade).
 
 **Homebrew (macOS and Linux):**
 

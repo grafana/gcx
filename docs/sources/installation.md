@@ -27,28 +27,44 @@ The script:
 - Verifies the SHA-256 checksum.
 - Installs the binary to `~/.local/bin`.
 
+### Upgrade
+
+To upgrade, run the same command again. The script always installs the latest release.
+
+Check the result:
+
+```sh
+gcx --version
+```
+
+If the version does not change, refer to [The version does not change after an upgrade](#the-version-does-not-change-after-an-upgrade).
+
 ### Installer configuration options
 
 Use these environment variables to customize the install script:
 
 | Environment variable | Default | Description |
 |----------------------|---------|-------------|
-| `INSTALL_DIR` | `$HOME/.local/bin` | Directory to install the binary into |
-| `VERSION` | latest | Specific version to install (e.g., `0.2.4`) |
+| `GCX_INSTALL_DIR` | `$HOME/.local/bin` | Directory to install the binary into |
+| `GCX_VERSION` | latest | Specific version to install (e.g., `0.2.4`) |
 | `GITHUB_TOKEN` | unset | GitHub token for API requests (avoids rate limits) |
+
+The script also accepts `INSTALL_DIR` and `VERSION`. The `GCX_` names take
+precedence. Prefer the `GCX_` names, because `INSTALL_DIR` and `VERSION` are
+common names, and `curl | sh` inherits every variable that your shell exports.
 
 ### Examples
 
 Install a specific version:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | VERSION=0.2.4 sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | GCX_VERSION=0.2.4 sh
 ```
 
 Install to `/usr/local/bin`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | GCX_INSTALL_DIR=/usr/local/bin sh
 ```
 
 ### Uninstall
@@ -106,6 +122,39 @@ To install, run:
 ```shell
 go install github.com/grafana/gcx/cmd/gcx@latest
 ```
+
+## The version does not change after an upgrade
+
+This page lists five install methods. Each one writes `gcx` to a different
+directory. If you use two methods, you get two copies. Your shell runs the copy
+in the directory that comes first in `PATH`, and an upgrade of the other copy
+changes nothing that you can see.
+
+List every copy:
+
+```sh
+which -a gcx
+```
+
+The first line is the copy that your shell runs. Remove the copies that you do
+not want:
+
+| Path | Install method | Command that removes it |
+|------|----------------|-------------------------|
+| `~/.local/bin/gcx` | Install script | `rm ~/.local/bin/gcx` |
+| `/usr/local/bin/gcx` | Prebuilt binary, or the script with `GCX_INSTALL_DIR` | `sudo rm /usr/local/bin/gcx` |
+| `/opt/homebrew/bin/gcx`, `/home/linuxbrew/.../gcx` | Homebrew | `brew uninstall gcx` |
+| `~/go/bin/gcx` | `go install` | `rm ~/go/bin/gcx` |
+
+After you remove a copy, your shell can still hold the old path in its command
+hash table. Open a new terminal, or run:
+
+```sh
+hash -r
+```
+
+The install script reports this problem for you. It names both paths and both
+versions, and it gives the removal command.
 
 ## macOS Gatekeeper and killed 9
 
