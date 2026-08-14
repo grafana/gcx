@@ -382,8 +382,8 @@ func (c *OnCallClient) StopIntegrationMaintenance(ctx context.Context, id string
 }
 
 // integrationAction posts to an action endpoint of a single integration.
-// The backend answers with 200 and a body that carries no field a caller can
-// act on, so the body is discarded.
+// An action endpoint answers with any success status, and with a body that
+// carries no field a caller can act on, so the body is discarded.
 func (c *OnCallClient) integrationAction(ctx context.Context, id, action string, body any, description string) error {
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -400,7 +400,7 @@ func (c *OnCallClient) integrationAction(ctx context.Context, id, action string,
 	if resp.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("irm: integration %q not found", id)
 	}
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return providers.HandleErrorResponse(resp)
 	}
 	return nil

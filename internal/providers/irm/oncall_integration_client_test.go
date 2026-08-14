@@ -164,19 +164,52 @@ func TestStopIntegrationMaintenance(t *testing.T) {
 	}
 }
 
-func TestIntegrationMaintenanceSurfacesBackendError(t *testing.T) {
+// An action endpoint can answer with any status in the success range. The
+// client must accept all of them, and must report every other status.
+func TestIntegrationActionStatusCodes(t *testing.T) {
 	t.Parallel()
 
-	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, `{"duration":["Invalid duration"]}`) //nolint:errcheck
-	}))
-
-	err := client.StartIntegrationMaintenance(context.Background(), "CH1", 1, 42)
-	if err == nil {
-		t.Fatal("expected an error for a duration the backend rejects")
+	tests := []struct {
+		name    string
+		status  int
+		body    string
+		wantErr string
+	}{
+		{name: "ok", status: http.StatusOK, body: "{}"},
+		{name: "accepted", status: http.StatusAccepted, body: "{}"},
+		{name: "no content", status: http.StatusNoContent},
+		{
+			name:    "not found",
+			status:  http.StatusNotFound,
+			wantErr: `integration "CH1" not found`,
+		},
+		{
+			name:    "bad request",
+			status:  http.StatusBadRequest,
+			body:    `{"duration":["Invalid duration"]}`,
+			wantErr: "Invalid duration",
+		},
 	}
-	if !strings.Contains(err.Error(), "Invalid duration") {
-		t.Errorf("expected the backend message in the error, got %v", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				io.WriteString(w, tt.body) //nolint:errcheck
+			}))
+
+			err := client.StartIntegrationMaintenance(context.Background(), "CH1", irm.MaintenanceModeMaintenance, 3600)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("got error %v, want one containing %q", err, tt.wantErr)
+			}
+		})
 	}
 }
