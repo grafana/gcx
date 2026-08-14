@@ -693,9 +693,12 @@ Commands can return a `DetailedError` directly from `RunE`. Business logic layer
 ```
 ErrorToDetailedError(err)
     │
+    ├─ isEmittedError → EmittedError (the command already wrote its document; suppress secondary output)
     ├─ errors.As(err, &DetailedError{}) → return as-is if already detailed
-    ├─ convertWaitTimeoutEmitted → ErrWaitTimeoutEmitted sentinel (suppress secondary output)
+    ├─ convertAlreadyReported → ErrAlreadyReported sentinel (the command already printed its report)
     ├─ convertUnknownFieldSelectionErrors → UnknownFieldSelectionError (--json unknown field)
+    ├─ convertArrayPathSelectionErrors → ArrayPathSelectionError (--json path that enters an array)
+    ├─ convertJQRuntimeErrors → --jq runtime failure (names the shape of the output)
     ├─ convertPartialFailureErrors → PartialFailureError (exit 4)
     ├─ convertUsageErrors    → UsageError (exit 2)
     ├─ convertConfigErrors   → ValidationError, UnmarshalError, ErrContextNotFound
