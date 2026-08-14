@@ -434,30 +434,47 @@ func (c *IncidentClient) UpdateTitle(ctx context.Context, id, title string) (*In
 	return c.updateIncidentField(ctx, incUpdateTitleMethod, id, req, "update title")
 }
 
-// Update applies every field of inc that the IRM API exposes as its own
-// operation: status, title, and severity. The API has no single update
-// method, so each field costs one call. gcx reads the incident first, then
-// skips each field that the caller left empty or that already matches the
-// server. Nothing enforces the required fields of the schema on push, so a
-// manifest without a status must not send an empty status.
+// Update applies the three fields that the IRM API exposes as their own
+// operation: the status, the title, and the severity. The API has no single
+// update method, so each field costs one call. gcx reads the incident first,
+// then skips each field that the caller left empty or that already matches
+// the server. Nothing enforces the required fields of the schema on push, so
+// a manifest without a status must not send an empty status.
+//
+// Update drops every other field of inc, because the IRM API has no update
+// operation for it: a pushed manifest that changes labels, incidentType,
+// isDrill, description or fieldGroupUUID leaves those values on the server.
+//
+// The second result names the fields that reached the server. An empty list
+// means the incident already matched the request.
 //
 // A call that fails after an earlier call succeeded leaves the incident
-// between the two states. Update then reports the incident as the server
-// holds it, next to an error that names the fields it did apply.
-func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (*Incident, error) {
+// between the two states. Update then returns no incident, and an error that
+// names the fields it did apply.
+func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (*Incident, []string, error) {
 	current, err := c.Get(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+
+	// The resolve reads the severity list of the organization, and writes
+	// nothing. It runs before the first write, because the IRM API cannot undo
+	// a write that a later step abandons: a manifest with an unknown
+	// spec.severityID then costs no half-applied incident.
+	label, err := c.resolveSeverityLabel(ctx, inc)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	var applied []string
-	// fail reports a half-applied update: the incident as it stands on the
-	// server, and the fields that reached it before the failure.
-	fail := func(field string, err error) (*Incident, error) {
+	// fail reports a half-applied update: the fields that reached the server
+	// before the failure. The incident stands between two states, so gcx
+	// returns no incident.
+	fail := func(field string, err error) (*Incident, []string, error) {
 		if len(applied) == 0 {
-			return nil, err
+			return nil, nil, err
 		}
-		return current, fmt.Errorf("incidents: update %s: gcx applied the %s, but the %s update failed: %w",
+		return nil, nil, fmt.Errorf("incidents: update %s: gcx applied the %s, but the %s update failed: %w",
 			id, strings.Join(applied, " and the "), field, err)
 	}
 
@@ -479,10 +496,6 @@ func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (
 		applied = append(applied, "title")
 	}
 
-	label, err := c.resolveSeverityLabel(ctx, inc)
-	if err != nil {
-		return fail("severity", err)
-	}
 	if label != "" && !strings.EqualFold(current.Severity, label) {
 		updated, err := c.UpdateSeverity(ctx, id, label)
 		if err != nil {
@@ -492,7 +505,7 @@ func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (
 		applied = append(applied, "severity")
 	}
 
-	return current, nil
+	return current, applied, nil
 }
 
 // updateIncidentField posts a single-field update to IncidentsService and

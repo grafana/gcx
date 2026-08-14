@@ -161,7 +161,9 @@ func newIncidentCRUD(client *IncidentClient, namespace string, query IncidentQue
 		GetFn:    func(ctx context.Context, name string) (*Incident, error) { return client.Get(ctx, name) },
 		CreateFn: func(ctx context.Context, inc *Incident) (*Incident, error) { return client.Create(ctx, inc) },
 		UpdateFn: func(ctx context.Context, name string, inc *Incident) (*Incident, error) {
-			return client.Update(ctx, name, inc)
+			// The push reports the manifest, not the list of changed fields.
+			updated, _, err := client.Update(ctx, name, inc)
+			return updated, err
 		},
 		DeleteFn: func(_ context.Context, _ string) error {
 			return errors.New("incidents: delete is not supported by the IRM API")
