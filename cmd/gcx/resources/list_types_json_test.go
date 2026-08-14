@@ -9,17 +9,21 @@ import (
 	"path/filepath"
 	"testing"
 
+	cmdfail "github.com/grafana/gcx/cmd/gcx/fail"
 	cmdresources "github.com/grafana/gcx/cmd/gcx/resources"
+	"github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestListTypes_JSONFieldSelectsPerDescriptor pins that
-// `gcx resources list-types --json kind` selects per descriptor. The command
-// once passed a plain map envelope, which put selection on the whole object,
-// so every field that --json list advertises looked absent.
-func TestListTypes_JSONFieldSelectsPerDescriptor(t *testing.T) {
+// runListTypes runs `resources list-types` with the given arguments against a
+// fake Grafana that answers one resource type, and returns stdout and the run
+// error.
+func runListTypes(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
@@ -67,14 +71,25 @@ current-context: test
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"resources", "--config", configFile, "list-types", "--json", "kind"})
-	require.NoError(t, root.Execute(), "stderr: %s", stderr.String())
+	root.SetArgs(append([]string{"resources", "--config", configFile, "list-types"}, args...))
+
+	err := root.Execute()
+	return stdout.String(), err
+}
+
+// TestListTypes_JSONFieldSelectsPerDescriptor pins that
+// `gcx resources list-types --json kind` selects per descriptor. The command
+// once passed a plain map envelope, which put selection on the whole object,
+// so every field that --json list advertises looked absent.
+func TestListTypes_JSONFieldSelectsPerDescriptor(t *testing.T) {
+	stdout, err := runListTypes(t, "--json", "kind")
+	require.NoError(t, err)
 
 	var got struct {
 		Items []map[string]any `json:"items"`
 	}
-	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got), "stdout: %s", stdout.String())
-	require.NotEmpty(t, got.Items, "stdout: %s", stdout.String())
+	require.NoError(t, json.Unmarshal([]byte(stdout), &got), "stdout: %s", stdout)
+	require.NotEmpty(t, got.Items, "stdout: %s", stdout)
 
 	kinds := make([]string, 0, len(got.Items))
 	for _, item := range got.Items {
@@ -84,4 +99,22 @@ current-context: test
 		kinds = append(kinds, kind)
 	}
 	assert.Contains(t, kinds, "Dashboard")
+}
+
+// TestListTypes_JSONUnknownPathIsRejected pins that an unknown path fails.
+// The payload once carried the descriptors as dynamic maps, so the command
+// declared no field set and printed an items array of null-valued objects
+// with exit code 0.
+func TestListTypes_JSONUnknownPathIsRejected(t *testing.T) {
+	stdout, err := runListTypes(t, "--json", "bogus")
+
+	var unknown cmdio.UnknownFieldSelectionError
+	require.ErrorAs(t, err, &unknown)
+	assert.Contains(t, err.Error(), "unknown field(s) in --json: bogus")
+	assert.Empty(t, stdout, "a rejected selection must write nothing")
+
+	detailed := cmdfail.ErrorToDetailedError(err)
+	require.NotNil(t, detailed)
+	require.NotNil(t, detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
 }
