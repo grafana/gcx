@@ -116,7 +116,7 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet, label string) {
 	// system: the default text codec reproduces the familiar
 	// "Deleted <label> <id>" line byte-for-byte; agent mode and explicit
 	// -o json/yaml get the structured document.
-	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
+	o.IO.RegisterCustomCodec("text", &mutationResultTextCodec[cmdio.SingleMutation]{
 		render: func(w io.Writer, m cmdio.SingleMutation) {
 			cmdio.Success(w, "Deleted %s %s", label, m.Target.ID)
 		},
