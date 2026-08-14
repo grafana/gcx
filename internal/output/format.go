@@ -194,9 +194,9 @@ func (opts *Options) applyJSONFlag() error {
 
 // applyJQFlag processes the --jq flag. The flag is mutually exclusive with
 // --json (both field selection and discovery): jq strictly supersedes those
-// mechanisms, so combining them adds confusion without value. Also, the two
-// resources/* commands that bypass Options.Encode() and construct
-// FieldSelectCodec directly (get.go, schemas.go) only fire when JSONFields or
+// mechanisms, so combining them adds confusion without value. Also, the
+// resources/get.go command bypasses Options.Encode() and constructs
+// FieldSelectCodec directly, and it only fires when JSONFields or
 // JSONDiscovery is set — mutual exclusion preserves correctness there.
 //
 // When -o is unset, --jq auto-flips OutputFormat to "json" (mirrors --json).
@@ -391,7 +391,9 @@ func marshalToSampleMap(value any) (map[string]any, error) {
 // reflection. Handles slices and pointers by unwrapping to the element type.
 // Returns nil if the type is not a struct after unwrapping.
 // Fields tagged json:"-" are excluded. Fields with no json tag use the
-// struct field name.
+// struct field name. The fields of an embedded struct are promoted into the
+// parent, exactly as encoding/json writes them, so discovery lists only names
+// that field selection accepts.
 func reflectFields(t reflect.Type) []string {
 	if t == nil {
 		return nil
@@ -402,14 +404,7 @@ func reflectFields(t reflect.Type) []string {
 	if t.Kind() != reflect.Struct {
 		return nil
 	}
-
-	var fields []string
-	for f := range t.Fields() {
-		if name, ok := jsonFieldName(f); ok {
-			fields = append(fields, name)
-		}
-	}
-	return fields
+	return jsonFieldNames(t, embeddedDepth)
 }
 
 // sampleFromObject picks the representative sample map for field discovery

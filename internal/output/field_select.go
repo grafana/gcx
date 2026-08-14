@@ -550,6 +550,12 @@ func typePaths(t reflect.Type, prefix string, depth int) []string {
 
 	var paths []string
 	for f := range t.Fields() {
+		if embedded, ok := promotedStructType(f); ok {
+			// encoding/json writes the fields of an embedded struct into the
+			// parent object, so its paths keep the prefix of the parent.
+			paths = append(paths, typePaths(embedded, prefix, depth-1)...)
+			continue
+		}
 		name, ok := jsonFieldName(f)
 		if !ok {
 			continue
@@ -618,14 +624,77 @@ func sliceElemTypeByKey(t reflect.Type, key string) reflect.Type {
 	return elem
 }
 
+// embeddedDepth bounds the walk through embedded structs. A struct can embed
+// itself through a pointer, so the walk must stop somewhere.
+const embeddedDepth = 8
+
+// promotedStructType returns the struct type of an anonymous field whose own
+// fields encoding/json writes into the parent object, and reports whether the
+// field is such a field. encoding/json promotes an embedded struct that has no
+// name in its json tag; it never writes the name of the embedded type as a
+// key. An embedded field of unexported type is promoted as well, so the export
+// rule of jsonFieldName does not apply here.
+func promotedStructType(f reflect.StructField) (reflect.Type, bool) {
+	if !f.Anonymous {
+		return nil, false
+	}
+	if name, _, _ := strings.Cut(f.Tag.Get("json"), ","); name != "" {
+		return nil, false
+	}
+	t := derefType(f.Type)
+	if t == nil || t.Kind() != reflect.Struct {
+		return nil, false
+	}
+	return t, true
+}
+
 // jsonFieldByName returns the struct field of t whose JSON name matches name.
 func jsonFieldByName(t reflect.Type, name string) (reflect.StructField, bool) {
+	return jsonFieldByNameDepth(t, name, embeddedDepth)
+}
+
+// jsonFieldByNameDepth does the work of jsonFieldByName, and walks into the
+// embedded structs whose fields encoding/json promotes. It reads the direct
+// fields first, because a direct field of the same name hides a promoted one.
+func jsonFieldByNameDepth(t reflect.Type, name string, depth int) (reflect.StructField, bool) {
+	var promoted []reflect.Type
 	for f := range t.Fields() {
+		if embedded, ok := promotedStructType(f); ok {
+			promoted = append(promoted, embedded)
+			continue
+		}
 		if fieldName, ok := jsonFieldName(f); ok && fieldName == name {
 			return f, true
 		}
 	}
+	if depth <= 0 {
+		return reflect.StructField{}, false
+	}
+	for _, embedded := range promoted {
+		if f, ok := jsonFieldByNameDepth(embedded, name, depth-1); ok {
+			return f, true
+		}
+	}
 	return reflect.StructField{}, false
+}
+
+// jsonFieldNames returns the JSON names of the keys that t writes, with the
+// keys of an embedded struct promoted into the parent, down to depth levels of
+// embedded structs.
+func jsonFieldNames(t reflect.Type, depth int) []string {
+	var names []string
+	for f := range t.Fields() {
+		if embedded, ok := promotedStructType(f); ok {
+			if depth > 0 {
+				names = append(names, jsonFieldNames(embedded, depth-1)...)
+			}
+			continue
+		}
+		if name, ok := jsonFieldName(f); ok {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // jsonFieldName returns the JSON name of a struct field, and reports whether
