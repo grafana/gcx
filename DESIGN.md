@@ -102,12 +102,21 @@ WARN http error   method=GET url=https://... error="connection refused"
 
 ### `--insecure-log-http-payload`
 
-Dumps the full request and response bodies (via `httputil.DumpRequest` /
+Dumps the full request and response bodies (via `httputil.DumpRequestOut` /
 `httputil.DumpResponse`) at Debug level. Requires `-vvv` to be visible.
 
 ```
 gcx --insecure-log-http-payload -vvv slo list
 ```
+
+Each dump carries a label, so you can find it in the log: `http request dump`
+and `http response dump`. A wire dump holds no word that identifies it, so
+searching for "body" finds nothing.
+
+The dump is the innermost transport layer, so it shows every header that reaches
+the wire, including the bearer token that the OAuth transport adds. A layer that
+fails before the wire produces no dump — a failed OAuth token refresh, for
+example. The `WARN http error` line carries the reason.
 
 **Warning:** The dump includes all headers, including `Authorization`. Treat
 the output as sensitive — do not paste it into public issues or logs.
