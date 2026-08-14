@@ -25,9 +25,9 @@ func (f *fakePluginAPI) SyncPlugin(context.Context) (*PluginSyncResult, error) {
 	return f.result, f.err
 }
 
-func runPluginCmd(t *testing.T, fake *fakePluginAPI, args ...string) (string, error) {
+func runSyncPluginCmd(t *testing.T, fake *fakePluginAPI, args ...string) (string, error) {
 	t.Helper()
-	cmd := newPluginCmd(&fakeLoader{client: fake})
+	cmd := newSyncPluginCommand(&fakeLoader{client: fake})
 	out := &bytes.Buffer{}
 	cmd.SetOut(out)
 	cmd.SetErr(out)
@@ -36,15 +36,12 @@ func runPluginCmd(t *testing.T, fake *fakePluginAPI, args ...string) (string, er
 	return out.String(), err
 }
 
-func TestPluginSyncCommand(t *testing.T) {
+func TestSyncPluginCommand(t *testing.T) {
 	resetAgentMode(t)
 
-	fake := &fakePluginAPI{result: &PluginSyncResult{
-		Status:  "success",
-		Message: "Sync request processed successfully",
-	}}
+	fake := &fakePluginAPI{result: &PluginSyncResult{Message: "Sync request processed successfully"}}
 
-	out, err := runPluginCmd(t, fake, "sync")
+	out, err := runSyncPluginCmd(t, fake)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,11 +53,11 @@ func TestPluginSyncCommand(t *testing.T) {
 	}
 }
 
-func TestPluginSyncCommandStructuredResult(t *testing.T) {
+func TestSyncPluginCommandStructuredResult(t *testing.T) {
 	resetAgentMode(t)
 
-	fake := &fakePluginAPI{result: &PluginSyncResult{Status: "success"}}
-	out, err := runPluginCmd(t, fake, "sync", "-o", "json")
+	fake := &fakePluginAPI{result: &PluginSyncResult{}}
+	out, err := runSyncPluginCmd(t, fake, "-o", "json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,11 +82,11 @@ func TestPluginSyncCommandStructuredResult(t *testing.T) {
 	}
 }
 
-func TestPluginSyncCommandSurfacesBackendError(t *testing.T) {
+func TestSyncPluginCommandSurfacesBackendError(t *testing.T) {
 	resetAgentMode(t)
 
 	fake := &fakePluginAPI{err: errors.New("irm: sync plugin: permission denied")}
-	_, err := runPluginCmd(t, fake, "sync")
+	_, err := runSyncPluginCmd(t, fake)
 	if err == nil || !strings.Contains(err.Error(), "permission denied") {
 		t.Errorf("expected the backend error, got %v", err)
 	}
