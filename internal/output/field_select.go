@@ -587,9 +587,13 @@ func unwrapType(t reflect.Type) reflect.Type {
 
 // structTypeOf returns the type of value when it unwraps to a struct, and nil
 // otherwise. A dynamic map or an unstructured object declares no field set.
+// An unstructured object is a struct, so it needs its own answer: its only
+// field is an untagged map, the keys live in that map, and the type says
+// nothing about them. The single-object branches of Encode pass nil for the
+// same reason.
 func structTypeOf(value any) reflect.Type {
 	t := unwrapType(reflect.TypeOf(value))
-	if t == nil || t.Kind() != reflect.Struct {
+	if t == nil || t.Kind() != reflect.Struct || t == reflect.TypeFor[unstructured.Unstructured]() {
 		return nil
 	}
 	return t
