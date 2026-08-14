@@ -8,12 +8,56 @@ debugging of authentication and API issues only.
 
 When this flag is set, every HTTP round-trip through
 `RequestResponseLoggingRoundTripper` writes the full dump (via
-`httputil.DumpRequest` / `httputil.DumpResponse`) to the debug log, including:
+`httputil.DumpRequestOut` / `httputil.DumpResponse`) to the debug log, including:
 
 - **Authorization tokens** (`Authorization: Bearer …`, `X-Grafana-Token: …`)
 - **Cookies** (session tokens, CSRF tokens)
 - **OAuth refresh tokens** (`oauth-refresh-token`, `gar_…` values)
 - **Request and response bodies** (JSON payloads that may embed credentials)
+
+The dump is the innermost transport layer. It therefore shows every header that
+reaches the wire, including the bearer token that the OAuth transport adds, the
+`X-Grafana-Caller-Id` header, and the user agent.
+
+## How to find the dump
+
+The dumps log at **Debug** level, so they need `-vvv`. Each dump carries a
+label, because a wire dump holds no word that identifies it:
+
+- `http request dump`
+- `http response dump`
+
+Search for the label, not for the word "body":
+
+```bash
+gcx --insecure-log-http-payload -vvv <command> 2>&1 | grep -A20 "http request dump"
+```
+
+A dump looks like this. The request line, the headers, and the raw body follow
+the label:
+
+```
+DEBUG http request dump
+POST /api/plugins/grafana-irm-app/resources/oncall/…/schedules/ HTTP/1.1
+Host: example.grafana.net
+Authorization: Bearer <token>
+Content-Type: application/json
+Content-Length: 42
+
+{"name":"primary-rotation","type":"calendar"}
+```
+
+No response dump appears when the round trip fails, because there is no
+response to dump. The `WARN http error` line carries the reason.
+
+Neither dump appears when the OAuth token refresh fails, because gcx sends
+nothing to the wire. The dump shows wire bytes, so it has nothing to report. The
+`WARN http error` line still carries the reason. Log in again, then repeat the
+command:
+
+```
+WARN http error method=GET url=https://… error="token refresh failed: session expired"
+```
 
 ## Why redaction is intentional
 
@@ -25,7 +69,7 @@ produces sensitive output.
 
 ## Recommended workflow
 
-1. Run `gcx --insecure-log-http-payload -v <command>` locally.
+1. Run `gcx --insecure-log-http-payload -vvv <command>` locally.
 2. Inspect the log output in your terminal.
 3. Do **not** pipe the output to a file and share it, paste it into a Slack
    channel, or attach it to a GitHub issue without first redacting all token
@@ -52,5 +96,5 @@ The flag was renamed to make the risk explicit. Using the old name
 unknown flag: --log-http-payload has been renamed; use --insecure-log-http-payload instead
 ```
 
-The payload-dump behavior is unchanged — only the flag name and the startup
-warning are new.
+The rename itself did not change the dump. It changed the flag name and added
+the startup warning.
