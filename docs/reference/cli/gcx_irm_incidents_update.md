@@ -9,7 +9,8 @@ Update the severity or the title of an incident.
 The severity is the display label, not the identifier. Run
 `gcx irm incidents severities list` for the labels of your organization.
 
-The command emits the updated incident.
+gcx reads the incident first, so a value that already matches causes no write.
+The command emits the incident.
 
 ```
 gcx irm incidents update <id> [flags]

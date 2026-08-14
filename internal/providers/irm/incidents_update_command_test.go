@@ -44,24 +44,36 @@ func TestIncidentUpdateCommand(t *testing.T) {
 		wantCalls []string
 		wantOut   []string
 	}{
+		// The command reaches the backend through IncidentClient.Update, so
+		// every case starts with the read that method does.
 		{
-			name:      "severity only",
-			args:      []string{"4", "--severity", "Critical"},
-			wantCalls: []string{"IncidentsService.UpdateSeverity"},
-			wantOut:   []string{"severity: Critical"},
+			name: "severity only",
+			args: []string{"4", "--severity", "Critical"},
+			wantCalls: []string{
+				"IncidentsService.GetIncident",
+				"IncidentsService.UpdateSeverity",
+			},
+			wantOut: []string{"severity: Critical"},
 		},
 		{
-			name:      "title only",
-			args:      []string{"4", "--title", "Checkout latency above the objective"},
-			wantCalls: []string{"IncidentsService.UpdateTitle"},
-			wantOut:   []string{"Checkout latency above the objective"},
+			name: "title only",
+			args: []string{"4", "--title", "Checkout latency above the objective"},
+			wantCalls: []string{
+				"IncidentsService.GetIncident",
+				"IncidentsService.UpdateTitle",
+			},
+			wantOut: []string{"Checkout latency above the objective"},
 		},
 		{
 			name: "both fields",
 			args: []string{"4", "--title", "new title", "--severity", "Major"},
 			// The title runs first, so the echoed incident carries both.
-			wantCalls: []string{"IncidentsService.UpdateTitle", "IncidentsService.UpdateSeverity"},
-			wantOut:   []string{"new title", "severity: Major"},
+			wantCalls: []string{
+				"IncidentsService.GetIncident",
+				"IncidentsService.UpdateTitle",
+				"IncidentsService.UpdateSeverity",
+			},
+			wantOut: []string{"new title", "severity: Major"},
 		},
 	}
 
