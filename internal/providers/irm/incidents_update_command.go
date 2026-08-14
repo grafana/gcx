@@ -9,9 +9,10 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// The IRM API has no single update method for an incident. Each mutable
-// field is its own operation, so this command applies one flag per call and
-// echoes the incident once, after the last call.
+// The IRM API has no single update method for an incident. Each mutable field
+// is its own operation. The command delegates to IncidentClient.Update, the
+// method the resources push path also reaches, so both paths share the read,
+// the skip of an unchanged field, and the not-found signal.
 
 type incidentUpdateOpts struct {
 	IO       cmdio.Options
@@ -54,7 +55,8 @@ func NewUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 The severity is the display label, not the identifier. Run
 ` + "`gcx irm incidents severities list`" + ` for the labels of your organization.
 
-The command emits the updated incident.`,
+gcx reads the incident first, so a value that already matches causes no write.
+The command emits the incident.`,
 		Example: `  # Raise the severity of an incident:
   gcx irm incidents update 4 --severity Critical
 
@@ -82,18 +84,12 @@ The command emits the updated incident.`,
 				return err
 			}
 
-			// Validate guarantees at least one flag, so at least one call
-			// runs and inc is never nil below.
-			var inc *Incident
-			if opts.Title != "" {
-				if inc, err = client.UpdateTitle(ctx, id, opts.Title); err != nil {
-					return err
-				}
-			}
-			if opts.Severity != "" {
-				if inc, err = client.UpdateSeverity(ctx, id, opts.Severity); err != nil {
-					return err
-				}
+			// Update skips an empty field and a field that already matches, so
+			// one call covers both flags. Validate rejects an explicit empty
+			// value, so an empty field here is an omitted flag.
+			inc, err := client.Update(ctx, id, &Incident{Title: opts.Title, Severity: opts.Severity})
+			if err != nil {
+				return err
 			}
 
 			res, err := ToResource(*inc, restCfg.Namespace)
