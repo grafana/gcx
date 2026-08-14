@@ -141,6 +141,36 @@ func TestFormatQueryCSV_NoData(t *testing.T) {
 	assert.Empty(t, buf.String())
 }
 
+func TestFormatMetricQueryCSV(t *testing.T) {
+	resp := &loki.MetricQueryResponse{
+		Data: loki.MetricQueryData{
+			ResultType: "matrix",
+			Result: []loki.MetricQuerySample{
+				{
+					Metric: map[string]string{"level": "error"},
+					Values: [][]any{{float64(1700000000), "3.5"}},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatMetricQueryCSV(&buf, resp))
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, 2)
+	assert.Equal(t, "TIMESTAMP,VALUE,LEVEL", lines[0])
+	assert.Equal(t, "2023-11-14T22:13:20Z,3.5,error", lines[1])
+}
+
+func TestFormatMetricQueryCSV_NoData(t *testing.T) {
+	resp := &loki.MetricQueryResponse{Data: loki.MetricQueryData{Result: nil}}
+
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatMetricQueryCSV(&buf, resp))
+	assert.Empty(t, buf.String())
+}
+
 func TestFormatQueryTable_FallsBackToPlainMessage(t *testing.T) {
 	resp := &loki.QueryResponse{
 		Data: loki.QueryResultData{

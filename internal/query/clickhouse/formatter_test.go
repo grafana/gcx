@@ -40,3 +40,34 @@ func TestFormatDescribeTableTable(t *testing.T) {
 	assert.Contains(t, out, "primary key")
 	assert.Contains(t, out, "DEFAULT")
 }
+
+func TestFormatListTablesCSV(t *testing.T) {
+	totalRows := uint64(1000)
+	tables := []clickhouse.TableInfo{
+		{Database: "default", Name: "events", Engine: "MergeTree", TotalRows: &totalRows, TotalBytes: nil},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, clickhouse.FormatListTablesCSV(&buf, tables))
+	assert.Equal(t, "DATABASE,NAME,ENGINE,TOTAL_ROWS,TOTAL_BYTES\ndefault,events,MergeTree,1000,\n", buf.String())
+}
+
+func TestFormatListTablesCSV_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, clickhouse.FormatListTablesCSV(&buf, nil))
+	assert.Empty(t, buf.String())
+}
+
+func TestFormatDescribeTableCSV(t *testing.T) {
+	cols := []clickhouse.ColumnInfo{
+		{Name: "id", Type: "UInt64", Comment: "primary key"},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, clickhouse.FormatDescribeTableCSV(&buf, cols))
+	assert.Equal(t, "NAME,TYPE,DEFAULT_TYPE,DEFAULT_EXPRESSION,COMMENT\nid,UInt64,,,primary key\n", buf.String())
+}
+
+func TestFormatDescribeTableCSV_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, clickhouse.FormatDescribeTableCSV(&buf, nil))
+	assert.Empty(t, buf.String())
+}
