@@ -1,27 +1,18 @@
-## gcx irm
+## gcx irm plugin
 
-Manage Grafana IRM (OnCall + Incidents)
-
-### Synopsis
-
-Manage Grafana IRM (OnCall + Incidents).
-
-Note: Grafana IRM is billed per monthly active user. Actions such as being on
-an OnCall schedule or escalation chain, changing alert group status, or
-creating and editing incidents count a user as active.
-See https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice.md.
+Manage the IRM plugin itself.
 
 ### Options
 
 ```
-      --config string   Path to the configuration file to use
-  -h, --help            help for irm
+  -h, --help   help for plugin
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -31,8 +22,6 @@ See https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-in
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx irm incidents](gcx_irm_incidents.md)	 - Manage incidents.
-* [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
-* [gcx irm plugin](gcx_irm_plugin.md)	 - Manage the IRM plugin itself.
+* [gcx irm](gcx_irm.md)	 - Manage Grafana IRM (OnCall + Incidents)
+* [gcx irm plugin sync](gcx_irm_plugin_sync.md)	 - Refresh the IRM copy of the Grafana users and teams.
 
