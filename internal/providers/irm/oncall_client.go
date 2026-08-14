@@ -838,7 +838,8 @@ func (c *OnCallClient) CreateDirectPaging(ctx context.Context, input DirectPagin
 //
 // IRM keeps its own copy and refreshes it on a schedule. Until that refresh
 // lands, an IRM object that references a new team or user fails with
-// "Object does not exist". This call replaces the wait.
+// "Object does not exist". This call starts the refresh. It does not prove
+// that the copy is current when the call returns.
 //
 // The backend answers with free-form success text that a caller cannot
 // dispatch on, so this method ignores the body, like deleteResource does, and
