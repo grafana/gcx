@@ -123,7 +123,7 @@ func (o *startMaintenanceOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *startMaintenanceOpts) Validate() error {
-	if _, ok := MaintenanceModeNames[o.Mode]; !ok {
+	if _, ok := maintenanceModeNames[o.Mode]; !ok {
 		return fmt.Errorf("unknown --mode %q, expected one of: %s",
 			o.Mode, strings.Join(maintenanceModeFlagValues(), ", "))
 	}
@@ -136,8 +136,8 @@ func (o *startMaintenanceOpts) Validate() error {
 // maintenanceModeFlagValues returns the accepted --mode values in a stable
 // order, for the flag help and the error message.
 func maintenanceModeFlagValues() []string {
-	names := make([]string, 0, len(MaintenanceModeNames))
-	for name := range MaintenanceModeNames {
+	names := make([]string, 0, len(maintenanceModeNames))
+	for name := range maintenanceModeNames {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -170,8 +170,8 @@ The backend accepts a limited set of durations. It rejects any other value.`,
 				return err
 			}
 
-			mode := MaintenanceModeNames[opts.Mode]
-			if err := client.StartIntegrationMaintenance(cmd.Context(), args[0], int(mode), opts.Duration); err != nil {
+			mode := maintenanceModeNames[opts.Mode]
+			if err := client.StartIntegrationMaintenance(cmd.Context(), args[0], mode, opts.Duration); err != nil {
 				return err
 			}
 
