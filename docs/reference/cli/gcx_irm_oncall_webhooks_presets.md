@@ -23,5 +23,5 @@ Discover webhook configuration presets.
 ### SEE ALSO
 
 * [gcx irm oncall webhooks](gcx_irm_oncall_webhooks.md)	 - Manage outgoing webhooks.
-* [gcx irm oncall webhooks presets list](gcx_irm_oncall_webhooks_presets_list.md)	 - List webhook preset IDs (e.g. grafana_assistant) and their allowed triggers.
+* [gcx irm oncall webhooks presets list](gcx_irm_oncall_webhooks_presets_list.md)	 - List webhook preset IDs (e.g. grafana_assistant) and their allowed triggers (older spelling; use `webhooks list-presets`).
 

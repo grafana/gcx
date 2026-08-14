@@ -187,6 +187,24 @@ func TestDiscoveryCompoundHasFullHelp(t *testing.T) {
 	}
 }
 
+// TestDiscoveryNounListNamesTheCompound keeps the canonicality signal in the
+// human help. A person who reads the parent help must see which of the two
+// spellings to use.
+func TestDiscoveryNounListNamesTheCompound(t *testing.T) {
+	for _, tt := range discoveryCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := newDiscoveryParent(t, tt.build)
+			cmd, _, err := parent.Find([]string{tt.noun, "list"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(cmd.Short, tt.compound) {
+				t.Errorf("the Short of `%s list` must name `%s`, got %q", tt.noun, tt.compound, cmd.Short)
+			}
+		})
+	}
+}
+
 func TestDiscoveryRejectsPositionalArgs(t *testing.T) {
 	resetAgentMode(t)
 	parent := newDiscoveryParent(t, newEscalationStepCmds)

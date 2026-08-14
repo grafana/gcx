@@ -1,6 +1,6 @@
 ## gcx irm oncall routes filter-types list
 
-List allowed values for a route's filtering_term_type field.
+List allowed values for a route's filtering_term_type field (older spelling; use `routes list-filter-types`).
 
 ### Synopsis
 

@@ -23,5 +23,5 @@ Discover allowed escalation policy step types.
 ### SEE ALSO
 
 * [gcx irm oncall escalation-policies](gcx_irm_oncall_escalation-policies.md)	 - Manage escalation policies.
-* [gcx irm oncall escalation-policies steps list](gcx_irm_oncall_escalation-policies_steps_list.md)	 - List allowed values for an escalation policy's step field.
+* [gcx irm oncall escalation-policies steps list](gcx_irm_oncall_escalation-policies_steps_list.md)	 - List allowed values for an escalation policy's step field (older spelling; use `escalation-policies list-step-types`).
 
