@@ -255,3 +255,40 @@ func TestRunList_JSONFieldSelection_Unknown(t *testing.T) {
 	require.ErrorAs(t, err, &fieldErr)
 	assert.Contains(t, fieldErr.Fields, "bogus")
 }
+
+// TestRunList_JSONFieldSelection_UnsetOptional covers
+// `gcx instrumentation clusters list --json name,costMetrics` when no cluster
+// sets costMetrics. The field is a *bool tagged omitempty, so no row emits
+// the key. ClusterView still declares it, so the selection must keep it.
+func TestRunList_JSONFieldSelection_UnsetOptional(t *testing.T) {
+	monClient := &fakeMonitoringClient{
+		RunK8sMonitoringFn: func(_ context.Context) ([]instrumentation.ClusterObservedState, error) {
+			return []instrumentation.ClusterObservedState{{Name: "prod-eu"}}, nil
+		},
+	}
+	pipeClient := &fakePipelineClient{}
+	instrClient := &fakeClient{
+		GetK8SInstrumentationFn: func(_ context.Context, name string) (*instrumentation.GetK8SInstrumentationResponse, error) {
+			return &instrumentation.GetK8SInstrumentationResponse{
+				Cluster: instrumentation.Cluster{Name: name, Selection: "SELECTION_INCLUDED"},
+			}, nil
+		},
+	}
+
+	opts := &listOpts{}
+	opts.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(instrOutput.ClusterView{}))
+	opts.IO.OutputFormat = "json"
+	opts.IO.JSONFields = []string{"name", "costMetrics"}
+
+	var buf bytes.Buffer
+	require.NoError(t, runList(context.Background(), opts, monClient, pipeClient, instrClient, &buf))
+
+	var got struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	require.Len(t, got.Items, 1)
+	assert.Equal(t, "prod-eu", got.Items[0]["name"])
+	require.Contains(t, got.Items[0], "costMetrics")
+	assert.Nil(t, got.Items[0]["costMetrics"])
+}

@@ -38,16 +38,31 @@ func (e UnknownFieldSelectionError) Error() string {
 }
 
 // suggestion renders the candidate paths as a "did you mean" clause, in the
-// order of e.Fields so the output is stable.
+// order of e.Fields so the output is stable. Each group names the field it
+// corrects when more than one field is absent, so the caller reads which
+// candidate belongs to which name.
 func (e UnknownFieldSelectionError) suggestion() string {
-	var paths []string
+	var groups [][]string
+	var names []string
 	for _, field := range e.Fields {
-		paths = append(paths, e.Candidates[field]...)
+		if paths := e.Candidates[field]; len(paths) > 0 {
+			groups = append(groups, paths)
+			names = append(names, field)
+		}
 	}
-	if len(paths) == 0 {
+	if len(groups) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("Did you mean %s?", strings.Join(paths, ", "))
+
+	parts := make([]string, 0, len(groups))
+	for i, paths := range groups {
+		part := strings.Join(paths, ", ")
+		if len(e.Fields) > 1 {
+			part += " for " + names[i]
+		}
+		parts = append(parts, part)
+	}
+	return fmt.Sprintf("Did you mean %s?", strings.Join(parts, "; "))
 }
 
 // FieldSelectCodec wraps the JSON codec and emits only the requested fields
@@ -64,7 +79,9 @@ func (e UnknownFieldSelectionError) suggestion() string {
 // {"datasources": [...]}) get per-item selection with the wrapper key
 // preserved.
 //
-// Missing fields produce a null value rather than being omitted.
+// A requested path that the item type declares but that no object emits
+// produces a null value. A path that neither the type nor any object carries
+// is a caller error (see selectFields).
 type FieldSelectCodec struct {
 	fields    []string
 	json      *format.JSONCodec
@@ -107,7 +124,7 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 
 	switch v := value.(type) {
 	case unstructured.UnstructuredList:
-		items, err := c.selectItems(unstructuredObjects(v.Items))
+		items, err := c.selectItems(unstructuredObjects(v.Items), nil)
 		if err != nil {
 			return err
 		}
@@ -117,17 +134,17 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 		if v == nil {
 			return c.json.Encode(dst, listFieldSelectionOutput(nil, nil))
 		}
-		items, err := c.selectItems(unstructuredObjects(v.Items))
+		items, err := c.selectItems(unstructuredObjects(v.Items), nil)
 		if err != nil {
 			return err
 		}
 		return c.json.Encode(dst, listFieldSelectionOutput(items, paginationMetadataFromUnstructuredList(*v)))
 
 	case unstructured.Unstructured:
-		return c.encodeOne(dst, v.Object)
+		return c.encodeOne(dst, v.Object, nil)
 
 	case *unstructured.Unstructured:
-		return c.encodeOne(dst, v.Object)
+		return c.encodeOne(dst, v.Object, nil)
 
 	case map[string]any:
 		// A dynamic map is treated as a list envelope only when it carries
@@ -146,7 +163,7 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 		if handled {
 			return c.json.Encode(dst, out)
 		}
-		return c.encodeOne(dst, v)
+		return c.encodeOne(dst, v, nil)
 
 	default:
 		// For arbitrary types: marshal → map → extract fields.
@@ -158,7 +175,7 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 			// metadata.
 			if env, ok := value.(ListEnvelope); ok {
 				key := env.ListItemsKey()
-				extracted, selErr := c.selectItems(toSliceOfMaps(m[key]))
+				extracted, selErr := c.selectItems(toSliceOfMaps(m[key]), sliceElemTypeByKey(reflect.TypeOf(value), key))
 				if selErr != nil {
 					return selErr
 				}
@@ -175,7 +192,7 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 			if arrErr != nil {
 				return err // return the original toMap error
 			}
-			extracted, selErr := c.selectItems(items)
+			extracted, selErr := c.selectItems(items, structTypeOf(value))
 			if selErr != nil {
 				return selErr
 			}
@@ -183,7 +200,7 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 			return c.json.Encode(dst, extracted)
 		}
 
-		out, handled, envErr := c.envelopeFieldSelection(m)
+		out, handled, envErr := c.envelopeFieldSelection(m, value)
 		if envErr != nil {
 			return envErr
 		}
@@ -191,7 +208,7 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 			return c.json.Encode(dst, out)
 		}
 
-		return c.encodeOne(dst, m)
+		return c.encodeOne(dst, m, structTypeOf(value))
 	}
 }
 
@@ -220,18 +237,20 @@ func (c *FieldSelectCodec) dynamicMapEnvelopeSelection(v map[string]any) (map[st
 	if !hasListMetaEntry(m) {
 		return nil, false, nil
 	}
-	return c.envelopeFieldSelection(m)
+	// A dynamic map declares no field set, so selection falls back to the
+	// emitted keys.
+	return c.envelopeFieldSelection(m, nil)
 }
 
 // selectItems applies field selection to a list of objects, rejecting any
-// requested path that exists in none of them.
-func (c *FieldSelectCodec) selectItems(objs []map[string]any) ([]map[string]any, error) {
-	return selectFields(objs, c.fields)
+// requested path that neither itemType nor any object carries.
+func (c *FieldSelectCodec) selectItems(objs []map[string]any, itemType reflect.Type) ([]map[string]any, error) {
+	return selectFields(objs, c.fields, itemType)
 }
 
 // encodeOne applies field selection to a single object and writes it.
-func (c *FieldSelectCodec) encodeOne(dst goio.Writer, obj map[string]any) error {
-	selected, err := selectFields([]map[string]any{obj}, c.fields)
+func (c *FieldSelectCodec) encodeOne(dst goio.Writer, obj map[string]any, objType reflect.Type) error {
+	selected, err := selectFields([]map[string]any{obj}, c.fields, objType)
 	if err != nil {
 		return err
 	}
@@ -260,9 +279,11 @@ func unstructuredObjects(items []unstructured.Unstructured) []map[string]any {
 // The reserved list_meta truncation-metadata entry is re-attached in both
 // cases so the signal survives field selection. Returns false for any other
 // shape (the caller falls back to whole-object selection).
-func (c *FieldSelectCodec) envelopeFieldSelection(m map[string]any) (map[string]any, bool, error) {
+// The value argument carries the Go value the map came from, so selection can
+// read the declared item type; it is nil for a dynamic map.
+func (c *FieldSelectCodec) envelopeFieldSelection(m map[string]any, value any) (map[string]any, bool, error) {
 	if raw, ok := m["items"]; ok {
-		extracted, err := c.selectItems(toSliceOfMaps(raw))
+		extracted, err := c.selectItems(toSliceOfMaps(raw), sliceElemTypeByKey(reflect.TypeOf(value), "items"))
 		if err != nil {
 			return nil, false, err
 		}
@@ -272,7 +293,7 @@ func (c *FieldSelectCodec) envelopeFieldSelection(m map[string]any) (map[string]
 	}
 
 	if key, items, ok := singleKeyItems(m); ok {
-		extracted, err := c.selectItems(items)
+		extracted, err := c.selectItems(items, sliceElemTypeByKey(reflect.TypeOf(value), key))
 		if err != nil {
 			return nil, false, err
 		}
@@ -287,7 +308,7 @@ func (c *FieldSelectCodec) envelopeFieldSelection(m map[string]any) (map[string]
 	// Scalar items have no fields to select into, so selection runs on the
 	// whole envelope and the reserved entry is re-attached.
 	if hasListMetaEntry(m) && singleKeyScalarArray(m) {
-		selected, err := selectFields([]map[string]any{m}, c.fields)
+		selected, err := selectFields([]map[string]any{m}, c.fields, structTypeOf(value))
 		if err != nil {
 			return nil, false, err
 		}
@@ -308,25 +329,16 @@ func (c *FieldSelectCodec) Fields() []string {
 	return c.fields
 }
 
-// ExtractFields is the exported equivalent of extractFields, for use by callers
-// that need to apply field selection outside of Encode (e.g. partial failure envelopes).
-func ExtractFields(obj map[string]any, fields []string) map[string]any {
-	return extractFields(obj, fields)
-}
-
-// extractFields returns a new map containing only the requested field paths
-// and their values. Dot-notation paths are resolved against nested maps.
-// A missing path produces a null (nil) value.
-func extractFields(obj map[string]any, fields []string) map[string]any {
-	result := make(map[string]any, len(fields))
-	for _, field := range fields {
-		result[field] = getNestedField(obj, field)
-	}
-	return result
+// SelectFields applies field selection to a set of objects outside Encode
+// (the partial-failure envelope of `gcx resources get`), under the same
+// contract: a path that no object carries is a caller error. The objects are
+// dynamic maps, so there is no declared field set to consult.
+func SelectFields(objs []map[string]any, fields []string) ([]map[string]any, error) {
+	return selectFields(objs, fields, nil)
 }
 
 // selectFields applies field selection across a set of objects and rejects
-// any requested path that exists in none of them.
+// any requested path that neither the item type nor any object carries.
 //
 // A path that resolves nowhere used to produce one null per row. A caller who
 // typed a leaf name (`username`) rather than a path (`spec.username`) then
@@ -334,12 +346,17 @@ func extractFields(obj map[string]any, fields []string) map[string]any {
 // found nothing and reported zero. The absence of the path is a caller error,
 // so it fails here instead.
 //
-// The check is per-path existence, not per-value: a path that exists and
-// holds null in every object is a real field and stays. It is also across the
-// whole set, so a heterogeneous list keeps a path that only some objects
-// carry. An empty set skips the check, because it proves nothing about the
-// field names.
-func selectFields(objs []map[string]any, fields []string) ([]map[string]any, error) {
+// The rejection is per-path existence, not per-value:
+//
+//   - itemType, when known, is the authority: a field that the type declares
+//     but that no object emits — an omitempty field that holds its zero value
+//     in every row — is a real field, and it keeps the null.
+//   - Otherwise the emitted keys decide, across the whole set, so a
+//     heterogeneous list keeps a path that only some objects carry.
+//   - A path that exists and holds null is a real field and stays.
+//   - A set with no keys at all (an empty list, or one empty object) skips
+//     the rejection, because it proves nothing about the field names.
+func selectFields(objs []map[string]any, fields []string, itemType reflect.Type) ([]map[string]any, error) {
 	selected := make([]map[string]any, len(objs))
 	present := make(map[string]bool, len(fields))
 
@@ -355,28 +372,28 @@ func selectFields(objs []map[string]any, fields []string) ([]map[string]any, err
 		selected[i] = result
 	}
 
-	if len(objs) == 0 {
-		return selected, nil
-	}
-	if err := absentFieldError(objs, fields, present); err != nil {
-		return nil, err
-	}
-	return selected, nil
-}
-
-// absentFieldError builds the error for every requested field that exists in
-// no object, with the real dotted paths that end with the same name.
-func absentFieldError(objs []map[string]any, fields []string, present map[string]bool) error {
 	var absent []string
 	for _, field := range fields {
-		if !present[field] {
+		if !present[field] && !typeCarriesPath(itemType, field) {
 			absent = append(absent, field)
 		}
 	}
-	if len(absent) == 0 {
-		return nil
+	if len(absent) == 0 || !carryKeys(objs) {
+		return selected, nil
 	}
-	return UnknownFieldSelectionError{Fields: absent, Candidates: candidatePaths(objs, absent)}
+	return nil, UnknownFieldSelectionError{Fields: absent, Candidates: candidatePaths(objs, absent)}
+}
+
+// carryKeys reports whether any object holds a key. An empty set, or a set of
+// empty objects, is no evidence about the field names, so the caller keeps
+// every requested path.
+func carryKeys(objs []map[string]any) bool {
+	for _, obj := range objs {
+		if len(obj) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // candidatePathSampleSize bounds how many objects candidatePaths walks. The
@@ -384,9 +401,23 @@ func absentFieldError(objs []map[string]any, fields []string, present map[string
 const candidatePathSampleSize = 20
 
 // candidatePaths returns, per absent name, the dotted paths in the sampled
-// objects whose last segment equals that name. A name that is already dotted
-// gets no candidate: the caller wrote a path, and it does not exist.
+// objects whose last segment equals that name.
 func candidatePaths(objs []map[string]any, absent []string) map[string][]string {
+	var paths []string
+	for i, obj := range objs {
+		if i >= candidatePathSampleSize {
+			break
+		}
+		paths = append(paths, DiscoverFields(obj)...)
+	}
+	return candidatesByLeaf(paths, absent)
+}
+
+// candidatesByLeaf groups the known dotted paths under the absent name that
+// each one ends with. A name that is already dotted gets no candidate: the
+// caller wrote a path, and it does not exist. A top-level path is no
+// candidate either, because the caller already wrote that name.
+func candidatesByLeaf(paths, absent []string) map[string][]string {
 	wanted := make(map[string]bool, len(absent))
 	for _, field := range absent {
 		if !strings.Contains(field, ".") {
@@ -398,20 +429,15 @@ func candidatePaths(objs []map[string]any, absent []string) map[string][]string 
 	}
 
 	seen := make(map[string]map[string]bool, len(wanted))
-	for i, obj := range objs {
-		if i >= candidatePathSampleSize {
-			break
+	for _, path := range paths {
+		leaf := path[strings.LastIndex(path, ".")+1:]
+		if !wanted[leaf] || leaf == path {
+			continue
 		}
-		for _, path := range DiscoverFields(obj) {
-			leaf := path[strings.LastIndex(path, ".")+1:]
-			if !wanted[leaf] || leaf == path {
-				continue
-			}
-			if seen[leaf] == nil {
-				seen[leaf] = make(map[string]bool)
-			}
-			seen[leaf][path] = true
+		if seen[leaf] == nil {
+			seen[leaf] = make(map[string]bool)
 		}
+		seen[leaf][path] = true
 	}
 
 	candidates := make(map[string][]string, len(seen))
@@ -426,11 +452,135 @@ func candidatePaths(objs []map[string]any, absent []string) map[string][]string 
 	return candidates
 }
 
-// getNestedField resolves a dot-separated field path in a nested map.
-// Returns nil when any segment of the path is missing or not a map.
-func getNestedField(obj map[string]any, path string) any {
-	value, _ := lookupNestedField(obj, path)
-	return value
+// typeCarriesPath reports whether the Go type declares the dotted field path.
+// It matches each segment against the JSON names of the struct fields, and
+// walks into the field type for the rest of the path. A segment that lands on
+// a map or an interface accepts the rest of the path: the type cannot say
+// what such a value holds.
+//
+// selectFields uses it to keep a field that the type declares but that no
+// object emits, and MakeFieldValidator uses it to check a requested path. A
+// nil type carries nothing, so the caller falls back to the emitted keys.
+func typeCarriesPath(t reflect.Type, path string) bool {
+	t = unwrapType(t)
+	if t == nil {
+		return false
+	}
+	if t.Kind() == reflect.Map || t.Kind() == reflect.Interface {
+		return true
+	}
+	if t.Kind() != reflect.Struct {
+		return false
+	}
+
+	name, rest, nested := strings.Cut(path, ".")
+	field, ok := jsonFieldByName(t, name)
+	if !ok {
+		return false
+	}
+	if !nested {
+		return true
+	}
+	return typeCarriesPath(field.Type, rest)
+}
+
+// typePathDepth bounds the walk that typePaths makes. A deep or recursive
+// type would otherwise never end, and the paths only feed a suggestion.
+const typePathDepth = 4
+
+// typePaths enumerates the dotted field paths that the type declares, down to
+// typePathDepth levels. MakeFieldValidator uses them to suggest the real path
+// for a leaf name.
+func typePaths(t reflect.Type, prefix string, depth int) []string {
+	t = unwrapType(t)
+	if t == nil || t.Kind() != reflect.Struct || depth <= 0 {
+		return nil
+	}
+
+	var paths []string
+	for f := range t.Fields() {
+		name, ok := jsonFieldName(f)
+		if !ok {
+			continue
+		}
+		full := name
+		if prefix != "" {
+			full = prefix + "." + name
+		}
+		paths = append(paths, full)
+		paths = append(paths, typePaths(f.Type, full, depth-1)...)
+	}
+	return paths
+}
+
+// unwrapType reduces a pointer, slice, or array type to the type it holds.
+func unwrapType(t reflect.Type) reflect.Type {
+	for t != nil {
+		switch t.Kind() {
+		case reflect.Pointer, reflect.Slice, reflect.Array:
+			t = t.Elem()
+		default:
+			return t
+		}
+	}
+	return nil
+}
+
+// structTypeOf returns the type of value when it unwraps to a struct, and nil
+// otherwise. A dynamic map or an unstructured object declares no field set.
+func structTypeOf(value any) reflect.Type {
+	t := unwrapType(reflect.TypeOf(value))
+	if t == nil || t.Kind() != reflect.Struct {
+		return nil
+	}
+	return t
+}
+
+// sliceElemTypeByKey returns the struct type of the elements of the slice
+// field whose JSON name matches key. Returns nil when t does not unwrap to a
+// struct, has no such field, or the elements are not structs.
+func sliceElemTypeByKey(t reflect.Type, key string) reflect.Type {
+	t = unwrapType(t)
+	if t == nil || t.Kind() != reflect.Struct {
+		return nil
+	}
+	field, ok := jsonFieldByName(t, key)
+	if !ok || field.Type.Kind() != reflect.Slice {
+		return nil
+	}
+	elem := unwrapType(field.Type)
+	if elem == nil || elem.Kind() != reflect.Struct {
+		return nil
+	}
+	return elem
+}
+
+// jsonFieldByName returns the struct field of t whose JSON name matches name.
+func jsonFieldByName(t reflect.Type, name string) (reflect.StructField, bool) {
+	for f := range t.Fields() {
+		if fieldName, ok := jsonFieldName(f); ok && fieldName == name {
+			return f, true
+		}
+	}
+	return reflect.StructField{}, false
+}
+
+// jsonFieldName returns the JSON name of a struct field, and reports whether
+// the field is selectable at all. An unexported field and a field tagged
+// json:"-" are not. A field with no json tag uses its Go name.
+func jsonFieldName(f reflect.StructField) (string, bool) {
+	if !f.IsExported() {
+		return "", false
+	}
+	tag := f.Tag.Get("json")
+	if tag == "-" {
+		return "", false
+	}
+	name, _, _ := strings.Cut(tag, ",")
+	if name == "" {
+		name = f.Name
+	}
+	return name, true
 }
 
 // lookupNestedField resolves a dot-separated field path in a nested map and
@@ -655,47 +805,44 @@ func toSliceOfMaps(raw any) []map[string]any {
 }
 
 // MakeFieldValidator builds a validator function from a sample value.
-// The returned function checks that all requested fields are present in the
-// discovered field set derived from the sample. Unknown fields cause the
-// validator to return UnknownFieldSelectionError listing the offending names.
+// The returned function checks that the type of the sample carries every
+// requested path. An unknown path makes the validator return
+// UnknownFieldSelectionError, which names the offending paths and the real
+// dotted paths that end with the same leaf name.
 //
 // The sample should be an instance of the item type (zero or non-zero) — NOT
 // the list envelope — so that the validator sees item-level fields.
 //
-// Field discovery uses reflection to enumerate exported struct fields by their
-// JSON names. This correctly handles struct fields tagged `json:"...,omitempty"`
-// that would be absent from a zero-value JSON marshal. Fields tagged json:"-"
-// are excluded (they are not selectable).
+// The check uses the same typeCarriesPath walk as selectFields, so both
+// routes accept the same paths. It reads the declared type, which correctly
+// handles a field tagged `json:"...,omitempty"` that a zero-value marshal
+// leaves out. A field tagged json:"-" is not selectable.
 //
 // If the field set cannot be derived from the sample (e.g. the type is a
 // primitive, map, or interface), the function returns nil (fail open — no
 // validation). This prevents false positives for exotic types.
 func MakeFieldValidator(sample any) func(fields []string) error {
-	// Use reflection to enumerate JSON field names from the struct type.
-	// reflectFields (from format.go, same package) handles slices and pointers
-	// by unwrapping to the element type, and skips json:"-" fields.
-	structFields := reflectFields(reflect.TypeOf(sample))
-	if len(structFields) == 0 {
-		// Cannot determine the field set — fail open.
+	// reflectFields (from format.go, same package) returns nothing for a type
+	// that declares no field set, which is the fail-open case.
+	itemType := reflect.TypeOf(sample)
+	if len(reflectFields(itemType)) == 0 {
 		return nil
-	}
-
-	allowed := make(map[string]struct{}, len(structFields))
-	for _, f := range structFields {
-		allowed[f] = struct{}{}
 	}
 
 	return func(requested []string) error {
 		var unknown []string
 		for _, f := range requested {
-			if _, ok := allowed[f]; !ok {
+			if !typeCarriesPath(itemType, f) {
 				unknown = append(unknown, f)
 			}
 		}
-		if len(unknown) > 0 {
-			return UnknownFieldSelectionError{Fields: unknown}
+		if len(unknown) == 0 {
+			return nil
 		}
-		return nil
+		return UnknownFieldSelectionError{
+			Fields:     unknown,
+			Candidates: candidatesByLeaf(typePaths(itemType, "", typePathDepth), unknown),
+		}
 	}
 }
 

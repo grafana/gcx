@@ -136,7 +136,7 @@ gcx resources get dashboards/my-dash --json ?
 
 | Value | Behavior |
 |-------|----------|
-| `--json path1,path2` | Emit JSON with only those field paths. A path that exists and holds null renders as `null`. A path that exists in no emitted object is a usage error that names the real dotted paths ending with the same leaf name |
+| `--json path1,path2` | Emit JSON with only those field paths. A path that exists and holds null renders as `null`. A path that neither the item type nor any emitted object carries is a usage error that names the real dotted paths ending with the same leaf name |
 | `--json ?` | Print available field paths (one per line, sorted) and exit 0 |
 | `--json` + `-o json` | Allowed — both request JSON, no conflict |
 | `--json` + `-o <non-json>` | Usage error — field selection requires JSON output |
@@ -148,9 +148,12 @@ additional list calls are made (NC-005).
 
 **A path is required, not a leaf name.** `--json username` on a resource whose
 username lives at `spec.username` fails with the real path in the message. The
-check is per-path existence across the whole result set, so a heterogeneous
-list keeps a path that only some objects carry, and an empty result set skips
-the check.
+rejection is per-path existence, and the declared item type is the authority:
+a field that the type declares but that no row emits — an `omitempty` field
+that holds its zero value everywhere — keeps its `null`. Where there is no
+declared type, the emitted keys decide across the whole result set, so a
+heterogeneous list keeps a path that only some objects carry. A result set
+with no keys at all skips the rejection.
 
 **Output shape:**
 - Single resource: `{"field": "value", ...}` (flat object, only selected fields)
