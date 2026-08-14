@@ -23,13 +23,23 @@ func (o *incidentUpdateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Severity, "severity", "",
-		"New severity label (run `gcx irm incidents severities list` for the valid values)")
+		"New severity label (run 'gcx irm incidents severities list' for the valid values)")
 	flags.StringVar(&o.Title, "title", "", "New title")
 }
 
-func (o *incidentUpdateOpts) Validate() error {
-	if o.Severity == "" && o.Title == "" {
+// Validate rejects an empty value on a flag the caller set. The Incident
+// schema marks the title as required, and an empty severity label matches no
+// entry in the severity list. Only flags.Changed separates an explicit empty
+// value from an omitted flag.
+func (o *incidentUpdateOpts) Validate(flags *pflag.FlagSet) error {
+	if !flags.Changed("severity") && !flags.Changed("title") {
 		return errors.New("give at least one of --severity or --title")
+	}
+	if flags.Changed("severity") && o.Severity == "" {
+		return errors.New("--severity must not be empty: run 'gcx irm incidents severities list' for the valid values")
+	}
+	if flags.Changed("title") && o.Title == "" {
+		return errors.New("--title must not be empty: the incident title is required")
 	}
 	return nil
 }
@@ -55,7 +65,7 @@ The command emits the updated incident.`,
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			if err := opts.Validate(); err != nil {
+			if err := opts.Validate(cmd.Flags()); err != nil {
 				return err
 			}
 
