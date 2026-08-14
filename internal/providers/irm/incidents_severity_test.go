@@ -322,24 +322,44 @@ func TestUpdateAppliesEveryChangedField(t *testing.T) {
 }
 
 // TestUpdateSkipsUnchangedFields keeps the push path cheap: a manifest that
-// matches the server costs the read and one write, not three writes.
+// matches the server costs the read alone, and `gcx resources push` writes
+// nothing on a second run. The status compares like the severity, so a
+// difference in letter case causes no write either.
 func TestUpdateSkipsUnchangedFields(t *testing.T) {
 	t.Parallel()
 
-	srv := &severityServer{title: "same title", severityAfterUpdate: "Critical"}
-	client := newSeverityTestClient(t, srv)
-
-	if _, err := client.Update(context.Background(), "1", &irm.Incident{
-		Status:   "active",
-		Title:    "same title",
-		Severity: "Critical",
-	}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	tests := []struct {
+		name   string
+		status string
+	}{
+		{name: "the same status", status: "active"},
+		{name: "the same status in other letter case", status: "ACTIVE"},
 	}
 
-	want := []string{"IncidentsService.GetIncident", "IncidentsService.UpdateStatus"}
-	if len(srv.calls) != len(want) || srv.calls[0] != want[0] || srv.calls[1] != want[1] {
-		t.Errorf("got calls %v, want %v", srv.calls, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := &severityServer{
+				title:               "same title",
+				status:              "active",
+				severityAfterUpdate: "Critical",
+			}
+			client := newSeverityTestClient(t, srv)
+
+			if _, err := client.Update(context.Background(), "1", &irm.Incident{
+				Status:   tt.status,
+				Title:    "same title",
+				Severity: "Critical",
+			}); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			want := []string{"IncidentsService.GetIncident"}
+			if len(srv.calls) != len(want) || srv.calls[0] != want[0] {
+				t.Errorf("got calls %v, want %v", srv.calls, want)
+			}
+		})
 	}
 }
 

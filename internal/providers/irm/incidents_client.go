@@ -446,7 +446,7 @@ func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (
 		return nil, err
 	}
 
-	if inc.Status != "" {
+	if inc.Status != "" && !strings.EqualFold(current.Status, inc.Status) {
 		current, err = c.UpdateStatus(ctx, id, inc.Status)
 		if err != nil {
 			return nil, err
