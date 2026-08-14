@@ -457,7 +457,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm oncall integrations get":               {Cost: "small"},
 	"gcx irm oncall integrations get-templates":     {Cost: "medium", Hint: "<id> -o json; the whole alert template document of one integration (about 20 fields). Edit it, then apply it with update-templates."},
 	"gcx irm oncall integrations list":              {Cost: "small"},
-	"gcx irm oncall integrations start-maintenance": {Cost: "small", Hint: "<id> [--mode maintenance|debug] [--duration <seconds>]"},
+	"gcx irm oncall integrations start-maintenance": {Cost: "small", Hint: "<id> [--mode maintenance|debug] [--duration 3600|10800|21600|43200|86400]"},
 	"gcx irm oncall integrations stop-maintenance":  {Cost: "small"},
 	"gcx irm oncall integrations update":            {Cost: "small", Hint: "<id> -f integration.yaml"},
 	"gcx irm oncall integrations update-templates":  {Cost: "small", Hint: "<id> -f templates.json; pass the document that get-templates emits"},
