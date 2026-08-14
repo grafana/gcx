@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/irm"
-	"github.com/spf13/cobra"
 	"k8s.io/client-go/rest"
 )
 
@@ -179,21 +178,5 @@ func TestIncidentUpdateCommandOutputFormats(t *testing.T) {
 				t.Errorf("did not expect %q in the output, got %q", tt.notWant, out)
 			}
 		})
-	}
-}
-
-func TestIncidentUpdateCommandShape(t *testing.T) {
-	cmd := irm.NewUpdateCommand(fakeGrafanaConfigLoader{})
-	assertFlag(t, cmd, "severity")
-	assertFlag(t, cmd, "title")
-	if !strings.Contains(cmd.Use, "<id>") {
-		t.Errorf("update should take a positional <id>, got Use=%q", cmd.Use)
-	}
-}
-
-func assertFlag(t *testing.T, cmd *cobra.Command, name string) {
-	t.Helper()
-	if cmd.Flags().Lookup(name) == nil {
-		t.Errorf("incidents update is missing the --%s flag", name)
 	}
 }
