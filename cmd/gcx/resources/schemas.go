@@ -54,6 +54,13 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources list-types incidents.v1alpha1.incident.ext.grafana.app -o json
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate parses --json and --jq. Without the call the two
+			// branches below never fire, and --json silently prints the full
+			// nested output instead.
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 
 			cfg, err := configOpts.LoadGrafanaConfig(ctx)
@@ -115,7 +122,7 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				for _, d := range res {
 					items = append(items, descriptorToMap(d))
 				}
-				return codec.Encode(cmd.OutOrStdout(), map[string]any{"items": items})
+				return codec.Encode(cmd.OutOrStdout(), descriptorList{Items: items})
 			}
 
 			// Fetch schemas regardless of output format (Pattern 13: format-agnostic
@@ -151,6 +158,18 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 	return cmd
 }
+
+// descriptorList carries the descriptors of list-types for --json field
+// selection. It implements the output.ListEnvelope marker, so selection runs
+// per descriptor — the same fields that --json list enumerates. A plain
+// map[string]any envelope would put selection on the whole object instead,
+// and every Descriptor field would then look absent.
+type descriptorList struct {
+	Items []map[string]any `json:"items"`
+}
+
+// ListItemsKey names the key that holds the descriptors.
+func (descriptorList) ListItemsKey() string { return "items" }
 
 // descriptorToMap converts a Descriptor to a map[string]any for field
 // selection and discovery. Keys use camelCase to match common JSON conventions.
