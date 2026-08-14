@@ -353,6 +353,88 @@ func TestFlowRun_ManualReportsMissingInput(t *testing.T) {
 	assert.Contains(t, err.Error(), "no input received")
 }
 
+// TestFlowRun_ManualRetriesAfterABadURL covers the retry loop on the manual
+// route. A typo must not cost a full re-run for a fresh state and a fresh code.
+func TestFlowRun_ManualRetriesAfterABadURL(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	server := newExchangeServer(t, &calls)
+
+	var writer bytes.Buffer
+	reader := &lazyReader{build: func() io.Reader {
+		values := url.Values{}
+		values.Set("code", "auth-code")
+		values.Set("state", stateFromWriter(t, &writer))
+		values.Set("endpoint", server.URL)
+		values.Set("instanceEndpoint", "https://mystack.grafana.net")
+		good := "http://127.0.0.1:54321/callback?" + values.Encode()
+		return strings.NewReader("typo-not-a-url\n" + good + "\n")
+	}}
+
+	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+		Manual: true,
+		Writer: &writer,
+		Reader: reader,
+	})
+
+	result, err := flow.Run(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "gat_token", result.Token)
+	assert.Equal(t, int32(1), calls.Load(), "only the second URL reaches the exchange")
+
+	out := writer.String()
+	assert.Contains(t, out, "That URL did not work")
+	assert.Contains(t, out, "single-use code")
+	assert.NotContains(t, out, "typo-not-a-url", "no message may echo the pasted line")
+}
+
+// TestFlowRun_ManualStopsAtTheTryBound proves that the retry loop is finite.
+// The manual route also reads a script pipe, which can report the same failure
+// on every line.
+func TestFlowRun_ManualStopsAtTheTryBound(t *testing.T) {
+	t.Parallel()
+
+	var writer bytes.Buffer
+	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+		Manual: true,
+		Writer: &writer,
+		Reader: strings.NewReader(strings.Repeat("typo-not-a-url\n", auth.ManualPasteTries+2)),
+	})
+
+	_, err := flow.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot read the redirect URL")
+
+	out := writer.String()
+	assert.Equal(t, auth.ManualPasteTries-1, strings.Count(out, "That URL did not work"),
+		"one rejection for each try except the last")
+	assert.Equal(t, 1, strings.Count(out, "single-use code"))
+}
+
+// TestFlowRun_ManualReportsTheURLFailureNotTheEndOfInput pins the error that a
+// script sees. One bad URL followed by the end of the input must report the
+// URL, because the end of the input is a consequence of the failure.
+func TestFlowRun_ManualReportsTheURLFailureNotTheEndOfInput(t *testing.T) {
+	t.Parallel()
+
+	var writer bytes.Buffer
+	values := url.Values{}
+	values.Set("code", "auth-code")
+	values.Set("state", "state-from-another-attempt")
+
+	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+		Manual: true,
+		Writer: &writer,
+		Reader: strings.NewReader("http://127.0.0.1:54321/callback?" + values.Encode() + "\n"),
+	})
+
+	_, err := flow.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "different login attempt")
+	assert.NotContains(t, err.Error(), "no input received")
+}
+
 func TestGCOMFlowRun_ManualSendsMatchingRedirectURI(t *testing.T) {
 	t.Parallel()
 

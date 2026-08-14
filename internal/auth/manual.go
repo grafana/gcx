@@ -109,6 +109,21 @@ func readLine(r io.Reader) (string, error) {
 // wait. A terminal read is not interruptible in Go, so the read goroutine
 // stays blocked until the process exits. The channel is buffered, so that
 // goroutine can never block on the send.
+//
+// A blocked reader on r is safe here, which is why this path may read os.Stdin
+// while the paste watcher goes to /dev/tty for the same job. Three facts make
+// the difference:
+//
+//   - r is injectable, and for --oauth-manual it is often a script pipe rather
+//     than a terminal.
+//   - readLine reads one byte at a time, so it cannot read past the newline. A
+//     later prompt on the same stream loses no input to it.
+//   - Manual mode runs no callback server, so no second route competes for the
+//     same stream.
+//
+// The watcher in paste.go has none of these three properties: it races a live
+// callback server, and the prompts that follow login read the same terminal.
+// See openPasteTerminal for that side.
 func readLineContext(ctx context.Context, r io.Reader) (string, error) {
 	type lineResult struct {
 		line string
@@ -130,17 +145,15 @@ func readLineContext(ctx context.Context, r io.Reader) (string, error) {
 }
 
 // printRemoteSessionPreamble states why the browser cannot reach the callback
-// address. Every remote-session message opens with it. It prints nothing, and
-// reports false, for a local session.
-func printRemoteSessionPreamble(w io.Writer) bool {
-	if !terminal.IsRemoteSession() {
-		return false
-	}
-
+// address. Every remote-session message opens with it.
+//
+// It only prints. Each caller decides for itself whether the session is remote:
+// printInstructions runs after startPasteWatcher checked it, and
+// printRemoteSessionHint checks it directly.
+func printRemoteSessionPreamble(w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Note: gcx runs in an SSH session.")
 	fmt.Fprintln(w, "The browser on your computer cannot open the callback address on this host.")
-	return true
 }
 
 // printRemoteSessionHint explains how to finish the flow when gcx runs on a
@@ -148,9 +161,10 @@ func printRemoteSessionPreamble(w io.Writer) bool {
 // for a local session. command is the exact invocation to repeat, for example
 // "gcx login --oauth-manual".
 func printRemoteSessionHint(w io.Writer, port int, command string) {
-	if !printRemoteSessionPreamble(w) {
+	if !terminal.IsRemoteSession() {
 		return
 	}
+	printRemoteSessionPreamble(w)
 
 	fmt.Fprintln(w, "Do one of these two steps:")
 	fmt.Fprintln(w, "  1. Forward the port. On your computer, run:")
@@ -201,6 +215,16 @@ const pastePrompt = "Redirect URL (or wait for the browser): "
 // URL holds a single-use code.
 const manualCallbackHygieneNotice = "The URL that you pasted holds a single-use code. Clear the terminal if other people can read it."
 
+// printPasteRejection reports why a pasted URL did not work, then asks for
+// another one. Both paste routes call it, so the two print the same wording.
+//
+// err never holds the pasted string: no message may echo the authorization
+// code. prompt is manualRedirectPrompt or pastePrompt.
+func printPasteRejection(w io.Writer, err error, prompt string) {
+	fmt.Fprintf(w, "\nThat URL did not work: %v\n", err)
+	fmt.Fprint(w, prompt)
+}
+
 // pasteRejection turns a callback error into the message shown before gcx asks
 // for another redirect URL. A state mismatch on a paste nearly always means the
 // URL came from a different login attempt, so say that instead of naming CSRF.
@@ -212,4 +236,4 @@ func pasteRejection(err error) error {
 }
 
 var errManualForeignState = errors.New(
-	"the pasted URL belongs to a different login attempt: run the command again and paste the URL from this attempt")
+	"the pasted URL belongs to a different login attempt: paste the URL from this attempt")

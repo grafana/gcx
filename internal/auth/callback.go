@@ -72,9 +72,17 @@ func checkCallbackBasics(q url.Values, expectedState string) (string, *callbackE
 // flow keep one implementation of the paste behaviour.
 type paramHandler[T any] func(url.Values) (*T, *callbackError)
 
+// manualPasteTries bounds the number of redirect URLs that the manual flow
+// accepts. A typo must not cost a full re-run for a fresh state and a fresh
+// code, and a bound keeps the loop finite for a reader that is not a terminal.
+const manualPasteTries = 3
+
 // runManualPaste completes a flow without a callback server. The browser cannot
 // reach the callback address, so the user copies the redirect URL out of the
 // address bar and pastes it here.
+//
+// A URL that fails a check re-prompts, up to manualPasteTries lines. A read
+// error ends the flow at once, because the next read reports it again.
 //
 // Pass an empty verification string for a flow that shows no verification code.
 func runManualPaste[T any](
@@ -86,26 +94,46 @@ func runManualPaste[T any](
 ) (*T, error) {
 	printManualInstructions(w, authURL, verification)
 
-	line, err := readLineContext(ctx, r)
-	if err != nil {
-		return nil, err
-	}
+	// A pasted line is on screen from the first read on, so the notice belongs
+	// on every return below, not on the success return alone. A state mismatch
+	// is the case that leaves the most on screen.
+	pasteSeen := false
+	defer func() {
+		if pasteSeen {
+			fmt.Fprintln(w, manualCallbackHygieneNotice)
+		}
+	}()
 
-	// The pasted line is on screen from here on, so the notice belongs on every
-	// return below, not on the success return alone. A state mismatch is the
-	// case that leaves the most on screen.
-	defer fmt.Fprintln(w, manualCallbackHygieneNotice)
+	var lastErr error
+	for try := 1; try <= manualPasteTries; try++ {
+		line, err := readLineContext(ctx, r)
+		if err != nil {
+			// The reader ended or the context stopped the wait. Report the
+			// failure of the URL that the user did paste: the end of the input
+			// is a consequence of it, and it says less about the cause.
+			if lastErr != nil && ctx.Err() == nil {
+				return nil, lastErr
+			}
+			return nil, err
+		}
+		pasteSeen = true
 
-	values, err := ParseCallbackInput(line)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the redirect URL: %w", err)
-	}
+		values, parseErr := ParseCallbackInput(line)
+		if parseErr != nil {
+			lastErr = fmt.Errorf("cannot read the redirect URL: %w", parseErr)
+		} else {
+			result, cerr := handle(values)
+			if cerr == nil {
+				return result, nil
+			}
+			lastErr = pasteRejection(cerr.err)
+		}
 
-	result, cerr := handle(values)
-	if cerr != nil {
-		return nil, pasteRejection(cerr.err)
+		if try < manualPasteTries {
+			printPasteRejection(w, lastErr, manualRedirectPrompt)
+		}
 	}
-	return result, nil
+	return nil, lastErr
 }
 
 // awaitCallbackOrPaste waits for whichever route completes first: the callback

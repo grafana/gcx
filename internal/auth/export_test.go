@@ -15,6 +15,9 @@ func ExchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 // ManualCallbackPort exposes the fixed manual-mode callback port.
 const ManualCallbackPort = manualCallbackPort
 
+// ManualPasteTries exposes the bound on the manual retry loop.
+const ManualPasteTries = manualPasteTries
+
 // ReadLine exposes the unexported readLine for black-box tests.
 func ReadLine(r io.Reader) (string, error) {
 	return readLine(r)

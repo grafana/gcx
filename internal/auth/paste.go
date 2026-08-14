@@ -127,8 +127,7 @@ func (p *pasteWatcher) Reject(err error) {
 	if p == nil {
 		return
 	}
-	fmt.Fprintf(p.writer, "\nThat URL did not work: %v\n", err)
-	fmt.Fprint(p.writer, pastePrompt)
+	printPasteRejection(p.writer, err, pastePrompt)
 }
 
 // closeGrace bounds the wait for the reader goroutine. Closing a pollable file
