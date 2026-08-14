@@ -2,11 +2,9 @@ package irm
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -38,34 +36,17 @@ type updatePositionResult struct {
 	Position int `json:"position" yaml:"position"`
 }
 
-// updatePositionTextCodec renders an updatePositionResult as the human
-// one-line summary. Output-only: decoding is unsupported.
-type updatePositionTextCodec struct {
-	label string
-}
-
-func (c *updatePositionTextCodec) Format() format.Format { return "text" }
-
-func (c *updatePositionTextCodec) Decode(io.Reader, any) error {
-	return errors.New("text format does not support decoding")
-}
-
-func (c *updatePositionTextCodec) Encode(w io.Writer, v any) error {
-	r, ok := v.(updatePositionResult)
-	if !ok {
-		return fmt.Errorf("text codec: unsupported value type %T (expected updatePositionResult)", v)
-	}
-	cmdio.Success(w, "Updated the position of %s %s to %d", c.label, r.Target.ID, r.Position)
-	return nil
-}
-
 type updatePositionOpts struct {
 	IO       cmdio.Options
 	Position int
 }
 
 func (o *updatePositionOpts) setup(flags *pflag.FlagSet, label string) {
-	o.IO.RegisterCustomCodec("text", &updatePositionTextCodec{label: label})
+	o.IO.RegisterCustomCodec("text", &mutationResultTextCodec[updatePositionResult]{
+		render: func(w io.Writer, r updatePositionResult) {
+			cmdio.Success(w, "Updated the position of %s %s to %d", label, r.Target.ID, r.Position)
+		},
+	})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 	// MarkFlagRequired states the requirement only in the runtime error, so
