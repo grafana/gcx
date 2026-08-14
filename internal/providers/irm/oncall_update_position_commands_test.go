@@ -175,7 +175,6 @@ func TestUpdatePositionCommandStructuredResult(t *testing.T) {
 		Type          string `json:"type"`
 		SchemaVersion string `json:"schema_version"`
 		Action        string `json:"action"`
-		Changed       bool   `json:"changed"`
 		Position      int    `json:"position"`
 		Target        struct {
 			Kind string `json:"kind"`
@@ -188,7 +187,7 @@ func TestUpdatePositionCommandStructuredResult(t *testing.T) {
 	if got.Type != "gcx.mutation" || got.SchemaVersion != "1" {
 		t.Errorf("missing mutation discriminators: %+v", got)
 	}
-	if got.Action != "updated-position" || !got.Changed {
+	if got.Action != "updated-position" {
 		t.Errorf("unexpected mutation document: %+v", got)
 	}
 	// The position is the whole point of the verb, so a caller must be able to
@@ -198,5 +197,25 @@ func TestUpdatePositionCommandStructuredResult(t *testing.T) {
 	}
 	if got.Target.Kind != "EscalationPolicy" || got.Target.ID != "EP1" {
 		t.Errorf("unexpected target: %+v", got.Target)
+	}
+
+	// The embedded SingleMutation carries no struct tag, so encoding/json
+	// flattens it. The document must stay flat, and it must omit changed,
+	// because the command cannot tell a real change from a no-op.
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		t.Fatalf("output is not a JSON object: %v\n%s", err, out)
+	}
+	wantKeys := []string{"type", "schema_version", "action", "target", "position"}
+	if len(raw) != len(wantKeys) {
+		t.Errorf("got keys %v, want exactly %v", raw, wantKeys)
+	}
+	for _, k := range wantKeys {
+		if _, ok := raw[k]; !ok {
+			t.Errorf("the document misses the %q key: %v", k, raw)
+		}
+	}
+	if _, ok := raw["changed"]; ok {
+		t.Errorf("the document reports changed although the command cannot tell: %v", raw)
 	}
 }

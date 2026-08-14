@@ -18,12 +18,15 @@ import (
 // position field of the spec, and changes it later through these
 // update-position verbs.
 
-// updatePositionResult is the structured result of a position update. It
-// embeds the shared SingleMutation shape — so the type and schema_version
-// discriminators stay in place — and adds the position, which is the whole
-// point of the verb and which a caller reads back from the document.
+// updatePositionResult is the structured result of a position update. The
+// embedded SingleMutation keeps the type and schema_version discriminators in
+// place, and the added position is the whole point of the verb, which a caller
+// reads back from the document.
+//
+// The embedded field is anonymous and carries no tag, so encoding/json
+// flattens it into the parent document.
 type updatePositionResult struct {
-	cmdio.SingleMutation `json:",inline" yaml:",inline"`
+	cmdio.SingleMutation
 
 	Position int `json:"position" yaml:"position"`
 }
@@ -99,9 +102,9 @@ func newUpdatePositionCommand(
 				return err
 			}
 
+			// Changed stays nil: the command never reads the current
+			// position, so it cannot tell a real change from a no-op.
 			mutation := cmdio.NewSingleMutation("updated-position", cmdio.MutationTarget{Kind: kind, ID: args[0]})
-			changed := true
-			mutation.Changed = &changed
 			return opts.IO.Encode(cmd.OutOrStdout(), updatePositionResult{
 				SingleMutation: mutation,
 				Position:       opts.Position,
