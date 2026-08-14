@@ -185,9 +185,13 @@ func TestEncode_JSONFields_SingleKeyEnvelope(t *testing.T) {
 	}
 
 	tests := []struct {
-		name  string
-		value any
-		want  string
+		name string
+		// fields defaults to uid,name when empty. A case that is not an
+		// envelope must select a field the value actually carries, because a
+		// path that exists nowhere is now an error.
+		fields []string
+		value  any
+		want   string
 	}{
 		{
 			name: "populated envelope selects per item and preserves wrapper key",
@@ -203,18 +207,23 @@ func TestEncode_JSONFields_SingleKeyEnvelope(t *testing.T) {
 			want:  `{"datasources":[]}`,
 		},
 		{
-			name: "single-key scalar array is not an envelope",
+			// Envelope treatment would descend into the array and select per
+			// item, which for scalars yields an empty array. Flat extraction
+			// keeps the values.
+			name:   "single-key scalar array is not an envelope",
+			fields: []string{"tags"},
 			value: struct {
 				Tags []string `json:"tags"`
 			}{Tags: []string{"a", "b"}},
-			want: `{"uid":null,"name":null}`,
+			want: `{"tags":["a","b"]}`,
 		},
 		{
-			name: "single-key object value is not an envelope",
+			name:   "single-key object value is not an envelope",
+			fields: []string{"spec.uid"},
 			value: struct {
 				Spec map[string]any `json:"spec"`
 			}{Spec: map[string]any{"uid": "x"}},
-			want: `{"uid":null,"name":null}`,
+			want: `{"spec.uid":"x"}`,
 		},
 		{
 			name: "multi-key object gets flat extraction",
@@ -229,7 +238,11 @@ func TestEncode_JSONFields_SingleKeyEnvelope(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts := optsWithJSONFields(t, []string{"uid", "name"})
+			fields := tt.fields
+			if len(fields) == 0 {
+				fields = []string{"uid", "name"}
+			}
+			opts := optsWithJSONFields(t, fields)
 			var buf bytes.Buffer
 			require.NoError(t, opts.Encode(&buf, tt.value))
 			assert.JSONEq(t, tt.want, buf.String())

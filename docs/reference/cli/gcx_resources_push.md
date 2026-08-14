@@ -72,7 +72,7 @@ gcx resources push [RESOURCE_SELECTOR]... [flags]
   -h, --help                            help for push
       --include-managed                 If set, resources managed by other tools will be included in the push operation
       --jq string                       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string                     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string                     Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --max-concurrent int              Maximum number of concurrent operations (default 10)
       --omit-manager-fields             If set, the manager fields will not be appended to the resources
       --on-error string                 How to handle errors during resource operations:

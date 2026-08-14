@@ -43,7 +43,7 @@ gcx synthetic-monitoring checks status [ID] [flags]
   -h, --help                    help for status
       --job string              Filter by job name glob pattern (e.g. --job 'shopk8s-*')
       --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string             Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --label stringArray       Filter by label key=value (repeatable, e.g. --label env=prod)
   -o, --output string           Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --status string           Filter results by status: OK, FAILING, or NODATA

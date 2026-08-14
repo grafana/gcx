@@ -15,15 +15,39 @@ import (
 
 // UnknownFieldSelectionError is returned by FieldSelectCodec when the caller
 // requests one or more fields that are not present in the value's field set.
-// The validator is optional — it is only invoked when wired by the caller
-// (e.g. instrumentation list commands via Options.SetJSONFieldValidator).
+//
+// Two paths produce it. The optional validator runs before extraction and is
+// only invoked when wired by the caller (e.g. instrumentation list commands
+// via Options.SetJSONFieldValidator). Extraction itself produces it for any
+// requested path that exists in no emitted object.
 type UnknownFieldSelectionError struct {
 	Fields []string // the offending field names
+
+	// Candidates maps an offending name to the real dotted paths that end
+	// with it, so a caller who typed a leaf name instead of a path reads the
+	// correction in the error. Empty when extraction found no near match.
+	Candidates map[string][]string
 }
 
 func (e UnknownFieldSelectionError) Error() string {
-	return fmt.Sprintf("unknown field(s) in --json: %s. Run --json list to enumerate valid fields.",
-		strings.Join(e.Fields, ", "))
+	msg := fmt.Sprintf("unknown field(s) in --json: %s.", strings.Join(e.Fields, ", "))
+	if suggestion := e.suggestion(); suggestion != "" {
+		msg += " " + suggestion
+	}
+	return msg + " Run --json list to enumerate valid fields."
+}
+
+// suggestion renders the candidate paths as a "did you mean" clause, in the
+// order of e.Fields so the output is stable.
+func (e UnknownFieldSelectionError) suggestion() string {
+	var paths []string
+	for _, field := range e.Fields {
+		paths = append(paths, e.Candidates[field]...)
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("Did you mean %s?", strings.Join(paths, ", "))
 }
 
 // FieldSelectCodec wraps the JSON codec and emits only the requested fields
@@ -83,9 +107,9 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 
 	switch v := value.(type) {
 	case unstructured.UnstructuredList:
-		items := make([]map[string]any, len(v.Items))
-		for i, item := range v.Items {
-			items[i] = extractFields(item.Object, c.fields)
+		items, err := c.selectItems(unstructuredObjects(v.Items))
+		if err != nil {
+			return err
 		}
 		return c.json.Encode(dst, listFieldSelectionOutput(items, paginationMetadataFromUnstructuredList(v)))
 
@@ -93,17 +117,17 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 		if v == nil {
 			return c.json.Encode(dst, listFieldSelectionOutput(nil, nil))
 		}
-		items := make([]map[string]any, len(v.Items))
-		for i, item := range v.Items {
-			items[i] = extractFields(item.Object, c.fields)
+		items, err := c.selectItems(unstructuredObjects(v.Items))
+		if err != nil {
+			return err
 		}
 		return c.json.Encode(dst, listFieldSelectionOutput(items, paginationMetadataFromUnstructuredList(*v)))
 
 	case unstructured.Unstructured:
-		return c.json.Encode(dst, extractFields(v.Object, c.fields))
+		return c.encodeOne(dst, v.Object)
 
 	case *unstructured.Unstructured:
-		return c.json.Encode(dst, extractFields(v.Object, c.fields))
+		return c.encodeOne(dst, v.Object)
 
 	case map[string]any:
 		// A dynamic map is treated as a list envelope only when it carries
@@ -115,14 +139,14 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 		// and the reserved shape is validated after. Maps without the key —
 		// raw passthrough payloads (e.g. gcx api responses that happen to be
 		// items-shaped) — keep whole-object selection on the original value.
-		if _, ok := v[ListMetaKey]; ok {
-			if m, err := toMap(v); err == nil && hasListMetaEntry(m) {
-				if out, ok := c.envelopeFieldSelection(m); ok {
-					return c.json.Encode(dst, out)
-				}
-			}
+		out, handled, err := c.dynamicMapEnvelopeSelection(v)
+		if err != nil {
+			return err
 		}
-		return c.json.Encode(dst, extractFields(v, c.fields))
+		if handled {
+			return c.json.Encode(dst, out)
+		}
+		return c.encodeOne(dst, v)
 
 	default:
 		// For arbitrary types: marshal → map → extract fields.
@@ -134,10 +158,9 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 			// metadata.
 			if env, ok := value.(ListEnvelope); ok {
 				key := env.ListItemsKey()
-				items := toSliceOfMaps(m[key])
-				extracted := make([]map[string]any, len(items))
-				for i, item := range items {
-					extracted[i] = extractFields(item, c.fields)
+				extracted, selErr := c.selectItems(toSliceOfMaps(m[key]))
+				if selErr != nil {
+					return selErr
 				}
 				out := make(map[string]any, len(m))
 				maps.Copy(out, m)
@@ -152,20 +175,76 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 			if arrErr != nil {
 				return err // return the original toMap error
 			}
-			extracted := make([]map[string]any, len(items))
-			for i, item := range items {
-				extracted[i] = extractFields(item, c.fields)
+			extracted, selErr := c.selectItems(items)
+			if selErr != nil {
+				return selErr
 			}
 			// Preserve array shape: output [...] not {"items":[...]}
 			return c.json.Encode(dst, extracted)
 		}
 
-		if out, ok := c.envelopeFieldSelection(m); ok {
+		out, handled, envErr := c.envelopeFieldSelection(m)
+		if envErr != nil {
+			return envErr
+		}
+		if handled {
 			return c.json.Encode(dst, out)
 		}
 
-		return c.json.Encode(dst, extractFields(m, c.fields))
+		return c.encodeOne(dst, m)
 	}
+}
+
+// dynamicMapEnvelopeSelection applies envelope field selection to a dynamic
+// map, and reports whether it handled the value.
+//
+// A dynamic map counts as a list envelope only when it carries the reserved
+// list_meta key — attaching the key is the producer's opt-in to the contract.
+// The map may hold native Go values (a *ListMeta, a []map[string]any or a
+// typed item slice), so envelope handling runs on a JSON-normalized copy. The
+// key-presence check happens before normalization, so native metadata values
+// opt in too, and the reserved shape is validated after. A map without the
+// key — a raw passthrough payload such as a `gcx api` response that happens
+// to be items-shaped — keeps whole-object selection on the original value.
+func (c *FieldSelectCodec) dynamicMapEnvelopeSelection(v map[string]any) (map[string]any, bool, error) {
+	if _, ok := v[ListMetaKey]; !ok {
+		return nil, false, nil
+	}
+	// A map that does not normalize is not an envelope; whole-object
+	// selection on the original value still works, so the failure is not
+	// itself an error.
+	m, err := toMap(v)
+	if err != nil {
+		return nil, false, nil //nolint:nilerr // fall back to whole-object selection
+	}
+	if !hasListMetaEntry(m) {
+		return nil, false, nil
+	}
+	return c.envelopeFieldSelection(m)
+}
+
+// selectItems applies field selection to a list of objects, rejecting any
+// requested path that exists in none of them.
+func (c *FieldSelectCodec) selectItems(objs []map[string]any) ([]map[string]any, error) {
+	return selectFields(objs, c.fields)
+}
+
+// encodeOne applies field selection to a single object and writes it.
+func (c *FieldSelectCodec) encodeOne(dst goio.Writer, obj map[string]any) error {
+	selected, err := selectFields([]map[string]any{obj}, c.fields)
+	if err != nil {
+		return err
+	}
+	return c.json.Encode(dst, selected[0])
+}
+
+// unstructuredObjects unwraps a slice of unstructured items to their maps.
+func unstructuredObjects(items []unstructured.Unstructured) []map[string]any {
+	objs := make([]map[string]any, len(items))
+	for i, item := range items {
+		objs[i] = item.Object
+	}
+	return objs
 }
 
 // envelopeFieldSelection applies per-item field selection when m is a list
@@ -181,26 +260,25 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 // The reserved list_meta truncation-metadata entry is re-attached in both
 // cases so the signal survives field selection. Returns false for any other
 // shape (the caller falls back to whole-object selection).
-func (c *FieldSelectCodec) envelopeFieldSelection(m map[string]any) (map[string]any, bool) {
+func (c *FieldSelectCodec) envelopeFieldSelection(m map[string]any) (map[string]any, bool, error) {
 	if raw, ok := m["items"]; ok {
-		items := toSliceOfMaps(raw)
-		extracted := make([]map[string]any, len(items))
-		for i, item := range items {
-			extracted[i] = extractFields(item, c.fields)
+		extracted, err := c.selectItems(toSliceOfMaps(raw))
+		if err != nil {
+			return nil, false, err
 		}
 		out := listFieldSelectionOutput(extracted, paginationMetadataFromObjectMap(m))
 		attachListMetaEntry(out, m)
-		return out, true
+		return out, true, nil
 	}
 
 	if key, items, ok := singleKeyItems(m); ok {
-		extracted := make([]map[string]any, len(items))
-		for i, item := range items {
-			extracted[i] = extractFields(item, c.fields)
+		extracted, err := c.selectItems(items)
+		if err != nil {
+			return nil, false, err
 		}
 		out := map[string]any{key: extracted}
 		attachListMetaEntry(out, m)
-		return out, true
+		return out, true, nil
 	}
 
 	// A single-key envelope whose items are scalars (e.g. {"data": ["a"],
@@ -209,12 +287,16 @@ func (c *FieldSelectCodec) envelopeFieldSelection(m map[string]any) (map[string]
 	// Scalar items have no fields to select into, so selection runs on the
 	// whole envelope and the reserved entry is re-attached.
 	if hasListMetaEntry(m) && singleKeyScalarArray(m) {
-		out := extractFields(m, c.fields)
+		selected, err := selectFields([]map[string]any{m}, c.fields)
+		if err != nil {
+			return nil, false, err
+		}
+		out := selected[0]
 		attachListMetaEntry(out, m)
-		return out, true
+		return out, true, nil
 	}
 
-	return nil, false
+	return nil, false, nil
 }
 
 func (c *FieldSelectCodec) Decode(src goio.Reader, value any) error {
@@ -243,22 +325,131 @@ func extractFields(obj map[string]any, fields []string) map[string]any {
 	return result
 }
 
+// selectFields applies field selection across a set of objects and rejects
+// any requested path that exists in none of them.
+//
+// A path that resolves nowhere used to produce one null per row. A caller who
+// typed a leaf name (`username`) rather than a path (`spec.username`) then
+// read a full result set of nulls, and a script that searched that result
+// found nothing and reported zero. The absence of the path is a caller error,
+// so it fails here instead.
+//
+// The check is per-path existence, not per-value: a path that exists and
+// holds null in every object is a real field and stays. It is also across the
+// whole set, so a heterogeneous list keeps a path that only some objects
+// carry. An empty set skips the check, because it proves nothing about the
+// field names.
+func selectFields(objs []map[string]any, fields []string) ([]map[string]any, error) {
+	selected := make([]map[string]any, len(objs))
+	present := make(map[string]bool, len(fields))
+
+	for i, obj := range objs {
+		result := make(map[string]any, len(fields))
+		for _, field := range fields {
+			value, ok := lookupNestedField(obj, field)
+			if ok {
+				present[field] = true
+			}
+			result[field] = value
+		}
+		selected[i] = result
+	}
+
+	if len(objs) == 0 {
+		return selected, nil
+	}
+	if err := absentFieldError(objs, fields, present); err != nil {
+		return nil, err
+	}
+	return selected, nil
+}
+
+// absentFieldError builds the error for every requested field that exists in
+// no object, with the real dotted paths that end with the same name.
+func absentFieldError(objs []map[string]any, fields []string, present map[string]bool) error {
+	var absent []string
+	for _, field := range fields {
+		if !present[field] {
+			absent = append(absent, field)
+		}
+	}
+	if len(absent) == 0 {
+		return nil
+	}
+	return UnknownFieldSelectionError{Fields: absent, Candidates: candidatePaths(objs, absent)}
+}
+
+// candidatePathSampleSize bounds how many objects candidatePaths walks. The
+// suggestion is a convenience, so a long list pays for the first objects only.
+const candidatePathSampleSize = 20
+
+// candidatePaths returns, per absent name, the dotted paths in the sampled
+// objects whose last segment equals that name. A name that is already dotted
+// gets no candidate: the caller wrote a path, and it does not exist.
+func candidatePaths(objs []map[string]any, absent []string) map[string][]string {
+	wanted := make(map[string]bool, len(absent))
+	for _, field := range absent {
+		if !strings.Contains(field, ".") {
+			wanted[field] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]map[string]bool, len(wanted))
+	for i, obj := range objs {
+		if i >= candidatePathSampleSize {
+			break
+		}
+		for _, path := range DiscoverFields(obj) {
+			leaf := path[strings.LastIndex(path, ".")+1:]
+			if !wanted[leaf] || leaf == path {
+				continue
+			}
+			if seen[leaf] == nil {
+				seen[leaf] = make(map[string]bool)
+			}
+			seen[leaf][path] = true
+		}
+	}
+
+	candidates := make(map[string][]string, len(seen))
+	for leaf, paths := range seen {
+		list := make([]string, 0, len(paths))
+		for path := range paths {
+			list = append(list, path)
+		}
+		sort.Strings(list)
+		candidates[leaf] = list
+	}
+	return candidates
+}
+
 // getNestedField resolves a dot-separated field path in a nested map.
 // Returns nil when any segment of the path is missing or not a map.
 func getNestedField(obj map[string]any, path string) any {
+	value, _ := lookupNestedField(obj, path)
+	return value
+}
+
+// lookupNestedField resolves a dot-separated field path in a nested map and
+// reports whether the path exists. A path that exists and holds null returns
+// (nil, true); a path that does not exist returns (nil, false).
+func lookupNestedField(obj map[string]any, path string) (any, bool) {
 	parts := strings.SplitN(path, ".", 2)
 	val, ok := obj[parts[0]]
 	if !ok {
-		return nil
+		return nil, false
 	}
 	if len(parts) == 1 {
-		return val
+		return val, true
 	}
 	nested, ok := val.(map[string]any)
 	if !ok {
-		return nil
+		return nil, false
 	}
-	return getNestedField(nested, parts[1])
+	return lookupNestedField(nested, parts[1])
 }
 
 // toMap marshals an arbitrary value to JSON and back into a map[string]any.

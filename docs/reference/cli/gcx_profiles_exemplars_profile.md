@@ -36,7 +36,7 @@ gcx profiles exemplars profile [EXPR] [flags]
       --from string             Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                    help for profile
       --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string             Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --max-label-columns int   Max label columns in table output (0 hides label columns) (default 3)
   -o, --output string           Output format. One of: agents, json, table, yaml (default "table")
       --profile-type string     Profile type ID (default "process_cpu:cpu:nanoseconds:cpu:nanoseconds")

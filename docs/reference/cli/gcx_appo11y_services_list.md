@@ -50,7 +50,7 @@ gcx appo11y services list [flags]
   -h, --help                          help for list
       --instrumentation string        Which services to list: all, instrumented (target_info only), or uninstrumented (service-graph minus target_info) (default "all")
       --jq string                     jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string                   Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --language string               Restrict to a single telemetry_sdk_language (e.g. go, java, nodejs)
       --limit int                     Limit the number of services returned (0 = unlimited; applied after sorting) (default 50)
   -o, --output string                 Output format. One of: agents, json, table, wide, yaml (default "table")
