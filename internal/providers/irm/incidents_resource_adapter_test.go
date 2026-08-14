@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -208,14 +209,26 @@ func TestResourceAdapter_Create(t *testing.T) {
 }
 
 func TestResourceAdapter_Update(t *testing.T) {
+	// Update reads the incident first, so the title and the severity guards
+	// compare the manifest against the server.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Contains(t, r.URL.Path, "IncidentsService.UpdateStatus")
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		assert.Equal(t, "inc-789", body["incidentID"])
-		writeJSON(w, map[string]any{
-			"incident": map[string]any{"incidentID": "inc-789", "title": "Updated", "status": "resolved"},
-		})
+
+		switch {
+		case strings.Contains(r.URL.Path, "IncidentsService.GetIncident"):
+			writeJSON(w, map[string]any{
+				"incident": map[string]any{"incidentID": "inc-789", "title": "Old", "status": "active"},
+			})
+		case strings.Contains(r.URL.Path, "IncidentsService.UpdateStatus"),
+			strings.Contains(r.URL.Path, "IncidentsService.UpdateTitle"):
+			writeJSON(w, map[string]any{
+				"incident": map[string]any{"incidentID": "inc-789", "title": "Updated", "status": "resolved"},
+			})
+		default:
+			t.Errorf("unexpected call to %q", r.URL.Path)
+		}
 	}))
 	defer server.Close()
 

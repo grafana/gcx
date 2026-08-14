@@ -38,14 +38,20 @@ func (i *Incident) SetResourceName(name string) { i.IncidentID = name }
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Incident struct {
-	IncidentID              string               `json:"incidentID,omitempty"`
-	Title                   string               `json:"title"`
-	Slug                    string               `json:"slug,omitempty"`
-	Prefix                  string               `json:"prefix,omitempty"`
-	Status                  string               `json:"status"`
-	StatusID                string               `json:"statusID,omitempty"`
-	State                   string               `json:"state,omitempty"`
-	Severity                string               `json:"severity,omitempty"`
+	IncidentID string `json:"incidentID,omitempty"`
+	Title      string `json:"title"`
+	Slug       string `json:"slug,omitempty"`
+	Prefix     string `json:"prefix,omitempty"`
+	Status     string `json:"status"`
+	StatusID   string `json:"statusID,omitempty"`
+	State      string `json:"state,omitempty"`
+	// Severity is the display label, for example "Critical". gcx ignores it
+	// when SeverityID is not empty.
+	Severity string `json:"severity,omitempty"`
+	// SeverityID is the severity identifier. It has precedence over Severity:
+	// when it is not empty, gcx resolves the label from the organization
+	// severity list. A pulled incident carries both fields, so an edit of
+	// SeverityID alone must still reach the server.
 	SeverityID              string               `json:"severityID,omitempty"`
 	IsDrill                 bool                 `json:"isDrill"`
 	IncidentType            string               `json:"incidentType,omitempty"`

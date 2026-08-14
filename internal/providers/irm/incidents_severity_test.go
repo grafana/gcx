@@ -22,9 +22,13 @@ type severityServer struct {
 	// has run.
 	severityAfterUpdate string
 	title               string
+	status              string
 	// notFoundOnVersioned makes the versioned base path answer 404, so the
 	// test can drive the unversioned fallback.
 	notFoundOnVersioned bool
+	// failSeverityUpdate makes UpdateSeverity answer 500, so the test can
+	// drive the failure path of Create.
+	failSeverityUpdate bool
 }
 
 func (s *severityServer) handler(t *testing.T) http.Handler {
@@ -38,9 +42,12 @@ func (s *severityServer) handler(t *testing.T) http.Handler {
 		s.calls = append(s.calls, method)
 		s.bodies = append(s.bodies, body)
 
-		if s.notFoundOnVersioned && versioned &&
-			(method == "IncidentsService.UpdateSeverity" || method == "IncidentsService.UpdateTitle") {
+		if s.notFoundOnVersioned && versioned && strings.HasPrefix(method, "IncidentsService.Update") {
 			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if s.failSeverityUpdate && method == "IncidentsService.UpdateSeverity" {
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
@@ -48,6 +55,13 @@ func (s *severityServer) handler(t *testing.T) http.Handler {
 		switch method {
 		case "SeveritiesService.GetOrgSeverities":
 			json.NewEncoder(w).Encode(map[string]any{"severities": s.severities}) //nolint:errcheck
+		case "IncidentsService.GetIncident":
+			json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+				"incident": map[string]any{
+					"incidentID": "1", "title": s.title,
+					"severity": s.severityAfterUpdate, "status": s.status,
+				},
+			})
 		case "IncidentsService.CreateIncident":
 			json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
 				"incident": map[string]any{"incidentID": "1", "title": s.title, "severity": "Pending"},
@@ -63,10 +77,11 @@ func (s *severityServer) handler(t *testing.T) http.Handler {
 				"incident": map[string]any{"incidentID": "1", "title": s.title, "severity": s.severityAfterUpdate},
 			})
 		case "IncidentsService.UpdateStatus":
+			s.status, _ = body["status"].(string)
 			json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
 				"incident": map[string]any{
 					"incidentID": "1", "title": s.title, "severity": s.severityAfterUpdate,
-					"status": body["status"],
+					"status": s.status,
 				},
 			})
 		default:
@@ -105,9 +120,23 @@ func TestCreateAppliesSeverity(t *testing.T) {
 			name:         "severityID resolved through the organization severities",
 			incident:     irm.Incident{Title: "probe", SeverityID: "sev-2"},
 			wantSeverity: "Major",
+			// The label resolves before the create call, so a bad severityID
+			// leaves no incident behind.
 			wantCalls: []string{
-				"IncidentsService.CreateIncident",
 				"SeveritiesService.GetOrgSeverities",
+				"IncidentsService.CreateIncident",
+				"IncidentsService.UpdateSeverity",
+			},
+		},
+		{
+			// A pulled incident carries both fields, so an edit of severityID
+			// alone must reach the server. severityID has precedence.
+			name:         "severityID beats a stale severity label",
+			incident:     irm.Incident{Title: "probe", Severity: "Pending", SeverityID: "sev-1"},
+			wantSeverity: "Critical",
+			wantCalls: []string{
+				"SeveritiesService.GetOrgSeverities",
+				"IncidentsService.CreateIncident",
 				"IncidentsService.UpdateSeverity",
 			},
 		},
@@ -162,6 +191,9 @@ func TestCreateAppliesSeverity(t *testing.T) {
 	}
 }
 
+// TestCreateRejectsUnknownSeverityID proves that a bad severityID leaves no
+// incident behind. The IRM API has no delete method, so gcx must resolve the
+// label before it creates the incident.
 func TestCreateRejectsUnknownSeverityID(t *testing.T) {
 	t.Parallel()
 
@@ -175,6 +207,35 @@ func TestCreateRejectsUnknownSeverityID(t *testing.T) {
 	_, err := client.Create(context.Background(), &inc)
 	if err == nil || !strings.Contains(err.Error(), "unknown severityID") {
 		t.Errorf("expected an unknown-severityID error, got %v", err)
+	}
+	for _, call := range srv.calls {
+		if call == "IncidentsService.CreateIncident" {
+			t.Fatalf("the client created an incident it cannot delete: %v", srv.calls)
+		}
+	}
+}
+
+// TestCreateReportsTheIncidentAfterAFailedSeverityUpdate covers the second
+// failure path: the incident exists, and the caller needs its identifier to
+// repair the severity.
+func TestCreateReportsTheIncidentAfterAFailedSeverityUpdate(t *testing.T) {
+	t.Parallel()
+
+	srv := &severityServer{title: "probe", failSeverityUpdate: true}
+	client := newSeverityTestClient(t, srv)
+
+	inc := irm.Incident{Title: "probe", Severity: "Critical"}
+	created, err := client.Create(context.Background(), &inc)
+	if err == nil {
+		t.Fatal("expected a failed-severity error")
+	}
+	if created == nil || created.IncidentID != "1" {
+		t.Fatalf("expected the created incident next to the error, got %+v", created)
+	}
+	for _, want := range []string{"incident 1 exists", `gcx irm incidents update 1 --severity "Critical"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected %q in the error, got %v", want, err)
+		}
 	}
 }
 
@@ -242,6 +303,7 @@ func TestUpdateAppliesEveryChangedField(t *testing.T) {
 	}
 
 	want := []string{
+		"IncidentsService.GetIncident",
 		"IncidentsService.UpdateStatus",
 		"IncidentsService.UpdateTitle",
 		"IncidentsService.UpdateSeverity",
@@ -260,7 +322,7 @@ func TestUpdateAppliesEveryChangedField(t *testing.T) {
 }
 
 // TestUpdateSkipsUnchangedFields keeps the push path cheap: a manifest that
-// matches the server costs one call, not three.
+// matches the server costs the read and one write, not three writes.
 func TestUpdateSkipsUnchangedFields(t *testing.T) {
 	t.Parallel()
 
@@ -275,7 +337,39 @@ func TestUpdateSkipsUnchangedFields(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(srv.calls) != 1 || srv.calls[0] != "IncidentsService.UpdateStatus" {
-		t.Errorf("expected only a status call, got %v", srv.calls)
+	want := []string{"IncidentsService.GetIncident", "IncidentsService.UpdateStatus"}
+	if len(srv.calls) != len(want) || srv.calls[0] != want[0] || srv.calls[1] != want[1] {
+		t.Errorf("got calls %v, want %v", srv.calls, want)
+	}
+}
+
+// TestUpdateSkipsAnEmptyStatus covers a manifest without a status: nothing
+// enforces the required fields of the schema on push, and an empty status
+// must not block the title and the severity.
+func TestUpdateSkipsAnEmptyStatus(t *testing.T) {
+	t.Parallel()
+
+	srv := &severityServer{title: "old title", status: "active"}
+	client := newSeverityTestClient(t, srv)
+
+	if _, err := client.Update(context.Background(), "1", &irm.Incident{
+		Title:    "new title",
+		Severity: "Critical",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, call := range srv.calls {
+		if call == "IncidentsService.UpdateStatus" {
+			t.Fatalf("the client sent an empty status: %v", srv.calls)
+		}
+	}
+	want := []string{
+		"IncidentsService.GetIncident",
+		"IncidentsService.UpdateTitle",
+		"IncidentsService.UpdateSeverity",
+	}
+	if len(srv.calls) != len(want) {
+		t.Fatalf("got calls %v, want %v", srv.calls, want)
 	}
 }
