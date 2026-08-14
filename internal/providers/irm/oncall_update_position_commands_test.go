@@ -152,8 +152,9 @@ func TestUpdatePositionCommandRejectsInvalidPosition(t *testing.T) {
 	}
 }
 
-// The help must not advertise a default that the command rejects, and it must
-// not repeat the requirement that MarkFlagRequired already states.
+// MarkFlagRequired states the requirement only in the runtime error. Cobra
+// adds nothing to --help or to the generated reference page, so the flag help
+// must carry the marker itself.
 func TestUpdatePositionCommandFlagHelp(t *testing.T) {
 	resetAgentMode(t)
 
@@ -172,11 +173,8 @@ func TestUpdatePositionCommandFlagHelp(t *testing.T) {
 	if line == "" {
 		t.Fatalf("the help misses the --position flag: %q", out)
 	}
-	if strings.Contains(line, "(default") {
-		t.Errorf("the flag help advertises a default: %q", line)
-	}
-	if strings.Contains(line, "(required)") {
-		t.Errorf("the flag usage repeats the required marker: %q", line)
+	if !strings.Contains(line, "(required)") {
+		t.Errorf("the flag help misses the required marker: %q", line)
 	}
 }
 

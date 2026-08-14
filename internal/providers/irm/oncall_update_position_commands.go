@@ -14,9 +14,9 @@ import (
 
 // An escalation chain is an ordered sequence of steps, and routes match from
 // the top down with first-match semantics. Order is therefore part of the
-// meaning of both objects. A caller sets the order on create through the
-// position field of the spec, and changes it later through these
-// update-position verbs.
+// meaning of both objects. On create the backend reads the position field of
+// the spec as an insertion point, so these update-position verbs are the way
+// to set a known index.
 
 // updatePositionResult is the structured result of a position update. The
 // embedded SingleMutation keeps the type and schema_version discriminators in
@@ -68,7 +68,9 @@ func (o *updatePositionOpts) setup(flags *pflag.FlagSet, label string) {
 	o.IO.RegisterCustomCodec("text", &updatePositionTextCodec{label: label})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
-	flags.IntVar(&o.Position, "position", 0, "Zero-based target position")
+	// MarkFlagRequired states the requirement only in the runtime error, so
+	// the flag help carries the marker for --help and for the reference page.
+	flags.IntVar(&o.Position, "position", 0, "Zero-based target position (required)")
 }
 
 func (o *updatePositionOpts) Validate() error {
@@ -119,8 +121,7 @@ func newUpdatePositionCommand(
 		},
 	}
 	opts.setup(cmd.Flags(), label)
-	// Cobra enforces the flag, so the help advertises no default that the
-	// command then rejects, and an omitted flag still fails.
+	// Cobra rejects an omitted --position before RunE runs.
 	_ = cmd.MarkFlagRequired("position")
 	return cmd
 }
@@ -134,8 +135,9 @@ An escalation chain runs its steps in order, so the position decides when a
 step fires. The position is zero-based: 0 is the first step. The backend
 renumbers the other steps of the chain.
 
-Set the order at create time through the position field of the spec. Use this
-command to change the order afterwards.`,
+The position field of the spec behaves differently on create: the backend
+reads it as an insertion point, and it moves the step that holds that position,
+and every later step, one place down. Use this command to set a known index.`,
 		func(ctx context.Context, client OnCallAPI, id string, position int) error {
 			return client.MoveEscalationPolicy(ctx, id, position)
 		})
@@ -150,8 +152,10 @@ Routes match from the top down, and the first match wins, so the position
 decides which route handles an alert. The position is zero-based: 0 is the
 first route. The backend renumbers the other routes of the integration.
 
-Set the order at create time through the position field of the spec. Use this
-command to change the order afterwards.`,
+The position field of the spec behaves differently on create: the backend
+reads it as an insertion point, and it moves the route that holds that
+position, and every later route, one place down. Use this command to set a
+known index.`,
 		func(ctx context.Context, client OnCallAPI, id string, position int) error {
 			return client.MoveRoute(ctx, id, position)
 		})
