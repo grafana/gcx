@@ -1,4 +1,4 @@
-## gcx irm sync-plugin
+## gcx irm oncall sync-plugin
 
 Refresh the IRM copy of the Grafana users and teams.
 
@@ -17,7 +17,7 @@ The backend accepts the request and refreshes in the background, so a
 successful call does not prove that the copy is already current.
 
 ```
-gcx irm sync-plugin [flags]
+gcx irm oncall sync-plugin [flags]
 ```
 
 ### Options
@@ -43,5 +43,5 @@ gcx irm sync-plugin [flags]
 
 ### SEE ALSO
 
-* [gcx irm](gcx_irm.md)	 - Manage Grafana IRM (OnCall + Incidents)
+* [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
 

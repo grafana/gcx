@@ -122,8 +122,8 @@ not automatic precedent.
 owns that data. The caller supplies no desired state, and names no object: the
 backend decides what to copy. Use `push` instead when the caller supplies the
 desired state, and use `update` instead when the caller changes named fields of
-one object. The first approved use is `gcx irm sync-plugin`, which asks the IRM
-plugin to refresh its copy of the Grafana users and teams.
+one object. The first approved use is `gcx irm oncall sync-plugin`, which asks
+the IRM plugin to refresh its copy of the Grafana users and teams.
 
 ## Place each operation by the identity it requires
 
