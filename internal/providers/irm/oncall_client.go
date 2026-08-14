@@ -43,6 +43,7 @@ const (
 	resolutionNotesPath    = "resolution_notes/"
 	shiftSwapsPath         = "shift_swaps/"
 	directPagingPath       = "direct_paging"
+	pluginSyncPath         = "plugin/sync"
 )
 
 var _ OnCallAPI = (*OnCallClient)(nil)
@@ -828,4 +829,34 @@ func (c *OnCallClient) TakeShiftSwap(ctx context.Context, id string, input TakeS
 
 func (c *OnCallClient) CreateDirectPaging(ctx context.Context, input DirectPagingInput) (*DirectPagingResult, error) {
 	return createResource[DirectPagingInput, DirectPagingResult](ctx, c, directPagingPath, input, "direct paging")
+}
+
+// --- Plugin ---
+
+// SyncPlugin asks the IRM plugin to refresh its copy of the Grafana users and
+// teams, and returns the answer of the backend.
+//
+// IRM keeps its own copy and refreshes it on a schedule. Until that refresh
+// lands, an IRM object that references a new team or user fails with
+// "Object does not exist". This call replaces the wait.
+func (c *OnCallClient) SyncPlugin(ctx context.Context) (*PluginSyncResult, error) {
+	resp, err := c.DoRequest(ctx, http.MethodPost, pluginSyncPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("irm: sync plugin: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, providers.HandleErrorResponse(resp)
+	}
+
+	var result PluginSyncResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("irm: decode plugin sync response: %w", err)
+	}
+	// The backend reports failure in-band on a 200 response.
+	if result.Status != "" && result.Status != "success" {
+		return nil, fmt.Errorf("irm: sync plugin: %s", result.MessageOrStatus())
+	}
+	return &result, nil
 }

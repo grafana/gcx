@@ -814,6 +814,7 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 | `internal/providers/irm/incidents_client.go` | Incidents REST client |
 | `internal/providers/irm/incidents_commands.go` | IRM Incidents CLI commands (list, get, create, close, open, list-activity, list-contexts, activity add, severities, update) |
 | `internal/providers/irm/incidents_update_command.go` | The `incidents update` command (severity, title) |
+| `internal/providers/irm/plugin_commands.go` | The `gcx irm plugin sync` command (refresh the IRM copy of the Grafana users and teams) |
 
 ### Faro Provider
 

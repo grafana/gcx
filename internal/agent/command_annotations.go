@@ -500,6 +500,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm oncall webhooks triggers list":         {Cost: "small"},
 	"gcx irm oncall webhooks update":                {Cost: "small", Hint: "<id> -f webhook.yaml"},
 
+	// plugin
+	"gcx irm plugin sync": {Cost: "small", Hint: "Run after you create a Grafana team or user, before you create the IRM objects that reference it. Without it those creates fail with \"Object does not exist\"."},
+
 	// -----------------------------------------------------------------------
 	// Profiles provider
 	// -----------------------------------------------------------------------

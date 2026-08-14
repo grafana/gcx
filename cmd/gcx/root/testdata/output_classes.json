@@ -369,6 +369,7 @@
  "gcx irm oncall webhooks presets list": "finite",
  "gcx irm oncall webhooks triggers list": "finite",
  "gcx irm oncall webhooks update": "finite",
+ "gcx irm plugin sync": "finite",
  "gcx k6 auth token": "raw",
  "gcx k6 env-vars create": "finite",
  "gcx k6 env-vars delete": "finite",
