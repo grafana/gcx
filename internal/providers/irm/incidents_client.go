@@ -30,14 +30,15 @@ const (
 	// 404 under the /v1 prefix — they only respond here.
 	incidentLegacyBasePath = "/api/plugins/grafana-irm-app/resources/api"
 
-	incGetPath        = incidentBasePath + "/IncidentsService.GetIncident"
-	incCreatePath     = incidentBasePath + "/IncidentsService.CreateIncident"
-	incUpdateStatPath = incidentBasePath + "/IncidentsService.UpdateStatus"
+	incGetPath    = incidentBasePath + "/IncidentsService.GetIncident"
+	incCreatePath = incidentBasePath + "/IncidentsService.CreateIncident"
 
-	// UpdateSeverity and UpdateTitle are separate operations: CreateIncident
-	// ignores the severity of the request body. The method names are held
-	// apart from the base path, because updateIncidentField tries the
-	// versioned base path first and the unversioned one second.
+	// The IRM API has one operation per mutable field: CreateIncident ignores
+	// the severity of the request body, and there is no combined update
+	// method. The method names are held apart from the base path, because
+	// updateIncidentField tries the versioned base path first and the
+	// unversioned one second.
+	incUpdateStatusMethod   = "IncidentsService.UpdateStatus"
 	incUpdateSeverityMethod = "IncidentsService.UpdateSeverity"
 	incUpdateTitleMethod    = "IncidentsService.UpdateTitle"
 
@@ -333,7 +334,19 @@ func (c *IncidentClient) Get(ctx context.Context, id string) (*Incident, error) 
 }
 
 // Create creates a new incident and returns the created incident.
+//
+// CreateIncident ignores both severity and severityID of the request body:
+// every incident starts at the default severity. Severity is the first column
+// of any incident report, so a caller that cannot set it cannot provision
+// reporting by severity. UpdateSeverity is the only route, and it takes the
+// label, not the identifier. The label resolves before the create call,
+// because the IRM API cannot delete an incident that a later step abandons.
 func (c *IncidentClient) Create(ctx context.Context, inc *Incident) (*Incident, error) {
+	label, err := c.resolveSeverityLabel(ctx, inc)
+	if err != nil {
+		return nil, err
+	}
+
 	req := createIncidentRequest{
 		Title:          inc.Title,
 		Status:         inc.Status,
@@ -370,43 +383,30 @@ func (c *IncidentClient) Create(ctx context.Context, inc *Incident) (*Incident, 
 		return nil, fmt.Errorf("incidents: decode create response: %w", err)
 	}
 
-	return c.applyRequestedSeverity(ctx, &result.Incident, inc)
-}
-
-// applyRequestedSeverity sets the severity of a new incident when the caller
-// asked for one.
-//
-// CreateIncident ignores both severity and severityID of the request body:
-// every incident starts at the default severity. Severity is the first column
-// of any incident report, so a caller that cannot set it cannot provision
-// reporting by severity. UpdateSeverity is the only route, and it takes the
-// label, not the identifier.
-func (c *IncidentClient) applyRequestedSeverity(ctx context.Context, created, requested *Incident) (*Incident, error) {
-	label, err := c.resolveSeverityLabel(ctx, requested)
-	if err != nil {
-		return nil, err
-	}
+	created := &result.Incident
 	if label == "" || strings.EqualFold(created.Severity, label) {
 		return created, nil
 	}
 
 	updated, err := c.UpdateSeverity(ctx, created.IncidentID, label)
 	if err != nil {
-		return nil, fmt.Errorf("incidents: create: set severity %q: %w", label, err)
+		// The incident exists at the default severity, and the IRM API has no
+		// delete method. The caller needs the identifier to repair it.
+		return created, fmt.Errorf(
+			"incidents: create: incident %s exists, but the severity update failed: %w: run `gcx irm incidents update %s --severity %q` to set the severity",
+			created.IncidentID, err, created.IncidentID, label)
 	}
 	return updated, nil
 }
 
 // resolveSeverityLabel returns the severity label the caller asked for.
-// spec.severity holds the label directly. spec.severityID holds an
-// identifier, which the organization severity list resolves to a label.
-// An empty result means the caller asked for no severity.
+// spec.severityID has precedence: when it is not empty, the organization
+// severity list resolves it to a label, and gcx ignores spec.severity.
+// spec.severity holds the label directly. An empty result means the caller
+// asked for no severity.
 func (c *IncidentClient) resolveSeverityLabel(ctx context.Context, inc *Incident) (string, error) {
-	if inc.Severity != "" {
-		return inc.Severity, nil
-	}
 	if inc.SeverityID == "" {
-		return "", nil
+		return inc.Severity, nil
 	}
 
 	severities, err := c.GetSeverities(ctx)
@@ -436,12 +436,21 @@ func (c *IncidentClient) UpdateTitle(ctx context.Context, id, title string) (*In
 
 // Update applies every field of inc that the IRM API exposes as its own
 // operation: status, title, and severity. The API has no single update
-// method, so each field costs one call, and gcx skips the fields the caller
-// left empty.
+// method, so each field costs one call. gcx reads the incident first, then
+// skips each field that the caller left empty or that already matches the
+// server. Nothing enforces the required fields of the schema on push, so a
+// manifest without a status must not send an empty status.
 func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (*Incident, error) {
-	current, err := c.UpdateStatus(ctx, id, inc.Status)
+	current, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	if inc.Status != "" {
+		current, err = c.UpdateStatus(ctx, id, inc.Status)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if inc.Title != "" && inc.Title != current.Title {
@@ -503,32 +512,8 @@ func (c *IncidentClient) updateIncidentField(ctx context.Context, method string,
 
 // UpdateStatus updates an incident's status and returns the updated incident.
 func (c *IncidentClient) UpdateStatus(ctx context.Context, id, status string) (*Incident, error) {
-	req := updateStatusRequest{
-		IncidentID: id,
-		Status:     status,
-	}
-
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("incidents: marshal update request: %w", err)
-	}
-
-	resp, err := c.doRequest(ctx, incUpdateStatPath, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("incidents: update status %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, providers.HandleErrorResponse(resp)
-	}
-
-	var result updateStatusResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("incidents: decode update response: %w", err)
-	}
-
-	return &result.Incident, nil
+	req := updateStatusRequest{IncidentID: id, Status: status}
+	return c.updateIncidentField(ctx, incUpdateStatusMethod, req, "update status")
 }
 
 // QueryActivity retrieves the activity timeline for an incident.
