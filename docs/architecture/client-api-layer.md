@@ -413,6 +413,9 @@ func NewClient(opts ClientOpts) *http.Client               // custom: explicit m
 2xx/3xx/4xx, Warn for 5xx + transport errors). When `PayloadLogging(ctx)` is
 true (set by `--insecure-log-http-payload`), it additionally wraps with
 `RequestResponseLoggingMiddleware` for full request/response body dumps.
+`NewClient` applies the first middleware closest to the base transport, so the
+dump middleware comes first in the slice and runs last before the wire. It
+therefore shows every header that an outer layer adds.
 
 `NewClient` accepts explicit `ClientOpts` for custom middleware stacks, TLS
 configuration, and timeouts. If `Middlewares` is nil, it defaults to
@@ -434,7 +437,11 @@ values through constructor chains.
 | Type | Log level | Content | Visible at |
 |------|-----------|---------|------------|
 | `LoggingRoundTripper` | Debug (2xx-4xx), Warn (5xx/error) | method, URL, status | `-vvv` / `-v` |
-| `RequestResponseLoggingRoundTripper` | Debug | Full body via `httputil.Dump*` | `-vvv` + `--insecure-log-http-payload` |
+| `RequestResponseLoggingRoundTripper` | Debug | Full dump via `httputil.DumpRequestOut` / `DumpResponse`, labelled `http request dump` and `http response dump` | `-vvv` + `--insecure-log-http-payload` |
+
+`RequestResponseLoggingRoundTripper` is the innermost layer in both tiers, so
+the dump shows the bearer token, the caller id, and the user agent that outer
+layers add. A failed dump logs a Warn record with the reason.
 
 ### `response.go` — Server Response Helpers
 
