@@ -76,6 +76,7 @@ func IncidentExample() json.RawMessage {
 		"spec": map[string]any{
 			"title":        "Service degradation in production",
 			"status":       "active",
+			"severity":     "Minor",
 			"isDrill":      false,
 			"incidentType": "internal",
 			"labels": []map[string]any{
@@ -140,7 +141,7 @@ func newIncidentCRUD(client *IncidentClient, namespace string, query IncidentQue
 		GetFn:    func(ctx context.Context, name string) (*Incident, error) { return client.Get(ctx, name) },
 		CreateFn: func(ctx context.Context, inc *Incident) (*Incident, error) { return client.Create(ctx, inc) },
 		UpdateFn: func(ctx context.Context, name string, inc *Incident) (*Incident, error) {
-			return client.UpdateStatus(ctx, name, inc.Status)
+			return client.Update(ctx, name, inc)
 		},
 		DeleteFn: func(_ context.Context, _ string) error {
 			return errors.New("incidents: delete is not supported by the IRM API")

@@ -35,6 +35,14 @@ const (
 	incGetPath        = incidentBasePath + "/IncidentsService.GetIncident"
 	incCreatePath     = incidentBasePath + "/IncidentsService.CreateIncident"
 	incUpdateStatPath = incidentBasePath + "/IncidentsService.UpdateStatus"
+
+	// UpdateSeverity and UpdateTitle are separate operations: CreateIncident
+	// ignores the severity of the request body. The method names are held
+	// apart from the base path, because updateIncidentField tries the
+	// versioned base path first and the unversioned one second.
+	incUpdateSeverityMethod = "IncidentsService.UpdateSeverity"
+	incUpdateTitleMethod    = "IncidentsService.UpdateTitle"
+
 	incQueryPath      = incidentBasePath + "/IncidentsService.QueryIncidentPreviews"
 	actQueryPath      = incidentBasePath + "/ActivityService.QueryActivity"
 	actAddPath        = incidentBasePath + "/ActivityService.AddActivity"
@@ -432,6 +440,134 @@ func (c *IncidentClient) Create(ctx context.Context, inc *Incident) (*Incident, 
 		return nil, fmt.Errorf("incidents: decode create response: %w", err)
 	}
 
+	return c.applyRequestedSeverity(ctx, &result.Incident, inc)
+}
+
+// applyRequestedSeverity sets the severity of a new incident when the caller
+// asked for one.
+//
+// CreateIncident ignores both severity and severityID of the request body:
+// every incident starts at the default severity. Severity is the first column
+// of any incident report, so a caller that cannot set it cannot provision
+// reporting by severity. UpdateSeverity is the only route, and it takes the
+// label, not the identifier.
+func (c *IncidentClient) applyRequestedSeverity(ctx context.Context, created, requested *Incident) (*Incident, error) {
+	label, err := c.resolveSeverityLabel(ctx, requested)
+	if err != nil {
+		return nil, err
+	}
+	if label == "" || strings.EqualFold(created.Severity, label) {
+		return created, nil
+	}
+
+	updated, err := c.UpdateSeverity(ctx, created.IncidentID, label)
+	if err != nil {
+		return nil, fmt.Errorf("incidents: create: set severity %q: %w", label, err)
+	}
+	return updated, nil
+}
+
+// resolveSeverityLabel returns the severity label the caller asked for.
+// spec.severity holds the label directly. spec.severityID holds an
+// identifier, which the organization severity list resolves to a label.
+// An empty result means the caller asked for no severity.
+func (c *IncidentClient) resolveSeverityLabel(ctx context.Context, inc *Incident) (string, error) {
+	if inc.Severity != "" {
+		return inc.Severity, nil
+	}
+	if inc.SeverityID == "" {
+		return "", nil
+	}
+
+	severities, err := c.GetSeverities(ctx)
+	if err != nil {
+		return "", fmt.Errorf("incidents: resolve severityID %q: %w", inc.SeverityID, err)
+	}
+	for _, s := range severities {
+		if s.SeverityID == inc.SeverityID {
+			return s.DisplayLabel, nil
+		}
+	}
+	return "", fmt.Errorf("incidents: unknown severityID %q, run `gcx irm incidents severities list` for the valid values", inc.SeverityID)
+}
+
+// UpdateSeverity sets the severity of an incident and returns the updated
+// incident. severity is the display label, not the identifier.
+func (c *IncidentClient) UpdateSeverity(ctx context.Context, id, severity string) (*Incident, error) {
+	req := updateSeverityRequest{IncidentID: id, Severity: severity}
+	return c.updateIncidentField(ctx, incUpdateSeverityMethod, req, "update severity")
+}
+
+// UpdateTitle sets the title of an incident and returns the updated incident.
+func (c *IncidentClient) UpdateTitle(ctx context.Context, id, title string) (*Incident, error) {
+	req := updateTitleRequest{IncidentID: id, Title: title}
+	return c.updateIncidentField(ctx, incUpdateTitleMethod, req, "update title")
+}
+
+// Update applies every field of inc that the IRM API exposes as its own
+// operation: status, title, and severity. The API has no single update
+// method, so each field costs one call, and gcx skips the fields the caller
+// left empty.
+func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (*Incident, error) {
+	current, err := c.UpdateStatus(ctx, id, inc.Status)
+	if err != nil {
+		return nil, err
+	}
+
+	if inc.Title != "" && inc.Title != current.Title {
+		current, err = c.UpdateTitle(ctx, id, inc.Title)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	label, err := c.resolveSeverityLabel(ctx, inc)
+	if err != nil {
+		return nil, err
+	}
+	if label != "" && !strings.EqualFold(current.Severity, label) {
+		current, err = c.UpdateSeverity(ctx, id, label)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return current, nil
+}
+
+// updateIncidentField posts a single-field update to IncidentsService and
+// returns the updated incident.
+//
+// IncidentsService answers on the versioned base path. A Grafana build that
+// predates that path answers on the unversioned one, so a 404 on the first
+// path retries on the second.
+func (c *IncidentClient) updateIncidentField(ctx context.Context, method string, req any, description string) (*Incident, error) {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("incidents: marshal %s request: %w", description, err)
+	}
+
+	resp, err := c.doRequest(ctx, incidentBasePath+"/"+method, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("incidents: %s: %w", description, err)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		resp, err = c.doRequest(ctx, incidentLegacyBasePath+"/"+method, bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("incidents: %s: %w", description, err)
+		}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, providers.HandleErrorResponse(resp)
+	}
+
+	var result updateStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("incidents: decode %s response: %w", description, err)
+	}
 	return &result.Incident, nil
 }
 

@@ -339,9 +339,23 @@ type updateStatusRequest struct {
 	Status     string `json:"status"`
 }
 
-// updateStatusResponse wraps the updated incident.
+// updateStatusResponse wraps the updated incident. UpdateSeverity and
+// UpdateTitle answer with the same envelope.
 type updateStatusResponse struct {
 	Incident Incident `json:"incident"`
+}
+
+// updateSeverityRequest is the request body for IncidentsService.UpdateSeverity.
+// The API takes the severity label, not the severity identifier.
+type updateSeverityRequest struct {
+	IncidentID string `json:"incidentID"`
+	Severity   string `json:"severity"`
+}
+
+// updateTitleRequest is the request body for IncidentsService.UpdateTitle.
+type updateTitleRequest struct {
+	IncidentID string `json:"incidentID"`
+	Title      string `json:"title"`
 }
 
 // Severity represents an organization-defined severity level.

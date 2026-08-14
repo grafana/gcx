@@ -255,6 +255,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm incidents list-contexts":   {Cost: "small"},
 	"gcx irm incidents open":            {Cost: "small"},
 	"gcx irm incidents severities list": {Cost: "small"},
+	"gcx irm incidents update":          {Cost: "small", Hint: "<id> --severity <label> --title <text>; the severity is the label, run `gcx irm incidents severities list` for the valid values"},
 
 	// -----------------------------------------------------------------------
 	// k6 provider

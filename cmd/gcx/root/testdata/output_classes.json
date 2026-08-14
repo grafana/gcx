@@ -293,6 +293,7 @@
  "gcx irm incidents list-contexts": "finite",
  "gcx irm incidents open": "interactive",
  "gcx irm incidents severities list": "finite",
+ "gcx irm incidents update": "finite",
  "gcx irm oncall alert-groups acknowledge": "finite",
  "gcx irm oncall alert-groups delete": "finite",
  "gcx irm oncall alert-groups get": "finite",
