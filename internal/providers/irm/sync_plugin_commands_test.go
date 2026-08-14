@@ -36,27 +36,47 @@ func runSyncPluginCmd(t *testing.T, fake *fakePluginAPI, args ...string) (string
 	return out.String(), err
 }
 
-func TestSyncPluginCommand(t *testing.T) {
+func TestSyncPluginCommandText(t *testing.T) {
 	resetAgentMode(t)
 
-	fake := &fakePluginAPI{result: &PluginSyncResult{Message: "Sync request processed successfully"}}
+	tests := []struct {
+		name   string
+		result *PluginSyncResult
+		want   string
+	}{
+		{
+			name:   "the backend sends a message",
+			result: &PluginSyncResult{Message: "Sync request processed successfully"},
+			want:   "Requested a sync of the IRM plugin: Sync request processed successfully",
+		},
+		{
+			name:   "the backend sends no message",
+			result: &PluginSyncResult{},
+			want:   "Requested a sync of the IRM plugin",
+		},
+	}
 
-	out, err := runSyncPluginCmd(t, fake)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fake.calls != 1 {
-		t.Errorf("expected one sync call, got %d", fake.calls)
-	}
-	if !strings.Contains(out, "Requested a sync of the IRM plugin") {
-		t.Errorf("expected the success line, got %q", out)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := &fakePluginAPI{result: tt.result}
+			out, err := runSyncPluginCmd(t, fake)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fake.calls != 1 {
+				t.Errorf("expected one sync call, got %d", fake.calls)
+			}
+			if !strings.Contains(out, tt.want) {
+				t.Errorf("expected %q, got %q", tt.want, out)
+			}
+		})
 	}
 }
 
 func TestSyncPluginCommandStructuredResult(t *testing.T) {
 	resetAgentMode(t)
 
-	fake := &fakePluginAPI{result: &PluginSyncResult{}}
+	fake := &fakePluginAPI{result: &PluginSyncResult{Message: "Sync request processed successfully"}}
 	out, err := runSyncPluginCmd(t, fake, "-o", "json")
 	if err != nil {
 		t.Fatal(err)
@@ -66,6 +86,7 @@ func TestSyncPluginCommandStructuredResult(t *testing.T) {
 		Type          string `json:"type"`
 		SchemaVersion string `json:"schema_version"`
 		Action        string `json:"action"`
+		Message       string `json:"message"`
 		Target        struct {
 			Kind string `json:"kind"`
 			Name string `json:"name"`
@@ -79,6 +100,24 @@ func TestSyncPluginCommandStructuredResult(t *testing.T) {
 	}
 	if got.Action != "sync-requested" || got.Target.Kind != "Plugin" || got.Target.Name != "grafana-irm-app" {
 		t.Errorf("unexpected mutation document: %+v", got)
+	}
+	if got.Message != "Sync request processed successfully" {
+		t.Errorf("expected the backend message, got %q", got.Message)
+	}
+}
+
+// TestSyncPluginCommandOmitsEmptyMessage proves that the result document drops
+// the message field when the backend sends none.
+func TestSyncPluginCommandOmitsEmptyMessage(t *testing.T) {
+	resetAgentMode(t)
+
+	fake := &fakePluginAPI{result: &PluginSyncResult{}}
+	out, err := runSyncPluginCmd(t, fake, "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "message") {
+		t.Errorf("expected no message field, got %q", out)
 	}
 }
 
