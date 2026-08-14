@@ -55,6 +55,40 @@ type twoNameItem struct {
 	} `json:"spec"`
 }
 
+// inlineRule mirrors the adaptive metrics MetricRule, which
+// MetricRecommendation embeds with a yaml tag only. The type is unexported,
+// as it is there, and encoding/json still promotes its exported fields.
+type inlineRule struct {
+	Metric    string `json:"metric" yaml:"metric"`
+	ManagedBy string `json:"managed_by,omitempty" yaml:"managed_by,omitempty"`
+}
+
+// inlineRecommendation mirrors MetricRecommendation. encoding/json writes the
+// fields of the embedded struct into the parent object, so "metric" is a
+// top-level key and "inlineRule" is no key at all.
+type inlineRecommendation struct {
+	inlineRule `yaml:",inline"`
+
+	RecommendedAction string `json:"recommended_action"`
+}
+
+// TypeMeta mirrors metav1.TypeMeta, which adapter.TypedObject embeds with an
+// explicit inline json tag.
+type TypeMeta struct {
+	Kind       string `json:"kind,omitempty"`
+	APIVersion string `json:"apiVersion,omitempty"`
+}
+
+// inlineTypedObject mirrors adapter.TypedObject: an embedded struct with an
+// inline json tag, next to a named field.
+type inlineTypedObject struct {
+	TypeMeta `json:",inline"`
+
+	Spec struct {
+		Name string `json:"name"`
+	} `json:"spec"`
+}
+
 // arrayItem holds its values inside an array, which field selection cannot
 // walk into.
 type arrayItem struct {
@@ -148,6 +182,24 @@ func TestAbsentFieldSelection(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "a promoted field of an embedded struct is kept",
+			fields: []string{"metric", "managed_by"},
+			value:  []inlineRecommendation{},
+			wantOK: true,
+		},
+		{
+			name:   "a promoted field of an inline-tagged embedded struct is kept",
+			fields: []string{"kind"},
+			value:  []inlineTypedObject{},
+			wantOK: true,
+		},
+		{
+			name:    "the name of an embedded struct is no key",
+			fields:  []string{"TypeMeta"},
+			value:   []inlineTypedObject{},
+			wantErr: "unknown field(s) in --json: TypeMeta",
+		},
+		{
 			name:    "a path the item type does not declare fails",
 			fields:  []string{"bogus"},
 			value:   []omitemptyItem{{Name: "a"}},
@@ -193,6 +245,20 @@ func TestAbsentFieldSelection(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+// TestEmbeddedStructSuggestionUsesPromotedPath pins that a suggestion names a
+// key that the output carries. The type walk once offered the name of the
+// embedded type, which encoding/json never writes as a key.
+func TestEmbeddedStructSuggestionUsesPromotedPath(t *testing.T) {
+	codec := cmdio.NewFieldSelectCodec([]string{"name"})
+
+	var buf bytes.Buffer
+	err := codec.Encode(&buf, []inlineTypedObject{})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Did you mean spec.name?")
+	assert.NotContains(t, err.Error(), "TypeMeta")
 }
 
 // TestValidatorAcceptsDeclaredPaths covers the validator route: it must
