@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
-	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -125,12 +124,12 @@ func TestGetPartialFailure_AtomicStdout(t *testing.T) {
 	}
 }
 
-// TestGetPartialFailure_AbsentFieldFails pins that the agent-mode fused
-// envelope obeys the same --json contract as the success path: a path that no
-// resource carries is a caller error. The envelope route once null-filled
-// such a path, so the same flag on the same command behaved differently when
-// one resource failed.
-func TestGetPartialFailure_AbsentFieldFails(t *testing.T) {
+// TestGetPartialFailure_AbsentFieldIsNull pins that the agent-mode fused
+// envelope obeys the same --json contract as the success path. The resources
+// are unstructured, so they declare no type, and a path that no resource
+// carries keeps its null on both routes. Only the failure count travels
+// through the error.
+func TestGetPartialFailure_AbsentFieldIsNull(t *testing.T) {
 	agent.SetFlag(true)
 	t.Cleanup(func() { agent.SetFlag(false) })
 
@@ -159,15 +158,26 @@ func TestGetPartialFailure_AbsentFieldFails(t *testing.T) {
 	opts.IO.ErrWriter = &stderr
 	err := resources.WriteGetOutputForTest(&stdout, &stderr, opts, res, output)
 
-	var fieldErr cmdio.UnknownFieldSelectionError
-	if !errors.As(err, &fieldErr) {
-		t.Fatalf("writeGetOutput() error = %T (%v), want cmdio.UnknownFieldSelectionError", err, err)
+	var emitted *gcxerrors.EmittedError
+	if !errors.As(err, &emitted) {
+		t.Fatalf("writeGetOutput() error = %T (%v), want *gcxerrors.EmittedError", err, err)
 	}
-	if !strings.Contains(fieldErr.Error(), "metadata.name") {
-		t.Fatalf("error = %q, want the real path metadata.name", fieldErr.Error())
+	if emitted.Code != gcxerrors.ExitPartialFailure {
+		t.Fatalf("EmittedError.Code = %d, want %d", emitted.Code, gcxerrors.ExitPartialFailure)
 	}
-	if stdout.Len() != 0 {
-		t.Fatalf("stdout = %q, want empty for a rejected selection", stdout.String())
+
+	var envelope struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal stdout %q: %v", stdout.String(), err)
+	}
+	if len(envelope.Items) != 1 {
+		t.Fatalf("items = %d, want 1 (stdout %q)", len(envelope.Items), stdout.String())
+	}
+	value, ok := envelope.Items[0]["name"]
+	if !ok || value != nil {
+		t.Fatalf("items[0] = %v, want the requested path with a null value", envelope.Items[0])
 	}
 }
 
