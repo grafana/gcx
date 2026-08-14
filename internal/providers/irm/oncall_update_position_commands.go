@@ -58,12 +58,12 @@ func (o *updatePositionOpts) setup(flags *pflag.FlagSet, label string) {
 	o.IO.RegisterCustomCodec("text", &updatePositionTextCodec{label: label})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
-	flags.IntVar(&o.Position, "position", -1, "Zero-based target position (required)")
+	flags.IntVar(&o.Position, "position", 0, "Zero-based target position")
 }
 
 func (o *updatePositionOpts) Validate() error {
 	if o.Position < 0 {
-		return fmt.Errorf("--position is required and must be zero or greater, got %d", o.Position)
+		return fmt.Errorf("--position must be zero or greater, got %d", o.Position)
 	}
 	return nil
 }
@@ -109,6 +109,9 @@ func newUpdatePositionCommand(
 		},
 	}
 	opts.setup(cmd.Flags(), label)
+	// Cobra enforces the flag, so the help advertises no default that the
+	// command then rejects, and an omitted flag still fails.
+	_ = cmd.MarkFlagRequired("position")
 	return cmd
 }
 
