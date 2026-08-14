@@ -1,18 +1,11 @@
 ## gcx irm oncall webhooks presets
 
-List webhook configuration presets.
-
-```
-gcx irm oncall webhooks presets [flags]
-```
+Discover webhook configuration presets.
 
 ### Options
 
 ```
-  -h, --help            help for presets
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+  -h, --help   help for presets
 ```
 
 ### Options inherited from parent commands

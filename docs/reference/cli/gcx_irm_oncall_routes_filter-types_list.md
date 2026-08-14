@@ -29,5 +29,5 @@ gcx irm oncall routes filter-types list [flags]
 
 ### SEE ALSO
 
-* [gcx irm oncall routes filter-types](gcx_irm_oncall_routes_filter-types.md)	 - List route filtering term types.
+* [gcx irm oncall routes filter-types](gcx_irm_oncall_routes_filter-types.md)	 - Discover route filtering term types.
 
