@@ -499,8 +499,10 @@ func (c *OnCallClient) MoveRoute(ctx context.Context, id string, position int) e
 }
 
 // moveToPosition calls the move_to_position action of an ordered resource.
-// The backend takes the target index as a query parameter and answers with a
-// body that carries no field a caller can act on, so the body is discarded.
+// The backend takes the target index as a query parameter, and it answers with
+// an empty body, so there is no applied index to read back. An index past the
+// end of the list gives HTTP 400 "Invalid position": the backend does not
+// clamp the index.
 func (c *OnCallClient) moveToPosition(ctx context.Context, basePath, id string, position int, resourceType string) error {
 	params := url.Values{"position": []string{strconv.Itoa(position)}}
 	path := pathWithParams(fmt.Sprintf("%s%s/move_to_position/", basePath, url.PathEscape(id)), params)

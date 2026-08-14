@@ -28,6 +28,13 @@ import (
 type updatePositionResult struct {
 	cmdio.SingleMutation
 
+	// Position is the index that the caller asked for. The
+	// move_to_position endpoint answers with an empty body, so gcx cannot
+	// read the applied index back. The two values still agree, because the
+	// backend applies the exact index or it fails: an index past the end of
+	// the list gives HTTP 400 "Invalid position", and Validate rejects a
+	// negative index before the call. See OrderedModelViewSet in
+	// engine/common/ordered_model/viewset.py of grafana/oncall.
 	Position int `json:"position" yaml:"position"`
 }
 
