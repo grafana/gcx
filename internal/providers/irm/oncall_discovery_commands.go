@@ -34,14 +34,28 @@ func (o *discoveryListOpts) setup(flags *pflag.FlagSet, codec format.Codec) {
 	o.IO.BindFlags(flags)
 }
 
-// newDiscoveryListCmd builds a command that fetches a catalog via fetch and
-// emits it through the codec system. Each call makes its own opts and binds
-// them to the new command's local flag set, so two commands built from the
-// same catalog never share flag state.
-func newDiscoveryListCmd[T any](
-	loader OnCallConfigLoader, use, short string, codec format.Codec,
-	fetch func(ctx context.Context, client OnCallAPI) ([]T, error),
-) *cobra.Command {
+// discoveryCatalog holds one catalog and the help text of its two
+// invocations. The struct keeps each text next to the field that names its
+// purpose, because the builder takes several strings of the same type.
+type discoveryCatalog[T any] struct {
+	// command is the canonical compound command, for example
+	// "list-step-types".
+	command string
+	// noun is the older noun group, for example "steps".
+	noun string
+	// groupShort is the one-line help of the older noun group.
+	groupShort string
+	// short is the one-line help of the catalog command.
+	short string
+	codec format.Codec
+	fetch func(ctx context.Context, client OnCallAPI) ([]T, error)
+}
+
+// newListCmd builds a command that fetches the catalog and emits it through
+// the codec system. Each call makes its own opts and binds them to the new
+// command's local flag set, so the two commands of one catalog never share
+// flag state.
+func (c discoveryCatalog[T]) newListCmd(loader OnCallConfigLoader, use, short string) *cobra.Command {
 	opts := &discoveryListOpts{}
 	cmd := &cobra.Command{
 		Use:   use,
@@ -56,14 +70,14 @@ func newDiscoveryListCmd[T any](
 			if err != nil {
 				return err
 			}
-			items, err := fetch(ctx, client)
+			items, err := c.fetch(ctx, client)
 			if err != nil {
 				return err
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), items)
 		},
 	}
-	opts.setup(cmd.Flags(), codec)
+	opts.setup(cmd.Flags(), c.codec)
 	return cmd
 }
 
@@ -74,20 +88,17 @@ func newDiscoveryListCmd[T any](
 //     $AREA $NOUN $VERB grammar;
 //   - the older `<subject> list` noun group. It shipped, so it stays.
 //
-// Both invocations come from newDiscoveryListCmd, so they share one
-// implementation. The noun group itself stays non-runnable.
-func newDiscoveryCmds[T any](
-	loader OnCallConfigLoader, noun, compound, nounShort, listShort string, codec format.Codec,
-	fetch func(ctx context.Context, client OnCallAPI) ([]T, error),
-) []*cobra.Command {
+// Both invocations come from newListCmd, so they share one implementation.
+// The noun group itself stays non-runnable.
+func newDiscoveryCmds[T any](loader OnCallConfigLoader, c discoveryCatalog[T]) []*cobra.Command {
 	group := &cobra.Command{
-		Use:   noun,
-		Short: nounShort,
+		Use:   c.noun,
+		Short: c.groupShort,
 	}
-	group.AddCommand(newDiscoveryListCmd(loader, "list", listShort, codec, fetch))
+	group.AddCommand(c.newListCmd(loader, "list", c.short))
 
 	return []*cobra.Command{
-		newDiscoveryListCmd(loader, compound, listShort, codec, fetch),
+		c.newListCmd(loader, c.command, c.short),
 		group,
 	}
 }
@@ -95,49 +106,61 @@ func newDiscoveryCmds[T any](
 // newEscalationStepCmds returns `escalation-policies list-step-types` and the
 // older `escalation-policies steps` noun group.
 func newEscalationStepCmds(loader OnCallConfigLoader) []*cobra.Command {
-	return newDiscoveryCmds(loader, "steps", "list-step-types",
-		"Discover allowed escalation policy step types.",
-		"List allowed values for an escalation policy's step field.",
-		&escalationStepOptionTableCodec{},
-		func(ctx context.Context, client OnCallAPI) ([]EscalationStepOption, error) {
+	return newDiscoveryCmds(loader, discoveryCatalog[EscalationStepOption]{
+		command:    "list-step-types",
+		noun:       "steps",
+		groupShort: "Discover allowed escalation policy step types.",
+		short:      "List allowed values for an escalation policy's step field.",
+		codec:      &escalationStepOptionTableCodec{},
+		fetch: func(ctx context.Context, client OnCallAPI) ([]EscalationStepOption, error) {
 			return client.ListEscalationStepOptions(ctx)
-		})
+		},
+	})
 }
 
 // newWebhookTriggerCmds returns `webhooks list-triggers` and the older
 // `webhooks triggers` noun group.
 func newWebhookTriggerCmds(loader OnCallConfigLoader) []*cobra.Command {
-	return newDiscoveryCmds(loader, "triggers", "list-triggers",
-		"Discover allowed webhook trigger types.",
-		"List allowed values for a webhook's trigger_type field.",
-		&webhookTriggerOptionTableCodec{},
-		func(ctx context.Context, client OnCallAPI) ([]WebhookTriggerOption, error) {
+	return newDiscoveryCmds(loader, discoveryCatalog[WebhookTriggerOption]{
+		command:    "list-triggers",
+		noun:       "triggers",
+		groupShort: "Discover allowed webhook trigger types.",
+		short:      "List allowed values for a webhook's trigger_type field.",
+		codec:      &webhookTriggerOptionTableCodec{},
+		fetch: func(ctx context.Context, client OnCallAPI) ([]WebhookTriggerOption, error) {
 			return client.ListWebhookTriggerOptions(ctx)
-		})
+		},
+	})
 }
 
 // newWebhookPresetCmds returns `webhooks list-presets` and the older
 // `webhooks presets` noun group.
 func newWebhookPresetCmds(loader OnCallConfigLoader) []*cobra.Command {
-	return newDiscoveryCmds(loader, "presets", "list-presets",
-		"Discover webhook configuration presets.",
-		"List webhook preset IDs (e.g. grafana_assistant) and their allowed triggers.",
-		&webhookPresetTableCodec{},
-		func(ctx context.Context, client OnCallAPI) ([]WebhookPreset, error) {
+	return newDiscoveryCmds(loader, discoveryCatalog[WebhookPreset]{
+		command:    "list-presets",
+		noun:       "presets",
+		groupShort: "Discover webhook configuration presets.",
+		short:      "List webhook preset IDs (e.g. grafana_assistant) and their allowed triggers.",
+		codec:      &webhookPresetTableCodec{},
+		fetch: func(ctx context.Context, client OnCallAPI) ([]WebhookPreset, error) {
 			return client.ListWebhookPresets(ctx)
-		})
+		},
+	})
 }
 
 // newRouteFilterTypeCmds returns `routes list-filter-types` and the older
 // `routes filter-types` noun group.
 func newRouteFilterTypeCmds(loader OnCallConfigLoader) []*cobra.Command {
-	return newDiscoveryCmds(loader, "filter-types", "list-filter-types",
-		"Discover route filtering term types.",
-		"List allowed values for a route's filtering_term_type field.",
-		&routeFilterTypeTableCodec{},
-		func(ctx context.Context, client OnCallAPI) ([]RouteFilterType, error) {
+	return newDiscoveryCmds(loader, discoveryCatalog[RouteFilterType]{
+		command:    "list-filter-types",
+		noun:       "filter-types",
+		groupShort: "Discover route filtering term types.",
+		short:      "List allowed values for a route's filtering_term_type field.",
+		codec:      &routeFilterTypeTableCodec{},
+		fetch: func(ctx context.Context, client OnCallAPI) ([]RouteFilterType, error) {
 			return client.ListRouteFilterTypes(ctx)
-		})
+		},
+	})
 }
 
 // --- Table codecs ---
