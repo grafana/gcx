@@ -13,7 +13,7 @@ gcx metrics adaptive exemptions create [flags]
       --disable-recommendations   Disable all recommendations for matched metrics
   -h, --help                      help for create
       --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string               Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --keep-labels strings       Labels to keep (comma-separated)
       --managed-by string         Manager identifier
       --match-type string         Match type: exact, prefix, or suffix (default "exact")

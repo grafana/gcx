@@ -136,7 +136,7 @@ gcx resources get dashboards/my-dash --json ?
 
 | Value | Behavior |
 |-------|----------|
-| `--json field1,field2` | Emit JSON with only those fields; missing fields produce `null` |
+| `--json path1,path2` | Emit JSON with only those field paths. A path that exists and holds null renders as `null`. A path that exists in no emitted object is a usage error that names the real dotted paths ending with the same leaf name |
 | `--json ?` | Print available field paths (one per line, sorted) and exit 0 |
 | `--json` + `-o json` | Allowed — both request JSON, no conflict |
 | `--json` + `-o <non-json>` | Usage error — field selection requires JSON output |
@@ -145,6 +145,12 @@ gcx resources get dashboards/my-dash --json ?
 extracts `metadata → name`. Top-level keys and `spec.*` sub-keys are enumerated
 by `--json ?`. Field discovery introspects a sample object from the API — no
 additional list calls are made (NC-005).
+
+**A path is required, not a leaf name.** `--json username` on a resource whose
+username lives at `spec.username` fails with the real path in the message. The
+check is per-path existence across the whole result set, so a heterogeneous
+list keeps a path that only some objects carry, and an empty result set skips
+the check.
 
 **Output shape:**
 - Single resource: `{"field": "value", ...}` (flat object, only selected fields)

@@ -37,7 +37,7 @@ gcx agento11y conversations search [flags]
       --from string      Start of time range (RFC3339, e.g. 2026-01-01T00:00:00Z)
   -h, --help             help for search
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string      Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
   -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")
       --page-size int    Number of results per page (default 50)
       --to string        End of time range (RFC3339, e.g. 2026-12-31T23:59:59Z)

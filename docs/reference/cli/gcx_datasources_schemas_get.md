@@ -31,7 +31,7 @@ gcx datasources schemas get [flags]
       --context string   Name of the context to use
   -h, --help             help for get
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string      Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --kind string      Schema kind: config (query is not yet supported) (default "config")
   -o, --output string    Output format. One of: agents, json, yaml (default "yaml")
   -t, --type string      Datasource plugin id (e.g. grafana-sentry-datasource)
