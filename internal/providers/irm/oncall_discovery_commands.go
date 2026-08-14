@@ -47,6 +47,11 @@ type discoveryCatalog[T any] struct {
 	groupShort string
 	// short is the one-line help of the catalog command.
 	short string
+	// long is the multi-sentence help of the catalog command.
+	long string
+	// example holds the examples of the catalog command.
+	example string
+
 	codec format.Codec
 	fetch func(ctx context.Context, client OnCallAPI) ([]T, error)
 }
@@ -58,9 +63,11 @@ type discoveryCatalog[T any] struct {
 func (c discoveryCatalog[T]) newListCmd(loader OnCallConfigLoader, use, short string) *cobra.Command {
 	opts := &discoveryListOpts{}
 	cmd := &cobra.Command{
-		Use:   use,
-		Short: short,
-		Args:  cobra.NoArgs,
+		Use:     use,
+		Short:   short,
+		Long:    c.long,
+		Example: c.example,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -111,7 +118,19 @@ func newEscalationStepCmds(loader OnCallConfigLoader) []*cobra.Command {
 		noun:       "steps",
 		groupShort: "Discover allowed escalation policy step types.",
 		short:      "List allowed values for an escalation policy's step field.",
-		codec:      &escalationStepOptionTableCodec{},
+		long: "List the step types that an escalation policy accepts. " +
+			"The command reads the catalog from the Incident Response and Management backend, " +
+			"so the values match your stack. " +
+			"Put the numeric value in the step field of an escalation policy manifest.",
+		example: `  # List the step types that an escalation policy accepts
+  gcx irm oncall escalation-policies list-step-types
+
+  # Read the numeric value of one step type
+  gcx irm oncall escalation-policies list-step-types -o json | jq -r '.[] | select(.display_name == "<display-name>") | .value'
+
+  # Put that value in the step field of policy.yaml, then create the policy
+  gcx irm oncall escalation-policies create -f policy.yaml`,
+		codec: &escalationStepOptionTableCodec{},
 		fetch: func(ctx context.Context, client OnCallAPI) ([]EscalationStepOption, error) {
 			return client.ListEscalationStepOptions(ctx)
 		},
@@ -126,7 +145,19 @@ func newWebhookTriggerCmds(loader OnCallConfigLoader) []*cobra.Command {
 		noun:       "triggers",
 		groupShort: "Discover allowed webhook trigger types.",
 		short:      "List allowed values for a webhook's trigger_type field.",
-		codec:      &webhookTriggerOptionTableCodec{},
+		long: "List the trigger types that an outgoing webhook accepts. " +
+			"The command reads the catalog from the Incident Response and Management backend, " +
+			"so the values match your stack. " +
+			"Put the numeric value in the trigger_type field of a webhook manifest.",
+		example: `  # List the trigger types that a webhook accepts
+  gcx irm oncall webhooks list-triggers
+
+  # Read the numeric value of one trigger type
+  gcx irm oncall webhooks list-triggers -o json | jq -r '.[] | select(.display_name == "<display-name>") | .value'
+
+  # Put that value in the trigger_type field of webhook.yaml, then create the webhook
+  gcx irm oncall webhooks create -f webhook.yaml`,
+		codec: &webhookTriggerOptionTableCodec{},
 		fetch: func(ctx context.Context, client OnCallAPI) ([]WebhookTriggerOption, error) {
 			return client.ListWebhookTriggerOptions(ctx)
 		},
@@ -141,7 +172,18 @@ func newWebhookPresetCmds(loader OnCallConfigLoader) []*cobra.Command {
 		noun:       "presets",
 		groupShort: "Discover webhook configuration presets.",
 		short:      "List webhook preset IDs (e.g. grafana_assistant) and their allowed triggers.",
-		codec:      &webhookPresetTableCodec{},
+		long: "List the presets that an outgoing webhook accepts. " +
+			"A preset fills a group of webhook fields, and it limits the trigger types of the webhook. " +
+			"Put the preset ID in the preset field of a webhook manifest.",
+		example: `  # List the webhook presets
+  gcx irm oncall webhooks list-presets
+
+  # Read the trigger types that one preset allows
+  gcx irm oncall webhooks list-presets -o json | jq -r '.[] | select(.id == "grafana_assistant") | .trigger_types'
+
+  # Put the preset ID in the preset field of webhook.yaml, then create the webhook
+  gcx irm oncall webhooks create -f webhook.yaml`,
+		codec: &webhookPresetTableCodec{},
 		fetch: func(ctx context.Context, client OnCallAPI) ([]WebhookPreset, error) {
 			return client.ListWebhookPresets(ctx)
 		},
@@ -156,7 +198,19 @@ func newRouteFilterTypeCmds(loader OnCallConfigLoader) []*cobra.Command {
 		noun:       "filter-types",
 		groupShort: "Discover route filtering term types.",
 		short:      "List allowed values for a route's filtering_term_type field.",
-		codec:      &routeFilterTypeTableCodec{},
+		long: "List the filter types that a route accepts. " +
+			"The command reads the catalog from the Incident Response and Management backend, " +
+			"so the values match your stack. " +
+			"Put the numeric value in the filtering_term_type field of a route manifest.",
+		example: `  # List the filter types that a route accepts
+  gcx irm oncall routes list-filter-types
+
+  # Read the numeric value of one filter type
+  gcx irm oncall routes list-filter-types -o json | jq -r '.[] | select(.display_name == "<display-name>") | .value'
+
+  # Put that value in the filtering_term_type field of route.yaml, then create the route
+  gcx irm oncall routes create -f route.yaml`,
+		codec: &routeFilterTypeTableCodec{},
 		fetch: func(ctx context.Context, client OnCallAPI) ([]RouteFilterType, error) {
 			return client.ListRouteFilterTypes(ctx)
 		},
