@@ -129,9 +129,9 @@ func TestCreateAppliesSeverity(t *testing.T) {
 			},
 		},
 		{
-			// A pulled incident carries both fields, so an edit of severityID
-			// alone must reach the server. severityID has precedence.
-			name:         "severityID beats a stale severity label",
+			// A hand-written manifest can carry both fields. severityID has
+			// precedence there. A pulled manifest carries the label alone.
+			name:         "severityID beats a severity label in the same manifest",
 			incident:     irm.Incident{Title: "probe", Severity: "Pending", SeverityID: "sev-1"},
 			wantSeverity: "Critical",
 			wantCalls: []string{

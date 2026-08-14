@@ -20,7 +20,6 @@ gcx irm incidents create [flags]
     status: active
     # The display label, not the identifier. Run
     # 'gcx irm incidents severities list' for the valid values.
-    # severityID has precedence: gcx ignores severity when you set both.
     severity: Minor
     isDrill: false
     incidentType: internal
