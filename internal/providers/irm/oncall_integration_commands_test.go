@@ -137,6 +137,12 @@ func TestIntegrationStartMaintenanceCommand(t *testing.T) {
 			wantMode: MaintenanceModeDebug,
 			wantSecs: 10800,
 		},
+		{
+			name:     "the longest accepted duration",
+			args:     []string{"start-maintenance", "CH1", "--duration", "86400"},
+			wantMode: MaintenanceModeMaintenance,
+			wantSecs: 86400,
+		},
 	}
 
 	for _, tt := range tests {
@@ -176,7 +182,12 @@ func TestIntegrationStartMaintenanceRejectsBadFlags(t *testing.T) {
 		{
 			name:    "zero duration",
 			args:    []string{"start-maintenance", "CH1", "--duration", "0"},
-			wantErr: "--duration must be a positive number of seconds",
+			wantErr: "unknown --duration 0",
+		},
+		{
+			name:    "a duration the backend does not accept",
+			args:    []string{"start-maintenance", "CH1", "--duration", "7200"},
+			wantErr: "unknown --duration 7200, expected one of: 3600, 10800, 21600, 43200, 86400",
 		},
 	}
 

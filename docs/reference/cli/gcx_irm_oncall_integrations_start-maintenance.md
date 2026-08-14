@@ -10,7 +10,8 @@ Maintenance suppresses escalation during planned work. Mode "maintenance"
 groups every alert of the integration into one alert group and pages nobody.
 Mode "debug" routes each alert to its author only.
 
-The backend accepts a limited set of durations. It rejects any other value.
+The backend accepts these durations only: 3600, 10800, 21600, 43200, or 86400
+seconds. These values are 1, 3, 6, 12, and 24 hours.
 
 ```
 gcx irm oncall integrations start-maintenance <id> [flags]
@@ -19,7 +20,7 @@ gcx irm oncall integrations start-maintenance <id> [flags]
 ### Options
 
 ```
-      --duration int    Maintenance duration in seconds (default 3600)
+      --duration int    Maintenance duration in seconds (3600, 10800, 21600, 43200, 86400) (default 3600)
   -h, --help            help for start-maintenance
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
