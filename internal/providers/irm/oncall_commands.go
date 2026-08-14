@@ -818,7 +818,7 @@ func (c *escalationPolicyTableCodec) Encode(w io.Writer, v any) error {
 	}
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("ID", "CHAIN", "STEP", "WAIT-DELAY", "IMPORTANT", "NOTIFY-SCHEDULE")
+		t = style.NewTable("ID", "CHAIN", "STEP", "WAIT-DELAY", "POSITION", "IMPORTANT", "NOTIFY-SCHEDULE")
 	} else {
 		t = style.NewTable("ID", "CHAIN", "STEP", "WAIT-DELAY")
 	}
@@ -830,7 +830,7 @@ func (c *escalationPolicyTableCodec) Encode(w io.Writer, v any) error {
 			if specBool(obj, "important") {
 				important = "true"
 			}
-			t.Row(id, specStr(obj, "escalation_chain"), specStr(obj, "step"), waitDelay, important, orDash(specStr(obj, "notify_schedule")))
+			t.Row(id, specStr(obj, "escalation_chain"), specStr(obj, "step"), waitDelay, orDash(specStr(obj, "position")), important, orDash(specStr(obj, "notify_schedule")))
 		} else {
 			t.Row(id, specStr(obj, "escalation_chain"), specStr(obj, "step"), waitDelay)
 		}
@@ -937,7 +937,7 @@ func (c *routeTableCodec) Encode(w io.Writer, v any) error {
 	}
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("ID", "INTEGRATION", "CHAIN", "FILTER-TYPE", "FILTER", "DEFAULT")
+		t = style.NewTable("ID", "INTEGRATION", "CHAIN", "FILTER-TYPE", "FILTER", "POSITION", "DEFAULT")
 	} else {
 		t = style.NewTable("ID", "INTEGRATION", "CHAIN", "FILTER-TYPE")
 	}
@@ -952,7 +952,7 @@ func (c *routeTableCodec) Encode(w io.Writer, v any) error {
 			if len(filter) > 40 {
 				filter = filter[:37] + "..."
 			}
-			t.Row(id, specStr(obj, "alert_receive_channel"), orDash(specStr(obj, "escalation_chain")), orDash(specStr(obj, "filtering_term_type")), filter, isDefault)
+			t.Row(id, specStr(obj, "alert_receive_channel"), orDash(specStr(obj, "escalation_chain")), orDash(specStr(obj, "filtering_term_type")), filter, orDash(specStr(obj, "position")), isDefault)
 		} else {
 			t.Row(id, specStr(obj, "alert_receive_channel"), orDash(specStr(obj, "escalation_chain")), orDash(specStr(obj, "filtering_term_type")))
 		}
