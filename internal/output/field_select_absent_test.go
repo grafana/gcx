@@ -263,6 +263,25 @@ func TestAbsentFieldSelectionOnSingleObject(t *testing.T) {
 	assert.Contains(t, err.Error(), "Did you mean spec.username?")
 }
 
+// TestEmptyUnstructuredSliceKeepsEveryPath is the list counterpart of
+// TestUnstructuredSingleObjectKeepsUnsetPath. An unstructured object declares
+// no field set — its only field is an untagged map — so a slice of them must
+// reject nothing, even when the slice is empty. `gcx irm oncall users list`
+// and the synthetic monitoring list commands take this route.
+func TestEmptyUnstructuredSliceKeepsEveryPath(t *testing.T) {
+	codec := cmdio.NewFieldSelectCodec([]string{"spec.username"})
+
+	for name, value := range map[string]any{
+		"an empty slice": []unstructured.Unstructured{},
+		"a nil slice":    []unstructured.Unstructured(nil),
+	} {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			require.NoError(t, codec.Encode(&buf, value))
+		})
+	}
+}
+
 // TestUnstructuredSingleObjectKeepsUnsetPath is the regression test for the
 // single-resource route of `gcx resources get`. The route encodes one
 // unstructured item, which declares no type, so an unset omitempty path such
