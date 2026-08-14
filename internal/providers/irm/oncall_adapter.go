@@ -398,6 +398,7 @@ func escalationPolicyExample() json.RawMessage {
 		"spec": map[string]any{
 			"escalation_chain":      "ABCD1234",
 			"step":                  0,
+			"position":              0,
 			"notify_to_users_queue": []string{"U1234"},
 		},
 	})
@@ -440,6 +441,7 @@ func routeExample() json.RawMessage {
 		"spec": map[string]any{
 			"alert_receive_channel": "INT1234",
 			"filtering_term":        "severity=critical",
+			"position":              0,
 		},
 	})
 }
