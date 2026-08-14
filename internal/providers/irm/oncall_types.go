@@ -181,6 +181,8 @@ type OnCallAPI interface {
 	ListUserGroups(ctx context.Context) ([]UserGroup, error)
 	ListSlackChannels(ctx context.Context) ([]SlackChannel, error)
 
+	SyncPlugin(ctx context.Context) (*PluginSyncResult, error)
+
 	ListAlerts(ctx context.Context, alertGroupID string, opts ...ListOption) ([]Alert, error)
 	GetAlert(ctx context.Context, id string) (*Alert, error)
 
@@ -249,6 +251,21 @@ type Integration struct {
 	MaintenanceTill  any    `json:"maintenance_till,omitempty"`
 	Labels           any    `json:"labels,omitempty"`
 	AlertGroupLabels any    `json:"alert_group_labels,omitempty"`
+}
+
+// PluginSyncResult is the answer of the IRM plugin sync endpoint.
+type PluginSyncResult struct {
+	Status  string `json:"status,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// MessageOrStatus returns the message of the backend, or the bare status when
+// the backend sent no message.
+func (r PluginSyncResult) MessageOrStatus() string {
+	if r.Message != "" {
+		return r.Message
+	}
+	return r.Status
 }
 
 //nolint:recvcheck
