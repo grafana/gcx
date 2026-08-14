@@ -17,7 +17,7 @@ gcx assistant investigations list [flags]
   -h, --help             help for list
       --include-legacy   Include legacy (pre-v2) investigations (v2 only) (default true)
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string      Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --label string     Filter by label, key:value format (v2 only)
       --limit int        Maximum number of investigations to return (default 50)
       --offset int       Number of investigations to skip (for pagination)

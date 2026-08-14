@@ -29,7 +29,7 @@ gcx kg relationships delete [flags]
       --from-scope stringToString   Scope for --from as key=value (repeatable or comma-separated) (default [])
   -h, --help                        help for delete
       --jq string                   jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string                 Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string                 Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
   -o, --output string               Output format. One of: agents, json, text, yaml (default "text")
       --to string                   Target entity ref as domain/Type/name (required)
       --to-scope stringToString     Scope for --to as key=value (repeatable or comma-separated) (default [])

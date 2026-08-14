@@ -17,6 +17,9 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 		fields     []string
 		obj        map[string]any
 		wantFields map[string]any
+		// wantErr is the substring the error must carry. A path that exists
+		// in no object is a caller error, not a null.
+		wantErr string
 	}{
 		{
 			name:   "extracts requested top-level fields",
@@ -32,14 +35,10 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 			},
 		},
 		{
-			name:   "missing field produces null",
-			fields: []string{"nonexistent"},
-			obj: map[string]any{
-				"name": "foo",
-			},
-			wantFields: map[string]any{
-				"nonexistent": nil,
-			},
+			name:    "a field that exists nowhere is an error",
+			fields:  []string{"nonexistent"},
+			obj:     map[string]any{"name": "foo"},
+			wantErr: "unknown field(s) in --json: nonexistent",
 		},
 		{
 			name:   "dot-notation resolves nested field",
@@ -55,39 +54,38 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 			},
 		},
 		{
-			name:   "dot-notation on missing nested key produces null",
-			fields: []string{"metadata.missing"},
+			name:   "a path that exists and holds null stays a null",
+			fields: []string{"metadata.name"},
 			obj: map[string]any{
-				"metadata": map[string]any{
-					"name": "my-dashboard",
-				},
+				"metadata": map[string]any{"name": nil},
 			},
 			wantFields: map[string]any{
-				"metadata.missing": nil,
+				"metadata.name": nil,
 			},
 		},
 		{
-			name:   "dot-notation on non-map intermediate produces null",
-			fields: []string{"spec.title.nested"},
-			obj: map[string]any{
-				"spec": map[string]any{
-					"title": "My Dashboard",
-				},
-			},
-			wantFields: map[string]any{
-				"spec.title.nested": nil,
-			},
+			name:    "dot-notation on a missing nested key is an error",
+			fields:  []string{"metadata.missing"},
+			obj:     map[string]any{"metadata": map[string]any{"name": "my-dashboard"}},
+			wantErr: "unknown field(s) in --json: metadata.missing",
 		},
 		{
-			name:   "multiple fields including missing",
-			fields: []string{"name", "missing"},
-			obj: map[string]any{
-				"name": "foo",
-			},
-			wantFields: map[string]any{
-				"name":    "foo",
-				"missing": nil,
-			},
+			name:    "dot-notation through a non-map intermediate is an error",
+			fields:  []string{"spec.title.nested"},
+			obj:     map[string]any{"spec": map[string]any{"title": "My Dashboard"}},
+			wantErr: "unknown field(s) in --json: spec.title.nested",
+		},
+		{
+			name:    "one bad name among good ones is still an error",
+			fields:  []string{"name", "missing"},
+			obj:     map[string]any{"name": "foo"},
+			wantErr: "unknown field(s) in --json: missing",
+		},
+		{
+			name:    "a leaf name typed instead of a path names the path",
+			fields:  []string{"username"},
+			obj:     map[string]any{"spec": map[string]any{"username": "ward"}},
+			wantErr: "Did you mean spec.username?",
 		},
 	}
 
@@ -98,6 +96,11 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 			item := unstructured.Unstructured{Object: tc.obj}
 			var buf bytes.Buffer
 			err := codec.Encode(&buf, item)
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErr)
+				return
+			}
 			require.NoError(t, err)
 
 			var got map[string]any
@@ -127,13 +130,15 @@ func TestFieldSelectCodec_ListWrapping(t *testing.T) {
 			},
 		},
 		{
-			name:   "missing field in list items produces null",
-			fields: []string{"nonexistent"},
+			name:   "a field only some items carry is kept for all of them",
+			fields: []string{"name", "kind"},
 			items: []map[string]any{
 				{"name": "foo"},
+				{"name": "bar", "kind": "Dashboard"},
 			},
 			wantItems: []map[string]any{
-				{"nonexistent": nil},
+				{"name": "foo", "kind": nil},
+				{"name": "bar", "kind": "Dashboard"},
 			},
 		},
 	}

@@ -41,7 +41,7 @@ gcx datasources query DATASOURCE_UID [EXPR] [flags]
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                  help for query
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string           Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --limit int             Maximum number of log lines to return for loki queries (0 means no limit) (default 50)
       --max-nodes int         Maximum nodes in flame graph (pyroscope only) (default 1024)
   -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")

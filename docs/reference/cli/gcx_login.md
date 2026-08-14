@@ -47,7 +47,7 @@ gcx login [CONTEXT_NAME] [flags]
       --context string            Name of the context to use
   -h, --help                      help for login
       --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string               Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --oauth                     Authenticate via browser-based OAuth (recommended for Grafana Cloud). Works non-interactively and in agent mode: opens a browser for the user to approve.
       --oauth-callback-port int   Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser
       --org-id int                Grafana organization ID (defaults to 1 for on-prem)

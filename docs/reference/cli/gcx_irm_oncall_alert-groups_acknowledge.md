@@ -32,7 +32,7 @@ gcx irm oncall alert-groups acknowledge [<id>] [flags]
   -h, --help                  help for acknowledge
       --integration strings   Filter: integration PK (repeatable)
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string           Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --max-age string        Filter: alert groups started within this duration (e.g. 1h, 24h, 7d)
       --mine                  Filter: limit to alert groups for the authenticated user
   -o, --output string         Output format. One of: agents, json, text, yaml (default "text")
