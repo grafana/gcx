@@ -1,4 +1,4 @@
-## gcx irm plugin sync
+## gcx irm sync-plugin
 
 Refresh the IRM copy of the Grafana users and teams.
 
@@ -17,13 +17,13 @@ The backend accepts the request and refreshes in the background, so a
 successful call does not prove that the copy is already current.
 
 ```
-gcx irm plugin sync [flags]
+gcx irm sync-plugin [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for sync
+  -h, --help            help for sync-plugin
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
@@ -43,5 +43,5 @@ gcx irm plugin sync [flags]
 
 ### SEE ALSO
 
-* [gcx irm plugin](gcx_irm_plugin.md)	 - Manage the IRM plugin itself.
+* [gcx irm](gcx_irm.md)	 - Manage Grafana IRM (OnCall + Incidents)
 
