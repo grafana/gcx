@@ -40,9 +40,15 @@ func TestNewDefaultClient_WithPayloadLogging(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected UserAgentTransport.Base to be *retry.Transport, got %T", uaRT.Base)
 	}
-	// Inner layer is RequestResponseLoggingRoundTripper (payload logging enabled).
-	if _, ok := retryRT.Base.(*httputils.RequestResponseLoggingRoundTripper); !ok {
-		t.Fatalf("expected retry.Transport.Base to be *httputils.RequestResponseLoggingRoundTripper, got %T", retryRT.Base)
+	// Next layer is LoggingRoundTripper.
+	logRT, ok := retryRT.Base.(*httputils.LoggingRoundTripper)
+	if !ok {
+		t.Fatalf("expected retry.Transport.Base to be *httputils.LoggingRoundTripper, got %T", retryRT.Base)
+	}
+	// Innermost layer is RequestResponseLoggingRoundTripper, so the dump shows
+	// every header that an outer layer adds.
+	if _, ok := logRT.Base.(*httputils.RequestResponseLoggingRoundTripper); !ok {
+		t.Fatalf("expected LoggingRoundTripper.Base to be *httputils.RequestResponseLoggingRoundTripper, got %T", logRT.Base)
 	}
 }
 
