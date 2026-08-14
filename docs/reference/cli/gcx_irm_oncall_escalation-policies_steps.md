@@ -1,18 +1,11 @@
 ## gcx irm oncall escalation-policies steps
 
-List allowed escalation policy step types.
-
-```
-gcx irm oncall escalation-policies steps [flags]
-```
+Discover allowed escalation policy step types.
 
 ### Options
 
 ```
-  -h, --help            help for steps
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+  -h, --help   help for steps
 ```
 
 ### Options inherited from parent commands

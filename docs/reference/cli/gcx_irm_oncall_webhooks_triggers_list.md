@@ -29,5 +29,5 @@ gcx irm oncall webhooks triggers list [flags]
 
 ### SEE ALSO
 
-* [gcx irm oncall webhooks triggers](gcx_irm_oncall_webhooks_triggers.md)	 - List allowed webhook trigger types.
+* [gcx irm oncall webhooks triggers](gcx_irm_oncall_webhooks_triggers.md)	 - Discover allowed webhook trigger types.
 

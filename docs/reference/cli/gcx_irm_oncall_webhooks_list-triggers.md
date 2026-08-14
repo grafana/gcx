@@ -1,11 +1,18 @@
-## gcx irm oncall routes filter-types
+## gcx irm oncall webhooks list-triggers
 
-Discover route filtering term types.
+List allowed values for a webhook's trigger_type field.
+
+```
+gcx irm oncall webhooks list-triggers [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for filter-types
+  -h, --help            help for list-triggers
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -22,6 +29,5 @@ Discover route filtering term types.
 
 ### SEE ALSO
 
-* [gcx irm oncall routes](gcx_irm_oncall_routes.md)	 - Manage OnCall routes.
-* [gcx irm oncall routes filter-types list](gcx_irm_oncall_routes_filter-types_list.md)	 - List allowed values for a route's filtering_term_type field.
+* [gcx irm oncall webhooks](gcx_irm_oncall_webhooks.md)	 - Manage outgoing webhooks.
 
