@@ -1,11 +1,18 @@
 ## gcx irm oncall routes filter-types
 
-Discover route filtering term types.
+List route filtering term types.
+
+```
+gcx irm oncall routes filter-types [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for filter-types
+  -h, --help            help for filter-types
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
