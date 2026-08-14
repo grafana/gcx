@@ -243,6 +243,61 @@ func TestFormatMetricsTable_EmptySeries(t *testing.T) {
 	assert.Len(t, lines, 1) // Only header
 }
 
+func TestFormatMetricsCSV_Range(t *testing.T) {
+	resp := &tempo.MetricsResponse{
+		Instant: false,
+		Series: []tempo.MetricsSeries{
+			{
+				Labels: []tempo.MetricsLabel{
+					{Key: "service", Value: map[string]any{"stringValue": "web"}},
+				},
+				Samples: []tempo.MetricsSample{
+					{TimestampMs: "1700000000000", Value: 42.5},
+					{TimestampMs: "1700000060000", Value: 43.0},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatMetricsCSV(&buf, resp))
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, 3)
+	assert.Equal(t, "SERVICE,TIMESTAMP,VALUE", lines[0])
+	assert.Equal(t, "web,2023-11-14T22:13:20Z,42.5", lines[1])
+	assert.Equal(t, "web,2023-11-14T22:14:20Z,43", lines[2])
+}
+
+func TestFormatMetricsCSV_Instant(t *testing.T) {
+	val := float64(99)
+	resp := &tempo.MetricsResponse{
+		Instant: true,
+		Series: []tempo.MetricsSeries{
+			{
+				Labels: []tempo.MetricsLabel{
+					{Key: "service", Value: map[string]any{"stringValue": "api"}},
+				},
+				Value: &val,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatMetricsCSV(&buf, resp))
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, 2)
+	assert.Equal(t, "SERVICE,VALUE", lines[0])
+	assert.Equal(t, "api,99", lines[1])
+}
+
+func TestFormatMetricsCSV_NoData(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatMetricsCSV(&buf, &tempo.MetricsResponse{}))
+	assert.Empty(t, buf.String())
+}
+
 // ==============================================================
 // Trace tree formatter tests (FormatTraceTable, FormatTraceWide,
 // formatDurationNanos). Cover the acceptance criteria from

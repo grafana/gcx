@@ -109,14 +109,26 @@ func (c *queryCSVCodec) Encode(w io.Writer, data any) error {
 		return prometheus.FormatCSV(w, resp)
 	case *loki.QueryResponse:
 		return loki.FormatQueryCSV(w, resp)
+	case *loki.MetricQueryResponse:
+		return loki.FormatMetricQueryCSV(w, resp)
+	case *pyroscope.QueryResponse:
+		return pyroscope.FormatCSV(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchCSV(w, resp)
+	case *tempo.MetricsResponse:
+		return tempo.FormatMetricsCSV(w, resp)
 	case *infinity.QueryResponse:
 		return infinity.FormatCSV(w, resp)
+	case *influxdb.QueryResponse:
+		return influxdb.FormatCSV(w, resp)
 	case *tempo.GetTraceResponse:
 		return errors.New("csv output is not supported for trace get; use -o table/wide/json/yaml")
 	case *querysql.QueryResponse:
 		return querysql.FormatCSV(w, resp)
+	case []clickhouse.TableInfo:
+		return clickhouse.FormatListTablesCSV(w, resp)
+	case []clickhouse.ColumnInfo:
+		return clickhouse.FormatDescribeTableCSV(w, resp)
 	case athena.StringList:
 		return athena.FormatStringListCSV(w, resp.Items, resp.Header)
 	case *cloudwatch.QueryResponse:
