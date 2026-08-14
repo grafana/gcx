@@ -11,17 +11,23 @@ import (
 
 // fakeMoveAPI stubs the position surface of the ordered OnCall resources.
 // Unimplemented OnCallAPI methods panic via the embedded nil interface.
+//
+// Both methods take the same arguments, so a separate flag per method is the
+// only way the tests detect a cross-wire between the two nouns.
 type fakeMoveAPI struct {
 	OnCallAPI
 
 	gotID       string
 	gotPosition int
 	called      bool
+	movedPolicy bool
+	movedRoute  bool
 	err         error
 }
 
 func (f *fakeMoveAPI) MoveEscalationPolicy(_ context.Context, id string, position int) error {
 	f.called = true
+	f.movedPolicy = true
 	f.gotID = id
 	f.gotPosition = position
 	return f.err
@@ -29,6 +35,7 @@ func (f *fakeMoveAPI) MoveEscalationPolicy(_ context.Context, id string, positio
 
 func (f *fakeMoveAPI) MoveRoute(_ context.Context, id string, position int) error {
 	f.called = true
+	f.movedRoute = true
 	f.gotID = id
 	f.gotPosition = position
 	return f.err
@@ -50,28 +57,32 @@ func runUpdatePositionCmd(t *testing.T, noun string, fake *fakeMoveAPI, args ...
 
 func TestUpdatePositionCommand(t *testing.T) {
 	tests := []struct {
-		name     string
-		noun     string
-		args     []string
-		wantID   string
-		wantPos  int
-		wantLine string
+		name       string
+		noun       string
+		args       []string
+		wantID     string
+		wantPos    int
+		wantPolicy bool
+		wantRoute  bool
+		wantLine   string
 	}{
 		{
-			name:     "escalation policy to the first step",
-			noun:     "escalation-policies",
-			args:     []string{"update-position", "EP1", "--position", "0"},
-			wantID:   "EP1",
-			wantPos:  0,
-			wantLine: "Updated the position of escalation policy EP1 to 0",
+			name:       "escalation policy to the first step",
+			noun:       "escalation-policies",
+			args:       []string{"update-position", "EP1", "--position", "0"},
+			wantID:     "EP1",
+			wantPos:    0,
+			wantPolicy: true,
+			wantLine:   "Updated the position of escalation policy EP1 to 0",
 		},
 		{
-			name:     "route to the third position",
-			noun:     "routes",
-			args:     []string{"update-position", "R7", "--position", "2"},
-			wantID:   "R7",
-			wantPos:  2,
-			wantLine: "Updated the position of route R7 to 2",
+			name:      "route to the third position",
+			noun:      "routes",
+			args:      []string{"update-position", "R7", "--position", "2"},
+			wantID:    "R7",
+			wantPos:   2,
+			wantRoute: true,
+			wantLine:  "Updated the position of route R7 to 2",
 		},
 	}
 
@@ -86,6 +97,13 @@ func TestUpdatePositionCommand(t *testing.T) {
 			}
 			if fake.gotID != tt.wantID || fake.gotPosition != tt.wantPos {
 				t.Errorf("got position update of %q to %d, want %q to %d", fake.gotID, fake.gotPosition, tt.wantID, tt.wantPos)
+			}
+			// Each noun must reach its own API method.
+			if fake.movedPolicy != tt.wantPolicy {
+				t.Errorf("MoveEscalationPolicy ran: %t, want %t", fake.movedPolicy, tt.wantPolicy)
+			}
+			if fake.movedRoute != tt.wantRoute {
+				t.Errorf("MoveRoute ran: %t, want %t", fake.movedRoute, tt.wantRoute)
 			}
 			if !strings.Contains(out, tt.wantLine) {
 				t.Errorf("expected %q in the output, got %q", tt.wantLine, out)
