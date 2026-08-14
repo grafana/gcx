@@ -1,6 +1,6 @@
 ## gcx irm oncall webhooks triggers list
 
-List allowed values for a webhook's trigger_type field.
+List allowed values for a webhook's trigger_type field (older spelling; use `webhooks list-triggers`).
 
 ### Synopsis
 

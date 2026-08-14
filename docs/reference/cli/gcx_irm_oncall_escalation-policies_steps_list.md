@@ -1,6 +1,6 @@
 ## gcx irm oncall escalation-policies steps list
 
-List allowed values for an escalation policy's step field.
+List allowed values for an escalation policy's step field (older spelling; use `escalation-policies list-step-types`).
 
 ### Synopsis
 

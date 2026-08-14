@@ -23,5 +23,5 @@ Discover allowed webhook trigger types.
 ### SEE ALSO
 
 * [gcx irm oncall webhooks](gcx_irm_oncall_webhooks.md)	 - Manage outgoing webhooks.
-* [gcx irm oncall webhooks triggers list](gcx_irm_oncall_webhooks_triggers_list.md)	 - List allowed values for a webhook's trigger_type field.
+* [gcx irm oncall webhooks triggers list](gcx_irm_oncall_webhooks_triggers_list.md)	 - List allowed values for a webhook's trigger_type field (older spelling; use `webhooks list-triggers`).
 
