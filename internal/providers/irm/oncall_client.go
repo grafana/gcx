@@ -841,7 +841,8 @@ func (c *OnCallClient) CreateDirectPaging(ctx context.Context, input DirectPagin
 // "Object does not exist". This call replaces the wait.
 //
 // The backend answers with free-form success text that a caller cannot
-// dispatch on, so this method reports a failure alone.
+// dispatch on, so this method ignores the body, like deleteResource does, and
+// treats every 2xx status code as a success.
 func (c *OnCallClient) SyncPlugin(ctx context.Context) error {
 	resp, err := c.DoRequest(ctx, http.MethodPost, pluginSyncPath, nil)
 	if err != nil {
@@ -851,23 +852,6 @@ func (c *OnCallClient) SyncPlugin(ctx context.Context) error {
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return providers.HandleErrorResponse(resp)
-	}
-
-	// The backend can accept the request and refresh the copy later, so the
-	// answer can be a 202 or a 204 with no body at all. An absent body is a
-	// success: there is nothing to read, and the check below has nothing to
-	// reject. A body that this client cannot read is different: the check
-	// never runs on it, so this call cannot claim success.
-	var result pluginSyncResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("irm: sync plugin: decode response: %w", err)
-	}
-
-	// The backend can report a failure in-band on a 2xx response, the way the
-	// incident query endpoint does. Only an explicit error field is a failure:
-	// the success tokens of this endpoint are not documented.
-	if result.Error != "" {
-		return fmt.Errorf("irm: sync plugin: %s", result.Error)
 	}
 	return nil
 }
