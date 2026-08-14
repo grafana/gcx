@@ -405,18 +405,9 @@ func reflectFields(t reflect.Type) []string {
 
 	var fields []string
 	for f := range t.Fields() {
-		if !f.IsExported() {
-			continue
+		if name, ok := jsonFieldName(f); ok {
+			fields = append(fields, name)
 		}
-		tag := f.Tag.Get("json")
-		if tag == "-" {
-			continue
-		}
-		name, _, _ := strings.Cut(tag, ",")
-		if name == "" {
-			name = f.Name
-		}
-		fields = append(fields, name)
 	}
 	return fields
 }
@@ -536,32 +527,7 @@ func reflectSingleSliceField(t reflect.Type) []string {
 // Used to discover item fields of an empty ListEnvelope. Returns nil when t
 // (after pointer unwrapping) is not a struct or has no matching slice field.
 func reflectSliceFieldByKey(t reflect.Type, key string) []string {
-	if t == nil {
-		return nil
-	}
-	for t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	if t.Kind() != reflect.Struct {
-		return nil
-	}
-	for f := range t.Fields() {
-		if !f.IsExported() || f.Type.Kind() != reflect.Slice {
-			continue
-		}
-		tag := f.Tag.Get("json")
-		if tag == "-" {
-			continue
-		}
-		name, _, _ := strings.Cut(tag, ",")
-		if name == "" {
-			name = f.Name
-		}
-		if name == key {
-			return reflectFields(f.Type)
-		}
-	}
-	return nil
+	return reflectFields(sliceElemTypeByKey(t, key))
 }
 
 // We have to return an interface here.
