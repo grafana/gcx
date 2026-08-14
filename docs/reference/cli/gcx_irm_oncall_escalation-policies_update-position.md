@@ -10,9 +10,9 @@ An escalation chain runs its steps in order, so the position decides when a
 step fires. The position is zero-based: 0 is the first step. The backend
 renumbers the other steps of the chain.
 
-The position field of the spec behaves differently on create: the backend
-reads it as an insertion point, and it moves the step that holds that position,
-and every later step, one place down. Use this command to set a known index.
+This command is the only way to set the order. The backend does not report the
+position of a step or of a route, so a caller cannot read the current order
+back.
 
 ```
 gcx irm oncall escalation-policies update-position <id> [flags]
