@@ -12,9 +12,9 @@ import (
 
 // An escalation chain is an ordered sequence of steps, and routes match from
 // the top down with first-match semantics. Order is therefore part of the
-// meaning of both objects. On create the backend reads the position field of
-// the spec as an insertion point, so these update-position verbs are the way
-// to set a known index.
+// meaning of both objects. The backend does not report the position of a step
+// or of a route on a read, so these update-position verbs are the only way to
+// set the order.
 
 // updatePositionResult is the structured result of a position update. The
 // embedded SingleMutation keeps the type and schema_version discriminators in
@@ -116,9 +116,9 @@ An escalation chain runs its steps in order, so the position decides when a
 step fires. The position is zero-based: 0 is the first step. The backend
 renumbers the other steps of the chain.
 
-The position field of the spec behaves differently on create: the backend
-reads it as an insertion point, and it moves the step that holds that position,
-and every later step, one place down. Use this command to set a known index.`,
+This command is the only way to set the order. The backend does not report the
+position of a step or of a route, so a caller cannot read the current order
+back.`,
 		func(ctx context.Context, client OnCallAPI, id string, position int) error {
 			return client.MoveEscalationPolicy(ctx, id, position)
 		})
@@ -133,10 +133,9 @@ Routes match from the top down, and the first match wins, so the position
 decides which route handles an alert. The position is zero-based: 0 is the
 first route. The backend renumbers the other routes of the integration.
 
-The position field of the spec behaves differently on create: the backend
-reads it as an insertion point, and it moves the route that holds that
-position, and every later route, one place down. Use this command to set a
-known index.`,
+This command is the only way to set the order. The backend does not report the
+position of a step or of a route, so a caller cannot read the current order
+back.`,
 		func(ctx context.Context, client OnCallAPI, id string, position int) error {
 			return client.MoveRoute(ctx, id, position)
 		})

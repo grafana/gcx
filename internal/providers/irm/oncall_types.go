@@ -273,21 +273,6 @@ type EscalationPolicy struct {
 	CustomWebhook       any    `json:"custom_webhook,omitempty"`
 	Important           bool   `json:"important,omitempty"`
 	Severity            string `json:"severity,omitempty"`
-	// Position is the zero-based index of this step inside its escalation
-	// chain. An escalation chain is an ordered sequence, so the position is
-	// part of the meaning of a step. A pointer keeps position 0 (the first
-	// step) distinct from an absent position.
-	//
-	// On create, the backend treats the position as an insertion point, not
-	// as an absolute index: it moves the step that holds that position, and
-	// every step after it, one place down. The OnCall HTTP API reference does
-	// not say whether an update honours the position.
-	//
-	// Consequence for `gcx resources push`: a manifest set that describes a
-	// whole chain still depends on the order in which gcx writes the steps.
-	// To place a step at a known index, use
-	// `gcx irm oncall escalation-policies update-position`.
-	Position *int `json:"position,omitempty"`
 }
 
 //nolint:recvcheck
@@ -330,21 +315,6 @@ type Route struct {
 	FilteringTermType   any    `json:"filtering_term_type,omitempty"`
 	IsDefault           bool   `json:"is_default,omitempty"`
 	FilteringLabels     any    `json:"filtering_labels,omitempty"`
-	// Position is the zero-based index of this route inside its integration.
-	// Routes match from the top down, and the first match wins, so the
-	// position is part of the meaning of a route. A pointer keeps position 0
-	// (the first route) distinct from an absent position.
-	//
-	// On create, the backend treats the position as an insertion point, not
-	// as an absolute index: it moves the route that holds that position, and
-	// every route after it, one place down. The OnCall HTTP API reference
-	// does not say whether an update honours the position.
-	//
-	// Consequence for `gcx resources push`: a manifest set that describes a
-	// whole route list still depends on the order in which gcx writes the
-	// routes. To place a route at a known index, use
-	// `gcx irm oncall routes update-position`.
-	Position *int `json:"position,omitempty"`
 }
 
 // WebhookIntegrationFilter is the list of integration IDs that may trigger a
