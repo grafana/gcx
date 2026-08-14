@@ -846,17 +846,22 @@ func (c *OnCallClient) SyncPlugin(ctx context.Context) (*PluginSyncResult, error
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return nil, providers.HandleErrorResponse(resp)
 	}
 
+	// The backend can accept the request and refresh in the background, so the
+	// answer can be a 202 or a 204 with no body at all. The decode is therefore
+	// a best effort: a body that is absent, or that this client does not
+	// recognise, leaves the result empty and the request still succeeds.
 	var result PluginSyncResult
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("irm: decode plugin sync response: %w", err)
-	}
-	// The backend reports failure in-band on a 200 response.
-	if result.Status != "" && result.Status != "success" {
-		return nil, fmt.Errorf("irm: sync plugin: %s", result.MessageOrStatus())
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+
+	// The backend can report a failure in-band on a 2xx response, the way the
+	// incident query endpoint does. Only an explicit error field is a failure:
+	// the success tokens of this endpoint are not documented.
+	if result.Error != "" {
+		return nil, fmt.Errorf("irm: sync plugin: %s", result.Error)
 	}
 	return &result, nil
 }

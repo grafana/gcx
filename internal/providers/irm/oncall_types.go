@@ -253,19 +253,15 @@ type Integration struct {
 	AlertGroupLabels any    `json:"alert_group_labels,omitempty"`
 }
 
-// PluginSyncResult is the answer of the IRM plugin sync endpoint.
+// PluginSyncResult is the answer of the IRM plugin sync endpoint. The endpoint
+// can answer with an empty body, so both fields are optional.
 type PluginSyncResult struct {
-	Status  string `json:"status,omitempty"`
+	// Message is the human-readable answer of the backend, for example
+	// "Sync request processed successfully".
 	Message string `json:"message,omitempty"`
-}
-
-// MessageOrStatus returns the message of the backend, or the bare status when
-// the backend sent no message.
-func (r PluginSyncResult) MessageOrStatus() string {
-	if r.Message != "" {
-		return r.Message
-	}
-	return r.Status
+	// Error carries a failure that the backend reports in-band on a 2xx
+	// response.
+	Error string `json:"error,omitempty"`
 }
 
 //nolint:recvcheck
