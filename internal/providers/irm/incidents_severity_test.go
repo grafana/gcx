@@ -3,6 +3,7 @@ package irm_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -30,6 +31,12 @@ type severityServer struct {
 	// failSeverityUpdate makes UpdateSeverity answer 500, so the test can
 	// drive the failure path of Create.
 	failSeverityUpdate bool
+	// failTitleUpdate makes UpdateTitle answer 500, so the test can drive a
+	// partial update.
+	failTitleUpdate bool
+	// incidentMissing makes every update method answer 404 on both base paths,
+	// the way the API reports an unknown incidentID.
+	incidentMissing bool
 }
 
 func (s *severityServer) handler(t *testing.T) http.Handler {
@@ -47,7 +54,15 @@ func (s *severityServer) handler(t *testing.T) http.Handler {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
+		if s.incidentMissing && strings.HasPrefix(method, "IncidentsService.Update") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		if s.failSeverityUpdate && method == "IncidentsService.UpdateSeverity" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if s.failTitleUpdate && method == "IncidentsService.UpdateTitle" {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -269,6 +284,83 @@ func TestCreateCommandKeepsTheRepairErrorAlone(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "incident 1 exists") {
 		t.Errorf("expected the repair error of the client, got %v", err)
+	}
+}
+
+// TestUpdateFieldReportsAMissingIncident covers an unknown incidentID. Both
+// base paths answer 404, so a missing route is not the cause. The caller must
+// read the identifier and the not-found classification that Get produces, not
+// a bare status line.
+func TestUpdateFieldReportsAMissingIncident(t *testing.T) {
+	t.Parallel()
+
+	srv := &severityServer{title: "probe", incidentMissing: true}
+	client := newSeverityTestClient(t, srv)
+
+	_, err := client.UpdateSeverity(context.Background(), "does-not-exist", "Critical")
+	if !errors.Is(err, irm.ErrNotFound) {
+		t.Fatalf("expected a not-found error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "does-not-exist") {
+		t.Errorf("expected the incident identifier in the error, got %v", err)
+	}
+	// One call on the versioned path, one on the unversioned path.
+	if len(srv.calls) != 2 {
+		t.Errorf("expected two calls, got %v", srv.calls)
+	}
+}
+
+// TestUpdateReportsAHalfAppliedChange covers a failure after an earlier field
+// reached the server. The caller needs the incident as the server holds it,
+// and the name of the field that gcx applied.
+func TestUpdateReportsAHalfAppliedChange(t *testing.T) {
+	t.Parallel()
+
+	srv := &severityServer{title: "old title", status: "active", failTitleUpdate: true}
+	client := newSeverityTestClient(t, srv)
+
+	got, err := client.Update(context.Background(), "1", &irm.Incident{
+		Status:   "resolved",
+		Title:    "new title",
+		Severity: "Critical",
+	})
+	if err == nil {
+		t.Fatal("expected an error from the failed title update")
+	}
+	if got == nil || got.Status != "resolved" {
+		t.Fatalf("expected the incident with the applied status next to the error, got %+v", got)
+	}
+	for _, want := range []string{"update 1", "gcx applied the status", "title update failed"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected %q in the error, got %v", want, err)
+		}
+	}
+	// The severity call must not run after the title failed.
+	for _, call := range srv.calls {
+		if call == "IncidentsService.UpdateSeverity" {
+			t.Fatalf("the client continued after a failed update: %v", srv.calls)
+		}
+	}
+}
+
+// TestUpdateReportsTheFirstFailureAlone covers a failure before any field
+// reached the server: the error stands on its own, and there is no incident
+// to report.
+func TestUpdateReportsTheFirstFailureAlone(t *testing.T) {
+	t.Parallel()
+
+	srv := &severityServer{title: "old title", status: "active", failTitleUpdate: true}
+	client := newSeverityTestClient(t, srv)
+
+	got, err := client.Update(context.Background(), "1", &irm.Incident{Title: "new title"})
+	if err == nil {
+		t.Fatal("expected an error from the failed title update")
+	}
+	if got != nil {
+		t.Errorf("expected no incident, got %+v", got)
+	}
+	if strings.Contains(err.Error(), "gcx applied") {
+		t.Errorf("expected no applied field in the error, got %v", err)
 	}
 }
 
