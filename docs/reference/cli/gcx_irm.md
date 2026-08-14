@@ -34,5 +34,4 @@ See https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-in
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx irm incidents](gcx_irm_incidents.md)	 - Manage incidents.
 * [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
-* [gcx irm sync-plugin](gcx_irm_sync-plugin.md)	 - Refresh the IRM copy of the Grafana users and teams.
 

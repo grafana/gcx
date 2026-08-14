@@ -803,7 +803,7 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 | `internal/providers/irm/oncall_adapter.go` | Resource adapter for OnCall resources |
 | `internal/providers/irm/incidents_client.go` | Incidents REST client |
 | `internal/providers/irm/incidents_commands.go` | IRM Incidents CLI commands (list, get, create, close, open, list-activity, list-contexts, activity add, severities) |
-| `internal/providers/irm/sync_plugin_commands.go` | The `gcx irm sync-plugin` command (refresh the IRM copy of the Grafana users and teams) |
+| `internal/providers/irm/sync_plugin_commands.go` | The `gcx irm oncall sync-plugin` command (refresh the IRM copy of the Grafana users and teams) |
 
 ### Faro Provider
 
