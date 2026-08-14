@@ -1,9 +1,13 @@
 ## v1.1.0 (2026-08-14)
 
+**Breaking changes**
+- `gcx agento11y collections add-conversations` and `gcx agento11y collections remove-conversation` emit `type: gcx.agento11y.collection_membership` instead of `gcx.aio11y.collection_membership`. `schema_version` stays `1`. No fields changed. Scripts that read `type` must accept the new value.
+
 **New features**
 - Add `gcx profiles data-range` for Pyroscope ingestion health.
 - Add the same `data-range` command under `gcx datasources pyroscope`.
-- Add `gcx instrumentation explain` and `list-explanations`.
+- Add `gcx instrumentation explain` and `list-explanations` for the finding explanations that ship with `otel-checker` (now v0.3.1).
+- Add an `EXPLAIN_ID` column to `gcx instrumentation check` table output, and an `explain_id` field to its JSON output. Pass the value to `gcx instrumentation explain`.
 - Add `gcx assistant investigations list-evidence`.
 - Show the chat ID next to the investigation ID in `investigations get`.
 - Keep full v2 investigation summaries and totals in list output.
@@ -35,15 +39,6 @@
 
 
 ## Unreleased
-
-### Breaking changes
-
-- `gcx agento11y collections add-conversations` and `gcx agento11y collections remove-conversation` emit `type: gcx.agento11y.collection_membership` instead of `gcx.aio11y.collection_membership`. `schema_version` stays `1` and no fields changed. Scripts that rely on `type` must accept the new value.
-
-### Features
-
-- Added `gcx instrumentation explain <id>` and `gcx instrumentation list-explanations` for looking up finding explanations bundled with `otel-checker` (bumped to v0.3.1).
-- `gcx instrumentation check` now surfaces an `EXPLAIN_ID` column in table output (and `explain_id` field in JSON), feedable directly into `gcx instrumentation explain`.
 
 ## v1.0.0 (2026-07-28)
 
