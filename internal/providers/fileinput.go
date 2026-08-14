@@ -46,7 +46,11 @@ func ReadFileOrStdin(file string, stdin io.Reader, out any) error {
 		return errors.New("input is empty")
 	}
 
-	if spec, ok := envelopeSpec(data); ok {
+	spec, err := envelopeSpec(data)
+	if err != nil {
+		return fmt.Errorf("%s: %w", inputName(file), err)
+	}
+	if spec != nil {
 		data = spec
 	}
 
@@ -56,31 +60,42 @@ func ReadFileOrStdin(file string, stdin io.Reader, out any) error {
 	return nil
 }
 
-// envelopeSpec reports whether data is a K8s-style resource envelope and
-// returns its spec as JSON. A document counts as an envelope only when it
-// carries a non-null object-valued "spec" together with "apiVersion" or
-// "kind", so a bare object with its own "spec" field passes through
-// unchanged.
-func envelopeSpec(data []byte) ([]byte, bool) {
-	var doc map[string]json.RawMessage
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, false
+// inputName names the source of the document for an error message.
+func inputName(file string) string {
+	if file == "-" {
+		return "stdin"
 	}
+	return file
+}
+
+// envelopeSpec returns the spec of a K8s-style resource envelope. It returns a
+// nil slice when the document is not an envelope, so a bare object passes
+// through unchanged. A document counts as an envelope when it carries
+// "apiVersion" or "kind"; none of the bare objects that the provider commands
+// post declares either name.
+//
+// An envelope whose spec is absent, null, not an object, or empty carries no
+// field to send. envelopeSpec returns an error for it, because the decode of
+// such a document produces the empty object that issue #1185 reports.
+func envelopeSpec(data []byte) ([]byte, error) {
+	// A document that does not decode as an object leaves doc nil, so the key
+	// probes below classify it as a non-envelope. The caller then decodes it
+	// against the target type, and reports the syntax error with that context.
+	var doc map[string]json.RawMessage
+	_ = yaml.Unmarshal(data, &doc)
 
 	_, hasAPIVersion := doc["apiVersion"]
 	_, hasKind := doc["kind"]
 	if !hasAPIVersion && !hasKind {
-		return nil, false
+		return nil, nil
 	}
 
-	spec, ok := doc["spec"]
-	if !ok {
-		return nil, false
-	}
-
+	// A missing "spec" decodes as an empty slice, which fails the same way a
+	// null, scalar, or list spec does.
+	spec := doc["spec"]
 	var specObject map[string]json.RawMessage
-	if err := json.Unmarshal(spec, &specObject); err != nil || specObject == nil {
-		return nil, false
+	if err := json.Unmarshal(spec, &specObject); err != nil || len(specObject) == 0 {
+		return nil, errors.New("the document sets apiVersion or kind, but it carries no object-valued spec field, so it defines no resource")
 	}
-	return spec, true
+	return spec, nil
 }

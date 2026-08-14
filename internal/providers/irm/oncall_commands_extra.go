@@ -1342,20 +1342,20 @@ func (o *finalShiftsOpts) setup(flags *pflag.FlagSet) {
 		"IANA timezone for the shift boundaries (default: the timezone of the schedule, else UTC)")
 }
 
-// Validate rejects a timezone that the tzdata of the platform does not know,
-// so the caller reads a local error instead of the "Invalid timezone" answer
-// of the API. It also rejects "Local", which time.LoadLocation resolves from
-// the clock of the host but the API does not accept — that name is the value
-// that issue #1185 reports.
+// Validate rejects "Local", the name that Go gives the zone of the host when
+// TZ is unset. That name is the value which issue #1185 reports, and the API
+// answers it with "Invalid timezone".
+//
+// Validate does not check the name against the tz database. time.LoadLocation
+// reads that database from the host, and the binary embeds no copy of it, so
+// the check rejects every real IANA name on Windows and inside a minimal
+// container image. The API adjudicates the name instead.
 func (o *finalShiftsOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
-	if o.Timezone == "" {
-		return nil
-	}
-	if _, err := time.LoadLocation(o.Timezone); err != nil || o.Timezone == "Local" {
-		return fmt.Errorf("invalid --timezone %q: expected an IANA name such as Europe/Amsterdam", o.Timezone)
+	if o.Timezone == "Local" {
+		return errors.New(`invalid --timezone "Local": expected an IANA name such as Europe/Amsterdam`)
 	}
 	return nil
 }
@@ -1363,14 +1363,22 @@ func (o *finalShiftsOpts) Validate() error {
 // resolveTimezone picks the timezone that the final-shifts request carries.
 // The API rejects the Go local-zone name ("Local"), so the command never
 // derives the value from the clock of the host: the flag wins, then the
-// timezone of the schedule, then UTC. A failed schedule lookup falls back to
-// UTC — the request that follows reports any real connection problem.
-func resolveTimezone(ctx context.Context, client OnCallAPI, flagValue, scheduleID string) string {
+// timezone of the schedule, then UTC.
+//
+// The API renders every shift boundary in this zone, so a fallback to UTC
+// moves the timestamps that the caller reads. resolveTimezone therefore writes
+// a warning to stderr when it cannot read the timezone of the schedule.
+func resolveTimezone(ctx context.Context, client OnCallAPI, stderr io.Writer, flagValue, scheduleID string) string {
 	if flagValue != "" {
 		return flagValue
 	}
 	schedule, err := client.GetSchedule(ctx, scheduleID)
-	if err == nil && schedule != nil && schedule.TimeZone != "" {
+	switch {
+	case err != nil:
+		emitWarn(stderr, fmt.Sprintf("cannot read the timezone of schedule %s (%v); the shift boundaries use UTC", scheduleID, err))
+	case schedule == nil || schedule.TimeZone == "":
+		emitWarn(stderr, fmt.Sprintf("schedule %s declares no timezone; the shift boundaries use UTC", scheduleID))
+	default:
 		return schedule.TimeZone
 	}
 	return "UTC"
@@ -1409,7 +1417,7 @@ func newScheduleListFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command
 				return errors.New("--end must be after --start")
 			}
 
-			tz := resolveTimezone(cmd.Context(), client, opts.Timezone, args[0])
+			tz := resolveTimezone(cmd.Context(), client, cmd.ErrOrStderr(), opts.Timezone, args[0])
 			result, err := client.ListFilterEvents(cmd.Context(), args[0], tz, opts.Start, days)
 			if err != nil {
 				return err
