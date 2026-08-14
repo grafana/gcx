@@ -770,6 +770,11 @@ func isEmittedError(err error) bool {
 }
 
 func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var portalErr *login.PortalServerURLError
+	if errors.As(err, &portalErr) {
+		return convertPortalServerURLError(portalErr), true
+	}
+
 	var gcomErr *login.GCOMStackError
 	if errors.As(err, &gcomErr) {
 		return convertGCOMStackError(gcomErr), true
@@ -805,6 +810,30 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+// convertPortalServerURLError explains that --server names the Grafana Cloud
+// portal rather than a Grafana stack. The two hosts look interchangeable to a
+// newcomer, so the message contrasts them and shows the stack URL form for the
+// same environment.
+func convertPortalServerURLError(err *login.PortalServerURLError) *gcxerrors.DetailedError {
+	suggestions := []string{}
+	if err.StackSuffix != "" {
+		suggestions = append(suggestions,
+			"Pass the stack URL instead, in the form https://<stack>"+err.StackSuffix)
+	}
+	suggestions = append(suggestions,
+		"Find the stack URL on the "+err.Host+" stack list, or in the browser address bar when you view the stack",
+		"A Cloud access-policy token authenticates the Cloud product APIs only; the Grafana instance still needs --oauth or --token")
+
+	return &gcxerrors.DetailedError{
+		Parent:  err,
+		Summary: "Server URL is a Grafana Cloud portal, not a Grafana stack",
+		Details: err.Host + " manages stacks through the Grafana Cloud API. " +
+			"It serves no Grafana instance API, so no authentication method can succeed against it.",
+		Suggestions: suggestions,
+		ExitCode:    new(gcxerrors.ExitUsageError),
+	}
 }
 
 func convertGCOMStackError(err *login.GCOMStackError) *gcxerrors.DetailedError {

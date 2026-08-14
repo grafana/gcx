@@ -109,6 +109,14 @@ gcx login cloud --server https://myorg.grafana.net \
   --token glsa_XXXXXXXXXXXXXXXX --cloud-token glc_XXXXXXXXXXXXXXXX --yes
 ```
 
+Two rules apply to that command:
+
+- `--cloud-token` never replaces `--token` or `--oauth`. It authenticates the
+  Cloud product commands (`sm`, `k6`, `irm`, `slo`, `fleet`). It cannot
+  authenticate the Grafana instance, so always pass an instance credential too.
+- `--server` takes the stack URL, such as `https://myorg.grafana.net`. It never
+  takes the Grafana Cloud portal at `grafana.com`. gcx rejects a portal URL.
+
 For interactive use, the Cloud step of `gcx login` can keep an existing CAP or
 unexpired OAuth credential, accept a CAP, run the experimental direct Cloud
 OAuth flow, or skip. `gcx cloud login --context cloud` runs direct Cloud OAuth

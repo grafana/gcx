@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -322,6 +323,12 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	// Normalize: missing scheme → default to https. Users who meant http://
 	// must pass the full URL explicitly; defaulting to https is safer.
 	opts.Server = NormalizeServerURL(opts.Server)
+	// A Grafana Cloud portal root manages stacks; it serves no Grafana instance
+	// API. Reject it here, before target detection, before any prompt, and
+	// before the OAuth browser opens on a route the portal does not have.
+	if err := rejectPortalServerURL(opts.Server); err != nil {
+		return Result{}, err
+	}
 	if err := validateRuntimeOnlyBearerDestination(*opts, ""); err != nil {
 		return Result{}, err
 	}
@@ -567,6 +574,23 @@ func NormalizeServerURL(raw string) string {
 	return raw
 }
 
+// rejectPortalServerURL returns a *PortalServerURLError when server names a
+// Grafana Cloud portal root instead of a Grafana stack. It returns nil for
+// every other URL, including custom Cloud domains and on-premises hosts.
+func rejectPortalServerURL(server string) error {
+	suffix, ok := config.GCOMPortalServerURL(server)
+	if !ok {
+		return nil
+	}
+
+	host := server
+	if parsed, err := url.Parse(server); err == nil && parsed.Hostname() != "" {
+		host = parsed.Hostname()
+	}
+
+	return &PortalServerURLError{Server: server, Host: host, StackSuffix: suffix}
+}
+
 // detectTarget calls DetectFn or falls back to the real DetectTarget.
 // When TLS settings are present, builds a TLS-aware HTTP client for the probe.
 //
@@ -715,6 +739,10 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 // it does not block login).
 func resolveCloudAuth(opts Options, target Target) (*config.CloudEntry, string, error) {
 	if target != TargetCloud {
+		// A Cloud credential has no home on a non-Cloud context, so it is
+		// dropped. Say so: silence here reads as acceptance, and the user then
+		// finds the Cloud commands unauthenticated for no visible reason.
+		warnCloudTokenDropped(opts.Writer, opts.CloudToken)
 		return nil, "", nil
 	}
 
@@ -819,6 +847,23 @@ func announceCloudTokenStep(w io.Writer) {
 		w = io.Discard
 	}
 	fmt.Fprintln(w, "\nOptional: log in to Grafana Cloud to enable Cloud management features.")
+}
+
+// warnCloudTokenDropped surfaces a non-fatal advisory when the caller supplied
+// a Cloud credential but the resolved target is not Grafana Cloud. Login
+// proceeds, because Grafana instance authentication is unaffected. It writes to
+// w (the caller-supplied progress writer); a nil writer discards, keeping
+// internal/login free of process streams (NC-001).
+func warnCloudTokenDropped(w io.Writer, cloudToken string) {
+	if cloudToken == "" {
+		return
+	}
+	if w == nil {
+		w = io.Discard
+	}
+	fmt.Fprintln(w, "Warning: the target is not Grafana Cloud, so the Cloud token was not saved. "+
+		"Grafana Cloud product commands stay unavailable on this context. "+
+		"Pass --cloud to force a Cloud target if the server is a Cloud stack.")
 }
 
 // warnCloudTokenUnvalidated surfaces a non-fatal advisory when a Cloud token is

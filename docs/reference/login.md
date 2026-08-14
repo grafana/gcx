@@ -28,6 +28,11 @@ context's named stack entry, and makes the context current.
 gcx login my-stack --server https://my-stack.grafana.net
 ```
 
+`--server` takes the URL of the stack itself, not the Grafana Cloud portal at
+grafana.com. The portal manages stacks; the stack serves the Grafana API that
+gcx talks to. gcx rejects a portal URL here with a message that names the
+correct form.
+
 When you run this:
 
 1. gcx detects that `my-stack.grafana.net` is a Cloud host and presents an authentication-method prompt.
@@ -110,6 +115,12 @@ Scope the access policy to what you manage. `stacks:read` is the required baseli
 | `set:alloy-data-write` | Instrumentation Hub setup (`gcx instrumentation`) |
 
 The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, Fleet, IRM, SLO). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
+
+`--cloud-token` never replaces Grafana instance authentication. It is a second
+credential that sits beside `--oauth` or `--token`, not an alternative to them.
+A login that supplies only `--cloud-token` still prompts for an instance
+credential, or fails with `Missing required fields: grafana-auth` when it
+cannot prompt.
 
 The interactive `gcx login` prompt links to this guidance when it offers Cloud
 authentication choices.
@@ -345,7 +356,12 @@ Each entry pairs the error you see with what it means and how to fix it.
     - *Means:* one credential-bearing Cloud entry has no explicit endpoint pair and is referenced by contexts in different Cloud environments. gcx will not guess which API destination may receive it.
     - *Fix:* Run the exact raw `gcx config edit ...` command from the error, split the Cloud entry into one entry per environment, and update each `contexts.<name>.cloud` binding. Ordinary config loading remains blocked until the ambiguity is removed.
 
-14. **`Configuration changed during authentication`**
+14. **`Server URL is a Grafana Cloud portal, not a Grafana stack`**
+    - *Means:* `--server` names the Grafana Cloud portal (`grafana.com`) rather than a stack. The portal manages stacks through the Cloud API. It serves no Grafana instance API, so no authentication method can succeed against it.
+    - *Fix:* pass the stack URL, in the form `https://<stack>.grafana.net`. Find it on your stack list at grafana.com, or in the browser address bar while you view the stack. Keep the access policy token on `--cloud-token`; the portal URL never belongs on `--server`.
+    - *Note:* older gcx versions accepted the portal URL here. Browser login then opened a page that does not exist, and the command waited for a callback that never arrived.
+
+15. **`Configuration changed during authentication`**
     - *Means:* the selected owner or the discovered config source set changed while OAuth or connectivity validation was in progress. The freshly authenticated credential was not written.
     - *Fix:* Review every changed file, then retry. If you intend to trust one document as authoritative, rerun with its explicit `--config <path>`.
 
