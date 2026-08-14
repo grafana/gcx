@@ -8,6 +8,7 @@
 - `gcx synthetic-monitoring probes reset-token` now returns the new probe token. Its structured output changes from the `gcx.mutation` schema to `gcx.synth.probe_token_reset`. The `name` and `id` fields move out of `target`, and `id` changes from a string to a number. Update scripts to read the top-level `token`, `name`, and `id` fields.
 - `gcx synthetic-monitoring probes deploy` now generates a Namespace, Secret, and Deployment. It no longer generates a ServiceAccount. The Secret keys change from `API_ACCESS_TOKEN` and `API_SERVER_URL` to `api-token` and `api-server-address`. Tools that process the generated manifests must accept the new resource and key names. An identity that applies the complete output must have permission to manage Namespace resources.
 - `gcx synthetic-monitoring probes deploy --api-server-url` now requires an address in `host:port` format. Values with a URL scheme or without a port now fail validation.
+- Add `--timezone` to `gcx irm oncall schedules list-final-shifts`. Without the flag the command uses the timezone of the schedule, then UTC. On a host that sets `TZ` to an IANA name, this changes the default from the zone of the host to the zone of the schedule.
 
 **New Features**
 
@@ -19,6 +20,8 @@
 **Fixes**
 
 - Correct Fleet resource examples, preserve string collector IDs in resource manifests, and include the collector name and ID in successful create output.
+- Accept the Kubernetes envelope (`apiVersion`/`kind`/`metadata`/`spec`) in the manifest that `create -f` and `update -f` read. The commands decoded the envelope into an empty object before this change, so they lost every field that the manifest set. This repairs the round trip for `gcx irm oncall`, where `gcx resources list-examples` prints that envelope. For `gcx alert` it adds tolerance for a hand-written envelope, because the alert provider registers no adapter.
+- Stop sending the local zone name of the host as `user_tz` in `gcx irm oncall schedules list-final-shifts`. A host that does not set `TZ` sent the literal string `Local`, and the API answered "Invalid timezone".
 
 ## v1.2.0 (2026-08-25)
 
@@ -71,6 +74,7 @@
 - Add a Grafana version support policy to the documentation (#1197)
 - Regenerate the command line interface reference (#1224)
 
+- instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
 
 ## v1.1.0 (2026-08-14)
 

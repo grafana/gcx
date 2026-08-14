@@ -234,6 +234,10 @@ type fakeFinalShiftsAPI struct {
 	OnCallAPI
 }
 
+func (f *fakeFinalShiftsAPI) GetSchedule(_ context.Context, id string) (*Schedule, error) {
+	return &Schedule{ID: id, Name: "probe", TimeZone: "UTC"}, nil
+}
+
 func (f *fakeFinalShiftsAPI) ListFilterEvents(_ context.Context, _, _, _ string, _ int) (*FilterEventsResponse, error) {
 	return &FilterEventsResponse{}, nil
 }
