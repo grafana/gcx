@@ -164,7 +164,7 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	if len(opts.artifactFormats) > 0 {
 		_ = flags.SetAnnotation("output", ArtifactFormatsAnnotation, opts.artifactFormats)
 	}
-	flags.String("json", "", "Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields")
+	flags.String("json", "", "Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths")
 	flags.String("jq", "", "jq expression to apply to JSON output. Mutually exclusive with --json.")
 
 	opts.flags = flags
@@ -309,7 +309,7 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 			w = os.Stderr
 		}
 		emitHint(w,
-			"use --json list / --json field1,field2 for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed",
+			"use --json list to discover the dotted paths, then --json <path>,<path> for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed",
 			"",
 		)
 	}
