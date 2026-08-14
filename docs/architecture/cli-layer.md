@@ -488,6 +488,7 @@ default API version. It does not imply incorrect command syntax.
 ```
 ErrorToDetailedError(err)
     │
+    ├─ isEmittedError → EmittedError (the command already wrote its document; suppress secondary output)
     ├─ errors.As(err, &DetailedError{}) → return as-is if already detailed
     ├─ ... domain and transport converters (specific errors first)
     ├─ convertHTTPStatusErrors → concrete gcxerrors.HTTPStatusError
