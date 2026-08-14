@@ -3,12 +3,47 @@ package irm
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+// The backend reads a create-time position as an insertion point, not as an
+// absolute index. An example that carries position 0 makes every unmodified
+// copy insert at the head of the chain, and displace the current first step.
+// A caller who copies such an example for several steps builds the chain in
+// reverse order. The examples therefore omit the field. The derived schema
+// still documents it.
+func TestOrderedExamplesOmitPosition(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		example json.RawMessage
+	}{
+		{name: "escalation policy", example: escalationPolicyExample()},
+		{name: "route", example: routeExample()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var doc struct {
+				Spec map[string]any `json:"spec"`
+			}
+			if err := json.Unmarshal(tt.example, &doc); err != nil {
+				t.Fatalf("the example is not JSON: %v", err)
+			}
+			if _, ok := doc.Spec["position"]; ok {
+				t.Errorf("the example carries a position: %s", tt.example)
+			}
+		})
+	}
+}
 
 type tableEncoder interface {
 	Encode(w io.Writer, v any) error
