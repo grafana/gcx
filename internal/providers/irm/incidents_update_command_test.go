@@ -90,14 +90,43 @@ func TestIncidentUpdateCommand(t *testing.T) {
 	}
 }
 
-func TestIncidentUpdateCommandRequiresAFlag(t *testing.T) {
-	srv := &severityServer{title: "old title"}
-	_, err := runIncidentUpdateCmd(t, srv, "4")
-	if err == nil || !strings.Contains(err.Error(), "at least one of --severity or --title") {
-		t.Errorf("expected a missing-flag error, got %v", err)
+// TestIncidentUpdateCommandRejectsBadFlags covers the omitted flag and the
+// explicit empty value. An unset shell variable produces the second one, and
+// silence there loses the request of the caller.
+func TestIncidentUpdateCommandRejectsBadFlags(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "no flag at all",
+			args:    []string{"4"},
+			wantErr: "at least one of --severity or --title",
+		},
+		{
+			name:    "an empty title next to a severity",
+			args:    []string{"4", "--severity", "Critical", "--title", ""},
+			wantErr: "--title must not be empty",
+		},
+		{
+			name:    "an empty severity",
+			args:    []string{"4", "--severity", ""},
+			wantErr: "--severity must not be empty",
+		},
 	}
-	if len(srv.calls) != 0 {
-		t.Errorf("the command called the backend with no flag set: %v", srv.calls)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := &severityServer{title: "old title"}
+			_, err := runIncidentUpdateCmd(t, srv, tt.args...)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("expected %q, got %v", tt.wantErr, err)
+			}
+			if len(srv.calls) != 0 {
+				t.Errorf("the command called the backend on a bad flag: %v", srv.calls)
+			}
+		})
 	}
 }
 
