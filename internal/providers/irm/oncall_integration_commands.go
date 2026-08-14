@@ -3,7 +3,8 @@ package irm
 import (
 	"fmt"
 	"io"
-	"sort"
+	"slices"
+	"strconv"
 	"strings"
 
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -103,6 +104,13 @@ The command emits the stored document.`,
 // integrations start-maintenance / stop-maintenance
 // ---------------------------------------------------------------------------
 
+// maintenanceDurationsSeconds lists the durations that the backend accepts.
+// The backend declares the duration field as a choice field, and rejects
+// every other value.
+//
+//nolint:gochecknoglobals // a lookup table, written once at package level
+var maintenanceDurationsSeconds = []int{3600, 10800, 21600, 43200, 86400}
+
 type startMaintenanceOpts struct {
 	IO       cmdio.Options
 	Mode     string
@@ -119,7 +127,8 @@ func (o *startMaintenanceOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Mode, "mode", "maintenance",
 		fmt.Sprintf("Maintenance mode (%s)", strings.Join(maintenanceModeFlagValues(), ", ")))
-	flags.IntVar(&o.Duration, "duration", 3600, "Maintenance duration in seconds")
+	flags.IntVar(&o.Duration, "duration", 3600,
+		fmt.Sprintf("Maintenance duration in seconds (%s)", maintenanceDurationFlagValues()))
 }
 
 func (o *startMaintenanceOpts) Validate() error {
@@ -127,8 +136,9 @@ func (o *startMaintenanceOpts) Validate() error {
 		return fmt.Errorf("unknown --mode %q, expected one of: %s",
 			o.Mode, strings.Join(maintenanceModeFlagValues(), ", "))
 	}
-	if o.Duration <= 0 {
-		return fmt.Errorf("--duration must be a positive number of seconds, got %d", o.Duration)
+	if !slices.Contains(maintenanceDurationsSeconds, o.Duration) {
+		return fmt.Errorf("unknown --duration %d, expected one of: %s",
+			o.Duration, maintenanceDurationFlagValues())
 	}
 	return nil
 }
@@ -140,8 +150,18 @@ func maintenanceModeFlagValues() []string {
 	for name := range maintenanceModeNames {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
+}
+
+// maintenanceDurationFlagValues renders the accepted --duration values for the
+// flag help and the error message.
+func maintenanceDurationFlagValues() string {
+	values := make([]string, 0, len(maintenanceDurationsSeconds))
+	for _, seconds := range maintenanceDurationsSeconds {
+		values = append(values, strconv.Itoa(seconds))
+	}
+	return strings.Join(values, ", ")
 }
 
 func newIntegrationStartMaintenanceCmd(loader OnCallConfigLoader) *cobra.Command {
@@ -155,7 +175,8 @@ Maintenance suppresses escalation during planned work. Mode "maintenance"
 groups every alert of the integration into one alert group and pages nobody.
 Mode "debug" routes each alert to its author only.
 
-The backend accepts a limited set of durations. It rejects any other value.`,
+The backend accepts these durations only: 3600, 10800, 21600, 43200, or 86400
+seconds. These values are 1, 3, 6, 12, and 24 hours.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
