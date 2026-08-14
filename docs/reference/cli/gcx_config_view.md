@@ -18,7 +18,7 @@ gcx config view [flags]
 ```
   -h, --help            help for view
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string     Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --minify          Remove all information not used by current-context from the output
   -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
       --raw             Display sensitive information
