@@ -330,12 +330,17 @@ func TestClient_SetK8SInstrumentation(t *testing.T) {
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
-			err := client.SetK8SInstrumentation(context.Background(), tt.clusterName, tt.k8s, instrumentation.BackendURLs{})
+			urls := instrumentation.BackendURLs{
+				OTLPURL:      "https://otlp-gateway.example/otlp",
+				OTLPUsername: "1075384",
+			}
+			err := client.SetK8SInstrumentation(context.Background(), tt.clusterName, tt.k8s, urls)
 
 			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/SetK8SInstrumentation")
 			assert.Contains(t, cr.Body, tt.clusterName)
-			assert.NotContains(t, cr.Body, "otlp_url")
-			assert.NotContains(t, cr.Body, "otlp_username")
+			// BackendURLs is shared, so the K8s endpoint receives OTLP too (it ignores it).
+			assert.Contains(t, cr.Body, `"otlp_url":"https://otlp-gateway.example/otlp"`)
+			assert.Contains(t, cr.Body, `"otlp_username":"1075384"`)
 
 			if tt.wantErr {
 				require.Error(t, err)

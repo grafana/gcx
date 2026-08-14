@@ -51,8 +51,8 @@ type BackendURLs struct {
 	TempoUsername     string `json:"tempo_username"`
 	PyroscopeURL      string `json:"pyroscope_url"`
 	PyroscopeUsername string `json:"pyroscope_username"`
-	OTLPURL           string `json:"otlp_url,omitempty"`
-	OTLPUsername      string `json:"otlp_username,omitempty"`
+	OTLPURL           string `json:"otlp_url"`
+	OTLPUsername      string `json:"otlp_username"`
 }
 
 // BackendURLsFromStack resolves datasource write endpoints from the Grafana
