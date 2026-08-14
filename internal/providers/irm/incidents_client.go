@@ -424,7 +424,6 @@ func (c *IncidentClient) Create(ctx context.Context, inc *Incident) (*Incident, 
 		Labels:         inc.Labels,
 		IncidentType:   inc.IncidentType,
 		FieldGroupUUID: inc.FieldGroupUUID,
-		SeverityID:     inc.SeverityID,
 	}
 	if req.Status == "" {
 		req.Status = "active"

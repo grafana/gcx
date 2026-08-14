@@ -323,7 +323,10 @@ func (p IncidentPreview) ToIncident() Incident {
 	}
 }
 
-// createIncidentRequest is the request body for creating an incident.
+// createIncidentRequest is the request body for creating an incident. It
+// carries no severity field: CreateIncident ignores both severity and
+// severityID, and UpdateSeverity is the only route to a severity other than
+// the default one.
 type createIncidentRequest struct {
 	Title          string          `json:"title"`
 	Status         string          `json:"status"`
@@ -331,7 +334,6 @@ type createIncidentRequest struct {
 	Labels         []IncidentLabel `json:"labels"`
 	IncidentType   string          `json:"incidentType,omitempty"`
 	FieldGroupUUID string          `json:"fieldGroupUUID,omitempty"`
-	SeverityID     string          `json:"severityID,omitempty"`
 }
 
 // createIncidentResponse wraps the created incident.
