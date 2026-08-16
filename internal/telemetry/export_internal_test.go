@@ -64,11 +64,11 @@ func TestExportPostsJSONToEndpointOverride(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &decoded))
 	assert.Equal(t, event, decoded)
 
-	// parse_error_* fields mirror their omitempty tags: absent from the body
-	// unless set.
+	// omitempty fields mirror their tags: absent from the body unless set.
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(body, &raw))
 	for _, key := range []string{
+		"datasource_plugin_type",
 		"parse_error_kind", "parse_error_parent", "parse_error_token",
 		"attempted_command", "parse_error_flags", "parse_error_nearest",
 		"parse_error_distance",

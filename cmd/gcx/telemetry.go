@@ -86,6 +86,8 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 	event.DeviceID, event.DeviceIDPersisted = telemetry.DeviceID()
 	event.CIProvider, event.IsCI = telemetry.DetectCI()
 
+	event.DatasourcePluginType = telemetry.CapturedDatasourcePluginType
+
 	switch {
 	case info.Help && exitCode == 0:
 		event.Outcome = telemetry.OutcomeHelp

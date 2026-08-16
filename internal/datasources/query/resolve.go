@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
+	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -149,6 +150,7 @@ func ResolveValidateAndSaveDatasource(ctx context.Context, saver DatasourceSaver
 		}
 	}
 
+	telemetry.RecordDatasourceQueryType(dsType)
 	return resolved.UID, dsType, nil
 }
 
@@ -225,6 +227,7 @@ func GetDatasourceType(ctx context.Context, cfg config.NamespacedRESTConfig, uid
 		return "", fmt.Errorf("failed to get datasource %q: %w", uid, err)
 	}
 
+	telemetry.RecordDatasourceQueryType(ds.Type)
 	return ds.Type, nil
 }
 
