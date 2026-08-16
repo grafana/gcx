@@ -28,6 +28,10 @@ func wantParseErrorOnly() []string {
 	}
 }
 
+func wantAPIOnly() []string {
+	return []string{"api_method", "api_route", "api_datasource_types"}
+}
+
 func marshalKeys(t *testing.T, ev telemetry.Event) map[string]any {
 	t.Helper()
 	data, err := json.Marshal(ev)
@@ -59,6 +63,9 @@ func TestEventFieldInventory(t *testing.T) {
 		Agent:              "claude-code",
 		TargetKind:         "cloud",
 		OutputFormat:       "json",
+		APIMethod:          "POST",
+		APIRoute:           "/api/ds/query",
+		APIDatasourceTypes: "prometheus",
 		ParseErrorKind:     "unknown_command",
 		ParseErrorParent:   "dashboards",
 		ParseErrorToken:    "serch",
@@ -70,13 +77,14 @@ func TestEventFieldInventory(t *testing.T) {
 
 	got := marshalKeys(t, full)
 	want := append(wantAlwaysPresent(), wantParseErrorOnly()...)
+	want = append(want, wantAPIOnly()...)
 	assert.ElementsMatch(t, want, keys(got), "full event must emit exactly the documented field set")
 }
 
 func TestEventOmitsParseFieldsWhenUnset(t *testing.T) {
 	got := marshalKeys(t, telemetry.Event{Outcome: telemetry.OutcomeOK})
 	assert.ElementsMatch(t, wantAlwaysPresent(), keys(got),
-		"non-parse-error events must omit parse_error_* and keep all other fields, even zero-valued")
+		"non-parse-error events must omit parse_error_* and api_* and keep all other fields, even zero-valued")
 }
 
 func TestEventNoNearMatchDistanceSurvives(t *testing.T) {

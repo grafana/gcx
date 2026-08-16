@@ -19,8 +19,11 @@ const (
 // Privacy invariant: no field may carry argument or flag values, resource
 // names, hostnames, or anything else that identifies a person, an
 // organisation, or their data. Flags holds flag NAMES only; Command is the
-// resolved command path only. The parse_error_* fields are shape-filtered
-// before they are set (see #578).
+// resolved command path only. The few fields derived from values must be
+// reduced to a closed vocabulary before they are set, with "other" (or
+// empty) for anything outside it: the parse_error_* fields are
+// shape-filtered (see #578), and the api_* fields hold only route templates
+// and allowlisted plugin types (see RecordAPIRequest in api.go).
 type Event struct {
 	// Envelope.
 	Service string `json:"service"`
@@ -49,6 +52,14 @@ type Event struct {
 	Agent        string `json:"agent"`
 	TargetKind   string `json:"target_kind"`
 	OutputFormat string `json:"output_format"`
+
+	// Sanitized `gcx api` passthrough detail, set only for the api command.
+	// Each field carries a closed-vocabulary value produced by
+	// RecordAPIRequest: the fixed verb list, a route template, allowlisted
+	// datasource plugin types. Never a raw path, argument, or body value.
+	APIMethod          string `json:"api_method,omitempty"`
+	APIRoute           string `json:"api_route,omitempty"`
+	APIDatasourceTypes string `json:"api_datasource_types,omitempty"`
 
 	// Parse-failure capture, set only when Outcome is OutcomeParseError.
 	ParseErrorKind     string `json:"parse_error_kind,omitempty"`
