@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/query/athena"
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/cloudwatch"
+	"github.com/grafana/gcx/internal/query/dataframe"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -55,6 +56,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return athena.FormatStringList(w, resp.Items, resp.Header)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatTable(w, resp)
+	case *dataframe.RawQueryResponse:
+		return dataframe.FormatTable(w, resp)
 	default:
 		return errors.New("invalid data type for query table codec")
 	}
@@ -88,6 +91,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return athena.FormatStringList(w, resp.Items, resp.Header)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatWide(w, resp)
+	case *dataframe.RawQueryResponse:
+		return dataframe.FormatTable(w, resp) // wide is the same as table for raw queries
 	default:
 		return errors.New("invalid data type for query wide codec")
 	}
@@ -152,6 +157,8 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		return errors.New("graph output is not supported for ClickHouse describe-table; use -o table/json/yaml")
 	case athena.StringList:
 		return errors.New("graph output is not supported for Athena discovery; use -o table/json/yaml")
+	case *dataframe.RawQueryResponse:
+		return errors.New("graph output is not supported for raw queries; use -o table/json/yaml")
 	default:
 		return errors.New("invalid data type for graph codec")
 	}

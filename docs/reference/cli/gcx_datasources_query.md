@@ -13,6 +13,11 @@ The datasource type is detected via the Grafana API and the appropriate query
 client is used automatically. This is the escape hatch for datasource types
 that do not have a dedicated subcommand.
 
+Use --query to provide a raw query JSON object for any datasource type,
+bypassing type-specific logic. The object is merged into the Grafana datasource
+query envelope — datasource UID, type, refId, and time range are injected
+automatically. Use @file to read from a file or @- for stdin.
+
 ```
 gcx datasources query DATASOURCE_UID [EXPR] [flags]
 ```
@@ -30,6 +35,19 @@ gcx datasources query DATASOURCE_UID [EXPR] [flags]
   # Pyroscope via auto-detect
   gcx datasources query pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now
+
+  # Raw query JSON (plugin-agnostic) — Infinity example
+  gcx datasources query infinity-01 --query '{
+    "type": "json", "source": "url",
+    "url": "https://api.example.com/data",
+    "format": "table", "root_selector": "$.items"
+  }' --since 30m
+
+  # Raw query from file
+  gcx datasources query ds-001 --query @query.json --since 1h
+
+  # Raw query from stdin
+  cat query.json | gcx datasources query ds-001 --query @- --since 1h
 ```
 
 ### Options
@@ -46,6 +64,7 @@ gcx datasources query DATASOURCE_UID [EXPR] [flags]
       --max-nodes int         Maximum nodes in flame graph (pyroscope only) (default 1024)
   -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')
+      --query string          Raw query JSON object (plugin-agnostic); use @file for file, @- for stdin
       --since string          Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string           Query step (e.g., '15s', '1m')
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
