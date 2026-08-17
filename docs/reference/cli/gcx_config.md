@@ -38,7 +38,7 @@ merge only their references and datasource defaults.
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx config check](gcx_config_check.md)	 - Check the current configuration for issues
+* [gcx config check](gcx_config_check.md)	 - Check configuration contexts for issues
 * [gcx config current-context](gcx_config_current-context.md)	 - Display the current context name
 * [gcx config edit](gcx_config_edit.md)	 - Open a config file in $EDITOR
 * [gcx config list-contexts](gcx_config_list-contexts.md)	 - List the contexts defined in the configuration
