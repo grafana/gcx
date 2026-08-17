@@ -26,9 +26,16 @@ import (
 // metadata as labels.
 const connectionInfoMetric = "database_observability_connection_info"
 
-// Health metrics from postgres_exporter, scoped by the shared service_name label.
+// dbo11yJobValue is the fixed job label the database_observability.postgres
+// and database_observability.mysql Alloy components scrape under, regardless
+// of engine. It disambiguates the universal `up` health signal from any other
+// scrape target that happens to share the same service_name (an application
+// pod's own `up` series, for example) — see buildScrapeUpQuery.
+const dbo11yJobValue = "integrations/db-o11y"
+
+// Postgres-specific metrics, scoped by the shared service_name label. Sourced
+// from postgres_exporter (pg_stat_activity, pg_stat_statements collectors).
 const (
-	pgUpMetric              = "pg_up"
 	pgScrapeErrorMetric     = "pg_exporter_last_scrape_error"
 	pgScrapeDurationMetric  = "pg_exporter_last_scrape_duration_seconds"
 	pgActivityCountMetric   = "pg_stat_activity_count"
@@ -38,10 +45,84 @@ const (
 	pgStatStatementsRows    = "pg_stat_statements_rows_total"
 )
 
+// MySQL-specific metrics, scoped by the shared service_name label. Sourced
+// from mysqld_exporter's Performance Schema eventsstatements collector.
+// Confirmed against the grafana-dbo11y-app v2.30.0 production bundle
+// (module.js chunks 530/917) — there is no live MySQL dbo11y telemetry on any
+// gcx-registered stack to verify end-to-end, so these names are pinned from
+// the shipping plugin's own PromQL literals rather than a query response.
+const (
+	mysqlStatementsCalls   = "mysql_perf_schema_events_statements_total"
+	mysqlStatementsSeconds = "mysql_perf_schema_events_statements_seconds_total"
+	mysqlStatementsRows    = "mysql_perf_schema_events_statements_rows_examined_total"
+	mysqlConnectedMetric   = "mysql_global_status_threads_connected"
+)
+
 // serviceNameLabel is the label every Database Observability metric family
-// shares (inventory, exporter health, and pg_stat_statements alike), so it's
-// the identifier `instances get <name>` scopes queries by.
+// shares (inventory, exporter health, and per-engine query-stats metrics
+// alike), so it's the identifier `instances get <name>` scopes queries by.
 const serviceNameLabel = "service_name"
+
+// engineMySQL and engineDefault are the "engine" label values
+// database_observability_connection_info emits. Any value other than
+// "mysql" (including empty/unknown, when metadata lookup finds nothing)
+// falls back to the Postgres metric family, matching this provider's
+// original and most-verified behavior.
+const engineMySQL = "mysql"
+
+// engineQueryMetrics is the per-engine metric/label vocabulary for the
+// pg_stat_statements-equivalent "top queries" view, plus which of the
+// connections/wait-events/scrape-health signals that engine actually has a
+// metric for. Empty string fields mean "no metric confirmed for this engine" —
+// callers skip that query rather than guess a name and silently return
+// nothing.
+//
+// MySQL has no confirmed per-state connection breakdown (only the single
+// mysql_global_status_threads_connected gauge), no confirmed live wait-event
+// metric (the product's own wait-event analysis is Loki-log-based for both
+// engines — see database_observability_wait_event_seconds_total usage in the
+// dbo11y-app bundle, which is a LogQL `unwrap` field, not a Prometheus
+// metric), and no confirmed exporter self-scrape-health metric analogous to
+// pg_exporter_last_scrape_error/duration_seconds.
+type engineQueryMetrics struct {
+	statementsCalls      string
+	statementsSeconds    string
+	statementsRows       string
+	queryIDLabel         string
+	datnameLabel         string
+	connectedMetric      string // single current-connections gauge (MySQL); empty when a per-state breakdown exists instead
+	activityMetric       string // per-state connections + wait-event breakdown (Postgres only)
+	maxTxMetric          string // longest running transaction (Postgres only)
+	scrapeErrorMetric    string // exporter self-reported scrape health (Postgres only)
+	scrapeDurationMetric string
+}
+
+// metricsForEngine resolves the "engine" label from database_observability_connection_info
+// to its query-metric vocabulary. Falls back to Postgres for any value other
+// than "mysql", including empty (metadata lookup found nothing).
+func metricsForEngine(engine string) engineQueryMetrics {
+	if strings.EqualFold(strings.TrimSpace(engine), engineMySQL) {
+		return engineQueryMetrics{
+			statementsCalls:   mysqlStatementsCalls,
+			statementsSeconds: mysqlStatementsSeconds,
+			statementsRows:    mysqlStatementsRows,
+			queryIDLabel:      "digest",
+			datnameLabel:      "schema",
+			connectedMetric:   mysqlConnectedMetric,
+		}
+	}
+	return engineQueryMetrics{
+		statementsCalls:      pgStatStatementsCalls,
+		statementsSeconds:    pgStatStatementsSeconds,
+		statementsRows:       pgStatStatementsRows,
+		queryIDLabel:         "queryid",
+		datnameLabel:         "datname",
+		activityMetric:       pgActivityCountMetric,
+		maxTxMetric:          pgActivityMaxTxMetric,
+		scrapeErrorMetric:    pgScrapeErrorMetric,
+		scrapeDurationMetric: pgScrapeDurationMetric,
+	}
+}
 
 // escapePromqlValue escapes a raw user-supplied value for safe embedding as
 // the value side of a PromQL label matcher. Mirrors appo11y/services'
@@ -229,11 +310,35 @@ func scopedByServiceName(metric, name string, matchers []Matcher) *promql.Vector
 	return v
 }
 
-// buildUpQuery returns the PromQL for an instant pg_up/scrape-health metric
-// scoped to one instance.
+// buildScrapeUpQuery returns the PromQL for the universal Prometheus scrape-health
+// gauge (`up`), scoped to one instance's dbo11y scrape target specifically —
+// engine-agnostic, unlike pg_up/mysql_up. The job matcher is required: `up`
+// is emitted by every scrape target, so an unscoped service_name match can
+// collide with an unrelated target that happens to share the name (e.g. the
+// database's own application pod).
+func buildScrapeUpQuery(name string) (string, error) {
+	if name == "" {
+		return "", errors.New("instance name is required")
+	}
+	v := promql.Vector("up").
+		Label(serviceNameLabel, escapePromqlValue(name)).
+		Label("job", dbo11yJobValue)
+	expr, err := v.Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// buildUpQuery returns the PromQL for an instant single-value metric
+// (exporter scrape health, MySQL's current-connections gauge) scoped to one
+// instance.
 func buildUpQuery(metric, name string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("instance name is required")
+	}
+	if metric == "" {
+		return "", errors.New("metric name is required")
 	}
 	expr, err := scopedByServiceName(metric, name, matchers).Build()
 	if err != nil {
@@ -286,14 +391,19 @@ func buildLongestTxQuery(name string, matchers []Matcher) (string, error) {
 	return expr.String(), nil
 }
 
-// buildTopQueriesRateQuery returns `sum by (queryid, datname) (rate(<metric>{...}[<window>]))`,
-// used for the calls/seconds/rows rates that make up the top-queries view.
-func buildTopQueriesRateQuery(metric, name, window string, matchers []Matcher) (string, error) {
+// buildTopQueriesRateQuery returns `sum by (<queryIDLabel>, <datnameLabel>)
+// (rate(<metric>{...}[<window>]))`, used for the calls/seconds/rows rates
+// that make up the top-queries view. Label names are engine-specific:
+// queryid/datname for Postgres, digest/schema for MySQL.
+func buildTopQueriesRateQuery(metric, name, window string, matchers []Matcher, queryIDLabel, datnameLabel string) (string, error) {
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
+	if metric == "" {
+		return "", errors.New("metric name is required")
+	}
 	v := scopedByServiceName(metric, name, matchers).Range(window)
-	expr, err := promql.Sum(promql.Rate(v)).By([]string{"queryid", "datname"}).Build()
+	expr, err := promql.Sum(promql.Rate(v)).By([]string{queryIDLabel, datnameLabel}).Build()
 	if err != nil {
 		return "", err
 	}
@@ -434,8 +544,10 @@ type queryKey struct {
 	datname string
 }
 
-// bucketByQueryKey folds a rate-query response into a map keyed by (queryid, datname).
-func bucketByQueryKey(resp *prometheus.QueryResponse) map[queryKey]float64 {
+// bucketByQueryKey folds a rate-query response into a map keyed by
+// (queryIDLabel, datnameLabel) — the engine-specific query-identity labels
+// (queryid/datname for Postgres, digest/schema for MySQL).
+func bucketByQueryKey(resp *prometheus.QueryResponse, queryIDLabel, datnameLabel string) map[queryKey]float64 {
 	out := make(map[queryKey]float64)
 	if resp == nil {
 		return out
@@ -445,7 +557,7 @@ func bucketByQueryKey(resp *prometheus.QueryResponse) map[queryKey]float64 {
 		if !ok {
 			continue
 		}
-		k := queryKey{queryID: sample.Metric["queryid"], datname: sample.Metric["datname"]}
+		k := queryKey{queryID: sample.Metric[queryIDLabel], datname: sample.Metric[datnameLabel]}
 		out[k] = v
 	}
 	return out

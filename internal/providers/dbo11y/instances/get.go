@@ -49,7 +49,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
 	flags.StringVar(&o.Since, "since", defaultQueryWindow, "Rate window applied to pg_stat_statements (e.g. 1m, 5m, 1h) — PromQL duration syntax")
 	flags.IntVar(&o.Top, "top", defaultTopQueriesLimit, "Limit the number of top queries returned, ranked by time share (0 = unlimited)")
-	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the pg_stat_activity/pg_stat_statements queries (connections, wait events, longest transaction, top queries) to series matching a label matcher, e.g. --filter datname=payments (repeatable). Does not affect health/inventory metrics (pg_up, exporter scrape stats, instance metadata), which don't carry a datname label")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the connections/query-performance queries to series matching a label matcher, e.g. --filter datname=payments for Postgres or --filter schema=payments for MySQL (repeatable). Does not affect health/inventory metrics, which don't carry that label")
 }
 
 func (o *getOpts) Validate(cmd *cobra.Command) error {
@@ -76,17 +76,32 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Show exporter health and a query-performance snapshot for one database instance.
 
 The argument is the instance's service_name (the identifier "gcx dbo11y
-instances list" reports as NAME). Health comes from pg_up and the exporter's
-own scrape metrics; connections and wait events come from pg_stat_activity;
-top queries are ranked by time share (seconds of database time spent per
-second) from pg_stat_statements over --since (default 5m).
+instances list" reports as NAME). What's available depends on the instance's
+engine (from "gcx dbo11y instances list"):
 
---filter only scopes the pg_stat_activity/pg_stat_statements queries
-(connections, wait events, longest transaction, top queries) — health and
-inventory metadata (pg_up, exporter scrape stats, instance metadata) don't
-carry a datname label and are unaffected.`,
+  - Health (up/down) is engine-agnostic, from the standard Prometheus scrape
+    target gauge.
+  - Postgres additionally reports exporter self-scrape health, per-state
+    connection counts, active wait events, and the longest running
+    transaction, all from postgres_exporter's pg_stat_activity collector.
+  - MySQL reports a single current-connections count
+    (mysql_global_status_threads_connected); wait events and exporter
+    self-scrape health have no confirmed live metric for MySQL and are
+    omitted rather than guessed.
+  - Top queries (both engines) are ranked by time share (seconds of database
+    time spent per second) over --since (default 5m): pg_stat_statements for
+    Postgres, mysqld_exporter's Performance Schema eventsstatements collector
+    for MySQL.
+
+--filter only scopes the connections/query-performance queries — health and
+inventory metadata don't carry a datname/schema label and are unaffected.
+
+When no telemetry is found for the instance, this command checks whether
+Database Observability has been activated for the stack and, if not, exits
+non-zero with a hint to activate it in Grafana Cloud instead of a generic
+"no telemetry" message.`,
 		Example: `
-  # Health, connections, wait events, and top queries for one instance
+  # Health, connections, and top queries for one instance (Postgres or MySQL)
   gcx dbo11y instances get quickpizza-db
 
   # Widen the query window and show more top queries
@@ -101,7 +116,7 @@ carry a datname label and are unaffected.`,
 		RunE: runGet(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot: pg_up/scrape health, connection counts by state, active wait events (wait_event_type/wait_event), longest running transaction, and top queries by time share from pg_stat_statements over --since (default 5m). Pairs with 'gcx dbo11y instances list' to find instance names. Use --filter <label><op><value> (repeatable) to scope the pg_stat_activity/pg_stat_statements queries to one database on a multi-database instance, e.g. --filter datname=payments — health/inventory metrics don't carry that label and are unaffected. Examples: gcx dbo11y instances get <name> -o json; gcx dbo11y instances get <name> --since 1h --top 20 -o json`,
+			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot. Health (up/down) is engine-agnostic. Postgres also reports connection counts by state, active wait events (wait_event_type/wait_event), and longest running transaction, from pg_stat_activity. MySQL reports a single current-connections count only (mysql_global_status_threads_connected); wait events aren't available as a live metric for MySQL. Top queries (both engines) are ranked by time share from pg_stat_statements (Postgres) or mysql_perf_schema_events_statements_* (MySQL) over --since (default 5m). Pairs with 'gcx dbo11y instances list' to find instance names and engines. Use --filter <label><op><value> (repeatable) to scope the connections/query-performance queries to one database on a multi-database instance, e.g. --filter datname=payments (Postgres) or --filter schema=payments (MySQL) — health/inventory metrics don't carry that label. On no telemetry this command also checks the stack's Database Observability activation status and, if not activated, exits 1 with a specific "not activated" hint instead of the generic no-telemetry message. Examples: gcx dbo11y instances get <name> -o json; gcx dbo11y instances get <name> --since 1h --top 20 -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -145,7 +160,20 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		}
 
 		notFound := !detail.Health.HasUp && len(detail.Connections) == 0 && len(detail.TopQueries) == 0
+		// checkActivation is a best-effort diagnostic enrichment: it can only
+		// make the not-found case more specific, never less — an inconclusive
+		// check (activated=false, err!=nil) falls through to the generic
+		// no-telemetry message below rather than blocking.
+		var notActivated bool
 		if notFound {
+			if activated, actErr := checkActivation(ctx, cfg); actErr == nil && !activated {
+				notActivated = true
+			}
+		}
+		switch {
+		case notActivated:
+			cmdio.EmitWarn(cmd.ErrOrStderr(), notActivatedError().Error())
+		case notFound:
 			cmdio.EmitHint(cmd.ErrOrStderr(),
 				fmt.Sprintf("no telemetry found for %q in the requested window", name),
 				"gcx dbo11y instances list")
@@ -158,6 +186,9 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		if err := opts.IO.Encode(cmd.OutOrStdout(), detail); err != nil {
 			return err
 		}
+		if notActivated {
+			return gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, notActivatedError())
+		}
 		if notFound {
 			cmdio.EmitWarn(cmd.ErrOrStderr(), fmt.Sprintf("instance %q has no telemetry in the requested window", name))
 			return gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, errors.New("instance not found"))
@@ -166,55 +197,22 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 	}
 }
 
-// fetchInstanceDetail runs the metadata, health, connections, wait-events,
-// longest-tx, and top-queries queries in parallel and folds the responses
-// into one InstanceDetail. matchers only scope the pg_stat_activity/
-// pg_stat_statements queries (connections, wait events, longest tx, top
-// queries) — metadata and health/exporter metrics don't carry labels like
-// datname, so applying arbitrary matchers there would silently zero them out.
+// fetchInstanceDetail runs the metadata lookup first (to learn the engine),
+// then the health/connections/wait-events/longest-tx/top-queries queries in
+// parallel, scoped to whichever metric family that engine actually has —
+// see metricsForEngine. matchers only scope the per-engine activity/
+// statements queries (connections, wait events, longest tx, top queries) —
+// metadata and health metrics don't carry labels like datname/schema, so
+// applying arbitrary matchers there would silently zero them out.
 func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasourceUID, name, window string, top int, matchers []Matcher) (*InstanceDetail, bool, error) {
-	var (
-		metadataResp                                   *prometheus.QueryResponse
-		upResp, scrapeErrResp, scrapeDurResp           *prometheus.QueryResponse
-		connectionsResp, waitEventsResp, longestTxResp *prometheus.QueryResponse
-		callsResp, secondsResp, rowsResp               *prometheus.QueryResponse
-	)
-
-	eg, egCtx := errgroup.WithContext(ctx)
-	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildConnectionInfoQuery([]Matcher{{Label: serviceNameLabel, Op: "=", Value: name}})
-	}, &metadataResp))
-	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildUpQuery(pgUpMetric, name, nil)
-	}, &upResp))
-	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildUpQuery(pgScrapeErrorMetric, name, nil)
-	}, &scrapeErrResp))
-	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildUpQuery(pgScrapeDurationMetric, name, nil)
-	}, &scrapeDurResp))
-	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildConnectionsByStateQuery(name, matchers)
-	}, &connectionsResp))
-	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildWaitEventsQuery(name, matchers)
-	}, &waitEventsResp))
-	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildLongestTxQuery(name, matchers)
-	}, &longestTxResp))
-	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildTopQueriesRateQuery(pgStatStatementsCalls, name, window, matchers)
-	}, &callsResp))
-	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildTopQueriesRateQuery(pgStatStatementsSeconds, name, window, matchers)
-	}, &secondsResp))
-	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildTopQueriesRateQuery(pgStatStatementsRows, name, window, matchers)
-	}, &rowsResp))
-	if err := eg.Wait(); err != nil {
-		return nil, false, err
+	metadataExpr, err := buildConnectionInfoQuery([]Matcher{{Label: serviceNameLabel, Op: "=", Value: name}})
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to build metadata query: %w", err)
 	}
-
+	metadataResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: metadataExpr})
+	if err != nil {
+		return nil, false, fmt.Errorf("metadata query failed: %w", err)
+	}
 	metadata, err := parseInstancesResponse(metadataResp)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to parse instance metadata: %w", err)
@@ -223,15 +221,80 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 	if len(metadata) > 0 {
 		inst = metadata[0]
 	}
+	metrics := metricsForEngine(inst.Engine)
+
+	var (
+		upResp, scrapeErrResp, scrapeDurResp *prometheus.QueryResponse
+		connectionsResp, connectedResp       *prometheus.QueryResponse
+		waitEventsResp, longestTxResp        *prometheus.QueryResponse
+		callsResp, secondsResp, rowsResp     *prometheus.QueryResponse
+	)
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
+		return buildScrapeUpQuery(name)
+	}, &upResp))
+	if metrics.scrapeErrorMetric != "" {
+		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
+			return buildUpQuery(metrics.scrapeErrorMetric, name, nil)
+		}, &scrapeErrResp))
+	}
+	if metrics.scrapeDurationMetric != "" {
+		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
+			return buildUpQuery(metrics.scrapeDurationMetric, name, nil)
+		}, &scrapeDurResp))
+	}
+	if metrics.activityMetric != "" {
+		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
+			return buildConnectionsByStateQuery(name, matchers)
+		}, &connectionsResp))
+		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
+			return buildWaitEventsQuery(name, matchers)
+		}, &waitEventsResp))
+	}
+	if metrics.connectedMetric != "" {
+		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
+			return buildUpQuery(metrics.connectedMetric, name, matchers)
+		}, &connectedResp))
+	}
+	if metrics.maxTxMetric != "" {
+		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
+			return buildLongestTxQuery(name, matchers)
+		}, &longestTxResp))
+	}
+	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
+		return buildTopQueriesRateQuery(metrics.statementsCalls, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel)
+	}, &callsResp))
+	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
+		return buildTopQueriesRateQuery(metrics.statementsSeconds, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel)
+	}, &secondsResp))
+	if metrics.statementsRows != "" {
+		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
+			return buildTopQueriesRateQuery(metrics.statementsRows, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel)
+		}, &rowsResp))
+	}
+	if err := eg.Wait(); err != nil {
+		return nil, false, err
+	}
 
 	up, hasUp := instantScalar(upResp)
 	scrapeErr, hasScrapeErr := instantScalar(scrapeErrResp)
 	scrapeDur, hasScrapeDur := instantScalar(scrapeDurResp)
 	longestTx, hasLongestTx := instantScalar(longestTxResp)
 
-	calls := bucketByQueryKey(callsResp)
-	seconds := bucketByQueryKey(secondsResp)
-	rows := bucketByQueryKey(rowsResp)
+	var connections []ConnectionState
+	switch {
+	case metrics.activityMetric != "":
+		connections = parseConnectionsByState(connectionsResp)
+	case metrics.connectedMetric != "":
+		if v, ok := instantScalar(connectedResp); ok {
+			connections = []ConnectionState{{State: "connected", Count: v}}
+		}
+	}
+
+	calls := bucketByQueryKey(callsResp, metrics.queryIDLabel, metrics.datnameLabel)
+	seconds := bucketByQueryKey(secondsResp, metrics.queryIDLabel, metrics.datnameLabel)
+	rows := bucketByQueryKey(rowsResp, metrics.queryIDLabel, metrics.datnameLabel)
 	topQueries, truncated := mergeTopQueries(calls, seconds, rows, top)
 
 	return &InstanceDetail{
@@ -247,7 +310,7 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 		},
 		LongestTxSeconds: longestTx,
 		HasLongestTx:     hasLongestTx,
-		Connections:      parseConnectionsByState(connectionsResp),
+		Connections:      connections,
 		WaitEvents:       parseWaitEvents(waitEventsResp),
 		TopQueries:       topQueries,
 	}, truncated, nil

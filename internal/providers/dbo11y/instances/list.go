@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -62,7 +63,12 @@ emitted by the database_observability.postgres Alloy component (job
 and cloud-provider metadata.
 
 Related: "gcx dbo11y instances get <name>" drills into one instance's health,
-connections, wait events, and top queries by time share.`,
+connections, wait events, and top queries by time share.
+
+When no instances are found, this command checks whether Database
+Observability has been activated for the stack and, if not, exits non-zero
+with a hint to activate it in Grafana Cloud instead of a generic empty
+result.`,
 		Example: `
   # List all database instances in the current stack
   gcx dbo11y instances list
@@ -76,7 +82,7 @@ connections, wait events, and top queries by time share.`,
 		RunE: runList(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Database Observability instance inventory from database_observability_connection_info: one row per monitored database (engine, version, cloud provider metadata). Pairs with 'gcx dbo11y instances get <name>' for health/connections/wait-events/top-queries. Examples: gcx dbo11y instances list -o json; gcx dbo11y instances list --filter engine=postgres -o json`,
+			agent.AnnotationLLMHint:   `Database Observability instance inventory from database_observability_connection_info: one row per monitored database (engine, version, cloud provider metadata). Pairs with 'gcx dbo11y instances get <name>' for health/connections/wait-events/top-queries. On an empty result this command also checks the stack's Database Observability activation status and, if not activated, exits 1 with a specific "not activated" hint instead of the generic empty-result message. Examples: gcx dbo11y instances list -o json; gcx dbo11y instances list --filter engine=postgres -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -122,6 +128,20 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		items, err := parseInstancesResponse(resp)
 		if err != nil {
 			return fmt.Errorf("failed to parse instances response: %w", err)
+		}
+
+		if len(items) == 0 {
+			// checkActivation is a best-effort diagnostic enrichment: it can
+			// only make the "no instances" case more specific, never less —
+			// an inconclusive check (activated=false, err!=nil) falls through
+			// to the generic table message below rather than blocking.
+			if activated, actErr := checkActivation(ctx, cfg); actErr == nil && !activated {
+				cmdio.EmitWarn(cmd.ErrOrStderr(), notActivatedError().Error())
+				if err := opts.IO.Encode(cmd.OutOrStdout(), &InstancesResponse{Items: items}); err != nil {
+					return err
+				}
+				return gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, notActivatedError())
+			}
 		}
 
 		truncated := false

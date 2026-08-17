@@ -14,6 +14,11 @@ and cloud-provider metadata.
 Related: "gcx dbo11y instances get <name>" drills into one instance's health,
 connections, wait events, and top queries by time share.
 
+When no instances are found, this command checks whether Database
+Observability has been activated for the stack and, if not, exits non-zero
+with a hint to activate it in Grafana Cloud instead of a generic empty
+result.
+
 ```
 gcx dbo11y instances list [flags]
 ```

@@ -60,7 +60,7 @@ func TestBuildLongestTxQuery(t *testing.T) {
 }
 
 func TestBuildTopQueriesRateQuery(t *testing.T) {
-	got, err := buildTopQueriesRateQuery(pgStatStatementsCalls, "quickpizza-db", "5m", nil)
+	got, err := buildTopQueriesRateQuery(pgStatStatementsCalls, "quickpizza-db", "5m", nil, "queryid", "datname")
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -70,9 +70,68 @@ func TestBuildTopQueriesRateQuery(t *testing.T) {
 	}
 }
 
+func TestBuildTopQueriesRateQuery_MySQLLabels(t *testing.T) {
+	got, err := buildTopQueriesRateQuery(mysqlStatementsCalls, "prod-mysql", "5m", nil, "digest", "schema")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	want := `sum by (digest, schema) (rate(mysql_perf_schema_events_statements_total{service_name="prod-mysql"}[5m]))`
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
 func TestBuildTopQueriesRateQuery_RequiresName(t *testing.T) {
-	if _, err := buildTopQueriesRateQuery(pgStatStatementsCalls, "", "5m", nil); err == nil {
+	if _, err := buildTopQueriesRateQuery(pgStatStatementsCalls, "", "5m", nil, "queryid", "datname"); err == nil {
 		t.Fatal("expected error for empty instance name")
+	}
+}
+
+func TestMetricsForEngine(t *testing.T) {
+	pg := metricsForEngine("postgres")
+	if pg.statementsCalls != pgStatStatementsCalls || pg.queryIDLabel != "queryid" || pg.datnameLabel != "datname" {
+		t.Errorf("postgres metrics = %+v", pg)
+	}
+	if pg.activityMetric == "" || pg.maxTxMetric == "" || pg.scrapeErrorMetric == "" {
+		t.Errorf("expected postgres to have activity/maxTx/scrapeError metrics, got %+v", pg)
+	}
+	if pg.connectedMetric != "" {
+		t.Errorf("expected postgres to have no separate connected-gauge metric, got %+v", pg)
+	}
+
+	mysql := metricsForEngine("mysql")
+	if mysql.statementsCalls != mysqlStatementsCalls || mysql.queryIDLabel != "digest" || mysql.datnameLabel != "schema" {
+		t.Errorf("mysql metrics = %+v", mysql)
+	}
+	if mysql.connectedMetric == "" {
+		t.Errorf("expected mysql to have a connected-gauge metric, got %+v", mysql)
+	}
+	if mysql.activityMetric != "" || mysql.maxTxMetric != "" || mysql.scrapeErrorMetric != "" || mysql.scrapeDurationMetric != "" {
+		t.Errorf("expected mysql to have no activity/maxTx/scrapeError/scrapeDuration metrics (unconfirmed), got %+v", mysql)
+	}
+
+	// Case-insensitive and unknown-engine fallback: anything other than
+	// "mysql" (including empty, when metadata lookup finds nothing) falls
+	// back to Postgres, matching this provider's original behavior.
+	if got := metricsForEngine("MySQL"); got.queryIDLabel != "digest" {
+		t.Errorf("expected case-insensitive match, got %+v", got)
+	}
+	if got := metricsForEngine(""); got.queryIDLabel != "queryid" {
+		t.Errorf("expected empty engine to fall back to postgres, got %+v", got)
+	}
+	if got := metricsForEngine("cockroachdb"); got.queryIDLabel != "queryid" {
+		t.Errorf("expected unknown engine to fall back to postgres, got %+v", got)
+	}
+}
+
+func TestBuildScrapeUpQuery(t *testing.T) {
+	got, err := buildScrapeUpQuery("quickpizza-db")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	want := `up{service_name="quickpizza-db",job="integrations/db-o11y"}`
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
 	}
 }
 
