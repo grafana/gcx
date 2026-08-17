@@ -3,6 +3,7 @@ package azuremonitor
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -36,6 +37,11 @@ func (opts *resourceGraphOpts) Validate() error {
 	}
 	if len(opts.Subscriptions) == 0 {
 		return errors.New("--subscription is required (repeatable)")
+	}
+	for _, sub := range opts.Subscriptions {
+		if strings.TrimSpace(sub) == "" {
+			return errors.New("--subscription entries must not be empty")
+		}
 	}
 	return nil
 }

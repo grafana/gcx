@@ -25,6 +25,16 @@ func TestResourceGraphQueryCmd_ValidationErrors(t *testing.T) {
 			args:    []string{"query", "   ", "--subscription", "sub"},
 			wantErr: "KQL query must not be empty",
 		},
+		{
+			name:    "empty --subscription entry rejected instead of silently reaching the request",
+			args:    []string{"query", "Resources | limit 1", "--subscription", ""},
+			wantErr: "--subscription entries must not be empty",
+		},
+		{
+			name:    "whitespace-only --subscription entry rejected among valid ones",
+			args:    []string{"query", "Resources | limit 1", "--subscription", "sub-a", "--subscription", "   "},
+			wantErr: "--subscription entries must not be empty",
+		},
 	}
 
 	for _, tt := range tests {
