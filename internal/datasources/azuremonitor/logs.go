@@ -56,12 +56,25 @@ func (opts *logsOpts) Validate() error {
 	return nil
 }
 
-// LogsCmd returns the `logs` subcommand for an Azure Monitor datasource.
+// LogsCmd returns the `logs` subcommand group for an Azure Monitor datasource.
+// Logs carry a materially different required identity (a workspace) than the
+// metrics `query` command (a single resource scope), so they get their own
+// target group with a `query` action rather than being a mode of `query`.
 func LogsCmd(loader *providers.ConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "logs",
+		Short: "Query Log Analytics workspaces with KQL",
+	}
+	cmd.AddCommand(newLogsQueryCmd(loader))
+	return cmd
+}
+
+// newLogsQueryCmd returns the `query` subcommand under `logs`.
+func newLogsQueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &logsOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "logs KQL",
+		Use:   "query KQL",
 		Short: "Query a Log Analytics workspace with KQL",
 		Long: `Execute a KQL (Kusto Query Language) query against an Azure Log Analytics
 workspace.
@@ -76,23 +89,23 @@ Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.`,
 		Example: `
   # Query a workspace
-  gcx datasources azuremonitor logs 'AppRequests | take 10' -d UID \
+  gcx datasources azuremonitor logs query 'AppRequests | take 10' -d UID \
     --subscription SUB_ID --resource-group my-rg --workspace my-workspace
 
   # With a time range
-  gcx datasources azuremonitor logs 'AppRequests | summarize count() by bin(TimeGenerated, 5m)' \
+  gcx datasources azuremonitor logs query 'AppRequests | summarize count() by bin(TimeGenerated, 5m)' \
     -d UID --subscription SUB_ID --resource-group my-rg --workspace my-workspace --since 1h
 
   # Output as JSON
-  gcx datasources azuremonitor logs 'AppTraces | take 5' -d UID \
+  gcx datasources azuremonitor logs query 'AppTraces | take 5' -d UID \
     --subscription SUB_ID --resource-group my-rg --workspace my-workspace -o json
 
   # Print a Grafana Explore share link for the executed query
-  gcx datasources azuremonitor logs 'AppRequests | take 10' -d UID \
+  gcx datasources azuremonitor logs query 'AppRequests | take 10' -d UID \
     --subscription SUB_ID --resource-group my-rg --workspace my-workspace --share-link
 
   # Open the executed query in Grafana Explore
-  gcx datasources azuremonitor logs 'AppRequests | take 10' -d UID \
+  gcx datasources azuremonitor logs query 'AppRequests | take 10' -d UID \
     --subscription SUB_ID --resource-group my-rg --workspace my-workspace --open`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -162,7 +175,7 @@ open it in your browser after the query succeeds.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "large",
-		agent.AnnotationLLMHint:   "gcx datasources azuremonitor logs 'AppRequests | take 10' -d UID --subscription SUB_ID --resource-group RG --workspace WS --since 1h",
+		agent.AnnotationLLMHint:   "gcx datasources azuremonitor logs query 'AppRequests | take 10' -d UID --subscription SUB_ID --resource-group RG --workspace WS --since 1h",
 	}
 
 	opts.setup(cmd.Flags())

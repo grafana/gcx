@@ -40,12 +40,25 @@ func (opts *resourceGraphOpts) Validate() error {
 	return nil
 }
 
-// ResourceGraphCmd returns the `resource-graph` subcommand for an Azure Monitor datasource.
+// ResourceGraphCmd returns the `resource-graph` subcommand group for an Azure
+// Monitor datasource. Resource Graph takes a subscription list rather than
+// the metrics `query` command's single resource scope, so it gets its own
+// target group with a `query` action rather than being a mode of `query`.
 func ResourceGraphCmd(loader *providers.ConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "resource-graph",
+		Short: "Query Azure Resource Graph with KQL",
+	}
+	cmd.AddCommand(newResourceGraphQueryCmd(loader))
+	return cmd
+}
+
+// newResourceGraphQueryCmd returns the `query` subcommand under `resource-graph`.
+func newResourceGraphQueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &resourceGraphOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "resource-graph KQL",
+		Use:   "query KQL",
 		Short: "Query Azure Resource Graph with KQL",
 		Long: `Execute a KQL (Kusto Query Language) query against Azure Resource Graph,
 Azure's inventory of resources across subscriptions.
@@ -59,20 +72,20 @@ Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.`,
 		Example: `
   # List resources by type
-  gcx datasources azuremonitor resource-graph \
+  gcx datasources azuremonitor resource-graph query \
     'Resources | summarize count() by type | order by count_ desc' \
     -d UID --subscription SUB_ID
 
   # Query across multiple subscriptions, output as JSON
-  gcx datasources azuremonitor resource-graph 'Resources | project name, type, location' \
+  gcx datasources azuremonitor resource-graph query 'Resources | project name, type, location' \
     -d UID --subscription SUB_A --subscription SUB_B -o json
 
   # Print a Grafana Explore share link for the executed query
-  gcx datasources azuremonitor resource-graph 'Resources | project name, type' \
+  gcx datasources azuremonitor resource-graph query 'Resources | project name, type' \
     -d UID --subscription SUB_ID --share-link
 
   # Open the executed query in Grafana Explore
-  gcx datasources azuremonitor resource-graph 'Resources | project name, type' \
+  gcx datasources azuremonitor resource-graph query 'Resources | project name, type' \
     -d UID --subscription SUB_ID --open`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -133,7 +146,7 @@ open it in your browser after the query succeeds.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   "gcx datasources azuremonitor resource-graph 'Resources | project name, type | limit 20' -d UID --subscription SUB_ID",
+		agent.AnnotationLLMHint:   "gcx datasources azuremonitor resource-graph query 'Resources | project name, type | limit 20' -d UID --subscription SUB_ID",
 	}
 
 	opts.setup(cmd.Flags())
