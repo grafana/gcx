@@ -3,6 +3,7 @@ package azuremonitor
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -13,6 +14,16 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+// validateKQLArg rejects an empty or whitespace-only KQL query string. Shared
+// by logs query and resource-graph query, both of which take a raw KQL
+// positional argument that otherwise reaches the backend unchecked.
+func validateKQLArg(kql string) error {
+	if strings.TrimSpace(kql) == "" {
+		return errors.New("KQL query must not be empty")
+	}
+	return nil
+}
 
 type logsOpts struct {
 	dsquery.TimeRangeOpts
@@ -110,6 +121,9 @@ open it in your browser after the query succeeds.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
+				return err
+			}
+			if err := validateKQLArg(args[0]); err != nil {
 				return err
 			}
 

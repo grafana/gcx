@@ -92,6 +92,9 @@ open it in your browser after the query succeeds.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			if err := validateKQLArg(args[0]); err != nil {
+				return err
+			}
 
 			ctx := cmd.Context()
 
