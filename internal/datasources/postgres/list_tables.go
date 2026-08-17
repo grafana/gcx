@@ -28,7 +28,7 @@ func (opts *listTablesOpts) setup(flags *pflag.FlagSet) {
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.postgres is configured)")
-	flags.StringVar(&opts.Schema, "schema", "", "Filter tables to this schema")
+	flags.StringVar(&opts.Schema, "schema", "", "Filter tables to this schema (exact match, case-sensitive)")
 }
 
 func (opts *listTablesOpts) Validate() error {
@@ -67,7 +67,8 @@ func ListTablesCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "List tables from a PostgreSQL datasource",
 		Long: `List tables and views from all non-system schemas, or filter to a specific schema.
 
-Shows schema, name, and type for each table.`,
+Shows schema, name, and type for each table. --schema matches exactly and is
+case-sensitive.`,
 		Example: `
   # List all tables
   gcx datasources postgres list-tables -d UID
@@ -83,6 +84,13 @@ Shows schema, name, and type for each table.`,
 				return err
 			}
 
+			if cmd.Flags().Changed("schema") && opts.Schema == "" {
+				return errors.New("--schema must not be empty")
+			}
+			if err := postgres.ValidateIdentifier(opts.Schema, "schema"); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 
 			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
@@ -92,13 +100,6 @@ Shows schema, name, and type for each table.`,
 
 			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "postgres")
 			if err != nil {
-				return err
-			}
-
-			if cmd.Flags().Changed("schema") && opts.Schema == "" {
-				return errors.New("--schema must not be empty")
-			}
-			if err := postgres.ValidateIdentifier(opts.Schema, "schema"); err != nil {
 				return err
 			}
 

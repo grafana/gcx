@@ -6,7 +6,8 @@ List tables from a PostgreSQL datasource
 
 List tables and views from all non-system schemas, or filter to a specific schema.
 
-Shows schema, name, and type for each table.
+Shows schema, name, and type for each table. --schema matches exactly and is
+case-sensitive.
 
 ```
 gcx datasources postgres list-tables [flags]
@@ -34,7 +35,7 @@ gcx datasources postgres list-tables [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
-      --schema string       Filter tables to this schema
+      --schema string       Filter tables to this schema (exact match, case-sensitive)
 ```
 
 ### Options inherited from parent commands
