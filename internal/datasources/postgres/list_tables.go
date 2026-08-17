@@ -2,15 +2,20 @@ package postgres
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/postgres"
+	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+// listTablesRowCap is the maximum number of tables returned in one call.
+const listTablesRowCap = 500
 
 type listTablesOpts struct {
 	IO         cmdio.Options
@@ -27,6 +32,29 @@ func (opts *listTablesOpts) setup(flags *pflag.FlagSet) {
 
 func (opts *listTablesOpts) Validate() error {
 	return opts.IO.Validate()
+}
+
+// buildListTablesSQL builds the information_schema query for list-tables,
+// optionally filtered to schema. It requests rowCap+1 rows so the caller can
+// detect and warn on truncation rather than reporting a capped result as complete.
+func buildListTablesSQL(schema string, rowCap int) string {
+	sql := "SELECT table_schema AS schema, table_name AS name, table_type AS type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema')"
+	if schema != "" {
+		sql += fmt.Sprintf(" AND table_schema = '%s'", postgres.EscapeSQLString(schema))
+	}
+	sql += fmt.Sprintf(" ORDER BY table_schema, table_name LIMIT %d", rowCap+1)
+	return sql
+}
+
+// warnIfTruncated drops rows beyond rowCap (fetched via the rowCap+1 request
+// in buildListTablesSQL) and warns on warnw that more tables matched, so a
+// capped result never reads as the complete inventory.
+func warnIfTruncated(warnw io.Writer, resp *querysql.QueryResponse, rowCap int) {
+	if len(resp.Rows) <= rowCap {
+		return
+	}
+	resp.Rows = resp.Rows[:rowCap]
+	cmdio.Warning(warnw, "showing the first %d tables; more tables match — use --schema to narrow the results", rowCap)
 }
 
 // ListTablesCmd returns the `list-tables` subcommand for a PostgreSQL datasource parent.
@@ -70,11 +98,7 @@ Shows schema, name, and type for each table.`,
 				return err
 			}
 
-			sql := "SELECT table_schema AS schema, table_name AS name, table_type AS type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema')"
-			if opts.Schema != "" {
-				sql += fmt.Sprintf(" AND table_schema = '%s'", postgres.EscapeSQLString(opts.Schema))
-			}
-			sql += " ORDER BY table_schema, table_name LIMIT 500"
+			sql := buildListTablesSQL(opts.Schema, listTablesRowCap)
 
 			client, err := postgres.NewClient(cfg)
 			if err != nil {
@@ -85,6 +109,8 @@ Shows schema, name, and type for each table.`,
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
+
+			warnIfTruncated(cmd.ErrOrStderr(), resp, listTablesRowCap)
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
