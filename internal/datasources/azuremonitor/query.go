@@ -3,6 +3,9 @@ package azuremonitor
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -70,8 +73,59 @@ func (opts *queryOpts) Validate() error {
 	if opts.Metric == "" {
 		return errors.New("--metric is required")
 	}
-	if opts.Aggregation == "" {
+	if err := validateAggregation(opts.Aggregation); err != nil {
+		return err
+	}
+	if err := validateTimeGrain(opts.TimeGrain); err != nil {
+		return err
+	}
+	if err := validateTop(opts.Top, opts.Dimensions); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateAggregation checks agg against the aggregation types the Azure
+// Monitor Metrics API accepts. Not all metrics support every aggregation;
+// list-metrics reports which ones a given metric actually supports.
+func validateAggregation(agg string) error {
+	if agg == "" {
 		return errors.New("--aggregation must not be empty")
+	}
+	switch agg {
+	case "Average", "Total", "Maximum", "Minimum", "Count":
+		return nil
+	default:
+		return fmt.Errorf("--aggregation must be one of Average, Total, Maximum, Minimum, or Count, got %q", agg)
+	}
+}
+
+// isoDurationRe matches an ISO 8601 duration with at least one date or time
+// component (bare "P" or "PT" are rejected below since every group here is
+// optional). Azure's time grains are always positive, whole-unit durations
+// (e.g. PT1M, PT1H, P1D), so fractional seconds aren't accepted.
+var isoDurationRe = regexp.MustCompile(`^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+S)?)?$`)
+
+func validateTimeGrain(tg string) error {
+	if strings.EqualFold(tg, "auto") {
+		return nil
+	}
+	if tg != "" && tg != "P" && tg != "PT" && isoDurationRe.MatchString(tg) {
+		return nil
+	}
+	return fmt.Errorf(`--time-grain must be "auto" or an ISO 8601 duration (e.g. PT1M, PT1H, P1D), got %q`, tg)
+}
+
+func validateTop(top string, dimensions map[string]string) error {
+	if top == "" {
+		return nil
+	}
+	n, err := strconv.Atoi(top)
+	if err != nil || n <= 0 {
+		return fmt.Errorf("--top must be a positive integer, got %q", top)
+	}
+	if len(dimensions) == 0 {
+		return errors.New("--top is only meaningful together with --dimensions")
 	}
 	return nil
 }

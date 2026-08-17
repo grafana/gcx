@@ -23,6 +23,38 @@ func TestQueryCmd_ValidationErrors(t *testing.T) {
 			},
 			wantErr: "--subscription must not be empty",
 		},
+		{
+			name: "unsupported --aggregation rejected before any config/datasource I/O",
+			args: []string{
+				"--resource-group", "rg", "--namespace", "ns", "--resource", "r", "--metric", "m",
+				"--aggregation", "Sum",
+			},
+			wantErr: "--aggregation must be one of",
+		},
+		{
+			name: "CloudWatch-style --time-grain rejected before any config/datasource I/O",
+			args: []string{
+				"--resource-group", "rg", "--namespace", "ns", "--resource", "r", "--metric", "m",
+				"--time-grain", "5m",
+			},
+			wantErr: "--time-grain",
+		},
+		{
+			name: "non-integer --top rejected before any config/datasource I/O",
+			args: []string{
+				"--resource-group", "rg", "--namespace", "ns", "--resource", "r", "--metric", "m",
+				"--top", "abc",
+			},
+			wantErr: "--top must be a positive integer",
+		},
+		{
+			name: "--top without --dimensions rejected before any config/datasource I/O",
+			args: []string{
+				"--resource-group", "rg", "--namespace", "ns", "--resource", "r", "--metric", "m",
+				"--top", "5",
+			},
+			wantErr: "--top is only meaningful together with --dimensions",
+		},
 	}
 
 	for _, tt := range tests {
