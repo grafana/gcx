@@ -130,6 +130,9 @@ open it in your browser after the query succeeds.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			if err := rejectExplicitEmptyFlag(cmd, "subscription", opts.Subscription); err != nil {
+				return err
+			}
 
 			ctx := cmd.Context()
 

@@ -72,6 +72,9 @@ each metric's primary aggregation, unit, and dimensions.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			if err := rejectExplicitEmptyFlag(cmd, "subscription", opts.Subscription); err != nil {
+				return err
+			}
 
 			ctx := cmd.Context()
 

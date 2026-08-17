@@ -50,6 +50,9 @@ func ListResourceGroupsCmd(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			if err := rejectExplicitEmptyFlag(cmd, "subscription", opts.Subscription); err != nil {
+				return err
+			}
 
 			ctx := cmd.Context()
 

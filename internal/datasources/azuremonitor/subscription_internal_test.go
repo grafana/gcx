@@ -8,10 +8,46 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
 )
+
+func TestRejectExplicitEmptyFlag(t *testing.T) {
+	newCmd := func() *cobra.Command {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("subscription", "", "")
+		return cmd
+	}
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{name: "omitted flag passes"},
+		{name: "non-empty value passes", args: []string{"--subscription", "sub-1"}},
+		{name: "explicit empty value rejected", args: []string{"--subscription="}, wantErr: "--subscription must not be empty"},
+		{name: "whitespace-only value rejected", args: []string{"--subscription", "   "}, wantErr: "--subscription must not be empty"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newCmd()
+			require.NoError(t, cmd.Flags().Parse(tt.args))
+			value, err := cmd.Flags().GetString("subscription")
+			require.NoError(t, err)
+
+			err = rejectExplicitEmptyFlag(cmd, "subscription", value)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
 
 func TestResolveSubscription(t *testing.T) {
 	t.Run("flag value wins without fetching the datasource", func(t *testing.T) {
