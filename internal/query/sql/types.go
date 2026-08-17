@@ -26,8 +26,10 @@ type Column struct {
 var limitClauseRe = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\s*$`)
 
 // EnforceLimit ensures the SQL has a trailing LIMIT clause within bounds and
-// reports whether an existing LIMIT was capped to maxLimit, so callers can
-// warn the user instead of truncating silently.
+// reports whether the emitted row cap is lower than what was requested — an
+// existing LIMIT capped down to maxLimit, or a requested limit above maxLimit
+// applied as the injected default — so callers can warn the user instead of
+// truncating silently.
 // If limit is 0, enforcement is disabled (pass-through). The bail predicate
 // lets each dialect opt out for statements where appending a LIMIT is invalid
 // or unwanted (SHOW/DESCRIBE/EXPLAIN, LIMIT … OFFSET, dialect-specific clauses).
@@ -51,8 +53,9 @@ func EnforceLimit(sql string, limit, maxLimit int, bail func(string) bool) (stri
 		return sql, false
 	}
 
-	if limit > maxLimit {
+	capped := limit > maxLimit
+	if capped {
 		limit = maxLimit
 	}
-	return trimmed + " LIMIT " + strconv.Itoa(limit) + suffix, false
+	return trimmed + " LIMIT " + strconv.Itoa(limit) + suffix, capped
 }

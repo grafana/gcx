@@ -64,6 +64,7 @@ func TestEnforceLimit(t *testing.T) {
 		{"bail on trailing line comment", "SELECT * FROM t -- drop mic", 100, "SELECT * FROM t -- drop mic", false},
 		{"bail on trailing line comment after semicolon", "SELECT * FROM t; -- trailing", 100, "SELECT * FROM t; -- trailing", false},
 		{"comment mid-query still gets LIMIT", "SELECT 1 -- mid-query note\nFROM t", 100, "SELECT 1 -- mid-query note\nFROM t LIMIT 100", false},
+		{"requested limit above max is capped with warning", "SELECT 1", 5000, "SELECT 1 LIMIT 1000", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

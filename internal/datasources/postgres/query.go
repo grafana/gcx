@@ -28,10 +28,13 @@ type queryOpts struct {
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	opts.Setup(flags, false)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.postgres is configured)")
-	flags.IntVar(&opts.Limit, "limit", defaultLimit, "Max rows to return (0 disables enforcement)")
+	flags.IntVar(&opts.Limit, "limit", defaultLimit, fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning (0 disables enforcement)", maxLimit))
 }
 
 func (opts *queryOpts) Validate() error {
+	if opts.Limit < 0 {
+		return fmt.Errorf("--limit must be >= 0, got %d", opts.Limit)
+	}
 	return opts.SharedOpts.Validate()
 }
 
