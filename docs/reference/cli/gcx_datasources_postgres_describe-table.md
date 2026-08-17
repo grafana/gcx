@@ -36,7 +36,7 @@ gcx datasources postgres describe-table TABLE [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
-      --schema string       Schema of the table (defaults to all schemas)
+      --schema string       Schema of the table (exact match, case-sensitive; defaults to all schemas)
 ```
 
 ### Options inherited from parent commands

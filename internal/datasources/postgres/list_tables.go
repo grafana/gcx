@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -94,6 +95,9 @@ Shows schema, name, and type for each table.`,
 				return err
 			}
 
+			if cmd.Flags().Changed("schema") && opts.Schema == "" {
+				return errors.New("--schema must not be empty")
+			}
 			if err := postgres.ValidateIdentifier(opts.Schema, "schema"); err != nil {
 				return err
 			}
