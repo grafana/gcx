@@ -58,6 +58,12 @@ func TestEnforceLimit(t *testing.T) {
 		{"subquery LIMIT appends without cap warning", "SELECT * FROM (SELECT a FROM t LIMIT 5000) x", 100, "SELECT * FROM (SELECT a FROM t LIMIT 5000) x LIMIT 100", false},
 		{"DML-like column names do not bail", "SELECT last_update, deleted_at FROM t", 100, "SELECT last_update, deleted_at FROM t LIMIT 100", false},
 		{"multiline query with a line starting in a keyword-like name still gets LIMIT", "SELECT id,\nshow FROM schedule", 100, "SELECT id,\nshow FROM schedule LIMIT 100", false},
+		{"bail on LIMIT ALL", "SELECT * FROM t LIMIT ALL", 100, "SELECT * FROM t LIMIT ALL", false},
+		{"bail on lowercase limit all", "select * from t limit all", 100, "select * from t limit all", false},
+		{"bail on LIMIT ALL OFFSET", "SELECT * FROM t LIMIT ALL OFFSET 5", 100, "SELECT * FROM t LIMIT ALL OFFSET 5", false},
+		{"bail on trailing line comment", "SELECT * FROM t -- drop mic", 100, "SELECT * FROM t -- drop mic", false},
+		{"bail on trailing line comment after semicolon", "SELECT * FROM t; -- trailing", 100, "SELECT * FROM t; -- trailing", false},
+		{"comment mid-query still gets LIMIT", "SELECT 1 -- mid-query note\nFROM t", 100, "SELECT 1 -- mid-query note\nFROM t LIMIT 100", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

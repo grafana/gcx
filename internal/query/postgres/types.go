@@ -41,20 +41,33 @@ var limitStatementRe = regexp.MustCompile(`(?is)^\s*(SELECT|WITH|TABLE|VALUES)\b
 // enforcement — that fails safe (no LIMIT added) rather than corrupting SQL.
 // EXPLAIN/SHOW need no bail entries: limitStatementRe already excludes them,
 // and line-anchored entries would misfire on formatted multiline queries.
-var limitBailRe = regexp.MustCompile(`(?i)(\bLIMIT\s+\d+\s+OFFSET\b|\bOFFSET\s+\d+\b|\bFETCH\s+(FIRST|NEXT)\b|\bRETURNING\b|\bFOR\s+(UPDATE|SHARE)\b|\b(INSERT|UPDATE|DELETE|MERGE)\b)`)
+// LIMIT ALL is included because querysql's rewrite only recognizes a numeric
+// trailing LIMIT — leaving "LIMIT ALL" unmatched would double up into
+// "LIMIT ALL LIMIT 100" instead of bailing.
+var limitBailRe = regexp.MustCompile(`(?i)(\bLIMIT\s+\d+\s+OFFSET\b|\bOFFSET\s+\d+\b|\bFETCH\s+(FIRST|NEXT)\b|\bRETURNING\b|\bFOR\s+(UPDATE|SHARE)\b|\b(INSERT|UPDATE|DELETE|MERGE)\b|\bLIMIT\s+ALL\b)`)
+
+// trailingLineCommentRe matches a `--` line comment that runs to the end of
+// the statement. Appending "LIMIT n" as a bare suffix after one would land
+// inside the comment and be dropped, silently leaving the query unbounded.
+var trailingLineCommentRe = regexp.MustCompile(`--[^\n]*$`)
+
+func bail(sql string) bool {
+	return limitBailRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\n"))
+}
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds and reports
 // whether an explicit trailing LIMIT was capped to maxLimit, so callers can
 // warn instead of truncating silently.
 // If limit is 0, enforcement is disabled (pass-through).
-// Statements that cannot take LIMIT (DML, DDL, EXPLAIN/SHOW, ...) and
-// SELECTs using OFFSET, FETCH, RETURNING, or row locking pass through
-// unchanged for the server to validate.
+// Statements that cannot take LIMIT (DML, DDL, EXPLAIN/SHOW, ...), SELECTs
+// using OFFSET, FETCH, RETURNING, row locking, or an existing LIMIT ALL, and
+// statements ending in a line comment all pass through unchanged for the
+// server to validate.
 func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
 	if !limitStatementRe.MatchString(sql) {
 		return sql, false
 	}
-	return querysql.EnforceLimit(sql, limit, maxLimit, limitBailRe.MatchString)
+	return querysql.EnforceLimit(sql, limit, maxLimit, bail)
 }
 
 // QueryRequest represents a PostgreSQL query request.
