@@ -1,0 +1,10 @@
+apiVersion: extensions.gcx.grafana.com/v1alpha1
+kind: Extension
+metadata:
+  name: whoami
+spec:
+  version: 0.0.1
+  description: Smallest possible gcx extension - a shell script, no compiler, no SDK
+  script: ./whoami.sh
+  telemetry:
+    reportUsage: false

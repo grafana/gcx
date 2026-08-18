@@ -1,0 +1,15 @@
+apiVersion: extensions.gcx.grafana.com/v1alpha1
+kind: Extension
+metadata:
+  name: azure-datasources
+spec:
+  version: 0.1.0
+  description: Provision Grafana datasources for Azure Monitor and Azure Data Explorer
+  homepage: https://github.com/grafana/gcx/tree/main/examples/extensions/azure-datasources
+  minGCXVersion: 1.1.0
+  platforms:
+    # A local build, for developing the extension: `go build -o
+    # gcx-ext-azure-datasources . && gcx ext install .`
+    - os: "*"
+      arch: "*"
+      path: ./gcx-ext-azure-datasources
