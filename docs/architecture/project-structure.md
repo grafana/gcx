@@ -92,6 +92,7 @@ gcx/
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
 │   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
+│   │   ├── mssql/            # Microsoft SQL Server commands (query with TOP injection, list-tables, describe-table, explore)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
 │   │   ├── dataframe/        # Shared Grafana data frame wire types for unified datasource query API responses
@@ -101,7 +102,8 @@ gcx/
 │   │   ├── influxdb/         # InfluxDB HTTP query client
 │   │   ├── infinity/         # Infinity HTTP query client
 │   │   ├── loki/             # Loki HTTP client (log + metric queries)
-│   │   └── clickhouse/       # ClickHouse HTTP client
+│   │   ├── clickhouse/       # ClickHouse HTTP client
+│   │   └── mssql/            # Microsoft SQL Server HTTP client
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields

@@ -288,6 +288,7 @@ func TestNormalizeKind(t *testing.T) {
 		{"grafana-amazonprometheus-datasource", "prometheus"},
 		{"grafana-azureprometheus-datasource", "prometheus"},
 		{"cloudwatch", "cloudwatch"},
+		{"mssql", "mssql"},
 		{"unknown-datasource", "unknown-datasource"},
 		{"", ""},
 	}

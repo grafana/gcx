@@ -1,17 +1,21 @@
 package datasources
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/mssql"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
+	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/spf13/cobra"
 )
 
@@ -180,29 +184,23 @@ that do not have a dedicated subcommand.`,
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
 			case "clickhouse":
-				client, err := clickhouse.NewClient(cfg)
+				resp, err := runClickHouseQuery(ctx, cfg, datasourceUID, expr, start, end, step)
 				if err != nil {
-					return fmt.Errorf("failed to create client: %w", err)
+					return err
 				}
 
-				req := clickhouse.QueryRequest{
-					RawSQL: clickhouse.EnforceLimit(expr, 100, 1000),
-					Start:  start,
-					End:    end,
-				}
-				if step > 0 {
-					req.IntervalMs = step.Milliseconds()
-				}
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
-				resp, err := client.Query(ctx, datasourceUID, req)
+			case "mssql":
+				resp, err := runMSSQLQuery(ctx, cfg, datasourceUID, expr, start, end, step)
 				if err != nil {
-					return fmt.Errorf("query failed: %w", err)
+					return err
 				}
 
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
 			default:
-				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb, clickhouse)", dsType)
+				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb, clickhouse, mssql)", dsType)
 			}
 		},
 	}
@@ -214,4 +212,51 @@ that do not have a dedicated subcommand.`,
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return for loki queries (0 means no limit)")
 
 	return cmd
+}
+
+// runClickHouseQuery executes the auto-detected clickhouse branch of QueryCmd.
+func runClickHouseQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time, step time.Duration) (*querysql.QueryResponse, error) {
+	client, err := clickhouse.NewClient(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	req := clickhouse.QueryRequest{
+		RawSQL: clickhouse.EnforceLimit(expr, 100, 1000),
+		Start:  start,
+		End:    end,
+	}
+	if step > 0 {
+		req.IntervalMs = step.Milliseconds()
+	}
+
+	resp, err := client.Query(ctx, datasourceUID, req)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	return resp, nil
+}
+
+// runMSSQLQuery executes the auto-detected mssql branch of QueryCmd.
+func runMSSQLQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time, step time.Duration) (*querysql.QueryResponse, error) {
+	client, err := mssql.NewClient(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	var intervalMs int64
+	if step > 0 {
+		intervalMs = step.Milliseconds()
+	}
+
+	resp, err := client.Query(ctx, datasourceUID, mssql.QueryRequest{
+		RawSQL:     mssql.EnforceTop(expr, 100, 1000),
+		Start:      start,
+		End:        end,
+		IntervalMs: intervalMs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	return resp, nil
 }

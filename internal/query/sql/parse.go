@@ -39,6 +39,16 @@ func ParseResponse(respBody []byte, product string) (*QueryResponse, error) {
 	}
 	frame := result.Frames[0]
 
+	// Surface plugin notices (e.g. server-side row-limit truncation) so callers
+	// can advertise them to the user. Info-severity notices are dropped as noise.
+	if frame.Schema.Meta != nil {
+		for _, n := range frame.Schema.Meta.Notices {
+			if n.Severity == "warning" || n.Severity == "error" {
+				resp.Notices = append(resp.Notices, n.Text)
+			}
+		}
+	}
+
 	for _, f := range frame.Schema.Fields {
 		resp.Columns = append(resp.Columns, Column{Name: f.Name, Type: f.Type})
 	}
