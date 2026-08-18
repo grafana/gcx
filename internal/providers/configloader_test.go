@@ -1510,6 +1510,13 @@ current-context: prod
 	assert.Equal(t, "https://staging.grafana.net", cfg.Contexts["staging"].Grafana.Server)
 }
 
+// org-id is set on both stacks to keep this test off the network.
+// LoadGrafanaConfig validates the selected context, and namespace validation
+// with neither org-id nor stack-id configured falls through to /bootdata
+// discovery against the configured server — here a live grafana.net host — so
+// without it the test passes or fails on whether the runner can reach that host
+// within the 5s client timeout. Nothing asserted below depends on the
+// namespace; the sibling context-override tests set it for the same reason.
 func TestConfigLoader_LoadGrafanaConfig_ContextOverrideBeforeEnvVars(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
 version: 1
@@ -1518,10 +1525,12 @@ stacks:
     grafana:
       server: https://prod.grafana.net
       token: prod-token
+      org-id: 1
   staging:
     grafana:
       server: https://staging.grafana.net
       token: staging-token
+      org-id: 1
 contexts:
   prod:
     stack: prod
