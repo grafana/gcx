@@ -76,8 +76,8 @@ func TestIsAgentMode(t *testing.T) {
 		},
 		{
 			name:     "SetFlag(true) with no env vars enables agent mode",
-			setFlag:  new(bool),
-			wantMode: false, // new(bool) is false; override below
+			setFlag:  new(true),
+			wantMode: true,
 		},
 		{
 			name:     "SetFlag(false) overrides env detection (explicit --agent=false)",
@@ -106,10 +106,6 @@ func TestIsAgentMode(t *testing.T) {
 			wantMode: false,
 		},
 	}
-
-	// Fix the SetFlag(true) test case
-	tests[9].setFlag = new(true)
-	tests[9].wantMode = true
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
