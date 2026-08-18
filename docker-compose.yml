@@ -77,12 +77,34 @@ services:
     networks:
       - grafana
 
+  postgres:
+    image: postgres:17
+    container_name: gcx-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: grafana
+      POSTGRES_PASSWORD: grafana
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grafana -d testdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - grafana
+
 volumes:
   mysql_data:
     driver: local
   grafana_data:
     driver: local
   influxdb_data:
+    driver: local
+  postgres_data:
     driver: local
 
 networks:

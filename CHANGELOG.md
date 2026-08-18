@@ -1,14 +1,51 @@
 ## Unreleased
 
-### Breaking changes
+### Fixes
 
-- `gcx agento11y collections add-conversations` and `gcx agento11y collections remove-conversation` emit `type: gcx.agento11y.collection_membership` instead of `gcx.aio11y.collection_membership`. `schema_version` stays `1` and no fields changed. Scripts that rely on `type` must accept the new value.
+- instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
 
 ### Features
 
-- Added `gcx instrumentation explain <id>` and `gcx instrumentation list-explanations` for looking up finding explanations bundled with `otel-checker` (bumped to v0.3.1).
-- `gcx instrumentation check` now surfaces an `EXPLAIN_ID` column in table output (and `explain_id` field in JSON), feedable directly into `gcx instrumentation explain`.
 - Added `--fix-plan` to `gcx instrumentation check`: synthesizes a single fix plan covering every finding. Uses Grafana Assistant when the current context is a Grafana Cloud stack (billable); falls back to a local aggregation of the explanation docs' "How to fix" sections on OSS/Enterprise or when Assistant is unreachable.
+
+## v1.1.0 (2026-08-14)
+
+**Breaking changes**
+- `gcx agento11y collections add-conversations` and `gcx agento11y collections remove-conversation` emit `type: gcx.agento11y.collection_membership` instead of `gcx.aio11y.collection_membership`. `schema_version` stays `1`. No fields changed. Scripts that read `type` must accept the new value.
+
+**New features**
+- Add `gcx profiles data-range` for Pyroscope ingestion health.
+- Add the same `data-range` command under `gcx datasources pyroscope`.
+- Add `gcx instrumentation explain` and `list-explanations` for the finding explanations that ship with `otel-checker` (now v0.3.1).
+- Add an `EXPLAIN_ID` column to `gcx instrumentation check` table output, and an `explain_id` field to its JSON output. Pass the value to `gcx instrumentation explain`.
+- Add `gcx assistant investigations list-evidence`.
+- Show the chat ID next to the investigation ID in `investigations get`.
+- Keep full v2 investigation summaries and totals in list output.
+- Filter IRM alert groups by escalation chain and by date window.
+- Add agent support to `gcx metrics list-names`.
+- Add agent support to metrics label matching.
+
+**Improvements**
+- Check contexts concurrently in `gcx config check`.
+- Record `target_kind` in usage telemetry events.
+
+**Fixes**
+- Make `gcx dev serve` exit on Ctrl-C.
+- Set `AllowsEdits` so gcx-managed dashboards stay editable in the UI.
+- Keep `configType` in Fleet so OTel pipelines round-trip.
+- Support UTF-8 label names in profiles.
+- Match experiment report types and trial counts to the API.
+- Send guard redaction config as `redact` with `{id, regex}`.
+- Drop `rule_id` from the rules update PATCH body.
+- Handle an unavailable keychain safely during verification.
+
+**Internal**
+- Rename the `aio11y` Go package to `agento11y`.
+- Add the `integrate-with-gcx` and `review-pr` contributor skills.
+- Add a command naming conventions guide.
+- Restructure the Grafana Cloud documentation.
+- Pin `GCX_AGENT_MODE=false` for the test tasks.
+- Add data sources code owners for `internal/datasources`.
 
 ## v1.0.0 (2026-07-28)
 

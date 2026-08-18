@@ -33,7 +33,7 @@ func NewWatcher(ctx context.Context, callback func(string)) (*Watcher, error) {
 	}, nil
 }
 
-func (w *Watcher) Add(watchPaths ...string) error {
+func (w *Watcher) Add(ctx context.Context, watchPaths ...string) error {
 	for _, watchPath := range watchPaths {
 		isDir, err := isDirectory(watchPath)
 		if err != nil {
@@ -45,6 +45,12 @@ func (w *Watcher) Add(watchPaths ...string) error {
 
 		err = filepath.WalkDir(watchPath, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
+				return err
+			}
+			// Registering every directory of a large tree can take seconds (on
+			// macOS the kqueue backend stats every file it finds). Bail out on
+			// cancellation so Ctrl-C stops the server before it starts serving.
+			if err := ctx.Err(); err != nil {
 				return err
 			}
 			if !d.IsDir() {
