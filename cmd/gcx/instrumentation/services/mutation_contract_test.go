@@ -53,13 +53,13 @@ func runServiceMutation(t *testing.T, verb string, outOpts *cmdio.Options) (stri
 	switch verb {
 	case "include":
 		err = services.RunInclude(context.Background(), outOpts, client, "c1", "grotshop", "frontend",
-			instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+			instrumentation.BackendURLs{OTLPURL: "https://otlp-gateway.example/otlp"}, instrumentation.PromHeaders{}, &out)
 	case "exclude":
 		err = services.RunExclude(context.Background(), outOpts, client, "c1", "grotshop", "frontend",
-			instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+			instrumentation.BackendURLs{OTLPURL: "https://otlp-gateway.example/otlp"}, instrumentation.PromHeaders{}, &out)
 	case "clear":
 		err = services.RunClear(context.Background(), outOpts, client, "c1", "grotshop", "frontend",
-			instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
+			instrumentation.BackendURLs{OTLPURL: "https://otlp-gateway.example/otlp"}, instrumentation.PromHeaders{}, &out)
 	default:
 		t.Fatalf("unknown verb %q", verb)
 	}
