@@ -32,11 +32,13 @@
 /internal/datasources/infinity/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/influxdb/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/loki/ @grafana/grafana-gcx @grafana/loki-team
+/internal/datasources/postgres/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
 /internal/datasources/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
 /internal/datasources/tempo/ @grafana/grafana-gcx @grafana/tempo
 
 /internal/query/loki/ @grafana/grafana-gcx @grafana/loki-team
+/internal/query/postgres/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
 /internal/query/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
 /internal/query/tempo/ @grafana/grafana-gcx @grafana/tempo
