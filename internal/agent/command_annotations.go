@@ -107,6 +107,14 @@ var commandAnnotations = map[string]annotation{
 	// providers
 	"gcx providers list": {Cost: "small"},
 
+	// ext — third-party extensions. `gcx ext <name>` dispatches to a binary
+	// gcx does not own, so its cost is the extension's, not gcx's.
+	"gcx ext":           {Cost: "small", Hint: "<extension-name> [args...]; output and exit codes belong to the extension, not gcx"},
+	"gcx ext install":   {Cost: "small"},
+	"gcx ext list":      {Cost: "small"},
+	"gcx ext uninstall": {Cost: "small"},
+	"gcx ext update":    {Cost: "small"},
+
 	// resources
 	"gcx resources delete":        {Cost: "small"},
 	"gcx resources edit":          {Cost: "small"},

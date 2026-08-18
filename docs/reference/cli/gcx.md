@@ -35,6 +35,7 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
 * [gcx dev](gcx_dev.md)	 - Manage Grafana resources as code
+* [gcx ext](gcx_ext.md)	 - Install and run third-party extensions
 * [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management pipelines and collectors
 * [gcx frontend](gcx_frontend.md)	 - Manage Grafana Frontend Observability resources
 * [gcx help-tree](gcx_help-tree.md)	 - Print a compact command tree for agent context injection
