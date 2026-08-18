@@ -142,6 +142,15 @@ func (config *Config) HasContext(name string) bool {
 	return config.Contexts[name] != nil
 }
 
+// ContextNames returns the names of all configured contexts, sorted
+// alphabetically. It returns nil when no contexts are configured.
+func (config *Config) ContextNames() []string {
+	if len(config.Contexts) == 0 {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(config.Contexts))
+}
+
 // GetCurrentContext returns the current context.
 // If the current context is not set, it returns an error.
 func (config *Config) GetCurrentContext() *Context {

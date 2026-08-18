@@ -84,6 +84,28 @@ func TestErrorToDetailedError_ColonSeparatedMessageSplitsSummaryAndDetails(t *te
 	assert.Equal(t, "use -d flag or set datasources.loki in config", got.Details)
 }
 
+func TestErrorToDetailedError_ContextNotFoundListsAvailable(t *testing.T) {
+	got := fail.ErrorToDetailedError(config.ContextNotFound("ops", "auth", "default", "dev"))
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Invalid configuration", got.Summary)
+	require.NotEmpty(t, got.Suggestions)
+	assert.Equal(t, "Available contexts: auth, default, dev", got.Suggestions[0],
+		"available contexts should be surfaced first")
+	assert.Contains(t, got.Suggestions, "Check for typos in the context name")
+	assert.Contains(t, got.Suggestions, "Review your configuration: gcx config view")
+}
+
+func TestErrorToDetailedError_ContextNotFoundWithoutAvailable(t *testing.T) {
+	got := fail.ErrorToDetailedError(config.ContextNotFound("ops"))
+
+	require.NotNil(t, got)
+	require.Len(t, got.Suggestions, 2)
+	for _, s := range got.Suggestions {
+		assert.NotContains(t, s, "Available contexts:")
+	}
+}
+
 func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 	tests := []struct {
 		name         string

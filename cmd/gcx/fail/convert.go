@@ -181,13 +181,22 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	if errors.Is(err, config.ErrContextNotFound) {
+		suggestions := []string{
+			"Check for typos in the context name",
+			"Review your configuration: gcx config view",
+		}
+
+		var ctxErr *config.ContextNotFoundError
+		if errors.As(err, &ctxErr) && len(ctxErr.Available) > 0 {
+			suggestions = append([]string{
+				fmt.Sprintf("Available contexts: %s", strings.Join(ctxErr.Available, ", ")),
+			}, suggestions...)
+		}
+
 		return &gcxerrors.DetailedError{
-			Summary: "Invalid configuration",
-			Parent:  err,
-			Suggestions: []string{
-				"Check for typos in the context name",
-				"Review your configuration: gcx config view",
-			},
+			Summary:     "Invalid configuration",
+			Parent:      err,
+			Suggestions: suggestions,
 		}, true
 	}
 

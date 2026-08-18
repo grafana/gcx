@@ -155,7 +155,7 @@ func contextSelectionOverride(ctxName string) config.Override {
 			return nil
 		}
 		if !cfg.HasContext(ctxName) {
-			return config.ContextNotFound(ctxName)
+			return config.ContextNotFound(ctxName, cfg.ContextNames()...)
 		}
 		cfg.CurrentContext = ctxName
 		return nil
@@ -179,7 +179,7 @@ func cloudEnvOverride(cfg *config.Config) error {
 // contextMustExist is a config.Override that validates the current context exists.
 func contextMustExist(cfg *config.Config) error {
 	if !cfg.HasContext(cfg.CurrentContext) {
-		return config.ContextNotFound(cfg.CurrentContext)
+		return config.ContextNotFound(cfg.CurrentContext, cfg.ContextNames()...)
 	}
 	return nil
 }
