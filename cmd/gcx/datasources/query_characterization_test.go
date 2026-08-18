@@ -171,6 +171,28 @@ func runGeneric(t *testing.T, f *fakeGrafana, args ...string) (string, error) {
 	return stdout.String(), err
 }
 
+// runGenericStreams is runGeneric plus stderr, for the one kind that writes an
+// advisory notice. Kept separate so the stdout-only callers stay unchanged.
+func runGenericStreams(t *testing.T, f *fakeGrafana, args ...string) (string, string, error) {
+	t.Helper()
+
+	srv := f.start()
+	configFile := newConfigFileForServer(t, srv.URL)
+
+	root := helperRoot(datasources.QueryCmd())
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs(append(args, "--config", configFile))
+
+	// Execute before reading either buffer: Go evaluates return operands left to
+	// right, so returning root.Execute() alongside stdout.String() would snapshot
+	// the buffers before the command ran.
+	err := root.Execute()
+
+	return stdout.String(), stderr.String(), err
+}
+
 func TestGenericQueryCharacterization_PrometheusTimeAndStep(t *testing.T) {
 	f := &fakeGrafana{t: t, dsType: "prometheus"}
 
@@ -297,6 +319,40 @@ func TestGenericQueryCharacterization_ClickHouseLimitAndInterval(t *testing.T) {
 	assert.Equal(t, "SELECT 1 LIMIT 100", q["rawSql"],
 		"the generic path enforces the default clickhouse limit")
 	assert.InDelta(t, float64((45 * time.Second).Milliseconds()), q["intervalMs"], 0)
+}
+
+func TestGenericQueryCharacterization_PostgresLimitAndInterval(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "grafana-postgresql-datasource"}
+
+	_, stderr, err := runGenericStreams(t, f,
+		"query", "uid", "SELECT 1",
+		"--from", "now-1h", "--to", "now", "--step", "45s", "-o", "json")
+	require.NoError(t, err)
+
+	q := firstQuery(t, f.mustBody(t))
+	assert.Equal(t, "SELECT 1 LIMIT 100", q["rawSql"],
+		"the generic path enforces the default postgres limit")
+	assert.InDelta(t, float64((45 * time.Second).Milliseconds()), q["intervalMs"], 0)
+	assert.Empty(t, stderr, "a query within the limit warns about nothing")
+}
+
+// The capped-LIMIT notice is the only thing any generic handler writes outside
+// the stdout document, so it pins both the capping and the stream it lands on.
+// dispatchPostgres is the sole reader of genericQueryRequest.warn.
+func TestGenericQueryCharacterization_PostgresOversizedLimitWarnsOnStderr(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "grafana-postgresql-datasource"}
+
+	stdout, stderr, err := runGenericStreams(t, f,
+		"query", "uid", "SELECT 1 LIMIT 5000",
+		"--from", "now-1h", "--to", "now", "-o", "json")
+	require.NoError(t, err)
+
+	q := firstQuery(t, f.mustBody(t))
+	assert.Equal(t, "SELECT 1 LIMIT 1000", q["rawSql"], "an oversized LIMIT is capped")
+
+	assert.Contains(t, stderr, "was capped", "the cap must be reported, not silent")
+	assert.NotContains(t, stdout, "was capped",
+		"the notice must not contaminate the stdout document")
 }
 
 // A reachable query failure: the datasource lookup succeeds, so the client is
