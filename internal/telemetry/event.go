@@ -24,10 +24,13 @@ const (
 //     or their data. Flags holds flag NAMES only; Command is the resolved
 //     command path only; the parse_error_* fields are shape-filtered before they
 //     are set (see #578).
-//   - No field carries a raw numeric count. Batch sizes travel as labels from
-//     the fixed vocabulary in bucket.go. Note that two of those labels are
-//     singletons, so a batch of 0 or 1 is exactly recoverable — say "fixed
-//     categories", never "never exact".
+//   - No field carries a raw count of batch or resource volume. Batch sizes
+//     travel as labels from the fixed vocabulary in bucket.go. Note that two of
+//     those labels are singletons, so a batch of 0 or 1 is exactly recoverable —
+//     say "fixed categories", never "never exact". Scope this to volume rather
+//     than to numbers in general: ExitCode, DurationMS and ParseErrorDistance
+//     are all raw numbers, and they are fine because they describe the
+//     invocation, not how much of anyone's inventory it touched.
 //   - A small, enumerated set of fields is derived from how the command ran
 //     rather than from a name, and each is documented on its own field below:
 //     OutputFormat (the value of --output, filtered to a fixed list of formats)

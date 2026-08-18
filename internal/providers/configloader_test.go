@@ -1516,7 +1516,9 @@ current-context: prod
 // discovery against the configured server — here a live grafana.net host — so
 // without it the test passes or fails on whether the runner can reach that host
 // within the 5s client timeout. Nothing asserted below depends on the
-// namespace; the sibling context-override tests set it for the same reason.
+// namespace; TestConfigLoader_LoadConfigTolerant_ContextOverrideBeforeEnvVars
+// sets it for the same reason. The LoadFullConfig and LoadCloudConfig siblings
+// do not, because neither validates the Grafana namespace.
 func TestConfigLoader_LoadGrafanaConfig_ContextOverrideBeforeEnvVars(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
 version: 1

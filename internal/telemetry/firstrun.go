@@ -97,8 +97,19 @@ func maybeShowFirstRunNotice(w io.Writer, mode Mode, isTTY, isCI, isAgent bool, 
 	// abstract. It is still the right trade here, because a file that exists but
 	// cannot be read is nearly always one an earlier run created after showing
 	// the notice — a `sudo -E gcx` leaving a root-owned file in the user's state
-	// dir is the realistic way to get here — so suppressing withholds a
+	// dir is the realistic way to get here — so suppressing usually withholds a
 	// disclosure that was already made, while the alternative nags forever.
+	//
+	// "Usually" is doing real work in that sentence now that revisions exist, and
+	// it is the weakest point of this branch. An unreadable file may hold an
+	// older revision, in which case the run collects under the amended notice
+	// while suppressing it permanently — the disclosure was never made, not
+	// merely re-made. The trade is kept because the failure needs an unreadable
+	// state file, which is rare and not something a revision bump creates, and
+	// because the alternative re-shows on every invocation with no way to stop.
+	// If a third revision lands, revisit this rather than inheriting it: the
+	// honest fix is a readable revision marker that a failed read can fall back
+	// on, not a comment.
 	//
 	// This cannot catch a file that reads back clean but does not persist — a
 	// symlink to /dev/null reads as empty with no error, so it looks exactly

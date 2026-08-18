@@ -14,11 +14,11 @@ weight: 4
 
 `gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don't exist, so we can make the product better.
 
-The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values, free-form flag values, and resource names are never sent, and the flags you set are recorded by name only. No raw numeric count fields are sent.
+The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values, free-form flag values, and resource names are never sent, and the flags you set are recorded by name only. No raw count of batch or resource volume is sent.
 
 For the resource commands that operate on batches, the size of the operation is sent as one of seven fixed categories rather than as a number. Two of those categories, `0` and `1`, cover a single value each, so those two sizes are exact; every larger category is a range. See [How to read the batch fields](#how-to-read-the-batch-fields).
 
-Two further fields describe how the command ran rather than naming a flag: `output_format` records the output format used, from a fixed list of known formats, and `dry_run` records whether the operation executed in dry-run mode. `output_format` is read from `--output`; `dry_run` is derived from the operation and is set even for commands that have no `--dry-run` flag. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
+Two further fields describe how the command ran rather than naming a flag: `output_format` records the output format used, from a fixed list of known formats, and `dry_run` records whether the operation executed in dry-run mode. `output_format` is read from `--output`, which means a command that renders JSON because you passed `--json` is still recorded with `--output`'s value; that mismatch is a known bug rather than intended behaviour. `dry_run` is derived from the operation and is set even for commands that have no `--dry-run` flag. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
 
 {{< admonition type="note" >}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usage reporting.{{< /admonition >}}
 
