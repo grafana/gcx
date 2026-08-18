@@ -94,7 +94,7 @@ func ListResourcesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	}
 
 	cmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
+		agent.AnnotationTokenCost: "large",
 		agent.AnnotationLLMHint:   "gcx datasources azuremonitor list-resources -d UID --subscription SUB_ID --resource-group RG",
 	}
 
