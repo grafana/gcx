@@ -19,6 +19,7 @@ func init() { //nolint:gochecknoinits
 		"CURSOR_AGENT",
 		"GITHUB_COPILOT",
 		"AMAZON_Q",
+		"CODEX_THREAD_ID",
 	} {
 		os.Unsetenv(env)
 	}

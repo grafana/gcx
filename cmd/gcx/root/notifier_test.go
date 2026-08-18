@@ -147,6 +147,7 @@ func resetNotifierTestState(t *testing.T) {
 		"GITHUB_COPILOT",
 		"AMAZON_Q",
 		"OPENCODE",
+		"CODEX_THREAD_ID",
 	} {
 		t.Setenv(env, "")
 	}

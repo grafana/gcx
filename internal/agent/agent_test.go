@@ -44,6 +44,16 @@ func TestIsAgentMode(t *testing.T) {
 			wantMode: true,
 		},
 		{
+			name:     "CODEX_THREAD_ID set to a thread ID",
+			envVars:  map[string]string{"CODEX_THREAD_ID": "some-thread-id"},
+			wantMode: true,
+		},
+		{
+			name:     "CODEX_THREAD_ID empty is not detected",
+			envVars:  map[string]string{"CODEX_THREAD_ID": ""},
+			wantMode: false,
+		},
+		{
 			name:     "GCX_AGENT_MODE=1",
 			envVars:  map[string]string{"GCX_AGENT_MODE": "1"},
 			wantMode: true,
@@ -71,8 +81,8 @@ func TestIsAgentMode(t *testing.T) {
 		},
 		{
 			name:     "SetFlag(true) with no env vars enables agent mode",
-			setFlag:  new(bool),
-			wantMode: false, // new(bool) is false; override below
+			setFlag:  new(true),
+			wantMode: true,
 		},
 		{
 			name:     "SetFlag(false) overrides env detection (explicit --agent=false)",
@@ -101,10 +111,6 @@ func TestIsAgentMode(t *testing.T) {
 			wantMode: false,
 		},
 	}
-
-	// Fix the SetFlag(true) test case
-	tests[9].setFlag = new(true)
-	tests[9].wantMode = true
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -139,6 +145,7 @@ func clearAgentEnv(t *testing.T) {
 		"GITHUB_COPILOT",
 		"AMAZON_Q",
 		"OPENCODE",
+		"CODEX_THREAD_ID",
 	} {
 		t.Setenv(env, "")
 	}
@@ -224,6 +231,16 @@ func TestName(t *testing.T) {
 		{
 			name:    "falsy harness var is ignored",
 			envVars: map[string]string{"CLAUDECODE": "0"},
+			want:    "",
+		},
+		{
+			name:    "CODEX_THREAD_ID names codex",
+			envVars: map[string]string{"CODEX_THREAD_ID": "some-thread-id"},
+			want:    "codex",
+		},
+		{
+			name:    "empty CODEX_THREAD_ID names no harness",
+			envVars: map[string]string{"CODEX_THREAD_ID": ""},
 			want:    "",
 		},
 	}
