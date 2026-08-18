@@ -76,6 +76,8 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		IsAgent:    agent.IsAgentMode(),
 		Agent:      agent.Name(),
 		TargetKind: internalconfig.CapturedTargetKind(),
+
+		QueryDigest: telemetry.QueryDigest(),
 	}
 
 	// The provider is the top-level command, the first segment of the path.
