@@ -40,10 +40,10 @@ type fakeGrafana struct {
 	failDatasourceGetAfter int
 	queryStatus            int
 
-	mu           sync.Mutex
-	datasourceGe int
-	postPath     string
-	postBody     map[string]any
+	mu             sync.Mutex
+	datasourceGets int
+	postPath       string
+	postBody       map[string]any
 }
 
 func (f *fakeGrafana) start() *httptest.Server {
@@ -62,8 +62,8 @@ func (f *fakeGrafana) serve(w http.ResponseWriter, r *http.Request) {
 
 	case r.Method == http.MethodGet && r.URL.Path == "/api/datasources/uid/uid":
 		f.mu.Lock()
-		f.datasourceGe++
-		n := f.datasourceGe
+		f.datasourceGets++
+		n := f.datasourceGets
 		f.mu.Unlock()
 
 		if f.failDatasourceGetAfter > 0 && n >= f.failDatasourceGetAfter {
@@ -127,7 +127,7 @@ func (f *fakeGrafana) seenDatasourceGets() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return f.datasourceGe
+	return f.datasourceGets
 }
 
 func (f *fakeGrafana) seenPost() (string, map[string]any) {
@@ -259,19 +259,19 @@ func TestGenericQueryCharacterization_PyroscopeMaxNodes(t *testing.T) {
 // detect the type, once more to read jsonData.version for the query language.
 func TestGenericQueryCharacterization_InfluxDBModeDetection(t *testing.T) {
 	tests := []struct {
-		name        string
-		jsonData    map[string]any
-		wantRawQuer bool
+		name         string
+		jsonData     map[string]any
+		wantRawQuery bool
 	}{
 		{
-			name:        "no jsonData defaults to InfluxQL",
-			jsonData:    nil,
-			wantRawQuer: true,
+			name:         "no jsonData defaults to InfluxQL",
+			jsonData:     nil,
+			wantRawQuery: true,
 		},
 		{
-			name:        "Flux mode omits rawQuery",
-			jsonData:    map[string]any{"version": "Flux"},
-			wantRawQuer: false,
+			name:         "Flux mode omits rawQuery",
+			jsonData:     map[string]any{"version": "Flux"},
+			wantRawQuery: false,
 		},
 	}
 
@@ -289,7 +289,7 @@ func TestGenericQueryCharacterization_InfluxDBModeDetection(t *testing.T) {
 
 			q := firstQuery(t, f.mustBody(t))
 			assert.Equal(t, "SELECT 1", q["query"])
-			if tt.wantRawQuer {
+			if tt.wantRawQuery {
 				assert.Equal(t, true, q["rawQuery"])
 				assert.Equal(t, "table", q["resultFormat"])
 			} else {

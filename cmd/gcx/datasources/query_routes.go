@@ -96,8 +96,15 @@ func newQueryRoutes() queryRoutes {
 }
 
 // supportedKinds returns every kind this command routes — expression-dispatchable
-// and redirect-only alike — sorted, for the unsupported-type message. Deriving
-// it is the point of #1137: the hand-maintained list had already drifted.
+// and redirect-only alike — sorted, for the unsupported-type message.
+//
+// Deriving it is the point of #1137, but be precise about what was wrong: the
+// hand-written literal never fell behind the switch cases — every kind that got
+// a case got a list entry in the same commit. What it never covered was the
+// redirect kinds. cloudwatch has been routed since v1.0.0 and appeared in that
+// literal exactly never, because a guard above the switch fed nothing into a
+// list nobody could see from the code. Deriving fixes the class: a kind cannot
+// be routed and unlisted, whichever table routes it.
 //
 // Scope, precisely: these are the kinds `gcx datasources query` handles, not
 // every kind gcx can query. Kinds with a typed `gcx datasources <kind> query`
