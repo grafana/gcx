@@ -1,3 +1,9 @@
+## Unreleased
+
+### Fixes
+
+- instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
+
 ## v1.1.0 (2026-08-14)
 
 **Breaking changes**
@@ -36,13 +42,6 @@
 - Restructure the Grafana Cloud documentation.
 - Pin `GCX_AGENT_MODE=false` for the test tasks.
 - Add data sources code owners for `internal/datasources`.
-
-
-## Unreleased
-
-### Fixes
-
-- instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
 
 ## v1.0.0 (2026-07-28)
 
