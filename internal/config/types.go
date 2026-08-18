@@ -143,12 +143,15 @@ func (config *Config) HasContext(name string) bool {
 }
 
 // ContextNames returns the names of all configured contexts, sorted
-// alphabetically. It returns nil when no contexts are configured.
+// alphabetically. Entries with a nil value (e.g. a bare `foo:` key with no
+// body) are omitted so the result agrees with HasContext, which treats such
+// entries as absent. It returns nil when no contexts are configured.
 func (config *Config) ContextNames() []string {
 	if len(config.Contexts) == 0 {
 		return nil
 	}
-	return slices.Sorted(maps.Keys(config.Contexts))
+	names := slices.Sorted(maps.Keys(config.Contexts))
+	return slices.DeleteFunc(names, func(name string) bool { return config.Contexts[name] == nil })
 }
 
 // GetCurrentContext returns the current context.

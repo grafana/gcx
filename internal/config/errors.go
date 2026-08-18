@@ -87,8 +87,10 @@ func (e *ContextNotFoundError) Unwrap() error {
 }
 
 // ContextNotFound builds a ContextNotFoundError for the given context name.
-// available is the optional set of context names that exist in the config; when
-// provided it is surfaced to the user as valid alternatives.
-func ContextNotFound(name string, available ...string) error {
+// available is the set of context names that exist in the config; when
+// non-empty it is surfaced to the user as valid alternatives. The parameter is
+// required (pass nil when the caller has no list to offer) so that every call
+// site is an explicit decision the compiler enumerates.
+func ContextNotFound(name string, available []string) error {
 	return &ContextNotFoundError{Name: name, Available: available}
 }

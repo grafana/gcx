@@ -39,11 +39,12 @@ func TestConfig_ContextNames(t *testing.T) {
 			"dev":     {},
 			"auth":    {},
 			"default": {},
+			"empty":   nil, // bare `empty:` key with no body
 		},
 	}
 
 	req.Equal([]string{"auth", "default", "dev", "ops-ops"}, cfg.ContextNames(),
-		"names are returned sorted alphabetically")
+		"names are returned sorted alphabetically, and nil entries are omitted to agree with HasContext")
 }
 
 func TestContextNotFound(t *testing.T) {
@@ -51,11 +52,11 @@ func TestContextNotFound(t *testing.T) {
 
 	// The error message is unchanged whether or not available names are passed,
 	// so existing string assertions keep working.
-	req.EqualError(config.ContextNotFound("ops"), `invalid context "ops": context not found`)
-	req.EqualError(config.ContextNotFound("ops", "dev", "default"), `invalid context "ops": context not found`)
+	req.EqualError(config.ContextNotFound("ops", nil), `invalid context "ops": context not found`)
+	req.EqualError(config.ContextNotFound("ops", []string{"dev", "default"}), `invalid context "ops": context not found`)
 
 	// It stays matchable via errors.Is against the sentinel.
-	err := config.ContextNotFound("ops", "dev", "default")
+	err := config.ContextNotFound("ops", []string{"dev", "default"})
 	req.ErrorIs(err, config.ErrContextNotFound)
 
 	// The available names are carried on the typed error for callers to surface.
