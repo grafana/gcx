@@ -44,6 +44,11 @@ func TestIsAgentMode(t *testing.T) {
 			wantMode: true,
 		},
 		{
+			name:     "PI_CODING_AGENT=true",
+			envVars:  map[string]string{"PI_CODING_AGENT": "true"},
+			wantMode: true,
+		},
+		{
 			name:     "GCX_AGENT_MODE=1",
 			envVars:  map[string]string{"GCX_AGENT_MODE": "1"},
 			wantMode: true,
@@ -139,6 +144,7 @@ func clearAgentEnv(t *testing.T) {
 		"GITHUB_COPILOT",
 		"AMAZON_Q",
 		"OPENCODE",
+		"PI_CODING_AGENT",
 	} {
 		t.Setenv(env, "")
 	}
@@ -215,6 +221,11 @@ func TestName(t *testing.T) {
 			name:    "cursor",
 			envVars: map[string]string{"CURSOR_AGENT": "1"},
 			want:    "cursor",
+		},
+		{
+			name:    "pi",
+			envVars: map[string]string{"PI_CODING_AGENT": "true"},
+			want:    "pi",
 		},
 		{
 			name:    "GCX_AGENT_MODE alone names no harness",

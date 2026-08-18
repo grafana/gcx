@@ -19,6 +19,8 @@ func init() { //nolint:gochecknoinits
 		"CURSOR_AGENT",
 		"GITHUB_COPILOT",
 		"AMAZON_Q",
+		"OPENCODE",
+		"PI_CODING_AGENT",
 	} {
 		os.Unsetenv(env)
 	}
