@@ -4,12 +4,38 @@ import (
 	"bytes"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFormatCSV(t *testing.T) {
+	resp := &pyroscope.QueryResponse{
+		Flamegraph: &pyroscope.Flamegraph{
+			Names: []string{"total", "main", "doWork"},
+			// Each level's Values are groups of 4: [offset, total, self, nameIndex].
+			Levels:  []pyroscope.Level{{Values: []string{"0", "100", "10", "1"}}, {Values: []string{"0", "60", "60", "2"}}},
+			Total:   100,
+			MaxSelf: 60,
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, pyroscope.FormatCSV(&buf, resp))
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	assert.Equal(t, "FUNCTION,SELF,TOTAL,PERCENTAGE", lines[0])
+	assert.Contains(t, buf.String(), "doWork,60,60,60")
+}
+
+func TestFormatCSV_NoProfileData(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, pyroscope.FormatCSV(&buf, &pyroscope.QueryResponse{}))
+	assert.Empty(t, buf.String())
+}
 
 func tp(value float64, timestamp int64) pyroscope.TimePoint {
 	return pyroscope.TimePoint{

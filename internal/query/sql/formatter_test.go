@@ -57,3 +57,19 @@ func TestFormatWideTable(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "ID")
 }
+
+func TestFormatCSV(t *testing.T) {
+	resp := &sql.QueryResponse{
+		Columns: []sql.Column{{Name: "id", Type: "number"}, {Name: "name", Type: "string"}},
+		Rows:    [][]any{{float64(1), "alice"}, {float64(2), "bob"}},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, sql.FormatCSV(&buf, resp))
+	assert.Equal(t, "ID,NAME\n1,alice\n2,bob\n", buf.String())
+}
+
+func TestFormatCSV_NoData(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, sql.FormatCSV(&buf, &sql.QueryResponse{}))
+	assert.Empty(t, buf.String())
+}

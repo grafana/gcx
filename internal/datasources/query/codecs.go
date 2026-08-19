@@ -97,6 +97,51 @@ func (c *queryWideCodec) Decode(io.Reader, any) error {
 	return errors.New("query wide codec does not support decoding")
 }
 
+type queryCSVCodec struct{}
+
+func (c *queryCSVCodec) Format() format.Format {
+	return "csv"
+}
+
+func (c *queryCSVCodec) Encode(w io.Writer, data any) error {
+	switch resp := data.(type) {
+	case *prometheus.QueryResponse:
+		return prometheus.FormatCSV(w, resp)
+	case *loki.QueryResponse:
+		return loki.FormatQueryCSV(w, resp)
+	case *loki.MetricQueryResponse:
+		return loki.FormatMetricQueryCSV(w, resp)
+	case *pyroscope.QueryResponse:
+		return pyroscope.FormatCSV(w, resp)
+	case *tempo.SearchResponse:
+		return tempo.FormatSearchCSV(w, resp)
+	case *tempo.MetricsResponse:
+		return tempo.FormatMetricsCSV(w, resp)
+	case *infinity.QueryResponse:
+		return infinity.FormatCSV(w, resp)
+	case *influxdb.QueryResponse:
+		return influxdb.FormatCSV(w, resp)
+	case *tempo.GetTraceResponse:
+		return errors.New("csv output is not supported for trace get; use -o table/wide/json/yaml")
+	case *querysql.QueryResponse:
+		return querysql.FormatCSV(w, resp)
+	case []clickhouse.TableInfo:
+		return clickhouse.FormatListTablesCSV(w, resp)
+	case []clickhouse.ColumnInfo:
+		return clickhouse.FormatDescribeTableCSV(w, resp)
+	case athena.StringList:
+		return athena.FormatStringListCSV(w, resp.Items, resp.Header)
+	case *cloudwatch.QueryResponse:
+		return cloudwatch.FormatCSV(w, resp)
+	default:
+		return errors.New("invalid data type for query csv codec")
+	}
+}
+
+func (c *queryCSVCodec) Decode(io.Reader, any) error {
+	return errors.New("query csv codec does not support decoding")
+}
+
 type queryGraphCodec struct{}
 
 func (c *queryGraphCodec) Format() format.Format {
@@ -212,6 +257,7 @@ func (c *queryYAMLCodec) Decode(r io.Reader, v any) error {
 func RegisterCodecs(ioOpts *cmdio.Options, enableGraph bool) {
 	ioOpts.RegisterCustomCodec("table", &queryTableCodec{})
 	ioOpts.RegisterCustomCodec("wide", &queryWideCodec{})
+	ioOpts.RegisterCustomCodec("csv", &queryCSVCodec{})
 	ioOpts.RegisterCustomCodec("json", &queryJSONCodec{inner: format.NewJSONCodec()})
 	ioOpts.RegisterCustomCodec("yaml", &queryYAMLCodec{inner: format.NewYAMLCodec()})
 	if enableGraph {

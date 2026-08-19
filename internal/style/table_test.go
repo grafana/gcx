@@ -39,3 +39,32 @@ func TestTableBuilder_AgentModeRendersPlain(t *testing.T) {
 		t.Errorf("agent-mode table output missing data:\n%s", out)
 	}
 }
+
+func TestTableBuilder_RenderCSV(t *testing.T) {
+	tb := style.NewTable("NAME", "NOTE")
+	tb.Row("prod-eu", "ok")
+	tb.Row("has,comma", `has "quote"`+"\nand newline")
+
+	var buf bytes.Buffer
+	if err := tb.RenderCSV(&buf); err != nil {
+		t.Fatalf("RenderCSV() error: %v", err)
+	}
+
+	want := "NAME,NOTE\nprod-eu,ok\n\"has,comma\",\"has \"\"quote\"\"\nand newline\"\n"
+	if buf.String() != want {
+		t.Errorf("RenderCSV() = %q, want %q", buf.String(), want)
+	}
+}
+
+func TestTableBuilder_RenderCSV_NoRows(t *testing.T) {
+	tb := style.NewTable("NAME", "NOTE")
+
+	var buf bytes.Buffer
+	if err := tb.RenderCSV(&buf); err != nil {
+		t.Fatalf("RenderCSV() error: %v", err)
+	}
+
+	if want := "NAME,NOTE\n"; buf.String() != want {
+		t.Errorf("RenderCSV() = %q, want %q", buf.String(), want)
+	}
+}

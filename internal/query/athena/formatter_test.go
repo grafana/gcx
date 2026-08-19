@@ -27,3 +27,19 @@ func TestFormatStringList(t *testing.T) {
 		assert.Contains(t, buf.String(), "No data")
 	})
 }
+
+func TestFormatStringListCSV(t *testing.T) {
+	t.Run("renders items", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := athena.FormatStringListCSV(&buf, []string{"alpha", "beta"}, "CATALOG")
+		require.NoError(t, err)
+		assert.Equal(t, "CATALOG\nalpha\nbeta\n", buf.String())
+	})
+
+	t.Run("empty result", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := athena.FormatStringListCSV(&buf, []string{}, "EMPTY")
+		require.NoError(t, err)
+		assert.Empty(t, buf.String())
+	})
+}

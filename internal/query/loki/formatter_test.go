@@ -98,6 +98,79 @@ func TestFormatQueryTableWide_IncludesTimestampAndLabels(t *testing.T) {
 	assert.Contains(t, out, "tenantID=120351")
 }
 
+func TestFormatQueryCSV_IncludesTimestampAndLabels(t *testing.T) {
+	resp := &loki.QueryResponse{
+		Data: loki.QueryResultData{
+			Result: []loki.StreamEntry{{
+				Stream: map[string]string{
+					"app":       "tempo",
+					"namespace": "prod",
+					"__meta":    "hidden",
+				},
+				Values: []loki.LogEntry{{
+					Timestamp: "1775637286777686890",
+					Line:      `level=warn caller=retention.go:113 msg="compaction delayed" tenantID=120351`,
+				}},
+			}},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := loki.FormatQueryCSV(&buf, resp)
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, 2)
+	assert.Equal(t, "TIME,LEVEL,SOURCE,APP,NAMESPACE,MESSAGE,DETAILS", lines[0])
+	assert.NotContains(t, lines[0], "__META")
+
+	assert.Contains(t, lines[1], "2026-04-08T08:34:46.77768689Z")
+	assert.Contains(t, lines[1], "warn")
+	assert.Contains(t, lines[1], "retention.go:113")
+	assert.Contains(t, lines[1], "tempo")
+	assert.Contains(t, lines[1], "prod")
+	assert.Contains(t, lines[1], "compaction delayed")
+	assert.Contains(t, lines[1], "tenantID=120351")
+}
+
+func TestFormatQueryCSV_NoData(t *testing.T) {
+	resp := &loki.QueryResponse{Data: loki.QueryResultData{Result: nil}}
+
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatQueryCSV(&buf, resp))
+	assert.Empty(t, buf.String())
+}
+
+func TestFormatMetricQueryCSV(t *testing.T) {
+	resp := &loki.MetricQueryResponse{
+		Data: loki.MetricQueryData{
+			ResultType: "matrix",
+			Result: []loki.MetricQuerySample{
+				{
+					Metric: map[string]string{"level": "error"},
+					Values: [][]any{{float64(1700000000), "3.5"}},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatMetricQueryCSV(&buf, resp))
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, 2)
+	assert.Equal(t, "TIMESTAMP,VALUE,LEVEL", lines[0])
+	assert.Equal(t, "2023-11-14T22:13:20Z,3.5,error", lines[1])
+}
+
+func TestFormatMetricQueryCSV_NoData(t *testing.T) {
+	resp := &loki.MetricQueryResponse{Data: loki.MetricQueryData{Result: nil}}
+
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatMetricQueryCSV(&buf, resp))
+	assert.Empty(t, buf.String())
+}
+
 func TestFormatQueryTable_FallsBackToPlainMessage(t *testing.T) {
 	resp := &loki.QueryResponse{
 		Data: loki.QueryResultData{

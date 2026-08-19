@@ -107,6 +107,21 @@ func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
 		return nil
 	}
 
+	return buildQueryWideTable(resp, entries).Render(w)
+}
+
+// FormatQueryCSV formats a QueryResponse as CSV, one column per stream label —
+// the same column layout as FormatQueryTableWide.
+func FormatQueryCSV(w io.Writer, resp *QueryResponse) error {
+	entries := buildDisplayEntries(resp)
+	if len(entries) == 0 {
+		return nil
+	}
+
+	return buildQueryWideTable(resp, entries).RenderCSV(w)
+}
+
+func buildQueryWideTable(resp *QueryResponse, entries []displayLogEntry) *style.TableBuilder {
 	labelNames := collectStreamLabelNames(resp.Data.Result)
 	hasLevel := anyEntry(entries, func(e displayLogEntry) string { return e.Level })
 	hasSource := anyEntry(entries, func(e displayLogEntry) string { return e.Source })
@@ -146,7 +161,7 @@ func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
 		t.Row(row...)
 	}
 
-	return t.Render(w)
+	return t
 }
 
 // FormatQueryRaw prints only the original log line bodies.
@@ -241,6 +256,77 @@ func FormatMetricQueryTable(w io.Writer, resp *MetricQueryResponse) error {
 	}
 
 	return t.Render(w)
+}
+
+// FormatMetricQueryCSV formats a MetricQueryResponse as CSV: TIMESTAMP,
+// VALUE, and one column per metric label — same layout as
+// FormatMetricQueryTable, but TIMESTAMP is rendered as RFC3339 (rather than
+// a raw epoch-seconds number) so DuckDB infers a real timestamp column
+// instead of a double.
+func FormatMetricQueryCSV(w io.Writer, resp *MetricQueryResponse) error {
+	if len(resp.Data.Result) == 0 {
+		return nil
+	}
+
+	labelNames := collectMetricLabelNames(resp.Data.Result)
+	header := make([]string, 0, len(labelNames)+2)
+	header = append(header, "TIMESTAMP", "VALUE")
+	for _, name := range labelNames {
+		header = append(header, strings.ToUpper(name))
+	}
+	t := style.NewTable(header...)
+
+	appendRow := func(metric map[string]string, point []any) {
+		if len(point) < 2 {
+			return
+		}
+		row := make([]string, 0, len(labelNames)+2)
+		row = append(row, formatMetricTimestamp(point[0]), formatMetricValue(point[1]))
+		for _, name := range labelNames {
+			row = append(row, metric[name])
+		}
+		t.Row(row...)
+	}
+
+	for _, sample := range resp.Data.Result {
+		if len(sample.Values) > 0 {
+			for _, v := range sample.Values {
+				appendRow(sample.Metric, v)
+			}
+		} else if len(sample.Value) >= 2 {
+			appendRow(sample.Metric, sample.Value)
+		}
+	}
+
+	return t.RenderCSV(w)
+}
+
+// formatMetricTimestamp parses a Unix-epoch-seconds value (float or numeric
+// string, same wire shape Prometheus uses) into RFC3339.
+func formatMetricTimestamp(v any) string {
+	switch ts := v.(type) {
+	case float64:
+		return time.Unix(int64(ts), int64((ts-float64(int64(ts)))*1e9)).UTC().Format(time.RFC3339)
+	case string:
+		f, err := strconv.ParseFloat(ts, 64)
+		if err != nil {
+			return ts
+		}
+		return time.Unix(int64(f), int64((f-float64(int64(f)))*1e9)).UTC().Format(time.RFC3339)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func formatMetricValue(v any) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 func buildDisplayEntries(resp *QueryResponse) []displayLogEntry {

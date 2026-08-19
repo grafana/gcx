@@ -24,6 +24,16 @@ const invalidPercentCell = "—"
 
 // FormatSearchTable formats a search response as a table.
 func FormatSearchTable(w io.Writer, resp *SearchResponse) error {
+	return buildSearchTable(resp).Render(w)
+}
+
+// FormatSearchCSV formats a search response as CSV, same columns as
+// FormatSearchTable.
+func FormatSearchCSV(w io.Writer, resp *SearchResponse) error {
+	return buildSearchTable(resp).RenderCSV(w)
+}
+
+func buildSearchTable(resp *SearchResponse) *style.TableBuilder {
 	tbl := style.NewTable("TRACE_ID", "SERVICE", "NAME", "DURATION", "START")
 
 	for _, tr := range resp.Traces {
@@ -36,7 +46,7 @@ func FormatSearchTable(w io.Writer, resp *SearchResponse) error {
 		)
 	}
 
-	return tbl.Render(w)
+	return tbl
 }
 
 // FormatTagsTable formats a tags response as a table.
@@ -115,6 +125,98 @@ func formatInstantMetricsTable(w io.Writer, resp *MetricsResponse) error {
 	}
 
 	return t.Render(w)
+}
+
+// FormatMetricsCSV formats a metrics response as CSV, one column per label —
+// unlike FormatMetricsTable's single formatted LABELS string, so each label
+// is independently queryable in DuckDB. Range queries get a TIMESTAMP
+// column (one row per sample, RFC3339 instead of a raw millisecond-epoch
+// string) — instant queries omit it (one row per series), matching
+// formatRangeMetricsTable/formatInstantMetricsTable.
+func FormatMetricsCSV(w io.Writer, resp *MetricsResponse) error {
+	if resp == nil || len(resp.Series) == 0 {
+		return nil
+	}
+
+	labelNames := collectMetricsLabelNames(resp.Series)
+	header := make([]string, 0, len(labelNames)+2)
+	for _, name := range labelNames {
+		header = append(header, strings.ToUpper(name))
+	}
+	if !resp.Instant {
+		header = append(header, "TIMESTAMP")
+	}
+	header = append(header, "VALUE")
+	t := style.NewTable(header...)
+
+	labelRow := func(series MetricsSeries) []string {
+		row := make([]string, 0, len(header))
+		byKey := metricsLabelValues(series.Labels)
+		for _, name := range labelNames {
+			row = append(row, byKey[name])
+		}
+		return row
+	}
+
+	if resp.Instant {
+		for _, series := range resp.Series {
+			if series.Value == nil {
+				continue
+			}
+			t.Row(append(labelRow(series), strconv.FormatFloat(*series.Value, 'f', -1, 64))...)
+		}
+		return t.RenderCSV(w)
+	}
+
+	for _, series := range resp.Series {
+		row := labelRow(series)
+		if len(series.Samples) > 0 {
+			for _, sample := range series.Samples {
+				full := append(append([]string{}, row...), formatTempoMillisString(sample.TimestampMs), strconv.FormatFloat(sample.Value, 'f', -1, 64))
+				t.Row(full...)
+			}
+			continue
+		}
+		if series.Value != nil {
+			full := append(append([]string{}, row...), formatTempoMillisString(series.TimestampMs), strconv.FormatFloat(*series.Value, 'f', -1, 64))
+			t.Row(full...)
+		}
+	}
+
+	return t.RenderCSV(w)
+}
+
+func collectMetricsLabelNames(series []MetricsSeries) []string {
+	nameSet := make(map[string]struct{})
+	for _, s := range series {
+		for _, l := range s.Labels {
+			nameSet[l.Key] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(nameSet))
+	for name := range nameSet {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func metricsLabelValues(labels []MetricsLabel) map[string]string {
+	values := make(map[string]string, len(labels))
+	for _, l := range labels {
+		values[l.Key] = extractLabelValue(l.Value)
+	}
+	return values
+}
+
+// formatTempoMillisString parses a Tempo "timestampMs" wire string into
+// RFC3339, falling back to the raw string if it doesn't parse.
+func formatTempoMillisString(raw string) string {
+	ms, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return raw
+	}
+	return time.UnixMilli(ms).UTC().Format(time.RFC3339)
 }
 
 // FormatMetricsLabels formats metrics labels as a {key="val", ...} string.
