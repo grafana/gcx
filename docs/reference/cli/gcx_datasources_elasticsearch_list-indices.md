@@ -4,7 +4,9 @@ List indices from an Elasticsearch datasource
 
 ### Synopsis
 
-List the indices visible to an Elasticsearch datasource, with their mapped field counts.
+List the indices visible to an Elasticsearch datasource, with their mapped
+field counts. Pass --index to restrict to one index or pattern; fetching the
+mapping for every index can hit the response size cap on a large cluster.
 
 ```
 gcx datasources elasticsearch list-indices [flags]
@@ -16,6 +18,9 @@ gcx datasources elasticsearch list-indices [flags]
 
   gcx datasources elasticsearch list-indices
   gcx datasources elasticsearch list-indices -d UID -o json
+
+  # Restrict to one index or pattern
+  gcx datasources elasticsearch list-indices -d UID --index grafana-logs
 ```
 
 ### Options
@@ -23,6 +28,7 @@ gcx datasources elasticsearch list-indices [flags]
 ```
   -d, --datasource string   Datasource UID (required unless datasources.elasticsearch is configured)
   -h, --help                help for list-indices
+      --index string        Restrict to this index or index pattern
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
