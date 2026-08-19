@@ -50,10 +50,12 @@ Content-Length: 42
 No response dump appears when the round trip fails, because there is no
 response to dump. The `WARN http error` line carries the reason.
 
-Neither dump appears when the OAuth token refresh fails, because gcx sends
-nothing to the wire. The dump shows wire bytes, so it has nothing to report. The
-`WARN http error` line still carries the reason. Log in again, then repeat the
-command:
+The dump also covers the OAuth token refresh exchange, because
+`auth.RefreshTransport` sends the refresh request through the same inner layer.
+Those dumps carry the refresh token and, on success, the rotated token pair.
+When a refresh fails, gcx never sends your original request, so only the refresh
+exchange appears. The `WARN http error` line still carries the reason. Log in
+again, then repeat the command:
 
 ```
 WARN http error method=GET url=https://… error="token refresh failed: session expired"
