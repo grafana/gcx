@@ -19,6 +19,9 @@ Verified live against a real Azure tenant and a real Grafana stack: discovery, d
 datasource creation with a real secret, gcx error surfacing, cleanup, and exit-code
 propagation.
 
+The author-facing conclusions from all of this are collected in
+[docs/reference/extension-author-guide.md](../reference/extension-author-guide.md).
+
 ## Strengths that held up
 
 **"No credential handoff" is not a compromise.** The hardest thing an onboarding tool
@@ -43,25 +46,38 @@ of one the extension already reported.
 
 ## Friction found
 
-### 1. Cobra has no fallback dispatch, and both obvious fixes are silently wrong
+### 1. Cobra dispatches to an unmatched name fine; it cannot stop parsing flags there
 
-`DisableFlagParsing` on the `ext` command swallows gcx's own global flags (`--context`
-lands in the extension's argv). pflag's `FParseErrWhitelist.UnknownFlags` does the
-opposite - it *drops* unknown flags entirely rather than preserving them, so the
-extension never sees its own arguments.
+Cobra's own fallback already works: `Find` returns the deepest matching command plus the
+remaining arguments, so `gcx ext whoami` runs `ext`'s `RunE` with `whoami` in `args`
+without any help. Verified by disabling the rewrite and running it.
+
+What Cobra has no hook for is the *flag* half. The remaining arguments still go through
+`ext`'s flag parser, so `gcx ext azure-datasources provision --dry-run` fails with
+`Unknown flag: --dry-run`. Both obvious fixes are silently wrong:
+
+- `DisableFlagParsing` on `ext` swallows gcx's own global flags - `--context prod` ends
+  up in the extension's argv instead of being applied to gcx.
+- pflag's `FParseErrWhitelist.UnknownFlags` does the opposite: `parseLongArg` never
+  appends an unrecognised flag to `f.args`, so the extension's own flags are dropped
+  rather than passed through.
 
 The working answer is to rewrite the argument list before Cobra sees it, inserting a
 `--` after the extension's name (`cmd/gcx/root/extargs.go`). The ADR should state the
 resulting rule explicitly: **gcx's global flags go before `ext`; everything after the
 extension's name is passed verbatim.**
 
-### 2. There is no local development install
+### 2. A compiled extension cannot be installed from a local build
 
-The manifest's platform table assumes a published artifact with a URL and a checksum,
-so an author cannot install and test their own extension before publishing it. The PoC
-adds a `path:` field with `os: "*"` / `arch: "*"`, valid only on a local row. Some
-equivalent needs to be in the ADR - `gh extension install .` exists for exactly this
-reason.
+Narrower than first written: ADR-023 does accept a local path as an install *source*,
+and its `script:` field gives an interpreted extension a complete local story. The gap
+is only for compiled extensions - every `platforms` row is described as a URL plus a
+checksum, so there is no way for a manifest to point at a binary sitting next to it, and
+an author cannot install and test their own build before publishing it.
+
+The PoC adds a `path:` field, valid with `os: "*"` / `arch: "*"` because a local build is
+for the machine doing the install. Some equivalent needs to be in the ADR -
+`gh extension install .` exists for exactly this reason.
 
 ### 3. `GCX_EXT_GCX_BIN` alone is not enough, and the context variable is a trap
 
@@ -81,6 +97,20 @@ call. Forgetting it silently operates on the wrong stack.
 Add `GCX_CONTEXT` as a first-class override and set it on the extension subprocess.
 Then a bare `gcx` call from an extension inherits the right stack by construction, and
 the advisory variable becomes a convenience rather than a trap.
+
+The PoC's four variables should not all survive. Measured against what the extensions
+actually use:
+
+| Variable | Verdict |
+|---|---|
+| `GCX_EXT_GCX_BIN` | Keep. Required, and already in the ADR. |
+| `GCX_EXT_NAME` | Keep. An extension can be installed under a name that differs from its binary, so this is the only way it can render correct usage strings. |
+| `GCX_EXT_CONTEXT` | Replace with `GCX_CONTEXT` on gcx itself, per the recommendation above. Shipping both would be two ways to say the same thing. |
+| `GCX_EXT_AGENT_MODE` | Replace by setting `GCX_AGENT_MODE` on the child. gcx already documents that variable and the subprocess already inherits it; the only case the new one covers is the `--agent` *flag*, which has no environment representation. Worse, today the child sees a contradictory pair under `gcx --agent ext ...`: `GCX_AGENT_MODE=false` next to `GCX_EXT_AGENT_MODE=true`. |
+| `GCX_EXT_VERSION` | Drop. Neither example reads it, and `spec.minGCXVersion` already gates version compatibility at install time. |
+
+That leaves two extension-specific variables and two reuses of gcx's own, which is a
+smaller contract to commit to in v1.
 
 ### 4. gcx's JSON output shapes are an undocumented public API
 
@@ -106,10 +136,14 @@ without declaring its output protocol class - and none of the eight classes hone
 describes "a third party owns this stdout". The PoC classifies `gcx ext` as `raw`, the
 byte-passthrough escape hatch.
 
-That is concrete evidence for the review comment on line 46 of the ADR: extensions do
-not appear in `gcx commands` or `gcx help-tree`, and gcx cannot promise the agent output
-contract on their behalf. For the Azure case specifically: an agent that today finds
-`gcx setup datasources azure` in the command catalog would find nothing at all.
+`raw` is the right answer and is accepted as such - the class already means "bytes gcx
+does not own", which is exactly true here.
+
+The residual problem is discovery, not classification: extensions do not appear in
+`gcx commands` or `gcx help-tree` at all, so an agent cannot find them the way it finds
+built-in commands. That is the review comment on line 46 of the ADR, and it stands. For
+the Azure case specifically: an agent that today finds `gcx setup datasources azure` in
+the command catalog would find nothing at all.
 
 ### 7. Not implemented
 
@@ -117,6 +151,20 @@ Usage telemetry. The dispatch path records `ReportUsage` per installed extension
 the ADR's design is implementable, but wiring it needs `root.recordTelemetryInfo` to
 learn about extension names. Deferred deliberately - it is orthogonal to the question
 this PoC was built to answer.
+
+## Risks to carry, not to solve now
+
+**gcx's JSON output shapes become a public API by accident.** Accepted for v1: the
+alternative is a schema commitment nobody is ready to make. The risk is that it happens
+silently - extensions pin behaviour that was never promised, and the first envelope
+change that breaks one is discovered by an author, not by a test. Worth stating in the
+ADR's Consequences so the decision is on the record rather than implied, and worth
+revisiting if the "shell out to gcx" pattern gets real adoption.
+
+**Internal teams routing product capabilities through the extension door.** Already
+raised on line 50 of the ADR and reinforced by this PoC: the Azure onboarding fits the
+mechanism technically and would be a poor thing to ship through it. The mitigation is
+editorial rather than technical - the ADR should say who the mechanism is *for*.
 
 ## Is the Azure onboarding the right first use case?
 
