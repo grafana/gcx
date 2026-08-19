@@ -54,4 +54,29 @@ func TestParseMapping(t *testing.T) {
 		_, _, err := elasticsearch.ParseMapping([]byte(`{bad`))
 		require.Error(t, err)
 	})
+
+	t.Run("multi-fields surface as dotted sibling fields", func(t *testing.T) {
+		body := []byte(`{
+			"logs": {"mappings": {"properties": {
+				"message": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+				"host": {"properties": {
+					"name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}}
+				}}
+			}}}
+		}`)
+
+		indices, fields, err := elasticsearch.ParseMapping(body)
+		require.NoError(t, err)
+		require.Len(t, indices, 1)
+		assert.Equal(t, 4, indices[0].Fields, "message, message.keyword, host.name, host.name.keyword")
+
+		names := make(map[string]string, len(fields))
+		for _, f := range fields {
+			names[f.Name] = f.Type
+		}
+		assert.Equal(t, "text", names["message"])
+		assert.Equal(t, "keyword", names["message.keyword"])
+		assert.Equal(t, "text", names["host.name"])
+		assert.Equal(t, "keyword", names["host.name.keyword"])
+	})
 }

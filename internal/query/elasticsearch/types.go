@@ -141,6 +141,12 @@ type FieldInfo struct {
 type mappingProperty struct {
 	Type       string                     `json:"type"`
 	Properties map[string]mappingProperty `json:"properties"`
+	// Fields holds Elasticsearch multi-fields — additional indexings of the
+	// same value under a sibling name, e.g. a "text" field with a "keyword"
+	// sub-field for exact-match/aggregation use. Each entry surfaces as its
+	// own dotted field (parent.subfield), since that is the name callers use
+	// in Lucene queries and --group-by.
+	Fields map[string]mappingProperty `json:"fields"`
 }
 
 type indexMapping struct {
@@ -187,5 +193,8 @@ func flattenProperties(index, prefix string, props map[string]mappingProperty, o
 			continue
 		}
 		*out = append(*out, FieldInfo{Index: index, Name: full, Type: p.Type})
+		for subName, sub := range p.Fields {
+			*out = append(*out, FieldInfo{Index: index, Name: full + "." + subName, Type: sub.Type})
+		}
 	}
 }
