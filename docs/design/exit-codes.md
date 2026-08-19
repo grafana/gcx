@@ -61,20 +61,24 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
   function as soon as that context is cancelled, restoring the default terminate
   action so a second Ctrl-C ends a run whose graceful shutdown has stalled — not
   from a defer, which `os.Exit` would skip. The usage export that follows is
-  synchronous, so `exitWith` waits for that stop to have happened, and then
-  decides what disposition the export runs under; the two never race over it.
-  `abandonsExport` is that decision, and it requires both that a signal arrived
-  and that the final exit code is 5. For an invocation the user is abandoning the
-  restored default action stands, so a second Ctrl-C ends a process still waiting
-  on the export instead of being swallowed. Every other interrupted invocation
-  holds SIGINT again for the length of the export, because a command that absorbs
-  the interrupt and still finishes — `gcx dev serve` shuts its HTTP server down on
-  `ctx.Done` and returns `nil` — must exit with the code that agrees with what it
-  printed rather than dying by signal with status 130. Two limits remain:
-  `signal.Stop` restores the disposition the process started with, so a
-  background job of a non-interactive shell (which inherits SIGINT as `SIG_IGN`)
-  still ignores the second interrupt; and only SIGINT is caught at all, so a
-  SIGTERM ends the process before any of this runs.
+  synchronous, so `exitWith` stands that watcher down first (`interruptGate`) and
+  learns from it whether a signal had arrived; nothing else can then change the
+  disposition the export runs under. `abandonsExport` is that decision, and it
+  requires both that a signal arrived and that the final exit code is 5. For an
+  invocation the user is abandoning the restored default action stands, so a
+  second Ctrl-C ends a process still waiting on the export instead of being
+  swallowed. Every other invocation holds SIGINT for the length of the export,
+  including one that was never interrupted: a command that absorbs the interrupt
+  and still finishes — `gcx dev serve` shuts its HTTP server down on `ctx.Done`
+  and returns `nil` — must exit with the code that agrees with what it printed
+  rather than dying by signal with status 130, and so must one whose first
+  interrupt only arrives while the export is in flight. Deciding from a bool
+  sampled before the export cannot see that second case, which is why the answer
+  is read from the gate at export time. Two limits remain: `signal.Stop` restores
+  the disposition the process started with, so a background job of a
+  non-interactive shell (which inherits SIGINT as `SIG_IGN`) still ignores the
+  second interrupt; and only SIGINT is caught at all, so a SIGTERM ends the
+  process before any of this runs.
 - Exit code 6 (version incompatible) is set by `convertVersionErrors` when
   Grafana version < 12 is detected.
 
