@@ -11,6 +11,16 @@ GCX_TELEMETRY.
 AutoApprove automatically enables the --force flag on delete operations,
 enabling non-interactive operation in CI/CD pipelines.
 
+## `GCX_KG_DATASOURCE_UID`
+
+KGDatasourceUID routes all Knowledge Graph API traffic through the KG
+datasource proxy (/api/datasources/proxy/uid/<uid>) instead of the
+grafana-asserts-app plugin resource proxy. The datasource mirrors all of
+the plugin's /resources routes. Set to "1" or "true" to use the default
+provisioned UID (grafana-knowledgegraph-datasource), or to an explicit
+datasource UID. Development escape hatch; unset means the default
+plugin route.
+
 ## `GCX_NO_UPDATE_NOTIFIER`
 
 DisableUpdateNotifier disables the periodic notifier that reminds users
