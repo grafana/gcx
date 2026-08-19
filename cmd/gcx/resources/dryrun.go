@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/remote"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/spf13/pflag"
 )
 
@@ -49,6 +50,76 @@ func partialBatchFailure(stderr io.Writer, op string, total, failed int) error {
 	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, perr)
 }
 
+// captureBatchVolume records a completed batch operation's finalized counts for
+// the anonymous usage event; buildUsageEvent turns them into bucket labels at
+// exit.
+//
+// The contract is deliberately about the operation, not about the output. Call
+// this once the operation itself has completed and its counts are final, which
+// for pull means after the filesystem writes, since the receipt moves
+// fetched-but-unwritten resources from succeeded to failed.
+//
+// Two consequences, both intended:
+//
+//   - A hard abort reports nothing. This is a choice, not a limitation: push and
+//     delete both still hold a usable summary on their abort paths, and delete
+//     even prints those counts to stderr. (Pull genuinely has none: its first
+//     abort returns before a summary exists and its second before the receipt is
+//     computed.) Reporting partial work would make an absent field mean either
+//     "not a batch command" or "aborted after doing some work", so absence is
+//     kept to the single meaning "no finalized count". The cost is that work
+//     done before an abort is invisible, which the usage-statistics page states
+//     outright.
+//   - A later output failure changes nothing. If 47 dashboards were pushed and
+//     then rendering or the stdout write failed, those 47 are still on the
+//     server. Suppressing the count would understate work that really happened.
+//     This is why capture does not depend on the encode: Encode also returns nil
+//     for --jq and --json discovery, which print something other than the result
+//     document, so its return value never was evidence about the operation.
+//
+// opErr is the error from the operation that produced these counts. Callers pass
+// it even though it is nil wherever they currently call, so that moving this
+// call above its own error check does not start reporting aborted work: the
+// counts are simply not recorded. That replaced an AST order check which proved
+// less than it appeared to — it recognised an error binding only by the
+// identifier name "err", so renaming the variable defeated it.
+//
+// This guard is only as good as what callers pass. It does not verify that opErr
+// is the error of the operation the counts came from; passing an unrelated nil
+// would restore the old dependency on placement. A test checks that no call site
+// passes a nil literal, which is the mistake most likely to be made by accident,
+// and that is the whole of what is mechanically enforced.
+//
+// Telemetry must never affect the command's outcome, so this returns nothing and
+// cannot fail.
+func captureBatchVolume(summary cmdio.MutationSummary, dryRun bool, opErr error) {
+	if opErr != nil {
+		return
+	}
+	capture.SetBatch(capture.Batch{
+		Succeeded: summary.Succeeded,
+		Failed:    summary.Failed,
+		Skipped:   summary.Skipped,
+		DryRun:    dryRun,
+	})
+}
+
+// summaryCounts reads an OperationSummary's three counters into the shared
+// MutationSummary.
+//
+// One copy of this conversion, so the counts validate captures for telemetry
+// cannot drift from the ones push and delete print. It deliberately stops at
+// the counts: callers that need enumerated failures go through
+// batchMutationFromSummary, and the telemetry path must not build resource
+// kinds and names it would only discard.
+func summaryCounts(summary *remote.OperationSummary) cmdio.MutationSummary {
+	return cmdio.MutationSummary{
+		Succeeded: summary.SuccessCount(),
+		Failed:    summary.FailedCount(),
+		Skipped:   summary.SkippedCount(),
+	}
+}
+
 // batchMutationFromSummary converts an OperationSummary into the shared
 // BatchMutation result: counts plus enumerated failures (successes and skips
 // are counted, not listed). This value is what push/delete write to stdout
@@ -56,11 +127,7 @@ func partialBatchFailure(stderr io.Writer, op string, total, failed int) error {
 // the structured document; the text codec below reproduces the human line.
 func batchMutationFromSummary(action string, summary *remote.OperationSummary, dryRun bool) cmdio.BatchMutation {
 	result := cmdio.NewBatchMutation(action)
-	result.Summary = cmdio.MutationSummary{
-		Succeeded: summary.SuccessCount(),
-		Failed:    summary.FailedCount(),
-		Skipped:   summary.SkippedCount(),
-	}
+	result.Summary = summaryCounts(summary)
 	result.DryRun = dryRun
 	for _, failure := range summary.Failures() {
 		target := cmdio.MutationTarget{}
