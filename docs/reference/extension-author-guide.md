@@ -10,7 +10,7 @@ gathered from building the two PoC extensions in
 
 - An extension is a program plus a `gcx-extension.yaml`. Any language.
 - There is no SDK and nothing to link against. Say so explicitly — authors will look for one.
-- Point at [`whoami`](../../examples/extensions/whoami) (six lines of shell) and [`azure-datasources`](../../examples/extensions/azure-datasources) (real provisioning flow) as the two worked examples.
+- Point at [`whoami`](../../examples/extensions/whoami) (six lines of shell), [`azure-datasources`](../../examples/extensions/azure-datasources) (real provisioning flow), and [`profile-explorer`](../../examples/extensions/profile-explorer) (a flamegraph TUI) as the three worked examples.
 - The local dev loop: build, `gcx ext install .`, run, repeat.
 
 ## Reaching Grafana
@@ -44,6 +44,7 @@ gathered from building the two PoC extensions in
 - Support `--dry-run` on anything that creates or deletes.
 - Handle SIGINT and exit 5 rather than leaving half-created artifacts.
 - Use `GCX_EXT_NAME` in usage strings — you may be installed under a name that differs from your binary.
+- An interactive extension owns the terminal outright, because gcx forwards the real stdio. It must also decide when *not* to: check `GCX_EXT_AGENT_MODE` and whether stdout is a terminal, and fall back to a structured document. Worked example: [`profile-explorer`](../../examples/extensions/profile-explorer).
 
 ## Argument boundary
 

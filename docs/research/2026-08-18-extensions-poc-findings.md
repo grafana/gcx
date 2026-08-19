@@ -5,11 +5,13 @@
 
 ## What was built
 
-ADR-023's mechanism (`internal/extensions`, `cmd/gcx/ext`) plus two extensions on top
+ADR-023's mechanism (`internal/extensions`, `cmd/gcx/ext`) plus three extensions on top
 of it: [`azure-datasources`](../../examples/extensions/azure-datasources), a real slice
-of the #1101-#1105 stack, and [`whoami`](../../examples/extensions/whoami), the same
-contract in six lines of shell. Verified end to end against a live Azure tenant and a
-live Grafana stack.
+of the #1101-#1105 stack, [`whoami`](../../examples/extensions/whoami), the same contract
+in six lines of shell, and
+[`profile-explorer`](../../examples/extensions/profile-explorer), a full-screen
+flamegraph TUI over `gcx datasources pyroscope`. Verified end to end against a live Azure
+tenant and live Grafana stacks.
 
 Points an author guide should cover are collected separately in
 [extension-author-guide.md](../reference/extension-author-guide.md).
@@ -23,6 +25,18 @@ Grafana token - it pipes a manifest to `gcx datasources create -f -` with
 
 **No SDK is needed.** `azure-datasources` has an empty `require` block; `whoami` is a
 shell script.
+
+**A full-screen TUI needs nothing from the mechanism.** `cmd/gcx/root` sets cobra's
+stdio to `os.Stdin`/`os.Stdout`, so `exec` hands the child the real file descriptors and
+an extension can take the terminal - alt screen, raw mode, mouse - with no gcx changes.
+`profile-explorer` is a Bubble Tea program that never touches a Grafana API. The
+subprocess-per-fetch cost is not what limits it either: gcx starts in 20-60ms against
+~700ms for the round trip it wraps.
+
+**`GCX_EXT_AGENT_MODE` earns its place on this shape.** An interactive extension has to
+decide whether there is anyone to interact with. Stdout being a terminal is not enough -
+an agent session has one - so the flag the parent already resolved is what makes
+`profile-explorer` print JSON instead of opening a TUI under Claude Code.
 
 **gcx's structured errors carry through.** A failed delete surfaced Grafana's own
 `Token missing required scope: grafana-api:delete` rather than `exit status 4`, because
@@ -64,6 +78,13 @@ therefore has to decode stdout even when the command failed, and has to force
 right answer - gcx does not own that stdout. The residual problem is discovery:
 installed extensions do not appear in `gcx commands` or `gcx help-tree` at all, so an
 agent that today finds `gcx setup datasources azure` would find nothing.
+
+**7. Large responses spill to a temp file, which is a third envelope shape.** The
+service list for one dev cluster is 156KB, and in agent mode gcx writes it to
+`/var/folders/.../gcx-results-*.json` and puts a `gcx.spill_reference` document on stdout
+instead. Forcing `--output json` avoids it, so this compounds finding 5: the same one-line
+mistake turns a result into an error envelope, a table, or a pointer to a file, depending
+on the command and its size.
 
 Not implemented: usage telemetry. `ReportUsage` is recorded per installed extension, so
 wiring it up needs `root.recordTelemetryInfo` to learn about extension names.
