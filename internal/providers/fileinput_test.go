@@ -108,6 +108,15 @@ spec:
 			want: Schedule{Name: "my schedule"},
 		},
 		{
+			name: "a Grafana alert provisioning file is rejected by its own message",
+			input: `apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: my-contact-point
+`,
+			wantErr: "stdin: the document is a Grafana alert provisioning file, because apiVersion holds the number 1",
+		},
+		{
 			name:    "empty input",
 			input:   "   \n",
 			wantErr: "input is empty",
