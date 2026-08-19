@@ -50,7 +50,7 @@ instance, verifying connectivity, and confirming your credentials are working.
 
 `claude-plugin/skills/` is the current canonical portable Agent Skills bundle
 for gcx. The Claude plugin consumes that tree directly today, and the generic
-`.agents` installer exposed by `gcx skills install` reads from the same source.
+`.agents` installer exposed by `gcx agent skills install` reads from the same source.
 
 Claude-specific packaging remains under:
 
@@ -75,6 +75,7 @@ canonical portable skill bundle.
 | `create-dashboard` | Design and create dashboards with datasource discovery and snapshot-based visual iteration |
 | `manage-dashboards` | Operate existing dashboards: list, search, pull, push, validate, promote, restore, delete, and snapshot |
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
+| `oncall-triage` | Triage active Grafana OnCall alert groups: list, inspect, acknowledge, silence, resolve |
 | `debug-with-grafana` | Run a structured diagnostic workflow across metrics, logs, and dashboards |
 | `diagnose-entity-graph` | Diagnose Knowledge Graph problems: missing entities, missing edges, broken trace context propagation, service-name collisions |
 | `slo-check-status` | Check SLO health and summarize current status |

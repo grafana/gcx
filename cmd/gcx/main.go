@@ -34,10 +34,23 @@ func main() {
 	// used to measure command execution time
 	start := time.Now()
 
-	// stop is deliberately not deferred: every path out of main ends in
-	// os.Exit (exitWith or the cancellation fast path), so a defer would
-	// never run, and signal-handler cleanup is moot at process exit.
-	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
+	// A long-running command (notably `gcx dev serve`) shuts down gracefully
+	// when this context is cancelled. signal.NotifyContext keeps the interrupt
+	// trapped for the whole process life, which suppresses the default
+	// terminate action. If graceful shutdown ever stalls (for example, a serve
+	// startup still walking a large resource tree before it reaches a
+	// cancellation checkpoint), a second Ctrl-C would otherwise do nothing and
+	// the process could only be killed with Ctrl-Z followed by kill. Re-arm the
+	// default behaviour once the first signal has cancelled the context so a
+	// second Ctrl-C force-terminates.
+	//
+	// stop is called from the watcher goroutine rather than deferred: every
+	// path out of main ends in os.Exit, so a defer would never run.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 
 	// Pre-parse --agent flag before Cobra sees it. This must happen before
 	// root.Command() because io.Options.BindFlags() reads agent.IsAgentMode()

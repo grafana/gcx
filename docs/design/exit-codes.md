@@ -18,7 +18,7 @@
 | 5 | `ExitCancelled` | Cancelled | User pressed Ctrl+C (SIGINT) or `context.Canceled` |
 | 6 | `ExitVersionIncompatible` | Version incompatible | Grafana version < 12 detected |
 
-Constants defined in `cmd/gcx/fail/exitcodes.go`.
+Constants defined in `internal/gcxerrors/exitcodes.go`.
 
 **Implementation state:**
 - Exit code 2 (usage error) is set by `convertUsageErrors`,
@@ -61,7 +61,7 @@ Cobra itself handles usage errors (bad flags, missing required args). With
 `handleError` and get exit code 1. Future work: detect Cobra usage errors
 and override to code 2.
 
-Reference: `cmd/gcx/main.go`, `cmd/gcx/fail/detailed.go`,
+Reference: `cmd/gcx/main.go`, `internal/gcxerrors/detailed.go`,
 `cmd/gcx/fail/convert.go`
 
 See also [errors.md](errors.md) for the `DetailedError` structure and converter pattern.

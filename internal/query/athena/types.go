@@ -37,7 +37,8 @@ var limitBailRe = regexp.MustCompile(`(?i)(\bLIMIT\s+(\d+|ALL)\s+OFFSET\b)`)
 // Athena SQL's dialect is simpler than ClickHouse — it lacks LIMIT BY,
 // FORMAT, SETTINGS, etc. Only SHOW, DESCRIBE, EXPLAIN, and OFFSET are skipped.
 func EnforceLimit(sql string, limit, maxLimit int) string {
-	return querysql.EnforceLimit(sql, limit, maxLimit, athenaBail)
+	out, _ := querysql.EnforceLimit(sql, limit, maxLimit, athenaBail)
+	return out
 }
 
 func athenaBail(sql string) bool {

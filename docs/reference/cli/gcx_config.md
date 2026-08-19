@@ -28,7 +28,7 @@ merge only their references and datasource defaults.
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
@@ -38,7 +38,7 @@ merge only their references and datasource defaults.
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx config check](gcx_config_check.md)	 - Check the current configuration for issues
+* [gcx config check](gcx_config_check.md)	 - Check configuration contexts for issues
 * [gcx config current-context](gcx_config_current-context.md)	 - Display the current context name
 * [gcx config edit](gcx_config_edit.md)	 - Open a config file in $EDITOR
 * [gcx config list-contexts](gcx_config_list-contexts.md)	 - List the contexts defined in the configuration

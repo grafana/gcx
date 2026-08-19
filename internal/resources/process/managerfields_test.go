@@ -49,9 +49,10 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"name":      "example",
 						"namespace": "default",
 						"annotations": map[string]any{
-							utils.AnnoKeyManagerKind:     string(resources.ResourceManagerKind),
-							utils.AnnoKeyManagerIdentity: "gcx",
-							utils.AnnoKeySourcePath:      "file://some/test/path.json",
+							utils.AnnoKeyManagerKind:        string(resources.ResourceManagerKind),
+							utils.AnnoKeyManagerIdentity:    "gcx",
+							utils.AnnoKeyManagerAllowsEdits: "true",
+							utils.AnnoKeySourcePath:         "file://some/test/path.json",
 						},
 					},
 					"spec": map[string]any{
@@ -130,9 +131,10 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"name":      "example",
 						"namespace": "default",
 						"annotations": map[string]any{
-							utils.AnnoKeyManagerKind:     string(resources.ResourceManagerKind),
-							utils.AnnoKeyManagerIdentity: "gcx",
-							utils.AnnoKeySourcePath:      "file://other/test/path.json",
+							utils.AnnoKeyManagerKind:        string(resources.ResourceManagerKind),
+							utils.AnnoKeyManagerIdentity:    "gcx",
+							utils.AnnoKeyManagerAllowsEdits: "true",
+							utils.AnnoKeySourcePath:         "file://other/test/path.json",
 						},
 					},
 					"spec": map[string]any{

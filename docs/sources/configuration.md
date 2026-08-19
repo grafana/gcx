@@ -131,10 +131,17 @@ Use these commands to check the configuration:
 gcx config check
 ```
 
-The check covers every configured context before returning. It exits non-zero
-when the current context is invalid or any context fails configuration,
-authentication setup, connectivity, or Grafana version checks, so it is safe to
-use as a deployment gate.
+Without `--context`, the check covers every configured context before
+returning. It exits non-zero when the current context is invalid or any checked
+context fails configuration, authentication setup, connectivity, or Grafana
+version checks, so it is safe to use as a deployment gate.
+
+To check only one context without validating unrelated entries, pass
+`--context`:
+
+```shell
+gcx config check --context staging
+```
 
 List existing contexts:
 

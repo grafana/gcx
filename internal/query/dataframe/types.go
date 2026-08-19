@@ -61,6 +61,7 @@ type Field struct {
 // FieldConfig holds display/formatting hints for a data frame field.
 type FieldConfig struct {
 	DisplayNameFromDS string `json:"displayNameFromDS,omitempty"`
+	Unit              string `json:"unit,omitempty"`
 }
 
 // Data contains column-oriented Grafana data frame values.

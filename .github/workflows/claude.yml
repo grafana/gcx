@@ -1,3 +1,7 @@
+# This workflow handles general claude instructions from collaborators,
+# maintainers and owners. Review requests (from '@claude review') are handled
+# by claude-code-review.yml.
+
 name: Claude Code
 
 on:
@@ -16,8 +20,12 @@ jobs:
     # gcx is a public repo, so without this guard any commenter could mint a
     # Vault secret and run Claude with write scopes. The @claude body/title
     # checks are preserved; each event branch uses its own association field.
+    #
+    # '@claude review' is excluded: claude-code-review.yml owns that command and
+    # runs the structured review. Without the exclusion both workflows fire on
+    # the same comment and two Claude sessions run against one PR.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && !startsWith(github.event.comment.body, '@claude review') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))

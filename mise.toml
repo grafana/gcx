@@ -28,20 +28,31 @@ description = "Lint the codebase with golangci-lint"
 run = "golangci-lint run -c .golangci.yaml"
 
 [tasks."validate-skills"]
-description = "Validate bundled skill front matter"
+description = "Validate skill front matter (claude-plugin/skills + .claude/skills)"
 run = "go run ./scripts/validate-skills"
 
 [tasks.tests]
-description = "Run all tests (CLI + linter rules)"
-depends = ["tests:cli", "tests:linter"]
+description = "Run all tests (CLI + linter rules + install script)"
+depends = ["tests:cli", "tests:linter", "tests:install"]
 
+# GCX_AGENT_MODE is pinned on the leaf tasks (mise env does not propagate
+# through `depends`). Without it, agent-mode auto-detection picks up CLAUDECODE
+# and friends from the developer's shell and flips confirm-prompt behaviour to
+# "requires --force", failing tests that exercise the prompts. CI has no such
+# env, so this keeps local runs honest.
 [tasks."tests:cli"]
 description = "Run CLI tests"
+env = { GCX_AGENT_MODE = "false" }
 run = "go test ./..."
 
 [tasks."tests:linter"]
 description = "Run linter rules tests"
+env = { GCX_AGENT_MODE = "false" }
 run = "go run ./cmd/gcx/ dev lint test ./internal/linter/bundle/gcx/"
+
+[tasks."tests:install"]
+description = "Run the install script tests"
+run = "bash scripts/install_test.sh"
 
 [tasks.build]
 description = "Build binary to bin/gcx"
