@@ -86,8 +86,9 @@ everything below is a wiring option within or beside them, not a new tier:
   `internal/datasources/providers/<kind>.go`. Registration mounts the typed
   `datasources <kind>` subtree automatically; it does **not** reach the generic
   auto-detecting `datasources query`. That second decision is a judgement no test
-  catches: add a case if the generic `<uid> <expr>` form can honestly carry your
-  query, or an explicit redirect to your typed command if it cannot. Reasoning,
+  catches: add a `dispatch` entry if the generic `<uid> <expr>` form can honestly
+  carry your query, or a `redirects` entry naming your typed command if it
+  cannot — both tables live in `cmd/gcx/datasources/query_routes.go`. Reasoning,
   the worked CloudWatch example and the ordering requirement:
   [distribution-and-gates.md § The gap CI does not cover](distribution-and-gates.md#the-gap-ci-does-not-cover-and-it-is-a-judgement-call).
 - **Skill-only** — a portable workflow for people using gcx across projects
@@ -106,7 +107,7 @@ everything below is a wiring option within or beside them, not a new tier:
 | Cloud provider | single `providers.Register()` in `init()` + blank import in `cmd/gcx/root/command.go` | `internal/providers/slo/provider.go` | docs/reference/provider-guide.md, docs/design/provider-checklist.md |
 | Adapter-backed resource | returned from `Provider.TypedRegistrations()` — never call `adapter.Register()` directly | `internal/providers/irm/oncall_adapter.go` | docs/architecture/patterns.md §16-18, CONSTITUTION § Architecture Invariants |
 | Signal command | `signals.Descriptor` + `signals.Command()` | `internal/providers/metrics/provider.go` | ARCHITECTURE.md §3 |
-| Datasource kind | `datasources.RegisterProvider()` in `internal/datasources/providers/<kind>.go` (package already blank-imported). Generic dispatch is a **separate, conditional** decision — a case if `<uid> <expr>` fits, an explicit redirect if it does not ([detail](distribution-and-gates.md#the-gap-ci-does-not-cover-and-it-is-a-judgement-call)) | `internal/datasources/providers/prometheus.go` | ADR 001, docs/architecture/patterns.md §12 |
+| Datasource kind | `datasources.RegisterProvider()` in `internal/datasources/providers/<kind>.go` (package already blank-imported). Generic routing is a **separate, conditional** decision — a `dispatch` entry in `cmd/gcx/datasources/query_routes.go` if `<uid> <expr>` fits, a `redirects` entry if it does not ([detail](distribution-and-gates.md#the-gap-ci-does-not-cover-and-it-is-a-judgement-call)) | `internal/datasources/providers/prometheus.go` | ADR 001, docs/architecture/patterns.md §12 |
 | Portable user skill | directory under `claude-plugin/skills/` (auto-embedded) + row in `claude-plugin/README.md` | any sibling skill | AGENTS.md Key Conventions |
 | Repository contributor skill | directory under `.claude/skills/` (discovered from the checkout; not embedded) | `.claude/skills/add-provider/` | AGENTS.md Key Conventions |
 

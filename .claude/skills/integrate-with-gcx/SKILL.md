@@ -238,10 +238,10 @@ user it needs a human to drive, and point them at
 Per-leaf wiring CI will not let you skip is tabulated in the reference, along
 with the one gap CI does *not* catch: registration mounts the typed
 `datasources <kind>` subtree, but reaching the generic auto-detecting
-`datasources query` is a separate **judgement, not a checkbox** — a case if the
-`<uid> <expr>` form can honestly carry your query, an explicit redirect if it
-cannot. Both the reasoning and the ordering requirement are in the reference; get
-them from there rather than from memory.
+`datasources query` is a separate **judgement, not a checkbox** — a `dispatch`
+entry if the `<uid> <expr>` form can honestly carry your query, a `redirects`
+entry if it cannot. Both the reasoning and the ordering requirement are in the
+reference; get them from there rather than from memory.
 
 Format the files you touched, then gate:
 
