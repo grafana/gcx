@@ -18,7 +18,7 @@ func LoggingMiddleware(rt http.RoundTripper) http.RoundTripper {
 }
 
 // RequestResponseLoggingMiddleware wraps a transport with RequestResponseLoggingRoundTripper
-// (full request/response body dump via httputil.DumpRequest/DumpResponse).
+// (full request/response body dump via httputil.DumpRequestOut/DumpResponse).
 func RequestResponseLoggingMiddleware(rt http.RoundTripper) http.RoundTripper {
 	return &RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
 }
