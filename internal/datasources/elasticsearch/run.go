@@ -1,92 +1,16 @@
 package elasticsearch
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/elasticsearch"
-	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/spf13/cobra"
 )
-
-// searchFn is the client call a document-search command executes
-// (Client.Search or Client.Logs).
-type searchFn func(ctx context.Context, c *elasticsearch.Client, dsUID string, req elasticsearch.SearchRequest) (*querysql.QueryResponse, error)
-
-// searchExploreFn builds the Grafana Explore URL matching a document-search
-// command's query model (QueryExploreURL or LogsExploreURL).
-type searchExploreFn func(host string, base dsquery.ExploreQuery, req elasticsearch.SearchRequest) string
-
-// searchOpts are the flags shared by the query and logs commands.
-type searchOpts struct {
-	dsquery.SharedOpts
-
-	Datasource string
-	Size       int
-	TimeField  string
-}
-
-func (opts *searchOpts) Validate() error {
-	if err := opts.SharedOpts.Validate(); err != nil {
-		return err
-	}
-	if opts.Size <= 0 {
-		opts.Size = defaultSize
-	} else if opts.Size > maxSize {
-		opts.Size = maxSize
-	}
-	return nil
-}
-
-// searchCmdSpec parameterizes the two document-search commands, which differ
-// only in wording, the size flag's name, and the client call they make.
-type searchCmdSpec struct {
-	use, short, long, example string
-	sizeFlag, sizeUsage       string
-	tokenCost, llmHint        string
-	exploreSubject            string
-	search                    searchFn
-	explore                   searchExploreFn
-}
-
-// newSearchCmd builds a document-search command from a spec.
-func newSearchCmd(loader *providers.ConfigLoader, spec searchCmdSpec) *cobra.Command {
-	opts := &searchOpts{}
-	share := &dsquery.ExploreLinkOpts{}
-
-	cmd := &cobra.Command{
-		Use:     spec.use,
-		Short:   spec.short,
-		Long:    spec.long,
-		Example: spec.example,
-		Args:    cobra.RangeArgs(0, 1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-			return runSearch(cmd, args, loader, opts, *share, spec)
-		},
-	}
-
-	cmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: spec.tokenCost,
-		agent.AnnotationLLMHint:   spec.llmHint,
-	}
-
-	opts.Setup(cmd.Flags(), false)
-	cmd.Flags().StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.elasticsearch is configured)")
-	cmd.Flags().IntVar(&opts.Size, spec.sizeFlag, defaultSize, spec.sizeUsage)
-	cmd.Flags().StringVar(&opts.TimeField, "time-field", elasticsearch.DefaultTimeField, "Time field used for range filtering")
-	share.Setup(cmd.Flags(), "executed query")
-
-	return cmd
-}
 
 // resolvedQuery is the per-invocation state every Elasticsearch query command
 // needs before it calls the client: the Lucene expression, the resolved
@@ -117,8 +41,8 @@ func (r *resolvedQuery) ExploreBase(opts *dsquery.SharedOpts) dsquery.ExploreQue
 }
 
 // prepareQuery resolves the optional Lucene expression, the datasource, the
-// default time range, and the query client. The query, logs, and metrics
-// commands all need this same block before they call the client.
+// default time range, and the query client. The query and metrics commands
+// both need this same block before they call the client.
 func prepareQuery(cmd *cobra.Command, args []string, loader *providers.ConfigLoader, opts *dsquery.SharedOpts, datasource string) (*resolvedQuery, error) {
 	// EXPR is optional: an empty Lucene query matches all documents.
 	expr := opts.Expr
@@ -170,38 +94,4 @@ func prepareQuery(cmd *cobra.Command, args []string, loader *providers.ConfigLoa
 		resolved.StepMs = step.Milliseconds()
 	}
 	return resolved, nil
-}
-
-// runSearch is the shared execution path for the query and logs commands:
-// prepare the invocation, run the search, encode its result, then handle the
-// optional Grafana Explore link.
-func runSearch(cmd *cobra.Command, args []string, loader *providers.ConfigLoader, opts *searchOpts, share dsquery.ExploreLinkOpts, spec searchCmdSpec) error {
-	resolved, err := prepareQuery(cmd, args, loader, &opts.SharedOpts, opts.Datasource)
-	if err != nil {
-		return err
-	}
-
-	req := elasticsearch.SearchRequest{
-		Query:     resolved.Expr,
-		Size:      opts.Size,
-		TimeField: opts.TimeField,
-		Start:     resolved.Start,
-		End:       resolved.End,
-		StepMs:    resolved.StepMs,
-	}
-	resp, err := spec.search(cmd.Context(), resolved.Client, resolved.DatasourceUID, req)
-	if err != nil {
-		return fmt.Errorf("query failed: %w", err)
-	}
-
-	exploreURL := spec.explore(resolved.Cfg.GrafanaURL, resolved.ExploreBase(&opts.SharedOpts), req)
-	unavailableMsg, failedOpenMsg := dsquery.ExploreMessages(spec.exploreSubject)
-
-	return dsquery.EncodeAndHandleExplore(cmd, func() error {
-		return opts.IO.Encode(cmd.OutOrStdout(), resp)
-	}, share, dsquery.ExploreLink{
-		URL:            exploreURL,
-		UnavailableMsg: unavailableMsg,
-		FailedOpenMsg:  failedOpenMsg,
-	})
 }

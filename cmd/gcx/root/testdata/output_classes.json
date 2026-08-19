@@ -190,7 +190,6 @@
  "gcx datasources delete": "finite",
  "gcx datasources elasticsearch list-fields": "finite",
  "gcx datasources elasticsearch list-indices": "finite",
- "gcx datasources elasticsearch logs": "finite",
  "gcx datasources elasticsearch metrics": "finite",
  "gcx datasources elasticsearch query": "finite",
  "gcx datasources get": "finite",

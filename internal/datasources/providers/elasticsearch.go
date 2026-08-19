@@ -22,7 +22,6 @@ func (p *elasticsearchDSProvider) QueryCmd(loader *providers.ConfigLoader) *cobr
 
 func (p *elasticsearchDSProvider) ExtraCommands(loader *providers.ConfigLoader) []*cobra.Command {
 	return []*cobra.Command{
-		elasticsearch.LogsCmd(loader),
 		elasticsearch.MetricsCmd(loader),
 		elasticsearch.ListIndicesCmd(loader),
 		elasticsearch.ListFieldsCmd(loader),

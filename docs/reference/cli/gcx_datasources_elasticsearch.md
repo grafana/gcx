@@ -12,7 +12,7 @@ Query Elasticsearch datasources
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -25,7 +25,6 @@ Query Elasticsearch datasources
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
 * [gcx datasources elasticsearch list-fields](gcx_datasources_elasticsearch_list-fields.md)	 - List mapped fields from an Elasticsearch datasource
 * [gcx datasources elasticsearch list-indices](gcx_datasources_elasticsearch_list-indices.md)	 - List indices from an Elasticsearch datasource
-* [gcx datasources elasticsearch logs](gcx_datasources_elasticsearch_logs.md)	 - Query logs from an Elasticsearch datasource
 * [gcx datasources elasticsearch metrics](gcx_datasources_elasticsearch_metrics.md)	 - Aggregate documents over time from an Elasticsearch datasource
 * [gcx datasources elasticsearch query](gcx_datasources_elasticsearch_query.md)	 - Search documents in an Elasticsearch datasource
 
