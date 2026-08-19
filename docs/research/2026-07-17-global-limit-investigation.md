@@ -63,6 +63,14 @@ must never be captured by a uniform contract:
 runaway cap (`alertGroupListHardCap`, `oncall_commands_extra.go`). A global
 "0 means all results are returned" promise would be a lie there.
 
+> **Superseded (grafana/gcx#1157).** The cap was removed: `--limit 0` now
+> follows the endpoint's `next` cursors to exhaustion and `--limit N` is
+> honored above 1000, so the command uses the shared binder and the uniform
+> "0 means all" wording. It was the only capped source, so nothing in the
+> repo takes the capped-source exception today. The finding still stands as
+> a design point — the practical lesson is that a cap a caller cannot raise
+> makes the complete set unreachable, which is worse than a slow drain.
+
 ### 2.4 Chosen architecture
 
 An **opt-in shared binder + uniform contract**, migrated incrementally:
@@ -181,6 +189,16 @@ verified against HEAD and fixed here:
   truncated with cap"), `TestAlertGroupList_RichPath_LimitZeroHitsSafetyCap`,
   `TestAlertGroupList_LegacyPath_LimitZeroDrainsFully`,
   `TestAlertGroupList_LegacyPath_OverFetchDetectsTruncation`.
+- **Follow-up (grafana/gcx#1157):** disclosing the cap was necessary but not
+  sufficient — the cap-variant hint offers no continuation, so a caller had
+  no way to reach the rest. The cap is gone; the rich path drains at
+  `--limit 0` and honors limits above 1000, so a "give me all" page carries
+  no `list_meta` because it genuinely is complete.
+  `TestAlertGroupList_RichPath_LimitZeroHitsSafetyCap` is replaced by
+  `TestAlertGroupList_RichPath_LimitZeroIsComplete` and the drain regressions
+  in `oncall_alertgroup_listraw_test.go`. The shared-helper proofs in
+  `TestPagedListMeta` are unchanged — the capped-source machinery stays in
+  `internal/output` for future capped sources, it simply has no caller.
 
 ## 5. Behavior changes vs pre-contract HEAD
 
@@ -202,6 +220,12 @@ Non-changes (parity kept): `alert-groups list` keeps its bespoke flag wording
 (discloses the cap), its default limit 50, the 1000 hard cap itself, and the
 note/filter/nav-hint ordering; `alert rules list` keeps default 50 and its
 bare-array JSON shape.
+
+> **Later change (grafana/gcx#1157).** The two `alert-groups list` rows above
+> that concern the cap — the bespoke capped-source `--limit` wording and the
+> `cap:1000` + "safety cap" reporting — no longer describe HEAD. The hard cap
+> was removed, the command adopted the shared binder, and `--limit 0` drains
+> every page. Everything else in the table stands.
 
 ## 6. Remaining migration (~40 list commands)
 
@@ -234,11 +258,14 @@ Needs per-command decisions:
   update).
 - **`irm oncall alert-groups` bulk-by-filter actions** — `resolveBulkTargets`
   (`internal/providers/irm/oncall_actions.go`) enumerates targets via
-  `ListAlertGroupsRaw(ctx, filters, 0)` and discards the returned page info,
-  so a sweep whose filter matches more than the 1000-item hard cap silently
-  operates on the first 1000 groups. Needs a per-command decision — a bulk
+  `ListAlertGroupsRaw(ctx, filters, alertGroupBulkTargetCap)` and discards the
+  returned page info, so a sweep whose filter matches more than 1000 groups
+  silently operates on the first 1000. Needs a per-command decision — a bulk
   mutation probably ought to **refuse** on a capped enumeration rather than
-  warn.
+  warn. Still open after grafana/gcx#1157: the read path's cap is gone, but
+  a mutation sweep has no user-supplied limit to bound it, so it keeps a
+  1000-item bound of its own (`alertGroupBulkTargetCap`, same value and same
+  behaviour as the removed read-path cap).
 
 ## 7. Open questions
 
@@ -260,7 +287,8 @@ Needs per-command decisions:
 3. **Capped-source binder variant** — a `BindListLimitCapped(..., cap)` with
    wording like "0 means as many as the safety cap (N) allows" would let
    capped sources join the binder; deferred until a second capped source
-   appears.
+   appears. Moot for now: grafana/gcx#1157 removed the only capped source, so
+   there are **zero**, and `alert-groups list` uses the plain binder.
 4. **`table` output and `list_meta`** — tables ignore the field by design
    (the stderr hint covers humans). If `wide` output ever needs a footer row
    ("… 50 of 219 shown"), that is a codec concern, not a contract change.
@@ -272,10 +300,11 @@ Needs per-command decisions:
 6. **Explicit source shape vs Total-presence inference** —
    `listContinueCommand` infers "the full set is retrievable via
    `--limit 0`" from the mere presence of `Total`, which forces capped
-   sources to withhold an honestly-observed total above the cap (see the
-   guard in `alert-groups list`). Making the cap or source shape an explicit
-   input to `AttachListMeta` would let observed totals always ride;
-   deferred until a second capped source needs it.
+   sources to withhold an honestly-observed total above the cap. Making the
+   cap or source shape an explicit input to `AttachListMeta` would let
+   observed totals always ride; deferred until a second capped source needs
+   it. The `alert-groups list` guard that motivated this is gone with the cap
+   (grafana/gcx#1157) — it now always attaches an observed total.
 
 ## 8. Validation record (2026-07-17, feasibility branch)
 
