@@ -326,10 +326,9 @@ func QueryExploreURL(host string, query dsquery.ExploreQuery) string {
 Reference: `internal/datasources/clickhouse/explore.go`.
 
 **Shape B — structured datasources** (CloudWatch, Cloud Monitoring, Azure
-Monitor, Elasticsearch). The query is a set of typed fields — project, metric,
-namespace, aggregation, group-bys, filters — not one string. Take the client's
-request struct as a third parameter. Do not flatten it into `Expr` and re-parse
-it: that loses information and defeats the shared builder.
+Monitor, Elasticsearch). The query is a set of typed fields, not one string.
+Take the client's request struct as a third parameter. Do not flatten it into
+`Expr`.
 
 ```go
 // QueryExploreURL builds a Grafana Explore URL for a {Name} query.
@@ -601,7 +600,7 @@ bin/gcx datasources {kind} query '<expr>' --since 1h
 # etc.
 ```
 
-### 3a-bis. Explore Link Check (required)
+### 3b. Explore Link Check (required)
 
 Run this for every query-class subcommand you added. A unit test cannot prove
 the URL opens the right query, so check it in a browser:
@@ -619,7 +618,7 @@ Confirm three things in Grafana:
 
 Repeat for each query type when the datasource has more than one.
 
-### 3b. Run Checks
+### 3c. Run Checks
 
 ```bash
 # Full quality gates
@@ -654,11 +653,6 @@ gap now: `infinity`, `influxdb`, `postgres`, and `pyroscope`.
 Use `clickhouse` as the reference for an expression datasource (Shape A), and
 `cloudwatch` for a structured datasource (Shape B).
 
-Note: `cloudwatch`'s Explore map has drifted from its client — the client sends
-`expression` and `metricQueryType`, the Explore map omits them. Copy its
-signature shape, not its map. The drift is the reason the shared-builder rule
-above exists.
-
 ## Common Pitfalls
 
 | Pitfall | Mitigation |
@@ -667,6 +661,5 @@ above exists.
 | Plugin ID vs short kind | Add mapping to `NormalizeKind()` in `internal/datasources/query/resolve.go` |
 | Missing agent annotations | Every leaf needs a `token_cost` annotation on the built command. Setting it inline via `cmd.Annotations` in the constructor satisfies this, as does an entry in `internal/agent/command_annotations.go` — `agent.ApplyAnnotations` merges that map into the tree at startup. Per-kind datasource leaves normally do it inline |
 | PersistentPreRun chain | Always propagate to root in the DatasourceProvider parent command |
-| Explore URL opens an empty pane | The query map must mirror the client's request body. Build both from one shared function. |
-| Explore link leaks an internal rewrite | Pass the user-facing query to `Expr`, not the sentinel-limited form |
+| Explore URL opens an empty pane | See the rules in Step 1c |
 | Duplicated request-body code | Reuse `internal/query/sql` for SQL datasources. Do not copy another client's `Query` method. |
