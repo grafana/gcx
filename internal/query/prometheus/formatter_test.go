@@ -5,7 +5,9 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -80,4 +82,45 @@ func TestFormatVectorTableVariants(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFormatArrow(t *testing.T) {
+	resp := &prometheus.QueryResponse{
+		Status: "success",
+		Data: prometheus.ResultData{
+			ResultType: "vector",
+			Result: []prometheus.Sample{
+				{
+					Metric: map[string]string{
+						"instance": "localhost:9090",
+						"job":      "prometheus",
+					},
+					Value: []any{float64(1700000000), "1"},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, prometheus.FormatArrow(&buf, resp))
+
+	headers, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"INSTANCE", "JOB", "TIMESTAMP", "VALUE"}, headers)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "localhost:9090", rows[0][0])
+	assert.Equal(t, "prometheus", rows[0][1])
+	assert.Equal(t, time.Unix(1700000000, 0).UTC(), rows[0][2])
+	assert.InEpsilon(t, 1.0, rows[0][3], 0.0001)
+}
+
+func TestFormatArrow_NoData(t *testing.T) {
+	resp := &prometheus.QueryResponse{
+		Status: "success",
+		Data:   prometheus.ResultData{ResultType: "vector", Result: nil},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, prometheus.FormatArrow(&buf, resp))
+	assert.Empty(t, buf.String())
 }

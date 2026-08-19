@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/query/tempo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -68,6 +69,39 @@ func TestFormatSearchTable_Empty(t *testing.T) {
 	assert.Contains(t, buf.String(), "TRACE_ID")
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	assert.Len(t, lines, 1)
+}
+
+func TestFormatSearchArrow(t *testing.T) {
+	resp := &tempo.SearchResponse{
+		Traces: []tempo.SearchTrace{
+			{
+				TraceID:           "abc123",
+				RootServiceName:   "frontend",
+				RootTraceName:     "GET /api/users",
+				StartTimeUnixNano: "1700000000000000000",
+				DurationMs:        42,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatSearchArrow(&buf, resp))
+
+	headers, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"TRACE_ID", "SERVICE", "NAME", "DURATION_MS", "START"}, headers)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "abc123", rows[0][0])
+	assert.Equal(t, "frontend", rows[0][1])
+	assert.Equal(t, "GET /api/users", rows[0][2])
+	assert.EqualValues(t, 42, rows[0][3])
+	assert.Equal(t, time.Unix(0, 1700000000000000000).UTC(), rows[0][4])
+}
+
+func TestFormatSearchArrow_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatSearchArrow(&buf, &tempo.SearchResponse{}))
+	assert.Empty(t, buf.String())
 }
 
 func TestFormatTagsTable(t *testing.T) {
@@ -305,6 +339,122 @@ func mkTrace(rss ...map[string]any) *tempo.GetTraceResponse {
 const traceID32 = "abcdef0123456789abcdef0123456789"
 
 // TestFormatDurationNanos covers representative durations and the non-positive sentinels.
+func TestFormatMetricsArrow_Range(t *testing.T) {
+	resp := &tempo.MetricsResponse{
+		Instant: false,
+		Series: []tempo.MetricsSeries{
+			{
+				Labels: []tempo.MetricsLabel{
+					{Key: "service", Value: map[string]any{"stringValue": "web"}},
+				},
+				Samples: []tempo.MetricsSample{
+					{TimestampMs: "1700000000000", Value: 42.5},
+					{TimestampMs: "1700000060000", Value: 43.0},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatMetricsArrow(&buf, resp))
+
+	headers, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"SERVICE", "TIMESTAMP", "VALUE"}, headers)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "web", rows[0][0])
+	assert.Equal(t, time.UnixMilli(1700000000000).UTC(), rows[0][1])
+	assert.InEpsilon(t, 42.5, rows[0][2], 0.0001)
+}
+
+func TestFormatMetricsArrow_Instant(t *testing.T) {
+	val := float64(99)
+	resp := &tempo.MetricsResponse{
+		Instant: true,
+		Series: []tempo.MetricsSeries{
+			{
+				Labels: []tempo.MetricsLabel{
+					{Key: "service", Value: map[string]any{"stringValue": "api"}},
+				},
+				Value: &val,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatMetricsArrow(&buf, resp))
+
+	headers, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"SERVICE", "VALUE"}, headers)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "api", rows[0][0])
+	assert.InEpsilon(t, 99.0, rows[0][1], 0.0001)
+}
+
+func TestFormatMetricsArrow_NoData(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatMetricsArrow(&buf, &tempo.MetricsResponse{}))
+	assert.Empty(t, buf.String())
+}
+
+func TestFormatTraceArrow_FlatSpans(t *testing.T) {
+	trace := map[string]any{
+		"resourceSpans": []any{
+			map[string]any{
+				"resource": map[string]any{
+					"attributes": []any{
+						map[string]any{"key": "service.name", "value": map[string]any{"stringValue": "frontend"}},
+					},
+				},
+				"scopeSpans": []any{
+					map[string]any{
+						"spans": []any{
+							map[string]any{
+								"name":              "GET /api",
+								"traceId":           "0102030405060708090a0b0c0d0e0f10",
+								"spanId":            "0102030405060708",
+								"startTimeUnixNano": "1700000000000000000",
+								"endTimeUnixNano":   "1700000000100000000",
+								"kind":              "SPAN_KIND_SERVER",
+								"status":            map[string]any{"code": "STATUS_CODE_OK"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	resp := &tempo.GetTraceResponse{Trace: trace}
+
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatTraceArrow(&buf, resp))
+
+	headers, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"TRACE_ID", "SPAN_ID", "PARENT_ID", "NAME", "SERVICE", "KIND", "STATUS_CODE", "START", "END", "DURATION_NS",
+	}, headers)
+	require.Len(t, rows, 1)
+	row := rows[0]
+	assert.Equal(t, "0102030405060708090a0b0c0d0e0f10", row[0])
+	assert.Equal(t, "0102030405060708", row[1])
+	assert.Empty(t, row[2])
+	assert.Equal(t, "GET /api", row[3])
+	assert.Equal(t, "frontend", row[4])
+	assert.Equal(t, "server", row[5])
+	assert.Equal(t, "STATUS_CODE_OK", row[6])
+	assert.Equal(t, time.Unix(0, 1700000000000000000).UTC(), row[7])
+	assert.Equal(t, time.Unix(0, 1700000000100000000).UTC(), row[8])
+	assert.EqualValues(t, 100000000, row[9])
+}
+
+func TestFormatTraceArrow_NilTrace(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatTraceArrow(&buf, &tempo.GetTraceResponse{}))
+	assert.Empty(t, buf.String())
+}
+
 func TestFormatDurationNanos(t *testing.T) {
 	// formatDurationNanos is package-private; we exercise it indirectly via
 	// FormatTraceWide's START column, which delegates to formatDurationNanos

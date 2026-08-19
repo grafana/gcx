@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/style"
 )
 
@@ -37,6 +38,33 @@ func FormatSearchTable(w io.Writer, resp *SearchResponse) error {
 	}
 
 	return tbl.Render(w)
+}
+
+// FormatSearchArrow formats a search response as an Arrow IPC payload — same
+// columns as FormatSearchTable, but DURATION is a real int64 (milliseconds)
+// and START a real timestamp instead of formatted display strings.
+func FormatSearchArrow(w io.Writer, resp *SearchResponse) error {
+	if len(resp.Traces) == 0 {
+		return nil
+	}
+
+	b := arrowtable.NewBuilder([]arrowtable.Field{
+		arrowtable.Utf8("TRACE_ID"),
+		arrowtable.Utf8("SERVICE"),
+		arrowtable.Utf8("NAME"),
+		arrowtable.Int64("DURATION_MS"),
+		arrowtable.Timestamp("START"),
+	})
+
+	for _, tr := range resp.Traces {
+		var start any
+		if t, ok := parseUnixNanoString(tr.StartTimeUnixNano); ok {
+			start = t
+		}
+		b.Row(tr.TraceID, tr.RootServiceName, tr.RootTraceName, int64(tr.DurationMs), start)
+	}
+
+	return b.Write(w)
 }
 
 // FormatTagsTable formats a tags response as a table.
@@ -117,6 +145,112 @@ func formatInstantMetricsTable(w io.Writer, resp *MetricsResponse) error {
 	return t.Render(w)
 }
 
+// FormatMetricsArrow formats a metrics response as an Arrow IPC payload, one
+// column per label — unlike FormatMetricsTable's single formatted LABELS
+// string, so each label is independently queryable in DuckDB. Range queries
+// get a TIMESTAMP column (one row per sample); instant queries omit it (one
+// row per series), matching formatRangeMetricsTable/formatInstantMetricsTable.
+func FormatMetricsArrow(w io.Writer, resp *MetricsResponse) error {
+	if resp == nil || len(resp.Series) == 0 {
+		return nil
+	}
+
+	labelNames := collectMetricsLabelNames(resp.Series)
+	fields := make([]arrowtable.Field, 0, len(labelNames)+2)
+	for _, name := range labelNames {
+		fields = append(fields, arrowtable.Utf8(strings.ToUpper(name)))
+	}
+	if !resp.Instant {
+		fields = append(fields, arrowtable.Timestamp("TIMESTAMP"))
+	}
+	fields = append(fields, arrowtable.Float64("VALUE"))
+	b := arrowtable.NewBuilder(fields)
+
+	labelRow := func(series MetricsSeries) []any {
+		row := make([]any, 0, len(fields))
+		byKey := metricsLabelValues(series.Labels)
+		for _, name := range labelNames {
+			row = append(row, byKey[name])
+		}
+		return row
+	}
+
+	if resp.Instant {
+		for _, series := range resp.Series {
+			if series.Value == nil {
+				continue
+			}
+			b.Row(append(labelRow(series), *series.Value)...)
+		}
+		return b.Write(w)
+	}
+
+	for _, series := range resp.Series {
+		row := labelRow(series)
+		if len(series.Samples) > 0 {
+			for _, sample := range series.Samples {
+				var ts any
+				if t, ok := parseTempoMillis(sample.TimestampMs); ok {
+					ts = t
+				}
+				b.Row(append(append([]any{}, row...), ts, sample.Value)...)
+			}
+			continue
+		}
+		if series.Value != nil {
+			var ts any
+			if t, ok := parseTempoMillis(series.TimestampMs); ok {
+				ts = t
+			}
+			b.Row(append(append([]any{}, row...), ts, *series.Value)...)
+		}
+	}
+
+	return b.Write(w)
+}
+
+func collectMetricsLabelNames(series []MetricsSeries) []string {
+	nameSet := make(map[string]struct{})
+	for _, s := range series {
+		for _, l := range s.Labels {
+			nameSet[l.Key] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(nameSet))
+	for name := range nameSet {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func metricsLabelValues(labels []MetricsLabel) map[string]string {
+	values := make(map[string]string, len(labels))
+	for _, l := range labels {
+		values[l.Key] = extractLabelValue(l.Value)
+	}
+	return values
+}
+
+// parseTempoMillis parses a Tempo "timestampMs" wire string into a time.Time.
+func parseTempoMillis(raw string) (time.Time, bool) {
+	ms, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.UnixMilli(ms).UTC(), true
+}
+
+// parseUnixNanoString parses a "startTimeUnixNano" wire string into a
+// time.Time.
+func parseUnixNanoString(raw string) (time.Time, bool) {
+	nanos, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Unix(0, nanos).UTC(), true
+}
+
 // FormatMetricsLabels formats metrics labels as a {key="val", ...} string.
 func FormatMetricsLabels(labels []MetricsLabel) string {
 	if len(labels) == 0 {
@@ -195,6 +329,55 @@ func FormatTraceTable(w io.Writer, resp *GetTraceResponse) error {
 // FormatTraceWide formats a get-trace response as a wide tree table (adds KIND, START).
 func FormatTraceWide(w io.Writer, resp *GetTraceResponse) error {
 	return formatTrace(w, resp, true)
+}
+
+// FormatTraceArrow formats a get-trace response as an Arrow IPC payload of
+// flat span records — TRACE_ID, SPAN_ID, PARENT_ID, NAME, SERVICE, KIND,
+// STATUS_CODE, START, END, DURATION_NS. Unlike FormatTraceTable/
+// FormatTraceWide, this does NOT render the ASCII parent/child tree (prefix
+// connectors baked into a SPAN column) — that's a display concern, and
+// embedding it would make the SPAN column useless for querying. Arrow's
+// columnar, machine-only nature means the tree structure is better left
+// implicit in PARENT_ID/SPAN_ID, which DuckDB can reconstruct with a
+// recursive CTE if needed.
+func FormatTraceArrow(w io.Writer, resp *GetTraceResponse) error {
+	var spans []traceSpan
+	if resp != nil && resp.Trace != nil {
+		spans = extractTraceSpans(resp.Trace)
+	}
+	if len(spans) == 0 {
+		return nil
+	}
+
+	b := arrowtable.NewBuilder([]arrowtable.Field{
+		arrowtable.Utf8("TRACE_ID"),
+		arrowtable.Utf8("SPAN_ID"),
+		arrowtable.Utf8("PARENT_ID"),
+		arrowtable.Utf8("NAME"),
+		arrowtable.Utf8("SERVICE"),
+		arrowtable.Utf8("KIND"),
+		arrowtable.Utf8("STATUS_CODE"),
+		arrowtable.Timestamp("START"),
+		arrowtable.Timestamp("END"),
+		arrowtable.Int64("DURATION_NS"),
+	})
+
+	for _, s := range spans {
+		b.Row(
+			s.traceID,
+			s.spanID,
+			s.parentID,
+			s.name,
+			s.service,
+			s.kind,
+			s.statusCode,
+			time.Unix(0, s.start).UTC(),
+			time.Unix(0, s.end).UTC(),
+			s.end-s.start,
+		)
+	}
+
+	return b.Write(w)
 }
 
 // traceTotals captures the aggregates needed for the header line and the

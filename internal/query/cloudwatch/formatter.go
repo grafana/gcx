@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/style"
 )
 
@@ -51,6 +52,37 @@ func FormatWide(w io.Writer, resp *QueryResponse) error {
 		}
 	}
 	return t.Render(w)
+}
+
+// FormatArrow renders query results as an Arrow IPC payload — same columns
+// as FormatWide, except LABEL is a real Map(Utf8, Utf8) column (queryable in
+// DuckDB as `LABEL['key']`) instead of a formatted "k=v,k2=v2" string, and
+// VALUE is a real nullable Float64 instead of "" for a missing sample.
+func FormatArrow(w io.Writer, resp *QueryResponse) error {
+	if len(resp.Frames) == 0 {
+		return nil
+	}
+
+	b := arrowtable.NewBuilder([]arrowtable.Field{
+		arrowtable.Timestamp("TIMESTAMP"),
+		arrowtable.Float64("VALUE"),
+		arrowtable.Utf8("SERIES"),
+		arrowtable.MapUtf8("LABEL"),
+	})
+	for _, frame := range resp.Frames {
+		label := frameLabel(frame)
+		for i, ts := range frame.Timestamps {
+			if i >= len(frame.Values) {
+				break
+			}
+			var val any
+			if frame.Values[i] != nil {
+				val = *frame.Values[i]
+			}
+			b.Row(ts.UTC(), val, label, frame.Labels)
+		}
+	}
+	return b.Write(w)
 }
 
 // FormatNamespaces renders a list of CloudWatch namespaces.

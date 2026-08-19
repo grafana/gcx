@@ -49,7 +49,7 @@ gcx datasources athena query [EXPR] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Max rows to return (0 disables enforcement) (default 100)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, arrow, json, table, wide, yaml (default "table")
       --region string       AWS region override
       --result-reuse        Enable Athena query result reuse (engine v3)
       --share-link          Print the Grafana Explore URL for the executed query to stderr

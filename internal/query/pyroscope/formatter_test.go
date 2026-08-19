@@ -6,10 +6,47 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFormatArrow(t *testing.T) {
+	resp := &pyroscope.QueryResponse{
+		Flamegraph: &pyroscope.Flamegraph{
+			Names: []string{"total", "main", "doWork"},
+			// Each level's Values are groups of 4: [offset, total, self, nameIndex].
+			Levels:  []pyroscope.Level{{Values: []string{"0", "100", "10", "1"}}, {Values: []string{"0", "60", "60", "2"}}},
+			Total:   100,
+			MaxSelf: 60,
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, pyroscope.FormatArrow(&buf, resp))
+
+	headers, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"FUNCTION", "SELF", "TOTAL", "PERCENTAGE"}, headers)
+	require.Len(t, rows, 2)
+
+	byName := map[string][]any{}
+	for _, row := range rows {
+		name, ok := row[0].(string)
+		require.True(t, ok, "FUNCTION column must be a string")
+		byName[name] = row
+	}
+	require.Contains(t, byName, "doWork")
+	assert.EqualValues(t, 60, byName["doWork"][1])
+	assert.EqualValues(t, 60, byName["doWork"][2])
+}
+
+func TestFormatArrow_NoProfileData(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, pyroscope.FormatArrow(&buf, &pyroscope.QueryResponse{}))
+	assert.Empty(t, buf.String())
+}
 
 func tp(value float64, timestamp int64) pyroscope.TimePoint {
 	return pyroscope.TimePoint{

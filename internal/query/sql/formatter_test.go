@@ -3,7 +3,9 @@ package sql_test
 import (
 	"bytes"
 	"testing"
+	"time"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/query/sql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,4 +58,32 @@ func TestFormatWideTable(t *testing.T) {
 	err := sql.FormatWideTable(&buf, resp)
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "ID")
+}
+
+func TestFormatArrow(t *testing.T) {
+	resp := &sql.QueryResponse{
+		Columns: []sql.Column{
+			{Name: "timestamp", Type: "time"},
+			{Name: "id", Type: "number"},
+			{Name: "name", Type: "string"},
+		},
+		Rows: [][]any{{float64(1778601661000), float64(1), "alice"}},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, sql.FormatArrow(&buf, resp))
+
+	headers, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"TIMESTAMP", "ID", "NAME"}, headers)
+	require.Len(t, rows, 1)
+	assert.Equal(t, time.UnixMilli(1778601661000).UTC(), rows[0][0])
+	assert.InEpsilon(t, 1.0, rows[0][1], 0.0001)
+	assert.Equal(t, "alice", rows[0][2])
+}
+
+func TestFormatArrow_NoData(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, sql.FormatArrow(&buf, &sql.QueryResponse{}))
+	assert.Empty(t, buf.String())
 }

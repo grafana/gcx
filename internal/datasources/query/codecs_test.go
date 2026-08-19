@@ -6,8 +6,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/athena"
+	"github.com/grafana/gcx/internal/query/clickhouse"
+	"github.com/grafana/gcx/internal/query/cloudwatch"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -205,5 +209,68 @@ func TestTraceGetCodecDispatch(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, out.String(), "spans: 0")
 		assert.Contains(t, out.String(), "services: 0")
+	})
+}
+
+// TestArrowCodecDispatch verifies the arrow codec routes each of the
+// response types the table codec supports to the matching FormatArrow
+// function, and rejects a type none of them produce.
+func TestArrowCodecDispatch(t *testing.T) {
+	newArrowIO := func() *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: "arrow"}
+		dsquery.RegisterCodecs(ioOpts, false)
+		return ioOpts
+	}
+
+	t.Run("prometheus", func(t *testing.T) {
+		resp := &prometheus.QueryResponse{
+			Status: "success",
+			Data: prometheus.ResultData{
+				ResultType: "vector",
+				Result: []prometheus.Sample{
+					{Metric: map[string]string{"job": "prom"}, Value: []any{float64(1700000000), "1"}},
+				},
+			},
+		}
+		var out bytes.Buffer
+		require.NoError(t, newArrowIO().Encode(&out, resp))
+		headers, rows, err := arrowtable.ReadStream(&out)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"JOB", "TIMESTAMP", "VALUE"}, headers)
+		assert.Len(t, rows, 1)
+	})
+
+	t.Run("clickhouse table info", func(t *testing.T) {
+		resp := []clickhouse.TableInfo{{Database: "default", Name: "events", Engine: "MergeTree"}}
+		var out bytes.Buffer
+		require.NoError(t, newArrowIO().Encode(&out, resp))
+		_, rows, err := arrowtable.ReadStream(&out)
+		require.NoError(t, err)
+		assert.Len(t, rows, 1)
+	})
+
+	t.Run("athena string list", func(t *testing.T) {
+		resp := athena.StringList{Header: "CATALOG", Items: []string{"a", "b"}}
+		var out bytes.Buffer
+		require.NoError(t, newArrowIO().Encode(&out, resp))
+		headers, rows, err := arrowtable.ReadStream(&out)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"CATALOG"}, headers)
+		assert.Len(t, rows, 2)
+	})
+
+	t.Run("cloudwatch", func(t *testing.T) {
+		resp := &cloudwatch.QueryResponse{} // empty is a valid no-op case
+		var out bytes.Buffer
+		require.NoError(t, newArrowIO().Encode(&out, resp))
+		assert.Empty(t, out.String())
+	})
+
+	t.Run("unsupported type rejected", func(t *testing.T) {
+		var out bytes.Buffer
+		err := newArrowIO().Encode(&out, "not a query response")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid data type for query arrow codec")
 	})
 }

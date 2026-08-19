@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/style"
 )
 
@@ -58,6 +59,101 @@ func formatValue(v any) string {
 		return strconv.FormatFloat(f, 'f', -1, 64)
 	}
 	return fmt.Sprintf("%v", v)
+}
+
+// FormatArrow formats a QueryResponse as an Arrow IPC payload. TimeColumns
+// become Timestamp columns; a non-time column becomes Float64 when every
+// non-null cell it holds is a float64, otherwise Utf8 (rendered the same way
+// formatValue does for display) — InfluxDB doesn't declare a column's type
+// up front, so it's inferred from the data actually returned.
+func FormatArrow(w io.Writer, resp *QueryResponse) error {
+	if len(resp.Rows) == 0 {
+		return nil
+	}
+
+	numeric := make([]bool, len(resp.Columns))
+	for i := range resp.Columns {
+		if !resp.TimeColumns[i] {
+			numeric[i] = columnIsAllFloat64(resp.Rows, i)
+		}
+	}
+
+	fields := make([]arrowtable.Field, len(resp.Columns))
+	for i, name := range resp.Columns {
+		switch {
+		case resp.TimeColumns[i]:
+			fields[i] = arrowtable.Timestamp(name)
+		case numeric[i]:
+			fields[i] = arrowtable.Float64(name)
+		default:
+			fields[i] = arrowtable.Utf8(name)
+		}
+	}
+	b := arrowtable.NewBuilder(fields)
+
+	for _, row := range resp.Rows {
+		vals := make([]any, len(fields))
+		copy(vals, row)
+		for i, v := range vals {
+			switch {
+			case v == nil:
+				// leave as nil
+			case resp.TimeColumns[i]:
+				vals[i] = arrowTimestampMs(v)
+			case numeric[i]:
+				vals[i] = arrowFloatValue(v)
+			default:
+				vals[i] = fmt.Sprintf("%v", v)
+			}
+		}
+		b.Row(vals...)
+	}
+
+	return b.Write(w)
+}
+
+// columnIsAllFloat64 reports whether every non-null cell in rows[*][col] is a
+// float64, with at least one such cell present.
+func columnIsAllFloat64(rows [][]any, col int) bool {
+	seen := false
+	for _, row := range rows {
+		if col >= len(row) || row[col] == nil {
+			continue
+		}
+		if _, ok := row[col].(float64); !ok {
+			return false
+		}
+		seen = true
+	}
+	return seen
+}
+
+// arrowTimestampMs converts a millisecond-epoch value to a time.Time,
+// returning nil for a zero or non-numeric value — mirrors formatTimestampMs'
+// treatment of zero as "no timestamp" rather than the Unix epoch instant.
+func arrowTimestampMs(v any) any {
+	switch val := v.(type) {
+	case float64:
+		if val == 0 {
+			return nil
+		}
+		return time.UnixMilli(int64(val)).UTC()
+	case int64:
+		if val == 0 {
+			return nil
+		}
+		return time.UnixMilli(val).UTC()
+	default:
+		return nil
+	}
+}
+
+// arrowFloatValue returns v as a float64, or nil if it isn't one.
+func arrowFloatValue(v any) any {
+	if f, ok := v.(float64); ok {
+		return f
+	}
+	return nil
 }
 
 // JSONQueryResponse is the JSON-serializable version of QueryResponse with

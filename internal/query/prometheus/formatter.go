@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/style"
 )
@@ -52,6 +53,108 @@ func FormatWideTable(w io.Writer, resp *QueryResponse) error {
 	default:
 		return fmt.Errorf("unsupported result type: %s", resp.Data.ResultType)
 	}
+}
+
+// FormatArrow formats a QueryResponse as an Arrow IPC payload, one column per
+// label plus TIMESTAMP and VALUE — the same column layout as FormatWideTable,
+// but with real types instead of stringified cells.
+func FormatArrow(w io.Writer, resp *QueryResponse) error {
+	if len(resp.Data.Result) == 0 {
+		return nil
+	}
+
+	b, err := buildArrowTable(resp)
+	if err != nil {
+		return err
+	}
+	return b.Write(w)
+}
+
+func buildArrowTable(resp *QueryResponse) (*arrowtable.Builder, error) {
+	switch resp.Data.ResultType {
+	case "vector":
+		return buildVectorArrow(resp), nil
+	case "matrix":
+		return buildMatrixArrow(resp), nil
+	case "scalar":
+		return buildScalarArrow(resp), nil
+	default:
+		return nil, fmt.Errorf("unsupported result type: %s", resp.Data.ResultType)
+	}
+}
+
+func labelArrowFields(labelNames []string) []arrowtable.Field {
+	fields := make([]arrowtable.Field, 0, len(labelNames)+2)
+	for _, name := range labelNames {
+		fields = append(fields, arrowtable.Utf8(strings.ToUpper(name)))
+	}
+	return append(fields, arrowtable.Timestamp("TIMESTAMP"), arrowtable.Float64("VALUE"))
+}
+
+func buildVectorArrow(resp *QueryResponse) *arrowtable.Builder {
+	labelNames := collectLabelNames(resp.Data.Result)
+	b := arrowtable.NewBuilder(labelArrowFields(labelNames))
+
+	for _, sample := range resp.Data.Result {
+		row := make([]any, 0, len(labelNames)+2)
+		for _, name := range labelNames {
+			row = append(row, sample.Metric[name])
+		}
+		ts, val := arrowTimestampValue(sample.Value)
+		b.Row(append(row, ts, val)...)
+	}
+
+	return b
+}
+
+func buildMatrixArrow(resp *QueryResponse) *arrowtable.Builder {
+	labelNames := collectLabelNames(resp.Data.Result)
+	b := arrowtable.NewBuilder(labelArrowFields(labelNames))
+
+	for _, sample := range resp.Data.Result {
+		for _, point := range sample.Values {
+			row := make([]any, 0, len(labelNames)+2)
+			for _, name := range labelNames {
+				row = append(row, sample.Metric[name])
+			}
+			ts, val := arrowTimestampValue(point)
+			b.Row(append(row, ts, val)...)
+		}
+	}
+
+	return b
+}
+
+func buildScalarArrow(resp *QueryResponse) *arrowtable.Builder {
+	b := arrowtable.NewBuilder([]arrowtable.Field{
+		arrowtable.Timestamp("TIMESTAMP"),
+		arrowtable.Float64("VALUE"),
+	})
+
+	for _, sample := range resp.Data.Result {
+		ts, val := arrowTimestampValue(sample.Value)
+		b.Row(ts, val)
+	}
+
+	return b
+}
+
+// arrowTimestampValue converts a Prometheus [timestamp, value] pair into a
+// (time.Time, float64) row, returning (nil, nil) — appended as nulls in
+// their columns — when the pair is missing or malformed rather than
+// desyncing the row's column count.
+func arrowTimestampValue(point []any) (any, any) {
+	if len(point) < 2 {
+		return nil, nil
+	}
+	var ts, val any
+	if t, ok := parseTimestampTime(point[0]); ok {
+		ts = t
+	}
+	if f, ok := parseFloatValue(point[1]); ok {
+		val = f
+	}
+	return ts, val
 }
 
 func formatVectorTable(w io.Writer, resp *QueryResponse) error {
@@ -188,6 +291,43 @@ func parseTimestamp(v any) string {
 		return t.Format(time.RFC3339)
 	default:
 		return fmt.Sprintf("%v", v)
+	}
+}
+
+// parseTimestampTime is parseTimestamp's typed counterpart, for Arrow's
+// Timestamp columns — returns ok=false for a value that can't be parsed as a
+// Unix-epoch-seconds float rather than falling back to a string.
+func parseTimestampTime(v any) (time.Time, bool) {
+	switch ts := v.(type) {
+	case float64:
+		return time.Unix(int64(ts), int64((ts-float64(int64(ts)))*1e9)).UTC(), true
+	case string:
+		f, err := strconv.ParseFloat(ts, 64)
+		if err != nil {
+			return time.Time{}, false
+		}
+		return time.Unix(int64(f), int64((f-float64(int64(f)))*1e9)).UTC(), true
+	default:
+		return time.Time{}, false
+	}
+}
+
+// parseFloatValue is parseValue's typed counterpart, for Arrow's Float64
+// columns — unlike parseValue (which passes an already-string wire value
+// through unchanged for display), this parses it as a float so special
+// values like "NaN"/"+Inf"/"-Inf" become real float64s, not text.
+func parseFloatValue(v any) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case string:
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
 	}
 }
 

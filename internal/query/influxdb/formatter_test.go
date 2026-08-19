@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/grafana/gcx/internal/arrowtable"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -63,6 +65,52 @@ func TestFormatQueryTable(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFormatArrow(t *testing.T) {
+	resp := &influxdb.QueryResponse{
+		Columns:     []string{"time", "cpu", "host"},
+		TimeColumns: map[int]bool{0: true},
+		Rows: [][]any{
+			{float64(1700000000000), float64(55.2), "server-a"},
+			{float64(1700000060000), float64(63.8), "server-b"},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, influxdb.FormatArrow(&buf, resp))
+
+	headers, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"time", "cpu", "host"}, headers)
+	require.Len(t, rows, 2)
+	assert.Equal(t, time.UnixMilli(1700000000000).UTC(), rows[0][0])
+	assert.InEpsilon(t, 55.2, rows[0][1], 0.0001)
+	assert.Equal(t, "server-a", rows[0][2])
+}
+
+func TestFormatArrow_NonNumericColumnFallsBackToUtf8(t *testing.T) {
+	resp := &influxdb.QueryResponse{
+		Columns: []string{"host", "tags"},
+		Rows: [][]any{
+			{"server-a", map[string]any{"az": "us-east-1a"}},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, influxdb.FormatArrow(&buf, resp))
+
+	_, rows, err := arrowtable.ReadStream(&buf)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "server-a", rows[0][0])
+	assert.Contains(t, rows[0][1], "us-east-1a")
+}
+
+func TestFormatArrow_NoData(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, influxdb.FormatArrow(&buf, &influxdb.QueryResponse{}))
+	assert.Empty(t, buf.String())
 }
 
 func TestFormatMeasurementsTable(t *testing.T) {

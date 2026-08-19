@@ -25,7 +25,7 @@ func (c *queryTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *queryTableCodec) Encode(w io.Writer, data any) error {
+func (c *queryTableCodec) Encode(w io.Writer, data any) error { //nolint:dupl // Same type coverage as queryArrowCodec, dispatching to each type's FormatTable instead of FormatArrow.
 	switch resp := data.(type) {
 	case *prometheus.QueryResponse:
 		return prometheus.FormatTable(w, resp)
@@ -95,6 +95,51 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 
 func (c *queryWideCodec) Decode(io.Reader, any) error {
 	return errors.New("query wide codec does not support decoding")
+}
+
+type queryArrowCodec struct{}
+
+func (c *queryArrowCodec) Format() format.Format {
+	return "arrow"
+}
+
+func (c *queryArrowCodec) Encode(w io.Writer, data any) error { //nolint:dupl // Same type coverage as queryTableCodec, dispatching to each type's FormatArrow instead of FormatTable.
+	switch resp := data.(type) {
+	case *prometheus.QueryResponse:
+		return prometheus.FormatArrow(w, resp)
+	case *loki.QueryResponse:
+		return loki.FormatQueryArrow(w, resp)
+	case *loki.MetricQueryResponse:
+		return loki.FormatMetricQueryArrow(w, resp)
+	case *pyroscope.QueryResponse:
+		return pyroscope.FormatArrow(w, resp)
+	case *tempo.SearchResponse:
+		return tempo.FormatSearchArrow(w, resp)
+	case *tempo.MetricsResponse:
+		return tempo.FormatMetricsArrow(w, resp)
+	case *infinity.QueryResponse:
+		return infinity.FormatArrow(w, resp)
+	case *influxdb.QueryResponse:
+		return influxdb.FormatArrow(w, resp)
+	case *tempo.GetTraceResponse:
+		return tempo.FormatTraceArrow(w, resp)
+	case *querysql.QueryResponse:
+		return querysql.FormatArrow(w, resp)
+	case []clickhouse.TableInfo:
+		return clickhouse.FormatListTablesArrow(w, resp)
+	case []clickhouse.ColumnInfo:
+		return clickhouse.FormatDescribeTableArrow(w, resp)
+	case athena.StringList:
+		return athena.FormatStringListArrow(w, resp.Items, resp.Header)
+	case *cloudwatch.QueryResponse:
+		return cloudwatch.FormatArrow(w, resp)
+	default:
+		return errors.New("invalid data type for query arrow codec")
+	}
+}
+
+func (c *queryArrowCodec) Decode(io.Reader, any) error {
+	return errors.New("query arrow codec does not support decoding")
 }
 
 type queryGraphCodec struct{}
@@ -212,6 +257,7 @@ func (c *queryYAMLCodec) Decode(r io.Reader, v any) error {
 func RegisterCodecs(ioOpts *cmdio.Options, enableGraph bool) {
 	ioOpts.RegisterCustomCodec("table", &queryTableCodec{})
 	ioOpts.RegisterCustomCodec("wide", &queryWideCodec{})
+	ioOpts.RegisterCustomCodec("arrow", &queryArrowCodec{})
 	ioOpts.RegisterCustomCodec("json", &queryJSONCodec{inner: format.NewJSONCodec()})
 	ioOpts.RegisterCustomCodec("yaml", &queryYAMLCodec{inner: format.NewYAMLCodec()})
 	if enableGraph {
