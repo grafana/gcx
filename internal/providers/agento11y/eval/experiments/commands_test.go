@@ -18,7 +18,7 @@ func TestCommands_HasExpectedLeaves(t *testing.T) {
 	cmd := experiments.Commands(nil)
 	require.Equal(t, "experiments", cmd.Name())
 
-	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "list-trials", "test-suites", "trials"} {
+	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "check", "list-trials", "test-suites", "trials"} {
 		c, _, err := cmd.Find([]string{sub})
 		require.NoError(t, err, "subcommand %q must exist", sub)
 		require.NotNil(t, c)
@@ -225,6 +225,196 @@ func TestReportCommand_RequiresArg(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "accepts 1 arg")
+}
+
+// TestCheckCommand_RejectsInvalidInvocation proves every rejection happens
+// before any client call: the command group is built with a nil loader, so a
+// request would fail loudly rather than silently pass. The exit code each
+// rejection carries is asserted end to end in cmd/gcx/root.
+func TestCheckCommand_RejectsInvalidInvocation(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "missing run id",
+			args:    []string{"check"},
+			wantErr: "accepts 1 arg",
+		},
+		{
+			name:    "--timeout without --wait",
+			args:    []string{"check", "run-123", "--timeout", "1m"},
+			wantErr: "--timeout needs --wait",
+		},
+		{
+			name:    "--wait with a non-positive --timeout",
+			args:    []string{"check", "run-123", "--wait", "--timeout", "0s"},
+			wantErr: "invalid --timeout value 0s: must be positive",
+		},
+		{
+			name:    "--min-pass-rate above 1",
+			args:    []string{"check", "run-123", "--min-pass-rate", "1.1"},
+			wantErr: "invalid --min-pass-rate value 1.1",
+		},
+		{
+			name:    "--min-pass-rate below 0",
+			args:    []string{"check", "run-123", "--min-pass-rate", "-0.5"},
+			wantErr: "invalid --min-pass-rate value -0.5",
+		},
+		{
+			name:    "--min-pass-rate NaN",
+			args:    []string{"check", "run-123", "--min-pass-rate", "NaN"},
+			wantErr: "must be a finite value from 0 through 1",
+		},
+		{
+			name:    "--min-pass-rate Inf",
+			args:    []string{"check", "run-123", "--min-pass-rate", "Inf"},
+			wantErr: "must be a finite value from 0 through 1",
+		},
+		{
+			name:    "--min-verdict-coverage above 1",
+			args:    []string{"check", "run-123", "--min-pass-rate", "0.9", "--min-verdict-coverage", "2"},
+			wantErr: "invalid --min-verdict-coverage value 2",
+		},
+		{
+			name:    "--min-verdict-coverage below 0",
+			args:    []string{"check", "run-123", "--min-pass-rate", "0.9", "--min-verdict-coverage", "-1"},
+			wantErr: "invalid --min-verdict-coverage value -1",
+		},
+		{
+			name:    "--min-verdict-coverage NaN",
+			args:    []string{"check", "run-123", "--min-pass-rate", "0.9", "--min-verdict-coverage", "NaN"},
+			wantErr: "must be a finite value from 0 through 1",
+		},
+		{
+			name:    "unknown --on-unknown mode",
+			args:    []string{"check", "run-123", "--min-pass-rate", "0.9", "--on-unknown", "ignore"},
+			wantErr: `invalid --on-unknown value "ignore"`,
+		},
+		{
+			name:    "--on-unknown is case sensitive",
+			args:    []string{"check", "run-123", "--min-pass-rate", "0.9", "--on-unknown", "FAIL"},
+			wantErr: `invalid --on-unknown value "FAIL"`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := experiments.Commands(nil)
+			cmd.SetArgs(tc.args)
+
+			var stdout, stderr bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+			// The group under test has no SilenceUsage, so cobra prints its usage
+			// text here; what matters is that no check document does.
+			assert.NotContains(t, stdout.String(), `"verdict"`,
+				"no check document may be written for an invalid invocation")
+		})
+	}
+}
+
+func TestCheckTextCodec_Format(t *testing.T) {
+	assert.Equal(t, "text", string((&experiments.CheckTextCodec{}).Format()))
+}
+
+func TestCheckTextCodec_Encode(t *testing.T) {
+	threshold := 0.9
+	actual := 0.8
+
+	tests := []struct {
+		name   string
+		result any
+		want   []string
+	}{
+		{
+			name: "threshold check reports both numbers",
+			result: &experiments.CheckResult{
+				ExperimentID:     "r-1",
+				ExperimentStatus: "completed",
+				Verdict:          experiments.CheckVerdictFail,
+				TestCaseCount:    10,
+				PassCount:        8,
+				PassDenominator:  10,
+				Checks: []experiments.Check{{
+					Name:      "min_pass_rate",
+					Verdict:   experiments.CheckVerdictFail,
+					Threshold: &threshold,
+					Actual:    &actual,
+					Observed:  "pass rate 80.00% (8/10 test cases passed on the first completed attempt)",
+				}},
+			},
+			want: []string{
+				"Experiment:", "r-1", "Status:", "completed", "Quality check:", "fail",
+				"Test cases:", "10", "Checks:", "min_pass_rate fail", "threshold 90.00%", "80.00%",
+			},
+		},
+		{
+			name: "unknown verdict is rendered as a value, passed by value",
+			result: experiments.CheckResult{
+				ExperimentID:     "r-1",
+				ExperimentStatus: "completed",
+				Verdict:          experiments.CheckVerdictFail,
+				Checks: []experiments.Check{{
+					Name:      "min_pass_rate",
+					Verdict:   experiments.CheckVerdictUnknown,
+					Threshold: &threshold,
+					Observed:  "no test case produced a pass verdict",
+				}},
+			},
+			want: []string{"min_pass_rate unknown", "no test case produced a pass verdict"},
+		},
+		{
+			name: "status check has no numbers",
+			result: &experiments.CheckResult{
+				ExperimentID:     "r-1",
+				ExperimentStatus: "failed",
+				Verdict:          experiments.CheckVerdictFail,
+				Checks: []experiments.Check{{
+					Name:     "experiment_status",
+					Verdict:  experiments.CheckVerdictFail,
+					Observed: `experiment status is "failed", not "completed"`,
+				}},
+			},
+			want: []string{"Status:", "failed", "experiment_status fail", `not "completed"`},
+		},
+		{
+			name:   "no checks still reports the verdict",
+			result: &experiments.CheckResult{ExperimentID: "r-1", Verdict: experiments.CheckVerdictPass},
+			want:   []string{"Quality check:", "pass"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			codec := &experiments.CheckTextCodec{}
+			var buf bytes.Buffer
+			require.NoError(t, codec.Encode(&buf, tc.result))
+			out := buf.String()
+			for _, s := range tc.want {
+				assert.Contains(t, out, s)
+			}
+		})
+	}
+}
+
+func TestCheckTextCodec_WrongType(t *testing.T) {
+	codec := &experiments.CheckTextCodec{}
+	var buf bytes.Buffer
+	err := codec.Encode(&buf, "not-a-check-result")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected *CheckResult")
+}
+
+func TestCheckTextCodec_Decode(t *testing.T) {
+	err := (&experiments.CheckTextCodec{}).Decode(strings.NewReader("{}"), &experiments.CheckResult{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not support decoding")
 }
 
 func TestTableCodec_Format(t *testing.T) {
@@ -510,6 +700,17 @@ func TestReportTextCodec_Encode(t *testing.T) {
 				CostCoverage: "partial", TokenCoverage: "partial",
 			},
 			want: []string{"Cost:           $1.2500 (coverage: partial)", "Tokens:         42 (coverage: partial)"},
+		},
+		{
+			// A measured zero renders as a number, where an unmeasured total
+			// renders as "-".
+			name: "cost and tokens measured as zero",
+			summary: experiments.ExperimentReportSummary{
+				TestCaseCount: 1, TrialCount: 1, CompletedCount: 1,
+				TotalCost: new(0.0), TotalTokens: new(int64(0)),
+				CostCoverage: "complete", TokenCoverage: "complete",
+			},
+			want: []string{"Cost:           $0.0000", "Tokens:         0"},
 		},
 		{
 			name:    "experiment failed",

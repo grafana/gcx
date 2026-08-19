@@ -29,6 +29,15 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
   push, pull, delete, or validate operations have mixed success/failure results.
   Commands return a `PartialFailureError` when `--on-error=fail` (default) and
   `FailedCount > 0`.
+- Exit code 4 is also the failing verdict of a gate command. A gate command
+  grades a subject against thresholds the user passed, writes one result
+  document, and sets the exit code from the verdict, so a CI job can branch on
+  the code without parsing the document. `gcx instrumentation check` and
+  `gcx agento11y experiments check` do this: they return an `EmittedError`
+  carrying `ExitPartialFailure` once the document is on stdout. A gate command
+  must not use 1 for a failing verdict, because 1 is the catch-all and a CI job
+  cannot tell a breached threshold from a network failure. `gcx config check`
+  predates this rule and still returns 1; do not copy it.
 - Exit code 5 (cancelled) is set by `convertContextCanceled` (first in converter
   chain) and by a fast-path check in `handleError` for `context.Canceled`.
 - SIGINT is handled via `signal.NotifyContext` in `main.go`, which cancels the

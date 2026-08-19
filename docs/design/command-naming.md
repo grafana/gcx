@@ -96,14 +96,23 @@ datasource discovery may persist configuration.
 ## View verbs
 
 Default to `get` for a straight read. Use a view verb such as `status`,
-`timeline`, `inspect`, `diff`, `stats`, `report`, or `describe` only when the
-result is a derived, composite, or diagnostic view rather than the subject's
-stored fields.
+`timeline`, `inspect`, `diff`, `stats`, `report`, `describe`, or `check` only
+when the result is a derived, composite, or diagnostic view rather than the
+subject's stored fields.
 
 For example, `gcx kg entities inspect` returns diagnostic analysis rather than
 only an entity record. `gcx datasources health` is an owner-approved keep from
 #1014 — it runs the Grafana product health check rather than reading the
 datasource record — and is not a pattern to copy.
+
+`check` is the gate verb: it asserts a policy against the subject and sets the
+exit code from the verdict, so a CI job can branch on the code alone. Use it
+only when all three hold: the caller supplies the thresholds or rules, the
+command writes one result document naming every assertion it made, and a
+failing verdict exits 4 (see [exit-codes.md](exit-codes.md) § 2.1). A read that
+returns findings without a caller-supplied policy is `inspect` or `status`, not
+`check`. Current uses: `gcx agento11y experiments check`, `gcx instrumentation
+check`, and `gcx config check` (which predates the exit-code rule).
 
 ## Domain verbs
 
