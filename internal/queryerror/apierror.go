@@ -19,6 +19,18 @@ type APIError struct {
 	StatusCode  int
 	Message     string
 	ErrorSource string
+
+	// TransportStatus is the HTTP status the transport actually returned,
+	// preserved before FromBody may replace StatusCode with a query-level
+	// status embedded in a 2xx body. It is zero when the error was built by
+	// New directly: those call sites hold body-level or synthesized statuses,
+	// and no transport fact is known there.
+	//
+	// Telemetry reads this field and never StatusCode — a query failure
+	// inside an HTTP 200 must not report a failure status. Rendering and the
+	// fail package keep using StatusCode, which is the status gcx classifies
+	// and explains on.
+	TransportStatus int
 }
 
 // New constructs an APIError with sanitized message fields.
@@ -42,11 +54,14 @@ func New(datasource, operation string, statusCode int, message, errorSource stri
 // error (4xx/5xx), it is kept as the authoritative signal so auth, proxy, and
 // gateway failures are not misclassified by downstream-supplied status codes.
 func FromBody(datasource, operation string, statusCode int, body []byte) *APIError {
+	transportStatus := statusCode
 	message, errorSource, parsedStatus := extractMessage(body)
 	if parsedStatus != 0 && statusCode >= 200 && statusCode < 300 {
 		statusCode = parsedStatus
 	}
-	return New(datasource, operation, statusCode, message, errorSource)
+	apiErr := New(datasource, operation, statusCode, message, errorSource)
+	apiErr.TransportStatus = transportStatus
+	return apiErr
 }
 
 func (e *APIError) Error() string {
