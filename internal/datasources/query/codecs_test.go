@@ -9,7 +9,7 @@ import (
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
-  "github.com/grafana/gcx/internal/query/azuremonitor"
+	"github.com/grafana/gcx/internal/query/azuremonitor"
 	"github.com/grafana/gcx/internal/query/elasticsearch"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
@@ -130,6 +130,7 @@ func TestQueryCodecsElasticsearchMetrics(t *testing.T) {
 func ptrFloat(f float64) *float64 {
 	v := f
 	return &v
+}
 
 func TestQueryJSONCodecInfluxDBTimestamps(t *testing.T) {
 	newJSONIO := func() *cmdio.Options {
