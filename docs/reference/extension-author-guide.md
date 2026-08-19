@@ -1,140 +1,70 @@
-# Extension author guide
+# Extension author guide — outline
 
-What you need to know to write a gcx extension. Draft, tracking the PoC in
-[PR #1211](https://github.com/grafana/gcx/pull/1211) — the mechanism is
-[ADR-023](../adrs/extensions/001-third-party-extensions-design.md), which is
-still `proposed`.
+Not written yet. This is the list of things we know the guide needs to cover,
+gathered from building the two PoC extensions in
+[PR #1211](https://github.com/grafana/gcx/pull/1211). Mechanism:
+[ADR-023](../adrs/extensions/001-third-party-extensions-design.md) (still
+`proposed`).
 
-Worked examples: [`whoami`](../../examples/extensions/whoami) (six lines of
-shell) and [`azure-datasources`](../../examples/extensions/azure-datasources)
-(a real provisioning flow).
+## Getting started
 
-## The shape of an extension
+- An extension is a program plus a `gcx-extension.yaml`. Any language.
+- There is no SDK and nothing to link against. Say so explicitly — authors will look for one.
+- Point at [`whoami`](../../examples/extensions/whoami) (six lines of shell) and [`azure-datasources`](../../examples/extensions/azure-datasources) (real provisioning flow) as the two worked examples.
+- The local dev loop: build, `gcx ext install .`, run, repeat.
 
-An extension is a program plus a `gcx-extension.yaml`. Any language. gcx runs
-the program as a subprocess, passes it everything after its name, and forwards
-its exit code.
+## Reaching Grafana
 
-There is no SDK and nothing to link against. `azure-datasources` is written in
-Go with an empty `require` block, on purpose.
+- You never get a Grafana or Cloud credential. `GCX_EXT_GCX_BIN` is the gcx binary that dispatched you; every Grafana call goes back through it.
+- What you inherit for free: auth, token refresh, keychain access, Cloud proxying, context resolution.
+- If you need something gcx has no command for, that is a gap to raise, not to work around.
 
-## You never get a Grafana credential
+## The three easy mistakes
 
-gcx sets `GCX_EXT_GCX_BIN` to the path of the gcx binary that dispatched you.
-Every Grafana or Cloud call goes back through it:
+- **Not passing the context back.** Forgetting it silently operates on `current-context` instead of the stack the user asked for. Worth calling out as the single easiest way to write a dangerous extension.
+- **Not forcing `--output json`.** gcx's default codec is human-facing; outside agent mode you get a table you cannot parse.
+- **Ignoring stdout on non-zero exit.** A partial failure (exit 4) still writes a complete result document, and the per-item reason is in it. Show the before/after: `exit status 4` vs `Token missing required scope: grafana-api:delete`.
 
-```sh
-"$GCX_EXT_GCX_BIN" datasources list --output json
-```
+## Reading gcx's output
 
-You inherit gcx's auth, token refresh, keychain access, and Cloud proxying for
-free. There is no way to get a raw bearer token, and that is deliberate: if you
-need something gcx has no command for, that is a gap to raise, not to work
-around.
+- Results on stdout, progress and hints and human errors on stderr — so stdout stays one JSON value.
+- Envelopes are not uniform (`datasources list` → `{"datasources": [...]}`, `datasources delete` → bare array). Check the shape of each command you depend on.
+- Pin what you have tested with `spec.minGCXVersion`. Flag that these shapes are not yet a versioned contract (see the risk in the findings doc).
 
-## Always pass the context back
+## Handling secrets
 
-`GCX_EXT_CONTEXT` carries the context the parent invocation resolved, including
-one the user set with `gcx --context prod ext <you>`. Passing it on every gcx
-call is your job:
+- Pass secrets to gcx by environment variable and reference them with `{fromEnv: ...}` in the manifest, never inline and never in argv.
+- `{fromFile: ...}` as the alternative.
+- Worked example: piping a manifest to `gcx datasources create -f -` with the secret set on the subprocess.
 
-```sh
-"$GCX_EXT_GCX_BIN" datasources list --output json --context "$GCX_EXT_CONTEXT"
-```
+## Conventions worth matching
 
-Forget it and you silently operate on whatever `current-context` happens to be,
-which is a different stack from the one the user asked for. This is the single
-easiest way to write a dangerous extension.
-
-## Always ask for JSON, and read stdout even on failure
-
-Two rules that are easy to get wrong:
-
-- **Force `--output json`.** gcx's default codec is human-facing, and in a
-  non-agent terminal you will get a table you cannot parse.
-- **Decode stdout even when gcx exits non-zero.** A partially-failing command
-  (exit 4) still writes a complete result document, and the per-item reason is
-  in it. Ignore stdout on failure and the best you can report is
-  `exit status 4`; read it and you can report
-  `Token missing required scope: grafana-api:delete`.
-
-Progress narration, hints, and human-formatted errors go to **stderr**, so
-stdout stays a single JSON value you can hand straight to a parser.
-
-Envelopes are not uniform — `datasources list` returns
-`{"datasources": [...]}`, `datasources delete` returns a bare array. Check the
-shape of each command you depend on, and pin the gcx versions you have tested
-with `spec.minGCXVersion`.
-
-## Pass secrets by environment variable, not on the command line
-
-If you have a secret to write into Grafana, put it in the child's environment
-and reference it from the manifest instead of inlining it:
-
-```jsonc
-{
-  "secure": { "clientSecret": { "fromEnv": "MY_EXT_CLIENT_SECRET" } }
-}
-```
-
-then pipe that manifest to `gcx datasources create -f -` with
-`MY_EXT_CLIENT_SECRET` set on the subprocess. The secret never reaches argv,
-a file, or the manifest text. `fromFile` exists too if a file suits you better.
-
-## Match gcx's conventions where it is cheap
-
-You own your output and your exit codes; gcx will not reformat or reinterpret
-either. That freedom is worth spending on consistency:
-
-- **Exit codes.** Reuse gcx's taxonomy — 0 success, 1 general, 2 usage,
-  3 auth, 4 partial failure, 5 cancelled. A caller reading your code should not
-  need to special-case you.
-- **Machine-readable output when asked.** `GCX_EXT_AGENT_MODE` is `true` when
-  the parent gcx is in agent mode. Default to JSON then, text otherwise.
-- **Progress to stderr, results to stdout.** Same split gcx uses.
-- **Support `--dry-run`** for anything that creates or deletes. Users and
-  agents both reach for it first.
-- **Handle SIGINT** and exit 5 rather than leaving half-created artifacts.
-
-`GCX_EXT_NAME` is the name you were invoked under, which is what belongs in
-your usage strings — you may be installed under a name that differs from your
-binary's.
+- Exit codes: reuse gcx's taxonomy (0/1/2/3/4/5) so callers do not special-case you.
+- `GCX_EXT_AGENT_MODE` (or `GCX_AGENT_MODE`, pending finding 3) — default to JSON when the parent is in agent mode.
+- Support `--dry-run` on anything that creates or deletes.
+- Handle SIGINT and exit 5 rather than leaving half-created artifacts.
+- Use `GCX_EXT_NAME` in usage strings — you may be installed under a name that differs from your binary.
 
 ## Argument boundary
 
-Everything after your name is yours; gcx's own global flags go *before* `ext`:
-
-```sh
-gcx --context prod ext my-extension provision --dry-run
-#   ^^^^^^^^^^^^^^ gcx's           ^^^^^^^^^^^^^^^^^^^^ yours
-```
-
-Do not define flags that shadow gcx's globals (`--context`, `--agent`,
-`--no-color`, `-v`); a user who puts them in the wrong place will get
-confusing results.
+- gcx's global flags go before `ext`; everything after your name is yours.
+- Do not define flags that shadow gcx's globals (`--context`, `--agent`, `--no-color`, `-v`).
 
 ## Publishing
 
-Your manifest's `platforms` table lists one row per OS/arch with a URL and a
-**mandatory** `sha256`. Install fails closed on a mismatch and there is no
-compile-from-source fallback, so every platform you claim to support needs a
-real artifact. See
-[`gcx-extension.release.yaml`](../../examples/extensions/azure-datasources/gcx-extension.release.yaml).
-
-While developing, use a `path:` row with `os: "*"` / `arch: "*"` pointing at
-your local build, and `gcx ext install .`.
-
-`spec.telemetry.reportUsage: false` opts your extension's name out of gcx's
-anonymous usage telemetry. Only the name is ever recorded, never your
-arguments.
+- One `platforms` row per OS/arch, each with a URL and a **mandatory** `sha256`. Install fails closed; there is no compile-from-source fallback.
+- A `path:` row with `os: "*"` / `arch: "*"` is for local builds only.
+- `spec.telemetry.reportUsage: false` opts your name out of gcx's usage telemetry. Only the name is recorded, never arguments.
+- Worth including: a GoReleaser-to-manifest recipe, once someone has done it once.
 
 ## What you do not get
 
-- **No discovery.** There is no index and no `gcx ext search`. Users find your
-  extension because you told them about it.
-- **No agent discovery.** You do not appear in `gcx commands` or
-  `gcx help-tree`, so an agent will not find you the way it finds built-in
-  commands.
-- **No gcx styling.** You cannot render gcx's tables, colours, or error boxes.
-- **No sandbox, and no review.** Your extension runs with the user's full
-  permissions, and gcx does not audit anything it installs.
+- No discovery — no index, no `gcx ext search`. Users find you because you told them.
+- No agent discovery — you do not appear in `gcx commands` or `gcx help-tree`.
+- No gcx styling — tables, colours, error boxes are not available to you.
+- No sandbox and no review. Your extension runs with the user's full permissions, and gcx audits nothing it installs.
+
+## Open questions for the guide
+
+- Does it live in this repo, or with the extension mechanism's own docs once there is a public docs page?
+- Do we want a `gcx ext scaffold` before or after writing this? It changes how much of the getting-started section is prose.
