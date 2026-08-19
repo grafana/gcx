@@ -416,9 +416,11 @@ return dsquery.EncodeAndHandleExplore(cmd, func() error {
   one URL builder per type (e.g. Azure Monitor metrics vs Logs vs Resource
   Graph). Do not reuse a single builder across different `queryType` values.
 - **Never leak an internal rewrite into the link.** When the command rewrites
-  the query before it sends it (e.g. a sentinel `LIMIT eff+1`), pass the
-  user-facing form to `Expr`. See the `displaySQL` split in
-  `internal/datasources/clickhouse/query.go`.
+  the query before it sends it (e.g. a sentinel `LIMIT`), pass the rewritten
+  form to the client, and pass the user-facing form to `Expr`. No datasource
+  does this yet: `internal/datasources/athena/query.go` and
+  `internal/datasources/clickhouse/query.go` both pass the `EnforceLimit`
+  result to `Expr`, so the link carries a `LIMIT` the user never typed.
 - **Mention both flags** in the command's `Long` and `Example` text.
 - **A unit test cannot prove the URL is right.** Verify each new URL in a
   browser during Stage 3.
@@ -635,12 +637,19 @@ mise exec -- go test ./internal/agent/...
 
 | Kind | Commands | DSProvider Registration | Query Client | Explore Builder |
 |------|----------|----------------------|-------------|-----------------|
-| prometheus | `internal/datasources/prometheus/` | `internal/datasources/providers/prometheus.go` | `internal/query/prometheus/` | `internal/datasources/prometheus/explore.go` |
-| loki | `internal/datasources/loki/` | `internal/datasources/providers/loki.go` | `internal/query/loki/` | `internal/datasources/loki/explore.go` |
+| athena | `internal/datasources/athena/` | `internal/datasources/providers/athena.go` | `internal/query/athena/` | `internal/datasources/athena/explore.go` (Shape A) |
 | clickhouse | `internal/datasources/clickhouse/` | `internal/datasources/providers/clickhouse.go` | `internal/query/clickhouse/` | `internal/datasources/clickhouse/explore.go` (Shape A) |
 | cloudwatch | `internal/datasources/cloudwatch/` | `internal/datasources/providers/cloudwatch.go` | `internal/query/cloudwatch/` | `internal/datasources/cloudwatch/explore.go` (Shape B) |
+| infinity | `internal/datasources/infinity/` | `internal/datasources/providers/infinity.go` | `internal/query/infinity/` | — |
+| influxdb | `internal/datasources/influxdb/` | `internal/datasources/providers/influxdb.go` | `internal/query/influxdb/` | — |
+| loki | `internal/datasources/loki/` | `internal/datasources/providers/loki.go` | `internal/query/loki/` | `internal/datasources/loki/explore.go` |
+| postgres | `internal/datasources/postgres/` | `internal/datasources/providers/postgres.go` | `internal/query/postgres/` | — |
+| prometheus | `internal/datasources/prometheus/` | `internal/datasources/providers/prometheus.go` | `internal/query/prometheus/` | `internal/datasources/prometheus/explore.go` |
 | pyroscope | `internal/datasources/pyroscope/` | `internal/datasources/providers/pyroscope.go` | `internal/query/pyroscope/` | — |
 | tempo | `internal/datasources/tempo/` | `internal/datasources/providers/tempo.go` | `internal/query/tempo/` | `internal/datasources/tempo/explore.go` |
+
+A `—` marks a datasource that still has no Explore link. Four kinds have this
+gap now: `infinity`, `influxdb`, `postgres`, and `pyroscope`.
 
 Use `clickhouse` as the reference for an expression datasource (Shape A), and
 `cloudwatch` for a structured datasource (Shape B).
