@@ -63,6 +63,8 @@ func TestRequestResponseLoggingRoundTripper_Dumps(t *testing.T) {
 				`{"name":"primary-rotation","type":"calendar"}`,
 				"http response dump",
 				`{"id":"S123","name":"primary-rotation"}`,
+				// Only DumpRequestOut writes this request header.
+				"Accept-Encoding: gzip",
 			},
 		},
 		{
