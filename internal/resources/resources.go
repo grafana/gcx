@@ -315,7 +315,32 @@ func (r *Resources) AsList() []*Resource {
 		list = append(list, resource)
 	}
 
+	// The collection is a map, so iteration order is randomized. Sort by
+	// group/version/kind/name to give callers (and the dev-server index page) a
+	// stable, alphabetical ordering.
+	slices.SortStableFunc(list, compareResources)
+
 	return list
+}
+
+// compareResources orders resources by group, version, kind, and name.
+func compareResources(a, b *Resource) int {
+	gva := a.GroupVersionKind()
+	gvb := b.GroupVersionKind()
+
+	if res := strings.Compare(gva.Group, gvb.Group); res != 0 {
+		return res
+	}
+
+	if res := strings.Compare(gva.Version, gvb.Version); res != 0 {
+		return res
+	}
+
+	if res := strings.Compare(gva.Kind, gvb.Kind); res != 0 {
+		return res
+	}
+
+	return strings.Compare(a.Name(), b.Name())
 }
 
 // GroupByKind groups resources by kind.
