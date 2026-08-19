@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 )
 
-type scheduleDoc struct {
+type Schedule struct {
 	Name     string `json:"name"`
 	Type     any    `json:"type,omitempty"`
 	TimeZone string `json:"time_zone,omitempty"`
@@ -21,7 +21,7 @@ func TestReadFileOrStdin(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		want    scheduleDoc
+		want    Schedule
 		wantErr string
 	}{
 		{
@@ -30,7 +30,7 @@ func TestReadFileOrStdin(t *testing.T) {
 type: 2
 time_zone: Europe/Amsterdam
 `,
-			want: scheduleDoc{Name: "my schedule", Type: float64(2), TimeZone: "Europe/Amsterdam"},
+			want: Schedule{Name: "my schedule", Type: float64(2), TimeZone: "Europe/Amsterdam"},
 		},
 		{
 			name: "kubernetes envelope",
@@ -43,12 +43,12 @@ spec:
   type: 2
   time_zone: Europe/Amsterdam
 `,
-			want: scheduleDoc{Name: "my schedule", Type: float64(2), TimeZone: "Europe/Amsterdam"},
+			want: Schedule{Name: "my schedule", Type: float64(2), TimeZone: "Europe/Amsterdam"},
 		},
 		{
 			name:  "json envelope",
 			input: `{"apiVersion":"oncall.ext.grafana.app/v1alpha1","kind":"Schedule","spec":{"name":"my schedule","type":"web"}}`,
-			want:  scheduleDoc{Name: "my schedule", Type: "web"},
+			want:  Schedule{Name: "my schedule", Type: "web"},
 		},
 		{
 			name: "envelope without kind or apiVersion keeps the whole document",
@@ -56,7 +56,7 @@ spec:
 spec:
   name: inner
 `,
-			want: scheduleDoc{Name: "my schedule", Spec: map[string]any{"name": "inner"}},
+			want: Schedule{Name: "my schedule", Spec: map[string]any{"name": "inner"}},
 		},
 		{
 			name: "envelope with a null spec is rejected, and the error names the source",
@@ -90,6 +90,24 @@ metadata:
 			wantErr: "carries no object-valued spec field",
 		},
 		{
+			name: "envelope with a kind that does not match the target is rejected",
+			input: `apiVersion: oncall.ext.grafana.app/v1alpha1
+kind: Shift
+spec:
+  name: my shift
+`,
+			wantErr: `stdin: the document declares kind "Shift", but this command reads a "Schedule"`,
+		},
+		{
+			name: "a kind that differs only in case is accepted",
+			input: `apiVersion: oncall.ext.grafana.app/v1alpha1
+kind: schedule
+spec:
+  name: my schedule
+`,
+			want: Schedule{Name: "my schedule"},
+		},
+		{
 			name:    "empty input",
 			input:   "   \n",
 			wantErr: "input is empty",
@@ -105,7 +123,7 @@ metadata:
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var got scheduleDoc
+			var got Schedule
 			err := providers.ReadFileOrStdin("-", strings.NewReader(tt.input), &got)
 
 			if tt.wantErr != "" {
