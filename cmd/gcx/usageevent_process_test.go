@@ -33,6 +33,7 @@ import (
 const (
 	usageEventProcessHelper = "GCX_USAGE_EVENT_PROCESS_HELPER"
 	usageEventConfigEnv     = "GCX_USAGE_EVENT_CONFIG"
+	usageEventArgsEnv       = "GCX_USAGE_EVENT_ARGS"
 
 	// helperRequestPath is the path the helper command asks for, and the only
 	// path these tests treat as the command's own request.
@@ -54,8 +55,30 @@ func TestUsageEventProcessHelper(_ *testing.T) {
 	}
 
 	agent.ResetForTesting()
-	os.Args = []string{"gcx", "api", helperRequestPath, "--config", os.Getenv(usageEventConfigEnv)}
+	os.Args = append([]string{"gcx"}, helperArgs()...)
 	main()
+}
+
+// helperArgs is the command the child runs: the API call most of these tests
+// use, or whatever the parent asked for. The parent passes it as JSON because an
+// environment variable cannot carry a NUL, and a separator that can appear in an
+// argument is a trap. --config is appended either way, since every test needs
+// the child pointed at its own synthetic stack.
+func helperArgs() []string {
+	command := []string{"api", helperRequestPath}
+	if requested := os.Getenv(usageEventArgsEnv); requested != "" {
+		if err := json.Unmarshal([]byte(requested), &command); err != nil {
+			// The child cannot fail a test; a wrong command would show up as a
+			// wrong event, so name the reason in its output instead.
+			fmt.Fprintf(os.Stderr, "helper: undecodable %s: %v\n", usageEventArgsEnv, err)
+			os.Exit(1)
+		}
+	}
+
+	args := make([]string, 0, len(command)+2)
+	args = append(args, command...)
+
+	return append(args, "--config", os.Getenv(usageEventConfigEnv))
 }
 
 // TestCanceledInvocationIsReportedAndSecondSignalTerminates proves both halves
@@ -193,6 +216,60 @@ func TestFinishedRunSurvivesInterruptDuringExport(t *testing.T) {
 
 	fields := decodeEvent(t, recvWithin(t, held.events, "the usage event to be exported"))
 	assert.Equal(t, telemetry.OutcomeOK, fields["outcome"])
+}
+
+// TestAbsorbedInterruptSurvivesSecondSignalDuringExport pins the third row of
+// the abandonsExport matrix against a real process: an invocation that was
+// interrupted and finished anyway keeps the exit code that agrees with the
+// result it wrote, even when a second Ctrl-C arrives while the export is still
+// in flight.
+//
+// `gcx dev serve` is the command in the tree that reaches it. It shuts its HTTP
+// server down on ctx.Done and returns nil, so the first Ctrl-C leaves the
+// invocation interrupted and successful. main re-arms the default terminate
+// action as soon as the context is cancelled — a second Ctrl-C has to end a
+// graceful shutdown that stalls — so exitWith has to hold SIGINT again for the
+// length of the export. Without that, the second signal kills this process with
+// status 130, and `gcx dev serve && next` skips next for a run with nothing
+// wrong with it.
+func TestAbsorbedInterruptSurvivesSecondSignalDuringExport(t *testing.T) {
+	// Deliberately not parallel: it changes this process's signal handling and
+	// sends signals to a child.
+	hold := make(chan struct{})
+
+	// serve makes no request of its own before it listens; anything it does ask
+	// for is not this test's subject.
+	grafana := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(grafana.Close)
+
+	held := newHeldExport(t, hold)
+	t.Cleanup(func() { close(hold) })
+
+	// Port 0 lets the kernel pick, so a busy port cannot make this flake.
+	helper := startUsageEventHelper(t, grafana.URL, held.server.URL,
+		"dev", "serve", "--no-watch", "--port", "0")
+	held.interrupts(helper.cmd.Process)
+
+	// The first interrupt has to land after serve has taken over the process:
+	// interrupting the startup instead is the abandoned case, which returns a
+	// cancellation and exits 5. The child announcing its address is that
+	// evidence — read from the child's own output, not waited out on a timer.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Contains(c, helper.stdout.String(), "Server will be available on")
+	}, handshakeTimeout, 10*time.Millisecond, "serve never reported that it had started")
+	helper.interrupt(t)
+
+	require.NoError(t, recvWithin(t, held.signals, "the second interrupt to be sent during the export"))
+	err := helper.cmd.Wait()
+
+	assert.Equal(t, gcxerrors.ExitSuccess, helper.cmd.ProcessState.ExitCode(),
+		"a second interrupt during the export must not overwrite the outcome of a command that absorbed the first one: wait err=%v stdout=%q stderr=%q",
+		err, helper.stdout.String(), helper.stderr.String())
+
+	fields := decodeEvent(t, recvWithin(t, held.events, "the usage event to be exported"))
+	assert.Equal(t, telemetry.OutcomeOK, fields["outcome"],
+		"a command that shut down cleanly reports ok, not canceled; event=%v", fields)
+	assert.InDelta(t, float64(gcxerrors.ExitSuccess), fields["exit_code"], 0)
 }
 
 // TestUsageEventUnchangedForSuccessAndFailure guards the paths that now share
@@ -373,7 +450,7 @@ func (b *syncBuffer) String() string {
 // startUsageEventHelper starts the helper process against the given Grafana and
 // usage-stats endpoints, with telemetry enabled and every ambient credential,
 // config, and state path pointed somewhere harmless.
-func startUsageEventHelper(t *testing.T, grafanaURL, endpoint string) *usageEventHelper {
+func startUsageEventHelper(t *testing.T, grafanaURL, endpoint string, args ...string) *usageEventHelper {
 	t.Helper()
 
 	// exec resets a caught signal to SIG_DFL in the child but preserves an
@@ -411,9 +488,23 @@ func startUsageEventHelper(t *testing.T, grafanaURL, endpoint string) *usageEven
 		"GRAFANA_PROXY_ENDPOINT=",
 		"GRAFANA_ORG_ID=",
 		"GRAFANA_STACK_ID=",
+		usageEventArgsEnv+"="+encodeHelperArgs(t, args),
 	)
 	require.NoError(t, helper.cmd.Start())
 	return helper
+}
+
+// encodeHelperArgs encodes the child's command for the environment. An empty
+// list stays empty, so the child falls back to its default command.
+func encodeHelperArgs(t *testing.T, args []string) string {
+	t.Helper()
+	if len(args) == 0 {
+		return ""
+	}
+	encoded, err := json.Marshal(args)
+	require.NoError(t, err)
+
+	return string(encoded)
 }
 
 // writeUsageEventConfig writes the child's config. stack-id is pinned so the
