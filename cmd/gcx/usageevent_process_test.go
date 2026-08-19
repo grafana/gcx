@@ -45,6 +45,12 @@ const (
 // only ever fires when the behaviour under test is broken.
 const handshakeTimeout = 30 * time.Second
 
+// interruptSpacing separates repeated interrupts sent during one export. It is
+// the one wait in this file that is not released by an event, because nothing
+// observable says the watcher goroutine has run; it only has to outlast a
+// goroutine wake-up, and the export it runs inside lasts a second.
+const interruptSpacing = 5 * time.Millisecond
+
 // TestUsageEventProcessHelper is the child process for the tests in this file.
 // It runs the real main(), so the signal handling, the exit-code
 // classification, and the synchronous usage export are the shipped ones rather
@@ -176,17 +182,25 @@ func TestCanceledInvocationIsReportedAndSecondSignalTerminates(t *testing.T) {
 	assert.Positive(t, duration, "a canceled invocation must report the time it really ran")
 }
 
-// TestFinishedRunSurvivesInterruptDuringExport pins the other half of the
+// TestFinishedRunSurvivesInterruptsDuringExport pins the other half of the
 // signal contract: the escape hatch belongs to an invocation the user is trying
 // to abandon, and must not hand a stray interrupt the power to kill one that
 // already succeeded.
 //
 // The command writes its complete result, then waits out the synchronous export
-// against a receiver that never answers. An interrupt arriving in that window
-// has to be absorbed, so the process still exits 0 and its exit status still
-// agrees with the document on stdout. Disarming the signal handler on every
-// exit path instead makes this process die by SIGINT with status 130.
-func TestFinishedRunSurvivesInterruptDuringExport(t *testing.T) {
+// against a receiver that never answers. Interrupts arriving in that window have
+// to be absorbed, so the process still exits 0 and its exit status still agrees
+// with the document on stdout. Disarming the signal handler on every exit path
+// instead makes this process die by SIGINT with status 130.
+//
+// It sends several, spaced, because one is not enough to catch the case that
+// actually bites. The first interrupt is absorbed by the handler that is still
+// installed, but it also cancels the context, and main's watcher then restores
+// the default terminate action — so a second interrupt a few milliseconds later
+// kills the process unless exitWith has taken the disposition back. Deciding
+// that from a bool sampled before the export cannot see an interrupt that
+// arrives during it, which is why exitWith settles the gate instead.
+func TestFinishedRunSurvivesInterruptsDuringExport(t *testing.T) {
 	hold := make(chan struct{})
 
 	grafana := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -200,16 +214,17 @@ func TestFinishedRunSurvivesInterruptDuringExport(t *testing.T) {
 	t.Cleanup(grafana.Close)
 
 	held := newHeldExport(t, hold)
+	held.extraInterrupts = 4
 	t.Cleanup(func() { close(hold) })
 
 	helper := startUsageEventHelper(t, grafana.URL, held.server.URL)
 	held.interrupts(helper.cmd.Process)
 
-	require.NoError(t, recvWithin(t, held.signals, "the interrupt to be sent during the export"))
+	require.NoError(t, recvWithin(t, held.signals, "the interrupts to be sent during the export"))
 	err := helper.cmd.Wait()
 
 	assert.Equal(t, gcxerrors.ExitSuccess, helper.cmd.ProcessState.ExitCode(),
-		"an interrupt during the export must not overwrite the outcome of a command that already succeeded: wait err=%v stdout=%q stderr=%q",
+		"interrupts during the export must not overwrite the outcome of a command that already succeeded: wait err=%v stdout=%q stderr=%q",
 		err, helper.stdout.String(), helper.stderr.String())
 	assert.Contains(t, helper.stdout.String(), "database",
 		"the result the command already wrote must survive")
@@ -370,6 +385,13 @@ type heldExport struct {
 	// handshake timeout for a signal that was never going to be sent.
 	child   chan struct{}
 	process atomic.Pointer[os.Process]
+
+	// extraInterrupts is how many further signals to send after the first,
+	// spaced by interruptSpacing. It exists because "the watcher goroutine in
+	// main has run" is not observable from here: a test that needs a signal to
+	// land after the watcher has touched the disposition can only cover that
+	// window by sending more than one.
+	extraInterrupts int
 }
 
 // interrupts releases the handler to signal the given process. It must be
@@ -406,9 +428,17 @@ func newHeldExport(t *testing.T, hold <-chan struct{}) *heldExport {
 			return
 		}
 		if process := held.process.Load(); process != nil {
+			err := process.Signal(os.Interrupt)
 			select {
-			case held.signals <- process.Signal(os.Interrupt):
+			case held.signals <- err:
 			default:
+			}
+			// Only the first send is reported. A later one failing means the
+			// child is already gone, which is the assertion's business — the
+			// test reads its exit status either way.
+			for i := 0; err == nil && i < held.extraInterrupts; i++ {
+				time.Sleep(interruptSpacing)
+				_ = process.Signal(os.Interrupt)
 			}
 		}
 		<-hold
