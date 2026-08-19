@@ -91,9 +91,9 @@ func inputName(file string) string {
 // "apiVersion" or "kind"; none of the bare objects that the provider commands
 // post declares either name.
 //
-// An envelope whose spec is absent, null, not an object, or empty carries no
-// field to send. envelopeSpec returns an error for it, because the decode of
-// such a document produces the empty object that issue #1185 reports.
+// envelopeSpec reports an error for three documents that define no resource
+// for the target: a Grafana alert provisioning file, an envelope of another
+// kind, and an envelope without an object-valued spec.
 func envelopeSpec(data []byte, wantKind string) ([]byte, error) {
 	// A document that does not decode as an object leaves doc nil, so the key
 	// probes below classify it as a non-envelope. The caller then decodes it
