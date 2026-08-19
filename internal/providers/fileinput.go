@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 
 	"sigs.k8s.io/yaml"
@@ -46,7 +47,7 @@ func ReadFileOrStdin(file string, stdin io.Reader, out any) error {
 		return errors.New("input is empty")
 	}
 
-	spec, err := envelopeSpec(data)
+	spec, err := envelopeSpec(data, targetKind(out))
 	if err != nil {
 		return fmt.Errorf("%s: %w", inputName(file), err)
 	}
@@ -58,6 +59,22 @@ func ReadFileOrStdin(file string, stdin io.Reader, out any) error {
 		return fmt.Errorf("failed to parse input: %w", err)
 	}
 	return nil
+}
+
+// targetKind names the resource kind that the target type accepts. Each
+// envelope that gcx prints carries the name of the Go type behind the target
+// under "kind", so the name of that type is the expected kind. targetKind
+// returns an empty string for a target that has no type name, and envelopeSpec
+// then skips the kind check.
+func targetKind(out any) string {
+	t := reflect.TypeOf(out)
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == nil {
+		return ""
+	}
+	return t.Name()
 }
 
 // inputName names the source of the document for an error message.
@@ -77,7 +94,7 @@ func inputName(file string) string {
 // An envelope whose spec is absent, null, not an object, or empty carries no
 // field to send. envelopeSpec returns an error for it, because the decode of
 // such a document produces the empty object that issue #1185 reports.
-func envelopeSpec(data []byte) ([]byte, error) {
+func envelopeSpec(data []byte, wantKind string) ([]byte, error) {
 	// A document that does not decode as an object leaves doc nil, so the key
 	// probes below classify it as a non-envelope. The caller then decodes it
 	// against the target type, and reports the syntax error with that context.
@@ -85,9 +102,15 @@ func envelopeSpec(data []byte) ([]byte, error) {
 	_ = yaml.Unmarshal(data, &doc)
 
 	_, hasAPIVersion := doc["apiVersion"]
-	_, hasKind := doc["kind"]
+	rawKind, hasKind := doc["kind"]
 	if !hasAPIVersion && !hasKind {
 		return nil, nil
+	}
+
+	var kind string
+	_ = json.Unmarshal(rawKind, &kind)
+	if kind != "" && wantKind != "" && !strings.EqualFold(kind, wantKind) {
+		return nil, fmt.Errorf("the document declares kind %q, but this command reads a %q", kind, wantKind)
 	}
 
 	// A missing "spec" decodes as an empty slice, which fails the same way a
