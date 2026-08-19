@@ -1,3 +1,13 @@
+## Unreleased
+
+### New features
+
+- Record the size of batch resource operations (`resources push`, `pull`, `delete`, `validate`) in usage telemetry events, as fixed size categories rather than counts, alongside whether the operation ran in dry-run mode. The first-run telemetry notice is revised to cover this and is shown again on installs that already saw the previous wording. See [Anonymous usage statistics](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/).
+
+### Fixes
+
+- instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
+
 ## v1.1.0 (2026-08-14)
 
 **Breaking changes**
@@ -36,9 +46,6 @@
 - Restructure the Grafana Cloud documentation.
 - Pin `GCX_AGENT_MODE=false` for the test tasks.
 - Add data sources code owners for `internal/datasources`.
-
-
-## Unreleased
 
 ## v1.0.0 (2026-07-28)
 

@@ -15,7 +15,7 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -37,6 +37,7 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 * [gcx datasources influxdb](gcx_datasources_influxdb.md)	 - Query InfluxDB datasources
 * [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
 * [gcx datasources loki](gcx_datasources_loki.md)	 - Query Loki datasources
+* [gcx datasources postgres](gcx_datasources_postgres.md)	 - Query PostgreSQL datasources
 * [gcx datasources prometheus](gcx_datasources_prometheus.md)	 - Query Prometheus datasources
 * [gcx datasources pyroscope](gcx_datasources_pyroscope.md)	 - Query Pyroscope datasources
 * [gcx datasources query](gcx_datasources_query.md)	 - Execute a query against any datasource (auto-detects type)

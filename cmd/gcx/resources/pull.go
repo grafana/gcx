@@ -221,8 +221,9 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				},
 			}
 
-			if err := writer.Write(ctx, &res.Resources); err != nil {
-				return err
+			writeErr := writer.Write(ctx, &res.Resources)
+			if writeErr != nil {
+				return writeErr
 			}
 
 			pullSummary := res.PullSummary
@@ -236,6 +237,12 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				Failed:    pullSummary.FailedCount() + len(writeFailures),
 				Skipped:   pullSummary.SkippedCount(),
 			}
+			// Capture here, not after the receipt is emitted: the writes are
+			// done and receipt.Summary is the finalized count, so a later
+			// rendering or stdout failure must not erase it. Pull has no
+			// dry-run mode.
+			captureBatchVolume(receipt.Summary, false, writeErr)
+
 			dirs := make([]string, 0, len(written))
 			for dir := range written {
 				dirs = append(dirs, dir)
