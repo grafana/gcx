@@ -1,0 +1,45 @@
+# What a published manifest looks like: one row per platform gcx ships for,
+# each with a URL and a mandatory sha256. gcx fails closed if the checksum does
+# not match, and never falls back to compiling from source.
+apiVersion: extensions.gcx.grafana.com/v1alpha1
+kind: Extension
+metadata:
+  name: azure-datasources
+spec:
+  version: 0.1.0
+  description: Provision Grafana datasources for Azure Monitor and Azure Data Explorer
+  homepage: https://github.com/acme/gcx-ext-azure-datasources
+  minGCXVersion: 1.1.0
+  platforms:
+    - os: darwin
+      arch: arm64
+      url: https://github.com/acme/gcx-ext-azure-datasources/releases/download/v0.1.0/azure-datasources_darwin_arm64.tar.gz
+      sha256: 0000000000000000000000000000000000000000000000000000000000000000
+      bin: gcx-ext-azure-datasources
+    - os: darwin
+      arch: amd64
+      url: https://github.com/acme/gcx-ext-azure-datasources/releases/download/v0.1.0/azure-datasources_darwin_amd64.tar.gz
+      sha256: 0000000000000000000000000000000000000000000000000000000000000000
+      bin: gcx-ext-azure-datasources
+    - os: linux
+      arch: arm64
+      url: https://github.com/acme/gcx-ext-azure-datasources/releases/download/v0.1.0/azure-datasources_linux_arm64.tar.gz
+      sha256: 0000000000000000000000000000000000000000000000000000000000000000
+      bin: gcx-ext-azure-datasources
+    - os: linux
+      arch: amd64
+      url: https://github.com/acme/gcx-ext-azure-datasources/releases/download/v0.1.0/azure-datasources_linux_amd64.tar.gz
+      sha256: 0000000000000000000000000000000000000000000000000000000000000000
+      bin: gcx-ext-azure-datasources
+    - os: windows
+      arch: amd64
+      url: https://github.com/acme/gcx-ext-azure-datasources/releases/download/v0.1.0/azure-datasources_windows_amd64.tar.gz
+      sha256: 0000000000000000000000000000000000000000000000000000000000000000
+      bin: gcx-ext-azure-datasources.exe
+    - os: windows
+      arch: arm64
+      url: https://github.com/acme/gcx-ext-azure-datasources/releases/download/v0.1.0/azure-datasources_windows_arm64.tar.gz
+      sha256: 0000000000000000000000000000000000000000000000000000000000000000
+      bin: gcx-ext-azure-datasources.exe
+  telemetry:
+    reportUsage: true

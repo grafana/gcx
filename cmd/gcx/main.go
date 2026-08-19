@@ -68,9 +68,15 @@ func main() {
 	boolFlags := collectBoolFlags(cmd)
 	subCmds := collectSubCmds(cmd)
 
+	// An extension's own flags must not be parsed as gcx's. Separating them
+	// here keeps gcx's global flags working in front of `ext` while everything
+	// after the extension's name reaches it untouched.
+	args := root.RewriteExtensionArgs(cmd, os.Args[1:])
+	cmd.SetArgs(args)
+
 	// prefer sticking to err != nil format, than optimizing for calling exitWith
 	// once
-	if err := root.ValidateArgs(cmd, os.Args[1:]); err != nil {
+	if err := root.ValidateArgs(cmd, args); err != nil {
 		exitWith(cmd, start, reportError(err, boolFlags, subCmds))
 	}
 
