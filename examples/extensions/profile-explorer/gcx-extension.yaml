@@ -1,0 +1,15 @@
+apiVersion: extensions.gcx.grafana.com/v1alpha1
+kind: Extension
+metadata:
+  name: profile-explorer
+spec:
+  version: 0.1.0
+  description: Interactive terminal flamegraph explorer for Pyroscope profiles
+  homepage: https://github.com/grafana/gcx/tree/main/examples/extensions/profile-explorer
+  minGCXVersion: 1.1.0
+  platforms:
+    # A local build, for developing the extension: `go build -o
+    # gcx-ext-profile-explorer . && gcx ext install .`
+    - os: "*"
+      arch: "*"
+      path: ./gcx-ext-profile-explorer
