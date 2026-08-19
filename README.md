@@ -5,6 +5,7 @@
 <a href="https://go.dev/"><img src="https://img.shields.io/badge/go-1.26+-00ADD8?logo=go" alt="Go"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
 <img src="https://img.shields.io/badge/status-generally%20available-green" alt="Generally Available">
+<a href="https://inspect.software/software/grafana/gcx"><img src="https://raw.githubusercontent.com/inspect-software/badges/main/v1/g/grafana/gcx.svg" alt="inspect.software score badge for grafana/gcx" /></a>
 </p>
 
 ![gcx](./gcx.png)
