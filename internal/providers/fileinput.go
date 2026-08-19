@@ -101,10 +101,20 @@ func envelopeSpec(data []byte, wantKind string) ([]byte, error) {
 	var doc map[string]json.RawMessage
 	_ = yaml.Unmarshal(data, &doc)
 
-	_, hasAPIVersion := doc["apiVersion"]
+	rawAPIVersion, hasAPIVersion := doc["apiVersion"]
 	rawKind, hasKind := doc["kind"]
 	if !hasAPIVersion && !hasKind {
 		return nil, nil
+	}
+
+	// Grafana writes an alert provisioning file with a number under
+	// "apiVersion", it declares no kind, and it groups the resources under a
+	// plural key such as "contactPoints". A K8s envelope always holds a
+	// "group/version" string under "apiVersion".
+	if !hasKind && isJSONNumber(rawAPIVersion) {
+		return nil, fmt.Errorf(
+			"the document is a Grafana alert provisioning file, because apiVersion holds the number %s and the document declares no kind; gcx reads one resource object, and it does not read that file format",
+			strings.TrimSpace(string(rawAPIVersion)))
 	}
 
 	var kind string
@@ -121,4 +131,14 @@ func envelopeSpec(data []byte, wantKind string) ([]byte, error) {
 		return nil, errors.New("the document sets apiVersion or kind, but it carries no object-valued spec field, so it defines no resource")
 	}
 	return spec, nil
+}
+
+// isJSONNumber reports whether the raw value is a JSON number.
+func isJSONNumber(raw json.RawMessage) bool {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return false
+	}
+	_, ok := value.(float64)
+	return ok
 }
