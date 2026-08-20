@@ -15,6 +15,10 @@ slower (regression).
 
 Datasource is resolved from the -d flag or datasources.tempo in your context.
 
+Use --since or --from/--to to bound the lookup: narrowing the window helps
+Tempo locate older traces faster. When omitted, the datasource performs a full
+lookback.
+
 ```
 gcx traces diff TRACE_A TRACE_B [flags]
 ```
@@ -34,16 +38,19 @@ gcx traces diff TRACE_A TRACE_B [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for diff
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, yaml (default "json")
+      --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.

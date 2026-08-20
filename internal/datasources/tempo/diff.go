@@ -2,6 +2,7 @@ package tempo
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -13,6 +14,8 @@ import (
 )
 
 type diffOpts struct {
+	dsquery.TimeRangeOpts
+
 	IO         cmdio.Options
 	Datasource string
 }
@@ -24,10 +27,14 @@ func (opts *diffOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
+	opts.SetupTimeFlags(flags)
 }
 
 func (opts *diffOpts) Validate() error {
-	return opts.IO.Validate()
+	if err := opts.IO.Validate(); err != nil {
+		return err
+	}
+	return opts.ValidateTimeRange()
 }
 
 // DiffCmd returns the `diff` subcommand for comparing two traces.
@@ -46,13 +53,20 @@ TRACE_A is the baseline trace and TRACE_B is the comparison trace. Deltas use
 B - A semantics: negative means B is faster (improvement), positive means B is
 slower (regression).
 
-Datasource is resolved from the -d flag or datasources.tempo in your context.`,
+Datasource is resolved from the -d flag or datasources.tempo in your context.
+
+Use --since or --from/--to to bound the lookup: narrowing the window helps
+Tempo locate older traces faster. When omitted, the datasource performs a full
+lookback.`,
 		Example: `
   # Compare two traces (B - A semantics)
   gcx traces diff abc123 def456
 
   # With an explicit datasource UID, JSON output
-  gcx traces diff -d UID abc123 def456 -o json`,
+  gcx traces diff -d UID abc123 def456 -o json
+
+  # Bound the lookup to the last 6 hours for a faster response
+  gcx traces diff abc123 def456 --since 6h`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -71,6 +85,11 @@ Datasource is resolved from the -d flag or datasources.tempo in your context.`,
 				return err
 			}
 
+			start, end, err := opts.ParseTimeRange(time.Now())
+			if err != nil {
+				return err
+			}
+
 			client, err := tempo.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
@@ -79,6 +98,8 @@ Datasource is resolved from the -d flag or datasources.tempo in your context.`,
 			resp, err := client.Diff(ctx, datasourceUID, tempo.DiffRequest{
 				BaseTraceID:    args[0],
 				CompareTraceID: args[1],
+				Start:          start,
+				End:            end,
 			})
 			if err != nil {
 				return fmt.Errorf("trace diff failed: %w", err)

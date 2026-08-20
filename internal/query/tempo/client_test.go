@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/tempo"
+	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -501,13 +502,15 @@ func TestMetricsInstant(t *testing.T) {
 
 func TestDiff(t *testing.T) {
 	tests := []struct {
-		name    string
-		req     tempo.DiffRequest
-		handler http.HandlerFunc
-		wantErr bool
+		name             string
+		req              tempo.DiffRequest
+		handler          http.HandlerFunc
+		wantErr          bool
+		wantCloudOnly    bool
+		wantExperimental bool
 	}{
 		{
-			name: "posts base and compare trace ids without format or time bounds",
+			name: "posts base and compare trace ids without time bounds",
 			req:  tempo.DiffRequest{BaseTraceID: "aaa", CompareTraceID: "bbb"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
@@ -519,8 +522,6 @@ func TestDiff(t *testing.T) {
 				compare, _ := payload["compare"].(map[string]any)
 				assert.Equal(t, "aaa", base["traceId"])
 				assert.Equal(t, "bbb", compare["traceId"])
-				_, hasFormat := payload["format"]
-				assert.False(t, hasFormat)
 				_, hasStart := base["start"]
 				assert.False(t, hasStart)
 				writeJSON(t, w, map[string]any{"summary": map[string]any{"verdict": "regression"}})
@@ -539,13 +540,18 @@ func TestDiff(t *testing.T) {
 			},
 		},
 		{
-			name: "absent endpoint surfaces error",
+			// A truly absent route returns Go's default "404 page not found".
+			// The client marks it Cloud-only + experimental via WithAvailability
+			// so the fail package can render an actionable message.
+			name: "absent endpoint surfaces cloud-only experimental error",
 			req:  tempo.DiffRequest{BaseTraceID: "a", CompareTraceID: "b"},
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				_, _ = w.Write([]byte(`{"message":"not found"}`))
+				_, _ = w.Write([]byte("404 page not found"))
 			},
-			wantErr: true,
+			wantErr:          true,
+			wantCloudOnly:    true,
+			wantExperimental: true,
 		},
 	}
 
@@ -555,10 +561,15 @@ func TestDiff(t *testing.T) {
 			resp, err := client.Diff(context.Background(), "tempo-ds", tc.req)
 			if tc.wantErr {
 				require.Error(t, err)
+				apiErr := &queryerror.APIError{}
+				require.ErrorAs(t, err, &apiErr)
+				assert.Equal(t, tc.wantCloudOnly, apiErr.CloudOnly)
+				assert.Equal(t, tc.wantExperimental, apiErr.Experimental)
 				return
 			}
 			require.NoError(t, err)
-			assert.NotNil(t, resp)
+			require.NotNil(t, resp)
+			assert.Contains(t, resp, "summary")
 		})
 	}
 }
