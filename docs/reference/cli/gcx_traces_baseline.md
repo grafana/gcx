@@ -59,7 +59,7 @@ gcx traces baseline TRACE_ID [flags]
   -h, --help                 help for baseline
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int            Maximum number of candidates to return (default 20)
+      --limit int            Maximum number of candidates to return; must be at least 1 (default 20)
   -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
       --to string            Absolute end time override (RFC3339, Unix timestamp, or relative like 'now'); requires --from
       --window string        Search window padding applied before and after the seed trace's time range, so candidates from before or after the seed are eligible (e.g., 30m, 6h, 7d). Ignored when --from/--to are set (default "30m")
