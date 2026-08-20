@@ -159,4 +159,5 @@ Prescriptive implementation rules live in [docs/design/](docs/design/), split by
 | [help-text.md](docs/design/help-text.md) | Command descriptions, examples format |
 | [naming.md](docs/design/naming.md) | Resource kinds, file naming, config keys, flags |
 | [command-naming.md](docs/design/command-naming.md) | Canonical command verbs and placement |
+| [experimental-commands.md](docs/design/experimental-commands.md) | Marking experimental commands in help text and agent metadata |
 | [environment-variables.md](docs/design/environment-variables.md) | Canonical environment variable reference |
