@@ -1002,6 +1002,124 @@ scoped to the entries in the input file, without uploading.`,
 	return cmd
 }
 
+func newNotificationsCommand(loader RESTConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "notifications",
+		Short: "Manage alert notification configs in the Knowledge Graph.",
+		Long: `Manage alert notification configs (AlertConfig) in the Knowledge Graph.
+
+These govern how matched alerts notify — the labels an alert must match, extra
+alert labels and annotations to attach, the "for" duration, and the silenced
+flag. Distinct from "gcx kg suppressions", which manages disabled-alert configs.`,
+	}
+
+	listOpts := &notificationsListOpts{}
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List alert notification configs, optionally filtered by category.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := listOpts.IO.Validate(); err != nil {
+				return err
+			}
+			category := NotificationCategory(listOpts.Category)
+			if listOpts.Category != "" && !category.IsValid() {
+				return fmt.Errorf("invalid --category %q: must be one of request, resource, health, slo", listOpts.Category)
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			configs, err := client.ListNotifications(cmd.Context(), category)
+			if err != nil {
+				return err
+			}
+			items := configs.AlertConfigs
+			if items == nil {
+				// Zero results must serialize as [] in machine formats, not null.
+				items = []AlertConfig{}
+			}
+			return listOpts.IO.Encode(cmd.OutOrStdout(), items)
+		},
+	}
+	listOpts.setup(listCmd.Flags())
+
+	getOpts := &notificationsGetOpts{}
+	getCmd := &cobra.Command{
+		Use:   "get <name>",
+		Short: "Get an alert notification config by name.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := getOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			config, err := client.GetNotification(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return getOpts.IO.Encode(cmd.OutOrStdout(), config)
+		},
+	}
+	getOpts.setup(getCmd.Flags())
+
+	cmd.AddCommand(listCmd, getCmd)
+	return cmd
+}
+
+type notificationsListOpts struct {
+	Category string
+	IO       cmdio.Options
+}
+
+func (o *notificationsListOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVar(&o.Category, "category", "", "Filter by category: request, resource, health, or slo (server-side, exact match). Empty or omitted lists all categories.")
+	o.IO.RegisterCustomCodec("table", &NotificationTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+type notificationsGetOpts struct {
+	IO cmdio.Options
+}
+
+func (o *notificationsGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
+// NotificationTableCodec renders alert notification configs as a table.
+type NotificationTableCodec struct{}
+
+func (c *NotificationTableCodec) Format() format.Format { return "table" }
+
+func (c *NotificationTableCodec) Encode(w io.Writer, v any) error {
+	configs, ok := v.([]AlertConfig)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []AlertConfig")
+	}
+	t := style.NewTable("NAME", "MATCH LABELS", "FOR", "SILENCED")
+	for _, ac := range configs {
+		t.Row(ac.Name, scopeStr(ac.MatchLabels), ac.For, strconv.FormatBool(ac.Silenced))
+	}
+	return t.Render(w)
+}
+
+func (c *NotificationTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
 type suppressionsCreateOpts struct {
 	File   string
 	DryRun bool

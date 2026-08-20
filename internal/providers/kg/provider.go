@@ -44,6 +44,7 @@ func (p *KGProvider) Commands() []*cobra.Command {
 		newRulesCommand(loader),
 		newModelRulesCommand(loader),
 		newSuppressionsCommand(loader),
+		newNotificationsCommand(loader),
 		newRelabelRulesCommand(loader),
 		// Entities
 		newEntitiesCommand(loader),
