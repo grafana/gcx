@@ -9,7 +9,7 @@ import (
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
-  "github.com/grafana/gcx/internal/query/azuremonitor"
+	"github.com/grafana/gcx/internal/query/azuremonitor"
 	"github.com/grafana/gcx/internal/query/cloudmonitoring"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
