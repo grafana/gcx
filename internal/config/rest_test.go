@@ -302,6 +302,59 @@ func TestNewNamespacedRESTConfig_OAuthProxySetsHost(t *testing.T) {
 	}
 }
 
+func TestNamespacedRESTConfig_ProxyTarget(t *testing.T) {
+	t.Run("direct mode zeroes the path so the subpath is not doubled", func(t *testing.T) {
+		ctx := config.Context{
+			Grafana: &config.GrafanaConfig{
+				Server:   "https://example.com/grafana",
+				APIToken: "glsa_test-token",
+				StackID:  123,
+			},
+		}
+		restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+		if err != nil {
+			t.Fatalf("NewNamespacedRESTConfig: %v", err)
+		}
+
+		target, err := restCfg.ProxyTarget()
+		if err != nil {
+			t.Fatalf("ProxyTarget: %v", err)
+		}
+		if target.Host != "example.com" {
+			t.Errorf("expected host example.com, got %q", target.Host)
+		}
+		if target.Path != "" {
+			t.Errorf("expected empty path in direct mode (subpath is carried by the request), got %q", target.Path)
+		}
+	})
+
+	t.Run("OAuth proxy mode keeps the proxy prefix path", func(t *testing.T) {
+		ctx := config.Context{
+			Grafana: &config.GrafanaConfig{
+				Server:        "https://mystack.grafana.net",
+				ProxyEndpoint: "https://mystack.grafana.net/a/grafana-assistant-app",
+				OAuthToken:    "gat_test-token",
+				StackID:       123,
+			},
+		}
+		restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+		if err != nil {
+			t.Fatalf("NewNamespacedRESTConfig: %v", err)
+		}
+
+		target, err := restCfg.ProxyTarget()
+		if err != nil {
+			t.Fatalf("ProxyTarget: %v", err)
+		}
+		if target.Host != "mystack.grafana.net" {
+			t.Errorf("expected host mystack.grafana.net, got %q", target.Host)
+		}
+		if want := "/a/grafana-assistant-app/api/cli/v1/proxy"; target.Path != want {
+			t.Errorf("expected proxy prefix path %q, got %q", want, target.Path)
+		}
+	})
+}
+
 func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 	refreshServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/cli/v1/auth/refresh" {

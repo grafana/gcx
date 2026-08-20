@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -56,6 +57,29 @@ func (n *NamespacedRESTConfig) FreshOAuthToken(ctx context.Context) (string, err
 		return "", errors.New("OAuth proxy transport is not configured")
 	}
 	return n.oauthTransport.FreshToken(ctx)
+}
+
+// ProxyTarget returns the base URL that the local dev server (`gcx dev serve`)
+// should proxy Grafana traffic to. The returned URL's Path is the prefix to
+// prepend to each incoming request path:
+//
+//   - Direct mode: empty. Host is the plain Grafana server URL, whose own
+//     subpath is already carried by the incoming request path, so the base
+//     contributes no path — prepending it would double the subpath.
+//   - OAuth proxy mode: the assistant backend proxy prefix (e.g.
+//     ".../api/cli/v1/proxy"), which must be kept and prepended to every request.
+//
+// Centralizing this keeps the per-auth-mode meaning of Host owned by the config
+// package rather than reverse-engineered by each proxy call site.
+func (n *NamespacedRESTConfig) ProxyTarget() (*url.URL, error) {
+	u, err := url.Parse(n.Host)
+	if err != nil {
+		return nil, fmt.Errorf("parsing grafana proxy host: %w", err)
+	}
+	if !n.IsOAuthProxy() {
+		u.Path = ""
+	}
+	return u, nil
 }
 
 // SetOnRefresh registers a callback that is invoked after a successful OAuth
