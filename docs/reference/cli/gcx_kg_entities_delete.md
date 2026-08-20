@@ -1,15 +1,17 @@
 ## gcx kg entities delete
 
-Delete a custom entity [experimental].
+[experimental] Delete a custom entity.
 
 ### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
 Delete an API-origin entity. Scope is part of the entity's identity, so it must
 match the value used at upsert — omitting it targets the scope-less entity, and a
 mismatch returns 404 (not found).
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change.
+This command uses the Knowledge Graph write API, which is gated server-side.
 
 ```
 gcx kg entities delete [Type--Name] [flags]

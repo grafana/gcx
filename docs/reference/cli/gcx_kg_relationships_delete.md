@@ -1,6 +1,6 @@
 ## gcx kg relationships delete
 
-Delete a custom relationship [experimental].
+Delete a custom relationship.
 
 ### Synopsis
 
@@ -50,5 +50,5 @@ gcx kg relationships delete [flags]
 
 ### SEE ALSO
 
-* [gcx kg relationships](gcx_kg_relationships.md)	 - Manage custom Knowledge Graph relationships [experimental].
+* [gcx kg relationships](gcx_kg_relationships.md)	 - [experimental] Manage custom Knowledge Graph relationships.
 

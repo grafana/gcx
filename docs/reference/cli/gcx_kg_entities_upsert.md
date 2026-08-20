@@ -1,14 +1,17 @@
 ## gcx kg entities upsert
 
-Create or update a custom entity (upsert) [experimental].
+[experimental] Create or update a custom entity (upsert).
 
 ### Synopsis
 
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
 Create or update an API-origin entity in a writable domain.
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change. If the write API is not enabled on your stack, the
-server returns an error explaining how to request access.
+This command uses the Knowledge Graph write API, which is gated server-side. If
+the write API is not enabled on your stack, the server returns an error
+explaining how to request access.
 
 Identity is (type, name, scope) + domain; re-running with the same identity
 updates the entity. Scope is optional but identity-significant.
