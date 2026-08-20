@@ -1,13 +1,13 @@
-## gcx irm oncall webhooks triggers list
+## gcx irm oncall webhooks list-triggers
 
-List allowed values for a webhook's trigger_type field (older spelling; use `webhooks list-triggers`).
+List allowed values for a webhook's trigger_type field.
 
 ### Synopsis
 
 List the trigger types that an outgoing webhook accepts. The command reads the catalog from the Incident Response and Management backend, so the values match your stack. Put the numeric value in the trigger_type field of a webhook manifest.
 
 ```
-gcx irm oncall webhooks triggers list [flags]
+gcx irm oncall webhooks list-triggers [flags]
 ```
 
 ### Examples
@@ -26,7 +26,7 @@ gcx irm oncall webhooks triggers list [flags]
 ### Options
 
 ```
-  -h, --help            help for list
+  -h, --help            help for list-triggers
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
@@ -35,7 +35,7 @@ gcx irm oncall webhooks triggers list [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
@@ -46,5 +46,5 @@ gcx irm oncall webhooks triggers list [flags]
 
 ### SEE ALSO
 
-* [gcx irm oncall webhooks triggers](gcx_irm_oncall_webhooks_triggers.md)	 - Discover allowed webhook trigger types.
+* [gcx irm oncall webhooks](gcx_irm_oncall_webhooks.md)	 - Manage outgoing webhooks.
 

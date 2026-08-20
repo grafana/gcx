@@ -1,13 +1,13 @@
-## gcx irm oncall webhooks presets list
+## gcx irm oncall webhooks list-presets
 
-List webhook preset IDs (e.g. grafana_assistant) and their allowed triggers (older spelling; use `webhooks list-presets`).
+List webhook preset IDs (e.g. grafana_assistant) and their allowed triggers.
 
 ### Synopsis
 
 List the presets that an outgoing webhook accepts. A preset fills a group of webhook fields, and it limits the trigger types of the webhook. Put the preset ID in the preset field of a webhook manifest.
 
 ```
-gcx irm oncall webhooks presets list [flags]
+gcx irm oncall webhooks list-presets [flags]
 ```
 
 ### Examples
@@ -26,7 +26,7 @@ gcx irm oncall webhooks presets list [flags]
 ### Options
 
 ```
-  -h, --help            help for list
+  -h, --help            help for list-presets
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
@@ -35,7 +35,7 @@ gcx irm oncall webhooks presets list [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
@@ -46,5 +46,5 @@ gcx irm oncall webhooks presets list [flags]
 
 ### SEE ALSO
 
-* [gcx irm oncall webhooks presets](gcx_irm_oncall_webhooks_presets.md)	 - Discover webhook configuration presets.
+* [gcx irm oncall webhooks](gcx_irm_oncall_webhooks.md)	 - Manage outgoing webhooks.
 
