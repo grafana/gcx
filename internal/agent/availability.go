@@ -7,11 +7,17 @@ import "strings"
 // (OSS and Enterprise) as well as Cloud. Each entry covers the command at that
 // path and all of its descendants.
 //
-// Availability is derived from the command path rather than annotated on every
-// leaf because it is a property of whole product groups (plus the Adaptive
-// telemetry subtrees), keeping the source of truth in one place. The
-// determinations mirror the compatibility matrix in README.md and are backed by
-// the official Grafana product docs.
+// Availability for whole product groups (plus the Adaptive telemetry subtrees)
+// is derived from the command path rather than annotated on every leaf, keeping
+// the source of truth in one place. The determinations mirror the compatibility
+// matrix in README.md and are backed by the official Grafana product docs.
+//
+// A single command whose availability does not map to a product group — e.g. an
+// experimental, Cloud-only endpoint shared by more than one mount — may instead
+// set AnnotationAvailability directly in its builder, so the marking follows the
+// builder to every mount. The tree walk in command_annotations.go only fills in
+// the annotation where a builder has not already set one, so the two mechanisms
+// do not conflict.
 //
 //nolint:gochecknoglobals // central availability registry, accessed via IsCloudOnlyPath
 var cloudOnlyPaths = []string{

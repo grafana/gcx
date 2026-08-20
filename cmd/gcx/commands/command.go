@@ -29,6 +29,7 @@ type CommandInfo struct {
 	RequiredAction string        `json:"required_action,omitempty"`
 	Skill          string        `json:"skill,omitempty"`
 	Availability   string        `json:"availability,omitempty"`
+	Stability      string        `json:"stability,omitempty"`
 	Args           string        `json:"args,omitempty"`
 	Flags          []FlagInfo    `json:"flags,omitempty"`
 	Subcommands    []CommandInfo `json:"subcommands,omitempty"`
@@ -166,6 +167,7 @@ func walkCommandWithOptions(cmd *cobra.Command, parentPath string, includeHidden
 		RequiredAction: cmd.Annotations[agent.AnnotationRequiredAction],
 		Skill:          cmd.Annotations[agent.AnnotationSkill],
 		Availability:   cmd.Annotations[agent.AnnotationAvailability],
+		Stability:      cmd.Annotations[agent.AnnotationStability],
 		Args:           extractArgs(cmd.Use),
 	}
 

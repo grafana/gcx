@@ -19,6 +19,23 @@ type APIError struct {
 	StatusCode  int
 	Message     string
 	ErrorSource string
+
+	// CloudOnly and Experimental are optional deployment-availability facts
+	// about the endpoint (zero value = no hints). Callers of Cloud-only or
+	// experimental endpoints set these via WithAvailability so the CLI can
+	// explain a route-absent failure instead of dumping a bare status code.
+	CloudOnly    bool
+	Experimental bool
+}
+
+// WithAvailability annotates the error with deployment-availability facts about
+// the endpoint. Returns the receiver for chaining, e.g.:
+//
+//	return queryerror.FromBody(...).WithAvailability(true, true)
+func (e *APIError) WithAvailability(cloudOnly, experimental bool) *APIError {
+	e.CloudOnly = cloudOnly
+	e.Experimental = experimental
+	return e
 }
 
 // New constructs an APIError with sanitized message fields.
