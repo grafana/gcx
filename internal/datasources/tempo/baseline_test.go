@@ -188,6 +188,47 @@ func TestParseSeedTrace_SkipsZeroTimestamps(t *testing.T) {
 	assert.Equal(t, uint64(1700000000900000000), p.MaxEndNanos)
 }
 
+func TestParseSeedTrace_RootElectionPrefersTimestampedSpan(t *testing.T) {
+	missingStart := map[string]any{
+		"name":            "missing-start-root",
+		"endTimeUnixNano": "1700000000900000000",
+	}
+	timestamped := map[string]any{
+		"name":              "timestamped-root",
+		"startTimeUnixNano": "1700000000000000000",
+		"endTimeUnixNano":   "1700000000500000000",
+	}
+
+	for _, tc := range []struct {
+		name  string
+		spans []any
+	}{
+		{name: "missing start before timestamped root", spans: []any{missingStart, timestamped}},
+		{name: "missing start after timestamped root", spans: []any{timestamped, missingStart}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			trace := map[string]any{
+				"resourceSpans": []any{
+					map[string]any{
+						"resource": map[string]any{
+							"attributes": []any{
+								map[string]any{"key": "service.name", "value": map[string]any{"stringValue": "checkout"}},
+							},
+						},
+						"scopeSpans": []any{
+							map[string]any{"spans": tc.spans},
+						},
+					},
+				},
+			}
+
+			profile := parseSeedTrace(trace)
+			assert.Equal(t, "checkout", profile.RootService)
+			assert.Equal(t, "timestamped-root", profile.RootOperation)
+		})
+	}
+}
+
 func TestFoldTimeRange(t *testing.T) {
 	var p seedProfile
 	p.foldTimeRange(0, 0) // both absent → no range established
@@ -204,7 +245,7 @@ func TestFoldTimeRange(t *testing.T) {
 func TestBuildBaselineQuery(t *testing.T) {
 	q := buildBaselineQuery("checkout", "POST /checkout", nil)
 	assert.Equal(t,
-		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && status != error }`,
+		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 }`,
 		q,
 	)
 }
@@ -212,7 +253,7 @@ func TestBuildBaselineQuery(t *testing.T) {
 func TestBuildBaselineQuery_TopologyFingerprint(t *testing.T) {
 	q := buildBaselineQuery("checkout", "POST /checkout", []string{"payments", "postgres"})
 	assert.Equal(t,
-		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && status != error } && { resource.service.name = "payments" } && { resource.service.name = "postgres" }`,
+		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 } && { resource.service.name = "payments" } && { resource.service.name = "postgres" }`,
 		q,
 	)
 }
