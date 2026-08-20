@@ -88,6 +88,39 @@ func TestFormatSeriesTable(t *testing.T) {
 	}
 }
 
+func TestFormatProfileSeries(t *testing.T) {
+	resp := &pyroscope.SeriesResponse{
+		LabelsSet: []pyroscope.Labels{
+			{Labels: []pyroscope.LabelPair{
+				{Name: "namespace", Value: "prod"},
+				{Name: "service_name", Value: "api"},
+			}},
+		},
+	}
+
+	var table bytes.Buffer
+	require.NoError(t, pyroscope.FormatProfileSeriesTable(&table, resp))
+	assert.Contains(t, table.String(), "{namespace=\"prod\",service_name=\"api\"}")
+
+	var wide bytes.Buffer
+	require.NoError(t, pyroscope.FormatProfileSeriesWide(&wide, resp))
+	assert.Contains(t, wide.String(), "namespace")
+	assert.Contains(t, wide.String(), "service_name")
+	assert.Contains(t, wide.String(), "prod")
+}
+
+func TestFormatProfileSeriesTableEscapesLabelValues(t *testing.T) {
+	resp := &pyroscope.SeriesResponse{
+		LabelsSet: []pyroscope.Labels{{Labels: []pyroscope.LabelPair{
+			{Name: "path", Value: `C:\\profiles\"quoted\"`},
+		}}},
+	}
+
+	var table bytes.Buffer
+	require.NoError(t, pyroscope.FormatProfileSeriesTable(&table, resp))
+	assert.Contains(t, table.String(), `{path="C:\\\\profiles\\\"quoted\\\""}`)
+}
+
 func TestFormatTopSeriesTable(t *testing.T) {
 	tests := []struct {
 		name     string
