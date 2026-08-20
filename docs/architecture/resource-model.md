@@ -65,8 +65,11 @@ Every `Resource` carries a `SourceInfo` (line 374) recording where it came from.
 
 Resources carry manager metadata in annotations (via `GrafanaMetaAccessor`):
 - `grafana.app/manager-kind` — which tool manages the resource (gcx uses `utils.ManagerKindKubectl` as placeholder, line 19)
-- `grafana.app/manager-identity` — identity string ("gcx")
+- `grafana.app/manager-identity` — identity string, built by `process.ManagerIdentity()` as `gcx/<version>` (for example `gcx/3.0.0`, or `gcx/SNAPSHOT` for a build without version information)
+- `grafana.app/manager-allows-edits` — always `true`, so the Grafana user interface keeps a pushed resource editable
 - `grafana.app/source-path` — original file path
+
+gcx leaves `grafana.app/source-checksum` and `grafana.app/source-timestamp` empty. Grafana uses both fields to reconcile a resource from a source over time. gcx pushes one time per command, and no gcx code reads the two fields back.
 
 `IsManaged()` (line 161) returns true when the manager kind matches `ResourceManagerKind`. Resources managed by the UI (with `grafana.app/saved-from-ui` annotation) or other tools are protected from accidental overwrites unless `--include-managed` is passed.
 
