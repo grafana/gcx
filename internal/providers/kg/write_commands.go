@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -74,12 +75,15 @@ func newEntitiesCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &entityCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "upsert",
-		Short: "Create or update a custom entity (upsert) [experimental].",
-		Long: `Create or update an API-origin entity in a writable domain.
+		Short: "[experimental] Create or update a custom entity (upsert).",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change. If the write API is not enabled on your stack, the
-server returns an error explaining how to request access.
+Create or update an API-origin entity in a writable domain.
+
+This command uses the Knowledge Graph write API, which is gated server-side. If
+the write API is not enabled on your stack, the server returns an error
+explaining how to request access.
 
 Identity is (type, name, scope) + domain; re-running with the same identity
 updates the entity. Scope is optional but identity-significant.
@@ -89,6 +93,7 @@ are processed in order as independent upserts: the operation is not atomic,
 and entries already written stay written if a later entry fails.`,
 		Example: `  gcx kg entities upsert --domain myapp --type Service --name checkout --scope env=prod --ttl 1h
   gcx kg entities upsert -f entity.yaml`,
+		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -256,14 +261,17 @@ func newEntitiesDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "delete [Type--Name]",
-		Short: "Delete a custom entity [experimental].",
-		Long: `Delete an API-origin entity. Scope is part of the entity's identity, so it must
+		Short: "[experimental] Delete a custom entity.",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Delete an API-origin entity. Scope is part of the entity's identity, so it must
 match the value used at upsert — omitting it targets the scope-less entity, and a
 mismatch returns 404 (not found).
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change.`,
-		Args: cobra.MaximumNArgs(1),
+This command uses the Knowledge Graph write API, which is gated server-side.`,
+		Args:        cobra.MaximumNArgs(1),
+		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ioOpts.Validate(); err != nil {
 				return err
@@ -331,7 +339,12 @@ func newRelationshipsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "relationships",
 		Aliases: []string{"relationship", "rels"},
-		Short:   "Manage custom Knowledge Graph relationships [experimental].",
+		Short:   "[experimental] Manage custom Knowledge Graph relationships.",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Create, update, and delete API-origin edges between Knowledge Graph entities.`,
+		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
 	}
 	cmd.AddCommand(newRelationshipsCreateCommand(loader), newRelationshipsDeleteCommand(loader))
 	return cmd
@@ -417,7 +430,7 @@ func newRelationshipsCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &relCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "upsert",
-		Short: "Create or update a custom relationship (upsert) [experimental].",
+		Short: "Create or update a custom relationship (upsert).",
 		Long: `Create or update an API-origin edge between two existing entities.
 Both endpoints must already exist.
 
@@ -430,6 +443,7 @@ and entries already written stay written if a later entry fails.`,
 		Example: `  gcx kg relationships upsert --type CALLS --domain myapp \
     --from myapp/Service/checkout --to myapp/Service/cart --to-scope env=prod --ttl 1h
   gcx kg relationships upsert -f rel.yaml`,
+		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -599,7 +613,7 @@ func newRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "delete",
-		Short: "Delete a custom relationship [experimental].",
+		Short: "Delete a custom relationship.",
 		Long: `Delete an API-origin edge of the given type between the from/to entities.
 The endpoint refs (incl. scope) must match the values used at upsert.
 
@@ -607,6 +621,7 @@ Experimental: this command uses the Knowledge Graph write API, which is gated
 server-side and may change.`,
 		Example: `  gcx kg relationships delete --type CALLS \
     --from myapp/Service/checkout --to myapp/Service/cart --force`,
+		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.Validate(); err != nil {
 				return err

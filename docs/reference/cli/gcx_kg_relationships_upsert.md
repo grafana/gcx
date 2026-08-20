@@ -1,6 +1,6 @@
 ## gcx kg relationships upsert
 
-Create or update a custom relationship (upsert) [experimental].
+Create or update a custom relationship (upsert).
 
 ### Synopsis
 
@@ -58,5 +58,5 @@ gcx kg relationships upsert [flags]
 
 ### SEE ALSO
 
-* [gcx kg relationships](gcx_kg_relationships.md)	 - Manage custom Knowledge Graph relationships [experimental].
+* [gcx kg relationships](gcx_kg_relationships.md)	 - [experimental] Manage custom Knowledge Graph relationships.
 

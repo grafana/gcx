@@ -44,10 +44,11 @@ func DiffCmd(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff TRACE_A TRACE_B",
 		Short: "[experimental] Compare two traces (baseline vs comparison)",
-		Long: `[experimental] Compare two traces using the Tempo trace-diff API.
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
-This is an experimental, Grafana Cloud-only endpoint: it may be unavailable on
-self-hosted or OSS Tempo, and its request/response shape may change.
+Compare two traces using the Tempo trace-diff API. This is a Grafana Cloud-only
+endpoint: it may be unavailable on self-hosted or OSS Tempo.
 
 TRACE_A is the baseline trace and TRACE_B is the comparison trace. Deltas use
 B - A semantics: negative means B is faster (improvement), positive means B is
