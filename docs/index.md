@@ -17,6 +17,11 @@ Whether you're automating workflows in CI/CD pipelines or switching between stag
 
 gcx is Generally Available. It is still under active development.
 
+Individual commands labelled `[experimental]` in their help text are exempt from
+the usual stability guarantee: they may be removed, or their subcommands, flags
+and responses may change, without following the normal semantic versioning
+conventions.
+
 Additional information can be found in
 [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/).
 
