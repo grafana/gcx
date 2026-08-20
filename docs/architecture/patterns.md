@@ -279,7 +279,8 @@ in `NewNamespacedRESTConfig`; the provider tier gets it via
 `httputils.NewDefaultClient(ctx)`. The `--insecure-log-http-payload` flag adds full body
 dumps via `RequestResponseLoggingRoundTripper` across both tiers — `NewDefaultClient`
 checks `PayloadLogging(ctx)` directly; `NewNamespacedRESTConfig` checks it when
-building the `WrapTransport` chain.
+building the `WrapTransport` chain. In both tiers the dump is the innermost
+layer, so it shows every header that an outer layer adds.
 
 **Output rendering:** Query results can be rendered as tables, JSON/YAML, or
 terminal charts (`internal/graph`). The `query` command registers custom codecs
