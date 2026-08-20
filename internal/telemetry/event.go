@@ -16,11 +16,34 @@ const (
 // follow the usage-stats JSON schema (snake_case); the json encoding of this
 // struct is exactly what travels on the wire (see Export).
 //
-// Privacy invariant: no field may carry argument or flag values, resource
-// names, hostnames, or anything else that identifies a person, an
-// organisation, or their data. Flags holds flag NAMES only; Command is the
-// resolved command path only. The parse_error_* fields are shape-filtered
-// before they are set (see #578).
+// Privacy invariant, stated as three separate rules because a single blanket
+// sentence has twice been written here in a form that was already false:
+//
+//   - No field carries an argument value, a free-form flag value, a resource
+//     name, a hostname, or anything else identifying a person, an organisation,
+//     or their data. Flags holds flag NAMES only; Command is the resolved
+//     command path only; the parse_error_* fields are shape-filtered before they
+//     are set (see #578).
+//   - No field carries a raw count of batch or resource volume. Batch sizes
+//     travel as labels from the fixed vocabulary in bucket.go. Note that two of
+//     those labels are singletons, so a batch of 0 or 1 is exactly recoverable —
+//     say "fixed categories", never "never exact". Scope this to volume rather
+//     than to numbers in general: ExitCode, DurationMS and ParseErrorDistance
+//     are all raw numbers, and they are fine because they describe the
+//     invocation, not how much of anyone's inventory it touched.
+//   - A small, enumerated set of fields is derived from how the command ran
+//     rather than from a name, and each is documented on its own field below:
+//     OutputFormat (the value of --output, filtered to a fixed list of formats)
+//     and DryRun (whether the operation ran in dry-run mode). Neither says
+//     anything about the user, their organisation, or their data.
+//
+// Do not phrase this as "the only exception is X". That form is a promise about
+// every other field in the struct, so it has to be re-audited against the whole
+// event each time one is added — and the first version written here claimed
+// DryRun was the only one while OutputFormat sat two lines below it. Adding a
+// third such field means updating the first-run notice (firstrun.go, and
+// bumping noticeRevision so existing installs actually see it) and the published
+// usage-statistics page.
 type Event struct {
 	// Envelope.
 	Service string `json:"service"`
@@ -49,6 +72,23 @@ type Event struct {
 	Agent        string `json:"agent"`
 	TargetKind   string `json:"target_kind"`
 	OutputFormat string `json:"output_format"`
+
+	// Batch volume, set only for a batch resource operation that ran to a
+	// finalized count. All four are present together or absent together:
+	// absent means this invocation was not one of those operations, or it
+	// aborted before its counts were final. A failure to render or write the
+	// summary afterwards does not clear them — the work still happened.
+	//
+	// DryRun reports whether the operation ran in dry-run mode. False does not
+	// imply that anything was mutated: pull is read-only and always reports
+	// false. Interpret it together with Command.
+	//
+	// The bucket values come from Bucket; units differ per command, so these
+	// must be read alongside Command and never summed across commands.
+	BatchSucceededBucket *string `json:"batch_succeeded_bucket,omitempty"`
+	BatchFailedBucket    *string `json:"batch_failed_bucket,omitempty"`
+	BatchSkippedBucket   *string `json:"batch_skipped_bucket,omitempty"`
+	DryRun               *bool   `json:"dry_run,omitempty"`
 
 	// Parse-failure capture, set only when Outcome is OutcomeParseError.
 	ParseErrorKind     string `json:"parse_error_kind,omitempty"`

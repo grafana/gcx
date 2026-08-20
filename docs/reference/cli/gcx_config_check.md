@@ -1,10 +1,12 @@
 ## gcx config check
 
-Check the current configuration for issues
+Check configuration contexts for issues
 
 ### Synopsis
 
-Check the current configuration for issues.
+Check configured contexts for issues.
+
+Without --context, checks every configured context. With --context, checks only the selected context.
 
 ```
 gcx config check [flags]
@@ -15,6 +17,7 @@ gcx config check [flags]
 ```
 
 	gcx config check
+	gcx config check --context production
 ```
 
 ### Options
@@ -26,7 +29,7 @@ gcx config check [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.

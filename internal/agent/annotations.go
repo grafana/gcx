@@ -9,9 +9,15 @@ const (
 	AnnotationRequiredAction = "agent.required_action" // required action
 	AnnotationSkill          = "agent.skill"           // comma-joined related Agent Skill names
 	AnnotationAvailability   = "agent.availability"    // "grafana-cloud-only" (absent = available on self-hosted + cloud)
+	AnnotationStability      = "agent.stability"       // "experimental" (absent = stable/GA)
 )
 
 // AvailabilityCloudOnly marks a command as only usable against Grafana Cloud.
 // It is the sole value emitted for AnnotationAvailability; absence of the
 // annotation means the command works everywhere (OSS, Enterprise, and Cloud).
 const AvailabilityCloudOnly = "grafana-cloud-only"
+
+// StabilityExperimental marks a command whose endpoint, flags, or output may
+// change or be removed. It is the sole value emitted for AnnotationStability;
+// absence of the annotation means the command is stable/GA.
+const StabilityExperimental = "experimental"

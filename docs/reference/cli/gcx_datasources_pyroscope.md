@@ -12,7 +12,7 @@ Query Pyroscope datasources
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -23,6 +23,7 @@ Query Pyroscope datasources
 ### SEE ALSO
 
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx datasources pyroscope data-range](gcx_datasources_pyroscope_data-range.md)	 - Show the range of profiling data the datasource holds
 * [gcx datasources pyroscope exemplars](gcx_datasources_pyroscope_exemplars.md)	 - Query profile or span exemplars from a Pyroscope datasource
 * [gcx datasources pyroscope labels](gcx_datasources_pyroscope_labels.md)	 - List labels or label values
 * [gcx datasources pyroscope list-profile-types](gcx_datasources_pyroscope_list-profile-types.md)	 - List available profile types

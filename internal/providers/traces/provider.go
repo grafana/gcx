@@ -77,6 +77,17 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Output as JSON
   gcx traces metrics -d UID '{ } | rate()' --since 1h -o json`,
 			},
+			{
+				Build:     dstempo.DiffCmd,
+				TokenCost: "medium",
+				LLMHint:   "gcx traces diff -d abc123 <trace-a> <trace-b> -o json",
+				Example: `
+  # Compare two traces (B - A semantics); experimental, Grafana Cloud-only
+  gcx traces diff <trace-a> <trace-b>
+
+  # With an explicit datasource UID, JSON output
+  gcx traces diff -d UID <trace-a> <trace-b> -o json`,
+			},
 		},
 		Adaptive: &signals.AdaptiveSpec{
 			Build: adaptivetraces.Commands,

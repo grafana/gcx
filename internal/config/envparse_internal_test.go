@@ -94,13 +94,11 @@ func TestParseEnvIntoContextDetachesSharedStackRuntimeView(t *testing.T) {
 	assert.Equal(t, []byte("persisted-ca-snapshot"), originalTLS.credentialCAFile.contents)
 	assert.Equal(t, []string{"dashboards.grafana.app"}, originalStack.Resources.AssumeServerDryRun)
 
-	// Owner provenance and rejection evidence survive on the runtime clone, but
-	// its map is independent so later binding enforcement cannot mutate disk state.
+	// Owner provenance survives on the runtime clone. The nonblank environment
+	// token clears its rejection only on that clone so validation can proceed.
 	assert.Equal(t, originalStack.Name, selected.StackEntry.Name)
 	assert.Equal(t, originalStack.sourceIdentity, selected.StackEntry.sourceIdentity)
 	assert.Equal(t, originalStack.sourceLayer, selected.StackEntry.sourceLayer)
-	require.Error(t, selected.StackEntry.credentialRejection(credentials.FieldGrafanaToken))
-	selected.StackEntry.clearCredentialRejection(credentials.FieldGrafanaToken)
 	require.NoError(t, selected.StackEntry.credentialRejection(credentials.FieldGrafanaToken))
 	require.Error(t, originalStack.credentialRejection(credentials.FieldGrafanaToken))
 

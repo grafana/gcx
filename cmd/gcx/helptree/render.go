@@ -67,6 +67,11 @@ func renderNode(buf *strings.Builder, cmd *cobra.Command, depth int, opts Render
 		line += "  # " + availability
 	}
 
+	// Append stability annotation.
+	if stability := cmd.Annotations[agent.AnnotationStability]; stability != "" {
+		line += "  # " + stability
+	}
+
 	fmt.Fprintln(buf, line)
 
 	// Recurse into subcommands if depth allows.

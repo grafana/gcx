@@ -51,6 +51,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
@@ -844,10 +845,20 @@ func resolveBulkTargets(ctx context.Context, client OnCallAPI, opts *alertGroupA
 // pass --state explicitly" check, so we replicate just the bits we need here).
 func (o *alertGroupActionVerbOpts) toListFilters() (alertGroupListFilters, error) {
 	out := alertGroupListFilters{
-		MaxAge:       o.MaxAge,
 		Teams:        o.Teams,
 		Integrations: o.Integrations,
 		Mine:         o.Mine,
+	}
+
+	// --max-age is the only time expression the bulk verbs take; resolve it to
+	// an absolute window here, matching resolveAlertGroupListFilters.
+	if o.MaxAge != "" {
+		dur, err := parseDuration(o.MaxAge)
+		if err != nil {
+			return out, fmt.Errorf("invalid --max-age value %q: %w", o.MaxAge, err)
+		}
+		now := time.Now()
+		out.StartedAt = &timeWindow{From: now.Add(-dur), To: now}
 	}
 
 	if len(o.States) > 0 {
