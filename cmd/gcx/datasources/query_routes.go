@@ -86,6 +86,11 @@ func newQueryRoutes() queryRoutes {
 			"pyroscope":  dispatchPyroscope,
 		},
 		redirects: map[string]string{
+			"azuremonitor": structuredQueryRedirect(
+				"Azure Monitor",
+				"subscription, resource group, resource, namespace, metric, aggregation",
+				"gcx datasources azuremonitor query --subscription ... --resource-group ... --resource ... --namespace ... --metric ...",
+			),
 			"cloudwatch": structuredQueryRedirect(
 				"CloudWatch",
 				"namespace, metric, dimensions, region, statistic, period",
