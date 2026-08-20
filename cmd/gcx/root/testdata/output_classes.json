@@ -223,6 +223,8 @@
  "gcx datasources tempo metrics": "finite",
  "gcx datasources tempo query": "finite",
  "gcx datasources update": "finite",
+ "gcx dbo11y instances get": "finite",
+ "gcx dbo11y instances list": "finite",
  "gcx dev generate": "finite",
  "gcx dev import": "finite",
  "gcx dev lint list-rules": "finite",
