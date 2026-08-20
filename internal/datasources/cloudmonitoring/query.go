@@ -3,6 +3,8 @@ package cloudmonitoring
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -55,6 +57,74 @@ func (opts *queryOpts) Validate() error {
 	}
 	if opts.Metric == "" {
 		return errors.New("--metric is required")
+	}
+	if err := validateReducer(opts.Reducer); err != nil {
+		return err
+	}
+	if err := validateAligner(opts.Aligner); err != nil {
+		return err
+	}
+	if err := validateAlignmentPeriod(opts.AlignmentPeriod); err != nil {
+		return err
+	}
+	if err := validateGroupBys(opts.GroupBys); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateReducer checks r against the google.monitoring.v3.Aggregation.Reducer
+// enum values the Google Cloud Monitoring API accepts for --reducer
+// (cross-series reduction).
+// https://cloud.google.com/monitoring/api/ref_v3/rpc/google.monitoring.v3#aggregation-reducer
+func validateReducer(r string) error {
+	switch r {
+	case "REDUCE_NONE", "REDUCE_MEAN", "REDUCE_MIN", "REDUCE_MAX", "REDUCE_SUM",
+		"REDUCE_STDDEV", "REDUCE_COUNT", "REDUCE_COUNT_TRUE", "REDUCE_COUNT_FALSE",
+		"REDUCE_FRACTION_TRUE", "REDUCE_PERCENTILE_99", "REDUCE_PERCENTILE_95",
+		"REDUCE_PERCENTILE_50", "REDUCE_PERCENTILE_05":
+		return nil
+	default:
+		return fmt.Errorf("--reducer %q is not a valid cross-series reducer", r)
+	}
+}
+
+// validateAligner checks a against the google.monitoring.v3.Aggregation.Aligner
+// enum values the Google Cloud Monitoring API accepts for --aligner
+// (per-series alignment).
+// https://cloud.google.com/monitoring/api/ref_v3/rpc/google.monitoring.v3#aggregation-aligner
+func validateAligner(a string) error {
+	switch a {
+	case "ALIGN_NONE", "ALIGN_DELTA", "ALIGN_RATE", "ALIGN_INTERPOLATE", "ALIGN_NEXT_OLDER",
+		"ALIGN_MIN", "ALIGN_MAX", "ALIGN_MEAN", "ALIGN_COUNT", "ALIGN_SUM", "ALIGN_STDDEV",
+		"ALIGN_COUNT_TRUE", "ALIGN_COUNT_FALSE", "ALIGN_FRACTION_TRUE",
+		"ALIGN_PERCENTILE_99", "ALIGN_PERCENTILE_95", "ALIGN_PERCENTILE_50", "ALIGN_PERCENTILE_05",
+		"ALIGN_PERCENT_CHANGE":
+		return nil
+	default:
+		return fmt.Errorf("--aligner %q is not a valid per-series aligner", a)
+	}
+}
+
+// alignmentPeriodRe matches the Grafana Cloud Monitoring plugin's alignment
+// period syntax: a leading "+", digits, then "s" (e.g. +60s, +3600s).
+var alignmentPeriodRe = regexp.MustCompile(`^\+\d+s$`)
+
+func validateAlignmentPeriod(p string) error {
+	if p == "" {
+		return nil // auto-fit the time range
+	}
+	if !alignmentPeriodRe.MatchString(p) {
+		return fmt.Errorf(`--alignment-period %q must be empty (auto-fit) or match "+<seconds>s", e.g. +60s`, p)
+	}
+	return nil
+}
+
+func validateGroupBys(groupBys []string) error {
+	for _, g := range groupBys {
+		if strings.TrimSpace(g) == "" {
+			return errors.New("--group-by entries must not be empty")
+		}
 	}
 	return nil
 }
