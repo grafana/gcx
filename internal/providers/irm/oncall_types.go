@@ -181,6 +181,8 @@ type OnCallAPI interface {
 	ListUserGroups(ctx context.Context) ([]UserGroup, error)
 	ListSlackChannels(ctx context.Context) ([]SlackChannel, error)
 
+	SyncPlugin(ctx context.Context) error
+
 	ListAlerts(ctx context.Context, alertGroupID string, opts ...ListOption) ([]Alert, error)
 	GetAlert(ctx context.Context, id string) (*Alert, error)
 

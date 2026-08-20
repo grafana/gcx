@@ -58,6 +58,7 @@ See ` + docs.IRMInvoice + `.`,
 		newResolutionNotesCmd(loader),
 		newShiftSwapsCmd(loader),
 		newEscalateCommand(loader),
+		newSyncPluginCommand(loader),
 	)
 
 	irmCmd.AddCommand(oncallCmd)

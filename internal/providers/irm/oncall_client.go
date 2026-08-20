@@ -43,6 +43,7 @@ const (
 	resolutionNotesPath    = "resolution_notes/"
 	shiftSwapsPath         = "shift_swaps/"
 	directPagingPath       = "direct_paging"
+	pluginSyncPath         = "plugin/sync"
 )
 
 var _ OnCallAPI = (*OnCallClient)(nil)
@@ -828,4 +829,30 @@ func (c *OnCallClient) TakeShiftSwap(ctx context.Context, id string, input TakeS
 
 func (c *OnCallClient) CreateDirectPaging(ctx context.Context, input DirectPagingInput) (*DirectPagingResult, error) {
 	return createResource[DirectPagingInput, DirectPagingResult](ctx, c, directPagingPath, input, "direct paging")
+}
+
+// --- Plugin ---
+
+// SyncPlugin asks the IRM plugin to refresh its copy of the Grafana users and
+// teams.
+//
+// IRM keeps its own copy and refreshes it on a schedule. Until that refresh
+// lands, an IRM object that references a new team or user fails with
+// "Object does not exist". This call starts the refresh. It does not prove
+// that the copy is current when the call returns.
+//
+// The backend answers with free-form success text that a caller cannot
+// dispatch on, so this method ignores the body, like deleteResource does, and
+// treats every 2xx status code as a success.
+func (c *OnCallClient) SyncPlugin(ctx context.Context) error {
+	resp, err := c.DoRequest(ctx, http.MethodPost, pluginSyncPath, nil)
+	if err != nil {
+		return fmt.Errorf("irm: sync plugin: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return providers.HandleErrorResponse(resp)
+	}
+	return nil
 }
