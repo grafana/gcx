@@ -28,6 +28,16 @@ func wantParseErrorOnly() []string {
 	}
 }
 
+// wantBatchOnly are the fields set only for a batch resource operation that ran
+// to a finalized count. They travel together: present for such an operation,
+// absent for every other invocation. Their presence says the operation
+// completed, not that the user was shown a summary.
+func wantBatchOnly() []string {
+	return []string{
+		"batch_succeeded_bucket", "batch_failed_bucket", "batch_skipped_bucket", "dry_run",
+	}
+}
+
 func marshalKeys(t *testing.T, ev telemetry.Event) map[string]any {
 	t.Helper()
 	data, err := json.Marshal(ev)
@@ -38,6 +48,7 @@ func marshalKeys(t *testing.T, ev telemetry.Event) map[string]any {
 }
 
 func TestEventFieldInventory(t *testing.T) {
+	appliedRun := false
 	full := telemetry.Event{
 		Service:            telemetry.ServiceName,
 		Version:            "0.4.1",
@@ -66,10 +77,16 @@ func TestEventFieldInventory(t *testing.T) {
 		ParseErrorFlags:    "verbsoe",
 		ParseErrorNearest:  "search",
 		ParseErrorDistance: 2,
+
+		BatchSucceededBucket: strPtr(telemetry.BucketToHundred),
+		BatchFailedBucket:    strPtr(telemetry.BucketZero),
+		BatchSkippedBucket:   strPtr(telemetry.BucketZero),
+		DryRun:               &appliedRun,
 	}
 
 	got := marshalKeys(t, full)
 	want := append(wantAlwaysPresent(), wantParseErrorOnly()...)
+	want = append(want, wantBatchOnly()...)
 	assert.ElementsMatch(t, want, keys(got), "full event must emit exactly the documented field set")
 }
 
@@ -78,6 +95,34 @@ func TestEventOmitsParseFieldsWhenUnset(t *testing.T) {
 	assert.ElementsMatch(t, wantAlwaysPresent(), keys(got),
 		"non-parse-error events must omit parse_error_* and keep all other fields, even zero-valued")
 }
+
+// A non-batch invocation must carry no batch fields at all: absence is what
+// distinguishes "not a batch operation" from "a batch that matched nothing".
+func TestEventOmitsBatchFieldsWhenUnset(t *testing.T) {
+	got := marshalKeys(t, telemetry.Event{Outcome: telemetry.OutcomeOK})
+	for _, field := range wantBatchOnly() {
+		assert.NotContains(t, got, field, "non-batch events must omit every batch field")
+	}
+}
+
+// The zero bucket and a false dry-run are real answers, so omitempty must not
+// drop them. This is the case that makes the fields pointers.
+func TestEventKeepsZeroBatchValues(t *testing.T) {
+	appliedRun := false
+	got := marshalKeys(t, telemetry.Event{
+		Outcome:              telemetry.OutcomeOK,
+		BatchSucceededBucket: strPtr(telemetry.BucketZero),
+		BatchFailedBucket:    strPtr(telemetry.BucketZero),
+		BatchSkippedBucket:   strPtr(telemetry.BucketZero),
+		DryRun:               &appliedRun,
+	})
+
+	assert.Equal(t, telemetry.BucketZero, got["batch_succeeded_bucket"],
+		"a batch that matched nothing must report bucket 0, not vanish")
+	assert.Equal(t, false, got["dry_run"], "dry_run=false must survive omitempty")
+}
+
+func strPtr(s string) *string { return &s } //nolint:modernize // new(string) gives *"", not a pointer to the given value.
 
 func TestEventNoNearMatchDistanceSurvives(t *testing.T) {
 	// -1 (novel guess, no near match) must not be dropped by omitempty.

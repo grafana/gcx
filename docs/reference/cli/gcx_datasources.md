@@ -15,7 +15,7 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -27,6 +27,7 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx datasources athena](gcx_datasources_athena.md)	 - Query Amazon Athena datasources
+* [gcx datasources azuremonitor](gcx_datasources_azuremonitor.md)	 - Query Azure Monitor datasources
 * [gcx datasources clickhouse](gcx_datasources_clickhouse.md)	 - Query ClickHouse datasources
 * [gcx datasources cloudwatch](gcx_datasources_cloudwatch.md)	 - Query AWS CloudWatch datasources
 * [gcx datasources create](gcx_datasources_create.md)	 - Create a datasource from a manifest file

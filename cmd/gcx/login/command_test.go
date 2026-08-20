@@ -2253,6 +2253,7 @@ func disableAgentMode(t *testing.T) {
 		"GITHUB_COPILOT",
 		"AMAZON_Q",
 		"OPENCODE",
+		"PI_CODING_AGENT",
 	} {
 		t.Setenv(v, "")
 	}

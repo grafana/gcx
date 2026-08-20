@@ -12,7 +12,7 @@ gcx/
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── datasources/      # 'datasources' subcommand (list, get, query)
-│       │   └── query/        # Auto-detecting query command (GenericCmd only)
+│       │                     #   query.go + query_routes.go: auto-detecting query and its per-kind routing tables
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
@@ -90,6 +90,7 @@ gcx/
 │   ├── docs/                 # Canonical Grafana documentation URL registry (markdown links surfaced via DetailedError.DocsLink and agent llm_hints)
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
+│   │   ├── azuremonitor/     # Azure Monitor CLI commands (query, logs, resource-graph, list-subscriptions, list-resource-groups, list-resources, list-metrics)
 │   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
 │   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
@@ -97,6 +98,7 @@ gcx/
 │   ├── query/                # Datasource query clients
 │   │   ├── dataframe/        # Shared Grafana data frame wire types for unified datasource query API responses
 │   │   ├── grafanaquery/     # Shared POST transport for /apis/query.grafana.app/.../query with /api/ds/query fallback
+│   │   ├── azuremonitor/     # Azure Monitor HTTP query client (metric queries, KQL logs + resource graph, ARM discovery via datasource resource proxy)
 │   │   ├── cloudwatch/       # CloudWatch HTTP client (metric queries, resource listing)
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   ├── influxdb/         # InfluxDB HTTP query client
@@ -109,7 +111,8 @@ gcx/
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
 │   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
-│   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, flat-JSON HTTP export)
+│   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, volume buckets, flat-JSON HTTP export)
+│   │   └── capture/          # Process-wide invocation facts written mid-run, read once at exit by the usage-event builder (holds no wire vocabulary, so writing a signal does not pull in the event model or HTTP exporter)
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer

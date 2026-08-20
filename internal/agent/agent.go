@@ -1,5 +1,5 @@
 // Package agent detects whether gcx is running inside an AI agent
-// environment (e.g. Claude Code, Cursor, GitHub Copilot, Amazon Q).
+// environment (e.g. Claude Code, Cursor, GitHub Copilot, Amazon Q, opencode, pi).
 //
 // Detection happens automatically at init() time by reading well-known
 // environment variables. The result can also be influenced by the --agent
@@ -21,6 +21,7 @@ var harnessEnvVars = []struct{ envVar, name string }{ //nolint:gochecknoglobals
 	{"GITHUB_COPILOT", "github-copilot"},
 	{"AMAZON_Q", "amazon-q"},
 	{"OPENCODE", "opencode"},
+	{"PI_CODING_AGENT", "pi"},
 }
 
 var (

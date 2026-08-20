@@ -387,19 +387,31 @@ Then trace each registration in `RegisterCodecs` to a reachable `Encode`
    `gcx datasources list -o json` and add a mapping in
    `internal/datasources/query/resolve.go` if they don't match. Without this,
    auto-discovery and datasource type validation will fail silently.
-3. Decide, deliberately, what the auto-detecting `datasources query` should do
-   for your kind — the switch in `cmd/gcx/datasources/query.go` is
-   hand-maintained and no test enforces parity with registration:
-   - the generic `<uid> <expr>` form can carry your query → add the case, so a
-     caller reaching for `datasources query` is not met with the bare
-     "datasource type %q is not supported" default;
-   - it cannot (a structured query with several required parameters) → add an
-     explicit redirect naming your typed command and its flags, the way
-     CloudWatch does. Do not force a lossy generic path. Put the redirect where
-     CloudWatch's is: a guard on the normalized type **before** the switch and
-     before `shared.ResolveExpr`. As a switch case it never fires for
-     `gcx datasources query <uid>` with no expression — that call dies on
-     "expression required" first.
+3. **Routing for the auto-detecting `datasources query`** — registration mounts
+   your typed `datasources <kind>` subtree but does not reach the generic
+   command, which routes through the tables in
+   `cmd/gcx/datasources/query_routes.go`. Add exactly one entry, keyed by the
+   normalized kind:
+   - the generic `<uid> <expr>` form can honestly carry your query → add a
+     `dispatch` entry plus a small handler alongside the existing ones;
+   - it cannot, because your query takes structured parameters no single
+     expression represents → add a `redirects` entry built with
+     `structuredQueryRedirect`, naming your typed command. CloudWatch is the
+     worked example.
+
+   Adding neither is also a choice: your kind then reports as unsupported. Make
+   it deliberately — a caller who reasonably reaches for `datasources query`
+   gets a dead end. The two tables must stay disjoint and keyed by normalized
+   kinds; `query_routes_internal_test.go` enforces both.
+
+   The supported-kind list in the unsupported-type error is derived from the
+   tables, so you never edit that string. You **do** update the two places that
+   pin its exact value, because it is user-visible text on a GA path and is
+   deliberately not free to drift:
+   `TestQueryRoutesSupportedKindsIsTheSortedUnion` in
+   `query_routes_internal_test.go`, and `wantUnsupportedMessage` in
+   `query_unsupported_test.go`. Both fail with the old and new lists side by
+   side, so the update is mechanical.
 
 ### Step 5: Agent Annotations
 

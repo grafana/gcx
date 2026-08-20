@@ -21,6 +21,7 @@ Agent mode is detected via environment variables at `init()` time in
 | `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |
 | `AMAZON_Q` | Amazon Q | Truthy value activates agent mode |
 | `OPENCODE` | opencode | Truthy value activates agent mode |
+| `PI_CODING_AGENT` | pi | Truthy value activates agent mode |
 
 The `--agent` persistent flag can also enable agent mode. `--agent=false`
 explicitly disables agent mode even when env vars are set.
