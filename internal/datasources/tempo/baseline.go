@@ -332,7 +332,7 @@ func excludeTrace(resp *tempo.SearchResponse, seedID string) *tempo.SearchRespon
 	}
 	filtered := make([]tempo.SearchTrace, 0, len(resp.Traces))
 	for _, t := range resp.Traces {
-		if t.TraceID == seedID {
+		if strings.EqualFold(t.TraceID, seedID) {
 			continue
 		}
 		filtered = append(filtered, t)
