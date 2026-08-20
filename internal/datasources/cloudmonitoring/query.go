@@ -42,7 +42,7 @@ func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Aligner, "aligner", "ALIGN_MEAN", "Per-series aligner: ALIGN_MEAN, ALIGN_SUM, ALIGN_MIN, ALIGN_MAX, ALIGN_RATE, ALIGN_DELTA, ...")
 	flags.StringVar(&opts.AlignmentPeriod, "alignment-period", "", `Alignment period, e.g. +60s (default: auto-fit the time range)`)
 	flags.StringArrayVar(&opts.GroupBys, "group-by", nil, "Label to split series by, e.g. resource.label.instance_name (repeatable)")
-	flags.StringToStringVar(&opts.Filters, "filter", nil, "Label filter key=value (repeatable, e.g. --filter resource.label.zone=us-east1-b)")
+	flags.StringToStringVar(&opts.Filters, "filter", nil, "Label filter key=value (repeatable, AND-combined, exact-match and case-sensitive only — no regex/wildcard; e.g. --filter resource.label.zone=us-east1-b)")
 }
 
 func (opts *queryOpts) Validate() error {
@@ -68,6 +68,9 @@ func (opts *queryOpts) Validate() error {
 		return err
 	}
 	if err := validateGroupBys(opts.GroupBys); err != nil {
+		return err
+	}
+	if err := validateFilters(opts.Filters); err != nil {
 		return err
 	}
 	return nil
@@ -129,6 +132,23 @@ func validateGroupBys(groupBys []string) error {
 	return nil
 }
 
+// validateFilters rejects an empty key or empty value in --filter entries.
+// pflag's key=value parsing already rejects a bare "foo" (no "=") and an
+// entirely empty "" with "must be formatted as key=value", but "=value" and
+// "key=" both parse successfully to a map entry with one side empty and
+// reach the request unchecked.
+func validateFilters(filters map[string]string) error {
+	for k, v := range filters {
+		if k == "" {
+			return fmt.Errorf("--filter %s: key must not be empty", "="+v)
+		}
+		if v == "" {
+			return fmt.Errorf("--filter %s=: value must not be empty", k)
+		}
+	}
+	return nil
+}
+
 // QueryCmd returns the `query` subcommand for a Google Cloud Monitoring datasource.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &queryOpts{}
@@ -142,6 +162,12 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 Queries are structured (project, metric type, reducer, aligner) — there is no
 expression language. Use --group-by to split the result into one series per
 label value, and --filter to narrow by labels.
+
+--filter matches are exact and case-sensitive, not regex or wildcard — GCM has
+no equivalent of "=~". Repeated --filter flags are AND-combined. A filter like
+"zone=~us-east.*" is not a regex match; it is a literal equality comparison
+against that exact string, which will not match real zone values and returns
+"No data" with no error.
 
 Use list-projects and list-metrics to discover valid flag values.
 Datasource is resolved from -d flag or datasources.cloudmonitoring in your context.

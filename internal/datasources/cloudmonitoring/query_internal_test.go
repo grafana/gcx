@@ -66,6 +66,25 @@ func TestValidateAlignmentPeriod(t *testing.T) {
 	})
 }
 
+func TestValidateFilters(t *testing.T) {
+	t.Run("accepts", func(t *testing.T) {
+		assert.NoError(t, validateFilters(nil))
+		assert.NoError(t, validateFilters(map[string]string{"resource.label.zone": "us-east1-b"}))
+	})
+
+	t.Run("rejects empty key", func(t *testing.T) {
+		err := validateFilters(map[string]string{"": "us-east1-b"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "key must not be empty")
+	})
+
+	t.Run("rejects empty value", func(t *testing.T) {
+		err := validateFilters(map[string]string{"resource.label.zone": ""})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "value must not be empty")
+	})
+}
+
 func TestValidateGroupBys(t *testing.T) {
 	t.Run("accepts", func(t *testing.T) {
 		assert.NoError(t, validateGroupBys(nil))

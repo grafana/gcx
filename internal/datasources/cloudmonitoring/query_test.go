@@ -35,6 +35,16 @@ func TestQueryCmd_ValidationErrors(t *testing.T) {
 			args:    []string{"--project", "p", "--metric", "m", "--group-by", "   "},
 			wantErr: "--group-by entries must not be empty",
 		},
+		{
+			name:    "--filter with empty key rejected before any config/datasource I/O",
+			args:    []string{"--project", "p", "--metric", "m", "--filter", "=us-east1-b"},
+			wantErr: "key must not be empty",
+		},
+		{
+			name:    "--filter with empty value rejected before any config/datasource I/O",
+			args:    []string{"--project", "p", "--metric", "m", "--filter", "resource.label.zone="},
+			wantErr: "value must not be empty",
+		},
 	}
 
 	for _, tt := range tests {

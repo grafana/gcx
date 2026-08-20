@@ -10,6 +10,12 @@ Queries are structured (project, metric type, reducer, aligner) — there is no
 expression language. Use --group-by to split the result into one series per
 label value, and --filter to narrow by labels.
 
+--filter matches are exact and case-sensitive, not regex or wildcard — GCM has
+no equivalent of "=~". Repeated --filter flags are AND-combined. A filter like
+"zone=~us-east.*" is not a regex match; it is a literal equality comparison
+against that exact string, which will not match real zone values and returns
+"No data" with no error.
+
 Use list-projects and list-metrics to discover valid flag values.
 Datasource is resolved from -d flag or datasources.cloudmonitoring in your context.
 
@@ -54,7 +60,7 @@ gcx datasources cloudmonitoring query [flags]
       --aligner string            Per-series aligner: ALIGN_MEAN, ALIGN_SUM, ALIGN_MIN, ALIGN_MAX, ALIGN_RATE, ALIGN_DELTA, ... (default "ALIGN_MEAN")
       --alignment-period string   Alignment period, e.g. +60s (default: auto-fit the time range)
   -d, --datasource string         Datasource UID (required unless datasources.cloudmonitoring is configured)
-      --filter stringToString     Label filter key=value (repeatable, e.g. --filter resource.label.zone=us-east1-b) (default [])
+      --filter stringToString     Label filter key=value (repeatable, AND-combined, exact-match and case-sensitive only — no regex/wildcard; e.g. --filter resource.label.zone=us-east1-b) (default [])
       --from string               Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
       --group-by stringArray      Label to split series by, e.g. resource.label.instance_name (repeatable)
   -h, --help                      help for query
