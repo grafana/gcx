@@ -3,10 +3,13 @@
 ### New features
 
 - Record the size of batch resource operations (`resources push`, `pull`, `delete`, `validate`) in usage telemetry events, as fixed size categories rather than counts, alongside whether the operation ran in dry-run mode. The first-run telemetry notice is revised to cover this and is shown again on installs that already saw the previous wording. See [Anonymous usage statistics](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/).
+- Add `--timezone` to `gcx irm oncall schedules list-final-shifts`. Without the flag the command uses the timezone of the schedule, then UTC. On a host that sets `TZ` to an IANA name, this changes the default from the zone of the host to the zone of the schedule.
 
 ### Fixes
 
 - instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
+- Accept the Kubernetes envelope (`apiVersion`/`kind`/`metadata`/`spec`) in the manifest that `create -f` and `update -f` read. The commands decoded the envelope into an empty object before this change, so they lost every field that the manifest set. This repairs the round trip for `gcx irm oncall`, where `gcx resources list-examples` prints that envelope. For `gcx alert` it adds tolerance for a hand-written envelope, because the alert provider registers no adapter.
+- Stop sending the local zone name of the host as `user_tz` in `gcx irm oncall schedules list-final-shifts`. A host that does not set `TZ` sent the literal string `Local`, and the API answered "Invalid timezone".
 
 ## v1.1.0 (2026-08-14)
 
