@@ -249,6 +249,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm incidents close":           {Cost: "small"},
 	"gcx irm incidents create":          {Cost: "small"},
 	"gcx irm incidents get":             {Cost: "small"},
+	"gcx irm incidents get-pir":         {Cost: "small"},
 	"gcx irm incidents list":            {Cost: "small"},
 	"gcx irm incidents list-activity":   {Cost: "small"},
 	"gcx irm incidents list-contexts":   {Cost: "small"},

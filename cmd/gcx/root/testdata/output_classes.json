@@ -276,6 +276,7 @@
  "gcx irm incidents close": "finite",
  "gcx irm incidents create": "finite",
  "gcx irm incidents get": "finite",
+ "gcx irm incidents get-pir": "finite",
  "gcx irm incidents list": "finite",
  "gcx irm incidents list-activity": "finite",
  "gcx irm incidents list-contexts": "finite",
