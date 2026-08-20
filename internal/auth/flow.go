@@ -80,6 +80,16 @@ type Options struct {
 	// Writer is the output writer for user-facing messages.
 	// Defaults to os.Stderr.
 	Writer io.Writer
+
+	// Manual completes the flow without a callback server. gcx prints the
+	// login URL and reads the redirect URL that the user copies from the
+	// browser address bar. Use it when the browser runs on another computer,
+	// for example when gcx runs over SSH.
+	Manual bool
+
+	// Reader supplies the pasted redirect URL in manual mode.
+	// Defaults to os.Stdin.
+	Reader io.Reader
 }
 
 // Flow manages the browser-based authentication process.
@@ -87,6 +97,7 @@ type Flow struct {
 	endpoint string
 	opts     Options
 	writer   io.Writer
+	reader   io.Reader
 }
 
 // NewFlow creates a new authentication flow for the given Grafana endpoint.
@@ -101,11 +112,43 @@ func NewFlow(endpoint string, opts Options) *Flow {
 	if w == nil {
 		w = os.Stderr
 	}
-	return &Flow{endpoint: endpoint, opts: opts, writer: w}
+	r := opts.Reader
+	if r == nil {
+		r = os.Stdin
+	}
+	return &Flow{endpoint: endpoint, opts: opts, writer: w, reader: r}
 }
 
 // Run executes the authentication flow.
 func (f *Flow) Run(ctx context.Context) (*Result, error) {
+	if f.opts.Manual {
+		if f.opts.Port != 0 {
+			return nil, errors.New("manual OAuth does not use a callback port")
+		}
+		return f.runManual(ctx)
+	}
+	return f.runWithCallbackServer(ctx)
+}
+
+// runManual completes the flow without a callback server. The browser cannot
+// reach the callback address, so the user copies the redirect URL out of the
+// address bar and pastes it here.
+func (f *Flow) runManual(ctx context.Context) (*Result, error) {
+	state, codeVerifier, codeChallenge, err := newFlowSecrets()
+	if err != nil {
+		return nil, err
+	}
+
+	authURL := f.buildAuthURL(manualCallbackPort, state, codeChallenge)
+	// No callback server runs here, so no route can race the paste. A nil guard
+	// always grants the claim.
+	return runManualPaste(ctx, f.writer, f.reader, authURL, verificationCode(codeChallenge),
+		func(q url.Values) (*Result, *callbackError) {
+			return handleCallbackParams(ctx, q, state, codeVerifier, nil)
+		})
+}
+
+func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 	listener, port, err := listenOnCallbackPort(ctx, f.opts.BindAddress, f.opts.Port)
 	if err != nil {
 		if f.opts.Port == 0 {
@@ -114,22 +157,18 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 
-	state, err := generateState()
+	state, codeVerifier, codeChallenge, err := newFlowSecrets()
 	if err != nil {
 		_ = listener.Close()
-		return nil, fmt.Errorf("failed to generate state: %w", err)
+		return nil, err
 	}
-
-	codeVerifier, err := generateCodeVerifier()
-	if err != nil {
-		_ = listener.Close()
-		return nil, fmt.Errorf("failed to generate PKCE code verifier: %w", err)
-	}
-	codeChallenge := generateCodeChallenge(codeVerifier)
 
 	resultCh := make(chan *Result, 1)
 	errCh := make(chan error, 1)
-	server := f.startCallbackServer(ctx, listener, state, codeVerifier, resultCh, errCh)
+	// The callback server and the paste reader accept the same single-use code,
+	// so one guard decides which route exchanges it.
+	guard := &exchangeGuard{}
+	server := f.startCallbackServer(ctx, listener, state, codeVerifier, guard, resultCh, errCh)
 
 	defer func() { //nolint:contextcheck // intentionally use Background for graceful shutdown after ctx cancellation
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -137,6 +176,38 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
+	authURL := f.buildAuthURL(port, state, codeChallenge)
+
+	fmt.Fprintln(f.writer, "Opening browser to authenticate...")
+	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", authURL)
+
+	fmt.Fprintf(f.writer, "Verification code: %s\n", verificationCode(codeChallenge))
+	fmt.Fprintln(f.writer, "Check that this code matches what is shown in the browser before approving.")
+	fmt.Fprintln(f.writer)
+
+	if opened, err := deeplink.OpenWithStatus(authURL); err != nil {
+		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
+	} else if !opened {
+		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
+	}
+
+	// Over SSH the browser cannot reach the callback address. Accept a pasted
+	// redirect URL alongside the callback so the user never has to restart.
+	paste := startPasteWatcher(f.writer, port)
+	defer paste.Close()
+	if paste == nil {
+		printRemoteSessionHint(f.writer, port, "gcx login --oauth-manual")
+		fmt.Fprintln(f.writer, "Waiting for authentication...")
+	}
+
+	return awaitCallbackOrPaste(ctx, f.writer, paste, resultCh, errCh,
+		func(q url.Values) (*Result, *callbackError) {
+			return handleCallbackParams(ctx, q, state, codeVerifier, guard)
+		})
+}
+
+// buildAuthURL renders the plugin consent URL for the given callback port.
+func (f *Flow) buildAuthURL(port int, state, codeChallenge string) string {
 	authEndpoint := strings.TrimSuffix(f.endpoint, "/")
 	if authEndpoint == "" {
 		authEndpoint = "https://grafana.com/launch"
@@ -153,95 +224,38 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 		authURL += "&scopes=" + url.QueryEscape(strings.Join(f.opts.Scopes, ","))
 	}
 
-	fmt.Fprintln(f.writer, "Opening browser to authenticate...")
-	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", authURL)
-
-	fmt.Fprintf(f.writer, "Verification code: %s\n", verificationCode(codeChallenge))
-	fmt.Fprintln(f.writer, "Check that this code matches what is shown in the browser before approving.")
-	fmt.Fprintln(f.writer)
-
-	if opened, err := deeplink.OpenWithStatus(authURL); err != nil {
-		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
-	} else if !opened {
-		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
-	}
-
-	fmt.Fprintln(f.writer, "Waiting for authentication...")
-
-	select {
-	case result := <-resultCh:
-		return result, nil
-	case err := <-errCh:
-		return nil, err
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	return authURL
 }
 
-func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier string, resultCh chan<- *Result, errCh chan<- error) *http.Server {
+// newFlowSecrets generates the CSRF state and the PKCE verifier and challenge,
+// in that order.
+func newFlowSecrets() (string, string, string, error) {
+	state, err := generateState()
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to generate state: %w", err)
+	}
+
+	codeVerifier, err := generateCodeVerifier()
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to generate PKCE code verifier: %w", err)
+	}
+
+	return state, codeVerifier, generateCodeChallenge(codeVerifier), nil
+}
+
+func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier string, guard *exchangeGuard, resultCh chan<- *Result, errCh chan<- error) *http.Server {
 	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
-		state := r.URL.Query().Get("state")
-		if state != expectedState {
-			errCh <- errors.New("invalid state - possible CSRF attack")
-			renderErrorPage(w, "Invalid state parameter")
+		result, cerr := handleCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier, guard)
+		if cerr != nil {
+			if errors.Is(cerr.err, errExchangeClaimed) {
+				// The paste route won the race, and the login is complete. Do
+				// not send to errCh: that would end a flow that succeeded.
+				renderSuccessPage(w)
+				return
+			}
+			errCh <- cerr.err
+			renderErrorPage(w, cerr.page)
 			return
-		}
-
-		if errMsg := r.URL.Query().Get("error"); errMsg != "" {
-			errMsg = StripControlChars(errMsg)
-			errCh <- fmt.Errorf("authentication denied: %s", errMsg)
-			renderErrorPage(w, errMsg)
-			return
-		}
-
-		code := r.URL.Query().Get("code")
-		if code == "" {
-			errCh <- errors.New("no authorization code received")
-			renderErrorPage(w, "No authorization code received")
-			return
-		}
-
-		endpoint := r.URL.Query().Get("endpoint")
-		if endpoint == "" {
-			errCh <- errors.New("no API endpoint received")
-			renderErrorPage(w, "No API endpoint received")
-			return
-		}
-		if err := ValidateEndpointURL(endpoint); err != nil {
-			errCh <- fmt.Errorf("invalid API endpoint: %w", err)
-			renderErrorPage(w, "Invalid API endpoint")
-			return
-		}
-
-		exchangeResult, err := exchangeCodeForToken(ctx, endpoint, code, codeVerifier)
-		if err != nil {
-			errCh <- fmt.Errorf("token exchange failed: %w", err)
-			renderErrorPage(w, "Token exchange failed")
-			return
-		}
-
-		instanceEndpoint := r.URL.Query().Get("instanceEndpoint")
-		instanceEndpointUrl, err := url.Parse(instanceEndpoint)
-		if err != nil {
-			errCh <- fmt.Errorf("invalid endpoint url: %w", err)
-			renderErrorPage(w, "Invalid instance endpoint passed")
-			return
-		}
-		if instanceEndpointUrl.Scheme != "https" {
-			errCh <- fmt.Errorf("invalid endpoint scheme: expected 'https', got '%s'", instanceEndpointUrl.Scheme)
-			renderErrorPage(w, "Invalid instance endpoint: needs to be an HTTPS URL")
-			return
-		}
-
-		result := &Result{
-			Token:            exchangeResult.Data.Token,
-			Email:            exchangeResult.Data.Email,
-			DeviceName:       r.URL.Query().Get("device"),
-			APIEndpoint:      exchangeResult.Data.APIEndpoint,
-			ExpiresAt:        exchangeResult.Data.ExpiresAt,
-			RefreshToken:     exchangeResult.Data.RefreshToken,
-			RefreshExpiresAt: exchangeResult.Data.RefreshExpiresAt,
-			InstanceEndpoint: instanceEndpoint,
 		}
 
 		resultCh <- result

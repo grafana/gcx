@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -19,10 +20,11 @@ import (
 )
 
 type loginOpts struct {
-	oauthURL   string
-	apiURL     string
-	scopes     []string
-	cloudToken string
+	oauthURL    string
+	apiURL      string
+	scopes      []string
+	cloudToken  string
+	oauthManual bool
 }
 
 type gcomOAuthFlow interface {
@@ -39,6 +41,7 @@ func (opts *loginOpts) bindFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.oauthURL, "oauth-url", "https://grafana.com", "Base URL for the OAuth login flow (used only by this command)")
 	flags.StringVar(&opts.apiURL, "api-url", "https://grafana.com", "Base URL for Grafana Cloud API resource calls (stacks etc.)")
 	flags.StringSliceVar(&opts.scopes, "scope", auth.DefaultGCOMScopes(), "OAuth2 scopes to request")
+	flags.BoolVar(&opts.oauthManual, "oauth-manual", false, "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer")
 }
 
 func (opts *loginOpts) Validate() error {
@@ -50,6 +53,9 @@ func (opts *loginOpts) Validate() error {
 	}
 	if opts.cloudToken == "" && len(opts.scopes) == 0 {
 		return errors.New("--scope must not be empty for interactive OAuth login")
+	}
+	if opts.cloudToken != "" && opts.oauthManual {
+		return errors.New("--oauth-manual has no effect with --cloud-token")
 	}
 	return nil
 }
@@ -170,7 +176,7 @@ both preserves the explicit OAuth-origin/API-destination pair.`,
 			if opts.cloudToken != "" {
 				return runTokenLogin(mutationCtx, opts, mutationSource, contextName, cloudSafety, mutationGuard)
 			}
-			return runOAuthLogin(mutationCtx, opts, mutationSource, contextName, cloudSafety, mutationGuard)
+			return runOAuthLogin(mutationCtx, opts, mutationSource, contextName, cloudSafety, mutationGuard, cmd.InOrStdin(), cmd.ErrOrStderr())
 		},
 	}
 
@@ -256,15 +262,19 @@ func runOAuthLogin(
 	contextName string,
 	cloudSafety config.CloudMutationSafety,
 	mutationGuard config.LoginMutationGuard,
+	stdin io.Reader,
+	stderr io.Writer,
 ) error {
-	fmt.Fprintln(os.Stderr, "Warning: interactive OAuth login is experimental. It stores an OAuth-issued token in the cloud entry's oauth-token field.")
-	fmt.Fprintln(os.Stderr, "Some commands that talk to grafana.com do not yet work with an OAuth token. For full functionality, use --cloud-token with a Cloud Access Policy token.")
+	fmt.Fprintln(stderr, "Warning: interactive OAuth login is experimental. It stores an OAuth-issued token in the cloud entry's oauth-token field.")
+	fmt.Fprintln(stderr, "Some commands that talk to grafana.com do not yet work with an OAuth token. For full functionality, use --cloud-token with a Cloud Access Policy token.")
 
 	flow := newGCOMOAuthFlow(auth.GCOMOptions{
 		ClientID: defaultClientID,
 		GCOMURL:  opts.oauthURL,
 		Scopes:   opts.scopes,
-		Writer:   os.Stderr,
+		Writer:   stderr,
+		Manual:   opts.oauthManual,
+		Reader:   stdin,
 	})
 
 	result, err := flow.Run(ctx)
@@ -280,15 +290,15 @@ func runOAuthLogin(
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "Authenticated as %s (%s)\n", result.Info.Login, result.Info.Email)
-	fmt.Fprintf(os.Stderr, "Scopes: %s\n", result.Scope)
+	fmt.Fprintf(stderr, "Authenticated as %s (%s)\n", result.Info.Login, result.Info.Email)
+	fmt.Fprintf(stderr, "Scopes: %s\n", result.Scope)
 
 	entry := cloudEntryFromOAuthResult(opts, result)
 	contextName, entryName, err := config.SaveCloudConfigGuarded(ctx, source, contextName, entry, cloudSafety, mutationGuard)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Token saved to cloud entry %q (context %q)\n", entryName, contextName)
+	fmt.Fprintf(stderr, "Token saved to cloud entry %q (context %q)\n", entryName, contextName)
 	return nil
 }
 
