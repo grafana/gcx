@@ -111,7 +111,7 @@ lookback.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost:    "medium",
-		agent.AnnotationLLMHint:      "gcx traces diff -d UID <trace-a> <trace-b> -o json",
+		agent.AnnotationLLMHint:      "gcx datasources tempo diff -d UID <trace-a> <trace-b> -o json",
 		agent.AnnotationAvailability: agent.AvailabilityCloudOnly,
 		agent.AnnotationStability:    agent.StabilityExperimental,
 	}

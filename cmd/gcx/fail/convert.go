@@ -311,7 +311,7 @@ func convertUnavailableEndpoint(err error) (*gcxerrors.DetailedError, bool) {
 
 	return &gcxerrors.DetailedError{
 		Parent:  err,
-		Summary: fmt.Sprintf("The %s endpoint is not available here", endpoint),
+		Summary: "Endpoint not available",
 		Details: fmt.Sprintf("HTTP %d from the %s endpoint", apiErr.StatusCode, endpoint),
 		Suggestions: []string{
 			note + "; it may be unavailable on this deployment or version",
