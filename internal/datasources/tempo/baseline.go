@@ -211,7 +211,7 @@ func (opts *baselineOpts) resolveWindow(profile seedProfile, now time.Time) (tim
 // health is not filtered here — 'gcx traces diff' surfaces downstream errors.
 func buildBaselineQuery(service, operation string, downstream []string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "{ trace:rootService = %s && trace:rootName = %s } && { name = %s && status != error }",
+	fmt.Fprintf(&b, "{ trace:rootService = %s && trace:rootName = %s } && { name = %s && span:status != error && nestedSetParent = -1 }",
 		strconv.Quote(service), strconv.Quote(operation), strconv.Quote(operation))
 	for _, svc := range downstream {
 		fmt.Fprintf(&b, " && { resource.service.name = %s }", strconv.Quote(svc))
@@ -333,7 +333,7 @@ func parseSeedTrace(trace map[string]any) seedProfile {
 
 		// Root = the earliest-starting parentless span.
 		if parent, _ := span["parentSpanId"].(string); strings.TrimSpace(parent) == "" {
-			if !rootFound || start < rootStart {
+			if !rootFound || (start != 0 && (rootStart == 0 || start < rootStart)) {
 				rootFound, rootStart = true, start
 				profile.RootService = service
 				profile.RootOperation, _ = span["name"].(string)
