@@ -221,6 +221,7 @@ can otherwise inject Grafana auth into the wrong request.
 | [020](docs/adrs/sm-datasource-proxy/001-dual-mode-transport.md) | Synthetic Monitoring dual-mode transport: datasource proxy primary, direct SM API fallback | accepted |
 | [021](docs/adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) | Assistant provider + MCP servers as resources | proposed |
 | [022](docs/adrs/config-v1/001-versioned-split-config-and-secret-trust.md) | Versioned Split Config and Source-Bound Secret Trust | proposed |
+| [023](docs/adrs/extensions/001-third-party-extensions-design.md) | Third-party extensions: manifest-driven install, no credential handoff | proposed |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
