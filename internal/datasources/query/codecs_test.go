@@ -261,6 +261,46 @@ func TestQueryYAMLCodecInfluxDBTimestamps(t *testing.T) {
 	})
 }
 
+// TestRegisterStructuredCodecs verifies that only JSON/YAML (plus the built-in
+// agents codec) are offered and that table/wide are rejected rather than
+// reaching a codec that cannot encode a free-form map.
+func TestRegisterStructuredCodecs(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterStructuredCodecs(ioOpts)
+		return ioOpts
+	}
+
+	payload := map[string]any{"summary": map[string]any{"verdict": "regression"}}
+
+	t.Run("json encodes a free-form map", func(t *testing.T) {
+		var out bytes.Buffer
+		err := newIO("json").Encode(&out, payload)
+		require.NoError(t, err)
+		assert.True(t, json.Valid(out.Bytes()))
+		assert.Contains(t, out.String(), "regression")
+	})
+
+	t.Run("yaml encodes a free-form map", func(t *testing.T) {
+		var out bytes.Buffer
+		err := newIO("yaml").Encode(&out, payload)
+		require.NoError(t, err)
+		assert.Contains(t, out.String(), "regression")
+	})
+
+	for _, format := range []string{"table", "wide", "graph"} {
+		t.Run(format+" is not an allowed format", func(t *testing.T) {
+			var out bytes.Buffer
+			err := newIO(format).Encode(&out, payload)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unknown output format")
+			// The advertised menu must list only structured formats.
+			assert.Contains(t, err.Error(), "Valid formats are: agents, json, yaml")
+		})
+	}
+}
+
 // TestTraceGetCodecDispatch verifies that table and wide codecs route a
 // *tempo.GetTraceResponse to the corresponding tempo formatter.
 func TestTraceGetCodecDispatch(t *testing.T) {
