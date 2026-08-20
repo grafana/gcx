@@ -415,7 +415,7 @@ func (o *closeOpts) setup(flags *pflag.FlagSet) {
 	// system: the default text codec reproduces the familiar
 	// "Closed incident <id> (<title>)" line byte-for-byte; agent mode and
 	// explicit -o json/yaml get the structured document.
-	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
+	o.IO.RegisterCustomCodec("text", &mutationResultTextCodec[cmdio.SingleMutation]{
 		render: func(w io.Writer, m cmdio.SingleMutation) {
 			cmdio.Success(w, "Closed incident %s (%s)", m.Target.ID, m.Target.Name)
 		},
@@ -626,7 +626,7 @@ func (o *activityAddOpts) setup(flags *pflag.FlagSet) {
 	// the default text codec reproduces the familiar "Added activity note to
 	// incident <id>" line byte-for-byte; agent mode and explicit -o json/yaml
 	// get the structured document.
-	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
+	o.IO.RegisterCustomCodec("text", &mutationResultTextCodec[cmdio.SingleMutation]{
 		render: func(w io.Writer, m cmdio.SingleMutation) {
 			cmdio.Success(w, "Added activity note to incident %s", m.Target.ID)
 		},
