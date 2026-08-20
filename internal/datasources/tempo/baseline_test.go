@@ -72,6 +72,30 @@ func TestValidate_RejectsNegativeAndInvalidWindow(t *testing.T) {
 	assert.Contains(t, err.Error(), "--window")
 }
 
+func TestValidate_RejectsEmptyFilter(t *testing.T) {
+	opts := newTestOpts("30m")
+	opts.Filters = []string{`{ span.tenantID = "tenant-a" }`, "  "}
+
+	err := opts.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--filter")
+}
+
+func TestSetup_FilterFlagIsRepeatable(t *testing.T) {
+	opts := &baselineOpts{}
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	opts.setup(flags)
+
+	require.NoError(t, flags.Parse([]string{
+		"--filter", `{ span.tenantID = "tenant-a" }`,
+		"--filter", `{ name = "tempopb.Querier/SearchRecent" }`,
+	}))
+	assert.Equal(t, []string{
+		`{ span.tenantID = "tenant-a" }`,
+		`{ name = "tempopb.Querier/SearchRecent" }`,
+	}, opts.Filters)
+}
+
 // otlpTrace builds a minimal OTLP-shaped trace with two resources: a root span
 // (no parent) in "checkout" and a child span in "postgres".
 func otlpTrace() map[string]any {
@@ -243,7 +267,7 @@ func TestFoldTimeRange(t *testing.T) {
 }
 
 func TestBuildBaselineQuery(t *testing.T) {
-	q := buildBaselineQuery("checkout", "POST /checkout", nil)
+	q := buildBaselineQuery("checkout", "POST /checkout", nil, nil)
 	assert.Equal(t,
 		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 }`,
 		q,
@@ -251,15 +275,26 @@ func TestBuildBaselineQuery(t *testing.T) {
 }
 
 func TestBuildBaselineQuery_TopologyFingerprint(t *testing.T) {
-	q := buildBaselineQuery("checkout", "POST /checkout", []string{"payments", "postgres"})
+	q := buildBaselineQuery("checkout", "POST /checkout", []string{"payments", "postgres"}, nil)
 	assert.Equal(t,
 		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 } && { resource.service.name = "payments" } && { resource.service.name = "postgres" }`,
 		q,
 	)
 }
 
+func TestBuildBaselineQuery_Filters(t *testing.T) {
+	q := buildBaselineQuery("checkout", "POST /checkout", []string{"postgres"}, []string{
+		`{ span.tenantID = "tenant-a" }`,
+		`{ resource.k8s.cluster.name = "prod" }`,
+	})
+	assert.Equal(t,
+		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 } && ({ span.tenantID = "tenant-a" }) && ({ resource.k8s.cluster.name = "prod" }) && { resource.service.name = "postgres" }`,
+		q,
+	)
+}
+
 func TestBuildBaselineQuery_QuotesSpecialChars(t *testing.T) {
-	q := buildBaselineQuery("svc\"x", "op\\y", []string{"weird\"svc"})
+	q := buildBaselineQuery("svc\"x", "op\\y", []string{"weird\"svc"}, nil)
 	// strconv.Quote escapes embedded quotes/backslashes so the TraceQL stays valid.
 	assert.Contains(t, q, `trace:rootService = "svc\"x"`)
 	assert.Contains(t, q, `name = "op\\y"`)

@@ -34,6 +34,7 @@ type baselineOpts struct {
 
 	IO         cmdio.Options
 	Datasource string
+	Filters    []string
 	Limit      int
 	Window     string
 }
@@ -44,6 +45,7 @@ func (opts *baselineOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
+	flags.StringArrayVar(&opts.Filters, "filter", nil, "Raw TraceQL spanset expression to refine candidates when unfiltered results are not valid comparisons (repeatable; ANDed with the generated query)")
 	flags.IntVar(&opts.Limit, "limit", 20, "Maximum number of candidates to return")
 	flags.StringVar(&opts.Window, "window", defaultBaselineWindow, "Search window padding applied before and after the seed trace's time range, so candidates from before or after the seed are eligible (e.g., 30m, 6h, 7d). Ignored when --from/--to are set")
 	// --from/--to give an absolute window override anchored on explicit times
@@ -56,6 +58,11 @@ func (opts *baselineOpts) setup(flags *pflag.FlagSet) {
 func (opts *baselineOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
+	}
+	for _, filter := range opts.Filters {
+		if strings.TrimSpace(filter) == "" {
+			return errors.New("--filter must not be empty")
+		}
 	}
 	pad, err := dsquery.ParseDuration(opts.Window)
 	if err != nil {
@@ -83,8 +90,14 @@ searches for traces with the same root identity whose operation succeeded
 (status != error), pinned to the seed's top downstream services so candidates
 stay on the same execution path.
 
+Run the generated query without --filter first and inspect candidates with
+'gcx traces diff <candidate> <seed>'. Only when those candidates are not valid
+comparisons, add repeatable --filter expressions to require domain-specific
+context such as a tenant, cluster, or query path. Filters are trusted raw
+TraceQL, ANDed with the generated query, and syntax-validated by Tempo.
+
 Downstream errors are deliberately NOT filtered out: surfacing them is the job
-of 'gcx traces diff <seed> <candidate>', which is the real similarity and
+of 'gcx traces diff <candidate> <seed>', which is the real similarity and
 root-cause step. This command only retrieves candidate trace IDs (in the order
 search returns them); it does not rank them.
 
@@ -96,9 +109,12 @@ seed are eligible. Widen with --window, or set an absolute window with
 This is a heuristic retrieval built on TraceQL search; its query and output may
 change.`,
 		Example: `
-  # Find baseline candidates for a trace, then diff against one
+  # Start unfiltered, then diff a candidate as the baseline (B - A semantics)
   gcx traces baseline abc123
-  gcx traces diff abc123 <candidate>
+  gcx traces diff <candidate> abc123
+
+  # Only if unfiltered candidates are not valid comparisons, refine by tenant
+  gcx traces baseline abc123 --filter '{ span.tenantID = "tenant-a" }'
 
   # Widen the window to 6h before and after the seed, output JSON
   gcx traces baseline abc123 --window 6h -o json`,
@@ -154,7 +170,7 @@ change.`,
 			}
 			downstream := downstreamServices(profile.ServiceSpans, profile.RootService, topDownstreamServices)
 			req := tempo.SearchRequest{
-				Query: buildBaselineQuery(profile.RootService, profile.RootOperation, downstream),
+				Query: buildBaselineQuery(profile.RootService, profile.RootOperation, downstream, opts.Filters),
 				Start: start,
 				End:   end,
 				Limit: fetchLimit,
@@ -206,13 +222,17 @@ func (opts *baselineOpts) resolveWindow(profile seedProfile, now time.Time) (tim
 
 // buildBaselineQuery constructs the TraceQL retrieval query per the design:
 // same root identity, the operation span constrained to a successful
-// (non-error) status, and a topology fingerprint pinning the seed's top
-// downstream services so candidates stay on the same execution path. Whole-trace
-// health is not filtered here — 'gcx traces diff' surfaces downstream errors.
-func buildBaselineQuery(service, operation string, downstream []string) string {
+// (non-error) status, optional user-supplied candidate filters, and a topology
+// fingerprint pinning the seed's top downstream services so candidates stay on
+// the same execution path. Whole-trace health is not filtered here —
+// 'gcx traces diff' surfaces downstream errors.
+func buildBaselineQuery(service, operation string, downstream, filters []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{ trace:rootService = %s && trace:rootName = %s } && { name = %s && span:status != error && nestedSetParent = -1 }",
 		strconv.Quote(service), strconv.Quote(operation), strconv.Quote(operation))
+	for _, filter := range filters {
+		fmt.Fprintf(&b, " && (%s)", strings.TrimSpace(filter))
+	}
 	for _, svc := range downstream {
 		fmt.Fprintf(&b, " && { resource.service.name = %s }", strconv.Quote(svc))
 	}
