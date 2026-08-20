@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,7 +47,7 @@ func (opts *baselineOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	flags.StringArrayVar(&opts.Filters, "filter", nil, "Raw TraceQL spanset expression to refine candidates when unfiltered results are not valid comparisons (repeatable; ANDed with the generated query)")
-	flags.IntVar(&opts.Limit, "limit", 20, "Maximum number of candidates to return")
+	flags.IntVar(&opts.Limit, "limit", 20, "Maximum number of candidates to return; must be at least 1")
 	flags.StringVar(&opts.Window, "window", defaultBaselineWindow, "Search window padding applied before and after the seed trace's time range, so candidates from before or after the seed are eligible (e.g., 30m, 6h, 7d). Ignored when --from/--to are set")
 	// --from/--to give an absolute window override anchored on explicit times
 	// rather than the seed. --since is intentionally omitted: it anchors on now,
@@ -63,6 +64,12 @@ func (opts *baselineOpts) Validate() error {
 		if strings.TrimSpace(filter) == "" {
 			return errors.New("--filter must not be empty")
 		}
+	}
+	if opts.Limit < 1 {
+		return errors.New("--limit must be at least 1")
+	}
+	if strings.TrimSpace(opts.Window) == "" {
+		return errors.New("--window must not be empty")
 	}
 	pad, err := dsquery.ParseDuration(opts.Window)
 	if err != nil {
@@ -162,12 +169,10 @@ change.`,
 				return err
 			}
 
-			// The seed can match its own retrieval query, so fetch one extra and
-			// drop it, keeping up to --limit candidates.
-			fetchLimit := opts.Limit
-			if fetchLimit > 0 {
-				fetchLimit++
-			}
+			// The seed can match its own retrieval query. Fetch one slot for it
+			// plus one spare candidate so truncation remains detectable after the
+			// seed is excluded.
+			fetchLimit := opts.Limit + 2
 			downstream := downstreamServices(profile.ServiceSpans, profile.RootService, topDownstreamServices)
 			req := tempo.SearchRequest{
 				Query: buildBaselineQuery(profile.RootService, profile.RootOperation, downstream, opts.Filters),
@@ -182,11 +187,23 @@ change.`,
 			}
 
 			resp = excludeTrace(resp, seedID)
+			serverHasMore := resp != nil && len(resp.Traces) > opts.Limit
 			resp = limitTraces(resp, opts.Limit)
+			returned := 0
+			if resp != nil {
+				returned = len(resp.Traces)
+			}
+			meta := cmdio.AttachListMeta(
+				cmdio.PagedListMeta(returned, opts.Limit, serverHasMore, 0),
+				os.Args,
+			)
 
 			result := buildBaselineResult(seedID, profile.ServiceSpans, resp, req.Query)
-
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 
@@ -276,6 +293,7 @@ func buildBaselineResult(seedID string, seedCounts map[string]int, resp *tempo.S
 		SeedSpanCount:    seedSpans,
 		SeedServiceCount: len(seedCounts),
 		Query:            query,
+		Candidates:       make([]tempo.BaselineCandidate, 0),
 	}
 	if resp == nil {
 		return result

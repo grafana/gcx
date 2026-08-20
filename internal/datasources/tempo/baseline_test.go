@@ -2,11 +2,20 @@
 package tempo
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/tempo"
+	"github.com/grafana/gcx/internal/testutils"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -72,6 +81,25 @@ func TestValidate_RejectsNegativeAndInvalidWindow(t *testing.T) {
 	assert.Contains(t, err.Error(), "--window")
 }
 
+func TestValidate_RejectsLimitBelowOne(t *testing.T) {
+	for _, limit := range []int{0, -1} {
+		opts := newTestOpts("30m")
+		opts.Limit = limit
+
+		err := opts.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "--limit")
+	}
+}
+
+func TestValidate_RejectsEmptyWindow(t *testing.T) {
+	opts := newTestOpts("  ")
+
+	err := opts.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--window")
+}
+
 func TestValidate_RejectsEmptyFilter(t *testing.T) {
 	opts := newTestOpts("30m")
 	opts.Filters = []string{`{ span.tenantID = "tenant-a" }`, "  "}
@@ -94,6 +122,83 @@ func TestSetup_FilterFlagIsRepeatable(t *testing.T) {
 		`{ span.tenantID = "tenant-a" }`,
 		`{ name = "tempopb.Querier/SearchRecent" }`,
 	}, opts.Filters)
+}
+
+func TestBaselineCmd_ConstructsSearchRequestAndReportsTruncation(t *testing.T) {
+	testutils.SandboxConfigEnv(t)
+
+	var gotQuery, gotStart, gotEnd, gotLimit string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bootdata":
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/seed-id":
+			w.Header().Set("Content-Type", "application/json")
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"trace": otlpTrace()}))
+		case "/api/datasources/proxy/uid/tempo-uid/api/search":
+			gotQuery = r.URL.Query().Get("q")
+			gotStart = r.URL.Query().Get("start")
+			gotEnd = r.URL.Query().Get("end")
+			gotLimit = r.URL.Query().Get("limit")
+
+			traces := make([]map[string]any, 0, 22)
+			traces = append(traces, map[string]any{"traceID": "seed-id"})
+			for i := 1; i <= 21; i++ {
+				traces = append(traces, map[string]any{"traceID": fmt.Sprintf("candidate-%02d", i)})
+			}
+			w.Header().Set("Content-Type", "application/json")
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"traces": traces}))
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cfgFile := writeBaselineTestConfig(t, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      token: "test-token"
+      org-id: 1
+      tls:
+        insecure-skip-verify: true
+    datasources:
+      tempo: tempo-uid
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	cmd := BaselineCmd(loader)
+	root := &cobra.Command{Use: "test"}
+	root.AddCommand(cmd)
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"baseline", "seed-id", "-o", "json"})
+
+	require.NoError(t, root.Execute())
+	assert.Equal(t,
+		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 } && { resource.service.name = "postgres" }`,
+		gotQuery,
+	)
+	assert.Equal(t, "1699998200", gotStart)
+	assert.Equal(t, "1700001800", gotEnd)
+	assert.Equal(t, "22", gotLimit) // --limit 20 + seed slot + truncation probe
+
+	var result tempo.BaselineResult
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
+	require.Len(t, result.Candidates, 20)
+	assert.Equal(t, "candidate-01", result.Candidates[0].TraceID)
+	assert.Contains(t, stderr.String(), "showing first 20; more results are available")
+}
+
+func writeBaselineTestConfig(t *testing.T, content string) string {
+	t.Helper()
+	path := t.TempDir() + "/config.yaml"
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	return path
 }
 
 // otlpTrace builds a minimal OTLP-shaped trace with two resources: a root span
@@ -347,6 +452,14 @@ func TestLimitTraces(t *testing.T) {
 	assert.Len(t, limitTraces(resp, 5).Traces, 3) // n >= len: no-op
 	assert.Len(t, limitTraces(resp, 0).Traces, 3) // n <= 0: no cap
 	assert.Nil(t, limitTraces(nil, 2))            // nil is safe
+}
+
+func TestBuildBaselineResult_EmptyCandidatesSerializeAsArray(t *testing.T) {
+	result := buildBaselineResult("seed-id", nil, nil, "{ }")
+
+	payload, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.Contains(t, string(payload), `"candidates":[]`)
 }
 
 func TestBuildBaselineResult(t *testing.T) {
