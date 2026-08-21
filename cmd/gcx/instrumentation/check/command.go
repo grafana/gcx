@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/grafana/gcx/cmd/gcx/instrumentation/check/fixplan"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	otelchecks "github.com/grafana/otel-checker/checks"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 	"github.com/spf13/cobra"
@@ -28,13 +30,16 @@ type checkOpts struct {
 
 	// Components is parsed from the positional argument; empty means "all".
 	Components []string
+
+	// FixPlan turns on the fix-plan aggregation after the checker runs.
+	FixPlan bool
 }
 
 func (o *checkOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.RegisterCustomCodec("table", &CheckTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &CheckTableCodec{Wide: true})
-	o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(otelutils.Results{}))
+	o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(ResultsWithFixPlan{}))
 	o.IO.BindFlags(flags)
 
 	flags.StringVar(&o.Language, "language", "",
@@ -50,6 +55,11 @@ func (o *checkOpts) setup(flags *pflag.FlagSet) {
 		"Path to the OpenTelemetry Collector config file.")
 	flags.BoolVar(&o.Debug, "debug", false,
 		"Print additional diagnostic output from the checker.")
+
+	flags.BoolVar(&o.FixPlan, "fix-plan", false,
+		"After running the checks, synthesize a single fix plan for every finding. "+
+			"Uses Grafana Assistant when the current context is a Grafana Cloud stack (billable); "+
+			"falls back to a local aggregation of the explanation docs otherwise.")
 }
 
 // Validate finalizes opts after flag parsing and runs the otel-checker
@@ -108,15 +118,16 @@ func (o *checkOpts) toCommands() otelutils.Commands {
 	}
 }
 
-// Command returns the "gcx instrumentation check" cobra command.
-func Command() *cobra.Command {
-	return commandWith(otelchecks.Run)
+// Command returns the "gcx instrumentation check" cobra command. The loader
+// is used only when --fix-plan is set; check itself runs entirely locally.
+func Command(loader *providers.ConfigLoader) *cobra.Command {
+	return commandWith(loader, otelchecks.Run)
 }
 
 // commandWith builds the check command with an injectable checker. Production
 // code passes otelchecks.Run via Command; tests inject a fake to drive the
 // command end-to-end without touching real env vars.
-func commandWith(c checker) *cobra.Command {
+func commandWith(loader *providers.ConfigLoader, c checker) *cobra.Command {
 	opts := &checkOpts{}
 
 	cmd := &cobra.Command{
@@ -136,6 +147,11 @@ Checks performed:
 Components is an optional comma-separated list — defaults to all when omitted.
 Supported components: ` + strings.Join(otelutils.SupportedComponents, ", ") + `.
 
+Add --fix-plan to synthesize a single fix plan for every finding.
+When the current context is a Grafana Cloud stack, this uses Grafana Assistant
+(billable). Otherwise it falls back to a local aggregation of the explanation
+docs — no AI reasoning, but works offline and on OSS/Enterprise.
+
 Powered by github.com/grafana/otel-checker.`,
 		Args: cobra.MaximumNArgs(1),
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -150,7 +166,26 @@ Powered by github.com/grafana/otel-checker.`,
 
 			results := runWith(cmd.Context(), opts.toCommands(), c, cmd.ErrOrStderr())
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), results); err != nil {
+			envelope := ResultsWithFixPlan{
+				Checks:   results.Checks,
+				Warnings: results.Warnings,
+				Errors:   results.Errors,
+			}
+
+			if opts.FixPlan {
+				plan, err := fixplan.Generate(cmd.Context(), results, fixplan.Options{
+					Loader: loader,
+				})
+				if err != nil {
+					return fmt.Errorf("instrumentation check: fix-plan: %w", err)
+				}
+				if !plan.Empty {
+					envelope.FixPlan = &plan
+					EmitFixPlanNotice(cmd.ErrOrStderr(), &plan)
+				}
+			}
+
+			if err := opts.IO.Encode(cmd.OutOrStdout(), envelope); err != nil {
 				return fmt.Errorf("instrumentation check: %w", err)
 			}
 

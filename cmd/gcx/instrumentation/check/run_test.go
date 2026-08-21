@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/cmd/gcx/instrumentation/check/fixplan"
+	cmdio "github.com/grafana/gcx/internal/output"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -208,14 +210,14 @@ func TestRunWith_EmptyReporterReturnsNonNilSlices(t *testing.T) {
 
 func TestCheckTableCodec_Encode(t *testing.T) {
 	codec := &CheckTableCodec{}
-	results := otelutils.Results{
+	envelope := ResultsWithFixPlan{
 		Checks:   []otelutils.ComponentResult{{Component: "SDK", Message: "service.name set"}},
 		Warnings: []otelutils.ComponentResult{{Component: "Collector", Message: "missing receiver"}},
 		Errors:   []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no instance id"}},
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, results))
+	require.NoError(t, codec.Encode(&buf, envelope))
 
 	out := buf.String()
 	// All three rows present, in failure-first order.
@@ -227,11 +229,23 @@ func TestCheckTableCodec_Encode(t *testing.T) {
 	assert.Contains(t, out, "no instance id")
 }
 
+// TestResultsWithFixPlan_JSONFieldValidatorSeesAllFields guards against a
+// regression where ResultsWithFixPlan re-embeds otelutils.Results and the
+// promoted `checks`/`warnings`/`errors` fields become invisible to
+// MakeFieldValidator (reflect.Type.Fields doesn't yield promoted fields).
+// The bug's user-visible symptom is `--json checks` failing as "unknown field"
+// even though the field is present in the JSON output.
+func TestResultsWithFixPlan_JSONFieldValidatorSeesAllFields(t *testing.T) {
+	validator := cmdio.MakeFieldValidator(ResultsWithFixPlan{})
+	require.NotNil(t, validator, "validator must be non-nil for a struct type")
+	require.NoError(t, validator([]string{"checks", "warnings", "errors", "fix_plan"}))
+}
+
 func TestCheckTableCodec_WrongType(t *testing.T) {
 	codec := &CheckTableCodec{}
 	err := codec.Encode(&bytes.Buffer{}, "nope")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "otelutils.Results")
+	assert.Contains(t, err.Error(), "ResultsWithFixPlan")
 }
 
 // ─── Command smoke test ──────────────────────────────────────────────────────
@@ -240,7 +254,7 @@ func TestCheckTableCodec_WrongType(t *testing.T) {
 // Avoids actually running otel-checker (which would touch real env vars).
 
 func TestCommand_RejectsUnsupportedLanguage(t *testing.T) {
-	cmd := Command()
+	cmd := Command(nil)
 	cmd.SetArgs([]string{"sdk", "--language=rust"})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -251,7 +265,7 @@ func TestCommand_RejectsUnsupportedLanguage(t *testing.T) {
 }
 
 func TestCommand_RejectsMissingLanguage(t *testing.T) {
-	cmd := Command()
+	cmd := Command(nil)
 	cmd.SetArgs([]string{"sdk"})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -259,4 +273,92 @@ func TestCommand_RejectsMissingLanguage(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--language is required")
+}
+
+// ─── ResultsWithFixPlan / codec envelope ─────────────────────────────────────
+
+func TestCheckTableCodec_RendersFixPlanBelowTable(t *testing.T) {
+	envelope := ResultsWithFixPlan{
+		Errors: []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no headers", ExplainID: "grafana-cloud.headers.missing-auth"}},
+		FixPlan: &fixplan.Plan{
+			Source:  fixplan.SourceAssistant,
+			Content: "# Fix plan\n\n1. Set the header.\n",
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&CheckTableCodec{}).Encode(&buf, envelope))
+
+	out := buf.String()
+	assert.Contains(t, out, "FAIL")
+	assert.Contains(t, out, "grafana-cloud.headers.missing-auth")
+	assert.Contains(t, out, "Fix plan")
+	// Plan follows the table (raw markdown since buf isn't a TTY).
+	assert.Less(t, strings.Index(out, "FAIL"), strings.Index(out, "Fix plan"),
+		"table must come before plan, got:\n%s", out)
+}
+
+// The codec renders only the plan body — the "Grafana Assistant not
+// available" diagnostic goes to stderr via EmitFixPlanNotice so a
+// `--fix-plan > out.md` redirect captures just the fix plan.
+func TestCheckTableCodec_LocalFallbackKeepsStdoutClean(t *testing.T) {
+	envelope := ResultsWithFixPlan{
+		Errors: []otelutils.ComponentResult{{Component: "SDK", Message: "x", ExplainID: "y"}},
+		FixPlan: &fixplan.Plan{
+			Source:   fixplan.SourceLocal,
+			Fallback: true,
+			Reason:   "not a Grafana Cloud stack",
+			Content:  "# Combined fix\n\nApply the sections.\n",
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&CheckTableCodec{}).Encode(&buf, envelope))
+	out := buf.String()
+	assert.Contains(t, out, "Combined fix", "plan body must appear on stdout")
+	assert.NotContains(t, out, "Grafana Assistant not available",
+		"fallback diagnostic must not appear on stdout — it belongs on stderr so `> out.md` doesn't capture it")
+	assert.NotContains(t, out, "no AI reasoning applied",
+		"fallback diagnostic must not appear on stdout")
+}
+
+func TestEmitFixPlanNotice(t *testing.T) {
+	tests := []struct {
+		name       string
+		plan       *fixplan.Plan
+		wantEmit   bool
+		wantSubstr string
+	}{
+		{
+			name:     "nil plan emits nothing",
+			plan:     nil,
+			wantEmit: false,
+		},
+		{
+			name:     "assistant source is silent",
+			plan:     &fixplan.Plan{Source: fixplan.SourceAssistant, Content: "x"},
+			wantEmit: false,
+		},
+		{
+			name:       "local fallback with reason",
+			plan:       &fixplan.Plan{Source: fixplan.SourceLocal, Fallback: true, Reason: "not a Grafana Cloud stack", Content: "x"},
+			wantEmit:   true,
+			wantSubstr: "Grafana Assistant not available (not a Grafana Cloud stack)",
+		},
+		{
+			name:       "local non-fallback",
+			plan:       &fixplan.Plan{Source: fixplan.SourceLocal, Content: "x"},
+			wantEmit:   true,
+			wantSubstr: "Showing combined explanation docs",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			EmitFixPlanNotice(&buf, tc.plan)
+			if !tc.wantEmit {
+				assert.Empty(t, buf.String())
+				return
+			}
+			assert.Contains(t, buf.String(), tc.wantSubstr)
+		})
+	}
 }
