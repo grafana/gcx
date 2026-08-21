@@ -36,6 +36,9 @@ func (opts *metricsOpts) Validate() error {
 	if err := opts.SharedOpts.Validate(); err != nil {
 		return err
 	}
+	if opts.GroupSize < 1 {
+		return fmt.Errorf("--group-size must be at least 1, got %d", opts.GroupSize)
+	}
 	return elasticsearch.ValidateAgg(opts.Agg, opts.Field)
 }
 
