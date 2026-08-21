@@ -298,7 +298,9 @@ Two loading modes:
 Keychain references are source-bound: the canonical config path, exact
 owner/field, and normalized destination must match before a secret is resolved.
 Write-back loads only its raw target file, so environment overrides and values
-from other layers are never flattened into that file.
+from other layers are never flattened into that file. A missing native keychain
+may permit a warned plaintext fallback for a brand-new credential, while a
+reachable but locked or interaction-disabled keychain fails closed.
 
 ### Namespace Semantics
 

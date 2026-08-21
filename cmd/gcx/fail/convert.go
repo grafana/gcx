@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -15,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/fleet"
@@ -62,6 +64,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertCobraUnknownCommandErrors,
 		convertContextCanceled,                      // Context cancellation (must be first — cancellation can wrap other errors)
 		convertRequiredFlagErrors,                   // Cobra required-flag errors — must appear before generic checks
+		convertCredentialsErrors,                    // Locked OS keychain — must precede credential-rejection/config errors that wrap it
 		convertConfigErrors,                         // Config-related
 		convertAuthErrors,                           // Auth-related (expired tokens)
 		convertUnavailableEndpoint,                  // Experimental/Cloud-only endpoint route absent
@@ -207,6 +210,48 @@ func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	}
 	return nil, false
+}
+
+// convertCredentialsErrors converts credentials.ErrLocked into an actionable
+// message. A locked keychain proves that a real secret backend exists, so gcx
+// keeps the error fatal instead of a fallback to a plaintext write. The
+// suggestions depend on the operating system and its session model.
+func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
+	if !errors.Is(err, credentials.ErrLocked) {
+		return nil, false
+	}
+
+	return &gcxerrors.DetailedError{
+		Summary:     "Keychain locked",
+		Details:     "The OS keychain is reachable, but it is locked or cannot be unlocked in this session. gcx does not fall back to a plaintext credential.",
+		Parent:      err,
+		Suggestions: keychainLockedSuggestions(runtime.GOOS),
+		DocsLink:    docs.Configuration,
+	}, true
+}
+
+// keychainLockedSuggestions returns the remedies for a locked keychain on the
+// given operating system. Secret Service unlock commands depend on the session,
+// while macOS provides a stable security(1) command whose effect is scoped to
+// the invoking security session.
+func keychainLockedSuggestions(goos string) []string {
+	switch goos {
+	case "darwin":
+		return []string{
+			"Unlock the login keychain in the same security session as gcx, then retry the command",
+			"Run `security unlock-keychain` in that session, or run gcx from an unlocked desktop session",
+			"Supply the credential in an environment variable, such as GRAFANA_TOKEN, if you cannot unlock the keychain in this session",
+		}
+	case "dragonfly", "freebsd", "linux", "netbsd", "openbsd":
+		return []string{
+			"Unlock the keyring, then retry the command",
+			"Run gcx from a desktop session, where a password prompt can appear",
+			"Check the lock state: busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked",
+			"Supply the credential in an environment variable, such as GRAFANA_TOKEN, if you cannot unlock the keyring on this host",
+		}
+	default:
+		return nil
+	}
 }
 
 func convertNetworkErrors(err error) (*gcxerrors.DetailedError, bool) {

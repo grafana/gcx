@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/fleet"
@@ -1342,6 +1343,66 @@ func TestErrorToDetailedError_EmittedErrorSuppressesEnvelope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Nil(t, fail.ErrorToDetailedError(tt.err),
 				"an EmittedError anywhere in the chain must suppress the secondary envelope")
+		})
+	}
+}
+
+// TestErrorToDetailedError_KeychainLocked asserts that a locked OS keychain
+// produces an actionable envelope, and that the other credentials sentinels do
+// not claim it. The locked error stays fatal, because gcx must not write the
+// secret in plaintext when a real keychain exists.
+func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
+	lockedErr := fmt.Errorf("%w: %s", credentials.ErrLocked,
+		"failed to unlock correct collection '/org/freedesktop/secrets/collection/login'")
+
+	tests := []struct {
+		name       string
+		err        error
+		wantLocked bool
+	}{
+		{
+			name:       "bare ErrLocked",
+			err:        credentials.ErrLocked,
+			wantLocked: true,
+		},
+		{
+			name: "deeply wrapped ErrLocked",
+			err: fmt.Errorf("writing config: %w",
+				fmt.Errorf("inspect keychain entry for %q field %q: %w",
+					"stack:opstest", "oauth-token", lockedErr)),
+			wantLocked: true,
+		},
+		{
+			name:       "ErrUnavailable is not a locked keychain",
+			err:        fmt.Errorf("writing config: %w", credentials.ErrUnavailable),
+			wantLocked: false,
+		},
+		{
+			name:       "ErrNotFound is not a locked keychain",
+			err:        fmt.Errorf("writing config: %w", credentials.ErrNotFound),
+			wantLocked: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tt.err)
+			require.NotNil(t, got)
+
+			if !tt.wantLocked {
+				assert.NotEqual(t, "Keychain locked", got.Summary)
+				return
+			}
+
+			assert.Equal(t, "Keychain locked", got.Summary)
+			assert.Equal(t,
+				"The OS keychain is reachable, but it is locked or cannot be unlocked in this session. gcx does not fall back to a plaintext credential.",
+				got.Details)
+			require.Error(t, got.Parent)
+			require.ErrorIs(t, got.Parent, credentials.ErrLocked)
+			assert.Equal(t, docs.Configuration, got.DocsLink)
+			// convert_internal_test.go pins the per-platform suggestions.
+			assert.NotEmpty(t, got.Suggestions)
 		})
 	}
 }
