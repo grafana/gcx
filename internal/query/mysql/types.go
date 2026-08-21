@@ -73,12 +73,16 @@ func isReplaceWrite(sql string) bool {
 }
 
 // trailingLineCommentRe matches a MySQL line comment (`-- ` or `#`) that
-// runs to the end of the statement. Appending "LIMIT n" as a bare suffix
-// after one would land inside the comment and be silently dropped, leaving
-// the query unbounded. MySQL requires whitespace after "--" for it to start
-// a comment (bare "--" is double unary minus), but no such requirement for
-// "#".
-var trailingLineCommentRe = regexp.MustCompile(`(--[ \t][^\n]*|#[^\n]*)$`)
+// runs to the end of the statement, or a bare trailing "--" with nothing
+// after it. Appending "LIMIT n" as a bare suffix after either would land
+// inside a comment and be silently dropped, leaving the query unbounded.
+// MySQL requires whitespace after "--" for it to start a comment (bare "--"
+// alone is a syntax error: double unary minus with a missing operand) — but
+// appending " LIMIT n" supplies exactly that missing whitespace, turning a
+// query MySQL would have rejected outright into one that silently drops its
+// LIMIT into the new comment. So a bare trailing "--" must bail too, even
+// though it isn't a comment yet in the input as given.
+var trailingLineCommentRe = regexp.MustCompile(`(--([ \t][^\n]*)?|#[^\n]*)$`)
 
 func bail(sql string) bool {
 	trimmed := strings.TrimRight(sql, "; \t\n")

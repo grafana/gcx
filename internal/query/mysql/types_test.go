@@ -77,6 +77,14 @@ func TestEnforceLimit(t *testing.T) {
 		{"bail on trailing -- comment", "SELECT * FROM t -- drop mic", 100, "SELECT * FROM t -- drop mic", false},
 		{"bail on trailing -- comment after semicolon", "SELECT * FROM t; -- trailing", 100, "SELECT * FROM t; -- trailing", false},
 		{"comment mid-query still gets LIMIT", "SELECT 1 # mid-query note\nFROM t", 100, "SELECT 1 # mid-query note\nFROM t LIMIT 100", false},
+
+		// A bare trailing "--" (no following space) is a MySQL syntax error
+		// as given (double unary minus, missing operand) — but appending
+		// " LIMIT n" supplies the missing whitespace and manufactures a
+		// comment that swallows it, turning a query MySQL would reject into
+		// one that silently runs unbounded.
+		{"bail on bare trailing --", "SELECT * FROM big_table --", 100, "SELECT * FROM big_table --", false},
+		{"bail on bare trailing -- after semicolon", "SELECT * FROM big_table; --", 100, "SELECT * FROM big_table; --", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
