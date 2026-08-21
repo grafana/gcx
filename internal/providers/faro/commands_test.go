@@ -2,6 +2,8 @@ package faro_test
 
 import (
 	"bytes"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/faro"
@@ -19,13 +21,32 @@ func toTypedObjs(apps []faro.FaroApp) []adapter.TypedObject[faro.FaroApp] {
 	return objs
 }
 
+// cellSep splits tabwriter output into cells. The plain renderer pads with two
+// spaces, so a two-space run is a column boundary while the single spaces
+// inside a joined cell ("a, b") are not.
+var cellSep = regexp.MustCompile(`\s{2,}`)
+
+// tableCells parses plain table output into ordered cells per line. Tests
+// compare whole rows so a column inserted at the wrong index fails.
+func tableCells(output string) [][]string {
+	var rows [][]string
+	for line := range strings.SplitSeq(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		rows = append(rows, cellSep.Split(line, -1))
+	}
+	return rows
+}
+
 func TestAppTableCodec_Encode(t *testing.T) {
 	tests := []struct {
 		name     string
 		wide     bool
 		apps     []faro.FaroApp
 		wantCols []string
-		wantRows []string
+		wantRows [][]string
 	}{
 		{
 			name: "standard columns",
@@ -39,7 +60,9 @@ func TestAppTableCodec_Encode(t *testing.T) {
 				},
 			},
 			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL"},
-			wantRows: []string{"my-app-42", "abc123", "https://faro.example.com/collect/abc123"},
+			wantRows: [][]string{
+				{"my-app-42", "abc123", "https://faro.example.com/collect/abc123"},
+			},
 		},
 		{
 			name: "wide columns include extra fields",
@@ -57,7 +80,9 @@ func TestAppTableCodec_Encode(t *testing.T) {
 				},
 			},
 			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},
-			wantRows: []string{"my-app-42", "abc123", "https://faro.example.com/otlp", "https://app.example.com", "team=frontend", "country"},
+			wantRows: [][]string{
+				{"my-app-42", "abc123", "https://faro.example.com/collect/abc123", "https://faro.example.com/otlp", "https://app.example.com", "team=frontend", "country"},
+			},
 		},
 		{
 			name: "empty fields show dashes",
@@ -67,7 +92,11 @@ func TestAppTableCodec_Encode(t *testing.T) {
 					Name: "minimal-app",
 				},
 			},
-			wantRows: []string{"minimal-app", "-"},
+			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},
+			// One dash per empty column, so deleting a dash branch fails here.
+			wantRows: [][]string{
+				{"minimal-app-", "-", "-", "-", "-", "-", "-"},
+			},
 		},
 		{
 			name:     "empty list shows only header",
@@ -85,12 +114,11 @@ func TestAppTableCodec_Encode(t *testing.T) {
 			err := codec.Encode(&buf, toTypedObjs(tt.apps))
 			require.NoError(t, err)
 
-			output := buf.String()
-			for _, col := range tt.wantCols {
-				assert.Contains(t, output, col, "missing column header %q", col)
-			}
-			for _, row := range tt.wantRows {
-				assert.Contains(t, output, row, "missing row content %q", row)
+			rows := tableCells(buf.String())
+			require.Len(t, rows, len(tt.wantRows)+1, "header plus one line per app")
+			assert.Equal(t, tt.wantCols, rows[0], "column headers")
+			for i, want := range tt.wantRows {
+				assert.Equal(t, want, rows[i+1], "row %d cells, in column order", i)
 			}
 		})
 	}

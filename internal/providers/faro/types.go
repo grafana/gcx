@@ -15,8 +15,9 @@ type FaroApp struct {
 	Name               string `json:"name"`
 	AppKey             string `json:"appKey,omitempty"`
 	CollectEndpointURL string `json:"collectEndpointURL,omitempty"`
-	// OTLPIngestEndpointURL is the endpoint the native mobile SDKs (Android and
-	// iOS OpenTelemetry) send to. The web SDK uses CollectEndpointURL.
+	// OTLPIngestEndpointURL is the base endpoint the native mobile SDKs (Android
+	// and iOS OpenTelemetry) send to. The web SDK uses CollectEndpointURL.
+	// The API returns the base URL only — append AppKey to make it usable.
 	OTLPIngestEndpointURL string            `json:"otlpIngestEndpointURL,omitempty"`
 	CORSOrigins           []CORSOrigin      `json:"corsOrigins,omitempty"`
 	ExtraLogLabels        map[string]string `json:"extraLogLabels,omitempty"`
@@ -75,6 +76,10 @@ func (app *FaroApp) toAPI() faroAppAPI {
 	if app.ID != "" {
 		id, _ = strconv.ParseInt(app.ID, 10, 64)
 	}
+	// The API assigns AppKey, CollectEndpointURL and OTLPIngestEndpointURL and
+	// treats all three as read-only, so sending them back is harmless. This is
+	// why StripFields keeps them in pulled manifests: they cannot leak one
+	// stack's collector host into another on push.
 	return faroAppAPI{
 		ID:                    id,
 		Name:                  app.Name,
