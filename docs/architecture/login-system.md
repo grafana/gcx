@@ -49,6 +49,7 @@ classDiagram
         CloudTokenTrusted
         CloudOAuthTokenExpiresAt, CloudOAuthScopes
         UseOAuth, Yes, Writer
+        OAuthCallbackPort, OAuthManual, Reader
         UseCloudInstanceSelector
         TLS, StoredTLS
         PreserveStoredTLS
