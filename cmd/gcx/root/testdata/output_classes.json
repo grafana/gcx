@@ -63,6 +63,7 @@
  "gcx agento11y rules delete": "finite",
  "gcx agento11y rules get": "finite",
  "gcx agento11y rules list": "finite",
+ "gcx agento11y rules list-scores": "finite",
  "gcx agento11y rules update": "finite",
  "gcx agento11y saved-conversations collections": "finite",
  "gcx agento11y saved-conversations delete": "finite",

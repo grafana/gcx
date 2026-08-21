@@ -16,7 +16,7 @@ gcx agento11y generations list-scores <generation-id> [flags]
   -h, --help            help for list-scores
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of scores to return (default 50)
+      --limit int       Maximum number of scores to return. 0 returns up to a 1000-row safety cap; set a higher --limit to fetch more (default 50)
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 

@@ -30,7 +30,7 @@ All commands live under `gcx agento11y`. Use `gcx agento11y <subcommand> --help`
 | `generations` | Get a single generation, list its scores |
 | `agents` | List agents, get details, list version history (`list-versions`) |
 | `evaluators` | List, get, upsert, delete, test evaluators |
-| `rules` | List, get, create, update, delete evaluation rules |
+| `rules` | List, get, create, update, delete evaluation rules; `list-scores` for online score rows |
 | `templates` | List, get built-in evaluator templates |
 | `judge` | List judge providers and models |
 | `experiments` | List, get, create, update, cancel runs; `list-scores` and `report` |
@@ -103,6 +103,38 @@ There is no `evaluators update` command; to change an evaluator, re-run `upsert`
 4. Iterate until the evaluator scores as expected
 5. Write a rule YAML (see [rule-templates.md](references/rule-templates.md) for copy-paste templates), create: `gcx agento11y rules create -f rule.yaml`
 6. Verify: `gcx agento11y rules list`
+7. Inspect online scores (failing first): `gcx agento11y rules list-scores <rule-id> --passed=false -o json`
+
+## Checking Online Scores
+
+Scores are produced when a rule matches production traffic. List them by rule.
+The default table is a summary (no explanation column); use `-o json` or `-o wide`
+for LLM-judge explanations.
+
+```bash
+# Recent scores (summary table)
+gcx agento11y rules list-scores <rule-id>
+
+# Failure theme analysis (explanations in JSON)
+gcx agento11y rules list-scores <rule-id> --passed=false --limit 100 -o json
+
+# Wide table with truncated explanation column
+gcx agento11y rules list-scores <rule-id> --passed=false -o wide
+
+# Scope to one evaluator / time window
+gcx agento11y rules list-scores <rule-id> --evaluator-id <id> --from 2026-04-01T00:00:00Z --to 2026-04-02T00:00:00Z -o json
+
+# Per-generation scores (after you have a generation ID)
+gcx agento11y generations list-scores <generation-id>
+```
+
+`rules list-scores` JSON is an envelope: `{"items": [...], "list_meta": {...}}`
+(the `list_meta` key appears only when the result was truncated). Parse rows with
+`jq '.items[]'`. `generations list-scores` JSON is a bare `[...]` array; when it
+truncates, the truncation hint is on stderr only. `--limit 0` returns up to a
+1000-row safety cap (not everything) on both. To go beyond it: on
+`generations list-scores` raise `--limit` (any value is honored); on
+`rules list-scores` narrow with filters (`--limit` itself caps at 1000).
 
 ## Rule Selectors
 
