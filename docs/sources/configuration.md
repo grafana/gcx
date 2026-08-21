@@ -66,13 +66,18 @@ exact owner kind and name, exact secret field, and normalized destination. Copyi
 file does not make its stored credentials portable; authenticate the copied
 file separately.
 
-If the OS credential store is locked, `gcx` does not write your credential in
-plaintext, because a real credential store exists. A command that must store or
-read a credential fails with a `Keychain locked` error. A headless or SSH
-session on Linux causes this most often: the keyring daemon runs, but no prompt
-can unlock the collection. To recover, do one of these steps:
+When gcx detects a locked macOS Keychain or Secret Service collection, it does
+not use or write a plaintext credential as a fallback, because a real
+credential store exists. A credential-consuming command fails with a
+`Keychain locked` error; inspection and repair commands remain available. A
+headless or SSH session causes this most often: the credential-store process is
+reachable, but the current session cannot present an unlock prompt. Windows
+Credential Manager lock failures are not yet part of this classification. To
+recover, do one of these steps:
 
-- Unlock the keyring, then run the command again. See
+- On macOS, unlock the login keychain in the same security session as gcx. See
+  [Unlock a macOS keychain in the current session](#unlock-a-macos-keychain-in-the-current-session).
+- On Linux or BSD, unlock the Secret Service collection. See
   [Unlock a GNOME keyring in a headless session](#unlock-a-gnome-keyring-in-a-headless-session).
 - Run `gcx` from a desktop session that can show a password prompt.
 - Supply the credential through an environment variable, such as `GRAFANA_TOKEN`.
@@ -133,6 +138,21 @@ gcx config set contexts.staging.stack staging
 ```
 
 Note that in these examples, `default` and `staging` are the context and stack names.
+
+## Unlock a macOS keychain in the current session
+
+On macOS, a keychain unlock applies to the current security session. Unlocking
+the login keychain in a different terminal or process tree may not help the gcx
+process that reported the error. From the session where you will run gcx, use:
+
+```shell
+security unlock-keychain
+```
+
+The command prompts for the keychain password. Do not pass the password with
+`-p`, because that exposes it in the process arguments. After the command
+succeeds, retry gcx from the same session. If the process still cannot use the
+unlock, run gcx from an unlocked desktop session instead.
 
 ## Unlock a GNOME keyring in a headless session
 

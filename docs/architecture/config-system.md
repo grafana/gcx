@@ -250,8 +250,9 @@ Loading steps (in `Load`):
    state; the original on-disk sentinel survives unrelated writes so the field
    remains visibly configured and repairable. An unavailable keychain likewise
    preserves the sentinel for an unchanged write. A locked keychain also
-   preserves the sentinel, and records the rejection reason `the OS keychain is
-   locked`, so the user knows to unlock the keyring before the next attempt.
+   preserves the sentinel and the typed `credentials.ErrLocked` cause. A
+   credential consumer surfaces that cause as the `Keychain locked` envelope;
+   config inspection and repair continue to use the recorded rejection reason.
    Under `go test`, the default store is unavailable, so test binaries never
    prompt the OS keychain.
 8. **Migrate plaintext token-shaped secrets**: plaintext values in tracked stack
@@ -304,10 +305,13 @@ When the keychain reports a narrowly classified unavailable backend, a
 brand-new credential with no prior keychain reference may remain plaintext on
 disk; gcx warns at most once per process. Known unreachable native backend
 failures are normalized at write time as unavailable, not just during the
-initial read probe. A native failure that proves a reachable but locked backend
-normalizes to a separate locked class (`credentials.ErrLocked`), which stays
-fatal at read time and at write time. A locked backend, replacing or deleting
-an existing generation, replacing a missing or rejected sentinel, and
+initial read probe. Secret Service lock responses and the macOS statuses for
+dark wake, interaction disallowed, and the observed locked-session failure
+normalize to a separate locked class (`credentials.ErrLocked`), which stays
+fatal at read time and at write time. OAuth refresh persistence retains the
+same cause while keeping the rotated generation pending for retry. A locked
+backend, replacing or deleting an existing generation, replacing a missing or
+rejected sentinel, and
 value-size, policy, cancellation, or unknown backend failures all fail closed.
 Silently continuing in those cases could orphan the only resolvable credential,
 leave an old credential active, downgrade a credential for an unrelated backend

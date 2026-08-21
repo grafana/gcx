@@ -1396,7 +1396,7 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 
 			assert.Equal(t, "Keychain locked", got.Summary)
 			assert.Equal(t,
-				"The OS keychain is reachable, but it is locked. gcx does not write the credential in plaintext.",
+				"The OS keychain is reachable, but it is locked or cannot be unlocked in this session. gcx does not fall back to a plaintext credential.",
 				got.Details)
 			require.Error(t, got.Parent)
 			require.ErrorIs(t, got.Parent, credentials.ErrLocked)
