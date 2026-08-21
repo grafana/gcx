@@ -157,6 +157,13 @@ types. Do not duplicate that logic or re-declare
 `GrafanaQueryResponse`/`DataFrame`. Check the current set with
 `grep -rl query/grafanaquery internal/query/` and copy the closest one.
 
+**If the datasource takes raw SQL, the request body and `--limit` enforcement are
+shared too** — `querysql.BuildRawQueryBody` and `querysql.EnforceLimit` with a
+dialect-local `bail` predicate, never a hand-rolled clamp. Read
+`references/raw-sql.md` before writing either: it carries the plugin-`format`
+exception, the stderr disclosure `capped` owes the caller, and the four bail
+traps that have each cost a real PR a review round.
+
 **Pick the client shape from what your commands actually call — there are three,
 and the middle one is the common case.** The two transports are not alternatives:
 unified query is a POST to `/apis/query.grafana.app/.../query`, while label,
