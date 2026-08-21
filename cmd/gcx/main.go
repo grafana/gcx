@@ -44,12 +44,20 @@ func main() {
 	// default behaviour once the first signal has cancelled the context so a
 	// second Ctrl-C force-terminates.
 	//
-	// stop is called from the watcher goroutine rather than deferred: every
-	// path out of main ends in os.Exit, so a defer would never run.
+	// stop runs in this goroutine rather than in a defer: every path out of main
+	// ends in os.Exit, so a defer would never run. The watcher stands down once
+	// the command has returned, because from there only the usage export is left
+	// and exitWith decides what disposition it runs under — see interruptGate.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	gate := newInterruptGate()
 	go func() {
-		<-ctx.Done()
-		stop()
+		select {
+		case <-ctx.Done():
+			stop()
+			gate.restored <- true
+		case <-gate.commandDone:
+			gate.restored <- false
+		}
 	}()
 
 	// Pre-parse --agent flag before Cobra sees it. This must happen before
@@ -71,30 +79,144 @@ func main() {
 	// prefer sticking to err != nil format, than optimizing for calling exitWith
 	// once
 	if err := root.ValidateArgs(cmd, os.Args[1:]); err != nil {
-		exitWith(cmd, start, reportError(err, boolFlags, subCmds))
+		exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
 	}
 
 	err := cmd.ExecuteContext(ctx)
 
-	// Quick exit on context canceled — but never for an EmittedError: a
-	// command that already wrote its complete result document carries its
-	// own exit code, and its cause chain may legitimately wrap a canceled
-	// item error (e.g. a batch interrupted after partial success). The
-	// EmittedError contract (exit code agrees with the emitted document,
-	// agentlog/usage still recorded) outranks the cancellation fast path.
-	var emittedForCancel *gcxerrors.EmittedError
-	if errors.Is(err, context.Canceled) && !errors.As(err, &emittedForCancel) {
-		os.Exit(gcxerrors.ExitCancelled)
+	// An interrupted invocation reports no error: there is no failure to
+	// describe, and a fused error document on stdout would contradict a command
+	// that was interrupted before it wrote its result. It still exits through
+	// exitWith, so the invocation is reported like any other outcome. Other
+	// routes to exit 5 — a declined confirmation prompt, a server-reported
+	// cancellation — report their own outcome and are not silenced here.
+	if isSilentCancellation(ctx, err) {
+		exitWith(cmd, gate, start, gcxerrors.ExitCancelled)
 	}
 
-	exitWith(cmd, start, reportError(err, boolFlags, subCmds))
+	exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
+}
+
+// interruptGate is the handover between the interrupt watcher main installs and
+// exitWith, so that exactly one of them owns the SIGINT disposition at a time.
+// Without a handover they race: signal.Stop and signal.Ignore both rewrite the
+// same handler state, so a stop() arriving after an Ignore silently undoes it.
+type interruptGate struct {
+	// commandDone tells the watcher the command has returned and only the usage
+	// export is left, so it must not touch the disposition any more.
+	commandDone chan struct{}
+	// restored reports whether the watcher put the default terminate action
+	// back. Since only signal.NotifyContext cancels the root context, true is
+	// exactly "a signal reached this invocation while it was still running".
+	restored chan bool
+}
+
+func newInterruptGate() interruptGate {
+	return interruptGate{
+		commandDone: make(chan struct{}),
+		restored:    make(chan bool, 1),
+	}
+}
+
+// settle stands the watcher down and reports whether it had restored the default
+// terminate action. After it returns, the caller is the only party that can
+// change the SIGINT disposition.
+//
+// Reading the answer here rather than sampling ctx.Err() at the call site is
+// what makes the export's disposition correct for an interrupt that arrives
+// late — during reportError, or during the export itself. A sample taken before
+// the export cannot see those, and a run that had already written its result
+// would then be left killable by the next signal.
+func (gate interruptGate) settle() bool {
+	close(gate.commandDone)
+
+	return <-gate.restored
+}
+
+// isSilentCancellation reports whether err is a cancellation that must exit
+// quietly with ExitCancelled — but never for an EmittedError: a command that
+// already wrote its complete result document carries its own exit code, and
+// its cause chain may legitimately wrap a canceled item error (e.g. a batch
+// interrupted after partial success). The EmittedError contract (exit code
+// agrees with the emitted document, agentlog/usage still recorded) outranks
+// the cancellation fast path.
+//
+// The interrupt does not always arrive as context.Canceled. Go 1.26's
+// signal.NotifyContext cancels with a cause describing the signal, and
+// net/http surfaces context.Cause rather than context.Canceled, so an
+// interrupted request fails with "interrupt signal received". Before Go 1.26.5
+// that cause did not report itself as context.Canceled, and gcx classified a
+// Ctrl-C as a network error and exited 1. Matching the invocation context's
+// own cause covers both, without widening to unrelated errors that merely
+// happen to arrive while the context is done.
+func isSilentCancellation(ctx context.Context, err error) bool {
+	var emitted *gcxerrors.EmittedError
+	if err == nil || errors.As(err, &emitted) {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	// A cause that reports itself as context.Canceled was already matched
+	// above, so reaching here means the cause is the signal error itself.
+	cause := context.Cause(ctx)
+	return cause != nil && errors.Is(err, cause)
 }
 
 // exitWith emits the usage event for this invocation, then exits. Every
-// invocation ends here, except the cancellation fast path above.
-func exitWith(cmd *cobra.Command, start time.Time, exitCode int) {
+// invocation ends here.
+//
+// The export is synchronous, so the SIGINT disposition it runs under matters.
+// While signal.NotifyContext's handler is installed a second Ctrl-C is
+// swallowed, so an export waiting out its timeout would ignore a user who is
+// asking again to be let go; the watcher in main restores the default terminate
+// action for exactly that reason as soon as the context is cancelled. exitWith
+// stands that watcher down first, so from here nothing else can change the
+// disposition it chooses.
+//
+// The restored default action is right for a run the user is abandoning and
+// wrong for one that finished anyway. A command can absorb an interrupt and
+// complete: gcx dev serve shuts its HTTP server down on ctx.Done and returns
+// nil, so it reaches here interrupted and successful. Leaving the default action
+// in place there lets a second Ctrl-C — the ordinary way to stop a dev server —
+// kill a run that already wrote its result, and the shell reads status 130
+// instead of the code that agrees with that result. abandonsExport holds the
+// exact condition; every other invocation holds SIGINT for the length of the
+// export, including one that was never interrupted at all, so an interrupt
+// arriving mid-export cannot overwrite an outcome either.
+//
+// The invocation context is deliberately not passed in. The export must not
+// inherit it: for the case this whole path exists to report, the context is
+// already cancelled, so passing it would abort the very event being sent.
+func exitWith(cmd *cobra.Command, gate interruptGate, start time.Time, exitCode int) {
+	if !abandonsExport(gate.settle(), exitCode) {
+		signal.Ignore(os.Interrupt)
+	}
 	emitUsageEvent(cmd, start, exitCode)
 	os.Exit(exitCode)
+}
+
+// abandonsExport reports whether the user is trying to abandon this invocation,
+// which is the only case that leaves the restored default signal action in place
+// for the usage export.
+//
+// Both halves are load-bearing. "An interrupt arrived" alone is not enough,
+// because a command can absorb the interrupt and still finish its work: gcx dev
+// serve shuts its HTTP server down on ctx.Done and returns nil, so it reaches
+// here interrupted and successful. Letting the default action stand there lets a
+// second Ctrl-C — the ordinary way to stop a dev server — kill a run that
+// already succeeded, and the shell reads status 130 instead of 0. That breaks
+// gcx dev serve && next for a run with nothing wrong with it.
+//
+// The exit code is the whole answer to "is there something to abandon": every
+// route that abandons an invocation ends at ExitCancelled, and every route that
+// completed one ends somewhere else. Testing the code rather than the route also
+// keeps this from drifting out of step with the status the process really
+// returns. The other direction is real too: a declined confirmation prompt exits
+// 5 with no signal at all, and its export must stay unkillable like any other
+// completed run's.
+func abandonsExport(interrupted bool, exitCode int) bool {
+	return interrupted && exitCode == gcxerrors.ExitCancelled
 }
 
 // preParseAgentFlag scans os.Args for --agent / --agent=true / --agent=false
