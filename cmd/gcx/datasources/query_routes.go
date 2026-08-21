@@ -91,6 +91,11 @@ func newQueryRoutes() queryRoutes {
 				"subscription, resource group, resource, namespace, metric, aggregation",
 				"gcx datasources azuremonitor query --subscription ... --resource-group ... --resource ... --namespace ... --metric ...",
 			),
+			"cloudmonitoring": structuredQueryRedirect(
+				"Google Cloud Monitoring",
+				"project, metric type, reducer, aligner, filters, group-bys",
+				"gcx datasources cloudmonitoring query --project ... --metric ...",
+			),
 			"cloudwatch": structuredQueryRedirect(
 				"CloudWatch",
 				"namespace, metric, dimensions, region, statistic, period",
