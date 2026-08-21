@@ -1,6 +1,13 @@
 ## gcx kg relationships
 
-Manage custom Knowledge Graph relationships [experimental].
+[experimental] Manage custom Knowledge Graph relationships.
+
+### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Create, update, and delete API-origin edges between Knowledge Graph entities.
 
 ### Options
 
@@ -23,6 +30,6 @@ Manage custom Knowledge Graph relationships [experimental].
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg relationships delete](gcx_kg_relationships_delete.md)	 - Delete a custom relationship [experimental].
-* [gcx kg relationships upsert](gcx_kg_relationships_upsert.md)	 - Create or update a custom relationship (upsert) [experimental].
+* [gcx kg relationships delete](gcx_kg_relationships_delete.md)	 - Delete a custom relationship.
+* [gcx kg relationships upsert](gcx_kg_relationships_upsert.md)	 - Create or update a custom relationship (upsert).
 

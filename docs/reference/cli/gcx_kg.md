@@ -33,7 +33,7 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg prom-rules](gcx_kg_prom-rules.md)	 - Manage Knowledge Graph Custom Prometheus rules.
 * [gcx kg quality](gcx_kg_quality.md)	 - Inspect Knowledge Graph entity quality reports.
 * [gcx kg relabel-rules](gcx_kg_relabel-rules.md)	 - Inspect Mimir relabel rules used by the Knowledge Graph.
-* [gcx kg relationships](gcx_kg_relationships.md)	 - Manage custom Knowledge Graph relationships [experimental].
+* [gcx kg relationships](gcx_kg_relationships.md)	 - [experimental] Manage custom Knowledge Graph relationships.
 * [gcx kg stats](gcx_kg_stats.md)	 - Show entity and active-insight counts, broken down by type, severity, and insight name.
 * [gcx kg status](gcx_kg_status.md)	 - Show Knowledge Graph stack status.
 * [gcx kg suppressions](gcx_kg_suppressions.md)	 - Manage alert suppressions in the Knowledge Graph.
