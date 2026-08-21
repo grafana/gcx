@@ -74,7 +74,7 @@ datasource configuration.
 
 --mode documents (default) returns raw source documents. --mode logs returns
 the same documents newest-first with plugin-internal fields (_source, sort,
-highlight) omitted, matching how Grafana Explore's Logs view reads them.
+highlight, _type) omitted, matching how Grafana Explore's Logs view reads them.
 
 Datasource is resolved from -d flag or datasources.elasticsearch in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
