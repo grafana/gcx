@@ -164,10 +164,11 @@ func TestClient_Create(t *testing.T) {
 			// GET for list (re-fetch after create)
 			writeJSON(w, []map[string]any{
 				{
-					"id":                 100,
-					"name":               "new-app",
-					"appKey":             "abc-key",
-					"collectEndpointURL": "https://collect.example.com",
+					"id":                    100,
+					"name":                  "new-app",
+					"appKey":                "abc-key",
+					"collectEndpointURL":    "https://collect.example.com",
+					"otlpIngestEndpointURL": "https://collect.example.com/otlp",
 				},
 			})
 		}))
@@ -200,6 +201,7 @@ func TestClient_Create(t *testing.T) {
 		assert.Equal(t, "100", result.ID)
 		assert.Equal(t, "abc-key", result.AppKey)
 		assert.Equal(t, "https://collect.example.com", result.CollectEndpointURL)
+		assert.Equal(t, "https://collect.example.com/otlp", result.OTLPIngestEndpointURL)
 	})
 }
 

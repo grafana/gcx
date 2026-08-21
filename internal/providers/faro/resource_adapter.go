@@ -57,11 +57,12 @@ func FaroAppSchema() json.RawMessage {
 			"spec": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"name":               map[string]any{"type": "string"},
-					"corsOrigins":        map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"url": map[string]any{"type": "string"}}}},
-					"extraLogLabels":     map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
-					"collectEndpointURL": map[string]any{"type": "string"},
-					"appKey":             map[string]any{"type": "string"},
+					"name":                  map[string]any{"type": "string"},
+					"corsOrigins":           map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"url": map[string]any{"type": "string"}}}},
+					"extraLogLabels":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
+					"collectEndpointURL":    map[string]any{"type": "string"},
+					"otlpIngestEndpointURL": map[string]any{"type": "string"},
+					"appKey":                map[string]any{"type": "string"},
 					"settings": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
