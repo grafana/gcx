@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"time"
+
+	cmdio "github.com/grafana/gcx/internal/output"
 )
 
 // AcceptLLM is the Accept header value for Tempo LLM-friendly responses.
@@ -54,16 +56,17 @@ type ServiceStats struct {
 	ErrorCount int `json:"errorCount,omitempty"`
 }
 
-// BaselineCandidate is a baseline candidate with structural context
-// (per-candidate span/service counts) for comparison against the seed trace.
+// BaselineCandidate is a baseline candidate with structural context for
+// comparison against the seed trace. SpanCount and ServiceCount are nil when
+// Tempo did not return service statistics for the candidate.
 type BaselineCandidate struct {
 	TraceID           string `json:"traceID"`
 	RootServiceName   string `json:"rootServiceName"`
 	RootTraceName     string `json:"rootTraceName"`
 	StartTimeUnixNano string `json:"startTimeUnixNano"`
 	DurationMs        int    `json:"durationMs"`
-	SpanCount         int    `json:"spanCount"`
-	ServiceCount      int    `json:"serviceCount"`
+	SpanCount         *int   `json:"spanCount,omitempty"`
+	ServiceCount      *int   `json:"serviceCount,omitempty"`
 }
 
 // BaselineResult is the baseline-candidate list for a seed trace, in the order
@@ -74,6 +77,7 @@ type BaselineResult struct {
 	SeedServiceCount int                 `json:"seedServiceCount"`
 	Query            string              `json:"query"`
 	Candidates       []BaselineCandidate `json:"candidates"`
+	ListMeta         *cmdio.ListMeta     `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }
 
 // GetTraceRequest represents a request to retrieve a single trace by ID.

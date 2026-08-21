@@ -198,7 +198,8 @@ change.`,
 				os.Args,
 			)
 
-			result := buildBaselineResult(seedID, profile.ServiceSpans, resp, req.Query)
+			result := buildBaselineResult(seedID, profile, resp, req.Query)
+			result.ListMeta = meta
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
@@ -283,15 +284,11 @@ func downstreamServices(serviceSpans map[string]int, rootService string, n int) 
 // buildBaselineResult enriches the candidates with the structural context
 // (per-candidate span/service counts) and attaches the seed profile. Candidate
 // order is preserved as returned by search.
-func buildBaselineResult(seedID string, seedCounts map[string]int, resp *tempo.SearchResponse, query string) *tempo.BaselineResult {
-	seedSpans := 0
-	for _, n := range seedCounts {
-		seedSpans += n
-	}
+func buildBaselineResult(seedID string, profile seedProfile, resp *tempo.SearchResponse, query string) *tempo.BaselineResult {
 	result := &tempo.BaselineResult{
 		SeedTraceID:      seedID,
-		SeedSpanCount:    seedSpans,
-		SeedServiceCount: len(seedCounts),
+		SeedSpanCount:    profile.SpanCount,
+		SeedServiceCount: len(profile.ServiceSpans),
 		Query:            query,
 		Candidates:       make([]tempo.BaselineCandidate, 0),
 	}
@@ -299,19 +296,23 @@ func buildBaselineResult(seedID string, seedCounts map[string]int, resp *tempo.S
 		return result
 	}
 	for _, t := range resp.Traces {
-		spans := 0
-		for _, s := range t.ServiceStats {
-			spans += s.SpanCount
-		}
-		result.Candidates = append(result.Candidates, tempo.BaselineCandidate{
+		candidate := tempo.BaselineCandidate{
 			TraceID:           t.TraceID,
 			RootServiceName:   t.RootServiceName,
 			RootTraceName:     t.RootTraceName,
 			StartTimeUnixNano: t.StartTimeUnixNano,
 			DurationMs:        t.DurationMs,
-			SpanCount:         spans,
-			ServiceCount:      len(t.ServiceStats),
-		})
+		}
+		if t.ServiceStats != nil {
+			spans := 0
+			for _, s := range t.ServiceStats {
+				spans += s.SpanCount
+			}
+			services := len(t.ServiceStats)
+			candidate.SpanCount = &spans
+			candidate.ServiceCount = &services
+		}
+		result.Candidates = append(result.Candidates, candidate)
 	}
 	return result
 }
@@ -342,26 +343,30 @@ func excludeTrace(resp *tempo.SearchResponse, seedID string) *tempo.SearchRespon
 
 // ─── seed trace parsing (OTLP-shaped resourceSpans) ─────────────────────────
 
-// seedProfile summarizes a seed trace: its root identity, span time range, and
-// per-service span counts. It is produced by a single traversal of the trace.
+// seedProfile summarizes a seed trace: its root identity, span time range,
+// total span count, and per-service span counts. It is produced by a single
+// traversal of the trace.
 type seedProfile struct {
 	RootService   string
 	RootOperation string
 	MinStartNanos uint64
 	MaxEndNanos   uint64
 	HasTimeRange  bool
+	SpanCount     int
 	ServiceSpans  map[string]int
 }
 
 // parseSeedTrace walks every span in the OTLP-shaped trace once and derives what
-// the command needs: per-service span counts, the overall span time range, and
-// the root identity (earliest parentless span and its resource service.name).
+// the command needs: total and per-service span counts, the overall span time
+// range, and the root identity (earliest parentless span and its resource
+// service.name).
 func parseSeedTrace(trace map[string]any) seedProfile {
 	profile := seedProfile{ServiceSpans: make(map[string]int)}
 	var rootStart uint64
 	rootFound := false
 
 	forEachSpan(trace, func(service string, span map[string]any) {
+		profile.SpanCount++
 		if service != "" {
 			profile.ServiceSpans[service]++
 		}

@@ -54,13 +54,20 @@ func FormatBaselineTable(w io.Writer, resp *BaselineResult) error {
 			c.TraceID,
 			c.RootServiceName,
 			c.RootTraceName,
-			strconv.Itoa(c.SpanCount),
-			strconv.Itoa(c.ServiceCount),
+			formatOptionalCount(c.SpanCount),
+			formatOptionalCount(c.ServiceCount),
 			formatDuration(c.DurationMs),
 			formatStartTime(c.StartTimeUnixNano),
 		)
 	}
 	return tbl.Render(w)
+}
+
+func formatOptionalCount(count *int) string {
+	if count == nil {
+		return "-"
+	}
+	return strconv.Itoa(*count)
 }
 
 // FormatTagsTable formats a tags response as a table.

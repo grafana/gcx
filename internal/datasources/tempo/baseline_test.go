@@ -191,6 +191,10 @@ current-context: default
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
 	require.Len(t, result.Candidates, 20)
 	assert.Equal(t, "candidate-01", result.Candidates[0].TraceID)
+	require.NotNil(t, result.ListMeta)
+	assert.True(t, result.ListMeta.Truncated)
+	assert.Equal(t, 20, result.ListMeta.Returned)
+	assert.Contains(t, result.ListMeta.Continue, "--limit 40")
 	assert.Contains(t, stderr.String(), "showing first 20; more results are available")
 }
 
@@ -256,6 +260,7 @@ func TestParseSeedTrace(t *testing.T) {
 	assert.True(t, p.HasTimeRange)
 	assert.Equal(t, uint64(1700000000000000000), p.MinStartNanos)
 	assert.Equal(t, uint64(1700000000900000000), p.MaxEndNanos)
+	assert.Equal(t, 2, p.SpanCount)
 	assert.Equal(t, map[string]int{"checkout": 1, "postgres": 1}, p.ServiceSpans)
 }
 
@@ -284,6 +289,26 @@ func TestParseSeedTrace_NoRootSpan(t *testing.T) {
 	assert.Empty(t, p.RootOperation)
 	assert.False(t, p.HasTimeRange)
 	assert.Equal(t, map[string]int{"svc": 1}, p.ServiceSpans)
+}
+
+func TestParseSeedTrace_CountsSpansWithoutServiceName(t *testing.T) {
+	trace := map[string]any{
+		"resourceSpans": []any{
+			map[string]any{
+				"scopeSpans": []any{
+					map[string]any{
+						"spans": []any{
+							map[string]any{"name": "unattributed", "parentSpanId": "parent"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	p := parseSeedTrace(trace)
+	assert.Equal(t, 1, p.SpanCount)
+	assert.Empty(t, p.ServiceSpans)
 }
 
 func TestParseSeedTrace_SkipsZeroTimestamps(t *testing.T) {
@@ -455,35 +480,48 @@ func TestLimitTraces(t *testing.T) {
 }
 
 func TestBuildBaselineResult_EmptyCandidatesSerializeAsArray(t *testing.T) {
-	result := buildBaselineResult("seed-id", nil, nil, "{ }")
+	result := buildBaselineResult("seed-id", seedProfile{}, nil, "{ }")
 
 	payload, err := json.Marshal(result)
 	require.NoError(t, err)
 	assert.Contains(t, string(payload), `"candidates":[]`)
+	assert.NotContains(t, string(payload), `"list_meta"`)
 }
 
 func TestBuildBaselineResult(t *testing.T) {
-	seed := map[string]int{"checkout": 4, "postgres": 2} // 6 spans, 2 services
+	profile := seedProfile{
+		SpanCount:    7,
+		ServiceSpans: map[string]int{"checkout": 4, "postgres": 2},
+	}
 	resp := &tempo.SearchResponse{Traces: []tempo.SearchTrace{
 		{TraceID: "exact", RootServiceName: "checkout", RootTraceName: "POST /x", DurationMs: 30,
 			ServiceStats: map[string]tempo.ServiceStats{"checkout": {SpanCount: 4}, "postgres": {SpanCount: 2}}},
 		{TraceID: "far", RootServiceName: "checkout", RootTraceName: "POST /x", DurationMs: 90,
 			ServiceStats: map[string]tempo.ServiceStats{"checkout": {SpanCount: 40}}},
+		{TraceID: "unknown", RootServiceName: "checkout", RootTraceName: "POST /x", DurationMs: 10},
 	}}
 
-	result := buildBaselineResult("seed-id", seed, resp, "{ }")
+	result := buildBaselineResult("seed-id", profile, resp, "{ }")
 
 	assert.Equal(t, "seed-id", result.SeedTraceID)
-	assert.Equal(t, 6, result.SeedSpanCount)
+	assert.Equal(t, 7, result.SeedSpanCount)
 	assert.Equal(t, 2, result.SeedServiceCount)
-	require.Len(t, result.Candidates, 2)
+	require.Len(t, result.Candidates, 3)
 
 	first := result.Candidates[0]
 	assert.Equal(t, "exact", first.TraceID)
-	assert.Equal(t, 6, first.SpanCount)
-	assert.Equal(t, 2, first.ServiceCount)
+	require.NotNil(t, first.SpanCount)
+	require.NotNil(t, first.ServiceCount)
+	assert.Equal(t, 6, *first.SpanCount)
+	assert.Equal(t, 2, *first.ServiceCount)
 
 	second := result.Candidates[1]
-	assert.Equal(t, 40, second.SpanCount)
-	assert.Equal(t, 1, second.ServiceCount)
+	require.NotNil(t, second.SpanCount)
+	require.NotNil(t, second.ServiceCount)
+	assert.Equal(t, 40, *second.SpanCount)
+	assert.Equal(t, 1, *second.ServiceCount)
+
+	unknown := result.Candidates[2]
+	assert.Nil(t, unknown.SpanCount)
+	assert.Nil(t, unknown.ServiceCount)
 }
