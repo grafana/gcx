@@ -70,6 +70,26 @@ func TestFormatSearchTable_Empty(t *testing.T) {
 	assert.Len(t, lines, 1)
 }
 
+func TestFormatBaselineTable_DistinguishesUnknownAndZeroCounts(t *testing.T) {
+	zero := 0
+	resp := &tempo.BaselineResult{
+		SeedTraceID:      "seed",
+		SeedSpanCount:    2,
+		SeedServiceCount: 1,
+		Candidates: []tempo.BaselineCandidate{
+			{TraceID: "known", RootServiceName: "svc", RootTraceName: "op", SpanCount: &zero, ServiceCount: &zero},
+			{TraceID: "unknown", RootServiceName: "svc", RootTraceName: "op"},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatBaselineTable(&buf, resp))
+
+	out := buf.String()
+	assert.Regexp(t, `(?m)^known\s+svc\s+op\s+0\s+0\s+`, out)
+	assert.Regexp(t, `(?m)^unknown\s+svc\s+op\s+-\s+-\s+`, out)
+}
+
 func TestFormatTagsTable(t *testing.T) {
 	resp := &tempo.TagsResponse{
 		Scopes: []tempo.TagScope{
