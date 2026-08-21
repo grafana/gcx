@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/cloudmonitoring"
 	"github.com/grafana/gcx/internal/query/cloudwatch"
+	"github.com/grafana/gcx/internal/query/elasticsearch"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -59,6 +60,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return cloudwatch.FormatTable(w, resp)
 	case *cloudmonitoring.QueryResponse:
 		return cloudmonitoring.FormatTable(w, resp)
+	case *elasticsearch.MetricsResponse:
+		return elasticsearch.FormatMetricsTable(w, resp)
 	case *azuremonitor.QueryResponse:
 		return azuremonitor.FormatTable(w, resp)
 	case *azuremonitor.TableResponse:
@@ -98,6 +101,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return cloudwatch.FormatWide(w, resp)
 	case *cloudmonitoring.QueryResponse:
 		return cloudmonitoring.FormatWide(w, resp)
+	case *elasticsearch.MetricsResponse:
+		return elasticsearch.FormatMetricsTable(w, resp)
 	case *azuremonitor.QueryResponse:
 		return azuremonitor.FormatWide(w, resp)
 	case *azuremonitor.TableResponse:
@@ -167,6 +172,11 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		}
 	case *influxdb.QueryResponse:
 		chartData, err = graph.FromInfluxDBResponse(resp)
+		if err != nil {
+			return err
+		}
+	case *elasticsearch.MetricsResponse:
+		chartData, err = graph.FromElasticsearchResponse(resp)
 		if err != nil {
 			return err
 		}

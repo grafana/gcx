@@ -94,6 +94,7 @@ gcx/
 │   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   │   ├── cloudmonitoring/  # Google Cloud Monitoring CLI commands (query, list-projects, list-metrics)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
+│   │   ├── elasticsearch/    # Elasticsearch datasource commands (query [--mode documents|logs], metrics, list-indices, list-fields)
 │   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
@@ -102,6 +103,7 @@ gcx/
 │   │   ├── azuremonitor/     # Azure Monitor HTTP query client (metric queries, KQL logs + resource graph, ARM discovery via datasource resource proxy)
 │   │   ├── cloudmonitoring/  # Google Cloud Monitoring HTTP query client (time-series list queries, project/metric discovery)
 │   │   ├── cloudwatch/       # CloudWatch HTTP client (metric queries, resource listing)
+│   │   ├── elasticsearch/    # Elasticsearch HTTP query client (Lucene search, logs, aggregations, mapping discovery)
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   ├── influxdb/         # InfluxDB HTTP query client
 │   │   ├── infinity/         # Infinity HTTP query client
