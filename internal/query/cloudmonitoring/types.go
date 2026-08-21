@@ -54,7 +54,6 @@ type MetricDescriptor struct {
 	MetricKind  string `json:"metricKind"`
 	ValueType   string `json:"valueType"`
 	Unit        string `json:"unit,omitempty"`
-	Service     string `json:"service,omitempty"`
 }
 
 // ParseQueryResponse converts the raw Grafana response bytes into a QueryResponse.
@@ -87,7 +86,9 @@ func ParseQueryResponse(body []byte) (*QueryResponse, error) {
 }
 
 // parseFrame extracts the first time/value column pair with its labels and
-// datasource-provided display name.
+// datasource-provided display name. It assumes exactly one numeric column per
+// frame — the shape the Cloud Monitoring plugin emits for these queries — and
+// drops any frame that has none.
 func parseFrame(df dataframe.Frame) (Frame, bool) {
 	if len(df.Schema.Fields) != len(df.Data.Values) || len(df.Data.Values) < 2 {
 		return Frame{}, false
