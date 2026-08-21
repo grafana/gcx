@@ -19,11 +19,15 @@ func TestValidateReducer(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects", func(t *testing.T) {
+	t.Run("rejects and lists the valid values", func(t *testing.T) {
 		for _, r := range []string{"", "   ", "reduce_mean", "REDUCE_AVERAGE", "bogus"} {
 			err := validateReducer(r)
 			require.Error(t, err, r)
 			assert.Contains(t, err.Error(), "--reducer")
+			// The whole point of this improvement: an agent or human hitting
+			// this error can self-correct from the message alone.
+			assert.Contains(t, err.Error(), "REDUCE_MEAN")
+			assert.Contains(t, err.Error(), "REDUCE_PERCENTILE_05")
 		}
 	})
 }
@@ -41,11 +45,13 @@ func TestValidateAligner(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects", func(t *testing.T) {
+	t.Run("rejects and lists the valid values", func(t *testing.T) {
 		for _, a := range []string{"", "   ", "align_mean", "ALIGN_AVERAGE", "bogus"} {
 			err := validateAligner(a)
 			require.Error(t, err, a)
 			assert.Contains(t, err.Error(), "--aligner")
+			assert.Contains(t, err.Error(), "ALIGN_MEAN")
+			assert.Contains(t, err.Error(), "ALIGN_PERCENT_CHANGE")
 		}
 	})
 }

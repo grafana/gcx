@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -76,37 +77,46 @@ func (opts *queryOpts) Validate() error {
 	return nil
 }
 
-// validateReducer checks r against the google.monitoring.v3.Aggregation.Reducer
-// enum values the Google Cloud Monitoring API accepts for --reducer
-// (cross-series reduction).
+// validReducers are the google.monitoring.v3.Aggregation.Reducer enum values
+// the Google Cloud Monitoring API accepts for --reducer (cross-series
+// reduction). A function-local slice, not a package-level var, so the
+// gochecknoglobals linter doesn't flag it.
 // https://cloud.google.com/monitoring/api/ref_v3/rpc/google.monitoring.v3#aggregation-reducer
-func validateReducer(r string) error {
-	switch r {
-	case "REDUCE_NONE", "REDUCE_MEAN", "REDUCE_MIN", "REDUCE_MAX", "REDUCE_SUM",
+func validReducers() []string {
+	return []string{
+		"REDUCE_NONE", "REDUCE_MEAN", "REDUCE_MIN", "REDUCE_MAX", "REDUCE_SUM",
 		"REDUCE_STDDEV", "REDUCE_COUNT", "REDUCE_COUNT_TRUE", "REDUCE_COUNT_FALSE",
 		"REDUCE_FRACTION_TRUE", "REDUCE_PERCENTILE_99", "REDUCE_PERCENTILE_95",
-		"REDUCE_PERCENTILE_50", "REDUCE_PERCENTILE_05":
-		return nil
-	default:
-		return fmt.Errorf("--reducer %q is not a valid cross-series reducer", r)
+		"REDUCE_PERCENTILE_50", "REDUCE_PERCENTILE_05",
 	}
 }
 
-// validateAligner checks a against the google.monitoring.v3.Aggregation.Aligner
-// enum values the Google Cloud Monitoring API accepts for --aligner
-// (per-series alignment).
+func validateReducer(r string) error {
+	if slices.Contains(validReducers(), r) {
+		return nil
+	}
+	return fmt.Errorf("--reducer %q is not a valid cross-series reducer, must be one of: %s", r, strings.Join(validReducers(), ", "))
+}
+
+// validAligners are the google.monitoring.v3.Aggregation.Aligner enum values
+// the Google Cloud Monitoring API accepts for --aligner (per-series
+// alignment).
 // https://cloud.google.com/monitoring/api/ref_v3/rpc/google.monitoring.v3#aggregation-aligner
-func validateAligner(a string) error {
-	switch a {
-	case "ALIGN_NONE", "ALIGN_DELTA", "ALIGN_RATE", "ALIGN_INTERPOLATE", "ALIGN_NEXT_OLDER",
+func validAligners() []string {
+	return []string{
+		"ALIGN_NONE", "ALIGN_DELTA", "ALIGN_RATE", "ALIGN_INTERPOLATE", "ALIGN_NEXT_OLDER",
 		"ALIGN_MIN", "ALIGN_MAX", "ALIGN_MEAN", "ALIGN_COUNT", "ALIGN_SUM", "ALIGN_STDDEV",
 		"ALIGN_COUNT_TRUE", "ALIGN_COUNT_FALSE", "ALIGN_FRACTION_TRUE",
 		"ALIGN_PERCENTILE_99", "ALIGN_PERCENTILE_95", "ALIGN_PERCENTILE_50", "ALIGN_PERCENTILE_05",
-		"ALIGN_PERCENT_CHANGE":
-		return nil
-	default:
-		return fmt.Errorf("--aligner %q is not a valid per-series aligner", a)
+		"ALIGN_PERCENT_CHANGE",
 	}
+}
+
+func validateAligner(a string) error {
+	if slices.Contains(validAligners(), a) {
+		return nil
+	}
+	return fmt.Errorf("--aligner %q is not a valid per-series aligner, must be one of: %s", a, strings.Join(validAligners(), ", "))
 }
 
 // alignmentPeriodRe matches the Grafana Cloud Monitoring plugin's alignment
