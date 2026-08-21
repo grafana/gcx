@@ -15,25 +15,43 @@ import (
 	keyring "github.com/zalando/go-keyring"
 )
 
-func TestNormalizeKeyringErrorClassifiesDarwinWriteUnavailability(t *testing.T) {
+func TestNormalizeKeyringErrorClassifiesDarwinLock(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the synthetic exit-status fixture requires a POSIX shell")
 	}
-	cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", "exit 154")
-	err := cmd.Run()
-	require.Error(t, err)
+	for name, command := range map[string]string{
+		"exit 24":  "exit 24",
+		"exit 36":  "exit 36",
+		"exit 154": "exit 154",
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", command)
+			err := cmd.Run()
+			require.Error(t, err)
 
-	got := normalizeKeyringErrorForOS(fmt.Errorf("native set: %w", err), "darwin")
-	require.ErrorIs(t, got, ErrUnavailable)
-	assert.Contains(t, got.Error(), "exit status 154")
+			got := normalizeKeyringErrorForOS(fmt.Errorf("native set: %w", err), "darwin")
+			require.ErrorIs(t, got, ErrLocked)
+			require.NotErrorIs(t, got, ErrUnavailable)
+			assert.Contains(t, got.Error(), strings.Replace(name, "exit ", "exit status ", 1))
+		})
+	}
 }
 
 func TestDarwinKeychainUnavailableExitCodes(t *testing.T) {
-	for _, code := range []int{24, 36, 37, 50, 53, 154} {
+	for _, code := range []int{37, 50, 53} {
 		assert.True(t, darwinKeychainUnavailableExitCode(code), "exit code %d", code)
 	}
-	for _, code := range []int{1, 44, 51, 128, 255} {
+	for _, code := range []int{1, 24, 36, 44, 51, 128, 154, 255} {
 		assert.False(t, darwinKeychainUnavailableExitCode(code), "exit code %d", code)
+	}
+}
+
+func TestDarwinKeychainLockedExitCodes(t *testing.T) {
+	for _, code := range []int{24, 36, 154} {
+		assert.True(t, darwinKeychainLockedExitCode(code), "exit code %d", code)
+	}
+	for _, code := range []int{1, 37, 44, 50, 51, 53, 128, 255} {
+		assert.False(t, darwinKeychainLockedExitCode(code), "exit code %d", code)
 	}
 }
 
@@ -148,7 +166,7 @@ func TestErrorStorePreservesUnexpectedProbeFailure(t *testing.T) {
 	require.ErrorIs(t, store.Delete("account"), want)
 }
 
-func TestErrorStorePropagatesLockedProbeFailure(t *testing.T) {
+func TestErrorStorePreservesClassifiedLockedError(t *testing.T) {
 	// Open classifies the probe error, then keeps it when it is not an
 	// unavailable backend. Reproduce that decision here.
 	probe := errors.New("org.freedesktop.Secret.Error.IsLocked: the collection is locked")

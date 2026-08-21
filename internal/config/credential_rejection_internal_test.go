@@ -315,3 +315,26 @@ func TestKeychainReadRejectionReasonNamesTheLockedKeychain(t *testing.T) {
 		})
 	}
 }
+
+func TestLockedKeychainReadPreservesCauseInCredentialRejection(t *testing.T) {
+	store := newBoundTestStore()
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, Write(t.Context(), ExplicitConfigFile(path),
+		boundStackTestConfig("https://example.invalid", "stored-token")))
+
+	lockedErr := fmt.Errorf("%w: exit status 154", credentials.ErrLocked)
+	store.getErr = lockedErr
+	loaded, err := Load(t.Context(), ExplicitConfigFile(path))
+	require.NoError(t, err, "config inspection remains available while the keychain is locked")
+
+	rejectionErr := loaded.Contexts["default"].GrafanaCredentialRejection()
+	require.Error(t, rejectionErr)
+	require.ErrorIs(t, rejectionErr, credentials.ErrLocked)
+	require.ErrorIs(t, rejectionErr, lockedErr)
+	var rejected CredentialRejectedError
+	require.ErrorAs(t, rejectionErr, &rejected)
+	assert.Equal(t, "the OS keychain is locked", rejected.Reason)
+	assert.Contains(t, rejected.Error(), "unlock the keychain in this session")
+	assert.NotContains(t, rejected.Error(), "re-authenticate")
+}

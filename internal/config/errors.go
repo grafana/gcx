@@ -50,6 +50,7 @@ type CredentialRejectedError struct {
 	Owner  string
 	Field  credentials.Field
 	Reason string
+	cause  error
 }
 
 func (e CredentialRejectedError) Error() string {
@@ -57,12 +58,19 @@ func (e CredentialRejectedError) Error() string {
 	if e.Reason != "" {
 		message += ": " + e.Reason
 	}
+	if errors.Is(e.cause, credentials.ErrLocked) {
+		return message + "; unlock the keychain in this session, then retry"
+	}
 	if e.Source != "" {
 		message += fmt.Sprintf("; review the file and re-authenticate with --config %q", e.Source)
 	} else {
 		message += "; re-authenticate with an explicitly selected --config file"
 	}
 	return message
+}
+
+func (e CredentialRejectedError) Unwrap() error {
+	return e.cause
 }
 
 func (e UnsupportedVersionError) Error() string {

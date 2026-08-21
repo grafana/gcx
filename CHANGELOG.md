@@ -2,7 +2,7 @@
 
 ### Breaking changes
 
-- credentials: a locked OS keychain is now a separate, fatal failure class (`Keychain locked`). gcx stops the command instead of writing the credential in plaintext, and the error explains how to unlock the keyring. Previously an `org.freedesktop.Secret.Error.IsLocked` error counted as an unavailable keychain, which permitted a plaintext write. An unlock failure in a headless or SSH session was already fatal, but reported only the raw library message.
+- credentials: a locked OS keychain is now a separate, fatal failure class (`Keychain locked`). gcx stops credential-consuming commands instead of using or writing a plaintext fallback, and the error explains how to unlock the keychain in the current session. Previously an `org.freedesktop.Secret.Error.IsLocked` response and macOS locked or interaction-disabled statuses counted as an unavailable keychain, which permitted a plaintext write. An unlock failure in a headless Secret Service session was already fatal, but reported only the raw library message.
 
 ### New features
 

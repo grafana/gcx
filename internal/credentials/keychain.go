@@ -93,10 +93,14 @@ func normalizeKeyringErrorForOS(err error, goos string) error {
 	return err
 }
 
-// nativeKeyringBackendLocked reports whether the error proves that a working
-// Secret Service exists, but the collection stayed locked. This happens on a
-// headless or remote session, where no agent can answer the unlock prompt.
+// nativeKeyringBackendLocked reports whether the error proves that a native
+// keychain exists, but it is locked or cannot present the interaction needed
+// to unlock it in the current session.
 func nativeKeyringBackendLocked(err error, goos string) bool {
+	if goos == "darwin" {
+		var exitErr *exec.ExitError
+		return errors.As(err, &exitErr) && darwinKeychainLockedExitCode(exitErr.ExitCode())
+	}
 	if !usesSecretService(goos) {
 		return false
 	}
@@ -168,14 +172,25 @@ func usesSecretService(goos string) bool {
 }
 
 func darwinKeychainUnavailableExitCode(code int) bool {
-	// go-keyring invokes /usr/bin/security and discards Set's stderr. The
-	// observed 154 status is emitted by a headless/locked macOS session. The
-	// other values are the low-byte process statuses of documented Security
-	// framework failures: dark wake, interaction disallowed, no default
-	// keychain, no such keychain, and no available keychain. Authentication
-	// failure (51) and user cancellation (128) are intentionally excluded.
+	// These are the low-byte process statuses of Security framework failures
+	// that prove no usable keychain exists: no default keychain, no such
+	// keychain, and no available keychain.
 	switch code {
-	case 24, 36, 37, 50, 53, 154:
+	case 37, 50, 53:
+		return true
+	default:
+		return false
+	}
+}
+
+func darwinKeychainLockedExitCode(code int) bool {
+	// go-keyring invokes /usr/bin/security and discards Set's stderr. Exit 154
+	// is observed when a headless session reaches a locked login keychain. The
+	// documented Security framework statuses 24 (dark wake: no UI possible)
+	// and 36 (interaction not allowed) likewise prove that the keychain exists
+	// but cannot be unlocked interactively in the current session.
+	switch code {
+	case 24, 36, 154:
 		return true
 	default:
 		return false

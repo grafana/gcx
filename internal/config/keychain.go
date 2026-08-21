@@ -93,6 +93,7 @@ type keychainFieldState struct {
 	account   string
 	sentinel  string
 	plaintext string
+	cause     error
 	status    keychainStateStatus
 }
 
@@ -124,7 +125,7 @@ type secretOwner struct {
 	fields      []credentials.Field
 	ref         func(field credentials.Field) (secretRef, bool)
 	destination func(field credentials.Field) string
-	reject      func(field credentials.Field, reason string)
+	reject      func(field credentials.Field, reason string, causes ...error)
 	clearReject func(field credentials.Field)
 }
 
@@ -969,12 +970,13 @@ func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keych
 				}
 				continue
 			}
-			owner.reject(field, keychainReadRejectionReason(err))
+			owner.reject(field, keychainReadRejectionReason(err), err)
 			preserve.mark(owner.key, field, cur)
 			states[stateKey] = keychainFieldState{
 				binding:  binding,
 				account:  account,
 				sentinel: cur,
+				cause:    err,
 				status:   keychainStatePreserved,
 			}
 			continue
