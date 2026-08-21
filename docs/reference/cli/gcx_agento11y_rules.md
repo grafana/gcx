@@ -27,5 +27,6 @@ Manage rules that route generations to evaluators.
 * [gcx agento11y rules delete](gcx_agento11y_rules_delete.md)	 - Delete evaluation rules.
 * [gcx agento11y rules get](gcx_agento11y_rules_get.md)	 - Get a single evaluation rule.
 * [gcx agento11y rules list](gcx_agento11y_rules_list.md)	 - List evaluation rules.
+* [gcx agento11y rules list-scores](gcx_agento11y_rules_list-scores.md)	 - List online evaluation scores for a rule.
 * [gcx agento11y rules update](gcx_agento11y_rules_update.md)	 - Update an evaluation rule from a file.
 

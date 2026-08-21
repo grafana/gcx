@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/agento11y/commandutil"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval"
+	"github.com/grafana/gcx/internal/providers/agento11y/scores"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
@@ -35,6 +36,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newCreateCommand(loader),
 		newUpdateCommand(loader),
 		newDeleteCommand(loader),
+		scores.NewListRuleScoresCommand(loader),
 	)
 	return cmd
 }
