@@ -70,6 +70,27 @@ func (e UnsupportedVersionError) Error() string {
 		e.Version, e.File, ConfigVersion)
 }
 
-func ContextNotFound(name string) error {
-	return fmt.Errorf("invalid context \"%s\": %w", name, ErrContextNotFound)
+// ContextNotFoundError reports that a named context could not be found in the
+// loaded configuration. Available lists the context names that do exist, so
+// callers can surface valid alternatives to the user.
+type ContextNotFoundError struct {
+	Name      string
+	Available []string
+}
+
+func (e *ContextNotFoundError) Error() string {
+	return fmt.Sprintf("invalid context \"%s\": %s", e.Name, ErrContextNotFound.Error())
+}
+
+func (e *ContextNotFoundError) Unwrap() error {
+	return ErrContextNotFound
+}
+
+// ContextNotFound builds a ContextNotFoundError for the given context name.
+// available is the set of context names that exist in the config; when
+// non-empty it is surfaced to the user as valid alternatives. The parameter is
+// required (pass nil when the caller has no list to offer) so that every call
+// site is an explicit decision the compiler enumerates.
+func ContextNotFound(name string, available []string) error {
+	return &ContextNotFoundError{Name: name, Available: available}
 }
