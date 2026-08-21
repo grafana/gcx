@@ -55,7 +55,7 @@ gcx datasources elasticsearch metrics [EXPR] [flags]
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
-      --time-field string   Time field for the date histogram (default "@timestamp")
+      --time-field string   Time field for the date histogram bucket (defaults to the datasource's configured time field if omitted)
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 

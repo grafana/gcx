@@ -103,9 +103,15 @@ func AggsQueryModel(dsUID string, req AggsRequest) map[string]any {
 		})
 	}
 	bucketAggs = append(bucketAggs, map[string]any{
-		"id":    "2",
-		"type":  "date_histogram",
-		"field": orDefault(req.TimeField, DefaultTimeField),
+		"id":   "2",
+		"type": "date_histogram",
+		// Left as req.TimeField, not defaulted: an unset --time-field must
+		// reach the plugin empty so it buckets on the datasource's own
+		// configured time field, the same field it already uses to build the
+		// range filter. Defaulting here to DefaultTimeField would bucket on
+		// "@timestamp" while filtering on the datasource's real field,
+		// producing empty or wrong series whenever they differ.
+		"field": req.TimeField,
 		// min_doc_count 1 drops empty buckets: tabular output should show
 		// where data is, not zero-fill the whole range like a chart would.
 		"settings": map[string]any{"interval": "auto", "min_doc_count": "1"},

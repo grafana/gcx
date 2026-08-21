@@ -201,7 +201,12 @@ func TestAggregations(t *testing.T) {
 		hist, ok := bucketAggs[1].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "date_histogram", hist["type"])
-		assert.Equal(t, "@timestamp", hist["field"])
+		// aggsReq leaves TimeField unset, and it must reach the plugin unset
+		// too: the plugin uses the datasource's own configured time field
+		// when this is empty, matching the field it already uses to build
+		// the range filter. Defaulting it here would bucket on "@timestamp"
+		// while the filter uses the datasource's real field.
+		assert.Empty(t, hist["field"])
 		settings, ok := hist["settings"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "1", settings["min_doc_count"])
@@ -210,6 +215,24 @@ func TestAggregations(t *testing.T) {
 		assert.Equal(t, "count", m["type"])
 		_, hasField := m["field"]
 		assert.False(t, hasField, "count must not carry a field")
+	})
+
+	t.Run("explicit time field overrides the histogram bucket", func(t *testing.T) {
+		req := aggsReq
+		req.TimeField = "event.time"
+
+		q := capture(t, func(c *elasticsearch.Client) error {
+			_, err := c.Aggregations(context.Background(), "test-uid", req)
+			return err
+		})
+
+		bucketAggs, ok := q["bucketAggs"].([]any)
+		require.True(t, ok)
+		require.Len(t, bucketAggs, 2)
+
+		hist, ok := bucketAggs[1].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "event.time", hist["field"])
 	})
 
 	t.Run("parses group frames into named series", func(t *testing.T) {
