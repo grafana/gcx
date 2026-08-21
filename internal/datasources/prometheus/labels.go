@@ -1,14 +1,11 @@
 package prometheus
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -28,7 +25,16 @@ type labelsOpts struct {
 }
 
 func (opts *labelsOpts) setup(flags *pflag.FlagSet) {
-	opts.IO.RegisterCustomCodec("table", &labelsTableCodec{})
+	opts.IO.RegisterCustomCodec("table", &prometheus.SingleColumnTableCodec{
+		Header: "LABEL",
+		Rows: func(data any) ([]string, bool) {
+			resp, ok := data.(*prometheus.LabelsResponse)
+			if !ok {
+				return nil, false
+			}
+			return resp.Data, true
+		},
+	})
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
@@ -52,11 +58,20 @@ func (opts *labelsOpts) selectors() ([]string, error) {
 		return []string{"{" + nameMatcher.String() + "}"}, nil
 	}
 
+	parser := promparser.NewParser(promparser.Options{})
+
 	if opts.Metric == "" {
+		// Validate client-side so a selector typo fails here with a clear
+		// error instead of an opaque proxied 400; valid selectors are sent
+		// exactly as written.
+		for _, sel := range opts.Match {
+			if _, err := parser.ParseMetricSelector(sel); err != nil {
+				return nil, fmt.Errorf("invalid --match selector %q: %w", sel, err)
+			}
+		}
 		return opts.Match, nil
 	}
 
-	parser := promparser.NewParser(promparser.Options{})
 	folded := make([]string, 0, len(opts.Match))
 	for _, sel := range opts.Match {
 		matchers, err := parser.ParseMetricSelector(sel)
@@ -81,6 +96,9 @@ func (opts *labelsOpts) selectors() ([]string, error) {
 			}
 		}
 
+		// Brace-joining is safe despite Pattern 14's no-string-formatting rule:
+		// every part is a canonical Matcher.String() rendering, and
+		// promql-builder cannot express a matcher-only selector.
 		parts := make([]string, 0, len(matchers)+1)
 		for _, m := range matchers {
 			parts = append(parts, m.String())
@@ -110,6 +128,7 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 	cmd := &cobra.Command{
 		Use:   "labels",
 		Short: "List labels or label values",
+		Args:  cobra.NoArgs,
 		Long:  "List all labels or get values for a specific label from a Prometheus datasource.",
 		Example: `
 	# List all labels (use datasource UID, not name)
@@ -132,6 +151,17 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			// An explicitly empty --metric or --label (typically an unset
+			// shell variable, as in --metric "$METRIC") would silently answer
+			// a different question than the one asked: --metric "" drops
+			// scoping, --label "" returns label names instead of label
+			// values, in the same response shape. Error instead.
+			for _, name := range []string{"metric", "label"} {
+				if cmd.Flags().Changed(name) && cmd.Flags().Lookup(name).Value.String() == "" {
+					return fmt.Errorf("invalid --%s: value is empty (unset shell variable?)", name)
+				}
 			}
 
 			selectors, err := opts.selectors()
@@ -167,20 +197,12 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 					return fmt.Errorf("failed to get label values: %w", err)
 				}
 
-				if opts.IO.OutputFormat == "table" {
-					return prometheus.FormatLabelsTable(cmd.OutOrStdout(), resp)
-				}
-
 				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 			}
 
 			resp, err := client.Labels(ctx, datasourceUID, selectors)
 			if err != nil {
 				return fmt.Errorf("failed to get labels: %w", err)
-			}
-
-			if opts.IO.OutputFormat == "table" {
-				return prometheus.FormatLabelsTable(cmd.OutOrStdout(), resp)
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
@@ -195,23 +217,4 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 	opts.setup(cmd.Flags())
 
 	return cmd
-}
-
-type labelsTableCodec struct{}
-
-func (c *labelsTableCodec) Format() format.Format {
-	return "table"
-}
-
-func (c *labelsTableCodec) Encode(w io.Writer, data any) error {
-	resp, ok := data.(*prometheus.LabelsResponse)
-	if !ok {
-		return errors.New("invalid data type for labels table codec")
-	}
-
-	return prometheus.FormatLabelsTable(w, resp)
-}
-
-func (c *labelsTableCodec) Decode(io.Reader, any) error {
-	return errors.New("labels table codec does not support decoding")
 }

@@ -12,7 +12,7 @@ Query Prometheus datasources and manage Adaptive Metrics
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -27,6 +27,7 @@ Query Prometheus datasources and manage Adaptive Metrics
 * [gcx metrics billing](gcx_metrics_billing.md)	 - Query Grafana Cloud billing metrics (grafanacloud_*)
 * [gcx metrics cardinality](gcx_metrics_cardinality.md)	 - Analyze series cardinality
 * [gcx metrics labels](gcx_metrics_labels.md)	 - List labels or label values
+* [gcx metrics list-names](gcx_metrics_list-names.md)	 - List metric names
 * [gcx metrics metadata](gcx_metrics_metadata.md)	 - Get metric metadata
 * [gcx metrics query](gcx_metrics_query.md)	 - Execute a PromQL query against a Prometheus datasource
 * [gcx metrics series](gcx_metrics_series.md)	 - List time series matching one or more selectors

@@ -1,4 +1,6 @@
 ---
+aliases:
+  - /docs/grafana-cloud/as-code/observability-as-code/grafana-cli/gcx/migrate-configuration/
 title: Migrate your gcx configuration
 labels:
   products:
@@ -177,4 +179,5 @@ gcx config check
 Where:
 
 - `gcx config view` shows the effective configuration with secrets redacted. 
-- `gcx config check` validates every context, including connectivity, and exits non-zero if any check fails.
+- `gcx config check` validates every context, including connectivity, and exits non-zero if any check fails. Pass
+  `--context <name>` to validate only that context.

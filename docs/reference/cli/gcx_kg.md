@@ -12,7 +12,7 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -28,6 +28,7 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg insights](gcx_kg_insights.md)	 - Fetch chart data and source metrics for an active insight.
 * [gcx kg meta](gcx_kg_meta.md)	 - Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.
 * [gcx kg model-rules](gcx_kg_model-rules.md)	 - Manage model rules in the Knowledge Graph.
+* [gcx kg notifications](gcx_kg_notifications.md)	 - Manage alert notification configs in the Knowledge Graph.
 * [gcx kg open](gcx_kg_open.md)	 - Open the Knowledge Graph app in the browser.
 * [gcx kg prom-rules](gcx_kg_prom-rules.md)	 - Manage Knowledge Graph Custom Prometheus rules.
 * [gcx kg quality](gcx_kg_quality.md)	 - Inspect Knowledge Graph entity quality reports.

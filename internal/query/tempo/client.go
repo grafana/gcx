@@ -1,6 +1,7 @@
 package tempo
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -299,6 +300,62 @@ func (c *Client) MetricsInstant(ctx context.Context, datasourceUID string, req M
 	result.Instant = true
 
 	return &result, nil
+}
+
+// Diff compares two traces (base vs compare) via the Tempo trace-diff API.
+// Delta semantics are compare - base (B - A). The endpoint is experimental and
+// Grafana Cloud-only; when it is absent the datasource proxy returns a non-2xx
+// status, which the caller maps to an actionable error.
+func (c *Client) Diff(ctx context.Context, datasourceUID string, req DiffRequest) (DiffResponse, error) {
+	apiPath := c.buildResourcePath(datasourceUID, "api/v2/traces/diff")
+
+	payload := diffPayload{
+		Base:    diffTarget{TraceID: req.BaseTraceID},
+		Compare: diffTarget{TraceID: req.CompareTraceID},
+	}
+	if !req.Start.IsZero() {
+		payload.Base.Start = req.Start.Unix()
+		payload.Compare.Start = req.Start.Unix()
+	}
+	if !req.End.IsZero() {
+		payload.Base.End = req.End.Unix()
+		payload.Compare.End = req.End.Unix()
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode diff request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to diff traces: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		// The trace-diff endpoint is experimental and Grafana Cloud-only; carry
+		// those facts so the CLI can explain a route-absent failure clearly.
+		return nil, queryerror.FromBody("tempo", "trace diff", resp.StatusCode, respBody).WithAvailability(true, true)
+	}
+
+	var result DiffResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return result, nil
 }
 
 func (c *Client) buildResourcePath(datasourceUID, resourcePath string) string {

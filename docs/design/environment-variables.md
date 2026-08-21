@@ -85,6 +85,8 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 | `CURSOR_AGENT` | Cursor | Truthy value activates agent mode |
 | `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |
 | `AMAZON_Q` | Amazon Q | Truthy value activates agent mode |
+| `OPENCODE` | opencode | Truthy value activates agent mode |
+| `PI_CODING_AGENT` | pi | Truthy value activates agent mode |
 
 Detection runs at `init()` time in `internal/agent/agent.go`. See [agent-mode.md § Detection](agent-mode.md#61-detection) for
 full detection priority and the `--agent` flag.

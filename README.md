@@ -21,6 +21,10 @@ gcx is a CLI for Grafana — Cloud, Enterprise, and OSS alike. It gives you and 
 
 gcx works with any agentic coding tool. It ships with a suite of agent skills for common workflows like alert investigation, dashboard creation and GitOps, SLO management, and observability setup - ready to use out of the box.
 
+Contributing a new Grafana domain capability to gcx? Ask your coding agent to
+use [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md)
+before choosing a command, provider, or datasource path.
+
 ## Quick Start
 
 ```sh
@@ -50,27 +54,42 @@ curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh
 ```
 
 Downloads the latest release, verifies the SHA-256 checksum, and installs to
-`~/.local/bin`. Override the location with `INSTALL_DIR`:
+`~/.local/bin`. Override the location with `GCX_INSTALL_DIR`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | GCX_INSTALL_DIR=/usr/local/bin sh
 ```
+
+To upgrade, run the same command again, then check `gcx --version`. If the
+version does not change, you have a second `gcx` earlier in your `PATH` — run
+`which -a gcx` and see
+[The version does not change after an upgrade](docs/sources/installation.md#the-version-does-not-change-after-an-upgrade).
 
 **Homebrew (macOS and Linux):**
 
 ```bash
-brew install grafana/grafana/gcx
+brew install gcx
 ```
 
-Compiles from source on your machine (requires Homebrew's `go`, installed
-automatically as a build dependency). First install takes ~30–60 seconds
-while Go fetches dependencies; subsequent upgrades are faster.
+Installs the `gcx` formula from homebrew-core. Homebrew has a prebuilt bottle
+for macOS and Linux, so the install takes seconds and needs no tap.
 
 To update to the latest version:
 
 ```bash
 brew update && brew upgrade gcx
 ```
+
+The Grafana tap also carries `gcx`. Use it if you want Homebrew to compile the
+binary on your machine:
+
+```bash
+brew install grafana/grafana/gcx
+```
+
+That build needs Homebrew's `go`, which Homebrew installs as a build
+dependency. The first install takes 30–60 seconds while Go fetches
+dependencies.
 
 **Pre-built binary (Linux/macOS/Windows):**
 
@@ -310,6 +329,7 @@ debug-with-grafana         yes          Structured workflow for investigating ap
 ```
 
 Install the bundle into `~/.agents/skills` with:
+
 ```sh
 gcx agent skills install --all
 ```
@@ -320,6 +340,12 @@ version, `gcx` may show an interactive reminder suggesting:
 ```sh
 gcx agent skills update
 ```
+
+`update` refreshes skills that are already installed; it does not add newly
+bundled skills. After upgrading `gcx`, install a new skill by name. To refresh
+existing skills and add every newly bundled one, run `gcx agent skills update`
+followed by `gcx agent skills install --all` — `install --all` on its own stops
+with an error if any already-installed skill differs from the new bundle.
 
 To disable that reminder entirely, set:
 
@@ -368,7 +394,7 @@ The agentic workflow above is one example. gcx supports a wide range of workflow
 |---------|---------------|
 | **Grafana Cloud** | **Full support.** Everything in this README, including Cloud-only products (SLO, Synthetic Monitoring, IRM, k6, Fleet, Adaptive Telemetry, Assistant). |
 | **Grafana 13+** (OSS / Enterprise) | **Full support** of self-hosted features. All app-platform API groups gcx relies on are enabled by default. |
-| **Grafana 12.x** (OSS / Enterprise) | **Most features supported.** Features built on app-platform API groups that are not yet enabled by default in 12 need an explicit feature toggle — see ‡ below for the known case. |
+| **Grafana 12.x** (OSS / Enterprise) | **Not actively supported.** Most features will still work, but we will only release patches with security updates. Features built on app-platform API groups that are not yet enabled by default in 12 need an explicit feature toggle — see ‡ below for the known case. |
 | **Grafana < 12** | **Unsupported.** gcx detects the server version and exits with code 6 (version incompatible). |
 
 Grafana is progressively migrating its APIs to app-platform (Kubernetes-style)
@@ -377,6 +403,9 @@ When a command needs an API group your stack does not serve, upgrade or enable
 the corresponding feature toggle. Per-command declaration of these
 requirements (min version, feature toggles) is tracked in
 [#989](https://github.com/grafana/gcx/issues/989).
+
+**Version support policy:** gcx supports the current Grafana major version (Currently 13.x),
+plus the previous major for 3 months after the new one ships. This will be reflected in the compatibility matrix above.
 
 ### Feature availability by deployment
 

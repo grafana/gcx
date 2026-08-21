@@ -1,34 +1,119 @@
 package datasources
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"io"
+	"strings"
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
-	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/query/clickhouse"
-	"github.com/grafana/gcx/internal/query/influxdb"
-	"github.com/grafana/gcx/internal/query/loki"
-	"github.com/grafana/gcx/internal/query/mysql"
-	"github.com/grafana/gcx/internal/query/postgres"
-	"github.com/grafana/gcx/internal/query/prometheus"
-	"github.com/grafana/gcx/internal/query/pyroscope"
-	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
+
+// genericQueryOpts holds the flags and routing policy for the auto-detecting
+// query command. The per-kind behaviour lives in query_routes.go.
+type genericQueryOpts struct {
+	config cmdconfig.Options
+	shared dsquery.SharedOpts
+
+	profileType string
+	maxNodes    int64
+	limit       int
+
+	routes queryRoutes
+}
+
+func (o *genericQueryOpts) setup(flags *pflag.FlagSet) {
+	o.config.BindFlags(flags)
+	o.shared.Setup(flags, true)
+	flags.StringVar(&o.profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
+	flags.Int64Var(&o.maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
+	flags.IntVar(&o.limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return for loki queries (0 means no limit)")
+}
+
+// Validate runs the checks that need no I/O. args carries the optional
+// positional expression, which cannot be combined with --expr.
+func (o *genericQueryOpts) Validate(args []string) error {
+	if err := o.shared.Validate(); err != nil {
+		return err
+	}
+
+	// Reject "both positional and --expr" before any HTTP call.
+	if len(args) > 1 && o.shared.Expr != "" {
+		return errors.New("provide the expression as a positional argument or via --expr, not both")
+	}
+
+	return nil
+}
+
+// run resolves the datasource kind and hands the request to its route. The
+// order of the steps below is load-bearing and pinned by tests; see
+// query_characterization_test.go.
+func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
+	if err := o.Validate(args); err != nil {
+		return err
+	}
+
+	ctx := cmd.Context()
+	datasourceUID := args[0]
+
+	cfg, err := o.config.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	rawType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
+	if err != nil {
+		return err
+	}
+	dsType := dsquery.NormalizeKind(rawType)
+
+	// Redirects run before the expression is resolved, so an argument-less call
+	// gets the typed-command redirect instead of "expression is required".
+	if redirect, ok := o.routes.redirects[dsType]; ok {
+		return errors.New(redirect)
+	}
+
+	expr, err := o.shared.ResolveExpr(args, 1)
+	if err != nil {
+		return err
+	}
+
+	start, end, step, err := o.shared.ParseTimes(time.Now())
+	if err != nil {
+		return err
+	}
+
+	dispatch, ok := o.routes.dispatch[dsType]
+	if !ok {
+		return fmt.Errorf("datasource type %q is not supported (supported: %s)",
+			dsType, strings.Join(o.routes.supportedKinds(), ", "))
+	}
+
+	resp, err := dispatch(ctx, genericQueryRequest{
+		cfg:         cfg,
+		uid:         datasourceUID,
+		expr:        expr,
+		start:       start,
+		end:         end,
+		step:        step,
+		profileType: o.profileType,
+		maxNodes:    o.maxNodes,
+		limit:       o.limit,
+		warn:        cmd.ErrOrStderr(),
+	})
+	if err != nil {
+		return err
+	}
+
+	return o.shared.IO.Encode(cmd.OutOrStdout(), resp)
+}
 
 // QueryCmd returns the auto-detecting query command for the datasources group.
 func QueryCmd() *cobra.Command {
-	configOpts := &cmdconfig.Options{}
-	shared := &dsquery.SharedOpts{}
-	var profileType string
-	var maxNodes int64
-	var limit int
+	opts := &genericQueryOpts{routes: newQueryRoutes()}
 
 	cmd := &cobra.Command{
 		Use:   "query DATASOURCE_UID [EXPR]",
@@ -52,252 +137,10 @@ that do not have a dedicated subcommand.`,
   gcx datasources query pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now`,
 		Args: cobra.RangeArgs(1, 2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := shared.Validate(); err != nil {
-				return err
-			}
-
-			// Reject "both positional and --expr" before any HTTP call.
-			if len(args) > 1 && shared.Expr != "" {
-				return errors.New("provide the expression as a positional argument or via --expr, not both")
-			}
-
-			ctx := cmd.Context()
-			datasourceUID := args[0]
-
-			cfg, err := configOpts.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			rawType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
-			if err != nil {
-				return err
-			}
-			dsType := dsquery.NormalizeKind(rawType)
-
-			if dsType == "cloudwatch" {
-				return errors.New("CloudWatch queries are structured (namespace, metric, dimensions, region, statistic, period); " +
-					"the generic `gcx datasources query <uid> <expr>` form can't carry them — " +
-					"use `gcx datasources cloudwatch query --namespace ... --metric ... --region ...` instead")
-			}
-
-			expr, err := shared.ResolveExpr(args, 1)
-			if err != nil {
-				return err
-			}
-
-			now := time.Now()
-			start, end, step, err := shared.ParseTimes(now)
-			if err != nil {
-				return err
-			}
-
-			switch dsType {
-			case "prometheus":
-				client, err := prometheus.NewClient(cfg)
-				if err != nil {
-					return fmt.Errorf("failed to create client: %w", err)
-				}
-
-				req := prometheus.QueryRequest{
-					Query: expr,
-					Start: start,
-					End:   end,
-					Step:  step,
-				}
-
-				resp, err := client.Query(ctx, datasourceUID, req)
-				if err != nil {
-					return fmt.Errorf("query failed: %w", err)
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			case "loki":
-				client, err := loki.NewClient(cfg)
-				if err != nil {
-					return fmt.Errorf("failed to create client: %w", err)
-				}
-
-				req := loki.QueryRequest{
-					Query: expr,
-					Start: start,
-					End:   end,
-					Step:  step,
-					Limit: limit,
-				}
-
-				resp, err := client.Query(ctx, datasourceUID, req)
-				if err != nil {
-					return fmt.Errorf("query failed: %w", err)
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			case "pyroscope":
-				if profileType == "" {
-					return errors.New("--profile-type is required for pyroscope queries")
-				}
-
-				client, err := pyroscope.NewClient(cfg)
-				if err != nil {
-					return fmt.Errorf("failed to create client: %w", err)
-				}
-
-				req := pyroscope.QueryRequest{
-					LabelSelector: expr,
-					ProfileTypeID: profileType,
-					Start:         start,
-					End:           end,
-					MaxNodes:      maxNodes,
-				}
-
-				resp, err := client.Query(ctx, datasourceUID, req)
-				if err != nil {
-					return fmt.Errorf("query failed: %w", err)
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			case "influxdb":
-				influxClient, err := influxdb.NewClient(cfg)
-				if err != nil {
-					return fmt.Errorf("failed to create client: %w", err)
-				}
-
-				modeStr, err := dsquery.GetInfluxDBMode(ctx, cfg, datasourceUID)
-				if err != nil {
-					return fmt.Errorf("failed to detect influxdb mode: %w", err)
-				}
-
-				req := influxdb.QueryRequest{
-					Query: expr,
-					Start: start,
-					End:   end,
-					Step:  step,
-					Mode:  influxdb.Mode(modeStr),
-				}
-
-				resp, err := influxClient.Query(ctx, datasourceUID, req)
-				if err != nil {
-					return fmt.Errorf("query failed: %w", err)
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			case "clickhouse":
-				resp, err := runClickHouseQuery(ctx, cfg, datasourceUID, expr, start, end, step)
-				if err != nil {
-					return err
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			case "postgres":
-				resp, err := runPostgresQuery(ctx, cfg, datasourceUID, expr, start, end, step, cmd.ErrOrStderr())
-				if err != nil {
-					return err
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			case "mysql":
-				resp, err := runMySQLQuery(ctx, cfg, datasourceUID, expr, start, end, step, cmd.ErrOrStderr())
-				if err != nil {
-					return err
-				}
-
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-
-			default:
-				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb, clickhouse, postgres, mysql)", dsType)
-			}
-		},
+		RunE: opts.run,
 	}
 
-	configOpts.BindFlags(cmd.Flags())
-	shared.Setup(cmd.Flags(), true)
-	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
-	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
-	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return for loki queries (0 means no limit)")
+	opts.setup(cmd.Flags())
 
 	return cmd
-}
-
-// runClickHouseQuery executes the auto-detected clickhouse branch of QueryCmd.
-func runClickHouseQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time, step time.Duration) (*querysql.QueryResponse, error) {
-	client, err := clickhouse.NewClient(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create client: %w", err)
-	}
-
-	req := clickhouse.QueryRequest{
-		RawSQL: clickhouse.EnforceLimit(expr, 100, 1000),
-		Start:  start,
-		End:    end,
-	}
-	if step > 0 {
-		req.IntervalMs = step.Milliseconds()
-	}
-
-	resp, err := client.Query(ctx, datasourceUID, req)
-	if err != nil {
-		return nil, fmt.Errorf("query failed: %w", err)
-	}
-	return resp, nil
-}
-
-// runMySQLQuery executes the auto-detected mysql branch of QueryCmd.
-func runMySQLQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time, step time.Duration, warnw io.Writer) (*querysql.QueryResponse, error) {
-	client, err := mysql.NewClient(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create client: %w", err)
-	}
-
-	sql, capped := mysql.EnforceLimit(expr, 100, 1000)
-	if capped {
-		cmdio.Warning(warnw, "LIMIT in query exceeds the maximum of 1000 and was capped")
-	}
-	req := mysql.QueryRequest{
-		RawSQL: sql,
-		Start:  start,
-		End:    end,
-	}
-	if step > 0 {
-		req.IntervalMs = step.Milliseconds()
-	}
-
-	resp, err := client.Query(ctx, datasourceUID, req)
-	if err != nil {
-		return nil, fmt.Errorf("query failed: %w", err)
-	}
-	return resp, nil
-}
-
-// runPostgresQuery executes the auto-detected postgres branch of QueryCmd.
-func runPostgresQuery(ctx context.Context, cfg config.NamespacedRESTConfig, datasourceUID, expr string, start, end time.Time, step time.Duration, warnw io.Writer) (*querysql.QueryResponse, error) {
-	client, err := postgres.NewClient(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create client: %w", err)
-	}
-
-	sql, capped := postgres.EnforceLimit(expr, 100, 1000)
-	if capped {
-		cmdio.Warning(warnw, "LIMIT in query exceeds the maximum of 1000 and was capped")
-	}
-	req := postgres.QueryRequest{
-		RawSQL: sql,
-		Start:  start,
-		End:    end,
-	}
-	if step > 0 {
-		req.IntervalMs = step.Milliseconds()
-	}
-
-	resp, err := client.Query(ctx, datasourceUID, req)
-	if err != nil {
-		return nil, fmt.Errorf("query failed: %w", err)
-	}
-	return resp, nil
 }

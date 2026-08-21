@@ -11,7 +11,7 @@ Manage Grafana Assistant investigations.
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
@@ -28,6 +28,7 @@ Manage Grafana Assistant investigations.
 * [gcx assistant investigations get](gcx_assistant_investigations_get.md)	 - Get investigation detail.
 * [gcx assistant investigations get-narrative](gcx_assistant_investigations_get-narrative.md)	 - Show the assistant-authored prose for a v2 investigation.
 * [gcx assistant investigations list](gcx_assistant_investigations_list.md)	 - List investigations.
+* [gcx assistant investigations list-evidence](gcx_assistant_investigations_list-evidence.md)	 - List panel evidence for a v2 investigation.
 * [gcx assistant investigations list-messages](gcx_assistant_investigations_list-messages.md)	 - List the chat thread messages for a v2 investigation.
 * [gcx assistant investigations list-tool-calls](gcx_assistant_investigations_list-tool-calls.md)	 - List tool calls made during a v2 investigation.
 * [gcx assistant investigations mode](gcx_assistant_investigations_mode.md)	 - Change autonomy mode of a v2 investigation.

@@ -8,6 +8,7 @@ import (
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/azuremonitor"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -45,6 +46,52 @@ func TestGraphCodecRejectsUnsupportedResponseTypes(t *testing.T) {
 		err := newGraphIO().Encode(&out, &infinity.QueryResponse{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Infinity")
+	})
+}
+
+func TestQueryCodecsAcceptAzureMonitorResponses(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterCodecs(ioOpts, false)
+		return ioOpts
+	}
+
+	t.Run("table codec renders azuremonitor responses", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("table").Encode(&out, &azuremonitor.QueryResponse{}))
+		assert.Contains(t, out.String(), "No data")
+	})
+
+	t.Run("wide codec renders azuremonitor responses", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("wide").Encode(&out, &azuremonitor.QueryResponse{}))
+		assert.Contains(t, out.String(), "No data")
+	})
+
+	t.Run("table codec renders azuremonitor KQL table responses", func(t *testing.T) {
+		var out bytes.Buffer
+		resp := &azuremonitor.TableResponse{
+			Columns: []azuremonitor.Column{{Name: "name", Type: "string"}},
+			Rows:    [][]any{{"vm-a"}},
+		}
+		require.NoError(t, newIO("table").Encode(&out, resp))
+		assert.Contains(t, out.String(), "vm-a")
+	})
+
+	t.Run("wide codec renders azuremonitor KQL table responses", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("wide").Encode(&out, &azuremonitor.TableResponse{}))
+		assert.Contains(t, out.String(), "No data")
+	})
+
+	t.Run("graph codec rejects azuremonitor KQL table responses", func(t *testing.T) {
+		ioOpts := &cmdio.Options{OutputFormat: "graph"}
+		dsquery.RegisterCodecs(ioOpts, true)
+		var out bytes.Buffer
+		err := ioOpts.Encode(&out, &azuremonitor.TableResponse{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "KQL table results")
 	})
 }
 
@@ -175,6 +222,46 @@ func TestQueryYAMLCodecInfluxDBTimestamps(t *testing.T) {
 		}
 		assert.True(t, found, "expected server-a in YAML output")
 	})
+}
+
+// TestRegisterStructuredCodecs verifies that only JSON/YAML (plus the built-in
+// agents codec) are offered and that table/wide are rejected rather than
+// reaching a codec that cannot encode a free-form map.
+func TestRegisterStructuredCodecs(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterStructuredCodecs(ioOpts)
+		return ioOpts
+	}
+
+	payload := map[string]any{"summary": map[string]any{"verdict": "regression"}}
+
+	t.Run("json encodes a free-form map", func(t *testing.T) {
+		var out bytes.Buffer
+		err := newIO("json").Encode(&out, payload)
+		require.NoError(t, err)
+		assert.True(t, json.Valid(out.Bytes()))
+		assert.Contains(t, out.String(), "regression")
+	})
+
+	t.Run("yaml encodes a free-form map", func(t *testing.T) {
+		var out bytes.Buffer
+		err := newIO("yaml").Encode(&out, payload)
+		require.NoError(t, err)
+		assert.Contains(t, out.String(), "regression")
+	})
+
+	for _, format := range []string{"table", "wide", "graph"} {
+		t.Run(format+" is not an allowed format", func(t *testing.T) {
+			var out bytes.Buffer
+			err := newIO(format).Encode(&out, payload)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unknown output format")
+			// The advertised menu must list only structured formats.
+			assert.Contains(t, err.Error(), "Valid formats are: agents, json, yaml")
+		})
+	}
 }
 
 // TestTraceGetCodecDispatch verifies that table and wide codecs route a

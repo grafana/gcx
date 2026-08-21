@@ -58,10 +58,6 @@ the flow and the decision logic. A minimal fallback lives in
   this **even if sibling apps or existing `.env` files in the repo use `SIGIL_*`** — matching a stale
   local convention perpetuates it. If the app already reads `SIGIL_*`, add the `AGENTO11Y_*` names
   (the SDK still honors both) and note the old ones are deprecated. Do not "match the siblings."
-- **The gcx command group is `gcx agento11y`.** The old name `aio11y` (still the internal Go package
-  name) does **not** exist as a command — an invocation using aio11y instead of agento11y fails.
-  Every verification command uses the `agento11y` group. Do not emit the old aio11y command name even
-  if prior knowledge suggests it.
 - **Gate every code WRITE on explicit confirmation.** Report first (Step 4), apply only after the
   developer says yes (Step 5). Read-only gcx verification and re-running the app happen freely inside
   the loop; editing files does not.

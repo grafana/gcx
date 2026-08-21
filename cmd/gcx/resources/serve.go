@@ -175,7 +175,7 @@ support for file notifications.
 					return err
 				}
 
-				if err := watcher.Add(opts.watchTargets(args)...); err != nil {
+				if err := watcher.Add(cmd.Context(), opts.watchTargets(args)...); err != nil {
 					return err
 				}
 

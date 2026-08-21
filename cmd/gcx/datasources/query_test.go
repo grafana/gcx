@@ -282,6 +282,15 @@ func TestGenericQueryCloudWatchShortCircuit(t *testing.T) {
 				return []string{"query", "uid", "ignored-expr", "--config", c}
 			},
 		},
+		{
+			// The redirect must also beat ParseTimes, not only ResolveExpr:
+			// hoisting the time parsing above the redirect lookup would turn
+			// this into "invalid --step duration".
+			name: "unparseable --step still returns structured-subcommand error",
+			args: func(c string) []string {
+				return []string{"query", "uid", "expr", "--step", "nonsense", "--config", c}
+			},
+		},
 	}
 
 	for _, tt := range tests {

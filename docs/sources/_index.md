@@ -1,4 +1,6 @@
 ---
+aliases:
+  - /docs/grafana-cloud/as-code/observability-as-code/grafana-cli/gcx/
 title: gcx CLI
 labels:
   products:
@@ -41,12 +43,11 @@ hero:
 
 ## Overview
 
-`gcx` is the Grafana CLI that allows you and your AI coding agent to work with Grafana Cloud, Grafana Enterprise, and Grafana OSS. 
+`gcx` is the Grafana CLI that allows you and your AI coding agent to work with Grafana Cloud, Grafana Enterprise, and Grafana OSS.
 
-`gcx` is designed to be used in common scenarios such as authentication against Grafana, query telemetry, inspect and manage resources, and automate observability workflows as code. 
+`gcx` is designed to be used in common scenarios such as authentication against Grafana, query telemetry, inspect and manage resources, and automate observability workflows as code.
 
 It's also integrated with Grafana Assistant, combining the previously fragmented user experience into one single tool.
-
 
 ## Get started
 

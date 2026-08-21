@@ -1,7 +1,8 @@
 # Provider Commands Reference
 
 Patterns for implementing CRUD redirect commands and ancillary subcommands.
-Reference: `internal/providers/incidents/commands.go` for working examples.
+Reference: `internal/providers/irm/incidents_commands.go` (and
+`incidents_commands_impl.go`) for working examples.
 
 ## Output Format Compliance
 

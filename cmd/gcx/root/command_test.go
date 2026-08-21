@@ -109,16 +109,16 @@ func TestNewCommand_DefaultHelpAndCompletionRegistered(t *testing.T) {
 func TestValidateArgs_GroupCommandRejectsUnexpectedArgs(t *testing.T) {
 	agentsCmd := &cobra.Command{Use: "agents", Short: "Query agents.", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
 	conversationsCmd := &cobra.Command{Use: "conversations", Short: "Query conversations.", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
-	aio11yCmd := &cobra.Command{Use: "aio11y", Short: "Manage AI Observability."}
-	aio11yCmd.AddCommand(agentsCmd, conversationsCmd)
+	agento11yCmd := &cobra.Command{Use: "agento11y", Short: "Manage Agent Observability."}
+	agento11yCmd.AddCommand(agentsCmd, conversationsCmd)
 
 	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
-		&mockProvider{name: "aio11y", commands: []*cobra.Command{aio11yCmd}},
+		&mockProvider{name: "agento11y", commands: []*cobra.Command{agento11yCmd}},
 	})
 
-	err := root.ValidateArgs(rootCmd, []string{"aio11y", "--context", "dev", "show"})
+	err := root.ValidateArgs(rootCmd, []string{"agento11y", "--context", "dev", "show"})
 	require.Error(t, err)
-	require.ErrorContains(t, err, `unknown command "show" for "gcx aio11y"`)
+	require.ErrorContains(t, err, `unknown command "show" for "gcx agento11y"`)
 	require.ErrorContains(t, err, "Usage:")
 	require.ErrorContains(t, err, "Available Commands:")
 	require.ErrorContains(t, err, "agents")
@@ -127,16 +127,16 @@ func TestValidateArgs_GroupCommandRejectsUnexpectedArgs(t *testing.T) {
 
 func TestValidateArgs_GroupCommandRejectsUnexpectedArgsWithLeadingRootFlags(t *testing.T) {
 	agentsCmd := &cobra.Command{Use: "agents", Short: "Query agents.", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
-	aio11yCmd := &cobra.Command{Use: "aio11y", Short: "Manage AI Observability."}
-	aio11yCmd.AddCommand(agentsCmd)
+	agento11yCmd := &cobra.Command{Use: "agento11y", Short: "Manage Agent Observability."}
+	agento11yCmd.AddCommand(agentsCmd)
 
 	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
-		&mockProvider{name: "aio11y", commands: []*cobra.Command{aio11yCmd}},
+		&mockProvider{name: "agento11y", commands: []*cobra.Command{agento11yCmd}},
 	})
 
-	err := root.ValidateArgs(rootCmd, []string{"--agent", "--context", "dev", "aio11y", "show"})
+	err := root.ValidateArgs(rootCmd, []string{"--agent", "--context", "dev", "agento11y", "show"})
 	require.Error(t, err)
-	require.ErrorContains(t, err, `unknown command "show" for "gcx aio11y"`)
+	require.ErrorContains(t, err, `unknown command "show" for "gcx agento11y"`)
 	require.ErrorContains(t, err, "Usage:")
 	require.ErrorContains(t, err, "Available Commands:")
 	require.ErrorContains(t, err, "agents")
@@ -149,16 +149,16 @@ func TestValidateArgs_NestedGroupRejectsUnexpectedArgs(t *testing.T) {
 	agentsCmd.PersistentFlags().Int("limit", 0, "Limit")
 	agentsCmd.AddCommand(showCmd, versionsCmd)
 
-	aio11yCmd := &cobra.Command{Use: "aio11y", Short: "Manage AI Observability."}
-	aio11yCmd.AddCommand(agentsCmd)
+	agento11yCmd := &cobra.Command{Use: "agento11y", Short: "Manage Agent Observability."}
+	agento11yCmd.AddCommand(agentsCmd)
 
 	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
-		&mockProvider{name: "aio11y", commands: []*cobra.Command{aio11yCmd}},
+		&mockProvider{name: "agento11y", commands: []*cobra.Command{agento11yCmd}},
 	})
 
-	err := root.ValidateArgs(rootCmd, []string{"aio11y", "agents", "--limit", "10", "foo"})
+	err := root.ValidateArgs(rootCmd, []string{"agento11y", "agents", "--limit", "10", "foo"})
 	require.Error(t, err)
-	require.ErrorContains(t, err, `unknown command "foo" for "gcx aio11y agents"`)
+	require.ErrorContains(t, err, `unknown command "foo" for "gcx agento11y agents"`)
 	require.ErrorContains(t, err, "Usage:")
 	require.ErrorContains(t, err, "Available Commands:")
 	require.ErrorContains(t, err, "show")
@@ -192,13 +192,13 @@ func TestValidateArgs_AllowsHelpAndCompletionCommands(t *testing.T) {
 	rootCmd := root.NewCommandForTest("v0.0.0-test", nil)
 
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"help"}))
-	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"help", "aio11y"}))
+	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"help", "agento11y"}))
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"completion", "bash"}))
 
 	// Cobra's hidden shell helpers are registered lazily inside ExecuteC, so
 	// ValidateArgs must let them through to Cobra's normal dispatch.
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__complete", ""}))
-	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__complete", "aio11y", ""}))
+	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__complete", "agento11y", ""}))
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__completeNoDesc", ""}))
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"--agent", "__complete", ""}))
 }
@@ -296,13 +296,13 @@ current-context: dev
 	assert.Equal(t, 1, strings.Count(stderr.String(), "Warning:"))
 }
 
-// buildContextFlagFixture wires a provider that mirrors the aio11y/appo11y
+// buildContextFlagFixture wires a provider that mirrors the agento11y/appo11y
 // shape: a parent group that binds the standard provider config flags via
 // providers.ConfigLoader, plus a leaf subcommand that captures the resolved
 // context name from cmd.Context() through internalconfig.ContextNameFromCtx.
 //
 // The captured value is what the four buggy CRUD adapters
-// (aio11y rules, aio11y evaluators, appo11y settings, appo11y overrides)
+// (agento11y rules, agento11y evaluators, appo11y settings, appo11y overrides)
 // rely on to resolve the active context. If a duplicate provider-level
 // `--context` flag silently swallows the root-level value, the captured
 // context name will be empty and these tests will fail.
@@ -322,8 +322,8 @@ func buildContextFlagFixture(t *testing.T, captured *string) *cobra.Command {
 	rulesCmd.AddCommand(leafCmd)
 
 	parentCmd := &cobra.Command{
-		Use:   "aio11y",
-		Short: "aio11y group",
+		Use:   "agento11y",
+		Short: "agento11y group",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			if r := cmd.Root(); r.PersistentPreRun != nil {
 				r.PersistentPreRun(cmd, args)
@@ -334,7 +334,7 @@ func buildContextFlagFixture(t *testing.T, captured *string) *cobra.Command {
 	parentCmd.AddCommand(rulesCmd)
 
 	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
-		&mockProvider{name: "aio11y", commands: []*cobra.Command{parentCmd}},
+		&mockProvider{name: "agento11y", commands: []*cobra.Command{parentCmd}},
 	})
 	rootCmd.SilenceErrors = true
 	rootCmd.SilenceUsage = true
@@ -356,15 +356,15 @@ func TestContextFlag_PropagatesAtAllPositions(t *testing.T) {
 	}{
 		{
 			name: "before provider",
-			args: []string{"--context", "default", "aio11y", "rules", "list"},
+			args: []string{"--context", "default", "agento11y", "rules", "list"},
 		},
 		{
 			name: "after provider",
-			args: []string{"aio11y", "--context", "default", "rules", "list"},
+			args: []string{"agento11y", "--context", "default", "rules", "list"},
 		},
 		{
 			name: "after leaf",
-			args: []string{"aio11y", "rules", "list", "--context", "default"},
+			args: []string{"agento11y", "rules", "list", "--context", "default"},
 		},
 	}
 
@@ -387,7 +387,7 @@ func TestContextFlag_PropagatesAtAllPositions(t *testing.T) {
 // into the Go context, where adapter factories pick it up.
 func TestContextFlag_ProviderDoesNotBindContextFlag(t *testing.T) {
 	loader := &providers.ConfigLoader{}
-	parentCmd := &cobra.Command{Use: "aio11y", Short: "aio11y group"}
+	parentCmd := &cobra.Command{Use: "agento11y", Short: "agento11y group"}
 	loader.BindFlags(parentCmd.PersistentFlags())
 
 	assert.NotNil(t, parentCmd.PersistentFlags().Lookup("config"),

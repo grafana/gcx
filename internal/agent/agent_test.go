@@ -44,6 +44,11 @@ func TestIsAgentMode(t *testing.T) {
 			wantMode: true,
 		},
 		{
+			name:     "PI_CODING_AGENT=true",
+			envVars:  map[string]string{"PI_CODING_AGENT": "true"},
+			wantMode: true,
+		},
+		{
 			name:     "GCX_AGENT_MODE=1",
 			envVars:  map[string]string{"GCX_AGENT_MODE": "1"},
 			wantMode: true,
@@ -71,8 +76,8 @@ func TestIsAgentMode(t *testing.T) {
 		},
 		{
 			name:     "SetFlag(true) with no env vars enables agent mode",
-			setFlag:  new(bool),
-			wantMode: false, // new(bool) is false; override below
+			setFlag:  new(true),
+			wantMode: true,
 		},
 		{
 			name:     "SetFlag(false) overrides env detection (explicit --agent=false)",
@@ -101,10 +106,6 @@ func TestIsAgentMode(t *testing.T) {
 			wantMode: false,
 		},
 	}
-
-	// Fix the SetFlag(true) test case
-	tests[9].setFlag = new(true)
-	tests[9].wantMode = true
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -139,6 +140,7 @@ func clearAgentEnv(t *testing.T) {
 		"GITHUB_COPILOT",
 		"AMAZON_Q",
 		"OPENCODE",
+		"PI_CODING_AGENT",
 	} {
 		t.Setenv(env, "")
 	}
@@ -215,6 +217,11 @@ func TestName(t *testing.T) {
 			name:    "cursor",
 			envVars: map[string]string{"CURSOR_AGENT": "1"},
 			want:    "cursor",
+		},
+		{
+			name:    "pi",
+			envVars: map[string]string{"PI_CODING_AGENT": "true"},
+			want:    "pi",
 		},
 		{
 			name:    "GCX_AGENT_MODE alone names no harness",

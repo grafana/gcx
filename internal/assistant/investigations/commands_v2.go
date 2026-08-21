@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
+	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -252,4 +255,96 @@ func newShareCommand(loader *providers.ConfigLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// --- evidence ---
+
+type evidenceOpts struct{ IO cmdio.Options }
+
+func (o *evidenceOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &EvidenceTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &EvidenceTableCodec{Wide: true})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+func newEvidenceCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &evidenceOpts{}
+	cmd := &cobra.Command{
+		Use:   "list-evidence <investigation-id>",
+		Short: "List panel evidence for a v2 investigation.",
+		Long: "List panel evidence for a v2 investigation — the canonical mapping from report citation keys (panel IDs like p3) to the tool and query that produced each panel. " +
+			"For raw chat-derived tool calls, use `gcx assistant investigations list-tool-calls` instead.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			client, err := requireV2(cmd, loader)
+			if err != nil {
+				return err
+			}
+			id, err := resolveID(cmd.Context(), client, args[0])
+			if err != nil {
+				return err
+			}
+			resp, err := client.Evidence(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// EvidenceTableCodec renders an EvidenceResponse as a table.
+type EvidenceTableCodec struct{ Wide bool }
+
+func (c *EvidenceTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *EvidenceTableCodec) Encode(w io.Writer, v any) error {
+	resp, ok := v.(*EvidenceResponse)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected *EvidenceResponse")
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "PANEL\tTOOL\tQUERY\tEPOCH\tTIME\tTOOL USE ID")
+	} else {
+		fmt.Fprintln(tw, "PANEL\tTOOL\tQUERY\tEPOCH\tTIME")
+	}
+
+	for _, e := range resp.Evidence {
+		query := flattenWhitespace(e.Query)
+		if c.Wide {
+			toolUseID := e.ToolUseID
+			if toolUseID == "" {
+				toolUseID = "-"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\n",
+				e.PanelID, e.Tool, query, e.Epoch, e.Time, toolUseID)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n",
+				e.PanelID, e.Tool, truncate(query, 40), e.Epoch, e.Time)
+		}
+	}
+	return tw.Flush()
+}
+
+// flattenWhitespace collapses whitespace runs (newlines, tabs) to single
+// spaces so multi-line queries don't split tabwriter rows or shift columns.
+func flattenWhitespace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func (c *EvidenceTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
 }

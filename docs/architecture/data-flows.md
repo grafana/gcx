@@ -295,7 +295,39 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ## 5. QUERY Pipeline
 
-Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query/generic.go`. Shared query CLI utils live in `internal/datasources/query/`.
+Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query.go`. Shared query CLI utils live in `internal/datasources/query/`.
+
+**Two dispatch mechanisms, wired differently.** Registration is required; the
+generic dispatcher is a separate, conditional decision:
+
+1. **Typed `datasources <kind>` subtrees — registry-driven.** Each kind
+   implements `DatasourceProvider` (`internal/datasources/provider.go`) and
+   self-registers via `datasources.RegisterProvider()` in
+   `internal/datasources/providers/<kind>.go`. `cmd/gcx/datasources/command.go`
+   iterates `datasources.AllProviders()` and mounts every registered kind's
+   `QueryCmd` and `ExtraCommands` automatically — no per-kind wiring in the
+   command layer. Registered kinds live in `internal/datasources/providers/`;
+   read that directory rather than trusting a list here.
+2. **Generic `datasources query` — table-driven, and deliberately not at
+   parity.** The auto-detecting command resolves the datasource type over the API
+   and routes it through two disjoint tables in
+   `cmd/gcx/datasources/query_routes.go`: `dispatch` maps a normalized kind to a
+   handler, for kinds the `<uid> <expr>` form carries honestly; `redirects` maps a
+   kind to a message naming the typed command, for kinds whose query is
+   structured. A kind is in one table, the other, or neither — never both, which
+   the tests assert. Registration does **not** reach these tables and no test
+   enforces parity, because parity is not always the right answer: a kind whose
+   query cannot be expressed as one string does not belong in the generic form.
+   CloudWatch is the redirect case for that reason, pointing at
+   `datasources cloudwatch query` and its structured flags (namespace, metric,
+   dimensions, region, statistic, period). The redirect lookup runs *before*
+   expression resolution and before the dispatch lookup: ordering is
+   load-bearing, because an argument-less call would otherwise fail in
+   `ResolveExpr` and never reach the redirect. Kinds in neither table (athena,
+   infinity, and tempo, whose `query` leaf takes a TraceQL expression and is
+   built in `internal/datasources/tempo/search.go`) fall to the unsupported-kind
+   default, whose message is derived from the tables rather than hand-maintained.
+   Read `newQueryRoutes()` rather than trusting a list here.
 
 ```
 User invocation:
@@ -310,20 +342,21 @@ User invocation:
   │    --since          convenience: sets --from=now-{since} --to=now    │
   │                     (mutually exclusive with --from/--to)            │
   │    --step           query step / interval (e.g. "15s", "1m")         │
-  │    --limit          max log lines returned (loki and generic only;   │
-  │                     default 50; 0 = no limit)                        │
+  │    --limit          command-specific: bound only on the leaves that  │
+  │                     define one, with that leaf's own default and     │
+  │                     zero semantics — read the selected leaf rather   │
+  │                     than assuming a family-wide cap                  │
   │    --profile-type   required for pyroscope; also on generic          │
   │    -o               output format: table (default), graph, json, yaml│
   └───────────────────────┬──────────────────────────────────────────────┘
                           │
   ┌───────────────────────▼──────────────────────────────────────────────┐
   │ 2. Resolve datasource UID                                             │
-  │    Typed subcommands (prometheus/loki/pyroscope):                    │
+  │    Typed subcommands:                                                 │
   │      if UID positional arg provided → use directly                   │
-  │      else → config.DefaultDatasourceUID(ctx, kind):                  │
-  │        (1) ctx.Datasources[kind]         ← new config section        │
-  │        (2) ctx.DefaultPrometheusDatasource / DefaultLokiDatasource   │
-  │            / DefaultPyroscopeDatasource  ← legacy fallback           │
+  │      else → config.DefaultDatasourceUID(ctx, kind), a lookup in       │
+  │        ctx.Datasources[kind]; legacy per-kind config keys are         │
+  │        folded into that map by config migration, not resolved here    │
   │      error if still empty                                             │
   │    generic subcommand:                                               │
   │      UID positional arg required (no default resolution)             │
@@ -417,16 +450,20 @@ User invocation:
 ```
 
 Key files:
-- `cmd/gcx/datasources/query/query.go` — shared opts, `resolveTypedArgs`, `validateDatasourceType`
-- `cmd/gcx/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go` — per-kind constructors (`PrometheusCmd`, `LokiCmd`, etc.)
-- `cmd/gcx/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
-- `cmd/gcx/datasources/query/time.go` — `ParseTime`, `ParseDuration` for flag parsing
-- `cmd/gcx/datasources/{prometheus,loki,pyroscope,tempo,generic}.go` — kind subgroups that wire in the query constructors
-- `internal/config/resolver.go` — `DefaultDatasourceUID(ctx, kind)` — shared 2-tier UID resolution
-- `internal/query/prometheus/client.go` — HTTP client, request construction, response conversion
-- `internal/query/prometheus/formatter.go` — table rendering (vector/matrix/scalar)
-- `internal/query/loki/client.go` — HTTP client, request construction, response conversion
-- `internal/query/loki/formatter.go` — log table rendering
+- `internal/datasources/query/opts.go` + `resolve.go` — shared opts, `ResolveExpr`, `ParseTimes`, `NormalizeKind`, `GetDatasourceType`, `ResolveTypedArgs`, `ValidateDatasourceType`
+- `internal/datasources/provider.go` — the `DatasourceProvider` interface (`Kind`, `QueryCmd`, `ExtraCommands`)
+- `internal/datasources/providers/` — one file per registered kind, each calling `datasources.RegisterProvider()`; the authoritative list of supported kinds
+- `internal/datasources/<kind>/query.go` — per-kind `QueryCmd` constructors (tempo's lives in `search.go`, not `query.go` — the leaf exists, the filename differs)
+- `cmd/gcx/datasources/command.go` — mounts every registered kind's subtree from `datasources.AllProviders()`
+- `cmd/gcx/datasources/query.go` — generic auto-detecting `datasources query`: the options struct and the fixed validate → resolve type → redirect → expression → times → dispatch order
+- `cmd/gcx/datasources/query_routes.go` — the two disjoint routing tables (per-kind dispatch handlers, typed-command redirects) and the derived supported-kind list
+- `internal/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
+- `internal/datasources/query/time.go` — time parsing for flag values
+- `internal/config/resolver.go` — `DefaultDatasourceUID(ctx, kind)` — per-kind lookup in the context's datasources map
+- `internal/query/grafanaquery/` — shared HTTP transport for the unified datasource query API (`/apis/query.grafana.app/…` with the `/api/ds/query` fallback); do not re-implement per kind
+- `internal/query/dataframe/` — shared Grafana data-frame wire types
+- `internal/query/<kind>/client.go` — per-kind request construction and response conversion
+- `internal/query/<kind>/formatter.go` — per-kind result rendering (`internal/query/sql/` is shared by the SQL-shaped kinds)
 - `internal/graph/chart.go` — `RenderChart`, `RenderBarChart`, `RenderLineChart`
 - `internal/graph/convert.go` — `FromPrometheusResponse`, `FromLokiResponse`
 - `internal/graph/types.go` — `ChartData`, `Series`, `Point`

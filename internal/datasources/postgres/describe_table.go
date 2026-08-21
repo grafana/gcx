@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -41,7 +42,7 @@ func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.postgres is configured)")
-	flags.StringVar(&opts.Schema, "schema", "", "Schema of the table (defaults to all schemas)")
+	flags.StringVar(&opts.Schema, "schema", "", "Schema of the table (exact match, case-sensitive; defaults to all schemas)")
 }
 
 func (opts *describeTableOpts) Validate() error {
@@ -73,6 +74,10 @@ disambiguate when the same table name exists in multiple schemas.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			if cmd.Flags().Changed("schema") && opts.Schema == "" {
+				return errors.New("--schema must not be empty")
 			}
 
 			schema, table, err := splitTableArg(args[0], opts.Schema)

@@ -6,7 +6,8 @@ List tables from a PostgreSQL datasource
 
 List tables and views from all non-system schemas, or filter to a specific schema.
 
-Shows schema, name, and type for each table.
+Shows schema, name, and type for each table. --schema matches exactly and is
+case-sensitive.
 
 ```
 gcx datasources postgres list-tables [flags]
@@ -34,13 +35,13 @@ gcx datasources postgres list-tables [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
-      --schema string       Filter tables to this schema
+      --schema string       Filter tables to this schema (exact match, case-sensitive)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.

@@ -45,6 +45,7 @@ gcx cloud login [flags]
       --config string        Path to the configuration file to use
       --context string       Name of the context to use
   -h, --help                 help for login
+      --oauth-manual         Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer
       --oauth-url string     Base URL for the OAuth login flow (used only by this command) (default "https://grafana.com")
       --scope strings        OAuth2 scopes to request (default [stacks:read,stacks:write,stacks:delete,metrics:write,logs:write,traces:write,fleet-management:read,fleet-management:write])
 ```
@@ -52,7 +53,7 @@ gcx cloud login [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)

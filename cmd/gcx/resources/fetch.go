@@ -54,7 +54,7 @@ func FetchResources(ctx context.Context, opts FetchRequest, args []string) (*Fet
 		return nil, err
 	}
 
-	pull, err := remote.NewDefaultPuller(ctx, opts.Config)
+	pull, err := remote.NewDefaultPullerWithRegistry(opts.Config, reg)
 	if err != nil {
 		return nil, err
 	}

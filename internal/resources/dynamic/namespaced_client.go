@@ -15,28 +15,52 @@ import (
 	"k8s.io/client-go/tools/pager"
 )
 
+// defaultMaxConcurrentGetRequests bounds the per-name fan-out in GetMultiple by
+// default, matching the fan-out cap used elsewhere in the resources pipeline
+// (adapter router, puller). Override via WithMaxConcurrentGetRequests.
+const defaultMaxConcurrentGetRequests = 10
+
 // NamespacedClient is a dynamic client with a namespace and a discovery registry.
 type NamespacedClient struct {
-	namespace string
-	client    dynamic.Interface
+	namespace                string
+	client                   dynamic.Interface
+	maxConcurrentGetRequests int
+}
+
+// NamespacedClientOption configures a NamespacedClient.
+type NamespacedClientOption func(*NamespacedClient)
+
+// WithMaxConcurrentGetRequests overrides the default fan-out cap (10) used by
+// GetMultiple to bound concurrent per-name GET requests.
+func WithMaxConcurrentGetRequests(n int) NamespacedClientOption {
+	return func(c *NamespacedClient) {
+		c.maxConcurrentGetRequests = n
+	}
 }
 
 // NewDefaultNamespacedClient creates a new namespaced dynamic client using the default discovery registry.
-func NewDefaultNamespacedClient(cfg config.NamespacedRESTConfig) (*NamespacedClient, error) {
+func NewDefaultNamespacedClient(cfg config.NamespacedRESTConfig, opts ...NamespacedClientOption) (*NamespacedClient, error) {
 	client, err := dynamic.NewForConfig(&cfg.Config)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewNamespacedClient(cfg.Namespace, client), nil
+	return NewNamespacedClient(cfg.Namespace, client, opts...), nil
 }
 
 // NewNamespacedClient creates a new namespaced dynamic client.
-func NewNamespacedClient(namespace string, client dynamic.Interface) *NamespacedClient {
-	return &NamespacedClient{
-		client:    client,
-		namespace: namespace,
+func NewNamespacedClient(namespace string, client dynamic.Interface, opts ...NamespacedClientOption) *NamespacedClient {
+	c := &NamespacedClient{
+		client:                   client,
+		namespace:                namespace,
+		maxConcurrentGetRequests: defaultMaxConcurrentGetRequests,
 	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
 }
 
 // List lists resources from the server.
@@ -94,9 +118,7 @@ func (c *NamespacedClient) GetMultiple(
 	ctx context.Context, desc resources.Descriptor, names []string, opts metav1.GetOptions,
 ) ([]unstructured.Unstructured, error) {
 	g, ctx := errgroup.WithContext(ctx)
-
-	// TODO: consider using a limit
-	// g.SetLimit(maxConcurrentGetRequests)
+	g.SetLimit(c.maxConcurrentGetRequests)
 
 	res := make([]unstructured.Unstructured, len(names))
 

@@ -1350,6 +1350,35 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 				account: boundRef.Account, previouslySet: false,
 				owner: owner, field: field,
 			})
+			stored, err := txn.store.Get(boundRef.Account)
+			if err != nil {
+				txn.log.Warn("could not verify keychain entry after write",
+					"owner", owner,
+					"field", string(field),
+					"error", err.Error())
+				verifyErr := fmt.Errorf("verify keychain entry for %q field %q after write: %w", owner, field, err)
+				if cleanupErr := txn.discardLastStagedWrite(); cleanupErr != nil {
+					return credentials.BoundReference{}, false, errors.Join(verifyErr, cleanupErr)
+				}
+				// A newly created credential has no prior reference to preserve. If
+				// the store cannot read it back (or has already lost it) and cleanup
+				// is confirmed, keep this one value in the config instead of writing
+				// a sentinel that the next command cannot resolve.
+				if errors.Is(err, credentials.ErrUnavailable) || errors.Is(err, credentials.ErrNotFound) {
+					return credentials.BoundReference{}, false, nil
+				}
+				return credentials.BoundReference{}, false, verifyErr
+			}
+			if stored != value {
+				txn.log.Warn("keychain entry did not round-trip after write",
+					"owner", owner,
+					"field", string(field))
+				verifyErr := fmt.Errorf("verify keychain entry for %q field %q after write: stored value did not match", owner, field)
+				if cleanupErr := txn.discardLastStagedWrite(); cleanupErr != nil {
+					return credentials.BoundReference{}, false, errors.Join(verifyErr, cleanupErr)
+				}
+				return credentials.BoundReference{}, false, verifyErr
+			}
 			return boundRef, true, nil
 		}
 		if errors.Is(err, credentials.ErrUnavailable) {
@@ -1364,6 +1393,27 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 	}
 	txn.log.Warn("could not allocate unique keychain reference", "owner", owner, "field", string(field))
 	return credentials.BoundReference{}, false, errors.New("could not allocate unique keychain reference")
+}
+
+// discardLastStagedWrite removes the generation just created by stageBoundSet.
+// It is used only before the YAML replacement, when a verification failure
+// makes the new generation unusable. Do not remove the transaction record
+// unless Delete succeeded (or confirmed the account is absent): otherwise the
+// caller's rollback must retain ownership of the cleanup attempt.
+func (txn *keychainWriteTransaction) discardLastStagedWrite() error {
+	if len(txn.writes) == 0 {
+		return errors.New("discard keychain entry after verification failure: no staged write")
+	}
+	write := txn.writes[len(txn.writes)-1]
+	if err := txn.store.Delete(write.account); err != nil && !errors.Is(err, credentials.ErrNotFound) {
+		txn.log.Warn("could not discard unverifiable keychain entry",
+			"owner", write.owner,
+			"field", string(write.field),
+			"error", err.Error())
+		return fmt.Errorf("discard unverifiable keychain entry for %q field %q: %w", write.owner, write.field, err)
+	}
+	txn.writes = txn.writes[:len(txn.writes)-1]
+	return nil
 }
 
 func (txn *keychainWriteTransaction) deferDelete(account, owner string, field credentials.Field) {
@@ -1435,8 +1485,8 @@ func (txn *keychainWriteTransaction) commit(warningWriter io.Writer) error {
 	}
 	if txn.plaintextFallback {
 		txn.warnUnavailableOnce(func() {
-			const message = "credential store unavailable; credentials remain in plaintext on disk"
-			const hint = "install or unlock your OS credential store (Keychain, Credential Manager, or Secret Service) to enable encrypted credential storage"
+			const message = "credential store could not securely store the credential; credentials remain in plaintext on disk"
+			const hint = "verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage"
 			if warningWriter != nil {
 				fmt.Fprintf(warningWriter, "Warning: %s; %s\n", message, hint)
 				return
