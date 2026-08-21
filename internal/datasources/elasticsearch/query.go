@@ -32,7 +32,6 @@ type queryOpts struct {
 	Datasource string
 	Mode       string
 	Limit      int
-	TimeField  string
 }
 
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
@@ -40,7 +39,6 @@ func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.elasticsearch is configured)")
 	flags.StringVar(&opts.Mode, "mode", modeDocuments, fmt.Sprintf("Search mode: %q (raw documents) or %q (newest-first, plugin-internal fields omitted)", modeDocuments, modeLogs))
 	flags.IntVar(&opts.Limit, "limit", defaultLimit, fmt.Sprintf("Max documents to return (%d-%d)", 1, maxLimit))
-	flags.StringVar(&opts.TimeField, "time-field", elasticsearch.DefaultTimeField, "Time field used for range filtering")
 }
 
 func (opts *queryOpts) Validate() error {
@@ -127,12 +125,11 @@ func runQuery(cmd *cobra.Command, args []string, loader *providers.ConfigLoader,
 	}
 
 	req := elasticsearch.SearchRequest{
-		Query:     resolved.Expr,
-		Size:      opts.Limit,
-		TimeField: opts.TimeField,
-		Start:     resolved.Start,
-		End:       resolved.End,
-		StepMs:    resolved.StepMs,
+		Query:  resolved.Expr,
+		Size:   opts.Limit,
+		Start:  resolved.Start,
+		End:    resolved.End,
+		StepMs: resolved.StepMs,
 	}
 
 	search := resolved.Client.Search

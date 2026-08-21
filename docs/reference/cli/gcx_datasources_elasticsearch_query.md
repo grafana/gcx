@@ -12,7 +12,7 @@ datasource configuration.
 
 --mode documents (default) returns raw source documents. --mode logs returns
 the same documents newest-first with plugin-internal fields (_source, sort,
-highlight) omitted, matching how Grafana Explore's Logs view reads them.
+highlight, _type) omitted, matching how Grafana Explore's Logs view reads them.
 
 Datasource is resolved from -d flag or datasources.elasticsearch in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
@@ -61,7 +61,6 @@ gcx datasources elasticsearch query [EXPR] [flags]
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
-      --time-field string   Time field used for range filtering (default "@timestamp")
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
