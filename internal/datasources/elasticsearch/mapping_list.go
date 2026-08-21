@@ -51,6 +51,10 @@ func newMappingListCmd(loader *providers.ConfigLoader, spec mappingListSpec) *co
 				return err
 			}
 
+			if cmd.Flags().Changed("index") && opts.Index == "" {
+				return errors.New("--index must not be empty")
+			}
+
 			ctx := cmd.Context()
 
 			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
