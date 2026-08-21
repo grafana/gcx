@@ -42,7 +42,7 @@ func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Reducer, "reducer", "REDUCE_NONE", "Cross-series reducer: REDUCE_NONE, REDUCE_MEAN, REDUCE_SUM, REDUCE_MIN, REDUCE_MAX, REDUCE_COUNT, ...")
 	flags.StringVar(&opts.Aligner, "aligner", "ALIGN_MEAN", "Per-series aligner: ALIGN_MEAN, ALIGN_SUM, ALIGN_MIN, ALIGN_MAX, ALIGN_RATE, ALIGN_DELTA, ...")
 	flags.StringVar(&opts.AlignmentPeriod, "alignment-period", "", `Alignment period, e.g. +60s (default: auto-fit the time range)`)
-	flags.StringArrayVar(&opts.GroupBys, "group-by", nil, "Label to split series by, e.g. resource.label.instance_name (repeatable)")
+	flags.StringArrayVar(&opts.GroupBys, "group-by", nil, "Label to split series by, e.g. resource.label.instance_name (repeatable; requires --reducer other than REDUCE_NONE)")
 	flags.StringToStringVar(&opts.Filters, "filter", nil, "Label filter key=value (repeatable, AND-combined, exact-match and case-sensitive only — no regex/wildcard; e.g. --filter resource.label.zone=us-east1-b)")
 }
 
@@ -53,10 +53,10 @@ func (opts *queryOpts) Validate() error {
 	if err := opts.ValidateTimeRange(); err != nil {
 		return err
 	}
-	if opts.Project == "" {
+	if strings.TrimSpace(opts.Project) == "" {
 		return errors.New("--project is required")
 	}
-	if opts.Metric == "" {
+	if strings.TrimSpace(opts.Metric) == "" {
 		return errors.New("--metric is required")
 	}
 	if err := validateReducer(opts.Reducer); err != nil {
@@ -73,6 +73,9 @@ func (opts *queryOpts) Validate() error {
 	}
 	if err := validateFilters(opts.Filters); err != nil {
 		return err
+	}
+	if len(opts.GroupBys) > 0 && opts.Reducer == "REDUCE_NONE" {
+		return errors.New("--group-by has no effect while --reducer is REDUCE_NONE (the default); pass a cross-series reducer such as REDUCE_MEAN or REDUCE_SUM so the split actually applies")
 	}
 	return nil
 }
@@ -171,7 +174,11 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 Queries are structured (project, metric type, reducer, aligner) — there is no
 expression language. Use --group-by to split the result into one series per
-label value, and --filter to narrow by labels.
+label value, and --filter to narrow by labels. --group-by only has an effect
+when --reducer is set to something other than the default REDUCE_NONE: GCP's
+Aggregation API ignores groupByFields unless a cross-series reducer combines
+them, so --group-by without --reducer is rejected rather than silently
+returning one ungrouped series.
 
 --filter matches are exact and case-sensitive, not regex or wildcard — GCM has
 no equivalent of "=~". Repeated --filter flags are AND-combined. A filter like

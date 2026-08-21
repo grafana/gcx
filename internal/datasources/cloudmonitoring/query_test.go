@@ -45,6 +45,26 @@ func TestQueryCmd_ValidationErrors(t *testing.T) {
 			args:    []string{"--project", "p", "--metric", "m", "--filter", "resource.label.zone="},
 			wantErr: "value must not be empty",
 		},
+		{
+			name:    "whitespace-only --project rejected instead of round-tripping to Google",
+			args:    []string{"--project", "   ", "--metric", "m"},
+			wantErr: "--project is required",
+		},
+		{
+			name:    "whitespace-only --metric rejected instead of round-tripping to Google",
+			args:    []string{"--project", "p", "--metric", "   "},
+			wantErr: "--metric is required",
+		},
+		{
+			name:    "--group-by without a reducer is rejected instead of silently returning one ungrouped series",
+			args:    []string{"--project", "p", "--metric", "m", "--group-by", "resource.label.instance_name"},
+			wantErr: "--group-by has no effect while --reducer is REDUCE_NONE",
+		},
+		{
+			name:    "--group-by with an explicit REDUCE_NONE is still rejected",
+			args:    []string{"--project", "p", "--metric", "m", "--group-by", "resource.label.instance_name", "--reducer", "REDUCE_NONE"},
+			wantErr: "--group-by has no effect while --reducer is REDUCE_NONE",
+		},
 	}
 
 	for _, tt := range tests {

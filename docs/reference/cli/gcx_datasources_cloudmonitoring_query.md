@@ -8,7 +8,11 @@ Execute a Google Cloud Monitoring (formerly Stackdriver) metrics query.
 
 Queries are structured (project, metric type, reducer, aligner) — there is no
 expression language. Use --group-by to split the result into one series per
-label value, and --filter to narrow by labels.
+label value, and --filter to narrow by labels. --group-by only has an effect
+when --reducer is set to something other than the default REDUCE_NONE: GCP's
+Aggregation API ignores groupByFields unless a cross-series reducer combines
+them, so --group-by without --reducer is rejected rather than silently
+returning one ungrouped series.
 
 --filter matches are exact and case-sensitive, not regex or wildcard — GCM has
 no equivalent of "=~". Repeated --filter flags are AND-combined. A filter like
@@ -62,7 +66,7 @@ gcx datasources cloudmonitoring query [flags]
   -d, --datasource string         Datasource UID (required unless datasources.cloudmonitoring is configured)
       --filter stringToString     Label filter key=value (repeatable, AND-combined, exact-match and case-sensitive only — no regex/wildcard; e.g. --filter resource.label.zone=us-east1-b) (default [])
       --from string               Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-      --group-by stringArray      Label to split series by, e.g. resource.label.instance_name (repeatable)
+      --group-by stringArray      Label to split series by, e.g. resource.label.instance_name (repeatable; requires --reducer other than REDUCE_NONE)
   -h, --help                      help for query
       --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields

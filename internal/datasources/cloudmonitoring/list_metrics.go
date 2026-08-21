@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -35,7 +36,7 @@ func (opts *listMetricsOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
 	}
-	if opts.Project == "" {
+	if strings.TrimSpace(opts.Project) == "" {
 		return errors.New("--project is required")
 	}
 	return nil
@@ -58,6 +59,10 @@ unfiltered listings page through every metric in the project and can be slow).`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			if cmd.Flags().Changed("service") && strings.TrimSpace(opts.Service) == "" {
+				return errors.New("--service must not be empty")
 			}
 
 			ctx := cmd.Context()
@@ -87,7 +92,7 @@ unfiltered listings page through every metric in the project and can be slow).`,
 	}
 
 	cmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationTokenCost: "large",
 		agent.AnnotationLLMHint:   "gcx datasources cloudmonitoring list-metrics -d UID --project PROJECT --service compute.googleapis.com",
 	}
 

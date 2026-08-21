@@ -3,6 +3,7 @@ package cloudmonitoring
 import (
 	"testing"
 
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -88,6 +89,40 @@ func TestValidateFilters(t *testing.T) {
 		err := validateFilters(map[string]string{"resource.label.zone": ""})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "value must not be empty")
+	})
+}
+
+// --group-by only takes effect when paired with a real cross-series reducer
+// (GCP's Aggregation API ignores groupByFields under REDUCE_NONE), so
+// queryOpts.Validate rejects the combination rather than silently returning
+// one ungrouped series. Package-internal because the check lives in
+// queryOpts.Validate, not one of the exported per-flag validators above.
+func TestQueryOptsValidate_GroupByRequiresReducer(t *testing.T) {
+	base := func() *queryOpts {
+		opts := &queryOpts{}
+		opts.setup(pflag.NewFlagSet("test", pflag.ContinueOnError))
+		opts.Project, opts.Metric = "p", "m"
+		return opts
+	}
+
+	t.Run("group-by with default REDUCE_NONE rejected", func(t *testing.T) {
+		opts := base()
+		opts.GroupBys = []string{"resource.label.instance_name"}
+		err := opts.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "--group-by has no effect while --reducer is REDUCE_NONE")
+	})
+
+	t.Run("group-by with a real reducer is accepted", func(t *testing.T) {
+		opts := base()
+		opts.GroupBys = []string{"resource.label.instance_name"}
+		opts.Reducer = "REDUCE_MEAN"
+		assert.NoError(t, opts.Validate())
+	})
+
+	t.Run("no group-by is accepted regardless of reducer", func(t *testing.T) {
+		opts := base()
+		assert.NoError(t, opts.Validate())
 	})
 }
 
