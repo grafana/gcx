@@ -217,6 +217,7 @@
  "gcx datasources query": "finite",
  "gcx datasources schemas get": "finite",
  "gcx datasources schemas list": "finite",
+ "gcx datasources tempo baseline": "finite",
  "gcx datasources tempo diff": "finite",
  "gcx datasources tempo get": "finite",
  "gcx datasources tempo labels": "finite",
