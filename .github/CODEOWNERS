@@ -35,6 +35,7 @@
 /internal/datasources/infinity/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/influxdb/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/loki/ @grafana/grafana-gcx @grafana/loki-team
+/internal/datasources/mysql/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/postgres/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
 /internal/datasources/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
@@ -44,6 +45,7 @@
 /internal/query/cloudmonitoring/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/elasticsearch/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/loki/ @grafana/grafana-gcx @grafana/loki-team
+/internal/query/mysql/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/postgres/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
 /internal/query/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team

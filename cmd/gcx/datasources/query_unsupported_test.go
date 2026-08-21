@@ -17,7 +17,7 @@ import (
 )
 
 const wantUnsupportedMessage = `datasource type "tempo" is not supported ` +
-	`(supported: azuremonitor, clickhouse, cloudmonitoring, cloudwatch, influxdb, loki, postgres, prometheus, pyroscope)`
+	`(supported: azuremonitor, clickhouse, cloudmonitoring, cloudwatch, influxdb, loki, mysql, postgres, prometheus, pyroscope)`
 
 // runGenericSilenced mirrors the production root (cmd/gcx/root): usage and
 // errors are reported by the caller, never printed into the output streams. The
