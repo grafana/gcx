@@ -6,7 +6,8 @@ List tables from a MySQL datasource
 
 List tables and views from all non-system databases, or filter to a specific database.
 
-Shows database, name, and type for each table.
+Shows database, name, and type for each table. --database matches exactly and
+is case-sensitive.
 
 ```
 gcx datasources mysql list-tables [flags]
@@ -29,7 +30,7 @@ gcx datasources mysql list-tables [flags]
 ### Options
 
 ```
-      --database string     Filter tables to this database
+      --database string     Filter tables to this database (exact match, case-sensitive)
   -d, --datasource string   Datasource UID (required unless datasources.mysql is configured)
   -h, --help                help for list-tables
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.

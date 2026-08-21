@@ -7,7 +7,10 @@ Show the columns of a MySQL table
 Show the columns of a MySQL table: name, column type, nullability, and default.
 
 The table can be database-qualified (db.table); otherwise use --database to
-disambiguate when the same table name exists in multiple databases.
+disambiguate when the same table name exists in multiple databases. TABLE and
+--database both match exactly and are case-sensitive, which can differ from
+how information_schema itself compares names depending on the server's
+platform and lower_case_table_names setting.
 
 ```
 gcx datasources mysql describe-table TABLE [flags]
@@ -31,7 +34,7 @@ gcx datasources mysql describe-table TABLE [flags]
 ### Options
 
 ```
-      --database string     Database of the table (defaults to all databases)
+      --database string     Database of the table (exact match, case-sensitive; defaults to all databases)
   -d, --datasource string   Datasource UID (required unless datasources.mysql is configured)
   -h, --help                help for describe-table
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.

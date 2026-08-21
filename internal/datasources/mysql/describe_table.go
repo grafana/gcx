@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -41,7 +42,7 @@ func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.mysql is configured)")
-	flags.StringVar(&opts.Database, "database", "", "Database of the table (defaults to all databases)")
+	flags.StringVar(&opts.Database, "database", "", "Database of the table (exact match, case-sensitive; defaults to all databases)")
 }
 
 func (opts *describeTableOpts) Validate() error {
@@ -58,7 +59,10 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Show the columns of a MySQL table: name, column type, nullability, and default.
 
 The table can be database-qualified (db.table); otherwise use --database to
-disambiguate when the same table name exists in multiple databases.`,
+disambiguate when the same table name exists in multiple databases. TABLE and
+--database both match exactly and are case-sensitive, which can differ from
+how information_schema itself compares names depending on the server's
+platform and lower_case_table_names setting.`,
 		Example: `
   # Describe a table
   gcx datasources mysql describe-table orders -d UID
@@ -73,6 +77,10 @@ disambiguate when the same table name exists in multiple databases.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			if cmd.Flags().Changed("database") && opts.Database == "" {
+				return errors.New("--database must not be empty")
 			}
 
 			database, table, err := splitTableArg(args[0], opts.Database)
