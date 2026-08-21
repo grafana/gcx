@@ -10,6 +10,7 @@ import (
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/azuremonitor"
+	"github.com/grafana/gcx/internal/query/cloudmonitoring"
 	"github.com/grafana/gcx/internal/query/elasticsearch"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
@@ -329,5 +330,35 @@ func TestTraceGetCodecDispatch(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, out.String(), "spans: 0")
 		assert.Contains(t, out.String(), "services: 0")
+	})
+}
+
+func TestQueryCodecsCloudMonitoring(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterCodecs(ioOpts, true)
+		return ioOpts
+	}
+
+	v := 0.42
+	resp := &cloudmonitoring.QueryResponse{
+		Frames: []cloudmonitoring.Frame{{
+			Name:       "cpu/utilization",
+			Timestamps: []time.Time{time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)},
+			Values:     []*float64{&v},
+		}},
+	}
+
+	t.Run("table codec renders frames", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("table").Encode(&out, resp))
+		assert.Contains(t, out.String(), "cpu/utilization")
+	})
+
+	t.Run("graph codec renders a chart", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("graph").Encode(&out, resp))
+		assert.Contains(t, out.String(), "cpu/utilization")
 	})
 }

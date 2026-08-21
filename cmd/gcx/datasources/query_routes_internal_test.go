@@ -83,7 +83,7 @@ func TestQueryRoutesSupportedKindsIsTheSortedUnion(t *testing.T) {
 	routes := newQueryRoutes()
 
 	assert.Equal(t,
-		[]string{"azuremonitor", "clickhouse", "cloudwatch", "influxdb", "loki", "mysql", "postgres", "prometheus", "pyroscope"},
+		[]string{"azuremonitor", "clickhouse", "cloudmonitoring", "cloudwatch", "influxdb", "loki", "postgres", "prometheus", "pyroscope"},
 		routes.supportedKinds())
 
 	assert.Len(t, routes.supportedKinds(), len(routes.dispatch)+len(routes.redirects),

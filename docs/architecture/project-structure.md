@@ -92,6 +92,7 @@ gcx/
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
 │   │   ├── azuremonitor/     # Azure Monitor CLI commands (query, logs, resource-graph, list-subscriptions, list-resource-groups, list-resources, list-metrics)
 │   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
+│   │   ├── cloudmonitoring/  # Google Cloud Monitoring CLI commands (query, list-projects, list-metrics)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
 │   │   ├── elasticsearch/    # Elasticsearch datasource commands (query [--mode documents|logs], metrics, list-indices, list-fields)
 │   │   ├── mysql/            # MySQL datasource commands (query, list-tables, describe-table)
@@ -101,6 +102,7 @@ gcx/
 │   │   ├── dataframe/        # Shared Grafana data frame wire types for unified datasource query API responses
 │   │   ├── grafanaquery/     # Shared POST transport for /apis/query.grafana.app/.../query with /api/ds/query fallback
 │   │   ├── azuremonitor/     # Azure Monitor HTTP query client (metric queries, KQL logs + resource graph, ARM discovery via datasource resource proxy)
+│   │   ├── cloudmonitoring/  # Google Cloud Monitoring HTTP query client (time-series list queries, project/metric discovery)
 │   │   ├── cloudwatch/       # CloudWatch HTTP client (metric queries, resource listing)
 │   │   ├── elasticsearch/    # Elasticsearch HTTP query client (Lucene search, logs, aggregations, mapping discovery)
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)

@@ -29,6 +29,7 @@
 /internal/datasources/athena/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/azuremonitor/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/clickhouse/ @grafana/grafana-gcx @grafana/data-sources
+/internal/datasources/cloudmonitoring/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/cloudwatch/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/elasticsearch/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/infinity/ @grafana/grafana-gcx @grafana/data-sources
@@ -41,6 +42,7 @@
 /internal/datasources/tempo/ @grafana/grafana-gcx @grafana/tempo
 
 /internal/query/azuremonitor/ @grafana/grafana-gcx @grafana/data-sources-plugins
+/internal/query/cloudmonitoring/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/elasticsearch/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/loki/ @grafana/grafana-gcx @grafana/loki-team
 /internal/query/mysql/ @grafana/grafana-gcx @grafana/data-sources-plugins
