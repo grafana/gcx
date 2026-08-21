@@ -79,20 +79,21 @@ Do that even when the argument for them is strong.
 
 ## Report shape
 
+Use bold text for headings in the report, not markdown headings
+
 1. **Intent.** The problem, and how the change solves it. Say whether the
-   approach is sound before you list what is wrong with it.
+   approach is sound before you list what is wrong with it. Do not give an opinion non whether the approach is sound or not here - that will become obvious from the rest. Keep this as short as possible.
 2. **Blocking.** Fix before merge: correctness bugs, regressions to shipped
    behaviour, safety defects, and violations of CONSTITUTION.md or DESIGN.md.
    Put two more things here. Behaviour that changes inside a described refactor.
-   A call to a function, field, or option that does not exist.
+   A call to a function, field, or option that does not exist. Overengineering issues from T12 and T5. If nothing blocks the merge, omit this section.
 3. **Other findings.** Everything that does not block, worst first. Include
    documentation that contradicts the code it describes. Give each finding the
    space its argument needs and no more. Some take a paragraph. Most take a
    line. The label shows the difference, so a one-line nit and a
    worth-fixing defect can share the list.
-4. **Over-engineering.** Findings from T12 and T5. Rank and cap them as below.
-5. **The smaller version.** One combined remedy. Omit this section when section
-   4 is empty.
+5. **Fix summary** One combined remedy. Omit this section when section
+   2 and 3 are empty.
 6. **Verdict.** Approve or request changes. Name the findings that decide it. If
    you would merge a reduced version, say so, and say how much smaller.
 
@@ -148,15 +149,12 @@ Five things change when no human is present. The rest of the review is the same.
   can answer a speculative finding here, and a wrong one makes them disprove it
   in public.
 - **Use tighter caps**: at most three blocking findings, and eight comments in
-  total. Drop the lowest-ranked findings rather than relabelling them. Say in
-  the summary that you dropped some.
-- **Close the summary with this exact line**, so an author who pushes a fix
-  knows how to ask again:
+  total. Drop the lowest-ranked findings.
+- **Close the summary with this exact line**:
 
   > Comment `@claude review` for a fresh review.
 
-Silence is a valid result. When nothing meets the bar, say in one line that the
-diff looked clean, and stop. Never invent a finding.
+Silence is a valid result. If there are no findings, say so in one line. Never invent a finding.
 
 ## Offering to post the review
 
@@ -264,6 +262,7 @@ Write the report and the comments in plain English:
 - Active voice.
 - Plain words instead of figurative ones.
 - No idiom.
+- Avoid phrases or terms that hyphenate words together. Find simpler alternatives.
 
 This applies to prose. It does not apply to identifiers, code comments,
 suggested diffs, or quoted output.
