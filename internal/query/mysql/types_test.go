@@ -62,6 +62,21 @@ func TestEnforceLimit(t *testing.T) {
 		{"SELECT mentioning DML in a literal skips enforcement", "SELECT * FROM audit WHERE action = 'DELETE'", 100, "SELECT * FROM audit WHERE action = 'DELETE'", false},
 		{"subquery LIMIT appends without cap warning", "SELECT * FROM (SELECT a FROM t LIMIT 5000) x", 100, "SELECT * FROM (SELECT a FROM t LIMIT 5000) x LIMIT 100", false},
 		{"multiline ORDER BY DESC still gets LIMIT", "SELECT * FROM t ORDER BY created_at\nDESC", 100, "SELECT * FROM t ORDER BY created_at\nDESC LIMIT 100", false},
+
+		// REPLACE is both a DML write verb and MySQL's most common string
+		// function; \b alone can't tell them apart (see isReplaceWrite).
+		{"SELECT calling REPLACE() still gets LIMIT", "SELECT REPLACE(col,'a','b') FROM big_table", 100, "SELECT REPLACE(col,'a','b') FROM big_table LIMIT 100", false},
+		{"SELECT calling REPLACE() with a space before the paren still gets LIMIT", "SELECT REPLACE (col,'a','b') FROM big_table", 100, "SELECT REPLACE (col,'a','b') FROM big_table LIMIT 100", false},
+		{"a real REPLACE write passes through", "REPLACE INTO t (a) VALUES (1)", 100, "REPLACE INTO t (a) VALUES (1)", false},
+		{"CTE-wrapped REPLACE write passes through", "WITH x AS (SELECT id FROM t) REPLACE INTO t2 SELECT id FROM x", 100, "WITH x AS (SELECT id FROM t) REPLACE INTO t2 SELECT id FROM x", false},
+		{"CTE body merely calling REPLACE() still gets LIMIT", "WITH x AS (SELECT REPLACE(col,'a','b') AS c FROM t) SELECT * FROM x", 100, "WITH x AS (SELECT REPLACE(col,'a','b') AS c FROM t) SELECT * FROM x LIMIT 100", false},
+
+		// MySQL line comments (# and -- ) run to end of line; appending
+		// "LIMIT n" as a bare suffix after one lands inside the comment.
+		{"bail on trailing # comment", "SELECT * FROM t # drop mic", 100, "SELECT * FROM t # drop mic", false},
+		{"bail on trailing -- comment", "SELECT * FROM t -- drop mic", 100, "SELECT * FROM t -- drop mic", false},
+		{"bail on trailing -- comment after semicolon", "SELECT * FROM t; -- trailing", 100, "SELECT * FROM t; -- trailing", false},
+		{"comment mid-query still gets LIMIT", "SELECT 1 # mid-query note\nFROM t", 100, "SELECT 1 # mid-query note\nFROM t LIMIT 100", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
