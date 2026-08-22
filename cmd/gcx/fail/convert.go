@@ -56,6 +56,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 	errorConverters := []func(err error) (*gcxerrors.DetailedError, bool){
 		convertAlreadyReported,             // Command already rendered a complete diagnostic report
 		convertUnknownFieldSelectionErrors, // --json unknown-field validation
+		convertArrayPathSelectionErrors,    // --json path that enters an array
 		convertJQRuntimeErrors,             // --jq runtime failures — includes output shape summary
 		convertPartialFailureErrors,
 		convertUsageErrors,
@@ -1298,6 +1299,27 @@ func convertUnknownFieldSelectionErrors(err error) (*gcxerrors.DetailedError, bo
 		ExitCode: &exitCode,
 		Suggestions: []string{
 			"Run the command with --json list to enumerate valid field names",
+		},
+	}, true
+}
+
+// convertArrayPathSelectionErrors converts ArrayPathSelectionError (a --json
+// path continues past an array) into a structured DetailedError with exit
+// code 2 (ExitUsageError). Field selection walks maps only, so the suggestion
+// names --jq, which iterates the array.
+func convertArrayPathSelectionErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var arrayErr cmdoutput.ArrayPathSelectionError
+	if !errors.As(err, &arrayErr) {
+		return nil, false
+	}
+
+	exitCode := gcxerrors.ExitUsageError
+	return &gcxerrors.DetailedError{
+		Summary:  "Invalid command usage",
+		Details:  arrayErr.Error(),
+		ExitCode: &exitCode,
+		Suggestions: []string{
+			"Step into the array with --jq, e.g. --jq '.data.result[].metric'",
 		},
 	}, true
 }

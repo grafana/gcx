@@ -11,6 +11,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// TestFieldSelectCodec_SingleUnstructured covers the unstructured route. An
+// unstructured object declares no type, so gcx rejects no path here: every
+// path that resolves nowhere keeps its null and the command exits 0.
 func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -32,14 +35,10 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 			},
 		},
 		{
-			name:   "missing field produces null",
-			fields: []string{"nonexistent"},
-			obj: map[string]any{
-				"name": "foo",
-			},
-			wantFields: map[string]any{
-				"nonexistent": nil,
-			},
+			name:       "a field that exists nowhere stays a null",
+			fields:     []string{"nonexistent"},
+			obj:        map[string]any{"name": "foo"},
+			wantFields: map[string]any{"nonexistent": nil},
 		},
 		{
 			name:   "dot-notation resolves nested field",
@@ -55,35 +54,39 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 			},
 		},
 		{
-			name:   "dot-notation on missing nested key produces null",
-			fields: []string{"metadata.missing"},
+			name:   "a path that exists and holds null stays a null",
+			fields: []string{"metadata.name"},
 			obj: map[string]any{
-				"metadata": map[string]any{
-					"name": "my-dashboard",
-				},
+				"metadata": map[string]any{"name": nil},
 			},
 			wantFields: map[string]any{
-				"metadata.missing": nil,
+				"metadata.name": nil,
 			},
 		},
 		{
-			name:   "dot-notation on non-map intermediate produces null",
-			fields: []string{"spec.title.nested"},
-			obj: map[string]any{
-				"spec": map[string]any{
-					"title": "My Dashboard",
-				},
-			},
-			wantFields: map[string]any{
-				"spec.title.nested": nil,
-			},
+			name:       "dot-notation on a missing nested key stays a null",
+			fields:     []string{"metadata.missing"},
+			obj:        map[string]any{"metadata": map[string]any{"name": "my-dashboard"}},
+			wantFields: map[string]any{"metadata.missing": nil},
 		},
 		{
-			name:   "multiple fields including missing",
+			name:       "dot-notation through a non-map intermediate stays a null",
+			fields:     []string{"spec.title.nested"},
+			obj:        map[string]any{"spec": map[string]any{"title": "My Dashboard"}},
+			wantFields: map[string]any{"spec.title.nested": nil},
+		},
+		{
+			// A typed route names the real path instead — see
+			// TestLeafNameInsteadOfPathFails.
+			name:       "a leaf name typed instead of a path stays a null",
+			fields:     []string{"username"},
+			obj:        map[string]any{"spec": map[string]any{"username": "ward"}},
+			wantFields: map[string]any{"username": nil},
+		},
+		{
+			name:   "one absent name among present ones keeps them all",
 			fields: []string{"name", "missing"},
-			obj: map[string]any{
-				"name": "foo",
-			},
+			obj:    map[string]any{"name": "foo"},
 			wantFields: map[string]any{
 				"name":    "foo",
 				"missing": nil,
@@ -97,8 +100,7 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 
 			item := unstructured.Unstructured{Object: tc.obj}
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, item)
-			require.NoError(t, err)
+			require.NoError(t, codec.Encode(&buf, item))
 
 			var got map[string]any
 			require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -127,13 +129,15 @@ func TestFieldSelectCodec_ListWrapping(t *testing.T) {
 			},
 		},
 		{
-			name:   "missing field in list items produces null",
-			fields: []string{"nonexistent"},
+			name:   "a field only some items carry is kept for all of them",
+			fields: []string{"name", "kind"},
 			items: []map[string]any{
 				{"name": "foo"},
+				{"name": "bar", "kind": "Dashboard"},
 			},
 			wantItems: []map[string]any{
-				{"nonexistent": nil},
+				{"name": "foo", "kind": nil},
+				{"name": "bar", "kind": "Dashboard"},
 			},
 		},
 	}

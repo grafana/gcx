@@ -124,6 +124,63 @@ func TestGetPartialFailure_AtomicStdout(t *testing.T) {
 	}
 }
 
+// TestGetPartialFailure_AbsentFieldIsNull pins that the agent-mode fused
+// envelope obeys the same --json contract as the success path. The resources
+// are unstructured, so they declare no type, and a path that no resource
+// carries keeps its null on both routes. Only the failure count travels
+// through the error.
+func TestGetPartialFailure_AbsentFieldIsNull(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	item := unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "dashboard.grafana.app/v1alpha1",
+		"kind":       "Dashboard",
+		"metadata":   map[string]any{"name": "alpha"},
+	}}
+
+	flags := pflag.NewFlagSet("get", pflag.ContinueOnError)
+	opts := resources.NewGetOptsForTest(flags)
+	if err := flags.Set("json", "name"); err != nil {
+		t.Fatalf("set --json: %v", err)
+	}
+	if err := opts.Validate(); err != nil {
+		t.Fatalf("Validate() = %v", err)
+	}
+
+	summary := &remote.OperationSummary{}
+	summary.RecordSuccess()
+	summary.RecordFailure(nil, errors.New("boom"))
+	res := &resources.FetchResponse{PullSummary: summary}
+	output := unstructured.UnstructuredList{Items: []unstructured.Unstructured{item}}
+
+	var stdout, stderr bytes.Buffer
+	opts.IO.ErrWriter = &stderr
+	err := resources.WriteGetOutputForTest(&stdout, &stderr, opts, res, output)
+
+	var emitted *gcxerrors.EmittedError
+	if !errors.As(err, &emitted) {
+		t.Fatalf("writeGetOutput() error = %T (%v), want *gcxerrors.EmittedError", err, err)
+	}
+	if emitted.Code != gcxerrors.ExitPartialFailure {
+		t.Fatalf("EmittedError.Code = %d, want %d", emitted.Code, gcxerrors.ExitPartialFailure)
+	}
+
+	var envelope struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal stdout %q: %v", stdout.String(), err)
+	}
+	if len(envelope.Items) != 1 {
+		t.Fatalf("items = %d, want 1 (stdout %q)", len(envelope.Items), stdout.String())
+	}
+	value, ok := envelope.Items[0]["name"]
+	if !ok || value != nil {
+		t.Fatalf("items[0] = %v, want the requested path with a null value", envelope.Items[0])
+	}
+}
+
 // TestGetPartialFailure_JQKeepsShape pins that an active --jq transformation
 // is never dropped by the agent-mode fused envelope: the jq output keeps its
 // shape (identical to a success run) and the failure travels via the typed

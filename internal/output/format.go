@@ -125,7 +125,7 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	opts.NoTruncate = terminal.NoTruncate()
 
 	flags.StringVarP(&opts.OutputFormat, "output", "o", defaultFormat, "Output format. One of: "+strings.Join(opts.allowedCodecs(), ", "))
-	flags.String("json", "", "Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields")
+	flags.String("json", "", "Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths")
 	flags.String("jq", "", "jq expression to apply to JSON output. Mutually exclusive with --json.")
 
 	opts.flags = flags
@@ -194,9 +194,9 @@ func (opts *Options) applyJSONFlag() error {
 
 // applyJQFlag processes the --jq flag. The flag is mutually exclusive with
 // --json (both field selection and discovery): jq strictly supersedes those
-// mechanisms, so combining them adds confusion without value. Also, the two
-// resources/* commands that bypass Options.Encode() and construct
-// FieldSelectCodec directly (get.go, schemas.go) only fire when JSONFields or
+// mechanisms, so combining them adds confusion without value. Also, the
+// resources/get.go command bypasses Options.Encode() and constructs
+// FieldSelectCodec directly, and it only fires when JSONFields or
 // JSONDiscovery is set — mutual exclusion preserves correctness there.
 //
 // When -o is unset, --jq auto-flips OutputFormat to "json" (mirrors --json).
@@ -261,7 +261,7 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 
 	// In agent mode, nudge toward --json field selection / --jq transformation
 	// whenever the resolved codec is JSON-like (json or agents format). The
-	// hint still fires when --json field1,field2 is in use — the caller may
+	// hint still fires when --json <path>,<path> is in use — the caller may
 	// not realize --jq exists for transformation (group_by, filter, count).
 	// Suppressed when --jq is already in use (caller already has the more
 	// powerful tool) or when --json list is requested (discovery output is
@@ -280,7 +280,7 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 			w = os.Stderr
 		}
 		emitHint(w,
-			"use --json list / --json field1,field2 for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed",
+			"use --json list to discover the dotted paths, then --json <path>,<path> for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed",
 			"",
 		)
 	}
@@ -391,7 +391,9 @@ func marshalToSampleMap(value any) (map[string]any, error) {
 // reflection. Handles slices and pointers by unwrapping to the element type.
 // Returns nil if the type is not a struct after unwrapping.
 // Fields tagged json:"-" are excluded. Fields with no json tag use the
-// struct field name.
+// struct field name. The fields of an embedded struct are promoted into the
+// parent, exactly as encoding/json writes them, so discovery lists only names
+// that field selection accepts.
 func reflectFields(t reflect.Type) []string {
 	if t == nil {
 		return nil
@@ -402,23 +404,7 @@ func reflectFields(t reflect.Type) []string {
 	if t.Kind() != reflect.Struct {
 		return nil
 	}
-
-	var fields []string
-	for f := range t.Fields() {
-		if !f.IsExported() {
-			continue
-		}
-		tag := f.Tag.Get("json")
-		if tag == "-" {
-			continue
-		}
-		name, _, _ := strings.Cut(tag, ",")
-		if name == "" {
-			name = f.Name
-		}
-		fields = append(fields, name)
-	}
-	return fields
+	return jsonFieldNames(t, embeddedDepth)
 }
 
 // sampleFromObject picks the representative sample map for field discovery
@@ -536,32 +522,7 @@ func reflectSingleSliceField(t reflect.Type) []string {
 // Used to discover item fields of an empty ListEnvelope. Returns nil when t
 // (after pointer unwrapping) is not a struct or has no matching slice field.
 func reflectSliceFieldByKey(t reflect.Type, key string) []string {
-	if t == nil {
-		return nil
-	}
-	for t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	if t.Kind() != reflect.Struct {
-		return nil
-	}
-	for f := range t.Fields() {
-		if !f.IsExported() || f.Type.Kind() != reflect.Slice {
-			continue
-		}
-		tag := f.Tag.Get("json")
-		if tag == "-" {
-			continue
-		}
-		name, _, _ := strings.Cut(tag, ",")
-		if name == "" {
-			name = f.Name
-		}
-		if name == key {
-			return reflectFields(f.Type)
-		}
-	}
-	return nil
+	return reflectFields(sliceElemTypeByKey(t, key))
 }
 
 // We have to return an interface here.

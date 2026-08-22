@@ -291,7 +291,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 // table) and surfaces the truncation hint on stderr. Split from RunE so the
 // output path is testable without a live server.
 func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
-	// --json field1,field2: use FieldSelectCodec for output. The truncation
+	// --json <path>,<path>: use FieldSelectCodec for output. The truncation
 	// hint must fire on this path too — field-selected output is truncated by
 	// the same per-resource-type limit as every other mode — but, as on the
 	// path below, only after a successful encode.
@@ -393,7 +393,7 @@ func emitGetTruncationHint(stderr io.Writer, opts *getOpts, res *FetchResponse) 
 		"")
 }
 
-// writeFieldSelect handles --json field1,field2 output for the get command.
+// writeFieldSelect handles --json <path>,<path> output for the get command.
 // It uses FieldSelectCodec to emit only selected fields, and emits a combined
 // {"items": [...], "error": {...}} envelope (FR-012) on partial failure in agent mode.
 func writeFieldSelect(out, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
@@ -407,6 +407,8 @@ func writeFieldSelect(out, stderr io.Writer, opts *getOpts, res *FetchResponse, 
 	// path returned nil and the process exited 0 despite the embedded
 	// exitCode 4.
 	if hasPartialFailure && agent.IsAgentMode() {
+		// The resources are unstructured, so they declare no type and gcx
+		// rejects no path here — the success path rejects none either.
 		itemMaps := make([]map[string]any, len(output.Items))
 		for i, item := range output.Items {
 			itemMaps[i] = cmdio.ExtractFields(item.Object, codec.Fields())
