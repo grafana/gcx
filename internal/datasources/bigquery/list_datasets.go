@@ -40,7 +40,8 @@ func ListDatasetsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 When --project is omitted, the datasource's default project is queried.
 
-At most 1000 datasets are returned; additional datasets are not listed.`,
+At most 1000 datasets are returned; if more match, a warning is printed on
+stderr rather than silently truncating.`,
 		Example: `
   # List datasets in the default project
   gcx datasources bigquery list-datasets
@@ -53,6 +54,10 @@ At most 1000 datasets are returned; additional datasets are not listed.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			if err := bigquery.ValidateProject(opts.Project); err != nil {
 				return err
 			}
 
@@ -69,14 +74,10 @@ At most 1000 datasets are returned; additional datasets are not listed.`,
 				return err
 			}
 
-			if err := bigquery.ValidateProject(opts.Project); err != nil {
-				return err
-			}
-
 			sql := fmt.Sprintf(
 				"SELECT schema_name FROM %s.SCHEMATA ORDER BY schema_name LIMIT %d",
 				bigquery.InfoSchemaPrefix(opts.Project, ""),
-				bigquery.MetadataRowLimit,
+				bigquery.MetadataRowLimit+1,
 			)
 
 			client, err := bigquery.NewClient(cfg)
@@ -88,6 +89,8 @@ At most 1000 datasets are returned; additional datasets are not listed.`,
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
+
+			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "datasets")
 
 			datasets := bigquery.ParseStringColumn(resp)
 			return opts.IO.Encode(cmd.OutOrStdout(), bigquery.StringList{Items: datasets, Header: "DATASET"})

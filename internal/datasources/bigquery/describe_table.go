@@ -46,7 +46,8 @@ The dataset is required, supplied either in the table name (DATASET.TABLE or
 PROJECT.DATASET.TABLE) or via --dataset. When the project is omitted, the
 datasource's default project is used.
 
-At most 1000 columns are returned; wider tables are truncated.`,
+At most 1000 columns are returned; if a table is wider, a warning is printed
+on stderr rather than silently truncating.`,
 		Example: `
   # Describe a table in a dataset (default project; equivalent forms)
   gcx datasources bigquery describe-table my_dataset.events
@@ -90,6 +91,16 @@ At most 1000 columns are returned; wider tables are truncated.`,
 			if dataset == "" {
 				return errors.New("dataset is required: pass DATASET.TABLE or --dataset (run 'gcx datasources bigquery list-datasets' to discover datasets)")
 			}
+			if err := bigquery.ValidateProject(project); err != nil {
+				return err
+			}
+			if err := bigquery.ValidateName(dataset, "dataset"); err != nil {
+				return err
+			}
+			// The table name is compared as a SQL string literal (not
+			// interpolated as an identifier), so EscapeSQLString is sufficient.
+			// Deliberately not identifier-validated — that would reject legit
+			// BigQuery flexible table names containing hyphens for no benefit.
 
 			ctx := cmd.Context()
 
@@ -104,22 +115,11 @@ At most 1000 columns are returned; wider tables are truncated.`,
 				return err
 			}
 
-			if err := bigquery.ValidateProject(project); err != nil {
-				return err
-			}
-			if err := bigquery.ValidateName(dataset, "dataset"); err != nil {
-				return err
-			}
-			// The table name is compared as a SQL string literal (not
-			// interpolated as an identifier), so EscapeSQLString is sufficient.
-			// Deliberately not identifier-validated — that would reject legit
-			// BigQuery flexible table names containing hyphens for no benefit.
-
 			sql := fmt.Sprintf(
 				"SELECT column_name, data_type, is_nullable FROM %s.COLUMNS WHERE table_name = '%s' ORDER BY ordinal_position LIMIT %d",
 				bigquery.InfoSchemaPrefix(project, dataset),
 				bigquery.EscapeSQLString(table),
-				bigquery.MetadataRowLimit,
+				bigquery.MetadataRowLimit+1,
 			)
 
 			client, err := bigquery.NewClient(cfg)
@@ -131,6 +131,8 @@ At most 1000 columns are returned; wider tables are truncated.`,
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
+
+			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "columns")
 
 			cols := bigquery.ParseColumnInfoRows(resp)
 			return opts.IO.Encode(cmd.OutOrStdout(), cols)

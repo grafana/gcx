@@ -11,7 +11,8 @@ The dataset is required, supplied either in the table name (DATASET.TABLE or
 PROJECT.DATASET.TABLE) or via --dataset. When the project is omitted, the
 datasource's default project is used.
 
-At most 1000 columns are returned; wider tables are truncated.
+At most 1000 columns are returned; if a table is wider, a warning is printed
+on stderr rather than silently truncating.
 
 ```
 gcx datasources bigquery describe-table TABLE [flags]
@@ -48,7 +49,7 @@ gcx datasources bigquery describe-table TABLE [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.

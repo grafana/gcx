@@ -8,7 +8,8 @@ List datasets (schemas) in a BigQuery project via INFORMATION_SCHEMA.SCHEMATA.
 
 When --project is omitted, the datasource's default project is queried.
 
-At most 1000 datasets are returned; additional datasets are not listed.
+At most 1000 datasets are returned; if more match, a warning is printed on
+stderr rather than silently truncating.
 
 ```
 gcx datasources bigquery list-datasets [flags]
@@ -42,7 +43,7 @@ gcx datasources bigquery list-datasets [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.

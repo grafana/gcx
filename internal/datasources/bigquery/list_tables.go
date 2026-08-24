@@ -44,7 +44,8 @@ func ListTablesCmd(loader *providers.ConfigLoader) *cobra.Command {
 --dataset is required. When --project is omitted, the datasource's default
 project is used. Run 'list-datasets' to discover available datasets.
 
-At most 1000 tables are returned; additional tables are not listed.`,
+At most 1000 tables are returned; if more match, a warning is printed on
+stderr rather than silently truncating.`,
 		Example: `
   # List tables in a dataset (default project)
   gcx datasources bigquery list-tables --dataset my_dataset
@@ -63,6 +64,12 @@ At most 1000 tables are returned; additional tables are not listed.`,
 			if opts.Dataset == "" {
 				return errors.New("--dataset is required (run 'gcx datasources bigquery list-datasets' to discover datasets)")
 			}
+			if err := bigquery.ValidateProject(opts.Project); err != nil {
+				return err
+			}
+			if err := bigquery.ValidateName(opts.Dataset, "dataset"); err != nil {
+				return err
+			}
 
 			ctx := cmd.Context()
 
@@ -77,17 +84,10 @@ At most 1000 tables are returned; additional tables are not listed.`,
 				return err
 			}
 
-			if err := bigquery.ValidateProject(opts.Project); err != nil {
-				return err
-			}
-			if err := bigquery.ValidateName(opts.Dataset, "dataset"); err != nil {
-				return err
-			}
-
 			sql := fmt.Sprintf(
 				"SELECT table_name, table_type FROM %s.TABLES ORDER BY table_name LIMIT %d",
 				bigquery.InfoSchemaPrefix(opts.Project, opts.Dataset),
-				bigquery.MetadataRowLimit,
+				bigquery.MetadataRowLimit+1,
 			)
 
 			client, err := bigquery.NewClient(cfg)
@@ -99,6 +99,8 @@ At most 1000 tables are returned; additional tables are not listed.`,
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
+
+			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "tables")
 
 			tables := bigquery.ParseTableInfoRows(resp)
 			return opts.IO.Encode(cmd.OutOrStdout(), tables)
