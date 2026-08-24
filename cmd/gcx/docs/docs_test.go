@@ -81,20 +81,59 @@ func TestSearchCommand(t *testing.T) {
 			wantStderr: "no results found",
 		},
 		{
-			name:       "result set filling the limit emits a completeness hint",
-			args:       []string{"search", "clustering", "--limit", "1"},
-			wantStdout: []string{"Clustering"},
-			wantStderr: "showing the top 1 results",
+			name:       "over-fetch proving more hits emits a completeness hint",
+			args:       []string{"search", "grafana", "--limit", "1"},
+			wantStdout: []string{"TITLE"},
+			wantStderr: "showing first 1",
 		},
 		{
-			name: "json output is valid and structured",
+			name: "complete page has no list_meta",
 			args: []string{"search", "clustering", "-o", "json"},
 			checkStdout: func(t *testing.T, stdout string) {
 				t.Helper()
-				var entries []map[string]any
-				require.NoError(t, json.Unmarshal([]byte(stdout), &entries))
-				require.NotEmpty(t, entries)
-				assert.Contains(t, entries[0]["title"], "Clustering")
+				var got map[string]any
+				require.NoError(t, json.Unmarshal([]byte(stdout), &got))
+				results, ok := got["results"].([]any)
+				require.True(t, ok)
+				require.NotEmpty(t, results)
+				first, ok := results[0].(map[string]any)
+				require.True(t, ok)
+				assert.Contains(t, first["title"], "Clustering")
+				_, hasMeta := got["list_meta"]
+				assert.False(t, hasMeta, "complete page must omit list_meta")
+			},
+		},
+		{
+			name: "truncated page carries list_meta",
+			args: []string{"search", "grafana", "--limit", "1", "-o", "json"},
+			checkStdout: func(t *testing.T, stdout string) {
+				t.Helper()
+				var got struct {
+					Results  []map[string]any `json:"results"`
+					ListMeta *struct {
+						Truncated bool `json:"truncated"`
+						Returned  int  `json:"returned"`
+					} `json:"list_meta"`
+				}
+				require.NoError(t, json.Unmarshal([]byte(stdout), &got))
+				assert.Len(t, got.Results, 1)
+				require.NotNil(t, got.ListMeta, "truncated page must carry list_meta")
+				assert.True(t, got.ListMeta.Truncated)
+				assert.Equal(t, 1, got.ListMeta.Returned)
+			},
+		},
+		{
+			name: "empty results serialize as an array, not null",
+			args: []string{"search", "zzzznotathing", "-o", "json"},
+			checkStdout: func(t *testing.T, stdout string) {
+				t.Helper()
+				var got map[string]any
+				require.NoError(t, json.Unmarshal([]byte(stdout), &got))
+				results, ok := got["results"].([]any)
+				require.True(t, ok)
+				assert.Empty(t, results)
+				_, hasMeta := got["list_meta"]
+				assert.False(t, hasMeta)
 			},
 		},
 	}
