@@ -11,11 +11,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// fetchDoc is the seam through which get/outline reach the network. It points
-// at grafanadocs.FetchDoc in production and is replaced in tests so the
-// success paths can be exercised without a live fetch (mirroring the
-// CommandWithIndex hook used for the index-backed commands).
-var fetchDoc = grafanadocs.FetchDoc
+// docFetcher fetches a documentation page as bounded markdown. It is
+// grafanadocs.FetchDoc in production and is replaced in tests (via
+// CommandWithFetcher) so the get/outline success paths can be exercised
+// without a live fetch, mirroring the CommandWithIndex hook used for the
+// index-backed commands. Dependency injection keeps it off the package scope.
+type docFetcher func(ctx context.Context, url string) (*grafanadocs.Doc, error)
 
 // cleanFetchErr rewrites a grafanadocs fetch error into product-facing
 // language: it adds the URL for context and strips the internal
@@ -60,7 +61,7 @@ func (l *indexLoader) get(ctx context.Context) (*grafanadocs.Index, error) {
 // Command returns the "docs" command group. Mount it on the root command
 // with rootCmd.AddCommand(docs.Command()).
 func Command() *cobra.Command {
-	return newDocsCommand(&indexLoader{})
+	return newDocsCommand(&indexLoader{}, grafanadocs.FetchDoc)
 }
 
 // CommandWithIndex returns a docs command group wired to a pre-loaded index.
@@ -68,10 +69,18 @@ func Command() *cobra.Command {
 func CommandWithIndex(idx *grafanadocs.Index) *cobra.Command {
 	loader := &indexLoader{idx: idx}
 	loader.once.Do(func() {})
-	return newDocsCommand(loader)
+	return newDocsCommand(loader, grafanadocs.FetchDoc)
 }
 
-func newDocsCommand(loader *indexLoader) *cobra.Command {
+// CommandWithFetcher returns a docs command group with the page fetcher
+// replaced. Intended for tests — lets the get/outline success paths run
+// without a live network fetch, mirroring CommandWithIndex for the
+// index-backed commands.
+func CommandWithFetcher(fetch docFetcher) *cobra.Command {
+	return newDocsCommand(&indexLoader{}, fetch)
+}
+
+func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "docs",
 		Short: "Search and read Grafana documentation.",
@@ -81,8 +90,8 @@ func newDocsCommand(loader *indexLoader) *cobra.Command {
 
 	cmd.AddCommand(
 		searchCommand(loader),
-		getCommand(),
-		outlineCommand(),
+		getCommand(fetch),
+		outlineCommand(fetch),
 		productsCommand(loader),
 		linksCommand(),
 	)

@@ -54,7 +54,7 @@ func toOutlineHeadings(headings []grafanadocs.Heading) []outlineHeading {
 	return out
 }
 
-func outlineCommand() *cobra.Command {
+func outlineCommand(fetch docFetcher) *cobra.Command {
 	opts := &outlineOpts{}
 	cmd := &cobra.Command{
 		Use:   "outline <url>",
@@ -68,7 +68,7 @@ func outlineCommand() *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			doc, err := fetchDoc(cmd.Context(), opts.url)
+			doc, err := fetch(cmd.Context(), opts.url)
 			if err != nil {
 				return cleanFetchErr(opts.url, err)
 			}

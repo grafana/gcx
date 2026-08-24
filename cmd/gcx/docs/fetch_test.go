@@ -1,4 +1,4 @@
-package docs
+package docs_test
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/cmd/gcx/docs"
 	"github.com/grafana/mcp-doc-server/pkg/grafanadocs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,53 +19,40 @@ import (
 //	line 2: (blank)
 //	line 3: ## Alpha
 //	line 4: (blank)
-//	line 5: Alpha body.
+//	line 5: First section text.
 //	line 6: (blank)
 //	line 7: ## Beta
 //	line 8: (blank)
-//	line 9: Beta body.
-const sampleDoc = "# Doc Title\n\n## Alpha\n\nAlpha body.\n\n## Beta\n\nBeta body.\n"
+//	line 9: Second section text.
+const sampleDoc = "# Doc Title\n\n## Alpha\n\nFirst section text.\n\n## Beta\n\nSecond section text.\n"
 
-// stubFetch replaces the package fetchDoc seam for the duration of a test so
-// the get/outline success paths run without any network access.
-func stubFetch(t *testing.T, fn func(ctx context.Context, url string) (*grafanadocs.Doc, error)) {
-	t.Helper()
-	orig := fetchDoc
-	fetchDoc = fn
-	t.Cleanup(func() { fetchDoc = orig })
+// okDoc returns a fetcher that always serves sampleDoc for the requested URL,
+// so the get/outline success paths run without any network access.
+func okDoc() func(context.Context, string) (*grafanadocs.Doc, error) {
+	return func(_ context.Context, u string) (*grafanadocs.Doc, error) {
+		return &grafanadocs.Doc{URL: u, Content: []byte(sampleDoc)}, nil
+	}
 }
 
-// runDocs executes the docs command tree with agent mode disabled, capturing
-// stdout and stderr separately.
-func runDocs(t *testing.T, args ...string) (string, string, error) {
+// runWithFetcher builds the docs command group with the page fetcher replaced,
+// executes it with agent mode disabled, and captures stdout.
+func runWithFetcher(t *testing.T, fetch func(context.Context, string) (*grafanadocs.Doc, error), args ...string) (string, error) {
 	t.Helper()
-	t.Setenv("GCX_AGENT_MODE", "false")
-	t.Setenv("CURSOR_AGENT", "")
-	t.Setenv("CLAUDECODE", "")
-	t.Setenv("CLAUDE_CODE", "")
-	agent.ResetForTesting()
-
-	cmd := Command()
+	disableAgentMode(t)
+	cmd := docs.CommandWithFetcher(fetch)
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
 	cmd.SetArgs(args)
 	err := cmd.Execute()
-	return out.String(), errOut.String(), err
-}
-
-func okDoc(url string) func(context.Context, string) (*grafanadocs.Doc, error) {
-	return func(_ context.Context, u string) (*grafanadocs.Doc, error) {
-		return &grafanadocs.Doc{URL: u, Content: []byte(sampleDoc)}, nil
-	}
+	return out.String(), err
 }
 
 func TestGetCommandSuccess(t *testing.T) {
 	const url = "https://grafana.com/docs/tempo/latest/"
 
 	t.Run("offset/limit paging returns a bounded range", func(t *testing.T) {
-		stubFetch(t, okDoc(url))
-		stdout, _, err := runDocs(t, "get", url, "--offset", "0", "--limit", "3", "-o", "json")
+		stdout, err := runWithFetcher(t, okDoc(), "get", url, "--offset", "0", "--limit", "3", "-o", "json")
 		require.NoError(t, err)
 
 		var res struct {
@@ -80,12 +67,11 @@ func TestGetCommandSuccess(t *testing.T) {
 		assert.Equal(t, 10, res.TotalLines)
 		assert.Contains(t, res.Content, "# Doc Title")
 		assert.Contains(t, res.Content, "## Alpha")
-		assert.NotContains(t, res.Content, "Beta body.")
+		assert.NotContains(t, res.Content, "## Beta")
 	})
 
 	t.Run("section extraction returns only that section", func(t *testing.T) {
-		stubFetch(t, okDoc(url))
-		stdout, _, err := runDocs(t, "get", url, "--section", "Alpha", "-o", "json")
+		stdout, err := runWithFetcher(t, okDoc(), "get", url, "--section", "Alpha", "-o", "json")
 		require.NoError(t, err)
 
 		var res struct {
@@ -95,13 +81,12 @@ func TestGetCommandSuccess(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
 		assert.Equal(t, [2]int{3, 6}, res.ReturnedRange)
 		assert.Contains(t, res.Content, "## Alpha")
-		assert.Contains(t, res.Content, "Alpha body.")
+		assert.Contains(t, res.Content, "First section text.")
 		assert.NotContains(t, res.Content, "## Beta")
 	})
 
 	t.Run("missing section is a helpful error", func(t *testing.T) {
-		stubFetch(t, okDoc(url))
-		_, _, err := runDocs(t, "get", url, "--section", "Nonexistent")
+		_, err := runWithFetcher(t, okDoc(), "get", url, "--section", "Nonexistent")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `section "Nonexistent" not found`)
 		assert.Contains(t, err.Error(), "gcx docs outline")
@@ -110,9 +95,8 @@ func TestGetCommandSuccess(t *testing.T) {
 
 func TestOutlineCommandSuccess(t *testing.T) {
 	const url = "https://grafana.com/docs/tempo/latest/"
-	stubFetch(t, okDoc(url))
 
-	stdout, _, err := runDocs(t, "outline", url, "-o", "json")
+	stdout, err := runWithFetcher(t, okDoc(), "outline", url, "-o", "json")
 	require.NoError(t, err)
 
 	var res struct {
@@ -134,21 +118,17 @@ func TestOutlineCommandSuccess(t *testing.T) {
 
 // TestFetchErrorIsCleaned asserts that a grafanadocs error surfaced by get is
 // rewritten into product-facing language: the URL is added for context and the
-// internal "grafanadocs:" package prefix is stripped.
+// internal "grafanadocs:" package prefix is stripped. This exercises the
+// cleanFetchErr helper end-to-end through the command.
 func TestFetchErrorIsCleaned(t *testing.T) {
 	const url = "https://evil.com/docs/x"
-	stubFetch(t, func(_ context.Context, _ string) (*grafanadocs.Doc, error) {
+	fetch := func(_ context.Context, _ string) (*grafanadocs.Doc, error) {
 		return nil, fmt.Errorf("grafanadocs: rejected host %q (only grafana.com allowed)", "evil.com")
-	})
+	}
 
-	_, _, err := runDocs(t, "get", url)
+	_, err := runWithFetcher(t, fetch, "get", url)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "fetching "+url)
 	assert.Contains(t, err.Error(), "rejected host")
 	assert.NotContains(t, err.Error(), "grafanadocs:")
-}
-
-func TestCleanFetchErr(t *testing.T) {
-	err := cleanFetchErr("https://grafana.com/docs/x", fmt.Errorf("grafanadocs: doc returned 404"))
-	assert.Equal(t, "fetching https://grafana.com/docs/x: doc returned 404", err.Error())
 }
