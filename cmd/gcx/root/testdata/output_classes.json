@@ -116,7 +116,6 @@
  "gcx appo11y settings update": "finite",
  "gcx assistant conversation get": "finite",
  "gcx assistant conversation list": "finite",
- "gcx assistant dashboard": "stream",
  "gcx assistant investigations cancel": "finite",
  "gcx assistant investigations create": "finite",
  "gcx assistant investigations get": "finite",

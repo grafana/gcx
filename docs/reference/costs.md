@@ -20,7 +20,7 @@ exactly as if you had used the Grafana UI or API directly.
 
 | Product | Billing unit | gcx commands | Details |
 |---|---|---|---|
-| Grafana Assistant | Tokens consumed per request (usage-based) | `gcx assistant prompt`, `gcx assistant dashboard` | [Assistant pricing](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing/) |
+| Grafana Assistant | Tokens consumed per request (usage-based) | `gcx assistant prompt` | [Assistant pricing](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing/) |
 | Synthetic Monitoring | Test executions (per probe, per run) plus resulting metrics and logs | `gcx synthetic-monitoring checks create` / `update` | [Synthetic Monitoring invoice](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/synthetic-monitoring-invoice/) |
 | Performance Testing (k6) | Virtual User Hours (VUh); browser VUs are billed at a higher rate | `gcx k6 load-tests create`, `gcx k6 test-run emit --apply` | [Performance Testing invoice](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/performance-testing-invoice/) |
 | IRM (OnCall + Incident) | Monthly active IRM users | `gcx irm oncall …`, `gcx irm incidents …` write actions | [IRM invoice](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice/) |
