@@ -68,6 +68,7 @@ cmd/gcx/
   config/       Config management (set, use-context, view, check)
   resources/    Resource commands (get, list-types, list-examples, push, pull, delete, edit, validate)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
+  docs/         Documentation lookup (search, get, outline, list-products, list-links; backed by mcp-doc-server)
   providers/    Provider list command
   cloud/        Cloud platform command group (mounts gcx cloud stacks)
   api/          Raw API passthrough
