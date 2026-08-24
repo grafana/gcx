@@ -1,3 +1,37 @@
+## v1.1.1 (2026-08-24)
+
+**Datasources**
+- Add support for the MySQL and Postgres datasources (#970, #969)
+- Add support for the Elasticsearch datasource (#971)
+- Add support for Azure Monitor and Google Cloud Monitoring (#965, #974)
+- Restructure the generic query router to keep it simple (#1141)
+- Add the experimental `gcx traces diff` command (#1165)
+
+**Providers**
+- Add notification commands to the knowledge graph provider (#1077)
+- Add `gcx irm incidents get-pir` for post-incident reviews (#1163)
+- Report `otlpIngestEndpointURL` from frontend applications (#1223)
+
+**Login and configuration**
+- Add `--oauth-manual` for hosts without a reachable callback (#1136)
+- Let environment credentials override a keychain failure (#1066)
+- Scope `gcx config check` to one explicit context (#1155)
+
+**Fixes**
+- Include `otlp_url` and `otlp_username` in the cluster configuration (#1198)
+- Correct the order of dashboards in the output (#1201)
+
+**Performance**
+- Build the discovery registry one time (#925)
+- Limit the parallel fan-out in resource commands (#925)
+
+**Other**
+- Detect the pi coding agent harness for agent mode (#1208)
+- Report the batch resource volume as size buckets (#1108)
+- Add a Grafana version support policy to the documentation (#1197)
+- Regenerate the command line interface reference (#1224)
+
+
 ## Unreleased
 
 ### New features
