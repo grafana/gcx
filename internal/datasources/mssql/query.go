@@ -62,6 +62,9 @@ it in your browser after the query succeeds.`,
 			if err := shared.Validate(); err != nil {
 				return err
 			}
+			if limit < 0 {
+				return fmt.Errorf("--limit must be >= 0, got %d", limit)
+			}
 
 			expr, err := shared.ResolveExpr(args, 0)
 			if err != nil {
