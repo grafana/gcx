@@ -33,6 +33,10 @@ EXPR is the SQL query to execute, passed as a positional argument or via --expr.
 Datasource is resolved from -d flag or datasources.bigquery in your context.
 Reference tables as ` + "`project.dataset.table`" + `; when the project is omitted
 the datasource's default project is used.
+Server-side macros ($__timeFilter, etc.) are supported against TIMESTAMP
+columns; a DATETIME column needs an explicit CAST(col AS TIMESTAMP) first,
+since $__timeFilter substitutes a TIMESTAMP literal BigQuery won't compare
+against DATETIME directly.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.`,
 		Example: `
@@ -41,6 +45,9 @@ open it in your browser after the query succeeds.`,
 
   # Explicit datasource
   gcx datasources bigquery query -d UID 'SELECT * FROM ` + "`my_dataset.logs`" + `' --since 1h
+
+  # $__timeFilter against a TIMESTAMP column
+  gcx datasources bigquery query -d UID 'SELECT * FROM ` + "`my_dataset.events`" + ` WHERE $__timeFilter(event_ts)' --since 1h
 
   # Output as JSON
   gcx datasources bigquery query -d UID 'SELECT 1' -o json
