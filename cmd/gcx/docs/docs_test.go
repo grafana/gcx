@@ -81,6 +81,12 @@ func TestSearchCommand(t *testing.T) {
 			wantStderr: "no results found",
 		},
 		{
+			name:       "result set filling the limit emits a completeness hint",
+			args:       []string{"search", "clustering", "--limit", "1"},
+			wantStdout: []string{"Clustering"},
+			wantStderr: "showing the top 1 results",
+		},
+		{
 			name: "json output is valid and structured",
 			args: []string{"search", "clustering", "-o", "json"},
 			checkStdout: func(t *testing.T, stdout string) {

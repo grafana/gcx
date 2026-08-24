@@ -29,15 +29,15 @@ gcx docs search <query> [flags]
   -h, --help             help for search
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int        Maximum number of results (default 5)
+      --limit int        Maximum number of results (0 or negative uses the default) (default 5)
   -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
-      --product string   Filter results to a specific product
+      --product string   Filter results to a specific product (case-insensitive; matches exact, then prefix, then substring; empty = all products)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
