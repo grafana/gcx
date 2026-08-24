@@ -1,6 +1,7 @@
 package mssql
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -51,6 +52,9 @@ filtered to a single schema. Reports schema, name, and type for each.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+			if cmd.Flags().Changed("schema") && opts.Schema == "" {
+				return errors.New("--schema must not be empty")
 			}
 			if err := mssql.ValidateIdentifier(opts.Schema, "schema"); err != nil {
 				return err

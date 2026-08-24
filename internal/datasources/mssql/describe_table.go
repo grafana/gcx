@@ -56,6 +56,9 @@ table that exists in multiple schemas with a schema-qualified name
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			if cmd.Flags().Changed("schema") && opts.Schema == "" {
+				return errors.New("--schema must not be empty")
+			}
 
 			// Accept a schema-qualified table (e.g. "dbo.WORLD_DATA"); the
 			// schema segment is equivalent to passing --schema.
