@@ -94,6 +94,25 @@ func TestJQCodec_Encode(t *testing.T) {
 			wantValues: []any{"only"},
 		},
 		{
+			// Adding 1 to the test query forces gojq to use the nested int64 as a number,
+			// exposing the failure that occurs when the value is not JSON-normalized.
+			name:  "single unstructured object normalizes int64 values",
+			query: ".spec.schemaVersion + 1",
+			value: unstructured.Unstructured{Object: map[string]any{
+				"spec": map[string]any{"schemaVersion": int64(1)},
+			}},
+			wantValues: []any{2.0},
+		},
+		{
+			name:  "unstructured list normalizes int64 values",
+			query: "[.items[].spec.schemaVersion + 1]",
+			value: unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+				{Object: map[string]any{"spec": map[string]any{"schemaVersion": int64(1)}}},
+				{Object: map[string]any{"spec": map[string]any{"schemaVersion": int64(2)}}},
+			}},
+			wantValues: []any{[]any{2.0, 3.0}},
+		},
+		{
 			name:    "runtime error on type mismatch",
 			query:   ".foo | .bar",
 			value:   map[string]any{"foo": 42},
