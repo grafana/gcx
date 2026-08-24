@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -33,7 +34,6 @@ const (
 	overlayNone overlay = iota
 	overlayTypes
 	overlayQuery
-	overlayFilter
 	overlaySearch
 	overlayHelp
 )
@@ -329,12 +329,6 @@ func (m model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.input.Blur()
 			m.expr = value
 			return m.startQuery()
-		case overlayFilter:
-			m.overlay = overlayNone
-			m.input.Blur()
-			m.filter = value
-			m.svcCursor = 0
-			m.dsCursor = 0
 		case overlaySearch:
 			m.overlay = overlayNone
 			m.input.Blur()
@@ -351,19 +345,17 @@ func (m model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) handleDatasourceKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	items := m.visibleDatasources()
 	switch msg.String() {
-	case "q":
-		return m, tea.Quit
-	case "j", "down":
+	case "down":
 		m.dsCursor = clamp(m.dsCursor+1, 0, len(items)-1)
-	case "k", "up":
+	case "up":
 		m.dsCursor = clamp(m.dsCursor-1, 0, len(items)-1)
-	case "/":
-		return m.openInput(overlayFilter, "filter datasources", m.filter)
 	case "esc":
 		if m.filter != "" {
 			m.filter = ""
 			m.dsCursor = 0
+			return m, nil
 		}
+		return m, tea.Quit
 	case "?":
 		m.overlay = overlayHelp
 	case "enter":
@@ -376,6 +368,10 @@ func (m model) handleDatasourceKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loading = "services"
 		m.err = ""
 		return m, tea.Batch(m.loadTypes(m.ds.UID), m.loadServices(m.ds.UID, m.since()))
+	default:
+		if f, ok := editFilter(m.filter, msg); ok {
+			m.filter, m.dsCursor = f, 0
+		}
 	}
 	return m, nil
 }
@@ -383,14 +379,10 @@ func (m model) handleDatasourceKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) handleServiceKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	items := m.visibleServices()
 	switch msg.String() {
-	case "q":
-		return m, tea.Quit
-	case "j", "down":
+	case "down":
 		m.svcCursor = clamp(m.svcCursor+1, 0, len(items)-1)
-	case "k", "up":
+	case "up":
 		m.svcCursor = clamp(m.svcCursor-1, 0, len(items)-1)
-	case "/":
-		return m.openInput(overlayFilter, "filter services", m.filter)
 	case "esc":
 		if m.filter != "" {
 			m.filter = ""
@@ -398,12 +390,13 @@ func (m model) handleServiceKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.stage = stageDatasources
+		m.filter, m.dsCursor = "", 0
 		m.err = ""
-	case "p":
+	case "ctrl+p":
 		m.overlay = overlayTypes
-	case "e":
+	case "ctrl+e":
 		return m.openInput(overlayQuery, "label selector", m.exprOrSelected())
-	case "t":
+	case "ctrl+t":
 		m.sinceIdx = (m.sinceIdx + 1) % len(sinceOptions)
 		m.loading = "services"
 		return m, m.loadServices(m.ds.UID, m.since())
@@ -415,6 +408,10 @@ func (m model) handleServiceKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.expr = fmt.Sprintf("{service_name=%q}", items[clamp(m.svcCursor, 0, len(items)-1)])
 		return m.startQuery()
+	default:
+		if f, ok := editFilter(m.filter, msg); ok {
+			m.filter, m.svcCursor = f, 0
+		}
 	}
 	return m, nil
 }
@@ -563,6 +560,30 @@ func (m model) visibleServices() []string {
 	return out
 }
 
+// editFilter applies a key press to the incremental list filter: printable
+// characters extend it, backspace trims it, anything else is not filter input.
+func editFilter(filter string, msg tea.KeyMsg) (string, bool) {
+	switch msg.Type {
+	case tea.KeyRunes, tea.KeySpace:
+		if msg.Alt {
+			return filter, false
+		}
+		for _, r := range msg.Runes {
+			if !unicode.IsPrint(r) {
+				return filter, false
+			}
+		}
+		return filter + string(msg.Runes), len(msg.Runes) > 0
+	case tea.KeyBackspace:
+		if filter == "" {
+			return filter, false
+		}
+		r := []rune(filter)
+		return string(r[:len(r)-1]), true
+	}
+	return filter, false
+}
+
 func containsFold(s, sub string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(sub))
 }
@@ -641,9 +662,9 @@ func (m model) footer() string {
 	case m.overlay != overlayNone && m.overlay != overlayHelp:
 		return keys("enter", "apply", "esc", "cancel")
 	case m.stage == stageDatasources:
-		return keys("j/k", "move", "enter", "open", "/", "filter", "?", "help", "q", "quit")
+		return keys("↑/↓", "move", "enter", "open", "type", "filter", "?", "help", "esc", "quit")
 	case m.stage == stageServices:
-		return keys("enter", "profile", "p", "type", "e", "query", "t", "range", "/", "filter", "?", "help")
+		return keys("↑/↓", "move", "enter", "profile", "type", "filter", "ctrl+p", "type", "ctrl+e", "query", "ctrl+t", "range", "?", "help")
 	default:
 		return keys("hjkl", "move", "z", "zoom in", "o", "zoom out", "0", "reset", "/", "search", "T", "top", "?", "help")
 	}
@@ -690,8 +711,8 @@ func (m model) typeLabels() []string {
 // listBody renders a scrolling list with the cursor kept in view.
 func (m model) listBody(items []string, cursor int, what string) string {
 	height := m.bodyHeight()
-	if m.overlay != overlayNone && m.overlay != overlayTypes {
-		height--
+	if m.overlay != overlayTypes {
+		height-- // the filter or input line below the list
 	}
 	var b strings.Builder
 	if len(items) == 0 && m.loading == "" {
@@ -711,10 +732,24 @@ func (m model) listBody(items []string, cursor int, what string) string {
 		b.WriteString("\n")
 	}
 	body := strings.TrimRight(b.String(), "\n")
-	if m.overlay == overlayFilter || m.overlay == overlayQuery || m.overlay == overlaySearch {
+	switch {
+	case m.overlay == overlayQuery || m.overlay == overlaySearch:
 		body += "\n" + m.inputLine()
+	case m.overlay == overlayNone:
+		body += "\n" + m.filterLine(len(items))
 	}
 	return body
+}
+
+func (m model) filterLine(shown int) string {
+	if m.filter == "" {
+		return mutedStyle.Render("type to filter")
+	}
+	matches := fmt.Sprintf("  (%d matches)", shown)
+	if shown == 1 {
+		matches = "  (1 match)"
+	}
+	return keyStyle.Render("filter: ") + m.filter + mutedStyle.Render(matches)
 }
 
 func (m model) inputLine() string {
@@ -775,15 +810,16 @@ func (m model) helpBody() string {
 		rows  [][2]string
 	}{
 		{"lists", [][2]string{
-			{"j / k", "move"},
+			{"↑ / ↓", "move"},
 			{"enter", "open datasource / load profile"},
-			{"/", "filter"},
+			{"letters, digits", "filter as you type"},
+			{"backspace", "delete a filter character"},
 			{"esc", "clear filter, or go back"},
 		}},
 		{"query", [][2]string{
-			{"p", "choose profile type"},
-			{"e", "edit the label selector"},
-			{"t", "cycle time range (" + strings.Join(sinceOptions, ", ") + ")"},
+			{"ctrl+p / p", "choose profile type (in a list / the flamegraph)"},
+			{"ctrl+e / e", "edit the label selector"},
+			{"ctrl+t / t", "cycle time range (" + strings.Join(sinceOptions, ", ") + ")"},
 			{"r", "re-run the query"},
 		}},
 		{"flamegraph", [][2]string{

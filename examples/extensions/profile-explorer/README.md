@@ -42,22 +42,27 @@ gcx --context prod ext profile-explorer
 
 Press `?` in any view for this list.
 
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Move in a list; callee / caller in the flamegraph |
-| `h` / `l` | Previous / next sibling frame |
-| `enter` | Open a datasource, load a profile, or zoom in |
-| `z` / `o` | Zoom into the selected frame / zoom out one level |
-| `0` | Reset zoom |
-| `/` | Filter a list, or search frames |
-| `n` / `N` | Cycle search matches |
-| `p` | Choose profile type |
-| `e` | Edit the label selector |
-| `t` | Cycle time range (15m, 1h, 3h, 6h, 24h) |
-| `T` | Toggle the top-functions table |
-| `r` | Re-run the query |
-| `esc` | Clear the filter, or go back |
-| `q` / `ctrl+c` | Quit |
+Lists filter as you type, so letters and digits go into the filter rather than
+acting as bindings there.
+
+| Key | Action | Where |
+|-----|--------|-------|
+| `↑` / `↓` | Move | lists |
+| letters, digits | Filter as you type | lists |
+| `backspace` | Delete a filter character | lists |
+| `enter` | Open a datasource, load a profile, or zoom in | anywhere |
+| `j` / `k` | Callee / caller | flamegraph |
+| `h` / `l` | Previous / next sibling frame | flamegraph |
+| `z` / `o` | Zoom into the selected frame / zoom out one level | flamegraph |
+| `0` | Reset zoom | flamegraph |
+| `/` then `n` / `N` | Search frames, cycle matches | flamegraph |
+| `T` | Toggle the top-functions table | flamegraph |
+| `r` | Re-run the query | flamegraph |
+| `ctrl+p` / `p` | Choose profile type | lists / flamegraph |
+| `ctrl+e` / `e` | Edit the label selector | lists / flamegraph |
+| `ctrl+t` / `t` | Cycle time range (15m, 1h, 3h, 6h, 24h) | lists / flamegraph |
+| `esc` | Clear the filter, go back, or quit from the datasource list | anywhere |
+| `ctrl+c` | Quit | anywhere |
 
 Zoom is scoped: percentages, the top-functions table, and search all count
 against the zoomed frame rather than the whole profile.

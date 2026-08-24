@@ -24,6 +24,10 @@ func key(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyEsc}
 	case "backspace":
 		return tea.KeyMsg{Type: tea.KeyBackspace}
+	case "up":
+		return tea.KeyMsg{Type: tea.KeyUp}
+	case "down":
+		return tea.KeyMsg{Type: tea.KeyDown}
 	default:
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 	}
@@ -74,7 +78,7 @@ func TestWindowSizeDrivesTheRenderWidth(t *testing.T) {
 
 func TestDatasourceSelectionAdvancesToServices(t *testing.T) {
 	m := withData(t, newTestModel(t))
-	m = send(m, "j", "enter")
+	m = send(m, "down", "enter")
 
 	if m.stage != stageServices {
 		t.Fatalf("stage: got %v, want services", m.stage)
@@ -97,14 +101,19 @@ func TestDefaultProfileTypePrefersCPU(t *testing.T) {
 func TestFilterNarrowsTheServiceList(t *testing.T) {
 	m := withData(t, newTestModel(t))
 	m = send(m, "enter") // open the first datasource
-	m = send(m, "/", "p", "a", "y", "enter")
+	m = send(m, "p", "a", "y")
 
 	got := m.visibleServices()
 	if len(got) != 1 || got[0] != "payments" {
 		t.Errorf("filtered services: got %v, want [payments]", got)
 	}
 	if m.overlay != overlayNone {
-		t.Error("filter overlay should close on enter")
+		t.Errorf("typing should not open an overlay, got %v", m.overlay)
+	}
+
+	m = send(m, "backspace")
+	if m.filter != "pa" || len(m.visibleServices()) != 1 {
+		t.Errorf("backspace should trim the filter, got %q with %d services", m.filter, len(m.visibleServices()))
 	}
 
 	m = send(m, "esc")
@@ -113,9 +122,43 @@ func TestFilterNarrowsTheServiceList(t *testing.T) {
 	}
 }
 
+// The keys that used to move or quit are filter input on a list now.
+func TestListLettersFilterRatherThanActing(t *testing.T) {
+	m := withData(t, newTestModel(t))
+	m = send(m, "q", "k")
+
+	if m.filter != "qk" {
+		t.Errorf("filter: got %q, want qk", m.filter)
+	}
+	if m.dsCursor != 0 {
+		t.Errorf("cursor: got %d, want 0", m.dsCursor)
+	}
+}
+
+func TestFilterResetsTheCursorAndSurvivesSelection(t *testing.T) {
+	m := withData(t, newTestModel(t))
+	m = send(m, "down", "b")
+
+	if m.dsCursor != 0 {
+		t.Errorf("cursor after filtering: got %d, want 0", m.dsCursor)
+	}
+	items := m.visibleDatasources()
+	if len(items) != 1 || items[0].UID != "uid-b" {
+		t.Fatalf("filtered datasources: got %v, want [uid-b]", items)
+	}
+
+	m = send(m, "enter")
+	if m.ds.UID != "uid-b" {
+		t.Errorf("datasource: got %q, want uid-b", m.ds.UID)
+	}
+	if m.filter != "" {
+		t.Errorf("opening a datasource should clear the filter, got %q", m.filter)
+	}
+}
+
 func TestSelectingAServiceBuildsTheQuery(t *testing.T) {
 	m := withData(t, newTestModel(t))
-	m = send(m, "enter", "j", "enter")
+	m = send(m, "enter", "down", "enter")
 
 	if want := `{service_name="frontend"}`; m.expr != want {
 		t.Errorf("expr: got %q, want %q", m.expr, want)
