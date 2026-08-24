@@ -46,7 +46,7 @@ Use these environment variables to customize the install script:
 | Environment variable | Default | Description |
 |----------------------|---------|-------------|
 | `GCX_INSTALL_DIR` | `$HOME/.local/bin` | Directory to install the binary into |
-| `GCX_VERSION` | latest | Specific version to install (e.g., `0.2.4`) |
+| `GCX_VERSION` | latest | Version to install (e.g., `0.2.4`), or `main` to build the main branch with Go |
 | `GITHUB_TOKEN` | unset | GitHub token for API requests (avoids rate limits) |
 
 The script also accepts `INSTALL_DIR` and `VERSION`. The `GCX_` names take
@@ -59,6 +59,12 @@ Install a specific version:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | GCX_VERSION=0.2.4 sh
+```
+
+Install the latest commit from the main branch (requires a Go toolchain):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | GCX_VERSION=main sh
 ```
 
 Install to `/usr/local/bin`:
@@ -189,5 +195,4 @@ codesign --sign - --force "$(command -v gcx)"   # required on Apple Silicon
 Next, run `gcx --version` again; subsequent invocations should succeed without the block. 
 
 Note that these steps will no longer be necessary once `gcx` release binaries are Apple-notarised.
-
 

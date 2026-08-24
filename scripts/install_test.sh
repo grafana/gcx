@@ -61,6 +61,20 @@ make_fake_gcx() {
 	chmod +x "$dir/gcx"
 }
 
+# Write a fake go command that records its arguments and produces the binary
+# where go install would place it.
+make_fake_go() {
+	local dir=$1
+	mkdir -p "$dir"
+	cat >"$dir/go" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >"$GO_ARGS_LOG"
+printf '#!/bin/sh\necho "gcx version main"\n' >"$GOBIN/gcx"
+chmod +x "$GOBIN/gcx"
+EOF
+	chmod +x "$dir/go"
+}
+
 # Source the script. GCX_INSTALL_SH_LIB stops it from running main.
 export GCX_INSTALL_SH_LIB=1
 # shellcheck source=install.sh
@@ -125,6 +139,52 @@ test_removal_command_uses_brew() {
 test_removal_command_uses_rm() {
 	assert_eq "rm /usr/local/bin/gcx" "$(removal_command /usr/local/bin/gcx)" \
 		"removal_command names rm for a plain path"
+}
+
+# ── main branch install ───────────────────────────────────────────────────────────────────────────
+
+test_install_main_builds_main_ref() {
+	local tmp args
+	tmp=$(mktemp -d)
+	make_fake_go "$tmp/bin"
+
+	GO_ARGS_LOG="$tmp/go-args" PATH="$tmp/bin:$SYS_PATH" install_main "$tmp/output"
+	args=$(cat "$tmp/go-args")
+
+	assert_eq "install github.com/grafana/gcx/cmd/gcx@main" "$args" \
+		"install_main builds the gcx main branch"
+	if [[ -x "$tmp/output/gcx" ]]; then
+		pass "install_main produces an executable gcx binary"
+	else
+		fail "install_main produces an executable gcx binary"
+	fi
+	rm -rf "$tmp"
+}
+
+test_main_dispatches_main_to_source_build() {
+	local tmp out args
+	tmp=$(mktemp -d)
+	make_fake_go "$tmp/bin"
+
+	out=$(
+		GCX_VERSION=main \
+			GCX_INSTALL_DIR="$tmp/install" \
+			GO_ARGS_LOG="$tmp/go-args" \
+			PATH="$tmp/bin:$SYS_PATH" \
+			main
+	)
+	args=$(cat "$tmp/go-args")
+
+	assert_eq "install github.com/grafana/gcx/cmd/gcx@main" "$args" \
+		"GCX_VERSION=main selects the source build"
+	assert_contains "$out" "Installed: gcx version main" \
+		"the main branch build is installed and verified"
+	if [[ -x "$tmp/install/gcx" ]]; then
+		pass "GCX_VERSION=main installs gcx in GCX_INSTALL_DIR"
+	else
+		fail "GCX_VERSION=main installs gcx in GCX_INSTALL_DIR"
+	fi
+	rm -rf "$tmp"
 }
 
 # ── report_resolution ────────────────────────────────────────────────────────
@@ -228,6 +288,8 @@ test_resolve_skips_non_executable
 test_resolve_reports_absence
 test_removal_command_uses_brew
 test_removal_command_uses_rm
+test_install_main_builds_main_ref
+test_main_dispatches_main_to_source_build
 test_report_warns_on_shadow
 test_report_is_quiet_when_install_dir_wins
 test_report_is_quiet_on_a_plain_reinstall

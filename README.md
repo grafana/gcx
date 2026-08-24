@@ -60,6 +60,13 @@ Downloads the latest release, verifies the SHA-256 checksum, and installs to
 curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | GCX_INSTALL_DIR=/usr/local/bin sh
 ```
 
+To build and install the latest commit from `main`, use `GCX_VERSION=main`.
+This requires a Go toolchain:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | GCX_VERSION=main sh
+```
+
 To upgrade, run the same command again, then check `gcx --version`. If the
 version does not change, you have a second `gcx` earlier in your `PATH` — run
 `which -a gcx` and see

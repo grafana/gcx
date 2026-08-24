@@ -6,7 +6,8 @@
 #
 # Environment variables:
 #   GCX_INSTALL_DIR  Directory to install into (default: $HOME/.local/bin)
-#   GCX_VERSION      Specific version to install, without v prefix (default: latest)
+#   GCX_VERSION      Version to install, or "main" to build the main branch
+#                    with Go (default: latest release)
 #   GITHUB_TOKEN     GitHub token for API requests (avoids rate limits)
 #
 # INSTALL_DIR and VERSION still work. The GCX_ names take precedence, because
@@ -230,10 +231,21 @@ verify_checksum() {
     fi
 }
 
-main() {
-    need_cmd curl
-    need_cmd tar
+install_main() {
+    output_dir="$1"
 
+    need_cmd go
+    mkdir -p "$output_dir"
+    info "Building ${BINARY_NAME} from the main branch..."
+    GOBIN="$output_dir" go install "github.com/${GITHUB_REPO}/cmd/${BINARY_NAME}@main" ||
+        err "Failed to build ${BINARY_NAME} from the main branch. Check network access and your Go toolchain."
+
+    if [ ! -x "${output_dir}/${BINARY_NAME}" ]; then
+        err "The main branch build did not produce ${output_dir}/${BINARY_NAME}."
+    fi
+}
+
+main() {
     os=$(detect_os)
     arch=$(detect_arch)
 
@@ -248,6 +260,7 @@ main() {
     if [ -n "$requested_version" ]; then
         version="${requested_version#v}"
     else
+        need_cmd curl
         info "Fetching latest release..."
         version=$(get_latest_version)
     fi
@@ -261,26 +274,33 @@ main() {
     tmpdir=$(mktemp -d)
     trap 'rm -rf "$tmpdir"' EXIT
 
-    # Download archive and checksums.
-    info "Downloading ${archive}..."
-    curl -fsSL "${base_url}/${archive}" -o "${tmpdir}/${archive}" ||
-        err "Failed to download ${base_url}/${archive}"
+    if [ "$version" = "main" ]; then
+        install_main "$tmpdir"
+    else
+        need_cmd curl
+        need_cmd tar
 
-    checksums_file="${BINARY_NAME}_${version}_checksums.txt"
-    curl -fsSL "${base_url}/${checksums_file}" -o "${tmpdir}/${checksums_file}" ||
-        err "Failed to download checksums file."
+        # Download archive and checksums.
+        info "Downloading ${archive}..."
+        curl -fsSL "${base_url}/${archive}" -o "${tmpdir}/${archive}" ||
+            err "Failed to download ${base_url}/${archive}"
 
-    # Verify checksum.
-    expected=$(grep "${archive}" "${tmpdir}/${checksums_file}" | cut -d' ' -f1)
-    if [ -z "$expected" ]; then
-        err "Archive ${archive} not found in checksums file."
+        checksums_file="${BINARY_NAME}_${version}_checksums.txt"
+        curl -fsSL "${base_url}/${checksums_file}" -o "${tmpdir}/${checksums_file}" ||
+            err "Failed to download checksums file."
+
+        # Verify checksum.
+        expected=$(grep "${archive}" "${tmpdir}/${checksums_file}" | cut -d' ' -f1)
+        if [ -z "$expected" ]; then
+            err "Archive ${archive} not found in checksums file."
+        fi
+        verify_checksum "${tmpdir}/${archive}" "$expected"
+        info "Checksum verified."
+
+        # Extract binary.
+        tar xzf "${tmpdir}/${archive}" -C "${tmpdir}" "${BINARY_NAME}" ||
+            err "Failed to extract ${BINARY_NAME} from archive."
     fi
-    verify_checksum "${tmpdir}/${archive}" "$expected"
-    info "Checksum verified."
-
-    # Extract binary.
-    tar xzf "${tmpdir}/${archive}" -C "${tmpdir}" "${BINARY_NAME}" ||
-        err "Failed to extract ${BINARY_NAME} from archive."
 
     # Install binary.
     mkdir -p "$install_dir"
