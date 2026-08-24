@@ -161,8 +161,8 @@ types. Do not duplicate that logic or re-declare
 shared too** — `querysql.BuildRawQueryBody` and `querysql.EnforceLimit` with a
 dialect-local `bail` predicate, never a hand-rolled clamp. Read
 `references/raw-sql.md` before writing either: it carries the plugin-`format`
-exception, the stderr disclosure `capped` owes the caller, and the four bail
-traps that have each cost a real PR a review round.
+exception, the stderr disclosure `capped` owes the caller, the four statement
+shapes `bail` has to catch, and which of the existing dialects is safe to copy.
 
 **Pick the client shape from what your commands actually call — there are three,
 and the middle one is the common case.** The two transports are not alternatives:

@@ -7,10 +7,11 @@ import (
 	"time"
 )
 
-// RawQueryRequest is a raw-SQL query request, shared by the dialects (e.g.
-// postgres, mysql) whose Grafana datasource plugin expects a plain string
-// "format" value. ClickHouse's sqlds-based plugin sends a numeric format
-// instead and builds its own body rather than using this helper.
+// RawQueryRequest is a raw-SQL query request, shared by the dialects (postgres,
+// mysql) whose Grafana datasource plugin expects a plain string "format" value.
+// ClickHouse and Athena both send a numeric format instead, and Athena also
+// carries connectionArgs, so both build their own body rather than using this
+// helper.
 type RawQueryRequest struct {
 	RawSQL     string
 	Start      time.Time
