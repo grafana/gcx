@@ -296,8 +296,11 @@ func dispatchMSSQL(ctx context.Context, req genericQueryRequest) (any, error) {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
+	const maxLimit = 1000
+	sql, eff, capped := mssql.EnforceTopSentinel(req.expr, 100, maxLimit)
+
 	mssqlReq := mssql.QueryRequest{
-		RawSQL: mssql.EnforceTop(req.expr, 100, 1000),
+		RawSQL: sql,
 		Start:  req.start,
 		End:    req.end,
 	}
@@ -309,6 +312,8 @@ func dispatchMSSQL(ctx context.Context, req genericQueryRequest) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
+
+	dsquery.SurfaceRowLimits(req.warn, resp, capped, eff, maxLimit)
 
 	return resp, nil
 }

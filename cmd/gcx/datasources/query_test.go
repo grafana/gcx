@@ -200,7 +200,9 @@ func TestQueryRequiresDatasourceUID(t *testing.T) {
 
 // TestGenericQueryRoutesMSSQL verifies the auto-detecting query command dispatches
 // MSSQL datasources through the mssql branch: the request carries the string
-// format "table" (not an integer) and a TOP clause is injected into the SQL.
+// format "table" (not an integer) and a TOP (eff+1) sentinel clause is injected
+// into the SQL, matching the typed `mssql query` command's own truncation
+// detection (TOP (101), not a bare TOP (100)) — see EnforceTopSentinel.
 func TestGenericQueryRoutesMSSQL(t *testing.T) {
 	var capturedBody map[string]any
 	server := newQueryCaptureServer(t, "mssql", func(_ string, body map[string]any) {
@@ -221,7 +223,7 @@ func TestGenericQueryRoutesMSSQL(t *testing.T) {
 	q, ok := queries[0].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "table", q["format"])
-	assert.Equal(t, "SELECT TOP (100) * FROM dbo.t", q["rawSql"])
+	assert.Equal(t, "SELECT TOP (101) * FROM dbo.t", q["rawSql"])
 }
 
 func TestExprFlagSmoke_DatasourcesQuery(t *testing.T) {
