@@ -9,8 +9,6 @@ Send a single message to Grafana Assistant and receive the response.
 This is useful for scripting and automation. The response streams via
 the A2A (Agent-to-Agent) protocol over Server-Sent Events.
 
-Use --agent-id to target a specific A2A agent (default: grafana_assistant_cli).
-
 Note: each prompt consumes billable Grafana Assistant tokens, including requests
 made through gcx. See https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md.
 
@@ -29,7 +27,7 @@ gcx assistant prompt <message> [flags]
 ### Options
 
 ```
-      --agent-id string     Agent ID to target (default: grafana_assistant_cli) (default "grafana_assistant_cli")
+      --agent-id string     Agent ID to target (default "grafana_assistant_cli")
       --context-id string   Context ID for conversation threading
       --continue            Continue the previous chat session
   -h, --help                help for prompt

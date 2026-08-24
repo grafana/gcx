@@ -25,10 +25,8 @@ func (p *AssistantProvider) Name() string { return "assistant" }
 // ShortDesc returns a one-line description of the provider.
 func (p *AssistantProvider) ShortDesc() string { return "Interact with Grafana Assistant" }
 
-// Commands returns the Cobra commands contributed by this provider. This is
-// a verbatim lift-and-shift of the existing assistant command tree (prompt,
-// dashboard, conversation, investigations, mcp-servers), preserving the
-// requireGrafanaCloud guard and per-subcommand config wiring.
+// Commands returns the Cobra commands contributed by this provider, preserving
+// the requireGrafanaCloud guard and per-subcommand config wiring.
 func (p *AssistantProvider) Commands() []*cobra.Command {
 	return []*cobra.Command{Command()}
 }
@@ -47,7 +45,7 @@ func (p *AssistantProvider) ConfigKeys() []providers.ConfigKey {
 
 // TypedRegistrations returns adapter registrations for assistant resource
 // types. MCPServer is the only registered type — investigations,
-// conversation, and the A2A prompt/dashboard path stay command-only.
+// conversation, and the A2A prompt path stay command-only.
 func (p *AssistantProvider) TypedRegistrations() []adapter.Registration {
 	desc := mcpserver.MCPServerDescriptor()
 	return []adapter.Registration{
