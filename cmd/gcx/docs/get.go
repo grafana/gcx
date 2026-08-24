@@ -45,7 +45,7 @@ type getResult struct {
 	ReturnedRange [2]int `json:"returned_range"`
 }
 
-func getCommand() *cobra.Command {
+func getCommand(fetch docFetcher) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <url>",
@@ -66,7 +66,7 @@ func getCommand() *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			doc, err := fetchDoc(cmd.Context(), opts.url)
+			doc, err := fetch(cmd.Context(), opts.url)
 			if err != nil {
 				return cleanFetchErr(opts.url, err)
 			}
