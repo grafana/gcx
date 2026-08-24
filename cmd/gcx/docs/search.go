@@ -23,7 +23,7 @@ const defaultSearchLimit = 5
 // emptySearchHint returns a hint message when search yields no results.
 func emptySearchHint(product string) string {
 	if product != "" {
-		return "no results found; try broadening the product filter or run 'gcx docs products' to see available products"
+		return "no results found; try broadening the product filter or run 'gcx docs list-products' to see available products"
 	}
 	return "no results found; try different search terms"
 }

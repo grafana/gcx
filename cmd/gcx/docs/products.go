@@ -50,10 +50,10 @@ func toProductEntries(products []grafanadocs.Product) []productEntry {
 func productsCommand(loader *indexLoader) *cobra.Command {
 	opts := &productsOpts{}
 	cmd := &cobra.Command{
-		Use:     "products",
+		Use:     "list-products",
 		Short:   "List Grafana documentation products.",
 		Long:    "List all product documentation groups in the index with their entry counts.",
-		Example: `  gcx docs products`,
+		Example: `  gcx docs list-products`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {

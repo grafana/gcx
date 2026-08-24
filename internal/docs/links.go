@@ -108,7 +108,7 @@ const (
 
 // NamedLink pairs a registry constant's name with its documentation URL.
 // The name is the stable identifier surfaced to agents (e.g. via
-// `gcx docs links`) so they can reference a canonical doc without guessing.
+// `gcx docs list-links`) so they can reference a canonical doc without guessing.
 type NamedLink struct {
 	Name string
 	URL  string
@@ -119,7 +119,7 @@ type NamedLink struct {
 // set; All derives from it. Every constant defined above must appear here so
 // that a canonical URL surfaced to an agent (via help text, an llm_hint
 // annotation, or a DetailedError.DocsLink) is always discoverable through
-// `gcx docs links`.
+// `gcx docs list-links`.
 func AllNamed() []NamedLink {
 	return []NamedLink{
 		{Name: "ServiceAccounts", URL: ServiceAccounts},

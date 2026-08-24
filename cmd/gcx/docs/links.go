@@ -49,12 +49,12 @@ func toLinkEntries(links []docs.NamedLink) []linkEntry {
 func linksCommand() *cobra.Command {
 	opts := &linksOpts{}
 	cmd := &cobra.Command{
-		Use:   "links",
+		Use:   "list-links",
 		Short: "List curated Grafana documentation links.",
 		Long: "List the curated set of canonical Grafana documentation URLs that " +
 			"gcx surfaces in help text and error messages. Pass any URL to " +
 			"'gcx docs get' to read the page content.",
-		Example: `  gcx docs links`,
+		Example: `  gcx docs list-links`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
