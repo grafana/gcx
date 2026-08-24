@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	goio "io"
+	"os"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
@@ -14,10 +15,11 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// defaultSearchLimit mirrors grafanadocs.Search's internal default (applied
-// when Limit <= 0). It is duplicated here only so search can compute the
-// effective cap for the truncation hint; the library remains the source of
-// truth for the actual limiting.
+// defaultSearchLimit is the command default and the value used when --limit
+// is 0 or negative. grafanadocs.Search applies the same coercion, but search
+// resolves the bound itself so it can over-fetch by one and attach honest
+// list_meta (the library returns no total and treats <=0 as 5, so
+// BindListLimit's "0 means all" would be a lie).
 const defaultSearchLimit = 5
 
 // emptySearchHint returns a hint message when search yields no results.
@@ -26,14 +28,6 @@ func emptySearchHint(product string) string {
 		return "no results found; try broadening the product filter or run 'gcx docs list-products' to see available products"
 	}
 	return "no results found; try different search terms"
-}
-
-// truncatedSearchHint returns a completeness hint for when a result set fills
-// the limit exactly. grafanadocs.Search returns no total, so more matches may
-// exist beyond the cap; a bare-array result cannot carry that signal in the
-// payload, so it is disclosed on stderr.
-func truncatedSearchHint(limit int) string {
-	return fmt.Sprintf("showing the top %d results; raise --limit or refine the query to see more", limit)
 }
 
 type searchOpts struct {
@@ -79,6 +73,15 @@ func toSearchEntries(entries []grafanadocs.Entry) []searchEntry {
 	return out
 }
 
+// searchResult is the single shape passed to every codec. JSON/YAML
+// serialize the envelope; the text codec extracts .Results to render rows.
+// list_meta is attached only when the page is truncated (over-fetch proved
+// more hits exist).
+type searchResult struct {
+	Results  []searchEntry   `json:"results"`
+	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
+}
+
 func searchCommand(loader *indexLoader) *cobra.Command {
 	opts := &searchOpts{}
 	cmd := &cobra.Command{
@@ -107,23 +110,30 @@ func searchCommand(loader *indexLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			results := grafanadocs.Search(idx, opts.query, grafanadocs.SearchOpts{
-				Product: opts.product,
-				Limit:   opts.limit,
-			})
-			// Mirror the library's <=0 coercion so the hint reports the
-			// cap that was actually applied.
+			// Resolve the bound before the library sees it so we can request
+			// one extra hit. A spare row is the only honest "has more"
+			// signal — Search returns no total.
 			effectiveLimit := opts.limit
 			if effectiveLimit <= 0 {
 				effectiveLimit = defaultSearchLimit
 			}
-			switch {
-			case len(results) == 0:
+			hits := grafanadocs.Search(idx, opts.query, grafanadocs.SearchOpts{
+				Product: opts.product,
+				Limit:   effectiveLimit + 1,
+			})
+			entries, meta := cmdio.TruncatePagedList(toSearchEntries(hits), effectiveLimit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			if len(entries) == 0 {
 				cmdio.EmitHint(cmd.ErrOrStderr(), emptySearchHint(opts.product), "")
-			case len(results) == effectiveLimit:
-				cmdio.EmitHint(cmd.ErrOrStderr(), truncatedSearchHint(effectiveLimit), "")
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), toSearchEntries(results))
+			if err := opts.IO.Encode(cmd.OutOrStdout(), &searchResult{
+				Results:  entries,
+				ListMeta: meta,
+			}); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -136,12 +146,12 @@ type searchTextCodec struct{}
 func (c *searchTextCodec) Format() format.Format { return "text" }
 
 func (c *searchTextCodec) Encode(w goio.Writer, v any) error {
-	entries, ok := v.([]searchEntry)
+	res, ok := v.(*searchResult)
 	if !ok {
-		return fmt.Errorf("searchTextCodec: expected []searchEntry, got %T", v)
+		return fmt.Errorf("searchTextCodec: expected *searchResult, got %T", v)
 	}
 	t := style.NewTable("TITLE", "PRODUCT", "URL")
-	for _, e := range entries {
+	for _, e := range res.Results {
 		t.Row(e.Title, e.Product, e.URL)
 	}
 	return t.Render(w)
