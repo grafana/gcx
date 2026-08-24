@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/bigquery"
 	"github.com/spf13/cobra"
@@ -54,6 +55,9 @@ open it in your browser after the query succeeds.`,
 			if err := shared.Validate(); err != nil {
 				return err
 			}
+			if limit < 0 {
+				return fmt.Errorf("--limit must be >= 0, got %d", limit)
+			}
 
 			expr, err := shared.ResolveExpr(args, 0)
 			if err != nil {
@@ -73,7 +77,10 @@ open it in your browser after the query succeeds.`,
 				return err
 			}
 
-			sql := bigquery.EnforceLimit(expr, limit, maxLimit)
+			sql, capped := bigquery.EnforceLimit(expr, limit, maxLimit)
+			if capped {
+				cmdio.Warning(cmd.ErrOrStderr(), "LIMIT in query exceeds the maximum of %d and was capped; use --limit 0 to disable enforcement", maxLimit)
+			}
 
 			now := time.Now()
 			start, end, _, err := shared.ParseTimes(now)
@@ -122,7 +129,7 @@ open it in your browser after the query succeeds.`,
 
 	shared.Setup(cmd.Flags(), false)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.bigquery is configured)")
-	cmd.Flags().IntVar(&limit, "limit", defaultLimit, "Max rows to return (0 disables enforcement)")
+	cmd.Flags().IntVar(&limit, "limit", defaultLimit, fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning (0 disables enforcement)", maxLimit))
 	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd

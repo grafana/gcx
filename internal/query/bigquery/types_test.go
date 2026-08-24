@@ -128,23 +128,25 @@ func TestInfoSchemaPrefix(t *testing.T) {
 
 func TestEnforceLimit(t *testing.T) {
 	tests := []struct {
-		name  string
-		sql   string
-		limit int
-		want  string
+		name       string
+		sql        string
+		limit      int
+		want       string
+		wantCapped bool
 	}{
-		{"appends LIMIT when missing", "SELECT 1", 100, "SELECT 1 LIMIT 100"},
-		{"appends LIMIT with trailing semicolon", "SELECT 1;", 100, "SELECT 1 LIMIT 100;"},
-		{"keeps existing LIMIT if under max", "SELECT 1 LIMIT 50", 100, "SELECT 1 LIMIT 50"},
-		{"caps existing LIMIT exceeding max", "SELECT 1 LIMIT 5000", 1000, "SELECT 1 LIMIT 1000"},
-		{"limit 0 disables enforcement", "SELECT 1", 0, "SELECT 1"},
-		{"bail on LIMIT OFFSET", "SELECT * FROM t LIMIT 100 OFFSET 10", 100, "SELECT * FROM t LIMIT 100 OFFSET 10"},
-		{"bail on EXPLAIN", "EXPLAIN SELECT * FROM t", 100, "EXPLAIN SELECT * FROM t"},
-		{"bail on DDL CREATE", "CREATE TABLE t AS SELECT 1", 100, "CREATE TABLE t AS SELECT 1"},
-		{"bail on leading DESCRIBE", "DESCRIBE mydataset.mytable", 100, "DESCRIBE mydataset.mytable"},
-		{"bail on leading DESC", "DESC mydataset.mytable", 100, "DESC mydataset.mytable"},
-		{"bail on leading whitespace before DESCRIBE", "\n  DESCRIBE mydataset.mytable", 100, "\n  DESCRIBE mydataset.mytable"},
-		{"bail on lowercase leading describe", "describe mydataset.mytable", 100, "describe mydataset.mytable"},
+		{"appends LIMIT when missing", "SELECT 1", 100, "SELECT 1 LIMIT 100", false},
+		{"appends LIMIT with trailing semicolon", "SELECT 1;", 100, "SELECT 1 LIMIT 100;", false},
+		{"keeps existing LIMIT if under max", "SELECT 1 LIMIT 50", 100, "SELECT 1 LIMIT 50", false},
+		{"caps existing LIMIT exceeding max", "SELECT 1 LIMIT 5000", 1000, "SELECT 1 LIMIT 1000", true},
+		{"requested limit above max is capped and reported", "SELECT 1", 5000, "SELECT 1 LIMIT 1000", true},
+		{"limit 0 disables enforcement", "SELECT 1", 0, "SELECT 1", false},
+		{"bail on LIMIT OFFSET", "SELECT * FROM t LIMIT 100 OFFSET 10", 100, "SELECT * FROM t LIMIT 100 OFFSET 10", false},
+		{"bail on EXPLAIN", "EXPLAIN SELECT * FROM t", 100, "EXPLAIN SELECT * FROM t", false},
+		{"bail on DDL CREATE", "CREATE TABLE t AS SELECT 1", 100, "CREATE TABLE t AS SELECT 1", false},
+		{"bail on leading DESCRIBE", "DESCRIBE mydataset.mytable", 100, "DESCRIBE mydataset.mytable", false},
+		{"bail on leading DESC", "DESC mydataset.mytable", 100, "DESC mydataset.mytable", false},
+		{"bail on leading whitespace before DESCRIBE", "\n  DESCRIBE mydataset.mytable", 100, "\n  DESCRIBE mydataset.mytable", false},
+		{"bail on lowercase leading describe", "describe mydataset.mytable", 100, "describe mydataset.mytable", false},
 		// Statement-leading keywords must not match mid-statement line starts.
 		// Before the \A anchor these multi-line queries silently lost their cap.
 		{
@@ -152,39 +154,43 @@ func TestEnforceLimit(t *testing.T) {
 			"SELECT * FROM `p.d.events`\nORDER BY ts\nDESC",
 			100,
 			"SELECT * FROM `p.d.events`\nORDER BY ts\nDESC LIMIT 100",
+			false,
 		},
 		{
 			"appends LIMIT when DESC ends a line",
 			"SELECT * FROM t\nORDER BY ts DESC",
 			100,
 			"SELECT * FROM t\nORDER BY ts DESC LIMIT 100",
+			false,
 		},
 		{
 			"appends LIMIT to multi-line window function with DESC on its own line",
 			"SELECT ROW_NUMBER() OVER (\n  ORDER BY ts\n  DESC\n) AS rn FROM t",
 			100,
 			"SELECT ROW_NUMBER() OVER (\n  ORDER BY ts\n  DESC\n) AS rn FROM t LIMIT 100",
+			false,
 		},
 		{
 			"bail on LIMIT OFFSET remains unanchored across lines",
 			"SELECT * FROM t\nLIMIT 100 OFFSET 10",
 			100,
 			"SELECT * FROM t\nLIMIT 100 OFFSET 10",
+			false,
 		},
 		// DML, scripting and remaining DDL statements: appending a LIMIT makes
 		// a correct statement fail with a syntax error.
-		{"bail on DML INSERT", "INSERT INTO t (a) VALUES (1)", 100, "INSERT INTO t (a) VALUES (1)"},
-		{"bail on DML UPDATE", "UPDATE t SET a = 1 WHERE b = 2", 100, "UPDATE t SET a = 1 WHERE b = 2"},
-		{"bail on DML DELETE", "DELETE FROM t WHERE x = 1", 100, "DELETE FROM t WHERE x = 1"},
-		{"bail on DML MERGE", "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a", 100, "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a"},
-		{"bail on DDL TRUNCATE", "TRUNCATE TABLE t", 100, "TRUNCATE TABLE t"},
-		{"bail on scripting BEGIN", "BEGIN SELECT 1; END", 100, "BEGIN SELECT 1; END"},
-		{"bail on scripting DECLARE", "DECLARE x INT64 DEFAULT 1", 100, "DECLARE x INT64 DEFAULT 1"},
-		{"bail on procedure CALL", "CALL mydataset.myprocedure(1)", 100, "CALL mydataset.myprocedure(1)"},
-		{"bail on lowercase DML delete", "delete from t where x = 1", 100, "delete from t where x = 1"},
-		{"bail on DROP", "DROP TABLE t", 100, "DROP TABLE t"},
-		{"bail on ALTER", "ALTER TABLE t ADD COLUMN a INT64", 100, "ALTER TABLE t ADD COLUMN a INT64"},
-		{"bail on SHOW", "SHOW TABLES", 100, "SHOW TABLES"},
+		{"bail on DML INSERT", "INSERT INTO t (a) VALUES (1)", 100, "INSERT INTO t (a) VALUES (1)", false},
+		{"bail on DML UPDATE", "UPDATE t SET a = 1 WHERE b = 2", 100, "UPDATE t SET a = 1 WHERE b = 2", false},
+		{"bail on DML DELETE", "DELETE FROM t WHERE x = 1", 100, "DELETE FROM t WHERE x = 1", false},
+		{"bail on DML MERGE", "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a", 100, "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a", false},
+		{"bail on DDL TRUNCATE", "TRUNCATE TABLE t", 100, "TRUNCATE TABLE t", false},
+		{"bail on scripting BEGIN", "BEGIN SELECT 1; END", 100, "BEGIN SELECT 1; END", false},
+		{"bail on scripting DECLARE", "DECLARE x INT64 DEFAULT 1", 100, "DECLARE x INT64 DEFAULT 1", false},
+		{"bail on procedure CALL", "CALL mydataset.myprocedure(1)", 100, "CALL mydataset.myprocedure(1)", false},
+		{"bail on lowercase DML delete", "delete from t where x = 1", 100, "delete from t where x = 1", false},
+		{"bail on DROP", "DROP TABLE t", 100, "DROP TABLE t", false},
+		{"bail on ALTER", "ALTER TABLE t ADD COLUMN a INT64", 100, "ALTER TABLE t ADD COLUMN a INT64", false},
+		{"bail on SHOW", "SHOW TABLES", 100, "SHOW TABLES", false},
 		// DML keywords must stay anchored: they are legal mid-query identifiers
 		// and clause words, so they must not suppress the row cap.
 		{
@@ -192,17 +198,21 @@ func TestEnforceLimit(t *testing.T) {
 			"SELECT deleted_at\nFROM t\nWHERE action = 'delete'",
 			100,
 			"SELECT deleted_at\nFROM t\nWHERE action = 'delete' LIMIT 100",
+			false,
 		},
 		{
 			"appends LIMIT when UPDATE appears on a later line",
 			"SELECT a\nFROM t\nORDER BY updated_at",
 			100,
 			"SELECT a\nFROM t\nORDER BY updated_at LIMIT 100",
+			false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, bigquery.EnforceLimit(tt.sql, tt.limit, 1000))
+			got, capped := bigquery.EnforceLimit(tt.sql, tt.limit, 1000)
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.wantCapped, capped)
 		})
 	}
 }

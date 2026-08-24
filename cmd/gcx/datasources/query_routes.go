@@ -269,8 +269,13 @@ func dispatchBigQuery(ctx context.Context, req genericQueryRequest) (any, error)
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
+	sql, capped := bigquery.EnforceLimit(req.expr, 100, 1000)
+	if capped {
+		cmdio.Warning(req.warn, "LIMIT in query exceeds the maximum of 1000 and was capped")
+	}
+
 	bqReq := bigquery.QueryRequest{
-		RawSQL: bigquery.EnforceLimit(req.expr, 100, 1000),
+		RawSQL: sql,
 		Start:  req.start,
 		End:    req.end,
 	}
