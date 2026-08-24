@@ -148,6 +148,21 @@ func TestJQCodec_Encode(t *testing.T) {
 	}
 }
 
+func TestJQCodec_EncodePreservesLargeIntegerPrecision(t *testing.T) {
+	t.Parallel()
+
+	query, err := gojq.Parse(".spec.id + 1")
+	require.NoError(t, err)
+
+	value := unstructured.Unstructured{Object: map[string]any{
+		"spec": map[string]any{"id": int64(9007199254740993)},
+	}}
+
+	var buf bytes.Buffer
+	require.NoError(t, cmdio.NewJQCodec(query).Encode(&buf, value))
+	assert.Equal(t, "9007199254740994\n", buf.String())
+}
+
 // TestJQCodec_RuntimeErrorShape verifies that a runtime jq failure returns a
 // JQRuntimeError carrying a compact description of the input shape (top-level
 // type, capped field paths) so the expression can be corrected in one retry.
