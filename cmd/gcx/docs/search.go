@@ -14,12 +14,26 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// defaultSearchLimit mirrors grafanadocs.Search's internal default (applied
+// when Limit <= 0). It is duplicated here only so search can compute the
+// effective cap for the truncation hint; the library remains the source of
+// truth for the actual limiting.
+const defaultSearchLimit = 5
+
 // emptySearchHint returns a hint message when search yields no results.
 func emptySearchHint(product string) string {
 	if product != "" {
 		return "no results found; try broadening the product filter or run 'gcx docs products' to see available products"
 	}
 	return "no results found; try different search terms"
+}
+
+// truncatedSearchHint returns a completeness hint for when a result set fills
+// the limit exactly. grafanadocs.Search returns no total, so more matches may
+// exist beyond the cap; a bare-array result cannot carry that signal in the
+// payload, so it is disclosed on stderr.
+func truncatedSearchHint(limit int) string {
+	return fmt.Sprintf("showing the top %d results; raise --limit or refine the query to see more", limit)
 }
 
 type searchOpts struct {
@@ -33,8 +47,8 @@ func (o *searchOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("text")
 	o.IO.RegisterCustomCodec("text", &searchTextCodec{})
 	o.IO.BindFlags(flags)
-	flags.StringVar(&o.product, "product", "", "Filter results to a specific product")
-	flags.IntVar(&o.limit, "limit", 5, "Maximum number of results")
+	flags.StringVar(&o.product, "product", "", "Filter results to a specific product (case-insensitive; matches exact, then prefix, then substring; empty = all products)")
+	flags.IntVar(&o.limit, "limit", defaultSearchLimit, "Maximum number of results (0 or negative uses the default)")
 }
 
 func (o *searchOpts) Validate() error {
@@ -97,8 +111,17 @@ func searchCommand(loader *indexLoader) *cobra.Command {
 				Product: opts.product,
 				Limit:   opts.limit,
 			})
-			if len(results) == 0 {
+			// Mirror the library's <=0 coercion so the hint reports the
+			// cap that was actually applied.
+			effectiveLimit := opts.limit
+			if effectiveLimit <= 0 {
+				effectiveLimit = defaultSearchLimit
+			}
+			switch {
+			case len(results) == 0:
 				cmdio.EmitHint(cmd.ErrOrStderr(), emptySearchHint(opts.product), "")
+			case len(results) == effectiveLimit:
+				cmdio.EmitHint(cmd.ErrOrStderr(), truncatedSearchHint(effectiveLimit), "")
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), toSearchEntries(results))
 		},
