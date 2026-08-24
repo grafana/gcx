@@ -125,7 +125,7 @@ func TestProductsCommand(t *testing.T) {
 	disableAgentMode(t)
 
 	t.Run("text lists products and counts", func(t *testing.T) {
-		stdout, _, err := run(t, "products")
+		stdout, _, err := run(t, "list-products")
 		require.NoError(t, err)
 		assert.Contains(t, stdout, "PRODUCT")
 		assert.Contains(t, stdout, "COUNT")
@@ -135,7 +135,7 @@ func TestProductsCommand(t *testing.T) {
 	})
 
 	t.Run("json wraps products", func(t *testing.T) {
-		stdout, _, err := run(t, "products", "-o", "json")
+		stdout, _, err := run(t, "list-products", "-o", "json")
 		require.NoError(t, err)
 		var got map[string]any
 		require.NoError(t, json.Unmarshal([]byte(stdout), &got))
@@ -149,7 +149,7 @@ func TestLinksCommand(t *testing.T) {
 	disableAgentMode(t)
 
 	t.Run("text lists names and urls", func(t *testing.T) {
-		stdout, _, err := run(t, "links")
+		stdout, _, err := run(t, "list-links")
 		require.NoError(t, err)
 		assert.Contains(t, stdout, "NAME")
 		assert.Contains(t, stdout, "URL")
@@ -158,7 +158,7 @@ func TestLinksCommand(t *testing.T) {
 	})
 
 	t.Run("json wraps links", func(t *testing.T) {
-		stdout, _, err := run(t, "links", "-o", "json")
+		stdout, _, err := run(t, "list-links", "-o", "json")
 		require.NoError(t, err)
 		var got map[string]any
 		require.NoError(t, json.Unmarshal([]byte(stdout), &got))

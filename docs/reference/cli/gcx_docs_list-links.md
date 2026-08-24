@@ -1,25 +1,25 @@
-## gcx docs products
+## gcx docs list-links
 
-List Grafana documentation products.
+List curated Grafana documentation links.
 
 ### Synopsis
 
-List all product documentation groups in the index with their entry counts.
+List the curated set of canonical Grafana documentation URLs that gcx surfaces in help text and error messages. Pass any URL to 'gcx docs get' to read the page content.
 
 ```
-gcx docs products [flags]
+gcx docs list-links [flags]
 ```
 
 ### Examples
 
 ```
-  gcx docs products
+  gcx docs list-links
 ```
 
 ### Options
 
 ```
-  -h, --help            help for products
+  -h, --help            help for list-links
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, text, yaml (default "text")

@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// docFetcher fetches a documentation page as bounded markdown. It is
+// docFetcher fetches a documentation page as bounded Markdown. It is
 // grafanadocs.FetchDoc in production and is replaced in tests (via
 // CommandWithFetcher) so the get/outline success paths can be exercised
 // without a live fetch, mirroring the CommandWithIndex hook used for the
@@ -31,7 +31,7 @@ func cleanFetchErr(rawURL string, err error) error {
 
 // indexLoader provides lazy, once-only loading of the documentation index.
 // The index is fetched on the first subcommand that needs it (search,
-// products) and cached for the lifetime of the process. Commands that only
+// list-products) and cached for the lifetime of the process. Commands that only
 // need FetchDoc (get, outline) never trigger the load.
 //
 // Lazy loading avoids a network fetch on unrelated commands or --help.
