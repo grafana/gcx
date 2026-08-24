@@ -41,7 +41,7 @@ func requireGrafanaCloud(ctx *config.Context) error {
 // Command returns the assistant command group.
 func Command() *cobra.Command {
 	// A single ConfigLoader is shared across every subcommand (prompt,
-	// dashboard, conversation, investigations, mcp-servers). --config is bound
+	// conversation, investigations, mcp-servers). --config is bound
 	// on the group's persistent flags; --context is the root command's global
 	// flag, threaded into context.Context and read back via
 	// config.ContextNameFromCtx — so no per-subcommand flag-copying is needed.
@@ -110,7 +110,7 @@ func (o *promptOpts) setup(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&o.cont, "continue", false, "Continue the previous chat session")
 	cmd.Flags().BoolVar(&o.jsonOut, "json", false, "Output as JSON (streams NDJSON events by default)")
 	cmd.Flags().BoolVar(&o.noStream, "no-stream", false, "With --json, emit a single JSON object instead of streaming events")
-	cmd.Flags().StringVar(&o.agentID, "agent-id", assistant.DefaultAgentID, "Agent ID to target (default: grafana_assistant_cli)")
+	cmd.Flags().StringVar(&o.agentID, "agent-id", assistant.DefaultAgentID, "Agent ID to target")
 }
 
 func (o *promptOpts) Validate() error {
@@ -143,8 +143,6 @@ func promptCommand(configOpts *providers.ConfigLoader) *cobra.Command {
 
 This is useful for scripting and automation. The response streams via
 the A2A (Agent-to-Agent) protocol over Server-Sent Events.
-
-Use --agent-id to target a specific A2A agent (default: grafana_assistant_cli).
 
 Note: each prompt consumes billable Grafana Assistant tokens, including requests
 made through gcx. See ` + docs.AssistantPricing + `.`,
