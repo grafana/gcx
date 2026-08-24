@@ -79,8 +79,14 @@ func TestQuery_SendsStringTableFormat(t *testing.T) {
 	assert.Equal(t, "mssql-uid", captured.Queries[0].Datasource.UID)
 }
 
-// TestQuery_IntervalMs verifies --step is forwarded as intervalMs when set, and
-// omitted when zero so the plugin applies its own default for the $__interval macro.
+// TestQuery_IntervalMs verifies --step is forwarded as intervalMs when set,
+// and defaults to 60000 when zero, matching mysql/postgres via the shared
+// querysql.BuildRawQueryBody. An earlier version of this client omitted
+// intervalMs entirely when zero, on the theory that the plugin would apply a
+// sensible default for the $__interval macro; live testing against a real
+// MSSQL datasource showed the opposite — an absent intervalMs resolves
+// $__interval to a near-zero width, putting every row in its own bucket
+// instead of aggregating.
 func TestQuery_IntervalMs(t *testing.T) {
 	capture := func(t *testing.T, req mssql.QueryRequest) map[string]any {
 		t.Helper()
@@ -109,10 +115,9 @@ func TestQuery_IntervalMs(t *testing.T) {
 		assert.EqualValues(t, 3600000, q["intervalMs"])
 	})
 
-	t.Run("zero omits intervalMs", func(t *testing.T) {
+	t.Run("zero defaults intervalMs to 60000", func(t *testing.T) {
 		q := capture(t, mssql.QueryRequest{RawSQL: "SELECT 1"})
-		_, present := q["intervalMs"]
-		assert.False(t, present, "intervalMs should be absent when unset")
+		assert.EqualValues(t, 60000, q["intervalMs"])
 	})
 }
 

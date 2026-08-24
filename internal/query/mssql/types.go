@@ -24,8 +24,11 @@ type QueryRequest struct {
 	Start  time.Time
 	End    time.Time
 	// IntervalMs sets the query interval the plugin uses to resolve the
-	// $__interval / $__timeGroup(col, $__interval) macros. Zero omits it, so the
-	// plugin falls back to its own default.
+	// $__interval / $__timeGroup(col, $__interval) macros. Zero defaults to
+	// 60000 (querysql.BuildRawQueryBody's default) rather than being omitted:
+	// an absent intervalMs was verified live to make the plugin resolve
+	// $__interval to a near-zero width, effectively disabling bucketing
+	// instead of picking a sensible default.
 	IntervalMs int64
 }
 
