@@ -45,7 +45,7 @@ require (
 	github.com/go-openapi/runtime v0.33.2
 	github.com/gofrs/flock v0.13.1
 	github.com/google/uuid v1.6.0
-	github.com/grafana/mcp-doc-server v0.1.1
+	github.com/grafana/mcp-doc-server v1.0.0
 	github.com/grafana/otel-checker v0.3.3
 	github.com/itchyny/gojq v0.12.19
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
