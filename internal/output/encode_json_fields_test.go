@@ -265,6 +265,18 @@ type listEnvelopeResult struct {
 
 func (listEnvelopeResult) ListItemsKey() string { return "investigations" }
 
+type nestedDiscoveryItem struct {
+	Spec struct {
+		Username string `json:"username"`
+	} `json:"spec"`
+}
+
+type nestedDiscoveryEnvelope struct {
+	Items []nestedDiscoveryItem `json:"items"`
+}
+
+func (nestedDiscoveryEnvelope) ListItemsKey() string { return "items" }
+
 func TestEncode_JSONFields_ListEnvelope(t *testing.T) {
 	// A multi-key list envelope marked with ListItemsKey must apply field
 	// selection per item and pass metadata siblings (e.g. total) through.
@@ -333,6 +345,16 @@ func TestEncode_JSONDiscovery_ListEnvelope(t *testing.T) {
 			assert.NotContains(t, lines, "total")
 		})
 	}
+}
+
+func TestEncode_JSONDiscovery_EmptyTypedEnvelopeIncludesNestedPaths(t *testing.T) {
+	opts := optsWithJSONDiscovery(t)
+	var buf bytes.Buffer
+	require.NoError(t, opts.Encode(&buf, nestedDiscoveryEnvelope{Items: []nestedDiscoveryItem{}}))
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	assert.Contains(t, lines, "spec")
+	assert.Contains(t, lines, "spec.username")
 }
 
 func TestEncode_JSONDiscovery_SingleKeyEnvelope(t *testing.T) {
