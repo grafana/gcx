@@ -42,9 +42,19 @@ jobs:
       - name: Run golangci-lint
         run: mise run lint
 
-  tests:
-    name: Tests
+  test-shards:
+    name: Go tests (${{ matrix.shard_number }}/3)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard_index: 0
+            shard_number: 1
+          - shard_index: 1
+            shard_number: 2
+          - shard_index: 2
+            shard_number: 3
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -70,16 +80,36 @@ jobs:
       - name: Install dependencies
         run: mise run deps
 
-      - name: Tests
-        run: mise run tests
+      - name: Go tests
+        run: mise run tests:cli
+        env:
+          GCX_TEST_SHARD_COUNT: 3
+          GCX_TEST_SHARD_INDEX: ${{ matrix.shard_index }}
+
+      - name: Linter and installer tests
+        if: matrix.shard_index == 0
+        run: |
+          mise run tests:linter
+          mise run tests:install
 
       - name: Upload Go test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: go-test-results
+          name: go-test-results-${{ matrix.shard_index }}
           path: .test-results/
           if-no-files-found: warn
+
+  tests:
+    name: Tests
+    if: always()
+    needs: test-shards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check test shards
+        env:
+          SHARD_RESULT: ${{ needs.test-shards.result }}
+        run: test "${SHARD_RESULT}" = success
 
   docs:
     name: Documentation

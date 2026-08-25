@@ -50,16 +50,42 @@ set -euo pipefail
 
 results_dir="${GCX_TEST_RESULTS_DIR:-.test-results}"
 package_parallelism="${GCX_TEST_PACKAGE_PARALLELISM:-16}"
+shard_count="${GCX_TEST_SHARD_COUNT:-1}"
+shard_index="${GCX_TEST_SHARD_INDEX:-0}"
+if ! [[ "${shard_count}" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'GCX_TEST_SHARD_COUNT must be a positive integer\n' >&2
+    exit 2
+fi
+if ! [[ "${shard_index}" =~ ^[0-9]+$ ]] || (( shard_index >= shard_count )); then
+    printf 'GCX_TEST_SHARD_INDEX must be an integer from 0 to %d\n' "$((shard_count - 1))" >&2
+    exit 2
+fi
+
+packages=("./...")
+file_suffix=""
+if (( shard_count > 1 )); then
+    packages=()
+    package_number=0
+    while IFS= read -r package; do
+        [[ -z "${package}" ]] && continue
+        if (( package_number % shard_count == shard_index )); then
+            packages+=("${package}")
+        fi
+        package_number=$((package_number + 1))
+    done < <(go list ./...)
+    file_suffix="-shard-$((shard_index + 1))-of-${shard_count}"
+fi
+
 mkdir -p "${results_dir}"
-json_file="${results_dir}/go-test.json"
-junit_file="${results_dir}/go-test.xml"
+json_file="${results_dir}/go-test${file_suffix}.json"
+junit_file="${results_dir}/go-test${file_suffix}.xml"
 
 set +e
 gotestsum \
     --format pkgname-and-test-fails \
     --jsonfile "${json_file}" \
     --junitfile "${junit_file}" \
-    -- -p="${package_parallelism}" ./...
+    -- -p="${package_parallelism}" "${packages[@]}"
 test_status=$?
 set -e
 

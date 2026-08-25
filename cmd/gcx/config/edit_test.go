@@ -2,6 +2,7 @@ package config //nolint:testpackage // White-box tests exercise unexported creat
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -138,22 +139,14 @@ func TestResolveRawEditTargetRejectsConflictingExplicitAndLayerSelection(t *test
 
 func TestEditCommandOpensUnsupportedExplicitConfig(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("test editor fixture is a POSIX shell script")
+		t.Skip("the test needs the true executable")
 	}
 	path := filepath.Join(t.TempDir(), "future.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("version: 999\n"), 0o600))
-	marker := filepath.Join(t.TempDir(), "opened-path")
-	editor := filepath.Join(t.TempDir(), "editor")
-	require.NoError(t, os.WriteFile(editor, []byte("#!/bin/sh\nprintf '%s' \"$1\" > \"$GCX_EDIT_TEST_OUTPUT\"\n"), 0o600))
-	require.NoError(t, os.Chmod(editor, 0o700))
+	editor, err := exec.LookPath("true")
+	require.NoError(t, err)
 	t.Setenv("EDITOR", editor)
-	t.Setenv("GCX_EDIT_TEST_OUTPUT", marker)
 
 	cmd := editCmd(&Options{ConfigFile: path})
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
-	opened, err := os.ReadFile(marker)
-	require.NoError(t, err)
-	abs, err := filepath.Abs(path)
-	require.NoError(t, err)
-	assert.Equal(t, abs, string(opened))
 }

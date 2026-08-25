@@ -199,7 +199,7 @@ tool versions are used regardless of shell configuration.
 | `mise run all` | Runs lint + tests + build + docs (the full gate) |
 | `mise run build` | Compiles `./cmd/gcx` into `bin/gcx` |
 | `mise run install` | Copies binary to `$GOPATH/bin` |
-| `mise run tests` | Runs all tests and writes Go JSON and JUnit reports to `.test-results/` |
+| `mise run tests` | Runs all tests and writes Go JSON and JUnit reports to `.test-results/`; optional environment variables select one package shard |
 | `mise run lint` | Runs `golangci-lint run -c .golangci.yaml` |
 | `mise run deps` | `go mod download` + `uv pip install -r requirements.txt` |
 | `mise run docs` | Runs `reference` then `mkdocs build` → `build/documentation/` |
