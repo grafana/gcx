@@ -21,9 +21,14 @@ func TestDescribeTableCmd_ValidationErrors(t *testing.T) {
 			wantErr: "--schema must not be empty",
 		},
 		{
-			name:    "schema in both the table name and --schema rejected",
-			args:    []string{"dbo.WORLD_DATA", "--schema", "dbo"},
+			name:    "conflicting schema in both the table name and --schema rejected",
+			args:    []string{"dbo.WORLD_DATA", "--schema", "sales"},
 			wantErr: "not both",
+		},
+		{
+			name:    "empty table name rejected instead of matching every row silently",
+			args:    []string{""},
+			wantErr: "table name is required",
 		},
 	}
 
@@ -41,4 +46,17 @@ func TestDescribeTableCmd_ValidationErrors(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+// TestDescribeTableCmd_AgreeingSchemaNotRejected pins the false-positive fix:
+// a schema-qualified table name and an equal --schema value describe the same
+// table and must not be treated as a conflict, even though a zero-value
+// loader means the command still errors downstream on config/datasource I/O.
+func TestDescribeTableCmd_AgreeingSchemaNotRejected(t *testing.T) {
+	loader := &providers.ConfigLoader{}
+	cmd := mssql.DescribeTableCmd(loader)
+	cmd.SetArgs([]string{"dbo.WORLD_DATA", "--schema", "dbo"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "not both")
 }

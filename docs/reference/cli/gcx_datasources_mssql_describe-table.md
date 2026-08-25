@@ -9,6 +9,10 @@ reporting name, data type, nullability, max length, and default. Disambiguate a
 table that exists in multiple schemas with a schema-qualified name
 (SCHEMA.TABLE) or the --schema flag.
 
+INFORMATION_SCHEMA is per-database, so this only sees tables in the
+datasource's configured database — it cannot describe a table in another
+database on the same server.
+
 ```
 gcx datasources mssql describe-table TABLE [flags]
 ```
