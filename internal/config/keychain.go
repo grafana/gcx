@@ -93,6 +93,7 @@ type keychainFieldState struct {
 	account   string
 	sentinel  string
 	plaintext string
+	cause     error
 	status    keychainStateStatus
 }
 
@@ -124,7 +125,7 @@ type secretOwner struct {
 	fields      []credentials.Field
 	ref         func(field credentials.Field) (secretRef, bool)
 	destination func(field credentials.Field) string
-	reject      func(field credentials.Field, reason string)
+	reject      func(field credentials.Field, reason string, causes ...error)
 	clearReject func(field credentials.Field)
 }
 
@@ -969,12 +970,13 @@ func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keych
 				}
 				continue
 			}
-			owner.reject(field, "the OS keychain could not be read")
+			owner.reject(field, keychainReadRejectionReason(err), err)
 			preserve.mark(owner.key, field, cur)
 			states[stateKey] = keychainFieldState{
 				binding:  binding,
 				account:  account,
 				sentinel: cur,
+				cause:    err,
 				status:   keychainStatePreserved,
 			}
 			continue
@@ -991,6 +993,16 @@ func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keych
 		}
 	}
 	return backed, preserve, states
+}
+
+// keychainReadRejectionReason explains why a keychain read failed. A locked
+// keychain gets its own reason, because the user can fix that condition. The
+// generic reason covers every other read failure.
+func keychainReadRejectionReason(err error) string {
+	if errors.Is(err, credentials.ErrLocked) {
+		return "the OS keychain is locked"
+	}
+	return "the OS keychain could not be read"
 }
 
 // resolveSentinelsForContext resolves keychain sentinels on the stack and

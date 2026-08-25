@@ -213,8 +213,13 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		if hasRefreshState {
 			var resolutionErr error
 			switch refreshState.status {
-			case keychainStateUnresolved, keychainStatePreserved:
+			case keychainStateUnresolved:
 				resolutionErr = credentials.ErrUnavailable
+			case keychainStatePreserved:
+				resolutionErr = refreshState.cause
+				if resolutionErr == nil {
+					resolutionErr = credentials.ErrUnavailable
+				}
 			case keychainStateMissing:
 				resolutionErr = credentials.ErrNotFound
 			}

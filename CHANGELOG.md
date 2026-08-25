@@ -34,6 +34,10 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- credentials: a locked OS keychain is now a separate, fatal failure class (`Keychain locked`). gcx stops credential-consuming commands instead of using or writing a plaintext fallback, and the error explains how to unlock the keychain in the current session. Previously an `org.freedesktop.Secret.Error.IsLocked` response and macOS locked or interaction-disabled statuses counted as an unavailable keychain, which permitted a plaintext write. An unlock failure in a headless Secret Service session was already fatal, but reported only the raw library message.
+
 ### New features
 
 - Record the size of batch resource operations (`resources push`, `pull`, `delete`, `validate`) in usage telemetry events, as fixed size categories rather than counts, alongside whether the operation ran in dry-run mode. The first-run telemetry notice is revised to cover this and is shown again on installs that already saw the previous wording. See [Anonymous usage statistics](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/).
