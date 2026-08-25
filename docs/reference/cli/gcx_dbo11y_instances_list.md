@@ -44,7 +44,7 @@ gcx dbo11y instances list [flags]
       --filter stringArray   Restrict to instances matching a label matcher, e.g. --filter engine=postgres (repeatable)
   -h, --help                 help for list
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string          Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --limit int            Limit the number of instances returned (0 = unlimited) (default 50)
   -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
 ```

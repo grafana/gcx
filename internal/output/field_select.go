@@ -391,7 +391,7 @@ func selectFields(objs []map[string]any, fields []string, itemType reflect.Type)
 	}
 	return nil, UnknownFieldSelectionError{
 		Fields:     unknown,
-		Candidates: candidatePaths(objs, itemType, unknown),
+		Candidates: candidatesByLeaf(typePaths(unwrapType(itemType), "", typePathDepth), unknown),
 	}
 }
 
@@ -425,25 +425,6 @@ func classifyPaths(itemType reflect.Type, paths []string) ([]string, []string) {
 		}
 	}
 	return unknown, inArray
-}
-
-// candidatePathSampleSize bounds how many objects candidatePaths walks. The
-// suggestion is a convenience, so a long list pays for the first objects only.
-const candidatePathSampleSize = 20
-
-// candidatePaths returns, per absent name, the dotted paths whose last
-// segment equals that name. It reads the sampled objects and the declared
-// type, so an empty result set still names the real path.
-func candidatePaths(objs []map[string]any, itemType reflect.Type, absent []string) map[string][]string {
-	var paths []string
-	for i, obj := range objs {
-		if i >= candidatePathSampleSize {
-			break
-		}
-		paths = append(paths, DiscoverFields(obj)...)
-	}
-	paths = append(paths, typePaths(unwrapType(itemType), "", typePathDepth)...)
-	return candidatesByLeaf(paths, absent)
 }
 
 // candidatesByLeaf groups the known dotted paths under the absent name that
@@ -513,6 +494,12 @@ func resolvePath(t reflect.Type, path string) pathVerdict {
 	if t == nil {
 		return pathAbsent
 	}
+	// A custom JSON marshaler can emit keys that reflection cannot see. The
+	// type cannot safely deny a path, so keep the path and let extraction use
+	// the emitted JSON value.
+	if implementsJSONMarshaler(t) {
+		return pathPresent
+	}
 	switch t.Kind() {
 	case reflect.Map, reflect.Interface:
 		return pathPresent
@@ -544,7 +531,7 @@ const typePathDepth = 4
 // reach a value inside one, and a suggestion must name a path that works.
 func typePaths(t reflect.Type, prefix string, depth int) []string {
 	t = derefType(t)
-	if t == nil || t.Kind() != reflect.Struct || depth <= 0 {
+	if t == nil || t.Kind() != reflect.Struct || depth <= 0 || implementsJSONMarshaler(t) {
 		return nil
 	}
 
@@ -599,10 +586,23 @@ func unwrapType(t reflect.Type) reflect.Type {
 // same reason.
 func structTypeOf(value any) reflect.Type {
 	t := unwrapType(reflect.TypeOf(value))
-	if t == nil || t.Kind() != reflect.Struct || t == reflect.TypeFor[unstructured.Unstructured]() {
+	if t == nil || t.Kind() != reflect.Struct || t == reflect.TypeFor[unstructured.Unstructured]() || implementsJSONMarshaler(t) {
 		return nil
 	}
 	return t
+}
+
+// implementsJSONMarshaler reports whether t or *t controls its JSON shape.
+// Reflection cannot use the Go fields of such a type as the wire contract.
+func implementsJSONMarshaler(t reflect.Type) bool {
+	if t == nil {
+		return false
+	}
+	jsonMarshalerType := reflect.TypeFor[json.Marshaler]()
+	if t.Implements(jsonMarshalerType) {
+		return true
+	}
+	return t.Kind() != reflect.Pointer && reflect.PointerTo(t).Implements(jsonMarshalerType)
 }
 
 // sliceElemTypeByKey returns the struct type of the elements of the slice
@@ -958,7 +958,7 @@ func MakeFieldValidator(sample any) func(fields []string) error {
 	// reflectFields (from format.go, same package) returns nothing for a type
 	// that declares no field set, which is the fail-open case.
 	itemType := reflect.TypeOf(sample)
-	if len(reflectFields(itemType)) == 0 {
+	if implementsJSONMarshaler(unwrapType(itemType)) || len(reflectFields(itemType)) == 0 {
 		return nil
 	}
 

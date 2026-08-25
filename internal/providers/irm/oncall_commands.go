@@ -170,6 +170,10 @@ func newListSubcommand[T adapter.ResourceNamer](
 			return lo.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
+	// The command emits unstructured resource envelopes, but T declares the
+	// fields below spec. Use that declared shape so a leaf name such as
+	// username is rejected with spec.username as the correction.
+	lo.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(adapter.TypedObject[T]{}))
 	lo.setup(cmd.Flags(), resource)
 	return cmd
 }

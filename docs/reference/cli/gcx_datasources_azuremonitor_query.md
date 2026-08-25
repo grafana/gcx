@@ -65,7 +65,7 @@ gcx datasources azuremonitor query [flags]
       --from string                 Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                        help for query
       --jq string                   jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string                 Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string                 Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --metric string               Metric name, e.g. Transactions (required)
       --namespace string            Metric namespace, e.g. Microsoft.Storage/storageAccounts (required)
       --open                        Open the executed query in Grafana Explore

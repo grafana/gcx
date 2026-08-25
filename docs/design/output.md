@@ -156,6 +156,8 @@ authority:
 - Where there is no declared type (an unstructured resource, a dynamic map),
   gcx rejects nothing: every requested path keeps its `null`, whatever the
   result set holds.
+- Where a type implements `json.Marshaler`, the marshaler controls the wire
+  shape. Reflection cannot deny a path in that shape, so gcx rejects nothing.
 - A path that any emitted object carries is real, so a heterogeneous list
   keeps a path that only some objects carry.
 - The result set size does not change the answer. An empty page of a typed
@@ -176,7 +178,7 @@ Prometheus query result — is a usage error that names `--jq`. Use
   `output.ListEnvelope` (`ListItemsKey() string` — satisfied structurally, so
   result types need no import). Selection applies per item under the declared
   key; metadata siblings pass through unchanged. `--json ?` discovers
-  item-level fields for both shapes (reflecting on the declared slice field
+  item-level paths for both shapes (reflecting on the declared slice field
   when the list is empty), and the agent-mode spill summary previews and
   counts the envelope's items. Detail objects that merely contain a nested
   array are never treated as envelopes — descent is explicit, not heuristic.

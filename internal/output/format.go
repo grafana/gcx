@@ -380,7 +380,7 @@ func marshalToSampleMap(value any) (map[string]any, error) {
 
 	// Reflection fallback: enumerate exported struct fields from the Go type.
 	// Handles empty typed slices where there is no data to sample.
-	if fields := reflectFields(reflect.TypeOf(value)); len(fields) > 0 {
+	if fields := reflectFieldPaths(reflect.TypeOf(value)); len(fields) > 0 {
 		return nullFieldMap(fields), nil
 	}
 
@@ -405,6 +405,16 @@ func reflectFields(t reflect.Type) []string {
 		return nil
 	}
 	return jsonFieldNames(t, embeddedDepth)
+}
+
+// reflectFieldPaths returns all field paths that --json can select. It is
+// used when an empty typed result has no object from which to discover paths.
+func reflectFieldPaths(t reflect.Type) []string {
+	t = unwrapType(t)
+	if implementsJSONMarshaler(t) {
+		return nil
+	}
+	return typePaths(t, "", typePathDepth)
 }
 
 // sampleFromObject picks the representative sample map for field discovery
@@ -514,7 +524,7 @@ func reflectSingleSliceField(t reflect.Type) []string {
 	if exported != 1 || sliceType == nil {
 		return nil
 	}
-	return reflectFields(sliceType)
+	return reflectFieldPaths(sliceType)
 }
 
 // reflectSliceFieldByKey returns the JSON field names of the element type of
@@ -522,7 +532,7 @@ func reflectSingleSliceField(t reflect.Type) []string {
 // Used to discover item fields of an empty ListEnvelope. Returns nil when t
 // (after pointer unwrapping) is not a struct or has no matching slice field.
 func reflectSliceFieldByKey(t reflect.Type, key string) []string {
-	return reflectFields(sliceElemTypeByKey(t, key))
+	return reflectFieldPaths(sliceElemTypeByKey(t, key))
 }
 
 // We have to return an interface here.
