@@ -67,20 +67,33 @@ else
     package_parallelism="$(((cpu_count + shard_count - 1) / shard_count))"
 fi
 
-all_packages=()
-while IFS= read -r package; do
-    [[ -z "${package}" ]] || all_packages+=("${package}")
-done < <(go list ./...)
+left_brace='{'
+right_brace='}'
+# Use stable source metrics to keep expensive packages in different shards.
+package_template="${left_brace}${left_brace}len .Deps${right_brace}${right_brace} ${left_brace}${left_brace}len .TestGoFiles${right_brace}${right_brace} ${left_brace}${left_brace}len .XTestGoFiles${right_brace}${right_brace} ${left_brace}${left_brace}.ImportPath${right_brace}${right_brace}"
+shard_weights=()
+shard_package_lists=()
+for (( index = 0; index < shard_count; index++ )); do
+    shard_weights[index]=0
+    shard_package_lists[index]=""
+done
+
+while read -r dependency_count test_file_count external_test_file_count package; do
+    weight=$((dependency_count + 5 * (test_file_count + external_test_file_count)))
+    lightest_shard=0
+    for (( index = 1; index < shard_count; index++ )); do
+        if (( shard_weights[index] < shard_weights[lightest_shard] )); then
+            lightest_shard="${index}"
+        fi
+    done
+    shard_weights[lightest_shard]=$((shard_weights[lightest_shard] + weight))
+    shard_package_lists[lightest_shard]+=" ${package}"
+done < <(go list -f "${package_template}" ./... | sort -k1,1nr -k2,2nr -k3,3nr -k4,4)
 
 run_shard() {
     local index="$1"
-    local packages=()
-    local package_number
-    for package_number in "${!all_packages[@]}"; do
-        if (( package_number % shard_count == index )); then
-            packages+=("${all_packages[package_number]}")
-        fi
-    done
+    local packages
+    read -r -a packages <<< "${shard_package_lists[index]}"
     go test -p="${package_parallelism}" "${packages[@]}"
 }
 
