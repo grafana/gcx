@@ -64,7 +64,8 @@ Credentials in the OS credential store (Keychain on macOS, Credential Manager
 on Windows, Secret Service on Linux) are tied to the canonical config file,
 exact owner kind and name, exact secret field, and normalized destination. Copying a config
 file does not make its stored credentials portable; authenticate the copied
-file separately.
+file separately. See [Keychain credential storage](../keychain/)
+for storage rules and keychain error procedures.
 
 An automatically discovered repository `.gcx.yaml` cannot attach tokens,
 passwords, or client-certificate files from your environment, login flags, or

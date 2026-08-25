@@ -96,12 +96,16 @@ jobs:
 
             Base the report on both sets combined: drop duplicates, and where
             the two disagree, resolve it against the code and report one
-            conclusion rather than both. Then post what survives.
-          # Pin the model instead of inheriting the action's default. That
-          # default moves as new models ship, so review behaviour changes with
-          # no commit to point at. Pinning keeps runs reproducible and makes
-          # each upgrade an explicit change someone reviewed.
-          claude_args: '--model claude-opus-5 --allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr review:*),mcp__github_inline_comment__create_inline_comment"'
+            conclusion rather than both. The report should always follow the 
+            structure in .claude/skills/review-pr/SKILL.md#Report-shape, but
+            prefer to put blocking and nits feedback in inline comments. do
+            not duplicate inline comments in the main report body. Do not
+            mention the process you used to generate the report. 
+
+            We should categorise findings as blocking or nits. Recommended
+            findings should be upgraded to blocking.
+          # Pin the model to keep the behaviour consistent
+          claude_args: '--model claude-opus-4-6 --allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr review:*),mcp__github_inline_comment__create_inline_comment"'
 
       - name: Add claude-reviewed label
         if: success()
