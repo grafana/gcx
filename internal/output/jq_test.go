@@ -113,6 +113,23 @@ func TestJQCodec_Encode(t *testing.T) {
 			wantValues: []any{[]any{2.0, 3.0}},
 		},
 		{
+			name:  "unstructured object pointer normalizes int64 values",
+			query: ".spec.schemaVersion + 1",
+			value: &unstructured.Unstructured{Object: map[string]any{
+				"spec": map[string]any{"schemaVersion": int64(1)},
+			}},
+			wantValues: []any{2.0},
+		},
+		{
+			name:  "unstructured list pointer normalizes int64 values",
+			query: "[.items[].spec.schemaVersion + 1]",
+			value: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+				{Object: map[string]any{"spec": map[string]any{"schemaVersion": int64(1)}}},
+				{Object: map[string]any{"spec": map[string]any{"schemaVersion": int64(2)}}},
+			}},
+			wantValues: []any{[]any{2.0, 3.0}},
+		},
+		{
 			name:    "runtime error on type mismatch",
 			query:   ".foo | .bar",
 			value:   map[string]any{"foo": 42},
