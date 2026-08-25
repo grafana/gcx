@@ -86,7 +86,7 @@ const (
 	IRMInvoice = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice.md"
 
 	// Keychain documents credential storage and keychain error procedures for gcx.
-	Keychain = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/reference/configuration/keychain.md"
+	Keychain = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/keychain.md"
 
 	// ConfigMigration documents migrating a legacy (unversioned) gcx config
 	// to the version 1 stacks/cloud/contexts format, including the manual
