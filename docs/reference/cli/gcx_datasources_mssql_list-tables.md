@@ -7,6 +7,10 @@ List tables and views in an MSSQL database
 List base tables and views from INFORMATION_SCHEMA.TABLES, optionally
 filtered to a single schema. Reports schema, name, and type for each.
 
+INFORMATION_SCHEMA is per-database, so this only sees tables in the
+datasource's configured database — it cannot list tables in another database
+on the same server.
+
 ```
 gcx datasources mssql list-tables [flags]
 ```

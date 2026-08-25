@@ -38,7 +38,11 @@ func ListTablesCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "list-tables",
 		Short: "List tables and views in an MSSQL database",
 		Long: `List base tables and views from INFORMATION_SCHEMA.TABLES, optionally
-filtered to a single schema. Reports schema, name, and type for each.`,
+filtered to a single schema. Reports schema, name, and type for each.
+
+INFORMATION_SCHEMA is per-database, so this only sees tables in the
+datasource's configured database — it cannot list tables in another database
+on the same server.`,
 		Example: `
   # List all tables and views
   gcx datasources mssql list-tables
@@ -87,6 +91,11 @@ filtered to a single schema. Reports schema, name, and type for each.`,
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
+
+			// Surface any server-side plugin notices (e.g. "Results have been
+			// limited to N ..."); this command injects no cap of its own, so
+			// capped/eff/maxLimit are all zero.
+			dsquery.SurfaceRowLimits(cmd.ErrOrStderr(), resp, false, 0, 0)
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
