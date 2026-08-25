@@ -11,10 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Canonical operations, from docs/design/command-naming.md. View verbs
-// (`status`, `timeline`, `inspect`, `diff`) are absent on purpose: the guide
-// allows one only for a derived view, which no mechanical check can judge, so
-// they reach the tree through the fixture instead.
+// Canonical operations, from docs/design/command-naming.md. These are the recommended, standard verbs.
 //
 //nolint:gochecknoglobals // constant-like lookup table for test validation
 var canonicalOperations = map[string]bool{
@@ -30,8 +27,7 @@ var canonicalOperations = map[string]bool{
 	"search": true,
 }
 
-// Shorthand operations, canonical only in the signal and datasource families the
-// guide scopes them to.
+// These operations are only valid when seen in shorthandAreas
 //
 //nolint:gochecknoglobals // constant-like lookup table for test validation
 var shorthandOperations = map[string]bool{
@@ -50,10 +46,6 @@ var shorthandAreas = map[string]bool{
 	"traces":      true,
 }
 
-// Tooling acts on the project or the CLI, not on Grafana resources, so the
-// product vocabulary does not apply. CONSTITUTION.md § CLI Grammar names `dev`
-// and `config`; `help` and `completion` come from Cobra.
-//
 //nolint:gochecknoglobals // constant-like skip list for test validation
 var toolingAreas = map[string]bool{
 	"completion": true,
@@ -79,15 +71,9 @@ func canonicalOperation(area, op string) bool {
 	return false
 }
 
-// TestConsistency_LeafOperationsAreCanonical requires every runnable leaf to end
-// in a canonical operation, or to be listed in testdata/command_verbs.json.
-//
-// The fixture grandfathers the operations already in the tree, not because they
-// are right but because CONSTITUTION.md § CLI Grammar makes the released surface
-// a compatibility exception for every v1.x release. The gate is on new commands:
-// nothing checks their verbs today, and a fixture line is the explicit review the
-// guide asks for.
+// Every runnable command must end in a canonical operation, or to be listed in testdata/command_verbs.json.
 func TestConsistency_LeafOperationsAreCanonical(t *testing.T) {
+	// read a set of existing commands that cover all the non-standard verbs from a testdata file. Any command leaves that do not exist in that set should error.
 	raw, err := os.ReadFile("testdata/command_verbs.json")
 	if err != nil {
 		t.Fatalf("reading command verb fixture: %v", err)
@@ -101,8 +87,6 @@ func TestConsistency_LeafOperationsAreCanonical(t *testing.T) {
 		grandfathered[path] = true
 	}
 
-	// Recorded only for paths that needed a verdict, so a fixture entry whose
-	// operation later becomes canonical is reported as stale.
 	judged := map[string]bool{}
 	var uncanonical []string
 	agent.WalkCommands(buildRootCmd(), func(cmd *cobra.Command) {
@@ -110,8 +94,7 @@ func TestConsistency_LeafOperationsAreCanonical(t *testing.T) {
 			return
 		}
 		fields := strings.Fields(cmd.CommandPath())
-		// Bare top-level verbs, a closed set per CONSTITUTION.md § CLI Grammar,
-		// have no operation segment to judge.
+		// do not judge top level commands as they have no operation
 		if len(fields) < 3 {
 			return
 		}
