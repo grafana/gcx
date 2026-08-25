@@ -13,14 +13,14 @@ gcx docs get <url> [flags]
 ### Examples
 
 ```
-  # Fetch the first page of a doc
-  gcx docs get https://grafana.com/docs/tempo/latest/
+  # Fetch a doc
+  gcx docs get https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/
 
   # Extract a single section
-  gcx docs get https://grafana.com/docs/tempo/latest/ --section "Configuration"
+  gcx docs get https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/ --section "Comparison operators"
 
-  # Page through a long doc
-  gcx docs get https://grafana.com/docs/tempo/latest/ --offset 80 --limit 80
+  # Advanced: page through a long doc (Tempo Configure is ~3000 lines)
+  gcx docs get https://grafana.com/docs/tempo/latest/configuration/ --offset 80 --limit 80
 ```
 
 ### Options

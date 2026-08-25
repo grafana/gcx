@@ -61,7 +61,7 @@ func outlineCommand(fetch docFetcher) *cobra.Command {
 		Short: "Show the heading outline of a documentation page.",
 		Long: "List the headings of a documentation page so you can target a " +
 			"section with 'gcx docs get --section'.",
-		Example: `  gcx docs outline https://grafana.com/docs/tempo/latest/`,
+		Example: `  gcx docs outline https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.url = args[0]

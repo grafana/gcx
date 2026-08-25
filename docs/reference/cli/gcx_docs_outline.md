@@ -13,7 +13,7 @@ gcx docs outline <url> [flags]
 ### Examples
 
 ```
-  gcx docs outline https://grafana.com/docs/tempo/latest/
+  gcx docs outline https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/
 ```
 
 ### Options
