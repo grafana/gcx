@@ -29,7 +29,8 @@ import (
 
 // keychainStoreFn returns the credentials.Store used by Load and Write. It is
 // a package-level variable so tests can inject a fake store. Production code
-// uses credentials.Open() which probes the OS keychain.
+// uses credentials.Open() which probes the OS keychain, unless the resolved
+// keychain mode is disabled, in which case credentials stay in plaintext.
 //
 // Under `go test` (detected via testing.Testing()), the default is a no-op
 // store that reports ErrUnavailable for every operation. This prevents any
@@ -77,9 +78,27 @@ var (
 	openedStore   credentials.Store
 )
 
+// resolvedKeychainMode memoizes the keychain mode for the lifetime of the
+// process, so the config-file read behind it is paid at most once and only
+// when a credential actually needs the store.
+//
+//nolint:gochecknoglobals // process-wide memoization of the keychain mode.
+var resolvedKeychainMode = sync.OnceValue(func() keychainMode {
+	return resolveKeychainMode(os.Getenv, func() string {
+		return keychainModeConfigValue(context.Background())
+	})
+})
+
 func defaultKeychainStore() credentials.Store {
 	if testing.Testing() {
 		return testingNoopStore{}
+	}
+	return keychainStoreForMode(resolvedKeychainMode())
+}
+
+func keychainStoreForMode(mode keychainMode) credentials.Store {
+	if mode == keychainModeDisabled {
+		return credentials.Disabled()
 	}
 	openStoreOnce.Do(func() { openedStore = credentials.Open() })
 	return openedStore
