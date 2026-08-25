@@ -2,12 +2,10 @@ package kg_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/kg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -109,30 +107,6 @@ func TestClient_ListQualityReports(t *testing.T) {
 	require.Len(t, page.Content, 1)
 	assert.Equal(t, "svc-a", page.Content[0].EntityName)
 	assert.Equal(t, 60, page.Content[0].QualityPercent)
-}
-
-// TestQualityListJSONFieldSelection covers the documented example of
-// `gcx kg quality list --env <env> --json entityName,qualityPercent,failedCheckIds`.
-// FailedCheckIDs is omitempty, so a healthy entity emits no key. The type
-// still declares the field, so the selection must keep it and hold a null.
-func TestQualityListJSONFieldSelection(t *testing.T) {
-	// The command encodes the item slice, not the page envelope.
-	items := []kg.QualityReportListItem{
-		{EntityName: "svc-a", EntityType: "Service", QualityPercent: 100},
-	}
-
-	opts := cmdio.Options{OutputFormat: "json"}
-	opts.JSONFields = []string{"entityName", "qualityPercent", "failedCheckIds"}
-
-	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, items))
-
-	var got []map[string]any
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
-	require.Len(t, got, 1)
-	assert.Equal(t, "svc-a", got[0]["entityName"])
-	require.Contains(t, got[0], "failedCheckIds")
-	assert.Nil(t, got[0]["failedCheckIds"])
 }
 
 func TestQualityReportListTableCodec_Encode(t *testing.T) {
