@@ -87,11 +87,10 @@ func (c *CheckTableCodec) Decode(_ io.Reader, _ any) error {
 
 // renderFixPlan prints a blank separator line then the plan body via
 // style.RenderMarkdown (glamour-styled on a TTY, raw markdown otherwise).
-//
-// Source diagnostics ("Grafana Assistant not available (...)" etc.) are
-// intentionally NOT written here — they go to stderr via EmitFixPlanNotice
-// so a `gcx instrumentation check --fix-plan > out.md` redirect captures
-// just the plan body.
+// No source diagnostics are emitted here: --fix-plan=assistant either
+// succeeds (Assistant content speaks for itself) or errors out at the
+// command level, and --fix-plan=local produces its own headered markdown.
+// This keeps `gcx instrumentation check --fix-plan=local > out.md` clean.
 func renderFixPlan(w io.Writer, plan *fixplan.Plan) error {
 	if _, err := fmt.Fprintln(w); err != nil {
 		return err

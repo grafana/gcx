@@ -170,6 +170,14 @@ Powered by github.com/grafana/otel-checker.`,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Components = parseComponents(args)
+			// Reject `--fix-plan=` explicitly. StringVar treats an empty
+			// value identically to the flag being omitted, but the user
+			// clearly asked for a fix plan; without this guard the command
+			// runs to completion with no plan and no error.
+			if cmd.Flags().Changed("fix-plan") && opts.FixPlan == "" {
+				return fmt.Errorf("instrumentation check: --fix-plan requires a value: %q or %q",
+					fixplan.ModeLocal, fixplan.ModeAssistant)
+			}
 			if err := opts.Validate(); err != nil {
 				return fmt.Errorf("instrumentation check: %w", err)
 			}

@@ -313,3 +313,21 @@ func TestCommand_RejectsInvalidFixPlanValue(t *testing.T) {
 	assert.Contains(t, err.Error(), "local")
 	assert.Contains(t, err.Error(), "assistant")
 }
+
+// TestCommand_RejectsExplicitEmptyFixPlan guards the distinction between
+// `--fix-plan` omitted and `--fix-plan=` (explicit empty). StringVar
+// gives both cases the same empty string; without the cmd.Flags().Changed
+// guard the command would silently run without a plan even though the
+// user typed the flag.
+func TestCommand_RejectsExplicitEmptyFixPlan(t *testing.T) {
+	cmd := Command(nil)
+	cmd.SetArgs([]string{"collector", "--fix-plan=", "--language=go"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--fix-plan requires a value")
+	assert.Contains(t, err.Error(), "local")
+	assert.Contains(t, err.Error(), "assistant")
+}

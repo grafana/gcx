@@ -1,7 +1,12 @@
-// Package fixplan wraps `gcx instrumentation check` with a fix-plan
-// generator: it resolves each finding's explain doc, then either asks
-// Grafana Assistant to synthesize a single prioritized plan (Cloud only) or
-// falls back to a local aggregation of the docs' "How to fix" sections.
+// Package fixplan generates a single fix plan from `gcx instrumentation
+// check` findings. It resolves each finding's explain doc and dispatches
+// to one of two disjoint modes selected by the --fix-plan flag:
+//
+//   - --fix-plan=local: deterministic aggregation of the docs' "How to
+//     fix" sections. Offline, no billing, works on OSS/Enterprise.
+//   - --fix-plan=assistant: prioritized plan synthesized by Grafana
+//     Assistant. Billable, requires a Grafana Cloud context. Returns a
+//     clear error when preconditions aren't met — no cross-mode fallback.
 //
 // This package is only invoked when the --fix-plan flag is set on
 // `gcx instrumentation check`.
