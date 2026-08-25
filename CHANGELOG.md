@@ -1,3 +1,22 @@
+## v1.2.0 (2026-08-25)
+
+```markdown
+- Add Database Observability provider: `gcx dbo11y instances list` and `get` (#1199)
+- Regenerate the CLI reference to cover the new dbo11y commands (#1239)
+- A locked keychain now reports its own clear, fatal error (#1142)
+- New keychain reference docs cover setup and troubleshooting
+- Remove the broken `gcx assistant dashboard` subcommand (#1230)
+- Fix the duplicated `--agent-id` default in assistant help text (#1232)
+- Teach the add-datasource skill the shared raw-SQL contract (#1227)
+- Bump create-github-app-token to 0.3.1 and tune CI review (#1236, #1217)
+```
+
+Two notes on judgement calls:
+
+- The dbo11y doc regen (#1239) is arguably internal noise for a user-facing changelog — I kept it because it's the only signal that reference docs now exist for the new commands. Drop it if your changelog is strictly behavioural.
+- The keychain docs bullet has no PR number in your list; it comes from the `docs/reference/configuration/keychain.md` + `docs/sources/keychain.md` additions in the diffstat, which look like they rode along with #1142. Worth confirming before publishing.
+
+
 ## v1.1.1 (2026-08-24)
 
 **Datasources**
