@@ -23,6 +23,7 @@ func TestKeychainModeForProcess(t *testing.T) {
 		{name: "off", env: "off", want: keychainModeDisabled},
 		{name: "false", env: "false", want: keychainModeDisabled},
 		{name: "zero", env: "0", want: keychainModeDisabled},
+		{name: "no, the falsy value internal/agent accepts", env: "no", want: keychainModeDisabled},
 		{name: "case and space insensitive", env: " Disabled ", want: keychainModeDisabled},
 		{name: "enabled", env: "enabled", want: keychainModeEnabled},
 		{name: "typo fails toward encrypted storage", env: "disabledd", want: keychainModeEnabled},

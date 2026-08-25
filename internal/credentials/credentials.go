@@ -82,23 +82,12 @@ var ErrUnavailable = errors.New("credentials: keychain unavailable")
 // must fail and ask the user to unlock the keychain.
 var ErrLocked = errors.New("credentials: keychain locked")
 
-// ErrDisabled is returned by the store from Disabled() when the user has
-// deliberately turned keychain use off. Unlike ErrLocked it wraps
-// ErrUnavailable, because no keychain is in play at all: every existing
-// fallback path keeps treating it as an unreachable backend, and only the
-// decisions that differ for a deliberate opt-out test for it specifically.
+// ErrDisabled is reported by a store that stands in for a keychain the user has
+// deliberately turned off. Unlike ErrLocked it wraps ErrUnavailable, because no
+// keychain is in play at all: every existing fallback path keeps treating it as
+// an unreachable backend, and only the decisions that differ for a deliberate
+// opt-out test for it specifically.
 var ErrDisabled = fmt.Errorf("%w: disabled by configuration", ErrUnavailable)
-
-// Disabled returns a Store that reports ErrDisabled for every operation. It is
-// used when keychain storage has been switched off, so credentials stay in
-// plaintext in the config file instead of being moved into the OS keychain.
-func Disabled() Store { return disabledStore{} }
-
-type disabledStore struct{}
-
-func (disabledStore) Get(string) (string, error) { return "", ErrDisabled }
-func (disabledStore) Set(string, string) error   { return ErrDisabled }
-func (disabledStore) Delete(string) error        { return ErrDisabled }
 
 // Store is the minimal interface for a secret backend.
 type Store interface {

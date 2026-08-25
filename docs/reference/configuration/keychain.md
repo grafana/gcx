@@ -47,14 +47,26 @@ credentials in plaintext without your intent. Set the variable in your shell
 profile or CI job environment to make it permanent for a machine.
 
 gcx does not move stored credentials back into the configuration file when you
-disable the credential store. It preserves their references, so those
-credentials work again when you unset `GCX_KEYCHAIN`. gcx cannot read them
-until then. Authenticate again to replace them with plaintext values.
+disable the credential store. It preserves their references and cannot read
+them. You have two choices for each one.
 
-gcx also cannot remove a stored credential while the credential store is
-disabled. `gcx config unset` on the field, and deleting the stack or Cloud
-entry that owns it, both fail instead of dropping the reference and leaving the
-secret in the credential store. Unset `GCX_KEYCHAIN` for that command.
+Keep the reference. Unset `GCX_KEYCHAIN` and the credential works again.
+
+Replace the credential. Authenticate again, and gcx writes the new value in
+plaintext. This is not reversible: gcx cannot delete through a disabled store,
+so the credential you replaced stays in the OS credential store with nothing
+referencing it, and no gcx command can reach it again. gcx warns when this
+happens. Delete that entry yourself to finish the change, and treat this as
+required when you are replacing a leaked credential.
+
+gcx cannot remove a stored credential while the credential store is disabled.
+`gcx config unset` on the field, and deleting the stack or Cloud entry that
+owns it, both fail. gcx does not drop the reference and leave the secret in the
+credential store, because that reports a deletion that did not happen. Unset
+`GCX_KEYCHAIN` and run the command again. When the credential store is
+permanently unavailable, unsetting the variable does not help, because gcx
+still cannot read the entry: edit the configuration file to remove the
+reference, then delete the entry through your OS credential store.
 
 ## `Keychain locked`
 

@@ -87,7 +87,7 @@ func defaultKeychainStore() credentials.Store {
 
 func keychainStoreForMode(mode keychainMode) credentials.Store {
 	if mode == keychainModeDisabled {
-		return credentials.Disabled()
+		return disabledStore{}
 	}
 	openStoreOnce.Do(func() { openedStore = credentials.Open() })
 	return openedStore
@@ -98,6 +98,14 @@ type testingNoopStore struct{}
 func (testingNoopStore) Get(string) (string, error) { return "", credentials.ErrUnavailable }
 func (testingNoopStore) Set(string, string) error   { return credentials.ErrUnavailable }
 func (testingNoopStore) Delete(string) error        { return credentials.ErrUnavailable }
+
+// disabledStore stands in for the OS keychain when the user has turned it off,
+// so credentials stay in plaintext in the config file.
+type disabledStore struct{}
+
+func (disabledStore) Get(string) (string, error) { return "", credentials.ErrDisabled }
+func (disabledStore) Set(string, string) error   { return credentials.ErrDisabled }
+func (disabledStore) Delete(string) error        { return credentials.ErrDisabled }
 
 const (
 	configFilePermissions  = 0o600
