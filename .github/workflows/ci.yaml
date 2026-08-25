@@ -43,7 +43,7 @@ jobs:
         run: mise run lint
 
   test-shards:
-    name: Go tests (${{ matrix.shard_number }}/3)
+    name: Go tests (${{ matrix.shard_number }}/6)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -55,6 +55,12 @@ jobs:
             shard_number: 2
           - shard_index: 2
             shard_number: 3
+          - shard_index: 3
+            shard_number: 4
+          - shard_index: 4
+            shard_number: 5
+          - shard_index: 5
+            shard_number: 6
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -83,7 +89,7 @@ jobs:
       - name: Go tests
         run: mise run tests:cli
         env:
-          GCX_TEST_SHARD_COUNT: 3
+          GCX_TEST_SHARD_COUNT: 6
           GCX_TEST_SHARD_INDEX: ${{ matrix.shard_index }}
 
       - name: Linter and installer tests
