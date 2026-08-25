@@ -55,6 +55,7 @@
 - Add a Grafana version support policy to the documentation (#1197)
 - Regenerate the command line interface reference (#1224)
 
+
 ## v1.1.0 (2026-08-14)
 
 **Breaking changes**
