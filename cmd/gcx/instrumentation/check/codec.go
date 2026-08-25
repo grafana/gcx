@@ -7,7 +7,6 @@ import (
 
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/check/fixplan"
 	"github.com/grafana/gcx/internal/format"
-	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/style"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 )
@@ -98,21 +97,6 @@ func renderFixPlan(w io.Writer, plan *fixplan.Plan) error {
 		return err
 	}
 	return style.RenderMarkdown(w, plan.Content)
-}
-
-// EmitFixPlanNotice writes a one-line diagnostic to stderr explaining which
-// fix-plan path was taken (Assistant vs local aggregation), and why when
-// falling back. Nothing is emitted when Assistant produced the plan — the
-// content speaks for itself — nor when the plan is empty/nil.
-func EmitFixPlanNotice(stderr io.Writer, plan *fixplan.Plan) {
-	if plan == nil || plan.Source != fixplan.SourceLocal {
-		return
-	}
-	if plan.Fallback && plan.Reason != "" {
-		cmdio.EmitNote(stderr, fmt.Sprintf("Grafana Assistant not available (%s). Showing combined explanation docs instead — no AI reasoning applied.", plan.Reason))
-		return
-	}
-	cmdio.EmitNote(stderr, "Showing combined explanation docs — no AI reasoning applied.")
 }
 
 var (

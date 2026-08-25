@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/check/fixplan"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -31,8 +32,9 @@ type checkOpts struct {
 	// Components is parsed from the positional argument; empty means "all".
 	Components []string
 
-	// FixPlan turns on the fix-plan aggregation after the checker runs.
-	FixPlan bool
+	// FixPlan selects the fix-plan mode. Empty = no fix plan.
+	// See fixplan.ModeLocal / fixplan.ModeAssistant for valid values.
+	FixPlan string
 }
 
 func (o *checkOpts) setup(flags *pflag.FlagSet) {
@@ -56,10 +58,11 @@ func (o *checkOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Debug, "debug", false,
 		"Print additional diagnostic output from the checker.")
 
-	flags.BoolVar(&o.FixPlan, "fix-plan", false,
-		"After running the checks, synthesize a single fix plan for every finding. "+
-			"Uses Grafana Assistant when the current context is a Grafana Cloud stack (billable); "+
-			"falls back to a local aggregation of the explanation docs otherwise.")
+	flags.StringVar(&o.FixPlan, "fix-plan", "",
+		"Synthesize one fix plan for every finding. Values:\n"+
+			"  local     - deterministic aggregation of the explanation docs (offline, no billing).\n"+
+			"  assistant - prioritized plan from Grafana Assistant (BILLABLE, requires a Grafana Cloud context). See "+docs.AssistantPricing+".\n"+
+			"Empty (flag omitted) skips the fix plan.")
 }
 
 // Validate finalizes opts after flag parsing and runs the otel-checker
@@ -69,6 +72,13 @@ func (o *checkOpts) setup(flags *pflag.FlagSet) {
 func (o *checkOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
+	}
+
+	switch o.FixPlan {
+	case "", string(fixplan.ModeLocal), string(fixplan.ModeAssistant):
+	default:
+		return fmt.Errorf("--fix-plan must be %q or %q (got %q)",
+			fixplan.ModeLocal, fixplan.ModeAssistant, o.FixPlan)
 	}
 
 	cmd := o.toCommands()
@@ -119,7 +129,8 @@ func (o *checkOpts) toCommands() otelutils.Commands {
 }
 
 // Command returns the "gcx instrumentation check" cobra command. The loader
-// is used only when --fix-plan is set; check itself runs entirely locally.
+// is used only when --fix-plan=assistant is set; check itself and
+// --fix-plan=local run entirely locally.
 func Command(loader *providers.ConfigLoader) *cobra.Command {
 	return commandWith(loader, otelchecks.Run)
 }
@@ -147,10 +158,9 @@ Checks performed:
 Components is an optional comma-separated list — defaults to all when omitted.
 Supported components: ` + strings.Join(otelutils.SupportedComponents, ", ") + `.
 
-Add --fix-plan to synthesize a single fix plan for every finding.
-When the current context is a Grafana Cloud stack, this uses Grafana Assistant
-(billable). Otherwise it falls back to a local aggregation of the explanation
-docs — no AI reasoning, but works offline and on OSS/Enterprise.
+Add --fix-plan=local for a deterministic aggregation of the explanation docs
+(offline, no billing), or --fix-plan=assistant for a prioritized plan synthesized
+by Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see ` + docs.AssistantPricing + `).
 
 Powered by github.com/grafana/otel-checker.`,
 		Args: cobra.MaximumNArgs(1),
@@ -172,16 +182,16 @@ Powered by github.com/grafana/otel-checker.`,
 				Errors:   results.Errors,
 			}
 
-			if opts.FixPlan {
+			if opts.FixPlan != "" {
 				plan, err := fixplan.Generate(cmd.Context(), results, fixplan.Options{
+					Mode:   fixplan.Mode(opts.FixPlan),
 					Loader: loader,
 				})
 				if err != nil {
-					return fmt.Errorf("instrumentation check: fix-plan: %w", err)
+					return fmt.Errorf("instrumentation check: %w", err)
 				}
 				if !plan.Empty {
 					envelope.FixPlan = &plan
-					EmitFixPlanNotice(cmd.ErrOrStderr(), &plan)
 				}
 			}
 

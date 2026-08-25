@@ -12,14 +12,24 @@ import (
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 )
 
-// Source identifies which path produced a Plan. Callers use this to render
-// an appropriate leading notice ("assistant" is silent; "local" prints a
-// stderr notice explaining the degradation).
+// Source identifies which path produced a Plan.
 type Source string
 
 const (
 	SourceAssistant Source = "assistant"
 	SourceLocal     Source = "local"
+)
+
+// Mode selects the fix-plan generation path. Callers set it from the
+// user-facing --fix-plan flag value. The two modes are intentionally
+// disjoint: local never calls Assistant (no billing, works offline),
+// assistant never falls back to local (any precondition failure returns
+// a clear error so the user can retry or switch modes explicitly).
+type Mode string
+
+const (
+	ModeLocal     Mode = "local"
+	ModeAssistant Mode = "assistant"
 )
 
 // Plan is the output of Generate — also the on-wire shape of the fix_plan
@@ -33,14 +43,15 @@ type Plan struct {
 	Content  string   `json:"content" yaml:"content"` // markdown fix plan
 	DocsUsed []string `json:"docs_used,omitempty" yaml:"docs_used,omitempty"`
 	Empty    bool     `json:"-" yaml:"-"`
-	Fallback bool     `json:"fallback,omitempty" yaml:"fallback,omitempty"` // true when Assistant was requested but local was used
-	Reason   string   `json:"reason,omitempty" yaml:"reason,omitempty"`     // when Fallback: one-line human explanation
 }
 
-// Options configures Generate. All optional; sensible defaults are applied.
+// Options configures Generate.
 type Options struct {
-	// Loader resolves the current context and its auth for the Assistant
-	// path. Required when Assistant may be called.
+	// Mode selects the generation path. Required (see Mode constants).
+	Mode Mode
+
+	// Loader resolves the current context and its auth. Required when
+	// Mode == ModeAssistant; ignored otherwise.
 	Loader *providers.ConfigLoader
 
 	// promptRunner is the injection seam for tests. Nil → runAssistant.
@@ -50,8 +61,11 @@ type Options struct {
 	cloudChecker func(context.Context, *providers.ConfigLoader) error
 }
 
-// Generate is the entry point. It resolves findings, builds a prompt,
-// decides between Assistant and local aggregation, and returns a Plan.
+// Generate is the entry point. It resolves findings, builds a prompt, and
+// dispatches to the selected mode. There is no cross-mode fallback: if
+// Mode == ModeAssistant and the Assistant path fails at any point, the
+// error is returned as-is so the user can decide whether to retry or
+// re-run with --fix-plan=local.
 func Generate(ctx context.Context, results otelutils.Results, opts Options) (Plan, error) {
 	findings := collectFindings(results)
 	if len(findings) == 0 {
@@ -64,63 +78,54 @@ func Generate(ctx context.Context, results otelutils.Results, opts Options) (Pla
 		docIDs = append(docIDs, d.ID)
 	}
 
-	prompt := buildPrompt(findings, docs)
-
-	// No loader — go straight to local, no Assistant attempt.
-	if opts.Loader == nil {
-		return localPlan(findings, docs, docIDs, false, ""), nil
+	switch opts.Mode {
+	case ModeLocal:
+		return Plan{
+			Source:   SourceLocal,
+			Content:  buildLocalPlan(findings, docs),
+			DocsUsed: docIDs,
+		}, nil
+	case ModeAssistant:
+		return runAssistantMode(ctx, opts, findings, docs, docIDs)
+	default:
+		return Plan{}, fmt.Errorf("fixplan.Generate: invalid Mode %q (want %q or %q)", opts.Mode, ModeLocal, ModeAssistant)
 	}
-	return tryAssistant(ctx, opts, findings, docs, docIDs, prompt)
 }
 
-// tryAssistant runs the Assistant path: cloud precondition, then a prompt
-// call. On success returns the Assistant response as an SourceAssistant
-// plan; on non-cancellation errors falls back to the local aggregator with
-// the reason preserved; on cancellation propagates the error.
-func tryAssistant(ctx context.Context, opts Options, findings []Finding, docs []otelexplain.Doc, docIDs []string, prompt string) (Plan, error) {
-	if cloudErr := checkCloud(ctx, opts); cloudErr != nil {
-		if errors.Is(cloudErr, context.Canceled) {
-			return Plan{}, cloudErr
-		}
-		// Intentional fallback: Assistant isn't reachable, but the
-		// local aggregator still produces a useful plan.
-		return localPlan(findings, docs, docIDs, true, cloudErr.Error()), nil
+// runAssistantMode runs the Cloud precondition, then the Assistant call.
+// Any failure — non-Cloud context, config error, request failure — is
+// returned as a plain error prefixed so the top-level command reporter
+// can surface it cleanly. Cancellation propagates so Ctrl+C stops the
+// command instead of hiding as a generic failure.
+func runAssistantMode(ctx context.Context, opts Options, findings []Finding, docs []otelexplain.Doc, docIDs []string) (Plan, error) {
+	if opts.Loader == nil {
+		return Plan{}, errors.New("--fix-plan=assistant: no config loader available")
 	}
 
+	if err := checkCloud(ctx, opts); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return Plan{}, err
+		}
+		return Plan{}, fmt.Errorf("--fix-plan=assistant: Grafana Assistant not available (use --fix-plan=local for an offline plan): %w", err)
+	}
+
+	prompt := buildPrompt(findings, docs)
 	runner := opts.promptRunner
 	if runner == nil {
 		runner = runAssistant
 	}
 	response, err := runner(ctx, opts.Loader, prompt)
 	if err != nil {
-		// A ctrl+C during the assistant call should surface as a real
-		// cancellation, not as a Fallback plan that hides why the run
-		// stopped. Check both the returned error and the context state
-		// because the assistant SDK may return its own error string
-		// rather than propagating context.Canceled directly.
 		if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 			return Plan{}, err
 		}
-		return localPlan(findings, docs, docIDs, true, fmt.Sprintf("Assistant request failed: %s", err)), nil
+		return Plan{}, fmt.Errorf("--fix-plan=assistant: Grafana Assistant request failed (try again, or use --fix-plan=local for an offline plan): %w", err)
 	}
 	return Plan{
 		Source:   SourceAssistant,
 		Content:  response,
 		DocsUsed: docIDs,
 	}, nil
-}
-
-// localPlan builds a Plan sourced from the local aggregator. When
-// fallback is true, the plan represents a degraded Assistant attempt and
-// reason explains why.
-func localPlan(findings []Finding, docs []otelexplain.Doc, docIDs []string, fallback bool, reason string) Plan {
-	return Plan{
-		Source:   SourceLocal,
-		Content:  buildLocalPlan(findings, docs),
-		DocsUsed: docIDs,
-		Fallback: fallback,
-		Reason:   reason,
-	}
 }
 
 // runAssistant is the default promptRunner. It resolves client options,
@@ -147,7 +152,7 @@ func runAssistant(ctx context.Context, loader *providers.ConfigLoader, message s
 		return "", errors.New("assistant: request timed out")
 	case result.Canceled:
 		// Return context.Canceled so callers can errors.Is-detect the
-		// cancellation and skip the local-fallback path.
+		// cancellation and propagate rather than wrapping as a failure.
 		return "", context.Canceled
 	case result.Failed:
 		return "", fmt.Errorf("assistant: %s", result.ErrorMessage)
@@ -163,13 +168,13 @@ type alwaysApprove struct{}
 func (alwaysApprove) HandleApproval(_ assistant.ApprovalRequest) bool { return true }
 
 // checkCloud runs the Grafana-Cloud precondition for the Assistant path.
-// It resolves the current context and returns a user-facing error string
-// when Assistant isn't reachable. Returns nil on success.
+// It resolves the current context and returns a user-facing error when
+// Assistant isn't reachable. Returns nil on success.
 //
 // Uses LoadConfigTolerant so a strict-validator failure (missing token,
-// bad path, malformed context) still produces a useful "Assistant not
-// available: <reason>" fallback rather than making that config error look
-// like an Assistant error.
+// bad path, malformed context) surfaces here rather than deeper in the
+// stream setup, and the caller can wrap it with a clear "--fix-plan=
+// assistant not available" prefix.
 func checkCloud(ctx context.Context, opts Options) error {
 	if opts.cloudChecker != nil {
 		return opts.cloudChecker(ctx, opts.Loader)

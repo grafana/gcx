@@ -48,7 +48,7 @@
 
 ### Features
 
-- Added `--fix-plan` to `gcx instrumentation check`: synthesizes a single fix plan covering every finding. Uses Grafana Assistant when the current context is a Grafana Cloud stack (billable); falls back to a local aggregation of the explanation docs' "How to fix" sections on OSS/Enterprise or when Assistant is unreachable.
+- Added `--fix-plan` to `gcx instrumentation check`, with two explicit modes: `--fix-plan=local` produces a deterministic aggregation of the explanation docs' "How to fix" sections (offline, no billing, works on OSS/Enterprise), and `--fix-plan=assistant` synthesizes a prioritized plan with Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see the Assistant pricing docs). The two modes are disjoint: assistant mode returns a clear error when preconditions aren't met rather than silently falling back to local. `--fix-plan` alone (bareword) is rejected; users must specify a mode.
 
 ## v1.1.0 (2026-08-14)
 
