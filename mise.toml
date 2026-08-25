@@ -3,7 +3,6 @@ min_version = "2024.1.0"
 [tools]
 go = "1.26"
 golangci-lint = "2.12.2"
-gotestsum = "1.13.0"
 goreleaser = "2.13.3"
 python = "3.12"
 uv = "latest"
@@ -48,7 +47,6 @@ run = """
 #!/usr/bin/env bash
 set -euo pipefail
 
-results_dir="${GCX_TEST_RESULTS_DIR:-.test-results}"
 package_parallelism="${GCX_TEST_PACKAGE_PARALLELISM:-16}"
 shard_count="${GCX_TEST_SHARD_COUNT:-1}"
 shard_index="${GCX_TEST_SHARD_INDEX:-0}"
@@ -62,7 +60,6 @@ if ! [[ "${shard_index}" =~ ^[0-9]+$ ]] || (( shard_index >= shard_count )); the
 fi
 
 packages=("./...")
-file_suffix=""
 if (( shard_count > 1 )); then
     packages=()
     package_number=0
@@ -73,39 +70,9 @@ if (( shard_count > 1 )); then
         fi
         package_number=$((package_number + 1))
     done < <(go list ./...)
-    file_suffix="-shard-$((shard_index + 1))-of-${shard_count}"
 fi
 
-mkdir -p "${results_dir}"
-json_file="${results_dir}/go-test${file_suffix}.json"
-junit_file="${results_dir}/go-test${file_suffix}.xml"
-
-set +e
-gotestsum \
-    --format pkgname-and-test-fails \
-    --jsonfile "${json_file}" \
-    --junitfile "${junit_file}" \
-    -- -p="${package_parallelism}" "${packages[@]}"
-test_status=$?
-set -e
-
-slowest="$(gotestsum tool slowest --jsonfile "${json_file}" --threshold 500ms || true)"
-if [[ -n "${slowest}" ]]; then
-    printf '\nSlow tests (500 ms or more):\n%s\n' "${slowest}"
-fi
-
-if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-    {
-        printf '## Slow Go tests\n\n'
-        if [[ -n "${slowest}" ]]; then
-            printf '```text\n%s\n```\n' "${slowest}"
-        else
-            printf 'No test took 500 ms or more.\n'
-        fi
-    } >> "${GITHUB_STEP_SUMMARY}"
-fi
-
-exit "${test_status}"
+go test -p="${package_parallelism}" "${packages[@]}"
 """
 
 [tasks."tests:linter"]

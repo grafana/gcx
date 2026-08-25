@@ -92,7 +92,6 @@ $ mise run all             # lint + tests + build + docs
 $ mise tasks               # list all available tasks
 ```
 
-`mise run tests` writes Go test JSON and JUnit reports to `.test-results/`.
 Set `GCX_TEST_PACKAGE_PARALLELISM` to override the default package concurrency.
 Set `GCX_TEST_SHARD_COUNT` and the zero-based `GCX_TEST_SHARD_INDEX` to run one stable package shard.
 

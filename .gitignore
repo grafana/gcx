@@ -5,7 +5,6 @@
 /build
 /bin
 /dist
-/.test-results
 /gcx
 /vendor
 /localdata
@@ -33,3 +32,4 @@ test-*.yaml
 # Beads / Dolt files (added by bd init)
 .beads
 .beads-credential-key
+
