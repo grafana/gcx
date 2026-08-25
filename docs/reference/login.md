@@ -346,23 +346,10 @@ those inputs.
 
 **Credential storage.** Grafana credentials persist under the context's named
 stack entry; CAP and Cloud OAuth credentials occupy distinct fields on the
-referenced Cloud entry. When the OS keychain is available, token-shaped secrets
-move there and YAML contains a source-, owner-, field-, and destination-bound
-sentinel instead. `gcx config view` redacts secret fields. Do not commit a
-credential-bearing config file to version control.
-
-If a known unreachable keychain backend prevents storage of a brand-new
-credential, gcx may keep that new value in the mode-`0600` config file and warns
-that it remains plaintext. It never silently downgrades a replacement,
-deletion, missing or rejected keychain reference, oversized value, or unknown
-backend failure to plaintext.
-
-A locked keychain is different from an unreachable one. A locked backend proves
-that a real secret store exists, so gcx does not use or write a plaintext
-credential as a fallback. Login and credential-consuming commands fail with a
-`Keychain locked` error, while config inspection and repair remain available.
-Unlock the keychain, then run the command again. See the locked-keychain entry in
-[Troubleshooting](#troubleshooting).
+referenced Cloud entry. See [Keychain credential storage](configuration/keychain.md)
+for storage rules and keychain error procedures. `gcx config view` redacts
+secret fields. Do not commit a credential-bearing config file to version
+control.
 
 ## Troubleshooting
 
@@ -417,8 +404,8 @@ Each entry pairs the error you see with what it means and how to fix it.
     - *Fix:* Review the paths listed by the error and rerun with the intended `--config <path>`, or keep the target stack, Cloud entry, and context bindings together in one source.
 
 13. **A credential was `rejected before network use`**
-    - *Means:* a keychain reference was missing/foreign, a destination changed, the OS keychain was locked, or an environment credential was paired with an auto-discovered repository destination. gcx withheld it instead of sending an empty or misrouted credential. A locked-keychain cause surfaces as the `Keychain locked` error in entry 16 below.
-    - *Fix:* For an auto-discovered repository destination, review the file and rerun with its explicit `--config` path. Explicit selection does not make a missing, foreign, or destination-mismatched keychain sentinel valid; re-authenticate or replace/unset that field. Use the exact raw editor command named by the error, such as `gcx config edit user` or `gcx config edit --config "<path>"`; it remains available even when ordinary loading fails.
+    - *Means:* a credential reference was missing or foreign, a destination changed, or an environment credential was paired with an auto-discovered repository destination. gcx withheld it instead of sending an empty or misrouted credential.
+    - *Fix:* For an auto-discovered repository destination, review the file and rerun with its explicit `--config` path. Re-authenticate, or replace or unset the rejected field. See [Keychain credential storage](configuration/keychain.md) if the error identifies a keychain reference.
 
 14. **`Cloud credential destination is ambiguous`**
     - *Means:* one credential-bearing Cloud entry has no explicit endpoint pair and is referenced by contexts in different Cloud environments. gcx will not guess which API destination may receive it.
@@ -428,13 +415,10 @@ Each entry pairs the error you see with what it means and how to fix it.
     - *Means:* the selected owner or the discovered config source set changed while OAuth or connectivity validation was in progress. The freshly authenticated credential was not written.
     - *Fix:* Review every changed file, then retry. If you intend to trust one document as authoritative, rerun with its explicit `--config <path>`.
 
-16. **`Keychain locked`**
-    - *Means:* macOS Keychain or a Linux/BSD Secret Service answers, but it is locked or the current session cannot present the interaction needed to unlock it. gcx stops commands that need the credential and does not fall back to plaintext; config inspection and repair remain available. Windows Credential Manager lock failures are not yet classified this way.
-    - *Fix:* On macOS, run `security unlock-keychain` in the same security session as gcx, then retry; do not put the password on the command line. On Linux or BSD, follow [Unlock a GNOME keyring in a headless session](../sources/configuration.md#unlock-a-gnome-keyring-in-a-headless-session). You can also run gcx from an unlocked desktop session. If you cannot unlock the keychain on this host, supply the credential through an environment variable such as `GRAFANA_TOKEN`.
-
 ## See also
 
 - [`gcx login` flag reference](cli/gcx_login.md) — exhaustive list of flags and options.
+- [Keychain credential storage](configuration/keychain.md) — credential storage rules and keychain error procedures.
 - [Login system architecture](../architecture/login-system.md) — how the login orchestrator works internally.
 - [Authentication subsystem](../architecture/auth-system.md) — OAuth PKCE, token lifecycle, `RefreshTransport`.
 - [Configuration and context system](../architecture/config-system.md) — how contexts are stored and merged.

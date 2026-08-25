@@ -226,7 +226,7 @@ func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
 		Details:     "The OS keychain is reachable, but it is locked or cannot be unlocked in this session. gcx does not fall back to a plaintext credential.",
 		Parent:      err,
 		Suggestions: keychainLockedSuggestions(runtime.GOOS),
-		DocsLink:    docs.Configuration,
+		DocsLink:    docs.Keychain,
 	}, true
 }
 

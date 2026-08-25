@@ -64,23 +64,8 @@ Credentials in the OS credential store (Keychain on macOS, Credential Manager
 on Windows, Secret Service on Linux) are tied to the canonical config file,
 exact owner kind and name, exact secret field, and normalized destination. Copying a config
 file does not make its stored credentials portable; authenticate the copied
-file separately.
-
-When gcx detects a locked macOS Keychain or Secret Service collection, it does
-not use or write a plaintext credential as a fallback, because a real
-credential store exists. A credential-consuming command fails with a
-`Keychain locked` error; inspection and repair commands remain available. A
-headless or SSH session causes this most often: the credential-store process is
-reachable, but the current session cannot present an unlock prompt. Windows
-Credential Manager lock failures are not yet part of this classification. To
-recover, do one of these steps:
-
-- On macOS, unlock the login keychain in the same security session as gcx. See
-  [Unlock a macOS keychain in the current session](#unlock-a-macos-keychain-in-the-current-session).
-- On Linux or BSD, unlock the Secret Service collection. See
-  [Unlock a GNOME keyring in a headless session](#unlock-a-gnome-keyring-in-a-headless-session).
-- Run `gcx` from a desktop session that can show a password prompt.
-- Supply the credential through an environment variable, such as `GRAFANA_TOKEN`.
+file separately. See [Keychain credential storage](../reference/configuration/keychain.md)
+for storage rules and keychain error procedures.
 
 An automatically discovered repository `.gcx.yaml` cannot attach tokens,
 passwords, or client-certificate files from your environment, login flags, or
@@ -138,59 +123,6 @@ gcx config set contexts.staging.stack staging
 ```
 
 Note that in these examples, `default` and `staging` are the context and stack names.
-
-## Unlock a macOS keychain in the current session
-
-On macOS, a keychain unlock applies to the current security session. Unlocking
-the login keychain in a different terminal or process tree may not help the gcx
-process that reported the error. From the session where you will run gcx, use:
-
-```shell
-security unlock-keychain
-```
-
-The command prompts for the keychain password. Do not pass the password with
-`-p`, because that exposes it in the process arguments. After the command
-succeeds, retry gcx from the same session. If the process still cannot use the
-unlock, run gcx from an unlocked desktop session instead.
-
-## Unlock a GNOME keyring in a headless session
-
-A headless or SSH session runs no agent that can answer the unlock prompt, so
-the login collection stays locked. Read the lock state first:
-
-```shell
-busctl --user get-property org.freedesktop.secrets \
-  /org/freedesktop/secrets/collection/login \
-  org.freedesktop.Secret.Collection Locked
-```
-
-`b true` means the collection is locked. To unlock it, pipe the password into
-the daemon. `gnome-keyring-daemon --unlock` shows no prompt of its own, and
-`--daemonize` forks the process, so a password that you type never reaches it.
-A trailing newline leaves the collection locked and reports no error, so this
-recipe uses `printf` instead of `echo`:
-
-```shell
-stty -echo; printf 'Keyring password: '; read -r PW; stty echo; echo
-printf '%s' "$PW" | gnome-keyring-daemon --replace --daemonize --unlock
-unset PW
-```
-
-Read the lock state again to confirm the result. `b false` means the collection
-is unlocked.
-
-If the state does not change, `--replace` did not take the
-`org.freedesktop.secrets` name. A service manager that runs the keyring daemon
-can hold the name and refuse to yield it. Stop that service, then run the unlock
-recipe again:
-
-```shell
-systemctl --user stop gnome-keyring-daemon.service gnome-keyring-daemon.socket
-```
-
-If you cannot unlock the keyring on the host, supply the credential through an
-environment variable such as `GRAFANA_TOKEN` instead.
 
 ## Useful commands
 

@@ -1400,7 +1400,7 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 				got.Details)
 			require.Error(t, got.Parent)
 			require.ErrorIs(t, got.Parent, credentials.ErrLocked)
-			assert.Equal(t, docs.Configuration, got.DocsLink)
+			assert.Equal(t, docs.Keychain, got.DocsLink)
 			// convert_internal_test.go pins the per-platform suggestions.
 			assert.NotEmpty(t, got.Suggestions)
 		})
