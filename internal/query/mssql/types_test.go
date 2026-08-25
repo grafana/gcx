@@ -31,11 +31,17 @@ func TestEnforceTop(t *testing.T) {
 		{"union bails", "SELECT a FROM t1 UNION SELECT a FROM t2", 100, "SELECT a FROM t1 UNION SELECT a FROM t2"},
 		{"offset fetch bails", "SELECT * FROM dbo.t ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY", 100, "SELECT * FROM dbo.t ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY"},
 		{"non-select bails", "EXEC sp_who", 100, "EXEC sp_who"},
+		{"select into bails", "SELECT * INTO dbo.backup FROM dbo.orders", 100, "SELECT * INTO dbo.backup FROM dbo.orders"},
+		{"select into with distinct bails", "SELECT DISTINCT name INTO #tmp FROM dbo.t", 100, "SELECT DISTINCT name INTO #tmp FROM dbo.t"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, mssql.EnforceTop(tt.sql, tt.limit, 1000))
+			// A byte-identical assertion, not just "changed" vs "unchanged": a
+			// bail that accidentally still mutated whitespace or case would
+			// pass a looser check but silently alter the write target's SQL.
+			got := mssql.EnforceTop(tt.sql, tt.limit, 1000)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -57,6 +63,7 @@ func TestEnforceTopSentinel(t *testing.T) {
 		{"existing top not sentineled", "SELECT TOP (5) * FROM dbo.t", 100, "SELECT TOP (5) * FROM dbo.t", 100, false},
 		{"cte bails", "WITH c AS (SELECT 1 AS n) SELECT * FROM c", 100, "WITH c AS (SELECT 1 AS n) SELECT * FROM c", 100, false},
 		{"offset fetch bails", "SELECT * FROM dbo.t ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY", 100, "SELECT * FROM dbo.t ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY", 100, false},
+		{"select into bails", "SELECT * INTO dbo.backup FROM dbo.orders", 100, "SELECT * INTO dbo.backup FROM dbo.orders", 100, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

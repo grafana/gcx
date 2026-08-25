@@ -76,6 +76,12 @@ var (
 	existingTopRe   = regexp.MustCompile(`(?is)^\s*SELECT\s+(?:DISTINCT\s+|ALL\s+)?TOP\b`)
 	setOpRe         = regexp.MustCompile(`(?is)\b(?:UNION|INTERSECT|EXCEPT)\b`)
 	offsetRe        = regexp.MustCompile(`(?is)\bOFFSET\b`)
+	// selectIntoRe catches T-SQL's SELECT ... INTO new_table FROM ..., a write
+	// that creates new_table from the query's result set. Injecting TOP here
+	// would silently cap what gets written, not what gets read, so this bails
+	// like mysql's INSERT/UPDATE/DELETE/INTO OUTFILE checks (types.go's
+	// limitBailRe) even though MSSQL's write shape is different.
+	selectIntoRe = regexp.MustCompile(`(?is)\bINTO\b`)
 )
 
 // EnforceTop injects a `TOP (n)` clause into a simple leading-SELECT query to
@@ -85,8 +91,9 @@ var (
 //
 // It bails (returns the SQL unchanged) whenever injecting TOP would be invalid
 // or change semantics: non-SELECT statements, CTEs (WITH ...), queries that
-// already use TOP, set operations (UNION/INTERSECT/EXCEPT), and paged queries
-// (OFFSET ... FETCH). Bailing is always safe because it only forgoes the cap.
+// already use TOP, set operations (UNION/INTERSECT/EXCEPT), paged queries
+// (OFFSET ... FETCH), and SELECT ... INTO (which writes a new table). Bailing
+// is always safe because it only forgoes the cap.
 //
 // Note the deliberate divergence from the shared EnforceLimit: when the SQL
 // already carries a cap, EnforceLimit rewrites an over-max `LIMIT n` down to
@@ -124,13 +131,14 @@ func EnforceTopSentinel(sql string, limit, maxLimit int) (string, int, bool) {
 // returning the rewritten SQL and whether the injection happened. It bails
 // (returns the SQL unchanged, false) for statements where injecting TOP would be
 // invalid or change semantics: non-SELECT statements, CTEs (WITH ...), queries
-// that already use TOP, set operations, and paged (OFFSET ... FETCH) queries.
+// that already use TOP, set operations, paged (OFFSET ... FETCH) queries, and
+// SELECT ... INTO.
 func injectTop(sql string, n int) (string, bool) {
 	loc := leadingSelectRe.FindStringIndex(sql)
 	if loc == nil {
 		return sql, false // not a leading-SELECT statement (e.g. WITH, EXEC, INSERT)
 	}
-	if existingTopRe.MatchString(sql) || setOpRe.MatchString(sql) || offsetRe.MatchString(sql) {
+	if existingTopRe.MatchString(sql) || setOpRe.MatchString(sql) || offsetRe.MatchString(sql) || selectIntoRe.MatchString(sql) {
 		return sql, false
 	}
 
