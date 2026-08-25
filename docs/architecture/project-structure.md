@@ -188,7 +188,7 @@ server) rather than technical concerns, making it easy to locate code by feature
 ### Toolchain
 
 Tools are managed by [mise](https://mise.jdx.dev/) via `mise.toml`. Once
-`mise install` has been run, all tools (Go, golangci-lint, goreleaser, Python)
+`mise install` has been run, all tools (Go, golangci-lint, gotestsum, goreleaser, Python)
 are available. All development commands use `mise run`, which ensures the correct
 tool versions are used regardless of shell configuration.
 
@@ -199,7 +199,7 @@ tool versions are used regardless of shell configuration.
 | `mise run all` | Runs lint + tests + build + docs (the full gate) |
 | `mise run build` | Compiles `./cmd/gcx` into `bin/gcx` |
 | `mise run install` | Copies binary to `$GOPATH/bin` |
-| `mise run tests` | `go test -v ./...` (all packages, with race detection implied) |
+| `mise run tests` | Runs all tests and writes Go JSON and JUnit reports to `.test-results/` |
 | `mise run lint` | Runs `golangci-lint run -c .golangci.yaml` |
 | `mise run deps` | `go mod download` + `uv pip install -r requirements.txt` |
 | `mise run docs` | Runs `reference` then `mkdocs build` → `build/documentation/` |

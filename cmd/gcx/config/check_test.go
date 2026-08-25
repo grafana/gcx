@@ -129,18 +129,22 @@ current-context: default
 func TestCheckCommandPreservesCancellation(t *testing.T) {
 	clearConfigCheckEnvironment(t)
 	t.Setenv("GRAFANA_TOKEN", "test-token")
-	path := writeCheckConfig(t, `version: 1
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"message":"canceled check"}`, http.StatusBadRequest)
+	}))
+	t.Cleanup(server.Close)
+	path := writeCheckConfig(t, fmt.Sprintf(`version: 1
 stacks:
   target:
     grafana:
-      server: http://127.0.0.1:1
+      server: %q
       org-id: 1
       auth-method: token
 contexts:
   target:
     stack: target
 current-context: target
-`)
+`, server.URL))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
@@ -178,7 +182,9 @@ func TestCheckCommandExitStatusTracksConnectivityAndVersion(t *testing.T) {
 		{
 			name: "version request failure",
 			handler: checkServerHandler(func(w http.ResponseWriter) {
-				http.Error(w, `{"message":"health unavailable"}`, http.StatusServiceUnavailable)
+				// Retry behavior belongs to internal/retry. This command test
+				// needs only a failed health response.
+				http.Error(w, `{"message":"health unavailable"}`, http.StatusBadRequest)
 			}),
 			wantErr:    true,
 			wantOutput: "Grafana version:",

@@ -1,4 +1,4 @@
-package root_test
+package main
 
 import (
 	"bytes"
@@ -9,16 +9,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/grafana/gcx/cmd/gcx/root"
+	"github.com/grafana/gcx/internal/agent"
+	appversion "github.com/grafana/gcx/internal/version"
 )
 
 // Agent output contract conformance smoke test (docs/design/agent-mode.md):
-// runs a freshly built gcx binary against offline-runnable commands and
+// runs a gcx process helper against offline-runnable commands and
 // asserts, per protocol class:
 //
 //   - finite: stdout parses as EXACTLY ONE JSON value followed by EOF —
@@ -29,69 +31,54 @@ import (
 //     prompt hangs and fails the test by timeout rather than passing
 //     silently.
 //
-// Backend-dependent commands are covered by per-package tests with fakes;
-// this suite pins the end-to-end wiring (BindFlags override, reportError,
-// EmittedError suppression) that unit tests cannot see.
+// Backend-dependent commands are covered by per-package tests with fakes.
+// This suite pins the end-to-end wiring that unit tests cannot see.
 
-var (
-	buildOnce sync.Once //nolint:gochecknoglobals // shared across subtests
-	buildPath string    //nolint:gochecknoglobals
-	errBuild  error     //nolint:gochecknoglobals
+const (
+	agentConformanceProcessHelper = "GCX_AGENT_CONFORMANCE_PROCESS_HELPER"
+	agentConformanceArgs          = "GCX_AGENT_CONFORMANCE_ARGS"
 )
 
-// TestMain removes the shared conformance binary after the package's tests
-// finish — sync.Once keeps it alive across subtests, so t.TempDir cleanup
-// cannot own it (see buildGcx), and without this every test run would leak
-// a full gcx binary in TMPDIR.
-func TestMain(m *testing.M) {
-	code := m.Run()
-	if buildPath != "" {
-		_ = os.RemoveAll(filepath.Dir(buildPath))
+// TestAgentConformanceProcessHelper runs one gcx command in a new process.
+// The parent re-executes the compiled test binary. This keeps process-level
+// exit behavior without building a second full gcx binary during the test.
+func TestAgentConformanceProcessHelper(t *testing.T) {
+	if os.Getenv(agentConformanceProcessHelper) != "1" {
+		return
 	}
-	os.Exit(code)
+
+	var args []string
+	if err := json.Unmarshal([]byte(os.Getenv(agentConformanceArgs)), &args); err != nil {
+		t.Fatalf("decode helper arguments: %v", err)
+	}
+
+	agent.ResetForTesting()
+	os.Args = append([]string{"gcx"}, args...)
+	preParseAgentFlag()
+	appversion.Set("test")
+
+	cmd := root.Command("test")
+	boolFlags := collectBoolFlags(cmd)
+	subCmds := collectSubCmds(cmd)
+	if err := root.ValidateArgs(cmd, args); err != nil {
+		os.Exit(reportError(err, boolFlags, subCmds))
+	}
+	err := cmd.ExecuteContext(context.Background())
+	os.Exit(reportError(err, boolFlags, subCmds))
 }
 
-// buildGcx builds the gcx binary once per test run — always fresh, never
-// trusting a stale bin/gcx.
-func buildGcx(t *testing.T) string {
-	t.Helper()
-	buildOnce.Do(func() {
-		// Not t.TempDir(): that directory is deleted when the first test to
-		// build finishes, while sync.Once keeps serving the path to later
-		// tests — they would run a vanished binary.
-		dir, err := os.MkdirTemp("", "gcx-conformance-*") //nolint:usetesting // see above
-		if err != nil {
-			errBuild = err
-			return
-		}
-		bin := filepath.Join(dir, "gcx")
-		if runtime.GOOS == "windows" {
-			bin += ".exe"
-		}
-		// Repo root is two levels up from cmd/gcx/root.
-		cmd := exec.CommandContext(context.Background(), "go", "build", "-buildvcs=false", "-o", bin, "../../../cmd/gcx/")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			errBuild = errors.New("building gcx: " + err.Error() + "\n" + string(out))
-			return
-		}
-		buildPath = bin
-	})
-	if errBuild != nil {
-		t.Fatalf("%v", errBuild)
-	}
-	return buildPath
-}
-
-// runGcx runs the built binary with agent mode enabled, an isolated HOME and
+// runGcx runs the process helper with agent mode enabled, an isolated HOME and
 // XDG environment, telemetry off, and stdin closed. It returns stdout and the
 // exit code; stderr is captured only to keep it out of stdout.
 func runGcx(t *testing.T, args ...string) (string, int) {
 	t.Helper()
-	bin := buildGcx(t)
+	encodedArgs, err := json.Marshal(args)
+	if err != nil {
+		t.Fatalf("encode helper arguments: %v", err)
+	}
 
 	home := t.TempDir()
-	cmd := exec.CommandContext(context.Background(), bin, args...)
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=^TestAgentConformanceProcessHelper$") //nolint:gosec // trusted current test binary
 	cmd.Env = []string{
 		"HOME=" + home,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
@@ -103,13 +90,15 @@ func runGcx(t *testing.T, args ...string) (string, int) {
 		"GCX_AGENT_MODE=1",
 		"GCX_TELEMETRY=off",
 		"DO_NOT_TRACK=1",
+		agentConformanceProcessHelper + "=1",
+		agentConformanceArgs + "=" + string(encodedArgs),
 	}
 	cmd.Stdin = nil // exec: /dev/null — a surviving prompt reads EOF, never blocks on us
 
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
-	err := cmd.Run()
+	err = cmd.Run()
 	code := 0
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
@@ -136,35 +125,9 @@ func assertOneJSONValue(t *testing.T, stdout string) any {
 	return first
 }
 
-func TestAgentConformance_FiniteCommandsEmitOneJSONValue(t *testing.T) {
-	if testing.Short() {
-		t.Skip("builds the gcx binary; skipped with -short")
-	}
-
-	// Offline-runnable finite commands: success paths.
-	successCases := []struct {
-		name string
-		args []string
-	}{
-		{name: "providers list", args: []string{"providers", "list"}},
-		{name: "commands catalog", args: []string{"commands"}},
-		{name: "skills list", args: []string{"agent", "skills", "list"}},
-		{name: "dev lint list-rules", args: []string{"dev", "lint", "list-rules"}},
-	}
-	for _, tc := range successCases {
-		t.Run(tc.name, func(t *testing.T) {
-			stdout, code := runGcx(t, tc.args...)
-			if code != 0 {
-				t.Fatalf("exit code = %d, want 0\nstdout:\n%s", code, stdout)
-			}
-			assertOneJSONValue(t, stdout)
-		})
-	}
-}
-
 func TestAgentConformance_FailuresAreOneInBandErrorDocument(t *testing.T) {
 	if testing.Short() {
-		t.Skip("builds the gcx binary; skipped with -short")
+		t.Skip("starts a gcx helper process; skipped with -short")
 	}
 
 	// A command that fails without a backend: no config context exists in
@@ -202,7 +165,7 @@ func TestAgentConformance_FailuresAreOneInBandErrorDocument(t *testing.T) {
 // process status and the in-band payload.
 func TestAgentConformance_InvalidStackSlugIsUsageError(t *testing.T) {
 	if testing.Short() {
-		t.Skip("builds the gcx binary; skipped with -short")
+		t.Skip("starts a gcx helper process; skipped with -short")
 	}
 
 	stdout, code := runGcx(t, "cloud", "stacks", "create",
@@ -249,10 +212,10 @@ func TestAgentConformance_InvalidStackSlugIsUsageError(t *testing.T) {
 func TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue(t *testing.T) {
 	t.Parallel()
 	if testing.Short() {
-		t.Skip("builds the gcx binary and executes every finite leaf; skipped with -short")
+		t.Skip("executes every finite leaf in a helper process; skipped with -short")
 	}
 
-	raw, err := os.ReadFile("testdata/output_classes.json")
+	raw, err := os.ReadFile("root/testdata/output_classes.json")
 	if err != nil {
 		t.Fatalf("reading output class fixture: %v", err)
 	}
@@ -261,7 +224,6 @@ func TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue(t *testing.T) {
 		t.Fatalf("parsing output class fixture: %v", err)
 	}
 
-	bin := buildGcx(t)
 	for _, cmdPath := range sortedKeys(classes) {
 		class := classes[cmdPath]
 		if class != "finite" && class != "artifact" && class != "stream" {
@@ -270,7 +232,7 @@ func TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue(t *testing.T) {
 		args := strings.Fields(cmdPath)[1:] // drop the "gcx" prefix
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
 			t.Parallel()
-			stdout, code, timedOut := runGcxIsolated(t, bin, args)
+			stdout, code, timedOut := runGcxIsolated(t, args)
 			if timedOut {
 				t.Fatal("command did not exit within the timeout — a prompt or editor survived agent mode")
 			}
@@ -283,7 +245,19 @@ func TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue(t *testing.T) {
 			}
 			doc := assertOneJSONValue(t, stdout)
 			assertExitCodeAgreement(t, []any{doc}, code)
+			assertSuccessfulDocumentExit(t, doc, code)
 		})
+	}
+}
+
+func assertSuccessfulDocumentExit(t *testing.T, doc any, code int) {
+	t.Helper()
+	obj, ok := doc.(map[string]any)
+	if ok && obj["type"] == "gcx.error" {
+		return
+	}
+	if code != 0 {
+		t.Fatalf("successful document has exit code %d, want 0\ndocument: %v", code, doc)
 	}
 }
 
@@ -347,13 +321,17 @@ func sortedKeys(m map[string]string) []string {
 // runGcxIsolated executes the binary with agent mode on, no configuration,
 // an empty working directory, and a hard timeout. Returns stdout, the exit
 // code, and whether the run timed out.
-func runGcxIsolated(t *testing.T, bin string, args []string) (string, int, bool) {
+func runGcxIsolated(t *testing.T, args []string) (string, int, bool) {
 	t.Helper()
+	encodedArgs, err := json.Marshal(args)
+	if err != nil {
+		t.Fatalf("encode helper arguments: %v", err)
+	}
 	home := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Dir = t.TempDir() // no ./resources or other cwd pickups
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAgentConformanceProcessHelper$") //nolint:gosec // trusted current test binary
+	cmd.Dir = t.TempDir()                                                                        // no ./resources or other cwd pickups
 	cmd.Env = []string{
 		"HOME=" + home,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
@@ -365,12 +343,14 @@ func runGcxIsolated(t *testing.T, bin string, args []string) (string, int, bool)
 		"GCX_AGENT_MODE=1",
 		"GCX_TELEMETRY=off",
 		"DO_NOT_TRACK=1",
+		agentConformanceProcessHelper + "=1",
+		agentConformanceArgs + "=" + string(encodedArgs),
 	}
 	cmd.Stdin = nil
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
-	err := cmd.Run()
+	err = cmd.Run()
 	if ctx.Err() != nil {
 		return outBuf.String(), -1, true
 	}
@@ -386,7 +366,7 @@ func runGcxIsolated(t *testing.T, bin string, args []string) (string, int, bool)
 
 func TestAgentConformance_ExplicitOverrideWins(t *testing.T) {
 	if testing.Short() {
-		t.Skip("builds the gcx binary; skipped with -short")
+		t.Skip("starts a gcx helper process; skipped with -short")
 	}
 
 	// Explicit -o yaml must override the agent-mode agents default: the

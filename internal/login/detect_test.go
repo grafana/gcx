@@ -141,7 +141,7 @@ func TestProbeTarget(t *testing.T) {
 func TestProbeTargetTimeout(t *testing.T) {
 	// AC-019: probe timeout → TargetUnknown
 	slowSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(5 * time.Second)
+		<-r.Context().Done()
 	}))
 	defer slowSrv.Close()
 

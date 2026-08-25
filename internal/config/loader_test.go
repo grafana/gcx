@@ -220,35 +220,38 @@ func TestWrite_AtomicUnderConcurrentLoad(t *testing.T) {
 	configFile := filepath.Join(tmpDir, "config.yaml")
 	source := config.ExplicitConfigFile(configFile)
 
-	cfg := config.Config{CurrentContext: "local"}
-	require.NoError(t, config.Write(t.Context(), source, cfg))
+	before := config.Config{CurrentContext: "before"}
+	require.NoError(t, config.Write(t.Context(), source, before))
 
-	done := make(chan struct{})
+	renameStarted := make(chan struct{})
+	allowRename := make(chan struct{})
+	restoreRename := config.SetRenameConfigFileForTest(func(oldPath, newPath string) error {
+		close(renameStarted)
+		<-allowRename
+		return os.Rename(oldPath, newPath)
+	})
+	t.Cleanup(restoreRename)
+
 	writeErr := make(chan error, 1)
 	go func() {
-		defer close(done)
-		for range 1000 {
-			if err := config.Write(t.Context(), source, cfg); err != nil {
-				writeErr <- err
-				return
-			}
-		}
+		writeErr <- config.Write(t.Context(), source, config.Config{CurrentContext: "after"})
 	}()
 
-	for {
-		select {
-		case <-done:
-			select {
-			case err := <-writeErr:
-				t.Fatalf("concurrent Write failed: %v", err)
-			default:
-			}
-			return
-		default:
-			_, err := config.Load(t.Context(), source)
-			require.NoError(t, err, "Load must never observe a partially written config")
-		}
+	select {
+	case <-renameStarted:
+	case err := <-writeErr:
+		t.Fatalf("Write completed before the rename barrier: %v", err)
 	}
+	during, err := config.Load(t.Context(), source)
+	require.NoError(t, err, "Load must not observe the staged temporary file")
+	assert.Equal(t, "before", during.CurrentContext)
+
+	close(allowRename)
+	require.NoError(t, <-writeErr)
+
+	after, err := config.Load(t.Context(), source)
+	require.NoError(t, err)
+	assert.Equal(t, "after", after.CurrentContext)
 }
 
 func TestDiscoverSources(t *testing.T) {

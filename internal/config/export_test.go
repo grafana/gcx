@@ -7,6 +7,14 @@ import (
 	"github.com/grafana/gcx/internal/credentials"
 )
 
+// SetRenameConfigFileForTest swaps the final atomic rename operation and
+// returns a function that restores it. Exposed solely for tests in config_test.
+func SetRenameConfigFileForTest(fn func(string, string) error) func() {
+	original := renameConfigFile
+	renameConfigFile = fn
+	return func() { renameConfigFile = original }
+}
+
 // SetKeychainStoreFnForTest swaps the package-level keychainStoreFn and
 // returns a function that restores the original value. Exposed solely for
 // tests in config_test.

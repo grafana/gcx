@@ -92,6 +92,9 @@ $ mise run all             # lint + tests + build + docs
 $ mise tasks               # list all available tasks
 ```
 
+`mise run tests` writes Go test JSON and JUnit reports to `.test-results/`.
+Set `GCX_TEST_PACKAGE_PARALLELISM` to override the default package concurrency.
+
 See the [mise documentation](https://mise.jdx.dev/) for shell integration and further options.
 
 ## Testing against a real Grafana API

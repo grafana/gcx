@@ -1,6 +1,8 @@
 package discovery_test
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -100,10 +102,13 @@ func TestDiscoveryCacheDir_ExplicitOverrideDir(t *testing.T) {
 }
 
 func TestNewDefaultRegistryWithCacheDir(t *testing.T) {
-	cfg := config.NamespacedRESTConfig{}
-	cfg.Host = "https://test.grafana.net"
+	server := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(server.Close)
 
-	// This will fail to connect (no server), but should not panic.
+	cfg := config.NamespacedRESTConfig{}
+	cfg.Host = server.URL
+
+	// The local server returns an immediate discovery error.
 	_, err := discovery.NewDefaultRegistryWithCacheDir(t.Context(), cfg, t.TempDir())
-	require.Error(t, err, "should fail because there's no server to connect to")
+	require.Error(t, err, "should return the server discovery error")
 }

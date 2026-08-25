@@ -3,6 +3,7 @@ min_version = "2024.1.0"
 [tools]
 go = "1.26"
 golangci-lint = "2.12.2"
+gotestsum = "1.13.0"
 goreleaser = "2.13.3"
 python = "3.12"
 uv = "latest"
@@ -43,7 +44,43 @@ depends = ["tests:cli", "tests:linter", "tests:install"]
 [tasks."tests:cli"]
 description = "Run CLI tests"
 env = { GCX_AGENT_MODE = "false" }
-run = "go test ./..."
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+results_dir="${GCX_TEST_RESULTS_DIR:-.test-results}"
+package_parallelism="${GCX_TEST_PACKAGE_PARALLELISM:-16}"
+mkdir -p "${results_dir}"
+json_file="${results_dir}/go-test.json"
+junit_file="${results_dir}/go-test.xml"
+
+set +e
+gotestsum \
+    --format pkgname-and-test-fails \
+    --jsonfile "${json_file}" \
+    --junitfile "${junit_file}" \
+    -- -p="${package_parallelism}" ./...
+test_status=$?
+set -e
+
+slowest="$(gotestsum tool slowest --jsonfile "${json_file}" --threshold 500ms || true)"
+if [[ -n "${slowest}" ]]; then
+    printf '\nSlow tests (500 ms or more):\n%s\n' "${slowest}"
+fi
+
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    {
+        printf '## Slow Go tests\n\n'
+        if [[ -n "${slowest}" ]]; then
+            printf '```text\n%s\n```\n' "${slowest}"
+        else
+            printf 'No test took 500 ms or more.\n'
+        fi
+    } >> "${GITHUB_STEP_SUMMARY}"
+fi
+
+exit "${test_status}"
+"""
 
 [tasks."tests:linter"]
 description = "Run linter rules tests"
