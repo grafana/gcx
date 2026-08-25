@@ -61,9 +61,10 @@ fi
 if [[ -n "${GCX_TEST_PACKAGE_PARALLELISM:-}" ]]; then
     package_parallelism="${GCX_TEST_PACKAGE_PARALLELISM}"
 elif [[ -n "${shard_index}" ]]; then
-    package_parallelism=16
+    package_parallelism="$(getconf _NPROCESSORS_ONLN)"
 else
-    package_parallelism=6
+    cpu_count="$(getconf _NPROCESSORS_ONLN)"
+    package_parallelism="$(((cpu_count + shard_count - 1) / shard_count))"
 fi
 
 all_packages=()
