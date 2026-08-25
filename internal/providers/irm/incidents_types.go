@@ -78,6 +78,10 @@ type Incident struct {
 	IncidentEnd             FlexTime             `json:"incidentEnd,omitzero"`
 	DescriptionModifiedTime FlexTime             `json:"descriptionModifiedTime,omitzero"`
 	StatusModifiedTime      FlexTime             `json:"statusModifiedTime,omitzero"`
+
+	// updatedFields carries command result metadata through TypedCRUD.Update.
+	// It is not an IRM API field and is never serialized in a resource.
+	updatedFields []string
 }
 
 // IncidentUser represents a user referenced in incident fields.

@@ -32,7 +32,6 @@ const (
 	// 404 under the /v1 prefix — they only respond here.
 	incidentLegacyBasePath = "/api/plugins/grafana-irm-app/resources/api"
 
-	incGetPath    = incidentBasePath + "/IncidentsService.GetIncident"
 	incCreatePath = incidentBasePath + "/IncidentsService.CreateIncident"
 
 	// The IRM API has one operation per mutable field: CreateIncident ignores
@@ -40,15 +39,16 @@ const (
 	// method. The method names are held apart from the base path, because
 	// updateIncidentField tries the versioned base path first and the
 	// unversioned one second.
+	incGetMethod            = "IncidentsService.GetIncident"
 	incUpdateStatusMethod   = "IncidentsService.UpdateStatus"
 	incUpdateSeverityMethod = "IncidentsService.UpdateSeverity"
 	incUpdateTitleMethod    = "IncidentsService.UpdateTitle"
 
-	incQueryPath      = incidentBasePath + "/IncidentsService.QueryIncidentPreviews"
-	actQueryPath      = incidentBasePath + "/ActivityService.QueryActivity"
-	actAddPath        = incidentBasePath + "/ActivityService.AddActivity"
-	sevGetPath        = incidentLegacyBasePath + "/SeveritiesService.GetOrgSeverities"
-	ctxQueryPath      = incidentLegacyBasePath + "/IncidentContextService.QueryIncidentContext"
+	incQueryPath = incidentBasePath + "/IncidentsService.QueryIncidentPreviews"
+	actQueryPath = incidentBasePath + "/ActivityService.QueryActivity"
+	actAddPath   = incidentBasePath + "/ActivityService.AddActivity"
+	sevGetPath   = incidentLegacyBasePath + "/SeveritiesService.GetOrgSeverities"
+	ctxQueryPath = incidentLegacyBasePath + "/IncidentContextService.QueryIncidentContext"
 	// IntegrationService is likewise not part of the documented v1 API and
 	// is served from the unversioned base path.
 	hookRunsPath = incidentLegacyBasePath + "/IntegrationService.GetHookRuns"
@@ -376,7 +376,7 @@ func (c *IncidentClient) Get(ctx context.Context, id string) (*Incident, error) 
 		return nil, fmt.Errorf("incidents: marshal get request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, incGetPath, bytes.NewReader(body))
+	resp, err := c.doIncidentMethod(ctx, incGetMethod, body)
 	if err != nil {
 		return nil, fmt.Errorf("incidents: get %s: %w", id, err)
 	}
@@ -468,27 +468,38 @@ func (c *IncidentClient) Create(ctx context.Context, inc *Incident) (*Incident, 
 	return updated, nil
 }
 
-// resolveSeverityLabel returns the severity label the caller asked for.
-// A hand-written spec.severityID has precedence: when it is not empty, the
-// organization severity list resolves it to a label, and gcx ignores
-// spec.severity. A pulled manifest carries spec.severity alone, because the
-// pull removes spec.severityID. An empty result means the caller asked for no
-// severity.
+// resolveSeverityLabel returns the canonical severity label that the caller
+// asked for. It resolves both accepted inputs against the organization list
+// before a write. This prevents an unknown label from becoming a successful
+// no-op on a backend that accepts it with status 200.
+//
+// A hand-written spec.severityID has precedence when it is not empty. A pulled
+// manifest carries spec.severity alone because the read removes severityID.
+// An empty result means that the caller asked for no severity.
 func (c *IncidentClient) resolveSeverityLabel(ctx context.Context, inc *Incident) (string, error) {
-	if inc.SeverityID == "" {
-		return inc.Severity, nil
+	if inc.SeverityID == "" && inc.Severity == "" {
+		return "", nil
 	}
 
 	severities, err := c.GetSeverities(ctx)
 	if err != nil {
-		return "", fmt.Errorf("incidents: resolve severityID %q: %w", inc.SeverityID, err)
+		return "", fmt.Errorf("incidents: resolve severity: %w", err)
 	}
+	if inc.SeverityID != "" {
+		for _, s := range severities {
+			if s.SeverityID == inc.SeverityID {
+				return s.DisplayLabel, nil
+			}
+		}
+		return "", fmt.Errorf("incidents: unknown severityID %q, run `gcx irm incidents severities list` for the valid values", inc.SeverityID)
+	}
+
 	for _, s := range severities {
-		if s.SeverityID == inc.SeverityID {
+		if strings.EqualFold(s.DisplayLabel, inc.Severity) {
 			return s.DisplayLabel, nil
 		}
 	}
-	return "", fmt.Errorf("incidents: unknown severityID %q, run `gcx irm incidents severities list` for the valid values", inc.SeverityID)
+	return "", fmt.Errorf("incidents: unknown severity %q, run `gcx irm incidents severities list` for the valid values", inc.Severity)
 }
 
 // UpdateSeverity sets the severity of an incident and returns the updated
@@ -510,6 +521,10 @@ func (c *IncidentClient) UpdateTitle(ctx context.Context, id, title string) (*In
 // then skips each field that the caller left empty or that already matches
 // the server. Nothing enforces the required fields of the schema on push, so
 // a manifest without a status must not send an empty status.
+//
+// The resources push pipeline reads the incident before it calls Update to
+// select create or update. Update cannot reuse that value through the
+// TypedCRUD contract, so a push reads the incident a second time here.
 //
 // Update drops every other field of inc, because the IRM API has no update
 // operation for it: a pushed manifest that changes labels, incidentType,
@@ -574,6 +589,7 @@ func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (
 		applied = append(applied, "severity")
 	}
 
+	current.updatedFields = applied
 	return current, applied, nil
 }
 
@@ -582,28 +598,27 @@ func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (
 //
 // IncidentsService answers on the versioned base path. A Grafana build that
 // predates that path answers on the unversioned one, so a 404 on the first
-// path retries on the second. A 404 on both paths is not a missing route: the
-// incident does not exist, and GetIncident reports that state the same way.
+// path retries on the second. If both update paths return 404, Get determines
+// whether the incident is missing or the update operation is unavailable.
 func (c *IncidentClient) updateIncidentField(ctx context.Context, method, id string, req any, description string) (*Incident, error) {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("incidents: marshal %s request: %w", description, err)
 	}
 
-	resp, err := c.doRequest(ctx, incidentBasePath+"/"+method, bytes.NewReader(data))
+	resp, err := c.doIncidentMethod(ctx, method, data)
 	if err != nil {
 		return nil, fmt.Errorf("incidents: %s: %w", description, err)
 	}
 	if resp.StatusCode == http.StatusNotFound {
 		resp.Body.Close()
-		resp, err = c.doRequest(ctx, incidentLegacyBasePath+"/"+method, bytes.NewReader(data))
-		if err != nil {
-			return nil, fmt.Errorf("incidents: %s: %w", description, err)
+		if _, getErr := c.Get(ctx, id); getErr != nil {
+			if errors.Is(getErr, ErrNotFound) {
+				return nil, fmt.Errorf("incidents: %s %s: %w", description, id, ErrNotFound)
+			}
+			return nil, fmt.Errorf("incidents: %s %s: verify incident after both API paths returned 404: %w", description, id, getErr)
 		}
-		if resp.StatusCode == http.StatusNotFound {
-			resp.Body.Close()
-			return nil, fmt.Errorf("incidents: %s %s: %w", description, id, ErrNotFound)
-		}
+		return nil, fmt.Errorf("incidents: %s %s: operation is unavailable on the versioned and unversioned API paths", description, id)
 	}
 	defer resp.Body.Close()
 
@@ -616,6 +631,22 @@ func (c *IncidentClient) updateIncidentField(ctx context.Context, method, id str
 		return nil, fmt.Errorf("incidents: decode %s response: %w", description, err)
 	}
 	return &result.Incident, nil
+}
+
+// doIncidentMethod posts to an IncidentsService method. A 404 retries the
+// unversioned base path so Get and the field-update methods support the same
+// Grafana builds. The caller owns and must close the response body.
+func (c *IncidentClient) doIncidentMethod(ctx context.Context, method string, data []byte) (*http.Response, error) {
+	resp, err := c.doRequest(ctx, incidentBasePath+"/"+method, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		return resp, nil
+	}
+
+	resp.Body.Close()
+	return c.doRequest(ctx, incidentLegacyBasePath+"/"+method, bytes.NewReader(data))
 }
 
 // UpdateStatus updates an incident's status and returns the updated incident.

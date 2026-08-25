@@ -13,9 +13,9 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-func runIncidentUpdateCmd(t *testing.T, srv *severityServer, args ...string) (string, error) {
+func runIncidentUpdateCmdWithMode(t *testing.T, srv *severityServer, agentMode string, args ...string) (string, error) {
 	t.Helper()
-	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_AGENT_MODE", agentMode)
 	agent.ResetForTesting()
 	t.Cleanup(agent.ResetForTesting)
 
@@ -36,6 +36,11 @@ func runIncidentUpdateCmd(t *testing.T, srv *severityServer, args ...string) (st
 	return out.String(), err
 }
 
+func runIncidentUpdateCmd(t *testing.T, srv *severityServer, args ...string) (string, error) {
+	t.Helper()
+	return runIncidentUpdateCmdWithMode(t, srv, "false", args...)
+}
+
 func TestIncidentUpdateCommand(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -50,6 +55,7 @@ func TestIncidentUpdateCommand(t *testing.T) {
 			args: []string{"4", "--severity", "Critical"},
 			wantCalls: []string{
 				"IncidentsService.GetIncident",
+				"SeveritiesService.GetOrgSeverities",
 				"IncidentsService.UpdateSeverity",
 			},
 			wantOut: []string{"Updated incident 4 (severity)"},
@@ -69,6 +75,7 @@ func TestIncidentUpdateCommand(t *testing.T) {
 			// The title runs before the severity.
 			wantCalls: []string{
 				"IncidentsService.GetIncident",
+				"SeveritiesService.GetOrgSeverities",
 				"IncidentsService.UpdateTitle",
 				"IncidentsService.UpdateSeverity",
 			},
@@ -90,6 +97,9 @@ func TestIncidentUpdateCommand(t *testing.T) {
 			for i, want := range tt.wantCalls {
 				if srv.calls[i] != want {
 					t.Errorf("call %d: got %q, want %q", i, srv.calls[i], want)
+				}
+				if strings.HasPrefix(srv.calls[i], "IncidentsService.") && srv.bodies[i]["incidentID"] != "4" {
+					t.Errorf("call %d sent incidentID %v, want 4", i, srv.bodies[i]["incidentID"])
 				}
 			}
 			for _, want := range tt.wantOut {
@@ -141,26 +151,30 @@ func TestIncidentUpdateCommandRejectsBadFlags(t *testing.T) {
 	}
 }
 
-// TestIncidentUpdateCommandOutputFormats covers the two output cases that
-// TestIncidentUpdateCommand does not reach: a run that changes nothing, and
-// the manifest that -o yaml emits.
+// TestIncidentUpdateCommandOutputFormats covers a run that changes nothing
+// and the structured mutation result in the explicit machine formats.
 func TestIncidentUpdateCommandOutputFormats(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    []string
-		want    string
+		want    []string
 		notWant string
 	}{
 		{
 			name:    "a value that already matches changes nothing",
 			args:    []string{"4", "--title", "old title"},
-			want:    "Incident 4 already carries the requested values\n",
+			want:    []string{"Incident 4 already carries the requested values\n"},
 			notWant: "Updated incident",
 		},
 		{
-			name: "-o yaml emits the manifest",
+			name: "-o yaml emits a changed mutation result",
 			args: []string{"4", "--severity", "Critical", "-o", "yaml"},
-			want: "apiVersion: incident.ext.grafana.app/v1alpha1",
+			want: []string{"type: gcx.mutation", "action: updated", "id: \"4\"", "changed: true"},
+		},
+		{
+			name: "-o json emits an unchanged mutation result",
+			args: []string{"4", "--title", "old title", "-o", "json"},
+			want: []string{`"type": "gcx.mutation"`, `"action": "updated"`, `"id": "4"`, `"changed": false`},
 		},
 	}
 
@@ -171,12 +185,27 @@ func TestIncidentUpdateCommandOutputFormats(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(out, tt.want) {
-				t.Errorf("expected %q in the output, got %q", tt.want, out)
+			for _, want := range tt.want {
+				if !strings.Contains(out, want) {
+					t.Errorf("expected %q in the output, got %q", want, out)
+				}
 			}
 			if tt.notWant != "" && strings.Contains(out, tt.notWant) {
 				t.Errorf("did not expect %q in the output, got %q", tt.notWant, out)
 			}
 		})
+	}
+}
+
+func TestIncidentUpdateCommandAgentOutputReportsNoChange(t *testing.T) {
+	srv := &severityServer{title: "old title"}
+	out, err := runIncidentUpdateCmdWithMode(t, srv, "true", "4", "--title", "old title")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"type":"gcx.mutation"`, `"id":"4"`, `"changed":false`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in the agent output, got %q", want, out)
+		}
 	}
 }

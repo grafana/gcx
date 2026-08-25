@@ -11,7 +11,7 @@ The severity is the display label, not the identifier. Run
 
 gcx reads the incident first, so a value that already matches causes no write.
 The command prints one line that names the fields it changed. Use -o json or
--o yaml for the incident manifest.
+-o yaml for a structured update result.
 
 ```
 gcx irm incidents update <id> [flags]
@@ -41,7 +41,7 @@ gcx irm incidents update <id> [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.

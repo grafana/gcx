@@ -25,18 +25,29 @@ type severityServer struct {
 	severityAfterUpdate string
 	title               string
 	status              string
-	// notFoundOnVersioned makes the versioned base path answer 404, so the
-	// test can drive the unversioned fallback.
+	// notFoundOnVersioned makes versioned IncidentsService methods answer 404,
+	// so the test can drive the unversioned fallback through Get and Update.
 	notFoundOnVersioned bool
+	// updatesUnavailable makes both paths reject update methods while Get
+	// still proves that the incident exists.
+	updatesUnavailable bool
 	// failSeverityUpdate makes UpdateSeverity answer 500, so the test can
 	// drive the failure path of Create.
 	failSeverityUpdate bool
 	// failTitleUpdate makes UpdateTitle answer 500, so the test can drive a
 	// partial update.
 	failTitleUpdate bool
-	// incidentMissing makes every update method answer 404 on both base paths,
-	// the way the API reports an unknown incidentID.
+	// incidentMissing makes Get and every update method answer 404 on both base
+	// paths, the way the API reports an unknown incidentID.
 	incidentMissing bool
+}
+
+func knownSeverities() []map[string]any {
+	return []map[string]any{
+		{"severityID": "sev-0", "displayLabel": "Pending", "level": 0},
+		{"severityID": "sev-1", "displayLabel": "Critical", "level": 1},
+		{"severityID": "sev-2", "displayLabel": "Major", "level": 2},
+	}
 }
 
 func (s *severityServer) handler(t *testing.T) http.Handler {
@@ -50,11 +61,15 @@ func (s *severityServer) handler(t *testing.T) http.Handler {
 		s.calls = append(s.calls, method)
 		s.bodies = append(s.bodies, body)
 
-		if s.notFoundOnVersioned && versioned && strings.HasPrefix(method, "IncidentsService.Update") {
+		if s.notFoundOnVersioned && versioned && strings.HasPrefix(method, "IncidentsService.") {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		if s.incidentMissing && strings.HasPrefix(method, "IncidentsService.Update") {
+		if s.incidentMissing && (method == "IncidentsService.GetIncident" || strings.HasPrefix(method, "IncidentsService.Update")) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if s.updatesUnavailable && strings.HasPrefix(method, "IncidentsService.Update") {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -70,7 +85,11 @@ func (s *severityServer) handler(t *testing.T) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		switch method {
 		case "SeveritiesService.GetOrgSeverities":
-			json.NewEncoder(w).Encode(map[string]any{"severities": s.severities}) //nolint:errcheck
+			severities := s.severities
+			if severities == nil {
+				severities = knownSeverities()
+			}
+			json.NewEncoder(w).Encode(map[string]any{"severities": severities}) //nolint:errcheck
 		case "IncidentsService.GetIncident":
 			json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
 				"incident": map[string]any{
@@ -130,7 +149,11 @@ func TestCreateAppliesSeverity(t *testing.T) {
 			name:         "severity label on the spec",
 			incident:     irm.Incident{Title: "probe", Severity: "Critical"},
 			wantSeverity: "Critical",
-			wantCalls:    []string{"IncidentsService.CreateIncident", "IncidentsService.UpdateSeverity"},
+			wantCalls: []string{
+				"SeveritiesService.GetOrgSeverities",
+				"IncidentsService.CreateIncident",
+				"IncidentsService.UpdateSeverity",
+			},
 		},
 		{
 			name:         "severityID resolved through the organization severities",
@@ -166,7 +189,7 @@ func TestCreateAppliesSeverity(t *testing.T) {
 			name:         "the default severity needs no second call",
 			incident:     irm.Incident{Title: "probe", Severity: "Pending"},
 			wantSeverity: "",
-			wantCalls:    []string{"IncidentsService.CreateIncident"},
+			wantCalls:    []string{"SeveritiesService.GetOrgSeverities", "IncidentsService.CreateIncident"},
 		},
 	}
 
@@ -175,11 +198,8 @@ func TestCreateAppliesSeverity(t *testing.T) {
 			t.Parallel()
 
 			srv := &severityServer{
-				title: "probe",
-				severities: []map[string]any{
-					{"severityID": "sev-1", "displayLabel": "Critical", "level": 1},
-					{"severityID": "sev-2", "displayLabel": "Major", "level": 2},
-				},
+				title:      "probe",
+				severities: knownSeverities(),
 			}
 			client := newSeverityTestClient(t, srv)
 
@@ -202,6 +222,51 @@ func TestCreateAppliesSeverity(t *testing.T) {
 			}
 			if tt.wantSeverity != "" && got.Severity != tt.wantSeverity {
 				t.Errorf("got severity %q in the result, want %q", got.Severity, tt.wantSeverity)
+			}
+		})
+	}
+}
+
+// TestSeverityLabelValidationRejectsUnknownLabels proves that gcx validates a
+// display label before Create or Update writes it. This closes the backend
+// case that accepts an unknown label with status 200 but changes nothing.
+func TestSeverityLabelValidationRejectsUnknownLabels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		run  func(context.Context, *irm.IncidentClient) error
+	}{
+		{
+			name: "create",
+			run: func(ctx context.Context, client *irm.IncidentClient) error {
+				_, err := client.Create(ctx, &irm.Incident{Title: "probe", Severity: "Criticl"})
+				return err
+			},
+		},
+		{
+			name: "update",
+			run: func(ctx context.Context, client *irm.IncidentClient) error {
+				_, _, err := client.Update(ctx, "1", &irm.Incident{Severity: "Criticl"})
+				return err
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := &severityServer{title: "probe", severities: knownSeverities()}
+			client := newSeverityTestClient(t, srv)
+			err := tt.run(context.Background(), client)
+			if err == nil || !strings.Contains(err.Error(), `unknown severity "Criticl"`) {
+				t.Fatalf("expected an unknown-severity error, got %v", err)
+			}
+			for _, call := range srv.calls {
+				if call == "IncidentsService.CreateIncident" || strings.HasPrefix(call, "IncidentsService.Update") {
+					t.Fatalf("the client wrote an unknown severity: %v", srv.calls)
+				}
 			}
 		})
 	}
@@ -304,9 +369,9 @@ func TestUpdateFieldReportsAMissingIncident(t *testing.T) {
 	if !strings.Contains(err.Error(), "does-not-exist") {
 		t.Errorf("expected the incident identifier in the error, got %v", err)
 	}
-	// One call on the versioned path, one on the unversioned path.
-	if len(srv.calls) != 2 {
-		t.Errorf("expected two calls, got %v", srv.calls)
+	// The update and the verification Get each try both base paths.
+	if len(srv.calls) != 4 {
+		t.Errorf("expected four calls, got %v", srv.calls)
 	}
 }
 
@@ -445,6 +510,50 @@ func TestUpdateFallsBackToUnversionedPath(t *testing.T) {
 	}
 }
 
+// TestUpdateUsesTheLegacyPathForGetAndWrite covers the public Update path on
+// a Grafana build where IncidentsService exists only on the unversioned path.
+func TestUpdateUsesTheLegacyPathForGetAndWrite(t *testing.T) {
+	t.Parallel()
+
+	srv := &severityServer{title: "probe", notFoundOnVersioned: true}
+	client := newSeverityTestClient(t, srv)
+
+	got, changed, err := client.Update(context.Background(), "1", &irm.Incident{Severity: "Critical"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Severity != "Critical" || strings.Join(changed, ",") != "severity" {
+		t.Fatalf("unexpected result: incident=%+v changed=%v", got, changed)
+	}
+	want := []string{
+		"IncidentsService.GetIncident",
+		"IncidentsService.GetIncident",
+		"SeveritiesService.GetOrgSeverities",
+		"IncidentsService.UpdateSeverity",
+		"IncidentsService.UpdateSeverity",
+	}
+	if strings.Join(srv.calls, ",") != strings.Join(want, ",") {
+		t.Errorf("got calls %v, want %v", srv.calls, want)
+	}
+}
+
+// TestUpdateDoesNotMisreportAnUnavailableMethodAsAMissingIncident covers a
+// server that has GetIncident but has neither update route.
+func TestUpdateDoesNotMisreportAnUnavailableMethodAsAMissingIncident(t *testing.T) {
+	t.Parallel()
+
+	srv := &severityServer{title: "probe", updatesUnavailable: true}
+	client := newSeverityTestClient(t, srv)
+
+	_, err := client.UpdateSeverity(context.Background(), "1", "Critical")
+	if err == nil || !strings.Contains(err.Error(), "operation is unavailable") {
+		t.Fatalf("expected an unavailable-operation error, got %v", err)
+	}
+	if errors.Is(err, irm.ErrNotFound) {
+		t.Fatalf("the incident exists, but the error reports it as missing: %v", err)
+	}
+}
+
 // TestUpdateAppliesEveryChangedField covers the push path: the adapter calls
 // Update, which must carry the title and the severity, not the status alone.
 func TestUpdateAppliesEveryChangedField(t *testing.T) {
@@ -467,6 +576,7 @@ func TestUpdateAppliesEveryChangedField(t *testing.T) {
 
 	want := []string{
 		"IncidentsService.GetIncident",
+		"SeveritiesService.GetOrgSeverities",
 		"IncidentsService.UpdateStatus",
 		"IncidentsService.UpdateTitle",
 		"IncidentsService.UpdateSeverity",
@@ -522,8 +632,8 @@ func TestUpdateSkipsUnchangedFields(t *testing.T) {
 				t.Errorf("got changed fields %v, want none", changed)
 			}
 
-			want := []string{"IncidentsService.GetIncident"}
-			if len(srv.calls) != len(want) || srv.calls[0] != want[0] {
+			want := []string{"IncidentsService.GetIncident", "SeveritiesService.GetOrgSeverities"}
+			if strings.Join(srv.calls, ",") != strings.Join(want, ",") {
 				t.Errorf("got calls %v, want %v", srv.calls, want)
 			}
 		})
@@ -553,6 +663,7 @@ func TestUpdateSkipsAnEmptyStatus(t *testing.T) {
 	}
 	want := []string{
 		"IncidentsService.GetIncident",
+		"SeveritiesService.GetOrgSeverities",
 		"IncidentsService.UpdateTitle",
 		"IncidentsService.UpdateSeverity",
 	}
