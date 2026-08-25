@@ -43,8 +43,14 @@ export GCX_KEYCHAIN=off
 
 `off` is the only value that disables the credential store. gcx keeps using the
 store for every other value, so a typo cannot write credentials in plaintext
-without your intent. Set the variable in your shell profile or CI job
-environment to make it permanent for a machine.
+without your intent. gcx warns once per command when it ignores a value:
+
+```
+warn: GCX_KEYCHAIN="disabled" is not a recognized value and was ignored; the OS credential store is still in use. Set GCX_KEYCHAIN=off to disable it.
+```
+
+Set the variable in your shell profile or CI job environment to make it
+permanent for a machine.
 
 gcx does not move stored credentials back into the configuration file when you
 disable the credential store. It preserves their references and cannot read
