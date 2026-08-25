@@ -77,6 +77,59 @@ func TestKeychainModeConfigValueIgnoresRepositoryLocalLayer(t *testing.T) {
 	assert.Equal(t, "disabled", keychainModeConfigValue(t.Context()))
 }
 
+// keychainModeForProcess is the expression the production memoization calls, so
+// these cases cover the real os.Getenv against a real config file rather than
+// an injected getenv. Without them, dropping the environment check would leave
+// every other test passing.
+func TestKeychainModeForProcessAlwaysHonoursTheEnvironment(t *testing.T) {
+	tests := []struct {
+		name       string
+		env        string
+		fileValue  string
+		wantMode   keychainMode
+		wantConfig string
+	}{
+		{name: "env disables against a file that enables", env: "disabled", fileValue: "enabled", wantMode: keychainModeDisabled},
+		{name: "env enables against a file that disables", env: "enabled", fileValue: "disabled", wantMode: keychainModeEnabled},
+		{name: "file decides when the env is unset", env: "", fileValue: "disabled", wantMode: keychainModeDisabled},
+		{name: "env decides with no file value", env: "disabled", fileValue: "", wantMode: keychainModeDisabled},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			writeKeychainModeConfig(t, path, test.fileValue)
+			t.Setenv(ConfigFileEnvVar, path)
+			t.Setenv(envKeychain, test.env)
+
+			assert.Equal(t, test.wantMode, keychainModeForProcess(t.Context()))
+		})
+	}
+}
+
+// The primary CI case: an ephemeral box with no config file at all.
+func TestKeychainModeForProcessHonoursTheEnvironmentWithNoConfigFile(t *testing.T) {
+	empty := t.TempDir()
+	t.Setenv(ConfigFileEnvVar, "")
+	t.Chdir(empty)
+	t.Setenv("XDG_CONFIG_HOME", empty)
+	t.Setenv("HOME", empty)
+	t.Setenv(envKeychain, "disabled")
+
+	assert.Equal(t, keychainModeDisabled, keychainModeForProcess(t.Context()))
+}
+
+// An unreadable or malformed config file must not strand the environment's
+// answer: the env var is checked before the file is touched.
+func TestKeychainModeForProcessHonoursTheEnvironmentOverAnUnreadableConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("version: 1\nnot: valid: yaml: here\n"), 0o600))
+	t.Setenv(ConfigFileEnvVar, path)
+	t.Setenv(envKeychain, "disabled")
+
+	assert.Equal(t, keychainModeDisabled, keychainModeForProcess(t.Context()))
+}
+
 func TestKeychainModeConfigValueHonoursExplicitConfigFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	writeKeychainModeConfig(t, path, "disabled")

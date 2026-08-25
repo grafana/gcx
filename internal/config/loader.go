@@ -84,9 +84,7 @@ var (
 //
 //nolint:gochecknoglobals // process-wide memoization of the keychain mode.
 var resolvedKeychainMode = sync.OnceValue(func() keychainMode {
-	return resolveKeychainMode(os.Getenv, func() string {
-		return keychainModeConfigValue(context.Background())
-	})
+	return keychainModeForProcess(context.Background())
 })
 
 func defaultKeychainStore() credentials.Store {

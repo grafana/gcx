@@ -23,6 +23,18 @@ const (
 // reads, so the documented name cannot drift from the resolved one.
 const envKeychain = "GCX_KEYCHAIN"
 
+// keychainModeForProcess is the one place the environment and the config file
+// are combined. Every consumer of the keychain mode goes through it (via the
+// memoized resolvedKeychainMode), so GCX_KEYCHAIN is honoured on every path
+// that can reach the credential store. Nothing else may read
+// CredentialsConfig.Keychain directly: doing so would consult the config file
+// while ignoring the environment.
+func keychainModeForProcess(ctx context.Context) keychainMode {
+	return resolveKeychainMode(os.Getenv, func() string {
+		return keychainModeConfigValue(ctx)
+	})
+}
+
 // resolveKeychainMode resolves whether credentials may be stored in the OS
 // keychain. Precedence, highest first: GCX_KEYCHAIN, the credentials.keychain
 // config value, the built-in default (enabled). configValue is a func so

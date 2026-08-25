@@ -133,7 +133,7 @@ type CredentialsConfig struct {
 	// by the GCX_KEYCHAIN environment variable, and ignored in a
 	// repository-local .gcx.yaml so a checked-in file cannot downgrade a user's
 	// credential storage.
-	Keychain string `json:"keychain,omitempty" yaml:"keychain,omitempty" env:"GCX_KEYCHAIN"`
+	Keychain string `json:"keychain,omitempty" yaml:"keychain,omitempty" env:"GCX_KEYCHAIN"` // env tag documents the variable; the override is applied by keychainModeForProcess, never by parseEnvTags
 }
 
 // DiagnosticsConfig controls optional local diagnostic features.
