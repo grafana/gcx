@@ -40,6 +40,7 @@
 
 ### Fixes
 
+- irm: `gcx irm oncall alert-groups list --limit 0` returns every matching alert group instead of stopping at 1000, and `--limit N` above 1000 is honored (#1157).
 - instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
 
 ## v1.1.0 (2026-08-14)

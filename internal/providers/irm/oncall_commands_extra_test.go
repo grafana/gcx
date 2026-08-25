@@ -112,46 +112,57 @@ func TestStringifyAlertGroupListFilters(t *testing.T) {
 	}
 }
 
-// TestAlertGroupListOptsValidate covers the negative --limit rejection: it
-// must fire at validation time — before any config or network work — with the
-// capped-source wording (never "0 means all results are returned": --limit 0
-// on this command is bounded by alertGroupListHardCap).
-func TestAlertGroupListOptsValidate(t *testing.T) {
-	t.Parallel()
+// TestAlertGroupListLimitValidation covers the negative --limit rejection. It
+// must fire before any config or network work, and it now carries the uniform
+// binder wording — the fetch is no longer bounded by a client-side safety cap,
+// so "0 means all results are returned" is an honest promise on this command
+// (grafana/gcx#1157). The check lives in the shared Options.Validate, which
+// RunE calls right after the command's own Validate, so this drives the real
+// command rather than the opts method.
+func TestAlertGroupListLimitValidation(t *testing.T) {
 	cases := []struct {
 		name    string
-		limit   int
-		wantErr string // exact error message; empty means Validate must pass
+		limit   string
+		wantErr string // exact error message; empty means the flag is accepted
 	}{
 		{
 			name:    "negative limit rejected",
-			limit:   -1,
-			wantErr: "invalid --limit -1: must be >= 0 (0 means as many results as the safety cap allows)",
+			limit:   "-1",
+			wantErr: "invalid --limit -1: must be >= 0 (0 means all results are returned)",
 		},
 		{
 			name:    "large negative limit rejected",
-			limit:   -50,
-			wantErr: "invalid --limit -50: must be >= 0 (0 means as many results as the safety cap allows)",
+			limit:   "-50",
+			wantErr: "invalid --limit -50: must be >= 0 (0 means all results are returned)",
 		},
-		{name: "zero limit accepted", limit: 0},
-		{name: "default limit accepted", limit: alertGroupListDefaultLimit},
+		{name: "zero limit accepted", limit: "0"},
+		{name: "limit above the retired 1000 hard cap accepted", limit: "5000"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			opts := &alertGroupListOpts{Limit: tc.limit}
-			err := opts.Validate()
+			srv, state := newPagedAlertGroupsServer(t, []alertGroupPage{{items: rawAlertGroups(1)}})
+			resetAgentMode(t)
+
+			cmd := newAlertGroupListCommand(&fakeLoader{client: onCallClientFor(srv)})
+			cmd.SetOut(&strings.Builder{})
+			cmd.SetErr(&strings.Builder{})
+			cmd.SetArgs([]string{"-o", "json", "--limit", tc.limit})
+
+			err := cmd.Execute()
 			if tc.wantErr == "" {
 				if err != nil {
-					t.Fatalf("Validate() = %v, want nil", err)
+					t.Fatalf("Execute() = %v, want nil", err)
 				}
 				return
 			}
 			if err == nil {
-				t.Fatalf("Validate() = nil, want error %q", tc.wantErr)
+				t.Fatalf("Execute() = nil, want error %q", tc.wantErr)
 			}
 			if err.Error() != tc.wantErr {
-				t.Fatalf("Validate() error = %q, want %q", err.Error(), tc.wantErr)
+				t.Fatalf("error = %q, want %q", err.Error(), tc.wantErr)
+			}
+			if state.requests != 0 {
+				t.Errorf("requests = %d, want 0 (validation must fire before any network work)", state.requests)
 			}
 		})
 	}

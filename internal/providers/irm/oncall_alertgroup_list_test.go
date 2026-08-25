@@ -124,8 +124,8 @@ func TestAlertGroupList_RichPath_UserLimitTruncates(t *testing.T) {
 		t.Errorf("list_meta.cap = %d, want 0 (the user's limit, not the safety cap, was the bound)", meta.Cap)
 	}
 	// The continuation derives from argv (filters would survive) and doubles
-	// the limit — it never promises --limit 0 retrieves everything, because
-	// the safety cap exists upstream.
+	// the limit — the total is unknown here (the source was not drained), so
+	// a doubled limit is the honest next step rather than --limit 0.
 	if meta.Continue != "gcx irm oncall alert-groups list --limit 4" {
 		t.Errorf("list_meta.continue = %q, want doubled-limit continuation", meta.Continue)
 	}
@@ -135,33 +135,29 @@ func TestAlertGroupList_RichPath_UserLimitTruncates(t *testing.T) {
 	}
 }
 
-// TestAlertGroupList_RichPath_LimitZeroHitsSafetyCap locks the PR988-review
-// defect (d) fix: `--limit 0` bounded by the runaway cap must report a
-// truncated page with the cap disclosed — never a silent 1000-item "complete"
-// set — and must NOT suggest --limit 0 (it cannot beat the cap).
-func TestAlertGroupList_RichPath_LimitZeroHitsSafetyCap(t *testing.T) {
-	fake := &fakeRichListAPI{items: rawAlertGroups(3), page: alertGroupPageInfo{HasMore: true}}
+// TestAlertGroupList_RichPath_LimitZeroIsComplete locks the grafana/gcx#1157
+// fix: `--limit 0` drains every page, so the fetch reports no more pages and
+// the output carries NO list_meta — which per the contract means "this IS the
+// complete result set". The old client-side safety cap is gone, so no
+// cap-variant hint may appear either.
+func TestAlertGroupList_RichPath_LimitZeroIsComplete(t *testing.T) {
+	fake := &fakeRichListAPI{items: rawAlertGroups(3), page: alertGroupPageInfo{}}
 	payload, stderr := runAlertGroupList(t, fake, "--limit", "0")
 
 	if fake.gotLimit != 0 {
 		t.Errorf("wire limit = %d, want 0", fake.gotLimit)
 	}
-	meta := payload.ListMeta
-	if meta == nil || !meta.Truncated {
-		t.Fatalf("list_meta = %+v, want truncated (hard-capped page is NOT the complete set)", meta)
+	if len(payload.Items) != 3 {
+		t.Fatalf("items = %d, want 3", len(payload.Items))
 	}
-	if meta.Cap != alertGroupListHardCap {
-		t.Errorf("list_meta.cap = %d, want %d (the safety cap was the bound)", meta.Cap, alertGroupListHardCap)
+	if payload.ListMeta != nil {
+		t.Errorf("list_meta = %+v, want absent (--limit 0 drains, so the page IS the complete set)", payload.ListMeta)
 	}
-	if meta.Continue != "" {
-		t.Errorf("list_meta.continue = %q, want empty (no --limit can beat the cap)", meta.Continue)
+	if strings.Contains(stderr, "safety cap") {
+		t.Errorf("stderr carries a cap-variant hint but the cap is gone:\n%s", stderr)
 	}
-	want := "hint: showing first 3 (safety cap). Refine filters to narrow the result set"
-	if !strings.Contains(stderr, want) {
-		t.Errorf("stderr missing cap-variant hint %q:\n%s", want, stderr)
-	}
-	if strings.Contains(stderr, "--limit 0") {
-		t.Errorf("cap-variant hint must not suggest --limit 0:\n%s", stderr)
+	if strings.Contains(stderr, "showing first") {
+		t.Errorf("unexpected truncation hint on stderr:\n%s", stderr)
 	}
 }
 
