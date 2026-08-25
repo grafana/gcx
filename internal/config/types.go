@@ -127,11 +127,11 @@ type Config struct {
 // CredentialsConfig controls how gcx stores credentials on this machine.
 type CredentialsConfig struct {
 	// Keychain controls whether token-shaped secrets are moved out of the config
-	// file into the OS keychain: "enabled" (the default) or "disabled". When
-	// disabled, credentials stay in plaintext in the config file, which is the
-	// only option on a machine whose keychain is permanently unavailable.
-	// Overridden by the GCX_KEYCHAIN environment variable. Ignored in a
-	// repository-local .gcx.yaml, which must not be able to downgrade a user's
+	// file into the OS keychain: "enabled" (the default) or "disabled". Disabled
+	// leaves credentials in plaintext in the config file, which is the only
+	// option on a machine whose keychain is permanently unavailable. Overridden
+	// by the GCX_KEYCHAIN environment variable, and ignored in a
+	// repository-local .gcx.yaml so a checked-in file cannot downgrade a user's
 	// credential storage.
 	Keychain string `json:"keychain,omitempty" yaml:"keychain,omitempty" env:"GCX_KEYCHAIN"`
 }

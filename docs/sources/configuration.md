@@ -78,6 +78,35 @@ file does not make its stored credentials portable; authenticate the copied
 file separately. See [Keychain credential storage](../keychain/)
 for storage rules and keychain error procedures.
 
+### Disable the OS credential store
+
+On a machine whose credential store is permanently unavailable - a headless
+box, a CI runner, a session that can never unlock the keyring - turn it off.
+gcx then leaves credentials in plaintext in the `0600` config file instead of
+moving them into the credential store:
+
+```bash
+gcx config set credentials.keychain disabled
+# or, per invocation
+GCX_KEYCHAIN=disabled gcx config view
+```
+
+`GCX_KEYCHAIN` takes precedence over the config field, and any value gcx does
+not recognize resolves to `enabled`, so a typo cannot silently write
+credentials in plaintext. The config field is ignored in an automatically
+discovered repository `.gcx.yaml`, so a checked-in file cannot downgrade your
+credential storage.
+
+Credentials already in the credential store are not moved back out. Their
+references are preserved in the config file, so re-enabling the store restores
+them, but while it is disabled those credentials cannot be read - authenticate
+again to replace them with plaintext values.
+
+Removing one of those credentials - `gcx config unset` on the field, or
+deleting the stack or Cloud entry that owns it - fails while the store is
+disabled, rather than dropping the reference and leaving the secret behind in
+the credential store. Re-enable the store for that command.
+
 An automatically discovered repository `.gcx.yaml` cannot attach tokens,
 passwords, or client-certificate files from your environment, login flags, or
 prompts to destinations the file supplies. It also cannot implicitly combine a
