@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/query/bigquery"
 )
 
 // QueryExploreURL builds a Grafana Explore URL for a BigQuery SQL query.
@@ -18,7 +19,7 @@ func QueryExploreURL(host string, query dsquery.ExploreQuery) string {
 		"refId":      "A",
 		"rawSql":     query.Expr,
 		"editorMode": "code",
-		"format":     1,
+		"format":     bigquery.QueryFormatTable,
 		"datasource": dsquery.ExploreDatasource(query.DatasourceType, query.DatasourceUID),
 	}
 

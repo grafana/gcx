@@ -27,6 +27,9 @@ func TestQueryExploreURL(t *testing.T) {
 		assert.Contains(t, params.Get("panes"), `"editorMode":"code"`)
 		assert.Contains(t, params.Get("panes"), `"from":"now-1h"`)
 		assert.Contains(t, params.Get("panes"), `"to":"now"`)
+		// Must match query/bigquery.QueryFormatTable, the value client.go
+		// actually sends — a literal here would silently drift from it.
+		assert.Contains(t, params.Get("panes"), `"format":1`)
 	})
 
 	t.Run("includes explicit time range", func(t *testing.T) {
