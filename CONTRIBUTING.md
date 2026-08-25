@@ -92,8 +92,10 @@ $ mise run all             # lint + tests + build + docs
 $ mise tasks               # list all available tasks
 ```
 
-Set `GCX_TEST_PACKAGE_PARALLELISM` to override the default package concurrency.
-Set `GCX_TEST_SHARD_COUNT` and the zero-based `GCX_TEST_SHARD_INDEX` to run one stable package shard.
+`mise run tests` runs three Go package shards in parallel.
+Set `GCX_TEST_SHARD_COUNT` to change the shard count.
+Set the zero-based `GCX_TEST_SHARD_INDEX` to run one shard, as CI does.
+Set `GCX_TEST_PACKAGE_PARALLELISM` to override the package concurrency.
 
 See the [mise documentation](https://mise.jdx.dev/) for shell integration and further options.
 

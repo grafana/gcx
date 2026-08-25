@@ -47,32 +47,60 @@ run = """
 #!/usr/bin/env bash
 set -euo pipefail
 
-package_parallelism="${GCX_TEST_PACKAGE_PARALLELISM:-16}"
-shard_count="${GCX_TEST_SHARD_COUNT:-1}"
-shard_index="${GCX_TEST_SHARD_INDEX:-0}"
+shard_count="${GCX_TEST_SHARD_COUNT:-3}"
+shard_index="${GCX_TEST_SHARD_INDEX:-}"
 if ! [[ "${shard_count}" =~ ^[1-9][0-9]*$ ]]; then
     printf 'GCX_TEST_SHARD_COUNT must be a positive integer\n' >&2
     exit 2
 fi
-if ! [[ "${shard_index}" =~ ^[0-9]+$ ]] || (( shard_index >= shard_count )); then
+if [[ -n "${shard_index}" ]] && { ! [[ "${shard_index}" =~ ^[0-9]+$ ]] || (( shard_index >= shard_count )); }; then
     printf 'GCX_TEST_SHARD_INDEX must be an integer from 0 to %d\n' "$((shard_count - 1))" >&2
     exit 2
 fi
 
-packages=("./...")
-if (( shard_count > 1 )); then
-    packages=()
-    package_number=0
-    while IFS= read -r package; do
-        [[ -z "${package}" ]] && continue
-        if (( package_number % shard_count == shard_index )); then
-            packages+=("${package}")
-        fi
-        package_number=$((package_number + 1))
-    done < <(go list ./...)
+if [[ -n "${GCX_TEST_PACKAGE_PARALLELISM:-}" ]]; then
+    package_parallelism="${GCX_TEST_PACKAGE_PARALLELISM}"
+elif [[ -n "${shard_index}" ]]; then
+    package_parallelism=16
+else
+    package_parallelism=6
 fi
 
-go test -p="${package_parallelism}" "${packages[@]}"
+all_packages=()
+while IFS= read -r package; do
+    [[ -z "${package}" ]] || all_packages+=("${package}")
+done < <(go list ./...)
+
+run_shard() {
+    local index="$1"
+    local packages=()
+    local package_number
+    for package_number in "${!all_packages[@]}"; do
+        if (( package_number % shard_count == index )); then
+            packages+=("${all_packages[package_number]}")
+        fi
+    done
+    go test -p="${package_parallelism}" "${packages[@]}"
+}
+
+if [[ -n "${shard_index}" ]]; then
+    run_shard "${shard_index}"
+    exit
+fi
+
+pids=()
+for (( index = 0; index < shard_count; index++ )); do
+    (run_shard "${index}" 2>&1 | sed "s|^|[Go shard $((index + 1))/${shard_count}] |") &
+    pids+=("$!")
+done
+
+test_status=0
+for pid in "${pids[@]}"; do
+    if ! wait "${pid}"; then
+        test_status=1
+    fi
+done
+exit "${test_status}"
 """
 
 [tasks."tests:linter"]
