@@ -220,7 +220,7 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 			"collectEndpointURL":    "https://collect.example.com",
 			"otlpIngestEndpointURL": "https://collect.example.com/otlp",
 			"corsOrigins":           []map[string]any{{"url": "https://example.com"}},
-			"extraLogLabels":        []map[string]string{{"key": "team", "value": "frontend"}},
+			"extraLogLabels":        []map[string]string{{"label": "team", "value": "frontend"}},
 			"settings": map[string]any{
 				"geolocationEnabled": true,
 				"geolocationLevel":   "country",

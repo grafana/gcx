@@ -42,7 +42,7 @@ func TestClient_List(t *testing.T) {
 						"id":   42,
 						"name": "my-web-app",
 						"extraLogLabels": []map[string]string{
-							{"key": "team", "value": "frontend"},
+							{"label": "team", "value": "frontend"},
 						},
 					},
 					{
