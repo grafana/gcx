@@ -92,7 +92,7 @@ func searchCommand(loader *indexLoader) *cobra.Command {
   gcx docs search "rate limiting"
 
   # Scope the search to one product
-  gcx docs search "metrics generator" --product tempo
+  gcx docs search "traceql query" --product tempo
 
   # Return more results as JSON
   gcx docs search dashboards --limit 10 -o json`,

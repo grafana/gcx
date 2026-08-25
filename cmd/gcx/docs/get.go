@@ -52,14 +52,14 @@ func getCommand(fetch docFetcher) *cobra.Command {
 		Short: "Fetch a Grafana documentation page.",
 		Long: "Fetch a documentation page as cleaned markdown. Supports section " +
 			"extraction and offset/limit paging for bounded retrieval.",
-		Example: `  # Fetch the first page of a doc
-  gcx docs get https://grafana.com/docs/tempo/latest/
+		Example: `  # Fetch a doc
+  gcx docs get https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/
 
   # Extract a single section
-  gcx docs get https://grafana.com/docs/tempo/latest/ --section "Configuration"
+  gcx docs get https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/ --section "Comparison operators"
 
-  # Page through a long doc
-  gcx docs get https://grafana.com/docs/tempo/latest/ --offset 80 --limit 80`,
+  # Advanced: page through a long doc (Tempo Configure is ~3000 lines)
+  gcx docs get https://grafana.com/docs/tempo/latest/configuration/ --offset 80 --limit 80`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.url = args[0]
