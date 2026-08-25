@@ -233,6 +233,93 @@ used as the base URL for the token exchange — is validated by
 prevents an attacker who controls the browser redirect from steering the
 token exchange at a hostile host.
 
+### Manual callback (no local listener)
+
+`--oauth-manual` runs the same flow without a callback server. It exists for
+the remote case: gcx over SSH, browser on the user's own computer. A different
+bind address cannot solve that case — the plugin hard-codes `127.0.0.1` in the
+callback URL and only accepts a port between 1024 and 65535.
+
+In manual mode gcx prints the consent URL with a fixed `callback_port=54321`,
+opens no browser, and reads one line from stdin. The browser really navigates
+to the callback address and fails to connect, so the complete redirect URL —
+including `code`, `state`, `endpoint`, and `instanceEndpoint` — stays in the
+address bar. That failed navigation is the mechanism, not a defect.
+
+`ParseCallbackInput` in `internal/auth/manual.go` turns the pasted line into
+`url.Values` and does nothing else. Every semantic check runs in
+`handleCallbackParams` (`internal/auth/callback.go`), which the HTTP handler
+uses as well, so the state check, the PKCE exchange, and endpoint validation
+cannot diverge between the two paths.
+
+The pasted URL never carries the `code_verifier`, so a leaked scrollback alone
+cannot mint a token. gcx prints a reminder to clear the terminal once a URL
+reaches the screen. The reminder covers the failure paths too, because a state
+mismatch leaves the code in the scrollback and the user then runs the command
+again. No error message ever echoes the pasted string.
+
+The GCOM flow (`internal/auth/gcom.go`) has the same mode. There the fixed
+port matters for a second reason: the token exchange must send a `redirect_uri`
+byte-identical to the one on the authorize request, so both come from one
+string. Port 54321 is the first port of the normal auto-pick range, so manual
+mode presents no `redirect_uri` shape that grafana.com has not already seen.
+
+### The paste race on the callback path
+
+`--oauth-manual` is the scripted form. Interactively, an SSH user needs no flag:
+when `terminal.IsRemoteSession()` reports an SSH session and gcx is not in agent
+mode, `startPasteWatcher` (`internal/auth/paste.go`) keeps the callback server
+listening **and** reads a pasted redirect URL. The `select` in
+`runWithCallbackServer` takes whichever completes first, so adding a port
+forward and pasting are both live at once and neither needs a restart. A URL
+that does not work re-prompts instead of ending the flow, because the callback
+server is still up.
+
+Two reader rules keep the two routes from interfering:
+
+- The watcher drops an empty line. Option 1 asks the user to press Enter before
+  the `~C` escape, so a rejection there would answer the recommended route with
+  an error.
+- The watcher reports `Closed` when the read ends, which Ctrl-D and a broken
+  terminal both cause. `awaitCallbackOrPaste` states that the paste route ended
+  and keeps waiting for the callback. A silent stop left the prompt on screen
+  with no reader behind it.
+
+Both routes accept the same single-use authorization code, so `exchangeGuard`
+decides which one exchanges it. The claim runs after the state check and the
+code check, never before: a URL from an older attempt must not consume the claim
+that the real callback needs. The loser returns `errExchangeClaimed`, which no
+caller shows to the user. The paste branch stays silent, and the HTTP handler
+renders the success page instead of a message on `errCh`.
+
+`Close` ends the read with a deadline in the past, waits for the reader
+goroutine, and then calls `flushTerminalInput`. A terminal in canonical mode
+delivers a line only after a newline, so text that the user typed without one is
+unreachable by a read. The shell reads that text once gcx exits, which is how a
+partly typed redirect URL would enter the shell history. `flush_linux.go` uses
+`TCFLSH` with `TCIFLUSH`, `flush_bsd.go` uses `TIOCFLUSH` with `FREAD`, and
+`flush_other.go` does nothing. All of them use `SyscallConn`, never `File.Fd`,
+for the reason in the next paragraph.
+
+The watcher reads a separately opened `/dev/tty`, never `os.Stdin`. Go keeps the
+standard streams out of its poller, so a blocking read on `os.Stdin` cannot be
+cancelled; a stale reader would then compete with the `huh` prompts that run
+after login. A file from `os.OpenFile` is non-blocking and registered with the
+poller, so `Close` unblocks the pending read, and `Close` waits for the reader
+goroutine to end.
+
+One trap guards that property: **never call `File.Fd` on this file.** `Fd` puts
+the descriptor back into blocking mode, the read then blocks inside the syscall
+rather than the poller, and `Close` can no longer stop it — the login hangs
+forever once the browser callback arrives.
+`TestOpenPasteTerminalReadIsCancellable` is the regression guard, and it is also
+why the opener does not call `term.IsTerminal`: `/dev/tty` is the controlling
+terminal by definition, and the open fails when the process has none.
+
+When the watcher cannot start (no `/dev/tty`, agent mode), gcx falls back to
+`printRemoteSessionHint`, which offers the `ssh -L` port forward and
+`--oauth-manual`.
+
 The token exchange response carries an `api_endpoint` field, stored as
 `GrafanaConfig.ProxyEndpoint`. All subsequent API traffic is routed through
 that endpoint (see OAuth proxy routing below). Exact implementation lives in
@@ -362,6 +449,15 @@ sequenceDiagram
 internal/auth/
   flow.go             OAuth PKCE flow, callback server, exchange,
                       state/endpoint validation
+  callback.go         Shared callback-parameter handling for both the HTTP
+                      callback and the manual paste path
+  manual.go           Manual paste mode: redirect-URL parsing, line reader,
+                      SSH hint
+  paste.go            Paste watcher: reads a redirect URL from /dev/tty while
+                      the callback server also listens
+  flush_linux.go      Terminal input flush, one file for each platform family.
+  flush_bsd.go        Close calls it, so text without a newline never reaches
+  flush_other.go      the shell after gcx exits.
   gcom.go             Direct Grafana Cloud OAuth PKCE flow and response metadata
   transport.go        RefreshTransport, StoredTokens, TokenRefresher,
                       TokenLocker, TokenReloader, DoRefresh

@@ -186,6 +186,32 @@ func flattenTagValues(byType map[string][]any) []TagValue {
 	return values
 }
 
+// DiffRequest represents a request to compare two traces (base vs compare).
+// Delta semantics are compare - base (B - A). Start/End are optional; when
+// zero they are omitted so the datasource performs a full lookback.
+type DiffRequest struct {
+	BaseTraceID    string
+	CompareTraceID string
+	Start          time.Time
+	End            time.Time
+}
+
+// DiffResponse is the trace-diff patch payload, preserved as-is so no fields
+// are dropped while the endpoint remains experimental.
+type DiffResponse map[string]any
+
+// diffTarget/diffPayload are the wire shapes for the Tempo trace-diff endpoint.
+type diffTarget struct {
+	TraceID string `json:"traceId"`
+	Start   int64  `json:"start,omitempty"`
+	End     int64  `json:"end,omitempty"`
+}
+
+type diffPayload struct {
+	Base    diffTarget `json:"base"`
+	Compare diffTarget `json:"compare"`
+}
+
 // MetricsRequest represents a Tempo TraceQL metrics query request.
 type MetricsRequest struct {
 	Query   string

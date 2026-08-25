@@ -31,40 +31,50 @@ column literally — some rows are CI-enforced and some only look like it:
 A new datasource kind
 is mounted as `datasources <kind>` automatically from
 `datasources.AllProviders()`, but the generic auto-detecting `datasources query`
-dispatches through a hand-maintained switch in `cmd/gcx/datasources/query.go`.
-Registration does not reach it, and no test enforces parity — deliberately, because
-parity is not always correct:
+routes through two hand-maintained tables in
+`cmd/gcx/datasources/query_routes.go`. Registration does not reach them, and no
+test enforces parity — deliberately, because parity is not always correct:
 
-- **The generic `<uid> <expr>` contract fits your kind** → add the case. Otherwise
-  a caller who reasonably reaches for `datasources query` gets the bare
-  "datasource type %q is not supported" default.
-- **It does not fit** → add an explicit redirect instead. CloudWatch is the
-  worked example: its query is structured (namespace, metric, dimensions, region,
-  statistic, period), no single `expr` can carry it, so the command returns an
-  error naming the typed command to use. That is the honest outcome, not a
-  degraded generic path.
+- **The generic `<uid> <expr>` contract fits your kind** → add a `dispatch`
+  entry plus a small handler. Otherwise a caller who reasonably reaches for
+  `datasources query` gets the bare "datasource type %q is not supported"
+  default.
+- **It does not fit** → add a `redirects` entry instead, built with
+  `structuredQueryRedirect`. CloudWatch is the worked example: its query is
+  structured (namespace, metric, dimensions, region, statistic, period), no
+  single `expr` can carry it, so the command returns an error naming the typed
+  command to use. That is the honest outcome, not a degraded generic path.
 
   **The durable requirement is ordering: a redirect has to run before the
   expression is resolved.** Otherwise `gcx datasources query <uid>` with no
   expression fails on "expression required" before it can name your typed
   command — losing the redirect in exactly the invocation that needs it.
 
-  As the code stands today that means a guard placed ahead of both
-  `shared.ResolveExpr` and the type switch in `cmd/gcx/datasources/query.go`.
-  That placement is a property of the current hand-written `RunE`, not policy: if
-  routing becomes declarative the mechanism changes while the ordering
-  requirement does not. Read the function before copying the shape.
+  Routing is declarative now, so you get that ordering for free: the redirect
+  lookup in `(*genericQueryOpts).run` sits ahead of both `ResolveExpr` and the
+  dispatch lookup, and the characterization suite pins it. You choose a table,
+  not a position in a function. The two tables must stay disjoint and keyed by
+  normalized kinds (`NormalizeKind`); `query_routes_internal_test.go` enforces
+  both, so "a case *and* a guard" is not constructible.
 
-To see which kinds are currently outside the switch, derive it rather than
+The unsupported-kind message is derived from the tables, so you never edit that
+string — but two tests pin its exact value, because it is user-visible text on a
+GA path: `TestQueryRoutesSupportedKindsIsTheSortedUnion` and
+`wantUnsupportedMessage` in `query_unsupported_test.go`. Both fail with the old
+and new lists side by side, so the update is mechanical.
+
+To see which kinds are currently outside the tables, derive it rather than
 trusting a list here — it changes with every datasource PR:
 
 ```bash
 rg -n 'RegisterProvider' internal/datasources/providers  # registered kinds
-rg -n 'case "' cmd/gcx/datasources/query.go              # kinds it dispatches
+rg -n '^\s+"' cmd/gcx/datasources/query_routes.go       # routed kinds, both tables
 ```
 
-Match on the registration call rather than listing the directory — that package
-also holds non-kind files, so a file listing overstates the set.
+Read `newQueryRoutes()` directly rather than trusting the second pattern; it is a
+starting point, not a parser. Match registration on the call rather than listing
+the directory — that package also holds non-kind files, so a file listing
+overstates the set.
 
 The difference is the candidate set, minus the kinds excluded by design (a
 structured query has no single-`expr` representation, so it gets a redirect).

@@ -11,7 +11,7 @@ Manage incidents.
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
@@ -27,6 +27,7 @@ Manage incidents.
 * [gcx irm incidents close](gcx_irm_incidents_close.md)	 - Close (resolve) an incident.
 * [gcx irm incidents create](gcx_irm_incidents_create.md)	 - Create a new incident from a file.
 * [gcx irm incidents get](gcx_irm_incidents_get.md)	 - Get a single incident by ID.
+* [gcx irm incidents get-pir](gcx_irm_incidents_get-pir.md)	 - Get the post-incident review (PIR) document URL for an incident.
 * [gcx irm incidents list](gcx_irm_incidents_list.md)	 - List incidents.
 * [gcx irm incidents list-activity](gcx_irm_incidents_list-activity.md)	 - List activity items for an incident.
 * [gcx irm incidents list-contexts](gcx_irm_incidents_list-contexts.md)	 - List contexts attached to an incident.

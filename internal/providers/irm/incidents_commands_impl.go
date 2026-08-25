@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -288,6 +289,106 @@ func NewGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// get-pir command
+// ---------------------------------------------------------------------------
+
+type incidentPIROpts struct {
+	IO cmdio.Options
+}
+
+func (o *incidentPIROpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", &IncidentPIRTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+func (o *incidentPIROpts) Validate() error { return o.IO.Validate() }
+
+const incidentGetPIRLong = `Resolve the post-incident review (PIR) document URL for an incident.
+
+The URL is not carried in the incident payload. PIRs are optional and only the
+Google Workspace integration creates them, so the link exists only where that
+integration ran. It is recorded on the hook run that copied the PIR template,
+which this command reads and resolves.
+
+An incident can have more than one PIR document if the template was copied
+again; the most recently created one is reported.
+
+An incident without a PIR document prints nothing and exits 0.`
+
+// NewGetPIRCommand builds `incidents get-pir <incident-id>`. A PIR is derived
+// from its incident and has no independently addressable ID, so it is an
+// operation-subject compound directly under `incidents` rather than a nested
+// noun group.
+func NewGetPIRCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &incidentPIROpts{}
+	cmd := &cobra.Command{
+		Use:   "get-pir <incident-id>",
+		Short: "Get the post-incident review (PIR) document URL for an incident.",
+		Long:  incidentGetPIRLong,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			incidentID := args[0]
+
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
+				return err
+			}
+
+			client, err := NewIncidentClient(restCfg)
+			if err != nil {
+				return err
+			}
+
+			url, err := client.GetPIRURL(ctx, incidentID)
+			if err != nil {
+				return err
+			}
+
+			// Absence is a normal outcome, not an error — the note is a
+			// diagnostic so it stays out of the stdout result. Agents read the
+			// empty pirURL instead, and stderr stays quiet for them.
+			if url == "" && !agent.IsAgentMode() {
+				cmdio.Info(cmd.ErrOrStderr(),
+					"Incident %s has no PIR document (only the Google Workspace integration creates them).",
+					incidentID)
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), IncidentPIR{IncidentID: incidentID, PIRURL: url})
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// IncidentPIRTextCodec prints the bare PIR URL so the result can be piped;
+// an incident without a PIR document produces no output.
+type IncidentPIRTextCodec struct{}
+
+func (c *IncidentPIRTextCodec) Format() format.Format { return "text" }
+
+func (c *IncidentPIRTextCodec) Encode(w io.Writer, v any) error {
+	pir, ok := v.(IncidentPIR)
+	if !ok {
+		return errors.New("invalid data type for text codec: expected IncidentPIR")
+	}
+	if pir.PIRURL == "" {
+		return nil
+	}
+	_, err := fmt.Fprintln(w, pir.PIRURL)
+	return err
+}
+
+func (c *IncidentPIRTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------

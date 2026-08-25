@@ -47,6 +47,7 @@ func buildTestTree() *cobra.Command {
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost:    "large",
 			agent.AnnotationAvailability: agent.AvailabilityCloudOnly,
+			agent.AnnotationStability:    agent.StabilityExperimental,
 		},
 	}
 	bar.AddCommand(baz)
@@ -182,6 +183,9 @@ func TestWalkCommandNested(t *testing.T) {
 	}
 	if baz.Availability != agent.AvailabilityCloudOnly {
 		t.Errorf("baz availability = %q, want %q", baz.Availability, agent.AvailabilityCloudOnly)
+	}
+	if baz.Stability != agent.StabilityExperimental {
+		t.Errorf("baz stability = %q, want %q", baz.Stability, agent.StabilityExperimental)
 	}
 }
 

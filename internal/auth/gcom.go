@@ -64,12 +64,23 @@ type GCOMOptions struct {
 
 	// Writer for user-facing messages. Defaults to os.Stderr.
 	Writer io.Writer
+
+	// Manual completes the flow without a callback server. gcx prints the
+	// login URL and reads the redirect URL that the user copies from the
+	// browser address bar. Use it when the browser runs on another computer,
+	// for example when gcx runs over SSH.
+	Manual bool
+
+	// Reader supplies the pasted redirect URL in manual mode.
+	// Defaults to os.Stdin.
+	Reader io.Reader
 }
 
 // GCOMFlow manages a direct GCOM OAuth2 PKCE authentication flow.
 type GCOMFlow struct {
 	opts   GCOMOptions
 	writer io.Writer
+	reader io.Reader
 }
 
 // NewGCOMFlow creates a new GCOM OAuth2 PKCE flow.
@@ -81,7 +92,11 @@ func NewGCOMFlow(opts GCOMOptions) *GCOMFlow {
 	if w == nil {
 		w = os.Stderr
 	}
-	return &GCOMFlow{opts: opts, writer: w}
+	r := opts.Reader
+	if r == nil {
+		r = os.Stdin
+	}
+	return &GCOMFlow{opts: opts, writer: w, reader: r}
 }
 
 // Run executes the GCOM OAuth2 PKCE flow.
@@ -90,29 +105,54 @@ func (f *GCOMFlow) Run(ctx context.Context) (*GCOMResult, error) {
 		return nil, fmt.Errorf("invalid GCOM URL: %w", err)
 	}
 
+	if f.opts.Manual {
+		return f.runManual(ctx)
+	}
+	return f.runWithCallbackServer(ctx)
+}
+
+// runManual completes the flow without a callback server. The browser cannot
+// reach the callback address, so the user copies the redirect URL out of the
+// address bar and pastes it here.
+func (f *GCOMFlow) runManual(ctx context.Context) (*GCOMResult, error) {
+	state, codeVerifier, codeChallenge, err := newFlowSecrets()
+	if err != nil {
+		return nil, err
+	}
+
+	// The token exchange must send this exact string, so build it once and
+	// share it between the authorize URL and the exchange.
+	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", manualCallbackPort)
+
+	authURL := f.buildAuthURL(redirectURI, state, codeChallenge)
+	// No callback server runs here, so no route can race the paste. A nil guard
+	// always grants the claim.
+	return runManualPaste(ctx, f.writer, f.reader, authURL, "",
+		func(q url.Values) (*GCOMResult, *callbackError) {
+			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI, nil)
+		})
+}
+
+func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, error) {
 	listener, port, err := listenOnCallbackPort(ctx, "127.0.0.1", 0)
 	if err != nil {
 		return nil, fmt.Errorf("no available port: %w", err)
 	}
 
-	state, err := generateState()
+	state, codeVerifier, codeChallenge, err := newFlowSecrets()
 	if err != nil {
 		_ = listener.Close()
-		return nil, fmt.Errorf("failed to generate state: %w", err)
+		return nil, err
 	}
-
-	codeVerifier, err := generateCodeVerifier()
-	if err != nil {
-		_ = listener.Close()
-		return nil, fmt.Errorf("failed to generate PKCE code verifier: %w", err)
-	}
-	codeChallenge := generateCodeChallenge(codeVerifier)
 
 	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", port)
 
 	resultCh := make(chan *GCOMResult, 1)
 	errCh := make(chan error, 1)
-	server := f.startGCOMCallbackServer(ctx, listener, state, codeVerifier, redirectURI, resultCh, errCh)
+	// The callback server and the paste reader accept the same single-use code,
+	// so one guard decides which route exchanges it.
+	guard := &exchangeGuard{}
+	server := f.startGCOMCallbackServer(ctx, listener, state, codeVerifier, redirectURI, guard, resultCh, errCh)
 
 	// A fresh context is intentional: the request context may already be
 	// cancelled by the time we shut down, and graceful shutdown needs its own
@@ -124,17 +164,7 @@ func (f *GCOMFlow) Run(ctx context.Context) (*GCOMResult, error) {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
-	gcomURL := strings.TrimSuffix(f.opts.GCOMURL, "/")
-	scope := strings.Join(f.opts.Scopes, " ")
-
-	authURL := fmt.Sprintf("%s/oauth2/authorize?client_id=%s&redirect_uri=%s&scope=%s&code_challenge=%s&code_challenge_method=S256&state=%s&response_type=code",
-		gcomURL,
-		url.QueryEscape(f.opts.ClientID),
-		url.QueryEscape(redirectURI),
-		url.QueryEscape(scope),
-		url.QueryEscape(codeChallenge),
-		url.QueryEscape(state),
-	)
+	authURL := f.buildAuthURL(redirectURI, state, codeChallenge)
 
 	fmt.Fprintln(f.writer, "Opening browser to authenticate with Grafana Cloud...")
 	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", authURL)
@@ -145,44 +175,49 @@ func (f *GCOMFlow) Run(ctx context.Context) (*GCOMResult, error) {
 		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
 	}
 
-	fmt.Fprintln(f.writer, "Waiting for authentication...")
-
-	select {
-	case result := <-resultCh:
-		return result, nil
-	case err := <-errCh:
-		return nil, err
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	// Over SSH the browser cannot reach the callback address. Accept a pasted
+	// redirect URL alongside the callback so the user never has to restart.
+	paste := startPasteWatcher(f.writer, port)
+	defer paste.Close()
+	if paste == nil {
+		printRemoteSessionHint(f.writer, port, "gcx cloud login --oauth-manual")
+		fmt.Fprintln(f.writer, "Waiting for authentication...")
 	}
+
+	return awaitCallbackOrPaste(ctx, f.writer, paste, resultCh, errCh,
+		func(q url.Values) (*GCOMResult, *callbackError) {
+			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI, guard)
+		})
 }
 
-func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, resultCh chan<- *GCOMResult, errCh chan<- error) *http.Server {
+// buildAuthURL renders the GCOM authorize URL. redirectURI must be the exact
+// string that the token exchange later sends.
+func (f *GCOMFlow) buildAuthURL(redirectURI, state, codeChallenge string) string {
+	gcomURL := strings.TrimSuffix(f.opts.GCOMURL, "/")
+	scope := strings.Join(f.opts.Scopes, " ")
+
+	return fmt.Sprintf("%s/oauth2/authorize?client_id=%s&redirect_uri=%s&scope=%s&code_challenge=%s&code_challenge_method=S256&state=%s&response_type=code",
+		gcomURL,
+		url.QueryEscape(f.opts.ClientID),
+		url.QueryEscape(redirectURI),
+		url.QueryEscape(scope),
+		url.QueryEscape(codeChallenge),
+		url.QueryEscape(state),
+	)
+}
+
+func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, guard *exchangeGuard, resultCh chan<- *GCOMResult, errCh chan<- error) *http.Server {
 	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
-		state := r.URL.Query().Get("state")
-		if state != expectedState {
-			errCh <- errors.New("invalid state - possible CSRF attack")
-			renderErrorPage(w, "Invalid state parameter")
-			return
-		}
-
-		if errMsg := r.URL.Query().Get("error"); errMsg != "" {
-			errCh <- fmt.Errorf("authentication denied: %s", StripControlChars(errMsg))
-			renderErrorPage(w, StripControlChars(errMsg))
-			return
-		}
-
-		code := r.URL.Query().Get("code")
-		if code == "" {
-			errCh <- errors.New("no authorization code received")
-			renderErrorPage(w, "No authorization code received")
-			return
-		}
-
-		result, err := f.exchangeGCOMToken(ctx, code, codeVerifier, redirectURI)
-		if err != nil {
-			errCh <- fmt.Errorf("token exchange failed: %w", err)
-			renderErrorPage(w, "Token exchange failed")
+		result, cerr := f.handleGCOMCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier, redirectURI, guard)
+		if cerr != nil {
+			if errors.Is(cerr.err, errExchangeClaimed) {
+				// The paste route won the race, and the login is complete. Do
+				// not send to errCh: that would end a flow that succeeded.
+				renderSuccessPage(w)
+				return
+			}
+			errCh <- cerr.err
+			renderErrorPage(w, cerr.page)
 			return
 		}
 

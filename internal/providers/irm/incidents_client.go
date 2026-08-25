@@ -2,12 +2,14 @@ package irm
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -38,7 +40,75 @@ const (
 	actAddPath        = incidentBasePath + "/ActivityService.AddActivity"
 	sevGetPath        = incidentLegacyBasePath + "/SeveritiesService.GetOrgSeverities"
 	ctxQueryPath      = incidentLegacyBasePath + "/IncidentContextService.QueryIncidentContext"
+	// IntegrationService is likewise not part of the documented v1 API and
+	// is served from the unversioned base path.
+	hookRunsPath = incidentLegacyBasePath + "/IntegrationService.GetHookRuns"
 )
+
+// pirFileURLField is the hook-run metadata field holding the document URL.
+const pirFileURLField = "fileURL"
+
+// pirHookRank ranks the hooks that copy a post-incident review template into a
+// document, and reports 0 for every other hook. PIRs are optional and only the
+// Google Workspace integration creates them, so these are the only hook runs
+// that can carry a PIR link. copyTemplate outranks copyFile: it is the
+// PIR-specific hook, where copyFile is the older general file copy.
+func pirHookRank(hookID string) int {
+	switch hookID {
+	case "grate.googleworkspace.copyTemplate":
+		return 2
+	case "grate.google.copyFile":
+		return 1
+	default:
+		return 0
+	}
+}
+
+// pirURL returns the PIR document URL a hook run recorded, or "" if it is not
+// a PIR-creating hook or recorded no link. The fileURL field is what IRM's PIR
+// bookmarks read; metadata.url is the same value on a full run and covers a
+// partial one that recorded only the URL. Restricting this to PIR hooks matters
+// for that fallback: other integrations put their Slack, Meet and GitHub links
+// in the very same field.
+func pirURL(run HookRun) string {
+	if pirHookRank(run.HookID) == 0 || run.Metadata == nil {
+		return ""
+	}
+	for _, f := range run.Metadata.Fields {
+		if f.Key == pirFileURLField && f.Value != "" {
+			return f.Value
+		}
+	}
+	return run.Metadata.URL
+}
+
+// pirURLFromHookRuns returns the PIR document URL for an incident, or "" when
+// it has no PIR document. An incident can carry several PIR links — both hooks
+// ran, or one was re-run — and the API returns hook runs unordered, so the most
+// recent one wins and equal timestamps fall back to hook rank and then to the
+// URL itself. That keeps repeated calls for one incident in agreement.
+func pirURLFromHookRuns(runs []HookRun) string {
+	candidates := make([]HookRun, 0, len(runs))
+	for _, run := range runs {
+		if pirURL(run) != "" {
+			candidates = append(candidates, run)
+		}
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	slices.SortFunc(candidates, func(a, b HookRun) int {
+		if c := time.Time(b.LastRun).Compare(time.Time(a.LastRun)); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(pirHookRank(b.HookID), pirHookRank(a.HookID)); c != 0 {
+			return c
+		}
+		return cmp.Compare(pirURL(a), pirURL(b))
+	})
+	return pirURL(candidates[0])
+}
 
 // Client is an HTTP client for the Grafana IRM Incidents API.
 type IncidentClient struct {
@@ -512,6 +582,50 @@ func (c *IncidentClient) GetSeverities(ctx context.Context) ([]Severity, error) 
 	}
 
 	return result.Severities, nil
+}
+
+// GetHookRuns returns the integration hook runs recorded against an incident.
+func (c *IncidentClient) GetHookRuns(ctx context.Context, incidentID string) ([]HookRun, error) {
+	if incidentID == "" {
+		return nil, errors.New("incidents: GetHookRuns: incidentID is required")
+	}
+
+	body, err := json.Marshal(getHookRunsRequest{IncidentID: incidentID})
+	if err != nil {
+		return nil, fmt.Errorf("incidents: marshal hook runs request: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, hookRunsPath, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("incidents: get hook runs for %s: %w", incidentID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, providers.HandleErrorResponse(resp)
+	}
+
+	var result getHookRunsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("incidents: decode hook runs response: %w", err)
+	}
+	// The API can report failure in-band on a 200 response.
+	if result.Error != "" {
+		return nil, fmt.Errorf("incidents: get hook runs for %s: %s", incidentID, result.Error)
+	}
+
+	return result.HookRuns, nil
+}
+
+// GetPIRURL resolves the post-incident review document URL for an incident.
+// The URL is not part of the incident payload: it is recorded on the hook run
+// of the integration that created the PIR. Returns "" when there is no PIR.
+func (c *IncidentClient) GetPIRURL(ctx context.Context, incidentID string) (string, error) {
+	runs, err := c.GetHookRuns(ctx, incidentID)
+	if err != nil {
+		return "", err
+	}
+	return pirURLFromHookRuns(runs), nil
 }
 
 // queryIncidentPreviews fetches a single page. cursor is nil for the first

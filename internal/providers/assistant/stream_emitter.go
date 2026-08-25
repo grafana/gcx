@@ -12,7 +12,7 @@ import (
 )
 
 // This file is the single terminal-rendering layer for the A2A streaming
-// commands (assistant prompt / assistant dashboard). The A2A protocol layer
+// commands (assistant prompt). The A2A protocol layer
 // (internal/assistant) is untouched: it keeps producing the same
 // assistant.StreamEvent payloads, and this emitter only decides how those
 // events and the terminal outcome reach stdout/stderr per consumer mode.
@@ -42,7 +42,7 @@ const (
 	streamSchemaVersion = cmdio.StreamSchemaVersion
 )
 
-// streamMode selects how prompt/dashboard render the A2A stream and its
+// streamMode selects how prompt renders the A2A stream and its
 // terminal outcome. Resolved exactly once in newStreamEmitter — explicit
 // --json flags always win over agent-mode detection.
 type streamMode int

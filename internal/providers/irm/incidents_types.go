@@ -104,6 +104,46 @@ type IncidentHookRuns struct {
 	HookRuns []any `json:"hookRuns"`
 }
 
+// HookRunField is a key/value entry in a hook run's metadata.
+type HookRunField struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// HookRunMetadata carries what a hook run recorded about its result. The
+// template-copying hooks set both URL and a fileURL entry in Fields to the
+// document they created.
+type HookRunMetadata struct {
+	Fields []HookRunField `json:"fields,omitempty"`
+	URL    string         `json:"url,omitempty"`
+}
+
+// HookRun is a single integration hook execution against an incident. Only
+// the fields the PIR lookup reads are modelled; the API returns more.
+type HookRun struct {
+	HookID   string           `json:"hookID"`
+	Metadata *HookRunMetadata `json:"metadata,omitempty"`
+	LastRun  FlexTime         `json:"lastRun"`
+}
+
+// getHookRunsRequest is the request body for IntegrationService.GetHookRuns.
+type getHookRunsRequest struct {
+	IncidentID string `json:"incidentID"`
+}
+
+// getHookRunsResponse is the response from IntegrationService.GetHookRuns.
+type getHookRunsResponse struct {
+	HookRuns []HookRun `json:"hookRuns"`
+	Error    string    `json:"error,omitempty"`
+}
+
+// IncidentPIR is the resolved post-incident review document for an incident.
+// PIRURL is empty when the incident has no PIR document.
+type IncidentPIR struct {
+	IncidentID string `json:"incidentID"`
+	PIRURL     string `json:"pirURL"`
+}
+
 // IncidentMembershipRole represents a role inside a membership assignment.
 type IncidentMembershipRole struct {
 	RoleID      int      `json:"roleID"`
