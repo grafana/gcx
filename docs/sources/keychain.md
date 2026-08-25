@@ -39,6 +39,35 @@ gcx does not use plaintext fallback for these conditions:
 - A value that is too large for the credential store.
 - An unknown credential store error.
 
+gcx uses plaintext fallback for a replacement when you disable the credential
+store. See [Disable the credential store](#disable-the-credential-store).
+
+## Disable the credential store
+
+Set `GCX_KEYCHAIN=disabled` when the credential store is permanently
+unavailable, such as on a headless box, a CI runner, or a session that can
+never unlock the keyring. gcx then keeps credentials in the mode-`0600`
+configuration file and does not use the credential store.
+
+```shell
+export GCX_KEYCHAIN=disabled
+```
+
+The values `disabled`, `off`, `false`, and `0` all disable the credential
+store. gcx resolves any other value to enabled, so a typo cannot write
+credentials in plaintext without your intent. Set the variable in your shell
+profile or CI job environment to make it permanent for a machine.
+
+gcx does not move stored credentials back into the configuration file when you
+disable the credential store. It preserves their references, so those
+credentials work again when you unset `GCX_KEYCHAIN`. gcx cannot read them
+until then. Authenticate again to replace them with plaintext values.
+
+gcx also cannot remove a stored credential while the credential store is
+disabled. `gcx config unset` on the field, and deleting the stack or Cloud
+entry that owns it, both fail instead of dropping the reference and leaving the
+secret in the credential store. Unset `GCX_KEYCHAIN` for that command.
+
 ## `Keychain locked`
 
 This error means that macOS Keychain or a Linux or BSD Secret Service is
