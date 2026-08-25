@@ -1301,13 +1301,18 @@ func (e *keychainCommitError) Unwrap() error { return e.err }
 // file replacement and defers every destructive Delete until after it. A failed
 // encode, chmod, close, or rename rolls Sets back and leaves old accounts intact.
 type keychainWriteTransaction struct {
-	store               credentials.Store
-	log                 logging.Logger
-	swaps               []keychainSwap
-	writes              []keychainStagedWrite
-	deletes             []keychainPendingDelete
-	seenDel             map[string]bool
-	plaintextFallback   bool
+	store             credentials.Store
+	log               logging.Logger
+	swaps             []keychainSwap
+	writes            []keychainStagedWrite
+	deletes           []keychainPendingDelete
+	seenDel           map[string]bool
+	plaintextFallback bool
+	// fallbackErr is the store error that forced the plaintext fallback. It
+	// separates a deliberate opt-out (ErrDisabled) from a transient outage,
+	// which are handled differently for a credential that already holds a
+	// keychain reference.
+	fallbackErr         error
 	warnUnavailableOnce func(func())
 }
 
@@ -1354,6 +1359,7 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 						"error", err.Error())
 				}
 				if errors.Is(err, credentials.ErrUnavailable) {
+					txn.fallbackErr = err
 					return credentials.BoundReference{}, false, nil
 				}
 				return credentials.BoundReference{}, false, fmt.Errorf("write keychain entry for %q field %q: %w", owner, field, err)
@@ -1377,6 +1383,7 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 				// is confirmed, keep this one value in the config instead of writing
 				// a sentinel that the next command cannot resolve.
 				if errors.Is(err, credentials.ErrUnavailable) || errors.Is(err, credentials.ErrNotFound) {
+					txn.fallbackErr = err
 					return credentials.BoundReference{}, false, nil
 				}
 				return credentials.BoundReference{}, false, verifyErr
@@ -1394,6 +1401,7 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 			return boundRef, true, nil
 		}
 		if errors.Is(err, credentials.ErrUnavailable) {
+			txn.fallbackErr = err
 			return credentials.BoundReference{}, false, nil
 		} else {
 			txn.log.Warn("could not inspect keychain entry before write",
@@ -1497,8 +1505,12 @@ func (txn *keychainWriteTransaction) commit(warningWriter io.Writer) error {
 	}
 	if txn.plaintextFallback {
 		txn.warnUnavailableOnce(func() {
-			const message = "credential store could not securely store the credential; credentials remain in plaintext on disk"
-			const hint = "verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage"
+			message := "credential store could not securely store the credential; credentials remain in plaintext on disk"
+			hint := "verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage"
+			if errors.Is(txn.fallbackErr, credentials.ErrDisabled) {
+				message = "keychain storage is disabled; credentials remain in plaintext on disk"
+				hint = "unset GCX_KEYCHAIN or remove `credentials.keychain: disabled` from your config to store credentials in the OS credential store"
+			}
 			if warningWriter != nil {
 				fmt.Fprintf(warningWriter, "Warning: %s; %s\n", message, hint)
 				return
@@ -1606,7 +1618,13 @@ func reconcileKeychain(cfg *Config, store credentials.Store, log logging.Logger)
 			return nil, err
 		}
 		if !ok {
-			if slot.hasState {
+			// Protecting an existing reference is the right answer for a
+			// transient outage, but not for a deliberate opt-out: with the
+			// keychain switched off the user has asked for plaintext, and
+			// erroring here would leave them unable to replace the credential
+			// at all. The old account is left in the keychain rather than
+			// deleted, so re-enabling recovers nothing stale and loses nothing.
+			if slot.hasState && !errors.Is(txn.fallbackErr, credentials.ErrDisabled) {
 				txn.restore()
 				txn.rollback()
 				return nil, fmt.Errorf("cannot replace credential %q field %q while preserving its existing keychain reference: %w", slot.owner.key, slot.field, credentials.ErrUnavailable)
