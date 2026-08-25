@@ -88,9 +88,15 @@ func EffectiveLimit(limit, maxLimit int) int {
 // a fresh sentinel cap. When capped is true, run the query and pass the
 // response to (*QueryResponse).Truncate(eff): if it reports rows were
 // dropped, warn the user with TruncationHint. When capped is false
-// (enforcement disabled, statement bailed, or a user-supplied LIMIT was
-// respected) the caller must not truncate or warn — the row count already
-// reflects the user's own intent.
+// (enforcement disabled, statement bailed, or a user-supplied LIMIT within
+// maxLimit was respected) the caller must not truncate or warn — the row
+// count already reflects the user's own intent.
+//
+// A user-supplied LIMIT that itself exceeds maxLimit is also sentineled
+// (maxLimit+1, eff reported as maxLimit) rather than clamped to an exact
+// maxLimit and reported as uncapped: the caller can only tell the user their
+// own LIMIT was lowered by actually detecting the dropped rows, not by
+// assuming a high literal always means more rows existed.
 //
 // Deliberately independent of EnforceLimit rather than sharing its internals:
 // the two report a fresh-injection bool with different meanings (EnforceLimit's
@@ -113,7 +119,13 @@ func EnforceLimitSentinel(sql string, limit, maxLimit int, bail func(string) boo
 	if m := limitClauseRe.FindStringSubmatchIndex(trimmed); m != nil {
 		existing, _ := strconv.Atoi(trimmed[m[2]:m[3]])
 		if existing > maxLimit {
-			return trimmed[:m[2]] + strconv.Itoa(maxLimit) + trimmed[m[3]:] + suffix, eff, false
+			// The user's own LIMIT exceeds the ceiling, so maxLimit — not the
+			// --limit flag's eff — is the cap actually in effect here. Sentinel
+			// it (maxLimit+1) like the fresh-inject path below, rather than
+			// clamping to an exact maxLimit, so the caller's Truncate+warn can
+			// tell whether the query really had more rows than the ceiling
+			// allows instead of assuming it silently.
+			return trimmed[:m[2]] + strconv.Itoa(maxLimit+1) + trimmed[m[3]:] + suffix, maxLimit, true
 		}
 		return sql, eff, false
 	}

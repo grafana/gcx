@@ -64,7 +64,7 @@ func TestEnforceLimitSentinel(t *testing.T) {
 		{name: "above ceiling clamps eff, still sentinels", sql: "SELECT 1", limit: 5000, maxLimit: 1000, wantSQL: "SELECT 1 LIMIT 1001", wantEff: 1000, wantCapped: true},
 		{name: "disabled when zero", sql: "SELECT 1", limit: 0, maxLimit: 1000, wantSQL: "SELECT 1", wantEff: 0, wantCapped: false},
 		{name: "user LIMIT within max is respected, not capped", sql: "SELECT 1 LIMIT 50", limit: 100, maxLimit: 1000, wantSQL: "SELECT 1 LIMIT 50", wantEff: 100, wantCapped: false},
-		{name: "oversized user LIMIT clamped to real max, not sentinel", sql: "SELECT 1 LIMIT 5000", limit: 100, maxLimit: 1000, wantSQL: "SELECT 1 LIMIT 1000", wantEff: 100, wantCapped: false},
+		{name: "oversized user LIMIT is sentineled at maxLimit+1, not silently clamped", sql: "SELECT 1 LIMIT 5000", limit: 100, maxLimit: 1000, wantSQL: "SELECT 1 LIMIT 1001", wantEff: 1000, wantCapped: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
