@@ -77,6 +77,16 @@ jobs:
           restore-keys: |
             go-deps-${{ runner.os }}
 
+      # Each shard needs its own build cache. A shared immutable cache only
+      # keeps the output from the first job that saves it.
+      - name: Restore shard build cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # 5.0.5
+        with:
+          path: ~/.cache/go-build
+          key: go-build-${{ runner.os }}-tests-${{ matrix.shard_index }}-${{ hashFiles('go.sum', 'mise.toml') }}
+          restore-keys: |
+            go-build-${{ runner.os }}-tests-${{ matrix.shard_index }}-
+
       - name: Setup mise
         uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
         with:
