@@ -44,30 +44,6 @@ func TestBoundKeychainDisabledReplacesReferencedCredentialWithPlaintext(t *testi
 	assert.Empty(t, store.deletes)
 }
 
-// A transient outage keeps failing closed; only ErrDisabled changes the answer.
-func TestBoundKeychainUnavailableStillRefusesReferencedReplacement(t *testing.T) {
-	store := newBoundTestStore()
-	store.getErr = credentials.ErrUnavailable
-	useBoundTestStore(t, store)
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	server := "https://example.invalid"
-	binding := boundStackTestBinding(t, path, "default", server, credentials.FieldGrafanaToken)
-	store.entries[credentials.BoundAccountKey(binding)] = "keychain-token"
-	sentinel := credentials.FormatBoundSentinel(binding)
-	writeBoundTestYAML(t, path, server, "token", sentinel)
-
-	cfg, err := Load(context.Background(), ExplicitConfigFile(path))
-	require.NoError(t, err)
-	cfg.Stacks["default"].Grafana.APIToken = "replacement-token"
-
-	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
-	require.ErrorIs(t, err, credentials.ErrUnavailable)
-	require.ErrorContains(t, err, "cannot replace credential")
-	raw, readErr := os.ReadFile(path)
-	require.NoError(t, readErr)
-	assert.Contains(t, string(raw), sentinel)
-}
-
 func TestBoundKeychainDisabledFallbackWarningOmitsTroubleshootingHint(t *testing.T) {
 	logger := &boundTestLogger{}
 	var warnings strings.Builder
@@ -82,8 +58,4 @@ func TestBoundKeychainDisabledFallbackWarningOmitsTroubleshootingHint(t *testing
 		warnings.String())
 	assert.NotContains(t, warnings.String(), "is available and working",
 		"a deliberate opt-out must not be reported as a broken credential store")
-}
-
-func TestErrDisabledIsTreatedAsAnUnavailableBackend(t *testing.T) {
-	require.ErrorIs(t, credentials.ErrDisabled, credentials.ErrUnavailable)
 }

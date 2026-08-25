@@ -459,14 +459,6 @@ func mergeLegacyConfigs(base, over legacyConfig) legacyConfig {
 			result.Diagnostics = &merged
 		}
 	}
-	if over.Credentials != nil && over.Credentials.Keychain != "" {
-		merged := CredentialsConfig{}
-		if result.Credentials != nil {
-			merged = *result.Credentials
-		}
-		merged.Keychain = over.Credentials.Keychain
-		result.Credentials = &merged
-	}
 	return result
 }
 

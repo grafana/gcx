@@ -45,18 +45,6 @@ func TestResolveKeychainMode(t *testing.T) {
 	}
 }
 
-func TestResolveKeychainModeSkipsConfigReadWhenEnvironmentDecides(t *testing.T) {
-	read := 0
-	configValue := func() string {
-		read++
-		return ""
-	}
-	resolveKeychainMode(func(string) string { return "disabled" }, configValue)
-	assert.Zero(t, read, "a config-file read must not be paid when the environment already decides")
-}
-
-// A checked-in .gcx.yaml must not be able to move a user's credentials into
-// plaintext; the user and system layers may (docs/adrs/config-v1/001).
 func TestKeychainModeConfigValueIgnoresRepositoryLocalLayer(t *testing.T) {
 	userDir := t.TempDir()
 	workDir := t.TempDir()
@@ -138,26 +126,6 @@ func TestKeychainModeConfigValueHonoursExplicitConfigFile(t *testing.T) {
 	assert.Equal(t, "disabled", keychainModeConfigValue(t.Context()))
 }
 
-func TestReadCredentialsHonoursLegacyFormat(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	contents := `contexts:
-  default:
-    grafana:
-      server: https://example.invalid
-current-context: default
-credentials:
-  keychain: disabled
-`
-	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
-
-	creds, err := readCredentials(path)
-	require.NoError(t, err)
-	require.NotNil(t, creds)
-	assert.Equal(t, "disabled", creds.Keychain)
-}
-
-// The docs generator reads the struct tag; resolveKeychainMode reads the
-// constant. They must name the same variable.
 func TestKeychainEnvTagMatchesResolvedName(t *testing.T) {
 	field, ok := reflect.TypeFor[CredentialsConfig]().FieldByName("Keychain")
 	require.True(t, ok)

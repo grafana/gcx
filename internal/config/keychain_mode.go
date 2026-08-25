@@ -54,7 +54,7 @@ func parseKeychainMode(value string) (keychainMode, bool) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "":
 		return "", false
-	case "disabled", "disable", "off", "false", "no", "0":
+	case "disabled", "off", "false", "0":
 		return keychainModeDisabled, true
 	default:
 		// Unrecognised values fail toward encrypted storage: with the keychain
@@ -106,9 +106,10 @@ func keychainModeSourcePaths(ctx context.Context) []string {
 
 // readCredentials decodes a config file and returns only its credentials
 // block, skipping context parsing, keychain resolution, and the config
-// auto-creation Load performs. Legacy-format files are read through the legacy
-// struct (never migrated here) so `keychain: disabled` is honoured even on the
-// run that performs the migration. Missing or malformed files yield (nil, err).
+// auto-creation Load performs. Missing or malformed files yield (nil, err), as
+// do pre-v1 files: the field postdates that format, so a legacy config never
+// carries it and fails this strict decode. Load migrates such a file to v1,
+// after which the field applies.
 func readCredentials(path string) (*CredentialsConfig, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
@@ -117,15 +118,8 @@ func readCredentials(path string) (*CredentialsConfig, error) {
 	if err := validateDeclaredConfigVersion(path, contents); err != nil {
 		return nil, err
 	}
-	codec := &format.YAMLCodec{BytesAsBase64: true}
-	if isLegacyConfig(contents) {
-		var lc legacyConfig
-		if err := codec.Decode(bytes.NewBuffer(contents), &lc); err != nil {
-			return nil, err
-		}
-		return lc.Credentials, nil
-	}
 	var cfg Config
+	codec := &format.YAMLCodec{BytesAsBase64: true}
 	if err := codec.Decode(bytes.NewBuffer(contents), &cfg); err != nil {
 		return nil, err
 	}
