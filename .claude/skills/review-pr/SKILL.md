@@ -79,14 +79,12 @@ Do that even when the argument for them is strong.
 
 ## Report shape
 
-Use bold text for headings in the report, not markdown headings
+Use bold text for headings in the report, not markdown headings. Each section should be at most two sentences.
 
 1. **Intent.** The problem, and how the change solves it. Say whether the
    approach is sound before you list what is wrong with it. Do not give an opinion non whether the approach is sound or not here - that will become obvious from the rest. Keep this as short as possible.
 2. **Blocking.** Fix before merge: correctness bugs, regressions to shipped
-   behaviour, safety defects, and violations of CONSTITUTION.md or DESIGN.md.
-   Put two more things here. Behaviour that changes inside a described refactor.
-   A call to a function, field, or option that does not exist. Overengineering issues from T12 and T5. If nothing blocks the merge, omit this section.
+   behaviour, safety defects, and violations of CONSTITUTION.md or DESIGN.md. Also: Behaviour that changes inside a described refactor. A call to a function, field, or option that does not exist. Overengineering issues from T12 and T5. If nothing blocks the merge, omit this section.
 3. **Other findings.** Everything that does not block, worst first. Include
    documentation that contradicts the code it describes. Give each finding the
    space its argument needs and no more. Some take a paragraph. Most take a
