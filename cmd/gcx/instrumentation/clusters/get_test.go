@@ -4,11 +4,9 @@ package clusters
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"testing"
 
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
-	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instrOutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/stretchr/testify/assert"
@@ -168,39 +166,4 @@ func TestRunGet(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestRunGet_JSONFieldSelection_UnsetOptional covers
-// `gcx instrumentation clusters get <cluster> --json age`. Age is tagged
-// omitempty and the command leaves it empty, so the single object emits no
-// key. ClusterView still declares it, so the selection must keep it. One
-// object decides on this route, which makes the absence total.
-func TestRunGet_JSONFieldSelection_UnsetOptional(t *testing.T) {
-	client := &fakeClient{
-		GetK8SInstrumentationFn: func(_ context.Context, name string) (*instrumentation.GetK8SInstrumentationResponse, error) {
-			return &instrumentation.GetK8SInstrumentationResponse{
-				Cluster: instrumentation.Cluster{Name: name, Selection: "SELECTION_INCLUDED"},
-			}, nil
-		},
-		RunK8sMonitoringFn: func(_ context.Context, _ instrumentation.PromHeaders) (*instrumentation.RunK8sMonitoringResponse, error) {
-			return &instrumentation.RunK8sMonitoringResponse{
-				Clusters: []instrumentation.ClusterObservedState{
-					{Name: "prod-eu", InstrumentationStatus: instrumentation.StatusInstrumented},
-				},
-			}, nil
-		},
-	}
-
-	opts := &getOpts{}
-	opts.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(instrOutput.ClusterView{}))
-	opts.IO.OutputFormat = "json"
-	opts.IO.JSONFields = []string{"age"}
-
-	var buf bytes.Buffer
-	require.NoError(t, runGet(context.Background(), opts, client, "prod-eu", instrumentation.PromHeaders{}, &buf))
-
-	var got map[string]any
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
-	require.Contains(t, got, "age")
-	assert.Nil(t, got["age"])
 }

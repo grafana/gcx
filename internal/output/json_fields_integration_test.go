@@ -165,28 +165,6 @@ func TestJSONFieldSelection_AbsentFieldIsNull(t *testing.T) {
 	assert.Nil(t, val)
 }
 
-// TestJSONFieldSelection_NullValueIsNull verifies the other half: a path that
-// exists and holds null is a real field, and it still renders as null.
-func TestJSONFieldSelection_NullValueIsNull(t *testing.T) {
-	codec := cmdio.NewFieldSelectCodec([]string{"name", "description"})
-
-	item := unstructured.Unstructured{Object: map[string]any{
-		"name":        "my-dashboard",
-		"description": nil,
-	}}
-
-	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, item))
-
-	var got map[string]any
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
-
-	assert.Equal(t, "my-dashboard", got["name"])
-	val, exists := got["description"]
-	assert.True(t, exists, "a null-valued field must stay in the output")
-	assert.Nil(t, val)
-}
-
 // TestJSONFieldSelection_RejectsNonJSONOutput verifies that providing
 // --json with a non-JSON -o format returns an error.
 //

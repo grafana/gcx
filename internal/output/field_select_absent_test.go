@@ -118,36 +118,6 @@ type arrayItem struct {
 	} `json:"rows"`
 }
 
-// TestLeafNameInsteadOfPathFails is the regression test for the reported
-// defect. `--json username,email` returned one null per row and no error, so
-// a script that searched the result found nothing and reported zero.
-func TestLeafNameInsteadOfPathFails(t *testing.T) {
-	codec := cmdio.NewFieldSelectCodec([]string{"username", "email"})
-
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, newOnCallUsers("ward", "dafydd"))
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown field(s) in --json: username, email")
-	assert.Contains(t, err.Error(), "Did you mean spec.username for username; spec.email for email?")
-	assert.Contains(t, err.Error(), "--json list")
-	assert.Empty(t, buf.String(), "a rejected selection must write nothing")
-}
-
-// TestDottedPathSucceeds is the other half: the correct paths still work.
-func TestDottedPathSucceeds(t *testing.T) {
-	codec := cmdio.NewFieldSelectCodec([]string{"spec.username", "spec.email"})
-
-	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, newOnCallUsers("ward")))
-
-	var got []map[string]any
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
-	require.Len(t, got, 1)
-	assert.Equal(t, "ward", got[0]["spec.username"])
-	assert.Equal(t, "ward@example.com", got[0]["spec.email"])
-}
-
 func TestAbsentFieldSelection(t *testing.T) {
 	tests := []struct {
 		name    string

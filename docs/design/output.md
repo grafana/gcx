@@ -136,7 +136,7 @@ gcx resources get dashboards/my-dash --json ?
 
 | Value | Behavior |
 |-------|----------|
-| `--json <path>,<path>` | Emit JSON with only those field paths. A path that exists and holds null renders as `null`. A path that the declared item type denies, and that no emitted object carries, is a usage error that names the real dotted paths ending with the same leaf name. A path that continues past an array is a usage error that names `--jq` |
+| `--json <path>,<path>` | Emit only the named paths. Invalid typed paths fail with a correction. Paths through arrays fail and name `--jq` |
 | `--json ?` | Print available field paths (one per line, sorted) and exit 0 |
 | `--json` + `-o json` | Allowed — both request JSON, no conflict |
 | `--json` + `-o <non-json>` | Usage error — field selection requires JSON output |

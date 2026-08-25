@@ -160,8 +160,16 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 		return c.encodeOne(dst, v.Object, nil)
 
 	case map[string]any:
-		// See dynamicMapEnvelopeSelection for the opt-in rule.
-		out, handled, err := c.dynamicMapEnvelopeSelection(v)
+		// A dynamic map opts into list-envelope selection through list_meta.
+		// Other maps keep whole-object selection.
+		if _, ok := v[ListMetaKey]; !ok {
+			return c.encodeOne(dst, v, nil)
+		}
+		m, err := toMap(v)
+		if err != nil || !hasListMetaEntry(m) {
+			return c.encodeOne(dst, v, nil)
+		}
+		out, handled, err := c.envelopeFieldSelection(m, nil)
 		if err != nil {
 			return err
 		}
@@ -215,36 +223,6 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 
 		return c.encodeOne(dst, m, structTypeOf(value))
 	}
-}
-
-// dynamicMapEnvelopeSelection applies envelope field selection to a dynamic
-// map, and reports whether it handled the value.
-//
-// A dynamic map counts as a list envelope only when it carries the reserved
-// list_meta key — attaching the key is the producer's opt-in to the contract.
-// The map may hold native Go values (a *ListMeta, a []map[string]any or a
-// typed item slice), so envelope handling runs on a JSON-normalized copy. The
-// key-presence check happens before normalization, so native metadata values
-// opt in too, and the reserved shape is validated after. A map without the
-// key — a raw passthrough payload such as a `gcx api` response that happens
-// to be items-shaped — keeps whole-object selection on the original value.
-func (c *FieldSelectCodec) dynamicMapEnvelopeSelection(v map[string]any) (map[string]any, bool, error) {
-	if _, ok := v[ListMetaKey]; !ok {
-		return nil, false, nil
-	}
-	// A map that does not normalize is not an envelope; whole-object
-	// selection on the original value still works, so the failure is not
-	// itself an error.
-	m, err := toMap(v)
-	if err != nil {
-		return nil, false, nil //nolint:nilerr // fall back to whole-object selection
-	}
-	if !hasListMetaEntry(m) {
-		return nil, false, nil
-	}
-	// A dynamic map declares no field set, so selection falls back to the
-	// emitted keys.
-	return c.envelopeFieldSelection(m, nil)
 }
 
 // selectItems applies field selection to a list of objects, rejecting a
@@ -586,7 +564,9 @@ func unwrapType(t reflect.Type) reflect.Type {
 // same reason.
 func structTypeOf(value any) reflect.Type {
 	t := unwrapType(reflect.TypeOf(value))
-	if t == nil || t.Kind() != reflect.Struct || t == reflect.TypeFor[unstructured.Unstructured]() || implementsJSONMarshaler(t) {
+	// Do not use the generic reflect.TypeFor form in this field-selection path.
+	unstructuredType := reflect.TypeOf(unstructured.Unstructured{}) //nolint:modernize
+	if t == nil || t.Kind() != reflect.Struct || t == unstructuredType || implementsJSONMarshaler(t) {
 		return nil
 	}
 	return t
@@ -598,7 +578,8 @@ func implementsJSONMarshaler(t reflect.Type) bool {
 	if t == nil {
 		return false
 	}
-	jsonMarshalerType := reflect.TypeFor[json.Marshaler]()
+	// Do not use the generic reflect.TypeFor form in this field-selection path.
+	jsonMarshalerType := reflect.TypeOf((*json.Marshaler)(nil)).Elem() //nolint:modernize
 	if t.Implements(jsonMarshalerType) {
 		return true
 	}
