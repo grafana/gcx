@@ -1509,7 +1509,7 @@ func (txn *keychainWriteTransaction) commit(warningWriter io.Writer) error {
 			hint := "verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage"
 			if errors.Is(txn.fallbackErr, credentials.ErrDisabled) {
 				message = "keychain storage is disabled; credentials remain in plaintext on disk"
-				hint = "unset GCX_KEYCHAIN or remove `credentials.keychain: disabled` from your config to store credentials in the OS credential store"
+				hint = "unset GCX_KEYCHAIN to store credentials in the OS credential store"
 			}
 			if warningWriter != nil {
 				fmt.Fprintf(warningWriter, "Warning: %s; %s\n", message, hint)

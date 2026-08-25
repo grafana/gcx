@@ -13,6 +13,14 @@ type CLIOptions struct {
 	// when their installed gcx skills can be updated. Any non-empty value
 	// disables the notifier (NO_COLOR convention).
 	DisableUpdateNotifier string `env:"GCX_NO_UPDATE_NOTIFIER"`
+
+	// Keychain controls whether token-shaped secrets are moved out of the config
+	// file into the OS keychain: "enabled" (the default) or "disabled" (also
+	// "off", "false", "0"). Disabled leaves credentials in plaintext in the
+	// config file, which is the only option on a machine whose keychain is
+	// permanently unavailable. An unrecognised value resolves to enabled, so a
+	// typo cannot silently write credentials in plaintext.
+	Keychain string `env:"GCX_KEYCHAIN"`
 }
 
 // LoadCLIOptions loads CLI options from environment variables.

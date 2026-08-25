@@ -54,7 +54,7 @@ func TestBoundKeychainDisabledFallbackWarningOmitsTroubleshootingHint(t *testing
 
 	require.NoError(t, txn.commit(&warnings))
 	assert.Equal(t, "Warning: keychain storage is disabled; credentials remain in plaintext on disk; "+
-		"unset GCX_KEYCHAIN or remove `credentials.keychain: disabled` from your config to store credentials in the OS credential store\n",
+		"unset GCX_KEYCHAIN to store credentials in the OS credential store\n",
 		warnings.String())
 	assert.NotContains(t, warnings.String(), "is available and working",
 		"a deliberate opt-out must not be reported as a broken credential store")

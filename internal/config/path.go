@@ -38,7 +38,7 @@ var legacyDatasourceFieldHints = map[string]string{
 func ValidateConfigPath(cfg Config, path string) (string, error) {
 	first, rest, _ := strings.Cut(path, ".")
 	switch first {
-	case "contexts", "current-context", "stacks", "resources", "diagnostics", "credentials", "version":
+	case "contexts", "current-context", "stacks", "resources", "diagnostics", "version":
 		return path, nil
 	case "cloud":
 		if sub, _, _ := strings.Cut(rest, "."); rest == "" || cloudEntryFields[sub] {

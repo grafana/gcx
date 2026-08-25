@@ -83,9 +83,7 @@ var (
 // when a credential actually needs the store.
 //
 //nolint:gochecknoglobals // process-wide memoization of the keychain mode.
-var resolvedKeychainMode = sync.OnceValue(func() keychainMode {
-	return keychainModeForProcess(context.Background())
-})
+var resolvedKeychainMode = sync.OnceValue(keychainModeForProcess)
 
 func defaultKeychainStore() credentials.Store {
 	if testing.Testing() {

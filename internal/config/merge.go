@@ -76,19 +76,6 @@ func MergeConfigs(base, over Config) Config {
 		}
 	}
 
-	// Credentials: last-non-empty-wins. Note that keychain mode itself is not
-	// resolved from the merged config (see keychainModeConfigValue) because the
-	// backend must be chosen before a config can be loaded.
-	if over.Credentials != nil {
-		if result.Credentials == nil {
-			result.Credentials = over.Credentials
-		} else if over.Credentials.Keychain != "" {
-			merged := *result.Credentials
-			merged.Keychain = over.Credentials.Keychain
-			result.Credentials = &merged
-		}
-	}
-
 	// Re-wire resolved views: merged contexts may reference stacks or cloud
 	// entries contributed by either layer.
 	result.Resolve()
