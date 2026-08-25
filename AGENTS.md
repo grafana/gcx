@@ -184,4 +184,5 @@ When creating or commenting on GitHub issues, **always anonymize system-specific
 - API tokens, credentials → never include, even partially
 
 This applies to issue bodies, comments, and code snippets embedded in issues.
-- Security issues should be reported via [Grafana's security issue reporting page](https://grafana.com/legal/report-a-security-issue/) and not directly in this repository.
+
+Security issues should be reported via [Grafana's security issue reporting page](https://grafana.com/legal/report-a-security-issue/) and not directly in this repository.
