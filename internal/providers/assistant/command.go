@@ -332,9 +332,12 @@ func newAssistantStreamingHTTPClient(ctx context.Context, streamTimeoutSeconds i
 	if httputils.PayloadLogging(ctx) {
 		return httputils.NewClient(httputils.ClientOpts{
 			Timeout: d,
+			// NewClient applies the first middleware closest to the base
+			// transport, so the dump runs last and shows every header that
+			// reaches the wire.
 			Middlewares: []httputils.Middleware{
-				httputils.LoggingMiddleware,
 				httputils.RequestResponseLoggingMiddleware,
+				httputils.LoggingMiddleware,
 			},
 		})
 	}
