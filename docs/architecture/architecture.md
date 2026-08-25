@@ -298,7 +298,9 @@ Two loading modes:
 Keychain references are source-bound: the canonical config path, exact
 owner/field, and normalized destination must match before a secret is resolved.
 Write-back loads only its raw target file, so environment overrides and values
-from other layers are never flattened into that file.
+from other layers are never flattened into that file. A missing native keychain
+may permit a warned plaintext fallback for a brand-new credential, while a
+reachable but locked or interaction-disabled keychain fails closed.
 
 ### Namespace Semantics
 
@@ -866,7 +868,9 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 | `internal/query/loki/types.go` | Request/response types for Loki |
 | `internal/query/loki/formatter.go` | Table/text formatting for Loki responses |
 | `cmd/gcx/datasources/command.go` | `datasources` command group (list, get, prometheus, loki, pyroscope, tempo, generic subcommands) |
-| `internal/datasources/query/` | Shared query CLI infrastructure (opts, codecs, resolution, time parsing); per-kind constructors live in `internal/datasources/{kind}/` |
+| `cmd/gcx/datasources/query.go` | Auto-detecting `datasources query` — options, ordering, one encode |
+| `cmd/gcx/datasources/query_routes.go` | Routing tables for the auto-detecting query: per-kind dispatch handlers, typed-command redirects, derived supported-kind list |
+| `internal/datasources/query/` | Shared query CLI infrastructure (opts, codecs, resolution, time parsing, kind normalization); per-kind constructors live in `internal/datasources/{kind}/` |
 
 ### Deep Link URLs
 

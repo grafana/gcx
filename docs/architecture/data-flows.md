@@ -308,24 +308,26 @@ generic dispatcher is a separate, conditional decision:
    `QueryCmd` and `ExtraCommands` automatically — no per-kind wiring in the
    command layer. Registered kinds live in `internal/datasources/providers/`;
    read that directory rather than trusting a list here.
-2. **Generic `datasources query` — hand-maintained, and deliberately not at
+2. **Generic `datasources query` — table-driven, and deliberately not at
    parity.** The auto-detecting command resolves the datasource type over the API
-   and dispatches through an explicit `switch` in
-   `cmd/gcx/datasources/query.go`, covering prometheus, loki, pyroscope, influxdb
-   and clickhouse. Registration does **not** reach it, and no test enforces
-   parity, because parity is not always the right answer: the generic contract is
-   `<uid> <expr>`, and a kind whose query cannot be expressed as one string does
-   not belong there. CloudWatch is handled explicitly for that reason — a guard on
-   the normalized type, placed *before* expression resolution and before the
-   switch, returns an error naming `datasources cloudwatch query` and its
-   structured flags (namespace, metric, dimensions, region, statistic, period).
-   The ordering is deliberate: as a switch case the redirect would be unreachable
-   for an argument-less call, which fails in `ResolveExpr` first. Kinds outside the
-   switch: athena and infinity (both `query [EXPR]`-shaped, so candidates), tempo
-   (its `query` leaf takes a TraceQL expression and is built in
-   `internal/datasources/tempo/search.go`, so it is a candidate too), and
-   cloudwatch (excluded by design, with the redirect above). Everything else falls
-   to the "not supported" default.
+   and routes it through two disjoint tables in
+   `cmd/gcx/datasources/query_routes.go`: `dispatch` maps a normalized kind to a
+   handler, for kinds the `<uid> <expr>` form carries honestly; `redirects` maps a
+   kind to a message naming the typed command, for kinds whose query is
+   structured. A kind is in one table, the other, or neither — never both, which
+   the tests assert. Registration does **not** reach these tables and no test
+   enforces parity, because parity is not always the right answer: a kind whose
+   query cannot be expressed as one string does not belong in the generic form.
+   CloudWatch is the redirect case for that reason, pointing at
+   `datasources cloudwatch query` and its structured flags (namespace, metric,
+   dimensions, region, statistic, period). The redirect lookup runs *before*
+   expression resolution and before the dispatch lookup: ordering is
+   load-bearing, because an argument-less call would otherwise fail in
+   `ResolveExpr` and never reach the redirect. Kinds in neither table (athena,
+   infinity, and tempo, whose `query` leaf takes a TraceQL expression and is
+   built in `internal/datasources/tempo/search.go`) fall to the unsupported-kind
+   default, whose message is derived from the tables rather than hand-maintained.
+   Read `newQueryRoutes()` rather than trusting a list here.
 
 ```
 User invocation:
@@ -448,12 +450,13 @@ User invocation:
 ```
 
 Key files:
-- `internal/datasources/query/opts.go` + `resolve.go` — shared opts, `ResolveTypedArgs`, `ValidateDatasourceType`
+- `internal/datasources/query/opts.go` + `resolve.go` — shared opts, `ResolveExpr`, `ParseTimes`, `NormalizeKind`, `GetDatasourceType`, `ResolveTypedArgs`, `ValidateDatasourceType`
 - `internal/datasources/provider.go` — the `DatasourceProvider` interface (`Kind`, `QueryCmd`, `ExtraCommands`)
 - `internal/datasources/providers/` — one file per registered kind, each calling `datasources.RegisterProvider()`; the authoritative list of supported kinds
 - `internal/datasources/<kind>/query.go` — per-kind `QueryCmd` constructors (tempo's lives in `search.go`, not `query.go` — the leaf exists, the filename differs)
 - `cmd/gcx/datasources/command.go` — mounts every registered kind's subtree from `datasources.AllProviders()`
-- `cmd/gcx/datasources/query.go` — generic auto-detecting `datasources query`, with the hand-maintained type `switch`
+- `cmd/gcx/datasources/query.go` — generic auto-detecting `datasources query`: the options struct and the fixed validate → resolve type → redirect → expression → times → dispatch order
+- `cmd/gcx/datasources/query_routes.go` — the two disjoint routing tables (per-kind dispatch handlers, typed-command redirects) and the derived supported-kind list
 - `internal/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
 - `internal/datasources/query/time.go` — time parsing for flag values
 - `internal/config/resolver.go` — `DefaultDatasourceUID(ctx, kind)` — per-kind lookup in the context's datasources map

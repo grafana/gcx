@@ -4,18 +4,23 @@ import (
 	"github.com/grafana/gcx/internal/credentials"
 )
 
-func (stack *StackConfig) rejectCredential(field credentials.Field, reason string) {
+func (stack *StackConfig) rejectCredential(field credentials.Field, reason string, causes ...error) {
 	if stack == nil {
 		return
 	}
 	if stack.credentialRejections == nil {
 		stack.credentialRejections = map[credentials.Field]CredentialRejectedError{}
 	}
+	var cause error
+	if len(causes) > 0 {
+		cause = causes[0]
+	}
 	stack.credentialRejections[field] = CredentialRejectedError{
 		Source: stack.sourceIdentity,
 		Owner:  credentials.StackOwner(stack.Name),
 		Field:  field,
 		Reason: reason,
+		cause:  cause,
 	}
 }
 
@@ -36,18 +41,23 @@ func (stack *StackConfig) credentialRejection(field credentials.Field) error {
 	return rejection
 }
 
-func (entry *CloudEntry) rejectCredential(field credentials.Field, reason string) {
+func (entry *CloudEntry) rejectCredential(field credentials.Field, reason string, causes ...error) {
 	if entry == nil {
 		return
 	}
 	if entry.credentialRejections == nil {
 		entry.credentialRejections = map[credentials.Field]CredentialRejectedError{}
 	}
+	var cause error
+	if len(causes) > 0 {
+		cause = causes[0]
+	}
 	entry.credentialRejections[field] = CredentialRejectedError{
 		Source: entry.sourceIdentity,
 		Owner:  credentials.CloudOwner(entry.Name),
 		Field:  field,
 		Reason: reason,
+		cause:  cause,
 	}
 }
 

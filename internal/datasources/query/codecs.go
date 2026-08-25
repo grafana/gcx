@@ -8,8 +8,11 @@ import (
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/athena"
+	"github.com/grafana/gcx/internal/query/azuremonitor"
 	"github.com/grafana/gcx/internal/query/clickhouse"
+	"github.com/grafana/gcx/internal/query/cloudmonitoring"
 	"github.com/grafana/gcx/internal/query/cloudwatch"
+	"github.com/grafana/gcx/internal/query/elasticsearch"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -55,6 +58,14 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return athena.FormatStringList(w, resp.Items, resp.Header)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatTable(w, resp)
+	case *cloudmonitoring.QueryResponse:
+		return cloudmonitoring.FormatTable(w, resp)
+	case *elasticsearch.MetricsResponse:
+		return elasticsearch.FormatMetricsTable(w, resp)
+	case *azuremonitor.QueryResponse:
+		return azuremonitor.FormatTable(w, resp)
+	case *azuremonitor.TableResponse:
+		return azuremonitor.FormatTableResponse(w, resp)
 	default:
 		return errors.New("invalid data type for query table codec")
 	}
@@ -88,6 +99,14 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return athena.FormatStringList(w, resp.Items, resp.Header)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatWide(w, resp)
+	case *cloudmonitoring.QueryResponse:
+		return cloudmonitoring.FormatWide(w, resp)
+	case *elasticsearch.MetricsResponse:
+		return elasticsearch.FormatMetricsTable(w, resp)
+	case *azuremonitor.QueryResponse:
+		return azuremonitor.FormatWide(w, resp)
+	case *azuremonitor.TableResponse:
+		return azuremonitor.FormatTableResponse(w, resp)
 	default:
 		return errors.New("invalid data type for query wide codec")
 	}
@@ -130,6 +149,18 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		if err != nil {
 			return err
 		}
+	case *cloudmonitoring.QueryResponse:
+		chartData, err = graph.FromCloudMonitoringResponse(resp)
+		if err != nil {
+			return err
+		}
+	case *azuremonitor.QueryResponse:
+		chartData, err = graph.FromAzureMonitorResponse(resp)
+		if err != nil {
+			return err
+		}
+	case *azuremonitor.TableResponse:
+		return errors.New("graph output is not supported for KQL table results; use -o table/json/yaml")
 	case *tempo.SearchResponse:
 		return errors.New("graph output is not supported for trace search results; use -o table/json/yaml")
 	case *infinity.QueryResponse:
@@ -141,6 +172,11 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		}
 	case *influxdb.QueryResponse:
 		chartData, err = graph.FromInfluxDBResponse(resp)
+		if err != nil {
+			return err
+		}
+	case *elasticsearch.MetricsResponse:
+		chartData, err = graph.FromElasticsearchResponse(resp)
 		if err != nil {
 			return err
 		}
@@ -218,4 +254,17 @@ func RegisterCodecs(ioOpts *cmdio.Options, enableGraph bool) {
 		ioOpts.RegisterCustomCodec("graph", &queryGraphCodec{})
 	}
 	ioOpts.DefaultFormat("table")
+}
+
+// RegisterStructuredCodecs registers only the JSON and YAML codecs (default
+// JSON) — no table, wide, or graph. Use it for datasource commands whose
+// payload is an opaque or free-form structure with no meaningful tabular
+// projection, e.g. the experimental Tempo trace-diff patch. The table/wide
+// codecs switch on concrete response types and reject anything else with
+// "invalid data type", so advertising them for such commands would surface a
+// runtime error on a documented output path.
+func RegisterStructuredCodecs(ioOpts *cmdio.Options) {
+	ioOpts.RegisterCustomCodec("json", &queryJSONCodec{inner: format.NewJSONCodec()})
+	ioOpts.RegisterCustomCodec("yaml", &queryYAMLCodec{inner: format.NewYAMLCodec()})
+	ioOpts.DefaultFormat("json")
 }

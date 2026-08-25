@@ -24,9 +24,10 @@ const probeAccount = "__gcx_probe__"
 type keychainStore struct{}
 
 // Open returns a Store backed by the OS keychain. If no working backend is
-// reachable (unsupported platform, headless box, missing DBus, locked
-// session), it returns a Store that reports ErrUnavailable on every operation
-// so callers can fall back to plaintext.
+// reachable (unsupported platform, headless box, missing DBus), it returns a
+// Store that reports ErrUnavailable on every operation so callers can fall
+// back to plaintext. If the backend is reachable but locked, every operation
+// reports ErrLocked instead, so no secret ever falls back to plaintext.
 func Open() Store {
 	// Probe with a read for an account we never write. A working backend
 	// returns ErrNotFound; an unreachable one returns a transport/platform
@@ -70,19 +71,53 @@ func (keychainStore) Delete(key string) error {
 // normalizeKeyringError converts only errors that prove the native credential
 // backend is unreachable in the current session into ErrUnavailable. In
 // particular, value-size, input, permission-policy, and unknown errors remain
-// fatal so callers never silently downgrade them to plaintext.
+// fatal so callers never silently downgrade them to plaintext. Errors that
+// prove the backend exists but is locked become ErrLocked, which stays fatal.
 func normalizeKeyringError(err error) error {
 	return normalizeKeyringErrorForOS(err, runtime.GOOS)
 }
 
 func normalizeKeyringErrorForOS(err error, goos string) error {
-	if err == nil || errors.Is(err, ErrUnavailable) || errors.Is(err, keyring.ErrSetDataTooBig) {
+	if err == nil || errors.Is(err, ErrUnavailable) || errors.Is(err, ErrLocked) ||
+		errors.Is(err, keyring.ErrSetDataTooBig) {
 		return err
+	}
+	// A locked backend is a reachable backend. Classify it before the
+	// unavailability check so it never downgrades to a plaintext fallback.
+	if nativeKeyringBackendLocked(err, goos) {
+		return fmt.Errorf("%w: %w", ErrLocked, err)
 	}
 	if nativeKeyringBackendUnavailable(err, goos) {
 		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	return err
+}
+
+// nativeKeyringBackendLocked reports whether the error proves that a native
+// keychain exists, but it is locked or cannot present the interaction needed
+// to unlock it in the current session.
+func nativeKeyringBackendLocked(err error, goos string) bool {
+	if goos == "darwin" {
+		var exitErr *exec.ExitError
+		return errors.As(err, &exitErr) && darwinKeychainLockedExitCode(exitErr.ExitCode())
+	}
+	if !usesSecretService(goos) {
+		return false
+	}
+
+	// go-keyring returns errors from godbus without a stable exported wrapper
+	// at this boundary. Match the signatures that mean the collection is
+	// locked, or that the unlock prompt returned no unlocked collection.
+	message := strings.ToLower(err.Error())
+	for _, signature := range []string{
+		"org.freedesktop.secret.error.islocked",
+		"failed to unlock correct collection",
+	} {
+		if strings.Contains(message, signature) {
+			return true
+		}
+	}
+	return false
 }
 
 func nativeKeyringBackendUnavailable(err error, goos string) bool {
@@ -116,7 +151,6 @@ func nativeKeyringBackendUnavailable(err error, goos string) bool {
 		"org.freedesktop.dbus.error.noserver",
 		"org.freedesktop.dbus.error.disconnected",
 		"org.freedesktop.dbus.error.noreply",
-		"org.freedesktop.secret.error.islocked",
 		"org.freedesktop.secret.error.nosession",
 		"the name org.freedesktop.secrets was not provided",
 		"object does not exist at path",
@@ -138,14 +172,25 @@ func usesSecretService(goos string) bool {
 }
 
 func darwinKeychainUnavailableExitCode(code int) bool {
-	// go-keyring invokes /usr/bin/security and discards Set's stderr. The
-	// observed 154 status is emitted by a headless/locked macOS session. The
-	// other values are the low-byte process statuses of documented Security
-	// framework failures: dark wake, interaction disallowed, no default
-	// keychain, no such keychain, and no available keychain. Authentication
-	// failure (51) and user cancellation (128) are intentionally excluded.
+	// These are the low-byte process statuses of Security framework failures
+	// that prove no usable keychain exists: no default keychain, no such
+	// keychain, and no available keychain.
 	switch code {
-	case 24, 36, 37, 50, 53, 154:
+	case 37, 50, 53:
+		return true
+	default:
+		return false
+	}
+}
+
+func darwinKeychainLockedExitCode(code int) bool {
+	// go-keyring invokes /usr/bin/security and discards Set's stderr. Exit 154
+	// is observed when a headless session reaches a locked login keychain. The
+	// documented Security framework statuses 24 (dark wake: no UI possible)
+	// and 36 (interaction not allowed) likewise prove that the keychain exists
+	// but cannot be unlocked interactively in the current session.
+	switch code {
+	case 24, 36, 154:
 		return true
 	default:
 		return false

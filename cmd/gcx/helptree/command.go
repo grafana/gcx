@@ -38,6 +38,7 @@ type treeNode struct {
 	Hint         string      `json:"hint,omitempty"`
 	Skill        string      `json:"skill,omitempty"`
 	Availability string      `json:"availability,omitempty"`
+	Stability    string      `json:"stability,omitempty"`
 	Children     []*treeNode `json:"children,omitempty"`
 }
 
@@ -55,6 +56,9 @@ func buildTreeNode(cmd *cobra.Command, depth int, opts RenderOptions) *treeNode 
 	}
 	if availability := cmd.Annotations[agent.AnnotationAvailability]; availability != "" {
 		node.Availability = availability
+	}
+	if stability := cmd.Annotations[agent.AnnotationStability]; stability != "" {
+		node.Stability = stability
 	}
 	if opts.MaxDepth > 0 && depth >= opts.MaxDepth {
 		return node

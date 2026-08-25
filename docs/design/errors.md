@@ -163,12 +163,14 @@ Adding a new summary requires a PR amending this list.
 | `Invalid command usage` | Wrong flags, conflicting flags, missing required args |
 | `Invalid configuration` | Bad config file, unresolvable context |
 | `Authentication failed` | Token expired or missing |
+| `Keychain locked` | The OS keychain answers, but it is locked or the current session cannot unlock it, so gcx cannot store or use the credential |
 | `Authorization failed` | Permission denied (403) |
 | `Resource not found` | 404 or client-side not-found detection |
 | `Resource conflict` | Optimistic lock / RMW conflict, or an API-reported conflict whose exact cause is not machine-discriminable (e.g. GCOM stack 409s) |
 | `Invalid stack request` | GCOM rejected stack create/update arguments (409 with code `InvalidArgument`) |
 | `Network error` | Connection refused, DNS failure |
 | `API error` | Non-404/403 HTTP error from backend |
+| `Endpoint not available` | The requested API route is absent on this deployment or version (e.g. an experimental or Cloud-only endpoint), as opposed to a missing resource |
 | `Unexpected error` | Catch-all — no typed converter matched |
 
 Converters in `cmd/gcx/fail/convert.go` MUST set `Summary` to a value from this table.

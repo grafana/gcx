@@ -41,7 +41,7 @@ func requireGrafanaCloud(ctx *config.Context) error {
 // Command returns the assistant command group.
 func Command() *cobra.Command {
 	// A single ConfigLoader is shared across every subcommand (prompt,
-	// dashboard, conversation, investigations, mcp-servers). --config is bound
+	// conversation, investigations, mcp-servers). --config is bound
 	// on the group's persistent flags; --context is the root command's global
 	// flag, threaded into context.Context and read back via
 	// config.ContextNameFromCtx — so no per-subcommand flag-copying is needed.
@@ -86,7 +86,6 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 
 	loader.BindFlags(cmd.PersistentFlags())
 	cmd.AddCommand(promptCommand(loader))
-	cmd.AddCommand(dashboardCommand(loader))
 	cmd.AddCommand(conversationCommand(loader))
 	cmd.AddCommand(investigations.Commands(loader))
 	cmd.AddCommand(mcpserverscmd.Commands(loader))
@@ -103,18 +102,15 @@ type promptOpts struct {
 	agentID   string
 }
 
-// setup binds the shared streaming flags. If exposeAgentID is true, the
-// --agent-id flag is also bound; subcommands that target a fixed agent (e.g.
-// `assistant dashboard`) pass false and pre-populate o.agentID instead.
-func (o *promptOpts) setup(cmd *cobra.Command, exposeAgentID bool) {
+// setup binds the shared streaming flags, including --agent-id for selecting
+// which A2A agent to target.
+func (o *promptOpts) setup(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&o.timeout, "timeout", 300, "Timeout in seconds when waiting for a response")
 	cmd.Flags().StringVar(&o.contextID, "context-id", "", "Context ID for conversation threading")
 	cmd.Flags().BoolVar(&o.cont, "continue", false, "Continue the previous chat session")
 	cmd.Flags().BoolVar(&o.jsonOut, "json", false, "Output as JSON (streams NDJSON events by default)")
 	cmd.Flags().BoolVar(&o.noStream, "no-stream", false, "With --json, emit a single JSON object instead of streaming events")
-	if exposeAgentID {
-		cmd.Flags().StringVar(&o.agentID, "agent-id", assistant.DefaultAgentID, "Agent ID to target (e.g. grafana_assistant_cli, grafana_dashboarding)")
-	}
+	cmd.Flags().StringVar(&o.agentID, "agent-id", assistant.DefaultAgentID, "Agent ID to target")
 }
 
 func (o *promptOpts) Validate() error {
@@ -148,19 +144,12 @@ func promptCommand(configOpts *providers.ConfigLoader) *cobra.Command {
 This is useful for scripting and automation. The response streams via
 the A2A (Agent-to-Agent) protocol over Server-Sent Events.
 
-Known agent IDs:
-  grafana_assistant_cli   General-purpose assistant (default)
-  grafana_dashboarding    Dashboard builder — queries live Prometheus to discover
-                          metrics and returns complete dashboard JSON ready for
-                          'gcx resources push'. See also: gcx assistant dashboard
-
 Note: each prompt consumes billable Grafana Assistant tokens, including requests
 made through gcx. See ` + docs.AssistantPricing + `.`,
 		Args: cobra.ExactArgs(1),
 		Example: `  gcx assistant prompt "What alerts are firing?"
   gcx assistant prompt "Show CPU usage" --json
-  gcx assistant prompt "Follow up" --continue
-  gcx assistant prompt "Build a CPU dashboard" --agent-id grafana_dashboarding`,
+  gcx assistant prompt "Follow up" --continue`,
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "large",
 			agent.AnnotationLLMHint:   "Prefer deterministic gcx commands (gcx metrics query, gcx slo definitions status, gcx alert instances list) for precise data retrieval. Use assistant prompt for reasoning: root cause analysis, holistic health questions, or when you don't know which metrics/labels exist — the Assistant's Infrastructure Memories know your stack topology. Each prompt consumes billable Grafana Assistant tokens (" + docs.AssistantPricing + "). Example: \"Why is checkout-latency spiking?\" --json",
@@ -168,46 +157,11 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 		RunE: promptRunE(opts, configOpts),
 	}
 
-	opts.setup(cmd, true)
+	opts.setup(cmd)
 	return cmd
 }
 
-// dashboardCommand returns a subcommand that routes to the grafana_dashboarding
-// agent. It queries live Prometheus to discover metrics and returns complete
-// dashboard JSON ready for 'gcx resources push'.
-func dashboardCommand(configOpts *providers.ConfigLoader) *cobra.Command {
-	opts := &promptOpts{agentID: "grafana_dashboarding"}
-
-	cmd := &cobra.Command{
-		Use:   "dashboard <message>",
-		Short: "Build a dashboard using the Grafana dashboarding agent",
-		Long: `Send a dashboard creation request to the Grafana dashboarding agent.
-
-The agent queries live Prometheus to discover available clusters and metric
-names, then returns complete dashboard JSON that can be pushed directly with
-'gcx resources push'.
-
-This is equivalent to:
-  gcx assistant prompt --agent-id grafana_dashboarding <message>
-
-Note: each request consumes billable Grafana Assistant tokens, including
-requests made through gcx. See ` + docs.AssistantPricing + `.`,
-		Args: cobra.ExactArgs(1),
-		Example: `  gcx assistant dashboard "Build a CPU usage dashboard across all clusters"
-  gcx assistant dashboard "Create a dashboard for HTTP error rates by service" --json`,
-		Annotations: map[string]string{
-			agent.AnnotationTokenCost: "large",
-			agent.AnnotationLLMHint:   "Use assistant dashboard to build Grafana dashboards from natural language. The agent discovers live Prometheus metrics and returns complete dashboard JSON. Pipe the result to 'gcx resources push' to publish it. Each request consumes billable Grafana Assistant tokens (" + docs.AssistantPricing + ").",
-		},
-		RunE: promptRunE(opts, configOpts),
-	}
-
-	opts.setup(cmd, false)
-	return cmd
-}
-
-// promptRunE returns the RunE used by both `prompt` and `dashboard` — the only
-// per-command difference is the pre-populated agent ID on opts.
+// promptRunE returns the RunE used by the prompt subcommand.
 func promptRunE(opts *promptOpts, configOpts *providers.ConfigLoader) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		if err := opts.Validate(); err != nil {

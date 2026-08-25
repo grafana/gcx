@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -15,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/fleet"
@@ -62,8 +64,10 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertCobraUnknownCommandErrors,
 		convertContextCanceled,                      // Context cancellation (must be first — cancellation can wrap other errors)
 		convertRequiredFlagErrors,                   // Cobra required-flag errors — must appear before generic checks
+		convertCredentialsErrors,                    // Locked OS keychain — must precede credential-rejection/config errors that wrap it
 		convertConfigErrors,                         // Config-related
 		convertAuthErrors,                           // Auth-related (expired tokens)
+		convertUnavailableEndpoint,                  // Experimental/Cloud-only endpoint route absent
 		convertQueryErrors,                          // Datasource query errors
 		convertDatasourceErrors,                     // Grafana datasource REST API errors
 		convertServiceAPIErrors,                     // Other structured HTTP API errors
@@ -208,6 +212,48 @@ func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return nil, false
 }
 
+// convertCredentialsErrors converts credentials.ErrLocked into an actionable
+// message. A locked keychain proves that a real secret backend exists, so gcx
+// keeps the error fatal instead of a fallback to a plaintext write. The
+// suggestions depend on the operating system and its session model.
+func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
+	if !errors.Is(err, credentials.ErrLocked) {
+		return nil, false
+	}
+
+	return &gcxerrors.DetailedError{
+		Summary:     "Keychain locked",
+		Details:     "The OS keychain is reachable, but it is locked or cannot be unlocked in this session. gcx does not fall back to a plaintext credential.",
+		Parent:      err,
+		Suggestions: keychainLockedSuggestions(runtime.GOOS),
+		DocsLink:    docs.Keychain,
+	}, true
+}
+
+// keychainLockedSuggestions returns the remedies for a locked keychain on the
+// given operating system. Secret Service unlock commands depend on the session,
+// while macOS provides a stable security(1) command whose effect is scoped to
+// the invoking security session.
+func keychainLockedSuggestions(goos string) []string {
+	switch goos {
+	case "darwin":
+		return []string{
+			"Unlock the login keychain in the same security session as gcx, then retry the command",
+			"Run `security unlock-keychain` in that session, or run gcx from an unlocked desktop session",
+			"Supply the credential in an environment variable, such as GRAFANA_TOKEN, if you cannot unlock the keychain in this session",
+		}
+	case "dragonfly", "freebsd", "linux", "netbsd", "openbsd":
+		return []string{
+			"Unlock the keyring, then retry the command",
+			"Run gcx from a desktop session, where a password prompt can appear",
+			"Check the lock state: busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked",
+			"Supply the credential in an environment variable, such as GRAFANA_TOKEN, if you cannot unlock the keyring on this host",
+		}
+	default:
+		return nil
+	}
+}
+
 func convertNetworkErrors(err error) (*gcxerrors.DetailedError, bool) {
 	urlErr := &url.Error{}
 	if errors.As(err, &urlErr) {
@@ -259,6 +305,63 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return &gcxerrors.DetailedError{
 		Parent:  err,
 		Summary: fmt.Sprintf("API error: %s - code %d", reason, code),
+	}, true
+}
+
+// convertUnavailableEndpoint renders a route-absent response from an endpoint
+// flagged Cloud-only and/or experimental (via APIError.WithAvailability) into
+// an actionable, hedged error. It is datasource-agnostic: any client that marks
+// its error gets consistent handling. A 404 can also mean the requested
+// resource was not found, so the message stays hedged rather than asserting
+// unavailability.
+func convertUnavailableEndpoint(err error) (*gcxerrors.DetailedError, bool) {
+	apiErr := &queryerror.APIError{}
+	if !errors.As(err, &apiErr) {
+		return nil, false
+	}
+	if !apiErr.CloudOnly && !apiErr.Experimental {
+		return nil, false
+	}
+	// Only claim unavailability when confident. A 404 is ambiguous: a truly
+	// absent route returns Go's "404 page not found", whereas a present route
+	// with a missing resource (e.g. an unknown trace ID) returns a
+	// datasource-specific body. Method-not-allowed and not-implemented reliably
+	// indicate a route/shape mismatch. Ambiguous cases fall through to the
+	// normal query-error path so a missing trace is not mislabelled.
+	confident := false
+	switch apiErr.StatusCode {
+	case http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		confident = true
+	case http.StatusNotFound:
+		confident = strings.Contains(strings.ToLower(apiErr.Message), "page not found")
+	}
+	if !confident {
+		return nil, false
+	}
+
+	endpoint := strings.TrimSpace(apiErr.Datasource + " " + apiErr.Operation)
+	if endpoint == "" {
+		endpoint = "requested"
+	}
+
+	var note string
+	switch {
+	case apiErr.CloudOnly && apiErr.Experimental:
+		note = "This is an experimental, Grafana Cloud-only endpoint"
+	case apiErr.CloudOnly:
+		note = "This is a Grafana Cloud-only endpoint"
+	default:
+		note = "This is an experimental endpoint"
+	}
+
+	return &gcxerrors.DetailedError{
+		Parent:  err,
+		Summary: "Endpoint not available",
+		Details: fmt.Sprintf("HTTP %d from the %s endpoint", apiErr.StatusCode, endpoint),
+		Suggestions: []string{
+			note + "; it may be unavailable on this deployment or version",
+			"Confirm your context targets a datasource that supports it",
+		},
 	}, true
 }
 

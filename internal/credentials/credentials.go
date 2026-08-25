@@ -6,9 +6,9 @@
 //
 // Migration is automatic and idempotent: on every config load, plaintext
 // secrets are pushed into the keychain and replaced with sentinels in the
-// YAML. If the keychain is unavailable (headless boxes, locked sessions,
-// missing DBus), gcx falls back to leaving plaintext in place and emits a
-// one-time warning.
+// YAML. If no keychain is available, gcx falls back to leaving plaintext in
+// place and emits a one-time warning. A reachable but locked keychain fails
+// closed instead.
 package credentials
 
 import (
@@ -74,6 +74,13 @@ var ErrNotFound = errors.New("credentials: entry not found")
 // ErrUnavailable is returned when the OS keychain cannot be reached. Callers
 // should fall back to plaintext.
 var ErrUnavailable = errors.New("credentials: keychain unavailable")
+
+// ErrLocked is returned when the OS keychain is reachable but locked, or when
+// the current session cannot present the interaction needed to unlock it. It is
+// deliberately distinct from ErrUnavailable: this condition proves that a real
+// secret backend exists, so callers must not fall back to plaintext. Callers
+// must fail and ask the user to unlock the keychain.
+var ErrLocked = errors.New("credentials: keychain locked")
 
 // Store is the minimal interface for a secret backend.
 type Store interface {

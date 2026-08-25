@@ -1863,3 +1863,69 @@ func TestRun_OAuthSuccess_AnnouncesSignInWithoutEmail(t *testing.T) {
 		"OAuth completion must be acknowledged even without an email")
 	assert.NotContains(t, out, " as ", "no 'as <email>' clause when email is absent")
 }
+
+func TestRun_ManualOAuthReachesAuthOptions(t *testing.T) {
+	var buf bytes.Buffer
+	reader := strings.NewReader("")
+	var got auth.Options
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:      "https://grafana.example.com",
+			Target:      login.TargetOnPrem,
+			UseOAuth:    true,
+			OAuthManual: true,
+			Reader:      reader,
+			Writer:      &buf,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(t.TempDir()),
+			NewAuthFlow: func(_ string, ao auth.Options) login.AuthFlow {
+				got = ao
+				return &stubAuthFlow{result: &auth.Result{
+					Token:            "gat_test",
+					APIEndpoint:      "https://grafana.example.com/api",
+					InstanceEndpoint: "https://grafana.example.com",
+				}}
+			},
+			ValidateFn: noopValidate,
+		},
+		RetryState: login.RetryState{StagedContext: &config.Context{}},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+
+	assert.True(t, got.Manual, "manual mode must reach the auth flow")
+	assert.Zero(t, got.Port, "manual mode never fixes a callback port")
+	assert.Same(t, reader, got.Reader, "the CLI reader must reach the auth flow")
+}
+
+func TestRun_ManualOAuthWithoutReaderFails(t *testing.T) {
+	var buf bytes.Buffer
+	called := false
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:      "https://grafana.example.com",
+			Target:      login.TargetOnPrem,
+			UseOAuth:    true,
+			OAuthManual: true,
+			Writer:      &buf,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(t.TempDir()),
+			NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+				called = true
+				return &stubAuthFlow{result: &auth.Result{Token: "gat_test"}}
+			},
+			ValidateFn: noopValidate,
+		},
+		RetryState: login.RetryState{StagedContext: &config.Context{}},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reader")
+	assert.False(t, called, "the auth flow must not start without a reader")
+}

@@ -11,10 +11,11 @@ This page walks through the common login paths, the mental model behind them, an
 ## Pick your scenario
 
 1. **Setting up Grafana Cloud interactively** → [Grafana Cloud (interactive OAuth)](#grafana-cloud-interactive-oauth)
-2. **Setting up on-premises Grafana** → [Service account token](#service-account-token)
-3. **Setting up CI, an agent, or any non-interactive environment** → [Environment variables for CI and agents](#environment-variables-for-ci-and-agents)
-4. **Adding Grafana Cloud product API access to an existing context** → [Grafana Cloud product APIs](#grafana-cloud-product-apis)
-5. **Re-authenticating or switching between contexts** → [Re-authenticating and switching contexts](#re-authenticating-and-switching-contexts)
+2. **Running gcx over SSH, with the browser on another computer** → [Remote host or SSH session](#remote-host-or-ssh-session)
+3. **Setting up on-premises Grafana** → [Service account token](#service-account-token)
+4. **Setting up CI, an agent, or any non-interactive environment** → [Environment variables for CI and agents](#environment-variables-for-ci-and-agents)
+5. **Adding Grafana Cloud product API access to an existing context** → [Grafana Cloud product APIs](#grafana-cloud-product-apis)
+6. **Re-authenticating or switching between contexts** → [Re-authenticating and switching contexts](#re-authenticating-and-switching-contexts)
 
 ## Procedures
 
@@ -51,6 +52,73 @@ mTLS/anonymous inference, but a partial or rejected higher-priority credential
 fails before any request instead of falling through. Repair the selected method
 with `gcx login`, or use `gcx config edit --config <path>` when the file cannot
 be loaded normally.
+
+### Remote host or SSH session
+
+The OAuth callback server listens on `127.0.0.1` on the computer that runs gcx.
+When you run gcx over SSH, the browser on your own computer cannot open that
+address.
+
+**You do not need a flag, and you do not need to restart.** gcx detects the SSH
+session, keeps the callback server listening, and also reads a pasted redirect
+URL. It accepts whichever arrives first:
+
+```
+Note: gcx runs in an SSH session.
+The browser on your computer cannot open the callback address on this host.
+Do one of these two steps. gcx accepts the one that completes first.
+
+  1. Add a port forward to this SSH session. Press Enter, then press ~C,
+     then type this line:
+       -L 54321:127.0.0.1:54321
+
+  2. Approve the login in the browser on your computer. The browser then
+     goes to an address that does not load. Copy that address and paste it
+     here.
+
+Redirect URL (or wait for the browser):
+```
+
+**Option 1 — add a forward to the running session.** `~C` is the OpenSSH escape
+that opens a command line for `-L`, `-R`, and `-D`. It needs no reconnect and no
+hostname, and gcx keeps waiting, so the login completes as soon as the browser
+reaches the forwarded port. The escape only works after a newline, so press
+Enter first.
+
+**Option 2 — paste the redirect URL.** Approve in the browser, let it fail to
+load `http://127.0.0.1:<port>/callback?...`, copy the whole address, and paste
+it at the prompt. If the address does not work, gcx says why and asks again; the
+callback server stays up the whole time.
+
+The prompt ignores an empty line, so the Enter that Option 1 needs costs
+nothing. Ctrl-D ends the paste route; gcx says so and keeps waiting for the
+browser.
+
+Do these steps quickly. The authorization code expires.
+
+**`--oauth-manual` for scripts and terminals with no `/dev/tty`.** The flag
+starts no callback server at all and only reads the pasted URL:
+
+```bash
+gcx login my-stack --server https://my-stack.grafana.net --oauth-manual
+```
+
+It implies `--oauth` and is mutually exclusive with `--oauth-callback-port`. The
+same flag works on `gcx cloud login`, and one choice covers both the stack step
+and the Cloud follow-up step. You do not need it for an ordinary interactive SSH
+login — the prompt above appears on its own.
+
+**Close other `gcx login` sessions on the browser computer first.** A gcx login
+that already listens on the same port there receives the callback, rejects it on
+the state check, and ends its own flow. Your paste still succeeds, but the
+other login does not.
+
+**Terminal hygiene.** The pasted URL holds a single-use authorization code and
+the state value. It does not hold the PKCE code verifier or a token, so the
+code alone cannot mint a token. gcx reads it from a prompt, so it never enters
+your shell history. It does stay in the terminal scrollback and in the browser
+history. gcx prints the reminder once a URL reaches the screen, whether the
+login succeeds or fails. Clear the terminal if other people can read it.
 
 ### Service account token
 
@@ -278,16 +346,10 @@ those inputs.
 
 **Credential storage.** Grafana credentials persist under the context's named
 stack entry; CAP and Cloud OAuth credentials occupy distinct fields on the
-referenced Cloud entry. When the OS keychain is available, token-shaped secrets
-move there and YAML contains a source-, owner-, field-, and destination-bound
-sentinel instead. `gcx config view` redacts secret fields. Do not commit a
-credential-bearing config file to version control.
-
-If a known locked or unreachable keychain backend prevents storing a brand-new
-credential, gcx may keep that new value in the mode-`0600` config file and warns
-that it remains plaintext. It never silently downgrades a replacement,
-deletion, missing or rejected keychain reference, oversized value, or unknown
-backend failure to plaintext.
+referenced Cloud entry. See [Keychain credential storage](configuration/keychain.md)
+for storage rules and keychain error procedures. `gcx config view` redacts
+secret fields. Do not commit a credential-bearing config file to version
+control.
 
 ## Troubleshooting
 
@@ -303,55 +365,60 @@ Each entry pairs the error you see with what it means and how to fix it.
 
 3. **OAuth: browser did not open, or token refresh failed**
     - *Means:* gcx tried to open a browser for OAuth but the system command returned an error, or the OAuth refresh flow failed.
-    - *Fix:* Re-run `gcx login` to trigger a fresh flow. If your environment has no browser, use a service account token instead. For corporate proxies, check that the OAuth callback URL is reachable.
+    - *Fix:* Re-run `gcx login` to trigger a fresh flow. If the browser runs on a different computer, re-run with `--oauth-manual` and paste the redirect URL — see [Remote host or SSH session](#remote-host-or-ssh-session). If your environment has no browser at all, use a service account token instead. For corporate proxies, check that the OAuth callback URL is reachable.
 
-4. **`Permission Required` on the OAuth consent page (`gcx User` role / `grafana-assistant-app.tokens.gcx:access`)**
+4. **OAuth over SSH never completes; the browser shows `ERR_CONNECTION_REFUSED` on 127.0.0.1**
+    - *Means:* the callback server listens on the loopback address of the remote host. The browser on your own computer cannot reach it.
+    - *Fix:* This is expected. Copy that address from the browser and paste it at the `Redirect URL` prompt, or add a port forward to the running session with `~C`. See [Remote host or SSH session](#remote-host-or-ssh-session). If gcx printed no prompt, it found no `/dev/tty`; re-run with `--oauth-manual`.
+
+5. **`Permission Required` on the OAuth consent page (`gcx User` role / `grafana-assistant-app.tokens.gcx:access`)**
     - *Means:* your Grafana user lacks the `grafana-assistant-app.tokens.gcx:access` permission that gates gcx token minting. The **gcx User** role granting it is normally auto-assigned to Viewer and above, but the instance may run a grafana-assistant-app version older than 2.0.26 (role does not exist yet) or have customized basic-role grants.
     - *Fix:* ask your Grafana administrator to assign the **gcx User** role, or a custom role including `grafana-assistant-app.tokens.gcx:access`. If the role is missing entirely, the grafana-assistant-app plugin needs updating. As a workaround, authenticate with a service account token instead.
 
-5. **`grafana version X is not supported; gcx requires Grafana 12.0.0 or later`**
+6. **`grafana version X is not supported; gcx requires Grafana 12.0.0 or later`**
     - *Means:* gcx requires Grafana 12 or newer because it uses the Grafana K8s-compatible `/apis` surface introduced in 12.
     - *Fix:* Upgrade your Grafana instance, or use a different tool for older versions.
 
-6. **GCOM 401 / Cloud Access Policy token rejected**
+7. **GCOM 401 / Cloud Access Policy token rejected**
     - *Means:* the Cloud Access Policy token was rejected by GCOM or a Cloud product API.
     - *Fix:* Verify the token at [grafana.com → Access Policies](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/). Rotate if compromised. Provide the new token via `gcx login --context X --cloud-token glc_...`.
 
-7. **Health check or `/apis` connectivity failures**
+8. **Health check or `/apis` connectivity failures**
     - *Means:* gcx could not reach the server during the validation pipeline — typically a wrong URL, DNS/proxy issue, or TLS mismatch.
     - *Fix:* Verify the server URL is correct and reachable. Check any corporate proxies (`HTTPS_PROXY`) and TLS configuration. For a reviewed development-only config, set `stacks.<name>.grafana.tls.insecure-skip-verify`; there is no login flag that bypasses TLS verification.
 
-8. **`gcx assistant` commands fail with a service account token**
+9. **`gcx assistant` commands fail with a service account token**
     - *Means:* `gcx assistant` commands (prompt, investigations) require OAuth, which is only available when you log in via the browser-based OAuth flow. Service account tokens are not supported.
     - *Fix:* Re-run `gcx login` and choose the OAuth (browser) option. If your environment cannot open a browser, `gcx assistant` is not available — use the Grafana UI instead.
 
-9. **Flag vs env-var precedence confusion**
+10. **Flag vs env-var precedence confusion**
     - *Means:* both a CLI flag and an environment variable are set for the same field, and gcx behaves unexpectedly.
     - *Fix:* Flags take precedence over env vars, which take precedence over config-file values. For credential fields, blank or whitespace-only inputs are treated as unset rather than as an override. Run `gcx config view` to inspect the resolved config and spot the conflict.
 
-10. **Login refuses to replace an existing context's server**
+11. **Login refuses to replace an existing context's server**
     - *Means:* the selected context points at a different Grafana server. `--yes` does not authorize changing a credential destination, and gcx will not present the stored credential to the new server.
     - *Fix:* Verify the new URL, then pass `--allow-server-override` together with a fresh `--token`, a fresh `GRAFANA_TOKEN`, or a new OAuth flow. An interactive login can ask for the same explicit confirmation.
 
-11. **`Configuration write target is ambiguous`**
+12. **`Configuration write target is ambiguous`**
     - *Means:* layered files do not prove one owner for every entry or context binding the login may update.
     - *Fix:* Review the paths listed by the error and rerun with the intended `--config <path>`, or keep the target stack, Cloud entry, and context bindings together in one source.
 
-12. **A credential was `rejected before network use`**
-    - *Means:* a keychain reference was missing/foreign, a destination changed, or an environment credential was paired with an auto-discovered repository destination. gcx withheld it instead of sending an empty or misrouted credential.
-    - *Fix:* For an auto-discovered repository destination, review the file and rerun with its explicit `--config` path. Explicit selection does not make a missing, foreign, or destination-mismatched keychain sentinel valid; re-authenticate or replace/unset that field. Use the exact raw editor command named by the error, such as `gcx config edit user` or `gcx config edit --config "<path>"`; it remains available even when ordinary loading fails.
+13. **A credential was `rejected before network use`**
+    - *Means:* a credential reference was missing or foreign, a destination changed, or an environment credential was paired with an auto-discovered repository destination. gcx withheld it instead of sending an empty or misrouted credential.
+    - *Fix:* For an auto-discovered repository destination, review the file and rerun with its explicit `--config` path. Re-authenticate, or replace or unset the rejected field. See [Keychain credential storage](configuration/keychain.md) if the error identifies a keychain reference.
 
-13. **`Cloud credential destination is ambiguous`**
+14. **`Cloud credential destination is ambiguous`**
     - *Means:* one credential-bearing Cloud entry has no explicit endpoint pair and is referenced by contexts in different Cloud environments. gcx will not guess which API destination may receive it.
     - *Fix:* Run the exact raw `gcx config edit ...` command from the error, split the Cloud entry into one entry per environment, and update each `contexts.<name>.cloud` binding. Ordinary config loading remains blocked until the ambiguity is removed.
 
-14. **`Configuration changed during authentication`**
+15. **`Configuration changed during authentication`**
     - *Means:* the selected owner or the discovered config source set changed while OAuth or connectivity validation was in progress. The freshly authenticated credential was not written.
     - *Fix:* Review every changed file, then retry. If you intend to trust one document as authoritative, rerun with its explicit `--config <path>`.
 
 ## See also
 
 - [`gcx login` flag reference](cli/gcx_login.md) — exhaustive list of flags and options.
+- [Keychain credential storage](configuration/keychain.md) — credential storage rules and keychain error procedures.
 - [Login system architecture](../architecture/login-system.md) — how the login orchestrator works internally.
 - [Authentication subsystem](../architecture/auth-system.md) — OAuth PKCE, token lifecycle, `RefreshTransport`.
 - [Configuration and context system](../architecture/config-system.md) — how contexts are stored and merged.

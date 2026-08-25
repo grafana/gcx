@@ -1,0 +1,84 @@
+package cloudmonitoring_test
+
+import (
+	"testing"
+
+	"github.com/grafana/gcx/internal/datasources/cloudmonitoring"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestQueryCmd_ValidationErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "unknown --reducer rejected before any config/datasource I/O",
+			args:    []string{"--project", "p", "--metric", "m", "--reducer", "REDUCE_AVERAGE"},
+			wantErr: `--reducer "REDUCE_AVERAGE" is not a valid cross-series reducer`,
+		},
+		{
+			name:    "unknown --aligner rejected before any config/datasource I/O",
+			args:    []string{"--project", "p", "--metric", "m", "--aligner", "ALIGN_AVERAGE"},
+			wantErr: `--aligner "ALIGN_AVERAGE" is not a valid per-series aligner`,
+		},
+		{
+			name:    "CloudWatch-style --alignment-period rejected before any config/datasource I/O",
+			args:    []string{"--project", "p", "--metric", "m", "--alignment-period", "60s"},
+			wantErr: "--alignment-period",
+		},
+		{
+			name:    "whitespace-only --group-by entry rejected before any config/datasource I/O",
+			args:    []string{"--project", "p", "--metric", "m", "--group-by", "   "},
+			wantErr: "--group-by entries must not be empty",
+		},
+		{
+			name:    "--filter with empty key rejected before any config/datasource I/O",
+			args:    []string{"--project", "p", "--metric", "m", "--filter", "=us-east1-b"},
+			wantErr: "key must not be empty",
+		},
+		{
+			name:    "--filter with empty value rejected before any config/datasource I/O",
+			args:    []string{"--project", "p", "--metric", "m", "--filter", "resource.label.zone="},
+			wantErr: "value must not be empty",
+		},
+		{
+			name:    "whitespace-only --project rejected instead of round-tripping to Google",
+			args:    []string{"--project", "   ", "--metric", "m"},
+			wantErr: "--project is required",
+		},
+		{
+			name:    "whitespace-only --metric rejected instead of round-tripping to Google",
+			args:    []string{"--project", "p", "--metric", "   "},
+			wantErr: "--metric is required",
+		},
+		{
+			name:    "--group-by without a reducer is rejected instead of silently returning one ungrouped series",
+			args:    []string{"--project", "p", "--metric", "m", "--group-by", "resource.label.instance_name"},
+			wantErr: "--group-by has no effect while --reducer is REDUCE_NONE",
+		},
+		{
+			name:    "--group-by with an explicit REDUCE_NONE is still rejected",
+			args:    []string{"--project", "p", "--metric", "m", "--group-by", "resource.label.instance_name", "--reducer", "REDUCE_NONE"},
+			wantErr: "--group-by has no effect while --reducer is REDUCE_NONE",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// A zero-value loader has no context/config wired up, so any code
+			// path that reaches config loading or datasource resolution fails
+			// with an unrelated error. Asserting on the specific validation
+			// message proves validation ran first.
+			loader := &providers.ConfigLoader{}
+			cmd := cloudmonitoring.QueryCmd(loader)
+			cmd.SetArgs(tt.args)
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}

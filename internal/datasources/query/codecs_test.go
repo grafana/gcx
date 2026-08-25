@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/azuremonitor"
+	"github.com/grafana/gcx/internal/query/cloudmonitoring"
+	"github.com/grafana/gcx/internal/query/elasticsearch"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -46,6 +50,87 @@ func TestGraphCodecRejectsUnsupportedResponseTypes(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Infinity")
 	})
+}
+
+func TestQueryCodecsAcceptAzureMonitorResponses(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterCodecs(ioOpts, false)
+		return ioOpts
+	}
+
+	t.Run("table codec renders azuremonitor responses", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("table").Encode(&out, &azuremonitor.QueryResponse{}))
+		assert.Contains(t, out.String(), "No data")
+	})
+
+	t.Run("wide codec renders azuremonitor responses", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("wide").Encode(&out, &azuremonitor.QueryResponse{}))
+		assert.Contains(t, out.String(), "No data")
+	})
+
+	t.Run("table codec renders azuremonitor KQL table responses", func(t *testing.T) {
+		var out bytes.Buffer
+		resp := &azuremonitor.TableResponse{
+			Columns: []azuremonitor.Column{{Name: "name", Type: "string"}},
+			Rows:    [][]any{{"vm-a"}},
+		}
+		require.NoError(t, newIO("table").Encode(&out, resp))
+		assert.Contains(t, out.String(), "vm-a")
+	})
+
+	t.Run("wide codec renders azuremonitor KQL table responses", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("wide").Encode(&out, &azuremonitor.TableResponse{}))
+		assert.Contains(t, out.String(), "No data")
+	})
+
+	t.Run("graph codec rejects azuremonitor KQL table responses", func(t *testing.T) {
+		ioOpts := &cmdio.Options{OutputFormat: "graph"}
+		dsquery.RegisterCodecs(ioOpts, true)
+		var out bytes.Buffer
+		err := ioOpts.Encode(&out, &azuremonitor.TableResponse{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "KQL table results")
+	})
+}
+
+func TestQueryCodecsElasticsearchMetrics(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterCodecs(ioOpts, true)
+		return ioOpts
+	}
+
+	resp := &elasticsearch.MetricsResponse{
+		Series: []elasticsearch.MetricSeries{{
+			Name:       "tempo",
+			Timestamps: []time.Time{time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)},
+			Values:     []*float64{ptrFloat(8)},
+		}},
+	}
+
+	t.Run("table codec renders series rows", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("table").Encode(&out, resp))
+		assert.Contains(t, out.String(), "tempo")
+		assert.Contains(t, out.String(), "8")
+	})
+
+	t.Run("graph codec renders a chart", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("graph").Encode(&out, resp))
+		assert.Contains(t, out.String(), "tempo")
+	})
+}
+
+func ptrFloat(f float64) *float64 {
+	v := f
+	return &v
 }
 
 func TestQueryJSONCodecInfluxDBTimestamps(t *testing.T) {
@@ -177,6 +262,46 @@ func TestQueryYAMLCodecInfluxDBTimestamps(t *testing.T) {
 	})
 }
 
+// TestRegisterStructuredCodecs verifies that only JSON/YAML (plus the built-in
+// agents codec) are offered and that table/wide are rejected rather than
+// reaching a codec that cannot encode a free-form map.
+func TestRegisterStructuredCodecs(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterStructuredCodecs(ioOpts)
+		return ioOpts
+	}
+
+	payload := map[string]any{"summary": map[string]any{"verdict": "regression"}}
+
+	t.Run("json encodes a free-form map", func(t *testing.T) {
+		var out bytes.Buffer
+		err := newIO("json").Encode(&out, payload)
+		require.NoError(t, err)
+		assert.True(t, json.Valid(out.Bytes()))
+		assert.Contains(t, out.String(), "regression")
+	})
+
+	t.Run("yaml encodes a free-form map", func(t *testing.T) {
+		var out bytes.Buffer
+		err := newIO("yaml").Encode(&out, payload)
+		require.NoError(t, err)
+		assert.Contains(t, out.String(), "regression")
+	})
+
+	for _, format := range []string{"table", "wide", "graph"} {
+		t.Run(format+" is not an allowed format", func(t *testing.T) {
+			var out bytes.Buffer
+			err := newIO(format).Encode(&out, payload)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unknown output format")
+			// The advertised menu must list only structured formats.
+			assert.Contains(t, err.Error(), "Valid formats are: agents, json, yaml")
+		})
+	}
+}
+
 // TestTraceGetCodecDispatch verifies that table and wide codecs route a
 // *tempo.GetTraceResponse to the corresponding tempo formatter.
 func TestTraceGetCodecDispatch(t *testing.T) {
@@ -205,5 +330,35 @@ func TestTraceGetCodecDispatch(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, out.String(), "spans: 0")
 		assert.Contains(t, out.String(), "services: 0")
+	})
+}
+
+func TestQueryCodecsCloudMonitoring(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterCodecs(ioOpts, true)
+		return ioOpts
+	}
+
+	v := 0.42
+	resp := &cloudmonitoring.QueryResponse{
+		Frames: []cloudmonitoring.Frame{{
+			Name:       "cpu/utilization",
+			Timestamps: []time.Time{time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)},
+			Values:     []*float64{&v},
+		}},
+	}
+
+	t.Run("table codec renders frames", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("table").Encode(&out, resp))
+		assert.Contains(t, out.String(), "cpu/utilization")
+	})
+
+	t.Run("graph codec renders a chart", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("graph").Encode(&out, resp))
+		assert.Contains(t, out.String(), "cpu/utilization")
 	})
 }
