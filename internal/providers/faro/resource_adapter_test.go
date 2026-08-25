@@ -243,6 +243,8 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	assert.Equal(t, "abc-key", spec["appKey"])
 	assert.Equal(t, "https://collect.example.com", spec["collectEndpointURL"])
 	assert.Equal(t, "https://collect.example.com/otlp", spec["otlpIngestEndpointURL"])
+	// A "key" tag would decode the label name as "" and leave this map empty-keyed.
+	assert.Equal(t, map[string]any{"team": "frontend"}, spec["extraLogLabels"])
 
 	// Verify metadata.
 	assert.Equal(t, "my-web-app-42", obj.GetName())

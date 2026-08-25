@@ -206,7 +206,7 @@ func TestClient_Create(t *testing.T) {
 }
 
 func TestClient_Update(t *testing.T) {
-	t.Run("strips Settings and includes ID in body", func(t *testing.T) {
+	t.Run("strips Settings, includes ID, and names labels correctly in body", func(t *testing.T) {
 		var capturedBody map[string]any
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodPut, r.Method)
@@ -241,6 +241,12 @@ func TestClient_Update(t *testing.T) {
 		assert.Nil(t, capturedBody["settings"], "settings should be stripped from update request")
 		// ID should be present in body.
 		assert.InDelta(t, float64(42), capturedBody["id"], 0.01, "id should be in update request body")
+		// The map key must reach the wire as "label"; "key" makes the server
+		// store an empty label name and Loki then drops the app's writes.
+		assert.Equal(t,
+			[]any{map[string]any{"label": "team", "value": "frontend"}},
+			capturedBody["extraLogLabels"],
+			"extraLogLabels must serialize the map key into the label field")
 		assert.Equal(t, "42", result.ID)
 	})
 }
