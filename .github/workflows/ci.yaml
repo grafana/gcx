@@ -101,6 +101,7 @@ jobs:
         env:
           GCX_TEST_SHARD_COUNT: 6
           GCX_TEST_SHARD_INDEX: ${{ matrix.shard_index }}
+          GOFLAGS: -count=1
 
       - name: Linter and installer tests
         if: matrix.shard_index == 0
