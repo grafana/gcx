@@ -1,20 +1,19 @@
 ## v1.2.0 (2026-08-25)
 
-```markdown
-- Add Database Observability provider: `gcx dbo11y instances list` and `get` (#1199)
-- Regenerate the CLI reference to cover the new dbo11y commands (#1239)
-- A locked keychain now reports its own clear, fatal error (#1142)
-- New keychain reference docs cover setup and troubleshooting
+**Breaking changes**
+- A locked OS keychain is now its own fatal failure class (`Keychain locked`). gcx stops credential-consuming commands instead of falling back to a plaintext write, and the error explains how to unlock the keychain for the session (#1142)
 - Remove the broken `gcx assistant dashboard` subcommand (#1230)
-- Fix the duplicated `--agent-id` default in assistant help text (#1232)
-- Teach the add-datasource skill the shared raw-SQL contract (#1227)
-- Bump create-github-app-token to 0.3.1 and tune CI review (#1236, #1217)
-```
 
-Two notes on judgement calls:
+**New features**
+- Add the Database Observability provider: `gcx dbo11y instances list` and `gcx dbo11y instances get <name>` (#1199)
 
-- The dbo11y doc regen (#1239) is arguably internal noise for a user-facing changelog — I kept it because it's the only signal that reference docs now exist for the new commands. Drop it if your changelog is strictly behavioural.
-- The keychain docs bullet has no PR number in your list; it comes from the `docs/reference/configuration/keychain.md` + `docs/sources/keychain.md` additions in the diffstat, which look like they rode along with #1142. Worth confirming before publishing.
+**Fixes**
+- Remove the duplicated `--agent-id` default from assistant help text (#1232)
+
+**Other**
+- Add keychain setup and troubleshooting reference docs (#1142)
+- Teach the `add-datasource` skill the shared raw-SQL contract (#1227)
+- Bump `create-github-app-token` to 0.3.1 and tune the CI review process (#1236, #1217)
 
 
 ## v1.1.1 (2026-08-24)
@@ -50,20 +49,6 @@ Two notes on judgement calls:
 - Add a Grafana version support policy to the documentation (#1197)
 - Regenerate the command line interface reference (#1224)
 
-
-## Unreleased
-
-### Breaking changes
-
-- credentials: a locked OS keychain is now a separate, fatal failure class (`Keychain locked`). gcx stops credential-consuming commands instead of using or writing a plaintext fallback, and the error explains how to unlock the keychain in the current session. Previously an `org.freedesktop.Secret.Error.IsLocked` response and macOS locked or interaction-disabled statuses counted as an unavailable keychain, which permitted a plaintext write. An unlock failure in a headless Secret Service session was already fatal, but reported only the raw library message.
-
-### New features
-
-- Record the size of batch resource operations (`resources push`, `pull`, `delete`, `validate`) in usage telemetry events, as fixed size categories rather than counts, alongside whether the operation ran in dry-run mode. The first-run telemetry notice is revised to cover this and is shown again on installs that already saw the previous wording. See [Anonymous usage statistics](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/).
-
-### Fixes
-
-- instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
 
 ## v1.1.0 (2026-08-14)
 
