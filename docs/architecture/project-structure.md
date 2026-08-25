@@ -18,6 +18,7 @@ gcx/
 │       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
 │       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, check, explain, list-explanations, clusters, services)
 │       │   ├── check/        #   otel-checker wrapper: local OTel setup validation
+│       │   │   └── fixplan/   #     --fix-plan orchestrator: two disjoint modes — local (deterministic doc aggregation) or assistant (Grafana Assistant, requires Cloud) — plus the shared prompt builder
 │       │   ├── clusters/     #   cluster-level subcommands (list, get, configure, remove, wait, apps subtree)
 │       │   ├── explain/      #   otel-checker doc registry lookup — hosts both `explain <id>` and `list-explanations`
 │       │   ├── services/     #   workload-level subcommands (list, get, include, exclude, clear)
@@ -66,7 +67,7 @@ gcx/
 │   │   ├── dbo11y/           # Database Observability provider (query/discovery views, no CRUD resources)
 │   │   │   └── instances/    # Instance inventory + health/query-performance snapshot from postgres_exporter + pg_stat_statements
 │   │   ├── alert/            # Alert provider (rules and groups)
-│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/)
+│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/); exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
 │   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint

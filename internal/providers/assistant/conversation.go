@@ -85,7 +85,7 @@ Use this to discover conversation IDs, then pull a transcript with
 				return err
 			}
 
-			clientOpts, err := resolveAssistantClientOptions(cmd.Context(), configOpts, opts.timeout, assistant.DefaultAgentID)
+			clientOpts, err := ResolveClientOptions(cmd.Context(), configOpts, opts.timeout, assistant.DefaultAgentID)
 			if err != nil {
 				return err
 			}
@@ -150,7 +150,7 @@ with 'gcx assistant prompt --context-id'.`,
 				return err
 			}
 
-			clientOpts, err := resolveAssistantClientOptions(cmd.Context(), configOpts, opts.timeout, assistant.DefaultAgentID)
+			clientOpts, err := ResolveClientOptions(cmd.Context(), configOpts, opts.timeout, assistant.DefaultAgentID)
 			if err != nil {
 				return err
 			}
