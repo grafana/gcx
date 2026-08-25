@@ -25,15 +25,13 @@ const envKeychain = "GCX_KEYCHAIN"
 // honoured on every path that can reach the credential store.
 func keychainModeForProcess() keychainMode {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(envKeychain))) {
-	// A superset of the falsy vocabulary internal/agent already accepts for
-	// GCX_AGENT_MODE ("0", "false", "no"), so a value that turns one gcx
-	// setting off is never silently ignored by this one.
-	case "disabled", "off", "false", "no", "0":
+	case "off":
 		return keychainModeDisabled
 	default:
-		// Unset and unrecognised values both resolve to enabled: with the
-		// keychain on by default, a typo in an opt-out must not silently move
-		// credentials into plaintext on disk.
+		// One accepted value, so the setting reads the same everywhere it is
+		// written down. Unset and unrecognised values both resolve to enabled:
+		// with the keychain on by default, a typo in an opt-out must not
+		// silently move credentials into plaintext on disk.
 		return keychainModeEnabled
 	}
 }

@@ -106,6 +106,31 @@ func TestBoundKeychainDisabledDeleteNamesAWorkingRepair(t *testing.T) {
 	assert.Contains(t, err.Error(), "edit the config file to remove the reference")
 }
 
+// The delete guard applies only to credentials that are in the store. A
+// plaintext credential has no keychain state, so nothing is queued for deletion
+// and the write must go through untouched.
+func TestBoundKeychainDisabledUnsetsAPlaintextCredentialNormally(t *testing.T) {
+	store := newBoundTestStore()
+	store.getErr = credentials.ErrDisabled
+	store.setErr = credentials.ErrDisabled
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeBoundTestYAML(t, path, "https://example.invalid", "token", "plaintext-token")
+
+	cfg, err := Load(context.Background(), ExplicitConfigFile(path))
+	require.NoError(t, err)
+	require.Equal(t, "plaintext-token", cfg.Stacks["default"].Grafana.APIToken)
+
+	cfg.Stacks["default"].Grafana.APIToken = ""
+	require.True(t, cfg.MarkSecretPathMutation("stacks.default.grafana.token"))
+	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "plaintext-token")
+	assert.Empty(t, store.deletes)
+}
+
 func TestBoundKeychainDisabledFallbackWarningOmitsTroubleshootingHint(t *testing.T) {
 	logger := &boundTestLogger{}
 	var warnings strings.Builder

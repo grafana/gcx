@@ -206,7 +206,7 @@ contexts and never mutate the config file. Context selection happens before thes
 **Precedence:** env vars override config file values for the selected context. Token takes precedence
 over user/password when both are set.
 
-`GCX_KEYCHAIN=disabled` stops gcx using the OS keychain, leaving credentials in
+`GCX_KEYCHAIN=off` stops gcx using the OS keychain, leaving credentials in
 plaintext in the `0600` config file. Use it only where the keychain is
 permanently unavailable. Existing
 keychain-backed credentials are not moved back out: their references are

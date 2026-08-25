@@ -13,12 +13,11 @@ enabling non-interactive operation in CI/CD pipelines.
 
 ## `GCX_KEYCHAIN`
 
-Keychain controls whether token-shaped secrets are moved out of the config
-file into the OS keychain: "enabled" (the default) or "disabled" (also
-"off", "false", "0"). Disabled leaves credentials in plaintext in the
-config file, which is the only option on a machine whose keychain is
-permanently unavailable. An unrecognised value resolves to enabled, so a
-typo cannot silently write credentials in plaintext.
+Keychain turns the OS keychain off when set to "off", leaving credentials
+in plaintext in the config file. That is the only option on a machine
+whose keychain is permanently unavailable. "off" is the only value that
+disables it; every other value, recognised or not, leaves the keychain in
+use, so a typo cannot silently write credentials in plaintext.
 
 ## `GCX_NO_UPDATE_NOTIFIER`
 

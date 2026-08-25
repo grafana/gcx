@@ -19,14 +19,16 @@ func TestKeychainModeForProcess(t *testing.T) {
 		want keychainMode
 	}{
 		{name: "unset defaults to enabled", want: keychainModeEnabled},
-		{name: "disabled", env: "disabled", want: keychainModeDisabled},
 		{name: "off", env: "off", want: keychainModeDisabled},
-		{name: "false", env: "false", want: keychainModeDisabled},
-		{name: "zero", env: "0", want: keychainModeDisabled},
-		{name: "no, the falsy value internal/agent accepts", env: "no", want: keychainModeDisabled},
-		{name: "case and space insensitive", env: " Disabled ", want: keychainModeDisabled},
+		{name: "case and space insensitive", env: " Off ", want: keychainModeDisabled},
 		{name: "enabled", env: "enabled", want: keychainModeEnabled},
-		{name: "typo fails toward encrypted storage", env: "disabledd", want: keychainModeEnabled},
+		{name: "typo fails toward encrypted storage", env: "of", want: keychainModeEnabled},
+		// "off" is the only accepted value on purpose. These are the plausible
+		// near misses, and every one of them keeps the keychain in use.
+		{name: "disabled is not accepted", env: "disabled", want: keychainModeEnabled},
+		{name: "false is not accepted", env: "false", want: keychainModeEnabled},
+		{name: "no is not accepted", env: "no", want: keychainModeEnabled},
+		{name: "zero is not accepted", env: "0", want: keychainModeEnabled},
 	}
 
 	for _, test := range tests {
@@ -51,7 +53,7 @@ func TestKeychainEnvTagMatchesResolvedName(t *testing.T) {
 // enabled.
 func TestKeychainModeIgnoresUnrelatedMalformedOptions(t *testing.T) {
 	t.Setenv("GCX_AUTO_APPROVE", "not-a-bool")
-	t.Setenv(envKeychain, "disabled")
+	t.Setenv(envKeychain, "off")
 
 	_, err := LoadCLIOptions()
 	require.Error(t, err, "guards the premise: a bad bool must still fail CLI option parsing")
