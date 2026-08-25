@@ -39,6 +39,7 @@ type legacyConfig struct {
 	Contexts       map[string]*legacyContext `yaml:"contexts"`
 	CurrentContext string                    `yaml:"current-context"`
 	Diagnostics    *DiagnosticsConfig        `yaml:"diagnostics,omitempty"`
+	Credentials    *CredentialsConfig        `yaml:"credentials,omitempty"`
 }
 
 type legacyContext struct {
@@ -287,6 +288,7 @@ func convertLegacyConfig(lc *legacyConfig, layerType string, secrets map[legacyS
 		Version:        ConfigVersion,
 		CurrentContext: lc.CurrentContext,
 		Diagnostics:    cloneLegacyDiagnostics(lc.Diagnostics),
+		Credentials:    cloneLegacyCredentials(lc.Credentials),
 	}
 
 	secretValue := func(ctxName string, field credentials.Field, raw string) string {
@@ -365,6 +367,14 @@ func convertLegacyStack(name string, lctx *legacyContext, secretValue func(strin
 }
 
 func cloneLegacyDiagnostics(in *DiagnosticsConfig) *DiagnosticsConfig {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
+}
+
+func cloneLegacyCredentials(in *CredentialsConfig) *CredentialsConfig {
 	if in == nil {
 		return nil
 	}

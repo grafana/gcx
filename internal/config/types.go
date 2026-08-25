@@ -63,6 +63,9 @@ type Config struct {
 	// Diagnostics holds optional local diagnostic settings. All features are off by default.
 	Diagnostics *DiagnosticsConfig `json:"diagnostics,omitempty" yaml:"diagnostics,omitempty"`
 
+	// Credentials holds settings for how gcx stores credentials on this machine.
+	Credentials *CredentialsConfig `json:"credentials,omitempty" yaml:"credentials,omitempty"`
+
 	// keychainFields tracks which (context, field) pairs were successfully
 	// resolved from the OS keychain (or migrated into it) at load time.
 	// Populated by the loader; used by Write to round-trip sentinels back to
@@ -119,6 +122,18 @@ type Config struct {
 	// never resolves unbound references. The legacy source stays untouched and
 	// a later load retries migration when the keychain is available.
 	migrationDeferred bool `json:"-" yaml:"-"`
+}
+
+// CredentialsConfig controls how gcx stores credentials on this machine.
+type CredentialsConfig struct {
+	// Keychain controls whether token-shaped secrets are moved out of the config
+	// file into the OS keychain: "enabled" (the default) or "disabled". When
+	// disabled, credentials stay in plaintext in the config file, which is the
+	// only option on a machine whose keychain is permanently unavailable.
+	// Overridden by the GCX_KEYCHAIN environment variable. Ignored in a
+	// repository-local .gcx.yaml, which must not be able to downgrade a user's
+	// credential storage.
+	Keychain string `json:"keychain,omitempty" yaml:"keychain,omitempty" env:"GCX_KEYCHAIN"`
 }
 
 // DiagnosticsConfig controls optional local diagnostic features.
