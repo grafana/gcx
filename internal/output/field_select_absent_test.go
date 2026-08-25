@@ -89,6 +89,27 @@ type inlineTypedObject struct {
 	} `json:"spec"`
 }
 
+// customMarshaledItem has no reflected JSON fields. Its marshaler owns the
+// wire shape, so reflection must not reject a path.
+type customMarshaledItem struct{}
+
+func (customMarshaledItem) MarshalJSON() ([]byte, error) {
+	return []byte(`{}`), nil
+}
+
+// rawJSONObject is a byte slice that emits an object through MarshalJSON.
+// Reflection sees a slice, but field selection must not classify it as an
+// array in the JSON output.
+type rawJSONObject []byte
+
+func (r rawJSONObject) MarshalJSON() ([]byte, error) {
+	return r, nil
+}
+
+type customMarshaledFieldItem struct {
+	Settings rawJSONObject `json:"settings"`
+}
+
 // arrayItem holds its values inside an array, which field selection cannot
 // walk into.
 type arrayItem struct {
@@ -206,6 +227,18 @@ func TestAbsentFieldSelection(t *testing.T) {
 			wantErr: "unknown field(s) in --json: bogus",
 		},
 		{
+			name:   "a custom marshaler controls the root object shape",
+			fields: []string{"metrics"},
+			value:  []customMarshaledItem{{}},
+			wantOK: true,
+		},
+		{
+			name:   "a custom marshaler controls a nested field shape",
+			fields: []string{"settings.url"},
+			value:  []customMarshaledFieldItem{{Settings: rawJSONObject(`{}`)}},
+			wantOK: true,
+		},
+		{
 			name:    "a dotted path the caller wrote gets no candidate",
 			fields:  []string{"spec.nope"},
 			value:   []oncallUser{{}},
@@ -273,6 +306,10 @@ func TestValidatorAcceptsDeclaredPaths(t *testing.T) {
 	err := validator([]string{"tags"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Did you mean spec.tags?")
+}
+
+func TestValidatorFailsOpenForCustomMarshaler(t *testing.T) {
+	assert.Nil(t, cmdio.MakeFieldValidator(customMarshaledItem{}))
 }
 
 // TestValidatorRejectsPathInsideArray covers the validator route for a path

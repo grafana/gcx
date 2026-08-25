@@ -69,7 +69,7 @@ gcx datasources cloudmonitoring query [flags]
       --group-by stringArray      Label to split series by, e.g. resource.label.instance_name (repeatable; requires --reducer other than REDUCE_NONE)
   -h, --help                      help for query
       --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string               Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --metric string             Metric type, e.g. compute.googleapis.com/instance/cpu/utilization (required)
       --open                      Open the executed query in Grafana Explore
   -o, --output string             Output format. One of: agents, graph, json, table, wide, yaml (default "table")
