@@ -90,10 +90,8 @@ export GCX_KEYCHAIN=disabled
 ```
 
 `disabled`, `off`, `false`, and `0` all switch it off. Any other value resolves
-to enabled, so a typo cannot silently write credentials in plaintext. There is
-no config-file equivalent: the credential store has to be chosen before a
-config file can be read, so this is an environment setting only. Set it in your
-shell profile or CI job environment to make it permanent for a machine.
+to enabled, so a typo cannot silently write credentials in plaintext. Set it in
+your shell profile or CI job environment to make it permanent for a machine.
 
 Credentials already in the credential store are not moved back out. Their
 references are preserved in the config file, so unsetting `GCX_KEYCHAIN`

@@ -256,9 +256,7 @@ Loading steps (in `Load`):
    Under `go test`, the default store is unavailable, so test binaries never
    prompt the OS keychain.
    `GCX_KEYCHAIN=disabled` selects a store that reports
-   `credentials.ErrDisabled` without probing the OS backend. It is deliberately
-   environment-only: the backend must be chosen before a config file can be
-   read, so a config-file switch could not be resolved from the merged config.
+   `credentials.ErrDisabled` without probing the OS backend.
 8. **Migrate plaintext token-shaped secrets**: plaintext values in tracked stack
    and Cloud fields are staged under a newly generated bound account and the
    file is rewritten with

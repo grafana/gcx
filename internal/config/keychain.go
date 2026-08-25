@@ -1308,10 +1308,10 @@ type keychainWriteTransaction struct {
 	deletes           []keychainPendingDelete
 	seenDel           map[string]bool
 	plaintextFallback bool
-	// fallbackErr is the store error that forced the plaintext fallback. It
-	// separates a deliberate opt-out (ErrDisabled) from a transient outage,
-	// which are handled differently for a credential that already holds a
-	// keychain reference.
+	// fallbackErr is the store error that refused the credential before any
+	// write was attempted. It separates a deliberate opt-out (ErrDisabled) from
+	// a transient outage, which are handled differently for a credential that
+	// already holds a keychain reference.
 	fallbackErr         error
 	warnUnavailableOnce func(func())
 }
@@ -1359,7 +1359,6 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 						"error", err.Error())
 				}
 				if errors.Is(err, credentials.ErrUnavailable) {
-					txn.fallbackErr = err
 					return credentials.BoundReference{}, false, nil
 				}
 				return credentials.BoundReference{}, false, fmt.Errorf("write keychain entry for %q field %q: %w", owner, field, err)
@@ -1383,7 +1382,6 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 				// is confirmed, keep this one value in the config instead of writing
 				// a sentinel that the next command cannot resolve.
 				if errors.Is(err, credentials.ErrUnavailable) || errors.Is(err, credentials.ErrNotFound) {
-					txn.fallbackErr = err
 					return credentials.BoundReference{}, false, nil
 				}
 				return credentials.BoundReference{}, false, verifyErr

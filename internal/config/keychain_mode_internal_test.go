@@ -1,6 +1,8 @@
 package config
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/credentials"
@@ -28,11 +30,31 @@ func TestKeychainModeForProcess(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("GCX_KEYCHAIN", test.env)
+			t.Setenv(envKeychain, test.env)
 
 			assert.Equal(t, test.want, keychainModeForProcess())
 		})
 	}
+}
+
+// The generated environment-variable reference comes from the struct tag while
+// keychainModeForProcess reads the constant. They must name the same variable.
+func TestKeychainEnvTagMatchesResolvedName(t *testing.T) {
+	field, ok := reflect.TypeFor[CLIOptions]().FieldByName("Keychain")
+	require.True(t, ok)
+	assert.Equal(t, envKeychain, strings.Split(field.Tag.Get("env"), ",")[0])
+}
+
+// An unrelated malformed variable must not decide this one: LoadCLIOptions
+// fails on the first bad field, which would resolve an explicit opt-out to
+// enabled.
+func TestKeychainModeIgnoresUnrelatedMalformedOptions(t *testing.T) {
+	t.Setenv("GCX_AUTO_APPROVE", "not-a-bool")
+	t.Setenv(envKeychain, "disabled")
+
+	_, err := LoadCLIOptions()
+	require.Error(t, err, "guards the premise: a bad bool must still fail CLI option parsing")
+	assert.Equal(t, keychainModeDisabled, keychainModeForProcess())
 }
 
 // The disabled mode must never reach credentials.Open, so this asserts the

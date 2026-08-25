@@ -78,18 +78,11 @@ var (
 	openedStore   credentials.Store
 )
 
-// resolvedKeychainMode memoizes the keychain mode for the lifetime of the
-// process, so the config-file read behind it is paid at most once and only
-// when a credential actually needs the store.
-//
-//nolint:gochecknoglobals // process-wide memoization of the keychain mode.
-var resolvedKeychainMode = sync.OnceValue(keychainModeForProcess)
-
 func defaultKeychainStore() credentials.Store {
 	if testing.Testing() {
 		return testingNoopStore{}
 	}
-	return keychainStoreForMode(resolvedKeychainMode())
+	return keychainStoreForMode(keychainModeForProcess())
 }
 
 func keychainStoreForMode(mode keychainMode) credentials.Store {
