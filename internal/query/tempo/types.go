@@ -80,6 +80,8 @@ type BaselineResult struct {
 	ListMeta         *cmdio.ListMeta     `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }
 
+func (BaselineResult) ListItemsKey() string { return "candidates" }
+
 // GetTraceRequest represents a request to retrieve a single trace by ID.
 type GetTraceRequest struct {
 	TraceID   string
