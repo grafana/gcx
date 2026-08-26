@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Canonical operations, from docs/design/command-naming.md. These are the recommended, standard verbs.
+// Canonical operations taken from docs/design/command-naming.md. These are the recommended, standard operations.
 //
 //nolint:gochecknoglobals // constant-like lookup table for test validation
 var canonicalOperations = map[string]bool{
@@ -54,10 +54,7 @@ var toolingAreas = map[string]bool{
 	"help":       true,
 }
 
-// canonicalOperation reports whether op is a canonical operation in area. An
-// `<operation>-<subject>` compound is canonical when its operation half is: the
-// guide prescribes the compound for discovery facets and parent-scoped
-// operations.
+// canonicalOperation reports whether op is a canonical operation.
 func canonicalOperation(area, op string) bool {
 	if canonicalOperations[op] {
 		return true
@@ -71,10 +68,10 @@ func canonicalOperation(area, op string) bool {
 	return false
 }
 
-// Every runnable command must end in a canonical operation, or to be listed in testdata/command_verbs.json.
-func TestConsistency_LeafOperationsAreCanonical(t *testing.T) {
-	// read a set of existing commands that cover all the non-standard verbs from a testdata file. Any command leaves that do not exist in that set should error.
-	raw, err := os.ReadFile("testdata/command_verbs.json")
+// Check that no new command operations are added.
+func TestConsistency_NoNewCommandOperationsAdded(t *testing.T) {
+	// read a list of all the existing commands that do not have canonical operations.
+	raw, err := os.ReadFile("testdata/non_canonical_command_operations.json")
 	if err != nil {
 		t.Fatalf("reading command verb fixture: %v", err)
 	}
@@ -114,7 +111,7 @@ func TestConsistency_LeafOperationsAreCanonical(t *testing.T) {
 
 	sort.Strings(uncanonical)
 	for _, path := range uncanonical {
-		t.Errorf("leaf command %q does not end in a canonical operation — rename it to an operation from docs/design/command-naming.md, or, if the operation genuinely has no canonical spelling, define it in the pull request and add the path to cmd/gcx/root/testdata/command_verbs.json", path)
+		t.Errorf("leaf command %q does not end in a canonical operation. Prefer using these canonical operation names - see docs/design/command-naming.md. If you need to add a new operation, add the full command path to non_canonical_command_operations.json to make this pass.", path)
 	}
 
 	var stale []string
@@ -125,6 +122,6 @@ func TestConsistency_LeafOperationsAreCanonical(t *testing.T) {
 	}
 	sort.Strings(stale)
 	for _, path := range stale {
-		t.Errorf("fixture entry %q does not correspond to a leaf command needing a verdict (renamed, removed, or now canonical?) — update cmd/gcx/root/testdata/command_verbs.json", path)
+		t.Errorf("the non_canonical_command_operations.json entry %q does not exist in the gcx command tree any more, or it has been made into a canonical operation. Please remove it from non_canonical_command_operations.json", path)
 	}
 }
