@@ -98,22 +98,18 @@ type Event struct {
 	BatchSkippedBucket   *string `json:"batch_skipped_bucket,omitempty"`
 	DryRun               *bool   `json:"dry_run,omitempty"`
 
-	// Failure depth, set only when the invocation's surfaced error carried
-	// one of these two shapes. Both are suppressed for exit code 4 — a
-	// partial failure has no single causal status — and exit code 5, because
-	// a canceled run is not a failure.
+	// Failure depth, set only when the surfaced error carried one of these two
+	// shapes, and suppressed for exit code 4 (a partial failure has no single
+	// causal status) and exit code 5 (a canceled run is not a failure).
 	//
-	// HTTPStatus is the HTTP transport status of the failing request, only
-	// ever 400–599. It is never a status embedded inside a 2xx response body
-	// (a query error inside an HTTP 200 omits this field) and never a
-	// Kubernetes Status code — Kubernetes failures are described by K8sReason
-	// instead. Coverage is partial: only clients that carry a typed status
-	// reach it, so absence never means no HTTP failure occurred.
+	// HTTPStatus is the transport status of the failing request, only ever
+	// 400–599. It is never a status embedded inside a 2xx body — a query error
+	// inside an HTTP 200 omits this field — and never a Kubernetes Status code.
+	// Coverage is partial, so absence never means no HTTP failure occurred.
 	//
-	// K8sReason is the Kubernetes status reason of the failing API call,
-	// clamped to the fixed vocabulary in k8sreason.go. A StatusReason is a
-	// plain string a server controls, so any unlisted reason travels as
-	// "other", never verbatim.
+	// K8sReason is the Kubernetes status reason, clamped to the vocabulary in
+	// k8sreason.go: a server controls that string, so anything unlisted travels
+	// as "other", never verbatim.
 	HTTPStatus int    `json:"http_status,omitempty"`
 	K8sReason  string `json:"k8s_reason,omitempty"`
 
@@ -121,10 +117,11 @@ type Event struct {
 	// selected for its Grafana connection, clamped to the fixed vocabulary in
 	// authmethod.go — never a raw configured value, never credential
 	// material. It describes Grafana connection authentication only, not
-	// Grafana Cloud/GCOM auth. Absent means no Grafana context was selected,
-	// or several different methods were used in one invocation; "anonymous"
-	// is a valid selection with no credential material; "unknown" is a
-	// selection that could not be classified. A selected method whose
+	// Grafana Cloud/GCOM auth. Absent means the invocation never resolved a
+	// Grafana connection — a command that builds none reports nothing even
+	// under a fully configured context — or that it resolved several different
+	// methods; "anonymous" is a valid selection with no credential material;
+	// "unknown" is a selection that could not be classified. A selected method whose
 	// credential turns out invalid still reports the method — that failure
 	// mode is the field's reason to exist. Eligible on every outcome,
 	// including success and canceled.

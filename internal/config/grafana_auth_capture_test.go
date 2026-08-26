@@ -202,3 +202,26 @@ func TestGrafanaAuthCaptureConcurrentContexts(t *testing.T) {
 		assert.Equal(t, "token", capture.CurrentGrafanaAuthMethod())
 	})
 }
+
+// The tolerant load path — LoadConfigTolerant, as gcx assistant prompt uses —
+// parses env into the context first, and PrepareForEnvParse replaces a nil
+// Grafana block with an empty one. That block is still not a decision:
+// reporting "anonymous" for it would claim the invocation went to Grafana
+// unauthenticated when it never resolved a connection at all.
+func TestGrafanaAuthCaptureEmptyGrafanaBlockRecordsNothing(t *testing.T) {
+	resetAuthCapture(t)
+	t.Setenv("GRAFANA_URL", "")
+	t.Setenv("GRAFANA_TOKEN", "")
+	capture.SetGrafanaAuthMethod("oauth")
+
+	ctx := config.Context{Name: "cloud-only"}
+	require.NoError(t, config.ParseEnvIntoContext(&ctx))
+	require.NotNil(t, ctx.Grafana, "env parsing installs a Grafana block where the context had none")
+	require.True(t, ctx.Grafana.IsEmpty(), "and leaves it empty when no Grafana env var is set")
+
+	method, err := ctx.EffectiveGrafanaAuthMethod()
+	require.NoError(t, err, "an empty block passes the nil-only guard rather than failing validation")
+	require.Equal(t, "unknown", method)
+	assert.Equal(t, "oauth", capture.CurrentGrafanaAuthMethod(),
+		"an empty Grafana block selected nothing and must record nothing")
+}
