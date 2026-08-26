@@ -11,10 +11,14 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/queryerror"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // isolate points the device-id and notice files at a temp dir so building an
@@ -280,7 +284,8 @@ func TestBuildUsageEventOutcomeVocabulary(t *testing.T) {
 }
 
 // error_kind has no omitempty and must stay on the wire for every outcome;
-// only the new batch fields are allowed to disappear.
+// only the optional blocks — batch, parse, failure depth, auth method — may
+// disappear.
 func TestBuildUsageEventAlwaysEmitsErrorKind(t *testing.T) {
 	for _, exitCode := range []int{0, 1, 2, 3, 4, 5, 6} {
 		isolate(t)
@@ -290,6 +295,257 @@ func TestBuildUsageEventAlwaysEmitsErrorKind(t *testing.T) {
 		assert.Contains(t, fields, "error_kind",
 			"error_kind must be present for exit code %d, even when empty", exitCode)
 	}
+}
+
+// http_status is a transport failure status or nothing: only 400–599 reaches
+// the wire, and everything else — no capture, a success status, a redirect,
+// out-of-protocol values — is omitted rather than coerced.
+func TestBuildUsageEventEmitsTransportHTTPStatusOnly(t *testing.T) {
+	for status, want := range map[int]any{
+		0:   nil,
+		200: nil,
+		302: nil,
+		399: nil,
+		400: float64(400),
+		401: float64(401),
+		403: float64(403),
+		500: float64(500),
+		599: float64(599),
+		600: nil,
+	} {
+		isolate(t)
+		capture.SetHTTPStatus(status)
+
+		fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), 1))
+
+		if want == nil {
+			assert.NotContains(t, fields, "http_status",
+				"captured status %d is not a transport failure and must be omitted", status)
+		} else {
+			assert.Equal(t, want, fields["http_status"], "captured status %d", status)
+		}
+	}
+}
+
+// k8s_reason reaches the wire only through the fixed vocabulary: every listed
+// reason passes, anything else collapses to "other", and no capture means no
+// field.
+func TestBuildUsageEventClampsK8sReasonToAllowlist(t *testing.T) {
+	for _, reason := range telemetry.K8sReasonLabels() {
+		if reason == telemetry.K8sReasonOther {
+			continue
+		}
+		isolate(t)
+		capture.SetK8sReason(reason)
+
+		event := buildUsageEvent(pushInfo(), time.Now(), 1)
+		assert.Equal(t, reason, event.K8sReason, "listed reason must pass through unchanged")
+	}
+
+	isolate(t)
+	capture.SetK8sReason("SomeFutureServerReason")
+	event := buildUsageEvent(pushInfo(), time.Now(), 1)
+	assert.Equal(t, telemetry.K8sReasonOther, event.K8sReason,
+		"a server-controlled reason string must never travel verbatim")
+
+	isolate(t)
+	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), 1))
+	assert.NotContains(t, fields, "k8s_reason", "no captured reason means no field")
+}
+
+// grafana_auth_method reaches the wire only through the fixed vocabulary; an
+// out-of-contract capture evidences a decision and travels as "unknown",
+// never verbatim.
+func TestBuildUsageEventClampsGrafanaAuthMethod(t *testing.T) {
+	for _, method := range telemetry.GrafanaAuthMethodLabels() {
+		isolate(t)
+		capture.SetGrafanaAuthMethod(method)
+
+		event := buildUsageEvent(pushInfo(), time.Now(), 0)
+		assert.Equal(t, method, event.GrafanaAuthMethod, "listed method must pass through unchanged")
+	}
+
+	isolate(t)
+	capture.SetGrafanaAuthMethod("Bearer secret-token-value")
+	event := buildUsageEvent(pushInfo(), time.Now(), 0)
+	assert.Equal(t, telemetry.AuthMethodUnknown, event.GrafanaAuthMethod,
+		"an arbitrary captured string must be clamped, not forwarded")
+
+	isolate(t)
+	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), 0))
+	assert.NotContains(t, fields, "grafana_auth_method", "no decided method means no field")
+}
+
+// A partial failure has no single causal status: forty-seven resources may
+// have failed forty-seven different ways, and the captured status belongs to
+// whichever error happened to surface. Both failure-depth fields are
+// suppressed — while the batch block, which is per-operation rather than
+// per-error, survives exactly as TestBuildUsageEventKeepsBatchOnPartialFailure
+// pins.
+func TestBuildUsageEventSuppressesErrorSignalsOnPartialFailure(t *testing.T) {
+	isolate(t)
+	capture.SetBatch(capture.Batch{Succeeded: 8, Failed: 2})
+	capture.SetHTTPStatus(500)
+	capture.SetK8sReason("Conflict")
+
+	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), gcxerrors.ExitPartialFailure))
+
+	assert.NotContains(t, fields, "http_status")
+	assert.NotContains(t, fields, "k8s_reason")
+	assert.Contains(t, fields, "batch_succeeded_bucket",
+		"suppression is scoped to the failure-depth fields, never the batch block")
+	assert.Equal(t, "partial_failure", fields["error_kind"])
+}
+
+// A canceled run is not a failure, so it reports no failure depth — whatever
+// a probe captured before the interrupt landed. error_kind stays on the wire
+// and empty, exactly as PR B pinned it.
+func TestBuildUsageEventSuppressesErrorSignalsOnCanceled(t *testing.T) {
+	isolate(t)
+	capture.SetHTTPStatus(502)
+	capture.SetK8sReason("Timeout")
+
+	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), gcxerrors.ExitCancelled))
+
+	assert.NotContains(t, fields, "http_status")
+	assert.NotContains(t, fields, "k8s_reason")
+	require.Contains(t, fields, "error_kind")
+	assert.Empty(t, fields["error_kind"])
+}
+
+// reportError extracts the failure signals from the raw error, ahead of its
+// short-circuits, and the extraction moves no exit code: the columns here pin
+// today's taxonomy, including its known asymmetry — a raw Kubernetes
+// *StatusError exits 3 while the dynamic client's re-wrapped APIError falls
+// to the generic path and exits 1. Both yield their reason; neither feeds
+// http_status.
+func TestReportErrorCapturesSignalsAndPreservesExitCodes(t *testing.T) {
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	for _, tc := range []struct {
+		name       string
+		err        error
+		wantExit   int
+		wantStatus int
+		wantReason string
+	}{
+		{
+			name:       "bare provider 401 keeps exit 1",
+			err:        providers.FormatError(401, []byte(`{"message":"denied"}`)),
+			wantExit:   gcxerrors.ExitGeneralError,
+			wantStatus: 401,
+		},
+		{
+			name: "SM register-install 401 keeps exit 3",
+			err: fmt.Errorf("SM token not configured: SM register/install: %w",
+				providers.FormatError(401, []byte(`{"message":"denied"}`))),
+			wantExit:   gcxerrors.ExitAuthFailure,
+			wantStatus: 401,
+		},
+		{
+			name:       "emitted in-band failure honors its code and still captures",
+			err:        gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, providers.FormatError(403, nil)),
+			wantExit:   gcxerrors.ExitGeneralError,
+			wantStatus: 403,
+		},
+		{
+			name:       "raw k8s unauthorized keeps exit 3 and no http_status",
+			err:        k8sapi.NewUnauthorized("bad token"),
+			wantExit:   gcxerrors.ExitAuthFailure,
+			wantReason: "Unauthorized",
+		},
+		{
+			name:       "dynamic k8s unauthorized keeps exit 1 and no http_status",
+			err:        dynamic.ParseStatusError(k8sapi.NewUnauthorized("bad token")),
+			wantExit:   gcxerrors.ExitGeneralError,
+			wantReason: "Unauthorized",
+		},
+		{
+			name:       "query error inside HTTP 200 captures the raw 2xx the wire filter drops",
+			err:        queryerror.FromBody("loki", "query", 200, []byte(`{"results":{"A":{"error":"bad query","status":400}}}`)),
+			wantExit:   gcxerrors.ExitGeneralError,
+			wantStatus: 200,
+		},
+		{
+			name:       "query transport 403 captures 403 and keeps exit 3",
+			err:        queryerror.FromBody("loki", "query", 403, []byte(`{"results":{"A":{"error":"denied","status":500}}}`)),
+			wantExit:   gcxerrors.ExitAuthFailure,
+			wantStatus: 403,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isolate(t)
+
+			exitCode := reportError(tc.err, nil, nil)
+
+			assert.Equal(t, tc.wantExit, exitCode, "the extraction must not move any exit code")
+			assert.Equal(t, tc.wantStatus, capture.CurrentHTTPStatus())
+			assert.Equal(t, tc.wantReason, capture.CurrentK8sReason(),
+				"HTTP and query failures must not invent a Kubernetes reason, nor k8s errors a status")
+		})
+	}
+}
+
+// The whole in-process path for the one case the wire contract calls out by
+// name: a query failure inside an HTTP 200 must not put http_status on the
+// event, even though the raw 200 was captured on the way.
+func TestReportErrorEmbedded200NeverReachesTheEvent(t *testing.T) {
+	isolate(t)
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	err := queryerror.FromBody("loki", "query", 200, []byte(`{"results":{"A":{"error":"bad query","status":400}}}`))
+	exitCode := reportError(err, nil, nil)
+
+	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), exitCode))
+	assert.NotContains(t, fields, "http_status",
+		"a 2xx transport status is not a failure and must never be sent")
+}
+
+// The auth method describes the invocation, not the failure, so it survives
+// every outcome — including the two exit codes that suppress the
+// failure-depth fields.
+func TestBuildUsageEventKeepsGrafanaAuthMethodOnEveryOutcome(t *testing.T) {
+	for _, exitCode := range []int{
+		gcxerrors.ExitSuccess, gcxerrors.ExitGeneralError, gcxerrors.ExitAuthFailure,
+		gcxerrors.ExitPartialFailure, gcxerrors.ExitCancelled,
+	} {
+		isolate(t)
+		capture.SetGrafanaAuthMethod("token")
+
+		event := buildUsageEvent(pushInfo(), time.Now(), exitCode)
+
+		assert.Equal(t, "token", event.GrafanaAuthMethod,
+			"auth method must survive exit code %d", exitCode)
+	}
+}
+
+// Golden privacy sweep for the new fields: every capture slot is fed content
+// shaped like the things that must never travel — a resource name and a
+// namespace inside a server-controlled reason, a credential in the auth slot —
+// and the wire must carry none of it anywhere, while still carrying the
+// clamped values the vocabulary allows.
+func TestBuildUsageEventNewFieldsLeakNothing(t *testing.T) {
+	isolate(t)
+	capture.SetHTTPStatus(500)
+	capture.SetK8sReason(`dashboards "acme-revenue-2026" not found in namespace stacks-777`)
+	capture.SetGrafanaAuthMethod("Bearer glsa_v3ry5ecret")
+
+	data, err := json.Marshal(buildUsageEvent(pushInfo(), time.Now(), 1))
+	require.NoError(t, err)
+
+	wire := string(data)
+	for _, leaked := range []string{"acme-revenue-2026", "stacks-777", "glsa_", "Bearer", "not found in namespace"} {
+		assert.NotContains(t, wire, leaked,
+			"server- or config-controlled content must never reach the wire")
+	}
+
+	var fields map[string]any
+	require.NoError(t, json.Unmarshal(data, &fields))
+	assert.InDelta(t, float64(500), fields["http_status"], 0)
+	assert.Equal(t, telemetry.K8sReasonOther, fields["k8s_reason"])
+	assert.Equal(t, telemetry.AuthMethodUnknown, fields["grafana_auth_method"])
 }
 
 // Path safety is deliberately not asserted here. buildUsageEvent copies
@@ -303,5 +559,7 @@ func TestBuildUsageEventAlwaysEmitsErrorKind(t *testing.T) {
 // --output is a directory cannot leak it. Both are tested there, in
 // root/telemetry_internal_test.go.
 //
-// What this layer owns is the batch block, and the tests above cover it: bucket
-// category labels only, from the declared vocabulary, and no raw batch count.
+// What this layer owns is the batch block, the failure-depth fields and the
+// auth method, and the tests above cover them: bucket category labels only,
+// the 400–599 transport filter, the k8s reason allowlist, the auth-method
+// clamp, and the exit-4/5 suppression scope.

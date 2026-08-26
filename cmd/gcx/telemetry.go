@@ -119,6 +119,24 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		event.ErrorKind = agentlog.KindFromExitCode(exitCode)
 	}
 
+	// Failure depth, captured from the surfaced error. The guard wraps only
+	// these two fields — never the batch block or error_kind, both pinned by
+	// tests to survive exit 4. The wire filters live here rather than at
+	// capture time: only 400–599 is a transport failure status worth sending,
+	// and K8sReasonLabel is the allowlist that keeps a server-controlled
+	// reason string off the wire.
+	if exitCode != gcxerrors.ExitPartialFailure && exitCode != gcxerrors.ExitCancelled {
+		if status := capture.CurrentHTTPStatus(); status >= 400 && status <= 599 {
+			event.HTTPStatus = status
+		}
+		event.K8sReason = telemetry.K8sReasonLabel(capture.CurrentK8sReason())
+	}
+
+	// Outside the failure guard on purpose: the method describes the
+	// invocation, not the failure, and is as interesting for a partial failure
+	// or a canceled run as for any other outcome.
+	event.GrafanaAuthMethod = telemetry.GrafanaAuthMethodLabel(capture.CurrentGrafanaAuthMethod())
+
 	return event
 }
 

@@ -205,6 +205,12 @@ func preParseAgentFlag() {
 // It never exits; context cancellation is already handled in main before this
 // is called.
 func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bool) int {
+	// On the raw error, before every short-circuit below: the AlreadyReported
+	// and EmittedError paths return without converting anything, and an
+	// EmittedError's cause chain is where an agent-mode in-band failure
+	// carries its transport error.
+	fail.CaptureErrorSignals(err)
+
 	if err == nil {
 		return 0
 	}
