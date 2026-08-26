@@ -2,6 +2,8 @@ package config
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -285,4 +287,54 @@ func TestFreshCredentialClearsRuntimeRejection(t *testing.T) {
 	restConfig, err := ctx.ToRESTConfig(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "fresh-token", restConfig.BearerToken)
+}
+
+// A locked keychain is a condition that the user can correct. The rejection
+// reason must name it, so the user does not read it as a permanent failure.
+func TestKeychainReadRejectionReasonNamesTheLockedKeychain(t *testing.T) {
+	tests := map[string]struct {
+		err  error
+		want string
+	}{
+		"locked keychain": {
+			err:  fmt.Errorf("%w: failed to unlock correct collection '/org/freedesktop/secrets/collection/login'", credentials.ErrLocked),
+			want: "the OS keychain is locked",
+		},
+		"unavailable keychain": {
+			err:  fmt.Errorf("%w: dbus: connection closed", credentials.ErrUnavailable),
+			want: "the OS keychain could not be read",
+		},
+		"unknown failure": {
+			err:  errors.New("some other keychain failure"),
+			want: "the OS keychain could not be read",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, test.want, keychainReadRejectionReason(test.err))
+		})
+	}
+}
+
+func TestLockedKeychainReadPreservesCauseInCredentialRejection(t *testing.T) {
+	store := newBoundTestStore()
+	useBoundTestStore(t, store)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, Write(t.Context(), ExplicitConfigFile(path),
+		boundStackTestConfig("https://example.invalid", "stored-token")))
+
+	lockedErr := fmt.Errorf("%w: exit status 154", credentials.ErrLocked)
+	store.getErr = lockedErr
+	loaded, err := Load(t.Context(), ExplicitConfigFile(path))
+	require.NoError(t, err, "config inspection remains available while the keychain is locked")
+
+	rejectionErr := loaded.Contexts["default"].GrafanaCredentialRejection()
+	require.Error(t, rejectionErr)
+	require.ErrorIs(t, rejectionErr, credentials.ErrLocked)
+	require.ErrorIs(t, rejectionErr, lockedErr)
+	var rejected CredentialRejectedError
+	require.ErrorAs(t, rejectionErr, &rejected)
+	assert.Equal(t, "the OS keychain is locked", rejected.Reason)
+	assert.Contains(t, rejected.Error(), "unlock the keychain in this session")
+	assert.NotContains(t, rejected.Error(), "re-authenticate")
 }

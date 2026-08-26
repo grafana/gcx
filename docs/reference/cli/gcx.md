@@ -34,6 +34,7 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx config](gcx_config.md)	 - View or manipulate configuration settings
 * [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx dbo11y](gcx_dbo11y.md)	 - Inspect Grafana Database Observability instances and query performance
 * [gcx dev](gcx_dev.md)	 - Manage Grafana resources as code
 * [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management pipelines and collectors
 * [gcx frontend](gcx_frontend.md)	 - Manage Grafana Frontend Observability resources

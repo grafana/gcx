@@ -71,8 +71,8 @@ type Config struct {
 	keychainFields keychainBacked `json:"-" yaml:"-"`
 
 	// keychainPreserve tracks (owner, field) pairs whose sentinel could not
-	// be resolved at load time because the keychain was unavailable (locked
-	// session, missing DBus), mapped to the original sentinel string. Their
+	// be resolved at load time because the keychain was unavailable or locked,
+	// mapped to the original sentinel string. Their
 	// in-memory value is cleared, but Write must round-trip the original
 	// sentinel back to disk so a transient outage never destroys the
 	// reference. Not part of the on-disk schema.

@@ -346,16 +346,10 @@ those inputs.
 
 **Credential storage.** Grafana credentials persist under the context's named
 stack entry; CAP and Cloud OAuth credentials occupy distinct fields on the
-referenced Cloud entry. When the OS keychain is available, token-shaped secrets
-move there and YAML contains a source-, owner-, field-, and destination-bound
-sentinel instead. `gcx config view` redacts secret fields. Do not commit a
-credential-bearing config file to version control.
-
-If a known locked or unreachable keychain backend prevents storing a brand-new
-credential, gcx may keep that new value in the mode-`0600` config file and warns
-that it remains plaintext. It never silently downgrades a replacement,
-deletion, missing or rejected keychain reference, oversized value, or unknown
-backend failure to plaintext.
+referenced Cloud entry. See [Keychain credential storage](configuration/keychain.md)
+for storage rules and keychain error procedures. `gcx config view` redacts
+secret fields. Do not commit a credential-bearing config file to version
+control.
 
 ## Troubleshooting
 
@@ -410,8 +404,8 @@ Each entry pairs the error you see with what it means and how to fix it.
     - *Fix:* Review the paths listed by the error and rerun with the intended `--config <path>`, or keep the target stack, Cloud entry, and context bindings together in one source.
 
 13. **A credential was `rejected before network use`**
-    - *Means:* a keychain reference was missing/foreign, a destination changed, or an environment credential was paired with an auto-discovered repository destination. gcx withheld it instead of sending an empty or misrouted credential.
-    - *Fix:* For an auto-discovered repository destination, review the file and rerun with its explicit `--config` path. Explicit selection does not make a missing, foreign, or destination-mismatched keychain sentinel valid; re-authenticate or replace/unset that field. Use the exact raw editor command named by the error, such as `gcx config edit user` or `gcx config edit --config "<path>"`; it remains available even when ordinary loading fails.
+    - *Means:* a credential reference was missing or foreign, a destination changed, or an environment credential was paired with an auto-discovered repository destination. gcx withheld it instead of sending an empty or misrouted credential.
+    - *Fix:* For an auto-discovered repository destination, review the file and rerun with its explicit `--config` path. Re-authenticate, or replace or unset the rejected field. See [Keychain credential storage](configuration/keychain.md) if the error identifies a keychain reference.
 
 14. **`Cloud credential destination is ambiguous`**
     - *Means:* one credential-bearing Cloud entry has no explicit endpoint pair and is referenced by contexts in different Cloud environments. gcx will not guess which API destination may receive it.
@@ -424,6 +418,7 @@ Each entry pairs the error you see with what it means and how to fix it.
 ## See also
 
 - [`gcx login` flag reference](cli/gcx_login.md) — exhaustive list of flags and options.
+- [Keychain credential storage](configuration/keychain.md) — credential storage rules and keychain error procedures.
 - [Login system architecture](../architecture/login-system.md) — how the login orchestrator works internally.
 - [Authentication subsystem](../architecture/auth-system.md) — OAuth PKCE, token lifecycle, `RefreshTransport`.
 - [Configuration and context system](../architecture/config-system.md) — how contexts are stored and merged.
