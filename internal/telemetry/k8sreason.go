@@ -8,14 +8,11 @@ const K8sReasonOther = "other"
 
 // k8sReasons is the complete wire vocabulary for Event.K8sReason, apart from
 // the K8sReasonOther sentinel. The entries are apimachinery's StatusReason
-// WIRE values, not Go identifiers — the distinction matters exactly once:
-// the Go constant is named StatusReasonStoreReadError but its wire value is
-// "StorageReadError". Allowlisting the identifier would silently map that
-// real reason to "other".
+// WIRE values, not Go identifiers — the distinction matters exactly once, for
+// StatusReasonStoreReadError, whose wire value is "StorageReadError".
 //
-// An empty reason is metav1.StatusReasonUnknown and is not in this set: it
-// means no reason was found, and the field is omitted rather than sent as
-// "unknown".
+// An empty reason is metav1.StatusReasonUnknown and is deliberately absent: it
+// means no reason was found, so the field is omitted rather than sent.
 //
 //nolint:gochecknoglobals // fixed wire vocabulary, never mutated.
 var k8sReasons = map[string]struct{}{

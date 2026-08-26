@@ -190,9 +190,6 @@ func outputResponse(cmd *cobra.Command, opts *apiOpts, resp *http.Response) erro
 	}
 
 	if resp.StatusCode >= 400 {
-		// Typed so the usage event can carry the status; the rendered text is
-		// unchanged, and the one-method carrier matches no error converter, so
-		// the exit code stays what the fallback path always produced.
 		if len(respBody) == 0 {
 			return &gcxerrors.HTTPStatusError{
 				Status:  resp.StatusCode,

@@ -161,29 +161,25 @@ type authMethodState struct {
 
 // grafanaAuthMethod is the authentication method the invocation selected for
 // its Grafana connection, written by the config auth selector (and login) and
-// read once at exit.
-//
-// Unlike the other slots this one is legitimately written concurrently:
-// `gcx config check` resolves auth for every context at once, so the slot
-// must stay coherent under parallel writers rather than assume the
+// read once at exit. Unlike the other slots it is legitimately written
+// concurrently — `gcx config check` resolves auth for every context at once —
+// so it must stay coherent under parallel writers rather than assume the
 // one-synchronous-write discipline the batch slot documents.
 //
 //nolint:gochecknoglobals // process-wide invocation fact; see package doc.
 var grafanaAuthMethod atomic.Pointer[authMethodState]
 
-// SetGrafanaAuthMethod records a decided Grafana auth method.
-//
-// An empty method is undecided and is ignored — a load that resolved no
-// Grafana context must not erase a decision already made. "unknown" is a
-// decided value, not an absence, and is recorded like any other.
+// SetGrafanaAuthMethod records a decided Grafana auth method. An empty method
+// is undecided and ignored — a load that resolved no Grafana connection must
+// not erase a decision already made — while "unknown" is a decided value and
+// is recorded like any other.
 //
 // Two different decided values mean the invocation used more than one method
-// (config check across contexts), and no single answer would be true; the
-// slot collapses to a conflict and CurrentGrafanaAuthMethod reports nothing.
-// The conflict is sticky: a later agreeing write cannot un-ask the question.
-// A forced value is immune on the other side: Set never overwrites or
-// conflicts it, so a config load racing login's authoritative answer — in
-// either interleaving — cannot demote it.
+// (config check across contexts), so the slot collapses to a conflict and
+// CurrentGrafanaAuthMethod reports nothing. The conflict is sticky: a later
+// agreeing write cannot un-ask the question. A forced value is immune on the
+// other side, so a config load racing login cannot demote it in either
+// interleaving.
 func SetGrafanaAuthMethod(method string) {
 	if method == "" {
 		return
@@ -206,15 +202,13 @@ func SetGrafanaAuthMethod(method string) {
 }
 
 // ForceGrafanaAuthMethod records a decided Grafana auth method that outranks
-// everything recorded before or after it by SetGrafanaAuthMethod, including a
+// everything SetGrafanaAuthMethod records before or after it, including a
 // conflict. It exists for login, which resolves its method by probing: what
-// login actually authenticated with is a better answer than anything a config
-// load captured on the way, even when a mid-login retry switched methods. The
-// forced state also wins races the plain store could lose — a Set retrying
-// its CompareAndSwap against this write sees the forced value and yields
-// instead of recording a conflict. A later Force replaces an earlier one
-// (login's final attempt is the most final answer). An empty method is
-// ignored.
+// login actually authenticated with beats anything a config load captured on
+// the way, even when a mid-login retry switched methods. A Set retrying its
+// CompareAndSwap against this write sees the forced value and yields rather
+// than recording a conflict. A later Force replaces an earlier one; an empty
+// method is ignored.
 func ForceGrafanaAuthMethod(method string) {
 	if method == "" {
 		return
