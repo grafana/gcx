@@ -55,7 +55,6 @@
 
 /internal/auth/adaptive/ @grafana/grafana-gcx @grafana/adaptive-telemetry
 
-# Every line in this fixture is an accepted exception to the command naming
-# convention, so it needs gcx sign-off even if a later rule takes over
-# /cmd/gcx/root/. Last matching pattern wins, so keep this at the end.
+# (A redundant entry right now) GCX maintainers must approve PRs that add new
+# non-standard command operations
 /cmd/gcx/root/testdata/non_canonical_command_operations.json @grafana/grafana-gcx
