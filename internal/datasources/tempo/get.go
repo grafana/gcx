@@ -20,6 +20,21 @@ type getOpts struct {
 	Share      dsquery.ExploreLinkOpts
 	Datasource string
 	LLM        bool
+
+	// V2 spanset filter. KeepHierarchy, MatchDepth, and AncestorDepth are
+	// ignored by Tempo unless Query is also set.
+	Query         string
+	KeepHierarchy bool
+	MatchDepth    int
+	AncestorDepth int
+
+	// Span pruning. GroupBy/MinSpans/MaxParentDepth are ignored by Tempo
+	// unless pruning ends up enabled (explicitly, or via the datasource's
+	// tenant default).
+	SpanPruning               bool
+	SpanPruningGroupBy        string
+	SpanPruningMinSpans       int
+	SpanPruningMaxParentDepth int
 }
 
 func (opts *getOpts) setup(flags *pflag.FlagSet) {
@@ -32,6 +47,17 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	flags.BoolVar(&opts.LLM, "llm", false, "[experimental] Request LLM-friendly trace format by sending the 'Accept: application/vnd.grafana.llm' header. Falls back to default JSON")
+
+	flags.StringVar(&opts.Query, "q", "", "[experimental] TraceQL spanset filter; only matching spans are returned (V2 only)")
+	flags.BoolVar(&opts.KeepHierarchy, "keep-hierarchy", false, "[experimental] Include each matched span's ancestor path to the root (ignored without --q)")
+	flags.IntVar(&opts.MatchDepth, "match-depth", 0, "[experimental] Levels of descendants to keep below each matched span: -1 = all, 0 = matched spans only, n = n levels (ignored without --q)")
+	flags.IntVar(&opts.AncestorDepth, "ancestor-depth", -1, "[experimental] Levels of ancestors to keep above each matched span: -1 = all (default), 0 = none, n = n levels (ignored without --q or --keep-hierarchy)")
+
+	flags.BoolVar(&opts.SpanPruning, "span-pruning", false, "[experimental] Collapse repeated sibling spans (e.g. a fan-out of identical DB calls) into a single aggregated span to shrink large traces. Overrides the datasource's tenant default; omit to use that default")
+	flags.StringVar(&opts.SpanPruningGroupBy, "span-pruning-group-by", "", "[experimental] Comma-separated attribute glob patterns siblings must match to be grouped for pruning, e.g. 'db.*,http.method' (ignored without --span-pruning)")
+	flags.IntVar(&opts.SpanPruningMinSpans, "span-pruning-min-spans", 0, "[experimental] Minimum sibling span count required before a group is pruned; Tempo defaults to 5 (ignored without --span-pruning)")
+	flags.IntVar(&opts.SpanPruningMaxParentDepth, "span-pruning-max-parent-depth", 0, "[experimental] Ancestor levels above pruned leaves that may also be pruned; Tempo defaults to 1 (ignored without --span-pruning)")
+
 	opts.Share.Setup(flags, "retrieved trace")
 	opts.SetupTimeFlags(flags)
 }
@@ -59,7 +85,16 @@ explicit time range via --since or --from/--to.
 
 Experimental: --llm requests the trace in a new LLM-friendly JSON format by
 sending the "Accept: application/vnd.grafana.llm" header. Datasources that do
-not support this format return the standard response.`,
+not support this format return the standard response.
+
+Experimental: for large traces, --q narrows the response to spans matching a
+TraceQL spanset filter (V2 only). --keep-hierarchy, --match-depth, and
+--ancestor-depth shape how much context around each match is kept, and are
+ignored without --q. --span-pruning collapses repeated sibling spans (for
+example, a fan-out of identical DB calls) into a single aggregated span;
+--span-pruning-group-by, --span-pruning-min-spans, and
+--span-pruning-max-parent-depth tune that behavior and are ignored without
+--span-pruning.`,
 		Example: `
   # Get LLM-friendly output for agent analysis
   gcx datasources tempo get abc123def456 --llm -o json
@@ -74,7 +109,13 @@ not support this format return the standard response.`,
   gcx datasources tempo get abc123def456
 
   # Get LLM-friendly output within a time range
-  gcx datasources tempo get abc123def456 --since 1h --llm -o json`,
+  gcx datasources tempo get abc123def456 --since 1h --llm -o json
+
+  # Narrow a large trace to error spans and their ancestor path
+  gcx datasources tempo get abc123def456 --q '{ status = error }' --keep-hierarchy
+
+  # Collapse repeated sibling spans to shrink a huge trace before analysis
+  gcx datasources tempo get abc123def456 --span-pruning --llm -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -108,10 +149,24 @@ not support this format return the standard response.`,
 			}
 
 			req := tempo.GetTraceRequest{
-				TraceID:   traceID,
-				Start:     start,
-				End:       end,
-				LLMFormat: opts.LLM,
+				TraceID:            traceID,
+				Start:              start,
+				End:                end,
+				LLMFormat:          opts.LLM,
+				Query:              opts.Query,
+				KeepHierarchy:      opts.KeepHierarchy,
+				MatchDepth:         opts.MatchDepth,
+				AncestorDepth:      opts.AncestorDepth,
+				SpanPruningGroupBy: opts.SpanPruningGroupBy,
+			}
+			if cmd.Flags().Changed("span-pruning") {
+				req.SpanPruning = &opts.SpanPruning
+			}
+			if cmd.Flags().Changed("span-pruning-min-spans") {
+				req.SpanPruningMinSpans = &opts.SpanPruningMinSpans
+			}
+			if cmd.Flags().Changed("span-pruning-max-parent-depth") {
+				req.SpanPruningMaxParentDepth = &opts.SpanPruningMaxParentDepth
 			}
 
 			resp, err := client.GetTrace(ctx, datasourceUID, req)
