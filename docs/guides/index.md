@@ -28,4 +28,10 @@ title: Usage
 
     Lint resources, with built-in or custom rules.
 
+-   :material-lock-outline:{ .lg .middle } __[Edge-proxy authentication](./edge-proxy-auth.md)__
+
+    ---
+
+    Connect to Grafana instances behind an AWS ALB, Cloudflare Access, or other session-cookie-gated proxy.
+
 </div>
