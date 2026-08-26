@@ -47,7 +47,13 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx traces get -d UID <trace-id> --share-link
 
   # Output raw OTLP-shaped JSON when explicitly needed
-  gcx traces get -d UID <trace-id> -o json`,
+  gcx traces get -d UID <trace-id> -o json
+
+  # Narrow a large trace to error spans and their ancestor path
+  gcx traces get -d UID <trace-id> --q '{ status = error }' --keep-hierarchy
+
+  # Collapse repeated sibling spans to shrink a huge trace before analysis
+  gcx traces get -d UID <trace-id> --span-pruning --llm -o json`,
 			},
 			{
 				Build:     dstempo.LabelsCmd,

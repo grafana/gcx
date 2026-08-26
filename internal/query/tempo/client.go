@@ -98,6 +98,24 @@ func (c *Client) GetTrace(ctx context.Context, datasourceUID string, req GetTrac
 	if !req.End.IsZero() {
 		q.Set("end", strconv.FormatInt(req.End.Unix(), 10))
 	}
+	if req.Query != "" {
+		q.Set("q", req.Query)
+		q.Set("keep_hierarchy", strconv.FormatBool(req.KeepHierarchy))
+		q.Set("match_depth", strconv.Itoa(req.MatchDepth))
+		q.Set("ancestor_depth", strconv.Itoa(req.AncestorDepth))
+	}
+	if req.SpanPruning != nil {
+		q.Set("span_pruning", strconv.FormatBool(*req.SpanPruning))
+	}
+	if req.SpanPruningGroupBy != "" {
+		q.Set("span_pruning_group_by", req.SpanPruningGroupBy)
+	}
+	if req.SpanPruningMinSpans != nil {
+		q.Set("span_pruning_min_spans", strconv.Itoa(*req.SpanPruningMinSpans))
+	}
+	if req.SpanPruningMaxParentDepth != nil {
+		q.Set("span_pruning_max_parent_depth", strconv.Itoa(*req.SpanPruningMaxParentDepth))
+	}
 	httpReq.URL.RawQuery = q.Encode()
 
 	if req.LLMFormat {

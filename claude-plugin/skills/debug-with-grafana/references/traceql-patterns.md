@@ -109,6 +109,32 @@ Prefer the backend's compact trace encoding. Do not fetch raw OTLP and write a
 custom compactor for agent analysis. Omit `--llm` only when raw schema/export
 work is requested; the backend may also fall back to standard JSON itself.
 Inspect partiality and missing parents before making structural claims.
+
+For a trace too large to read in full, narrow it server-side (experimental,
+V2 only) instead of truncating the output yourself:
+
+```bash
+# Only spans matching a TraceQL filter, plus their ancestor path to the root.
+gcx traces get -d "$TEMPO_UID" "$SEED" --filter '{ status = error }' --keep-hierarchy --llm -o agents
+
+# Collapse repeated sibling spans (e.g. a fan-out of identical DB calls)
+# into one aggregated span. Combines cleanly with --filter.
+gcx traces get -d "$TEMPO_UID" "$SEED" --prune --llm -o agents
+
+# Prune only if the unpruned trace exceeds the agent output budget.
+gcx traces get -d "$TEMPO_UID" "$SEED" --prune=auto --llm -o agents
+```
+
+`--match-depth`/`--ancestor-depth` tune how many descendant/ancestor levels
+around each `--filter` match are kept, and are ignored without `--filter`.
+`--prune` takes `true`, `false`, or `auto`; omitting it uses the datasource's
+tenant default, and `--prune=auto` fetches the trace unpruned first,
+re-requesting it with pruning only if it exceeds the agent output budget (100
+KiB, overridable via `GCX_AGENT_SPILL_BYTES`). `--prune-group-by`/
+`--prune-min-spans`/`--prune-max-parent-depth` tune the pruning behavior and
+apply whenever pruning is enabled, including by the datasource's tenant
+default.
+
 Continue with [trace comparison](trace-comparison.md) for candidates, diff
 orientation, topology bias, and capability fallbacks.
 
