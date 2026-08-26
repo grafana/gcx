@@ -159,7 +159,10 @@ func TestLogs(t *testing.T) {
 		assert.Equal(t, "boom", resp.Rows[0][1])
 	})
 
-	t.Run("uses logs metric with limit", func(t *testing.T) {
+	// Pins the one field where OpenSearch's plugin diverges from
+	// Elasticsearch's: the logs metric's row cap is "size", not "limit" —
+	// "limit" is live-verified to be silently ignored by the real plugin.
+	t.Run("uses logs metric with size, not limit", func(t *testing.T) {
 		q := capture(t, func(c *opensearch.Client) error {
 			_, err := c.Logs(context.Background(), "test-uid", searchReq())
 			return err
@@ -168,7 +171,9 @@ func TestLogs(t *testing.T) {
 		assert.Equal(t, "logs", m["type"])
 		settings, ok := m["settings"].(map[string]any)
 		require.True(t, ok)
-		assert.Equal(t, "50", settings["limit"])
+		assert.Equal(t, "50", settings["size"])
+		_, hasLimit := settings["limit"]
+		assert.False(t, hasLimit, "OpenSearch's logs metric ignores \"limit\"; sending it is dead weight")
 	})
 }
 

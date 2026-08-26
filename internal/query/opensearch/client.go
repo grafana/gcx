@@ -67,11 +67,19 @@ func SearchQueryModel(dsUID string, req SearchRequest) map[string]any {
 
 // LogsQueryModel returns the OpenSearch plugin query model for a log search
 // (the logs metric type). Client.Logs and the Explore link builder both call it.
+//
+// The logs metric's row-count setting is named "size" here, not "limit" as in
+// Elasticsearch's plugin — live-verified against a real OpenSearch datasource:
+// "limit" is silently ignored (the backend falls back to its own default of
+// 500 regardless of the requested value), while "size" is honored exactly.
+// This is the one place OpenSearch's wire protocol actually diverges from
+// Elasticsearch's; every other query shape (raw_data, aggregations, mapping
+// discovery) uses identical field names on both plugins.
 func LogsQueryModel(dsUID string, req SearchRequest) map[string]any {
 	metric := map[string]any{
 		"id":       "1",
 		"type":     "logs",
-		"settings": map[string]any{"limit": strconv.Itoa(req.Size)},
+		"settings": map[string]any{"size": strconv.Itoa(req.Size)},
 	}
 	return queryModel(dsUID, req.Query, req.TimeField, metric, nil, orDefaultStep(req.StepMs))
 }

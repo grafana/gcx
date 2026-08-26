@@ -127,7 +127,7 @@ func TestLogsExploreURL(t *testing.T) {
 		assert.Equal(t, []any{map[string]any{
 			"id":       "1",
 			"type":     "logs",
-			"settings": map[string]any{"limit": "50"},
+			"settings": map[string]any{"size": "50"},
 		}}, query["metrics"])
 
 		// Explore should show newest lines first, like the CLI output does.
