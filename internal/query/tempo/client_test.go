@@ -37,10 +37,6 @@ func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
 	_, _ = w.Write(data)
 }
 
-func boolPtr(b bool) *bool { return &b }
-
-func intPtr(i int) *int { return &i }
-
 func TestSearch(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -208,10 +204,10 @@ func TestGetTrace(t *testing.T) {
 			name: "span pruning enabled with tuning params",
 			req: tempo.GetTraceRequest{
 				TraceID:                   "trace1",
-				SpanPruning:               boolPtr(true),
+				SpanPruning:               new(true),
 				SpanPruningGroupBy:        "db.*,http.method",
-				SpanPruningMinSpans:       intPtr(3),
-				SpanPruningMaxParentDepth: intPtr(2),
+				SpanPruningMinSpans:       new(3),
+				SpanPruningMaxParentDepth: new(2),
 			},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "true", r.URL.Query().Get("span_pruning"))
@@ -236,7 +232,7 @@ func TestGetTrace(t *testing.T) {
 			name: "span pruning explicitly disabled",
 			req: tempo.GetTraceRequest{
 				TraceID:     "trace1",
-				SpanPruning: boolPtr(false),
+				SpanPruning: new(false),
 			},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "false", r.URL.Query().Get("span_pruning"))
