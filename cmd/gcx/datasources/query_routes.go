@@ -105,6 +105,16 @@ func newQueryRoutes() queryRoutes {
 				"namespace, metric, dimensions, region, statistic, period",
 				"gcx datasources cloudwatch query --namespace ... --metric ... --region ...",
 			),
+			"elasticsearch": structuredQueryRedirect(
+				"Elasticsearch",
+				"Lucene query, mode (documents/logs), or metric aggregation",
+				"gcx datasources elasticsearch query --mode documents|logs ...",
+			),
+			"opensearch": structuredQueryRedirect(
+				"OpenSearch",
+				"Lucene query, mode (documents/logs), or metric aggregation",
+				"gcx datasources opensearch query --mode documents|logs ...",
+			),
 		},
 	}
 }
