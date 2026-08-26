@@ -45,7 +45,7 @@ func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.postgres is configured)")
 	flags.StringVar(&opts.Schema, "schema", "", "Schema of the table (exact match, case-sensitive; defaults to all schemas)")
-	flags.BoolVar(&opts.IncludeConstraints, "include-constraints", false, "Include ordered constraint and foreign-key metadata (requires an explicit schema and JSON/YAML output)")
+	flags.BoolVar(&opts.IncludeConstraints, "include-constraints", false, "Include ordered constraint and foreign-key metadata (requires an explicit schema and JSON/YAML/agent output)")
 }
 
 func (opts *describeTableOpts) Validate() error {
@@ -66,7 +66,7 @@ disambiguate when the same table name exists in multiple schemas.
 
 Use --include-constraints with a schema-qualified table (or --schema) to also
 return a structured table identity, columns, and ordered constraint metadata.
-Constraint metadata requires -o json or -o yaml.`,
+Constraint metadata requires -o json, -o yaml, or agent mode.`,
 		Example: `
   # Describe a table
   gcx datasources postgres describe-table orders -d UID
@@ -105,7 +105,7 @@ Constraint metadata requires -o json or -o yaml.`,
 					return errors.New("--include-constraints requires an explicit schema (use SCHEMA.TABLE or --schema)")
 				}
 				if opts.IO.OutputFormat != "json" && opts.IO.OutputFormat != "yaml" && opts.IO.OutputFormat != "agents" {
-					return errors.New("--include-constraints requires JSON or YAML output (use -o json or -o yaml)")
+					return errors.New("--include-constraints requires JSON, YAML, or agent output (use -o json or -o yaml)")
 				}
 			}
 

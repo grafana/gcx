@@ -28,7 +28,7 @@ func TestDescribeTableCmd_ValidationErrors(t *testing.T) {
 		{
 			name:    "constraint metadata rejects table output before config I/O",
 			args:    []string{"mydb.orders", "--include-constraints"},
-			wantErr: "requires JSON or YAML output",
+			wantErr: "requires JSON, YAML, or agent output",
 		},
 	}
 

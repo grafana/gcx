@@ -45,7 +45,7 @@ func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.mysql is configured)")
 	flags.StringVar(&opts.Database, "database", "", "Database of the table (exact match, case-sensitive; defaults to all databases)")
-	flags.BoolVar(&opts.IncludeConstraints, "include-constraints", false, "Include ordered constraint and foreign-key metadata (requires an explicit database and JSON/YAML output)")
+	flags.BoolVar(&opts.IncludeConstraints, "include-constraints", false, "Include ordered constraint and foreign-key metadata (requires an explicit database and JSON/YAML/agent output)")
 }
 
 func (opts *describeTableOpts) Validate() error {
@@ -69,7 +69,7 @@ platform and lower_case_table_names setting.
 
 Use --include-constraints with a database-qualified table (or --database) to
 also return a structured table identity, columns, and ordered constraint
-metadata. Constraint metadata requires -o json or -o yaml.`,
+metadata. Constraint metadata requires -o json, -o yaml, or agent mode.`,
 		Example: `
   # Describe a table
   gcx datasources mysql describe-table orders -d UID
@@ -78,11 +78,11 @@ metadata. Constraint metadata requires -o json or -o yaml.`,
   gcx datasources mysql describe-table mydb.orders
   gcx datasources mysql describe-table orders --database mydb
 
-	  # Output as JSON
-	  gcx datasources mysql describe-table orders -o json
+  # Output as JSON
+  gcx datasources mysql describe-table orders -o json
 
-	  # Include ordered keys and foreign-key relationships
-	  gcx datasources mysql describe-table mydb.orders --include-constraints -o json`,
+  # Include ordered keys and foreign-key relationships
+  gcx datasources mysql describe-table mydb.orders --include-constraints -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -108,7 +108,7 @@ metadata. Constraint metadata requires -o json or -o yaml.`,
 					return errors.New("--include-constraints requires an explicit database (use DATABASE.TABLE or --database)")
 				}
 				if opts.IO.OutputFormat != "json" && opts.IO.OutputFormat != "yaml" && opts.IO.OutputFormat != "agents" {
-					return errors.New("--include-constraints requires JSON or YAML output (use -o json or -o yaml)")
+					return errors.New("--include-constraints requires JSON, YAML, or agent output (use -o json or -o yaml)")
 				}
 			}
 
