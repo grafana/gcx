@@ -147,5 +147,5 @@ func (r *QueryResponse) Truncate(eff int) bool {
 // TruncationHint is the stderr message shown when gcx's row cap dropped rows.
 // It is dialect-agnostic (applies to both LIMIT and TOP datasources).
 func TruncationHint(shown, maxLimit int) string {
-	return fmt.Sprintf("showing the first %d rows; more rows match — raise --limit (max %d), pass --limit 0 to remove the cap, or add your own row limit to the query", shown, maxLimit)
+	return fmt.Sprintf("showing the first %d rows. See more rows by setting --limit (max %d).
 }
