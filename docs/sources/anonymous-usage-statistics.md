@@ -81,7 +81,7 @@ These fields are easy to misread, so the following constraints are part of the c
 
 ### Canceled invocations
 
-An invocation that stopped before it finished reports `outcome: canceled` with `exit_code: 5`, and `error_kind` present but empty, because a stop is not a kind of failure. No new property is collected — a canceled invocation carries exactly the same fields as any other, and like every other event it is sent on a best-effort basis: pressing Ctrl-C a second time ends the process immediately, before the report is sent.
+An invocation that stopped before it finished reports `outcome: canceled` with `exit_code: 5`, and `error_kind` present but empty, because a stop is not a kind of failure. No new property is collected — a canceled invocation carries exactly the same fields as any other, and like every other event it is sent on a best-effort basis. For an invocation you interrupted, pressing Ctrl-C a second time ends the process immediately, before the report is sent; an invocation that stopped for another reason waits out the report like any other run, because there is no interrupt for the second Ctrl-C to follow.
 
 Three things this value does *not* tell you:
 

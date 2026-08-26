@@ -9,6 +9,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -88,17 +89,12 @@ func helperArgs() []string {
 }
 
 // TestCanceledInvocationIsReportedAndSecondSignalTerminates proves both halves
-// of the cancellation contract against a real process:
-//
-//  1. The first Ctrl-C reports the invocation as canceled — with exit code 5, a
-//     real duration, and error_kind present but empty — instead of reporting
-//     nothing, and writes no result document.
-//  2. A second Ctrl-C, sent while the synchronous export is still in flight,
-//     terminates the process rather than being swallowed until the export
-//     timeout expires.
-//
-// Both waits are handshakes on a request arriving, so neither signal is sent on
-// a timer.
+// of the cancellation contract against a real process: the first Ctrl-C reports
+// the invocation as canceled — exit code 5, a real duration, error_kind present
+// but empty — and writes no result document, and a second Ctrl-C sent while the
+// synchronous export is in flight terminates the process instead of being
+// swallowed until the export times out. Both waits are handshakes on a request
+// arriving, so neither signal is sent on a timer.
 func TestCanceledInvocationIsReportedAndSecondSignalTerminates(t *testing.T) {
 	// Deliberately not parallel: it changes this process's signal handling and
 	// sends signals to a child.
@@ -108,18 +104,13 @@ func TestCanceledInvocationIsReportedAndSecondSignalTerminates(t *testing.T) {
 	// A Grafana that hangs on the command's own request and answers anything
 	// else immediately.
 	//
-	// The interrupt has to land while that one request is in flight and nothing
-	// else is, which is why the config pins a stack-id: without one, gcx
-	// resolves its namespace by asking the server for /bootdata first
-	// (internal/config/stack_id.go), and interrupting *that* is a different
-	// test — discovery swallows a cancellation and falls back, so the error the
-	// command finally surfaces would depend on which of two requests lost the
-	// race. The 404 keeps that true if any other lookup ever appears.
-	//
-	// The hanging path never answers, not even once the client context is
-	// canceled: a response that races the cancellation lets the client read
-	// headers and then fail reading the body, which surfaces as a plain error
-	// rather than a cancellation.
+	// The config pins a stack-id so that request is the only one in flight:
+	// without one gcx asks the server for /bootdata first
+	// (internal/config/stack_id.go), and discovery swallows a cancellation and
+	// falls back, so which request lost the race would decide the error. The
+	// hanging path never answers even once the client context is canceled — a
+	// response that races the cancellation surfaces as a plain error rather
+	// than a cancellation.
 	grafana := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != helperRequestPath {
 			http.NotFound(w, r)
@@ -183,23 +174,17 @@ func TestCanceledInvocationIsReportedAndSecondSignalTerminates(t *testing.T) {
 }
 
 // TestFinishedRunSurvivesInterruptsDuringExport pins the other half of the
-// signal contract: the escape hatch belongs to an invocation the user is trying
-// to abandon, and must not hand a stray interrupt the power to kill one that
-// already succeeded.
+// signal contract: the escape hatch belongs to an invocation the user is
+// abandoning, and must not let a stray interrupt kill one that already
+// succeeded. The command writes its result, then waits out the export against a
+// receiver that never answers; interrupts arriving in that window are absorbed,
+// so the process still exits 0. Disarming on every exit path instead makes it
+// die by SIGINT with status 130.
 //
-// The command writes its complete result, then waits out the synchronous export
-// against a receiver that never answers. Interrupts arriving in that window have
-// to be absorbed, so the process still exits 0 and its exit status still agrees
-// with the document on stdout. Disarming the signal handler on every exit path
-// instead makes this process die by SIGINT with status 130.
-//
-// It sends several, spaced, because one is not enough to catch the case that
-// actually bites. The first interrupt is absorbed by the handler that is still
-// installed, but it also cancels the context, and main's watcher then restores
-// the default terminate action — so a second interrupt a few milliseconds later
-// kills the process unless exitWith has taken the disposition back. Deciding
-// that from a bool sampled before the export cannot see an interrupt that
-// arrives during it, which is why exitWith settles the gate instead.
+// Several, spaced, because one is not enough: the first is absorbed but also
+// cancels the context, and main's watcher then restores the default terminate
+// action, so the second kills unless exitWith has taken the disposition back —
+// which a bool sampled before the export cannot do.
 func TestFinishedRunSurvivesInterruptsDuringExport(t *testing.T) {
 	hold := make(chan struct{})
 
@@ -235,18 +220,12 @@ func TestFinishedRunSurvivesInterruptsDuringExport(t *testing.T) {
 
 // TestAbsorbedInterruptSurvivesSecondSignalDuringExport pins the third row of
 // the abandonsExport matrix against a real process: an invocation that was
-// interrupted and finished anyway keeps the exit code that agrees with the
-// result it wrote, even when a second Ctrl-C arrives while the export is still
-// in flight.
-//
-// `gcx dev serve` is the command in the tree that reaches it. It shuts its HTTP
-// server down on ctx.Done and returns nil, so the first Ctrl-C leaves the
-// invocation interrupted and successful. main re-arms the default terminate
-// action as soon as the context is cancelled — a second Ctrl-C has to end a
-// graceful shutdown that stalls — so exitWith has to hold SIGINT again for the
-// length of the export. Without that, the second signal kills this process with
-// status 130, and `gcx dev serve && next` skips next for a run with nothing
-// wrong with it.
+// interrupted and finished anyway keeps the exit code agreeing with the result
+// it wrote, even when a second Ctrl-C arrives during the export. `gcx dev
+// serve` is the command that reaches it — it shuts its HTTP server down on
+// ctx.Done and returns nil. Without the re-hold in exitWith the second signal
+// kills this process with status 130, and `gcx dev serve && next` skips next
+// for a run with nothing wrong with it.
 func TestAbsorbedInterruptSurvivesSecondSignalDuringExport(t *testing.T) {
 	// Deliberately not parallel: it changes this process's signal handling and
 	// sends signals to a child.
@@ -364,33 +343,28 @@ func TestUsageEventUnchangedForSuccessAndFailure(t *testing.T) {
 
 // heldExport is a usage-stats receiver that captures the event, interrupts the
 // child while the response is still open, and holds that response until the
-// test releases it — so the interrupt provably lands while the child is inside
-// its synchronous export.
+// test releases it — so the interrupt provably lands inside the export.
 //
-// The interrupt is sent from the handler rather than from the test goroutine
-// because the export gives up after one second (internal/telemetry/export.go),
-// and that clock starts when the request arrives. A test goroutine descheduled
-// for longer than that would signal a child which had already exported and
-// exited cleanly, then report the code as having swallowed a signal it never
-// saw. From inside the handler there is no such window.
+// It signals from the handler rather than from the test goroutine because the
+// export gives up after one second (internal/telemetry/export.go) and that
+// clock starts when the request arrives: a descheduled test goroutine would
+// signal a child that had already exited cleanly, and read that as a swallowed
+// signal. From inside the handler there is no such window.
 type heldExport struct {
 	server  *httptest.Server
 	events  chan []byte
 	signals chan error
 
 	// child is closed once the process to interrupt is known. The handler waits
-	// for it rather than reading the pointer opportunistically: an export that
-	// arrived before the test had stored the process would otherwise find no
-	// one to signal, skip silently, and leave the test waiting out its whole
-	// handshake timeout for a signal that was never going to be sent.
+	// for it rather than reading the pointer opportunistically, so an export
+	// arriving before the test stored the process still gets signalled.
 	child   chan struct{}
 	process atomic.Pointer[os.Process]
 
 	// extraInterrupts is how many further signals to send after the first,
-	// spaced by interruptSpacing. It exists because "the watcher goroutine in
-	// main has run" is not observable from here: a test that needs a signal to
-	// land after the watcher has touched the disposition can only cover that
-	// window by sending more than one.
+	// spaced by interruptSpacing. "The watcher goroutine in main has run" is
+	// not observable from here, so a signal that must land after the watcher
+	// touched the disposition can only be reached by sending more than one.
 	extraInterrupts int
 }
 
@@ -427,19 +401,28 @@ func newHeldExport(t *testing.T, hold <-chan struct{}) *heldExport {
 		case <-hold:
 			return
 		}
-		if process := held.process.Load(); process != nil {
-			err := process.Signal(os.Interrupt)
+		process := held.process.Load()
+		if process == nil {
+			// interrupts stores the pointer before closing child, so this is
+			// unreachable. Report it anyway: skipping silently would strand the
+			// test on its handshake timeout instead of failing with a reason.
 			select {
-			case held.signals <- err:
+			case held.signals <- errors.New("no child process to interrupt"):
 			default:
 			}
-			// Only the first send is reported. A later one failing means the
-			// child is already gone, which is the assertion's business — the
-			// test reads its exit status either way.
-			for i := 0; err == nil && i < held.extraInterrupts; i++ {
-				time.Sleep(interruptSpacing)
-				_ = process.Signal(os.Interrupt)
-			}
+			<-hold
+			return
+		}
+		sigErr := process.Signal(os.Interrupt)
+		select {
+		case held.signals <- sigErr:
+		default:
+		}
+		// Only the first send is reported. A later one failing means the child
+		// is already gone, which the exit-status assertion covers.
+		for i := 0; sigErr == nil && i < held.extraInterrupts; i++ {
+			time.Sleep(interruptSpacing)
+			_ = process.Signal(os.Interrupt)
 		}
 		<-hold
 	}))
