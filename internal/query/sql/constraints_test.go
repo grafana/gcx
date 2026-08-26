@@ -66,7 +66,26 @@ func TestParseTableDescriptionPreservesCompositeConstraintOrder(t *testing.T) {
 
 func TestParseTableDescriptionRejectsMalformedConstraintResponse(t *testing.T) {
 	columns := &querysql.QueryResponse{Columns: []querysql.Column{{Name: "name"}, {Name: "type"}, {Name: "nullable"}, {Name: "default"}}, Rows: [][]any{{"id", "integer", "NO", nil}}}
-	_, err := querysql.ParseTableDescription("public", "orders", columns, &querysql.QueryResponse{})
+	malformed := &querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "unexpected"}},
+		Rows:    [][]any{{"value"}},
+	}
+	_, err := querysql.ParseTableDescription("public", "orders", columns, malformed)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `missing column "constraint_name"`)
+}
+
+func TestParseTableDescriptionAcceptsNoDeclaredConstraints(t *testing.T) {
+	columns := &querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "name"}, {Name: "type"}, {Name: "nullable"}, {Name: "default"}},
+		Rows:    [][]any{{"id", "bigint", "NO", nil}},
+	}
+
+	desc, err := querysql.ParseTableDescription("dw_hacking_tracking", "discount_invoke", columns, &querysql.QueryResponse{})
+	require.NoError(t, err)
+	assert.Empty(t, desc.Constraints)
+
+	encoded, err := json.Marshal(desc)
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"constraints":[]`)
 }

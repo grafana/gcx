@@ -67,7 +67,8 @@ func ParseTableDescription(namespace, table string, columnsResp, constraintsResp
 	}
 
 	desc := &TableDescription{
-		Table: TableIdentity{Namespace: namespace, Name: table},
+		Table:       TableIdentity{Namespace: namespace, Name: table},
+		Constraints: make([]TableConstraint, 0),
 	}
 	for _, row := range columnsResp.Rows {
 		name, err := valueAsString(rowValue(columnsResp, row, "name"))
@@ -109,6 +110,14 @@ type constraintAccumulator struct {
 }
 
 func parseConstraints(desc *TableDescription, resp *QueryResponse) (*TableDescription, error) {
+	// Grafana's MySQL plugin returns an empty frame as {columns:null,rows:null}
+	// when information_schema has no matching constraints. Treat that as a
+	// valid table with no declared constraints; there are no rows whose aliases
+	// need validation.
+	if len(resp.Rows) == 0 {
+		return desc, nil
+	}
+
 	// Validate the aliases once, before touching any row. A malformed or
 	// changed provider query should fail clearly instead of silently returning
 	// incomplete relationship metadata.
