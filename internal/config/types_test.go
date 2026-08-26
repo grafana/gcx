@@ -34,6 +34,7 @@ func TestGrafanaConfig_IsEmpty(t *testing.T) {
 	req.True(config.GrafanaConfig{}.IsEmpty())
 	req.False(config.GrafanaConfig{TLS: &config.TLS{Insecure: true}}.IsEmpty())
 	req.False(config.GrafanaConfig{Server: "value"}.IsEmpty())
+	req.False(config.GrafanaConfig{ExtraHeaders: map[string]string{"Cookie": "v"}}.IsEmpty())
 }
 
 func TestGrafanaConfig_Validate_AllowsDiscoveredStackID(t *testing.T) {
