@@ -10,14 +10,16 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/mysql"
+	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
 type describeTableOpts struct {
-	IO         cmdio.Options
-	Datasource string
-	Database   string
+	IO                 cmdio.Options
+	Datasource         string
+	Database           string
+	IncludeConstraints bool
 }
 
 // splitTableArg resolves a possibly database-qualified TABLE argument
@@ -43,6 +45,7 @@ func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.mysql is configured)")
 	flags.StringVar(&opts.Database, "database", "", "Database of the table (exact match, case-sensitive; defaults to all databases)")
+	flags.BoolVar(&opts.IncludeConstraints, "include-constraints", false, "Include ordered constraint and foreign-key metadata (requires an explicit database and JSON/YAML output)")
 }
 
 func (opts *describeTableOpts) Validate() error {
@@ -62,7 +65,11 @@ The table can be database-qualified (db.table); otherwise use --database to
 disambiguate when the same table name exists in multiple databases. TABLE and
 --database both match exactly and are case-sensitive, which can differ from
 how information_schema itself compares names depending on the server's
-platform and lower_case_table_names setting.`,
+platform and lower_case_table_names setting.
+
+Use --include-constraints with a database-qualified table (or --database) to
+also return a structured table identity, columns, and ordered constraint
+metadata. Constraint metadata requires -o json or -o yaml.`,
 		Example: `
   # Describe a table
   gcx datasources mysql describe-table orders -d UID
@@ -71,8 +78,11 @@ platform and lower_case_table_names setting.`,
   gcx datasources mysql describe-table mydb.orders
   gcx datasources mysql describe-table orders --database mydb
 
-  # Output as JSON
-  gcx datasources mysql describe-table orders -o json`,
+	  # Output as JSON
+	  gcx datasources mysql describe-table orders -o json
+
+	  # Include ordered keys and foreign-key relationships
+	  gcx datasources mysql describe-table mydb.orders --include-constraints -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -92,6 +102,14 @@ platform and lower_case_table_names setting.`,
 			}
 			if err := mysql.ValidateIdentifier(database, "database"); err != nil {
 				return err
+			}
+			if opts.IncludeConstraints {
+				if database == "" {
+					return errors.New("--include-constraints requires an explicit database (use DATABASE.TABLE or --database)")
+				}
+				if opts.IO.OutputFormat != "json" && opts.IO.OutputFormat != "yaml" && opts.IO.OutputFormat != "agents" {
+					return errors.New("--include-constraints requires JSON or YAML output (use -o json or -o yaml)")
+				}
 			}
 
 			ctx := cmd.Context()
@@ -134,6 +152,18 @@ platform and lower_case_table_names setting.`,
 					return fmt.Errorf("table %q not found in database %q", table, database)
 				}
 				return fmt.Errorf("table %q not found", table)
+			}
+
+			if opts.IncludeConstraints {
+				constraintsResp, err := client.Query(ctx, datasourceUID, mysql.QueryRequest{RawSQL: mysql.BuildDescribeConstraintsQuery(database, table)})
+				if err != nil {
+					return fmt.Errorf("query constraints failed: %w", err)
+				}
+				description, err := querysql.ParseTableDescription(database, table, resp, constraintsResp)
+				if err != nil {
+					return fmt.Errorf("parse table description: %w", err)
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), description)
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)

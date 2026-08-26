@@ -20,6 +20,16 @@ func TestDescribeTableCmd_ValidationErrors(t *testing.T) {
 			args:    []string{"orders", "--schema="},
 			wantErr: "--schema must not be empty",
 		},
+		{
+			name:    "constraint metadata requires explicit schema before config I/O",
+			args:    []string{"orders", "--include-constraints", "-o", "json"},
+			wantErr: "--include-constraints requires an explicit schema",
+		},
+		{
+			name:    "constraint metadata rejects table output before config I/O",
+			args:    []string{"public.orders", "--include-constraints"},
+			wantErr: "requires JSON or YAML output",
+		},
 	}
 
 	for _, tt := range tests {
