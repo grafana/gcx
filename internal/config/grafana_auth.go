@@ -101,15 +101,14 @@ const grafanaAuthMethodAnonymous = "anonymous"
 // resolved Context, so this derived selector can never be serialized back into
 // the stack's auth-method field.
 //
-// Every decided selection is also recorded for the anonymous usage event,
-// here rather than in any one consumer, because this method is the single
-// authority they all share: Context.Validate on the load path,
-// validatedGrafanaAuthSelection on every transport build. Recording happens
-// before credential validation on purpose — a selected method whose
-// credential turns out invalid or rejected still reports the method, which is
-// exactly the failure a Grafana auth signal exists to make visible. Only the
-// label derivation lives here; the usage-event builder clamps the value to
-// its wire allowlist again on the way out.
+// Every decided selection is also recorded for the anonymous usage event here
+// rather than in any one consumer, because this method is the single authority
+// they all share: Context.Validate on the load path, and
+// validatedGrafanaAuthSelection on every transport build. Recording before
+// credential validation is deliberate — a selected method whose credential
+// turns out invalid still reports the method, which is exactly the failure the
+// signal exists to show. The usage-event builder clamps the label to its wire
+// allowlist on the way out.
 func (context *Context) selectGrafanaAuth() (grafanaAuthSelection, error) {
 	if context != nil && context.runtimeSecretOverrides[credentials.FieldGrafanaToken] {
 		selection := grafanaAuthSelection{mode: grafanaAuthToken, explicit: true}
@@ -125,16 +124,17 @@ func (context *Context) selectGrafanaAuth() (grafanaAuthSelection, error) {
 }
 
 // grafanaAuthMethodLabel is the single derivation from a selection to its
-// telemetry label — every capture write in this file routes through it, so a
-// policy change cannot apply to one branch and miss another. It returns ""
-// for the one state that is not a decision at all: a context with no Grafana
-// block never selected anything, and recording it would erase a decision an
-// earlier load made. An unsupported auth-method IS a decision — "unknown" —
-// and a valid selection with no credential material is "anonymous", a real,
-// distinct answer because requests then go out unauthenticated.
+// telemetry label, so a policy change cannot reach one capture write in this
+// file and miss another. "" is the one state that is not a decision: a context
+// with no Grafana block selected nothing, and recording it would erase a
+// decision an earlier load made. Absent and wholly empty are the same state,
+// because the tolerant load path replaces a nil block with an empty one
+// (PrepareForEnvParse) — Context.Validate guards the pair the same way. An
+// unsupported auth-method IS a decision, "unknown", and a valid selection with
+// no credential material is "anonymous".
 func grafanaAuthMethodLabel(grafana *GrafanaConfig, selection grafanaAuthSelection, err error) string {
 	switch {
-	case grafana == nil:
+	case grafana == nil || grafana.IsEmpty():
 		return ""
 	case err != nil:
 		return grafanaAuthUnknown.String()

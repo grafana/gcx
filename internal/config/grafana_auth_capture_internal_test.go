@@ -12,10 +12,12 @@ import (
 // only non-decision; everything else is a decided value the capture slot may
 // record, and no raw configured string appears anywhere in the mapping.
 func TestGrafanaAuthMethodLabel(t *testing.T) {
-	grafana := &GrafanaConfig{}
+	grafana := &GrafanaConfig{Server: "https://grafana.example.invalid"}
 
 	assert.Empty(t, grafanaAuthMethodLabel(nil, grafanaAuthSelection{}, nil),
 		"no Grafana block means nothing was selected")
+	assert.Empty(t, grafanaAuthMethodLabel(&GrafanaConfig{}, grafanaAuthSelection{mode: grafanaAuthUnknown}, nil),
+		"a wholly empty block is the same non-decision: the tolerant load path installs one where there was none")
 	assert.Equal(t, "unknown", grafanaAuthMethodLabel(grafana, grafanaAuthSelection{}, errors.New("unsupported auth-method")),
 		"a selector error is a decision: the method could not be classified")
 	assert.Equal(t, "anonymous", grafanaAuthMethodLabel(grafana, grafanaAuthSelection{mode: grafanaAuthUnknown}, nil),
@@ -44,7 +46,7 @@ func TestGrafanaAuthMethodLabelsAreInTheTelemetryVocabulary(t *testing.T) {
 		allowed[label] = true
 	}
 
-	grafana := &GrafanaConfig{}
+	grafana := &GrafanaConfig{Server: "https://grafana.example.invalid"}
 	labels := []string{
 		grafanaAuthMethodLabel(grafana, grafanaAuthSelection{}, errors.New("unsupported")),
 		grafanaAuthMethodLabel(grafana, grafanaAuthSelection{mode: grafanaAuthUnknown}, nil),
