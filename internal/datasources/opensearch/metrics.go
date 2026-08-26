@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/opensearch"
 	"github.com/spf13/cobra"
@@ -84,6 +85,12 @@ open it in your browser after the query succeeds.`,
 				return err
 			}
 
+			// req carries the user-facing group size — used for the Explore
+			// link, so the URL never leaks the sentinel below. sentinelReq is
+			// what actually goes on the wire: group-size+1, so a full page of
+			// groups back means more groups matched. The sentinel only
+			// applies when grouping is active; an ungrouped aggregation is a
+			// single continuous series with no "groups" cap to disclose.
 			req := opensearch.AggsRequest{
 				Query:     resolved.Expr,
 				Agg:       opts.Agg,
@@ -95,10 +102,17 @@ open it in your browser after the query succeeds.`,
 				End:       resolved.End,
 				StepMs:    resolved.StepMs,
 			}
+			sentinelReq := req
+			if opts.GroupBy != "" {
+				sentinelReq.GroupSize = opts.GroupSize + 1
+			}
 
-			resp, err := resolved.Client.Aggregations(cmd.Context(), resolved.DatasourceUID, req)
+			resp, err := resolved.Client.Aggregations(cmd.Context(), resolved.DatasourceUID, sentinelReq)
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
+			}
+			if opts.GroupBy != "" && opensearch.TruncateSeries(resp, opts.GroupSize) {
+				cmdio.Warning(cmd.ErrOrStderr(), "showing the top %d groups by count; more groups match — raise --group-size to see more", opts.GroupSize)
 			}
 
 			exploreURL := MetricsExploreURL(resolved.Cfg.GrafanaURL, resolved.ExploreBase(&opts.SharedOpts), req)

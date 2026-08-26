@@ -125,6 +125,35 @@ type MetricsResponse struct {
 	Series []MetricSeries `json:"series"`
 }
 
+// TruncateRows drops rows beyond eff and reports whether any were dropped —
+// i.e. whether more documents matched than eff allows. Mirrors the raw-SQL
+// dialects' sentinel pattern (fetch eff+1, trim, disclose), applied here to
+// a JSON "size" field instead of a LIMIT clause: there's no bail concern
+// (Lucene document search is always read-only), only the same completeness
+// question. Callers request eff+1 via SearchRequest.Size before calling
+// Search/Logs, then call this on the result.
+func TruncateRows(resp *querysql.QueryResponse, eff int) bool {
+	if eff <= 0 || len(resp.Rows) <= eff {
+		return false
+	}
+	resp.Rows = resp.Rows[:eff]
+	return true
+}
+
+// TruncateSeries drops series beyond eff and reports whether any were
+// dropped — i.e. whether more terms groups matched than eff allows. The
+// terms bucket is already ordered by count descending (AggsQueryModel's
+// orderBy:"_count"/order:"desc"), so trimming keeps the largest eff groups.
+// Callers request eff+1 groups via AggsRequest.GroupSize before calling
+// Aggregations, then call this on the result.
+func TruncateSeries(resp *MetricsResponse, eff int) bool {
+	if eff <= 0 || len(resp.Series) <= eff {
+		return false
+	}
+	resp.Series = resp.Series[:eff]
+	return true
+}
+
 // IndexInfo describes an OpenSearch index from the _mapping response.
 type IndexInfo struct {
 	Name   string `json:"name"`
