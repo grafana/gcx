@@ -37,6 +37,17 @@ entries retain expiry, granted scopes, and a coherent OAuth/API endpoint pair.
 
 To authorize a `gcx` CLI connection with OAuth, your Grafana user needs the `grafana-assistant-app.tokens.gcx:access` permission. The **gcx User** role, registered by the Grafana Assistant application, grants this permission and is assigned automatically to users with the basic role Viewer or higher.
 
+{{< admonition type="note" >}}
+For situations where your default role is `None` or you're using custom roles that restrict the default `plugins.app:access` action permissions, you will need to allow access to the `grafana-assistant-app` too:
+
+```json
+{
+  "action": "plugins.app:access",
+  "scope": "plugins:id:grafana-assistant-app"
+}
+```
+{{< /admonition >}}
+
 This permission only lets you create `gcx` tokens for your own user. It doesn't grant access to other users' tokens and it doesn't extend your existing Grafana permissions.
 
 {{< admonition type="note" >}}
