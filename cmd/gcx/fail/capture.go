@@ -12,23 +12,20 @@ import (
 // error carries — an HTTP status, a Kubernetes reason — for the usage event.
 // It must run on the raw error, as the first thing reportError does: the
 // AlreadyReported and EmittedError short-circuits return before any
-// conversion, and an EmittedError's cause chain is exactly where an
-// agent-mode in-band failure keeps its transport error.
-//
-// It captures raw values only. The wire filters — the 400–599 range, the
-// reason allowlist, the exit-4/5 suppression — live in the usage-event
-// builder, which also means nothing captured here can reach the wire
-// unfiltered.
+// conversion, and an EmittedError's cause chain is where an agent-mode in-band
+// failure keeps its transport error. It captures raw values only; the wire
+// filters live in the usage-event builder, so nothing captured here can reach
+// the wire unfiltered.
 func CaptureErrorSignals(err error) {
 	if err == nil {
 		return
 	}
 
-	// Match wins, by type rather than by value: a query APIError's StatusCode
-	// may be a downstream status promoted from inside a 2xx body, so only its
-	// preserved TransportStatus may speak for it — and when that is zero (the
-	// error was built by New from a body-level status) nothing may, so there
-	// is deliberately no fall-through to another carrier in the same chain.
+	// Match wins by type, with no fall-through to another carrier: a query
+	// APIError's StatusCode may be a downstream status promoted from inside a
+	// 2xx body, so only its preserved TransportStatus may speak for it — and
+	// when that is zero the error was built by New from a body-level status,
+	// so nothing may.
 	var queryErr *queryerror.APIError
 	var carrier interface{ HTTPStatusCode() int }
 	switch {
