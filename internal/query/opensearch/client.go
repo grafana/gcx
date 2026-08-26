@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
@@ -206,8 +208,13 @@ func (c *Client) executeQuery(ctx context.Context, operation string, q map[strin
 	return c.queryClient.Execute(ctx, body, "opensearch", operation)
 }
 
-// parseAggsResponse converts per-group time-series frames into MetricSeries;
-// the group value is carried on the frame name.
+// parseAggsResponse converts per-group time-series frames into MetricSeries.
+// The group value's location differs by plugin: Elasticsearch's names the
+// frame itself (frame.Schema.Name); OpenSearch's leaves that empty and
+// instead labels the value field, e.g. {"app.keyword": "grafana"} — live-
+// verified against a real OpenSearch datasource. seriesName tries the frame
+// name first and falls back to the value field's labels, so this works
+// against either plugin's shape without needing to know which one sent it.
 func parseAggsResponse(body []byte) (*MetricsResponse, error) {
 	var raw dataframe.Response
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -234,7 +241,7 @@ func parseAggsResponse(body []byte) (*MetricsResponse, error) {
 		times, values := frame.Data.Values[0], frame.Data.Values[1]
 		n := min(len(times), len(values))
 		series := MetricSeries{}
-		series.Name = frame.Schema.Name
+		series.Name = seriesName(frame)
 		for i := range n {
 			ms, ok := times[i].(float64)
 			if !ok {
@@ -252,6 +259,34 @@ func parseAggsResponse(body []byte) (*MetricsResponse, error) {
 		}
 	}
 	return resp, nil
+}
+
+// seriesName derives a series name from a frame: the frame's own name if
+// set (Elasticsearch's shape), otherwise a name synthesized from the labels
+// on its value field, the second field (OpenSearch's shape — only one
+// --group-by field is supported today, so that label map has at most one
+// entry, but multiple are joined for safety if the plugin ever adds more).
+func seriesName(frame dataframe.Frame) string {
+	if frame.Schema.Name != "" {
+		return frame.Schema.Name
+	}
+	if len(frame.Schema.Fields) < 2 {
+		return ""
+	}
+	labels := frame.Schema.Fields[1].Labels
+	if len(labels) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	values := make([]string, len(keys))
+	for i, k := range keys {
+		values[i] = labels[k]
+	}
+	return strings.Join(values, ", ")
 }
 
 // toFloat64Ptr converts a JSON number to *float64; nil values stay nil (gaps).

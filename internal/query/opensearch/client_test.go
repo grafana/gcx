@@ -260,6 +260,39 @@ func TestAggregations(t *testing.T) {
 		assert.Equal(t, "faro", resp.Series[1].Name)
 		assert.Nil(t, resp.Series[1].Values[0])
 	})
+
+	// Live-verified against a real OpenSearch datasource: unlike
+	// Elasticsearch, its plugin leaves schema.name empty for grouped terms
+	// frames and instead labels the value field, e.g. {"app.keyword": "grafana"}.
+	t.Run("parses OpenSearch's label-based group names", func(t *testing.T) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"results":{"A":{"frames":[
+				{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Value","type":"number","labels":{"app.keyword":"grafana"}}]},"data":{"values":[[1752451200000],[8]]}},
+				{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Value","type":"number","labels":{"app.keyword":"beyla"}}]},"data":{"values":[[1752451200000],[3]]}}
+			]}}}`))
+		}))
+
+		resp, err := client.Aggregations(context.Background(), "test-uid", aggsReq)
+		require.NoError(t, err)
+		require.Len(t, resp.Series, 2)
+		assert.Equal(t, "grafana", resp.Series[0].Name)
+		assert.Equal(t, "beyla", resp.Series[1].Name)
+	})
+
+	t.Run("empty name when neither frame name nor value-field labels are present", func(t *testing.T) {
+		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"results":{"A":{"frames":[
+				{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Value","type":"number"}]},"data":{"values":[[1752451200000],[8]]}}
+			]}}}`))
+		}))
+
+		resp, err := client.Aggregations(context.Background(), "test-uid", aggsReq)
+		require.NoError(t, err)
+		require.Len(t, resp.Series, 1)
+		assert.Empty(t, resp.Series[0].Name)
+	})
 }
 
 func TestMapping(t *testing.T) {
