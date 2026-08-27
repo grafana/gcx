@@ -2,11 +2,14 @@ package loki_test
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -97,4 +100,41 @@ func TestQuery_ReturnsTypedAPIErrorForGrafanaEnvelope(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
 	assert.Equal(t, "parse error at line 1, col 12: syntax error: unexpected IDENTIFIER, expecting STRING", apiErr.Message)
 	assert.Equal(t, "downstream", apiErr.ErrorSource)
+}
+
+func TestQuery_SendsDirectionAndMaxLines(t *testing.T) {
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "default",
+	}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	start := time.Unix(1, 0)
+	end := time.Unix(2, 0)
+	_, err = client.Query(context.Background(), "loki-uid", loki.QueryRequest{
+		Query:     `{job="grafana"}`,
+		Start:     start,
+		End:       end,
+		Limit:     1000,
+		Direction: "forward",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, gotBody)
+
+	var payload struct {
+		Queries []map[string]any `json:"queries"`
+	}
+	require.NoError(t, json.Unmarshal(gotBody, &payload))
+	require.Len(t, payload.Queries, 1)
+	assert.Equal(t, "forward", payload.Queries[0]["direction"])
+	assert.InDelta(t, float64(1000), payload.Queries[0]["maxLines"], 0)
 }

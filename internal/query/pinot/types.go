@@ -21,6 +21,21 @@ const (
 	MaxLimit = 1000
 )
 
+// EscapeSQLString escapes single quotes for use in SQL string literals.
+func EscapeSQLString(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
+}
+
+// FormatSQLInt returns s as a SQL integer literal. It rejects anything that
+// is not a base-10 int64 so the value can be interpolated unquoted.
+func FormatSQLInt(s string) (string, error) {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("not a valid integer: %q", s)
+	}
+	return strconv.FormatInt(n, 10), nil
+}
+
 // leadingSetRe matches one or more Pinot SET statements at the start of a
 // query (e.g. SET useMultistageEngine = true;). Those prefixes are stripped
 // before the SELECT-shaped allow-list so EnforceLimit can still bound the
@@ -34,6 +49,7 @@ var limitStatementRe = regexp.MustCompile(`(?is)^\s*(SELECT|WITH)\b`)
 // unionOrOffsetRe matches statement shapes where appending LIMIT is invalid or
 // would bind only the last UNION leg. EnforceLimit leaves these unchanged.
 var unionOrOffsetRe = regexp.MustCompile(`(?i)(\bUNION\b|\bLIMIT\s+\d+\s+OFFSET\b|\bOFFSET\s+\d+\b)`)
+
 
 // limitCommaRe matches Pinot's LIMIT offset, count form. The shared helper only
 // sees LIMIT n at end-of-statement, so without a bail it would append a second
