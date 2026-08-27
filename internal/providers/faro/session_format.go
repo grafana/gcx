@@ -102,7 +102,7 @@ func tsvCell(v any) string {
 	}
 	switch val := v.(type) {
 	case string:
-		return val
+		return escapeTSV(val)
 	case float64:
 		if val == float64(int64(val)) {
 			return strconv.FormatInt(int64(val), 10)
@@ -113,8 +113,31 @@ func tsvCell(v any) string {
 	case int64:
 		return strconv.FormatInt(val, 10)
 	default:
-		return fmt.Sprintf("%v", val)
+		return escapeTSV(fmt.Sprintf("%v", val))
 	}
+}
+
+func escapeTSV(s string) string {
+	if !strings.ContainsAny(s, "\\\t\r\n") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch r {
+		case '\\':
+			b.WriteString(`\\`)
+		case '\t':
+			b.WriteString(`\t`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\n':
+			b.WriteString(`\n`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func formatLokiLines(resp *loki.QueryResponse) string {
