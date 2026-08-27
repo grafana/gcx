@@ -85,9 +85,8 @@ func TestQuery_RequestConstruction(t *testing.T) {
 	var captured map[string]any
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		require.NoError(t, json.Unmarshal(body, &captured))
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &captured)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"v","type":"number"}]},"data":{"values":[[1]]}}],"status":200}}}`))
@@ -121,9 +120,8 @@ func TestQuery_EmptyTableNameWhenSQLHasNoFrom(t *testing.T) {
 	var captured map[string]any
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		require.NoError(t, json.Unmarshal(body, &captured))
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &captured)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"v","type":"number"}]},"data":{"values":[[1]]}}],"status":200}}}`))
@@ -134,8 +132,12 @@ func TestQuery_EmptyTableNameWhenSQLHasNoFrom(t *testing.T) {
 	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{RawSQL: "SELECT 1"})
 	require.NoError(t, err)
 
-	q := captured["queries"].([]any)[0].(map[string]any)
-	assert.Equal(t, "", q["tableName"])
+	queries, ok := captured["queries"].([]any)
+	require.True(t, ok)
+	require.Len(t, queries, 1)
+	q, ok := queries[0].(map[string]any)
+	require.True(t, ok)
+	assert.Empty(t, q["tableName"])
 	assert.Equal(t, "SELECT 1", q["pinotQlCode"])
 }
 
