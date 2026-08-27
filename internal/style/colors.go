@@ -1,6 +1,6 @@
 package style
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 // Threshold colors used by ColorPercent / ColorCell. These mirror the
 // Grafana classic palette: error/critical red, warning yellow, muted gray.

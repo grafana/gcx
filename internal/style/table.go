@@ -6,8 +6,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
 	"github.com/grafana/gcx/internal/terminal"
 )
 
@@ -132,7 +132,7 @@ func (tb *TableBuilder) renderStyled(w io.Writer) error {
 			return s
 		})
 
-	_, err := fmt.Fprintln(w, t)
+	_, err := lipgloss.Fprintln(w, t)
 	return err
 }
 

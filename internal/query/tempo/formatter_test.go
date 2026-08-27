@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -481,6 +482,27 @@ func TestFormatTraceTable_NilTrace(t *testing.T) {
 		var buf bytes.Buffer
 		require.NoError(t, tempo.FormatTraceTable(&buf, resp))
 		assert.Contains(t, buf.String(), "spans: 0")
+	})
+}
+
+type failWriter struct{ err error }
+
+func (w failWriter) Write([]byte) (int, error) { return 0, w.err }
+
+func TestFormatTraceTable_PropagatesHeaderWriteErrors(t *testing.T) {
+	wantErr := errors.New("write failed")
+
+	t.Run("empty trace", func(t *testing.T) {
+		err := tempo.FormatTraceTable(failWriter{err: wantErr}, nil)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("populated trace", func(t *testing.T) {
+		resp := mkTrace(mkResourceSpans("svc",
+			mkSpan(t, "root", "0000000000000001", "", "", "STATUS_CODE_OK", 0, 100_000_000),
+		))
+		err := tempo.FormatTraceTable(failWriter{err: wantErr}, resp)
+		require.ErrorIs(t, err, wantErr)
 	})
 }
 
