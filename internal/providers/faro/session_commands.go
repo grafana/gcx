@@ -150,7 +150,7 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 
 			var result interface {
 				dump() string
-				writeTables(io.Writer) error
+				writeTables(w io.Writer) error
 			}
 			switch opts.Datasource {
 			case datasourcePinot:

@@ -221,7 +221,7 @@ func appendLokiEvents(dst, src *loki.QueryResponse) {
 }
 
 func maxLokiTime(resp *loki.QueryResponse) (time.Time, bool) {
-	var max time.Time
+	var latest time.Time
 	ok := false
 	for _, stream := range resp.Data.Result {
 		for _, entry := range stream.Values {
@@ -229,13 +229,13 @@ func maxLokiTime(resp *loki.QueryResponse) (time.Time, bool) {
 			if !parsed {
 				continue
 			}
-			if !ok || ts.After(max) {
-				max = ts
+			if !ok || ts.After(latest) {
+				latest = ts
 				ok = true
 			}
 		}
 	}
-	return max, ok
+	return latest, ok
 }
 
 func parseLokiUnixNano(s string) (time.Time, bool) {

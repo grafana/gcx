@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/gcx/internal/query/pinot"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEscapeSQLString(t *testing.T) {
@@ -35,11 +36,11 @@ func TestFormatSQLInt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := pinot.FormatSQLInt(tt.input)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Empty(t, got)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
 	}
