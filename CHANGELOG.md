@@ -1,3 +1,27 @@
+## Unreleased
+
+**New Features**
+
+- Added `--fix-plan` to `gcx instrumentation check`, with two explicit modes: `--fix-plan=local` produces a deterministic aggregation of the explanation docs' "How to fix" sections (offline, no billing, works on OSS/Enterprise), and `--fix-plan=assistant` synthesizes a prioritized plan with Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see the Assistant pricing docs). The two modes are disjoint: assistant mode returns a clear error when preconditions aren't met rather than silently falling back to local. `--fix-plan` alone is rejected; users must specify a mode.
+
+## v1.2.0 (2026-08-25)
+
+**Breaking changes**
+- A locked OS keychain is now its own fatal failure class (`Keychain locked`). gcx stops credential-consuming commands instead of falling back to a plaintext write, and the error explains how to unlock the keychain for the session (#1142)
+- Remove the broken `gcx assistant dashboard` subcommand (#1230)
+
+**New features**
+- Add the Database Observability provider: `gcx dbo11y instances list` and `gcx dbo11y instances get <name>` (#1199)
+
+**Fixes**
+- Remove the duplicated `--agent-id` default from assistant help text (#1232)
+
+**Other**
+- Add keychain setup and troubleshooting reference docs (#1142)
+- Teach the `add-datasource` skill the shared raw-SQL contract (#1227)
+- Bump `create-github-app-token` to 0.3.1 and tune the CI review process (#1236, #1217)
+
+
 ## v1.1.1 (2026-08-24)
 
 **Datasources**
@@ -31,20 +55,6 @@
 - Add a Grafana version support policy to the documentation (#1197)
 - Regenerate the command line interface reference (#1224)
 
-
-## Unreleased
-
-### Breaking changes
-
-- credentials: a locked OS keychain is now a separate, fatal failure class (`Keychain locked`). gcx stops credential-consuming commands instead of using or writing a plaintext fallback, and the error explains how to unlock the keychain in the current session. Previously an `org.freedesktop.Secret.Error.IsLocked` response and macOS locked or interaction-disabled statuses counted as an unavailable keychain, which permitted a plaintext write. An unlock failure in a headless Secret Service session was already fatal, but reported only the raw library message.
-
-### New features
-
-- Record the size of batch resource operations (`resources push`, `pull`, `delete`, `validate`) in usage telemetry events, as fixed size categories rather than counts, alongside whether the operation ran in dry-run mode. The first-run telemetry notice is revised to cover this and is shown again on installs that already saw the previous wording. See [Anonymous usage statistics](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/).
-
-### Fixes
-
-- instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
 
 ## v1.1.0 (2026-08-14)
 
