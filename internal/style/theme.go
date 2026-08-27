@@ -5,11 +5,13 @@ package style
 
 import (
 	"fmt"
+	"image/color"
 	"math"
+	"os"
 	"strings"
 	"sync/atomic"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/terminal"
 )
@@ -28,7 +30,7 @@ var (
 	GradientAccentFrom = lipgloss.Color("#F2495C") // Coral
 
 	// Grafana chart palette (classic series colors).
-	ChartPalette = []lipgloss.Color{
+	ChartPalette = []color.Color{
 		lipgloss.Color("#7EB26D"), // Green
 		lipgloss.Color("#EAB839"), // Yellow
 		lipgloss.Color("#6ED0E0"), // Cyan
@@ -57,7 +59,7 @@ func SetEnabled(enabled bool) {
 // Returns false when stdout is piped, agent mode is active, the user
 // passed --no-color, or stdout is not a real TTY.
 func IsStylingEnabled() bool {
-	if disabledOverride.Load() {
+	if disabledOverride.Load() || os.Getenv("NO_COLOR") != "" {
 		return false
 	}
 	if terminal.IsPiped() || agent.IsAgentMode() {
@@ -70,7 +72,7 @@ func IsStylingEnabled() bool {
 
 // Gradient renders text with a linear color gradient between from and to.
 // When styling is disabled, returns the text unchanged.
-func Gradient(text string, from, to lipgloss.Color) string {
+func Gradient(text string, from, to color.Color) string {
 	if !IsStylingEnabled() || len(text) == 0 {
 		return text
 	}
@@ -81,8 +83,8 @@ func Gradient(text string, from, to lipgloss.Color) string {
 		return lipgloss.NewStyle().Foreground(from).Render(string(runes))
 	}
 
-	r1, g1, b1 := hexToRGB(string(from))
-	r2, g2, b2 := hexToRGB(string(to))
+	r1, g1, b1 := colorToRGB(from)
+	r2, g2, b2 := colorToRGB(to)
 
 	var sb strings.Builder
 	for i, r := range runes {
@@ -96,15 +98,15 @@ func Gradient(text string, from, to lipgloss.Color) string {
 	return sb.String()
 }
 
-// hexToRGB parses a "#RRGGBB" hex string into its components.
-func hexToRGB(hex string) (uint8, uint8, uint8) {
-	if len(hex) == 7 && hex[0] == '#' {
-		hex = hex[1:]
-	}
-	if len(hex) != 6 {
+// colorToRGB converts a standard-library color to 8-bit RGB components.
+func colorToRGB(c color.Color) (uint8, uint8, uint8) {
+	if c == nil {
 		return 0, 0, 0
 	}
-	var r, g, b uint8
-	_, _ = fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b)
-	return r, g, b
+	switch rgb := color.RGBAModel.Convert(c).(type) {
+	case color.RGBA:
+		return rgb.R, rgb.G, rgb.B
+	default:
+		return 0, 0, 0
+	}
 }

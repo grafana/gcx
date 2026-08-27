@@ -340,7 +340,7 @@ tree (e.g. fully offline work); it is never required.
 | Concurrency | `golang.org/x/sync` | `errgroup` for bounded parallel operations |
 | YAML / JSON | `goccy/go-yaml`, `go-openapi/strfmt` | YAML codec, OpenAPI format types |
 | File watching | `fsnotify/fsnotify` | Live reload file watcher |
-| Terminal UI | `NimbleMarkets/ntcharts`, `charmbracelet/lipgloss` | Terminal chart rendering (bar charts, line graphs) |
+| Terminal UI | `NimbleMarkets/ntcharts/v2`, `charm.land/lipgloss/v2` | Terminal chart rendering (bar charts, line graphs) |
 | Terminal detection | `golang.org/x/term` | Terminal size detection for graph output |
 | Testing | `stretchr/testify` | Assertions in unit tests |
 | Semver | `Masterminds/semver/v3` | Version parsing/comparison |

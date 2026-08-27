@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/grafana/gcx/internal/style"
 )
 
@@ -397,7 +398,9 @@ func formatTrace(w io.Writer, resp *GetTraceResponse, wide bool) error {
 
 	if len(tree.orphans) > 0 {
 		divider := fmt.Sprintf("── Detached subtrees (%d) — parent span not in trace ──", len(tree.orphans))
-		fmt.Fprintf(w, "\n%s\n", style.ColorMutedText(divider))
+		if _, err := lipgloss.Fprintf(w, "\n%s\n", style.ColorMutedText(divider)); err != nil {
+			return err
+		}
 		tbl := newTable()
 		for _, root := range tree.orphans {
 			walk(tbl, root)
