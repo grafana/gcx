@@ -38,7 +38,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 			{
 				Build:     dstempo.GetCmd,
 				TokenCost: "medium",
-				LLMHint:   "gcx traces get -d abc123 <trace-id> --llm -o json",
+				LLMHint:   "gcx traces get -d abc123 <trace-id> --llm -o json; for a large trace, narrow with --q '{ status = error }' --keep-hierarchy or shrink fan-outs with --span-pruning",
 				Example: `
   # Fetch a trace by ID for agent analysis
   gcx traces get -d UID <trace-id> --llm -o json

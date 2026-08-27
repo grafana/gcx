@@ -1,7 +1,9 @@
 package tempo
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -62,9 +64,18 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 	opts.SetupTimeFlags(flags)
 }
 
-func (opts *getOpts) Validate() error {
+func (opts *getOpts) Validate(flags *pflag.FlagSet) error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
+	}
+	if flags.Changed("q") && strings.TrimSpace(opts.Query) == "" {
+		return errors.New("--q must not be empty or whitespace-only")
+	}
+	if opts.MatchDepth < -1 {
+		return errors.New("--match-depth must be -1 or greater")
+	}
+	if opts.AncestorDepth < -1 {
+		return errors.New("--ancestor-depth must be -1 or greater")
 	}
 	return opts.ValidateTimeRange()
 }
@@ -118,7 +129,7 @@ example, a fan-out of identical DB calls) into a single aggregated span;
   gcx datasources tempo get abc123def456 --span-pruning --llm -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(); err != nil {
+			if err := opts.Validate(cmd.Flags()); err != nil {
 				return err
 			}
 

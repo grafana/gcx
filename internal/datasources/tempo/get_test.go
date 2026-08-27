@@ -145,6 +145,135 @@ current-context: default
 	assert.Equal(t, "1", query.Get("span_pruning_max_parent_depth"))
 }
 
+func TestGetCmd_ForwardsExplicitZeroSpanPruningValues(t *testing.T) {
+	var traceQuery string
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bootdata":
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/trace-123":
+			traceQuery = r.URL.RawQuery
+			w.Header().Set("Content-Type", "application/json")
+			_, err := w.Write([]byte(`{"trace":{"traceID":"trace-123"}}`))
+			assert.NoError(t, err)
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cfgFile := writeTempoTestConfig(t, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      token: "test-token"
+      org-id: 1
+      tls:
+        insecure-skip-verify: true
+    datasources:
+      tempo: tempo-uid
+current-context: default
+`)
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	cmd := tempo.GetCmd(loader)
+	root := &cobra.Command{Use: "test"}
+	root.AddCommand(cmd)
+
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"get", "-o", "json", "trace-123",
+		"--span-pruning=false",
+		"--span-pruning-min-spans", "0",
+		"--span-pruning-max-parent-depth", "0",
+	})
+
+	err := root.Execute()
+	require.NoError(t, err)
+
+	query, err := url.ParseQuery(traceQuery)
+	require.NoError(t, err)
+	assert.Equal(t, "false", query.Get("span_pruning"))
+	assert.True(t, query.Has("span_pruning_min_spans"))
+	assert.Equal(t, "0", query.Get("span_pruning_min_spans"))
+	assert.True(t, query.Has("span_pruning_max_parent_depth"))
+	assert.Equal(t, "0", query.Get("span_pruning_max_parent_depth"))
+}
+
+func TestGetCmd_RejectsInvalidV2FilterArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "explicit empty --q",
+			args:    []string{"get", "trace-123", "--q", ""},
+			wantErr: "--q must not be empty or whitespace-only",
+		},
+		{
+			name:    "whitespace-only --q",
+			args:    []string{"get", "trace-123", "--q", "   "},
+			wantErr: "--q must not be empty or whitespace-only",
+		},
+		{
+			name:    "match-depth below sentinel",
+			args:    []string{"get", "trace-123", "--q", "{ status = error }", "--match-depth", "-2"},
+			wantErr: "--match-depth must be -1 or greater",
+		},
+		{
+			name:    "ancestor-depth below sentinel",
+			args:    []string{"get", "trace-123", "--q", "{ status = error }", "--ancestor-depth", "-2"},
+			wantErr: "--ancestor-depth must be -1 or greater",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}))
+			defer srv.Close()
+
+			cfgFile := writeTempoTestConfig(t, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      token: "test-token"
+      org-id: 1
+      tls:
+        insecure-skip-verify: true
+    datasources:
+      tempo: tempo-uid
+current-context: default
+`)
+
+			loader := &providers.ConfigLoader{}
+			loader.SetConfigFile(cfgFile)
+
+			cmd := tempo.GetCmd(loader)
+			root := &cobra.Command{Use: "test"}
+			root.AddCommand(cmd)
+
+			var stdout, stderr bytes.Buffer
+			root.SetOut(&stdout)
+			root.SetErr(&stderr)
+			root.SetArgs(tt.args)
+
+			err := root.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
 func writeTempoTestConfig(t *testing.T, content string) string {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "gcx-tempo-config-*.yaml")
