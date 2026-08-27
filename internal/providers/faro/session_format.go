@@ -155,7 +155,7 @@ func lokiTimestampLess(a, b string) bool {
 }
 
 // Session-level Faro logfmt keys printed first. Remaining envelope keys
-// matching sessionMetadataPrefixes are appended in sorted order.
+// matching sessionMetadataPrefixes() are appended in sorted order.
 func lokiMetadataKeys() []string {
 	return []string{
 		"sdk_name",
@@ -178,15 +178,17 @@ func lokiMetadataKeys() []string {
 	}
 }
 
-var sessionMetadataPrefixes = []string{
-	"sdk_",
-	"app_",
-	"user_",
-	"os_",
-	"geo_",
-	"browser_",
-	"device_",
-	"session_attr_",
+func sessionMetadataPrefixes() []string {
+	return []string{
+		"sdk_",
+		"app_",
+		"user_",
+		"os_",
+		"geo_",
+		"browser_",
+		"device_",
+		"session_attr_",
+	}
 }
 
 func isSessionMetadataKey(key string) bool {
@@ -194,7 +196,7 @@ func isSessionMetadataKey(key string) bool {
 	case "session_id", "event_data_session.id", "event_data_user.id", "faro_sdk_version":
 		return true
 	}
-	for _, p := range sessionMetadataPrefixes {
+	for _, p := range sessionMetadataPrefixes() {
 		if strings.HasPrefix(key, p) {
 			return true
 		}
