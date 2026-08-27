@@ -10,7 +10,7 @@ import (
 func TestEscapeSQLString(t *testing.T) {
 	assert.Equal(t, "events", pinot.EscapeSQLString("events"))
 	assert.Equal(t, "it''s", pinot.EscapeSQLString("it's"))
-	assert.Equal(t, "", pinot.EscapeSQLString(""))
+	assert.Empty(t, pinot.EscapeSQLString(""))
 }
 
 func TestExtractTableName(t *testing.T) {
