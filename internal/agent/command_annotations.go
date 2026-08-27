@@ -550,11 +550,12 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y judge list-models":    {Cost: "small"},
 	"gcx agento11y judge list-providers": {Cost: "small"},
 
-	"gcx agento11y rules create": {Cost: "small"},
-	"gcx agento11y rules delete": {Cost: "small"},
-	"gcx agento11y rules get":    {Cost: "small"},
-	"gcx agento11y rules list":   {Cost: "small"},
-	"gcx agento11y rules update": {Cost: "small"},
+	"gcx agento11y rules create":      {Cost: "small"},
+	"gcx agento11y rules delete":      {Cost: "small"},
+	"gcx agento11y rules get":         {Cost: "small"},
+	"gcx agento11y rules list":        {Cost: "small"},
+	"gcx agento11y rules list-scores": {Cost: "medium", Hint: "<rule-id> --passed=false --limit 100 -o json"},
+	"gcx agento11y rules update":      {Cost: "small"},
 
 	"gcx agento11y templates get":           {Cost: "small"},
 	"gcx agento11y templates list":          {Cost: "small"},

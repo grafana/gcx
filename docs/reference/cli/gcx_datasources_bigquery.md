@@ -1,18 +1,18 @@
-## gcx agento11y rules
+## gcx datasources bigquery
 
-Manage rules that route generations to evaluators.
+Query BigQuery datasources
 
 ### Options
 
 ```
-  -h, --help   help for rules
+      --config string   Path to the configuration file to use
+  -h, --help            help for bigquery
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
-      --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -22,11 +22,9 @@ Manage rules that route generations to evaluators.
 
 ### SEE ALSO
 
-* [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
-* [gcx agento11y rules create](gcx_agento11y_rules_create.md)	 - Create an evaluation rule from a file.
-* [gcx agento11y rules delete](gcx_agento11y_rules_delete.md)	 - Delete evaluation rules.
-* [gcx agento11y rules get](gcx_agento11y_rules_get.md)	 - Get a single evaluation rule.
-* [gcx agento11y rules list](gcx_agento11y_rules_list.md)	 - List evaluation rules.
-* [gcx agento11y rules list-scores](gcx_agento11y_rules_list-scores.md)	 - List online evaluation scores for a rule.
-* [gcx agento11y rules update](gcx_agento11y_rules_update.md)	 - Update an evaluation rule from a file.
+* [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx datasources bigquery describe-table](gcx_datasources_bigquery_describe-table.md)	 - Show column schema for a BigQuery table
+* [gcx datasources bigquery list-datasets](gcx_datasources_bigquery_list-datasets.md)	 - List datasets in a BigQuery project
+* [gcx datasources bigquery list-tables](gcx_datasources_bigquery_list-tables.md)	 - List tables in a BigQuery dataset
+* [gcx datasources bigquery query](gcx_datasources_bigquery_query.md)	 - Execute a SQL query against a BigQuery datasource
 
