@@ -68,6 +68,25 @@ func TestSessionsGetOptsValidateOK(t *testing.T) {
 	require.NoError(t, opts.Validate())
 }
 
+func TestSessionsGetOptsValidateTrimsInputs(t *testing.T) {
+	t.Parallel()
+	opts := sessionsGetOpts{
+		App:        "  my-app-66  ",
+		AppType:    " Mobile ",
+		Datasource: " Pinot ",
+		Save:       " /tmp/session.txt ",
+		TimeRangeOpts: dsquery.TimeRangeOpts{
+			Since: "7d",
+		},
+	}
+	require.NoError(t, opts.Validate())
+	assert.Equal(t, "my-app-66", opts.App)
+	assert.Equal(t, appTypeMobile, opts.AppType)
+	assert.Equal(t, datasourcePinot, opts.Datasource)
+	assert.Equal(t, "/tmp/session.txt", opts.Save)
+	assert.Equal(t, "66", resolveAppID(opts.App))
+}
+
 func TestSessionsGetOptsValidateAgentRequiresSave(t *testing.T) {
 	testutils.SetAgentMode(t, true)
 	base := sessionsGetOpts{

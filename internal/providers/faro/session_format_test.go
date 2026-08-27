@@ -2,6 +2,7 @@ package faro //nolint:testpackage // Tests unexported dump formatters.
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/query/loki"
@@ -29,6 +30,22 @@ func TestFormatPinotTSVEmpty(t *testing.T) {
 	assert.Equal(t, "kind\n", formatPinotTSV(&querysql.QueryResponse{
 		Columns: []querysql.Column{{Name: "kind"}},
 	}))
+}
+
+func TestFormatPinotTSVEscapesControlChars(t *testing.T) {
+	t.Parallel()
+
+	got := formatPinotTSV(&querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "kind"}, {Name: "message"}},
+		Rows: [][]any{
+			{"exception", "line1\tline2\nline3"},
+		},
+	})
+	assert.Equal(t, "kind\tmessage\nexception\tline1\\tline2\\nline3\n", got)
+
+	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
+	require.Len(t, lines, 2)
+	assert.Equal(t, 1, strings.Count(lines[1], "\t"))
 }
 
 func TestFormatSessionDump(t *testing.T) {

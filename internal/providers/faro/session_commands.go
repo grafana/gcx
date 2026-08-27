@@ -36,18 +36,21 @@ func (o *sessionsGetOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *sessionsGetOpts) Validate() error {
-	if strings.TrimSpace(o.App) == "" {
+	o.App = strings.TrimSpace(o.App)
+	o.AppType = strings.ToLower(strings.TrimSpace(o.AppType))
+	o.Datasource = strings.ToLower(strings.TrimSpace(o.Datasource))
+	o.Save = strings.TrimSpace(o.Save)
+
+	if o.App == "" {
 		return errors.New("--app is required")
 	}
-	switch strings.ToLower(o.AppType) {
+	switch o.AppType {
 	case "", appTypeWeb, appTypeMobile:
-		o.AppType = strings.ToLower(o.AppType)
 	default:
 		return fmt.Errorf("--app-type must be %s or %s, got %q", appTypeWeb, appTypeMobile, o.AppType)
 	}
-	switch strings.ToLower(o.Datasource) {
+	switch o.Datasource {
 	case datasourceLoki, datasourcePinot:
-		o.Datasource = strings.ToLower(o.Datasource)
 	default:
 		return fmt.Errorf("--datasource must be %s or %s, got %q", datasourceLoki, datasourcePinot, o.Datasource)
 	}
