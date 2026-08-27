@@ -50,8 +50,8 @@ gcx frontend sessions get <session-id> [flags]
 
 ```
       --app string          Frontend Observability app slug-id or numeric id (required)
-      --app-type string     web or mobile. Optional: inferred from sdkName/osName when omitted
-      --datasource string   Telemetry backend: loki or pinot (default loki) (default "loki")
+      --app-type string     web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted
+      --datasource string   Telemetry backend: loki or pinot (case-insensitive) (default "loki")
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for get
       --save string         Write the session dump to this path instead of stdout
