@@ -30,8 +30,8 @@ type sessionsGetOpts struct {
 func (o *sessionsGetOpts) setup(flags *pflag.FlagSet) {
 	o.SetupTimeFlags(flags)
 	flags.StringVar(&o.App, "app", "", "Frontend Observability app slug-id or numeric id (required)")
-	flags.StringVar(&o.AppType, "app-type", "", "web or mobile. Optional: inferred from sdkName/osName when omitted")
-	flags.StringVar(&o.Datasource, "datasource", datasourceLoki, "Telemetry backend: loki or pinot (default loki)")
+	flags.StringVar(&o.AppType, "app-type", "", "web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted")
+	flags.StringVar(&o.Datasource, "datasource", datasourceLoki, "Telemetry backend: loki or pinot (case-insensitive)")
 	flags.StringVar(&o.Save, "save", "", "Write the session dump to this path instead of stdout")
 }
 
