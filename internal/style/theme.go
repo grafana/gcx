@@ -103,10 +103,8 @@ func colorToRGB(c color.Color) (uint8, uint8, uint8) {
 	if c == nil {
 		return 0, 0, 0
 	}
-	switch rgb := color.RGBAModel.Convert(c).(type) {
-	case color.RGBA:
-		return rgb.R, rgb.G, rgb.B
-	default:
-		return 0, 0, 0
-	}
+	// RGBAModel.Convert always returns color.RGBA.
+	//nolint:forcetypeassert
+	rgb := color.RGBAModel.Convert(c).(color.RGBA)
+	return rgb.R, rgb.G, rgb.B
 }

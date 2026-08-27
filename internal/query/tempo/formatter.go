@@ -286,13 +286,14 @@ func detectAsyncTail(tree traceTree, totals traceTotals) bool {
 	return totals.end-attachedMaxEnd > int64(asyncTailThreshold)
 }
 
-func writeTraceHeader(w io.Writer, totals traceTotals, spanCount int, asyncTail bool) {
+func writeTraceHeader(w io.Writer, totals traceTotals, spanCount int, asyncTail bool) error {
 	suffix := ""
 	if asyncTail {
 		suffix = " (async tail detected)"
 	}
-	fmt.Fprintf(w, "Trace %s  duration: %s  spans: %d  services: %d%s\n\n",
+	_, err := fmt.Fprintf(w, "Trace %s  duration: %s  spans: %d  services: %d%s\n\n",
 		totals.traceID, formatDurationNanos(totals.dur), spanCount, totals.services, suffix)
+	return err
 }
 
 // rowCells renders a single span row's cells, with all coloring applied.
@@ -348,14 +349,16 @@ func formatTrace(w io.Writer, resp *GetTraceResponse, wide bool) error {
 	}
 	if len(spans) == 0 {
 		// Empty/nil trace renders the header line only — no body, no panic.
-		fmt.Fprintf(w, "Trace -  duration: %s  spans: 0  services: 0\n", formatDurationNanos(0))
-		return nil
+		_, err := fmt.Fprintf(w, "Trace -  duration: %s  spans: 0  services: 0\n", formatDurationNanos(0))
+		return err
 	}
 
 	totals := aggregateTotals(spans)
 	tree := buildTraceTree(spans)
 	asyncTail := detectAsyncTail(tree, totals)
-	writeTraceHeader(w, totals, len(spans), asyncTail)
+	if err := writeTraceHeader(w, totals, len(spans), asyncTail); err != nil {
+		return err
+	}
 
 	headers := []string{"SPAN", "SERVICE", "SPAN_ID", "DURATION", "%"}
 	// Fixed widths for columns with predictable max sizes: prevents lipgloss from
