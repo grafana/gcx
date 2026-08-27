@@ -79,6 +79,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx datasources clickhouse list-tables":    {Cost: "small"},
 	"gcx datasources clickhouse describe-table": {Cost: "small", Hint: "TABLE -d UID --database default -o json"},
 
+	// datasources pinot
+	"gcx datasources pinot query": {Cost: "medium", Hint: "-d UID 'SELECT count(*) FROM faro_pinot_events_v2' -o json"},
+
 	// datasources athena
 	"gcx datasources athena query":          {Cost: "medium", Hint: "-d UID 'SELECT count(*) FROM events' -o json"},
 	"gcx datasources athena list-catalogs":  {Cost: "small", Hint: "-d UID -o json"},

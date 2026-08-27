@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/mssql"
 	"github.com/grafana/gcx/internal/query/mysql"
+	"github.com/grafana/gcx/internal/query/pinot"
 	"github.com/grafana/gcx/internal/query/postgres"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -87,6 +88,7 @@ func newQueryRoutes() queryRoutes {
 			"loki":       dispatchLoki,
 			"mssql":      dispatchMSSQL,
 			"mysql":      dispatchMySQL,
+			"pinot":      dispatchPinot,
 			"postgres":   dispatchPostgres,
 			"prometheus": dispatchPrometheus,
 			"pyroscope":  dispatchPyroscope,
@@ -268,6 +270,34 @@ func dispatchClickHouse(ctx context.Context, req genericQueryRequest) (any, erro
 	}
 
 	resp, err := client.Query(ctx, req.uid, clickhouseReq)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+
+	return resp, nil
+}
+
+func dispatchPinot(ctx context.Context, req genericQueryRequest) (any, error) {
+	sql, capped := pinot.EnforceLimit(req.expr, 100, 1000)
+	if capped {
+		cmdio.Warning(req.warn, "LIMIT in query exceeds the maximum of 1000 and was capped")
+	}
+
+	client, err := pinot.NewClient(req.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	pinotReq := pinot.QueryRequest{
+		RawSQL: sql,
+		Start:  req.start,
+		End:    req.end,
+	}
+	if req.step > 0 {
+		pinotReq.IntervalMs = req.step.Milliseconds()
+	}
+
+	resp, err := client.Query(ctx, req.uid, pinotReq)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
