@@ -1,7 +1,9 @@
 package pinot
 
 import (
+	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +20,16 @@ func EscapeSQLString(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
 }
 
+// FormatSQLInt returns s as a SQL integer literal. It rejects anything that
+// is not a base-10 int64 so the value can be interpolated unquoted.
+func FormatSQLInt(s string) (string, error) {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("not a valid integer: %q", s)
+	}
+	return strconv.FormatInt(n, 10), nil
+}
+
 // leadingSetRe matches one or more Pinot SET statements at the start of a
 // query (e.g. SET useMultistageEngine = true;). Those prefixes are stripped
 // before the SELECT-shaped allow-list so EnforceLimit can still bound the
@@ -28,8 +40,9 @@ var leadingSetRe = regexp.MustCompile(`(?is)^(?:\s*SET\b[^;]*;\s*)+`)
 // clause. Pinot only allows LIMIT on SELECT-shaped statements.
 var limitStatementRe = regexp.MustCompile(`(?is)^\s*(SELECT|WITH)\b`)
 
-// UNION bails so a trailing LIMIT on a multi-leg query is left alone — Faro
-// user-journey dumps already carry LIMIT 2000 and must not be capped silently.
+// UNION bails so a trailing LIMIT is not appended onto a multi-leg query.
+// Faro session-journey dumps are session-scoped and intentionally have no
+// LIMIT; appending one would silently cap them.
 // OFFSET / LIMIT OFFSET would double up into a syntax error. DML keywords
 // anywhere fail safe (no LIMIT added) rather than corrupting a write. A
 // SELECT mentioning those words in a string literal also skips enforcement.

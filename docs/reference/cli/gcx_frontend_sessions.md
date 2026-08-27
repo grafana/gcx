@@ -1,18 +1,18 @@
-## gcx frontend
+## gcx frontend sessions
 
-Manage Grafana Frontend Observability resources
+Inspect Frontend Observability sessions.
 
 ### Options
 
 ```
-      --config string   Path to the configuration file to use
-  -h, --help            help for frontend
+  -h, --help   help for sessions
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -22,7 +22,6 @@ Manage Grafana Frontend Observability resources
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
-* [gcx frontend sessions](gcx_frontend_sessions.md)	 - Inspect Frontend Observability sessions.
+* [gcx frontend](gcx_frontend.md)	 - Manage Grafana Frontend Observability resources
+* [gcx frontend sessions get](gcx_frontend_sessions_get.md)	 - Write Frontend Observability session telemetry to a text file.
 
