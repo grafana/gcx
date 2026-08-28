@@ -359,7 +359,9 @@ func lokiReplayStartQuery(p sessionQueryParams) string {
 
 // lokiSessionEventKinds is the Pinot journey split: events, exceptions, logs,
 // measurements as separate indexed Loki streams.
-var lokiSessionEventKinds = []string{lokiKindEvent, lokiKindException, lokiKindLog, lokiKindMeasurement}
+func lokiSessionEventKinds() []string {
+	return []string{lokiKindEvent, lokiKindException, lokiKindLog, lokiKindMeasurement}
+}
 
 func lokiEventsQueryForKind(p sessionQueryParams, kind string) string {
 	app := escapeLogQLString(p.AppID)

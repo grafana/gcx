@@ -114,8 +114,8 @@ func TestLokiQueries(t *testing.T) {
 	assert.Contains(t, eventQ, `| logfmt`)
 	assert.NotContains(t, eventQ, `| logfmt | session_id=`)
 	assert.NotContains(t, eventQ, "app_memory")
-	assert.Equal(t, lokiSessionEventKinds, []string{lokiKindEvent, lokiKindException, lokiKindLog, lokiKindMeasurement})
-	for _, kind := range lokiSessionEventKinds {
+	assert.Equal(t, []string{lokiKindEvent, lokiKindException, lokiKindLog, lokiKindMeasurement}, lokiSessionEventKinds())
+	for _, kind := range lokiSessionEventKinds() {
 		q := lokiEventsQueryForKind(web, kind)
 		assert.Contains(t, q, fmt.Sprintf(`kind="%s"`, kind))
 		assert.NotContains(t, q, `{app_id="66"} |=`)
