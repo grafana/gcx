@@ -2450,3 +2450,46 @@ func TestRunCloudOAuthPropagatesManualPaste(t *testing.T) {
 	assert.True(t, gotFlowOpts.Manual)
 	assert.Same(t, reader, gotFlowOpts.Reader)
 }
+
+func TestResolveGrafanaConfigForCookieRefresh(t *testing.T) {
+	t.Parallel()
+
+	grafana := &config.GrafanaConfig{Server: "https://grafana.example.com"}
+	cfg := config.Config{
+		CurrentContext: "prod",
+		Contexts: map[string]*config.Context{
+			"prod":     {Stack: "prod-stack"},
+			"no-stack": {},
+		},
+		Stacks: map[string]*config.StackConfig{
+			"prod-stack": {Grafana: grafana},
+			"no-grafana": {},
+		},
+	}
+
+	t.Run("resolves stack grafana config", func(t *testing.T) {
+		t.Parallel()
+		got, err := resolveGrafanaConfigForCookieRefresh(&cfg, "prod")
+		require.NoError(t, err)
+		assert.Same(t, grafana, got)
+	})
+	t.Run("unknown context", func(t *testing.T) {
+		t.Parallel()
+		_, err := resolveGrafanaConfigForCookieRefresh(&cfg, "missing")
+		require.Error(t, err)
+	})
+	t.Run("context with no stack", func(t *testing.T) {
+		t.Parallel()
+		_, err := resolveGrafanaConfigForCookieRefresh(&cfg, "no-stack")
+		require.Error(t, err)
+	})
+	t.Run("stack with no grafana config", func(t *testing.T) {
+		t.Parallel()
+		cfg2 := config.Config{
+			Contexts: map[string]*config.Context{"ctx": {Stack: "no-grafana"}},
+			Stacks:   cfg.Stacks,
+		}
+		_, err := resolveGrafanaConfigForCookieRefresh(&cfg2, "ctx")
+		require.Error(t, err)
+	})
+}

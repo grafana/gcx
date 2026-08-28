@@ -11,7 +11,6 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
-
 	"github.com/grafana/gcx/internal/config"
 )
 
@@ -41,7 +40,7 @@ func Refresh(ctx context.Context, cfg *config.CookieRefreshConfig) (string, erro
 
 	if err := chromedp.Run(browserCtx, chromedp.Navigate(cfg.TriggerURL)); err != nil {
 		if strings.Contains(err.Error(), "exec") || strings.Contains(err.Error(), "executable") {
-			return "", errors.New("Chrome not found: install Google Chrome or Chromium and retry")
+			return "", errors.New("chrome not found: install Google Chrome or Chromium and retry")
 		}
 		return "", fmt.Errorf("opening browser: %w", err)
 	}
@@ -52,7 +51,7 @@ func Refresh(ctx context.Context, cfg *config.CookieRefreshConfig) (string, erro
 	for {
 		select {
 		case <-ctx.Done():
-			return "", fmt.Errorf("timed out after %s waiting for %q cookie — complete the login in the browser window", defaultTimeout, cfg.CookieName)
+			return "", fmt.Errorf("timed out after %s waiting for %q cookie: complete the login in the browser window", defaultTimeout, cfg.CookieName)
 		case <-ticker.C:
 			value, found, err := findCookie(browserCtx, cfg)
 			if err != nil {
@@ -68,8 +67,8 @@ func Refresh(ctx context.Context, cfg *config.CookieRefreshConfig) (string, erro
 // findCookie fetches cookies for the trigger URL's domain and returns the value
 // of the first cookie matching cfg.CookieName. Using WithURLs ensures we find
 // the cookie regardless of which page the browser is currently on (e.g. the IDP
-// login page) — the callback path redirect is too fast to poll by URL.
-func findCookie(ctx context.Context, cfg *config.CookieRefreshConfig) (value string, found bool, err error) {
+// login page: the callback path redirect is too fast to poll by URL.
+func findCookie(ctx context.Context, cfg *config.CookieRefreshConfig) (string, bool, error) {
 	var cookies []*network.Cookie
 	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		var innerError error

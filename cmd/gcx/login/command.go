@@ -154,17 +154,25 @@ Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
 Auth sources (for non-interactive use):
-  --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
-  --token        Grafana service-account token (created inside the Grafana instance).
-                 See: ` + docs.ServiceAccounts + `
-  --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
-                 See: ` + docs.AccessPolicies,
+  --oauth           Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
+  --token           Grafana service-account token (created inside the Grafana instance).
+                    See: ` + docs.ServiceAccounts + `
+  --cloud-token     Grafana Cloud access-policy token (created at grafana.com).
+                    See: ` + docs.AccessPolicies + `
+
+Edge-proxy authentication:
+  --refresh-cookie  Refresh the edge-proxy session cookie (e.g. AWS ALB OIDC) via browser automation.
+                    Requires a cookie-refresh block in the context's stack grafana config.
+                    Opens a visible Chrome window; the user completes the auth flow and the cookie
+                    is written back to extra-headers automatically.`,
 		Example: `  gcx login
   gcx login prod
   gcx login prod --server https://prod.grafana.net
   gcx login prod --server https://prod.grafana.net --oauth
   gcx login --yes prod --token glsa_xxx
-  gcx login --yes --server https://localhost:3000 --token glsa_xxx`,
+  gcx login --yes --server https://localhost:3000 --token glsa_xxx
+  gcx login --refresh-cookie
+  gcx login prod --refresh-cookie`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.RefreshCookie {
 				return runRefreshCookie(cmd, opts)
@@ -1787,7 +1795,7 @@ func runRefreshCookie(cmd *cobra.Command, opts *loginOpts) error {
 		contextName = cfg.CurrentContext
 	}
 
-	_, grafanaCfg, err := resolveGrafanaConfigForCookieRefresh(&cfg, contextName)
+	grafanaCfg, err := resolveGrafanaConfigForCookieRefresh(&cfg, contextName)
 	if err != nil {
 		return err
 	}
@@ -1803,7 +1811,7 @@ func runRefreshCookie(cmd *cobra.Command, opts *loginOpts) error {
 		}
 	}
 
-	fmt.Fprintf(cmd.ErrOrStderr(), "Opening browser to refresh cookie %q — complete the login in the window that opens.\n", grafanaCfg.CookieRefresh.CookieName)
+	fmt.Fprintf(cmd.ErrOrStderr(), "Opening browser to refresh cookie %q: complete the login in the window that opens.\n", grafanaCfg.CookieRefresh.CookieName)
 
 	value, err := cookierefresh.Refresh(ctx, grafanaCfg.CookieRefresh)
 	if err != nil {
@@ -1823,25 +1831,25 @@ func runRefreshCookie(cmd *cobra.Command, opts *loginOpts) error {
 	return nil
 }
 
-// resolveGrafanaConfigForCookieRefresh returns the stack name and grafana config
-// for the given context, or an error if the context or stack is not found.
-func resolveGrafanaConfigForCookieRefresh(cfg *config.Config, contextName string) (string, *config.GrafanaConfig, error) {
+// resolveGrafanaConfigForCookieRefresh returns the grafana config for the given
+// context, or an error if the context or stack is not found.
+func resolveGrafanaConfigForCookieRefresh(cfg *config.Config, contextName string) (*config.GrafanaConfig, error) {
 	ctx := cfg.Contexts[contextName]
 	if ctx == nil {
-		return "", nil, fmt.Errorf("context %q not found", contextName)
+		return nil, fmt.Errorf("context %q not found", contextName)
 	}
 	if ctx.Stack == "" {
-		return "", nil, gcxerrors.DetailedError{
+		return nil, gcxerrors.DetailedError{
 			Summary: fmt.Sprintf("context %q has no stack configured", contextName),
 			Details: "The --refresh-cookie flag requires the context to reference a stack with a grafana.cookie-refresh block.",
 		}
 	}
 	stack, ok := cfg.Stacks[ctx.Stack]
 	if !ok {
-		return "", nil, fmt.Errorf("stack %q referenced by context %q not found in config", ctx.Stack, contextName)
+		return nil, fmt.Errorf("stack %q referenced by context %q not found in config", ctx.Stack, contextName)
 	}
 	if stack.Grafana == nil {
-		return "", nil, fmt.Errorf("stack %q has no grafana config", ctx.Stack)
+		return nil, fmt.Errorf("stack %q has no grafana config", ctx.Stack)
 	}
-	return ctx.Stack, stack.Grafana, nil
+	return stack.Grafana, nil
 }

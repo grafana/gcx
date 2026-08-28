@@ -121,10 +121,6 @@ stacks:
         # CookieName is the browser cookie name to capture after authentication completes.
         # Required.
         cookie-name: string
-        # CallbackPath is an optional URL path substring that must be present in the
-        # request URL before the cookie is captured (e.g. /oauth2/idpresponse for AWS
-        # ALB OIDC). When empty, the cookie is captured from any response that sets it.
-        callback-path: string
     # Providers holds per-provider configuration, indexed by provider name.
     # Each provider has a map of string key-value pairs.
     # Secret fields are selectively redacted by providers.RedactSecrets using

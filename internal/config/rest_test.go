@@ -384,9 +384,9 @@ func TestNewNamespacedRESTConfig_ExtraHeadersWiredOutermost(t *testing.T) {
 
 	ctx := config.Context{
 		Grafana: &config.GrafanaConfig{
-			Server:  server.URL,
-			OrgID:   1,
-			APIToken: "test-token",
+			Server:       server.URL,
+			OrgID:        1,
+			APIToken:     "test-token",
 			ExtraHeaders: map[string]string{"Cookie": "AWSELBAuthSessionCookie-0=abc123"},
 		},
 	}

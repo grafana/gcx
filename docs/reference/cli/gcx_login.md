@@ -15,11 +15,17 @@ Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
 Auth sources (for non-interactive use):
-  --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
-  --token        Grafana service-account token (created inside the Grafana instance).
-                 See: https://grafana.com/docs/grafana/latest/administration/service-accounts.md
-  --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
-                 See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md
+  --oauth           Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
+  --token           Grafana service-account token (created inside the Grafana instance).
+                    See: https://grafana.com/docs/grafana/latest/administration/service-accounts.md
+  --cloud-token     Grafana Cloud access-policy token (created at grafana.com).
+                    See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md
+
+Edge-proxy authentication:
+  --refresh-cookie  Refresh the edge-proxy session cookie (e.g. AWS ALB OIDC) via browser automation.
+                    Requires a cookie-refresh block in the context's stack grafana config.
+                    Opens a visible Chrome window; the user completes the auth flow and the cookie
+                    is written back to extra-headers automatically.
 
 ```
 gcx login [CONTEXT_NAME] [flags]
@@ -34,6 +40,8 @@ gcx login [CONTEXT_NAME] [flags]
   gcx login prod --server https://prod.grafana.net --oauth
   gcx login --yes prod --token glsa_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx
+  gcx login --refresh-cookie
+  gcx login prod --refresh-cookie
 ```
 
 ### Options

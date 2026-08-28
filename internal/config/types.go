@@ -797,11 +797,6 @@ type CookieRefreshConfig struct {
 	// CookieName is the browser cookie name to capture after authentication completes.
 	// Required.
 	CookieName string `json:"cookie-name,omitempty" yaml:"cookie-name,omitempty"`
-
-	// CallbackPath is an optional URL path substring that must be present in the
-	// request URL before the cookie is captured (e.g. /oauth2/idpresponse for AWS
-	// ALB OIDC). When empty, the cookie is captured from any response that sets it.
-	CallbackPath string `json:"callback-path,omitempty" yaml:"callback-path,omitempty"`
 }
 
 // Validate returns an error if the configuration is missing required fields.
