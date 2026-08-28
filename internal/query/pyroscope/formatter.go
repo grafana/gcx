@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/style"
+	"github.com/prometheus/common/model"
 )
 
 // FormatQueryTable formats a Pyroscope query response as a table showing top functions.
@@ -125,7 +126,11 @@ func formatLabelSet(set Labels) string {
 	sort.Slice(labels, func(i, j int) bool { return labels[i].Name < labels[j].Name })
 	parts := make([]string, 0, len(labels))
 	for _, label := range labels {
-		parts = append(parts, label.Name+"="+strconv.Quote(label.Value))
+		name := label.Name
+		if !model.LegacyValidation.IsValidLabelName(name) {
+			name = strconv.Quote(name)
+		}
+		parts = append(parts, name+"="+strconv.Quote(label.Value))
 	}
 	return "{" + strings.Join(parts, ",") + "}"
 }
