@@ -34,7 +34,7 @@ func wrapLokiSessionQueryErr(sessionID string, err error) error {
 		return nil
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("no telemetry for session %s in this time range (Loki query timed out after %s; try --datasource pinot or a narrower --from/--to)", sessionID, sessionLokiQueryTimeout)
+		return fmt.Errorf("no telemetry for session %s in this time range (Loki query timed out after %s; try a Pinot datasource UID (-d) or a narrower --from/--to)", sessionID, sessionLokiQueryTimeout)
 	}
 	return err
 }

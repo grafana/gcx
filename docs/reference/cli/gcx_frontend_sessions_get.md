@@ -16,10 +16,10 @@ There is no JSON or YAML encoding of the dump.
 Use --save so agents receive a small artifact receipt on stdout and then read
 the file.
 
---datasource selects the backend (loki or pinot). -d/--datasource-uid is the
-Grafana datasource UID (defaults to datasources.loki or datasources.pinot in
-config, or auto-discovery). Each Loki query times out after 60s so a slow scan
-cannot hang; try pinot or a narrower window.
+-d/--datasource is the Grafana datasource UID (required). gcx fetches the
+datasource and infers Loki vs Pinot from its type. Each Loki query times out
+after 60s so a slow scan cannot hang; try a Pinot datasource UID or a narrower
+window.
 
 Faro apps do not store web vs mobile on the app resource. Omit --app-type and
 gcx infers it from sdkName / osName on the session (so mobile journeys exclude
@@ -33,32 +33,27 @@ gcx frontend sessions get <session-id> [flags]
 
 ```
   # Pinot on stdout (metadata tables, journey TSV)
-  gcx frontend sessions get 7TiMbCCvby --app 66 --datasource pinot --since 7d
+  gcx frontend sessions get 7TiMbCCvby --app 66 -d grafanacloud-pinot --since 7d
 
   # Pinot dump to a file; app type inferred from telemetry
-  gcx frontend sessions get 7TiMbCCvby --app 66 --datasource pinot --since 7d \
+  gcx frontend sessions get 7TiMbCCvby --app 66 -d grafanacloud-pinot --since 7d \
     --save /tmp/session-7TiMbCCvby.txt
 
   # Loki dump
-  gcx frontend sessions get 7TiMbCCvby --app 66 --datasource loki --since 7d \
+  gcx frontend sessions get 7TiMbCCvby --app 66 -d grafanacloud-logs --since 7d \
     --save /tmp/session-7TiMbCCvby.txt
-
-  # Loki dump against an explicit Grafana datasource UID
-  gcx frontend sessions get 7TiMbCCvby --app 66 --datasource loki -d abc123 \
-    --since 7d --save /tmp/session-7TiMbCCvby.txt
 
   # Force mobile SQL (app_memory / app_cpu_usage excluded)
   gcx frontend sessions get kwwAkkXwas --app 96 --app-type mobile \
-    --datasource pinot --since 7d --save /tmp/session-kwwAkkXwas.txt
+    -d grafanacloud-pinot --since 7d --save /tmp/session-kwwAkkXwas.txt
 ```
 
 ### Options
 
 ```
-      --app string              Frontend Observability app slug-id or numeric id (required)
-      --app-type string         web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted
-  -d, --datasource-uid string   Grafana datasource UID (defaults to datasources.loki or datasources.pinot in config)
-      --datasource string       Telemetry backend: loki or pinot (case-insensitive) (default "loki")
+      --app string          Frontend Observability app slug-id or numeric id (required)
+      --app-type string     web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted
+  -d, --datasource string   Grafana datasource UID (required). Type is inferred (loki or pinot)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for get
       --save string         Write the session dump to this path instead of stdout
