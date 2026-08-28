@@ -388,12 +388,8 @@ func (hangLoki) Query(ctx context.Context, _ string, _ loki.QueryRequest) (*loki
 }
 
 func TestFetchLokiSessionTimeoutExits(t *testing.T) {
-	orig := sessionLokiQueryTimeout
-	sessionLokiQueryTimeout = 20 * time.Millisecond
-	t.Cleanup(func() { sessionLokiQueryTimeout = orig })
-
 	p := sessionQueryParams{AppID: "67", SessionID: "4JPV1T7Nyi"}
-	_, err := fetchLokiSession(context.Background(), hangLoki{}, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	_, err := fetchLokiSessionTimed(context.Background(), hangLoki{}, "uid", p, time.Unix(0, 0), time.Unix(1, 0), 20*time.Millisecond)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no telemetry for session 4JPV1T7Nyi")
 	assert.Contains(t, err.Error(), "timed out")
