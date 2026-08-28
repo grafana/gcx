@@ -778,6 +778,44 @@ type GrafanaConfig struct {
 	// Useful for edge-proxy authentication (e.g. an AWS ALB session cookie) that
 	// sits outside Grafana's own auth layer.
 	ExtraHeaders map[string]string `datapolicy:"secret" json:"extra-headers,omitempty" yaml:"extra-headers,omitempty"`
+
+	// CookieRefresh configures automatic browser-based cookie refresh via Chrome.
+	// When set, gcx login --refresh-cookie opens a visible Chrome window, drives
+	// the user through the authentication flow, captures the named cookie, and
+	// writes the new value back to extra-headers.
+	CookieRefresh *CookieRefreshConfig `json:"cookie-refresh,omitempty" yaml:"cookie-refresh,omitempty"`
+}
+
+// CookieRefreshConfig configures automatic cookie refresh via Chrome browser automation.
+// Designed for edge proxies (e.g. AWS ALB OIDC) that gate Grafana behind a
+// browser-based auth flow and issue a session cookie on completion.
+type CookieRefreshConfig struct {
+	// TriggerURL is the URL that initiates the auth redirect (typically the Grafana
+	// instance URL). Required.
+	TriggerURL string `json:"trigger-url,omitempty" yaml:"trigger-url,omitempty"`
+
+	// CookieName is the browser cookie name to capture after authentication completes.
+	// Required.
+	CookieName string `json:"cookie-name,omitempty" yaml:"cookie-name,omitempty"`
+
+	// CallbackPath is an optional URL path substring that must be present in the
+	// request URL before the cookie is captured (e.g. /oauth2/idpresponse for AWS
+	// ALB OIDC). When empty, the cookie is captured from any response that sets it.
+	CallbackPath string `json:"callback-path,omitempty" yaml:"callback-path,omitempty"`
+}
+
+// Validate returns an error if the configuration is missing required fields.
+func (c *CookieRefreshConfig) Validate() error {
+	if c == nil {
+		return nil
+	}
+	if c.TriggerURL == "" {
+		return ValidationError{Path: "cookie-refresh.trigger-url", Message: "trigger-url is required"}
+	}
+	if c.CookieName == "" {
+		return ValidationError{Path: "cookie-refresh.cookie-name", Message: "cookie-name is required"}
+	}
+	return nil
 }
 
 func (grafana GrafanaConfig) validateNamespace(ctx context.Context, contextName string) error {
@@ -868,7 +906,8 @@ func (grafana GrafanaConfig) IsEmpty() bool {
 		grafana.OrgID == 0 &&
 		grafana.StackID == 0 &&
 		grafana.TLS == nil &&
-		len(grafana.ExtraHeaders) == 0
+		len(grafana.ExtraHeaders) == 0 &&
+		grafana.CookieRefresh == nil
 }
 
 // InferredAuthMethod returns the effective authentication method for this config.

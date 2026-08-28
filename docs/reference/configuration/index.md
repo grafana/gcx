@@ -107,6 +107,24 @@ stacks:
       extra-headers:
         ${string}:
           string
+      # CookieRefresh configures automatic browser-based cookie refresh via Chrome.
+      # When set, gcx login --refresh-cookie opens a visible Chrome window, drives
+      # the user through the authentication flow, captures the named cookie, and
+      # writes the new value back to extra-headers.
+      cookie-refresh:
+        # CookieRefreshConfig configures automatic cookie refresh via Chrome browser automation.
+        # Designed for edge proxies (e.g. AWS ALB OIDC) that gate Grafana behind a
+        # browser-based auth flow and issue a session cookie on completion.
+        # TriggerURL is the URL that initiates the auth redirect (typically the Grafana
+        # instance URL). Required.
+        trigger-url: string
+        # CookieName is the browser cookie name to capture after authentication completes.
+        # Required.
+        cookie-name: string
+        # CallbackPath is an optional URL path substring that must be present in the
+        # request URL before the cookie is captured (e.g. /oauth2/idpresponse for AWS
+        # ALB OIDC). When empty, the cookie is captured from any response that sets it.
+        callback-path: string
     # Providers holds per-provider configuration, indexed by provider name.
     # Each provider has a map of string key-value pairs.
     # Secret fields are selectively redacted by providers.RedactSecrets using

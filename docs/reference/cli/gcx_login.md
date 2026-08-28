@@ -53,6 +53,7 @@ gcx login [CONTEXT_NAME] [flags]
       --oauth-manual              Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer. Implies --oauth
       --org-id int                Grafana organization ID (defaults to 1 for on-prem)
   -o, --output string             Output format. One of: agents, json, text, yaml (default "text")
+      --refresh-cookie            Refresh the edge-proxy session cookie via browser automation (requires cookie-refresh config and Chrome/Chromium)
       --server string             Grafana server URL (e.g. https://my-stack.grafana.net)
       --token string              Grafana service account token
       --yes                       Non-interactive: skip optional prompts and use defaults

@@ -13,6 +13,7 @@ import (
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
 	internalauth "github.com/grafana/gcx/internal/auth"
+	"github.com/grafana/gcx/internal/auth/cookierefresh"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
@@ -54,6 +55,7 @@ type loginOpts struct {
 	OAuthCallbackPort   int
 	OAuthManual         bool
 	OrgID               int
+	RefreshCookie       bool
 }
 
 func (opts *loginOpts) setup(flags *pflag.FlagSet) {
@@ -76,6 +78,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&opts.OAuthCallbackPort, "oauth-callback-port", 0, "Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser")
 	flags.BoolVar(&opts.OAuthManual, "oauth-manual", false, "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer. Implies --oauth")
 	flags.IntVar(&opts.OrgID, "org-id", 0, "Grafana organization ID (defaults to 1 for on-prem)")
+	flags.BoolVar(&opts.RefreshCookie, "refresh-cookie", false, "Refresh the edge-proxy session cookie via browser automation (requires cookie-refresh config and Chrome/Chromium)")
 }
 
 // Validate checks opts and args for internal consistency before runLogin executes.
@@ -163,6 +166,9 @@ Auth sources (for non-interactive use):
   gcx login --yes prod --token glsa_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.RefreshCookie {
+				return runRefreshCookie(cmd, opts)
+			}
 			opts.Token = strings.TrimSpace(opts.Token)
 			opts.CloudToken = strings.TrimSpace(opts.CloudToken)
 			if err := opts.Validate(args); err != nil {
@@ -1762,4 +1768,80 @@ func (c *loginTextCodec) Encode(w io.Writer, value any) error {
 
 func (c *loginTextCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("login text codec does not support decoding")
+}
+
+// runRefreshCookie drives a visible Chrome window through the edge-proxy auth
+// flow configured in cookie-refresh, then writes the new cookie value back to
+// the extra-headers.Cookie entry in the config file.
+func runRefreshCookie(cmd *cobra.Command, opts *loginOpts) error {
+	ctx := cmd.Context()
+
+	cfg, err := config.LoadLayered(ctx, opts.Config.ConfigFile)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	source := opts.Config.ConfigSource()
+
+	contextName := opts.Config.Context
+	if contextName == "" {
+		contextName = cfg.CurrentContext
+	}
+
+	_, grafanaCfg, err := resolveGrafanaConfigForCookieRefresh(&cfg, contextName)
+	if err != nil {
+		return err
+	}
+
+	if grafanaCfg.CookieRefresh == nil {
+		return gcxerrors.DetailedError{
+			Summary: "cookie-refresh not configured",
+			Details: fmt.Sprintf("Context %q has no cookie-refresh block. Add one to your config to enable automatic cookie refresh.", contextName),
+			Suggestions: []string{
+				"Add a cookie-refresh block under stacks.<name>.grafana in your config file",
+				"Run 'gcx config edit' to open your config file",
+			},
+		}
+	}
+
+	fmt.Fprintf(cmd.ErrOrStderr(), "Opening browser to refresh cookie %q — complete the login in the window that opens.\n", grafanaCfg.CookieRefresh.CookieName)
+
+	value, err := cookierefresh.Refresh(ctx, grafanaCfg.CookieRefresh)
+	if err != nil {
+		return fmt.Errorf("cookie refresh failed: %w", err)
+	}
+
+	if grafanaCfg.ExtraHeaders == nil {
+		grafanaCfg.ExtraHeaders = make(map[string]string)
+	}
+	grafanaCfg.ExtraHeaders["Cookie"] = grafanaCfg.CookieRefresh.CookieName + "=" + value
+
+	if err := config.Write(ctx, source, cfg); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+
+	fmt.Fprintf(cmd.ErrOrStderr(), "Cookie refreshed and saved to config.\n")
+	return nil
+}
+
+// resolveGrafanaConfigForCookieRefresh returns the stack name and grafana config
+// for the given context, or an error if the context or stack is not found.
+func resolveGrafanaConfigForCookieRefresh(cfg *config.Config, contextName string) (string, *config.GrafanaConfig, error) {
+	ctx := cfg.Contexts[contextName]
+	if ctx == nil {
+		return "", nil, fmt.Errorf("context %q not found", contextName)
+	}
+	if ctx.Stack == "" {
+		return "", nil, gcxerrors.DetailedError{
+			Summary: fmt.Sprintf("context %q has no stack configured", contextName),
+			Details: "The --refresh-cookie flag requires the context to reference a stack with a grafana.cookie-refresh block.",
+		}
+	}
+	stack, ok := cfg.Stacks[ctx.Stack]
+	if !ok {
+		return "", nil, fmt.Errorf("stack %q referenced by context %q not found in config", ctx.Stack, contextName)
+	}
+	if stack.Grafana == nil {
+		return "", nil, fmt.Errorf("stack %q has no grafana config", ctx.Stack)
+	}
+	return ctx.Stack, stack.Grafana, nil
 }
