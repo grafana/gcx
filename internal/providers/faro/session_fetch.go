@@ -2,6 +2,7 @@ package faro
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -19,6 +20,23 @@ type pinotQuerier interface {
 
 type lokiQuerier interface {
 	Query(ctx context.Context, datasourceUID string, req loki.QueryRequest) (*loki.QueryResponse, error)
+}
+
+const lokiQueryDirectionForward = "forward"
+
+// Loki session queries go through Grafana's query API with no HTTP client
+// timeout. Bound each Loki POST so a stuck scan exits; do not share one
+// deadline across metadata + every kind page. Pinot is not wrapped.
+var sessionLokiQueryTimeout = 60 * time.Second
+
+func wrapLokiSessionQueryErr(sessionID string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("no telemetry for session %s in this time range (Loki query timed out after %s; try --datasource pinot or a narrower --from/--to)", sessionID, sessionLokiQueryTimeout)
+	}
+	return err
 }
 
 type pinotSessionResult struct {
@@ -131,12 +149,12 @@ func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p ses
 	var metaResp, replayResp *loki.QueryResponse
 	g.Go(func() error {
 		var err error
-		metaResp, err = client.Query(gctx, uid, loki.QueryRequest{
+		metaResp, err = queryLoki(gctx, client, uid, loki.QueryRequest{
 			Query:     lokiMetadataQuery(p),
 			Start:     start,
 			End:       end,
 			Limit:     1,
-			Direction: "forward",
+			Direction: lokiQueryDirectionForward,
 		})
 		if err != nil {
 			return fmt.Errorf("loki metadata query failed: %w", err)
@@ -145,12 +163,12 @@ func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p ses
 	})
 	g.Go(func() error {
 		var err error
-		replayResp, err = client.Query(gctx, uid, loki.QueryRequest{
+		replayResp, err = queryLoki(gctx, client, uid, loki.QueryRequest{
 			Query:     lokiReplayStartQuery(p),
 			Start:     start,
 			End:       end,
 			Limit:     1,
-			Direction: "forward",
+			Direction: lokiQueryDirectionForward,
 		})
 		if err != nil {
 			return fmt.Errorf("loki replay-start query failed: %w", err)
@@ -158,7 +176,7 @@ func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p ses
 		return nil
 	})
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, wrapLokiSessionQueryErr(p.SessionID, err)
 	}
 
 	metaLine := firstLokiLine(metaResp)
@@ -166,9 +184,9 @@ func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p ses
 		p.AppType = inferAppType(logfmtValue(metaLine, "sdk_name"), logfmtValue(metaLine, "os_name"))
 	}
 
-	eventsResp, err := fetchLokiEvents(ctx, client, uid, lokiEventsQuery(p), start, end)
+	eventsResp, err := fetchLokiEventsByKind(ctx, client, uid, p, start, end)
 	if err != nil {
-		return nil, err
+		return nil, wrapLokiSessionQueryErr(p.SessionID, err)
 	}
 	metadata := formatLokiMetadata(metaResp, replayResp)
 	if metadata == "" && lokiEntryCount(eventsResp) == 0 {
@@ -181,16 +199,45 @@ func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p ses
 	}, nil
 }
 
-func fetchLokiEvents(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time) (*loki.QueryResponse, error) {
+func queryLoki(ctx context.Context, client lokiQuerier, uid string, req loki.QueryRequest) (*loki.QueryResponse, error) {
+	qctx, cancel := context.WithTimeout(ctx, sessionLokiQueryTimeout)
+	defer cancel()
+	return client.Query(qctx, uid, req)
+}
+
+func fetchLokiEventsByKind(ctx context.Context, client lokiQuerier, uid string, p sessionQueryParams, start, end time.Time) (*loki.QueryResponse, error) {
+	g, gctx := errgroup.WithContext(ctx)
+	results := make([]*loki.QueryResponse, len(lokiSessionEventKinds))
+	for i, kind := range lokiSessionEventKinds {
+		i, kind := i, kind
+		g.Go(func() error {
+			resp, err := fetchLokiEventPages(gctx, client, uid, lokiEventsQueryForKind(p, kind), start, end)
+			if err != nil {
+				return fmt.Errorf("loki %s query failed: %w", kind, err)
+			}
+			results[i] = resp
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
 	merged := &loki.QueryResponse{Data: loki.QueryResultData{ResultType: "streams"}}
-	cursor := start
-	for cursor.Before(end) {
-		resp, err := client.Query(ctx, uid, loki.QueryRequest{
-			Query:     query,
-			Start:     cursor,
-			End:       end,
-			Limit:     lokiEventsPageSize,
-			Direction: "forward",
+	for _, resp := range results {
+		appendLokiEvents(merged, resp)
+	}
+	return merged, nil
+}
+
+func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time) (*loki.QueryResponse, error) {
+	merged := &loki.QueryResponse{Data: loki.QueryResultData{ResultType: "streams"}}
+	cursor := end
+	for cursor.After(start) {
+		resp, err := queryLoki(ctx, client, uid, loki.QueryRequest{
+			Query: query,
+			Start: start,
+			End:   cursor,
+			Limit: lokiEventsPageSize,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("loki events query failed: %w", err)
@@ -200,12 +247,12 @@ func fetchLokiEvents(ctx context.Context, client lokiQuerier, uid, query string,
 		if n < lokiEventsPageSize {
 			break
 		}
-		last, ok := maxLokiTime(resp)
+		earliest, ok := minLokiTime(resp)
 		if !ok {
 			break
 		}
-		next := last.Add(time.Millisecond)
-		if !next.After(cursor) {
+		next := earliest.Add(-time.Millisecond)
+		if !next.Before(cursor) {
 			break
 		}
 		cursor = next
@@ -220,8 +267,8 @@ func appendLokiEvents(dst, src *loki.QueryResponse) {
 	dst.Data.Result = append(dst.Data.Result, src.Data.Result...)
 }
 
-func maxLokiTime(resp *loki.QueryResponse) (time.Time, bool) {
-	var latest time.Time
+func minLokiTime(resp *loki.QueryResponse) (time.Time, bool) {
+	var earliest time.Time
 	ok := false
 	for _, stream := range resp.Data.Result {
 		for _, entry := range stream.Values {
@@ -229,13 +276,13 @@ func maxLokiTime(resp *loki.QueryResponse) (time.Time, bool) {
 			if !parsed {
 				continue
 			}
-			if !ok || ts.After(latest) {
-				latest = ts
+			if !ok || ts.Before(earliest) {
+				earliest = ts
 				ok = true
 			}
 		}
 	}
-	return latest, ok
+	return earliest, ok
 }
 
 func parseLokiUnixNano(s string) (time.Time, bool) {

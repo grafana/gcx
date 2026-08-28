@@ -21,10 +21,11 @@ import (
 type sessionsGetOpts struct {
 	dsquery.TimeRangeOpts
 
-	App        string
-	AppType    string
-	Datasource string
-	Save       string
+	App           string
+	AppType       string
+	Datasource    string
+	DatasourceUID string
+	Save          string
 }
 
 func (o *sessionsGetOpts) setup(flags *pflag.FlagSet) {
@@ -32,6 +33,7 @@ func (o *sessionsGetOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.App, "app", "", "Frontend Observability app slug-id or numeric id (required)")
 	flags.StringVar(&o.AppType, "app-type", "", "web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted")
 	flags.StringVar(&o.Datasource, "datasource", datasourceLoki, "Telemetry backend: loki or pinot (case-insensitive)")
+	flags.StringVarP(&o.DatasourceUID, "datasource-uid", "d", "", "Grafana datasource UID (defaults to datasources.loki or datasources.pinot in config)")
 	flags.StringVar(&o.Save, "save", "", "Write the session dump to this path instead of stdout")
 }
 
@@ -39,6 +41,7 @@ func (o *sessionsGetOpts) Validate() error {
 	o.App = strings.TrimSpace(o.App)
 	o.AppType = strings.ToLower(strings.TrimSpace(o.AppType))
 	o.Datasource = strings.ToLower(strings.TrimSpace(o.Datasource))
+	o.DatasourceUID = strings.TrimSpace(o.DatasourceUID)
 	o.Save = strings.TrimSpace(o.Save)
 
 	if o.App == "" {
@@ -83,8 +86,10 @@ There is no JSON or YAML encoding of the dump.
 Use --save so agents receive a small artifact receipt on stdout and then read
 the file.
 
---datasource selects the backend (loki or pinot), not a Grafana UID. The UID
-is resolved from config or auto-discovery.
+--datasource selects the backend (loki or pinot). -d/--datasource-uid is the
+Grafana datasource UID (defaults to datasources.loki or datasources.pinot in
+config, or auto-discovery). Each Loki query times out after 60s so a slow scan
+cannot hang; try pinot or a narrower window.
 
 Faro apps do not store web vs mobile on the app resource. Omit --app-type and
 gcx infers it from sdkName / osName on the session (so mobile journeys exclude
@@ -99,6 +104,10 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
   # Loki dump
   gcx frontend sessions get 7TiMbCCvby --app 66 --datasource loki --since 7d \
     --save /tmp/session-7TiMbCCvby.txt
+
+  # Loki dump against an explicit Grafana datasource UID
+  gcx frontend sessions get 7TiMbCCvby --app 66 --datasource loki -d abc123 \
+    --since 7d --save /tmp/session-7TiMbCCvby.txt
 
   # Force mobile SQL (app_memory / app_cpu_usage excluded)
   gcx frontend sessions get kwwAkkXwas --app 96 --app-type mobile \
@@ -157,7 +166,7 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 			}
 			switch opts.Datasource {
 			case datasourcePinot:
-				uid, _, resolveErr := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, "", cfgCtx, cfg, datasourcePinot)
+				uid, _, resolveErr := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.DatasourceUID, cfgCtx, cfg, datasourcePinot)
 				if resolveErr != nil {
 					return resolveErr
 				}
@@ -167,7 +176,7 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 				}
 				result, err = fetchPinotSession(ctx, client, uid, params, start, end)
 			case datasourceLoki:
-				uid, _, resolveErr := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, "", cfgCtx, cfg, datasourceLoki)
+				uid, _, resolveErr := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.DatasourceUID, cfgCtx, cfg, datasourceLoki)
 				if resolveErr != nil {
 					return resolveErr
 				}

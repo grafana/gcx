@@ -16,8 +16,10 @@ There is no JSON or YAML encoding of the dump.
 Use --save so agents receive a small artifact receipt on stdout and then read
 the file.
 
---datasource selects the backend (loki or pinot), not a Grafana UID. The UID
-is resolved from config or auto-discovery.
+--datasource selects the backend (loki or pinot). -d/--datasource-uid is the
+Grafana datasource UID (defaults to datasources.loki or datasources.pinot in
+config, or auto-discovery). Each Loki query times out after 60s so a slow scan
+cannot hang; try pinot or a narrower window.
 
 Faro apps do not store web vs mobile on the app resource. Omit --app-type and
 gcx infers it from sdkName / osName on the session (so mobile journeys exclude
@@ -41,6 +43,10 @@ gcx frontend sessions get <session-id> [flags]
   gcx frontend sessions get 7TiMbCCvby --app 66 --datasource loki --since 7d \
     --save /tmp/session-7TiMbCCvby.txt
 
+  # Loki dump against an explicit Grafana datasource UID
+  gcx frontend sessions get 7TiMbCCvby --app 66 --datasource loki -d abc123 \
+    --since 7d --save /tmp/session-7TiMbCCvby.txt
+
   # Force mobile SQL (app_memory / app_cpu_usage excluded)
   gcx frontend sessions get kwwAkkXwas --app 96 --app-type mobile \
     --datasource pinot --since 7d --save /tmp/session-kwwAkkXwas.txt
@@ -49,9 +55,10 @@ gcx frontend sessions get <session-id> [flags]
 ### Options
 
 ```
-      --app string          Frontend Observability app slug-id or numeric id (required)
-      --app-type string     web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted
-      --datasource string   Telemetry backend: loki or pinot (case-insensitive) (default "loki")
+      --app string              Frontend Observability app slug-id or numeric id (required)
+      --app-type string         web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted
+  -d, --datasource-uid string   Grafana datasource UID (defaults to datasources.loki or datasources.pinot in config)
+      --datasource string       Telemetry backend: loki or pinot (case-insensitive) (default "loki")
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for get
       --save string         Write the session dump to this path instead of stdout

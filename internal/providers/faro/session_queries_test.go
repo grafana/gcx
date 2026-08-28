@@ -1,6 +1,7 @@
 package faro //nolint:testpackage // Tests unexported SQL/LogQL builders.
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -107,17 +108,28 @@ func TestLokiQueries(t *testing.T) {
 	require.NotContains(t, meta, "line_format")
 	require.NotContains(t, meta, "|~|")
 
-	events := lokiEventsQuery(web)
-	assert.Contains(t, events, `{app_id="66"}`)
-	assert.Contains(t, events, `| logfmt | session_id="7TiMbCCvby"`)
-	assert.NotContains(t, events, "app_memory")
+	eventQ := lokiEventsQueryForKind(web, lokiKindEvent)
+	assert.Contains(t, eventQ, `{app_id="66", kind="event"}`)
+	assert.Contains(t, eventQ, `|= "session_id=7TiMbCCvby"`)
+	assert.Contains(t, eventQ, `| logfmt`)
+	assert.NotContains(t, eventQ, `| logfmt | session_id=`)
+	assert.NotContains(t, eventQ, "app_memory")
+	assert.Equal(t, lokiSessionEventKinds, []string{lokiKindEvent, lokiKindException, lokiKindLog, lokiKindMeasurement})
+	for _, kind := range lokiSessionEventKinds {
+		q := lokiEventsQueryForKind(web, kind)
+		assert.Contains(t, q, fmt.Sprintf(`kind="%s"`, kind))
+		assert.NotContains(t, q, `{app_id="66"} |=`)
+	}
+	assert.NotContains(t, lokiEventsQueryForKind(web, lokiKindMeasurement), "app_memory")
 
 	mobile := sessionQueryParams{AppID: "96", SessionID: `id"x`, AppType: appTypeMobile}
-	mobileEvents := lokiEventsQuery(mobile)
-	assert.Contains(t, mobileEvents, `app_id="96"`)
-	assert.Contains(t, mobileEvents, `session_id=id\"x`)
-	assert.Contains(t, mobileEvents, `| logfmt | session_id="id\"x"`)
-	assert.Contains(t, mobileEvents, `kind!="measurement"`)
+	mobileMeas := lokiEventsQueryForKind(mobile, lokiKindMeasurement)
+	assert.Contains(t, mobileMeas, `app_id="96"`)
+	assert.Contains(t, mobileMeas, `kind="measurement"`)
+	assert.Contains(t, mobileMeas, `session_id=id\"x`)
+	assert.Contains(t, mobileMeas, `type!="app_memory"`)
+	assert.Contains(t, mobileMeas, `type!="app_cpu_usage"`)
+	assert.NotContains(t, lokiEventsQueryForKind(mobile, lokiKindEvent), "app_memory")
 	replay := lokiReplayStartQuery(web)
 	assert.Contains(t, replay, "faro.session_recording.started")
 	assert.Contains(t, replay, `| session_id="7TiMbCCvby"`)
