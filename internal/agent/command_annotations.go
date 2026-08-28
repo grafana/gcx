@@ -507,6 +507,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx profiles list-profile-types": {Cost: "small"},
 	"gcx profiles metrics":            {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json"},
 	"gcx profiles query":              {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json | Docs: " + docs.PyroscopeQueries},
+	"gcx profiles series":             {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Agent Observability provider
