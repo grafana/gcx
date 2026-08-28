@@ -65,30 +65,19 @@ func Refresh(ctx context.Context, cfg *config.CookieRefreshConfig) (string, erro
 	}
 }
 
-// findCookie fetches all browser cookies and returns the value of the first
-// cookie matching cfg.CookieName. When cfg.CallbackPath is set, the cookie is
-// only considered once the current URL contains that path.
+// findCookie fetches cookies for the trigger URL's domain and returns the value
+// of the first cookie matching cfg.CookieName. Using WithURLs ensures we find
+// the cookie regardless of which page the browser is currently on (e.g. the IDP
+// login page) — the callback path redirect is too fast to poll by URL.
 func findCookie(ctx context.Context, cfg *config.CookieRefreshConfig) (value string, found bool, err error) {
 	var cookies []*network.Cookie
-	var currentURL string
-
 	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		var innerError error
-		cookies, innerError = network.GetCookies().Do(ctx)
+		cookies, innerError = network.GetCookies().WithURLs([]string{cfg.TriggerURL}).Do(ctx)
 		return innerError
 	})); err != nil {
 		return "", false, err
 	}
-
-	if cfg.CallbackPath != "" {
-		if err := chromedp.Run(ctx, chromedp.Location(&currentURL)); err != nil {
-			return "", false, err
-		}
-		if !strings.Contains(currentURL, cfg.CallbackPath) {
-			return "", false, nil
-		}
-	}
-
 	for _, c := range cookies {
 		if c.Name == cfg.CookieName {
 			return c.Value, true, nil
