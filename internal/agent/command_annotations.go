@@ -206,6 +206,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx alert templates get":                {Cost: "small"},
 	"gcx alert templates upsert":             {Cost: "small"},
 	"gcx alert templates delete":             {Cost: "small"},
+	"gcx alert notification-history list":    {Cost: "large", Hint: "--since 1h --status firing --outcome error --receiver <cp> -o json"},
+	"gcx alert notification-history alerts":  {Cost: "medium", Hint: "--uuid <uuid> --since 1h -o json"},
 
 	// -----------------------------------------------------------------------
 	// App Observability provider
