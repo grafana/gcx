@@ -193,16 +193,12 @@ change.`,
 				return fmt.Errorf("baseline candidate search failed: %w", err)
 			}
 
-			serverHasMore := resp != nil && len(resp.Traces) > opts.Limit
-			resp = limitTraces(resp, opts.Limit)
-			returned := 0
-			if resp != nil {
-				returned = len(resp.Traces)
+			if resp == nil {
+				resp = &tempo.SearchResponse{}
 			}
-			meta := cmdio.AttachListMeta(
-				cmdio.PagedListMeta(returned, opts.Limit, serverHasMore, 0),
-				os.Args,
-			)
+			traces, meta := cmdio.TruncatePagedList(resp.Traces, opts.Limit)
+			resp.Traces = traces
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			result := buildBaselineResult(seedID, profile, resp, req.Query)
 			result.SeedPartial = seedPartial
@@ -323,15 +319,6 @@ func buildBaselineResult(seedID string, profile seedProfile, resp *tempo.SearchR
 		result.Candidates = append(result.Candidates, candidate)
 	}
 	return result
-}
-
-// limitTraces trims resp to at most n traces, preserving order. n <= 0 means no
-// cap. It returns a new response so the caller's slice is not aliased.
-func limitTraces(resp *tempo.SearchResponse, n int) *tempo.SearchResponse {
-	if resp == nil || n <= 0 || len(resp.Traces) <= n {
-		return resp
-	}
-	return &tempo.SearchResponse{Traces: resp.Traces[:n]}
 }
 
 // ─── seed trace parsing (OTLP-shaped resourceSpans) ─────────────────────────

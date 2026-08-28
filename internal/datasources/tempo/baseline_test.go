@@ -453,21 +453,6 @@ func TestDownstreamServices(t *testing.T) {
 	assert.Empty(t, downstreamServices(map[string]int{"checkout": 4}, "checkout", 3))
 }
 
-func TestLimitTraces(t *testing.T) {
-	resp := &tempo.SearchResponse{Traces: []tempo.SearchTrace{
-		{TraceID: "a"}, {TraceID: "b"}, {TraceID: "c"},
-	}}
-
-	got := limitTraces(resp, 2)
-	require.Len(t, got.Traces, 2)
-	assert.Equal(t, "a", got.Traces[0].TraceID)
-	assert.Equal(t, "b", got.Traces[1].TraceID)
-
-	assert.Len(t, limitTraces(resp, 5).Traces, 3) // n >= len: no-op
-	assert.Len(t, limitTraces(resp, 0).Traces, 3) // n <= 0: no cap
-	assert.Nil(t, limitTraces(nil, 2))            // nil is safe
-}
-
 func TestBuildBaselineResult_EmptyCandidatesSerializeAsArray(t *testing.T) {
 	result := buildBaselineResult("seed-id", seedProfile{}, nil, "{ }")
 
