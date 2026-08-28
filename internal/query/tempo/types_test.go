@@ -13,6 +13,7 @@ import (
 func TestBaselineResultJSONFieldSelectionTargetsCandidates(t *testing.T) {
 	result := &tempo.BaselineResult{
 		SeedTraceID:      "seed",
+		SeedPartial:      true,
 		SeedSpanCount:    12,
 		SeedServiceCount: 3,
 		Query:            "{ }",
@@ -28,6 +29,7 @@ func TestBaselineResultJSONFieldSelectionTargetsCandidates(t *testing.T) {
 
 	assert.JSONEq(t, `{
 		"seedTraceID": "seed",
+		"seedPartial": true,
 		"seedSpanCount": 12,
 		"seedServiceCount": 3,
 		"query": "{ }",

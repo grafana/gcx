@@ -157,6 +157,14 @@ change.`,
 				return fmt.Errorf("failed to fetch seed trace: %w", err)
 			}
 
+			seedPartial := seed.Partial != nil && *seed.Partial
+			if seedPartial {
+				cmdio.EmitWarn(cmd.ErrOrStderr(), fmt.Sprintf(
+					"seed trace %q is partial; baseline retrieval uses only the spans returned by Tempo",
+					seedID,
+				))
+			}
+
 			// Single pass over the seed trace: root identity, span time range,
 			// and per-service span counts.
 			profile := parseSeedTrace(seed.Trace)
@@ -199,6 +207,7 @@ change.`,
 			)
 
 			result := buildBaselineResult(seedID, profile, resp, req.Query)
+			result.SeedPartial = seedPartial
 			result.ListMeta = meta
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err

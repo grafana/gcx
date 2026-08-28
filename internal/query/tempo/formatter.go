@@ -45,7 +45,11 @@ func FormatSearchTable(w io.Writer, resp *SearchResponse) error {
 // context to compare against the seed — they are not a similarity score.
 // Metadata cannot measure structural match; run 'gcx traces diff' for that.
 func FormatBaselineTable(w io.Writer, resp *BaselineResult) error {
-	fmt.Fprintf(w, "Seed %s  spans: %d  services: %d\n", resp.SeedTraceID, resp.SeedSpanCount, resp.SeedServiceCount)
+	partial := ""
+	if resp.SeedPartial {
+		partial = " (partial)"
+	}
+	fmt.Fprintf(w, "Seed %s%s  spans: %d  services: %d\n", resp.SeedTraceID, partial, resp.SeedSpanCount, resp.SeedServiceCount)
 	fmt.Fprintln(w)
 
 	tbl := style.NewTable("TRACE_ID", "SERVICE", "NAME", "SPANS", "SVCS", "DURATION", "START")

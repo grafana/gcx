@@ -75,6 +75,7 @@ func TestFormatBaselineTable_DistinguishesUnknownAndZeroCounts(t *testing.T) {
 	zero := 0
 	resp := &tempo.BaselineResult{
 		SeedTraceID:      "seed",
+		SeedPartial:      true,
 		SeedSpanCount:    2,
 		SeedServiceCount: 1,
 		Candidates: []tempo.BaselineCandidate{
@@ -87,6 +88,7 @@ func TestFormatBaselineTable_DistinguishesUnknownAndZeroCounts(t *testing.T) {
 	require.NoError(t, tempo.FormatBaselineTable(&buf, resp))
 
 	out := buf.String()
+	assert.Contains(t, out, "Seed seed (partial)")
 	assert.Regexp(t, `(?m)^known\s+svc\s+op\s+0\s+0\s+`, out)
 	assert.Regexp(t, `(?m)^unknown\s+svc\s+op\s+-\s+-\s+`, out)
 }

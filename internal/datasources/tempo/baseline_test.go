@@ -124,7 +124,7 @@ func TestSetup_FilterFlagIsRepeatable(t *testing.T) {
 	}, opts.Filters)
 }
 
-func TestBaselineCmd_ConstructsSearchRequestAndReportsTruncation(t *testing.T) {
+func TestBaselineCmd_PartialSeedConstructsSearchRequestAndReportsWarnings(t *testing.T) {
 	testutils.SandboxConfigEnv(t)
 
 	var gotQuery, gotStart, gotEnd, gotLimit string
@@ -134,7 +134,10 @@ func TestBaselineCmd_ConstructsSearchRequestAndReportsTruncation(t *testing.T) {
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/seed-id":
 			w.Header().Set("Content-Type", "application/json")
-			assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"trace": otlpTrace()}))
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+				"trace":   otlpTrace(),
+				"partial": true,
+			}))
 		case "/api/datasources/proxy/uid/tempo-uid/api/search":
 			gotQuery = r.URL.Query().Get("q")
 			gotStart = r.URL.Query().Get("start")
@@ -189,12 +192,14 @@ current-context: default
 
 	var result tempo.BaselineResult
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
+	assert.True(t, result.SeedPartial)
 	require.Len(t, result.Candidates, 20)
 	assert.Equal(t, "candidate-01", result.Candidates[0].TraceID)
 	require.NotNil(t, result.ListMeta)
 	assert.True(t, result.ListMeta.Truncated)
 	assert.Equal(t, 20, result.ListMeta.Returned)
 	assert.Contains(t, result.ListMeta.Continue, "--limit 40")
+	assert.Contains(t, stderr.String(), `warn: seed trace "seed-id" is partial; baseline retrieval uses only the spans returned by Tempo`)
 	assert.Contains(t, stderr.String(), "showing first 20; more results are available")
 }
 

@@ -73,6 +73,7 @@ type BaselineCandidate struct {
 // returned by search, including the seed's structural profile for context.
 type BaselineResult struct {
 	SeedTraceID      string              `json:"seedTraceID"`
+	SeedPartial      bool                `json:"seedPartial,omitempty"`
 	SeedSpanCount    int                 `json:"seedSpanCount"`
 	SeedServiceCount int                 `json:"seedServiceCount"`
 	Query            string              `json:"query"`
