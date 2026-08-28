@@ -71,15 +71,15 @@ func TestFormatSearchTable_Empty(t *testing.T) {
 	assert.Len(t, lines, 1)
 }
 
-func TestFormatBaselineTable_DistinguishesUnknownAndZeroCounts(t *testing.T) {
-	zero := 0
+func TestFormatBaselineTable_DistinguishesKnownAndUnknownCounts(t *testing.T) {
+	zero, errorSpans := 0, 3
 	resp := &tempo.BaselineResult{
 		SeedTraceID:      "seed",
 		SeedPartial:      true,
 		SeedSpanCount:    2,
 		SeedServiceCount: 1,
 		Candidates: []tempo.BaselineCandidate{
-			{TraceID: "known", RootServiceName: "svc", RootTraceName: "op", SpanCount: &zero, ServiceCount: &zero},
+			{TraceID: "known", RootServiceName: "svc", RootTraceName: "op", SpanCount: &zero, ServiceCount: &zero, ErrorCount: &errorSpans},
 			{TraceID: "unknown", RootServiceName: "svc", RootTraceName: "op"},
 		},
 	}
@@ -89,8 +89,9 @@ func TestFormatBaselineTable_DistinguishesUnknownAndZeroCounts(t *testing.T) {
 
 	out := buf.String()
 	assert.Contains(t, out, "Seed seed (partial)")
-	assert.Regexp(t, `(?m)^known\s+svc\s+op\s+0\s+0\s+`, out)
-	assert.Regexp(t, `(?m)^unknown\s+svc\s+op\s+-\s+-\s+`, out)
+	assert.Contains(t, out, "ERRORS")
+	assert.Regexp(t, `(?m)^known\s+svc\s+op\s+0\s+0\s+3\s+`, out)
+	assert.Regexp(t, `(?m)^unknown\s+svc\s+op\s+-\s+-\s+-\s+`, out)
 }
 
 func TestFormatTagsTable(t *testing.T) {

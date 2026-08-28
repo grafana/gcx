@@ -57,8 +57,9 @@ type ServiceStats struct {
 }
 
 // BaselineCandidate is a baseline candidate with structural context for
-// comparison against the seed trace. SpanCount and ServiceCount are nil when
-// Tempo did not return service statistics for the candidate.
+// comparison against the seed trace. ErrorCount is the number of error spans
+// Tempo reported across all services. Count fields are nil when Tempo omitted
+// service statistics for the candidate.
 type BaselineCandidate struct {
 	TraceID           string `json:"traceID"`
 	RootServiceName   string `json:"rootServiceName"`
@@ -67,6 +68,7 @@ type BaselineCandidate struct {
 	DurationMs        int    `json:"durationMs"`
 	SpanCount         *int   `json:"spanCount,omitempty"`
 	ServiceCount      *int   `json:"serviceCount,omitempty"`
+	ErrorCount        *int   `json:"errorCount,omitempty"`
 }
 
 // BaselineResult is the baseline-candidate list for a seed trace, in the order

@@ -484,7 +484,7 @@ func TestBuildBaselineResult(t *testing.T) {
 	}
 	resp := &tempo.SearchResponse{Traces: []tempo.SearchTrace{
 		{TraceID: "exact", RootServiceName: "checkout", RootTraceName: "POST /x", DurationMs: 30,
-			ServiceStats: map[string]tempo.ServiceStats{"checkout": {SpanCount: 4}, "postgres": {SpanCount: 2}}},
+			ServiceStats: map[string]tempo.ServiceStats{"checkout": {SpanCount: 4}, "postgres": {SpanCount: 2, ErrorCount: 2}}},
 		{TraceID: "far", RootServiceName: "checkout", RootTraceName: "POST /x", DurationMs: 90,
 			ServiceStats: map[string]tempo.ServiceStats{"checkout": {SpanCount: 40}}},
 		{TraceID: "unknown", RootServiceName: "checkout", RootTraceName: "POST /x", DurationMs: 10},
@@ -501,16 +501,21 @@ func TestBuildBaselineResult(t *testing.T) {
 	assert.Equal(t, "exact", first.TraceID)
 	require.NotNil(t, first.SpanCount)
 	require.NotNil(t, first.ServiceCount)
+	require.NotNil(t, first.ErrorCount)
 	assert.Equal(t, 6, *first.SpanCount)
 	assert.Equal(t, 2, *first.ServiceCount)
+	assert.Equal(t, 2, *first.ErrorCount)
 
 	second := result.Candidates[1]
 	require.NotNil(t, second.SpanCount)
 	require.NotNil(t, second.ServiceCount)
+	require.NotNil(t, second.ErrorCount)
 	assert.Equal(t, 40, *second.SpanCount)
 	assert.Equal(t, 1, *second.ServiceCount)
+	assert.Zero(t, *second.ErrorCount)
 
 	unknown := result.Candidates[2]
 	assert.Nil(t, unknown.SpanCount)
 	assert.Nil(t, unknown.ServiceCount)
+	assert.Nil(t, unknown.ErrorCount)
 }

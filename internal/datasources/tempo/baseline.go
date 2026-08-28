@@ -310,13 +310,15 @@ func buildBaselineResult(seedID string, profile seedProfile, resp *tempo.SearchR
 			DurationMs:        t.DurationMs,
 		}
 		if t.ServiceStats != nil {
-			spans := 0
+			spans, errorSpans := 0, 0
 			for _, s := range t.ServiceStats {
 				spans += s.SpanCount
+				errorSpans += s.ErrorCount
 			}
 			services := len(t.ServiceStats)
 			candidate.SpanCount = &spans
 			candidate.ServiceCount = &services
+			candidate.ErrorCount = &errorSpans
 		}
 		result.Candidates = append(result.Candidates, candidate)
 	}

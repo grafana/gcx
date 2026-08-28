@@ -41,9 +41,9 @@ func FormatSearchTable(w io.Writer, resp *SearchResponse) error {
 }
 
 // FormatBaselineTable formats baseline candidates as a table, with a header
-// giving the seed's span/service profile. The SPANS/SVCS columns are raw
-// context to compare against the seed — they are not a similarity score.
-// Metadata cannot measure structural match; run 'gcx traces diff' for that.
+// giving the seed's span/service profile. SPANS, SVCS, and ERRORS provide raw
+// context rather than a similarity score; use 'gcx traces diff' to compare
+// structure.
 func FormatBaselineTable(w io.Writer, resp *BaselineResult) error {
 	partial := ""
 	if resp.SeedPartial {
@@ -52,7 +52,7 @@ func FormatBaselineTable(w io.Writer, resp *BaselineResult) error {
 	fmt.Fprintf(w, "Seed %s%s  spans: %d  services: %d\n", resp.SeedTraceID, partial, resp.SeedSpanCount, resp.SeedServiceCount)
 	fmt.Fprintln(w)
 
-	tbl := style.NewTable("TRACE_ID", "SERVICE", "NAME", "SPANS", "SVCS", "DURATION", "START")
+	tbl := style.NewTable("TRACE_ID", "SERVICE", "NAME", "SPANS", "SVCS", "ERRORS", "DURATION", "START")
 	for _, c := range resp.Candidates {
 		tbl.Row(
 			c.TraceID,
@@ -60,6 +60,7 @@ func FormatBaselineTable(w io.Writer, resp *BaselineResult) error {
 			c.RootTraceName,
 			formatOptionalCount(c.SpanCount),
 			formatOptionalCount(c.ServiceCount),
+			formatOptionalCount(c.ErrorCount),
 			formatDuration(c.DurationMs),
 			formatStartTime(c.StartTimeUnixNano),
 		)
