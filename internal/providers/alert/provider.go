@@ -47,6 +47,7 @@ func (p *AlertProvider) Commands() []*cobra.Command {
 	alertCmd.AddCommand(muteTimingsCommands(loader))
 	alertCmd.AddCommand(notificationPoliciesCommands(loader))
 	alertCmd.AddCommand(templatesCommands(loader))
+	alertCmd.AddCommand(notificationHistoryCommands(loader))
 
 	return []*cobra.Command{alertCmd}
 }

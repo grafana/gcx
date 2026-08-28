@@ -89,6 +89,8 @@
  "gcx alert mute-timings get": "finite",
  "gcx alert mute-timings list": "finite",
  "gcx alert mute-timings update": "finite",
+ "gcx alert notification-history alerts": "finite",
+ "gcx alert notification-history list": "finite",
  "gcx alert notification-policies export": "raw",
  "gcx alert notification-policies get": "finite",
  "gcx alert notification-policies reset": "finite",

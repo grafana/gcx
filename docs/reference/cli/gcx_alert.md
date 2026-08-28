@@ -27,6 +27,7 @@ Manage Grafana alert rules and alert groups
 * [gcx alert groups](gcx_alert_groups.md)	 - Inspect alert rule groups and their evaluation status.
 * [gcx alert instances](gcx_alert_instances.md)	 - Manage alert instances.
 * [gcx alert mute-timings](gcx_alert_mute-timings.md)	 - Manage Grafana alerting mute timings.
+* [gcx alert notification-history](gcx_alert_notification-history.md)	 - Inspect alert notification delivery history.
 * [gcx alert notification-policies](gcx_alert_notification-policies.md)	 - Manage the Grafana alerting notification policy tree.
 * [gcx alert ruler](gcx_alert_ruler.md)	 - Manage datasource-managed (Mimir/Loki ruler) rules.
 * [gcx alert rules](gcx_alert_rules.md)	 - Inspect alert rule state and health.
