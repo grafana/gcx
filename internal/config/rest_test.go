@@ -373,3 +373,77 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 		t.Fatal("expected OnRefresh callback to be called after token refresh")
 	}
 }
+
+func TestNewNamespacedRESTConfig_ExtraHeadersWiredOutermost(t *testing.T) {
+	var receivedCookie string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedCookie = r.Header.Get("Cookie")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ctx := config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:  server.URL,
+			OrgID:   1,
+			APIToken: "test-token",
+			ExtraHeaders: map[string]string{"Cookie": "AWSELBAuthSessionCookie-0=abc123"},
+		},
+	}
+
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// HeaderTransport must be outermost; CallerIDTransport is directly inside it.
+	rt := restCfg.WrapTransport(http.DefaultTransport)
+	headerRT, ok := rt.(*httputils.HeaderTransport)
+	if !ok {
+		t.Fatalf("expected outermost transport to be *httputils.HeaderTransport, got %T", rt)
+	}
+	if _, ok := headerRT.Base.(*httputils.CallerIDTransport); !ok {
+		t.Fatalf("expected HeaderTransport.Base to be *httputils.CallerIDTransport, got %T", headerRT.Base)
+	}
+
+	// Verify the header actually reaches the server.
+	client := &http.Client{Transport: rt}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if receivedCookie != "AWSELBAuthSessionCookie-0=abc123" {
+		t.Fatalf("expected Cookie header %q, got %q", "AWSELBAuthSessionCookie-0=abc123", receivedCookie)
+	}
+}
+
+func TestNewNamespacedRESTConfig_NoExtraHeadersKeepsCallerIDOutermost(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ctx := config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:   server.URL,
+			OrgID:    1,
+			APIToken: "test-token",
+		},
+	}
+
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	rt := restCfg.WrapTransport(http.DefaultTransport)
+	if _, ok := rt.(*httputils.CallerIDTransport); !ok {
+		t.Fatalf("expected outermost transport to be *httputils.CallerIDTransport when no extra-headers are set, got %T", rt)
+	}
+}

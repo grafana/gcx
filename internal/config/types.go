@@ -773,6 +773,11 @@ type GrafanaConfig struct {
 
 	// TLS contains TLS-related configuration settings.
 	TLS *TLS `json:"tls,omitempty" yaml:"tls,omitempty"`
+
+	// ExtraHeaders contains arbitrary HTTP headers to include on every request.
+	// Useful for edge-proxy authentication (e.g. an AWS ALB session cookie) that
+	// sits outside Grafana's own auth layer.
+	ExtraHeaders map[string]string `datapolicy:"secret" json:"extra-headers,omitempty" yaml:"extra-headers,omitempty"`
 }
 
 func (grafana GrafanaConfig) validateNamespace(ctx context.Context, contextName string) error {
@@ -850,7 +855,20 @@ func (grafana GrafanaConfig) validateWithAuthSelection(ctx context.Context, cont
 }
 
 func (grafana GrafanaConfig) IsEmpty() bool {
-	return grafana == GrafanaConfig{}
+	return grafana.Server == "" &&
+		grafana.User == "" &&
+		grafana.Password == "" &&
+		grafana.APIToken == "" &&
+		grafana.ProxyEndpoint == "" &&
+		grafana.OAuthToken == "" &&
+		grafana.OAuthRefreshToken == "" &&
+		grafana.OAuthTokenExpiresAt == "" &&
+		grafana.OAuthRefreshExpiresAt == "" &&
+		grafana.AuthMethod == "" &&
+		grafana.OrgID == 0 &&
+		grafana.StackID == 0 &&
+		grafana.TLS == nil &&
+		len(grafana.ExtraHeaders) == 0
 }
 
 // InferredAuthMethod returns the effective authentication method for this config.

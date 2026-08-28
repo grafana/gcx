@@ -101,6 +101,12 @@ stacks:
         next-protos:
           - string
           - ...
+      # ExtraHeaders contains arbitrary HTTP headers to include on every request.
+      # Useful for edge-proxy authentication (e.g. an AWS ALB session cookie) that
+      # sits outside Grafana's own auth layer.
+      extra-headers:
+        ${string}:
+          string
     # Providers holds per-provider configuration, indexed by provider name.
     # Each provider has a map of string key-value pairs.
     # Secret fields are selectively redacted by providers.RedactSecrets using

@@ -426,7 +426,13 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		// Outermost layer: stamp the caller-id header so every datasource query
 		// (unified query API and legacy proxy alike) is attributable upstream,
 		// and so it's visible to the logging transports above.
-		return &httputils.CallerIDTransport{Base: rt}
+		rt = &httputils.CallerIDTransport{Base: rt}
+		// Extra headers (e.g. AWS ALB session cookie) wrap everything so they
+		// reach the edge proxy before any other header evaluation.
+		if len(cfg.Grafana.ExtraHeaders) > 0 {
+			rt = &httputils.HeaderTransport{Base: rt, Headers: cfg.Grafana.ExtraHeaders}
+		}
+		return rt
 	}
 
 	return NamespacedRESTConfig{
