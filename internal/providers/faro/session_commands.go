@@ -21,27 +21,24 @@ import (
 type sessionsGetOpts struct {
 	dsquery.TimeRangeOpts
 
-	App           string
-	AppType       string
-	Datasource    string
-	DatasourceUID string
-	Save          string
+	App        string
+	AppType    string
+	Datasource string
+	Save       string
 }
 
 func (o *sessionsGetOpts) setup(flags *pflag.FlagSet) {
 	o.SetupTimeFlags(flags)
 	flags.StringVar(&o.App, "app", "", "Frontend Observability app slug-id or numeric id (required)")
 	flags.StringVar(&o.AppType, "app-type", "", "web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted")
-	flags.StringVar(&o.Datasource, "datasource", datasourceLoki, "Telemetry backend: loki or pinot (case-insensitive)")
-	flags.StringVarP(&o.DatasourceUID, "datasource-uid", "d", "", "Grafana datasource UID (defaults to datasources.loki or datasources.pinot in config)")
+	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Grafana datasource UID (required). Type is inferred (loki or pinot)")
 	flags.StringVar(&o.Save, "save", "", "Write the session dump to this path instead of stdout")
 }
 
 func (o *sessionsGetOpts) Validate() error {
 	o.App = strings.TrimSpace(o.App)
 	o.AppType = strings.ToLower(strings.TrimSpace(o.AppType))
-	o.Datasource = strings.ToLower(strings.TrimSpace(o.Datasource))
-	o.DatasourceUID = strings.TrimSpace(o.DatasourceUID)
+	o.Datasource = strings.TrimSpace(o.Datasource)
 	o.Save = strings.TrimSpace(o.Save)
 
 	if o.App == "" {
@@ -52,10 +49,8 @@ func (o *sessionsGetOpts) Validate() error {
 	default:
 		return fmt.Errorf("--app-type must be %s or %s, got %q", appTypeWeb, appTypeMobile, o.AppType)
 	}
-	switch o.Datasource {
-	case datasourceLoki, datasourcePinot:
-	default:
-		return fmt.Errorf("--datasource must be %s or %s, got %q", datasourceLoki, datasourcePinot, o.Datasource)
+	if o.Datasource == "" {
+		return errors.New("--datasource is required")
 	}
 	if err := o.ValidateTimeRange(); err != nil {
 		return err
@@ -67,6 +62,16 @@ func (o *sessionsGetOpts) Validate() error {
 		return errors.New("--save is required in agent mode so the session dump is not written to stdout")
 	}
 	return nil
+}
+
+func sessionKindFromDatasourceType(pluginID string) (string, error) {
+	kind := dsquery.NormalizeKind(pluginID)
+	switch kind {
+	case datasourceLoki, datasourcePinot:
+		return kind, nil
+	default:
+		return "", fmt.Errorf("datasource is type %s, not %s or %s", pluginID, datasourceLoki, datasourcePinot)
+	}
 }
 
 func newSessionsGetCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -86,32 +91,28 @@ There is no JSON or YAML encoding of the dump.
 Use --save so agents receive a small artifact receipt on stdout and then read
 the file.
 
---datasource selects the backend (loki or pinot). -d/--datasource-uid is the
-Grafana datasource UID (defaults to datasources.loki or datasources.pinot in
-config, or auto-discovery). Each Loki query times out after 60s so a slow scan
-cannot hang; try pinot or a narrower window.
+-d/--datasource is the Grafana datasource UID (required). gcx fetches the
+datasource and infers Loki vs Pinot from its type. Each Loki query times out
+after 60s so a slow scan cannot hang; try a Pinot datasource UID or a narrower
+window.
 
 Faro apps do not store web vs mobile on the app resource. Omit --app-type and
 gcx infers it from sdkName / osName on the session (so mobile journeys exclude
 app_memory / app_cpu_usage). Pass --app-type to override.`,
 		Example: `  # Pinot on stdout (metadata tables, journey TSV)
-  gcx frontend sessions get 7TiMbCCvby --app 66 --datasource pinot --since 7d
+  gcx frontend sessions get 7TiMbCCvby --app 66 -d grafanacloud-pinot --since 7d
 
   # Pinot dump to a file; app type inferred from telemetry
-  gcx frontend sessions get 7TiMbCCvby --app 66 --datasource pinot --since 7d \
+  gcx frontend sessions get 7TiMbCCvby --app 66 -d grafanacloud-pinot --since 7d \
     --save /tmp/session-7TiMbCCvby.txt
 
   # Loki dump
-  gcx frontend sessions get 7TiMbCCvby --app 66 --datasource loki --since 7d \
+  gcx frontend sessions get 7TiMbCCvby --app 66 -d grafanacloud-logs --since 7d \
     --save /tmp/session-7TiMbCCvby.txt
-
-  # Loki dump against an explicit Grafana datasource UID
-  gcx frontend sessions get 7TiMbCCvby --app 66 --datasource loki -d abc123 \
-    --since 7d --save /tmp/session-7TiMbCCvby.txt
 
   # Force mobile SQL (app_memory / app_cpu_usage excluded)
   gcx frontend sessions get kwwAkkXwas --app 96 --app-type mobile \
-    --datasource pinot --since 7d --save /tmp/session-kwwAkkXwas.txt`,
+    -d grafanacloud-pinot --since 7d --save /tmp/session-kwwAkkXwas.txt`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
 				return err
@@ -129,7 +130,7 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 			ctx := cmd.Context()
 			sessionID := strings.TrimSpace(args[0])
 
-			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
+			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -160,31 +161,34 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 				AppType:   opts.AppType,
 			}
 
+			dsType, err := dsquery.GetDatasourceType(ctx, cfg, opts.Datasource)
+			if err != nil {
+				return err
+			}
+			kind, err := sessionKindFromDatasourceType(dsType)
+			if err != nil {
+				return err
+			}
+
 			var result interface {
 				dump() string
 				writeTables(w io.Writer) error
 			}
-			switch opts.Datasource {
+			switch kind {
 			case datasourcePinot:
-				uid, _, resolveErr := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.DatasourceUID, cfgCtx, cfg, datasourcePinot)
-				if resolveErr != nil {
-					return resolveErr
-				}
 				client, clientErr := pinot.NewClient(cfg)
 				if clientErr != nil {
 					return fmt.Errorf("failed to create pinot client: %w", clientErr)
 				}
-				result, err = fetchPinotSession(ctx, client, uid, params, start, end)
+				result, err = fetchPinotSession(ctx, client, opts.Datasource, params, start, end)
 			case datasourceLoki:
-				uid, _, resolveErr := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.DatasourceUID, cfgCtx, cfg, datasourceLoki)
-				if resolveErr != nil {
-					return resolveErr
-				}
 				client, clientErr := loki.NewClient(cfg)
 				if clientErr != nil {
 					return fmt.Errorf("failed to create loki client: %w", clientErr)
 				}
-				result, err = fetchLokiSession(ctx, client, uid, params, start, end)
+				result, err = fetchLokiSession(ctx, client, opts.Datasource, params, start, end)
+			default:
+				return fmt.Errorf("unsupported datasource kind %s", kind)
 			}
 			if err != nil {
 				return err

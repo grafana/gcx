@@ -229,7 +229,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx frontend apps delete-sourcemap": {Cost: "small"},
 	"gcx frontend apps list-sourcemaps":  {Cost: "small"},
 	"gcx frontend apps update":           {Cost: "small"},
-	"gcx frontend sessions get":          {Cost: "large", Hint: "<session-id> --app <app-id> --datasource loki|pinot --since 7d --save /tmp/session-<id>.txt"},
+	"gcx frontend sessions get":          {Cost: "large", Hint: "<session-id> --app <app-id> -d <datasource-uid> --since 7d --save /tmp/session-<id>.txt"},
 
 	// -----------------------------------------------------------------------
 	// Fleet provider

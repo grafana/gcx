@@ -30,10 +30,10 @@ func TestSessionsGetOptsValidate(t *testing.T) {
 		since   string
 		wantErr string
 	}{
-		{name: "missing app", wantErr: "--app is required"},
-		{name: "bad app type", app: "66", appType: "native", since: "1h", wantErr: "--app-type"},
-		{name: "bad datasource", app: "66", ds: "clickhouse", since: "1h", wantErr: "--datasource"},
-		{name: "missing time", app: "66", wantErr: "--since or --from/--to is required"},
+		{name: "missing app", ds: "grafanacloud-logs", wantErr: "--app is required"},
+		{name: "bad app type", app: "66", appType: "native", ds: "grafanacloud-logs", since: "1h", wantErr: "--app-type"},
+		{name: "missing datasource", app: "66", since: "1h", wantErr: "--datasource is required"},
+		{name: "missing time", app: "66", ds: "grafanacloud-logs", wantErr: "--since or --from/--to is required"},
 	}
 
 	for _, tt := range tests {
@@ -47,9 +47,6 @@ func TestSessionsGetOptsValidate(t *testing.T) {
 					Since: tt.since,
 				},
 			}
-			if opts.Datasource == "" {
-				opts.Datasource = datasourceLoki
-			}
 			err := opts.Validate()
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
@@ -61,7 +58,7 @@ func TestSessionsGetOptsValidateOK(t *testing.T) {
 	t.Parallel()
 	opts := sessionsGetOpts{
 		App:        "66",
-		Datasource: datasourcePinot,
+		Datasource: "grafanacloud-pinot",
 		TimeRangeOpts: dsquery.TimeRangeOpts{
 			Since: "7d",
 		},
@@ -72,11 +69,10 @@ func TestSessionsGetOptsValidateOK(t *testing.T) {
 func TestSessionsGetOptsValidateTrimsInputs(t *testing.T) {
 	t.Parallel()
 	opts := sessionsGetOpts{
-		App:           "  my-app-66  ",
-		AppType:       " Mobile ",
-		Datasource:    " Pinot ",
-		DatasourceUID: "  c-R8UWvVk  ",
-		Save:          " /tmp/session.txt ",
+		App:        "  my-app-66  ",
+		AppType:    " Mobile ",
+		Datasource: "  c-R8UWvVk  ",
+		Save:       " /tmp/session.txt ",
 		TimeRangeOpts: dsquery.TimeRangeOpts{
 			Since: "7d",
 		},
@@ -84,17 +80,58 @@ func TestSessionsGetOptsValidateTrimsInputs(t *testing.T) {
 	require.NoError(t, opts.Validate())
 	assert.Equal(t, "my-app-66", opts.App)
 	assert.Equal(t, appTypeMobile, opts.AppType)
-	assert.Equal(t, datasourcePinot, opts.Datasource)
-	assert.Equal(t, "c-R8UWvVk", opts.DatasourceUID)
+	assert.Equal(t, "c-R8UWvVk", opts.Datasource)
 	assert.Equal(t, "/tmp/session.txt", opts.Save)
 	assert.Equal(t, "66", resolveAppID(opts.App))
+}
+
+func TestSessionsGetOptsValidateDoesNotLowercaseUID(t *testing.T) {
+	t.Parallel()
+	opts := sessionsGetOpts{
+		App:        "66",
+		Datasource: "  c-R8UWvVk  ",
+		TimeRangeOpts: dsquery.TimeRangeOpts{
+			Since: "7d",
+		},
+	}
+	require.NoError(t, opts.Validate())
+	assert.Equal(t, "c-R8UWvVk", opts.Datasource)
+}
+
+func TestSessionKindFromDatasourceType(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		pluginID string
+		want     string
+		wantErr  string
+	}{
+		{pluginID: "loki", want: datasourceLoki},
+		{pluginID: "startree-pinot-datasource", want: datasourcePinot},
+		{pluginID: "clickhouse", wantErr: "not loki or pinot"},
+		{pluginID: "grafana-clickhouse-datasource", wantErr: "not loki or pinot"},
+		{pluginID: "", wantErr: "not loki or pinot"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.pluginID, func(t *testing.T) {
+			t.Parallel()
+			got, err := sessionKindFromDatasourceType(tt.pluginID)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				assert.Empty(t, got)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestSessionsGetOptsValidateAgentRequiresSave(t *testing.T) {
 	testutils.SetAgentMode(t, true)
 	base := sessionsGetOpts{
 		App:        "66",
-		Datasource: datasourceLoki,
+		Datasource: "grafanacloud-logs",
 		TimeRangeOpts: dsquery.TimeRangeOpts{
 			Since: "1h",
 		},
@@ -360,7 +397,7 @@ func TestFetchLokiSessionTimeoutExits(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no telemetry for session 4JPV1T7Nyi")
 	assert.Contains(t, err.Error(), "timed out")
-	assert.Contains(t, err.Error(), "--datasource pinot")
+	assert.Contains(t, err.Error(), "try a Pinot datasource UID")
 }
 
 func TestFetchLokiSessionPagesUntilComplete(t *testing.T) {
@@ -384,6 +421,17 @@ func TestFetchLokiSessionPagesUntilComplete(t *testing.T) {
 		assert.Empty(t, stub.dirs[i])
 	}
 	assert.Equal(t, 2, eventKindPages)
+}
+
+func TestSessionsGetCommandRequiresDatasource(t *testing.T) {
+	t.Parallel()
+	cmd := newSessionsGetCommand(&providers.ConfigLoader{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"7TiMbCCvby", "--app", "66", "--since", "7d"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--datasource is required")
 }
 
 func TestSessionsGetCommandArgs(t *testing.T) {
