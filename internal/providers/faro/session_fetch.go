@@ -22,19 +22,21 @@ type lokiQuerier interface {
 	Query(ctx context.Context, datasourceUID string, req loki.QueryRequest) (*loki.QueryResponse, error)
 }
 
-const lokiQueryDirectionForward = "forward"
+const (
+	lokiQueryDirectionForward = "forward"
 
-// Loki session queries go through Grafana's query API with no HTTP client
-// timeout. Bound each Loki POST so a stuck scan exits; do not share one
-// deadline across metadata + every kind page. Pinot is not wrapped.
-var sessionLokiQueryTimeout = 60 * time.Second
+	// Loki session queries go through Grafana's query API with no HTTP client
+	// timeout. Bound each Loki POST so a stuck scan exits; do not share one
+	// deadline across metadata + every kind page. Pinot is not wrapped.
+	sessionLokiQueryTimeout = 60 * time.Second
+)
 
-func wrapLokiSessionQueryErr(sessionID string, err error) error {
+func wrapLokiSessionQueryErr(sessionID string, err error, timeout time.Duration) error {
 	if err == nil {
 		return nil
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("no telemetry for session %s in this time range (Loki query timed out after %s; try a Pinot datasource UID (-d) or a narrower --from/--to)", sessionID, sessionLokiQueryTimeout)
+		return fmt.Errorf("no telemetry for session %s in this time range (Loki query timed out after %s; try a Pinot datasource UID (-d) or a narrower --from/--to)", sessionID, timeout)
 	}
 	return err
 }
@@ -145,6 +147,10 @@ func fetchPinotSession(ctx context.Context, client pinotQuerier, uid string, p s
 }
 
 func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p sessionQueryParams, start, end time.Time) (*lokiSessionResult, error) {
+	return fetchLokiSessionTimed(ctx, client, uid, p, start, end, sessionLokiQueryTimeout)
+}
+
+func fetchLokiSessionTimed(ctx context.Context, client lokiQuerier, uid string, p sessionQueryParams, start, end time.Time, timeout time.Duration) (*lokiSessionResult, error) {
 	g, gctx := errgroup.WithContext(ctx)
 	var metaResp, replayResp *loki.QueryResponse
 	g.Go(func() error {
@@ -155,7 +161,7 @@ func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p ses
 			End:       end,
 			Limit:     1,
 			Direction: lokiQueryDirectionForward,
-		})
+		}, timeout)
 		if err != nil {
 			return fmt.Errorf("loki metadata query failed: %w", err)
 		}
@@ -169,14 +175,14 @@ func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p ses
 			End:       end,
 			Limit:     1,
 			Direction: lokiQueryDirectionForward,
-		})
+		}, timeout)
 		if err != nil {
 			return fmt.Errorf("loki replay-start query failed: %w", err)
 		}
 		return nil
 	})
 	if err := g.Wait(); err != nil {
-		return nil, wrapLokiSessionQueryErr(p.SessionID, err)
+		return nil, wrapLokiSessionQueryErr(p.SessionID, err, timeout)
 	}
 
 	metaLine := firstLokiLine(metaResp)
@@ -184,9 +190,9 @@ func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p ses
 		p.AppType = inferAppType(logfmtValue(metaLine, "sdk_name"), logfmtValue(metaLine, "os_name"))
 	}
 
-	eventsResp, err := fetchLokiEventsByKind(ctx, client, uid, p, start, end)
+	eventsResp, err := fetchLokiEventsByKind(ctx, client, uid, p, start, end, timeout)
 	if err != nil {
-		return nil, wrapLokiSessionQueryErr(p.SessionID, err)
+		return nil, wrapLokiSessionQueryErr(p.SessionID, err, timeout)
 	}
 	metadata := formatLokiMetadata(metaResp, replayResp)
 	if metadata == "" && lokiEntryCount(eventsResp) == 0 {
@@ -199,19 +205,19 @@ func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p ses
 	}, nil
 }
 
-func queryLoki(ctx context.Context, client lokiQuerier, uid string, req loki.QueryRequest) (*loki.QueryResponse, error) {
-	qctx, cancel := context.WithTimeout(ctx, sessionLokiQueryTimeout)
+func queryLoki(ctx context.Context, client lokiQuerier, uid string, req loki.QueryRequest, timeout time.Duration) (*loki.QueryResponse, error) {
+	qctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	return client.Query(qctx, uid, req)
 }
 
-func fetchLokiEventsByKind(ctx context.Context, client lokiQuerier, uid string, p sessionQueryParams, start, end time.Time) (*loki.QueryResponse, error) {
+func fetchLokiEventsByKind(ctx context.Context, client lokiQuerier, uid string, p sessionQueryParams, start, end time.Time, timeout time.Duration) (*loki.QueryResponse, error) {
+	kinds := lokiSessionEventKinds()
 	g, gctx := errgroup.WithContext(ctx)
-	results := make([]*loki.QueryResponse, len(lokiSessionEventKinds))
-	for i, kind := range lokiSessionEventKinds {
-		i, kind := i, kind
+	results := make([]*loki.QueryResponse, len(kinds))
+	for i, kind := range kinds {
 		g.Go(func() error {
-			resp, err := fetchLokiEventPages(gctx, client, uid, lokiEventsQueryForKind(p, kind), start, end)
+			resp, err := fetchLokiEventPages(gctx, client, uid, lokiEventsQueryForKind(p, kind), start, end, timeout)
 			if err != nil {
 				return fmt.Errorf("loki %s query failed: %w", kind, err)
 			}
@@ -229,7 +235,7 @@ func fetchLokiEventsByKind(ctx context.Context, client lokiQuerier, uid string, 
 	return merged, nil
 }
 
-func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time) (*loki.QueryResponse, error) {
+func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time, timeout time.Duration) (*loki.QueryResponse, error) {
 	merged := &loki.QueryResponse{Data: loki.QueryResultData{ResultType: "streams"}}
 	cursor := end
 	for cursor.After(start) {
@@ -238,7 +244,7 @@ func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query str
 			Start: start,
 			End:   cursor,
 			Limit: lokiEventsPageSize,
-		})
+		}, timeout)
 		if err != nil {
 			return nil, fmt.Errorf("loki events query failed: %w", err)
 		}
