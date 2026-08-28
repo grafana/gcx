@@ -78,8 +78,8 @@ func (p *Provider) descriptor() signals.Descriptor {
 			},
 			{
 				Build:     dspyroscope.SeriesCmd,
-				TokenCost: "small",
-				LLMHint:   "gcx profiles series -d abc123 --since 1h -o json",
+				TokenCost: "large",
+				LLMHint:   `gcx profiles series -d abc123 --match '{service_name="frontend"}' --label-name namespace --label-name pod --since 1h -o json`,
 				Example: `
   # List unique profile label sets without a profile type
   gcx profiles series -d UID --since 1h

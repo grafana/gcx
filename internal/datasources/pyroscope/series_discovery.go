@@ -30,7 +30,7 @@ func (opts *profileSeriesOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
-	flags.StringArrayVar(&opts.Matchers, "match", nil, "Profile label selector (repeatable)")
+	flags.StringArrayVar(&opts.Matchers, "match", nil, "Profile label selector (repeatable; selectors are combined as a union)")
 	flags.StringSliceVar(&opts.LabelNames, "label-name", nil, "Label name to return (repeatable; limit labels to reduce response size and speed up discovery)")
 	opts.TimeRange.SetupTimeFlags(flags)
 }
@@ -52,8 +52,9 @@ func SeriesCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `List unique profile label sets from a Pyroscope datasource.
 
 The command uses Pyroscope's Series endpoint and does not require a profile
-type. SELECTOR is optional; use --match for repeatable selectors. By default,
-the response includes every label.
+type. SELECTOR is optional; use --match for repeatable selectors. Multiple
+selectors are combined as a union. By default, the response includes every
+label.
 
 Use --label-name to request only the labels needed for discovery. This reduces
 the response size and can significantly speed up queries with high-cardinality
@@ -117,8 +118,8 @@ labels.`,
 	}
 
 	cmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources pyroscope series -d UID --since 1h -o json",
+		agent.AnnotationTokenCost: "large",
+		agent.AnnotationLLMHint:   `gcx datasources pyroscope series -d UID --match '{service_name="frontend"}' --label-name namespace --label-name pod --since 1h -o json`,
 	}
 	opts.setup(cmd.Flags())
 	return cmd

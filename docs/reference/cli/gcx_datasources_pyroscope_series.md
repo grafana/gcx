@@ -7,8 +7,9 @@ List unique profile label sets
 List unique profile label sets from a Pyroscope datasource.
 
 The command uses Pyroscope's Series endpoint and does not require a profile
-type. SELECTOR is optional; use --match for repeatable selectors. By default,
-the response includes every label.
+type. SELECTOR is optional; use --match for repeatable selectors. Multiple
+selectors are combined as a union. By default, the response includes every
+label.
 
 Use --label-name to request only the labels needed for discovery. This reduces
 the response size and can significantly speed up queries with high-cardinality
@@ -46,7 +47,7 @@ gcx datasources pyroscope series [SELECTOR] [flags]
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --label-name strings   Label name to return (repeatable; limit labels to reduce response size and speed up discovery)
-      --match stringArray    Profile label selector (repeatable)
+      --match stringArray    Profile label selector (repeatable; selectors are combined as a union)
   -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
       --since string         Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --to string            End time (RFC3339, Unix timestamp, or relative like 'now')
@@ -55,7 +56,7 @@ gcx datasources pyroscope series [SELECTOR] [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
@@ -67,3 +68,4 @@ gcx datasources pyroscope series [SELECTOR] [flags]
 ### SEE ALSO
 
 * [gcx datasources pyroscope](gcx_datasources_pyroscope.md)	 - Query Pyroscope datasources
+

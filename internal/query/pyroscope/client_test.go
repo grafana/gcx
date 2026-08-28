@@ -286,13 +286,15 @@ func TestClient_Series_OmitsLabelNamesWhenUnset(t *testing.T) {
 			return
 		}
 		assert.NotContains(t, body, "labelNames", "an omitted projection must return complete label sets")
-		_, _ = w.Write([]byte(`{"labelsSet":[]}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer server.Close()
 
 	client := newTestClient(t, server)
-	_, err := client.Series(context.Background(), "test-uid", pyroscope.SeriesRequest{})
+	resp, err := client.Series(context.Background(), "test-uid", pyroscope.SeriesRequest{})
 	require.NoError(t, err)
+	assert.NotNil(t, resp.LabelsSet, "an omitted labelsSet must serialize as an empty array")
+	assert.Empty(t, resp.LabelsSet)
 }
 
 func TestClient_Series_NonOKUsesProfileSeriesOperation(t *testing.T) {

@@ -367,6 +367,9 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, req SeriesReq
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse series response: %w", err)
 	}
+	if result.LabelsSet == nil {
+		result.LabelsSet = []Labels{}
+	}
 	return &result, nil
 }
 
