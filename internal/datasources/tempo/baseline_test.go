@@ -127,12 +127,13 @@ func TestSetup_FilterFlagIsRepeatable(t *testing.T) {
 func TestBaselineCmd_PartialSeedConstructsSearchRequestAndReportsWarnings(t *testing.T) {
 	testutils.SandboxConfigEnv(t)
 
+	const seedID = "00000000000000000000000000000001"
 	var gotQuery, gotStart, gotEnd, gotLimit string
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/bootdata":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
-		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/seed-id":
+		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/" + seedID:
 			w.Header().Set("Content-Type", "application/json")
 			assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 				"trace":   otlpTrace(),
@@ -144,8 +145,7 @@ func TestBaselineCmd_PartialSeedConstructsSearchRequestAndReportsWarnings(t *tes
 			gotEnd = r.URL.Query().Get("end")
 			gotLimit = r.URL.Query().Get("limit")
 
-			traces := make([]map[string]any, 0, 22)
-			traces = append(traces, map[string]any{"traceID": "seed-id"})
+			traces := make([]map[string]any, 0, 21)
 			for i := 1; i <= 21; i++ {
 				traces = append(traces, map[string]any{"traceID": fmt.Sprintf("candidate-%02d", i)})
 			}
@@ -179,19 +179,20 @@ current-context: default
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"baseline", "seed-id", "-o", "json"})
+	root.SetArgs([]string{"baseline", seedID, "-o", "json"})
 
 	require.NoError(t, root.Execute())
 	assert.Equal(t,
-		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 } && { resource.service.name = "postgres" }`,
+		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" && trace:id != "00000000000000000000000000000001" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 } && { resource.service.name = "postgres" }`,
 		gotQuery,
 	)
 	assert.Equal(t, "1699998200", gotStart)
 	assert.Equal(t, "1700001800", gotEnd)
-	assert.Equal(t, "22", gotLimit) // --limit 20 + seed slot + truncation probe
+	assert.Equal(t, "21", gotLimit) // --limit 20 + truncation probe
 
 	var result tempo.BaselineResult
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
+	assert.Equal(t, seedID, result.SeedTraceID)
 	assert.True(t, result.SeedPartial)
 	require.Len(t, result.Candidates, 20)
 	assert.Equal(t, "candidate-01", result.Candidates[0].TraceID)
@@ -199,7 +200,7 @@ current-context: default
 	assert.True(t, result.ListMeta.Truncated)
 	assert.Equal(t, 20, result.ListMeta.Returned)
 	assert.Contains(t, result.ListMeta.Continue, "--limit 40")
-	assert.Contains(t, stderr.String(), `warn: seed trace "seed-id" is partial; baseline retrieval uses only the spans returned by Tempo`)
+	assert.Contains(t, stderr.String(), fmt.Sprintf(`warn: seed trace %q is partial; baseline retrieval uses only the spans returned by Tempo`, seedID))
 	assert.Contains(t, stderr.String(), "showing first 20; more results are available")
 }
 
@@ -402,34 +403,34 @@ func TestFoldTimeRange(t *testing.T) {
 }
 
 func TestBuildBaselineQuery(t *testing.T) {
-	q := buildBaselineQuery("checkout", "POST /checkout", nil, nil)
+	q := buildBaselineQuery("00000000000000000000000000000001", "checkout", "POST /checkout", nil, nil)
 	assert.Equal(t,
-		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 }`,
+		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" && trace:id != "00000000000000000000000000000001" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 }`,
 		q,
 	)
 }
 
 func TestBuildBaselineQuery_TopologyFingerprint(t *testing.T) {
-	q := buildBaselineQuery("checkout", "POST /checkout", []string{"payments", "postgres"}, nil)
+	q := buildBaselineQuery("abc123", "checkout", "POST /checkout", []string{"payments", "postgres"}, nil)
 	assert.Equal(t,
-		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 } && { resource.service.name = "payments" } && { resource.service.name = "postgres" }`,
+		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" && trace:id != "abc123" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 } && { resource.service.name = "payments" } && { resource.service.name = "postgres" }`,
 		q,
 	)
 }
 
 func TestBuildBaselineQuery_Filters(t *testing.T) {
-	q := buildBaselineQuery("checkout", "POST /checkout", []string{"postgres"}, []string{
+	q := buildBaselineQuery("abc123", "checkout", "POST /checkout", []string{"postgres"}, []string{
 		`{ span.tenantID = "tenant-a" }`,
 		`{ resource.k8s.cluster.name = "prod" }`,
 	})
 	assert.Equal(t,
-		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 } && ({ span.tenantID = "tenant-a" }) && ({ resource.k8s.cluster.name = "prod" }) && { resource.service.name = "postgres" }`,
+		`{ trace:rootService = "checkout" && trace:rootName = "POST /checkout" && trace:id != "abc123" } && { name = "POST /checkout" && span:status != error && nestedSetParent = -1 } && ({ span.tenantID = "tenant-a" }) && ({ resource.k8s.cluster.name = "prod" }) && { resource.service.name = "postgres" }`,
 		q,
 	)
 }
 
 func TestBuildBaselineQuery_QuotesSpecialChars(t *testing.T) {
-	q := buildBaselineQuery("svc\"x", "op\\y", []string{"weird\"svc"}, nil)
+	q := buildBaselineQuery("abc123", "svc\"x", "op\\y", []string{"weird\"svc"}, nil)
 	// strconv.Quote escapes embedded quotes/backslashes so the TraceQL stays valid.
 	assert.Contains(t, q, `trace:rootService = "svc\"x"`)
 	assert.Contains(t, q, `name = "op\\y"`)
@@ -450,23 +451,6 @@ func TestDownstreamServices(t *testing.T) {
 	assert.Equal(t, []string{"postgres", "payments"}, downstreamServices(seed, "checkout", 2))
 	// Single-service trace → no downstream.
 	assert.Empty(t, downstreamServices(map[string]int{"checkout": 4}, "checkout", 3))
-}
-
-func TestExcludeTrace(t *testing.T) {
-	resp := &tempo.SearchResponse{Traces: []tempo.SearchTrace{
-		{TraceID: "seed"},
-		{TraceID: "cand1"},
-		{TraceID: "cand2"},
-	}}
-	out := excludeTrace(resp, "seed")
-	require.Len(t, out.Traces, 2)
-	for _, tr := range out.Traces {
-		assert.NotEqual(t, "seed", tr.TraceID)
-	}
-}
-
-func TestExcludeTrace_Nil(t *testing.T) {
-	assert.Nil(t, excludeTrace(nil, "seed"))
 }
 
 func TestLimitTraces(t *testing.T) {

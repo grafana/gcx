@@ -177,13 +177,12 @@ change.`,
 				return err
 			}
 
-			// The seed can match its own retrieval query. Fetch one slot for it
-			// plus one spare candidate so truncation remains detectable after the
-			// seed is excluded.
-			fetchLimit := opts.Limit + 2
+			// The query excludes the seed server-side, so only one extra result is
+			// needed to detect truncation.
+			fetchLimit := opts.Limit + 1
 			downstream := downstreamServices(profile.ServiceSpans, profile.RootService, topDownstreamServices)
 			req := tempo.SearchRequest{
-				Query: buildBaselineQuery(profile.RootService, profile.RootOperation, downstream, opts.Filters),
+				Query: buildBaselineQuery(seedID, profile.RootService, profile.RootOperation, downstream, opts.Filters),
 				Start: start,
 				End:   end,
 				Limit: fetchLimit,
@@ -194,7 +193,6 @@ change.`,
 				return fmt.Errorf("baseline candidate search failed: %w", err)
 			}
 
-			resp = excludeTrace(resp, seedID)
 			serverHasMore := resp != nil && len(resp.Traces) > opts.Limit
 			resp = limitTraces(resp, opts.Limit)
 			returned := 0
@@ -247,16 +245,15 @@ func (opts *baselineOpts) resolveWindow(profile seedProfile, now time.Time) (tim
 	return start, end, nil
 }
 
-// buildBaselineQuery constructs the TraceQL retrieval query per the design:
-// same root identity, the operation span constrained to a successful
-// (non-error) status, optional user-supplied candidate filters, and a topology
-// fingerprint pinning the seed's top downstream services so candidates stay on
-// the same execution path. Whole-trace health is not filtered here —
-// 'gcx traces diff' surfaces downstream errors.
-func buildBaselineQuery(service, operation string, downstream, filters []string) string {
+// buildBaselineQuery finds same-operation candidates whose root operation
+// succeeded and whose path includes the seed's busiest downstream services.
+// Excluding the seed with trace:id delegates padded/unpadded ID equivalence to
+// Tempo instead of coupling gcx to response formatting. Downstream errors stay
+// eligible so 'gcx traces diff' can surface them.
+func buildBaselineQuery(seedID, service, operation string, downstream, filters []string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "{ trace:rootService = %s && trace:rootName = %s } && { name = %s && span:status != error && nestedSetParent = -1 }",
-		strconv.Quote(service), strconv.Quote(operation), strconv.Quote(operation))
+	fmt.Fprintf(&b, "{ trace:rootService = %s && trace:rootName = %s && trace:id != %s } && { name = %s && span:status != error && nestedSetParent = -1 }",
+		strconv.Quote(service), strconv.Quote(operation), strconv.Quote(seedID), strconv.Quote(operation))
 	for _, filter := range filters {
 		fmt.Fprintf(&b, " && (%s)", strings.TrimSpace(filter))
 	}
@@ -333,21 +330,6 @@ func limitTraces(resp *tempo.SearchResponse, n int) *tempo.SearchResponse {
 		return resp
 	}
 	return &tempo.SearchResponse{Traces: resp.Traces[:n]}
-}
-
-// excludeTrace returns a copy of resp without the seed trace.
-func excludeTrace(resp *tempo.SearchResponse, seedID string) *tempo.SearchResponse {
-	if resp == nil {
-		return resp
-	}
-	filtered := make([]tempo.SearchTrace, 0, len(resp.Traces))
-	for _, t := range resp.Traces {
-		if strings.EqualFold(t.TraceID, seedID) {
-			continue
-		}
-		filtered = append(filtered, t)
-	}
-	return &tempo.SearchResponse{Traces: filtered}
 }
 
 // ─── seed trace parsing (OTLP-shaped resourceSpans) ─────────────────────────
