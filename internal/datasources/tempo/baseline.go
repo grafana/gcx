@@ -219,7 +219,7 @@ change.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   "gcx traces baseline -d UID <trace-id> -o json",
+		agent.AnnotationLLMHint:   "gcx datasources tempo baseline -d UID <trace-id> -o json",
 		agent.AnnotationStability: agent.StabilityExperimental,
 	}
 
