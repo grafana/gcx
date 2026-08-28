@@ -18,6 +18,11 @@ const (
 	// clamp higher values. Page at that size and continue while a page is
 	// full so a long session is not cut off at Explore's old 2000-row cap.
 	lokiEventsPageSize = 1000
+
+	lokiKindEvent       = "event"
+	lokiKindException   = "exception"
+	lokiKindLog         = "log"
+	lokiKindMeasurement = "measurement"
 )
 
 // Same clause the session-detail journey emits for mobile apps, on the
@@ -352,15 +357,19 @@ func lokiReplayStartQuery(p sessionQueryParams) string {
 	)
 }
 
-func lokiEventsQuery(p sessionQueryParams) string {
+// lokiSessionEventKinds is the Pinot journey split: events, exceptions, logs,
+// measurements as separate indexed Loki streams.
+var lokiSessionEventKinds = []string{lokiKindEvent, lokiKindException, lokiKindLog, lokiKindMeasurement}
+
+func lokiEventsQueryForKind(p sessionQueryParams, kind string) string {
 	app := escapeLogQLString(p.AppID)
 	session := escapeLogQLString(p.SessionID)
 	q := fmt.Sprintf(
-		`{app_id="%s"} |= "session_id=%s" !~ "performanceEntry|faro.performanceEntry|faro.performance.resource" | logfmt | session_id="%s"`,
-		app, session, session,
+		`{app_id="%s", kind="%s"} |= "session_id=%s" !~ "performanceEntry|faro.performanceEntry|faro.performance.resource" | logfmt`,
+		app, kind, session,
 	)
-	if p.mobile() {
-		q += ` | (kind!="measurement" or (type!="app_memory" and type!="app_cpu_usage"))`
+	if kind == lokiKindMeasurement && p.mobile() {
+		q += ` | type!="app_memory" | type!="app_cpu_usage"`
 	}
 	return q
 }
