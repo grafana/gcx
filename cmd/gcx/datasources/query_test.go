@@ -282,6 +282,15 @@ func TestGenericQueryCloudWatchShortCircuit(t *testing.T) {
 				return []string{"query", "uid", "ignored-expr", "--config", c}
 			},
 		},
+		{
+			// The redirect must also beat ParseTimes, not only ResolveExpr:
+			// hoisting the time parsing above the redirect lookup would turn
+			// this into "invalid --step duration".
+			name: "unparseable --step still returns structured-subcommand error",
+			args: func(c string) []string {
+				return []string{"query", "uid", "expr", "--step", "nonsense", "--config", c}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -294,6 +303,47 @@ func TestGenericQueryCloudWatchShortCircuit(t *testing.T) {
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "CloudWatch queries are structured")
 			assert.Contains(t, err.Error(), "gcx datasources cloudwatch query")
+			assert.NotContains(t, err.Error(), "expression is required")
+		})
+	}
+}
+
+// Pins the RunE order for the cloudmonitoring redirect too: GetDatasourceType
+// (which normalizes the raw "stackdriver" plugin ID to "cloudmonitoring")
+// must run before ResolveExpr so the redirect is reachable for both an
+// argument-less call and a call with a stray expression.
+func TestGenericQueryCloudMonitoringShortCircuit(t *testing.T) {
+	tests := []struct {
+		name string
+		args func(configFile string) []string
+	}{
+		{
+			name: "no expr returns structured-subcommand error, not 'expression is required'",
+			args: func(c string) []string {
+				return []string{"query", "uid", "--config", c}
+			},
+		},
+		{
+			name: "stray expr returns structured-subcommand error",
+			args: func(c string) []string {
+				return []string{"query", "uid", "ignored-expr", "--config", c}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// The datasource API reports the raw plugin ID; NormalizeKind is
+			// what maps "stackdriver" to "cloudmonitoring" before the
+			// redirect lookup.
+			server := newDatasourceTypeOnlyServer(t, "stackdriver")
+			defer server.Close()
+			configFile := newConfigFileForServer(t, server.URL)
+
+			err := executeQueryCommand(t, datasources.QueryCmd(), tt.args(configFile))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "Google Cloud Monitoring queries are structured")
+			assert.Contains(t, err.Error(), "gcx datasources cloudmonitoring query")
 			assert.NotContains(t, err.Error(), "expression is required")
 		})
 	}

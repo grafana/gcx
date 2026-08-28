@@ -115,6 +115,7 @@ func TestConsistency_OnlyKnownAnnotationKeys(t *testing.T) {
 		agent.AnnotationRequiredAction:     true,
 		agent.AnnotationSkill:              true,
 		agent.AnnotationAvailability:       true,
+		agent.AnnotationStability:          true,
 		cobra.BashCompOneRequiredFlag:      true,
 		cobra.BashCompCustom:               true,
 		cobra.BashCompFilenameExt:          true,

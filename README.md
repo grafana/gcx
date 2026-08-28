@@ -394,7 +394,7 @@ The agentic workflow above is one example. gcx supports a wide range of workflow
 |---------|---------------|
 | **Grafana Cloud** | **Full support.** Everything in this README, including Cloud-only products (SLO, Synthetic Monitoring, IRM, k6, Fleet, Adaptive Telemetry, Assistant). |
 | **Grafana 13+** (OSS / Enterprise) | **Full support** of self-hosted features. All app-platform API groups gcx relies on are enabled by default. |
-| **Grafana 12.x** (OSS / Enterprise) | **Most features supported.** Features built on app-platform API groups that are not yet enabled by default in 12 need an explicit feature toggle — see ‡ below for the known case. |
+| **Grafana 12.x** (OSS / Enterprise) | **Not actively supported.** Most features will still work, but we will only release patches with security updates. Features built on app-platform API groups that are not yet enabled by default in 12 need an explicit feature toggle — see ‡ below for the known case. |
 | **Grafana < 12** | **Unsupported.** gcx detects the server version and exits with code 6 (version incompatible). |
 
 Grafana is progressively migrating its APIs to app-platform (Kubernetes-style)
@@ -403,6 +403,9 @@ When a command needs an API group your stack does not serve, upgrade or enable
 the corresponding feature toggle. Per-command declaration of these
 requirements (min version, feature toggles) is tracked in
 [#989](https://github.com/grafana/gcx/issues/989).
+
+**Version support policy:** gcx supports the current Grafana major version (Currently 13.x),
+plus the previous major for 3 months after the new one ships. This will be reflected in the compatibility matrix above.
 
 ### Feature availability by deployment
 

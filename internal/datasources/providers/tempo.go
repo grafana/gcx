@@ -14,5 +14,6 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 		tempo.GetCmd,
 		tempo.LabelsCmd,
 		tempo.MetricsCmd,
+		tempo.DiffCmd,
 	))
 }

@@ -11,7 +11,7 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 ### Options
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --context string              Name of the context to use (overrides current-context in config)
   -h, --help                        help for gcx
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
@@ -34,6 +34,7 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx config](gcx_config.md)	 - View or manipulate configuration settings
 * [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx dbo11y](gcx_dbo11y.md)	 - Inspect Grafana Database Observability instances and query performance
 * [gcx dev](gcx_dev.md)	 - Manage Grafana resources as code
 * [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management pipelines and collectors
 * [gcx frontend](gcx_frontend.md)	 - Manage Grafana Frontend Observability resources

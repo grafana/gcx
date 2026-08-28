@@ -42,7 +42,7 @@ func TestClient_List(t *testing.T) {
 						"id":   42,
 						"name": "my-web-app",
 						"extraLogLabels": []map[string]string{
-							{"key": "team", "value": "frontend"},
+							{"label": "team", "value": "frontend"},
 						},
 					},
 					{
@@ -164,10 +164,11 @@ func TestClient_Create(t *testing.T) {
 			// GET for list (re-fetch after create)
 			writeJSON(w, []map[string]any{
 				{
-					"id":                 100,
-					"name":               "new-app",
-					"appKey":             "abc-key",
-					"collectEndpointURL": "https://collect.example.com",
+					"id":                    100,
+					"name":                  "new-app",
+					"appKey":                "abc-key",
+					"collectEndpointURL":    "https://collect.example.com",
+					"otlpIngestEndpointURL": "https://collect.example.com/otlp",
 				},
 			})
 		}))
@@ -200,11 +201,12 @@ func TestClient_Create(t *testing.T) {
 		assert.Equal(t, "100", result.ID)
 		assert.Equal(t, "abc-key", result.AppKey)
 		assert.Equal(t, "https://collect.example.com", result.CollectEndpointURL)
+		assert.Equal(t, "https://collect.example.com/otlp", result.OTLPIngestEndpointURL)
 	})
 }
 
 func TestClient_Update(t *testing.T) {
-	t.Run("strips Settings and includes ID in body", func(t *testing.T) {
+	t.Run("strips Settings, includes ID, and names labels correctly in body", func(t *testing.T) {
 		var capturedBody map[string]any
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodPut, r.Method)
@@ -239,6 +241,12 @@ func TestClient_Update(t *testing.T) {
 		assert.Nil(t, capturedBody["settings"], "settings should be stripped from update request")
 		// ID should be present in body.
 		assert.InDelta(t, float64(42), capturedBody["id"], 0.01, "id should be in update request body")
+		// The map key must reach the wire as "label"; "key" makes the server
+		// store an empty label name and Loki then drops the app's writes.
+		assert.Equal(t,
+			[]any{map[string]any{"label": "team", "value": "frontend"}},
+			capturedBody["extraLogLabels"],
+			"extraLogLabels must serialize the map key into the label field")
 		assert.Equal(t, "42", result.ID)
 	})
 }

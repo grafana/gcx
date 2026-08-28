@@ -12,12 +12,13 @@ gcx/
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── datasources/      # 'datasources' subcommand (list, get, query)
-│       │   └── query/        # Auto-detecting query command (GenericCmd only)
+│       │                     #   query.go + query_routes.go: auto-detecting query and its per-kind routing tables
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
 │       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, check, explain, list-explanations, clusters, services)
 │       │   ├── check/        #   otel-checker wrapper: local OTel setup validation
+│       │   │   └── fixplan/   #     --fix-plan orchestrator: two disjoint modes — local (deterministic doc aggregation) or assistant (Grafana Assistant, requires Cloud) — plus the shared prompt builder
 │       │   ├── clusters/     #   cluster-level subcommands (list, get, configure, remove, wait, apps subtree)
 │       │   ├── explain/      #   otel-checker doc registry lookup — hosts both `explain <id>` and `list-explanations`
 │       │   ├── services/     #   workload-level subcommands (list, get, include, exclude, clear)
@@ -40,7 +41,7 @@ gcx/
 │   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and instrumentation provider)
 │   ├── config/               # Config loading, context management, auth types (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
 │   │   └── testdata/         # YAML fixtures for config unit tests
-│   ├── credentials/          # OS-keychain backend (zalando/go-keyring) for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
+│   ├── credentials/          # OS-keychain backend for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
 │   ├── format/               # JSON/YAML codec, format auto-detection
 │   ├── output/               # Output codec registry (json, yaml, text, wide), field selection, user-facing messages
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
@@ -63,8 +64,10 @@ gcx/
 │   │   ├── appo11y/          # App Observability provider (singleton config resources)
 │   │   │   ├── overrides/    # MetricsGeneratorConfig with ETag concurrency
 │   │   │   └── settings/     # PluginSettings
+│   │   ├── dbo11y/           # Database Observability provider (query/discovery views, no CRUD resources)
+│   │   │   └── instances/    # Instance inventory + health/query-performance snapshot from postgres_exporter + pg_stat_statements
 │   │   ├── alert/            # Alert provider (rules and groups)
-│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/)
+│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/); exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
 │   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint
@@ -90,24 +93,39 @@ gcx/
 │   ├── docs/                 # Canonical Grafana documentation URL registry (markdown links surfaced via DetailedError.DocsLink and agent llm_hints)
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
+│   │   ├── athena/           # Athena datasource commands (query, list-catalogs, list-databases, list-tables, describe-table, explore)
+│   │   ├── azuremonitor/     # Azure Monitor CLI commands (query, logs, resource-graph, list-subscriptions, list-resource-groups, list-resources, list-metrics)
+│   │   ├── bigquery/         # BigQuery datasource commands (query, list-datasets, list-tables, describe-table, explore)
 │   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
+│   │   ├── cloudmonitoring/  # Google Cloud Monitoring CLI commands (query, list-projects, list-metrics)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
+│   │   ├── elasticsearch/    # Elasticsearch datasource commands (query [--mode documents|logs], metrics, list-indices, list-fields)
+│   │   ├── mysql/            # MySQL datasource commands (query, list-tables, describe-table)
+│   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
 │   │   ├── dataframe/        # Shared Grafana data frame wire types for unified datasource query API responses
 │   │   ├── grafanaquery/     # Shared POST transport for /apis/query.grafana.app/.../query with /api/ds/query fallback
+│   │   ├── azuremonitor/     # Azure Monitor HTTP query client (metric queries, KQL logs + resource graph, ARM discovery via datasource resource proxy)
+│   │   ├── cloudmonitoring/  # Google Cloud Monitoring HTTP query client (time-series list queries, project/metric discovery)
 │   │   ├── cloudwatch/       # CloudWatch HTTP client (metric queries, resource listing)
+│   │   ├── elasticsearch/    # Elasticsearch HTTP query client (Lucene search, logs, aggregations, mapping discovery)
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   ├── influxdb/         # InfluxDB HTTP query client
 │   │   ├── infinity/         # Infinity HTTP query client
 │   │   ├── loki/             # Loki HTTP client (log + metric queries)
-│   │   └── clickhouse/       # ClickHouse HTTP client
+│   │   ├── athena/           # Athena SQL query client
+│   │   ├── bigquery/         # BigQuery SQL query client
+│   │   ├── clickhouse/       # ClickHouse HTTP client
+│   │   ├── mysql/            # MySQL HTTP query client (raw SQL via unified query API)
+│   │   └── postgres/         # PostgreSQL HTTP query client (raw SQL via unified query API)
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
 │   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
-│   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, flat-JSON HTTP export)
+│   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, volume buckets, flat-JSON HTTP export)
+│   │   └── capture/          # Process-wide invocation facts written mid-run, read once at exit by the usage-event builder (holds no wire vocabulary, so writing a signal does not pull in the event model or HTTP exporter)
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer
@@ -322,7 +340,7 @@ tree (e.g. fully offline work); it is never required.
 | Concurrency | `golang.org/x/sync` | `errgroup` for bounded parallel operations |
 | YAML / JSON | `goccy/go-yaml`, `go-openapi/strfmt` | YAML codec, OpenAPI format types |
 | File watching | `fsnotify/fsnotify` | Live reload file watcher |
-| Terminal UI | `NimbleMarkets/ntcharts`, `charmbracelet/lipgloss` | Terminal chart rendering (bar charts, line graphs) |
+| Terminal UI | `NimbleMarkets/ntcharts/v2`, `charm.land/lipgloss/v2` | Terminal chart rendering (bar charts, line graphs) |
 | Terminal detection | `golang.org/x/term` | Terminal size detection for graph output |
 | Testing | `stretchr/testify` | Assertions in unit tests |
 | Semver | `Masterminds/semver/v3` | Version parsing/comparison |

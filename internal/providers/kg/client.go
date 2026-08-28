@@ -49,12 +49,20 @@ const (
 	suppressionByNameFmt     = suppressionPath + "/%s"
 	suppressionsPath         = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
 	suppressionsValidatePath = suppressionsPath + "-validate"
-	entityLookupPath         = pluginResourcePath + "/asserts/api-server/v1/entity"
-	v2ConfigPath             = pluginResourcePath + "/asserts/api-server/v2/config"
-	v2LogConfigPath          = v2ConfigPath + "/log"
-	v2TraceConfigPath        = v2ConfigPath + "/trace"
-	v2ProfileConfigPath      = v2ConfigPath + "/profile"
-	v2RelabelRulesPath       = v2ConfigPath + "/relabel-rules"
+	// Alert notification configs (AlertConfigController). Structural twin of the
+	// disabled-alert (suppression) endpoints, but a POST-based upsert and with a
+	// richer DTO. Writes and single deletes use the singular /alert path; reads
+	// use the plural /alerts collection, with optional per-category suffixes.
+	alertConfigPath         = pluginResourcePath + "/asserts/api-server/v1/config/alert"
+	alertConfigByNameFmt    = alertConfigPath + "/%s"
+	alertConfigsPath        = pluginResourcePath + "/asserts/api-server/v1/config/alerts"
+	alertConfigsCategoryFmt = alertConfigsPath + "/%s"
+	entityLookupPath        = pluginResourcePath + "/asserts/api-server/v1/entity"
+	v2ConfigPath            = pluginResourcePath + "/asserts/api-server/v2/config"
+	v2LogConfigPath         = v2ConfigPath + "/log"
+	v2TraceConfigPath       = v2ConfigPath + "/trace"
+	v2ProfileConfigPath     = v2ConfigPath + "/profile"
+	v2RelabelRulesPath      = v2ConfigPath + "/relabel-rules"
 
 	// KG entity quality reports, proxied through the asserts plugin.
 	qualityBasePath          = pluginResourcePath + "/asserts/kg-quality/v1/entities"
@@ -443,6 +451,106 @@ func (c *Client) GetSuppressions(ctx context.Context) (*Suppressions, error) {
 		return nil, err
 	}
 	return &result, nil
+}
+
+// NotificationCategory scopes ListNotifications to a single alert-config
+// category. An empty value lists all categories.
+type NotificationCategory string
+
+// Known alert notification config categories.
+const (
+	NotificationCategoryRequest  NotificationCategory = "request"
+	NotificationCategoryResource NotificationCategory = "resource"
+	NotificationCategoryHealth   NotificationCategory = "health"
+	NotificationCategorySLO      NotificationCategory = "slo"
+)
+
+// IsValid reports whether c is one of the known notification categories.
+func (c NotificationCategory) IsValid() bool {
+	switch c {
+	case NotificationCategoryRequest, NotificationCategoryResource, NotificationCategoryHealth, NotificationCategorySLO:
+		return true
+	}
+	return false
+}
+
+// AlertConfig represents a single alert notification configuration entry
+// (AlertConfigDto). Distinct from Suppression (a disabled-alert config): this
+// governs how a matched alert notifies — added labels, annotations, the "for"
+// duration, and the silenced flag — rather than whether it is suppressed.
+type AlertConfig struct {
+	Name        string            `json:"name" yaml:"name"`
+	MatchLabels map[string]string `json:"matchLabels,omitempty" yaml:"matchLabels,omitempty"`
+	AlertLabels map[string]string `json:"alertLabels,omitempty" yaml:"alertLabels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+	For         string            `json:"for,omitempty" yaml:"for,omitempty"`
+	// Silenced is intentionally NOT omitempty: omitempty drops a false bool, which
+	// would (a) hide the flag on read in exactly the un-silenced state where its
+	// absence is ambiguous, and (b) strip silenced:false on write, making it
+	// impossible to un-silence a config through an upsert. Always serialize it.
+	Silenced  bool   `json:"silenced" yaml:"silenced"`
+	ManagedBy string `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
+}
+
+// AlertConfigs is the batch payload shape returned by GET /v1/config/alerts
+// (AlertConfigsDto) and accepted by the batch POST.
+type AlertConfigs struct {
+	AlertConfigs []AlertConfig `json:"alertConfigs" yaml:"alertConfigs"`
+}
+
+// ListNotifications retrieves alert notification configs for the tenant,
+// optionally scoped to a single category (request/resource/health/slo). An
+// empty category lists all configs.
+func (c *Client) ListNotifications(ctx context.Context, category NotificationCategory) (*AlertConfigs, error) {
+	path := alertConfigsPath
+	if category != "" {
+		path = fmt.Sprintf(alertConfigsCategoryFmt, url.PathEscape(string(category)))
+	}
+	var result AlertConfigs
+	if err := c.getJSON(ctx, path, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// GetNotification returns the alert notification config with the given name. The
+// backend exposes no by-name GET, so this fetches the full list and filters
+// client-side, returning a not-found error when no config matches.
+func (c *Client) GetNotification(ctx context.Context, name string) (*AlertConfig, error) {
+	all, err := c.ListNotifications(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	for i := range all.AlertConfigs {
+		if all.AlertConfigs[i].Name == name {
+			return &all.AlertConfigs[i], nil
+		}
+	}
+	return nil, &APIError{StatusCode: http.StatusNotFound, message: fmt.Sprintf("notification config %q not found", name)}
+}
+
+// UpsertNotification creates or updates a single alert notification config
+// without affecting others, via the single-item POST endpoint.
+func (c *Client) UpsertNotification(ctx context.Context, cfg AlertConfig) error {
+	return c.postJSON(ctx, alertConfigPath, cfg, nil)
+}
+
+// DeleteNotification deletes a single alert notification config by name.
+func (c *Client) DeleteNotification(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+		c.host+fmt.Sprintf(alertConfigByNameFmt, url.PathEscape(name)), nil)
+	if err != nil {
+		return fmt.Errorf("kg: create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return readError(resp)
+	}
+	return nil
 }
 
 // ConfigFieldError is a single field-level validation failure reported by a

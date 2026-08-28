@@ -148,7 +148,7 @@ description = "Generate configuration reference"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-rm -rf ./docs/reference/configuration
+rm -f ./docs/reference/configuration/index.md
 CGO_ENABLED=0 go run scripts/config-reference/*.go "./docs/reference/configuration"
 """
 

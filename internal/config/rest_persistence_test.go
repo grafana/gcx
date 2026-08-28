@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -494,36 +495,42 @@ current-context: default
 	assert.Equal(t, "Bearer gat_relogin", protectedAuthorization.Load())
 }
 
-func TestWireTokenPersistence_KeychainUnavailableRetainsPendingGeneration(t *testing.T) {
-	store := withFakeStore(t)
-	var refreshCalls, protectedCalls atomic.Int32
-	var protectedAuthorization atomic.Value
-	protectedAuthorization.Store("")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/cli/v1/auth/refresh" {
-			refreshCalls.Add(1)
-			// Rotation has happened, but the keychain becomes unavailable before
-			// the persistence callback can verify the old generation.
-			store.setGetErr(credentials.ErrUnavailable)
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"data": map[string]any{
-					"token":              "gat_pending",
-					"expires_at":         "2099-01-01T00:00:00Z",
-					"refresh_token":      "gar_pending",
-					"refresh_expires_at": "2099-02-01T00:00:00Z",
-				},
-			})
-			return
-		}
-		protectedCalls.Add(1)
-		protectedAuthorization.Store(r.Header.Get("Authorization"))
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
+func TestWireTokenPersistence_KeychainReadFailureRetainsPendingGeneration(t *testing.T) {
+	tests := map[string]error{
+		"unavailable": credentials.ErrUnavailable,
+		"locked":      fmt.Errorf("%w: exit status 154", credentials.ErrLocked),
+	}
+	for name, readErr := range tests {
+		t.Run(name, func(t *testing.T) {
+			store := withFakeStore(t)
+			var refreshCalls, protectedCalls atomic.Int32
+			var protectedAuthorization atomic.Value
+			protectedAuthorization.Store("")
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/cli/v1/auth/refresh" {
+					refreshCalls.Add(1)
+					// Rotation has happened, but the keychain read fails before
+					// the persistence callback can verify the old generation.
+					store.setGetErr(readErr)
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"data": map[string]any{
+							"token":              "gat_pending",
+							"expires_at":         "2099-01-01T00:00:00Z",
+							"refresh_token":      "gar_pending",
+							"refresh_expires_at": "2099-02-01T00:00:00Z",
+						},
+					})
+					return
+				}
+				protectedCalls.Add(1)
+				protectedAuthorization.Store(r.Header.Get("Authorization"))
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
 
-	dir := t.TempDir()
-	file := filepath.Join(dir, "config.yaml")
-	writeTestConfigFile(t, file, `
+			dir := t.TempDir()
+			file := filepath.Join(dir, "config.yaml")
+			writeTestConfigFile(t, file, `
 version: 1
 stacks:
   default:
@@ -541,48 +548,50 @@ contexts:
 current-context: default
 `)
 
-	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(file))
-	require.NoError(t, err)
-	require.Equal(t, "gat_old", cfg.Contexts["default"].Grafana.OAuthToken)
-	require.Equal(t, "gar_old", cfg.Contexts["default"].Grafana.OAuthRefreshToken)
-	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
-	require.NoError(t, err)
-	restCfg.WireTokenPersistence(
-		t.Context(),
-		config.ExplicitConfigFile(file),
-		"default",
-		"default",
-		[]config.ConfigSource{{Path: file, Type: "explicit"}},
-	)
-	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
-	request := func() error {
-		req, reqErr := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/protected", nil)
-		if reqErr != nil {
-			return reqErr
-		}
-		resp, reqErr := client.Do(req)
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
-		return reqErr
+			cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(file))
+			require.NoError(t, err)
+			require.Equal(t, "gat_old", cfg.Contexts["default"].Grafana.OAuthToken)
+			require.Equal(t, "gar_old", cfg.Contexts["default"].Grafana.OAuthRefreshToken)
+			restCfg, err := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
+			require.NoError(t, err)
+			restCfg.WireTokenPersistence(
+				t.Context(),
+				config.ExplicitConfigFile(file),
+				"default",
+				"default",
+				[]config.ConfigSource{{Path: file, Type: "explicit"}},
+			)
+			client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+			request := func() error {
+				req, reqErr := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/protected", nil)
+				if reqErr != nil {
+					return reqErr
+				}
+				resp, reqErr := client.Do(req)
+				if resp != nil {
+					_ = resp.Body.Close()
+				}
+				return reqErr
+			}
+
+			err = request()
+			require.ErrorIs(t, err, readErr)
+			require.NotErrorIs(t, err, auth.ErrTokenGenerationChanged)
+			assert.Equal(t, int32(1), refreshCalls.Load())
+			assert.Zero(t, protectedCalls.Load(), "unpersisted tokens must not reach the protected API")
+
+			store.setGetErr(nil)
+			require.NoError(t, request())
+			assert.Equal(t, int32(1), refreshCalls.Load(), "pending persistence retry must not rotate again")
+			assert.Equal(t, int32(1), protectedCalls.Load())
+			assert.Equal(t, "Bearer gat_pending", protectedAuthorization.Load())
+
+			reloaded, err := config.Load(t.Context(), config.ExplicitConfigFile(file))
+			require.NoError(t, err)
+			assert.Equal(t, "gat_pending", reloaded.Contexts["default"].Grafana.OAuthToken)
+			assert.Equal(t, "gar_pending", reloaded.Contexts["default"].Grafana.OAuthRefreshToken)
+		})
 	}
-
-	err = request()
-	require.ErrorIs(t, err, credentials.ErrUnavailable)
-	require.NotErrorIs(t, err, auth.ErrTokenGenerationChanged)
-	assert.Equal(t, int32(1), refreshCalls.Load())
-	assert.Zero(t, protectedCalls.Load(), "unpersisted tokens must not reach the protected API")
-
-	store.setGetErr(nil)
-	require.NoError(t, request())
-	assert.Equal(t, int32(1), refreshCalls.Load(), "pending persistence retry must not rotate again")
-	assert.Equal(t, int32(1), protectedCalls.Load())
-	assert.Equal(t, "Bearer gat_pending", protectedAuthorization.Load())
-
-	reloaded, err := config.Load(t.Context(), config.ExplicitConfigFile(file))
-	require.NoError(t, err)
-	assert.Equal(t, "gat_pending", reloaded.Contexts["default"].Grafana.OAuthToken)
-	assert.Equal(t, "gar_pending", reloaded.Contexts["default"].Grafana.OAuthRefreshToken)
 }
 
 func TestWireTokenPersistence_KeychainEntryMissingRetainsPendingGeneration(t *testing.T) {

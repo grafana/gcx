@@ -22,7 +22,7 @@ made through gcx. See https://grafana.com/docs/grafana-cloud/machine-learning/as
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -34,7 +34,6 @@ made through gcx. See https://grafana.com/docs/grafana-cloud/machine-learning/as
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx assistant conversation](gcx_assistant_conversation.md)	 - Read Grafana Assistant conversations
-* [gcx assistant dashboard](gcx_assistant_dashboard.md)	 - Build a dashboard using the Grafana dashboarding agent
 * [gcx assistant investigations](gcx_assistant_investigations.md)	 - Manage Grafana Assistant investigations.
 * [gcx assistant mcp-servers](gcx_assistant_mcp-servers.md)	 - Manage Assistant MCP server integrations.
 * [gcx assistant prompt](gcx_assistant_prompt.md)	 - Send a single message to Grafana Assistant
