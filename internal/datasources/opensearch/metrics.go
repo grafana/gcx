@@ -37,8 +37,8 @@ func (opts *metricsOpts) Validate() error {
 	if err := opts.SharedOpts.Validate(); err != nil {
 		return err
 	}
-	if opts.GroupSize < 1 {
-		return fmt.Errorf("--group-size must be at least 1, got %d", opts.GroupSize)
+	if opts.GroupSize < 1 || opts.GroupSize > maxGroupSize {
+		return fmt.Errorf("--group-size must be between 1 and %d, got %d", maxGroupSize, opts.GroupSize)
 	}
 	return opensearch.ValidateAgg(opts.Agg, opts.Field)
 }
