@@ -46,7 +46,7 @@ gcx datasources opensearch metrics [EXPR] [flags]
       --field string        Field to aggregate (required unless --agg count)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
       --group-by string     Split series by this field's terms (use .keyword for text fields)
-      --group-size int      Max number of series when using --group-by (default 10)
+      --group-size int      Max number of series when using --group-by (1-1000) (default 10)
   -h, --help                help for metrics
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields

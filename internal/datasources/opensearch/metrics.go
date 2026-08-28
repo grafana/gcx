@@ -12,6 +12,16 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const (
+	defaultGroupSize = 10
+	// maxGroupSize keeps --group-size well under OpenSearch's default
+	// search.max_buckets (65536): past that, a terms aggregation fails with
+	// too_many_buckets_exception instead of just being expensive. Capping
+	// here also gives the truncation warning below a ceiling to name, the
+	// same way --limit's maxLimit does for query.
+	maxGroupSize = 1000
+)
+
 type metricsOpts struct {
 	dsquery.SharedOpts
 
@@ -29,7 +39,7 @@ func (opts *metricsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Agg, "agg", "count", "Metric aggregation: count, avg, sum, min, max, or cardinality")
 	flags.StringVar(&opts.Field, "field", "", "Field to aggregate (required unless --agg count)")
 	flags.StringVar(&opts.GroupBy, "group-by", "", "Split series by this field's terms (use .keyword for text fields)")
-	flags.IntVar(&opts.GroupSize, "group-size", 10, "Max number of series when using --group-by")
+	flags.IntVar(&opts.GroupSize, "group-size", defaultGroupSize, fmt.Sprintf("Max number of series when using --group-by (%d-%d)", 1, maxGroupSize))
 	flags.StringVar(&opts.TimeField, "time-field", "", "Time field for the date histogram bucket (defaults to the datasource's configured time field if omitted)")
 }
 
@@ -112,7 +122,7 @@ open it in your browser after the query succeeds.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 			if opts.GroupBy != "" && opensearch.TruncateSeries(resp, opts.GroupSize) {
-				cmdio.Warning(cmd.ErrOrStderr(), "showing the top %d groups by count; more groups match — raise --group-size to see more", opts.GroupSize)
+				cmdio.Warning(cmd.ErrOrStderr(), "showing the top %d groups by count; more groups match — raise --group-size (max %d) to see more", opts.GroupSize, maxGroupSize)
 			}
 
 			exploreURL := MetricsExploreURL(resolved.Cfg.GrafanaURL, resolved.ExploreBase(&opts.SharedOpts), req)
