@@ -62,17 +62,17 @@ discover services and namespaces without fetching pod, instance, or custom
 labels.`,
 		Args: cobra.RangeArgs(0, 1),
 		Example: `
-  # List service and workload combinations from the last hour
-  gcx profiles series -d UID --since 1h
+	# List service and workload combinations from the last hour
+	gcx datasources pyroscope series -d UID --since 1h
 
 	# Faster discovery: request only the labels needed
-	gcx profiles series -d UID '{service_name="checkout"}' \
+	gcx datasources pyroscope series -d UID '{service_name="checkout"}' \
 		--label-name service_name --label-name namespace --label-name pod --since 7d
 
-  # Use multiple selectors and JSON output
-  gcx profiles series -d UID \
-    --match '{namespace="payments"}' --match '{namespace="checkout"}' \
-    --since 24h -o json`,
+	# Use multiple selectors and JSON output
+	gcx datasources pyroscope series -d UID \
+		--match '{namespace="payments"}' --match '{namespace="checkout"}' \
+		--since 24h -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -118,7 +118,7 @@ labels.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx profiles series -d UID --since 1h -o json",
+		agent.AnnotationLLMHint:   "gcx datasources pyroscope series -d UID --since 1h -o json",
 	}
 	opts.setup(cmd.Flags())
 	return cmd
