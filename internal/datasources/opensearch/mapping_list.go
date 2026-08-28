@@ -1,6 +1,7 @@
 package opensearch
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -34,6 +35,19 @@ type mappingListOpts struct {
 
 func (opts *mappingListOpts) Validate() error {
 	return opts.IO.Validate()
+}
+
+// fetchMappingResult calls Client.Mapping with opts.Index and shapes the
+// result per spec. Split out from newMappingListCmd's RunE so opts.Index
+// actually reaching the client call — a single pass-through with nothing
+// pinning it — can be tested directly against a fake HTTP server, without
+// needing to fake config loading and datasource resolution just to reach it.
+func fetchMappingResult(ctx context.Context, client *opensearch.Client, datasourceUID string, opts *mappingListOpts, spec mappingListSpec) (any, error) {
+	indices, fields, err := client.Mapping(ctx, datasourceUID, opts.Index)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list %s: %w", spec.errNoun, err)
+	}
+	return spec.result(indices, fields), nil
 }
 
 // newMappingListCmd builds a mapping-listing command from a spec.
@@ -72,12 +86,12 @@ func newMappingListCmd(loader *providers.ConfigLoader, spec mappingListSpec) *co
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			indices, fields, err := client.Mapping(ctx, datasourceUID, opts.Index)
+			result, err := fetchMappingResult(ctx, client, datasourceUID, opts, spec)
 			if err != nil {
-				return fmt.Errorf("failed to list %s: %w", spec.errNoun, err)
+				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), spec.result(indices, fields))
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 
