@@ -3,6 +3,7 @@ package faro //nolint:testpackage // Tests unexported opts, fetch, and command c
 import (
 	"bytes"
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -71,10 +72,11 @@ func TestSessionsGetOptsValidateOK(t *testing.T) {
 func TestSessionsGetOptsValidateTrimsInputs(t *testing.T) {
 	t.Parallel()
 	opts := sessionsGetOpts{
-		App:        "  my-app-66  ",
-		AppType:    " Mobile ",
-		Datasource: " Pinot ",
-		Save:       " /tmp/session.txt ",
+		App:           "  my-app-66  ",
+		AppType:       " Mobile ",
+		Datasource:    " Pinot ",
+		DatasourceUID: "  c-R8UWvVk  ",
+		Save:          " /tmp/session.txt ",
 		TimeRangeOpts: dsquery.TimeRangeOpts{
 			Since: "7d",
 		},
@@ -83,6 +85,7 @@ func TestSessionsGetOptsValidateTrimsInputs(t *testing.T) {
 	assert.Equal(t, "my-app-66", opts.App)
 	assert.Equal(t, appTypeMobile, opts.AppType)
 	assert.Equal(t, datasourcePinot, opts.Datasource)
+	assert.Equal(t, "c-R8UWvVk", opts.DatasourceUID)
 	assert.Equal(t, "/tmp/session.txt", opts.Save)
 	assert.Equal(t, "66", resolveAppID(opts.App))
 }
@@ -215,47 +218,69 @@ type stubLoki struct {
 
 func (s *stubLoki) Query(_ context.Context, _ string, req loki.QueryRequest) (*loki.QueryResponse, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.queries = append(s.queries, req.Query)
 	s.dirs = append(s.dirs, req.Direction)
 	s.limits = append(s.limits, req.Limit)
-	s.mu.Unlock()
 	if s.empty {
 		return &loki.QueryResponse{}, nil
 	}
-	line := "kind=event"
-	ts := "200"
+
+	isJourney := strings.Contains(req.Query, `!~ "performanceEntry`)
 	switch {
 	case strings.Contains(req.Query, "faro.session_recording.started"):
-		line = "event_name=faro.session_recording.started"
-		ts = "150"
-	case strings.Contains(req.Query, `kind="event"`):
-		line = "meta"
-		if s.metaLine != "" {
-			line = s.metaLine
-		}
-		ts = "100"
-	default:
-		n := 1
-		if s.eventCalls < len(s.eventPages) {
-			n = s.eventPages[s.eventCalls]
-		}
+		return lokiSingle("150", "event_name=faro.session_recording.started"), nil
+	case isJourney && strings.Contains(req.Query, `kind="event"`):
+		page := s.eventCalls
 		s.eventCalls++
+		n := 1
+		if page < len(s.eventPages) {
+			n = s.eventPages[page]
+		}
+		ts := strconv.FormatInt(time.Unix(9-int64(page), 0).UnixNano(), 10)
 		values := make([]loki.LogEntry, n)
 		for i := range values {
-			values[i] = loki.LogEntry{Timestamp: ts, Line: line}
+			values[i] = loki.LogEntry{Timestamp: ts, Line: "kind=event"}
 		}
 		return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{
 			Values: values,
 		}}}}, nil
+	case isJourney:
+		line := "kind=log"
+		switch {
+		case strings.Contains(req.Query, `kind="exception"`):
+			line = "kind=exception"
+		case strings.Contains(req.Query, `kind="measurement"`):
+			line = "kind=measurement"
+		}
+		return lokiSingle("200", line), nil
+	default:
+		line := "meta"
+		if s.metaLine != "" {
+			line = s.metaLine
+		}
+		return lokiSingle("100", line), nil
 	}
-	return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{
-		Values: []loki.LogEntry{{Timestamp: ts, Line: line}},
-	}}}}, nil
 }
 
-func lokiEventsQueryFrom(queries []string) string {
+func lokiSingle(ts, line string) *loki.QueryResponse {
+	return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{
+		Values: []loki.LogEntry{{Timestamp: ts, Line: line}},
+	}}}}
+}
+
+func lokiJourneyQueryFrom(queries []string) string {
 	for _, q := range queries {
-		if !strings.Contains(q, `kind="event"`) {
+		if strings.Contains(q, `!~ "performanceEntry`) && strings.Contains(q, `kind="event"`) {
+			return q
+		}
+	}
+	return ""
+}
+
+func lokiMeasurementQueryFrom(queries []string) string {
+	for _, q := range queries {
+		if strings.Contains(q, `kind="measurement"`) && strings.Contains(q, `!~ "performanceEntry`) {
 			return q
 		}
 	}
@@ -276,18 +301,25 @@ func TestFetchLokiSession(t *testing.T) {
 	assert.NotContains(t, dump, "100\tsdk_name=")
 	assert.NotContains(t, dump, "150\tevent_name=faro.session_recording.started")
 	assert.Contains(t, dump, "kind=event")
-	require.Len(t, stub.queries, 3)
+	require.Len(t, stub.queries, 6)
 	joined := queryJoined(stub.queries)
 	assert.NotContains(t, joined, "line_format")
 	assert.Contains(t, joined, "faro.session_recording.started")
 	assert.Contains(t, joined, "logfmt")
-	events := lokiEventsQueryFrom(stub.queries)
+	events := lokiJourneyQueryFrom(stub.queries)
 	require.NotEmpty(t, events)
-	assert.Contains(t, events, `| logfmt | session_id="sid"`)
+	assert.Contains(t, events, `{app_id="66", kind="event"}`)
+	assert.Contains(t, events, `| logfmt`)
+	assert.NotContains(t, events, `| logfmt | session_id=`)
 	assert.NotContains(t, events, "faro.tracing.fetch")
 	assert.NotContains(t, events, "app_memory")
-	for _, dir := range stub.dirs {
-		assert.Equal(t, "forward", dir)
+	for i, dir := range stub.dirs {
+		q := stub.queries[i]
+		if strings.Contains(q, `!~ "performanceEntry`) {
+			assert.Empty(t, dir)
+			continue
+		}
+		assert.Equal(t, lokiQueryDirectionForward, dir)
 	}
 }
 
@@ -297,8 +329,9 @@ func TestFetchLokiSessionInfersMobile(t *testing.T) {
 	p := sessionQueryParams{AppID: "96", SessionID: "sid"}
 	_, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
 	require.NoError(t, err)
-	require.Len(t, stub.queries, 3)
-	assert.Contains(t, lokiEventsQueryFrom(stub.queries), `kind!="measurement"`)
+	require.Len(t, stub.queries, 6)
+	assert.Contains(t, lokiMeasurementQueryFrom(stub.queries), `type!="app_memory"`)
+	assert.Contains(t, lokiMeasurementQueryFrom(stub.queries), `type!="app_cpu_usage"`)
 }
 
 func TestFetchLokiSessionEmpty(t *testing.T) {
@@ -310,6 +343,26 @@ func TestFetchLokiSessionEmpty(t *testing.T) {
 	assert.Contains(t, err.Error(), "no telemetry for session missing")
 }
 
+type hangLoki struct{}
+
+func (hangLoki) Query(ctx context.Context, _ string, _ loki.QueryRequest) (*loki.QueryResponse, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestFetchLokiSessionTimeoutExits(t *testing.T) {
+	orig := sessionLokiQueryTimeout
+	sessionLokiQueryTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { sessionLokiQueryTimeout = orig })
+
+	p := sessionQueryParams{AppID: "67", SessionID: "4JPV1T7Nyi"}
+	_, err := fetchLokiSession(context.Background(), hangLoki{}, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no telemetry for session 4JPV1T7Nyi")
+	assert.Contains(t, err.Error(), "timed out")
+	assert.Contains(t, err.Error(), "--datasource pinot")
+}
+
 func TestFetchLokiSessionPagesUntilComplete(t *testing.T) {
 	t.Parallel()
 	stub := &stubLoki{
@@ -319,16 +372,18 @@ func TestFetchLokiSessionPagesUntilComplete(t *testing.T) {
 	p := sessionQueryParams{AppID: "66", SessionID: "sid"}
 	got, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(10, 0))
 	require.NoError(t, err)
-	assert.Equal(t, lokiEventsPageSize+4, lokiEntryCount(got.events))
-	eventQueries := 0
+	otherKinds := 3 // exception, log, measurement each return 1 row
+	assert.Equal(t, lokiEventsPageSize+4+otherKinds, lokiEntryCount(got.events))
+	eventKindPages := 0
 	for i, q := range stub.queries {
-		if strings.Contains(q, `kind="event"`) {
+		if !strings.Contains(q, `!~ "performanceEntry`) || !strings.Contains(q, `kind="event"`) {
 			continue
 		}
-		eventQueries++
+		eventKindPages++
 		assert.Equal(t, lokiEventsPageSize, stub.limits[i])
+		assert.Empty(t, stub.dirs[i])
 	}
-	assert.Equal(t, 2, eventQueries)
+	assert.Equal(t, 2, eventKindPages)
 }
 
 func TestSessionsGetCommandArgs(t *testing.T) {
