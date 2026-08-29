@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   mysql:
-    image: mysql:9.7@sha256:c9e48b0c008f1936d4139d1c0dcd5950a9dbe57d4d40f383013cde432fa6d6aa
+    image: mysql:9.7@sha256:257388edf9c84dbc04c763625446d5f3fa6ed60d1b0873bc552c614ba0a7ab4e
     container_name: gcx-mysql
     restart: unless-stopped
     environment:
@@ -62,7 +62,7 @@ services:
       - grafana
 
   influxdb:
-    image: influxdb:1.11
+    image: influxdb:1.12@sha256:b86ceeb9b6b0f56061d9a8071e13cef02229db513377952e5e8eb8080a369138
     container_name: gcx-influxdb
     restart: unless-stopped
     ports:
@@ -78,7 +78,7 @@ services:
       - grafana
 
   postgres:
-    image: postgres:17
+    image: postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
     container_name: gcx-postgres
     restart: unless-stopped
     ports:
