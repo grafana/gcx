@@ -29,6 +29,8 @@ make_repo() {
 	git -C "$dir" init -q
 	git -C "$dir" config user.email "test@test.com"
 	git -C "$dir" config user.name "Test"
+	git -C "$dir" config commit.gpgsign false
+	git -C "$dir" config tag.gpgsign false
 	echo "# repo" >"$dir/README.md"
 	git -C "$dir" add .
 	git -C "$dir" commit -q -m "chore: initial commit"
@@ -47,11 +49,19 @@ add_tag() {
 	git -C "$dir" tag "$tag"
 }
 
+# Write the changelog entry and release notes for a version, as the release
+# skill would before tag.sh runs.
+write_release_files() {
+	local dir=$1 version=$2
+	local existing=""
+	[[ -f "$dir/CHANGELOG.md" ]] && existing=$(cat "$dir/CHANGELOG.md")
+	printf '## %s (2025-01-01)\n\n- test entry\n\n%s' "$version" "$existing" >"$dir/CHANGELOG.md"
+	printf -- '- test entry\n' >"$dir/.release-notes.md"
+}
+
 mock_tools() {
 	local dir
 	dir=$(mktemp -d)
-	printf '#!/bin/sh\necho "- mocked entry"\n' >"$dir/claude"
-	chmod +x "$dir/claude"
 	# svu mock that delegates to real svu behavior via git tags
 	cat >"$dir/svu" <<'SVUSCRIPT'
 #!/bin/sh
@@ -88,6 +98,7 @@ test_bump_patch() {
 	dir=$(make_repo)
 	add_tag "$dir" "v0.5.5"
 	add_commit "$dir" "fix: some fix"
+	write_release_files "$dir" "v0.5.6"
 	mock=$(mock_tools)
 
 	local out
@@ -105,6 +116,7 @@ test_bump_minor() {
 	dir=$(make_repo)
 	add_tag "$dir" "v0.5.5"
 	add_commit "$dir" "feat: new feature"
+	write_release_files "$dir" "v0.6.0"
 	mock=$(mock_tools)
 
 	local out
@@ -122,6 +134,7 @@ test_bump_major() {
 	dir=$(make_repo)
 	add_tag "$dir" "v0.5.5"
 	add_commit "$dir" "feat!: breaking change"
+	write_release_files "$dir" "v1.0.0"
 	mock=$(mock_tools)
 
 	local out
@@ -138,6 +151,7 @@ test_fallback_no_tags() {
 	local dir mock
 	dir=$(make_repo)
 	add_commit "$dir" "feat: first feature"
+	write_release_files "$dir" "v0.0.1"
 	mock=$(mock_tools)
 
 	local out
@@ -178,7 +192,7 @@ test_invalid_bump() {
 	rm -rf "$dir"
 }
 
-test_claude_not_installed() {
+test_svu_not_installed() {
 	local dir
 	dir=$(make_repo)
 	add_commit "$dir" "feat: something"
@@ -190,10 +204,10 @@ test_claude_not_installed() {
 
 	local rc=0 out
 	out=$(cd "$dir" && PATH="$empty_path" "$(command -v bash)" "$SCRIPT" patch 2>&1) || rc=$?
-	if [[ $rc -ne 0 ]] && echo "$out" | grep -qi "claude"; then
-		pass "claude not installed → clear error"
+	if [[ $rc -ne 0 ]] && echo "$out" | grep -qi "svu"; then
+		pass "svu not installed → clear error"
 	else
-		fail "claude not installed → clear error (rc=$rc, got: $out)"
+		fail "svu not installed → clear error (rc=$rc, got: $out)"
 	fi
 	rm -rf "$dir" "$empty_path"
 }
@@ -214,124 +228,60 @@ test_no_new_commits() {
 	rm -rf "$dir" "$mock"
 }
 
-# ── changelog tests ───────────────────────────────────────────────────────────
+# ── changelog verification tests ─────────────────────────────────────────────
 
-test_changelog_created_if_missing() {
+test_missing_changelog_entry() {
 	local dir mock
 	dir=$(make_repo)
 	add_tag "$dir" "v0.2.0"
 	add_commit "$dir" "feat: add thing"
 	mock=$(mock_tools)
 
-	(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
-
-	if [[ -f "$dir/CHANGELOG.md" ]]; then
-		pass "CHANGELOG.md created when missing"
+	local rc=0 out
+	out=$(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || rc=$?
+	if [[ $rc -ne 0 ]] && echo "$out" | grep -q "entry for v0.2.1"; then
+		pass "missing changelog entry → error"
 	else
-		fail "CHANGELOG.md created when missing"
+		fail "missing changelog entry → error (rc=$rc, got: $out)"
 	fi
 	rm -rf "$dir" "$mock"
 }
 
-test_changelog_prepended_if_exists() {
+test_stale_changelog_entry() {
 	local dir mock
 	dir=$(make_repo)
 	add_tag "$dir" "v0.2.0"
 	add_commit "$dir" "feat: new thing"
 
-	echo "## v0.2.0 (2025-01-01)" >"$dir/CHANGELOG.md"
-	echo "- old entry" >>"$dir/CHANGELOG.md"
-
+	printf '## v0.2.0 (2025-01-01)\n\n- old entry\n' >"$dir/CHANGELOG.md"
+	printf -- '- old entry\n' >"$dir/.release-notes.md"
 	mock=$(mock_tools)
 
-	(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
-
-	local first_line
-	first_line=$(head -1 "$dir/CHANGELOG.md")
-	if echo "$first_line" | grep -q "v0.2.1"; then
-		pass "CHANGELOG.md prepended (new version first)"
+	local rc=0 out
+	out=$(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || rc=$?
+	if [[ $rc -ne 0 ]] && echo "$out" | grep -q "entry for v0.2.1"; then
+		pass "stale changelog entry → error"
 	else
-		fail "CHANGELOG.md prepended (got first line: $first_line)"
+		fail "stale changelog entry → error (rc=$rc, got: $out)"
 	fi
 	rm -rf "$dir" "$mock"
 }
 
-test_changelog_header_format() {
-	local dir mock
-	dir=$(make_repo)
-	add_tag "$dir" "v1.2.3"
-	add_commit "$dir" "fix: something"
-	mock=$(mock_tools)
-
-	(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
-
-	if grep -q "## v1.2.4" "$dir/CHANGELOG.md" 2>/dev/null; then
-		pass "CHANGELOG.md header format: ## vX.Y.Z (date)"
-	else
-		fail "CHANGELOG.md header format (content: $(cat "$dir/CHANGELOG.md" 2>/dev/null || echo 'missing'))"
-	fi
-	rm -rf "$dir" "$mock"
-}
-
-# ── release notes test ───────────────────────────────────────────────────────
-
-test_release_notes_written() {
+test_missing_release_notes() {
 	local dir mock
 	dir=$(make_repo)
 	add_tag "$dir" "v0.3.0"
 	add_commit "$dir" "feat: something great"
+
+	printf '## v0.3.1 (2025-01-01)\n\n- new entry\n' >"$dir/CHANGELOG.md"
 	mock=$(mock_tools)
 
-	(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
-
-	if [[ -f "$dir/.release-notes.md" ]]; then
-		local has_bullet has_header
-		grep -q "mocked entry" "$dir/.release-notes.md" && has_bullet=1 || has_bullet=0
-		grep -q "^## " "$dir/.release-notes.md" && has_header=1 || has_header=0
-		if [[ $has_bullet -eq 1 && $has_header -eq 0 ]]; then
-			pass ".release-notes.md has bullets, no header"
-		else
-			fail ".release-notes.md content wrong (bullet=$has_bullet, header=$has_header): $(cat "$dir/.release-notes.md")"
-		fi
+	local rc=0 out
+	out=$(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || rc=$?
+	if [[ $rc -ne 0 ]] && echo "$out" | grep -q ".release-notes.md"; then
+		pass "missing .release-notes.md → error"
 	else
-		fail ".release-notes.md not created"
-	fi
-	rm -rf "$dir" "$mock"
-}
-
-# ── backfill gap test ─────────────────────────────────────────────────────────
-
-test_backfill_gap() {
-	local dir mock
-	dir=$(make_repo)
-
-	add_commit "$dir" "feat: initial feature"
-	add_tag "$dir" "v0.1.0"
-	printf '## v0.1.0 (2025-01-01)\n\n- initial feature\n' >"$dir/CHANGELOG.md"
-
-	add_commit "$dir" "feat: gap feature"
-	add_tag "$dir" "v0.2.0"
-
-	add_commit "$dir" "fix: new fix"
-	mock=$(mock_tools)
-
-	(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
-
-	local has_gap has_new
-	grep -q "## v0.2.0" "$dir/CHANGELOG.md" 2>/dev/null && has_gap=1 || has_gap=0
-	grep -q "## v0.2.1" "$dir/CHANGELOG.md" 2>/dev/null && has_new=1 || has_new=0
-
-	if [[ $has_gap -eq 1 && $has_new -eq 1 ]]; then
-		local line_gap line_new
-		line_gap=$(grep -n "## v0.2.0" "$dir/CHANGELOG.md" | head -1 | cut -d: -f1)
-		line_new=$(grep -n "## v0.2.1" "$dir/CHANGELOG.md" | head -1 | cut -d: -f1)
-		if [[ $line_new -lt $line_gap ]]; then
-			pass "backfill gap: v0.2.0 backfilled and v0.2.1 prepended in correct order"
-		else
-			fail "backfill gap: entries out of order (v0.2.1 line=$line_new, v0.2.0 line=$line_gap)"
-		fi
-	else
-		fail "backfill gap: missing entries (v0.2.0 present=$has_gap, v0.2.1 present=$has_new)"
+		fail "missing .release-notes.md → error (rc=$rc, got: $out)"
 	fi
 	rm -rf "$dir" "$mock"
 }
@@ -370,6 +320,7 @@ test_plugin_version_bumped() {
 	add_tag "$dir" "v0.5.0"
 	add_plugin_manifests "$dir" "0.5.0"
 	add_commit "$dir" "feat: new skill"
+	write_release_files "$dir" "v0.5.1"
 	mock=$(mock_tools)
 
 	(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
@@ -391,6 +342,7 @@ test_plugin_version_no_files() {
 	dir=$(make_repo)
 	add_tag "$dir" "v0.3.0"
 	add_commit "$dir" "fix: something"
+	write_release_files "$dir" "v0.3.1"
 	mock=$(mock_tools)
 
 	local out
@@ -410,17 +362,15 @@ echo
 
 test_no_bump_arg
 test_invalid_bump
-test_claude_not_installed
+test_svu_not_installed
 test_no_new_commits
 test_bump_patch
 test_bump_minor
 test_bump_major
 test_fallback_no_tags
-test_changelog_created_if_missing
-test_changelog_prepended_if_exists
-test_changelog_header_format
-test_release_notes_written
-test_backfill_gap
+test_missing_changelog_entry
+test_stale_changelog_entry
+test_missing_release_notes
 test_plugin_version_bumped
 test_plugin_version_no_files
 

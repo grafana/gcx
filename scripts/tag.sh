@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# scripts/tag.sh — bump version, generate AI changelog entry, commit, tag, push.
+# scripts/tag.sh — bump version, verify changelog entry, commit, push release branch.
+# The changelog entry is written before this runs — by the release skill
+# (.claude/skills/release/SKILL.md) or by hand.
 # Usage: bash scripts/tag.sh <major|minor|patch>
-# Set DRY_RUN=1 to skip the git commit/tag/push steps (used by tests).
+# Set DRY_RUN=1 to skip the git commit/push steps (used by tests).
 
 set -euo pipefail
 
@@ -10,7 +12,7 @@ BUMP="${1:-}"
 # ── validate args ─────────────────────────────────────────────────────────────
 
 if [[ -z "$BUMP" ]]; then
-	echo "Usage: make tag BUMP=<major|minor|patch>" >&2
+	echo "Usage: mise run tag -- <major|minor|patch>" >&2
 	exit 1
 fi
 
@@ -24,14 +26,11 @@ esac
 
 # ── check dependencies ────────────────────────────────────────────────────────
 
-for cmd in claude svu; do
-	if ! command -v "$cmd" >/dev/null 2>&1; then
-		echo "Error: '${cmd}' is required but not found." >&2
-		[[ "$cmd" == "claude" ]] && echo "Install from https://claude.ai/download" >&2
-		[[ "$cmd" == "svu" ]] && echo "Install with: go install github.com/caarlos0/svu/v3@latest" >&2
-		exit 1
-	fi
-done
+if ! command -v svu >/dev/null 2>&1; then
+	echo "Error: 'svu' is required but not found." >&2
+	echo "Install with: go install github.com/caarlos0/svu/v3@latest" >&2
+	exit 1
+fi
 
 # ── get latest tag ────────────────────────────────────────────────────────────
 
@@ -58,95 +57,27 @@ minor) NEW_TAG=$(svu minor) ;;
 patch) NEW_TAG=$(svu patch) ;;
 esac
 
-TODAY=$(date -u +%Y-%m-%d)
-
 echo "Bumping ${LAST_TAG} → ${NEW_TAG}"
 
-# ── helper: generate one changelog section ───────────────────────────────────
-# Usage: generate_entry <from_ref> <to_ref> <display_tag> <date>
-# Prints the "## vX.Y.Z (date)\n\n<bullets>\n" block, or nothing if no commits.
-
-generate_entry() {
-	local from_ref="$1" to_ref="$2" display_tag="$3" entry_date="$4"
-	local commits diffstat
-
-	if [[ "$from_ref" == "v0.0.0" ]]; then
-		commits=$(git log --oneline "$to_ref" 2>/dev/null || echo "")
-		diffstat=$(git diff --stat "$(git rev-list --max-parents=0 HEAD)" "$to_ref" 2>/dev/null || echo "")
-	else
-		commits=$(git log --oneline "${from_ref}..${to_ref}" 2>/dev/null || echo "")
-		diffstat=$(git diff --stat "${from_ref}" "${to_ref}" 2>/dev/null || echo "")
-	fi
-
-	[[ -z "$commits" ]] && return 0
-
-	local prompt="You are writing a CHANGELOG entry for a CLI tool called gcx (Grafana Cloud resource manager).
-
-Summarize the following commits into a concise bullet-point list for version ${display_tag}.
-Group related changes. Use plain English. Keep each bullet under 80 chars.
-Do not include version header — just the bullets.
-
-Commits:
-${commits}
-
-Diffstat:
-${diffstat}"
-
-	local summary
-	echo "Generating changelog entry for ${display_tag} with Claude..." >&2
-	summary=$(echo "$prompt" | env -u CLAUDECODE claude -p 2>/dev/null)
-
-	printf '## %s (%s)\n\n%s\n' "$display_tag" "$entry_date" "$summary"
-}
-
-# ── detect last documented version in CHANGELOG.md ───────────────────────────
+# ── verify changelog entry and release notes ─────────────────────────────────
 
 CHANGELOG="CHANGELOG.md"
-LAST_CHANGELOG_VERSION=$(grep -m1 '^## v' "$CHANGELOG" 2>/dev/null |
-	sed 's/^## \(v[^ )]*\).*/\1/' || echo "v0.0.0")
+FIRST_DOCUMENTED=$(grep -m1 '^## v' "$CHANGELOG" 2>/dev/null |
+	sed 's/^## \(v[^ )]*\).*/\1/' || true)
 
-# ── backfill any tags not yet documented ─────────────────────────────────────
-
-NEW_CONTENT=""
-
-if [[ "$LAST_CHANGELOG_VERSION" != "$LAST_TAG" ]]; then
-	PREV="$LAST_CHANGELOG_VERSION"
-	while IFS= read -r GAP_TAG; do
-		GAP_DATE=$(git log -1 --format="%as" "$GAP_TAG")
-		entry=$(generate_entry "$PREV" "$GAP_TAG" "$GAP_TAG" "$GAP_DATE")
-		if [[ -n "$entry" ]]; then
-			NEW_CONTENT="${NEW_CONTENT}${entry}
-
-"
-		fi
-		PREV="$GAP_TAG"
-	done < <(git tag --sort=version:refname | awk -v start="$LAST_CHANGELOG_VERSION" \
-		'$0 == start { found=1; next } found { print }')
+if [[ "$FIRST_DOCUMENTED" != "$NEW_TAG" ]]; then
+	echo "Error: ${CHANGELOG} does not start with an entry for ${NEW_TAG} (found: ${FIRST_DOCUMENTED:-none})." >&2
+	echo "Write the changelog entry first — see .claude/skills/release/SKILL.md." >&2
+	exit 1
 fi
 
-# ── generate the new version entry ───────────────────────────────────────────
-
-NEW_ENTRY=$(generate_entry "$LAST_TAG" "HEAD" "$NEW_TAG" "$TODAY")
-NEW_CONTENT="${NEW_ENTRY}
-
-${NEW_CONTENT}"
-
-# ── write changelog ───────────────────────────────────────────────────────────
-
-if [[ -f "$CHANGELOG" ]]; then
-	EXISTING=$(cat "$CHANGELOG")
-	printf '%s\n%s\n' "$NEW_CONTENT" "$EXISTING" >"$CHANGELOG"
-else
-	printf '%s\n' "$NEW_CONTENT" >"$CHANGELOG"
+if [[ ! -s .release-notes.md ]]; then
+	echo "Error: .release-notes.md is missing or empty." >&2
+	echo "Write it first — see .claude/skills/release/SKILL.md." >&2
+	exit 1
 fi
 
-echo "Updated ${CHANGELOG}"
-
-# ── write release notes (used by GoReleaser for GitHub release body) ──────────
-# Strip the "## vX.Y.Z (date)" header line and the blank line after it.
-
-printf '%s\n' "$NEW_ENTRY" | tail -n +3 >.release-notes.md
-echo "Updated .release-notes.md"
+echo "Verified ${CHANGELOG} entry and .release-notes.md for ${NEW_TAG}"
 
 # ── bump Claude plugin version ──────────────────────────────────────────────
 
