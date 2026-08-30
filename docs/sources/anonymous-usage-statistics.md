@@ -97,7 +97,7 @@ When the invocation fails to parse, these additional fields are set. They captur
 
 ### The api command
 
-`gcx api` is a raw passthrough: the interesting usage signal (which endpoint, which method) lives in its argument values, which are never sent as-is. Instead, three additional fields carry derived values, each filtered through a fixed vocabulary built into the binary before anything is recorded. We use them to learn which endpoints and datasources people reach for through the raw passthrough, so we know which first-class `gcx` commands to build next.
+The `gcx api` command is unique because it allows users to send an arbitrary request to the Grafana API. To get useful usage information (which endpoints, and methods are used) we need to inspect the argument values. This is an exception to our claim of not sending argument values as part of usage telemetry. We mitigate the risk of sending sensitive or identifying information by filtering argument values through a fixed vocabulary built into the binary, before anything is recorded. The filtered argument values are only used to learn which endpoints and queries our users use the `api` command for, so we can spot where we can add value with new gcx commands in the future.
 
 | Field | Description | Example |
 | :---- | :---- | :---- |
