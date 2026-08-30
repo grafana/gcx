@@ -108,19 +108,11 @@ func (o *alertGroupListOpts) Validate() error {
 		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 means as many results as the safety cap allows)", o.Limit)
 	}
 	// --max-age and --from/--to both compile into the same started_at range
-	// param, so combining them would be ambiguous.
+	// param, so combining them would be ambiguous. Unparseable or inverted
+	// windows are rejected by resolveAlertGroupListFilters, which also runs
+	// before any config or network work.
 	if o.MaxAge != "" && (o.From != "" || o.To != "") {
 		return errors.New("--max-age cannot be combined with --from or --to: both bound the started-at window")
-	}
-	// Fail on unparseable or inverted windows here — before any config or
-	// network work — rather than letting them reach the API as a silently
-	// empty result.
-	now := time.Now()
-	if _, _, err := resolveTimeWindow("from", "to", o.From, o.To, now); err != nil {
-		return err
-	}
-	if _, _, err := resolveTimeWindow("resolved-from", "resolved-to", o.ResolvedFrom, o.ResolvedTo, now); err != nil {
-		return err
 	}
 	return nil
 }
@@ -144,39 +136,50 @@ func (w timeWindow) encode() string {
 
 // resolveTimeWindow turns a pair of user-supplied time expressions into an
 // absolute window, accepting RFC3339, a unix timestamp, or a relative
-// expression like `now-7d` (shared.ParseTime). The bool result is false when
-// neither end was supplied (no window to filter on).
+// expression like `now-7d` (shared.ParseTime). A nil result means neither end
+// was supplied (no window to filter on).
 //
 // The OnCall daterange params require both ends, so a one-sided window is
 // completed rather than rejected: an omitted end becomes now, and an omitted
 // start becomes the unix epoch — comfortably before any alert group could
 // exist. fromFlag/toFlag name the flags in error messages so the same helper
 // serves both the started-at and resolved-at pairs.
-func resolveTimeWindow(fromFlag, toFlag, from, to string, now time.Time) (timeWindow, bool, error) {
+func resolveTimeWindow(fromFlag, toFlag, from, to string, now time.Time) (*timeWindow, error) {
 	if from == "" && to == "" {
-		return timeWindow{}, false, nil
+		return nil, nil //nolint:nilnil // nil window signals "no filter supplied"; callers check for nil.
 	}
-	w := timeWindow{From: time.Unix(0, 0).UTC(), To: now}
+	w := &timeWindow{From: time.Unix(0, 0).UTC(), To: now}
 	if from != "" {
 		t, err := shared.ParseTime(from, now)
 		if err != nil {
-			return timeWindow{}, false, fmt.Errorf("invalid --%s value: %w", fromFlag, err)
+			return nil, fmt.Errorf("invalid --%s value: %w", fromFlag, err)
 		}
 		w.From = t
 	}
 	if to != "" {
 		t, err := shared.ParseTime(to, now)
 		if err != nil {
-			return timeWindow{}, false, fmt.Errorf("invalid --%s value: %w", toFlag, err)
+			return nil, fmt.Errorf("invalid --%s value: %w", toFlag, err)
 		}
 		w.To = t
 	}
 	if w.To.Before(w.From) {
-		return timeWindow{}, false, fmt.Errorf("invalid time range: --%s (%s) is after --%s (%s)",
+		return nil, fmt.Errorf("invalid time range: --%s (%s) is after --%s (%s)",
 			fromFlag, w.From.UTC().Format(time.RFC3339),
 			toFlag, w.To.UTC().Format(time.RFC3339))
 	}
-	return w, true, nil
+	return w, nil
+}
+
+// maxAgeWindow converts a --max-age duration into an absolute started-at
+// window anchored at now, shared by `alert-groups list` and the bulk action
+// verbs.
+func maxAgeWindow(maxAge string, now time.Time) (*timeWindow, error) {
+	dur, err := parseDuration(maxAge)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --max-age value %q: %w", maxAge, err)
+	}
+	return &timeWindow{From: now.Add(-dur), To: now}, nil
 }
 
 // stateNameToInt translates a user-facing state name into the OnCall internal
@@ -276,27 +279,23 @@ func resolveAlertGroupListFilters(cmd *cobra.Command, opts *alertGroupListOpts) 
 	now := time.Now()
 	switch {
 	case opts.MaxAge != "":
-		dur, err := parseDuration(opts.MaxAge)
-		if err != nil {
-			return out, fmt.Errorf("invalid --max-age value %q: %w", opts.MaxAge, err)
-		}
-		out.StartedAt = &timeWindow{From: now.Add(-dur), To: now}
-	default:
-		w, ok, err := resolveTimeWindow("from", "to", opts.From, opts.To, now)
+		w, err := maxAgeWindow(opts.MaxAge, now)
 		if err != nil {
 			return out, err
 		}
-		if ok {
-			out.StartedAt = &w
+		out.StartedAt = w
+	default:
+		w, err := resolveTimeWindow("from", "to", opts.From, opts.To, now)
+		if err != nil {
+			return out, err
 		}
+		out.StartedAt = w
 	}
-	resolved, ok, err := resolveTimeWindow("resolved-from", "resolved-to", opts.ResolvedFrom, opts.ResolvedTo, now)
+	resolved, err := resolveTimeWindow("resolved-from", "resolved-to", opts.ResolvedFrom, opts.ResolvedTo, now)
 	if err != nil {
 		return out, err
 	}
-	if ok {
-		out.ResolvedAt = &resolved
-	}
+	out.ResolvedAt = resolved
 
 	// Translate user-facing state names into the internal wire encoding.
 	stateExplicit := cmd.Flags().Changed("state")
