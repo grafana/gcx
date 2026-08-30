@@ -33,5 +33,6 @@ Manage Frontend Observability apps.
 * [gcx frontend apps list](gcx_frontend_apps_list.md)	 - List Frontend Observability apps.
 * [gcx frontend apps list-replay-sessions](gcx_frontend_apps_list-replay-sessions.md)	 - List Frontend Observability sessions that have replay recordings.
 * [gcx frontend apps list-sourcemaps](gcx_frontend_apps_list-sourcemaps.md)	 - List sourcemaps for a Frontend Observability app.
+* [gcx frontend apps play-replay-session](gcx_frontend_apps_play-replay-session.md)	 - Download and play a session replay locally.
 * [gcx frontend apps update](gcx_frontend_apps_update.md)	 - Update a Frontend Observability app from a file.
 

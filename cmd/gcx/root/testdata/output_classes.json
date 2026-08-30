@@ -269,6 +269,7 @@
  "gcx frontend apps list-sourcemaps": "finite",
  "gcx frontend apps inspect-replay-session": "finite",
  "gcx frontend apps inspect-replay-segment": "finite",
+ "gcx frontend apps play-replay-session": "finite",
  "gcx frontend apps update": "finite",
  "gcx help": "prose",
  "gcx help-tree": "finite",
