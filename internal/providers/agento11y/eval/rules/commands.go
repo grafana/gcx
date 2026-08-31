@@ -85,11 +85,9 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 			for i := range typedObjs {
 				specs[i] = typedObjs[i].Spec
-				actions, err := actionClient.ListActions(ctx, specs[i].RuleID)
-				if err != nil {
-					return err
-				}
-				specs[i].Actions = &actions
+			}
+			if err := attachActions(ctx, actionClient, specs); err != nil {
+				return err
 			}
 
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
@@ -144,10 +142,6 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			u, err := specToUnstructured(typedObj.Spec, namespace)
-			if err != nil {
-				return err
-			}
 			actionClient, err := NewClientForLoader(ctx, loader)
 			if err != nil {
 				return err
@@ -157,7 +151,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			typedObj.Spec.Actions = &actions
-			u, err = specToUnstructured(typedObj.Spec, namespace)
+			u, err := specToUnstructured(typedObj.Spec, namespace)
 			if err != nil {
 				return err
 			}

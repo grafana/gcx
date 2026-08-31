@@ -8,9 +8,13 @@ import (
 	"io"
 
 	"github.com/goccy/go-yaml"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/agento11y/commandutil"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
 
 func actionsCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -47,10 +51,19 @@ func actionClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, 
 	return NewClientForLoader(cmd.Context(), loader)
 }
 
-func encodeAction(w io.Writer, value any) error { return json.NewEncoder(w).Encode(value) }
+type actionOutputOpts struct{ IO cmdio.Options }
+
+func (o *actionOutputOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
+}
 
 func actionListCommand(loader *providers.ConfigLoader) *cobra.Command {
-	return &cobra.Command{Use: "list <rule-id>", Short: "List actions attached to an evaluation rule.", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	opts := &actionOutputOpts{}
+	cmd := &cobra.Command{Use: "list <rule-id>", Short: "List actions attached to an evaluation rule.", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := opts.IO.Validate(); err != nil {
+			return err
+		}
 		c, err := actionClient(cmd, loader)
 		if err != nil {
 			return err
@@ -59,12 +72,18 @@ func actionListCommand(loader *providers.ConfigLoader) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return encodeAction(cmd.OutOrStdout(), items)
+		return opts.IO.Encode(cmd.OutOrStdout(), items)
 	}}
+	opts.setup(cmd.Flags())
+	return cmd
 }
 
 func actionGetCommand(loader *providers.ConfigLoader) *cobra.Command {
-	return &cobra.Command{Use: "get <rule-id> <action-id>", Short: "Get an action attached to an evaluation rule.", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	opts := &actionOutputOpts{}
+	cmd := &cobra.Command{Use: "get <rule-id> <action-id>", Short: "Get an action attached to an evaluation rule.", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := opts.IO.Validate(); err != nil {
+			return err
+		}
 		c, err := actionClient(cmd, loader)
 		if err != nil {
 			return err
@@ -73,13 +92,19 @@ func actionGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return encodeAction(cmd.OutOrStdout(), item)
+		return opts.IO.Encode(cmd.OutOrStdout(), item)
 	}}
+	opts.setup(cmd.Flags())
+	return cmd
 }
 
 func actionCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	var file string
+	opts := &actionOutputOpts{}
 	cmd := &cobra.Command{Use: "create <rule-id>", Short: "Create an action from a file.", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := opts.IO.Validate(); err != nil {
+			return err
+		}
 		if file == "" {
 			return errors.New("--filename/-f is required")
 		}
@@ -95,15 +120,21 @@ func actionCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return encodeAction(cmd.OutOrStdout(), created)
+		cmdio.Success(cmd.ErrOrStderr(), "Action %s created", created.ActionID)
+		return opts.IO.Encode(cmd.OutOrStdout(), created)
 	}}
 	cmd.Flags().StringVarP(&file, "filename", "f", "", "File containing the action definition (use - for stdin)")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
 func actionUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	var file string
+	opts := &actionOutputOpts{}
 	cmd := &cobra.Command{Use: "update <rule-id> <action-id>", Short: "Update an action from a file.", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := opts.IO.Validate(); err != nil {
+			return err
+		}
 		if file == "" {
 			return errors.New("--filename/-f is required")
 		}
@@ -120,15 +151,21 @@ func actionUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return encodeAction(cmd.OutOrStdout(), updated)
+		cmdio.Success(cmd.ErrOrStderr(), "Action %s updated", updated.ActionID)
+		return opts.IO.Encode(cmd.OutOrStdout(), updated)
 	}}
 	cmd.Flags().StringVarP(&file, "filename", "f", "", "File containing the action definition (use - for stdin)")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
 func actionDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 	var force bool
+	opts := &deleteOpts{}
 	cmd := &cobra.Command{Use: "delete <rule-id> <action-id>", Short: "Delete an action attached to an evaluation rule.", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := opts.IO.Validate(); err != nil {
+			return err
+		}
 		proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), force, fmt.Sprintf("Delete action %s?", args[1]))
 		if err != nil || !proceed {
 			return err
@@ -137,9 +174,12 @@ func actionDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return c.DeleteAction(cmd.Context(), args[0], args[1])
+		return commandutil.RunBatchDelete(cmd.OutOrStdout(), cmd.ErrOrStderr(), &opts.IO, "rule action", "Deleted action %s", "deleting action %s", []string{args[1]}, func(id string) error { return c.DeleteAction(cmd.Context(), args[0], id) })
 	}}
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
+	opts.IO.RegisterCustomCodec("text", commandutil.SilentTextCodec{})
+	opts.IO.DefaultFormat("text")
+	opts.IO.BindFlags(cmd.Flags())
 	return cmd
 }
 
@@ -178,4 +218,20 @@ func reconcileActions(ctx context.Context, c *Client, ruleID string, desired *[]
 		}
 	}
 	return result, nil
+}
+
+func attachActions(ctx context.Context, c *Client, specs []eval.RuleDefinition) error {
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(10)
+	for i := range specs {
+		g.Go(func() error {
+			actions, err := c.ListActions(gctx, specs[i].RuleID)
+			if err != nil {
+				return err
+			}
+			specs[i].Actions = &actions
+			return nil
+		})
+	}
+	return g.Wait()
 }
