@@ -144,11 +144,10 @@ as the recording template.
 ### 0.3: Identify Pattern Reference
 
 Identify and read the closest existing gcx provider as a pattern reference:
-- **Cloud APIs with separate URLs** → `k6` (fleet no longer applies: it uses the plugin proxy)
 - **Plugin APIs (standard Grafana SA token)** → `slo`
 - **gRPC-style POST APIs behind a plugin proxy** → `fleet`
 - **gRPC-style POST APIs** → `incidents`
-- **Token exchange auth** → `k6`
+- **Cloud APIs on a separate URL, with token exchange** → `k6`
 - **Multi-resource providers** → `oncall`
 - **Plugin proxy APIs** → `kg`
 
