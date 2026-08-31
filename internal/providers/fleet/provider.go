@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/grafana/gcx/internal/config"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -166,9 +167,9 @@ func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
 // ---------------------------------------------------------------------------
 
 type fleetHelper struct {
-	// loader is the narrow cloud-config interface (satisfied by
+	// loader is the narrow stack-config interface (satisfied by
 	// *providers.ConfigLoader) so tests can inject a fake loader.
-	loader CloudConfigLoader
+	loader RESTConfigLoader
 }
 
 func (h *fleetHelper) loadClient(ctx context.Context) (*Client, string, error) {
@@ -1195,13 +1196,15 @@ func readCollectorFromFile(filename string, stdin io.Reader) (*Collector, error)
 // Resource adapter factories
 // ---------------------------------------------------------------------------
 
-// CloudConfigLoader can load Grafana Cloud configuration from the active context.
-type CloudConfigLoader interface {
-	LoadCloudConfig(ctx context.Context) (providers.CloudRESTConfig, error)
+// RESTConfigLoader can load the Grafana stack configuration from the active
+// context. Fleet Management reaches its API through the collector app plugin
+// proxy on the stack, so it needs no grafana.com token.
+type RESTConfigLoader interface {
+	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
 // NewPipelineTypedCRUD creates a TypedCRUD for Fleet pipelines.
-func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Pipeline], string, error) {
+func NewPipelineTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedCRUD[Pipeline], string, error) {
 	base, namespace, err := fleetbase.LoadClient(ctx, loader)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load Fleet config for pipelines: %w", err)
@@ -1248,7 +1251,7 @@ func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapt
 }
 
 // NewPipelineAdapterFactory returns a lazy adapter.Factory for fleet pipelines.
-func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
+func NewPipelineAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		crud, _, err := NewPipelineTypedCRUD(ctx, loader)
 		if err != nil {
@@ -1259,7 +1262,7 @@ func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 }
 
 // NewCollectorTypedCRUD creates a TypedCRUD for Fleet collectors.
-func NewCollectorTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Collector], string, error) {
+func NewCollectorTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedCRUD[Collector], string, error) {
 	base, namespace, err := fleetbase.LoadClient(ctx, loader)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load Fleet config for collectors: %w", err)
@@ -1307,7 +1310,7 @@ func NewCollectorTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adap
 }
 
 // NewCollectorAdapterFactory returns a lazy adapter.Factory for fleet collectors.
-func NewCollectorAdapterFactory(loader CloudConfigLoader) adapter.Factory {
+func NewCollectorAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		crud, _, err := NewCollectorTypedCRUD(ctx, loader)
 		if err != nil {

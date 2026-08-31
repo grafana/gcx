@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/client-go/rest"
 )
 
 // Command returns the setup command area for onboarding and configuring
@@ -98,6 +99,34 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
+			// Fleet Management reaches its API through the collector app plugin
+			// proxy. Report the plugin and the permissions first, so a user
+			// learns the cause without a failed RPC.
+			cfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
+				return fmt.Errorf("setup: %w", err)
+			}
+			httpClient, err := rest.HTTPClientFor(&cfg.Config)
+			if err != nil {
+				return fmt.Errorf("setup: %w", err)
+			}
+			state, err := checkCollectorApp(ctx, cfg, httpClient)
+			if err != nil {
+				return fmt.Errorf("setup: %w", err)
+			}
+
+			products := []setupProductStatus{state.row()}
+
+			if !state.available() {
+				products = append(products, setupProductStatus{
+					Product: "instrumentation",
+					Enabled: false,
+					Health:  "unknown",
+					Details: "needs the " + collectorAppID + " plugin",
+				})
+				return opts.IO.Encode(cmd.OutOrStdout(), newSetupStatus(products))
+			}
+
 			r, err := fleetbase.LoadClientWithStack(ctx, loader)
 			if err != nil {
 				return fmt.Errorf("setup: %w", err)
@@ -110,15 +139,13 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("setup: %w", err)
 			}
 
-			status := newSetupStatus([]setupProductStatus{
-				{
-					Product: "instrumentation",
-					Enabled: len(monResp.Clusters) > 0,
-					Health:  "healthy",
-					Details: fmt.Sprintf("%d clusters", len(monResp.Clusters)),
-				},
+			products = append(products, setupProductStatus{
+				Product: "instrumentation",
+				Enabled: len(monResp.Clusters) > 0,
+				Health:  "healthy",
+				Details: fmt.Sprintf("%d clusters", len(monResp.Clusters)),
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), status)
+			return opts.IO.Encode(cmd.OutOrStdout(), newSetupStatus(products))
 		},
 	}
 	opts.setup(cmd.Flags())

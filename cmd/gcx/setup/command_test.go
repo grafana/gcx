@@ -21,14 +21,16 @@ import (
 // -o json/yaml always win.
 
 // statusTableEnabled is the byte-exact human table for an enabled
-// instrumentation product with 3 clusters, pinned against the pre-migration
-// writeSetupStatusTable output.
-const statusTableEnabled = "PRODUCT          ENABLED  HEALTH   DETAILS\n" +
-	"instrumentation  yes      healthy  3 clusters\n"
+// instrumentation product with 3 clusters, behind a healthy collector app
+// plugin.
+const statusTableEnabled = "PRODUCT           ENABLED  HEALTH   DETAILS\n" +
+	"fleet-management  yes      healthy  read and write\n" +
+	"instrumentation   yes      healthy  3 clusters\n"
 
 // statusTableDisabled is the byte-exact human table when no clusters exist.
-const statusTableDisabled = "PRODUCT          ENABLED  HEALTH   DETAILS\n" +
-	"instrumentation  no       healthy  0 clusters\n"
+const statusTableDisabled = "PRODUCT           ENABLED  HEALTH   DETAILS\n" +
+	"fleet-management  yes      healthy  read and write\n" +
+	"instrumentation   no       healthy  0 clusters\n"
 
 func TestSetupStatus_OutputContract(t *testing.T) {
 	tests := []struct {
@@ -67,12 +69,19 @@ func TestSetupStatus_OutputContract(t *testing.T) {
 					t.Fatalf("schema_version = %v, want 1", doc["schema_version"])
 				}
 				products, ok := doc["products"].([]any)
-				if !ok || len(products) != 1 {
-					t.Fatalf("products = %v, want one entry", doc["products"])
+				if !ok || len(products) != 2 {
+					t.Fatalf("products = %v, want two entries", doc["products"])
 				}
-				product, ok := products[0].(map[string]any)
+				plugin, ok := products[0].(map[string]any)
 				if !ok {
 					t.Fatalf("products[0] is %T, want object", products[0])
+				}
+				if plugin["product"] != "fleet-management" || plugin["health"] != "healthy" {
+					t.Fatalf("unexpected plugin row: %v", plugin)
+				}
+				product, ok := products[1].(map[string]any)
+				if !ok {
+					t.Fatalf("products[1] is %T, want object", products[1])
 				}
 				if product["product"] != "instrumentation" || product["enabled"] != true {
 					t.Fatalf("unexpected product row: %v", product)

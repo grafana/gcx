@@ -3,10 +3,12 @@ package fleet_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/providers/fleet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,7 +16,7 @@ import (
 
 func newTestClient(t *testing.T, server *httptest.Server) *fleet.Client {
 	t.Helper()
-	return fleet.NewClient(context.Background(), server.URL, "test-instance", "test-token", true, nil)
+	return fleet.NewClient(context.Background(), server.URL, nil)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -499,4 +501,108 @@ func TestClient_GetLimits(t *testing.T) {
 	assert.Equal(t, int64(10), *limits.RequestsPerSecondCollector)
 	require.NotNil(t, limits.RequestsPerSecondAPI)
 	assert.Equal(t, int64(20), *limits.RequestsPerSecondAPI)
+}
+
+// A 404 has two meanings behind the plugin proxy: Fleet Management has no such
+// resource, or Grafana has no such plugin route. The two must not be confused.
+func TestClient_PluginRouteMissing(t *testing.T) {
+	tests := []struct {
+		name         string
+		body         string
+		wantTypedErr bool
+		wantMessage  string
+	}{
+		{
+			name:         "missing resource stays a not found message",
+			body:         `{"code":"not_found","message":"pipeline not found"}`,
+			wantTypedErr: false,
+			wantMessage:  "not found",
+		},
+		{
+			name:         "missing plugin route returns the typed error",
+			body:         `{"message":"plugin route match not found"}`,
+			wantTypedErr: true,
+			wantMessage:  "plugin route match not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server)
+
+			_, err := client.GetPipeline(context.Background(), "123")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantMessage)
+
+			var httpErr *fleetbase.HTTPError
+			assert.Equal(t, tt.wantTypedErr, errors.As(err, &httpErr))
+
+			_, err = client.GetCollector(context.Background(), "123")
+			require.Error(t, err)
+			assert.Equal(t, tt.wantTypedErr, errors.As(err, &httpErr))
+		})
+	}
+}
+
+// Every non-2xx from a mutation must carry the typed error, so that
+// cmd/gcx/fail can map the status to an actionable message.
+func TestClient_MutationsReturnTypedError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"forbidden"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{"create pipeline", func() error {
+			_, err := client.CreatePipeline(context.Background(), fleet.Pipeline{Name: "p"})
+			return err
+		}},
+		{"update pipeline", func() error {
+			return client.UpdatePipeline(context.Background(), "1", fleet.Pipeline{Name: "p"})
+		}},
+		{"delete pipeline", func() error { return client.DeletePipeline(context.Background(), "1") }},
+		{"create collector", func() error {
+			_, err := client.CreateCollector(context.Background(), fleet.Collector{Name: "c"})
+			return err
+		}},
+		{"update collector", func() error {
+			return client.UpdateCollector(context.Background(), fleet.Collector{ID: "1", Name: "c"})
+		}},
+		{"delete collector", func() error { return client.DeleteCollector(context.Background(), "1") }},
+		{"list pipelines", func() error {
+			_, err := client.ListPipelines(context.Background())
+			return err
+		}},
+		{"list collectors", func() error {
+			_, err := client.ListCollectors(context.Background())
+			return err
+		}},
+		{"get limits", func() error {
+			_, err := client.GetLimits(context.Background())
+			return err
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			require.Error(t, err)
+
+			var httpErr *fleetbase.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusForbidden, httpErr.Status)
+		})
+	}
 }

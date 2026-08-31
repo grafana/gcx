@@ -6,6 +6,11 @@ import (
 	"net/http"
 )
 
+// PluginRouteMissingMarker is the body Grafana returns when the collector app
+// plugin is absent or disabled. Callers use it to tell a missing plugin apart
+// from a missing resource, because both arrive as HTTP 404.
+const PluginRouteMissingMarker = "plugin route match not found"
+
 // ReadErrorBody reads and returns the response body as a string for error messages.
 func ReadErrorBody(resp *http.Response) string {
 	body, err := io.ReadAll(resp.Body)
