@@ -30,8 +30,14 @@ const (
 // collectorAppState is the result of the Fleet Management preflight: whether
 // the plugin serves the proxy routes, and which actions the login holds.
 type collectorAppState struct {
-	Installed bool
-	Enabled   bool
+	// PluginKnown is false when Grafana answers the plugin settings endpoint
+	// with a status other than 200 or 404. A 403 or a 500 says nothing about
+	// the plugin, so the preflight must not report the plugin as absent.
+	PluginKnown bool
+	// PluginStatus is the HTTP status that left the plugin state unknown.
+	PluginStatus int
+	Installed    bool
+	Enabled      bool
 	// ActionsKnown is false when Grafana does not answer the actions endpoint.
 	ActionsKnown bool
 	CanRead      bool
@@ -51,9 +57,16 @@ func checkCollectorApp(ctx context.Context, cfg config.NamespacedRESTConfig, htt
 	if err != nil {
 		return state, err
 	}
-	if status == http.StatusOK {
+	switch status {
+	case http.StatusOK:
+		state.PluginKnown = true
 		state.Installed = true
 		state.Enabled = settings.Enabled
+	case http.StatusNotFound:
+		// Only a 404 means that the plugin is absent.
+		state.PluginKnown = true
+	default:
+		state.PluginStatus = status
 	}
 
 	actions := map[string]bool{}
@@ -71,8 +84,8 @@ func checkCollectorApp(ctx context.Context, cfg config.NamespacedRESTConfig, htt
 }
 
 // getJSON performs a GET and decodes a 2xx body into out. A non-2xx response
-// returns its status code without an error, so callers can treat a 404 as
-// "absent" rather than as a failure.
+// returns its status code without an error. The caller decides which status
+// means "absent" and which status means "unknown".
 func getJSON(ctx context.Context, httpClient *http.Client, url string, out any) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -100,15 +113,26 @@ func getJSON(ctx context.Context, httpClient *http.Client, url string, out any) 
 	return resp.StatusCode, nil
 }
 
-// available reports whether the plugin can serve the Fleet Management proxy
-// routes at all.
-func (s collectorAppState) available() bool {
+// mayServe reports whether a Fleet Management call through the plugin proxy is
+// worth an attempt. An unknown plugin state counts as worth an attempt, so the
+// real error of the call reaches the user in place of a guess.
+func (s collectorAppState) mayServe() bool {
+	if !s.PluginKnown {
+		return true
+	}
 	return s.Installed && s.Enabled
 }
 
 // row renders the preflight as a product row of the status document.
 func (s collectorAppState) row() setupProductStatus {
 	switch {
+	case !s.PluginKnown:
+		return setupProductStatus{
+			Product: "fleet-management",
+			Enabled: false,
+			Health:  "unknown",
+			Details: fmt.Sprintf("HTTP %d from %s; the plugin state is unknown", s.PluginStatus, pluginSettingsPath),
+		}
 	case !s.Installed:
 		return setupProductStatus{
 			Product: "fleet-management",

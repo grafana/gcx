@@ -79,8 +79,9 @@ Harder:
 - Every write needs the Admin role or the `grafana-collector-app:admin` action.
   A Viewer can read only.
 - `plugin.json` is not a stable contract. A plugin release can change the route
-  set. `gcx setup status` and the typed error for
-  `plugin route match not found` limit the cost of that risk.
+  set. `gcx setup status` and the typed error for a missing plugin route limit
+  the cost of that risk. Grafana returns more than one body for that cause, so
+  `fleet.IsPluginMissingBody` matches a set of markers without regard to case.
 - A 404 now has two meanings. `internal/providers/fleet/client.go` tests the
   body before it reports a missing resource.
 

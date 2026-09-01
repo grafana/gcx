@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/setup"
@@ -139,6 +140,36 @@ func TestCheckCollectorApp(t *testing.T) {
 			wantDetails: "read and write",
 		},
 		{
+			name: "plugin settings forbidden leaves the plugin state unknown",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/plugins/grafana-collector-app/settings":
+					w.WriteHeader(http.StatusForbidden)
+				case "/api/access-control/user/actions":
+					writeJSON(w, map[string]bool{})
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			},
+			wantHealth:  "unknown",
+			wantDetails: "HTTP 403 from /api/plugins/grafana-collector-app/settings; the plugin state is unknown",
+		},
+		{
+			name: "plugin settings server error leaves the plugin state unknown",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/plugins/grafana-collector-app/settings":
+					w.WriteHeader(http.StatusInternalServerError)
+				case "/api/access-control/user/actions":
+					writeJSON(w, map[string]bool{})
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			},
+			wantHealth:  "unknown",
+			wantDetails: "HTTP 500 from /api/plugins/grafana-collector-app/settings; the plugin state is unknown",
+		},
+		{
 			name: "actions endpoint forbidden leaves permissions unknown",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
@@ -177,5 +208,25 @@ func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// An unknown plugin state must not read as "not installed": a 403 says nothing
+// about the plugin.
+func TestUnknownPluginRow(t *testing.T) {
+	row := setup.UnknownPluginRowForTest(http.StatusForbidden)
+	product, enabled, health, details := setup.StatusRowFieldsForTest(row)
+
+	if product != "fleet-management" {
+		t.Fatalf("product = %q, want fleet-management", product)
+	}
+	if enabled {
+		t.Fatal("enabled = true, want false")
+	}
+	if health != "unknown" {
+		t.Fatalf("health = %q, want unknown", health)
+	}
+	if !strings.Contains(details, "HTTP 403") {
+		t.Fatalf("details = %q, want the status in the text", details)
 	}
 }

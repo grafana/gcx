@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 )
@@ -68,7 +67,7 @@ func httpError(resp *http.Response, path string) *fleetbase.HTTPError {
 // because the resource is absent.
 func pluginRouteMissing(err *fleetbase.HTTPError) bool {
 	return err.Status == http.StatusNotFound &&
-		strings.Contains(err.Body, fleetbase.PluginRouteMissingMarker)
+		fleetbase.IsPluginMissingBody(err.Body)
 }
 
 // ListPipelines returns all pipelines.

@@ -39,12 +39,20 @@ func StatusDocForTest(enabled bool, clusters int) setupStatus {
 // plugin and permission state.
 func CollectorRowForTest(installed, pluginEnabled, actionsKnown, canRead, canAdmin bool) setupProductStatus {
 	return collectorAppState{
+		PluginKnown:  true,
 		Installed:    installed,
 		Enabled:      pluginEnabled,
 		ActionsKnown: actionsKnown,
 		CanRead:      canRead,
 		CanAdmin:     canAdmin,
 	}.row()
+}
+
+// UnknownPluginRowForTest builds the Fleet Management row for the case where
+// Grafana answers the plugin settings endpoint with the given status, so the
+// plugin state stays unknown.
+func UnknownPluginRowForTest(status int) setupProductStatus {
+	return collectorAppState{PluginStatus: status}.row()
 }
 
 // StatusRowFieldsForTest exposes a product row's fields to external tests, in

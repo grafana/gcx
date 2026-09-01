@@ -939,13 +939,13 @@ func TestConvertFleetHTTPErrors(t *testing.T) {
 	}{
 		{
 			name:         "401 from fleet management",
-			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 401, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation"}),
+			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 401, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation", Body: `{"message":"Plugin not found"}`}),
 			wantSummary:  "Authentication failed",
 			wantAuthExit: true,
 		},
 		{
 			name:         "403 from fleet management",
-			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 403, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation"}),
+			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 403, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation", Body: `{"message":"Plugin is not enabled"}`}),
 			wantSummary:  "Authorization failed",
 			wantAuthExit: true,
 		},

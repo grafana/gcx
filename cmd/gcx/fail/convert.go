@@ -1168,7 +1168,7 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 	// Grafana returns this when the collector app plugin is absent or disabled.
 	// It arrives as a 404, the same status Fleet Management uses for an absent
 	// resource, so the body decides.
-	if strings.Contains(httpErr.Body, fleet.PluginRouteMissingMarker) {
+	if httpErr.Status == http.StatusNotFound && fleet.IsPluginMissingBody(httpErr.Body) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Fleet Management plugin not available",
