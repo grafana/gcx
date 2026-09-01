@@ -4,25 +4,31 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"sync"
 
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"k8s.io/client-go/rest"
 )
 
 const (
-	// pluginID is the Grafana app plugin that proxies the Fleet Management API.
-	pluginID = "grafana-collector-app"
+	// CollectorAppID is the Grafana app plugin that proxies Fleet Management.
+	CollectorAppID = "grafana-collector-app"
+
+	// CollectorAppReadAction grants access to the plugin's named read routes.
+	CollectorAppReadAction = CollectorAppID + ":read"
+
+	// CollectorAppAdminAction grants access to the plugin's wildcard routes.
+	// Some read-only Fleet operations use these routes.
+	CollectorAppAdminAction = CollectorAppID + ":admin"
 
 	// pluginProxyPath is the plugin proxy prefix for the Fleet Management RPCs.
-	pluginProxyPath = "/api/plugin-proxy/" + pluginID + "/fleet-management-api"
+	pluginProxyPath = "/api/plugin-proxy/" + CollectorAppID + "/fleet-management-api"
 
 	// stackInfoPath is the plugin proxy route that returns the grafana.com
 	// instance record for the current stack. It needs the Viewer role only.
-	stackInfoPath = "/api/plugin-proxy/" + pluginID + "/grafanacom-api/instances/"
+	stackInfoPath = "/api/plugin-proxy/" + CollectorAppID + "/grafanacom-api/instances/"
 )
 
 // ConfigLoader can load the Grafana stack configuration from the active context.
@@ -72,7 +78,7 @@ func LoadClientWithStack(ctx context.Context, loader ConfigLoader) (*ClientResul
 		return nil, fmt.Errorf("fleet: failed to create HTTP client: %w", err)
 	}
 
-	stack, err := fetchStackInfo(ctx, cfg.Host, httpClient)
+	stack, err := getStackInfo(ctx, cfg.Host, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -82,31 +88,6 @@ func LoadClientWithStack(ctx context.Context, loader ConfigLoader) (*ClientResul
 		Namespace: cfg.Namespace,
 		Stack:     stack,
 	}, nil
-}
-
-// stackInfoEntry memoizes one stack lookup per Grafana host.
-type stackInfoEntry struct {
-	once sync.Once
-	info cloud.StackInfo
-	err  error
-}
-
-//nolint:gochecknoglobals // process-wide memoization of an idempotent GET, keyed by host.
-var stackInfoCache sync.Map
-
-// fetchStackInfo reads the grafana.com instance record for the stack through the
-// collector app plugin proxy. The result is memoized per host, because several
-// commands load the client more than once in a run.
-func fetchStackInfo(ctx context.Context, host string, httpClient *http.Client) (cloud.StackInfo, error) {
-	v, _ := stackInfoCache.LoadOrStore(host, &stackInfoEntry{})
-	entry, ok := v.(*stackInfoEntry)
-	if !ok {
-		return cloud.StackInfo{}, fmt.Errorf("fleet: unexpected stack info cache entry for %q", host)
-	}
-	entry.once.Do(func() {
-		entry.info, entry.err = getStackInfo(ctx, host, httpClient)
-	})
-	return entry.info, entry.err
 }
 
 func getStackInfo(ctx context.Context, host string, httpClient *http.Client) (cloud.StackInfo, error) {
@@ -130,7 +111,7 @@ func getStackInfo(ctx context.Context, host string, httpClient *http.Client) (cl
 		}
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := httputils.ReadResponseBody(resp.Body, maxResponseBodyBytes)
 	if err != nil {
 		return cloud.StackInfo{}, fmt.Errorf("fleet: read stack info: %w", err)
 	}

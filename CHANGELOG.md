@@ -1,5 +1,9 @@
 ## Unreleased
 
+**Breaking changes**
+
+- Fleet Management and Instrumentation now use the `grafana-collector-app` plugin proxy instead of direct Cloud Access Policy authentication. A Cloud Access Policy token with `fleet-management` scopes is no longer sufficient. Use a Grafana stack login and ensure that the plugin is enabled. Older stack tokens can require a new `gcx login` to obtain `grafana-api:write`. Named plugin routes need `grafana-collector-app:read`; wildcard routes need `grafana-collector-app:admin`, including some read-only commands.
+
 **New Features**
 
 - Added `--fix-plan` to `gcx instrumentation check`, with two explicit modes: `--fix-plan=local` produces a deterministic aggregation of the explanation docs' "How to fix" sections (offline, no billing, works on OSS/Enterprise), and `--fix-plan=assistant` synthesizes a prioritized plan with Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see the Assistant pricing docs). The two modes are disjoint: assistant mode returns a clear error when preconditions aren't met rather than silently falling back to local. `--fix-plan` alone is rejected; users must specify a mode.

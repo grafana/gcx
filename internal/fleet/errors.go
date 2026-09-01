@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// maxResponseBodyBytes caps Fleet response bodies at 1 MiB.
+const maxResponseBodyBytes int64 = 1 << 20
+
 // pluginMissingMarkers are the response bodies that Grafana returns when the
 // collector app plugin cannot serve a proxy route. Grafana returns "Plugin not
 // found" when no plugin with that identifier is installed or enabled. Grafana
@@ -36,9 +39,9 @@ func IsPluginMissingBody(body string) bool {
 	return false
 }
 
-// ReadErrorBody reads and returns the response body as a string for error messages.
+// ReadErrorBody reads up to 1 MiB of a response body for error messages.
 func ReadErrorBody(resp *http.Response) string {
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
 	if err != nil {
 		return "(could not read body)"
 	}

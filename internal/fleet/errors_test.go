@@ -1,6 +1,9 @@
 package fleet_test
 
 import (
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/fleet"
@@ -53,5 +56,15 @@ func TestIsPluginMissingBody(t *testing.T) {
 				t.Fatalf("IsPluginMissingBody(%q) = %v, want %v", tt.body, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadErrorBody_LimitsDiagnosticBody(t *testing.T) {
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(strings.Repeat("x", (1<<20)+100)))}
+
+	body := fleet.ReadErrorBody(resp)
+
+	if len(body) != 1<<20 {
+		t.Fatalf("body length = %d, want %d", len(body), 1<<20)
 	}
 }

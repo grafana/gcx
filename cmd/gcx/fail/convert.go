@@ -1171,8 +1171,8 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if httpErr.Status == http.StatusNotFound && fleet.IsPluginMissingBody(httpErr.Body) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Fleet Management plugin not available",
-			Details: "The grafana-collector-app plugin is not installed or not enabled on this stack",
+			Summary: "Endpoint not available",
+			Details: "The " + fleet.CollectorAppID + " plugin is not installed or not enabled on this stack",
 			Suggestions: []string{
 				"Check the plugin and your permissions: gcx setup status",
 				"Install or enable the Collector app in Grafana: Administration > Plugins",
@@ -1201,8 +1201,8 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Summary: "Authorization failed",
 			Details: "HTTP 403 from " + httpErr.Path,
 			Suggestions: []string{
-				"Read commands need the grafana-collector-app:read action on this stack",
-				"Write commands need the Admin role, or the grafana-collector-app:admin action",
+				"Named read routes need the " + fleet.CollectorAppReadAction + " action on this stack",
+				"Wildcard routes need the Admin role, or the " + fleet.CollectorAppAdminAction + " action; some read-only commands use these routes",
 				"Check what your login holds: gcx setup status",
 			},
 			DocsLink: docs.RolesAndPermissions,

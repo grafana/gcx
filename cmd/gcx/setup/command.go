@@ -112,21 +112,27 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("setup: %w", err)
 			}
-			state, err := checkCollectorApp(ctx, cfg, httpClient)
+			state, err := fleetbase.CheckCollectorApp(ctx, cfg.Host, httpClient)
 			if err != nil {
 				return fmt.Errorf("setup: %w", err)
 			}
 
-			products := []setupProductStatus{state.row()}
+			products := []setupProductStatus{collectorAppRow(state)}
 
-			if !state.mayServe() {
+			if !state.MayServe() {
 				products = append(products, setupProductStatus{
 					Product: "instrumentation",
 					Enabled: false,
 					Health:  "unknown",
-					Details: "needs the " + collectorAppID + " plugin",
+					Details: "needs the " + fleetbase.CollectorAppID + " plugin",
 				})
-				return opts.IO.Encode(cmd.OutOrStdout(), newSetupStatus(products))
+				if err := opts.IO.Encode(cmd.OutOrStdout(), newSetupStatus(products)); err != nil {
+					return err
+				}
+				return gcxerrors.NewEmittedError(
+					gcxerrors.ExitGeneralError,
+					fmt.Errorf("setup: %s plugin is not available", fleetbase.CollectorAppID),
+				)
 			}
 
 			// A failed instrumentation call must not discard the Fleet

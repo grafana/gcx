@@ -762,7 +762,8 @@ grafana.com token is needed. See ADR-023.
 | File | Purpose |
 |------|---------|
 | `internal/fleet/client.go` | Shared fleet base HTTP client (used by fleet provider and instrumentation provider); carries no credentials of its own |
-| `internal/fleet/config.go` | Stack config loading, the plugin proxy prefix, `LoadClientWithStack`, and the memoized `cloud.StackInfo` lookup through the `grafanacom-api/instances/` proxy route |
+| `internal/fleet/config.go` | Stack config loading, the plugin proxy prefix, and `LoadClientWithStack` with a bounded `cloud.StackInfo` lookup through the `grafanacom-api/instances/` proxy route |
+| `internal/fleet/preflight.go` | Collector app availability and route-action checks used by `gcx setup status` |
 | `internal/fleet/errors.go` | Fleet API error types, including the marker for an absent plugin route |
 
 ### Setup

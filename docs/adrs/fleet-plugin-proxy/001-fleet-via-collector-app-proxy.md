@@ -29,9 +29,11 @@ Measurements against a live stack on 2026-08-31, plugin version 4.27.0:
 
 - `/api/plugin-proxy/grafana-collector-app/fleet-management-api/<rpc>` serves
   every remote procedure call that gcx uses.
-- `plugin.json` names 17 read routes at the Viewer level. Every other path
-  matches the wildcard route, which needs the Admin role or the action
-  `grafana-collector-app:admin`.
+- `plugin.json` names 17 routes that need the Viewer role or the
+  `grafana-collector-app:read` action. Every other path matches the wildcard
+  route, which needs the Admin role or the `grafana-collector-app:admin`
+  action. The route class does not follow command intent. Some read-only RPCs,
+  including `GetLimits` and `RunK8sMonitoring`, match the admin route.
 - `GET /api/plugin-proxy/grafana-collector-app/grafanacom-api/instances/`
   returns the grafana.com instance record for the stack. It decodes into
   `cloud.StackInfo` field for field, so the instrumentation commands can derive
@@ -50,8 +52,8 @@ API.
 - `internal/fleet.LoadClient` and `LoadClientWithStack` take a loader with
   `LoadGrafanaConfig`, not `LoadCloudConfig`.
 - `LoadClientWithStack` reads `cloud.StackInfo` through the
-  `grafanacom-api/instances/` proxy route. The result is memoized per Grafana
-  host.
+  `grafanacom-api/instances/` proxy route. Each call performs one lookup, so a
+  transient failure cannot affect a later call.
 - gcx no longer requests the `fleet-management:read` and
   `fleet-management:write` scopes from grafana.com.
 - `gcx setup status` reports the plugin state and the two plugin actions, so a
@@ -76,8 +78,10 @@ Harder:
 - gcx now depends on the plugin. A stack without the `grafana-collector-app`
   plugin cannot run these commands. Self-hosted Grafana never could, because
   Fleet Management is a Grafana Cloud product.
-- Every write needs the Admin role or the `grafana-collector-app:admin` action.
-  A Viewer can read only.
+- Permission follows the matched plugin route, not the command intent. Named
+  routes need `grafana-collector-app:read`. Wildcard routes need the Admin role
+  or `grafana-collector-app:admin`. Some read-only commands match wildcard
+  routes.
 - `plugin.json` is not a stable contract. A plugin release can change the route
   set. `gcx setup status` and the typed error for a missing plugin route limit
   the cost of that risk. Grafana returns more than one body for that cause, so

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -112,10 +113,49 @@ func TestLoadClientWithStack(t *testing.T) {
 	assert.Equal(t, "https://fleet-management-prod-011.grafana.net", result.Stack.AgentManagementInstanceURL)
 	assert.Equal(t, 1631916, result.Stack.AgentManagementInstanceID)
 
-	// A second load reuses the memoized record for the same host.
+	// A second load performs a new request. A previous transient error must not
+	// affect a later command path in the same process.
 	_, err = fleet.LoadClientWithStack(context.Background(), loader)
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), stackInfoCalls.Load())
+	assert.Equal(t, int64(2), stackInfoCalls.Load())
+}
+
+func TestLoadClientWithStack_RetriesAfterTransientFailure(t *testing.T) {
+	var stackInfoCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != instancesPath {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if stackInfoCalls.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(stackInfoJSON))
+	}))
+	defer server.Close()
+
+	loader := fakeLoader{host: server.URL, namespace: "stack-1"}
+	_, err := fleet.LoadClientWithStack(context.Background(), loader)
+	require.Error(t, err)
+
+	result, err := fleet.LoadClientWithStack(context.Background(), loader)
+	require.NoError(t, err)
+	assert.Equal(t, "wbkprez", result.Stack.Slug)
+	assert.Equal(t, int64(2), stackInfoCalls.Load())
+}
+
+func TestLoadClientWithStack_RejectsOversizedStackInfo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"slug":"test","padding":"` + strings.Repeat("x", (1<<20)+1) + `"}`))
+	}))
+	defer server.Close()
+
+	_, err := fleet.LoadClientWithStack(context.Background(), fakeLoader{host: server.URL})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "response body exceeds 1 MB limit")
 }
 
 func TestLoadClientWithStack_PluginMissing(t *testing.T) {

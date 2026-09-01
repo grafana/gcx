@@ -30,12 +30,12 @@ import (
 // instrumentation product with 3 clusters, behind a healthy collector app
 // plugin.
 const statusTableEnabled = "PRODUCT           ENABLED  HEALTH   DETAILS\n" +
-	"fleet-management  yes      healthy  read and write\n" +
+	"fleet-management  yes      healthy  read and admin routes\n" +
 	"instrumentation   yes      healthy  3 clusters\n"
 
 // statusTableDisabled is the byte-exact human table when no clusters exist.
 const statusTableDisabled = "PRODUCT           ENABLED  HEALTH   DETAILS\n" +
-	"fleet-management  yes      healthy  read and write\n" +
+	"fleet-management  yes      healthy  read and admin routes\n" +
 	"instrumentation   no       healthy  0 clusters\n"
 
 func TestSetupStatus_OutputContract(t *testing.T) {
@@ -305,32 +305,67 @@ func TestSetupStatus_KeepsPreflightRowWhenInstrumentationFails(t *testing.T) {
 	}
 }
 
-// An absent plugin ends the run early with one document and no error.
-func TestSetupStatus_PluginAbsentEndsEarly(t *testing.T) {
-	stdout, err := runStatus(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/access-control/user/actions":
-			writeJSON(w, map[string]bool{})
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	})
-	if err != nil {
-		t.Fatalf("Execute() = %v, want nil", err)
+// An unavailable plugin emits one complete status document and returns a
+// general error. The action check must not hide the known plugin state.
+func TestSetupStatus_UnavailablePluginEndsWithGeneralError(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings func(http.ResponseWriter)
+	}{
+		{
+			name: "plugin is absent",
+			settings: func(w http.ResponseWriter) {
+				w.WriteHeader(http.StatusNotFound)
+			},
+		},
+		{
+			name: "plugin is disabled",
+			settings: func(w http.ResponseWriter) {
+				writeJSON(w, map[string]any{"id": "grafana-collector-app", "enabled": false})
+			},
+		},
 	}
 
-	doc := decodeSingleJSONValue(t, stdout)
-	products, ok := doc["products"].([]any)
-	if !ok || len(products) != 2 {
-		t.Fatalf("products = %v, want two entries", doc["products"])
-	}
-	plugin, _ := products[0].(map[string]any)
-	if plugin["product"] != "fleet-management" || plugin["health"] != "unhealthy" {
-		t.Fatalf("unexpected plugin row: %v", plugin)
-	}
-	instrumentation, _ := products[1].(map[string]any)
-	if instrumentation["health"] != "unknown" {
-		t.Fatalf("unexpected instrumentation row: %v", instrumentation)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actionsCalled := false
+			stdout, err := runStatus(t, func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/plugins/grafana-collector-app/settings":
+					tt.settings(w)
+				case "/api/access-control/user/actions":
+					actionsCalled = true
+					w.WriteHeader(http.StatusInternalServerError)
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			})
+
+			var emitted *gcxerrors.EmittedError
+			if !errors.As(err, &emitted) {
+				t.Fatalf("error = %T (%v), want *gcxerrors.EmittedError", err, err)
+			}
+			if emitted.Code != gcxerrors.ExitGeneralError {
+				t.Fatalf("exit code = %d, want %d", emitted.Code, gcxerrors.ExitGeneralError)
+			}
+			if actionsCalled {
+				t.Fatal("the action endpoint was called for an unavailable plugin")
+			}
+
+			doc := decodeSingleJSONValue(t, stdout)
+			products, ok := doc["products"].([]any)
+			if !ok || len(products) != 2 {
+				t.Fatalf("products = %v, want two entries", doc["products"])
+			}
+			plugin, _ := products[0].(map[string]any)
+			if plugin["product"] != "fleet-management" || plugin["health"] != "unhealthy" {
+				t.Fatalf("unexpected plugin row: %v", plugin)
+			}
+			instrumentation, _ := products[1].(map[string]any)
+			if instrumentation["health"] != "unknown" {
+				t.Fatalf("unexpected instrumentation row: %v", instrumentation)
+			}
+		})
 	}
 }
 
@@ -364,5 +399,12 @@ func TestSetupStatus_UnknownPluginStateStillTriesTheCheck(t *testing.T) {
 	details, _ := plugin["details"].(string)
 	if !strings.Contains(details, "HTTP 403") {
 		t.Fatalf("details = %q, want the status in the text", details)
+	}
+}
+
+func writeJSON(w http.ResponseWriter, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

@@ -436,7 +436,7 @@ func TestErrorToDetailedError_FleetPluginMissing(t *testing.T) {
 	got := fail.ErrorToDetailedError(err)
 
 	require.NotNil(t, got)
-	assert.Equal(t, "Fleet Management plugin not available", got.Summary)
+	assert.Equal(t, "Endpoint not available", got.Summary)
 	assert.Contains(t, got.Details, "grafana-collector-app")
 	require.NotEmpty(t, got.Suggestions)
 	assert.Contains(t, got.Suggestions[0], "gcx setup status")
@@ -455,7 +455,10 @@ func TestErrorToDetailedError_FleetForbiddenNamesTheAction(t *testing.T) {
 	assert.Equal(t, "Authorization failed", got.Summary)
 	require.NotNil(t, got.ExitCode)
 	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
-	assert.Contains(t, strings.Join(got.Suggestions, "\n"), "grafana-collector-app:admin")
+	suggestions := strings.Join(got.Suggestions, "\n")
+	assert.Contains(t, suggestions, fleet.CollectorAppReadAction)
+	assert.Contains(t, suggestions, fleet.CollectorAppAdminAction)
+	assert.Contains(t, suggestions, "read-only commands")
 }
 
 func TestErrorToDetailedError_StacksReadAdaptiveContext(t *testing.T) {
@@ -956,7 +959,7 @@ func TestConvertFleetHTTPErrors(t *testing.T) {
 		{
 			name:        "404 for a missing plugin route reports the plugin",
 			err:         &fleet.HTTPError{Status: 404, Path: "/foo", Body: `{"message":"plugin route match not found"}`},
-			wantSummary: "Fleet Management plugin not available",
+			wantSummary: "Endpoint not available",
 		},
 	}
 	for _, tc := range tests {
