@@ -62,13 +62,13 @@ const (
 	KubernetesMonitoring = "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring.md"
 
 	// AdaptiveMetrics documents Adaptive Metrics cost control.
-	AdaptiveMetrics = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/metrics-costs/control-metrics-usage-via-adaptive-metrics.md"
+	AdaptiveMetrics = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-metrics.md"
 
 	// AdaptiveLogs documents Adaptive Logs cost control.
-	AdaptiveLogs = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/logs-costs/adaptive-logs.md"
+	AdaptiveLogs = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-logs.md"
 
 	// AdaptiveTraces documents reducing traces costs (Adaptive Traces).
-	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/traces-costs.md"
+	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-traces.md"
 
 	// AssistantPricing documents Grafana Assistant token-based pricing,
 	// which explicitly counts usage made through the gcx CLI.
@@ -106,30 +106,55 @@ const (
 	CloudAPI = "https://grafana.com/docs/grafana-cloud/developer-resources/api-reference/cloud-api.md"
 )
 
-// All returns every documentation URL in the registry. Used by the
-// link-validity test to assert the entire set is well-formed Markdown.
-func All() []string {
-	return []string{
-		ServiceAccounts,
-		AccessPolicies,
-		GrafanaInstallation,
-		PromQL,
-		LogQL,
-		TraceQL,
-		PyroscopeQueries,
-		DashboardJSONModel,
-		SyntheticMonitoring,
-		FleetManagement,
-		KubernetesMonitoring,
-		AdaptiveMetrics,
-		AdaptiveLogs,
-		AdaptiveTraces,
-		AssistantPricing,
-		SyntheticMonitoringInvoice,
-		PerformanceTestingInvoice,
-		IRMInvoice,
-		Keychain,
-		AnonymousUsageStats,
-		CloudAPI,
+// NamedLink pairs a registry constant's name with its documentation URL.
+// The name is the stable identifier surfaced to agents (e.g. via
+// `gcx docs list-links`) so they can reference a canonical doc without guessing.
+type NamedLink struct {
+	Name string
+	URL  string
+}
+
+// AllNamed returns every documentation link in the registry paired with its
+// name, in a stable order. This is the single source of truth for the link
+// set; All derives from it. Every constant defined above must appear here so
+// that a canonical URL surfaced to an agent (via help text, an llm_hint
+// annotation, or a DetailedError.DocsLink) is always discoverable through
+// `gcx docs list-links`.
+func AllNamed() []NamedLink {
+	return []NamedLink{
+		{Name: "ServiceAccounts", URL: ServiceAccounts},
+		{Name: "AccessPolicies", URL: AccessPolicies},
+		{Name: "GrafanaInstallation", URL: GrafanaInstallation},
+		{Name: "PromQL", URL: PromQL},
+		{Name: "LogQL", URL: LogQL},
+		{Name: "TraceQL", URL: TraceQL},
+		{Name: "PyroscopeQueries", URL: PyroscopeQueries},
+		{Name: "DashboardJSONModel", URL: DashboardJSONModel},
+		{Name: "SyntheticMonitoring", URL: SyntheticMonitoring},
+		{Name: "FleetManagement", URL: FleetManagement},
+		{Name: "KubernetesMonitoring", URL: KubernetesMonitoring},
+		{Name: "AdaptiveMetrics", URL: AdaptiveMetrics},
+		{Name: "AdaptiveLogs", URL: AdaptiveLogs},
+		{Name: "AdaptiveTraces", URL: AdaptiveTraces},
+		{Name: "AssistantPricing", URL: AssistantPricing},
+		{Name: "SyntheticMonitoringInvoice", URL: SyntheticMonitoringInvoice},
+		{Name: "PerformanceTestingInvoice", URL: PerformanceTestingInvoice},
+		{Name: "IRMInvoice", URL: IRMInvoice},
+		{Name: "Keychain", URL: Keychain},
+		{Name: "ConfigMigration", URL: ConfigMigration},
+		{Name: "AnonymousUsageStats", URL: AnonymousUsageStats},
+		{Name: "CloudAPI", URL: CloudAPI},
 	}
+}
+
+// All returns every documentation URL in the registry, derived from AllNamed
+// so the two never drift. Used by the link-validity test to assert the entire
+// set is well-formed Markdown.
+func All() []string {
+	named := AllNamed()
+	urls := make([]string, len(named))
+	for i, l := range named {
+		urls[i] = l.URL
+	}
+	return urls
 }

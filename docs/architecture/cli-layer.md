@@ -61,6 +61,13 @@ gcx (root)
 │   ├── get    NAME
 │   └── query                DATASOURCE_UID EXPR (auto-detect type) [--from] [--to] [--step] [--since] [--limit] [--profile-type] [--max-nodes] [-o]
 │
+├── docs                     [cmd/gcx/docs/command.go]
+│   ├── search  QUERY        Search the grafana.com docs index [--product] [--limit]
+│   ├── get     URL          Fetch a page as bounded markdown [--section] [--offset] [--limit]
+│   ├── outline URL          List headings of a page
+│   ├── list-products        List indexed doc products with entry counts
+│   └── list-links           List curated canonical doc URLs (no network)
+│
 ├── metrics                  [internal/providers/metrics/provider.go] (registered via providers.Register)
 │   ├── query                [DATASOURCE_UID] EXPR   [--from] [--to] [--step] [--since] [-o]
 │   ├── labels               [--datasource/-d UID] [--label/-l NAME]
@@ -288,6 +295,14 @@ cmd/gcx/
 │   ├── get.go               datasources get
 │   ├── query.go             QueryCmd() — auto-detecting query (shared infra from internal/datasources/query/)
 │   └── query_routes.go      per-kind dispatch handlers and typed-command redirects
+├── docs/
+│   ├── command.go           docs group + index loader + fetch seam
+│   ├── search.go            docs search
+│   ├── get.go               docs get
+│   ├── outline.go           docs outline
+│   ├── products.go          docs list-products
+│   ├── links.go             docs list-links
+│   └── testdata/            sample index fixture
 ├── providers/
 │   └── command.go           providers command — lists registered providers
 ├── setup/

@@ -1,6 +1,6 @@
 module github.com/grafana/gcx
 
-go 1.26.3
+go 1.26.5
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
@@ -45,6 +45,7 @@ require (
 	github.com/go-openapi/runtime v0.32.4
 	github.com/gofrs/flock v0.13.0
 	github.com/google/uuid v1.6.0
+	github.com/grafana/mcp-doc-server v1.0.0
 	github.com/grafana/otel-checker v0.3.1
 	github.com/itchyny/gojq v0.12.19
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
