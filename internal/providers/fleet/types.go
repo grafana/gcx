@@ -46,10 +46,14 @@ func (c Collector) GetResourceName() string {
 
 // SetResourceName restores the collector ID from a slug-id composite name.
 func (c *Collector) SetResourceName(name string) {
+	// Collector IDs are arbitrary strings. Preserve the canonical ID when the
+	// manifest includes spec.id. Older manifests encoded numeric IDs only in
+	// metadata.name, so keep that fallback for compatibility.
+	if c.ID != "" {
+		return
+	}
 	if id, ok := extractIDFromSlug(name); ok {
 		c.ID = id
-	} else {
-		c.ID = name
 	}
 }
 

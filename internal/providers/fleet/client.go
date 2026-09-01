@@ -225,7 +225,10 @@ func (c *Client) CreateCollector(ctx context.Context, col Collector) (*Collector
 		return nil, fmt.Errorf("fleet: create collector: %w", httpError(resp, pathCreateCollector))
 	}
 
-	var result Collector
+	// The production API can return an empty or partial object after a
+	// successful create. Start with the submitted collector so callers retain
+	// the canonical ID and name when the response omits them.
+	result := col
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("fleet: create collector: decode: %w", err)
 	}

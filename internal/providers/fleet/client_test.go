@@ -424,34 +424,65 @@ func TestClient_GetCollector(t *testing.T) {
 }
 
 func TestClient_CreateCollector(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Contains(t, r.URL.Path, "/collector.v1.CollectorService/CreateCollector")
+	tests := []struct {
+		name     string
+		response map[string]any
+		wantID   string
+		wantName string
+	}{
+		{
+			name:     "uses complete server response",
+			response: map[string]any{"id": "server-id", "name": "server-name", "collector_type": "alloy"},
+			wantID:   "server-id",
+			wantName: "server-name",
+		},
+		{
+			name:     "fills fields omitted from partial response",
+			response: map[string]any{"name": "server-name"},
+			wantID:   "submitted-id",
+			wantName: "server-name",
+		},
+		{
+			name:     "uses submitted collector for empty response",
+			response: map[string]any{},
+			wantID:   "submitted-id",
+			wantName: "new-collector",
+		},
+	}
 
-		var body map[string]json.RawMessage
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Contains(t, r.URL.Path, "/collector.v1.CollectorService/CreateCollector")
 
-		var col fleet.Collector
-		assert.NoError(t, json.Unmarshal(body["collector"], &col))
-		assert.Equal(t, "new-collector", col.Name)
-		assert.Equal(t, "alloy", col.CollectorType)
+				var body map[string]json.RawMessage
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 
-		writeJSON(w, map[string]any{
-			"id": "c-created", "name": "new-collector", "collector_type": "alloy",
+				var col fleet.Collector
+				assert.NoError(t, json.Unmarshal(body["collector"], &col))
+				assert.Equal(t, "submitted-id", col.ID)
+				assert.Equal(t, "new-collector", col.Name)
+				assert.Equal(t, "alloy", col.CollectorType)
+
+				writeJSON(w, tt.response)
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			created, err := client.CreateCollector(context.Background(), fleet.Collector{
+				ID:            "submitted-id",
+				Name:          "new-collector",
+				CollectorType: "alloy",
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, created)
+			assert.Equal(t, tt.wantID, created.ID)
+			assert.Equal(t, tt.wantName, created.Name)
+			assert.Equal(t, "alloy", created.CollectorType)
 		})
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server)
-	created, err := client.CreateCollector(context.Background(), fleet.Collector{
-		Name:          "new-collector",
-		CollectorType: "alloy",
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, created)
-	assert.Equal(t, "c-created", created.ID)
-	assert.Equal(t, "new-collector", created.Name)
+	}
 }
 
 func TestClient_DeleteCollector(t *testing.T) {

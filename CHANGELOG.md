@@ -10,6 +10,10 @@
 - traces: add experimental `gcx traces baseline <trace-id>` to retrieve same-operation candidate traces (root identity, operation success, and topology fingerprint) to feed into `gcx traces diff`, with optional raw TraceQL filters when the unfiltered candidates are not valid comparisons.
 - traces: include Tempo `serviceStats` metadata (per-service span and error counts) in structured trace search output.
 
+**Fixes**
+
+- Correct Fleet resource examples, preserve string collector IDs in resource manifests, and include the collector name and ID in successful create output.
+
 ## v1.2.0 (2026-08-25)
 
 **Breaking changes**

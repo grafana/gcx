@@ -79,7 +79,7 @@ func newFleetAPIServer(t *testing.T) *httptest.Server {
 		writeJSON(w, map[string]any{})
 	})
 	mux.HandleFunc("/collector.v1.CollectorService/CreateCollector", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, map[string]any{"id": "202", "name": "col-a"})
+		writeJSON(w, map[string]any{})
 	})
 	mux.HandleFunc("/collector.v1.CollectorService/GetCollector", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"id": "202", "name": "col-a"})
@@ -127,6 +127,7 @@ kind: Collector
 metadata:
   name: col-a
 spec:
+  id: "202"
   name: col-a
   collector_type: alloy
 `)
@@ -299,4 +300,22 @@ func TestFleetMutations_ExplicitOutputOverride(t *testing.T) {
 			assert.NotContains(t, stdout, "✔", "explicit -o yaml must not carry the styled human line")
 		})
 	}
+}
+
+func TestCollectorCreateRequiresID(t *testing.T) {
+	manifest := writeManifest(t, "collector-without-id.yaml", `apiVersion: fleet.ext.grafana.app/v1alpha1
+kind: Collector
+metadata:
+  name: col-a
+spec:
+  name: col-a
+  collector_type: alloy
+`)
+
+	stdout, err := runCommand(t, func(h *fleetHelper) *cobra.Command {
+		return h.newCollectorCreateCommand()
+	}, []string{"-f", manifest})
+
+	require.ErrorContains(t, err, "collector spec.id is required for create")
+	assert.NotContains(t, stdout, "gcx.mutation")
 }

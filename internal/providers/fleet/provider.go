@@ -339,8 +339,14 @@ func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline
 
 // resolveCollector looks up a collector by slug-id, plain ID, or name.
 func resolveCollector(ctx context.Context, client *Client, ref string) (*Collector, error) {
-	// Try extracting a numeric ID from the reference (handles "name-123" and "123").
-	if id, ok := extractIDFromSlug(ref); ok {
+	// Collector IDs are arbitrary strings. Try the input as the canonical ID
+	// before interpreting it as a rendered resource name or collector name.
+	if collector, err := client.GetCollector(ctx, ref); err == nil {
+		return collector, nil
+	}
+
+	// Older rendered resources encode a numeric ID as a slug suffix.
+	if id, ok := extractIDFromSlug(ref); ok && id != ref {
 		c, err := client.GetCollector(ctx, id)
 		if err == nil {
 			return c, nil
@@ -352,7 +358,7 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 		return nil, fmt.Errorf("fleet: resolve collector %q: %w", ref, err)
 	}
 	for i := range collectors {
-		if collectors[i].Name == ref {
+		if collectors[i].ID == ref || collectors[i].Name == ref || collectors[i].GetResourceName() == ref {
 			return &collectors[i], nil
 		}
 	}
@@ -692,6 +698,9 @@ func (h *fleetHelper) newCollectorCreateCommand() *cobra.Command {
 
 			collector, err := readCollectorFromFile(opts.File, cmd.InOrStdin())
 			if err != nil {
+				return err
+			}
+			if err := validateCollectorForCreate(collector); err != nil {
 				return err
 			}
 
@@ -1078,9 +1087,6 @@ func CollectorToResource(col Collector, namespace string) (*resources.Resource, 
 		return nil, fmt.Errorf("failed to unmarshal collector to map: %w", err)
 	}
 
-	// Strip the ID from spec — it lives in metadata.name.
-	delete(specMap, "id")
-
 	// Build slug-id name for unique identification.
 	name := slugifyName(col.Name)
 	if col.ID != "" {
@@ -1124,9 +1130,12 @@ func CollectorFromResource(res *resources.Resource) (*Collector, error) {
 		return nil, fmt.Errorf("failed to unmarshal spec to collector: %w", err)
 	}
 
-	// Restore ID from metadata.name slug.
-	if id, ok := extractIDFromSlug(res.Raw.GetName()); ok {
-		col.ID = id
+	// New manifests retain the canonical string ID in spec.id. Older manifests
+	// can still restore a numeric ID from metadata.name.
+	if col.ID == "" {
+		if id, ok := extractIDFromSlug(res.Raw.GetName()); ok {
+			col.ID = id
+		}
 	}
 
 	return &col, nil
@@ -1190,6 +1199,13 @@ func readCollectorFromFile(filename string, stdin io.Reader) (*Collector, error)
 	}
 
 	return CollectorFromResource(res)
+}
+
+func validateCollectorForCreate(collector *Collector) error {
+	if strings.TrimSpace(collector.ID) == "" {
+		return errors.New("collector spec.id is required for create")
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -1275,12 +1291,19 @@ func NewCollectorTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapt
 			return resolveCollector(ctx, client, name)
 		},
 		CreateFn: func(ctx context.Context, col *Collector) (*Collector, error) {
+			if err := validateCollectorForCreate(col); err != nil {
+				return nil, err
+			}
 			return client.CreateCollector(ctx, *col)
 		},
 		UpdateFn: func(ctx context.Context, name string, col *Collector) (*Collector, error) {
-			id, ok := extractIDFromSlug(name)
-			if !ok {
-				return nil, fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+			id := col.ID
+			if id == "" {
+				existing, err := resolveCollector(ctx, client, name)
+				if err != nil {
+					return nil, fmt.Errorf("cannot resolve collector %q for update: %w", name, err)
+				}
+				id = existing.ID
 			}
 			col.ID = id
 			if err := client.UpdateCollector(ctx, *col); err != nil {
@@ -1296,15 +1319,14 @@ func NewCollectorTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapt
 			return updated, nil
 		},
 		DeleteFn: func(ctx context.Context, name string) error {
-			id, ok := extractIDFromSlug(name)
-			if !ok {
-				return fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+			collector, err := resolveCollector(ctx, client, name)
+			if err != nil {
+				return fmt.Errorf("cannot resolve collector %q for delete: %w", name, err)
 			}
-			return client.DeleteCollector(ctx, id)
+			return client.DeleteCollector(ctx, collector.ID)
 		},
-		Namespace:   namespace,
-		StripFields: []string{"id"},
-		Descriptor:  collectorDescriptorVar,
+		Namespace:  namespace,
+		Descriptor: collectorDescriptorVar,
 	}
 	return crud, namespace, nil
 }
@@ -1368,7 +1390,7 @@ func pipelineExample() json.RawMessage {
 			"name": "my-pipeline",
 		},
 		"spec": map[string]any{
-			"name":       "my-pipeline",
+			"name":       "my_pipeline",
 			"enabled":    true,
 			"configType": "CONFIG_TYPE_ALLOY",
 			"contents":   "logging { level = \"info\" }",
@@ -1400,6 +1422,7 @@ func collectorSchema() json.RawMessage {
 			"spec": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
+					"id":                map[string]any{"type": "string"},
 					"name":              map[string]any{"type": "string"},
 					"collector_type":    map[string]any{"type": "string"},
 					"enabled":           map[string]any{"type": "boolean"},
@@ -1425,6 +1448,7 @@ func collectorExample() json.RawMessage {
 			"name": "my-collector",
 		},
 		"spec": map[string]any{
+			"id":             "my-collector-id",
 			"name":           "my-collector",
 			"collector_type": "alloy",
 			"enabled":        true,

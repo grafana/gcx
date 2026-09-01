@@ -90,6 +90,25 @@ func TestCollectorToResource_RoundTrip(t *testing.T) {
 	assert.Equal(t, original.LocalAttributes, roundTripped.LocalAttributes)
 }
 
+func TestCollectorToResource_RoundTripStringID(t *testing.T) {
+	original := fleet.Collector{
+		ID:            "collector-prod-eu-a",
+		Name:          "my-collector",
+		CollectorType: "alloy",
+	}
+
+	res, err := fleet.CollectorToResource(original, "stack-123")
+	require.NoError(t, err)
+
+	spec, ok := res.Object.Object["spec"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, original.ID, spec["id"])
+
+	roundTripped, err := fleet.CollectorFromResource(res)
+	require.NoError(t, err)
+	assert.Equal(t, original.ID, roundTripped.ID)
+}
+
 // TestPipelineToResource_PreservesConfigType is a regression test for the OTel
 // pipeline bug: configType must survive the Pipeline -> Resource (pull/render) and
 // Resource -> Pipeline (manifest read/push) round-trips, and must appear as
@@ -171,7 +190,7 @@ func TestPipelineToResource_StripsID(t *testing.T) {
 	assert.Equal(t, "test-pipeline-99999", res.Object.GetName(), "metadata.name should be slug-id")
 }
 
-func TestCollectorToResource_StripsID(t *testing.T) {
+func TestCollectorToResource_RetainsID(t *testing.T) {
 	col := fleet.Collector{
 		ID:            "88888",
 		Name:          "test-collector",
@@ -183,7 +202,7 @@ func TestCollectorToResource_StripsID(t *testing.T) {
 
 	spec, ok := res.Object.Object["spec"].(map[string]any)
 	require.True(t, ok, "spec should be a map")
-	assert.NotContains(t, spec, "id", "ID should be stripped from spec")
+	assert.Equal(t, "88888", spec["id"], "collector ID should remain in spec")
 	assert.Equal(t, "test-collector-88888", res.Object.GetName(), "metadata.name should be slug-id")
 }
 
