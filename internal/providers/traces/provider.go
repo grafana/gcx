@@ -88,6 +88,21 @@ func (p *Provider) descriptor() signals.Descriptor {
   # With an explicit datasource UID, JSON output
   gcx traces diff -d UID <trace-a> <trace-b> -o json`,
 			},
+			{
+				Build:     dstempo.BaselineCmd,
+				TokenCost: "medium",
+				LLMHint:   "gcx traces baseline -d abc123 <trace-id> -o json",
+				Example: `
+  # Start unfiltered, then diff a candidate as the baseline (B - A semantics)
+  gcx traces baseline <trace-id>
+  gcx traces diff <candidate> <trace-id>
+
+  # Only if unfiltered candidates are not valid comparisons, refine by tenant
+  gcx traces baseline <trace-id> --filter '{ span.tenantID = "tenant-a" }'
+
+  # Widen the window to 6h before and after the seed, output JSON
+  gcx traces baseline <trace-id> --window 6h -o json`,
+			},
 		},
 		Adaptive: &signals.AdaptiveSpec{
 			Build: adaptivetraces.Commands,
