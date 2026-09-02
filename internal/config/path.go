@@ -40,6 +40,10 @@ func ValidateConfigPath(cfg Config, path string) (string, error) {
 	switch first {
 	case "contexts", "current-context", "stacks", "resources", "diagnostics", "version":
 		return path, nil
+	case "credentials":
+		if rest == "" || rest == "keychain" {
+			return path, nil
+		}
 	case "cloud":
 		if sub, _, _ := strings.Cut(rest, "."); rest == "" || cloudEntryFields[sub] {
 			return "", fmt.Errorf("invalid path %q: cloud credentials live in named entries; use cloud.<entry>.%s%s", path, rest, cloudEntryHint(cfg))

@@ -75,6 +75,42 @@ type loadOptions struct {
 	// withSourceSnapshot and read it with snapshotFor, never directly — both
 	// clone, and snapshotFor enforces the path binding below.
 	sourceSnapshot *configSnapshot
+
+	// keychainPolicy, when set, is the already-resolved credential-storage
+	// decision this load must obey instead of deriving one from the bytes it
+	// reads.
+	//
+	// It is the one field here that is deliberately *inherited* rather than
+	// stated per target. Every other field describes one config document; the
+	// keychain policy describes the process: it is resolved once from all
+	// trusted layers plus GCX_KEYCHAIN, and a per-layer load that re-derived
+	// it from its own bytes would reach a different answer than the load it
+	// belongs to — a user layer holding "keychain: off" would not stop the
+	// system layer's load from opening the real keychain and migrating that
+	// layer's plaintext into it. So loadLayered sets it on the parent options
+	// before the per-iteration copy, and every derived load carries it.
+	//
+	// It is a pointer so that "no policy resolved yet" (resolve one) stays
+	// distinguishable from a zero-valued policy. Set it with
+	// withKeychainPolicy and read it with resolvedKeychainPolicy.
+	keychainPolicy *keychainPolicy
+}
+
+// withKeychainPolicy returns a copy of the options bound to an already-resolved
+// credential-storage policy, so every load derived from them obeys that
+// decision rather than re-deriving one from the bytes it happens to read.
+func (o loadOptions) withKeychainPolicy(policy keychainPolicy) loadOptions {
+	o.keychainPolicy = &policy
+	return o
+}
+
+// resolvedKeychainPolicy returns the policy these options were bound to, and
+// whether one was bound at all.
+func (o loadOptions) resolvedKeychainPolicy() (keychainPolicy, bool) {
+	if o.keychainPolicy == nil {
+		return keychainPolicy{}, false
+	}
+	return *o.keychainPolicy, true
 }
 
 // configSnapshot is a frozen copy of one config document, bound to the path it

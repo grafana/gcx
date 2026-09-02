@@ -1,8 +1,11 @@
 package config_test
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -10,6 +13,275 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// keychainPolicyFixture makes source discovery deterministic while exercising
+// the real layered loader. The credential backend itself is always the test
+// fake installed by withFakeStore, so these policy tests never open the OS
+// keychain.
+type keychainPolicyFixture struct {
+	system   string
+	user     string
+	local    string
+	explicit string
+}
+
+func newKeychainPolicyFixture(t *testing.T) keychainPolicyFixture {
+	t.Helper()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	systemRoot := filepath.Join(root, "system")
+	work := filepath.Join(root, "work")
+	require.NoError(t, os.MkdirAll(home, 0o700))
+	require.NoError(t, os.MkdirAll(work, 0o700))
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CONFIG_DIRS", systemRoot)
+	t.Setenv(config.ConfigFileEnvVar, "")
+	t.Setenv("GCX_KEYCHAIN", "")
+	t.Chdir(work)
+
+	return keychainPolicyFixture{
+		system:   filepath.Join(systemRoot, config.StandardConfigFolder, config.StandardConfigFileName),
+		user:     filepath.Join(home, ".config", config.StandardConfigFolder, config.StandardConfigFileName),
+		local:    filepath.Join(work, config.LocalConfigFileName),
+		explicit: filepath.Join(root, "explicit.yaml"),
+	}
+}
+
+func writeKeychainPolicyConfig(t *testing.T, path, keychain, token string, repoContext bool) {
+	t.Helper()
+	var contents strings.Builder
+	contents.WriteString("version: 1\n")
+	if keychain != "" {
+		contents.WriteString("credentials:\n  keychain: " + keychain + "\n")
+	}
+	if token != "" {
+		contents.WriteString("stacks:\n  default:\n    grafana:\n      server: https://example.invalid\n      token: " + token + "\n")
+		contents.WriteString("contexts:\n  default:\n    stack: default\ncurrent-context: default\n")
+	}
+	if repoContext {
+		contents.WriteString("contexts:\n  repo-context: {}\n")
+	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(t, os.WriteFile(path, []byte(contents.String()), 0o600))
+}
+
+func captureKeychainPolicyStderr(t *testing.T, run func()) string {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	previous := os.Stderr
+	os.Stderr = writer
+	t.Cleanup(func() { os.Stderr = previous })
+
+	run()
+	require.NoError(t, writer.Close())
+	output, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	return string(output)
+}
+
+// A mode is observable without inspecting implementation details: enabled
+// storage migrates the fixture's plaintext token to the fake store, whereas
+// disabled storage leaves that store untouched. These cases would catch a
+// production change that parses credentials.keychain but applies the wrong
+// trust ordering (or still permits an auto-discovered local file to opt out).
+func TestLoadLayered_KeychainModePolicy(t *testing.T) {
+	tests := []struct {
+		name           string
+		env            string
+		system         string
+		user           string
+		local          string
+		explicit       string
+		load           string
+		wantStored     bool
+		wantWarning    bool
+		wantError      string
+		wantErrorPath  string
+		wantEnvWarning bool
+		wantLocalMerge bool
+	}{
+		{
+			name:       "unset with no setting defaults to on",
+			user:       "",
+			wantStored: true,
+		},
+		{
+			name:       "environment off wins over a trusted on setting",
+			env:        "off",
+			user:       "on",
+			wantStored: false,
+		},
+		{
+			name:           "invalid environment keeps keychain on over trusted off",
+			env:            "invalid",
+			user:           "off",
+			wantStored:     true,
+			wantEnvWarning: true,
+		},
+		{
+			name:       "system off disables storage",
+			system:     "off",
+			wantStored: false,
+		},
+		{
+			name:       "user on overrides system off",
+			system:     "off",
+			user:       "on",
+			wantStored: true,
+		},
+		{
+			name:       "user off disables storage",
+			user:       "off",
+			wantStored: false,
+		},
+		{
+			name:       "trusted off is case and space insensitive",
+			user:       `" Off "`,
+			wantStored: false,
+		},
+		{
+			name:       "trusted on is case and space insensitive",
+			user:       `" On "`,
+			wantStored: true,
+		},
+		{
+			name:        "auto discovered local off is ignored",
+			local:       "off",
+			wantStored:  true,
+			wantWarning: true,
+		},
+		{
+			name:           "auto discovered local invalid value is ignored",
+			local:          "invalid",
+			wantStored:     true,
+			wantWarning:    true,
+			wantLocalMerge: true,
+		},
+		{
+			name:       "explicit flag file off wins over user and system",
+			system:     "on",
+			user:       "on",
+			explicit:   "off",
+			load:       "flag",
+			wantStored: false,
+		},
+		{
+			name:       "GCX_CONFIG file off wins over user and system",
+			system:     "on",
+			user:       "on",
+			explicit:   "off",
+			load:       "environment-file",
+			wantStored: false,
+		},
+		{
+			name:          "invalid system value names field and system source",
+			system:        "invalid",
+			wantError:     "credentials.keychain",
+			wantErrorPath: "system",
+		},
+		{
+			name:          "invalid user value names field and user source",
+			user:          "invalid",
+			wantError:     "credentials.keychain",
+			wantErrorPath: "user",
+		},
+		{
+			name:          "invalid explicit value names field and explicit source",
+			system:        "on",
+			user:          "off",
+			explicit:      "invalid",
+			load:          "flag",
+			wantError:     "credentials.keychain",
+			wantErrorPath: "explicit",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newKeychainPolicyFixture(t)
+			store := withFakeStore(t)
+			t.Setenv("GCX_KEYCHAIN", test.env)
+
+			// The user token is the observable credential for layered cases. It
+			// deliberately has no credentials block when the test needs the
+			// local source to be the only untrusted setting.
+			if test.system != "" {
+				writeKeychainPolicyConfig(t, fixture.system, test.system, "", false)
+			}
+			if test.user != "" || test.explicit == "" {
+				writeKeychainPolicyConfig(t, fixture.user, test.user, "plaintext-user-token", false)
+			}
+			if test.local != "" {
+				writeKeychainPolicyConfig(t, fixture.local, test.local, "", true)
+			}
+			if test.explicit != "" {
+				writeKeychainPolicyConfig(t, fixture.explicit, test.explicit, "plaintext-explicit-token", false)
+			}
+
+			var warnings bytes.Buffer
+			ctx := config.ContextWithWarningWriter(t.Context(), &warnings)
+			var (
+				cfg config.Config
+				err error
+			)
+			load := func() {
+				switch test.load {
+				case "flag":
+					cfg, err = config.LoadLayered(ctx, fixture.explicit)
+				case "environment-file":
+					t.Setenv(config.ConfigFileEnvVar, fixture.explicit)
+					cfg, err = config.LoadLayered(ctx, "")
+				default:
+					cfg, err = config.LoadLayered(ctx, "")
+				}
+			}
+			var stderr string
+			if test.wantEnvWarning {
+				config.ResetUnrecognisedKeychainWarningForTest()
+				stderr = captureKeychainPolicyStderr(t, load)
+			} else {
+				load()
+			}
+
+			if test.wantError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), test.wantError)
+				switch test.wantErrorPath {
+				case "system":
+					assert.Contains(t, err.Error(), fixture.system)
+				case "user":
+					assert.Contains(t, err.Error(), fixture.user)
+				case "explicit":
+					assert.Contains(t, err.Error(), fixture.explicit)
+				default:
+					t.Fatalf("missing expected source path for error case %q", test.name)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			if test.wantStored {
+				assert.Positive(t, store.sets(), "enabled keychain mode must migrate the test plaintext token")
+			} else {
+				assert.Zero(t, store.sets(), "disabled keychain mode must not touch the fake credential store")
+			}
+			if test.wantWarning {
+				assert.Contains(t, warnings.String(), "credentials.keychain")
+			}
+			if test.wantLocalMerge {
+				require.Contains(t, cfg.Contexts, "repo-context", "filtering local credentials.keychain must retain the rest of the local layer")
+				assert.Equal(t, 1, strings.Count(warnings.String(), "credentials.keychain"), warnings.String())
+			}
+			if test.wantEnvWarning {
+				assert.Equal(t, 1, strings.Count(stderr, "warn:"), stderr)
+				assert.Contains(t, stderr, `GCX_KEYCHAIN="invalid"`)
+			}
+		})
+	}
+}
 
 func TestLoad_explicitFile(t *testing.T) {
 	req := require.New(t)
