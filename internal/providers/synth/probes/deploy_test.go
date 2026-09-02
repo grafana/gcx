@@ -79,7 +79,7 @@ func TestRenderManifests(t *testing.T) {
 		t.Error("Deployment should have correct namespace")
 	}
 	if !strings.Contains(deployDoc, `image: "`+probes.DefaultAgentImage+`"`) {
-		t.Error("Deployment should contain the pinned agent image")
+		t.Error("Deployment should contain the default agent image")
 	}
 	if !strings.Contains(deployDoc, "--api-server-address=$(API_SERVER_ADDRESS)") {
 		t.Error("Deployment should pass the API server address to the agent")
@@ -98,6 +98,12 @@ func TestRenderManifests(t *testing.T) {
 	}
 	if !strings.Contains(deployDoc, "replicas: 1") {
 		t.Error("Deployment should have a single replica")
+	}
+}
+
+func TestDefaultAgentImageUsesLatestTag(t *testing.T) {
+	if probes.DefaultAgentImage != "grafana/synthetic-monitoring-agent:latest" {
+		t.Errorf("DefaultAgentImage = %q, want the floating latest tag", probes.DefaultAgentImage)
 	}
 }
 

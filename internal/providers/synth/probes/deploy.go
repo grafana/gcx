@@ -13,7 +13,7 @@ import (
 )
 
 // DefaultAgentImage is the default container image for the SM agent.
-const DefaultAgentImage = "grafana/synthetic-monitoring-agent:v0.64.2"
+const DefaultAgentImage = "grafana/synthetic-monitoring-agent:latest"
 
 // DeployConfig holds all parameters needed to generate SM agent manifests.
 type DeployConfig struct {

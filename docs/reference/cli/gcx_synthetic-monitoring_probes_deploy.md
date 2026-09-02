@@ -28,7 +28,7 @@ gcx synthetic-monitoring probes deploy [flags]
 ```
       --api-server-url string   SM API gRPC address in host:port format (required)
   -h, --help                    help for deploy
-      --image string            SM agent container image (default "grafana/synthetic-monitoring-agent:v0.64.2")
+      --image string            SM agent container image (default "grafana/synthetic-monitoring-agent:latest")
       --namespace string        Kubernetes namespace (default "synthetic-monitoring")
       --probe-name string       Name for the Kubernetes resources (required)
       --token-env string        Read the probe auth token from this environment variable
