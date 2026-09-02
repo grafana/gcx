@@ -2,6 +2,7 @@ package config
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/credentials"
@@ -14,6 +15,12 @@ func SetKeychainStoreFnForTest(fn func() credentials.Store) func() {
 	original := keychainStoreFn
 	keychainStoreFn = fn
 	return func() { keychainStoreFn = original }
+}
+
+// ResetUnrecognisedKeychainWarningForTest gives external-package policy tests
+// a fresh process-warning latch without exposing it to production code.
+func ResetUnrecognisedKeychainWarningForTest() {
+	warnUnrecognisedKeychainValueOnce = sync.Once{}
 }
 
 // StackBindingForTest builds the production credential binding for external

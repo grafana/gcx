@@ -8,6 +8,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// This catches an incomplete config-set path whitelist: credentials is a
+// writable section and credentials.keychain is its only supported leaf, so a
+// typo must never create arbitrary configuration under that security setting.
+func TestKeychainConfigPath(t *testing.T) {
+	tests := []struct {
+		path    string
+		wantErr bool
+	}{
+		{path: "credentials"},
+		{path: "credentials.keychain"},
+		{path: "credentials.unknown", wantErr: true},
+		{path: "credentials.keychain.extra", wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			got, err := config.ValidateConfigPath(config.Config{}, test.path)
+			if test.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.path, got)
+		})
+	}
+}
+
 func TestValidateConfigPath(t *testing.T) {
 	cfg := config.Config{
 		Stacks: map[string]*config.StackConfig{
@@ -35,6 +62,8 @@ func TestValidateConfigPath(t *testing.T) {
 		"current-context",
 		"resources.assume-server-dry-run",
 		"diagnostics.telemetry",
+		"credentials",
+		"credentials.keychain",
 		"version",
 	}
 	for _, path := range valid {
@@ -66,6 +95,8 @@ func TestValidateConfigPath(t *testing.T) {
 		// Bare `cloud` (the old context-ref path) is ambiguous with the
 		// top-level map.
 		{"cloud", "cloud.<entry>."},
+		{"credentials.unknown", "top-level section"},
+		{"credentials.keychain.extra", "top-level section"},
 		// Unknown paths get the general grammar.
 		{"nonsense.path", "top-level section"},
 	}

@@ -93,6 +93,18 @@ func keychainStoreForMode(mode keychainMode) credentials.Store {
 	return openedStore
 }
 
+// keychainStoreForPolicy preserves the test injection seam while ensuring
+// production does not re-read GCX_KEYCHAIN after policy resolution.
+func keychainStoreForPolicy(policy keychainPolicy) credentials.Store {
+	if policy.mode == keychainModeDisabled {
+		return disabledStore{}
+	}
+	if testing.Testing() {
+		return keychainStoreFn()
+	}
+	return keychainStoreForMode(keychainModeEnabled)
+}
+
 type testingNoopStore struct{}
 
 func (testingNoopStore) Get(string) (string, error) { return "", credentials.ErrUnavailable }
@@ -532,6 +544,11 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 	if err := validateDeclaredConfigVersion(filename, contents); err != nil {
 		return config, err
 	}
+	policy, err := resolveKeychainPolicyForSource(ctx, filename, opts, contents)
+	if err != nil {
+		return config, err
+	}
+	opts = opts.withKeychainPolicy(policy)
 
 	loadedLegacy := isLegacyConfig(contents)
 	if loadedLegacy {
@@ -570,6 +587,7 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 	if opts.suppressMigrationPersistence {
 		config.migrationDeferred = true
 	}
+	config.keychainPolicy = policy
 
 	config.Resolve()
 	if err := config.materializeCloudCredentialDestinations(); err != nil {
@@ -585,7 +603,7 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 	// Defer opening the keychain until a sentinel actually needs resolving or a
 	// plaintext secret needs migrating; configs with no keychain-backed secrets
 	// then never probe the OS keychain.
-	store := newLazyStore(keychainStoreFn)
+	store := newLazyStore(func() credentials.Store { return keychainStoreForPolicy(policy) })
 	config.keychainStore = store
 
 	// Only resolve sentinels for the current context eagerly. Other contexts
@@ -686,6 +704,7 @@ func refreshKeychainRuntimeAfterWrite(cfg *Config, filename, sourceIdentity, lay
 		disk.trackKeychainResults(backed, preserve, states)
 	}
 	disk.capturePlaintextCredentialOrigins()
+	disk.keychainPolicy = cfg.keychainPolicy
 	disk.Source = cfg.Source
 	disk.Sources = cfg.Sources
 	disk.sourceLayer = cfg.sourceLayer
@@ -700,6 +719,21 @@ func readConfigFileForLayer(filename, layer string) ([]byte, error) {
 		return readConfigSource(ConfigSource{Path: filename, Type: layer})
 	}
 	return os.ReadFile(filename)
+}
+
+func prepareConfigRuntimeForWrite(filename string, cfg *Config) error {
+	if err := validateConfigForWrite(filename, cfg); err != nil {
+		return err
+	}
+	policy, err := resolveKeychainPolicyForWrite(cfg, filename)
+	if err != nil {
+		return err
+	}
+	cfg.keychainPolicy = policy
+	if cfg.keychainStore == nil {
+		cfg.keychainStore = newLazyStore(func() credentials.Store { return keychainStoreForPolicy(policy) })
+	}
+	return nil
 }
 
 // writeConfig returns the number of newly staged credential generations.
@@ -722,7 +756,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	if cfg.migrationDeferred {
 		return 0, fmt.Errorf("legacy config migration is deferred; resolve the reported migration blocker before writing %s (%s)", filename, docs.ConfigMigration)
 	}
-	if err := validateConfigForWrite(filename, &cfg); err != nil {
+	if err := prepareConfigRuntimeForWrite(filename, &cfg); err != nil {
 		return 0, err
 	}
 	layer := cfg.sourceLayer
@@ -777,7 +811,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	var keychainTxn *keychainWriteTransaction
 	configRenamed := false
 	if cfg.hasSecretsToReconcile() {
-		keychainTxn, err = reconcileKeychain(&cfg, keychainStoreFn(), log)
+		keychainTxn, err = reconcileKeychain(&cfg, cfg.keychainStore, log)
 		if err != nil {
 			return 0, err
 		}
@@ -1135,6 +1169,15 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 	if err := preflightLayeredSources(sources, &hasLegacyLayer); err != nil {
 		return Config{}, err
 	}
+	// Resolve the credential-storage policy once, from every trusted layer,
+	// and bind it to the parent options so each per-layer copy below inherits
+	// it. A layer that re-derived the policy from its own bytes would obey a
+	// different decision than the load it is part of.
+	policy, err := resolveKeychainPolicy(ctx, sources)
+	if err != nil {
+		return Config{}, err
+	}
+	opts = opts.withKeychainPolicy(policy)
 	var migrationWarnings *inMemoryMigrationWarningCollector
 	if hasLegacyLayer && len(sources) > 1 {
 		migrationWarnings = &inMemoryMigrationWarningCollector{}
@@ -1160,6 +1203,13 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 		loaded, err := load(ctx, ExplicitConfigFile(src.Path), layerOpts)
 		if err != nil {
 			return Config{}, err
+		}
+		// With trusted lower layers, keep the repository policy out of the
+		// merged schema as well as the resolved runtime policy. A sole local
+		// source retains its field so an unrelated write cannot erase it; the
+		// private policy resolved above remains authoritative and ignores it.
+		if src.Type == "local" && i > 0 {
+			loaded.Credentials = nil
 		}
 		current, err := readConfigSource(src)
 		if err != nil {
@@ -1254,6 +1304,11 @@ func loadForWrite(ctx context.Context, explicitFile, fileType string, opts loadO
 				// un-preflighted migration; the eventual Write revision check rejects
 				// the intervening change.
 				layerOpts = layerOpts.withSourceSnapshot(s.Path, contents)
+				policy, policyErr := resolveKeychainPolicy(ctx, []ConfigSource{{Path: s.Path, Type: "explicit", snapshot: contents}})
+				if policyErr != nil {
+					return Config{}, nil, policyErr
+				}
+				layerOpts = layerOpts.withKeychainPolicy(policy)
 				targetWasLegacy := isLegacyConfig(contents)
 				if targetWasLegacy && len(sources) > 1 {
 					preflightErr := preflightLayeredSources(sources)
