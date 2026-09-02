@@ -170,7 +170,7 @@ var knownK8sResources = map[string]bool{
 }
 
 // coreDatasourceTypes lists the core datasource plugin IDs that predate the
-// grafana- publisher prefix. Grafana-authored, from the fixed public list.
+// grafana- publisher prefix. Grafana-published, from the fixed public list.
 //
 //nolint:gochecknoglobals
 var coreDatasourceTypes = map[string]bool{
@@ -196,14 +196,20 @@ var coreDatasourceTypes = map[string]bool{
 }
 
 // grafanaDatasourceTypes lists the Grafana-published datasource plugin IDs
-// from the public catalog. Generated 2026-07-29 from
-// https://grafana.com/api/plugins (typeCode datasource, orgSlug grafana).
+// from the public catalog. Generated 2026-09-02 from
+// https://grafana.com/api/plugins?typeCode=datasource&orgSlug=grafana, minus
+// the entries already in coreDatasourceTypes.
 // A finite list rather than a grafana- prefix rule so no user-typed value
 // can ever pass: a plugin missing here is undercounted as "other" until the
 // list is regenerated, which is the safe direction to fail.
 //
+// Not every ID here carries the grafana- prefix. The five community plugins
+// Grafana has taken over keep their original publisher prefix while being
+// published by Grafana, which is exactly why the prefix cannot be the rule.
+//
 //nolint:gochecknoglobals
 var grafanaDatasourceTypes = map[string]bool{
+	"dlopes7-appdynamics-datasource":         true,
 	"grafana-adobeanalytics-datasource":      true,
 	"grafana-amazonprometheus-datasource":    true,
 	"grafana-astradb-datasource":             true,
@@ -266,4 +272,8 @@ var grafanaDatasourceTypes = map[string]bool{
 	"grafana-x-ray-datasource":               true,
 	"grafana-yugabyte-datasource":            true,
 	"grafana-zendesk-datasource":             true,
+	"marcusolsson-json-datasource":           true,
+	"marcusolsson-static-datasource":         true,
+	"volkovlabs-rss-datasource":              true,
+	"yesoreyeram-infinity-datasource":        true,
 }

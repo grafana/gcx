@@ -141,9 +141,12 @@ func TestAllowedDatasourceType(t *testing.T) {
 		{in: "postgres", want: "postgres"},
 		{in: "grafana-postgresql-datasource", want: "grafana-postgresql-datasource"},
 		{in: "grafana-clickhouse-datasource", want: "grafana-clickhouse-datasource"},
-		// Public community plugin: still redacted, because no test built from
-		// the value itself can distinguish it from a private plugin.
-		{in: "marcusolsson-json-datasource", want: "other"},
+		// A listed ID passes whatever its publisher prefix: Grafana has taken
+		// over several community plugins, and they kept their original prefix.
+		{in: "marcusolsson-json-datasource", want: "marcusolsson-json-datasource"},
+		// Community plugin Grafana does not publish: redacted, because no test
+		// built from the value itself can distinguish it from a private plugin.
+		{in: "frser-sqlite-datasource", want: "other"},
 		{in: "acmecorp-secret-datasource", want: "other"},
 		// The grafana- prefix alone is not enough: only listed IDs pass.
 		{in: "grafana-customer-secret", want: "other"},

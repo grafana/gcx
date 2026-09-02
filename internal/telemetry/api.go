@@ -13,7 +13,7 @@ import (
 // PATH argument, the request body) that the privacy invariant forbids
 // sending. Every function here therefore maps those values onto closed
 // vocabularies baked into the binary: HTTP methods onto the fixed verb list,
-// paths onto known route templates, datasource types onto Grafana-authored
+// paths onto known route templates, datasource types onto Grafana-published
 // plugin IDs. Anything that does not match is recorded as "other". Raw paths
 // and bodies are never stored and never leave the process.
 //
@@ -208,7 +208,7 @@ func isDatasourceQueryRoute(route string) bool {
 
 // allowedDatasourceType maps a datasource plugin type onto the closed
 // vocabulary: the type itself when it is on one of the two fixed
-// Grafana-authored lists, else "other". Everything not listed is redacted,
+// Grafana-published lists, else "other". Everything not listed is redacted,
 // including public third-party plugins, because no membership test built
 // from the value itself can distinguish a public community plugin from a
 // customer's private one.
