@@ -15,7 +15,7 @@ func TestRenderManifests(t *testing.T) {
 		ProbeToken:   "secret-token-123",
 		APIServerURL: "synthetic-monitoring-grpc.grafana.net:443",
 		Namespace:    "synthetic-monitoring",
-		Image:        "grafana/synthetic-monitoring-agent:latest",
+		Image:        probes.DefaultAgentImage,
 	}
 
 	var buf bytes.Buffer
@@ -38,10 +38,19 @@ func TestRenderManifests(t *testing.T) {
 		t.Fatalf("expected 3 YAML documents, got %d\n%s", len(nonEmpty), output)
 	}
 
+	// Verify Namespace document.
+	namespaceDoc := nonEmpty[0]
+	if !strings.Contains(namespaceDoc, "kind: Namespace") {
+		t.Error("first document should be a Namespace")
+	}
+	if !strings.Contains(namespaceDoc, "name: synthetic-monitoring") {
+		t.Error("Namespace should have the configured name")
+	}
+
 	// Verify Secret document.
-	secretDoc := nonEmpty[0]
+	secretDoc := nonEmpty[1]
 	if !strings.Contains(secretDoc, "kind: Secret") {
-		t.Error("first document should be a Secret")
+		t.Error("second document should be a Secret")
 	}
 	if !strings.Contains(secretDoc, "namespace: synthetic-monitoring") {
 		t.Error("Secret should have correct namespace")
@@ -54,17 +63,11 @@ func TestRenderManifests(t *testing.T) {
 	if !strings.Contains(secretDoc, encodedURL) {
 		t.Errorf("Secret should contain base64-encoded API server URL %q", encodedURL)
 	}
-
-	// Verify ServiceAccount document.
-	saDoc := nonEmpty[1]
-	if !strings.Contains(saDoc, "kind: ServiceAccount") {
-		t.Error("second document should be a ServiceAccount")
+	if !strings.Contains(secretDoc, "api-token:") {
+		t.Error("Secret should contain the api-token key")
 	}
-	if !strings.Contains(saDoc, "namespace: synthetic-monitoring") {
-		t.Error("ServiceAccount should have correct namespace")
-	}
-	if !strings.Contains(saDoc, "my-private-probe") {
-		t.Error("ServiceAccount should reference the probe name")
+	if !strings.Contains(secretDoc, "api-server-address:") {
+		t.Error("Secret should contain the api-server-address key")
 	}
 
 	// Verify Deployment document.
@@ -75,14 +78,20 @@ func TestRenderManifests(t *testing.T) {
 	if !strings.Contains(deployDoc, "namespace: synthetic-monitoring") {
 		t.Error("Deployment should have correct namespace")
 	}
-	if !strings.Contains(deployDoc, "grafana/synthetic-monitoring-agent:latest") {
-		t.Error("Deployment should contain the agent image")
+	if !strings.Contains(deployDoc, `image: "`+probes.DefaultAgentImage+`"`) {
+		t.Error("Deployment should contain the pinned agent image")
 	}
-	if !strings.Contains(deployDoc, "API_SERVER_URL") {
-		t.Error("Deployment should reference API_SERVER_URL env var")
+	if !strings.Contains(deployDoc, "--api-server-address=$(API_SERVER_ADDRESS)") {
+		t.Error("Deployment should pass the API server address to the agent")
 	}
-	if !strings.Contains(deployDoc, "API_ACCESS_TOKEN") {
-		t.Error("Deployment should reference API_ACCESS_TOKEN env var")
+	if !strings.Contains(deployDoc, "SM_AGENT_API_TOKEN") {
+		t.Error("Deployment should pass the token through the supported environment variable")
+	}
+	if strings.Contains(deployDoc, "--api-token") {
+		t.Error("Deployment should not expose the token in the container arguments")
+	}
+	if !strings.Contains(deployDoc, "automountServiceAccountToken: false") {
+		t.Error("Deployment should disable the Kubernetes service account token mount")
 	}
 	if !strings.Contains(deployDoc, "my-private-probe") {
 		t.Error("Deployment should reference the probe name in labels")
@@ -125,6 +134,56 @@ func TestK8sNameValidation(t *testing.T) {
 				t.Errorf("Validate() for name %q: error = %v, wantErr %v", tt.name, err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestDeployConfigValidation(t *testing.T) {
+	valid := probes.DeployConfig{
+		ProbeName:    "my-probe",
+		ProbeToken:   "token",
+		APIServerURL: "grpc.example.com:443",
+		Namespace:    "synthetic-monitoring",
+		Image:        probes.DefaultAgentImage,
+	}
+
+	tests := []struct {
+		name   string
+		change func(*probes.DeployConfig)
+	}{
+		{name: "missing namespace", change: func(c *probes.DeployConfig) { c.Namespace = "" }},
+		{name: "invalid namespace", change: func(c *probes.DeployConfig) { c.Namespace = "Invalid" }},
+		{name: "missing image", change: func(c *probes.DeployConfig) { c.Image = "" }},
+		{name: "image with surrounding whitespace", change: func(c *probes.DeployConfig) { c.Image = " image:v1" }},
+		{name: "API server URL with scheme", change: func(c *probes.DeployConfig) { c.APIServerURL = "https://grpc.example.com:443" }},
+		{name: "API server without port", change: func(c *probes.DeployConfig) { c.APIServerURL = "grpc.example.com" }},
+		{name: "API server with invalid port", change: func(c *probes.DeployConfig) { c.APIServerURL = "grpc.example.com:invalid" }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := valid
+			tt.change(&cfg)
+			if err := cfg.Validate(); err == nil {
+				t.Error("Validate() error = nil, want an error")
+			}
+		})
+	}
+}
+
+func TestRenderManifestsValidatesConfig(t *testing.T) {
+	var buf bytes.Buffer
+	err := probes.RenderManifests(&buf, probes.DeployConfig{
+		ProbeName:    "my-probe",
+		ProbeToken:   "token",
+		APIServerURL: "grpc.example.com:443",
+		Namespace:    "",
+		Image:        probes.DefaultAgentImage,
+	})
+	if err == nil {
+		t.Fatal("RenderManifests() error = nil, want an error")
+	}
+	if buf.Len() != 0 {
+		t.Errorf("RenderManifests() wrote %d bytes for invalid input", buf.Len())
 	}
 }
 

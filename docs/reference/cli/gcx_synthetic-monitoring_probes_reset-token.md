@@ -2,8 +2,22 @@
 
 Reset the auth token of a Synthetic Monitoring probe.
 
+### Synopsis
+
+Reset the auth token of a Synthetic Monitoring probe. The command returns the new token once. Save the new token and update the probe deployment before you restart the agent.
+
 ```
 gcx synthetic-monitoring probes reset-token ID [flags]
+```
+
+### Examples
+
+```
+  # Reset a probe token and show it in the default text output.
+  gcx synthetic-monitoring probes reset-token 123
+
+  # Reset a probe token and return a structured result.
+  gcx synthetic-monitoring probes reset-token 123 -o json
 ```
 
 ### Options
