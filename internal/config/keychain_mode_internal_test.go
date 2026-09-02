@@ -34,7 +34,9 @@ func TestKeychainModeForProcess_InvalidValueWarnsOnce(t *testing.T) {
 	})
 
 	assert.Equal(t, 1, strings.Count(stderr, "warn:"), stderr)
-	assert.Contains(t, stderr, `GCX_KEYCHAIN="invalid"`)
+	assert.Contains(t, stderr, "GCX_KEYCHAIN has an unrecognized value")
+	assert.Contains(t, stderr, "keychain storage remains enabled")
+	assert.Contains(t, stderr, "GCX_KEYCHAIN=off")
 }
 
 func captureKeychainModeStderr(t *testing.T, run func()) string {
@@ -110,12 +112,13 @@ func TestParseKeychainEnvReportsTheRejectedValue(t *testing.T) {
 	}
 }
 
-func TestUnrecognisedKeychainWarningNamesTheValueAndTheFix(t *testing.T) {
+func TestUnrecognisedKeychainWarningNamesTheFixWithoutEchoingTheValue(t *testing.T) {
 	warning := unrecognisedKeychainWarning("disabled")
 
-	assert.Contains(t, warning, `GCX_KEYCHAIN="disabled"`, "the rejected value must be quoted back")
-	assert.Contains(t, warning, "still in use", "the reader has to learn the keychain was not disabled")
+	assert.Contains(t, warning, "GCX_KEYCHAIN has an unrecognized value")
+	assert.Contains(t, warning, "keychain storage remains enabled", "the reader has to learn the keychain was not disabled")
 	assert.Contains(t, warning, "GCX_KEYCHAIN=off", "and the value that would work")
+	assert.NotContains(t, warning, "disabled", "an invalid policy value might be a misplaced credential")
 }
 
 // The notice goes to stderr through output.EmitWarn, so agent mode gets a typed

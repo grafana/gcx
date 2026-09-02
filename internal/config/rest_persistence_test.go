@@ -190,6 +190,7 @@ current-context: default
 }
 
 func TestWireTokenPersistence_ExplicitModeWritesToExplicitSource(t *testing.T) {
+	store := withFakeStore(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/cli/v1/auth/refresh":
@@ -290,8 +291,10 @@ contexts:
 	explicitRaw, err := os.ReadFile(explicitFile)
 	require.NoError(t, err)
 	explicitContents := string(explicitRaw)
-	assert.Contains(t, explicitContents, "gat_explicit_new")
-	assert.Contains(t, explicitContents, "gar_explicit_new")
+	assert.NotContains(t, explicitContents, "gat_explicit_new")
+	assert.NotContains(t, explicitContents, "gar_explicit_new")
+	assert.True(t, store.containsValue("gat_explicit_new"))
+	assert.True(t, store.containsValue("gar_explicit_new"))
 
 	userRaw, err := os.ReadFile(userFile)
 	require.NoError(t, err)
@@ -318,6 +321,7 @@ func refresher(t *testing.T, rc config.NamespacedRESTConfig) func(previousRefres
 // rotated refresh token is issued by the server but never written to disk,
 // leaving the user locked out on the next invocation.
 func TestWireTokenPersistence_WritesAfterContextCancelled(t *testing.T) {
+	store := withFakeStore(t)
 	dir := t.TempDir()
 	explicitFile := filepath.Join(dir, "explicit.yaml")
 	writeTestConfigFile(t, explicitFile, `
@@ -370,8 +374,10 @@ current-context: default
 
 	raw, err := os.ReadFile(explicitFile)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "gat_rotated")
-	assert.Contains(t, string(raw), "gar_rotated")
+	assert.NotContains(t, string(raw), "gat_rotated")
+	assert.NotContains(t, string(raw), "gar_rotated")
+	assert.True(t, store.containsValue("gat_rotated"))
+	assert.True(t, store.containsValue("gar_rotated"))
 
 	// Retrying after a write that committed but reported uncertain durability
 	// is an idempotent success only when every persisted field is the exact new
@@ -493,6 +499,173 @@ current-context: default
 	assert.Equal(t, int32(1), refreshCalls.Load())
 	assert.Equal(t, int32(1), protectedCalls.Load())
 	assert.Equal(t, "Bearer gat_relogin", protectedAuthorization.Load())
+}
+
+func TestWireTokenPersistence_ConfiguredOffPersistsRotatedTokensAsPlaintext(t *testing.T) {
+	store := newFakeStore()
+	var opened int
+	restore := config.SetKeychainStoreFnForTest(func() credentials.Store {
+		opened++
+		return store
+	})
+	t.Cleanup(restore)
+
+	var protectedAuthorization atomic.Value
+	protectedAuthorization.Store("")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/cli/v1/auth/refresh":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_plaintext_rotated",
+					"expires_at":         "2099-01-01T00:00:00Z",
+					"refresh_token":      "gar_plaintext_rotated",
+					"refresh_expires_at": "2099-02-01T00:00:00Z",
+				},
+			})
+		default:
+			protectedAuthorization.Store(r.Header.Get("Authorization"))
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	writeTestConfigFile(t, file, `
+version: 1
+credentials:
+  keychain: off
+stacks:
+  default:
+    grafana:
+      server: "`+server.URL+`"
+      proxy-endpoint: "`+server.URL+`"
+      oauth-token: gat_plaintext_old
+      oauth-refresh-token: gar_plaintext_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 1
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(file))
+	require.NoError(t, err)
+	require.Equal(t, "gat_plaintext_old", cfg.Contexts["default"].Grafana.OAuthToken)
+	require.Equal(t, "gar_plaintext_old", cfg.Contexts["default"].Grafana.OAuthRefreshToken)
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
+	require.NoError(t, err)
+	restCfg.WireTokenPersistence(
+		t.Context(),
+		config.ExplicitConfigFile(file),
+		"default",
+		"default",
+		[]config.ConfigSource{{Path: file, Type: "explicit"}},
+	)
+	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/protected", nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	raw, err := os.ReadFile(file)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "gat_plaintext_rotated")
+	assert.Contains(t, string(raw), "gar_plaintext_rotated")
+	assert.NotContains(t, string(raw), "oauth-token: keychain:gcx:")
+	assert.NotContains(t, string(raw), "oauth-refresh-token: keychain:gcx:")
+	assert.Equal(t, "Bearer gat_plaintext_rotated", protectedAuthorization.Load())
+	assert.Zero(t, opened, "configured off must not open the OS credential store while persisting refreshes")
+}
+
+func TestWireTokenPersistence_LocalKeychainOffCannotDowngradeRefreshStorage(t *testing.T) {
+	store := withFakeStore(t)
+	fixture := newKeychainPolicyFixture(t)
+
+	var protectedAuthorization atomic.Value
+	protectedAuthorization.Store("")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/cli/v1/auth/refresh":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_local_policy_rotated",
+					"expires_at":         "2099-01-01T00:00:00Z",
+					"refresh_token":      "gar_local_policy_rotated",
+					"refresh_expires_at": "2099-02-01T00:00:00Z",
+				},
+			})
+		default:
+			protectedAuthorization.Store(r.Header.Get("Authorization"))
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	writeTestConfigFile(t, fixture.user, `
+version: 1
+credentials:
+  keychain: on
+stacks:
+  default:
+    grafana:
+      server: "`+server.URL+`"
+      proxy-endpoint: "`+server.URL+`"
+      oauth-token: gat_local_policy_old
+      oauth-refresh-token: gar_local_policy_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 1
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	writeTestConfigFile(t, fixture.local, `
+version: 1
+credentials:
+  keychain: off
+contexts:
+  repository: {}
+`)
+
+	var warnings strings.Builder
+	cfg, err := config.LoadLayered(config.ContextWithWarningWriter(t.Context(), &warnings), "")
+	require.NoError(t, err)
+	assert.Contains(t, warnings.String(), "credentials.keychain", "the local opt-out must be reported as ignored")
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
+	require.NoError(t, err)
+	restCfg.WireTokenPersistence(
+		t.Context(),
+		config.ExplicitConfigFile(fixture.user),
+		"default",
+		"default",
+		cfg.Sources,
+	)
+	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/protected", nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	userRaw, err := os.ReadFile(fixture.user)
+	require.NoError(t, err)
+	assert.NotContains(t, string(userRaw), "gat_local_policy_rotated")
+	assert.NotContains(t, string(userRaw), "gar_local_policy_rotated")
+	assert.Contains(t, string(userRaw), "keychain:gcx:v2:")
+	assert.Equal(t, "Bearer gat_local_policy_rotated", protectedAuthorization.Load())
+	assert.Positive(t, store.sets(), "the trusted user policy must persist rotated tokens in the keychain")
+	assert.True(t, store.containsValue("gat_local_policy_rotated"), "the fake keychain must hold the rotated access token")
+	assert.True(t, store.containsValue("gar_local_policy_rotated"), "the fake keychain must hold the rotated refresh token")
+
+	localRaw, err := os.ReadFile(fixture.local)
+	require.NoError(t, err)
+	assert.NotContains(t, string(localRaw), "gat_local_policy_rotated")
+	assert.NotContains(t, string(localRaw), "gar_local_policy_rotated")
 }
 
 func TestWireTokenPersistence_KeychainReadFailureRetainsPendingGeneration(t *testing.T) {
@@ -978,6 +1151,7 @@ current-context: default
 // observe the freshly-written tokens on disk and adopt them without calling
 // the refresh endpoint a second time.
 func TestWireTokenPersistence_ConcurrentRefreshesSerializeViaFileLock(t *testing.T) {
+	store := withFakeStore(t)
 	var refreshCalls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/cli/v1/auth/refresh" {
@@ -1069,14 +1243,17 @@ current-context: default
 	}
 	raw, err := os.ReadFile(file)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "gat_new")
-	assert.Contains(t, string(raw), "gar_new")
+	assert.NotContains(t, string(raw), "gat_new")
+	assert.NotContains(t, string(raw), "gar_new")
+	assert.True(t, store.containsValue("gat_new"))
+	assert.True(t, store.containsValue("gar_new"))
 	assert.Equal(t, int32(1), refreshCalls.Load())
 }
 
 // Bug 5 — Tokens persisted in one "invocation" must be re-loadable and usable
 // for the next. Simulates two sequential gcx invocations sharing a config file.
 func TestWireTokenPersistence_RoundTripAcrossInvocations(t *testing.T) {
+	withFakeStore(t)
 	var refreshCalls atomic.Int32
 	var presentedRefresh atomic.Value // string
 	presentedRefresh.Store("")

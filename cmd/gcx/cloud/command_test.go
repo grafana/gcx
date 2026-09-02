@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/credentials"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,6 +19,20 @@ type gcomOAuthFlowFunc func(context.Context) (*auth.GCOMResult, error)
 
 func (f gcomOAuthFlowFunc) Run(ctx context.Context) (*auth.GCOMResult, error) {
 	return f(ctx)
+}
+
+func TestMain(m *testing.M) {
+	previous, wasSet := os.LookupEnv("GCX_KEYCHAIN")
+	if err := os.Setenv("GCX_KEYCHAIN", "off"); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	if wasSet {
+		_ = os.Setenv("GCX_KEYCHAIN", previous)
+	} else {
+		_ = os.Unsetenv("GCX_KEYCHAIN")
+	}
+	os.Exit(code)
 }
 
 // `gcx cloud login` and the `gcx login` cloud followup must request the same
@@ -465,6 +480,25 @@ func TestCloudTokenLoginCreatesMissingExplicitConfig(t *testing.T) {
 	assert.Contains(t, string(raw), "new-cap")
 	assert.Contains(t, string(raw), "api-url: https://grafana.com")
 	assert.Contains(t, string(raw), "oauth-url: https://grafana.com")
+}
+
+// A cloud token is a fresh credential, so an unavailable credential store
+// must fail the actual command before plaintext reaches its selected config.
+func TestCloudTokenLoginFailsClosedWhenKeychainUnavailable(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("version: 1\ncontexts:\n  default: {}\ncurrent-context: default\n"), 0o600))
+
+	cmd := loginCmd()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--config", path, "--cloud-token", "must-not-be-plaintext"})
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorIs(t, err, credentials.ErrUnavailable)
+
+	raw, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	assert.NotContains(t, string(raw), "must-not-be-plaintext")
 }
 
 func TestCloudLoginRejectsUnsupportedConfigBeforeStartingOAuth(t *testing.T) {

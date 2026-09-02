@@ -1350,7 +1350,7 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 			wantLocked: true,
 		},
 		{
-			name:       "ErrUnavailable is not a locked keychain",
+			name:       "ErrUnavailable is an actionable unavailable keychain",
 			err:        fmt.Errorf("writing config: %w", credentials.ErrUnavailable),
 			wantLocked: false,
 		},
@@ -1366,6 +1366,19 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 			got := fail.ErrorToDetailedError(tt.err)
 			require.NotNil(t, got)
 
+			if errors.Is(tt.err, credentials.ErrUnavailable) {
+				assert.Equal(t, "Keychain unavailable", got.Summary)
+				assert.Equal(t,
+					"The OS keychain is unavailable. gcx did not fall back to plaintext credential storage.",
+					got.Details)
+				require.ErrorIs(t, got.Parent, credentials.ErrUnavailable)
+				assert.NotErrorIs(t, got.Parent, credentials.ErrLocked)
+				assert.Contains(t, strings.Join(got.Suggestions, "\n"), "GCX_KEYCHAIN=off")
+				assert.Contains(t, strings.Join(got.Suggestions, "\n"), "credentials.keychain: off")
+				assert.Contains(t, strings.Join(got.Suggestions, "\n"), "Plaintext credentials are stored on disk")
+				return
+			}
+
 			if !tt.wantLocked {
 				assert.NotEqual(t, "Keychain locked", got.Summary)
 				return
@@ -1380,6 +1393,7 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 			assert.Equal(t, docs.Keychain, got.DocsLink)
 			// convert_internal_test.go pins the per-platform suggestions.
 			assert.NotEmpty(t, got.Suggestions)
+			assert.NotContains(t, strings.Join(got.Suggestions, "\n"), "GCX_KEYCHAIN=off")
 		})
 	}
 }

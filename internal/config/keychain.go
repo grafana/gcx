@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -1002,7 +1003,7 @@ func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keych
 func keychainReadRejectionReason(err error) string {
 	switch {
 	case errors.Is(err, credentials.ErrDisabled):
-		return "keychain use is disabled by GCX_KEYCHAIN"
+		return "keychain use is disabled by configuration"
 	case errors.Is(err, credentials.ErrLocked):
 		return "the OS keychain is locked"
 	default:
@@ -1362,14 +1363,15 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 		}
 		if errors.Is(err, credentials.ErrNotFound) {
 			if err := txn.store.Set(boundRef.Account, value); err != nil {
+				if errors.Is(err, credentials.ErrDisabled) {
+					txn.fallbackErr = err
+					return credentials.BoundReference{}, false, nil
+				}
 				if !errors.Is(err, credentials.ErrUnavailable) {
 					txn.log.Warn("could not write keychain entry",
 						"owner", owner,
 						"field", string(field),
 						"error", err.Error())
-				}
-				if errors.Is(err, credentials.ErrUnavailable) {
-					return credentials.BoundReference{}, false, nil
 				}
 				return credentials.BoundReference{}, false, fmt.Errorf("write keychain entry for %q field %q: %w", owner, field, err)
 			}
@@ -1387,13 +1389,6 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 				if cleanupErr := txn.discardLastStagedWrite(); cleanupErr != nil {
 					return credentials.BoundReference{}, false, errors.Join(verifyErr, cleanupErr)
 				}
-				// A newly created credential has no prior reference to preserve. If
-				// the store cannot read it back (or has already lost it) and cleanup
-				// is confirmed, keep this one value in the config instead of writing
-				// a sentinel that the next command cannot resolve.
-				if errors.Is(err, credentials.ErrUnavailable) || errors.Is(err, credentials.ErrNotFound) {
-					return credentials.BoundReference{}, false, nil
-				}
 				return credentials.BoundReference{}, false, verifyErr
 			}
 			if stored != value {
@@ -1408,16 +1403,15 @@ func (txn *keychainWriteTransaction) stageBoundSet(binding credentials.Binding, 
 			}
 			return boundRef, true, nil
 		}
-		if errors.Is(err, credentials.ErrUnavailable) {
+		if errors.Is(err, credentials.ErrDisabled) {
 			txn.fallbackErr = err
 			return credentials.BoundReference{}, false, nil
-		} else {
-			txn.log.Warn("could not inspect keychain entry before write",
-				"owner", owner,
-				"field", string(field),
-				"error", err.Error())
-			return credentials.BoundReference{}, false, fmt.Errorf("inspect keychain entry for %q field %q: %w", owner, field, err)
 		}
+		txn.log.Warn("could not inspect keychain entry before write",
+			"owner", owner,
+			"field", string(field),
+			"error", err.Error())
+		return credentials.BoundReference{}, false, fmt.Errorf("inspect keychain entry for %q field %q: %w", owner, field, err)
 	}
 	txn.log.Warn("could not allocate unique keychain reference", "owner", owner, "field", string(field))
 	return credentials.BoundReference{}, false, errors.New("could not allocate unique keychain reference")
@@ -1484,10 +1478,10 @@ func (txn *keychainWriteTransaction) preflightDeletes() error {
 		// Removing the reference while the secret stays in the credential store
 		// would report a deletion that did not happen, so this fails closed
 		// either way. Name the repair that works when the store cannot be
-		// reached at all: unsetting GCX_KEYCHAIN does not help on a machine
+		// reached at all: enabling keychain storage does not help on a machine
 		// whose credential store is permanently unavailable.
 		if errors.Is(err, credentials.ErrDisabled) {
-			return fmt.Errorf("cannot delete the keychain entry for %q field %q while keychain use is disabled by GCX_KEYCHAIN; unset it to delete the entry, or edit the config file to remove the reference: %w", pending.owner, pending.field, err)
+			return fmt.Errorf("cannot delete the keychain entry for %q field %q while keychain storage is disabled; enable keychain storage to delete the entry, or edit the config file to remove the reference: %w", pending.owner, pending.field, err)
 		}
 		return fmt.Errorf("cannot verify keychain deletion for %q field %q before writing config: %w", pending.owner, pending.field, err)
 	}
@@ -1520,27 +1514,30 @@ func (txn *keychainWriteTransaction) commit(warningWriter io.Writer) error {
 		deleted = append(deleted, pending)
 	}
 	if txn.plaintextFallback {
-		txn.warnUnavailableOnce(func() {
+		emitWarning := func() {
 			message := "credential store could not securely store the credential; credentials remain in plaintext on disk"
 			hint := "verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage"
 			if errors.Is(txn.fallbackErr, credentials.ErrDisabled) {
 				message = "keychain storage is disabled; credentials remain in plaintext on disk"
-				hint = "unset GCX_KEYCHAIN to store credentials in the OS credential store"
+				hint = "enable keychain storage to store credentials in the OS credential store"
 				if txn.abandonedGeneration {
-					// gcx cannot delete through the store that refused the write,
-					// so the credential this one replaced stays in the OS
-					// credential store with nothing referencing it. Say so: a user
-					// rotating a leaked credential must know the old one is there.
-					message = "keychain storage is disabled; the replaced credential is still in the OS credential store and gcx can no longer reach it"
-					hint = "delete the stale gcx entry through your OS credential store to finish rotating the credential"
+					message = "keychain storage is disabled; the old keychain item cannot be removed while disabled and credentials remain in plaintext on disk"
+					hint = "enable keychain storage later, then remove the stale gcx entry through your OS credential store"
 				}
 			}
 			if warningWriter != nil {
-				fmt.Fprintf(warningWriter, "Warning: %s; %s\n", message, hint)
+				output.EmitWarn(warningWriter, fmt.Sprintf("%s; %s", message, hint))
 				return
 			}
 			txn.log.Warn(message, "hint", hint)
-		})
+		}
+		// A stale generation needs a concrete repair. A prior generic warning in
+		// this process must not suppress that more actionable guidance.
+		if txn.abandonedGeneration {
+			emitWarning()
+		} else {
+			txn.warnUnavailableOnce(emitWarning)
+		}
 	}
 	return nil
 }

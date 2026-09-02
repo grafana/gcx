@@ -174,23 +174,23 @@ func overlayKeychainEnvironment(policy keychainPolicy) keychainPolicy {
 }
 
 func invalidKeychainConfigValue(source, value string) error {
-	return fmt.Errorf("invalid credentials.keychain value %q in %s: expected on or off", value, source)
+	return fmt.Errorf("invalid credentials.keychain in %s: accepted values are on and off", source)
 }
 
-func warnIgnoredLocalKeychainPolicy(ctx context.Context, source, value string) {
+func warnIgnoredLocalKeychainPolicy(ctx context.Context, source, _ string) {
 	writer := warningWriterFromCtx(ctx)
 	if writer == nil {
 		writer = os.Stderr
 	}
 	output.EmitWarn(writer, fmt.Sprintf(
-		"credentials.keychain=%q in auto-discovered local config %s was ignored; select the file explicitly to use this policy",
-		value, source,
+		"credentials.keychain in auto-discovered local config %s was ignored; place this security setting in user or system config, or select an explicit config file",
+		source,
 	))
 }
 
-func unrecognisedKeychainWarning(value string) string {
-	return fmt.Sprintf("%s=%q is not a recognized value and was ignored; the OS credential store is still in use. Set %s=off to disable it.",
-		envKeychain, value, envKeychain)
+func unrecognisedKeychainWarning(_ string) string {
+	return fmt.Sprintf("%s has an unrecognized value and was ignored; keychain storage remains enabled. Set %s=off to disable it.",
+		envKeychain, envKeychain)
 }
 
 // warnUnrecognisedKeychainValueOnce keeps the notice to one per process.

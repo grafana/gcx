@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -14,6 +15,180 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestLoginPersistsCredentialByKeychainPolicy(t *testing.T) {
+	tests := []struct {
+		name          string
+		keychain      string
+		storeErr      error
+		wantStore     bool
+		wantPlaintext bool
+	}{
+		{
+			name:      "default stores the token in the keychain",
+			wantStore: true,
+		},
+		{
+			name:      "configured on stores the token in the keychain",
+			keychain:  "on",
+			wantStore: true,
+		},
+		{
+			name:          "configured off writes plaintext without opening the keychain",
+			keychain:      "off",
+			wantPlaintext: true,
+		},
+		{
+			name:     "default fails closed when the keychain is unavailable",
+			storeErr: credentials.ErrUnavailable,
+		},
+		{
+			name:     "configured on fails closed when the keychain is unavailable",
+			keychain: "on",
+			storeErr: credentials.ErrUnavailable,
+		},
+		{
+			name:     "default fails closed when the keychain is locked",
+			storeErr: credentials.ErrLocked,
+		},
+		{
+			name:     "configured on fails closed when the keychain is locked",
+			keychain: "on",
+			storeErr: credentials.ErrLocked,
+		},
+		{
+			name:          "configured off bypasses a locked keychain",
+			keychain:      "off",
+			storeErr:      credentials.ErrLocked,
+			wantPlaintext: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := newFakeStore()
+			store.setErr = test.storeErr
+			var opened int
+			restore := config.SetKeychainStoreFnForTest(func() credentials.Store {
+				opened++
+				return store
+			})
+			t.Cleanup(restore)
+
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			keychain := ""
+			if test.keychain != "" {
+				keychain = "credentials:\n  keychain: " + test.keychain + "\n"
+			}
+			require.NoError(t, os.WriteFile(path, []byte("version: 1\n"+keychain+`stacks:
+  default:
+    grafana:
+      server: https://grafana.example.invalid
+contexts:
+  default:
+    stack: default
+current-context: default
+`), 0o600))
+
+			_, err := login.Run(t.Context(), &login.Options{
+				Inputs: login.Inputs{
+					Server:       "https://grafana.example.invalid",
+					ContextName:  "default",
+					Target:       login.TargetOnPrem,
+					GrafanaToken: "new-service-token",
+				},
+				Hooks: login.Hooks{
+					ConfigSource: config.ExplicitConfigFile(path),
+					ValidateFn: func(context.Context, login.Options, config.NamespacedRESTConfig) (string, error) {
+						return "12.0.0", nil
+					},
+				},
+			})
+
+			raw, readErr := os.ReadFile(path)
+			require.NoError(t, readErr)
+			if test.wantStore {
+				require.NoError(t, err)
+				assert.Contains(t, string(raw), "token: keychain:gcx:v2:")
+				assert.NotContains(t, string(raw), "new-service-token")
+				assert.True(t, store.containsValue("new-service-token"), "the fake credential store must hold the persisted secret")
+				assert.Positive(t, opened, "enabled storage must open the configured store")
+				return
+			}
+			if test.wantPlaintext {
+				require.NoError(t, err)
+				info, statErr := os.Stat(path)
+				require.NoError(t, statErr)
+				assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+				assert.Contains(t, string(raw), "token: new-service-token")
+				assert.NotContains(t, string(raw), "token: keychain:gcx:")
+				assert.Zero(t, opened, "an explicit opt-out must not open the OS credential store")
+				return
+			}
+
+			require.ErrorIs(t, err, test.storeErr)
+			assert.NotContains(t, string(raw), "new-service-token")
+			assert.Positive(t, opened, "fail-closed modes must attempt secure storage")
+		})
+	}
+}
+
+func TestLoginConfiguredOffReplacesStaleSentinelWithPlaintext(t *testing.T) {
+	store := newFakeStore()
+	var opened int
+	restore := config.SetKeychainStoreFnForTest(func() credentials.Store {
+		opened++
+		return store
+	})
+	t.Cleanup(restore)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	const server = "https://grafana.example.invalid"
+	binding := testStackBinding(t, path, "default", server, credentials.FieldGrafanaToken)
+	account := credentials.BoundAccountKey(binding)
+	store.entries[account] = "stale-keychain-token"
+	require.NoError(t, os.WriteFile(path, []byte(`version: 1
+credentials:
+  keychain: off
+stacks:
+  default:
+    grafana:
+      server: https://grafana.example.invalid
+      token: `+credentials.FormatBoundSentinel(binding)+`
+contexts:
+  default:
+    stack: default
+current-context: default
+`), 0o600))
+
+	var warnings bytes.Buffer
+	ctx := config.ContextWithWarningWriter(t.Context(), &warnings)
+	_, err := login.Run(ctx, &login.Options{
+		Inputs: login.Inputs{
+			Server:       server,
+			ContextName:  "default",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "fresh-plaintext-token",
+		},
+		Hooks: login.Hooks{
+			ConfigSource: config.ExplicitConfigFile(path),
+			ValidateFn: func(context.Context, login.Options, config.NamespacedRESTConfig) (string, error) {
+				return "12.0.0", nil
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	raw, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(raw), "fresh-plaintext-token")
+	assert.NotContains(t, string(raw), credentials.FormatBoundSentinel(binding))
+	assert.Equal(t, "stale-keychain-token", store.entries[account])
+	assert.Zero(t, opened, "configured off must not contact the OS credential store")
+	assert.Contains(t, warnings.String(), "old keychain item cannot be removed while disabled")
+	assert.Contains(t, warnings.String(), "enable keychain storage later")
+	assert.Contains(t, warnings.String(), "remove the stale gcx entry")
+}
 
 func TestSaveCloudConfigDoesNotReplaceConcurrentCreate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
@@ -40,6 +215,7 @@ func TestSaveCloudConfigDoesNotReplaceConcurrentCreate(t *testing.T) {
 // writes fresh cloud auth fields) refreshes the context's existing cloud entry
 // in place and does not drop the previously configured stack selection.
 func TestSaveCloudConfigPreservesStack(t *testing.T) {
+	withFakeStore(t)
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	source := config.ExplicitConfigFile(path)
@@ -91,6 +267,7 @@ func TestSaveCloudConfigPreservesStack(t *testing.T) {
 }
 
 func TestSaveCloudConfigCollisionDoesNotReplaceSharedEntry(t *testing.T) {
+	withFakeStore(t)
 	// Two different CAPs against the same host: a login from a context with
 	// no cloud binding must not quietly replace the host-named entry other
 	// contexts share — it gets a context-suffixed entry instead. A login with
@@ -116,6 +293,7 @@ func TestSaveCloudConfigCollisionDoesNotReplaceSharedEntry(t *testing.T) {
 	got.ResolveContext("prod")
 	assert.Equal(t, "org-wide-cap", got.Contexts["prod"].CloudEntry.Token,
 		"shared entry must not be replaced by another context's login")
+	got.ResolveContext("ci")
 	assert.Equal(t, "stack-scoped-cap", got.Contexts["ci"].CloudEntry.Token)
 
 	// Same credential from yet another context → dedups onto the shared entry.
@@ -125,6 +303,7 @@ func TestSaveCloudConfigCollisionDoesNotReplaceSharedEntry(t *testing.T) {
 }
 
 func TestSaveCloudConfigSharedEntryUsesCopyOnWrite(t *testing.T) {
+	withFakeStore(t)
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	source := config.ExplicitConfigFile(path)
@@ -158,6 +337,7 @@ func TestSaveCloudConfigSharedEntryUsesCopyOnWrite(t *testing.T) {
 }
 
 func TestSaveCloudConfigSafetyReservesEffectiveLayerNames(t *testing.T) {
+	withFakeStore(t)
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	source := config.ExplicitConfigFile(path)
@@ -190,12 +370,14 @@ func TestSaveCloudConfigSafetyReservesEffectiveLayerNames(t *testing.T) {
 
 	got, err := config.Load(ctx, source)
 	require.NoError(t, err)
-	assert.Equal(t, "shared-cap", got.Cloud["grafana-com"].Token)
-	assert.Equal(t, "prod-cap", got.Cloud[entryName].Token)
+	assert.True(t, credentials.IsBoundSentinel(got.Cloud["grafana-com"].Token))
+	got.ResolveContext("prod")
+	assert.Equal(t, "prod-cap", got.Contexts["prod"].CloudEntry.Token)
 	assert.Equal(t, entryName, got.Contexts["prod"].Cloud)
 }
 
 func TestSaveCloudConfigSafetyReservesUnboundEffectiveLayerName(t *testing.T) {
+	withFakeStore(t)
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	source := config.ExplicitConfigFile(path)
@@ -221,11 +403,13 @@ func TestSaveCloudConfigSafetyReservesUnboundEffectiveLayerName(t *testing.T) {
 	got, err := config.Load(ctx, source)
 	require.NoError(t, err)
 	assert.Nil(t, got.Cloud["grafana-com"], "a name owned by another effective layer must not be shadowed")
-	assert.Equal(t, "prod-cap", got.Cloud[entryName].Token)
+	got.ResolveContext("prod")
+	assert.Equal(t, "prod-cap", got.Contexts["prod"].CloudEntry.Token)
 	assert.Equal(t, entryName, got.Contexts["prod"].Cloud)
 }
 
 func TestSaveCloudConfigSafetyDoesNotReuseShadowedRawEntry(t *testing.T) {
+	withFakeStore(t)
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	source := config.ExplicitConfigFile(path)
@@ -254,11 +438,12 @@ func TestSaveCloudConfigSafetyDoesNotReuseShadowedRawEntry(t *testing.T) {
 
 	got, err := config.Load(ctx, source)
 	require.NoError(t, err)
-	assert.Equal(t, "same-cap", got.Cloud["grafana-com"].Token)
+	assert.True(t, credentials.IsBoundSentinel(got.Cloud["grafana-com"].Token))
 	assert.Equal(t, entryName, got.Contexts["prod"].Cloud)
 }
 
 func TestSaveCloudConfigEndpointChangeUsesCopyOnWrite(t *testing.T) {
+	withFakeStore(t)
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	source := config.ExplicitConfigFile(path)
@@ -288,6 +473,7 @@ func TestSaveCloudConfigEndpointChangeUsesCopyOnWrite(t *testing.T) {
 }
 
 func TestSaveCloudConfigOAuthMetadataChangeUsesCopyOnWrite(t *testing.T) {
+	withFakeStore(t)
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	source := config.ExplicitConfigFile(path)
@@ -323,6 +509,7 @@ func TestSaveCloudConfigOAuthMetadataChangeUsesCopyOnWrite(t *testing.T) {
 }
 
 func TestSaveCloudConfigOAuthScopeOrderDoesNotTriggerCopyOnWrite(t *testing.T) {
+	withFakeStore(t)
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	source := config.ExplicitConfigFile(path)
@@ -355,6 +542,7 @@ func TestSaveCloudConfigOAuthScopeOrderDoesNotTriggerCopyOnWrite(t *testing.T) {
 }
 
 func TestSaveCloudConfigUniqueEntryUpdatesInPlace(t *testing.T) {
+	withFakeStore(t)
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	source := config.ExplicitConfigFile(path)
@@ -375,6 +563,7 @@ func TestSaveCloudConfigUniqueEntryUpdatesInPlace(t *testing.T) {
 }
 
 func TestSaveCloudConfigCopyOnWriteNameCollisionIsSafe(t *testing.T) {
+	withFakeStore(t)
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	source := config.ExplicitConfigFile(path)
@@ -393,8 +582,10 @@ func TestSaveCloudConfigCopyOnWriteNameCollisionIsSafe(t *testing.T) {
 
 	got, err := config.Load(ctx, source)
 	require.NoError(t, err)
-	assert.Equal(t, "occupied-cap", got.Cloud["grafana-com-staging"].Token)
-	assert.Equal(t, "new-cap", got.Cloud[entryName].Token)
+	got.ResolveContext("other")
+	assert.Equal(t, "occupied-cap", got.Contexts["other"].CloudEntry.Token)
+	got.ResolveContext("staging")
+	assert.Equal(t, "new-cap", got.Contexts["staging"].CloudEntry.Token)
 }
 
 func TestMergeCloudIntoSwitchingAuthMethodClearsTheOther(t *testing.T) {

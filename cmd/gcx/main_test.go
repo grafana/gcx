@@ -201,9 +201,8 @@ const (
 	configSetFallbackProcessHelper = "GCX_CONFIG_SET_FALLBACK_PROCESS_HELPER"
 )
 
-func TestConfigSetPlaintextFallbackWarningProcess(t *testing.T) {
-	const token = "synthetic-plaintext-fallback-token"
-	const warning = "Warning: credential store could not securely store the credential; credentials remain in plaintext on disk; verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage"
+func TestConfigSetUnavailableKeychainFailsClosedProcess(t *testing.T) {
+	const token = "synthetic-unavailable-keychain-token"
 
 	for _, agentMode := range []string{"false", "true"} {
 		t.Run("agent-mode="+agentMode, func(t *testing.T) {
@@ -251,24 +250,27 @@ current-context: smoke
 				"GRAFANA_STACK_ID=",
 			)
 
-			if err := cmd.Run(); err != nil {
-				t.Fatalf("config set failed: %v; stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+			if err := cmd.Run(); err == nil {
+				t.Fatalf("config set unexpectedly succeeded; stdout=%q stderr=%q", stdout.String(), stderr.String())
 			}
-			// The agent output contract makes config set emit one JSON
-			// mutation document; the human default stays silent.
+			// The typed error envelope must be emitted in agent mode; the human
+			// diagnostic belongs on stderr without corrupting stdout.
 			if agentMode == "true" {
 				var doc map[string]any
 				if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
-					t.Fatalf("agent stdout is not one JSON document: %v; stdout=%q", err, stdout.String())
+					t.Fatalf("agent stdout is not one JSON error document: %v; stdout=%q", err, stdout.String())
 				}
-				if doc["type"] != "gcx.config.mutation" {
-					t.Fatalf("agent stdout document type = %v, want gcx.config.mutation", doc["type"])
+				if doc["type"] != "gcx.error" {
+					t.Fatalf("agent stdout document type = %v, want gcx.error", doc["type"])
+				}
+				if stderr.Len() != 0 {
+					t.Fatalf("agent error wrote unexpected stderr: %q", stderr.String())
 				}
 			} else if stdout.Len() != 0 {
 				t.Fatalf("config set wrote unexpected stdout: %q", stdout.String())
 			}
-			if got := bytes.Count(stderr.Bytes(), []byte(warning)); got != 1 {
-				t.Fatalf("plaintext fallback warning count = %d, want 1; stderr=%q", got, stderr.String())
+			if agentMode == "false" && !bytes.Contains(stderr.Bytes(), []byte("Keychain unavailable")) {
+				t.Fatalf("human output did not name the unavailable keychain: %q", stderr.String())
 			}
 			if bytes.Contains(stdout.Bytes(), []byte(token)) || bytes.Contains(stderr.Bytes(), []byte(token)) {
 				t.Fatalf("plaintext token appeared in command output; stdout=%q stderr=%q", stdout.String(), stderr.String())
@@ -278,8 +280,8 @@ current-context: smoke
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Contains(raw, []byte(token)) || bytes.Contains(raw, []byte("keychain:gcx:v2:")) {
-				t.Fatalf("expected deliberate plaintext fallback without a sentinel: %q", raw)
+			if bytes.Contains(raw, []byte(token)) || bytes.Contains(raw, []byte("keychain:gcx:v2:")) {
+				t.Fatalf("unavailable keychain wrote a credential unexpectedly: %q", raw)
 			}
 			info, err := os.Stat(configPath)
 			if err != nil {

@@ -249,6 +249,7 @@ func TestLoadLayered_KeychainModePolicy(t *testing.T) {
 			if test.wantError != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), test.wantError)
+				assert.Contains(t, err.Error(), "accepted values are on and off")
 				switch test.wantErrorPath {
 				case "system":
 					assert.Contains(t, err.Error(), fixture.system)
@@ -270,6 +271,9 @@ func TestLoadLayered_KeychainModePolicy(t *testing.T) {
 			}
 			if test.wantWarning {
 				assert.Contains(t, warnings.String(), "credentials.keychain")
+				assert.Contains(t, warnings.String(), "auto-discovered local config")
+				assert.Contains(t, warnings.String(), "user or system config")
+				assert.Contains(t, warnings.String(), "explicit config file")
 			}
 			if test.wantLocalMerge {
 				require.Contains(t, cfg.Contexts, "repo-context", "filtering local credentials.keychain must retain the rest of the local layer")
@@ -277,7 +281,8 @@ func TestLoadLayered_KeychainModePolicy(t *testing.T) {
 			}
 			if test.wantEnvWarning {
 				assert.Equal(t, 1, strings.Count(stderr, "warn:"), stderr)
-				assert.Contains(t, stderr, `GCX_KEYCHAIN="invalid"`)
+				assert.Contains(t, stderr, "keychain storage remains enabled")
+				assert.Contains(t, stderr, "GCX_KEYCHAIN=off")
 			}
 		})
 	}
@@ -421,6 +426,7 @@ this-field-is-invalid: []`
 }
 
 func TestLoad_withProviders(t *testing.T) {
+	withFakeStore(t)
 	req := require.New(t)
 
 	configYAML := `version: 1

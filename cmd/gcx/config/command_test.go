@@ -733,6 +733,8 @@ contexts:
 func Test_SetCommand_CloudCredentialKindsAreMutuallyExclusive(t *testing.T) {
 	configFile := testutils.CreateTempFile(t, `
 version: 1
+credentials:
+  keychain: off
 cloud:
   shared:
     oauth-token: old-oauth
