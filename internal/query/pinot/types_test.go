@@ -68,3 +68,27 @@ func TestEnforceLimit(t *testing.T) {
 		})
 	}
 }
+
+func TestLimitNotEnforced(t *testing.T) {
+	tests := []struct {
+		name string
+		sql  string
+		want bool
+	}{
+		{"plain select", "SELECT 1", false},
+		{"plain select with limit", "SELECT 1 LIMIT 50", false},
+		{"union", "SELECT 1 FROM a UNION SELECT 2 FROM b LIMIT 2000", true},
+		{"union all after SET", "SET useMultistageEngine = true;\nSELECT 1 FROM a\nUNION ALL\nSELECT 2 FROM b LIMIT 2000", true},
+		{"limit offset", "SELECT * FROM t LIMIT 5000 OFFSET 0", true},
+		{"bare offset", "SELECT * FROM t OFFSET 10", true},
+		{"explain never reaches bail", "EXPLAIN SELECT * FROM t", false},
+		{"insert never reaches bail", "INSERT INTO t VALUES (1)", false},
+		{"trailing comment is not union/offset", "SELECT 1 -- keep going", false},
+		{"dml word in literal is not union/offset", "SELECT * FROM t WHERE action = 'delete'", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, pinot.LimitNotEnforced(tt.sql))
+		})
+	}
+}

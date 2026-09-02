@@ -28,12 +28,14 @@ var leadingSetRe = regexp.MustCompile(`(?is)^(?:\s*SET\b[^;]*;\s*)+`)
 // clause. Pinot only allows LIMIT on SELECT-shaped statements.
 var limitStatementRe = regexp.MustCompile(`(?is)^\s*(SELECT|WITH)\b`)
 
-// UNION bails so a trailing LIMIT on a multi-leg query is left alone — Faro
-// user-journey dumps already carry LIMIT 2000 and must not be capped silently.
-// OFFSET / LIMIT OFFSET would double up into a syntax error. DML keywords
-// anywhere fail safe (no LIMIT added) rather than corrupting a write. A
-// SELECT mentioning those words in a string literal also skips enforcement.
-var limitBailRe = regexp.MustCompile(`(?i)(\bUNION\b|\bLIMIT\s+\d+\s+OFFSET\b|\bOFFSET\s+\d+\b|\b(INSERT|UPDATE|DELETE|MERGE)\b)`)
+// unionOrOffsetRe matches statement shapes where appending LIMIT is invalid or
+// would bind only the last UNION leg. EnforceLimit leaves these unchanged.
+var unionOrOffsetRe = regexp.MustCompile(`(?i)(\bUNION\b|\bLIMIT\s+\d+\s+OFFSET\b|\bOFFSET\s+\d+\b)`)
+
+// DML keywords anywhere fail safe (no LIMIT added) rather than corrupting a
+// write. A SELECT mentioning those words in a string literal also skips
+// enforcement.
+var dmlBailRe = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|MERGE)\b`)
 
 // trailingLineCommentRe matches a `--` line comment that runs to the end of
 // the statement. Appending "LIMIT n" as a bare suffix after one would land
@@ -45,7 +47,15 @@ func selectBody(sql string) string {
 }
 
 func bail(sql string) bool {
-	return limitBailRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\n"))
+	return unionOrOffsetRe.MatchString(sql) || dmlBailRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\n"))
+}
+
+// LimitNotEnforced reports whether EnforceLimit will leave sql unchanged
+// because a LIMIT suffix would bind only the last UNION leg or collide with
+// OFFSET. EXPLAIN, DML, and trailing-comment bails are not included: those
+// either never reach EnforceLimit or are not UNION/OFFSET.
+func LimitNotEnforced(sql string) bool {
+	return limitStatementRe.MatchString(selectBody(sql)) && unionOrOffsetRe.MatchString(sql)
 }
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds and reports

@@ -2,6 +2,7 @@ package pinot
 
 import (
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -28,7 +29,7 @@ type queryOpts struct {
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	opts.Setup(flags, false)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pinot is configured)")
-	flags.IntVar(&opts.Limit, "limit", defaultLimit, fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning (0 disables enforcement)", maxLimit))
+	flags.IntVar(&opts.Limit, "limit", defaultLimit, fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning. Not applied to UNION or OFFSET queries (warned on stderr). 0 disables enforcement", maxLimit))
 }
 
 func (opts *queryOpts) Validate() error {
@@ -93,9 +94,7 @@ open it in your browser after the query succeeds.`,
 			}
 
 			sql, capped := pinot.EnforceLimit(expr, opts.Limit, maxLimit)
-			if capped {
-				cmdio.Warning(cmd.ErrOrStderr(), "LIMIT in query exceeds the maximum of %d and was capped; use --limit 0 to disable enforcement", maxLimit)
-			}
+			warnLimitEnforcement(cmd.ErrOrStderr(), expr, capped, opts.Limit)
 
 			now := time.Now()
 			start, end, step, err := opts.ParseTimes(now)
@@ -152,4 +151,14 @@ open it in your browser after the query succeeds.`,
 	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd
+}
+
+func warnLimitEnforcement(w io.Writer, expr string, capped bool, limit int) {
+	if capped {
+		cmdio.Warning(w, "LIMIT in query exceeds the maximum of %d and was capped; use --limit 0 to disable enforcement", maxLimit)
+		return
+	}
+	if limit != 0 && pinot.LimitNotEnforced(expr) {
+		cmdio.Warning(w, "query uses UNION or OFFSET, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning")
+	}
 }
