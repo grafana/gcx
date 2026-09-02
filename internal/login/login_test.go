@@ -54,6 +54,20 @@ func usePlaintextCredentialStorage(t *testing.T) {
 	t.Setenv("GCX_KEYCHAIN", "off")
 }
 
+// seedPlaintextCredentialConfig pre-creates dir's config file with
+// credentials.keychain: off, so a login test can opt out of the OS
+// credential store without t.Setenv (which is incompatible with
+// t.Parallel). Mirrors the raw-YAML seeding pattern used by
+// internal/config/cloud_login_test.go.
+func seedPlaintextCredentialConfig(t *testing.T, dir string) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "config.yaml"),
+		[]byte("version: 1\ncredentials:\n  keychain: off\n"),
+		0o600,
+	))
+}
+
 func TestRunRejectsNonTargetLayerChangeDuringAuthentication(t *testing.T) {
 	home := t.TempDir()
 	userDir := filepath.Join(home, ".config")
@@ -146,7 +160,7 @@ contexts:
 }
 
 func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexity is inherent to spec-required coverage
-	usePlaintextCredentialStorage(t)
+	t.Parallel()
 
 	oauthResult := &auth.Result{
 		Token:            "gat_test",
@@ -159,7 +173,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 
 	tests := []struct {
 		name string
-		opts func(dir string) login.Options
+		opts func(dir string) (login.Options, error)
 
 		wantErr     bool
 		checkErr    func(t *testing.T, err error) // optional: extra assertions on the error
@@ -169,7 +183,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// AC-001: First-run Cloud with CAP token via OAuth
 			name: "cloud_oauth_with_cap_token",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:     "https://mystack.grafana.net",
@@ -184,7 +198,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						},
 						ValidateFn: noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkResult: func(t *testing.T, r login.Result) {
 				t.Helper()
@@ -212,7 +226,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			// (derived from the ops-stack env), matching `gcx cloud login`, so a
 			// later cloud re-auth targets grafana-ops.com rather than prod.
 			name: "cloud_oauth_token_records_gcom_endpoint",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:                   "https://ops.grafana-ops.net",
@@ -232,7 +246,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						},
 						ValidateFn: noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
 				t.Helper()
@@ -251,7 +265,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// AC-002: First-run Cloud without CAP (Yes=true skips cloud-token prompt)
 			name: "cloud_oauth_skip_cap",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:   "https://mystack.grafana.net",
@@ -266,7 +280,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						},
 						ValidateFn: noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkResult: func(t *testing.T, r login.Result) {
 				t.Helper()
@@ -288,9 +302,12 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// AC-002b: Re-auth of existing Cloud context without CAP updates stack slug
 			name: "cloud_oauth_skip_cap_reauth_updates_stack",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				src := configSource(dir)
-				seed := config.Config{}
+				seed, err := config.Load(context.Background(), src)
+				if err != nil {
+					return login.Options{}, err
+				}
 				seed.SetStack("mystack", config.StackConfig{
 					// no Slug set
 					Grafana: &config.GrafanaConfig{
@@ -300,7 +317,9 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 					},
 				})
 				seed.SetContext("mystack", true, config.Context{Stack: "mystack"})
-				require.NoError(t, config.Write(context.Background(), src, seed))
+				if err := config.Write(context.Background(), src, seed); err != nil {
+					return login.Options{}, err
+				}
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:   "https://mystack.grafana.net",
@@ -315,7 +334,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						},
 						ValidateFn: noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
 				t.Helper()
@@ -328,9 +347,12 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// AC-002c: Re-auth via OAuth-only must not wipe a previously stored CAP token
 			name: "cloud_oauth_skip_cap_preserves_existing_token",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				src := configSource(dir)
-				seed := config.Config{}
+				seed, err := config.Load(context.Background(), src)
+				if err != nil {
+					return login.Options{}, err
+				}
 				seed.SetStack("mystack", config.StackConfig{
 					Grafana: &config.GrafanaConfig{
 						Server:     "https://mystack.grafana.net",
@@ -340,7 +362,9 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				})
 				seed.SetCloudEntry("grafana-com", config.CloudEntry{Token: "existing-cap-token"})
 				seed.SetContext("mystack", true, config.Context{Stack: "mystack", Cloud: "grafana-com"})
-				require.NoError(t, config.Write(context.Background(), src, seed))
+				if err := config.Write(context.Background(), src, seed); err != nil {
+					return login.Options{}, err
+				}
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:   "https://mystack.grafana.net",
@@ -355,7 +379,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						},
 						ValidateFn: noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
 				t.Helper()
@@ -368,7 +392,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// AC-003: On-prem with SA token; OAuth not attempted
 			name: "onprem_sa_token",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:       "https://grafana.example.com",
@@ -379,7 +403,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						ConfigSource: configSource(dir),
 						ValidateFn:   noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkResult: func(t *testing.T, r login.Result) {
 				t.Helper()
@@ -399,7 +423,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			// Cloud target must NOT default OrgID to 1; StackID discovery owns
 			// the Cloud namespace path so OrgID stays 0.
 			name: "cloud_target_does_not_set_orgid",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:   "https://mystack.grafana.net",
@@ -414,7 +438,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						},
 						ValidateFn: noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
 				t.Helper()
@@ -427,7 +451,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			// Explicit OrgID on a fresh on-prem login is persisted instead of
 			// being set to the OrgID=1 default.
 			name: "onprem_explicit_orgid_persisted",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:       "https://grafana.example.com",
@@ -439,7 +463,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						ConfigSource: configSource(dir),
 						ValidateFn:   noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
 				t.Helper()
@@ -453,7 +477,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			// default-to-1 guard does not apply, but a user-supplied value
 			// must still be respected).
 			name: "cloud_explicit_orgid_persisted",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:   "https://mystack.grafana.net",
@@ -469,7 +493,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						},
 						ValidateFn: noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
 				t.Helper()
@@ -481,7 +505,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// AC-005: Ambiguous URL + --yes defaults to on-prem (D10)
 			name: "ambiguous_url_yes_defaults_onprem",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:       "https://grafana.example.com",
@@ -493,7 +517,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						DetectFn:     fixedDetect(login.TargetUnknown),
 						ValidateFn:   noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkResult: func(t *testing.T, r login.Result) {
 				t.Helper()
@@ -504,12 +528,12 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// AC-008: Missing server returns structured ErrNeedInput
 			name: "missing_server_returns_err_need_input",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Hooks: login.Hooks{
 						ConfigSource: configSource(dir),
 					},
-				}
+				}, nil
 			},
 			wantErr: true,
 			checkErr: func(t *testing.T, err error) {
@@ -525,7 +549,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// AC-013: Validation failure leaves CurrentContext untouched (D12, NC-002, NC-010)
 			name: "validation_failure_no_config_write",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:       "https://grafana.example.com",
@@ -538,7 +562,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 							return "", errors.New("health check failed: connection refused")
 						},
 					},
-				}
+				}, nil
 			},
 			wantErr: true,
 			checkConfig: func(t *testing.T, cfg config.Config) {
@@ -550,7 +574,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// AC-011 + AC-009: AuthMethod written, roundtripped on re-auth
 			name: "auth_method_roundtrip",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Inputs: login.Inputs{
 						Server:       "https://grafana.example.com",
@@ -561,7 +585,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						ConfigSource: configSource(dir),
 						ValidateFn:   noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
 				t.Helper()
@@ -574,11 +598,14 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// AC-012: Legacy config (no AuthMethod) loads and re-auths, preserves other fields
 			name: "legacy_config_reauth_preserves_fields",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				// Pre-populate config with a context whose stack has no AuthMethod
 				// (legacy pre-auth-method config) and OrgID set
 				src := configSource(dir)
-				legacyCfg := config.Config{}
+				legacyCfg, err := config.Load(context.Background(), src)
+				if err != nil {
+					return login.Options{}, err
+				}
 				legacyCfg.SetStack("grafana-example-com", config.StackConfig{
 					Grafana: &config.GrafanaConfig{
 						Server:   "https://grafana.example.com",
@@ -588,7 +615,9 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 					},
 				})
 				legacyCfg.SetContext("grafana-example-com", true, config.Context{Stack: "grafana-example-com"})
-				require.NoError(t, config.Write(context.Background(), src, legacyCfg))
+				if err := config.Write(context.Background(), src, legacyCfg); err != nil {
+					return login.Options{}, err
+				}
 
 				return login.Options{
 					Inputs: login.Inputs{
@@ -600,7 +629,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						ConfigSource: src,
 						ValidateFn:   noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
 				t.Helper()
@@ -614,9 +643,12 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// Re-auth with explicit OrgID updates the existing context's OrgID.
 			name: "reauth_explicit_orgid_updates_existing",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				src := configSource(dir)
-				existingCfg := config.Config{}
+				existingCfg, err := config.Load(context.Background(), src)
+				if err != nil {
+					return login.Options{}, err
+				}
 				existingCfg.SetStack("grafana-example-com", config.StackConfig{
 					Grafana: &config.GrafanaConfig{
 						Server:     "https://grafana.example.com",
@@ -626,7 +658,9 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 					},
 				})
 				existingCfg.SetContext("grafana-example-com", true, config.Context{Stack: "grafana-example-com"})
-				require.NoError(t, config.Write(context.Background(), src, existingCfg))
+				if err := config.Write(context.Background(), src, existingCfg); err != nil {
+					return login.Options{}, err
+				}
 
 				return login.Options{
 					Inputs: login.Inputs{
@@ -639,7 +673,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						ConfigSource: src,
 						ValidateFn:   noopValidate,
 					},
-				}
+				}, nil
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
 				t.Helper()
@@ -651,7 +685,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		{
 			// AC-013: Redirect to grafana.com on empty server selection
 			name: "redirect_grafana_com_empty_server",
-			opts: func(dir string) login.Options {
+			opts: func(dir string) (login.Options, error) {
 				return login.Options{
 					Inputs: login.Inputs{
 						UseCloudInstanceSelector: true,
@@ -664,7 +698,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 							return &stubAuthFlow{result: oauthResult}
 						},
 					},
-				}
+				}, nil
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
 				t.Helper()
@@ -679,8 +713,11 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
-			opts := tc.opts(dir)
+			seedPlaintextCredentialConfig(t, dir)
+			opts, optsErr := tc.opts(dir)
+			require.NoError(t, optsErr)
 			src := opts.ConfigSource
 
 			result, err := login.Run(context.Background(), &opts)
@@ -768,9 +805,10 @@ func TestResolveCloudEndpoints(t *testing.T) {
 }
 
 func TestTrustedCAPIsPersistedAsCAP(t *testing.T) {
-	usePlaintextCredentialStorage(t)
+	t.Parallel()
 
 	dir := t.TempDir()
+	seedPlaintextCredentialConfig(t, dir)
 	source := configSource(dir)
 	opts := login.Options{
 		Inputs: login.Inputs{
@@ -845,15 +883,18 @@ func TestRuntimeTLSOverrideRejectsNonDurableBearerCredential(t *testing.T) {
 }
 
 func TestStoredProxyTokenReauthPreservesDestinationBinding(t *testing.T) {
-	usePlaintextCredentialStorage(t)
+	t.Parallel()
 
 	const (
 		server = "https://grafana.example.invalid"
 		proxy  = "https://proxy.example.invalid"
 		token  = "stored-token"
 	)
-	source := configSource(t.TempDir())
-	seed := config.Config{}
+	dir := t.TempDir()
+	seedPlaintextCredentialConfig(t, dir)
+	source := configSource(dir)
+	seed, err := config.Load(t.Context(), source)
+	require.NoError(t, err)
 	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{
 		Server:        server,
 		ProxyEndpoint: proxy,
@@ -864,7 +905,7 @@ func TestStoredProxyTokenReauthPreservesDestinationBinding(t *testing.T) {
 	seed.SetContext("default", true, config.Context{Stack: "default"})
 	require.NoError(t, config.Write(t.Context(), source, seed))
 
-	_, err := login.Run(t.Context(), &login.Options{
+	_, err = login.Run(t.Context(), &login.Options{
 		Inputs: login.Inputs{
 			Server:               server,
 			ContextName:          "default",
@@ -1771,7 +1812,7 @@ func TestRun_CloudTokenHintGuidance(t *testing.T) {
 // while building the REST config (via /bootdata) is written to the saved
 // context, so later commands skip the discovery round-trip.
 func TestRun_PersistsDiscoveredStackID(t *testing.T) {
-	usePlaintextCredentialStorage(t)
+	t.Parallel()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/bootdata" {
@@ -1785,6 +1826,7 @@ func TestRun_PersistsDiscoveredStackID(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
+	seedPlaintextCredentialConfig(t, dir)
 	src := configSource(dir)
 	opts := login.Options{
 		Inputs: login.Inputs{

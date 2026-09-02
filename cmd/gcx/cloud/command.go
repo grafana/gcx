@@ -125,7 +125,7 @@ both preserves the explicit OAuth-origin/API-destination pair.`,
 				return autoLocalCloudCredentialError(mutationTarget)
 			}
 			mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
-			mutationCtx := configOpts.LoginMutationContext(cmd.Context(), mutationTarget)
+			mutationCtx := configOpts.LoginMutationContext(cmd.Context(), mutationTarget, cfg)
 			persistedConfig, cur, err := loadPersistedCloudConfig(mutationCtx, mutationSource, contextName)
 			if err != nil {
 				return err

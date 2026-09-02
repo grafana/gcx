@@ -87,8 +87,10 @@ gcx does not move stored credentials back into the configuration file when you
 switch to `off`. It preserves their references and cannot read them. You have
 two choices for each one.
 
-Keep the reference. Set the policy to `on` again (or unset `GCX_KEYCHAIN`) and
-the credential works again.
+Keep the reference. Set the policy to `on` again, run
+`gcx config unset credentials.keychain` (which reverts to the effective
+default policy through the same locked transaction as `set`), or unset
+`GCX_KEYCHAIN` — and the credential works again.
 
 Replace the credential. Authenticate again, and gcx writes the new value in
 plaintext. This is not reversible: gcx cannot delete through a disabled store,

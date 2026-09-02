@@ -1344,7 +1344,7 @@ func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T)
 	txn.plaintextFallback = true
 
 	require.NoError(t, txn.commit(&warnings))
-	assert.Equal(t, "warn: credential store could not securely store the credential; credentials remain in plaintext on disk; verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage\n", warnings.String())
+	assert.Equal(t, "warn: keychain storage is disabled; credentials remain in plaintext on disk; enable keychain storage to store credentials in the OS credential store\n", warnings.String())
 	assert.Empty(t, logger.warnings, "the request-scoped warning must not be duplicated through structured logging")
 
 	txn = newKeychainWriteTransaction(newBoundTestStore(), logger)
@@ -1352,7 +1352,7 @@ func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T)
 	txn.plaintextFallback = true
 
 	require.NoError(t, txn.commit(nil))
-	require.Equal(t, []string{"credential store could not securely store the credential; credentials remain in plaintext on disk"}, logger.warnings)
+	require.Equal(t, []string{"keychain storage is disabled; credentials remain in plaintext on disk"}, logger.warnings)
 
 	logger.warnings = nil
 	store := newBoundTestStore()
@@ -1363,7 +1363,7 @@ func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T)
 	txn.deferDelete("old-account", "stack:default", credentials.FieldGrafanaToken)
 
 	require.Error(t, txn.commit(nil))
-	assert.NotContains(t, logger.warnings, "credential store could not securely store the credential; credentials remain in plaintext on disk",
+	assert.NotContains(t, logger.warnings, "keychain storage is disabled; credentials remain in plaintext on disk",
 		"a failed commit must not claim plaintext fallback succeeded")
 }
 

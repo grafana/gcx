@@ -21,20 +21,6 @@ func (f gcomOAuthFlowFunc) Run(ctx context.Context) (*auth.GCOMResult, error) {
 	return f(ctx)
 }
 
-func TestMain(m *testing.M) {
-	previous, wasSet := os.LookupEnv("GCX_KEYCHAIN")
-	if err := os.Setenv("GCX_KEYCHAIN", "off"); err != nil {
-		panic(err)
-	}
-	code := m.Run()
-	if wasSet {
-		_ = os.Setenv("GCX_KEYCHAIN", previous)
-	} else {
-		_ = os.Unsetenv("GCX_KEYCHAIN")
-	}
-	os.Exit(code)
-}
-
 // `gcx cloud login` and the `gcx login` cloud followup must request the same
 // scope set (auth.DefaultGCOMScopes) so tokens from either path are equivalent.
 func TestLoginScopeFlagDefaultMatchesDefaultGCOMScopes(t *testing.T) {
@@ -44,6 +30,7 @@ func TestLoginScopeFlagDefaultMatchesDefaultGCOMScopes(t *testing.T) {
 }
 
 func TestCloudLoginWritesExplicitlySelectedLocalConfig(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	userDir, workDir := isolateCloudConfigEnv(t)
 	localPath := filepath.Join(workDir, ".gcx.yaml")
 	require.NoError(t, os.WriteFile(localPath, []byte("version: 1\ncontexts:\n  default: {}\ncurrent-context: default\n"), 0o600))
@@ -154,6 +141,7 @@ func TestCloudLoginRejectsAmbiguousLayeredWrite(t *testing.T) {
 }
 
 func TestCloudLoginWritesCloudOwnerAcrossSystemAndLocalLayers(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	userDir, workDir := isolateCloudConfigEnv(t)
 	systemPath := filepath.Join(os.Getenv("XDG_CONFIG_DIRS"), "gcx", "config.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(systemPath), 0o755))
@@ -215,7 +203,74 @@ contexts:
 	assert.NotEqual(t, userContents, userAfter)
 }
 
+func TestCloudLoginPreservesEffectiveKeychainPolicyForSystemOwner(t *testing.T) {
+	tests := []struct {
+		name          string
+		systemMode    string
+		userMode      string
+		wantPlaintext bool
+	}{
+		{
+			name:          "higher priority user off disables system owner keychain",
+			systemMode:    "on",
+			userMode:      "off",
+			wantPlaintext: true,
+		},
+		{
+			name:       "higher priority user on enables system owner keychain",
+			systemMode: "off",
+			userMode:   "on",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			userDir, _ := isolateCloudConfigEnv(t)
+			t.Setenv("GCX_KEYCHAIN", "")
+			systemPath := filepath.Join(os.Getenv("XDG_CONFIG_DIRS"), config.StandardConfigFolder, config.StandardConfigFileName)
+			require.NoError(t, os.MkdirAll(filepath.Dir(systemPath), 0o755))
+			require.NoError(t, os.WriteFile(systemPath, []byte(`version: 1
+credentials:
+  keychain: `+test.systemMode+`
+cloud:
+  grafana-com:
+    oauth-url: https://grafana.com
+    api-url: https://grafana.com
+contexts:
+  default:
+    cloud: grafana-com
+current-context: default
+`), 0o600))
+			userPath := filepath.Join(userDir, config.StandardConfigFolder, config.StandardConfigFileName)
+			require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
+			require.NoError(t, os.WriteFile(userPath, []byte(`version: 1
+credentials:
+  keychain: `+test.userMode+`
+contexts: {}
+`), 0o600))
+
+			cmd := loginCmd()
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetArgs([]string{"--cloud-token", "fresh-layered-cap"})
+			err := cmd.ExecuteContext(t.Context())
+
+			raw, readErr := os.ReadFile(systemPath)
+			require.NoError(t, readErr)
+			if test.wantPlaintext {
+				require.NoError(t, err)
+				assert.Contains(t, string(raw), "token: fresh-layered-cap")
+				assert.NotContains(t, string(raw), "keychain:gcx:v2:")
+				return
+			}
+			require.ErrorIs(t, err, credentials.ErrUnavailable)
+			assert.NotContains(t, string(raw), "fresh-layered-cap")
+		})
+	}
+}
+
 func TestCloudLoginAvoidsUnboundEntryNameReservedByAnotherLayer(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	userDir, workDir := isolateCloudConfigEnv(t)
 	userPath := filepath.Join(userDir, "gcx", "config.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
@@ -260,6 +315,7 @@ contexts:
 }
 
 func TestCloudLoginDoesNotBindShadowedSameNamedRawEntry(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	userDir, workDir := isolateCloudConfigEnv(t)
 	userPath := filepath.Join(userDir, "gcx", "config.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
@@ -400,6 +456,7 @@ contexts:
 }
 
 func TestCloudLoginDoesNotPersistAmbientEnvironmentToken(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	t.Setenv("GRAFANA_CLOUD_TOKEN", "environment-cap")
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("version: 1\ncontexts:\n  default: {}\ncurrent-context: default\n"), 0o600))
@@ -437,6 +494,7 @@ func TestCloudLoginDoesNotPersistAmbientEnvironmentToken(t *testing.T) {
 }
 
 func TestCloudLoginWhitespaceTokenFlagUsesOAuthInsteadOfPersistingBlankCAP(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("version: 1\ncontexts:\n  default: {}\ncurrent-context: default\n"), 0o600))
 
@@ -467,6 +525,7 @@ func TestCloudLoginWhitespaceTokenFlagUsesOAuthInsteadOfPersistingBlankCAP(t *te
 }
 
 func TestCloudTokenLoginCreatesMissingExplicitConfig(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	path := filepath.Join(t.TempDir(), "new-config.yaml")
 
 	cmd := loginCmd()
@@ -673,6 +732,7 @@ func TestSelectCloudLoginEndpointsKeepsOAuthAndAPICoherent(t *testing.T) {
 // OAuth flow with a reader, so the user can paste the redirect URL on a remote
 // host (issue #1135).
 func TestCloudLoginManualReachesGCOMOptions(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("version: 1\ncontexts:\n  default: {}\ncurrent-context: default\n"), 0o600))
 

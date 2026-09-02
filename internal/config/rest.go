@@ -40,6 +40,11 @@ type NamespacedRESTConfig struct {
 	// loaded stack against it before resolving or writing rotated credentials,
 	// so a concurrent server, proxy, or TLS trust change cannot adopt them.
 	oauthCredentialBinding credentials.Binding
+
+	// keychainPolicy freezes the process-effective storage decision used when
+	// the source context was resolved. OAuth refresh callbacks can execute much
+	// later and reload only the owning layer, so they must not recompute it.
+	keychainPolicy keychainPolicy
 }
 
 // IsOAuthProxy reports whether the config is using OAuth proxy mode.
@@ -89,20 +94,31 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		stackName = contextName
 	}
 	persistSource := ResolveTokenPersistenceSource(ctx, source, stackName, sources)
+	persistIdentity, persistLayer, persistIdentityErr := resolveConfigWriteLockIdentity(persistSource, sources)
 	expectedBinding := n.oauthCredentialBinding
 	// Persistence runs inside an HTTP RoundTrip whose request context may be
 	// cancelled the moment the caller has what it needs. Use a context
 	// detached from that cancellation so Load/Write always complete.
-	persistCtx := withConfigWriteLockHeld(context.WithoutCancel(ctx))
+	persistCtx := context.WithoutCancel(ctx)
+	if persistIdentityErr == nil {
+		persistCtx = withConfigWriteLockHeld(persistCtx, persistIdentity)
+	}
+	if n.keychainPolicy.source != "" {
+		persistCtx = withKeychainPolicy(persistCtx, n.keychainPolicy)
+	}
 
 	persistLoad := func() (Config, error) {
+		if persistIdentityErr != nil {
+			return Config{}, persistIdentityErr
+		}
 		path, err := persistSource()
 		if err != nil {
 			return Config{}, err
 		}
 		loadCtx := persistCtx
-		if selected, ok := configSourceForPath(sources, path); ok {
-			loadCtx = withConfigLayer(loadCtx, selected.Type)
+		if persistLayer != "" {
+			selected := ConfigSource{Path: path, Type: persistLayer}
+			loadCtx = withConfigLayer(loadCtx, persistLayer)
 			current, readErr := readConfigSource(selected)
 			if readErr != nil {
 				return Config{}, readErr
@@ -114,6 +130,9 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		fresh, err := Load(loadCtx, persistSource)
 		if err != nil {
 			return fresh, err
+		}
+		if _, err := configWriteLockIsHeldFor(loadCtx, fresh.sourceIdentity); err != nil {
+			return Config{}, err
 		}
 		if fresh.migrationDeferred {
 			return Config{}, fmt.Errorf("OAuth token persistence requires migrating config layer %s first; load or edit that layer explicitly before retrying", path)
@@ -137,35 +156,13 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		return fresh, nil
 	}
 
-	n.oauthTransport.Lock = func(reqCtx context.Context) (func(), error) {
-		path, err := persistSource()
-		if err != nil {
-			return nil, err
-		}
-		layer := ""
-		if selected, ok := configSourceForPath(sources, path); ok {
-			layer = selected.Type
-		}
-		identity, err := canonicalConfigSourceForLayer(path, layer)
-		if err != nil {
-			return nil, err
-		}
-		lockPath, err := configLockFile(identity, "write")
-		if err != nil {
-			return nil, err
-		}
-		lock := flock.New(lockPath)
-		lockCtx, cancel := context.WithTimeout(reqCtx, 30*time.Second)
-		defer cancel()
-		ok, err := lock.TryLockContext(lockCtx, 100*time.Millisecond)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return nil, fmt.Errorf("timed out locking OAuth token persistence for %s", path)
-		}
-		return func() { _ = lock.Unlock() }, nil
-	}
+	n.oauthTransport.Lock = oauthTokenPersistenceWriteLock(
+		persistCtx,
+		persistSource,
+		persistLayer,
+		persistIdentity,
+		persistIdentityErr,
+	)
 
 	n.oauthTransport.Reload = func() (auth.StoredTokens, bool, error) {
 		fresh, err := persistLoad()
@@ -240,6 +237,62 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		g.OAuthRefreshExpiresAt = refreshExpiresAt
 		return Write(persistCtx, persistSource, fresh)
 	})
+}
+
+func oauthTokenPersistenceWriteLock(
+	persistCtx context.Context,
+	persistSource Source,
+	persistLayer string,
+	persistIdentity string,
+	persistIdentityErr error,
+) func(context.Context) (func(), error) {
+	return func(reqCtx context.Context) (func(), error) {
+		if persistIdentityErr != nil {
+			return nil, persistIdentityErr
+		}
+		path, err := persistSource()
+		if err != nil {
+			return nil, err
+		}
+		identity, err := canonicalConfigSourceForLayer(path, persistLayer)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := configWriteLockIsHeldFor(persistCtx, identity); err != nil {
+			return nil, err
+		}
+		lockPath, err := configWriteLockFile(persistIdentity)
+		if err != nil {
+			return nil, err
+		}
+		lock := flock.New(lockPath)
+		lockCtx, cancel := context.WithTimeout(reqCtx, 30*time.Second)
+		defer cancel()
+		ok, err := lock.TryLockContext(lockCtx, 100*time.Millisecond)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("timed out locking OAuth token persistence for %s", path)
+		}
+		return func() { _ = lock.Unlock() }, nil
+	}
+}
+
+func resolveConfigWriteLockIdentity(source Source, sources []ConfigSource) (string, string, error) {
+	path, err := source()
+	if err != nil {
+		return "", "", err
+	}
+	layer := ""
+	if selected, ok := configSourceForPath(sources, path); ok {
+		layer = selected.Type
+	}
+	identity, err := canonicalConfigSourceForLayer(path, layer)
+	if err != nil {
+		return "", "", err
+	}
+	return identity, layer, nil
 }
 
 func configSourceForPath(sources []ConfigSource, path string) (ConfigSource, bool) {
@@ -435,5 +488,6 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		GrafanaURL:             strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		oauthTransport:         oauthTransport,
 		oauthCredentialBinding: oauthCredentialBinding,
+		keychainPolicy:         cfg.keychainPolicy,
 	}, nil
 }

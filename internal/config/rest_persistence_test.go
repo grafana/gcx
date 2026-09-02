@@ -668,6 +668,96 @@ contexts:
 	assert.NotContains(t, string(localRaw), "gar_local_policy_rotated")
 }
 
+func TestWireTokenPersistencePreservesEffectivePolicyForSystemOwner(t *testing.T) {
+	tests := []struct {
+		name          string
+		systemMode    string
+		userMode      string
+		wantPlaintext bool
+	}{
+		{
+			name:          "higher priority user off disables system owner keychain",
+			systemMode:    "on",
+			userMode:      "off",
+			wantPlaintext: true,
+		},
+		{
+			name:       "higher priority user on enables system owner keychain",
+			systemMode: "off",
+			userMode:   "on",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := withFakeStore(t)
+			fixture := newKeychainPolicyFixture(t)
+			writeTestConfigFile(t, fixture.system, `
+version: 1
+credentials:
+  keychain: `+test.systemMode+`
+stacks:
+  default:
+    grafana:
+      server: https://grafana.example.invalid
+      proxy-endpoint: https://proxy.example.invalid
+      oauth-token: gat_layered_old
+      oauth-refresh-token: gar_layered_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 1
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+			writeTestConfigFile(t, fixture.user, `
+version: 1
+credentials:
+  keychain: `+test.userMode+`
+contexts: {}
+`)
+
+			cfg, err := config.LoadLayered(t.Context(), "")
+			require.NoError(t, err)
+			restCfg, err := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
+			require.NoError(t, err)
+			restCfg.WireTokenPersistence(
+				t.Context(),
+				config.StandardLocation(),
+				"default",
+				"default",
+				cfg.Sources,
+			)
+			onRefresh := restCfg.OnRefreshForTest()
+			require.NotNil(t, onRefresh)
+			err = onRefresh(
+				"gar_layered_old",
+				"gat_layered_rotated",
+				"gar_layered_rotated",
+				"2099-02-01T00:00:00Z",
+				"2099-03-01T00:00:00Z",
+			)
+			require.NoError(t, err)
+
+			raw, readErr := os.ReadFile(fixture.system)
+			require.NoError(t, readErr)
+			if test.wantPlaintext {
+				assert.Contains(t, string(raw), "oauth-token: gat_layered_rotated")
+				assert.Contains(t, string(raw), "oauth-refresh-token: gar_layered_rotated")
+				assert.NotContains(t, string(raw), "keychain:gcx:v2:")
+				assert.Zero(t, store.sets(), "effective off must not contact the credential store")
+				return
+			}
+			assert.NotContains(t, string(raw), "gat_layered_rotated")
+			assert.NotContains(t, string(raw), "gar_layered_rotated")
+			assert.Contains(t, string(raw), "keychain:gcx:v2:")
+			assert.True(t, store.containsValue("gat_layered_rotated"))
+			assert.True(t, store.containsValue("gar_layered_rotated"))
+		})
+	}
+}
+
 func TestWireTokenPersistence_KeychainReadFailureRetainsPendingGeneration(t *testing.T) {
 	tests := map[string]error{
 		"unavailable": credentials.ErrUnavailable,

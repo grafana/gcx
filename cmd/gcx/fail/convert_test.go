@@ -1325,39 +1325,57 @@ func TestErrorToDetailedError_EmittedErrorSuppressesEnvelope(t *testing.T) {
 }
 
 // TestErrorToDetailedError_KeychainLocked asserts that a locked OS keychain
-// produces an actionable envelope, and that the other credentials sentinels do
-// not claim it. The locked error stays fatal, because gcx must not write the
-// secret in plaintext when a real keychain exists.
+// produces an actionable envelope, and that the other credentials sentinels
+// each get their own distinct summary rather than being folded into "locked"
+// or "unavailable". Locked and unavailable stay fatal, because gcx must not
+// write the secret in plaintext when a real keychain exists. ErrDisabled is
+// a deliberate, permanent opt-out — not an outage — so it must land on
+// neither of those summaries even though it wraps ErrUnavailable.
 func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 	lockedErr := fmt.Errorf("%w: %s", credentials.ErrLocked,
 		"failed to unlock correct collection '/org/freedesktop/secrets/collection/login'")
 
+	const (
+		lockedDetails = "The OS keychain is reachable, but it is locked or cannot be unlocked in this session. " +
+			"gcx does not fall back to a plaintext credential."
+		unavailableDetails = "The OS keychain is unavailable. gcx did not fall back to plaintext credential storage."
+	)
+
 	tests := []struct {
-		name       string
-		err        error
-		wantLocked bool
+		name        string
+		err         error
+		wantSummary string
+		wantDetails string
 	}{
 		{
-			name:       "bare ErrLocked",
-			err:        credentials.ErrLocked,
-			wantLocked: true,
+			name:        "bare ErrLocked",
+			err:         credentials.ErrLocked,
+			wantSummary: "Keychain locked",
+			wantDetails: lockedDetails,
 		},
 		{
 			name: "deeply wrapped ErrLocked",
 			err: fmt.Errorf("writing config: %w",
 				fmt.Errorf("inspect keychain entry for %q field %q: %w",
 					"stack:opstest", "oauth-token", lockedErr)),
-			wantLocked: true,
+			wantSummary: "Keychain locked",
+			wantDetails: lockedDetails,
 		},
 		{
-			name:       "ErrUnavailable is an actionable unavailable keychain",
-			err:        fmt.Errorf("writing config: %w", credentials.ErrUnavailable),
-			wantLocked: false,
+			name:        "ErrUnavailable is an actionable unavailable keychain",
+			err:         fmt.Errorf("writing config: %w", credentials.ErrUnavailable),
+			wantSummary: "Keychain unavailable",
+			wantDetails: unavailableDetails,
 		},
 		{
-			name:       "ErrNotFound is not a locked keychain",
-			err:        fmt.Errorf("writing config: %w", credentials.ErrNotFound),
-			wantLocked: false,
+			name:        "ErrNotFound is not a locked keychain",
+			err:         fmt.Errorf("writing config: %w", credentials.ErrNotFound),
+			wantSummary: "",
+		},
+		{
+			name:        "ErrDisabled is a deliberate opt-out, neither locked nor unavailable",
+			err:         fmt.Errorf("resolve credential: %w", credentials.ErrDisabled),
+			wantSummary: "Keychain disabled by configuration",
 		},
 	}
 
@@ -1366,34 +1384,38 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 			got := fail.ErrorToDetailedError(tt.err)
 			require.NotNil(t, got)
 
-			if errors.Is(tt.err, credentials.ErrUnavailable) {
-				assert.Equal(t, "Keychain unavailable", got.Summary)
-				assert.Equal(t,
-					"The OS keychain is unavailable. gcx did not fall back to plaintext credential storage.",
-					got.Details)
+			switch tt.wantSummary {
+			case "Keychain locked":
+				assert.Equal(t, tt.wantSummary, got.Summary)
+				assert.Equal(t, tt.wantDetails, got.Details)
+				require.Error(t, got.Parent)
+				require.ErrorIs(t, got.Parent, credentials.ErrLocked)
+				assert.Equal(t, docs.Keychain, got.DocsLink)
+				// convert_internal_test.go pins the per-platform suggestions.
+				assert.NotEmpty(t, got.Suggestions)
+				assert.NotContains(t, strings.Join(got.Suggestions, "\n"), "GCX_KEYCHAIN=off")
+			case "Keychain unavailable":
+				assert.Equal(t, tt.wantSummary, got.Summary)
+				assert.Equal(t, tt.wantDetails, got.Details)
 				require.ErrorIs(t, got.Parent, credentials.ErrUnavailable)
-				assert.NotErrorIs(t, got.Parent, credentials.ErrLocked)
+				require.NotErrorIs(t, got.Parent, credentials.ErrLocked)
 				assert.Contains(t, strings.Join(got.Suggestions, "\n"), "GCX_KEYCHAIN=off")
 				assert.Contains(t, strings.Join(got.Suggestions, "\n"), "credentials.keychain: off")
 				assert.Contains(t, strings.Join(got.Suggestions, "\n"), "Plaintext credentials are stored on disk")
-				return
-			}
-
-			if !tt.wantLocked {
+			case "Keychain disabled by configuration":
+				assert.Equal(t, tt.wantSummary, got.Summary)
+				require.ErrorIs(t, got.Parent, credentials.ErrDisabled)
+			default:
 				assert.NotEqual(t, "Keychain locked", got.Summary)
-				return
+				assert.NotEqual(t, "Keychain unavailable", got.Summary)
 			}
 
-			assert.Equal(t, "Keychain locked", got.Summary)
-			assert.Equal(t,
-				"The OS keychain is reachable, but it is locked or cannot be unlocked in this session. gcx does not fall back to a plaintext credential.",
-				got.Details)
-			require.Error(t, got.Parent)
-			require.ErrorIs(t, got.Parent, credentials.ErrLocked)
-			assert.Equal(t, docs.Keychain, got.DocsLink)
-			// convert_internal_test.go pins the per-platform suggestions.
-			assert.NotEmpty(t, got.Suggestions)
-			assert.NotContains(t, strings.Join(got.Suggestions, "\n"), "GCX_KEYCHAIN=off")
+			// Regardless of which case matched, ErrDisabled must never be
+			// reported under the locked or unavailable summaries.
+			if errors.Is(tt.err, credentials.ErrDisabled) {
+				assert.NotEqual(t, "Keychain locked", got.Summary)
+				assert.NotEqual(t, "Keychain unavailable", got.Summary)
+			}
 		})
 	}
 }

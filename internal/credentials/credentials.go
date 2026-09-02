@@ -4,11 +4,11 @@
 // string containing an opaque binding digest and generation in place of the
 // plaintext value; the loader resolves it back to plaintext in memory.
 //
-// Migration is automatic and idempotent: on every config load, plaintext
-// secrets are pushed into the keychain and replaced with sentinels in the
-// YAML. If no keychain is available, gcx falls back to leaving plaintext in
-// place and emits a one-time warning. A reachable but locked keychain fails
-// closed instead.
+// Migration is automatic and idempotent when the resolved storage policy uses
+// the keychain: plaintext secrets are pushed into the keychain and replaced
+// with sentinels in YAML. Unavailable and locked keychains fail closed for
+// credential writes. Plaintext persistence is permitted only when trusted
+// configuration has independently selected the disabled store.
 package credentials
 
 import (
@@ -71,8 +71,8 @@ var AllFields = []Field{
 // ErrNotFound is returned by Store.Get when no entry exists for the given key.
 var ErrNotFound = errors.New("credentials: entry not found")
 
-// ErrUnavailable is returned when the OS keychain cannot be reached. Callers
-// should fall back to plaintext.
+// ErrUnavailable is returned when the OS keychain cannot be reached. It is
+// fatal for credential writes and never authorizes a plaintext fallback.
 var ErrUnavailable = errors.New("credentials: keychain unavailable")
 
 // ErrLocked is returned when the OS keychain is reachable but locked, or when
@@ -83,11 +83,29 @@ var ErrUnavailable = errors.New("credentials: keychain unavailable")
 var ErrLocked = errors.New("credentials: keychain locked")
 
 // ErrDisabled is reported by a store that stands in for a keychain the user has
-// deliberately turned off. Unlike ErrLocked it wraps ErrUnavailable, because no
-// keychain is in play at all: every existing fallback path keeps treating it as
-// an unreachable backend, and only the decisions that differ for a deliberate
-// opt-out test for it specifically.
+// deliberately turned off. Unlike ErrLocked it wraps ErrUnavailable because no
+// keychain is in play at all. Only the configuration layer's already-resolved
+// trusted opt-out may treat this distinct error as authorization to persist
+// plaintext; generic unavailable handling must remain fail-closed.
 var ErrDisabled = fmt.Errorf("%w: disabled by configuration", ErrUnavailable)
+
+// IsFatalStoreFailure reports whether err represents a store failure that must
+// not be treated as transient and must never authorize a plaintext fallback —
+// an unreachable (ErrUnavailable) or locked (ErrLocked) keychain. It
+// deliberately excludes ErrDisabled: although ErrDisabled wraps ErrUnavailable
+// so generic errors.Is(err, ErrUnavailable) checks also match it, a deliberate
+// opt-out is not an outage and callers must not lump it in with one. Use
+// IsDisabledByPolicy to test for that condition instead.
+func IsFatalStoreFailure(err error) bool {
+	return (errors.Is(err, ErrUnavailable) || errors.Is(err, ErrLocked)) && !errors.Is(err, ErrDisabled)
+}
+
+// IsDisabledByPolicy reports whether err represents a deliberate, permanent
+// opt-out of credential storage (ErrDisabled), as distinct from a transient
+// outage or lock that IsFatalStoreFailure reports.
+func IsDisabledByPolicy(err error) bool {
+	return errors.Is(err, ErrDisabled)
+}
 
 // Store is the minimal interface for a secret backend.
 type Store interface {

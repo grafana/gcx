@@ -197,8 +197,8 @@ func TestAbandonsExport(t *testing.T) {
 }
 
 const (
-	configCheckProcessHelper       = "GCX_CONFIG_CHECK_PROCESS_HELPER"
-	configSetFallbackProcessHelper = "GCX_CONFIG_SET_FALLBACK_PROCESS_HELPER"
+	configCheckProcessHelper                  = "GCX_CONFIG_CHECK_PROCESS_HELPER"
+	configSetUnavailableKeychainProcessHelper = "GCX_CONFIG_SET_UNAVAILABLE_KEYCHAIN_PROCESS_HELPER"
 )
 
 func TestConfigSetUnavailableKeychainFailsClosedProcess(t *testing.T) {
@@ -224,13 +224,13 @@ current-context: smoke
 
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
-			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestConfigSetPlaintextFallbackProcessHelper$") //nolint:gosec
+			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestConfigSetUnavailableKeychainProcessHelper$") //nolint:gosec
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
 			cmd.Env = append(os.Environ(),
-				configSetFallbackProcessHelper+"=1",
-				"GCX_CONFIG_SET_FALLBACK_PATH="+configPath,
-				"GCX_CONFIG_SET_FALLBACK_TOKEN="+token,
+				configSetUnavailableKeychainProcessHelper+"=1",
+				"GCX_CONFIG_SET_UNAVAILABLE_KEYCHAIN_PATH="+configPath,
+				"GCX_CONFIG_SET_UNAVAILABLE_KEYCHAIN_TOKEN="+token,
 				"GCX_AGENT_MODE="+agentMode,
 				"GCX_TELEMETRY=disabled",
 				"GCX_NO_UPDATE_NOTIFIER=1",
@@ -294,16 +294,16 @@ current-context: smoke
 	}
 }
 
-func TestConfigSetPlaintextFallbackProcessHelper(_ *testing.T) {
-	if os.Getenv(configSetFallbackProcessHelper) != "1" {
+func TestConfigSetUnavailableKeychainProcessHelper(_ *testing.T) {
+	if os.Getenv(configSetUnavailableKeychainProcessHelper) != "1" {
 		return
 	}
 
 	agent.ResetForTesting()
 	os.Args = []string{
 		"gcx", "config", "set",
-		"--config", os.Getenv("GCX_CONFIG_SET_FALLBACK_PATH"),
-		"stacks.smoke.grafana.token", os.Getenv("GCX_CONFIG_SET_FALLBACK_TOKEN"),
+		"--config", os.Getenv("GCX_CONFIG_SET_UNAVAILABLE_KEYCHAIN_PATH"),
+		"stacks.smoke.grafana.token", os.Getenv("GCX_CONFIG_SET_UNAVAILABLE_KEYCHAIN_TOKEN"),
 	}
 	preParseAgentFlag()
 	cmd := root.Command("test")

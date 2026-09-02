@@ -3,6 +3,7 @@ package config_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/cmd/gcx/config"
 	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/require"
 )
@@ -836,6 +838,48 @@ current-context: dev`),
 	viewCmd.Run(t)
 }
 
+func Test_UnsetCommandKeychainPolicy(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "credentials.keychain", path: "credentials.keychain"},
+		{name: "bare credentials section", path: "credentials"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			isolatedConfigEnv(t)
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			original := []byte("version: 1\ncredentials:\n  keychain: \"off\"\ncontexts: {}\n")
+			require.NoError(t, os.WriteFile(path, original, 0o600))
+
+			_, err := runConfigCmd(t, "unset", "--config", path, test.path)
+			require.NoError(t, err)
+
+			raw, readErr := os.ReadFile(path)
+			require.NoError(t, readErr)
+			require.NotContains(t, string(raw), "keychain:")
+		})
+	}
+}
+
+func Test_UnsetCommandKeychainPolicyRejectsAutoDiscoveredLocalTarget(t *testing.T) {
+	_, workDir := isolatedConfigEnv(t)
+	localPath := writeLocalConfig(t, workDir, "version: 1\ncredentials:\n  keychain: \"off\"\ncontexts:\n  default: {}\ncurrent-context: default\n")
+
+	before, readErr := os.ReadFile(localPath)
+	require.NoError(t, readErr)
+
+	_, err := runConfigCmd(t, "unset", "credentials.keychain")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "local")
+
+	after, readErr := os.ReadFile(localPath)
+	require.NoError(t, readErr)
+	require.Equal(t, before, after)
+}
+
 func Test_ViewCommand_withEnvironmentVariables(t *testing.T) {
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
@@ -1173,20 +1217,140 @@ contexts:
 	require.True(t, os.IsNotExist(statErr), "user config must not be created, got: %v", statErr)
 }
 
-func Test_SetCommandRejectsEmptyKeychainPolicyValue(t *testing.T) {
-	isolatedConfigEnv(t)
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	original := []byte("version: 1\ncredentials: {}\ncontexts: {}\n")
-	require.NoError(t, os.WriteFile(path, original, 0o600))
+func Test_SetCommandFileSelectionPreservesEffectiveKeychainPolicy(t *testing.T) {
+	tests := []struct {
+		name       string
+		fileType   string
+		systemMode string
+		userMode   string
+		localMode  string
+	}{
+		{
+			name:      "user on overrides local off when writing local",
+			fileType:  "local",
+			userMode:  "on",
+			localMode: "off",
+		},
+		{
+			name:       "user on overrides system off when writing system",
+			fileType:   "system",
+			systemMode: "off",
+			userMode:   "on",
+		},
+	}
 
-	_, err := runConfigCmd(t, "set", "--config", path, "credentials.keychain", "")
-	require.Error(t, err)
-	require.ErrorContains(t, err, "credentials.keychain")
-	require.ErrorContains(t, err, "on or off")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			userDir, workDir := isolatedConfigEnv(t)
+			t.Setenv("GCX_KEYCHAIN", "")
+			systemPath := filepath.Join(os.Getenv("XDG_CONFIG_DIRS"), "gcx", "config.yaml")
+			userPath := filepath.Join(userDir, "gcx", "config.yaml")
+			localPath := filepath.Join(workDir, internalconfig.LocalConfigFileName)
+			paths := map[string]string{
+				"system": systemPath,
+				"user":   userPath,
+				"local":  localPath,
+			}
+			for layer, mode := range map[string]string{
+				"system": test.systemMode,
+				"user":   test.userMode,
+				"local":  test.localMode,
+			} {
+				if mode == "" {
+					continue
+				}
+				contents := fmt.Sprintf(`version: 1
+credentials:
+  keychain: %s
+stacks:
+  target:
+    grafana:
+      server: https://example.invalid
+contexts:
+  target:
+    stack: target
+current-context: target
+`, mode)
+				require.NoError(t, os.MkdirAll(filepath.Dir(paths[layer]), 0o755))
+				require.NoError(t, os.WriteFile(paths[layer], []byte(contents), 0o600))
+			}
 
-	contents, readErr := os.ReadFile(path)
-	require.NoError(t, readErr)
-	require.Equal(t, original, contents)
+			var warnings bytes.Buffer
+			ctx := internalconfig.ContextWithWarningWriter(t.Context(), &warnings)
+			_, err := runConfigCmdContext(t, ctx,
+				"set", "--file", test.fileType,
+				"stacks.target.grafana.token", "must-not-be-plaintext",
+			)
+			require.ErrorIs(t, err, credentials.ErrUnavailable)
+
+			raw, readErr := os.ReadFile(paths[test.fileType])
+			require.NoError(t, readErr)
+			require.NotContains(t, string(raw), "must-not-be-plaintext")
+			require.NotContains(t, string(raw), "keychain:gcx:v2:")
+
+			if test.localMode != "" {
+				require.Contains(t, warnings.String(), "credentials.keychain")
+				require.Contains(t, warnings.String(), "was ignored")
+			} else {
+				require.NotContains(t, warnings.String(), "was ignored")
+			}
+		})
+	}
+}
+
+func TestUseContextWarnsAboutIgnoredLocalKeychainPolicyOncePerInvocation(t *testing.T) {
+	userDir, workDir := isolatedConfigEnv(t)
+	userPath := filepath.Join(userDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
+	require.NoError(t, os.WriteFile(userPath, []byte(`version: 1
+credentials:
+  keychain: on
+contexts:
+  old: {}
+  target: {}
+current-context: old
+`), 0o600))
+	localPath := filepath.Join(workDir, internalconfig.LocalConfigFileName)
+	require.NoError(t, os.WriteFile(localPath, []byte(`version: 1
+credentials:
+  keychain: off
+contexts: {}
+current-context: old
+`), 0o600))
+
+	var warnings bytes.Buffer
+	ctx := internalconfig.ContextWithWarningWriter(t.Context(), &warnings)
+	_, err := runConfigCmdContext(t, ctx, "use-context", "--file", "local", "target")
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(warnings.String(), "credentials.keychain"), warnings.String())
+}
+
+func Test_SetCommandRejectsInvalidKeychainPolicyValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "empty value", value: ""},
+		{name: "non-empty invalid value", value: "disabled"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			isolatedConfigEnv(t)
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			original := []byte("version: 1\ncredentials: {}\ncontexts: {}\n")
+			require.NoError(t, os.WriteFile(path, original, 0o600))
+
+			_, err := runConfigCmd(t, "set", "--config", path, "credentials.keychain", test.value)
+			require.Error(t, err)
+			require.ErrorContains(t, err, "credentials.keychain")
+			require.ErrorContains(t, err, "on or off")
+
+			contents, readErr := os.ReadFile(path)
+			require.NoError(t, readErr)
+			require.Equal(t, original, contents)
+		})
+	}
 }
 
 func Test_UseContextCommand_PreviousSwitch(t *testing.T) {

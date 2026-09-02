@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"io"
+	"sync"
 )
 
 // configContextKey is a private key type for storing the Grafana config context
@@ -22,6 +23,8 @@ type configFileContextKey struct{}
 // output while allowing operational warnings that must be visible at the
 // default log level to stay on stderr rather than corrupting command output.
 type warningWriterContextKey struct{}
+
+type ignoredLocalKeychainWarningLatchKey struct{}
 
 // ContextWithName attaches the Grafana config context name to a Go context.
 // Use this before invoking provider adapter factories so they can select the
@@ -67,10 +70,30 @@ func ContextWithWarningWriter(ctx context.Context, writer io.Writer) context.Con
 	if writer == nil {
 		return ctx
 	}
+	if _, ok := ctx.Value(ignoredLocalKeychainWarningLatchKey{}).(*sync.Once); !ok {
+		ctx = context.WithValue(ctx, ignoredLocalKeychainWarningLatchKey{}, &sync.Once{})
+	}
 	return context.WithValue(ctx, warningWriterContextKey{}, writer)
 }
 
 func warningWriterFromCtx(ctx context.Context) io.Writer {
 	writer, _ := ctx.Value(warningWriterContextKey{}).(io.Writer)
 	return writer
+}
+
+// ignoredLocalKeychainWarningLatchFallback backs the "ignored local keychain
+// policy" warning when no context-scoped latch was installed. Installing the
+// latch is normally a side effect of ContextWithWarningWriter, but a caller
+// that never attaches a warning writer (e.g. server/embedded use) must still
+// get the "warns once per invocation" behavior the docs promise, so this
+// process-wide fallback keeps the latch alive independent of that call.
+//
+//nolint:gochecknoglobals // process-wide fallback latch for a once-per-invocation notice.
+var ignoredLocalKeychainWarningLatchFallback sync.Once
+
+func ignoredLocalKeychainWarningLatchFromCtx(ctx context.Context) *sync.Once {
+	if latch, ok := ctx.Value(ignoredLocalKeychainWarningLatchKey{}).(*sync.Once); ok {
+		return latch
+	}
+	return &ignoredLocalKeychainWarningLatchFallback
 }

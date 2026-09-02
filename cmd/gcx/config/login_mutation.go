@@ -73,11 +73,16 @@ func (opts *Options) PlanLoginMutation(
 // LoginMutationContext preserves inferred discovery provenance. In
 // particular, a sole auto-discovered local config remains "local" so the login
 // command's fresh-credential policy still requires explicit selection.
-func (opts *Options) LoginMutationContext(ctx context.Context, target internalconfig.ConfigSource) context.Context {
-	if target.Type == "explicit" || target.Type == "" {
-		return ctx
+func (opts *Options) LoginMutationContext(
+	ctx context.Context,
+	target internalconfig.ConfigSource,
+	effective internalconfig.Config,
+) context.Context {
+	ctx = internalconfig.ContextWithResolvedKeychainPolicy(ctx, effective)
+	if target.Type != "explicit" && target.Type != "" {
+		ctx = internalconfig.ContextWithConfigSource(ctx, target)
 	}
-	return internalconfig.ContextWithConfigSource(ctx, target)
+	return ctx
 }
 
 func (opts *Options) cacheLoginMutationTarget(

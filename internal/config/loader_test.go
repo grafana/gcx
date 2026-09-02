@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
@@ -113,6 +114,12 @@ func TestLoadLayered_KeychainModePolicy(t *testing.T) {
 			env:        "off",
 			user:       "on",
 			wantStored: false,
+		},
+		{
+			name:       "environment on wins over a trusted off setting",
+			env:        "on",
+			user:       "off",
+			wantStored: true,
 		},
 		{
 			name:           "invalid environment keeps keychain on over trusted off",
@@ -284,6 +291,60 @@ func TestLoadLayered_KeychainModePolicy(t *testing.T) {
 				assert.Contains(t, stderr, "keychain storage remains enabled")
 				assert.Contains(t, stderr, "GCX_KEYCHAIN=off")
 			}
+		})
+	}
+}
+
+func TestLoadLayeredIgnoresStructurallyInvalidLocalKeychainPolicy(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "scalar", value: "false"},
+		{name: "sequence", value: "[off]"},
+		{name: "mapping", value: "{mode: off}"},
+		{name: "null", value: "null"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newKeychainPolicyFixture(t)
+			store := withFakeStore(t)
+			writeKeychainPolicyConfig(t, fixture.user, "on", "plaintext-user-token", false)
+			localContents := []byte("version: 1\ncredentials:\n  keychain: " + test.value + "\ncontexts:\n  repo-context: {}\n")
+			require.NoError(t, os.WriteFile(fixture.local, localContents, 0o600))
+
+			var warnings bytes.Buffer
+			cfg, err := config.LoadLayered(config.ContextWithWarningWriter(t.Context(), &warnings), "")
+			require.NoError(t, err)
+			require.Contains(t, cfg.Contexts, "repo-context")
+			assert.Positive(t, store.sets(), "trusted user on must remain effective")
+			assert.Equal(t, 1, strings.Count(warnings.String(), "credentials.keychain"), warnings.String())
+
+			raw, readErr := os.ReadFile(fixture.local)
+			require.NoError(t, readErr)
+			assert.Equal(t, localContents, raw, "ignored policy sanitization must not rewrite the local source")
+
+			directCtx := config.ContextWithConfigSource(t.Context(), config.ConfigSource{Path: fixture.local, Type: "local"})
+			localCfg, loadErr := config.Load(directCtx, config.ExplicitConfigFile(fixture.local))
+			require.NoError(t, loadErr)
+			localCfg.SetContext("added-context", false, config.Context{})
+			require.NoError(t, config.Write(directCtx, config.ExplicitConfigFile(fixture.local), localCfg))
+			written, readErr := os.ReadFile(fixture.local)
+			require.NoError(t, readErr)
+			var before, after map[string]any
+			require.NoError(t, yaml.Unmarshal(localContents, &before))
+			require.NoError(t, yaml.Unmarshal(written, &after))
+			beforeCredentials, ok := before["credentials"].(map[string]any)
+			require.True(t, ok)
+			_, beforePresent := beforeCredentials["keychain"]
+			assert.True(t, beforePresent)
+			// gcx never honors this structurally invalid value regardless of its
+			// shape, so an unrelated write drops it instead of round-tripping it
+			// back through a second, key-sorting serializer.
+			afterCredentials, _ := after["credentials"].(map[string]any)
+			_, afterPresent := afterCredentials["keychain"]
+			assert.False(t, afterPresent, "the invalid local policy value must be dropped on write, not preserved")
 		})
 	}
 }

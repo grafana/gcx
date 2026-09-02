@@ -212,9 +212,11 @@ func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return nil, false
 }
 
-// convertCredentialsErrors converts unavailable and locked keychain errors
-// into actionable messages. Both conditions remain fatal so gcx never falls
-// back to a plaintext write unless the user explicitly selects that policy.
+// convertCredentialsErrors converts unavailable, locked, and disabled
+// keychain errors into actionable messages. Unavailable and locked remain
+// fatal so gcx never falls back to a plaintext write unless the user
+// explicitly selects that policy; a disabled keychain gets its own message
+// because it is a deliberate, permanent opt-out, not an outage to retry.
 func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, credentials.ErrLocked) {
 		return &gcxerrors.DetailedError{
@@ -226,7 +228,7 @@ func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	}
 
-	if errors.Is(err, credentials.ErrUnavailable) && !errors.Is(err, credentials.ErrDisabled) {
+	if credentials.IsFatalStoreFailure(err) {
 		return &gcxerrors.DetailedError{
 			Summary: "Keychain unavailable",
 			Details: "The OS keychain is unavailable. gcx did not fall back to plaintext credential storage.",
@@ -236,6 +238,15 @@ func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
 				"To allow plaintext storage, explicitly set GCX_KEYCHAIN=off or credentials.keychain: off in user, system, or an explicitly selected config file",
 				"Plaintext credentials are stored on disk and are less secure than OS keychain storage",
 			},
+			DocsLink: docs.Keychain,
+		}, true
+	}
+
+	if credentials.IsDisabledByPolicy(err) {
+		return &gcxerrors.DetailedError{
+			Summary:  "Keychain disabled by configuration",
+			Details:  "Credential storage was deliberately disabled by configuration (GCX_KEYCHAIN=off or credentials.keychain: off). This is not an outage: retrying will not change the outcome.",
+			Parent:   err,
 			DocsLink: docs.Keychain,
 		}, true
 	}

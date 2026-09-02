@@ -25,13 +25,14 @@ type keychainStore struct{}
 
 // Open returns a Store backed by the OS keychain. If no working backend is
 // reachable (unsupported platform, headless box, missing DBus), it returns a
-// Store that reports ErrUnavailable on every operation so callers can fall
-// back to plaintext. If the backend is reachable but locked, every operation
-// reports ErrLocked instead, so no secret ever falls back to plaintext.
+// Store that reports ErrUnavailable on every operation. Callers must propagate
+// that failure; plaintext is selected separately by trusted configuration and
+// does not call Open. If the backend is reachable but locked, every operation
+// reports ErrLocked instead.
 func Open() Store {
 	// Probe with a read for an account we never write. A working backend
 	// returns ErrNotFound; an unreachable one returns a transport/platform
-	// error, which means we should fall back to plaintext.
+	// error, which means keychain-backed credential operations must fail.
 	if _, err := keyring.Get(service, probeAccount); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		err = normalizeKeyringError(err)
 		if errors.Is(err, ErrUnavailable) {

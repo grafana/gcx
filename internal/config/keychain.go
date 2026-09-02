@@ -1322,8 +1322,13 @@ type keychainWriteTransaction struct {
 	// abandonedGeneration records that a plaintext fallback replaced a
 	// credential that still had a keychain reference. The old entry cannot be
 	// deleted through the store that refused the write, so it stays behind and
-	// the commit warning has to say so.
+	// the commit warning has to say so. abandonedOwner and abandonedField name
+	// which entry was left behind, so a config with several stacks/contexts
+	// lets the user tell which OS-keychain item to remove; neither the account
+	// digest nor the secret value is ever included.
 	abandonedGeneration bool
+	abandonedOwner      string
+	abandonedField      credentials.Field
 	warnUnavailableOnce func(func())
 }
 
@@ -1514,17 +1519,23 @@ func (txn *keychainWriteTransaction) commit(warningWriter io.Writer) error {
 		deleted = append(deleted, pending)
 	}
 	if txn.plaintextFallback {
-		emitWarning := func() {
-			message := "credential store could not securely store the credential; credentials remain in plaintext on disk"
-			hint := "verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage"
-			if errors.Is(txn.fallbackErr, credentials.ErrDisabled) {
-				message = "keychain storage is disabled; credentials remain in plaintext on disk"
-				hint = "enable keychain storage to store credentials in the OS credential store"
-				if txn.abandonedGeneration {
-					message = "keychain storage is disabled; the old keychain item cannot be removed while disabled and credentials remain in plaintext on disk"
-					hint = "enable keychain storage later, then remove the stale gcx entry through your OS credential store"
-				}
+		// plaintextFallback is set only when the store refused the write with
+		// credentials.ErrDisabled (a deliberate opt-out) — every other keychain
+		// write failure now returns a hard error instead of reaching here — so
+		// this warning always describes the disabled case.
+		message := "keychain storage is disabled; credentials remain in plaintext on disk"
+		hint := "enable keychain storage to store credentials in the OS credential store"
+		if txn.abandonedGeneration {
+			message = "keychain storage is disabled; the old keychain item cannot be removed while disabled and credentials remain in plaintext on disk"
+			hint = "enable keychain storage later, then remove the stale gcx entry through your OS credential store"
+			if txn.abandonedOwner != "" {
+				hint = fmt.Sprintf(
+					"enable keychain storage later, then remove the stale gcx entry for owner %q field %q through your OS credential store",
+					txn.abandonedOwner, txn.abandonedField,
+				)
 			}
+		}
+		emitWarning := func() {
 			if warningWriter != nil {
 				output.EmitWarn(warningWriter, fmt.Sprintf("%s; %s", message, hint))
 				return
@@ -1655,6 +1666,8 @@ func reconcileKeychain(cfg *Config, store credentials.Store, log logging.Logger)
 			}
 			if slot.hasState {
 				txn.abandonedGeneration = true
+				txn.abandonedOwner = slot.owner.key
+				txn.abandonedField = slot.field
 			}
 			txn.plaintextFallback = true
 			continue
