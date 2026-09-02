@@ -1171,6 +1171,22 @@ contexts:
 	require.True(t, os.IsNotExist(statErr), "user config must not be created, got: %v", statErr)
 }
 
+func Test_SetCommandRejectsEmptyKeychainPolicyValue(t *testing.T) {
+	isolatedConfigEnv(t)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	original := []byte("version: 1\ncredentials: {}\ncontexts: {}\n")
+	require.NoError(t, os.WriteFile(path, original, 0o600))
+
+	_, err := runConfigCmd(t, "set", "--config", path, "credentials.keychain", "")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "credentials.keychain")
+	require.ErrorContains(t, err, "on or off")
+
+	contents, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	require.Equal(t, original, contents)
+}
+
 func Test_UseContextCommand_PreviousSwitch(t *testing.T) {
 	stateDir := isolateStateHome(t)
 	stateEnv := map[string]string{"XDG_STATE_HOME": stateDir}

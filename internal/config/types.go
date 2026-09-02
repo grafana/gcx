@@ -63,6 +63,10 @@ type Config struct {
 	// Diagnostics holds optional local diagnostic settings. All features are off by default.
 	Diagnostics *DiagnosticsConfig `json:"diagnostics,omitempty" yaml:"diagnostics,omitempty"`
 
+	// Credentials controls how gcx persists credentials. It contains policy
+	// only; credential values remain on their owning stack and cloud entries.
+	Credentials *CredentialsConfig `json:"credentials,omitempty" yaml:"credentials,omitempty"`
+
 	// keychainFields tracks which (context, field) pairs were successfully
 	// resolved from the OS keychain (or migrated into it) at load time.
 	// Populated by the loader; used by Write to round-trip sentinels back to
@@ -82,6 +86,11 @@ type Config struct {
 	// be deferred for non-current contexts. Populated once by Load; nil when
 	// the keychain is not in use.
 	keychainStore credentials.Store `json:"-" yaml:"-"`
+
+	// keychainPolicy is resolved from the immutable config snapshots and the
+	// environment before keychainStore is constructed. Write reuses it instead
+	// of rediscovering configuration.
+	keychainPolicy keychainPolicy `json:"-" yaml:"-"`
 
 	// sourceIdentity is the canonical identity of a single config document.
 	// Layered configs leave it empty; each stack/cloud entry retains its own
@@ -119,6 +128,13 @@ type Config struct {
 	// never resolves unbound references. The legacy source stays untouched and
 	// a later load retries migration when the keychain is available.
 	migrationDeferred bool `json:"-" yaml:"-"`
+}
+
+// CredentialsConfig controls credential persistence without owning secrets.
+type CredentialsConfig struct {
+	// Keychain selects whether credentials use the OS credential store. Valid
+	// values are "on" and "off". The default is "on".
+	Keychain string `json:"keychain,omitempty" yaml:"keychain,omitempty"`
 }
 
 // DiagnosticsConfig controls optional local diagnostic features.

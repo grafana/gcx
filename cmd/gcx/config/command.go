@@ -1111,6 +1111,9 @@ PROPERTY_VALUE is the new value to set.`,
 }
 
 func setConfigValue(cfg *config.Config, path, value string) error {
+	if path == "credentials.keychain" && strings.TrimSpace(value) == "" {
+		return fmt.Errorf("invalid credentials.keychain value %q: expected on or off", value)
+	}
 	mutationPaths := []string{path}
 	clearPaths := []string{}
 	parts := strings.Split(path, ".")

@@ -3,8 +3,11 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -13,6 +16,42 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// A malformed GCX_KEYCHAIN must remain an explicit safe default even when a
+// trusted configuration tries to opt out. The loader policy test proves that
+// precedence; this test pins the one-warning behavior of the environment
+// decision itself.
+func TestKeychainModeForProcess_InvalidValueWarnsOnce(t *testing.T) {
+	previousAgentMode := agent.IsAgentMode()
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(previousAgentMode) })
+	warnUnrecognisedKeychainValueOnce = sync.Once{}
+	t.Setenv(envKeychain, "invalid")
+
+	stderr := captureKeychainModeStderr(t, func() {
+		assert.Equal(t, keychainModeEnabled, keychainModeForProcess())
+		assert.Equal(t, keychainModeEnabled, keychainModeForProcess())
+	})
+
+	assert.Equal(t, 1, strings.Count(stderr, "warn:"), stderr)
+	assert.Contains(t, stderr, `GCX_KEYCHAIN="invalid"`)
+}
+
+func captureKeychainModeStderr(t *testing.T, run func()) string {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	previous := os.Stderr
+	os.Stderr = writer
+	t.Cleanup(func() { os.Stderr = previous })
+
+	run()
+	require.NoError(t, writer.Close())
+	output, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	return string(output)
+}
 
 // Exercises the real GCX_KEYCHAIN read, not an injected getenv: without this,
 // dropping the environment lookup would leave every other test passing.
@@ -55,6 +94,7 @@ func TestParseKeychainEnvReportsTheRejectedValue(t *testing.T) {
 	}{
 		{name: "unset warns about nothing", wantMode: keychainModeEnabled},
 		{name: "off warns about nothing", value: "off", wantMode: keychainModeDisabled},
+		{name: "on warns about nothing", value: " On ", wantMode: keychainModeEnabled},
 		{name: "whitespace only warns about nothing", value: "   ", wantMode: keychainModeEnabled},
 		{name: "disabled is reported", value: "disabled", wantMode: keychainModeEnabled, wantRejected: "disabled"},
 		{name: "typo is reported", value: "of", wantMode: keychainModeEnabled, wantRejected: "of"},
