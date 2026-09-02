@@ -106,6 +106,21 @@ func TestSearch(t *testing.T) {
 	}
 }
 
+func TestSearchParsesServiceStats(t *testing.T) {
+	handler := func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"traces":[{"traceID":"abc","rootServiceName":"svc","serviceStats":{"svc":{"spanCount":5},"gateway":{"spanCount":2,"errorCount":1}}}]}`))
+	}
+	client := testClient(t, http.HandlerFunc(handler))
+	resp, err := client.Search(context.Background(), "tempo-ds", tempo.SearchRequest{Query: "{}"})
+	require.NoError(t, err)
+	require.Len(t, resp.Traces, 1)
+	stats := resp.Traces[0].ServiceStats
+	require.NotNil(t, stats)
+	assert.Equal(t, 5, stats["svc"].SpanCount)
+	assert.Equal(t, 1, stats["gateway"].ErrorCount)
+}
+
 func TestGetTrace(t *testing.T) {
 	tests := []struct {
 		name    string
