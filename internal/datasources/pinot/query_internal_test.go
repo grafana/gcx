@@ -13,8 +13,10 @@ func TestWarnLimitEnforcement(t *testing.T) {
 		unionSQL   = "SELECT 1 FROM a UNION SELECT 2 FROM b LIMIT 2000"
 		offsetSQL  = "SELECT * FROM t LIMIT 5000 OFFSET 0"
 		plainSQL   = "SELECT 1 LIMIT 50"
+		commaSQL   = "SELECT * FROM t LIMIT 10, 20"
+		optionSQL  = "SELECT * FROM t OPTION(timeoutMs=5000)"
 		cappedWarn = "LIMIT in query exceeds the maximum of 1000 and was capped; use --limit 0 to disable enforcement"
-		skipWarn   = "query uses UNION or OFFSET, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning"
+		skipWarn   = "query uses UNION, OFFSET, or OPTION, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning"
 	)
 
 	tests := []struct {
@@ -46,6 +48,24 @@ func TestWarnLimitEnforcement(t *testing.T) {
 			name:    "plain select under cap stays quiet",
 			expr:    plainSQL,
 			limit:   100,
+			notWant: skipWarn,
+		},
+		{
+			name:    "LIMIT offset,count stays quiet",
+			expr:    commaSQL,
+			limit:   100,
+			notWant: skipWarn,
+		},
+		{
+			name:  "OPTION skip warns",
+			expr:  optionSQL,
+			limit: 100,
+			want:  skipWarn,
+		},
+		{
+			name:    "limit 0 on OPTION stays quiet",
+			expr:    optionSQL,
+			limit:   0,
 			notWant: skipWarn,
 		},
 		{
