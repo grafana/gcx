@@ -29,7 +29,7 @@ type queryOpts struct {
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	opts.Setup(flags, false)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pinot is configured)")
-	flags.IntVar(&opts.Limit, "limit", defaultLimit, fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning. Not applied to UNION or OFFSET queries (warned on stderr). 0 disables enforcement", maxLimit))
+	flags.IntVar(&opts.Limit, "limit", defaultLimit, fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning. Not applied to UNION, OFFSET, or OPTION queries (warned on stderr). 0 disables enforcement", maxLimit))
 }
 
 func (opts *queryOpts) Validate() error {
@@ -159,6 +159,6 @@ func warnLimitEnforcement(w io.Writer, expr string, capped bool, limit int) {
 		return
 	}
 	if limit != 0 && pinot.LimitNotEnforced(expr) {
-		cmdio.Warning(w, "query uses UNION or OFFSET, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning")
+		cmdio.Warning(w, "query uses UNION, OFFSET, or OPTION, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning")
 	}
 }

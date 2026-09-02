@@ -32,6 +32,16 @@ var limitStatementRe = regexp.MustCompile(`(?is)^\s*(SELECT|WITH)\b`)
 // would bind only the last UNION leg. EnforceLimit leaves these unchanged.
 var unionOrOffsetRe = regexp.MustCompile(`(?i)(\bUNION\b|\bLIMIT\s+\d+\s+OFFSET\b|\bOFFSET\s+\d+\b)`)
 
+// limitCommaRe matches Pinot's LIMIT offset, count form. The shared helper only
+// sees LIMIT n at end-of-statement, so without a bail it would append a second
+// LIMIT. The comma form already bounds the result; leave it as written.
+var limitCommaRe = regexp.MustCompile(`(?i)\bLIMIT\s+\d+\s*,`)
+
+// optionClauseRe matches a Pinot OPTION(...) hint. OPTION must be last, so a
+// trailing LIMIT suffix is a syntax error. Enforcement skips and the command
+// warns.
+var optionClauseRe = regexp.MustCompile(`(?i)\bOPTION\s*\(`)
+
 // DML keywords anywhere fail safe (no LIMIT added) rather than corrupting a
 // write. A SELECT mentioning those words in a string literal also skips
 // enforcement.
@@ -47,15 +57,18 @@ func selectBody(sql string) string {
 }
 
 func bail(sql string) bool {
-	return unionOrOffsetRe.MatchString(sql) || dmlBailRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\n"))
+	return unionOrOffsetRe.MatchString(sql) || limitCommaRe.MatchString(sql) || optionClauseRe.MatchString(sql) || dmlBailRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\n"))
 }
 
 // LimitNotEnforced reports whether EnforceLimit will leave sql unchanged
-// because a LIMIT suffix would bind only the last UNION leg or collide with
-// OFFSET. EXPLAIN, DML, and trailing-comment bails are not included: those
-// either never reach EnforceLimit or are not UNION/OFFSET.
+// because a LIMIT suffix would bind only the last UNION leg, collide with
+// OFFSET, or land after OPTION. LIMIT offset,count is not included: that form
+// already bounds the result, so it is left alone without a warning.
 func LimitNotEnforced(sql string) bool {
-	return limitStatementRe.MatchString(selectBody(sql)) && unionOrOffsetRe.MatchString(sql)
+	if !limitStatementRe.MatchString(selectBody(sql)) {
+		return false
+	}
+	return unionOrOffsetRe.MatchString(sql) || optionClauseRe.MatchString(sql)
 }
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds and reports
@@ -63,7 +76,8 @@ func LimitNotEnforced(sql string) bool {
 // warn instead of truncating silently.
 // If limit is 0, enforcement is disabled (pass-through).
 // SET prefixes are ignored for the SELECT-shaped allow-list. UNION, OFFSET,
-// DML, and statements ending in a line comment pass through unchanged.
+// LIMIT offset,count, OPTION(...), DML, and statements ending in a line
+// comment pass through unchanged.
 func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
 	if !limitStatementRe.MatchString(selectBody(sql)) {
 		return sql, false
