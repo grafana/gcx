@@ -24,4 +24,5 @@ Manage Grafana Frontend Observability resources
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
+* [gcx frontend sessions](gcx_frontend_sessions.md)	 - Inspect Frontend Observability sessions.
 

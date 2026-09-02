@@ -1,18 +1,18 @@
-## gcx traces
+## gcx frontend sessions
 
-Query Tempo datasources and manage Adaptive Traces
+Inspect Frontend Observability sessions.
 
 ### Options
 
 ```
-      --config string   Path to the configuration file to use
-  -h, --help            help for traces
+  -h, --help   help for sessions
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -22,12 +22,6 @@ Query Tempo datasources and manage Adaptive Traces
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx traces adaptive](gcx_traces_adaptive.md)	 - Manage Adaptive Traces resources
-* [gcx traces baseline](gcx_traces_baseline.md)	 - [experimental] Find healthy baseline candidates for a trace
-* [gcx traces diff](gcx_traces_diff.md)	 - [experimental] Compare two traces (baseline vs comparison)
-* [gcx traces get](gcx_traces_get.md)	 - Retrieve a trace by ID
-* [gcx traces labels](gcx_traces_labels.md)	 - List trace labels or label values
-* [gcx traces metrics](gcx_traces_metrics.md)	 - Execute a TraceQL metrics query
-* [gcx traces query](gcx_traces_query.md)	 - Search for traces using a TraceQL query
+* [gcx frontend](gcx_frontend.md)	 - Manage Grafana Frontend Observability resources
+* [gcx frontend sessions get](gcx_frontend_sessions_get.md)	 - Write Frontend Observability session telemetry to a text file.
 

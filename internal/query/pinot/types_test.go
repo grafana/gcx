@@ -5,12 +5,45 @@ import (
 
 	"github.com/grafana/gcx/internal/query/pinot"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEscapeSQLString(t *testing.T) {
 	assert.Equal(t, "events", pinot.EscapeSQLString("events"))
 	assert.Equal(t, "it''s", pinot.EscapeSQLString("it's"))
 	assert.Empty(t, pinot.EscapeSQLString(""))
+}
+
+func TestFormatSQLInt(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{name: "decimal", input: "66", want: "66"},
+		{name: "canonicalizes leading zeros", input: "066", want: "66"},
+		{name: "zero", input: "0", want: "0"},
+		{name: "negative", input: "-1", want: "-1"},
+		{name: "rejects injection", input: "66; DROP TABLE events", wantErr: true},
+		{name: "rejects or-clause", input: "66 OR 1=1", wantErr: true},
+		{name: "rejects quoted payload", input: "1' OR '1'='1", wantErr: true},
+		{name: "rejects empty", input: "", wantErr: true},
+		{name: "rejects letters", input: "abc", wantErr: true},
+		{name: "rejects whitespace", input: " 66 ", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := pinot.FormatSQLInt(tt.input)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Empty(t, got)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestExtractTableName(t *testing.T) {

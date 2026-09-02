@@ -40,6 +40,41 @@ func FormatSearchTable(w io.Writer, resp *SearchResponse) error {
 	return tbl.Render(w)
 }
 
+// FormatBaselineTable formats baseline candidates as a table, with a header
+// giving the seed's span/service profile. SPANS, SVCS, and ERRORS provide raw
+// context rather than a similarity score; use 'gcx traces diff' to compare
+// structure.
+func FormatBaselineTable(w io.Writer, resp *BaselineResult) error {
+	partial := ""
+	if resp.SeedPartial {
+		partial = " (partial)"
+	}
+	fmt.Fprintf(w, "Seed %s%s  spans: %d  services: %d\n", resp.SeedTraceID, partial, resp.SeedSpanCount, resp.SeedServiceCount)
+	fmt.Fprintln(w)
+
+	tbl := style.NewTable("TRACE_ID", "SERVICE", "NAME", "SPANS", "SVCS", "ERRORS", "DURATION", "START")
+	for _, c := range resp.Candidates {
+		tbl.Row(
+			c.TraceID,
+			c.RootServiceName,
+			c.RootTraceName,
+			formatOptionalCount(c.SpanCount),
+			formatOptionalCount(c.ServiceCount),
+			formatOptionalCount(c.ErrorCount),
+			formatDuration(c.DurationMs),
+			formatStartTime(c.StartTimeUnixNano),
+		)
+	}
+	return tbl.Render(w)
+}
+
+func formatOptionalCount(count *int) string {
+	if count == nil {
+		return "-"
+	}
+	return strconv.Itoa(*count)
+}
+
 // FormatTagsTable formats a tags response as a table.
 func FormatTagsTable(w io.Writer, resp *TagsResponse) error {
 	t := style.NewTable("SCOPE", "TAG")
