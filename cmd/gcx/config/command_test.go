@@ -748,6 +748,7 @@ current-context: default
 	testutils.CommandTestCase{
 		Cmd:     config.Command(),
 		Command: []string{"set", "--config", configFile, "cloud.shared.token", "new-cap"},
+		Env:     map[string]string{"GCX_KEYCHAIN": "off"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 		},
@@ -763,6 +764,7 @@ current-context: default
 	testutils.CommandTestCase{
 		Cmd:     config.Command(),
 		Command: []string{"set", "--config", configFile, "cloud.shared.oauth-token", "new-oauth"},
+		Env:     map[string]string{"GCX_KEYCHAIN": "off"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 		},
@@ -781,6 +783,7 @@ current-context: default
 		testutils.CommandTestCase{
 			Cmd:     config.Command(),
 			Command: command,
+			Env:     map[string]string{"GCX_KEYCHAIN": "off"},
 			Assertions: []testutils.CommandAssertion{
 				testutils.CommandSuccess(),
 			},
