@@ -237,7 +237,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
 	ctx = flags.Config.LoginMutationContext(ctx, mutationTarget)
 	cmd.SetContext(ctx)
-	persistedSourceConfig, persistedSourceCtx, err := loadPersistedLoginSource(ctx, mutationSource, contextName)
+	persistedSourceConfig, persistedSourceCtx, err := loadPersistedLoginSource(ctx, mutationSource, contextName, cfg)
 	if err != nil {
 		return err
 	}
@@ -817,8 +817,11 @@ func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName s
 	return cfg, cfg.Contexts[resolvedName], resolvedName, nil
 }
 
-func loadPersistedLoginSource(ctx context.Context, source config.Source, contextName string) (config.Config, *config.Context, error) {
-	cfg, err := config.Load(ctx, source)
+// effective is the layered config the command already resolved. Reloading the
+// single mutation target must not re-derive the credential-storage policy from
+// that one file: the policy may be declared in another trusted layer.
+func loadPersistedLoginSource(ctx context.Context, source config.Source, contextName string, effective config.Config) (config.Config, *config.Context, error) {
+	cfg, err := config.LoadUnderResolvedPolicy(ctx, source, effective)
 	if errors.Is(err, os.ErrNotExist) {
 		// A new explicit --config path is a valid login target; persistContext
 		// creates it after authentication succeeds.
@@ -834,8 +837,8 @@ func loadPersistedLoginSource(ctx context.Context, source config.Source, context
 	return cfg, cfg.Contexts[contextName], nil
 }
 
-func loadPersistedLoginSourceContext(ctx context.Context, source config.Source, contextName string) (*config.Context, error) {
-	_, persisted, err := loadPersistedLoginSource(ctx, source, contextName)
+func loadPersistedLoginSourceContext(ctx context.Context, source config.Source, contextName string, effective config.Config) (*config.Context, error) {
+	_, persisted, err := loadPersistedLoginSource(ctx, source, contextName, effective)
 	return persisted, err
 }
 
