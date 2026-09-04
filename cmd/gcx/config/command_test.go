@@ -837,6 +837,48 @@ current-context: dev`),
 	viewCmd.Run(t)
 }
 
+func Test_UnsetCommandKeychainPolicy(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "credentials.keychain", path: "credentials.keychain"},
+		{name: "bare credentials section", path: "credentials"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			isolatedConfigEnv(t)
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			original := []byte("version: 1\ncredentials:\n  keychain: \"off\"\ncontexts: {}\n")
+			require.NoError(t, os.WriteFile(path, original, 0o600))
+
+			_, err := runConfigCmd(t, "unset", "--config", path, test.path)
+			require.NoError(t, err)
+
+			raw, readErr := os.ReadFile(path)
+			require.NoError(t, readErr)
+			require.NotContains(t, string(raw), "keychain:")
+		})
+	}
+}
+
+func Test_UnsetCommandKeychainPolicyRejectsAutoDiscoveredLocalTarget(t *testing.T) {
+	_, workDir := isolatedConfigEnv(t)
+	localPath := writeLocalConfig(t, workDir, "version: 1\ncredentials:\n  keychain: \"off\"\ncontexts:\n  default: {}\ncurrent-context: default\n")
+
+	before, readErr := os.ReadFile(localPath)
+	require.NoError(t, readErr)
+
+	_, err := runConfigCmd(t, "unset", "credentials.keychain")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "local")
+
+	after, readErr := os.ReadFile(localPath)
+	require.NoError(t, readErr)
+	require.Equal(t, before, after)
+}
+
 func Test_ViewCommand_withEnvironmentVariables(t *testing.T) {
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
@@ -1174,20 +1216,32 @@ contexts:
 	require.True(t, os.IsNotExist(statErr), "user config must not be created, got: %v", statErr)
 }
 
-func Test_SetCommandRejectsEmptyKeychainPolicyValue(t *testing.T) {
-	isolatedConfigEnv(t)
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	original := []byte("version: 1\ncredentials: {}\ncontexts: {}\n")
-	require.NoError(t, os.WriteFile(path, original, 0o600))
+func Test_SetCommandRejectsInvalidKeychainPolicyValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "empty value", value: ""},
+		{name: "non-empty invalid value", value: "disabled"},
+	}
 
-	_, err := runConfigCmd(t, "set", "--config", path, "credentials.keychain", "")
-	require.Error(t, err)
-	require.ErrorContains(t, err, "credentials.keychain")
-	require.ErrorContains(t, err, "on or off")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			isolatedConfigEnv(t)
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			original := []byte("version: 1\ncredentials: {}\ncontexts: {}\n")
+			require.NoError(t, os.WriteFile(path, original, 0o600))
 
-	contents, readErr := os.ReadFile(path)
-	require.NoError(t, readErr)
-	require.Equal(t, original, contents)
+			_, err := runConfigCmd(t, "set", "--config", path, "credentials.keychain", test.value)
+			require.Error(t, err)
+			require.ErrorContains(t, err, "credentials.keychain")
+			require.ErrorContains(t, err, "on or off")
+
+			contents, readErr := os.ReadFile(path)
+			require.NoError(t, readErr)
+			require.Equal(t, original, contents)
+		})
+	}
 }
 
 func Test_UseContextCommand_PreviousSwitch(t *testing.T) {

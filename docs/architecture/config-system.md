@@ -962,6 +962,7 @@ variable reference.
 | `internal/config/path.go` | `ValidateConfigPath` — literal `config set` path validation + hints |
 | `internal/config/envparse.go` | `ParseEnvIntoContext` — env var overrides, ephemeral cloud entry |
 | `internal/config/keychain_mode.go` | Resolve trusted `credentials.keychain` policy and `GCX_KEYCHAIN` override |
+| `internal/config/keychain_policy_mutation.go` | `credentials.keychain` set/unset as one locked load-and-write transaction under the intended policy |
 | `internal/config/keychain.go` | Source/owner/field/destination-bound, generation-addressed keychain resolution and reconciliation |
 | `internal/config/editor.go` | `SetValue`, `UnsetValue` — reflection-based path traversal |
 | `internal/config/rest.go` | `NewNamespacedRESTConfig` — config → k8s REST client |

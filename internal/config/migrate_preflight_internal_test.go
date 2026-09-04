@@ -46,6 +46,42 @@ func writeLayeredMigrationFixture(t *testing.T, path, contents string) {
 	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
 }
 
+// TestLoadForWriteUserLegacyUsesResolvedSystemOffPolicy pins that the policy
+// is a whole-load decision, not a per-layer one: the layer being written
+// declares no policy at all, so re-deriving it from that layer's own bytes
+// would resolve "on" and push its plaintext into the real credential store,
+// contradicting the system layer the user actually configured.
+func TestLoadForWriteUserLegacyUsesResolvedSystemOffPolicy(t *testing.T) {
+	store := withFakeKeychain(t)
+	fixture := newLayeredMigrationFixture(t)
+	t.Setenv(envKeychain, "")
+	writeLayeredMigrationFixture(t, fixture.system, `
+version: 1
+credentials:
+  keychain: off
+contexts:
+  default: {}
+current-context: default
+`)
+	writeLayeredMigrationFixture(t, fixture.user, `
+contexts:
+  legacy-user:
+    grafana:
+      server: https://legacy.example.invalid
+      token: legacy-plaintext-token
+`)
+
+	_, _, err := LoadForWrite(t.Context(), "", "user")
+	require.NoError(t, err)
+	assert.Zero(t, store.calls, "resolved off policy must bypass the credential store during migration")
+
+	raw, readErr := os.ReadFile(fixture.user)
+	require.NoError(t, readErr)
+	assert.False(t, isLegacyConfig(raw))
+	assert.Contains(t, string(raw), "legacy-plaintext-token")
+	assert.NotContains(t, string(raw), "keychain:gcx:v2:")
+}
+
 func TestPreflightLayeredSourcesRejectsPartialLegacyStackOverlay(t *testing.T) {
 	userPath := filepath.Join(t.TempDir(), "config.yaml")
 	localPath := filepath.Join(t.TempDir(), LocalConfigFileName)
