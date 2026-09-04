@@ -28,16 +28,20 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx datasources athena](gcx_datasources_athena.md)	 - Query Amazon Athena datasources
 * [gcx datasources azuremonitor](gcx_datasources_azuremonitor.md)	 - Query Azure Monitor datasources
+* [gcx datasources bigquery](gcx_datasources_bigquery.md)	 - Query BigQuery datasources
 * [gcx datasources clickhouse](gcx_datasources_clickhouse.md)	 - Query ClickHouse datasources
+* [gcx datasources cloudmonitoring](gcx_datasources_cloudmonitoring.md)	 - Query Google Cloud Monitoring datasources
 * [gcx datasources cloudwatch](gcx_datasources_cloudwatch.md)	 - Query AWS CloudWatch datasources
 * [gcx datasources create](gcx_datasources_create.md)	 - Create a datasource from a manifest file
 * [gcx datasources delete](gcx_datasources_delete.md)	 - Delete one or more datasources
+* [gcx datasources elasticsearch](gcx_datasources_elasticsearch.md)	 - Query Elasticsearch datasources
 * [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
 * [gcx datasources health](gcx_datasources_health.md)	 - Check the health of one or more datasources
 * [gcx datasources infinity](gcx_datasources_infinity.md)	 - Query Infinity datasources (JSON, CSV, XML, GraphQL from any URL)
 * [gcx datasources influxdb](gcx_datasources_influxdb.md)	 - Query InfluxDB datasources
 * [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
 * [gcx datasources loki](gcx_datasources_loki.md)	 - Query Loki datasources
+* [gcx datasources mysql](gcx_datasources_mysql.md)	 - Query MySQL datasources
 * [gcx datasources postgres](gcx_datasources_postgres.md)	 - Query PostgreSQL datasources
 * [gcx datasources prometheus](gcx_datasources_prometheus.md)	 - Query Prometheus datasources
 * [gcx datasources pyroscope](gcx_datasources_pyroscope.md)	 - Query Pyroscope datasources

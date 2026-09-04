@@ -1876,13 +1876,15 @@ func TestLoginOptsValidate(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		args          []string
-		contextFlag   string
-		oauthFlag     bool
-		tokenFlag     string
-		wantErr       bool
-		wantErrSubstr string
+		name            string
+		args            []string
+		contextFlag     string
+		oauthFlag       bool
+		oauthManualFlag bool
+		callbackPort    int
+		tokenFlag       string
+		wantErr         bool
+		wantErrSubstr   string
 	}{
 		{
 			name:          "conflict_positional_and_flag",
@@ -1929,6 +1931,35 @@ func TestLoginOptsValidate(t *testing.T) {
 			tokenFlag: "glsa_xxx",
 			wantErr:   false,
 		},
+		{
+			name:            "oauth_manual_alone",
+			args:            []string{},
+			oauthManualFlag: true,
+			wantErr:         false,
+		},
+		{
+			name:            "conflict_oauth_manual_and_token",
+			args:            []string{},
+			oauthManualFlag: true,
+			tokenFlag:       "glsa_xxx",
+			wantErr:         true,
+			wantErrSubstr:   "conflicting authentication methods",
+		},
+		{
+			name:            "conflict_oauth_manual_and_callback_port",
+			args:            []string{},
+			oauthManualFlag: true,
+			callbackPort:    54321,
+			wantErr:         true,
+			wantErrSubstr:   "conflicting OAuth callback options",
+		},
+		{
+			name:         "callback_port_alone",
+			args:         []string{},
+			oauthFlag:    true,
+			callbackPort: 54321,
+			wantErr:      false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1936,9 +1967,11 @@ func TestLoginOptsValidate(t *testing.T) {
 			t.Parallel()
 
 			opts := &loginOpts{
-				Config: configcmd.Options{Context: tt.contextFlag},
-				OAuth:  tt.oauthFlag,
-				Token:  tt.tokenFlag,
+				Config:            configcmd.Options{Context: tt.contextFlag},
+				OAuth:             tt.oauthFlag,
+				OAuthManual:       tt.oauthManualFlag,
+				OAuthCallbackPort: tt.callbackPort,
+				Token:             tt.tokenFlag,
 			}
 			// Bind flags into a throwaway FlagSet so IO.Validate() has a
 			// populated flag set to inspect (otherwise --json handling is
@@ -1954,6 +1987,11 @@ func TestLoginOptsValidate(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+			// --oauth-manual is a complete selection on its own, so Validate
+			// must leave OAuth set for every gate that reads it later.
+			if tt.oauthManualFlag {
+				assert.True(t, opts.OAuth, "Validate must fold --oauth-manual into OAuth")
+			}
 		})
 	}
 }
@@ -2261,4 +2299,154 @@ func disableAgentMode(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	agent.ResetForTesting()
 	t.Cleanup(agent.ResetForTesting)
+}
+
+// TestOAuthManualFlagParses confirms setup() registers --oauth-manual and that
+// it parses into loginOpts.OAuthManual, which runLogin maps to
+// login.Inputs.OAuthManual (issue #1135).
+func TestOAuthManualFlagParses(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		args       []string
+		wantManual bool
+	}{
+		{
+			name:       "oauth_manual_flag_set",
+			args:       []string{"--server", "https://example.grafana.net", "--oauth-manual"},
+			wantManual: true,
+		},
+		{
+			name:       "oauth_manual_flag_absent",
+			args:       []string{"--server", "https://example.grafana.net"},
+			wantManual: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := &loginOpts{}
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			opts.setup(flags)
+			require.NoError(t, flags.Parse(tt.args))
+			assert.Equal(t, tt.wantManual, opts.OAuthManual)
+		})
+	}
+}
+
+// TestOAuthTokenConflictNamesEveryFlag pins the conflict message. The condition
+// covers --oauth-manual too, so a message that names --oauth alone reports a
+// flag that the user never typed.
+func TestOAuthTokenConflictNamesEveryFlag(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		opts *loginOpts
+	}{
+		{name: "oauth_with_token", opts: &loginOpts{OAuth: true, Token: "glsa_example"}},
+		{name: "oauth_manual_with_token", opts: &loginOpts{OAuthManual: true, Token: "glsa_example"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tt.opts.Validate(nil)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "--oauth-manual")
+			assert.Contains(t, err.Error(), "--token")
+		})
+	}
+}
+
+// TestGrafanaAuthOptions pins the auth-method menu order. The caller
+// highlights options[0], so the order decides the default.
+func TestGrafanaAuthOptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		target  internallogin.Target
+		hasMTLS bool
+		remote  bool
+		want    []string
+	}{
+		{
+			name:   "cloud_local",
+			target: internallogin.TargetCloud,
+			want:   []string{"oauth", "oauth-manual", "token"},
+		},
+		{
+			name:   "cloud_remote_defaults_to_manual",
+			target: internallogin.TargetCloud,
+			remote: true,
+			want:   []string{"oauth-manual", "oauth", "token"},
+		},
+		{
+			name:   "unknown_without_mtls",
+			target: internallogin.TargetUnknown,
+			want:   []string{"token", "oauth", "oauth-manual"},
+		},
+		{
+			name:    "unknown_with_mtls",
+			target:  internallogin.TargetUnknown,
+			hasMTLS: true,
+			want:    []string{"mtls", "token", "oauth", "oauth-manual"},
+		},
+		{
+			name:   "onprem_offers_no_oauth",
+			target: internallogin.TargetOnPrem,
+			want:   []string{"token"},
+		},
+		{
+			name:    "onprem_with_mtls",
+			target:  internallogin.TargetOnPrem,
+			hasMTLS: true,
+			want:    []string{"mtls", "token"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			options := grafanaAuthOptions(tt.target, tt.hasMTLS, tt.remote)
+			values := make([]string, 0, len(options))
+			for _, option := range options {
+				values = append(values, option.Value)
+			}
+			assert.Equal(t, tt.want, values)
+		})
+	}
+}
+
+// TestRunCloudOAuthPropagatesManualPaste confirms one --oauth-manual choice
+// covers the Cloud follow-up too: the browser is on another computer for both
+// steps (issue #1135).
+func TestRunCloudOAuthPropagatesManualPaste(t *testing.T) {
+	t.Parallel()
+
+	reader := strings.NewReader("")
+	var gotFlowOpts internalauth.GCOMOptions
+	opts := internallogin.Options{
+		Inputs: internallogin.Inputs{
+			Server:      "https://custom.example.com",
+			OAuthManual: true,
+			Reader:      reader,
+		},
+		Hooks: internallogin.Hooks{
+			NewCloudAuthFlow: func(flowOpts internalauth.GCOMOptions) internallogin.CloudAuthFlow {
+				gotFlowOpts = flowOpts
+				return &stubCloudAuthFlow{result: &internalauth.GCOMResult{AccessToken: "oauth-token"}}
+			},
+		},
+	}
+
+	require.NoError(t, runCloudOAuth(context.Background(), &opts))
+	assert.True(t, gotFlowOpts.Manual)
+	assert.Same(t, reader, gotFlowOpts.Reader)
 }

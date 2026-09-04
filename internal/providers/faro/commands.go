@@ -141,7 +141,7 @@ func (c *AppTableCodec) Encode(w io.Writer, v any) error {
 
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("NAME", "APP KEY", "COLLECT ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION")
+		t = style.NewTable("NAME", "APP KEY", "COLLECT ENDPOINT URL", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION")
 	} else {
 		t = style.NewTable("NAME", "APP KEY", "COLLECT ENDPOINT URL")
 	}
@@ -158,10 +158,14 @@ func (c *AppTableCodec) Encode(w io.Writer, v any) error {
 		}
 
 		if c.Wide {
+			otlpEndpoint := app.OTLPIngestEndpointURL
+			if otlpEndpoint == "" {
+				otlpEndpoint = "-"
+			}
 			cors := corsOriginsString(app.CORSOrigins)
 			labels := labelsString(app.ExtraLogLabels)
 			geo := geolocationString(app.Settings)
-			t.Row(app.GetResourceName(), appKey, endpoint, cors, labels, geo)
+			t.Row(app.GetResourceName(), appKey, endpoint, otlpEndpoint, cors, labels, geo)
 		} else {
 			t.Row(app.GetResourceName(), appKey, endpoint)
 		}

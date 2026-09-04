@@ -11,13 +11,17 @@ import (
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type FaroApp struct {
-	ID                 string            `json:"id,omitempty"`
-	Name               string            `json:"name"`
-	AppKey             string            `json:"appKey,omitempty"`
-	CollectEndpointURL string            `json:"collectEndpointURL,omitempty"`
-	CORSOrigins        []CORSOrigin      `json:"corsOrigins,omitempty"`
-	ExtraLogLabels     map[string]string `json:"extraLogLabels,omitempty"`
-	Settings           *FaroAppSettings  `json:"settings,omitempty"`
+	ID                 string `json:"id,omitempty"`
+	Name               string `json:"name"`
+	AppKey             string `json:"appKey,omitempty"`
+	CollectEndpointURL string `json:"collectEndpointURL,omitempty"`
+	// OTLPIngestEndpointURL is the base endpoint the native mobile SDKs (Android
+	// and iOS OpenTelemetry) send to. The web SDK uses CollectEndpointURL.
+	// The API returns the base URL only — append AppKey to make it usable.
+	OTLPIngestEndpointURL string            `json:"otlpIngestEndpointURL,omitempty"`
+	CORSOrigins           []CORSOrigin      `json:"corsOrigins,omitempty"`
+	ExtraLogLabels        map[string]string `json:"extraLogLabels,omitempty"`
+	Settings              *FaroAppSettings  `json:"settings,omitempty"`
 }
 
 // GetResourceName returns the composite slug name for this Faro app (e.g. "my-web-app-42").
@@ -35,18 +39,21 @@ func (app *FaroApp) SetResourceName(name string) {
 
 // faroAppAPI is the API wire representation with array-based extraLogLabels.
 type faroAppAPI struct {
-	ID                 int64            `json:"id,omitempty"`
-	Name               string           `json:"name"`
-	AppKey             string           `json:"appKey,omitempty"`
-	CollectEndpointURL string           `json:"collectEndpointURL,omitempty"`
-	CORSOrigins        []CORSOrigin     `json:"corsOrigins,omitempty"`
-	ExtraLogLabels     []LogLabel       `json:"extraLogLabels,omitempty"`
-	Settings           *FaroAppSettings `json:"settings,omitempty"`
+	ID                    int64            `json:"id,omitempty"`
+	Name                  string           `json:"name"`
+	AppKey                string           `json:"appKey,omitempty"`
+	CollectEndpointURL    string           `json:"collectEndpointURL,omitempty"`
+	OTLPIngestEndpointURL string           `json:"otlpIngestEndpointURL,omitempty"`
+	CORSOrigins           []CORSOrigin     `json:"corsOrigins,omitempty"`
+	ExtraLogLabels        []LogLabel       `json:"extraLogLabels,omitempty"`
+	Settings              *FaroAppSettings `json:"settings,omitempty"`
 }
 
 // LogLabel represents a key-value log label for the API.
+// The API field is "label", not "key" — a mismatch here silently stores an
+// empty label name, which makes Loki reject every write for the app.
 type LogLabel struct {
-	Key   string `json:"key"`
+	Label string `json:"label"`
 	Value string `json:"value"`
 }
 
@@ -65,20 +72,25 @@ type FaroAppSettings struct {
 func (app *FaroApp) toAPI() faroAppAPI {
 	labels := make([]LogLabel, 0, len(app.ExtraLogLabels))
 	for k, v := range app.ExtraLogLabels {
-		labels = append(labels, LogLabel{Key: k, Value: v})
+		labels = append(labels, LogLabel{Label: k, Value: v})
 	}
 	var id int64
 	if app.ID != "" {
 		id, _ = strconv.ParseInt(app.ID, 10, 64)
 	}
+	// The API assigns AppKey, CollectEndpointURL and OTLPIngestEndpointURL and
+	// treats all three as read-only, so sending them back is harmless. This is
+	// why StripFields keeps them in pulled manifests: they cannot leak one
+	// stack's collector host into another on push.
 	return faroAppAPI{
-		ID:                 id,
-		Name:               app.Name,
-		AppKey:             app.AppKey,
-		CollectEndpointURL: app.CollectEndpointURL,
-		CORSOrigins:        app.CORSOrigins,
-		ExtraLogLabels:     labels,
-		Settings:           app.Settings,
+		ID:                    id,
+		Name:                  app.Name,
+		AppKey:                app.AppKey,
+		CollectEndpointURL:    app.CollectEndpointURL,
+		OTLPIngestEndpointURL: app.OTLPIngestEndpointURL,
+		CORSOrigins:           app.CORSOrigins,
+		ExtraLogLabels:        labels,
+		Settings:              app.Settings,
 	}
 }
 
@@ -86,19 +98,20 @@ func (app *FaroApp) toAPI() faroAppAPI {
 func fromAPI(api faroAppAPI) FaroApp {
 	labels := make(map[string]string, len(api.ExtraLogLabels))
 	for _, l := range api.ExtraLogLabels {
-		labels[l.Key] = l.Value
+		labels[l.Label] = l.Value
 	}
 	id := ""
 	if api.ID != 0 {
 		id = strconv.FormatInt(api.ID, 10)
 	}
 	return FaroApp{
-		ID:                 id,
-		Name:               api.Name,
-		AppKey:             api.AppKey,
-		CollectEndpointURL: api.CollectEndpointURL,
-		CORSOrigins:        api.CORSOrigins,
-		ExtraLogLabels:     labels,
-		Settings:           api.Settings,
+		ID:                    id,
+		Name:                  api.Name,
+		AppKey:                api.AppKey,
+		CollectEndpointURL:    api.CollectEndpointURL,
+		OTLPIngestEndpointURL: api.OTLPIngestEndpointURL,
+		CORSOrigins:           api.CORSOrigins,
+		ExtraLogLabels:        labels,
+		Settings:              api.Settings,
 	}
 }

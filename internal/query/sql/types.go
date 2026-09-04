@@ -1,8 +1,11 @@
 // Package sql holds the shared building blocks for SQL-style Grafana datasources
-// (ClickHouse, Athena, …) that query via Grafana's unified datasource query API
-// and render row-oriented results. Dialect packages keep their own request
-// construction, schema discovery, and LIMIT bail rules; the common response
-// shape, table formatting, response parsing, and LIMIT clamping live here.
+// (postgres, mysql, ClickHouse, Athena) that query via Grafana's unified
+// datasource query API and render row-oriented results. The common response shape, table formatting,
+// response parsing, LIMIT clamping, and the raw-SQL request body live here.
+// Dialect packages keep their schema discovery and LIMIT bail rules, and build
+// their own request body when the plugin needs more than BuildRawQueryBody
+// models: a non-string "format" (ClickHouse, Athena) or extra fields such as
+// Athena's connectionArgs.
 package sql
 
 import (

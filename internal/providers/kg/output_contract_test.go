@@ -160,6 +160,14 @@ func TestKgSingleMutations_OutputContract(t *testing.T) {
 			wantTargetName: "my-suppression",
 		},
 		{
+			name:           "notifications delete",
+			build:          func(l *kg.FakeWriteLoader) *cobra.Command { return kg.NewNotificationsCommand(l) },
+			args:           []string{"delete", "my-notification", "--force"},
+			wantHumanLine:  "✔ Notification config \"my-notification\" deleted\n",
+			wantAction:     "deleted",
+			wantTargetName: "my-notification",
+		},
+		{
 			name:           "entities delete",
 			build:          func(l *kg.FakeWriteLoader) *cobra.Command { return kg.NewEntitiesDeleteCommand(l) },
 			args:           []string{"Service--checkout", "--domain", "myapp", "--force"},
@@ -384,6 +392,8 @@ func TestKgSuppressionsUpsert_OutputContract(t *testing.T) {
 		assert.Equal(t, "gcx.mutation_batch", doc["type"])
 	})
 
+	//nolint:dupl // Intentional mirror of the notifications upsert partial-failure
+	// contract (same batch-mutation shape); kept parallel so both stay pinned.
 	t.Run("partial failure agent mode", func(t *testing.T) {
 		setAgentMode(t)
 		server := httptest.NewServer(suppressionsUpsertHandler(1))
@@ -436,6 +446,152 @@ func TestKgSuppressionsUpsert_OutputContract(t *testing.T) {
 		stdout, _, err := runKgCommand(t,
 			func() *cobra.Command { return kg.NewSuppressionsCommand(writeLoaderFor(server)) },
 			[]string{"upsert", "-f", "-"}, twoSuppressionsYAML)
+		require.Error(t, err)
+		var emitted *gcxerrors.EmittedError
+		assert.NotErrorAs(t, err, &emitted,
+			"a total failure must use the standard error path, not EmittedError")
+		assert.Empty(t, stdout, "no result document when nothing succeeded — the reporter owns the error document")
+	})
+}
+
+// notificationsUpsertHandler serves the single-item alert-config POST endpoint,
+// failing every request after the first okCount with a 500.
+func notificationsUpsertHandler(okCount int) http.HandlerFunc {
+	seen := 0
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Match the singular /config/alert write path, not /config/alerts reads.
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/config/alert") {
+			seen++
+			if seen > okCount {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"message":"boom"}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+const twoNotificationsYAML = `alertConfigs:
+  - name: first
+    matchLabels:
+      alertname: A
+    silenced: false
+  - name: second
+    matchLabels:
+      alertname: B
+    silenced: false
+`
+
+// TestKgNotificationsUpsert_OutputContract mirrors the suppressions upsert
+// contract: byte-identical human summary, one batch-mutation document in agent
+// mode and under explicit -o json, partial-failure exit 4 with an enumerated
+// failure, and no result document on total failure. This is what pins the
+// output plumbing that `notifications upsert` was originally missing.
+func TestKgNotificationsUpsert_OutputContract(t *testing.T) {
+	forceNoColor(t)
+	pinHumanMode(t)
+
+	t.Run("success human default", func(t *testing.T) {
+		server := httptest.NewServer(notificationsUpsertHandler(2))
+		defer server.Close()
+		stdout, _, err := runKgCommand(t,
+			func() *cobra.Command { return kg.NewNotificationsCommand(writeLoaderFor(server)) },
+			[]string{"upsert", "-f", "-"}, twoNotificationsYAML)
+		require.NoError(t, err)
+		assert.Equal(t, "✔ 2 notification config(s) upserted\n", stdout,
+			"default human stdout must stay byte-identical")
+	})
+
+	t.Run("success agent mode", func(t *testing.T) {
+		setAgentMode(t)
+		server := httptest.NewServer(notificationsUpsertHandler(2))
+		defer server.Close()
+		stdout, _, err := runKgCommand(t,
+			func() *cobra.Command { return kg.NewNotificationsCommand(writeLoaderFor(server)) },
+			[]string{"upsert", "-f", "-"}, twoNotificationsYAML)
+		require.NoError(t, err)
+		doc, ok := decodeSingleJSON(t, []byte(stdout)).(map[string]any)
+		require.True(t, ok, "agent-mode stdout must be exactly one JSON document")
+		assert.Equal(t, "gcx.mutation_batch", doc["type"])
+		summary, _ := doc["summary"].(map[string]any)
+		require.NotNil(t, summary)
+		assert.InDelta(t, 2, summary["succeeded"], 0)
+		assert.InDelta(t, 0, summary["failed"], 0)
+		failures, ok := doc["failures"].([]any)
+		require.True(t, ok, "failures must serialize as [] on success")
+		assert.Empty(t, failures)
+	})
+
+	t.Run("explicit -o json on the real write path", func(t *testing.T) {
+		// Previously -o json failed outright with "unknown shorthand flag: 'o'".
+		server := httptest.NewServer(notificationsUpsertHandler(2))
+		defer server.Close()
+		stdout, _, err := runKgCommand(t,
+			func() *cobra.Command { return kg.NewNotificationsCommand(writeLoaderFor(server)) },
+			[]string{"upsert", "-f", "-", "-o", "json"}, twoNotificationsYAML)
+		require.NoError(t, err)
+		doc, ok := decodeSingleJSON(t, []byte(stdout)).(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "gcx.mutation_batch", doc["type"])
+	})
+
+	//nolint:dupl // Intentional mirror of the suppressions upsert partial-failure
+	// contract (same batch-mutation shape); kept parallel so both stay pinned.
+	t.Run("partial failure agent mode", func(t *testing.T) {
+		setAgentMode(t)
+		server := httptest.NewServer(notificationsUpsertHandler(1))
+		defer server.Close()
+		// Three entries: first succeeds, second fails, third never attempted.
+		yamlIn := twoNotificationsYAML + "  - name: third\n    matchLabels:\n      alertname: C\n    silenced: false\n"
+		stdout, stderr, err := runKgCommand(t,
+			func() *cobra.Command { return kg.NewNotificationsCommand(writeLoaderFor(server)) },
+			[]string{"upsert", "-f", "-"}, yamlIn)
+
+		var emitted *gcxerrors.EmittedError
+		require.ErrorAs(t, err, &emitted, "partial failure must return EmittedError, got %T (%v)", err, err)
+		assert.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
+
+		doc, ok := decodeSingleJSON(t, []byte(stdout)).(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "gcx.mutation_batch", doc["type"])
+		summary, _ := doc["summary"].(map[string]any)
+		require.NotNil(t, summary)
+		assert.InDelta(t, 1, summary["succeeded"], 0)
+		assert.InDelta(t, 1, summary["failed"], 0)
+		assert.InDelta(t, 1, summary["skipped"], 0)
+		failures, _ := doc["failures"].([]any)
+		require.Len(t, failures, 1)
+		failure, _ := failures[0].(map[string]any)
+		target, _ := failure["target"].(map[string]any)
+		require.NotNil(t, target)
+		assert.Equal(t, "second", target["name"])
+		assert.Contains(t, stderr, "failed to upsert notification config")
+	})
+
+	t.Run("partial failure human default", func(t *testing.T) {
+		server := httptest.NewServer(notificationsUpsertHandler(1))
+		defer server.Close()
+		stdout, stderr, err := runKgCommand(t,
+			func() *cobra.Command { return kg.NewNotificationsCommand(writeLoaderFor(server)) },
+			[]string{"upsert", "-f", "-"}, twoNotificationsYAML)
+
+		var emitted *gcxerrors.EmittedError
+		require.ErrorAs(t, err, &emitted)
+		assert.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
+		assert.Equal(t, "⚠ 1 notification config(s) upserted, 1 failed (0 skipped)\n", stdout)
+		assert.Contains(t, stderr, `failed to upsert notification config "second" (1/2 succeeded)`)
+	})
+
+	t.Run("total failure emits no result document", func(t *testing.T) {
+		setAgentMode(t)
+		server := httptest.NewServer(notificationsUpsertHandler(0))
+		defer server.Close()
+		stdout, _, err := runKgCommand(t,
+			func() *cobra.Command { return kg.NewNotificationsCommand(writeLoaderFor(server)) },
+			[]string{"upsert", "-f", "-"}, twoNotificationsYAML)
 		require.Error(t, err)
 		var emitted *gcxerrors.EmittedError
 		assert.NotErrorAs(t, err, &emitted,

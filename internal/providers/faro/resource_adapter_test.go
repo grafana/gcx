@@ -214,12 +214,13 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	// Verify that FaroApp -> unstructured -> back preserves fields.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{
-			"id":                 42,
-			"name":               "my-web-app",
-			"appKey":             "abc-key",
-			"collectEndpointURL": "https://collect.example.com",
-			"corsOrigins":        []map[string]any{{"url": "https://example.com"}},
-			"extraLogLabels":     []map[string]string{{"key": "team", "value": "frontend"}},
+			"id":                    42,
+			"name":                  "my-web-app",
+			"appKey":                "abc-key",
+			"collectEndpointURL":    "https://collect.example.com",
+			"otlpIngestEndpointURL": "https://collect.example.com/otlp",
+			"corsOrigins":           []map[string]any{{"url": "https://example.com"}},
+			"extraLogLabels":        []map[string]string{{"label": "team", "value": "frontend"}},
 			"settings": map[string]any{
 				"geolocationEnabled": true,
 				"geolocationLevel":   "country",
@@ -241,6 +242,9 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	assert.Equal(t, "my-web-app", spec["name"])
 	assert.Equal(t, "abc-key", spec["appKey"])
 	assert.Equal(t, "https://collect.example.com", spec["collectEndpointURL"])
+	assert.Equal(t, "https://collect.example.com/otlp", spec["otlpIngestEndpointURL"])
+	// A "key" tag would decode the label name as "" and leave this map empty-keyed.
+	assert.Equal(t, map[string]any{"team": "frontend"}, spec["extraLogLabels"])
 
 	// Verify metadata.
 	assert.Equal(t, "my-web-app-42", obj.GetName())

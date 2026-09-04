@@ -37,7 +37,18 @@ entries retain expiry, granted scopes, and a coherent OAuth/API endpoint pair.
 
 To authorize a `gcx` CLI connection with OAuth, your Grafana user needs the `grafana-assistant-app.tokens.gcx:access` permission. The **gcx User** role, registered by the Grafana Assistant application, grants this permission and is assigned automatically to users with the basic role Viewer or higher.
 
-This permission only lets you create `gcx` tokens for your own user. It doesn't grant access to other users' tokens and it doesn't extend your existing Grafana permissions.
+{{< admonition type="note" >}}
+If your default role is `None`, or you're using a custom role that doesn't grant the default `plugins.app:access` action, you'll also need to explicitly grant access to `grafana-assistant-app`:
+
+```json
+{
+  "action": "plugins.app:access",
+  "scope": "plugins:id:grafana-assistant-app"
+}
+```
+{{< /admonition >}}
+
+The `grafana-assistant-app.tokens.gcx:access` permission only lets you create `gcx` tokens for your own user. It doesn't grant access to other users' tokens and it doesn't extend your existing Grafana permissions.
 
 {{< admonition type="note" >}}
 If `gcx login` fails with a `Permission Required` error naming the **gcx User** role, ask your Grafana administrator to assign you the **gcx User** role, or a custom role that includes the `grafana-assistant-app.tokens.gcx:access` permission. If the role doesn't exist on your instance, the Grafana Assistant application needs to be updated to a version that includes it.
@@ -64,7 +75,8 @@ Credentials in the OS credential store (Keychain on macOS, Credential Manager
 on Windows, Secret Service on Linux) are tied to the canonical config file,
 exact owner kind and name, exact secret field, and normalized destination. Copying a config
 file does not make its stored credentials portable; authenticate the copied
-file separately.
+file separately. See [Keychain credential storage](../keychain/)
+for storage rules and keychain error procedures.
 
 An automatically discovered repository `.gcx.yaml` cannot attach tokens,
 passwords, or client-certificate files from your environment, login flags, or

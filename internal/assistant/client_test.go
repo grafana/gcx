@@ -309,10 +309,10 @@ func TestNew_CustomAgentID(t *testing.T) {
 	c := assistant.New(assistant.ClientOptions{
 		GrafanaURL: "https://test.grafana.net",
 		Token:      "test-token",
-		AgentID:    "grafana_dashboarding",
+		AgentID:    "lodestone",
 	})
 
-	if c.GetAgentID() != "grafana_dashboarding" {
-		t.Errorf("GetAgentID() = %q, want %q", c.GetAgentID(), "grafana_dashboarding")
+	if c.GetAgentID() != "lodestone" {
+		t.Errorf("GetAgentID() = %q, want %q", c.GetAgentID(), "lodestone")
 	}
 }

@@ -9,8 +9,11 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/athena"
 	"github.com/grafana/gcx/internal/query/azuremonitor"
+	"github.com/grafana/gcx/internal/query/bigquery"
 	"github.com/grafana/gcx/internal/query/clickhouse"
+	"github.com/grafana/gcx/internal/query/cloudmonitoring"
 	"github.com/grafana/gcx/internal/query/cloudwatch"
+	"github.com/grafana/gcx/internal/query/elasticsearch"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -38,6 +41,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return pyroscope.FormatQueryTable(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
+	case *tempo.BaselineResult:
+		return tempo.FormatBaselineTable(w, resp)
 	case *tempo.MetricsResponse:
 		return tempo.FormatMetricsTable(w, resp)
 	case *infinity.QueryResponse:
@@ -54,8 +59,18 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return clickhouse.FormatDescribeTableTable(w, resp)
 	case athena.StringList:
 		return athena.FormatStringList(w, resp.Items, resp.Header)
+	case bigquery.StringList:
+		return bigquery.FormatStringList(w, resp.Items, resp.Header)
+	case []bigquery.TableInfo:
+		return bigquery.FormatListTablesTable(w, resp)
+	case []bigquery.ColumnInfo:
+		return bigquery.FormatDescribeTableTable(w, resp)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatTable(w, resp)
+	case *cloudmonitoring.QueryResponse:
+		return cloudmonitoring.FormatTable(w, resp)
+	case *elasticsearch.MetricsResponse:
+		return elasticsearch.FormatMetricsTable(w, resp)
 	case *azuremonitor.QueryResponse:
 		return azuremonitor.FormatTable(w, resp)
 	case *azuremonitor.TableResponse:
@@ -83,6 +98,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return loki.FormatQueryTableWide(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
+	case *tempo.BaselineResult:
+		return tempo.FormatBaselineTable(w, resp)
 	case *infinity.QueryResponse:
 		return infinity.FormatTable(w, resp)
 	case *tempo.GetTraceResponse:
@@ -91,8 +108,18 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return querysql.FormatWideTable(w, resp)
 	case athena.StringList:
 		return athena.FormatStringList(w, resp.Items, resp.Header)
+	case bigquery.StringList:
+		return bigquery.FormatStringList(w, resp.Items, resp.Header)
+	case []bigquery.TableInfo:
+		return bigquery.FormatListTablesTable(w, resp)
+	case []bigquery.ColumnInfo:
+		return bigquery.FormatDescribeTableTable(w, resp)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatWide(w, resp)
+	case *cloudmonitoring.QueryResponse:
+		return cloudmonitoring.FormatWide(w, resp)
+	case *elasticsearch.MetricsResponse:
+		return elasticsearch.FormatMetricsTable(w, resp)
 	case *azuremonitor.QueryResponse:
 		return azuremonitor.FormatWide(w, resp)
 	case *azuremonitor.TableResponse:
@@ -139,6 +166,11 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		if err != nil {
 			return err
 		}
+	case *cloudmonitoring.QueryResponse:
+		chartData, err = graph.FromCloudMonitoringResponse(resp)
+		if err != nil {
+			return err
+		}
 	case *azuremonitor.QueryResponse:
 		chartData, err = graph.FromAzureMonitorResponse(resp)
 		if err != nil {
@@ -160,6 +192,11 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		if err != nil {
 			return err
 		}
+	case *elasticsearch.MetricsResponse:
+		chartData, err = graph.FromElasticsearchResponse(resp)
+		if err != nil {
+			return err
+		}
 	case *querysql.QueryResponse:
 		return errors.New("graph output is not supported for SQL datasource queries; use -o table/json/yaml")
 	case []clickhouse.TableInfo:
@@ -168,6 +205,12 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		return errors.New("graph output is not supported for ClickHouse describe-table; use -o table/json/yaml")
 	case athena.StringList:
 		return errors.New("graph output is not supported for Athena discovery; use -o table/json/yaml")
+	case bigquery.StringList:
+		return errors.New("graph output is not supported for BigQuery list-datasets; use -o table/json/yaml")
+	case []bigquery.TableInfo:
+		return errors.New("graph output is not supported for BigQuery list-tables; use -o table/json/yaml")
+	case []bigquery.ColumnInfo:
+		return errors.New("graph output is not supported for BigQuery describe-table; use -o table/json/yaml")
 	default:
 		return errors.New("invalid data type for graph codec")
 	}

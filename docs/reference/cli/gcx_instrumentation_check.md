@@ -18,6 +18,10 @@ Checks performed:
 Components is an optional comma-separated list — defaults to all when omitted.
 Supported components: sdk, beyla, alloy, collector, grafana-cloud.
 
+Add --fix-plan=local for a deterministic aggregation of the explanation docs
+(offline, no billing), or --fix-plan=assistant for a prioritized plan synthesized
+by Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md).
+
 Powered by github.com/grafana/otel-checker.
 
 ```
@@ -29,6 +33,10 @@ gcx instrumentation check [components] [flags]
 ```
       --collector-config-path string   Path to the OpenTelemetry Collector config file.
       --debug                          Print additional diagnostic output from the checker.
+      --fix-plan string                Synthesize one fix plan for every finding. Values:
+                                         local     - deterministic aggregation of the explanation docs (offline, no billing).
+                                         assistant - prioritized plan from Grafana Assistant (BILLABLE, requires a Grafana Cloud context). See https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md.
+                                       Empty (flag omitted) skips the fix plan.
   -h, --help                           help for check
       --instrumentation-file string    Path to the JS instrumentation file. Required when --language=js and --manual-instrumentation.
       --jq string                      jq expression to apply to JSON output. Mutually exclusive with --json.

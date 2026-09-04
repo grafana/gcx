@@ -14,7 +14,7 @@
 /internal/query/synth/ @grafana/grafana-gcx @grafana/synthetic-monitoring-dev
 /internal/providers/irm/ @grafana/grafana-gcx @grafana/grafana-irm-backend
 /internal/providers/k6/ @grafana/grafana-gcx @grafana/k6-backend
-/internal/providers/faro/ @grafana/grafana-gcx @grafana/kowalski
+/internal/providers/faro/ @grafana/grafana-gcx @grafana/frontend-o11y @grafana/mobile-o11y
 /internal/providers/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend
 /internal/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend
 /internal/providers/instrumentation/ @grafana/grafana-gcx @grafana/o11y-ingest
@@ -29,17 +29,23 @@
 /internal/datasources/athena/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/azuremonitor/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/clickhouse/ @grafana/grafana-gcx @grafana/data-sources
+/internal/datasources/cloudmonitoring/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/cloudwatch/ @grafana/grafana-gcx @grafana/data-sources
+/internal/datasources/elasticsearch/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/infinity/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/influxdb/ @grafana/grafana-gcx @grafana/data-sources
 /internal/datasources/loki/ @grafana/grafana-gcx @grafana/loki-team
+/internal/datasources/mysql/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/postgres/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
 /internal/datasources/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
 /internal/datasources/tempo/ @grafana/grafana-gcx @grafana/tempo
 
 /internal/query/azuremonitor/ @grafana/grafana-gcx @grafana/data-sources-plugins
+/internal/query/cloudmonitoring/ @grafana/grafana-gcx @grafana/data-sources-plugins
+/internal/query/elasticsearch/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/loki/ @grafana/grafana-gcx @grafana/loki-team
+/internal/query/mysql/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/postgres/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
 /internal/query/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team

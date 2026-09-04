@@ -11,9 +11,11 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/bigquery"
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/mysql"
 	"github.com/grafana/gcx/internal/query/postgres"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -78,9 +80,11 @@ type queryRoutes struct {
 func newQueryRoutes() queryRoutes {
 	return queryRoutes{
 		dispatch: map[string]queryDispatch{
+			"bigquery":   dispatchBigQuery,
 			"clickhouse": dispatchClickHouse,
 			"influxdb":   dispatchInfluxDB,
 			"loki":       dispatchLoki,
+			"mysql":      dispatchMySQL,
 			"postgres":   dispatchPostgres,
 			"prometheus": dispatchPrometheus,
 			"pyroscope":  dispatchPyroscope,
@@ -90,6 +94,11 @@ func newQueryRoutes() queryRoutes {
 				"Azure Monitor",
 				"subscription, resource group, resource, namespace, metric, aggregation",
 				"gcx datasources azuremonitor query --subscription ... --resource-group ... --resource ... --namespace ... --metric ...",
+			),
+			"cloudmonitoring": structuredQueryRedirect(
+				"Google Cloud Monitoring",
+				"project, metric type, reducer, aligner, filters, group-bys",
+				"gcx datasources cloudmonitoring query --project ... --metric ...",
 			),
 			"cloudwatch": structuredQueryRedirect(
 				"CloudWatch",
@@ -247,6 +256,59 @@ func dispatchClickHouse(ctx context.Context, req genericQueryRequest) (any, erro
 	}
 
 	resp, err := client.Query(ctx, req.uid, clickhouseReq)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+
+	return resp, nil
+}
+
+func dispatchBigQuery(ctx context.Context, req genericQueryRequest) (any, error) {
+	client, err := bigquery.NewClient(req.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	sql, capped := bigquery.EnforceLimit(req.expr, 100, 1000)
+	if capped {
+		cmdio.Warning(req.warn, "LIMIT in query exceeds the maximum of 1000 and was capped")
+	}
+
+	bqReq := bigquery.QueryRequest{
+		RawSQL: sql,
+		Start:  req.start,
+		End:    req.end,
+	}
+
+	resp, err := client.Query(ctx, req.uid, bqReq)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+
+	return resp, nil
+}
+
+func dispatchMySQL(ctx context.Context, req genericQueryRequest) (any, error) {
+	client, err := mysql.NewClient(req.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	sql, capped := mysql.EnforceLimit(req.expr, 100, 1000)
+	if capped {
+		cmdio.Warning(req.warn, "LIMIT in query exceeds the maximum of 1000 and was capped")
+	}
+
+	mysqlReq := mysql.QueryRequest{
+		RawSQL: sql,
+		Start:  req.start,
+		End:    req.end,
+	}
+	if req.step > 0 {
+		mysqlReq.IntervalMs = req.step.Milliseconds()
+	}
+
+	resp, err := client.Query(ctx, req.uid, mysqlReq)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
