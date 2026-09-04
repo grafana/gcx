@@ -9,6 +9,7 @@
 package sql
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -18,6 +19,12 @@ import (
 type QueryResponse struct {
 	Columns []Column `json:"columns"`
 	Rows    [][]any  `json:"rows"`
+
+	// Notices carries warning/error-severity notices the datasource plugin
+	// attached to the result (e.g. "Results have been limited to N ..."). It is
+	// surfaced to the user out-of-band (stderr) and excluded from serialized
+	// output so it never pollutes the `-o json`/`-o yaml` data document.
+	Notices []string `json:"-"`
 }
 
 // Column describes a result column.
@@ -61,4 +68,88 @@ func EnforceLimit(sql string, limit, maxLimit int, bail func(string) bool) (stri
 		limit = maxLimit
 	}
 	return trimmed + " LIMIT " + strconv.Itoa(limit) + suffix, capped
+}
+
+// EffectiveLimit clamps a requested --limit to maxLimit. It returns 0 when
+// limit <= 0, meaning row-count enforcement is disabled.
+func EffectiveLimit(limit, maxLimit int) int {
+	if limit <= 0 {
+		return 0
+	}
+	if limit > maxLimit {
+		return maxLimit
+	}
+	return limit
+}
+
+// EnforceLimitSentinel injects "LIMIT eff+1" so the caller can detect
+// truncation, where eff = min(limit, maxLimit). It returns the SQL to execute,
+// the effective row cap to display to the user (eff), and whether gcx injected
+// a fresh sentinel cap. When capped is true, run the query and pass the
+// response to (*QueryResponse).Truncate(eff): if it reports rows were
+// dropped, warn the user with TruncationHint. When capped is false
+// (enforcement disabled, statement bailed, or a user-supplied LIMIT within
+// maxLimit was respected) the caller must not truncate or warn — the row
+// count already reflects the user's own intent.
+//
+// A user-supplied LIMIT that itself exceeds maxLimit is also sentineled
+// (maxLimit+1, eff reported as maxLimit) rather than clamped to an exact
+// maxLimit and reported as uncapped: the caller can only tell the user their
+// own LIMIT was lowered by actually detecting the dropped rows, not by
+// assuming a high literal always means more rows existed.
+//
+// Deliberately independent of EnforceLimit rather than sharing its internals:
+// the two report a fresh-injection bool with different meanings (EnforceLimit's
+// covers an existing-LIMIT clamp too; this one only covers a fresh sentinel
+// inject), and EnforceLimit's callers (mysql, postgres) already ship on the
+// simpler contract. Coupling them through one low-level helper would risk
+// silently changing that shipped behavior for an unrelated caller's benefit.
+func EnforceLimitSentinel(sql string, limit, maxLimit int, bail func(string) bool) (string, int, bool) {
+	eff := EffectiveLimit(limit, maxLimit)
+	if eff == 0 {
+		return sql, 0, false
+	}
+	if bail != nil && bail(sql) {
+		return sql, eff, false
+	}
+
+	trimmed := strings.TrimRight(sql, "; \t\n")
+	suffix := sql[len(trimmed):]
+
+	if m := limitClauseRe.FindStringSubmatchIndex(trimmed); m != nil {
+		existing, _ := strconv.Atoi(trimmed[m[2]:m[3]])
+		if existing > maxLimit {
+			// The user's own LIMIT exceeds the ceiling, so maxLimit — not the
+			// --limit flag's eff — is the cap actually in effect here. Sentinel
+			// it (maxLimit+1) like the fresh-inject path below, rather than
+			// clamping to an exact maxLimit, so the caller's Truncate+warn can
+			// tell whether the query really had more rows than the ceiling
+			// allows instead of assuming it silently.
+			return trimmed[:m[2]] + strconv.Itoa(maxLimit+1) + trimmed[m[3]:] + suffix, maxLimit, true
+		}
+		return sql, eff, false
+	}
+
+	return trimmed + " LIMIT " + strconv.Itoa(eff+1) + suffix, eff, true
+}
+
+// Truncate drops rows beyond eff (the sentinel and any surplus fetched via an
+// eff+1 cap) and reports whether any rows were dropped, i.e. more rows matched
+// than are being shown. eff <= 0 is a no-op.
+func (r *QueryResponse) Truncate(eff int) bool {
+	if eff <= 0 || len(r.Rows) <= eff {
+		return false
+	}
+	r.Rows = r.Rows[:eff]
+	return true
+}
+
+// TruncationHint is the stderr message shown when gcx's row cap dropped rows.
+// It is dialect-agnostic (applies to both LIMIT and TOP datasources). Phrased
+// as two complete, period-terminated sentences — matching the style of the
+// server-side "Results have been limited to N because ..." plugin notices
+// this hint is often shown alongside (see SurfaceRowLimits) — rather than one
+// long dash-joined clause.
+func TruncationHint(shown, maxLimit int) string {
+	return fmt.Sprintf("showing the first %d rows; more rows match. Raise --limit (max %d), pass --limit 0 to remove the cap, or add your own row limit to the query.", shown, maxLimit)
 }

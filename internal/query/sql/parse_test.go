@@ -49,6 +49,43 @@ func TestParseResponse_SingleFrame(t *testing.T) {
 	assert.Equal(t, "bob", resp.Rows[1][1])
 }
 
+func TestParseResponse_CapturesWarningNoticesOnly(t *testing.T) {
+	raw := dataframe.Response{
+		Results: map[string]dataframe.Result{
+			"A": {
+				Frames: []dataframe.Frame{
+					{
+						Schema: dataframe.Schema{
+							Fields: []dataframe.Field{{Name: "v", Type: "number"}},
+							Meta: &dataframe.Meta{
+								Notices: []dataframe.Notice{
+									{Severity: "warning", Text: "Results have been limited to 100 because the SQL row limit was reached"},
+									{Severity: "error", Text: "something bad"},
+									{Severity: "info", Text: "just fyi"},
+								},
+							},
+						},
+						Data: dataframe.Data{Values: [][]any{{float64(1)}}},
+					},
+				},
+				Status: 200,
+			},
+		},
+	}
+
+	body, err := json.Marshal(raw)
+	require.NoError(t, err)
+
+	resp, err := sql.ParseResponse(body, "mssql")
+	require.NoError(t, err)
+
+	// Warning + error notices are surfaced; info-severity notices are dropped.
+	assert.Equal(t, []string{
+		"Results have been limited to 100 because the SQL row limit was reached",
+		"something bad",
+	}, resp.Notices)
+}
+
 func TestParseResponse_UsesOnlyFirstFrame(t *testing.T) {
 	raw := dataframe.Response{
 		Results: map[string]dataframe.Result{
