@@ -41,7 +41,7 @@ gcx agento11y rules list-scores <rule-id> [flags]
       --from string               Inclusive lower bound on created_at (RFC3339)
   -h, --help                      help for list-scores
       --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string               Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --limit int                 Maximum number of scores to return. 0, or a value above 1000, returns up to the 1000-row safety cap; narrow with filters to see beyond it (default 100)
       --max-value float           Inclusive upper bound on numeric score value (omit for no upper bound)
       --min-value float           Inclusive lower bound on numeric score value (omit for no lower bound)
