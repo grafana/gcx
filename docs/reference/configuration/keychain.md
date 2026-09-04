@@ -24,7 +24,8 @@ gcx does not use plaintext fallback for these conditions:
 
 - An unavailable credential store.
 - A locked credential store.
-- A replacement or deletion of an existing credential.
+- A deletion of an existing credential.
+- A replacement of an existing credential, unless you have set `GCX_KEYCHAIN=off`.
 - A missing or rejected credential reference.
 - A value that is too large for the credential store.
 - An unknown credential store error.
