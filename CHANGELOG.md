@@ -19,6 +19,7 @@
 **Fixes**
 
 - Correct Fleet resource examples, preserve string collector IDs in resource manifests, and include the collector name and ID in successful create output.
+- Config write locks are now bound to the config file they were taken for. A held lock for one config file no longer lets a write to a different file skip locking, which could let concurrent gcx invocations write the same file at once.
 
 ## v1.2.0 (2026-08-25)
 

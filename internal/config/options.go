@@ -1,5 +1,7 @@
 package config
 
+import "fmt"
+
 // This file holds the explicit parameter structs for the config load and write
 // paths. Historically these parameters travelled as context values, which made
 // them invisible in every signature they crossed and impossible to reason
@@ -27,13 +29,31 @@ type loadOptions struct {
 // writeOptions carries the parameters of a single config write. The zero value
 // is the plain caller-facing write performed by the exported Write.
 type writeOptions struct {
-	// writeLockHeld records that the caller already holds the config write
-	// lock, so the write must not acquire it again.
-	writeLockHeld bool
+	// writeLockHeldFor names the canonical config source whose write lock the
+	// caller already holds, so the write must not acquire it again. Empty
+	// means no lock is held and the write takes its own. Config write locks
+	// are per-source (configLockFile derives the lock file from the canonical
+	// source identity), so the identity is part of the claim: "a lock is
+	// held" is only meaningful together with what it is held for.
+	writeLockHeldFor string
 }
 
-// writeLockCovers reports whether a caller-held write lock already protects
-// this write, letting the write skip acquiring the flock itself.
-func (o writeOptions) writeLockCovers() bool {
-	return o.writeLockHeld
+// writeLockCovers reports whether the caller-held write lock protects a write
+// to sourceIdentity, letting the write skip acquiring the flock itself.
+//
+// A lock held for a different source protects nothing here: the two writes
+// take different lock files and can interleave freely. Treating that as
+// "locked" would write the target without mutual exclusion, so it is an
+// error rather than a silent pass.
+func (o writeOptions) writeLockCovers(sourceIdentity string) (bool, error) {
+	switch o.writeLockHeldFor {
+	case "":
+		return false, nil
+	case sourceIdentity:
+		return true, nil
+	default:
+		return false, fmt.Errorf(
+			"refusing to write config without mutual exclusion: the write lock is held for %q but this write targets %q",
+			o.writeLockHeldFor, sourceIdentity)
+	}
 }

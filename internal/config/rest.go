@@ -94,9 +94,6 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 	// cancelled the moment the caller has what it needs. Use a context
 	// detached from that cancellation so Load/Write always complete.
 	persistCtx := context.WithoutCancel(ctx)
-	// Every load and write below runs under the flock taken by the Lock
-	// callback, so they declare the lock as already held.
-	lockHeld := loadOptions{write: writeOptions{writeLockHeld: true}}
 
 	persistLoad := func() (Config, error) {
 		path, err := persistSource()
@@ -114,7 +111,14 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 				loadCtx = withMigrationPersistenceSuppressed(loadCtx)
 			}
 		}
-		fresh, err := load(loadCtx, persistSource, lockHeld)
+		// The Lock callback below holds the write lock for exactly this
+		// identity, so any write the load performs on our behalf is already
+		// protected. Naming the identity is what makes that claim checkable.
+		identity, err := tokenPersistenceIdentity(sources, path)
+		if err != nil {
+			return Config{}, err
+		}
+		fresh, err := load(loadCtx, persistSource, loadOptions{write: writeOptions{writeLockHeldFor: identity}})
 		if err != nil {
 			return fresh, err
 		}
@@ -145,15 +149,11 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		if err != nil {
 			return nil, err
 		}
-		layer := ""
-		if selected, ok := configSourceForPath(sources, path); ok {
-			layer = selected.Type
-		}
-		identity, err := canonicalConfigSourceForLayer(path, layer)
+		identity, err := tokenPersistenceIdentity(sources, path)
 		if err != nil {
 			return nil, err
 		}
-		lockPath, err := configLockFile(identity, "write")
+		lockPath, err := configLockFile(identity)
 		if err != nil {
 			return nil, err
 		}
@@ -241,8 +241,42 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		g.OAuthRefreshToken = refreshToken
 		g.OAuthTokenExpiresAt = expiresAt
 		g.OAuthRefreshExpiresAt = refreshExpiresAt
-		return write(persistCtx, persistSource, fresh, lockHeld.write)
+		// Derive the held lock's identity from tokenPersistenceIdentity, the
+		// same helper the Lock callback and persistLoad use, so the three
+		// cannot disagree. fresh.sourceIdentity agrees with it, but only by
+		// following the path and layer four hops back through the load.
+		_, identity, err := tokenPersistenceIdentityFor(persistSource, sources)
+		if err != nil {
+			return err
+		}
+		return write(persistCtx, persistSource, fresh, writeOptions{writeLockHeldFor: identity})
 	})
+}
+
+// tokenPersistenceIdentityFor resolves the persistence target path and its
+// canonical write-lock identity together, so a caller cannot name one without
+// the other.
+func tokenPersistenceIdentityFor(source Source, sources []ConfigSource) (string, string, error) {
+	path, err := source()
+	if err != nil {
+		return "", "", err
+	}
+	identity, err := tokenPersistenceIdentity(sources, path)
+	if err != nil {
+		return "", "", err
+	}
+	return path, identity, nil
+}
+
+// tokenPersistenceIdentity returns the canonical identity of the config source
+// at path. The lock callback, the reload, and the write all derive the write
+// lock's identity here so the three cannot disagree.
+func tokenPersistenceIdentity(sources []ConfigSource, path string) (string, error) {
+	layer := ""
+	if selected, ok := configSourceForPath(sources, path); ok {
+		layer = selected.Type
+	}
+	return canonicalConfigSourceForLayer(path, layer)
 }
 
 func configSourceForPath(sources []ConfigSource, path string) (ConfigSource, bool) {
