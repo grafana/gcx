@@ -423,70 +423,42 @@ func TestErrorToDetailedError_CloudStackLookupForbidden(t *testing.T) {
 	}
 }
 
-func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
-	tests := []struct {
-		name      string
-		err       error
-		wantScope string
-	}{
-		{
-			name:      "list pipelines invalid scope suggests fleet-management:read",
-			err:       errors.New(`fleet: list pipelines: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:read",
-		},
-		{
-			name:      "list collectors invalid scope suggests fleet-management:read",
-			err:       errors.New(`fleet: list collectors: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:read",
-		},
-		{
-			name:      "get pipeline invalid scope suggests fleet-management:read",
-			err:       errors.New(`fleet: get pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:read",
-		},
-		{
-			name:      "create pipeline invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: create pipeline: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-		{
-			name:      "update pipeline invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: update pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-		{
-			name:      "create collector invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: create collector: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-		{
-			name:      "update collector invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: update collector abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-		{
-			name:      "delete pipeline invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: delete pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-	}
+func TestErrorToDetailedError_FleetPluginMissing(t *testing.T) {
+	// Grafana answers with this body when the collector app plugin is absent or
+	// disabled. It arrives as a 404, the same status Fleet Management returns for
+	// an absent resource, so the message must not mention a missing resource.
+	err := fmt.Errorf("fleet: list pipelines: %w", &fleet.HTTPError{
+		Status: 404,
+		Path:   "/pipeline.v1.PipelineService/ListPipelines",
+		Body:   `{"message":"plugin route match not found"}`,
+	})
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := fail.ErrorToDetailedError(tc.err)
+	got := fail.ErrorToDetailedError(err)
 
-			if tc.wantScope == "" {
-				assert.Equal(t, "Unexpected error", got.Summary)
-				return
-			}
+	require.NotNil(t, got)
+	assert.Equal(t, "Endpoint not available", got.Summary)
+	assert.Contains(t, got.Details, "grafana-collector-app")
+	require.NotEmpty(t, got.Suggestions)
+	assert.Contains(t, got.Suggestions[0], "gcx setup status")
+}
 
-			assert.Equal(t, "Fleet Management: permission denied", got.Summary)
-			require.NotNil(t, got.ExitCode)
-			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
-			require.Len(t, got.Suggestions, 1)
-			assert.Contains(t, got.Suggestions[0], tc.wantScope)
-		})
-	}
+func TestErrorToDetailedError_FleetForbiddenNamesTheAction(t *testing.T) {
+	err := fmt.Errorf("fleet: create pipeline: %w", &fleet.HTTPError{
+		Status: 403,
+		Path:   "/pipeline.v1.PipelineService/CreatePipeline",
+		Body:   `{"message":"forbidden"}`,
+	})
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Authorization failed", got.Summary)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+	suggestions := strings.Join(got.Suggestions, "\n")
+	assert.Contains(t, suggestions, fleet.CollectorAppReadAction)
+	assert.Contains(t, suggestions, fleet.CollectorAppAdminAction)
+	assert.Contains(t, suggestions, "read-only commands")
 }
 
 func TestErrorToDetailedError_StacksReadAdaptiveContext(t *testing.T) {
@@ -970,19 +942,24 @@ func TestConvertFleetHTTPErrors(t *testing.T) {
 	}{
 		{
 			name:         "401 from fleet management",
-			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 401, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation"}),
+			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 401, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation", Body: `{"message":"Plugin not found"}`}),
 			wantSummary:  "Authentication failed",
 			wantAuthExit: true,
 		},
 		{
 			name:         "403 from fleet management",
-			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 403, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation"}),
+			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 403, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation", Body: `{"message":"Plugin is not enabled"}`}),
 			wantSummary:  "Authorization failed",
 			wantAuthExit: true,
 		},
 		{
-			name: "404 not handled by this converter",
-			err:  &fleet.HTTPError{Status: 404, Path: "/foo"},
+			name: "404 for a missing resource is not handled by this converter",
+			err:  &fleet.HTTPError{Status: 404, Path: "/foo", Body: `{"code":"not_found","message":"pipeline not found"}`},
+		},
+		{
+			name:        "404 for a missing plugin route reports the plugin",
+			err:         &fleet.HTTPError{Status: 404, Path: "/foo", Body: `{"message":"plugin route match not found"}`},
+			wantSummary: "Endpoint not available",
 		},
 	}
 	for _, tc := range tests {

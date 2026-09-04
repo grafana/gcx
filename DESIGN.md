@@ -125,7 +125,7 @@ by `NewNamespacedRESTConfig` via `WrapTransport`).
 | 2 | Usage error | Bad flags, invalid selectors, missing args |
 | 3 | Auth failure | 401/403, missing or invalid credentials |
 | 4 | Partial failure | Some resources succeeded, others failed |
-| 5 | Cancelled | Ctrl+C, `context.Canceled` |
+| 5 | Cancelled | The invocation stopped early: Ctrl+C, `context.Canceled`, a declined confirmation prompt, a server-reported cancellation |
 | 6 | Version incompatible | Grafana < 12 detected |
 
 See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation with `DetailedError` and converters.

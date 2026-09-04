@@ -218,7 +218,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						CloudCredentialKind:      login.CloudCredentialOAuth,
 						CloudTokenTrusted:        true,
 						CloudOAuthTokenExpiresAt: "2030-01-01T00:00:00Z",
-						CloudOAuthScopes:         []string{"stacks:read", "fleet-management:read"},
+						CloudOAuthScopes:         []string{"stacks:read", "metrics:write"},
 					},
 					Hooks: login.Hooks{
 						ConfigSource: configSource(dir),
@@ -238,7 +238,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				assert.Equal(t, "gcom-oauth-token", ctx.CloudEntry.OAuthToken, "OAuth-issued tokens land in oauth-token, not token")
 				assert.Empty(t, ctx.CloudEntry.Token)
 				assert.Equal(t, "2030-01-01T00:00:00Z", ctx.CloudEntry.OAuthTokenExpiresAt)
-				assert.ElementsMatch(t, []string{"stacks:read", "fleet-management:read"}, ctx.CloudEntry.OAuthScopes)
+				assert.ElementsMatch(t, []string{"stacks:read", "metrics:write"}, ctx.CloudEntry.OAuthScopes)
 				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.OAuthUrl, "OAuth token must record its GCOM origin")
 				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.APIUrl, "APIUrl defaults to the same GCOM root")
 			},
@@ -1733,7 +1733,7 @@ func TestRun_CloudTokenHintGuidance(t *testing.T) {
 	assert.Contains(t, hint, "access-policies", "hint must link to the access-policies docs")
 	assert.Contains(t, hint, "stacks:read", "hint must name stacks:read as the required baseline scope")
 	assert.Contains(t, hint, "metrics:write", "hint must name the Synthetic Monitoring write scopes")
-	assert.Contains(t, hint, "fleet-management:read", "hint must name the Fleet scope")
+	assert.NotContains(t, hint, "fleet-management", "Fleet needs no grafana.com scope")
 	assert.Contains(t, hint, "stacks:write", "hint must name the stack-management scope")
 	assert.Contains(t, strings.ToLower(hint), "skip", "hint must retain the skip affordance")
 }

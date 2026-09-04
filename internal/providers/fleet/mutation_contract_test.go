@@ -10,8 +10,8 @@ package fleet //nolint:testpackage // Drives the unexported command constructors
 //   - explicit -o json / -o yaml overrides are honored.
 //
 // The commands are driven end-to-end (cobra Execute) against a fake Fleet
-// Management API server, with the cloud config loader stubbed through the
-// CloudConfigLoader seam.
+// Management API server, with the stack config loader stubbed through the
+// RESTConfigLoader seam.
 
 import (
 	"bytes"
@@ -27,24 +27,24 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/grafana/gcx/internal/agent"
-	"github.com/grafana/gcx/internal/cloud"
-	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
-// fakeCloudLoader satisfies CloudConfigLoader, pointing the fleet base client
-// at a test server.
-type fakeCloudLoader struct{ url string }
+// fleetProxyPrefix is the collector app plugin proxy prefix that production
+// code prepends to every Fleet Management RPC path.
+const fleetProxyPrefix = "/api/plugin-proxy/grafana-collector-app/fleet-management-api"
 
-func (f *fakeCloudLoader) LoadCloudConfig(context.Context) (providers.CloudRESTConfig, error) {
-	return providers.CloudRESTConfig{
-		Token: "test-token",
-		Stack: cloud.StackInfo{
-			AgentManagementInstanceURL: f.url,
-			AgentManagementInstanceID:  42,
-		},
+// fakeRESTLoader satisfies RESTConfigLoader, pointing the fleet base client at
+// a test server.
+type fakeRESTLoader struct{ url string }
+
+func (f *fakeRESTLoader) LoadGrafanaConfig(context.Context) (config.NamespacedRESTConfig, error) {
+	return config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: f.url},
 		Namespace: "stack-1",
 	}, nil
 }
@@ -79,7 +79,7 @@ func newFleetAPIServer(t *testing.T) *httptest.Server {
 		writeJSON(w, map[string]any{})
 	})
 	mux.HandleFunc("/collector.v1.CollectorService/CreateCollector", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, map[string]any{"id": "202", "name": "col-a"})
+		writeJSON(w, map[string]any{})
 	})
 	mux.HandleFunc("/collector.v1.CollectorService/GetCollector", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"id": "202", "name": "col-a"})
@@ -94,7 +94,9 @@ func newFleetAPIServer(t *testing.T) *httptest.Server {
 		writeJSON(w, map[string]any{})
 	})
 
-	server := httptest.NewServer(mux)
+	// Production prepends the plugin proxy prefix, so the test server mounts the
+	// bare RPC mux under that prefix.
+	server := httptest.NewServer(http.StripPrefix(fleetProxyPrefix, mux))
 	t.Cleanup(server.Close)
 	return server
 }
@@ -125,6 +127,7 @@ kind: Collector
 metadata:
   name: col-a
 spec:
+  id: "202"
   name: col-a
   collector_type: alloy
 `)
@@ -202,7 +205,7 @@ func fleetMutationCases(t *testing.T) []struct {
 func runCommand(t *testing.T, build func(h *fleetHelper) *cobra.Command, args []string) (string, error) {
 	t.Helper()
 	server := newFleetAPIServer(t)
-	h := &fleetHelper{loader: &fakeCloudLoader{url: server.URL}}
+	h := &fleetHelper{loader: &fakeRESTLoader{url: server.URL}}
 	cmd := build(h)
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
@@ -297,4 +300,22 @@ func TestFleetMutations_ExplicitOutputOverride(t *testing.T) {
 			assert.NotContains(t, stdout, "✔", "explicit -o yaml must not carry the styled human line")
 		})
 	}
+}
+
+func TestCollectorCreateRequiresID(t *testing.T) {
+	manifest := writeManifest(t, "collector-without-id.yaml", `apiVersion: fleet.ext.grafana.app/v1alpha1
+kind: Collector
+metadata:
+  name: col-a
+spec:
+  name: col-a
+  collector_type: alloy
+`)
+
+	stdout, err := runCommand(t, func(h *fleetHelper) *cobra.Command {
+		return h.newCollectorCreateCommand()
+	}, []string{"-f", manifest})
+
+	require.ErrorContains(t, err, "collector spec.id is required for create")
+	assert.NotContains(t, stdout, "gcx.mutation")
 }

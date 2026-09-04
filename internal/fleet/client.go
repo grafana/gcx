@@ -14,28 +14,26 @@ import (
 
 // Client is a base HTTP client for the Grafana Fleet Management API.
 // All operations use POST (gRPC/Connect style JSON-over-HTTP).
+//
+// The client carries no credentials of its own. Callers build it with an
+// *http.Client whose transport authenticates against the Grafana stack, and a
+// baseURL that points at the collector app plugin proxy. The plugin adds the
+// Fleet Management credentials and the tenant headers server-side.
 type Client struct {
-	baseURL      string
-	instanceID   string
-	apiToken     string
-	useBasicAuth bool
-	httpClient   *http.Client
+	baseURL    string
+	httpClient *http.Client
 }
 
 // NewClient creates a new Fleet Management base client.
-// When useBasicAuth is true, requests use Basic auth with instanceID:apiToken.
-// Otherwise, requests use Bearer token auth.
+// baseURL must already include the plugin proxy prefix.
 // If httpClient is nil, httputils.NewDefaultClient is used.
-func NewClient(ctx context.Context, baseURL, instanceID, apiToken string, useBasicAuth bool, httpClient *http.Client) *Client {
+func NewClient(ctx context.Context, baseURL string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = httputils.NewDefaultClient(ctx)
 	}
 	return &Client{
-		baseURL:      strings.TrimRight(baseURL, "/"),
-		instanceID:   instanceID,
-		apiToken:     apiToken,
-		useBasicAuth: useBasicAuth,
-		httpClient:   httpClient,
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		httpClient: httpClient,
 	}
 }
 
@@ -66,12 +64,6 @@ func (c *Client) DoRequestWithHeaders(ctx context.Context, path string, body any
 
 	for k, v := range headers {
 		req.Header.Set(k, v)
-	}
-
-	if c.useBasicAuth {
-		req.SetBasicAuth(c.instanceID, c.apiToken)
-	} else {
-		req.Header.Set("Authorization", "Bearer "+c.apiToken)
 	}
 
 	resp, err := c.httpClient.Do(req)
