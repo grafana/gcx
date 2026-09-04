@@ -215,6 +215,7 @@
  "gcx datasources mysql describe-table": "finite",
  "gcx datasources mysql list-tables": "finite",
  "gcx datasources mysql query": "finite",
+ "gcx datasources pinot query": "finite",
  "gcx datasources postgres describe-table": "finite",
  "gcx datasources postgres list-tables": "finite",
  "gcx datasources postgres query": "finite",

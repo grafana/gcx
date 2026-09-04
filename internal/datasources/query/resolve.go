@@ -193,6 +193,8 @@ func NormalizeKind(pluginID string) string {
 		return "athena"
 	case "grafana-bigquery-datasource":
 		return "bigquery"
+	case "startree-pinot-datasource":
+		return "pinot"
 	case "yesoreyeram-infinity-datasource":
 		return "infinity"
 	case "synthetic-monitoring-datasource":
