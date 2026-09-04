@@ -17,9 +17,10 @@ import (
 
 func TestLoginPersistsCredentialByKeychainPolicy(t *testing.T) {
 	tests := []struct {
-		name      string
-		storeErr  error
-		wantStore bool
+		name          string
+		storeErr      error
+		wantStore     bool
+		wantPlaintext bool
 	}{
 		{
 			name:      "default stores the token in the keychain",
@@ -32,6 +33,11 @@ func TestLoginPersistsCredentialByKeychainPolicy(t *testing.T) {
 		{
 			name:     "default fails closed when the keychain is locked",
 			storeErr: credentials.ErrLocked,
+		},
+		{
+			name:          "disabled falls back to plaintext",
+			storeErr:      credentials.ErrDisabled,
+			wantPlaintext: true,
 		},
 	}
 
@@ -81,6 +87,16 @@ current-context: default
 				assert.NotContains(t, string(raw), "new-service-token")
 				assert.True(t, store.containsValue("new-service-token"), "the fake credential store must hold the persisted secret")
 				assert.Positive(t, opened, "enabled storage must open the configured store")
+				return
+			}
+			if test.wantPlaintext {
+				require.NoError(t, err)
+				info, statErr := os.Stat(path)
+				require.NoError(t, statErr)
+				assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+				assert.Contains(t, string(raw), "token: new-service-token")
+				assert.NotContains(t, string(raw), "token: keychain:gcx:")
+				assert.Positive(t, opened, "a deliberate opt-out must still be opened and consulted before falling back to plaintext")
 				return
 			}
 
