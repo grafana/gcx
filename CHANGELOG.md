@@ -2,7 +2,9 @@
 
 **Breaking changes**
 
-- Fleet Management and Instrumentation now use the `grafana-collector-app` plugin proxy instead of direct Cloud Access Policy authentication. A Cloud Access Policy token with `fleet-management` scopes is no longer sufficient. Use a Grafana stack login and ensure that the plugin is enabled. Older stack tokens can require a new `gcx login` to obtain `grafana-api:write`. Named plugin routes need `grafana-collector-app:read`; wildcard routes need `grafana-collector-app:admin`, including some read-only commands.
+- Fleet Management and Instrumentation now use the `grafana-collector-app` plugin proxy instead of direct Cloud Access Policy authentication. A Cloud Access Policy token with `fleet-management` scopes is no longer sufficient. Use a Grafana stack login and ensure that the plugin is enabled. Older stack tokens can require a new `gcx login` to obtain `grafana-api:write`. Named plugin routes need `grafana-collector-app:read`. Wildcard routes need `grafana-collector-app:admin`, including some read-only commands. The default `gcx cloud login --scope` list no longer includes `fleet-management:read` or `fleet-management:write`.
+- Fleet collector resource manifests now include `spec.id`. Collector creation requires this field. Existing numeric-ID manifests continue to work for update and delete. Add `spec.id` before you reuse an older manifest to create a collector.
+- `gcx setup status` now adds `fleet-management` as the first item in `products`. Select entries by `.product` instead of their array position. The command returns exit code 1 when the plugin is missing or disabled. It returns exit code 4 when the Instrumentation check fails. In both cases, it emits the status document before it exits.
 
 **New Features**
 
