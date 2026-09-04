@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/url"
 	"os"
@@ -738,6 +739,57 @@ func acquireLegacyMigrationWriteLock(
 	return lockErr == nil, lockErr, func() { _ = lock.Unlock() }, nil
 }
 
+// readLegacyMigrationSource allows ordinary config symlinks while binding the
+// post-lock reread to the exact file behind the identity whose lock is held.
+// Without the binding, a symlink retargeted between selecting the lock and
+// rereading the file would have the migration write a document the lock does
+// not protect — and, because the reread happens before the backup is taken,
+// replace a file nothing has a rollback copy of.
+func readLegacyMigrationSource(filename, layer, expectedIdentity string) ([]byte, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	expected, err := os.Stat(expectedIdentity)
+	if err != nil {
+		return nil, err
+	}
+	if !opened.Mode().IsRegular() || !expected.Mode().IsRegular() || !os.SameFile(opened, expected) {
+		return nil, fmt.Errorf(
+			"config source identity changed while reading legacy migration: %s no longer resolves to locked identity %s",
+			filename,
+			expectedIdentity,
+		)
+	}
+
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	currentIdentity, err := canonicalConfigSourceForLayer(filename, layer)
+	if err != nil {
+		return nil, err
+	}
+	current, err := os.Stat(filename)
+	if err != nil {
+		return nil, err
+	}
+	if currentIdentity != expectedIdentity || !current.Mode().IsRegular() || !os.SameFile(opened, current) {
+		return nil, fmt.Errorf(
+			"config source identity changed while reading legacy migration: locked %s, selected %s",
+			expectedIdentity,
+			currentIdentity,
+		)
+	}
+	return contents, nil
+}
+
 // migrateLegacyConfig converts legacy config bytes to the current format and
 // persists the result. It deletes nothing: the legacy file is replaced
 // atomically only after a write-once backup exists and the converted config
@@ -775,7 +827,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	}
 
 	if canPersist {
-		freshContents, err := readConfigSource(ConfigSource{Path: filename, Type: opts.layer})
+		freshContents, err := readLegacyMigrationSource(filename, opts.layer, migrationPath)
 		if err != nil {
 			return Config{}, err
 		}
