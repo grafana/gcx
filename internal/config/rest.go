@@ -40,6 +40,11 @@ type NamespacedRESTConfig struct {
 	// loaded stack against it before resolving or writing rotated credentials,
 	// so a concurrent server, proxy, or TLS trust change cannot adopt them.
 	oauthCredentialBinding credentials.Binding
+
+	// keychainPolicy freezes the process-effective storage decision used when
+	// the source context was resolved. OAuth refresh callbacks can execute much
+	// later and reload only the owning layer, so they must not recompute it.
+	keychainPolicy keychainPolicy
 }
 
 // IsOAuthProxy reports whether the config is using OAuth proxy mode.
@@ -119,6 +124,9 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 			return Config{}, err
 		}
 		loadOpts.writeLockHeldFor = identity
+		if n.keychainPolicy.source != "" {
+			loadOpts = loadOpts.withKeychainPolicy(n.keychainPolicy)
+		}
 		fresh, err := load(persistCtx, persistSource, loadOpts)
 		if err != nil {
 			return fresh, err
@@ -471,5 +479,6 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		GrafanaURL:             strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		oauthTransport:         oauthTransport,
 		oauthCredentialBinding: oauthCredentialBinding,
+		keychainPolicy:         cfg.keychainPolicy,
 	}, nil
 }

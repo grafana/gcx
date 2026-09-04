@@ -263,6 +263,7 @@ func (config *Config) Resolve() {
 			continue
 		}
 		ctx.Name = name
+		ctx.keychainPolicy = config.keychainPolicy
 		ctx.StackEntry = nil
 		ctx.Grafana = nil
 		ctx.Providers = nil
@@ -453,6 +454,11 @@ type Context struct {
 	// process environment. Post-override binding enforcement may retain those
 	// values when an endpoint changes; every keychain-resolved value is cleared.
 	runtimeSecretOverrides map[credentials.Field]bool
+
+	// keychainPolicy is the process-effective storage decision captured when
+	// this context's resolved view was built. It follows the context into REST
+	// config construction so asynchronous OAuth refresh persists consistently.
+	keychainPolicy keychainPolicy
 }
 
 // StackFromAutoLocal reports whether the resolved stack entry came from an

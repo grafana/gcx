@@ -126,7 +126,7 @@ both preserves the explicit OAuth-origin/API-destination pair.`,
 			}
 			mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
 			mutationCtx := configOpts.LoginMutationContext(cmd.Context(), mutationTarget)
-			persistedConfig, cur, err := loadPersistedCloudConfig(mutationCtx, mutationSource, contextName)
+			persistedConfig, cur, err := loadPersistedCloudConfig(mutationCtx, mutationSource, contextName, cfg)
 			if err != nil {
 				return err
 			}
@@ -220,8 +220,11 @@ func currentCloudConfig(ctx context.Context, configOpts *cmdconfig.Options) (con
 // loadPersistedCloudContext reloads only the selected owner. Endpoint and
 // credential decisions must not use a resolved view assembled from another
 // layer after mutation planning has chosen a raw destination.
-func loadPersistedCloudConfig(ctx context.Context, source config.Source, contextName string) (config.Config, *config.Context, error) {
-	cfg, err := config.Load(ctx, source)
+// effective is the layered config the command already resolved. Reloading the
+// single mutation target must not re-derive the credential-storage policy from
+// that one file: the policy may be declared in another trusted layer.
+func loadPersistedCloudConfig(ctx context.Context, source config.Source, contextName string, effective config.Config) (config.Config, *config.Context, error) {
+	cfg, err := config.LoadUnderResolvedPolicy(ctx, source, effective)
 	if errors.Is(err, os.ErrNotExist) {
 		return cfg, nil, nil // A missing explicit file is a valid first login target.
 	}

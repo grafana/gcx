@@ -1134,7 +1134,7 @@ func TestPersistedLoginSourceContextIgnoresRuntimeEnvironmentOverrides(t *testin
 	assert.Equal(t, "https://runtime.invalid", runtimeCtx.Grafana.Server)
 	assert.Equal(t, "https://grafana-ops.com", runtimeCtx.CloudEntry.APIUrl)
 
-	persistedCtx, err := loadPersistedLoginSourceContext(t.Context(), config.ExplicitConfigFile(path), name)
+	persistedCtx, err := loadPersistedLoginSourceContext(t.Context(), config.ExplicitConfigFile(path), name, config.Config{})
 	require.NoError(t, err)
 	require.NotNil(t, persistedCtx)
 	assert.Equal(t, "https://stored.invalid", persistedCtx.Grafana.Server)
@@ -1148,6 +1148,7 @@ func TestLoadPersistedLoginSourceContextAllowsNewExplicitConfig(t *testing.T) {
 		t.Context(),
 		config.ExplicitConfigFile(path),
 		"new-context",
+		config.Config{},
 	)
 	require.NoError(t, err)
 	assert.Nil(t, persistedCtx)

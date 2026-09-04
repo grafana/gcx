@@ -511,6 +511,27 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 	return load(ctx, source, loadOptions{layer: configLayerFromCtx(ctx)}, overrides...)
 }
 
+// LoadUnderResolvedPolicy loads source under the credential-storage policy
+// that resolved has already worked out across every trusted layer, instead of
+// re-deriving one from source's own bytes.
+//
+// A login or cloud-login mutation reloads only the single layer it is about to
+// write. That layer need not be the one that declares credentials.keychain, so
+// a plain Load there would resolve the default "on" policy and could push the
+// layer's plaintext into the OS keychain against a trusted opt-out declared
+// elsewhere.
+//
+// It takes a whole Config rather than an exported policy value deliberately:
+// the policy type is private, so a caller cannot manufacture a plaintext
+// opt-out without first loading trusted configuration.
+func LoadUnderResolvedPolicy(ctx context.Context, source Source, resolved Config, overrides ...Override) (Config, error) {
+	opts := loadOptions{layer: configLayerFromCtx(ctx)}
+	if resolved.keychainPolicy.source != "" {
+		opts = opts.withKeychainPolicy(resolved.keychainPolicy)
+	}
+	return load(ctx, source, opts, overrides...)
+}
+
 //nolint:gocyclo,nestif // Loading keeps versioning, legacy migration, source binding, and keychain migration in one ordered trust pipeline.
 func load(ctx context.Context, source Source, opts loadOptions, overrides ...Override) (Config, error) {
 	config := Config{}
@@ -706,6 +727,9 @@ func refreshKeychainRuntimeAfterWrite(cfg *Config, filename, sourceIdentity, lay
 	}
 	disk.sourceLayer = layer
 	disk.bindSourceIdentity(sourceIdentity)
+	// Before Resolve: it copies the policy onto every resolved context, so a
+	// policy assigned afterwards would never reach them.
+	disk.keychainPolicy = cfg.keychainPolicy
 	disk.Resolve()
 	if err := disk.materializeCloudCredentialDestinations(); err != nil {
 		return err
@@ -717,7 +741,6 @@ func refreshKeychainRuntimeAfterWrite(cfg *Config, filename, sourceIdentity, lay
 		disk.trackKeychainResults(backed, preserve, states)
 	}
 	disk.capturePlaintextCredentialOrigins()
-	disk.keychainPolicy = cfg.keychainPolicy
 	disk.Source = cfg.Source
 	disk.Sources = cfg.Sources
 	disk.sourceLayer = cfg.sourceLayer
