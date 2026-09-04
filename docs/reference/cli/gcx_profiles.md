@@ -30,4 +30,5 @@ Query Pyroscope datasources and manage continuous profiling
 * [gcx profiles list-profile-types](gcx_profiles_list-profile-types.md)	 - List available profile types
 * [gcx profiles metrics](gcx_profiles_metrics.md)	 - Query profile time-series data from a Pyroscope datasource
 * [gcx profiles query](gcx_profiles_query.md)	 - Execute a profiling query against a Pyroscope datasource
+* [gcx profiles series](gcx_profiles_series.md)	 - List unique profile label sets
 

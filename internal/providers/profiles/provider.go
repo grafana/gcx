@@ -77,6 +77,18 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx profiles labels -d UID -o json`,
 			},
 			{
+				Build:     dspyroscope.SeriesCmd,
+				TokenCost: "large",
+				LLMHint:   `gcx profiles series -d abc123 --match '{service_name="frontend"}' --label-name namespace --label-name pod --since 1h -o json`,
+				Example: `
+  # List unique profile label sets without a profile type
+  gcx profiles series -d UID --since 1h
+
+  # Scope to a service and return selected labels
+  gcx profiles series -d UID '{service_name="frontend"}' \
+    --label-name service_name --label-name namespace --label-name pod --since 24h`,
+			},
+			{
 				Build:     dspyroscope.ListProfileTypesCmd,
 				TokenCost: "small",
 				LLMHint:   "gcx profiles list-profile-types -d abc123 -o json",

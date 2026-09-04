@@ -503,7 +503,7 @@ func queryErrorLanguage(apiErr *queryerror.APIError) string {
 			return "PromQL"
 		}
 	case "pyroscope":
-		if apiErr.Operation == "query" || apiErr.Operation == "series query" {
+		if apiErr.Operation == "query" || apiErr.Operation == "series query" || apiErr.Operation == "profile series query" {
 			return "Pyroscope selector"
 		}
 	case "tempo":
@@ -522,6 +522,9 @@ func queryErrorStringLiteralExample(apiErr *queryerror.APIError) string {
 	case "prometheus":
 		return `Try a quoted selector value, e.g. gcx metrics query 'up{job="grafana"}'`
 	case "pyroscope":
+		if apiErr.Operation == "profile series query" {
+			return `Try a quoted selector value, e.g. gcx profiles series '{service_name="frontend"}'`
+		}
 		return `Try a quoted selector value, e.g. gcx profiles query '{service_name="frontend"}' --profile-type <PROFILE_TYPE>`
 	case "tempo":
 		return `Try a quoted string literal, e.g. gcx traces query '{ resource.service.name = "checkout" }'`
@@ -562,6 +565,8 @@ func queryErrorHelpCommand(apiErr *queryerror.APIError) string {
 			return "gcx profiles labels --help"
 		case "series query":
 			return "gcx profiles metrics --help"
+		case "profile series query":
+			return "gcx profiles series --help"
 		case "profile exemplars query":
 			return "gcx profiles exemplars profile --help"
 		case "span exemplars query":
