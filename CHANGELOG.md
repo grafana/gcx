@@ -1,10 +1,20 @@
 ## Unreleased
 
+**Breaking changes**
+
+- Fleet Management and Instrumentation now use the `grafana-collector-app` plugin proxy instead of direct Cloud Access Policy authentication. A Cloud Access Policy token with `fleet-management` scopes is no longer sufficient. Use a Grafana stack login and ensure that the plugin is enabled. Older stack tokens can require a new `gcx login` to obtain `grafana-api:write`. Named plugin routes need `grafana-collector-app:read`. Wildcard routes need `grafana-collector-app:admin`, including some read-only commands. The default `gcx cloud login --scope` list no longer includes `fleet-management:read` or `fleet-management:write`.
+- Fleet collector resource manifests now include `spec.id`. Collector creation requires this field. Existing numeric-ID manifests continue to work for update and delete. Add `spec.id` before you reuse an older manifest to create a collector.
+- `gcx setup status` now adds `fleet-management` as the first item in `products`. Select entries by `.product` instead of their array position. The command returns exit code 1 when the plugin is missing or disabled. It returns exit code 4 when the Instrumentation check fails. In both cases, it emits the status document before it exits.
+
 **New Features**
 
 - Added `--fix-plan` to `gcx instrumentation check`, with two explicit modes: `--fix-plan=local` produces a deterministic aggregation of the explanation docs' "How to fix" sections (offline, no billing, works on OSS/Enterprise), and `--fix-plan=assistant` synthesizes a prioritized plan with Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see the Assistant pricing docs). The two modes are disjoint: assistant mode returns a clear error when preconditions aren't met rather than silently falling back to local. `--fix-plan` alone is rejected; users must specify a mode.
 - traces: add experimental `gcx traces baseline <trace-id>` to retrieve same-operation candidate traces (root identity, operation success, and topology fingerprint) to feed into `gcx traces diff`, with optional raw TraceQL filters when the unfiltered candidates are not valid comparisons.
 - traces: include Tempo `serviceStats` metadata (per-service span and error counts) in structured trace search output.
+
+**Fixes**
+
+- Correct Fleet resource examples, preserve string collector IDs in resource manifests, and include the collector name and ID in successful create output.
 
 ## v1.2.0 (2026-08-25)
 

@@ -753,17 +753,25 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 
 ### Shared Fleet Client
 
+Fleet Management runs behind the `grafana-collector-app` plugin proxy on the
+stack, at `/api/plugin-proxy/grafana-collector-app/fleet-management-api/`. The
+plugin adds the Fleet Management credentials and the tenant headers
+server-side, so the client carries the caller's Grafana credential only. No
+grafana.com token is needed. See ADR-023.
+
 | File | Purpose |
 |------|---------|
-| `internal/fleet/client.go` | Shared fleet base HTTP client (used by fleet provider and instrumentation provider) |
-| `internal/fleet/config.go` | Config loading, `LoadClientWithStack` helper |
-| `internal/fleet/errors.go` | Fleet API error types |
+| `internal/fleet/client.go` | Shared fleet base HTTP client (used by fleet provider and instrumentation provider); carries no credentials of its own |
+| `internal/fleet/config.go` | Stack config loading, the plugin proxy prefix, and `LoadClientWithStack` with a bounded `cloud.StackInfo` lookup through the `grafanacom-api/instances/` proxy route |
+| `internal/fleet/preflight.go` | Collector app availability and route-action checks used by `gcx setup status` |
+| `internal/fleet/errors.go` | Fleet API error types, including the marker for an absent plugin route |
 
 ### Setup
 
 | File | Purpose |
 |------|---------|
 | `cmd/gcx/setup/command.go` | Setup command area: aggregated cross-product `status` |
+| `cmd/gcx/setup/preflight.go` | Collector app plugin and permission preflight for the `status` document |
 
 ### Instrumentation Hub Provider
 

@@ -2,7 +2,6 @@ package fleet_test
 
 import (
 	"context"
-	"encoding/base64"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,63 +13,54 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewClient_DoRequest_AuthHeaders(t *testing.T) {
-	tests := []struct {
-		name         string
-		instanceID   string
-		apiToken     string
-		useBasicAuth bool
-		checkAuth    func(t *testing.T, r *http.Request)
-	}{
-		{
-			name:         "basic auth sends Authorization: Basic header",
-			instanceID:   "12345",
-			apiToken:     "secret-token",
-			useBasicAuth: true,
-			checkAuth: func(t *testing.T, r *http.Request) {
-				t.Helper()
-				user, pass, ok := r.BasicAuth()
-				require.True(t, ok, "expected Basic auth header")
-				assert.Equal(t, "12345", user)
-				assert.Equal(t, "secret-token", pass)
+// The base client sets no credentials of its own. The caller supplies an
+// *http.Client whose transport authenticates against the Grafana stack, and the
+// collector app plugin proxy adds the Fleet Management credentials server-side.
+func TestNewClient_DoRequest_SetsNoAuthHeader(t *testing.T) {
+	var capturedReq *http.Request
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedReq = r
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
 
-				// Verify the raw header format: Basic base64(instanceID:apiToken)
-				expected := "Basic " + base64.StdEncoding.EncodeToString([]byte("12345:secret-token"))
-				assert.Equal(t, expected, r.Header.Get("Authorization"))
-			},
-		},
-		{
-			name:         "bearer auth sends Authorization: Bearer header",
-			instanceID:   "",
-			apiToken:     "bearer-token",
-			useBasicAuth: false,
-			checkAuth: func(t *testing.T, r *http.Request) {
-				t.Helper()
-				assert.Equal(t, "Bearer bearer-token", r.Header.Get("Authorization"))
-			},
-		},
-	}
+	client := fleet.NewClient(context.Background(), server.URL, nil)
+	resp, err := client.DoRequest(context.Background(), "/some.v1.Service/Method", nil)
+	require.NoError(t, err)
+	defer resp.Body.Close()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var capturedReq *http.Request
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				capturedReq = r
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{}`))
-			}))
-			defer server.Close()
-
-			client := fleet.NewClient(context.Background(), server.URL, tt.instanceID, tt.apiToken, tt.useBasicAuth, nil)
-			resp, err := client.DoRequest(context.Background(), "/some.v1.Service/Method", nil)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			require.NotNil(t, capturedReq)
-			tt.checkAuth(t, capturedReq)
-		})
-	}
+	require.NotNil(t, capturedReq)
+	assert.Empty(t, capturedReq.Header.Get("Authorization"))
 }
+
+// The transport of the supplied *http.Client carries the credential.
+func TestNewClient_DoRequest_UsesSuppliedHTTPClient(t *testing.T) {
+	var capturedReq *http.Request
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedReq = r
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	httpClient := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		req.Header.Set("Authorization", "Bearer from-transport")
+		return http.DefaultTransport.RoundTrip(req)
+	})}
+
+	client := fleet.NewClient(context.Background(), server.URL, httpClient)
+	resp, err := client.DoRequest(context.Background(), "/some.v1.Service/Method", nil)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.NotNil(t, capturedReq)
+	assert.Equal(t, "Bearer from-transport", capturedReq.Header.Get("Authorization"))
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
 func TestNewClient_DoRequest_RequestFormat(t *testing.T) {
 	tests := []struct {
@@ -114,7 +104,7 @@ func TestNewClient_DoRequest_RequestFormat(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := fleet.NewClient(context.Background(), server.URL, "inst", "tok", true, nil)
+			client := fleet.NewClient(context.Background(), server.URL, nil)
 			resp, err := client.DoRequest(context.Background(), tt.path, tt.body)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -132,19 +122,24 @@ func TestNewClient_DoRequest_RequestFormat(t *testing.T) {
 	}
 }
 
+// The base URL carries the plugin proxy prefix, so the client must not add a
+// second slash between the prefix and the RPC path.
 func TestNewClient_DoRequest_URLTrimming(t *testing.T) {
-	// Verify that trailing slashes on baseURL are trimmed so paths are clean.
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	var capturedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer server.Close()
 
-	client := fleet.NewClient(context.Background(), server.URL+"/", "inst", "tok", true, nil)
+	client := fleet.NewClient(context.Background(), server.URL+"/api/plugin-proxy/grafana-collector-app/fleet-management-api/", nil)
 	resp, err := client.DoRequest(context.Background(), "/path.v1.Service/Method", nil)
 	require.NoError(t, err)
 	defer resp.Body.Close()
+
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "/api/plugin-proxy/grafana-collector-app/fleet-management-api/path.v1.Service/Method", capturedPath)
 }
 
 func TestReadErrorBody(t *testing.T) {

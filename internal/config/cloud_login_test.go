@@ -307,7 +307,7 @@ func TestSaveCloudConfigOAuthMetadataChangeUsesCopyOnWrite(t *testing.T) {
 	_, entryName, err := config.SaveCloudConfig(ctx, source, "staging", &config.CloudEntry{
 		OAuthToken:          "shared-oauth",
 		OAuthTokenExpiresAt: "2099-02-01T00:00:00Z",
-		OAuthScopes:         []string{"stacks:read", "fleet-management:read"},
+		OAuthScopes:         []string{"stacks:read", "metrics:write"},
 		OAuthUrl:            "https://grafana.com",
 		APIUrl:              "https://grafana.com",
 	})
@@ -319,7 +319,7 @@ func TestSaveCloudConfigOAuthMetadataChangeUsesCopyOnWrite(t *testing.T) {
 	assert.Equal(t, "2099-01-01T00:00:00Z", got.Cloud["grafana-com"].OAuthTokenExpiresAt)
 	assert.Equal(t, []string{"stacks:read"}, got.Cloud["grafana-com"].OAuthScopes)
 	assert.Equal(t, "2099-02-01T00:00:00Z", got.Cloud[entryName].OAuthTokenExpiresAt)
-	assert.ElementsMatch(t, []string{"stacks:read", "fleet-management:read"}, got.Cloud[entryName].OAuthScopes)
+	assert.ElementsMatch(t, []string{"stacks:read", "metrics:write"}, got.Cloud[entryName].OAuthScopes)
 }
 
 func TestSaveCloudConfigOAuthScopeOrderDoesNotTriggerCopyOnWrite(t *testing.T) {
@@ -331,7 +331,7 @@ func TestSaveCloudConfigOAuthScopeOrderDoesNotTriggerCopyOnWrite(t *testing.T) {
 	seed.SetCloudEntry("grafana-com", config.CloudEntry{
 		OAuthToken:          "shared-oauth",
 		OAuthTokenExpiresAt: "2099-01-01T00:00:00Z",
-		OAuthScopes:         []string{"stacks:read", "fleet-management:read"},
+		OAuthScopes:         []string{"stacks:read", "metrics:write"},
 		OAuthUrl:            "https://grafana.com",
 		APIUrl:              "https://grafana.com",
 	})
@@ -342,7 +342,7 @@ func TestSaveCloudConfigOAuthScopeOrderDoesNotTriggerCopyOnWrite(t *testing.T) {
 	_, entryName, err := config.SaveCloudConfig(ctx, source, "staging", &config.CloudEntry{
 		OAuthToken:          "shared-oauth",
 		OAuthTokenExpiresAt: "2099-01-01T00:00:00Z",
-		OAuthScopes:         []string{"fleet-management:read", "stacks:read", "stacks:read"},
+		OAuthScopes:         []string{"metrics:write", "stacks:read", "stacks:read"},
 		OAuthUrl:            "https://grafana.com",
 		APIUrl:              "https://grafana.com",
 	})
