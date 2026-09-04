@@ -18,7 +18,7 @@ func TestCommands_HasExpectedLeaves(t *testing.T) {
 	cmd := experiments.Commands(nil)
 	require.Equal(t, "experiments", cmd.Name())
 
-	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "list-trials", "test-suites", "trials"} {
+	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "list-trials", "export-conversations", "test-suites", "trials"} {
 		c, _, err := cmd.Find([]string{sub})
 		require.NoError(t, err, "subcommand %q must exist", sub)
 		require.NotNil(t, c)
@@ -199,6 +199,19 @@ func TestTrialsListCommand_RequiresExperimentIDWithSuggestion(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected format: gcx agento11y experiments list-trials <run-id>")
+}
+
+func TestExportConversationsCommand_RequiresRunIDWithSuggestion(t *testing.T) {
+	cmd := experiments.Commands(nil)
+	cmd.SetArgs([]string{"export-conversations"})
+
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected format: gcx agento11y experiments export-conversations <run-id> -d <directory>")
 }
 
 func TestCasesListCommand_RequiresSuiteAndVersionWithSuggestion(t *testing.T) {
