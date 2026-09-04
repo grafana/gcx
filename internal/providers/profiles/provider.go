@@ -60,7 +60,14 @@ func (p *Provider) descriptor() signals.Descriptor {
   # (--stacktrace-selector is repeatable; pass it once per frame, root first)
   gcx profiles query '{service_name="my-go-service"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
-    --stacktrace-selector 'github.com/prometheus/client_golang/prometheus.(*Registry).Gather.func1'`,
+    --stacktrace-selector 'github.com/prometheus/client_golang/prometheus.(*Registry).Gather.func1'
+
+  # Caller-callee call graph as Graphviz DOT text — the most readable format
+  # for LLM analysis (requires a pure-v2 backend; others fall back to table).
+  # Dotted edges mean frames were elided by the 100-node default; raise
+  # --max-nodes for fuller call chains
+  gcx profiles query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o dot`,
 			},
 			{
 				Build:     dspyroscope.LabelsCmd,

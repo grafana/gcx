@@ -1,10 +1,12 @@
 package pyroscope
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -13,6 +15,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/pyroscope"
+	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -31,6 +34,24 @@ func (c *pprofCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("pprof codec does not support decoding")
 }
 
+// dotCodec is a sentinel codec that registers "dot" as a valid -o format.
+// DOT output is deliberately written in RunE rather than here: the response
+// shape is backend-dependent (pure v2 returns dot; v1-v2-dual silently
+// substitutes a flame graph; v1 rejects the format), and the fallback
+// branches emit stderr hints, which Encode cannot do — it only receives the
+// stdout writer. Moving the rendering here would split that dispatch across
+// two files. Revisit if the codec interface ever grows a diagnostics
+// channel.
+type dotCodec struct{}
+
+func (c *dotCodec) Format() format.Format { return "dot" }
+func (c *dotCodec) Encode(_ io.Writer, _ any) error {
+	return errors.New("dot output is written by the query command directly")
+}
+func (c *dotCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("dot codec does not support decoding")
+}
+
 type pyroscopeQueryOpts struct {
 	shared             dsquery.SharedOpts
 	Datasource         string
@@ -45,15 +66,16 @@ type pyroscopeQueryOpts struct {
 }
 
 func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
-	// Register pprof before shared.Setup so it appears in the -o help string.
+	// Register pprof and dot before shared.Setup so they appear in the -o help string.
 	opts.shared.IO.RegisterCustomCodec("pprof", &pprofCodec{})
+	opts.shared.IO.RegisterCustomCodec("dot", &dotCodec{})
 	opts.shared.Setup(flags, true)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)")
-	flags.Int64Var(&opts.MaxNodes, "max-nodes", 0, fmt.Sprintf("Maximum nodes in flame graph (default 0/unlimited for pprof output, %d for all other formats)", defaultMaxNodes))
+	flags.Int64Var(&opts.MaxNodes, "max-nodes", 0, fmt.Sprintf("Maximum nodes in the result (defaults: pprof 0/unlimited, dot 100-node call graph rendered server-side, %d for all other formats)", defaultMaxNodes))
 	flags.StringSliceVar(&opts.ProfileIDs, "profile-id", nil, "Drill down to specific profile UUIDs from exemplar queries (repeatable)")
-	flags.StringSliceVar(&opts.SpanIDs, "span-id", nil, "Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof)")
+	flags.StringSliceVar(&opts.SpanIDs, "span-id", nil, "Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof and -o dot)")
 	flags.StringSliceVar(&opts.TraceIDs, "trace-id", nil, "Only query samples with these 32-character hex trace IDs (repeatable)")
 	flags.StringSliceVar(&opts.StacktraceSelector, "stacktrace-selector", nil, "Only query locations with these function names, starting from the root (repeatable)")
 	flags.StringVar(&opts.PprofPath, "pprof-path", "", "Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)")
@@ -92,6 +114,9 @@ func (opts *pyroscopeQueryOpts) Validate(flags *pflag.FlagSet) error {
 	if len(opts.SpanIDs) > 0 && opts.shared.IO.OutputFormat == "pprof" {
 		return errors.New("--span-id is not supported with -o pprof")
 	}
+	if len(opts.SpanIDs) > 0 && opts.shared.IO.OutputFormat == "dot" {
+		return errors.New("--span-id is not supported with -o dot")
+	}
 	for _, id := range opts.SpanIDs {
 		if !isHexID(id, 16) {
 			return fmt.Errorf("--span-id must be a 16-character hex span ID (got %q)", id)
@@ -103,6 +128,33 @@ func (opts *pyroscopeQueryOpts) Validate(flags *pflag.FlagSet) error {
 		}
 	}
 	return nil
+}
+
+// isDotUnsupportedErr reports whether the error is the v1 read path's
+// explicit rejection of PROFILE_FORMAT_DOT ("dot format is only supported
+// with the v2 query backend"). The message match is scoped to the typed
+// APIError's server message (the IsParseError pattern) so gcx-side error
+// wrapping can never satisfy it.
+func isDotUnsupportedErr(err error) bool {
+	var apiErr *queryerror.APIError
+	return errors.As(err, &apiErr) && strings.Contains(apiErr.Message, "dot format is only supported")
+}
+
+// queryDotV1Fallback retries a DOT-rejected query against a v1 backend
+// without the format field and renders the standard table. An explicit
+// --max-nodes survives the fallback; only the dot-mode 0 (server-side graph
+// default) is replaced by the regular table default.
+func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyroscope.Client, datasourceUID string, req pyroscope.QueryRequest) error {
+	cmdio.EmitHint(cmd.ErrOrStderr(), "backend does not support DOT output (requires -architecture.storage=v2); showing table instead", "")
+	req.Format = ""
+	if !cmd.Flags().Changed("max-nodes") {
+		req.MaxNodes = defaultMaxNodes
+	}
+	resp, err := client.Query(ctx, datasourceUID, req)
+	if err != nil {
+		return fmt.Errorf("query failed: %w", err)
+	}
+	return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 }
 
 // stackTraceSelector builds the StackTraceSelector message from the
@@ -119,10 +171,15 @@ func (opts *pyroscopeQueryOpts) stackTraceSelector() *pyroscope.StackTraceSelect
 }
 
 // resolveMaxNodes returns the effective MaxNodes for non-pprof formats.
-// pprof output is left at MaxNodes=0 (server default / unlimited).
+// pprof output is left at MaxNodes=0 (server default / unlimited). DOT
+// output is also left at 0: the server then renders a 100-node call graph
+// from a 512-node source profile, which keeps the text digestible.
 func (opts *pyroscopeQueryOpts) resolveMaxNodes(flags *pflag.FlagSet) int64 {
 	if flags.Changed("max-nodes") {
 		return opts.MaxNodes
+	}
+	if opts.shared.IO.OutputFormat == "dot" {
+		return 0
 	}
 	return defaultMaxNodes
 }
@@ -180,7 +237,15 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 
   # Download as pprof binary to a specific path
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o pprof --pprof-path ./cpu.pb.gz`,
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o pprof --pprof-path ./cpu.pb.gz
+
+  # Caller-callee call graph as Graphviz DOT text (function names, file:line,
+  # self/cumulative values) — the most readable format for LLM analysis.
+  # Requires a pure-v2 backend (-architecture.storage=v2); other backends
+  # fall back to the table. Dotted edges mean intermediate frames were
+  # elided by the 100-node default — raise --max-nodes for fuller chains.
+  gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o dot --max-nodes 250`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(cmd.Flags()); err != nil {
@@ -250,6 +315,8 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				})
 			}
 
+			isDot := opts.shared.IO.OutputFormat == "dot"
+
 			req := pyroscope.QueryRequest{
 				LabelSelector:      expr,
 				ProfileTypeID:      opts.ProfileType,
@@ -261,10 +328,34 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				TraceIDs:           opts.TraceIDs,
 				StackTraceSelector: opts.stackTraceSelector(),
 			}
+			if isDot {
+				req.Format = pyroscope.ProfileFormatDot
+			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
 			if err != nil {
+				if isDot && isDotUnsupportedErr(err) {
+					return queryDotV1Fallback(ctx, cmd, client, datasourceUID, req)
+				}
 				return fmt.Errorf("query failed: %w", err)
+			}
+
+			if isDot {
+				switch {
+				case pyroscope.DotHasNodes(resp.Dot):
+					_, err := fmt.Fprintln(cmd.OutOrStdout(), pyroscope.CleanDot(resp.Dot))
+					return err
+				case resp.Flamegraph != nil:
+					// v1-v2-dual read paths silently downgrade DOT to a
+					// flame graph; render it as the standard table.
+					cmdio.EmitHint(cmd.ErrOrStderr(), "backend runs v1-v2-dual and downgraded DOT to a flame graph (requires -architecture.storage=v2); showing table instead", "")
+					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+				default:
+					// No dot payload and no flame graph: the query matched
+					// no samples. The table renders "(no profile data)".
+					emitEmptyWindowHint(cmd.ErrOrStderr(), "profile data", start, end, req.IsRange())
+					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+				}
 			}
 
 			if opts.shared.IO.OutputFormat == "table" {
