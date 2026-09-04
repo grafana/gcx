@@ -513,7 +513,7 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 	logging.FromContext(ctx).Debug("Loading config", slog.String("filename", filename))
 	config.Source = filename
 
-	contents, snapshotted := configSnapshotFromContext(ctx, filename)
+	contents, snapshotted := opts.snapshotFor(filename)
 	if !snapshotted {
 		contents, err = readConfigFileForLayer(filename, opts.layer)
 		if err != nil {
@@ -1144,20 +1144,20 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 	var merged Config
 	for i, src := range sources {
 		// Derive this layer's options from opts per iteration. Every field set
-		// here is a property of this source alone, so inheriting one layer's
-		// value into the next would silently load a layer under another
-		// layer's rules.
+		// here — the layer, the migration-persistence suppression, the frozen
+		// source bytes — is a property of this source alone, so inheriting one
+		// layer's value into the next would silently load a layer under
+		// another layer's rules, or from another layer's content.
 		layerOpts := opts
 		layerOpts.layer = src.Type
 		if hasLegacyLayer && len(sources) > 1 && isLegacyConfig(src.snapshot) {
 			layerOpts.suppressMigrationPersistence = true
 			layerOpts.migrationWarnings = migrationWarnings
 		}
-		loadCtx := ctx
 		if src.snapshot != nil {
-			loadCtx = withConfigSnapshot(ctx, src.Path, src.snapshot)
+			layerOpts = layerOpts.withSourceSnapshot(src.Path, src.snapshot)
 		}
-		loaded, err := load(loadCtx, ExplicitConfigFile(src.Path), layerOpts)
+		loaded, err := load(ctx, ExplicitConfigFile(src.Path), layerOpts)
 		if err != nil {
 			return Config{}, err
 		}
@@ -1253,7 +1253,7 @@ func loadForWrite(ctx context.Context, explicitFile, fileType string, opts loadO
 				// back to legacy before Load runs, loading the snapshot prevents an
 				// un-preflighted migration; the eventual Write revision check rejects
 				// the intervening change.
-				loadCtx := withConfigSnapshot(ctx, s.Path, contents)
+				layerOpts = layerOpts.withSourceSnapshot(s.Path, contents)
 				targetWasLegacy := isLegacyConfig(contents)
 				if targetWasLegacy && len(sources) > 1 {
 					preflightErr := preflightLayeredSources(sources)
@@ -1269,12 +1269,12 @@ func loadForWrite(ctx context.Context, explicitFile, fileType string, opts loadO
 					}
 					for _, preflightSource := range sources {
 						if preflightSource.Type == fileType && preflightSource.snapshot != nil {
-							loadCtx = withConfigSnapshot(loadCtx, s.Path, preflightSource.snapshot) //nolint:fatcontext // One immutable snapshot is attached to the selected layer.
+							layerOpts = layerOpts.withSourceSnapshot(s.Path, preflightSource.snapshot)
 							break
 						}
 					}
 				}
-				cfg, err := load(loadCtx, src, layerOpts)
+				cfg, err := load(ctx, src, layerOpts)
 				if err == nil && targetWasLegacy {
 					remaining := remainingLegacySourceSnapshots(sources, fileType, cfg.migrationDeferred)
 					warnIncompleteLayeredMigration(ctx, remaining, nil)

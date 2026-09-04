@@ -105,11 +105,10 @@ func LoadLoginMutationGuarded(ctx context.Context, source Source, guard LoginMut
 		layer:                        configLayerFromCtx(ctx),
 		suppressMigrationPersistence: true,
 	}
-	loadCtx := ctx
 	if snapshot != nil {
-		loadCtx = withConfigSnapshot(ctx, guard.sourcePath, snapshot)
+		loadOpts = loadOpts.withSourceSnapshot(guard.sourcePath, snapshot)
 	}
-	cfg, loadErr := load(loadCtx, source, loadOpts)
+	cfg, loadErr := load(ctx, source, loadOpts)
 	if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
 		return cfg, loadErr
 	}
