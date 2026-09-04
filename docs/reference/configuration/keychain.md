@@ -28,52 +28,76 @@ gcx does not use plaintext fallback for these conditions:
 - An unknown credential store error.
 
 gcx uses plaintext fallback for a replacement when you disable the credential
-store. See [Disable the credential store](#disable-the-credential-store).
+store. See [Configure credential storage](#configure-credential-storage).
 
-## Disable the credential store
+## Configure credential storage
 
-Set `GCX_KEYCHAIN=off` when the credential store is permanently unavailable,
-such as on a headless box, a CI runner, or a session that can never unlock the
-keyring. gcx then keeps credentials in the mode-`0600` configuration file and
-does not use the credential store.
+The credential-storage policy is a trusted, process-wide setting. It accepts
+only `on` and `off` (case-insensitive after trimming); omitted means `on`.
+Configure it in a system or user configuration file:
+
+```yaml
+credentials:
+  keychain: off
+```
+
+Use `off` only when plaintext storage in a mode-`0600` YAML file is deliberate,
+such as for a headless machine or CI runner whose OS credential store is not
+available. In `off` mode gcx does not contact the OS store; new and refreshed
+credentials are persisted in that configuration file.
+
+`GCX_KEYCHAIN` can override the configuration for one invocation or a shell
+environment:
 
 ```shell
 export GCX_KEYCHAIN=off
 ```
 
-`off` is the only value that disables the credential store. gcx keeps using the
-store for every other value, so a typo cannot write credentials in plaintext
-without your intent. gcx warns once per command when it ignores a value:
+The precedence, highest first, is:
 
-```
-warn: GCX_KEYCHAIN="disabled" is not a recognized value and was ignored; the OS credential store is still in use. Set GCX_KEYCHAIN=off to disable it.
-```
+1. `GCX_KEYCHAIN`
+2. A deliberately selected file (`--config` or `GCX_CONFIG`)
+3. User configuration
+4. System configuration
+5. The default, `on`
 
-Set the variable in your shell profile or CI job environment to make it
-permanent for a machine.
+An automatically discovered repository-local `.gcx.yaml` is not trusted to set
+this policy. gcx ignores its `credentials.keychain` value and warns, but still
+merges that file's ordinary configuration fields. Review
+and deliberately select a repository file with `--config .gcx.yaml` or
+`GCX_CONFIG=.gcx.yaml` if its policy should apply.
+
+An invalid `GCX_KEYCHAIN` value warns and resolves to `on`, so a typo cannot
+silently enable plaintext storage. An invalid value in a trusted configuration
+file fails validation and names `credentials.keychain` and the source file. An
+invalid value in an automatically discovered local file is ignored with the
+same local-policy warning.
+
+## Replacing a stored credential in `off` mode
 
 gcx does not move stored credentials back into the configuration file when you
-disable the credential store. It preserves their references and cannot read
-them. You have two choices for each one.
+switch to `off`. It preserves their references and cannot read them. You have
+two choices for each one.
 
-Keep the reference. Unset `GCX_KEYCHAIN` and the credential works again.
+Keep the reference. Set the policy to `on` again (or unset `GCX_KEYCHAIN`) and
+the credential works again.
 
 Replace the credential. Authenticate again, and gcx writes the new value in
 plaintext. This is not reversible: gcx cannot delete through a disabled store,
 so the credential you replaced stays in the OS credential store with nothing
-referencing it, and no gcx command can reach it again. gcx warns when this
-happens. Delete that entry yourself to finish the change, and treat this as
-required when you are replacing a leaked credential.
+referencing it, and no gcx command can reach it again. gcx warns with cleanup
+guidance when this happens. Delete that stale OS-store entry yourself to finish
+the change, and treat that cleanup as required when you are replacing a leaked
+credential.
 
-gcx cannot remove a credential that is in the credential store while the
-credential store is disabled. `gcx config unset` on that field, and deleting
-the stack or Cloud entry that owns it, both fail. gcx does not drop the
-reference and leave the secret in the credential store, because that reports a
-deletion that did not happen. Unset `GCX_KEYCHAIN` and run the command again.
-When the credential store is permanently unavailable, unsetting the variable
-does not help, because gcx still cannot read the entry: edit the configuration
-file to remove the reference, then delete the entry through your OS credential
-store.
+gcx cannot remove a credential that is in the credential store while `off` is
+resolved. `gcx config unset` on that field, and deleting the stack or Cloud
+entry that owns it, both fail. gcx does not drop the reference and leave the
+secret in the credential store, because that reports a deletion that did not
+happen. Set the policy to `on` and run the command again. When the credential
+store is permanently unavailable, setting it to `on` does not help, because
+gcx still cannot read the entry: edit the configuration file to remove the
+reference, then delete the entry through your OS credential store.
 
 This applies only to credentials that are in the credential store. A credential
 that is already plaintext in the configuration file has nothing to remove from
