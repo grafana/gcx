@@ -190,7 +190,9 @@ More precisely, the precedence is `GCX_KEYCHAIN`, then a deliberately selected
 `--config` or `GCX_CONFIG` file, then user config, system config, and the
 default `on`. An automatically discovered local `.gcx.yaml` can still merge its
 ordinary fields, but its `credentials.keychain` value is ignored with an
-actionable warning. Explicitly selecting that file makes the policy trusted.
+actionable warning. Explicitly selecting that file makes the policy trusted —
+durably via `GCX_CONFIG`, or for the current command only via `--config`, which
+must be repeated on every later invocation to keep trusting the same file.
 An invalid environment value warns and resolves to `on`; an invalid value in a
 trusted file is a validation error that names the field and source. An invalid
 auto-discovered local value is ignored with the local-policy warning.

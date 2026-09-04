@@ -13,10 +13,14 @@ import (
 // typo must never create arbitrary configuration under that security setting.
 func TestKeychainConfigPath(t *testing.T) {
 	tests := []struct {
-		path    string
-		wantErr bool
+		path       string
+		wantErr    bool
+		wantErrMsg string
 	}{
-		{path: "credentials"},
+		// Bare "credentials" has no directly settable field: it must be
+		// rejected here rather than passing validation and dying deeper in
+		// SetValue with a raw "Can not set struct" error.
+		{path: "credentials", wantErr: true, wantErrMsg: `invalid path "credentials": credentials has no directly settable field; use credentials.keychain`},
 		{path: "credentials.keychain"},
 		{path: "credentials.unknown", wantErr: true},
 		{path: "credentials.keychain.extra", wantErr: true},
@@ -27,6 +31,9 @@ func TestKeychainConfigPath(t *testing.T) {
 			got, err := config.ValidateConfigPath(config.Config{}, test.path)
 			if test.wantErr {
 				require.Error(t, err)
+				if test.wantErrMsg != "" {
+					assert.Equal(t, test.wantErrMsg, err.Error())
+				}
 				return
 			}
 			require.NoError(t, err)
@@ -62,7 +69,6 @@ func TestValidateConfigPath(t *testing.T) {
 		"current-context",
 		"resources.assume-server-dry-run",
 		"diagnostics.telemetry",
-		"credentials",
 		"credentials.keychain",
 		"version",
 	}
@@ -95,6 +101,7 @@ func TestValidateConfigPath(t *testing.T) {
 		// Bare `cloud` (the old context-ref path) is ambiguous with the
 		// top-level map.
 		{"cloud", "cloud.<entry>."},
+		{"credentials", "credentials.keychain"},
 		{"credentials.unknown", "top-level section"},
 		{"credentials.keychain.extra", "top-level section"},
 		// Unknown paths get the general grammar.

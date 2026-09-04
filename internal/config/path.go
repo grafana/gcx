@@ -41,8 +41,16 @@ func ValidateConfigPath(cfg Config, path string) (string, error) {
 	case "contexts", "current-context", "stacks", "resources", "diagnostics", "version":
 		return path, nil
 	case "credentials":
-		if rest == "" || rest == "keychain" {
+		switch rest {
+		case "keychain":
+			// cmd/gcx/config/command.go intercepts "credentials.keychain"
+			// before validation runs (set and unset both need the locked
+			// keychain-policy transaction, not the generic path), so this
+			// arm never fires from the CLI today. Kept as defense in depth
+			// so ValidateConfigPath is correct for any other caller.
 			return path, nil
+		case "":
+			return "", fmt.Errorf("invalid path %q: credentials has no directly settable field; use credentials.keychain", path)
 		}
 	case "cloud":
 		if sub, _, _ := strings.Cut(rest, "."); rest == "" || cloudEntryFields[sub] {
