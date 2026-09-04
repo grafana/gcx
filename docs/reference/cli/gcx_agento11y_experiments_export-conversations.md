@@ -12,6 +12,8 @@ curated into a fine-tuning dataset without losing source fields.
 The destination must not already exist. Conversation requests run concurrently;
 individual failures are recorded in the manifest and artifact receipt. Raw
 conversation data may contain sensitive prompts, tool inputs, and tool outputs.
+Each export includes an AGENTS.md with safe-handling instructions and a
+.gitignore that excludes the entire bundle from Git by default.
 
 ```
 gcx agento11y experiments export-conversations <run-id> [flags]
