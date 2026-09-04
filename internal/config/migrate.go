@@ -714,7 +714,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 		if err != nil {
 			return Config{}, err
 		}
-		if snapshot, ok := configSnapshotFromContext(ctx, filename); ok && !bytes.Equal(freshContents, snapshot) {
+		if snapshot, ok := opts.snapshotFor(filename); ok && !bytes.Equal(freshContents, snapshot) {
 			return Config{}, fmt.Errorf("config %s changed after migration preflight; no config files or credentials were changed", filename)
 		}
 		contents = freshContents
@@ -952,9 +952,16 @@ func migrationFailedError(summary string, err error, filename string) error {
 
 // configLayerKey carries the config layer type ("system", "user", "local")
 // through context. It survives only as the transport for the exported
-// ContextWithConfigSource: every load and write inside this package takes the
-// layer as an explicit option, and the exported entry points translate this
-// ambient value into that option exactly once.
+// ContextWithConfigSource, whose out-of-package callers reach this package
+// through Load, Write, LoadLayered, and LoadForWrite — entry points with no
+// options parameter to pass a layer through, and whose signatures are frozen.
+//
+// Every load and write inside this package takes the layer as an explicit
+// option instead. The eight places that read this value
+// (Load, Write, LoadLayered, LoadForWrite, LoadLoginMutationGuarded twice,
+// persistLoad in rest.go, and the cloud login write) are deliberate: they are
+// the package boundary, and each translates the ambient value into an option
+// exactly once so that nothing below them inherits a layer invisibly.
 type configLayerKey struct{}
 
 const layeredMigrationReadOnlyReason = "layered migration is read-only; migrate each layer explicitly"
@@ -996,13 +1003,6 @@ func (c *inMemoryMigrationWarningCollector) exceptionalWarnings() []inMemoryMigr
 	return warnings
 }
 
-type configSnapshotKey struct{}
-
-type configSnapshot struct {
-	path     string
-	contents []byte
-}
-
 // ContextWithConfigSource preserves auto-discovery provenance across raw
 // mutation helpers that pass a Source separately. In particular, local
 // repository sources remain no-symlink even when a provider reloads them by
@@ -1014,20 +1014,6 @@ func ContextWithConfigSource(ctx context.Context, source ConfigSource) context.C
 func configLayerFromCtx(ctx context.Context) string {
 	layer, _ := ctx.Value(configLayerKey{}).(string)
 	return layer
-}
-
-func withConfigSnapshot(ctx context.Context, path string, contents []byte) context.Context {
-	return context.WithValue(ctx, configSnapshotKey{}, configSnapshot{
-		path: path, contents: bytes.Clone(contents),
-	})
-}
-
-func configSnapshotFromContext(ctx context.Context, path string) ([]byte, bool) {
-	snapshot, ok := ctx.Value(configSnapshotKey{}).(configSnapshot)
-	if !ok || snapshot.path != path {
-		return nil, false
-	}
-	return bytes.Clone(snapshot.contents), true
 }
 
 // writeLegacyBackup writes an exact byte-for-byte copy next to the logical

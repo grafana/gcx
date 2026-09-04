@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 // This file holds the explicit parameter structs for the config load and write
 // paths. Historically these parameters travelled as context values, which made
@@ -57,10 +60,59 @@ type loadOptions struct {
 	// behalf: loading migrates plaintext credentials into the keychain and
 	// persists legacy config migrations.
 	writeLockHeldFor string
+
+	// sourceSnapshot, when set, freezes the bytes the load must read for one
+	// specific config path, instead of reading that path from disk. A caller
+	// that already inspected a config document — layered preflight, the
+	// targeted --file write selection, the login mutation guard — hands the
+	// exact bytes it approved to the load, so a rewrite between the inspection
+	// and the load cannot make the load act on different content than the one
+	// that was preflighted.
+	//
+	// It is a pointer so that "no snapshot" stays distinguishable from "a
+	// snapshot of an empty file", and it is per-target: a load derived from
+	// another load's options must not silently reuse its snapshot. Set it with
+	// withSourceSnapshot and read it with snapshotFor, never directly — both
+	// clone, and snapshotFor enforces the path binding below.
+	sourceSnapshot *configSnapshot
+}
+
+// configSnapshot is a frozen copy of one config document, bound to the path it
+// was taken from. The binding is the point: bytes alone cannot say which file
+// they came from, and a snapshot of one config satisfying the load of another
+// would feed a load content it never preflighted.
+type configSnapshot struct {
+	path     string
+	contents []byte
+}
+
+// withSourceSnapshot returns a copy of the options that reads path from the
+// given bytes rather than from disk. The contents are cloned so a later
+// mutation of the caller's buffer cannot change what the load sees.
+func (o loadOptions) withSourceSnapshot(path string, contents []byte) loadOptions {
+	o.sourceSnapshot = &configSnapshot{path: path, contents: bytes.Clone(contents)}
+	return o
+}
+
+// snapshotFor returns the frozen bytes for path, if these options carry a
+// snapshot taken from exactly that path.
+//
+// A snapshot bound to a different path is not a snapshot of this one: honoring
+// it would load one config document's content as another's. Like the write
+// lock identity in writeLockCovers, the claim "I already have these bytes" is
+// only meaningful together with what they are bytes of.
+func (o loadOptions) snapshotFor(path string) ([]byte, bool) {
+	if o.sourceSnapshot == nil || o.sourceSnapshot.path != path {
+		return nil, false
+	}
+	return bytes.Clone(o.sourceSnapshot.contents), true
 }
 
 // forWrite projects the load's write-relevant parameters onto the options of a
-// write the load performs on the caller's behalf. It reads o.layer rather than
+// write the load performs on the caller's behalf. The source snapshot is not
+// among them: it says what a load must read, and no write consults it.
+//
+// It reads o.layer rather than
 // taking a parameter because writeConfig only consults writeOptions.layer when
 // the config being written carries no source layer of its own (cfg.sourceLayer
 // == ""), and a config produced by load always carries one: load's sole
