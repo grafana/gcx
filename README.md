@@ -447,7 +447,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg entities list`, `kg entities inspect` |
 | **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
 | **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |
-| **Agent Observability** | `gcx agento11y` | `agento11y conversations list`, `agento11y experiments export-conversations`, `agento11y rules list` |
+| **Agent Observability** | `gcx agento11y` | `agento11y conversations list`, `agento11y experiments export`, `agento11y rules list` |
 | **Assistant** | `gcx assistant` | `assistant prompt`, `assistant investigations list`, `assistant mcp-servers list` |
 | **Adaptive Metrics** | `gcx metrics adaptive` | `metrics adaptive recommendations list`, `metrics adaptive rules list` |
 | **Adaptive Logs** | `gcx logs adaptive` | `logs adaptive patterns list`, `logs adaptive drop-rules list` |

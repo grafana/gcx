@@ -62,20 +62,28 @@ gcx agento11y conversations search --filters 'agent = "my-agent"' --from 2026-04
 
 **Operators:** `=`, `!=`, `>`, `<`, `>=`, `<=`, `=~` (regex)
 
-## Exporting Experiment Conversations
+## Exporting Experiments
 
-Use the experimental export when the user needs every conversation associated
-with an experiment for offline analysis or dataset curation:
+Use the experimental export for offline analysis of an experiment. By default,
+it writes experiment metadata, the aggregate report, every trial page, and a
+trial index containing referenced conversation IDs:
 
 ```bash
-gcx agento11y experiments export-conversations <run-id> -d ./exports/<run-id>
+gcx agento11y experiments export <run-id> -d ./exports/<run-id>
 ```
 
-The destination must not already exist. The command writes the exact successful
-JSON response bodies for the experiment, report, trial pages, and unique
-conversations, plus a checksummed manifest and a streaming trial index. It also
-writes an `AGENTS.md` with handling instructions and a `.gitignore` that ignores
-the entire export by default.
+Download the full conversation payloads only when the task requires them:
+
+```bash
+gcx agento11y experiments export <run-id> -d ./exports/<run-id> --include-conversations
+```
+
+The destination must not already exist. The command preserves the exact
+successful JSON response bodies and writes a checksummed manifest plus a
+streaming trial index. Check `includes.conversations` in `manifest.json` to
+confirm whether conversation payloads were requested. Each export also contains
+an `AGENTS.md` with handling instructions and a `.gitignore` that ignores the
+entire bundle by default.
 
 Read the generated `AGENTS.md` before accessing other export files. Only process
 the bundle with an agent runtime and model provider approved for private Grafana
@@ -89,10 +97,10 @@ generated instructions are defense in depth, not a security boundary.
 
 The command does not flatten provider-specific generations into a fine-tuning
 schema. Treat the bundle as sensitive: prompts and tool inputs or outputs may
-contain secrets or personal data. Inspect `manifest.json` and require
-`complete: true` before using the export as a complete dataset source.
-
-Use `--concurrency` to reduce request pressure on the service; the default is 10.
+contain secrets or personal data. Require `complete: true` before using the
+export as a complete source for its requested scope. When including
+conversations, use `--concurrency` to reduce request pressure on the service;
+the default is 10.
 
 ## Evaluator Kind Decision Table
 
