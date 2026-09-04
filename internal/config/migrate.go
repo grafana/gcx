@@ -188,9 +188,17 @@ func legacySecretRef(lctx *legacyContext, field credentials.Field) (secretRef, b
 // sentinels are resolved only for a trusted migration source and only after the
 // reference matches its containing context and exact schema field. Repository-
 // local config is not trusted to select a process-global legacy account.
-func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacyGet bool) (map[legacySecretKey]string, bool, error) {
+//
+// The two bool returns classify why a field could not be resolved:
+// transientFailure means a real keychain outage or lock, which may clear on
+// its own and is worth retrying; disabledByPolicy means the store is a
+// deliberate, permanent opt-out (credentials.ErrDisabled) and retrying will
+// never help — the two must stay distinct so the caller's deferral message
+// does not misattribute a policy choice to a transient condition.
+func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacyGet bool) (map[legacySecretKey]string, bool, bool, error) {
 	resolved := map[legacySecretKey]string{}
 	transientFailure := false
+	disabledByPolicy := false
 	for name, lctx := range lc.Contexts {
 		if lctx == nil {
 			continue
@@ -209,7 +217,7 @@ func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacy
 				continue
 			}
 			if !allowLegacyGet {
-				return nil, false, fmt.Errorf(
+				return nil, false, false, fmt.Errorf(
 					"legacy keychain reference for context %q field %q cannot be auto-migrated from an untrusted config source; no config files or credentials were changed; replace the reference with a credential or migrate it from the user config (%s)",
 					name, field, docs.ConfigMigration,
 				)
@@ -229,10 +237,20 @@ func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacy
 				// to anonymous or a lower-priority authentication method. Raw edit or
 				// re-authentication can then repair it explicitly.
 				continue
+			case errors.Is(err, credentials.ErrDisabled):
+				// Credential storage was deliberately turned off by configuration
+				// (credentials.ErrDisabled wraps ErrUnavailable, so it must be
+				// checked before the generic outage case below). This is a
+				// terminal, non-retryable condition: the read keeps failing until
+				// the user changes the keychain policy, not because the keychain
+				// happens to come back. Classify it separately so the caller's
+				// deferral message names the real cause instead of implying that
+				// waiting and retrying will help.
+				disabledByPolicy = true
 			case errors.Is(err, credentials.ErrUnavailable):
 				transientFailure = true
 			case errors.Is(err, errLegacySentinelMismatch):
-				return nil, false, fmt.Errorf(
+				return nil, false, false, fmt.Errorf(
 					"invalid legacy keychain reference for context %q field %q: %w; no config files or credentials were changed (%s)",
 					name, field, err, docs.ConfigMigration,
 				)
@@ -243,7 +261,7 @@ func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacy
 			}
 		}
 	}
-	return resolved, transientFailure, nil
+	return resolved, transientFailure, disabledByPolicy, nil
 }
 
 // cloudEntryName derives a cloud entry name from a GCOM API URL host
@@ -662,6 +680,64 @@ func verifyLegacyConversion(input, baseline *legacyConfig, cfg *Config, secrets 
 	return verifyLegacyMigration(baseline, cfg, secrets)
 }
 
+// legacyMigrationKeychainRuntime returns the credential store a legacy
+// migration must use. The policy the caller resolved wins; a migration reached
+// with no resolved policy falls back to the environment-only decision.
+func legacyMigrationKeychainRuntime(opts loadOptions) (keychainPolicy, credentials.Store) {
+	policy, ok := opts.resolvedKeychainPolicy()
+	if !ok {
+		policy = overlayKeychainEnvironment(defaultKeychainPolicy())
+	}
+	return policy, newLazyStore(func() credentials.Store { return keychainStoreForPolicy(policy) })
+}
+
+// applyLegacyKeychainRuntime attaches the resolved policy and its store to the
+// freshly converted config. A credentials.keychain mutation in flight also
+// restores its intended value: the legacy document it was converted from
+// predates the field, so nothing else would carry it into the write.
+func applyLegacyKeychainRuntime(opts loadOptions, cfg *Config, policy keychainPolicy, store credentials.Store) {
+	if opts.intendedKeychainPolicyValue != "" {
+		if cfg.Credentials == nil {
+			cfg.Credentials = &CredentialsConfig{}
+		}
+		cfg.Credentials.Keychain = opts.intendedKeychainPolicyValue
+	}
+	cfg.keychainPolicy = policy
+	cfg.keychainStore = store
+}
+
+// acquireLegacyMigrationWriteLock takes the migration's write lock, unless the
+// caller already holds the lock for exactly this source — a credentials.keychain
+// mutation holds it across its whole load-and-write transaction, and taking it
+// again here would make the process wait on itself until the timeout and then
+// silently downgrade to an in-memory migration.
+func acquireLegacyMigrationWriteLock(
+	ctx context.Context,
+	opts loadOptions,
+	migrationPath string,
+	requested bool,
+) (bool, error, func(), error) {
+	writeLockHeld, err := opts.forWrite().writeLockCovers(migrationPath)
+	if err != nil {
+		return false, nil, nil, err
+	}
+	if !requested || writeLockHeld {
+		return requested, nil, func() {}, nil
+	}
+	lockPath, err := configLockFile(migrationPath)
+	if err != nil {
+		return false, nil, nil, err
+	}
+	lock := flock.New(lockPath)
+	lockCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	locked, lockErr := lock.TryLockContext(lockCtx, 100*time.Millisecond)
+	cancel()
+	if !locked {
+		return false, lockErr, func() {}, nil
+	}
+	return lockErr == nil, lockErr, func() { _ = lock.Unlock() }, nil
+}
+
 // migrateLegacyConfig converts legacy config bytes to the current format and
 // persists the result. It deletes nothing: the legacy file is replaced
 // atomically only after a write-once backup exists and the converted config
@@ -680,23 +756,12 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	// before entering this function, so reread under the lock: another process may
 	// already have completed the migration while this one was waiting.
 	canPersist := !opts.suppressMigrationPersistence
-	var lockErr error
-	deferredReason := ""
-	if canPersist {
-		lockPath, err := configLockFile(migrationPath)
-		if err != nil {
-			return Config{}, err
-		}
-		lock := flock.New(lockPath)
-		lockCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		var locked bool
-		locked, lockErr = lock.TryLockContext(lockCtx, 100*time.Millisecond)
-		canPersist = lockErr == nil && locked
-		if locked {
-			defer func() { _ = lock.Unlock() }()
-		}
+	canPersist, lockErr, releaseWriteLock, err := acquireLegacyMigrationWriteLock(ctx, opts, migrationPath, canPersist)
+	if err != nil {
+		return Config{}, err
 	}
+	defer releaseWriteLock()
+	deferredReason := ""
 	if !canPersist {
 		reason := layeredMigrationReadOnlyReason
 		if !opts.suppressMigrationPersistence && lockErr == nil {
@@ -738,19 +803,26 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 		return Config{}, UnmarshalError{File: filename, Err: err}
 	}
 
-	store := newLazyStore(keychainStoreFn)
+	policy, store := legacyMigrationKeychainRuntime(opts)
 	layerType := opts.layer
 	// Auto-discovered repository, system, and arbitrary explicit configs cannot
 	// read predictable per-user legacy accounts. Compatibility is limited to the
 	// canonical discovered user config with secure write permissions.
 	allowLegacyGet := trustedLegacyKeychainSource(opts.explicitLegacyMigrationConsent, layerType, filename)
-	secrets, transientLegacyFailure, err := collectLegacySecrets(&lc, store, allowLegacyGet)
+	secrets, transientLegacyFailure, legacyDisabledByPolicy, err := collectLegacySecrets(&lc, store, allowLegacyGet)
 	if err != nil {
 		return Config{}, err
 	}
-	if transientLegacyFailure {
+	switch {
+	case transientLegacyFailure:
 		canPersist = false
 		deferredReason = "a legacy credential could not be read from the credential store"
+	case legacyDisabledByPolicy:
+		// Distinct from the transient case above: the keychain is deliberately
+		// disabled by configuration, not experiencing an outage, so the message
+		// must not imply that retrying alone will resolve it.
+		canPersist = false
+		deferredReason = "credential storage is disabled by configuration"
 	}
 
 	// The backup is an exact 0600 rollback copy. Plaintext is intentionally not
@@ -762,6 +834,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	cfg := convertLegacyConfig(&lc, layerType, secrets)
 	cfg.Source = filename
 	cfg.migrationDeferred = !backupOK
+	applyLegacyKeychainRuntime(opts, cfg, policy, store)
 
 	// Verification uses a separately decoded, immutable baseline. Conversion
 	// must not be able to make its own self-check pass by aliasing and mutating

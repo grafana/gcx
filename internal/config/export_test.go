@@ -23,6 +23,12 @@ func ResetUnrecognisedKeychainWarningForTest() {
 	warnUnrecognisedKeychainValueOnce = sync.Once{}
 }
 
+// ResetIgnoredLocalKeychainWarningForTest gives policy tests a fresh
+// process-warning latch for the ignored auto-local policy notice.
+func ResetIgnoredLocalKeychainWarningForTest() {
+	warnIgnoredLocalKeychainPolicyOnce = sync.Once{}
+}
+
 // StackBindingForTest builds the production credential binding for external
 // integration tests without duplicating destination canonicalization rules.
 func StackBindingForTest(path, name, server string, field credentials.Field) (credentials.Binding, error) {

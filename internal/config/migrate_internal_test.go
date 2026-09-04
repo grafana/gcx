@@ -19,6 +19,7 @@ type fakeKeychain struct {
 	entries map[string]string
 	gets    []string
 	getErr  error
+	calls   int
 }
 
 func newFakeKeychain() *fakeKeychain {
@@ -26,6 +27,7 @@ func newFakeKeychain() *fakeKeychain {
 }
 
 func (f *fakeKeychain) Get(key string) (string, error) {
+	f.calls++
 	f.gets = append(f.gets, key)
 	if f.getErr != nil {
 		return "", f.getErr
@@ -38,11 +40,13 @@ func (f *fakeKeychain) Get(key string) (string, error) {
 }
 
 func (f *fakeKeychain) Set(key, value string) error {
+	f.calls++
 	f.entries[key] = value
 	return nil
 }
 
 func (f *fakeKeychain) Delete(key string) error {
+	f.calls++
 	delete(f.entries, key)
 	return nil
 }

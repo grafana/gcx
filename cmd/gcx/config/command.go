@@ -1065,6 +1065,18 @@ PROPERTY_VALUE is the new value to set.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			// credentials.keychain decides which credential store the write
+			// itself uses, so it cannot be applied by the generic
+			// load-mutate-write path: that path resolves the store from the
+			// pre-mutation config. SetKeychainPolicy runs the whole
+			// transaction under the intended policy and one held lock.
+			if args[0] == "credentials.keychain" {
+				target, err := config.SetKeychainPolicy(cmd.Context(), configOpts.ConfigFile, fileType, args[1])
+				if err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("set", args[0], target))
+			}
 
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
 			if err != nil && (configOpts.ConfigFile == "" || !config.CanInitializeMissingSource(cfg, err)) {
@@ -1100,9 +1112,6 @@ PROPERTY_VALUE is the new value to set.`,
 }
 
 func setConfigValue(cfg *config.Config, path, value string) error {
-	if path == "credentials.keychain" && strings.TrimSpace(value) == "" {
-		return fmt.Errorf("invalid credentials.keychain value %q: expected on or off", value)
-	}
 	mutationPaths := []string{path}
 	clearPaths := []string{}
 	parts := strings.Split(path, ".")
@@ -1171,6 +1180,17 @@ Paths are literal: they name the exact location in the configuration file, start
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			// Same reason as `config set`: clearing the field changes the
+			// policy the write must run under, so it takes the locked
+			// keychain-policy transaction rather than the generic path.
+			if args[0] == "credentials.keychain" || args[0] == "credentials" {
+				target, err := config.ClearKeychainPolicy(cmd.Context(), configOpts.ConfigFile, fileType)
+				if err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("unset", args[0], target))
 			}
 
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
