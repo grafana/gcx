@@ -12,40 +12,41 @@ import (
 	"github.com/gofrs/flock"
 )
 
-// SetKeychainPolicy changes credentials.keychain using the intended effective
-// policy for the entire load-and-write transaction. In particular, disabling
-// storage never probes the previous store, while enabling storage stages any
-// plaintext credentials and the policy update in the same atomic config write.
-func SetKeychainPolicy(ctx context.Context, explicitFile, fileType, value string) (Source, error) {
-	value, err := normalizedKeychainPolicyValue(value)
+// MutateKeychainPolicy sets or clears credentials.keychain using the intended
+// effective policy for the entire load-and-write transaction. value == nil
+// clears the field; otherwise it is normalized to "on"/"off" and set. In
+// particular, disabling storage never probes the previous store, while
+// enabling storage stages any plaintext credentials and the policy update in
+// the same atomic config write. Clearing runs the identical locked
+// transaction — intended-policy options, plaintext-migration suppression, and
+// a whole-transaction flock — so `unset credentials.keychain` gets every
+// guarantee `set` does instead of falling through to the unlocked generic
+// mutation path, and reverts the layer to whatever the remaining trusted
+// layers (or the default "on") resolve to. Clearing removes the whole
+// Credentials mapping rather than blanking Keychain, since Keychain is
+// Credentials' only field; leaving an empty struct behind would write
+// `credentials: {}` instead of dropping the key.
+func MutateKeychainPolicy(ctx context.Context, explicitFile, fileType string, value *string) (Source, error) {
+	if value == nil {
+		snapshot := []byte("credentials: {}\n")
+		return mutateKeychainPolicy(ctx, explicitFile, fileType, snapshot, "",
+			func(cfg *Config) {
+				cfg.Credentials = nil
+			},
+		)
+	}
+
+	normalized, err := normalizedKeychainPolicyValue(*value)
 	if err != nil {
 		return nil, err
 	}
-	snapshot := []byte("credentials:\n  keychain: " + strconv.Quote(value) + "\n")
-	return mutateKeychainPolicy(ctx, explicitFile, fileType, snapshot, value,
+	snapshot := []byte("credentials:\n  keychain: " + strconv.Quote(normalized) + "\n")
+	return mutateKeychainPolicy(ctx, explicitFile, fileType, snapshot, normalized,
 		func(cfg *Config) {
 			if cfg.Credentials == nil {
 				cfg.Credentials = &CredentialsConfig{}
 			}
-			cfg.Credentials.Keychain = value
-		},
-	)
-}
-
-// ClearKeychainPolicy unsets credentials.keychain on the selected config
-// layer, running the same locked load-and-write transaction as
-// SetKeychainPolicy — intended-policy options, plaintext-migration
-// suppression, and a whole-transaction flock — so `unset credentials.keychain`
-// gets every guarantee `set` does instead of falling through to the
-// unlocked generic mutation path. Clearing the field reverts the layer to
-// whatever the remaining trusted layers (or the default "on") resolve to.
-func ClearKeychainPolicy(ctx context.Context, explicitFile, fileType string) (Source, error) {
-	snapshot := []byte("credentials: {}\n")
-	return mutateKeychainPolicy(ctx, explicitFile, fileType, snapshot, "",
-		func(cfg *Config) {
-			if cfg.Credentials != nil {
-				cfg.Credentials.Keychain = ""
-			}
+			cfg.Credentials.Keychain = normalized
 		},
 	)
 }

@@ -1068,10 +1068,10 @@ PROPERTY_VALUE is the new value to set.`,
 			// credentials.keychain decides which credential store the write
 			// itself uses, so it cannot be applied by the generic
 			// load-mutate-write path: that path resolves the store from the
-			// pre-mutation config. SetKeychainPolicy runs the whole
+			// pre-mutation config. MutateKeychainPolicy runs the whole
 			// transaction under the intended policy and one held lock.
 			if args[0] == "credentials.keychain" {
-				target, err := config.SetKeychainPolicy(cmd.Context(), configOpts.ConfigFile, fileType, args[1])
+				target, err := config.MutateKeychainPolicy(cmd.Context(), configOpts.ConfigFile, fileType, &args[1])
 				if err != nil {
 					return err
 				}
@@ -1186,7 +1186,7 @@ Paths are literal: they name the exact location in the configuration file, start
 			// policy the write must run under, so it takes the locked
 			// keychain-policy transaction rather than the generic path.
 			if args[0] == "credentials.keychain" || args[0] == "credentials" {
-				target, err := config.ClearKeychainPolicy(cmd.Context(), configOpts.ConfigFile, fileType)
+				target, err := config.MutateKeychainPolicy(cmd.Context(), configOpts.ConfigFile, fileType, nil)
 				if err != nil {
 					return err
 				}
