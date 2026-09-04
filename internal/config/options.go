@@ -112,12 +112,12 @@ func (o loadOptions) snapshotFor(path string) ([]byte, bool) {
 // write the load performs on the caller's behalf. The source snapshot is not
 // among them: it says what a load must read, and no write consults it.
 //
-// It reads o.layer rather than
-// taking a parameter because writeConfig only consults writeOptions.layer when
-// the config being written carries no source layer of its own (cfg.sourceLayer
-// == ""), and a config produced by load always carries one: load's sole
-// caller of forWrite runs after load has set config.sourceLayer, so that
-// field wins and o.layer is never consulted for the layer decision itself.
+// It reads o.layer rather than taking a parameter because writeConfig only
+// consults writeOptions.layer when the config being written carries no source
+// layer of its own (cfg.sourceLayer == ""), and a config produced by load
+// always carries one: load's sole caller of forWrite runs after load has set
+// config.sourceLayer, so that field wins and o.layer is never consulted for
+// the layer decision itself.
 func (o loadOptions) forWrite() writeOptions {
 	return writeOptions{
 		layer:            o.layer,

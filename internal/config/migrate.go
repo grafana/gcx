@@ -953,15 +953,16 @@ func migrationFailedError(summary string, err error, filename string) error {
 // configLayerKey carries the config layer type ("system", "user", "local")
 // through context. It survives only as the transport for the exported
 // ContextWithConfigSource, whose out-of-package callers reach this package
-// through Load, Write, LoadLayered, and LoadForWrite — entry points with no
-// options parameter to pass a layer through, and whose signatures are frozen.
+// through Load, Write, LoadLayered, LoadForWrite, and
+// LoadLoginMutationGuarded — entry points with no options parameter to pass a
+// layer through, and whose signatures are frozen.
 //
 // Every load and write inside this package takes the layer as an explicit
-// option instead. The eight places that read this value
-// (Load, Write, LoadLayered, LoadForWrite, LoadLoginMutationGuarded twice,
-// persistLoad in rest.go, and the cloud login write) are deliberate: they are
-// the package boundary, and each translates the ambient value into an option
-// exactly once so that nothing below them inherits a layer invisibly.
+// option instead. The reads of this value that remain are deliberate, and all
+// of them sit at that package boundary: each entry point translates the
+// ambient value into an option exactly once, so nothing below it inherits a
+// layer invisibly. Adding a read anywhere other than an entry point
+// reintroduces the implicit propagation this option was created to remove.
 type configLayerKey struct{}
 
 const layeredMigrationReadOnlyReason = "layered migration is read-only; migrate each layer explicitly"
