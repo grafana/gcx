@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/url"
 	"os"
@@ -188,9 +189,17 @@ func legacySecretRef(lctx *legacyContext, field credentials.Field) (secretRef, b
 // sentinels are resolved only for a trusted migration source and only after the
 // reference matches its containing context and exact schema field. Repository-
 // local config is not trusted to select a process-global legacy account.
-func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacyGet bool) (map[legacySecretKey]string, bool, error) {
+//
+// The two bool returns classify why a field could not be resolved:
+// transientFailure means a real keychain outage or lock, which may clear on
+// its own and is worth retrying; disabledByPolicy means the store is a
+// deliberate, permanent opt-out (credentials.ErrDisabled) and retrying will
+// never help — the two must stay distinct so the caller's deferral message
+// does not misattribute a policy choice to a transient condition.
+func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacyGet bool) (map[legacySecretKey]string, bool, bool, error) {
 	resolved := map[legacySecretKey]string{}
 	transientFailure := false
+	disabledByPolicy := false
 	for name, lctx := range lc.Contexts {
 		if lctx == nil {
 			continue
@@ -209,7 +218,7 @@ func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacy
 				continue
 			}
 			if !allowLegacyGet {
-				return nil, false, fmt.Errorf(
+				return nil, false, false, fmt.Errorf(
 					"legacy keychain reference for context %q field %q cannot be auto-migrated from an untrusted config source; no config files or credentials were changed; replace the reference with a credential or migrate it from the user config (%s)",
 					name, field, docs.ConfigMigration,
 				)
@@ -229,10 +238,20 @@ func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacy
 				// to anonymous or a lower-priority authentication method. Raw edit or
 				// re-authentication can then repair it explicitly.
 				continue
-			case errors.Is(err, credentials.ErrUnavailable):
+			case credentials.IsDisabledByPolicy(err):
+				// Credential storage was deliberately turned off by configuration
+				// (credentials.ErrDisabled wraps ErrUnavailable, so it must be
+				// checked before the generic outage case below). This is a
+				// terminal, non-retryable condition: the read keeps failing until
+				// the user changes the keychain policy, not because the keychain
+				// happens to come back. Classify it separately so the caller's
+				// deferral message names the real cause instead of implying that
+				// waiting and retrying will help.
+				disabledByPolicy = true
+			case credentials.IsFatalStoreFailure(err):
 				transientFailure = true
 			case errors.Is(err, errLegacySentinelMismatch):
-				return nil, false, fmt.Errorf(
+				return nil, false, false, fmt.Errorf(
 					"invalid legacy keychain reference for context %q field %q: %w; no config files or credentials were changed (%s)",
 					name, field, err, docs.ConfigMigration,
 				)
@@ -243,7 +262,7 @@ func collectLegacySecrets(lc *legacyConfig, store credentials.Store, allowLegacy
 			}
 		}
 	}
-	return resolved, transientFailure, nil
+	return resolved, transientFailure, disabledByPolicy, nil
 }
 
 // cloudEntryName derives a cloud entry name from a GCOM API URL host
@@ -662,6 +681,98 @@ func verifyLegacyConversion(input, baseline *legacyConfig, cfg *Config, secrets 
 	return verifyLegacyMigration(baseline, cfg, secrets)
 }
 
+func legacyMigrationKeychainRuntime(ctx context.Context) (keychainPolicy, credentials.Store) {
+	policy, ok := keychainPolicyFromContext(ctx)
+	if !ok {
+		policy = overlayKeychainEnvironment(defaultKeychainPolicy())
+	}
+	return policy, newLazyStore(func() credentials.Store { return keychainStoreForPolicy(policy) })
+}
+
+func applyLegacyKeychainRuntime(ctx context.Context, cfg *Config, policy keychainPolicy, store credentials.Store) {
+	if intendedMode, ok := keychainPolicyMutationFromContext(ctx); ok {
+		if cfg.Credentials == nil {
+			cfg.Credentials = &CredentialsConfig{}
+		}
+		cfg.Credentials.Keychain = intendedMode
+	}
+	cfg.keychainPolicy = policy
+	cfg.keychainStore = store
+}
+
+func acquireLegacyMigrationWriteLock(
+	ctx context.Context,
+	migrationPath string,
+	requested bool,
+) (bool, error, func(), error) {
+	writeLockHeld, err := configWriteLockIsHeldFor(ctx, migrationPath)
+	if err != nil {
+		return false, nil, nil, err
+	}
+	if !requested || writeLockHeld {
+		return requested, nil, func() {}, nil
+	}
+	lockPath, err := configWriteLockFile(migrationPath)
+	if err != nil {
+		return false, nil, nil, err
+	}
+	lock := flock.New(lockPath)
+	lockCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	locked, lockErr := lock.TryLockContext(lockCtx, 100*time.Millisecond)
+	cancel()
+	if !locked {
+		return false, lockErr, func() {}, nil
+	}
+	return lockErr == nil, lockErr, func() { _ = lock.Unlock() }, nil
+}
+
+// readLegacyMigrationSource allows ordinary config symlinks while binding the
+// post-lock reread to the exact file behind the identity whose lock is held.
+func readLegacyMigrationSource(filename, layer, expectedIdentity string) ([]byte, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	expected, err := os.Stat(expectedIdentity)
+	if err != nil {
+		return nil, err
+	}
+	if !opened.Mode().IsRegular() || !expected.Mode().IsRegular() || !os.SameFile(opened, expected) {
+		return nil, fmt.Errorf(
+			"config source identity changed while reading legacy migration: %s no longer resolves to locked identity %s",
+			filename,
+			expectedIdentity,
+		)
+	}
+
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	currentIdentity, err := canonicalConfigSourceForLayer(filename, layer)
+	if err != nil {
+		return nil, err
+	}
+	current, err := os.Stat(filename)
+	if err != nil {
+		return nil, err
+	}
+	if currentIdentity != expectedIdentity || !current.Mode().IsRegular() || !os.SameFile(opened, current) {
+		return nil, fmt.Errorf(
+			"config source identity changed while reading legacy migration: locked %s, selected %s",
+			expectedIdentity,
+			currentIdentity,
+		)
+	}
+	return contents, nil
+}
+
 // migrateLegacyConfig converts legacy config bytes to the current format and
 // persists the result. It deletes nothing: the legacy file is replaced
 // atomically only after a write-once backup exists and the converted config
@@ -680,23 +791,12 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	// before entering this function, so reread under the lock: another process may
 	// already have completed the migration while this one was waiting.
 	canPersist := !migrationPersistenceSuppressed(ctx)
-	var lockErr error
-	deferredReason := ""
-	if canPersist {
-		lockPath, err := configLockFile(migrationPath, "write")
-		if err != nil {
-			return Config{}, err
-		}
-		lock := flock.New(lockPath)
-		lockCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		var locked bool
-		locked, lockErr = lock.TryLockContext(lockCtx, 100*time.Millisecond)
-		canPersist = lockErr == nil && locked
-		if locked {
-			defer func() { _ = lock.Unlock() }()
-		}
+	canPersist, lockErr, releaseWriteLock, err := acquireLegacyMigrationWriteLock(ctx, migrationPath, canPersist)
+	if err != nil {
+		return Config{}, err
 	}
+	defer releaseWriteLock()
+	deferredReason := ""
 	if !canPersist {
 		reason := layeredMigrationReadOnlyReason
 		if !migrationPersistenceSuppressed(ctx) && lockErr == nil {
@@ -710,7 +810,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	}
 
 	if canPersist {
-		freshContents, err := readConfigSource(ConfigSource{Path: filename, Type: configLayerFromCtx(ctx)})
+		freshContents, err := readLegacyMigrationSource(filename, configLayerFromCtx(ctx), migrationPath)
 		if err != nil {
 			return Config{}, err
 		}
@@ -738,19 +838,26 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 		return Config{}, UnmarshalError{File: filename, Err: err}
 	}
 
-	store := newLazyStore(keychainStoreFn)
+	policy, store := legacyMigrationKeychainRuntime(ctx)
 	layerType := configLayerFromCtx(ctx)
 	// Auto-discovered repository, system, and arbitrary explicit configs cannot
 	// read predictable per-user legacy accounts. Compatibility is limited to the
 	// canonical discovered user config with secure write permissions.
 	allowLegacyGet := trustedLegacyKeychainSource(ctx, layerType, filename)
-	secrets, transientLegacyFailure, err := collectLegacySecrets(&lc, store, allowLegacyGet)
+	secrets, transientLegacyFailure, legacyDisabledByPolicy, err := collectLegacySecrets(&lc, store, allowLegacyGet)
 	if err != nil {
 		return Config{}, err
 	}
-	if transientLegacyFailure {
+	switch {
+	case transientLegacyFailure:
 		canPersist = false
 		deferredReason = "a legacy credential could not be read from the credential store"
+	case legacyDisabledByPolicy:
+		// Distinct from the transient case above: the keychain is deliberately
+		// disabled by configuration, not experiencing an outage, so the message
+		// must not imply that retrying alone will resolve it.
+		canPersist = false
+		deferredReason = "credential storage is disabled by configuration"
 	}
 
 	// The backup is an exact 0600 rollback copy. Plaintext is intentionally not
@@ -762,6 +869,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	cfg := convertLegacyConfig(&lc, layerType, secrets)
 	cfg.Source = filename
 	cfg.migrationDeferred = !backupOK
+	applyLegacyKeychainRuntime(ctx, cfg, policy, store)
 
 	// Verification uses a separately decoded, immutable baseline. Conversion
 	// must not be able to make its own self-check pass by aliasing and mutating
@@ -800,7 +908,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	cfg.bindSourceIdentity(migrationPath)
 	cfg.sourceRevision = sha256.Sum256(contents)
 	cfg.hasSourceRevision = true
-	if err := Write(withConfigWriteLockHeld(ctx), source, *cfg); err != nil {
+	if err := Write(withConfigWriteLockHeld(ctx, migrationPath), source, *cfg); err != nil {
 		var durabilityErr *configDurabilityError
 		if errors.As(err, &durabilityErr) {
 			log.Warn("migrated config was replaced but its directory durability barrier failed; old and new keychain generations were retained",

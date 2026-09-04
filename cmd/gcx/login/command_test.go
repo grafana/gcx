@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	internalauth "github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/credentials"
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	internallogin "github.com/grafana/gcx/internal/login"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -367,6 +368,7 @@ func TestUseExistingCloudEntryEndpointChangeFailsClosed(t *testing.T) {
 
 func TestServerChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_KEYCHAIN", "off")
 	t.Setenv("GRAFANA_TOKEN", " \t ")
 	agent.ResetForTesting()
 	t.Cleanup(agent.ResetForTesting)
@@ -407,6 +409,7 @@ func TestServerChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
 }
 
 func TestProxyOrTLSChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	tests := []struct {
 		name      string
 		configure func(*testing.T, *config.GrafanaConfig)
@@ -565,6 +568,7 @@ func TestRuntimeOnlyDestinationRejectsFreshTokenBeforeNonDurablePersistence(t *t
 
 func TestRuntimeOnlyTLSRecoveryCommandsInitializeFreshExplicitConfigAndUnblockLogin(t *testing.T) {
 	disableAgentMode(t)
+	t.Setenv("GCX_KEYCHAIN", "off")
 	for _, key := range []string{
 		"GCX_CONFIG",
 		"GRAFANA_SERVER",
@@ -735,6 +739,7 @@ func TestRuntimeOnlyDestinationRecoveryHandlesDottedNamesWithoutInvalidDotPaths(
 }
 
 func TestExistingGrafanaTokenIsOfferedOnlyForMatchingCompleteBinding(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	seed := config.Config{}
 	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{
@@ -811,6 +816,7 @@ func TestWhitespaceEnvironmentTokensAreNotExplicitOrSelected(t *testing.T) {
 }
 
 func TestLoadLoginSourceContextAppliesEnvToPositionalTarget(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	t.Setenv("GRAFANA_TOKEN", "target-env-token")
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	seed := config.Config{}
@@ -937,6 +943,7 @@ func TestLoginNewContextWithoutServerReportsNoTarget(t *testing.T) {
 
 func TestLoginRejectedStoredTokenReportsRequestedTarget(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_KEYCHAIN", "off")
 	unsetEnvForTest(t, "GRAFANA_SERVER")
 	unsetEnvForTest(t, "GRAFANA_TOKEN")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
@@ -1212,6 +1219,7 @@ func TestLoginEnvironmentServerChangeRequiresPreflightConfirmation(t *testing.T)
 }
 
 func TestSchemelessServerReauthMatchesStoredHTTPSDestination(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	server, caFile := newLoginTLSServer(t)
 	bareServer := strings.TrimPrefix(server.URL, "https://")
 
@@ -1312,6 +1320,105 @@ func newLoginTLSServer(t *testing.T) (*httptest.Server, string) {
 	certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
 	require.NoError(t, os.WriteFile(caFile, certificate, 0o600))
 	return server, caFile
+}
+
+func TestLoginPreservesEffectiveKeychainPolicyForSystemOwner(t *testing.T) {
+	tests := []struct {
+		name          string
+		systemMode    string
+		userMode      string
+		wantPlaintext bool
+	}{
+		{
+			name:          "higher priority user off disables system owner keychain",
+			systemMode:    "on",
+			userMode:      "off",
+			wantPlaintext: true,
+		},
+		{
+			name:       "higher priority user on enables system owner keychain",
+			systemMode: "off",
+			userMode:   "on",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("GCX_AGENT_MODE", "false")
+			t.Setenv("GCX_KEYCHAIN", "")
+			t.Setenv("GCX_CONFIG", "")
+			unsetEnvForTest(t, "GRAFANA_TOKEN")
+			unsetEnvForTest(t, "GRAFANA_CLOUD_TOKEN")
+			agent.ResetForTesting()
+			t.Cleanup(agent.ResetForTesting)
+
+			home := t.TempDir()
+			userRoot := t.TempDir()
+			systemRoot := t.TempDir()
+			workDir := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("XDG_CONFIG_HOME", userRoot)
+			t.Setenv("XDG_CONFIG_DIRS", systemRoot)
+			t.Chdir(workDir)
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api/health":
+					_, _ = w.Write([]byte(`{"version":"12.0.0"}`))
+				case "/api", "/apis":
+					_, _ = w.Write([]byte(`{"kind":"APIGroupList","apiVersion":"v1","groups":[]}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(server.Close)
+
+			systemPath := filepath.Join(systemRoot, config.StandardConfigFolder, config.StandardConfigFileName)
+			require.NoError(t, os.MkdirAll(filepath.Dir(systemPath), 0o755))
+			systemContents := fmt.Appendf(nil, `version: 1
+credentials:
+  keychain: %s
+stacks:
+  default:
+    grafana:
+      server: %s
+      auth-method: token
+      org-id: 1
+contexts:
+  default:
+    stack: default
+current-context: default
+`, test.systemMode, server.URL)
+			require.NoError(t, os.WriteFile(systemPath, systemContents, 0o600))
+			userPath := filepath.Join(userRoot, config.StandardConfigFolder, config.StandardConfigFileName)
+			require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
+			require.NoError(t, os.WriteFile(userPath, fmt.Appendf(nil, `version: 1
+credentials:
+  keychain: %s
+contexts: {}
+`, test.userMode), 0o600))
+
+			cmd := Command()
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{"default", "--token", "fresh-layered-token", "--yes"})
+			err := cmd.ExecuteContext(t.Context())
+
+			raw, readErr := os.ReadFile(systemPath)
+			require.NoError(t, readErr)
+			if test.wantPlaintext {
+				require.NoError(t, err)
+				assert.Contains(t, string(raw), "token: fresh-layered-token")
+				assert.NotContains(t, string(raw), "keychain:gcx:v2:")
+				return
+			}
+			require.ErrorIs(t, err, credentials.ErrUnavailable)
+			assert.NotContains(t, string(raw), "fresh-layered-token")
+		})
+	}
 }
 
 func TestLoginRejectsFreshCredentialForLayeredLocalOwnerBeforeNetwork(t *testing.T) {
@@ -1509,6 +1616,7 @@ contexts:
 
 func TestLoginCopyOnWritesCloudEntrySharedByAnotherLayer(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_KEYCHAIN", "off")
 	t.Setenv("HOME", t.TempDir())
 	userDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", userDir)

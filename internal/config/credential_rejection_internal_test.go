@@ -316,6 +316,13 @@ func TestKeychainReadRejectionReasonNamesTheLockedKeychain(t *testing.T) {
 	}
 }
 
+func TestKeychainReadRejectionReasonNamesTheSourceNeutralOptOut(t *testing.T) {
+	assert.Equal(t, "keychain use is disabled by configuration", keychainReadRejectionReason(credentials.ErrDisabled))
+	assert.Equal(t, "the OS keychain is locked", keychainReadRejectionReason(credentials.ErrLocked),
+		"ErrDisabled wraps ErrUnavailable, so its branch must not shadow the locked one")
+	assert.Equal(t, "the OS keychain could not be read", keychainReadRejectionReason(credentials.ErrUnavailable))
+}
+
 func TestLockedKeychainReadPreservesCauseInCredentialRejection(t *testing.T) {
 	store := newBoundTestStore()
 	useBoundTestStore(t, store)

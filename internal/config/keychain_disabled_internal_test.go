@@ -1,12 +1,15 @@
 package config
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -70,27 +73,44 @@ func TestReconcileMarksTheAbandonedGenerationWhenDisabled(t *testing.T) {
 	assert.Empty(t, txn.deletes, "a disabled store cannot delete the old account")
 }
 
-// Section 2 of the review: the replaced generation cannot be deleted through a
-// disabled store, so the warning has to disclose that it stays behind.
+// A disabled store cannot delete the replaced generation, so the warning must
+// disclose that it remains in the OS credential store.
 func TestBoundKeychainDisabledWarningDisclosesTheAbandonedGeneration(t *testing.T) {
 	logger := &boundTestLogger{}
 	var warnings strings.Builder
 	txn := newKeychainWriteTransaction(newBoundTestStore(), logger)
-	txn.warnUnavailableOnce = func(emit func()) { emit() }
+	// Suppress the generic availability warning. The abandoned-generation
+	// repair must still reach the caller because it is more actionable.
+	txn.warnUnavailableOnce = func(func()) {}
 	txn.plaintextFallback = true
 	txn.fallbackErr = credentials.ErrDisabled
 	txn.abandonedGeneration = true
 
 	require.NoError(t, txn.commit(&warnings))
-	assert.Contains(t, warnings.String(), "is still in the OS credential store and gcx can no longer reach it")
-	assert.Contains(t, warnings.String(), "delete the stale gcx entry")
+	assert.Equal(t, "warn: keychain storage is disabled; the old keychain item cannot be removed while disabled and credentials remain in plaintext on disk; "+
+		"enable keychain storage later, then remove the stale gcx entry through your OS credential store\n", warnings.String())
 }
 
-func TestKeychainReadRejectionReasonNamesTheDeliberateOptOut(t *testing.T) {
-	assert.Equal(t, "keychain use is disabled by GCX_KEYCHAIN", keychainReadRejectionReason(credentials.ErrDisabled))
-	assert.Equal(t, "the OS keychain is locked", keychainReadRejectionReason(credentials.ErrLocked),
-		"ErrDisabled wraps ErrUnavailable, so its branch must not shadow the locked one")
-	assert.Equal(t, "the OS keychain could not be read", keychainReadRejectionReason(credentials.ErrUnavailable))
+func TestBoundKeychainDisabledWarningUsesTypedAgentEvent(t *testing.T) {
+	previousAgentMode := agent.IsAgentMode()
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(previousAgentMode) })
+
+	var warnings bytes.Buffer
+	txn := newKeychainWriteTransaction(newBoundTestStore(), &boundTestLogger{})
+	txn.warnUnavailableOnce = func(func()) {}
+	txn.plaintextFallback = true
+	txn.fallbackErr = credentials.ErrDisabled
+	txn.abandonedGeneration = true
+
+	require.NoError(t, txn.commit(&warnings))
+	var event struct {
+		Class   string `json:"class"`
+		Summary string `json:"summary"`
+	}
+	require.NoError(t, json.Unmarshal(warnings.Bytes(), &event))
+	assert.Equal(t, "warning", event.Class)
+	assert.Contains(t, event.Summary, "old keychain item cannot be removed while disabled")
 }
 
 // Deleting cannot silently succeed while the store is disabled, but the error
@@ -140,11 +160,9 @@ func TestBoundKeychainDisabledFallbackWarningOmitsTroubleshootingHint(t *testing
 	txn.fallbackErr = credentials.ErrDisabled
 
 	require.NoError(t, txn.commit(&warnings))
-	assert.Equal(t, "Warning: keychain storage is disabled; credentials remain in plaintext on disk; "+
-		"unset GCX_KEYCHAIN to store credentials in the OS credential store\n",
+	assert.Equal(t, "warn: keychain storage is disabled; credentials remain in plaintext on disk; "+
+		"enable keychain storage to store credentials in the OS credential store\n",
 		warnings.String())
-	assert.NotContains(t, warnings.String(), "is available and working",
-		"a deliberate opt-out must not be reported as a broken credential store")
 	assert.NotContains(t, warnings.String(), "is available and working",
 		"a deliberate opt-out must not be reported as a broken credential store")
 }

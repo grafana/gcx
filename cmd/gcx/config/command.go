@@ -1076,6 +1076,13 @@ PROPERTY_VALUE is the new value to set.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			if args[0] == "credentials.keychain" {
+				target, err := config.SetKeychainPolicy(cmd.Context(), configOpts.ConfigFile, fileType, args[1])
+				if err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("set", args[0], target))
+			}
 
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
 			if err != nil && (configOpts.ConfigFile == "" || !config.CanInitializeMissingSource(cfg, err)) {
@@ -1179,6 +1186,14 @@ Paths are literal: they name the exact location in the configuration file, start
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			if args[0] == "credentials.keychain" || args[0] == "credentials" {
+				target, err := config.ClearKeychainPolicy(cmd.Context(), configOpts.ConfigFile, fileType)
+				if err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("unset", args[0], target))
 			}
 
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)

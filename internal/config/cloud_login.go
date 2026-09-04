@@ -276,6 +276,9 @@ func SaveCloudConfigGuarded(
 ) (string, string, error) {
 	cfg, err := LoadLoginMutationGuarded(ctx, source, guard)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		if isCloudLoginKeychainFailure(err) {
+			return "", "", err
+		}
 		return "", "", &gcxerrors.DetailedError{
 			Summary: "Failed to load config",
 			Parent:  err,
@@ -305,6 +308,9 @@ func SaveCloudConfigGuarded(
 	}
 
 	if err := Write(ctx, source, cfg); err != nil {
+		if isCloudLoginKeychainFailure(err) {
+			return "", "", err
+		}
 		return "", "", &gcxerrors.DetailedError{
 			Summary: "Failed to save config",
 			Parent:  err,
@@ -316,4 +322,8 @@ func SaveCloudConfigGuarded(
 	}
 
 	return contextName, entryName, nil
+}
+
+func isCloudLoginKeychainFailure(err error) bool {
+	return credentials.IsFatalStoreFailure(err)
 }

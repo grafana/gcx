@@ -14,11 +14,12 @@ type CLIOptions struct {
 	// disables the notifier (NO_COLOR convention).
 	DisableUpdateNotifier string `env:"GCX_NO_UPDATE_NOTIFIER"`
 
-	// Keychain turns the OS keychain off when set to "off", leaving credentials
-	// in plaintext in the config file. That is the only option on a machine
-	// whose keychain is permanently unavailable. "off" is the only value that
-	// disables it; every other value, recognised or not, leaves the keychain in
-	// use, so a typo cannot silently write credentials in plaintext.
+	// Keychain overrides trusted credentials.keychain configuration. "off" is
+	// the only value that disables the OS keychain and persists credentials in
+	// the mode-0600 config file. "on" is the default; an unrecognized value
+	// warns and resolves to "on", so a typo cannot silently write plaintext.
+	// With keychain use on, unavailable and locked stores fail closed rather
+	// than dynamically falling back during login, refresh, or ordinary writes.
 	Keychain string `env:"GCX_KEYCHAIN"`
 }
 

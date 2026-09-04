@@ -206,12 +206,28 @@ contexts and never mutate the config file. Context selection happens before thes
 **Precedence:** env vars override config file values for the selected context. Token takes precedence
 over user/password when both are set.
 
-`GCX_KEYCHAIN=off` stops gcx using the OS keychain, leaving credentials in
-plaintext in the `0600` config file. Use it only where the keychain is
-permanently unavailable. Existing
-keychain-backed credentials are not moved back out: their references are
-preserved, so they become unreadable until GCX_KEYCHAIN is unset or the
-credential is set again.
+Credential storage defaults to the OS keychain. Set the trusted configuration
+policy to `off` only when mode-`0600` plaintext YAML storage is deliberate:
+
+```yaml
+credentials:
+  keychain: off
+```
+
+`GCX_KEYCHAIN` overrides that policy. Precedence is `GCX_KEYCHAIN`, then an
+explicit `--config`/`GCX_CONFIG` file, user config, system config, and default
+`on`. An automatically discovered repository `.gcx.yaml` cannot set
+`credentials.keychain`: gcx ignores it with a warning but still merges its
+other fields. Invalid trusted config fails validation; an invalid environment
+value warns and resolves to `on`.
+
+Configured `off` is the only plaintext persistence mode. In `on` mode an
+unavailable or locked keychain fails credential writes closed; gcx never
+dynamically falls back during login or refresh. Existing keychain-backed
+credentials are not moved back out: their references are preserved, so they
+become unreadable until the policy is `on` again or the credential is replaced.
+Replacing one while `off` writes plaintext and leaves the old OS-store item
+stale; gcx warns with cleanup guidance.
 
 Credentials stored in the OS keychain are bound to their canonical source file,
 exact owner kind/name, exact secret field, and normalized destination. If an

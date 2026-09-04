@@ -20,6 +20,7 @@ All code lives under `internal/config/` and `cmd/gcx/config/command.go`.
 Config
 ├── Source          (runtime-only: path of loaded file)
 ├── Version         1                 // legacy (pre-versioned) configs are auto-migrated on load
+├── Credentials      *CredentialsConfig // credential-store policy (`keychain`: on or off; absent is on)
 ├── CurrentContext  "production"
 ├── Resources       *ResourcesConfig  // global `gcx resources` settings; union-merged with per-stack
 ├── Stacks          map[string]*StackConfig
@@ -174,6 +175,33 @@ Configuration has two mutually exclusive loading modes:
    | Middle | User config (`$HOME/.config/gcx/config.yaml`, then the platform `$XDG_CONFIG_HOME` fallback; first found wins) |
    | Highest | Repository config (`.gcx.yaml` in the current directory) |
 
+`credentials.keychain` is a storage policy rather than ordinary repository
+configuration. The accepted values are `on` and `off` (case-insensitive after
+trimming), and absence resolves to `on`. Before creating a credential store,
+gcx resolves one policy for the invocation:
+
+```text
+system config -> user config -> [ignore local credentials policy]
+       -> explicit selection rules -> GCX_KEYCHAIN override
+       -> one resolved store for load + write
+```
+
+More precisely, the precedence is `GCX_KEYCHAIN`, then a deliberately selected
+`--config` or `GCX_CONFIG` file, then user config, system config, and the
+default `on`. An automatically discovered local `.gcx.yaml` can still merge its
+ordinary fields, but its `credentials.keychain` value is ignored with one
+actionable warning. Explicitly selecting that file makes the policy trusted.
+An invalid environment value warns and resolves to `on`; an invalid value in a
+trusted file is a validation error that names the field and source. An invalid
+auto-discovered local value is ignored with the local-policy warning.
+
+Direct and layered loading preserve the same trust ordering. A direct load
+validates its declared version from the captured source bytes, resolves the
+policy from those bytes, and only then detects legacy format or fully decodes
+the configuration. A layered load first preflights declared versions for every
+captured source, resolves the policy from those snapshots, then loads and merges
+the layers. Neither path opens a credential store before policy resolution.
+
 Source: `internal/config/loader.go` (`LoadLayered`, `DiscoverSources`, and
 `StandardLocation`) and `cmd/gcx/config/command.go`.
 
@@ -234,12 +262,16 @@ Loading steps (in `Load`):
 2. `os.ReadFile` the file
 3. Reject any explicitly declared version other than `1` before migration,
    keychain access, backup creation, or another side effect
-4. **Detect legacy format by shape** (`isLegacyConfig`) and auto-migrate if it
+4. **Resolve the credential-store policy and select one store for load and
+   write**: the policy comes from the already selected source snapshots, not a
+   second config-file discovery. `off` selects a store that reports
+   `credentials.ErrDisabled` without probing the OS backend.
+5. **Detect legacy format by shape** (`isLegacyConfig`) and auto-migrate if it
    matches — see [Legacy format migration](#legacy-format-migration). Otherwise
    YAML-decode with `BytesAsBase64: true`
-5. Bind every stack and Cloud entry to the canonical identity of the source file
-6. `Config.Resolve()`: populate names and wire each context's resolved views
-7. **Resolve keychain sentinels for the selected context**: only a v2 sentinel
+6. Bind every stack and Cloud entry to the canonical identity of the source file
+7. `Config.Resolve()`: populate names and wire each context's resolved views
+8. **Resolve keychain sentinels for the selected context**: only a v2 sentinel
    whose digest matches the source, exact owner/field, and normalized credential
    destination can trigger a keychain lookup. A copied, cross-field, legacy, or
    destination-mismatched sentinel is withheld in memory without a lookup and
@@ -255,22 +287,19 @@ Loading steps (in `Load`):
    config inspection and repair continue to use the recorded rejection reason.
    Under `go test`, the default store is unavailable, so test binaries never
    prompt the OS keychain.
-   `GCX_KEYCHAIN=off` selects a store that reports
-   `credentials.ErrDisabled` without probing the OS backend.
-8. **Migrate plaintext token-shaped secrets**: plaintext values in tracked stack
+9. **Migrate plaintext token-shaped secrets**: plaintext values in tracked stack
    and Cloud fields are staged under a newly generated bound account and the
    file is rewritten with
    `keychain:gcx:v2:<binding-digest>:<random-generation>`. The binding covers
    the canonical source, exact owner kind/name, exact field, and normalized
-   destination. An incomplete binding or unavailable keychain leaves the value
-   in plaintext with a warning. A locked keychain stops the migration write with
-   the same warning, but it never authorizes a plaintext fallback elsewhere: an
-   explicit write, such as `gcx login` or `gcx config set`, fails on a locked
-   backend. The user must unlock the keychain, or must run gcx from a desktop
-   session that can answer the unlock prompt.
-9. Apply each `Override` function in order, then lazily resolve a context selected
+   destination. Under the default `on` policy, unavailable and locked stores
+   fail a credential write closed; gcx does not dynamically downgrade to
+   plaintext. Under explicit `off`, the store is not contacted and the value
+   stays in the mode-`0600` YAML file. The user must unlock or restore the
+   store, or explicitly set the policy to `off`, before retrying.
+10. Apply each `Override` function in order, then lazily resolve a context selected
    by an override
-10. On `ValidationError`, annotate the error with YAML source information
+11. On `ValidationError`, annotate the error with YAML source information
 
 `Write` validates the schema version and binds the configuration to its actual
 target source before encoding. Its keychain reconcile pass is mutation-aware:
@@ -287,12 +316,10 @@ target source before encoding. Its keychain reconcile pass is mutation-aware:
   unrelated writes, while an explicit set/unset can repair or remove it.
 
 Credential writes are a staged transaction. A new or rotated value is written
-under a fresh random generation and read back before the config is replaced. If
-the store cannot retain or read back a brand-new credential with no prior
-keychain reference, gcx first confirms deletion of the staged generation and
-then keeps the new value in plaintext rather than writing a sentinel that a
-later command cannot resolve. A mismatched readback, an unknown read failure,
-or an unconfirmed cleanup fails the write closed. The new config
+under a fresh random generation and read back before the config is replaced.
+Under the resolved `on` policy, an unavailable or locked store, a mismatched
+readback, an unknown read failure, or an unconfirmed cleanup fails the write
+closed. The new config
 is written to a temporary file, synced, renamed, and followed by a parent
 directory sync. A failure before rename removes the staged generation; a
 failure after rename but before confirmed durability preserves both generations
@@ -303,23 +330,17 @@ when every deleted old generation was restored successfully. If restoration is
 uncertain, gcx retains the durable new config and staged generations instead of
 creating an old-YAML-to-missing-keychain reference.
 
-When the keychain reports a narrowly classified unavailable backend, a
-brand-new credential with no prior keychain reference may remain plaintext on
-disk; gcx warns at most once per process. Known unreachable native backend
-failures are normalized at write time as unavailable, not just during the
-initial read probe. Secret Service lock responses and the macOS statuses for
-dark wake, interaction disallowed, and the observed locked-session failure
-normalize to a separate locked class (`credentials.ErrLocked`), which stays
-fatal at read time and at write time. OAuth refresh persistence retains the
-same cause while keeping the rotated generation pending for retry. A locked
-backend, replacing or deleting an existing generation, replacing a missing or
-rejected sentinel, and
-value-size, policy, cancellation, or unknown backend failures all fail closed.
-Silently continuing in those cases could orphan the only resolvable credential,
-leave an old credential active, downgrade a credential for an unrelated backend
-error, or write a secret in plaintext while a real secret backend exists.
-Secret-less writes skip the keychain entirely (`hasSecretsToReconcile`), so they
-never probe the OS backend.
+Known unreachable native backend failures are normalized at write time as
+unavailable, not just during the initial read probe. Secret Service lock
+responses and the macOS statuses for dark wake, interaction disallowed, and the
+observed locked-session failure normalize to a separate locked class
+(`credentials.ErrLocked`), which remains fatal at read time and write time.
+OAuth refresh persistence retains the same cause while keeping the rotated
+generation pending for retry. There is no automatic outage-triggered plaintext
+fallback during login, refresh, or ordinary credential writes. An optional
+fallback design is deferred because it needs separate generation ownership and
+replacement-safety rules. Secret-less writes skip the keychain entirely
+(`hasSecretsToReconcile`), so they never probe the OS backend.
 
 A deliberately disabled keychain (`credentials.ErrDisabled`) is the one
 exception to fail-closed replacement: the user has asked for plaintext, so
@@ -863,6 +884,7 @@ gcx resources get dashboards
                           ├── config.LoadLayered(ctx, explicitFile, overrides...)
                           │     ├── explicit file/GCX_CONFIG, or discover system → user → local
                           │     ├── exact-snapshot version + legacy-migration preflight
+                          │     ├── resolve trusted keychain policy; ignore local policy field
                           │     ├── load sources; bind source identities and Cloud destinations
                           │     ├── resolve trusted keychain references and migrate plaintext
                           │     ├── merge atomic stack/Cloud entries + field-merged contexts
@@ -925,6 +947,7 @@ variable reference.
 | `internal/config/version.go` | Declared-version validation for reads and writes |
 | `internal/config/path.go` | `ValidateConfigPath` — literal `config set` path validation + hints |
 | `internal/config/envparse.go` | `ParseEnvIntoContext` — env var overrides, ephemeral cloud entry |
+| `internal/config/keychain_mode.go` | Resolve trusted `credentials.keychain` policy and `GCX_KEYCHAIN` override |
 | `internal/config/keychain.go` | Source/owner/field/destination-bound, generation-addressed keychain resolution and reconciliation |
 | `internal/config/editor.go` | `SetValue`, `UnsetValue` — reflection-based path traversal |
 | `internal/config/rest.go` | `NewNamespacedRESTConfig` — config → k8s REST client |

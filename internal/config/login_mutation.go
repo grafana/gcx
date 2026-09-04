@@ -49,6 +49,7 @@ type LoginMutationGuard struct {
 	expectCloud          string
 	verifyDiscovery      bool
 	discoveredSources    []loginMutationSourceSnapshot
+	keychainPolicy       keychainPolicy
 }
 
 type loginMutationSourceSnapshot struct {
@@ -71,6 +72,7 @@ func (config *Config) NewLoginMutationGuard(contextName string, intent LoginMuta
 		expectSourceAbsent: config.expectSourceAbsent,
 		contextName:        contextName,
 		intent:             intent,
+		keychainPolicy:     config.keychainPolicy,
 	}
 	if ctx := config.Contexts[contextName]; ctx != nil {
 		guard.expectContextPresent = true
@@ -102,6 +104,9 @@ func LoadLoginMutationGuarded(ctx context.Context, source Source, guard LoginMut
 	}
 
 	loadCtx := withMigrationPersistenceSuppressed(ctx)
+	if guard.keychainPolicy.source != "" {
+		loadCtx = withKeychainPolicy(loadCtx, guard.keychainPolicy)
+	}
 	if snapshot != nil {
 		loadCtx = withConfigSnapshot(loadCtx, guard.sourcePath, snapshot)
 	}
@@ -175,6 +180,9 @@ func (guard LoginMutationGuard) WithDiscoverySnapshot(effective *Config) (LoginM
 		return guard, errors.New("capture login discovery snapshot: nil effective config")
 	}
 	guard.verifyDiscovery = true
+	if effective.keychainPolicy.source != "" {
+		guard.keychainPolicy = effective.keychainPolicy
+	}
 	guard.discoveredSources = make([]loginMutationSourceSnapshot, 0, len(effective.Sources))
 	for _, source := range effective.Sources {
 		contents := source.snapshot

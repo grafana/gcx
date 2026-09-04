@@ -235,7 +235,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	}
 	flags.Server = requestedLoginServer(flags.Server, sourceCtx)
 	mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
-	ctx = flags.Config.LoginMutationContext(ctx, mutationTarget)
+	ctx = flags.Config.LoginMutationContext(ctx, mutationTarget, cfg)
 	cmd.SetContext(ctx)
 	persistedSourceConfig, persistedSourceCtx, err := loadPersistedLoginSource(ctx, mutationSource, contextName)
 	if err != nil {
