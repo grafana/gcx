@@ -63,9 +63,10 @@ The precedence, highest first, is:
 
 An automatically discovered repository-local `.gcx.yaml` is not trusted to set
 this policy. gcx ignores its `credentials.keychain` value and warns, but still
-merges that file's ordinary configuration fields. Review
-and deliberately select a repository file with `--config .gcx.yaml` or
-`GCX_CONFIG=.gcx.yaml` if its policy should apply.
+merges that file's ordinary configuration fields. Review the file, then
+deliberately select it to make its policy apply: `GCX_CONFIG=.gcx.yaml` trusts
+it on every invocation, while `--config .gcx.yaml` trusts it only for the
+current command.
 
 An invalid `GCX_KEYCHAIN` value warns and resolves to `on`, so a typo cannot
 silently enable plaintext storage. An invalid value in a trusted configuration

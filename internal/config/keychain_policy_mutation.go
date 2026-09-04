@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	"github.com/grafana/gcx/internal/credentials"
 )
 
 // SetKeychainPolicy changes credentials.keychain using the intended effective
@@ -111,7 +110,6 @@ func mutateKeychainPolicy(
 	}
 	apply(&cfg)
 	cfg.keychainPolicy = policy
-	cfg.keychainStore = newLazyStore(func() credentials.Store { return keychainStoreForPolicy(policy) })
 	if err := write(ctx, source, cfg, opts.forWrite()); err != nil {
 		return source, err
 	}
@@ -198,8 +196,8 @@ func keychainPolicyMutationTarget(explicitFile, fileType string) (ConfigSource, 
 
 	if target.Type == "local" {
 		return ConfigSource{}, nil, 0, fmt.Errorf(
-			"credentials.keychain cannot be changed in the auto-discovered local config %s: this security setting is untrusted there and never takes effect; use --file user, --file system, or --config %s to select a trusted file explicitly",
-			target.Path, target.Path,
+			"credentials.keychain cannot be changed in the auto-discovered local config %s: this security setting is untrusted there and never takes effect; use --file user, --file system, or set GCX_CONFIG=%s so this file is trusted on every invocation (--config %s only trusts it for the current command and will be ignored again afterward)",
+			target.Path, target.Path, target.Path,
 		)
 	}
 
