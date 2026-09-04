@@ -15,7 +15,7 @@
 | 2 | `ExitUsageError` | Usage error | Bad flags, invalid selectors, missing args |
 | 3 | `ExitAuthFailure` | Auth failure | 401/403, missing or invalid credentials |
 | 4 | `ExitPartialFailure` | Partial failure | Some resources succeeded, others failed |
-| 5 | `ExitCancelled` | Cancelled | User pressed Ctrl+C (SIGINT) or `context.Canceled` |
+| 5 | `ExitCancelled` | Cancelled | User pressed Ctrl+C (SIGINT), `context.Canceled`, a declined confirmation prompt, or a server-reported cancellation |
 | 6 | `ExitVersionIncompatible` | Version incompatible | Grafana version < 12 detected |
 
 Constants defined in `internal/gcxerrors/exitcodes.go`.
@@ -29,10 +29,56 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
   push, pull, delete, or validate operations have mixed success/failure results.
   Commands return a `PartialFailureError` when `--on-error=fail` (default) and
   `FailedCount > 0`.
-- Exit code 5 (cancelled) is set by `convertContextCanceled` (first in converter
-  chain) and by a fast-path check in `handleError` for `context.Canceled`.
+- Exit code 5 (cancelled) has several producers, and the taxonomy is about the
+  final exit code rather than about any one of them. `isSilentCancellation` in
+  `main.go` exits 5 without printing an error for an interrupted invocation.
+  Commands that stop early after reporting their own outcome carry the same code
+  themselves, and not through one error type: a declined confirmation prompt
+  returns a `DetailedError` with `ExitCode: ExitCancelled`
+  (`internal/providers/irm/oncall_actions.go`,
+  `internal/providers/assistant/mcpservers/commands.go`), while an aborted
+  `dev scaffold` and the agent-mode assistant and instrumentation wait paths
+  return an `EmittedError` carrying it. Every route exits through `exitWith`, so
+  each is reported as `outcome: canceled` (see
+  [anonymous usage statistics](../sources/anonymous-usage-statistics.md)), and
+  the event does not distinguish them.
+- `convertContextCanceled` is still first in the converter chain, but it no
+  longer contributes a top-level exit 5. `isSilentCancellation` tests the same
+  predicate with `errors.Is`, so any chain the converter would match — wrapped
+  or not — is intercepted in `main.go` first, and a chain carrying an
+  `EmittedError` returns that code from `reportError` earlier still. The
+  converter remains reachable where a command converts an error itself rather
+  than returning it, as `gcx config check` does.
+- A SIGINT does not always arrive as `context.Canceled`: Go 1.26's
+  `signal.NotifyContext` cancels with a cause describing the signal and
+  `net/http` surfaces `context.Cause`, which before Go 1.26.5 did not report
+  itself as `context.Canceled`. `isSilentCancellation` therefore also matches
+  the invocation context's own cause. `convertContextCanceled` still tests only
+  `errors.Is(err, context.Canceled)`, so cancellations classified deeper in the
+  converter chain depend on the toolchain in use.
 - SIGINT is handled via `signal.NotifyContext` in `main.go`, which cancels the
-  context and produces exit code 5.
+  context and produces exit code 5. A watcher goroutine calls the returned stop
+  function as soon as that context is cancelled, restoring the default terminate
+  action so a second Ctrl-C ends a run whose graceful shutdown has stalled — not
+  from a defer, which `os.Exit` would skip. The usage export that follows is
+  synchronous, so `exitWith` stands that watcher down first (`interruptGate`) and
+  learns from it whether a signal had arrived; nothing else can then change the
+  disposition the export runs under. `abandonsExport` is that decision, and it
+  requires both that a signal arrived and that the final exit code is 5. For an
+  invocation the user is abandoning the restored default action stands, so a
+  second Ctrl-C ends a process still waiting on the export instead of being
+  swallowed. Every other invocation holds SIGINT for the length of the export,
+  including one that was never interrupted: a command that absorbs the interrupt
+  and still finishes — `gcx dev serve` shuts its HTTP server down on `ctx.Done`
+  and returns `nil` — must exit with the code that agrees with what it printed
+  rather than dying by signal with status 130, and so must one whose first
+  interrupt only arrives while the export is in flight. Deciding from a bool
+  sampled before the export cannot see that second case, which is why the answer
+  is read from the gate at export time. Two limits remain: `signal.Stop` restores
+  the disposition the process started with, so a background job of a
+  non-interactive shell (which inherits SIGINT as `SIG_IGN`) still ignores the
+  second interrupt; and only SIGINT is caught at all, so a SIGTERM ends the
+  process before any of this runs.
 - Exit code 6 (version incompatible) is set by `convertVersionErrors` when
   Grafana version < 12 is detected.
 
