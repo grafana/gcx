@@ -25,7 +25,7 @@ Manage eval experiment runs.
 * [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
 * [gcx agento11y experiments cancel](gcx_agento11y_experiments_cancel.md)	 - Cancel a running experiment.
 * [gcx agento11y experiments create](gcx_agento11y_experiments_create.md)	 - Create a new experiment from a JSON or YAML file.
-* [gcx agento11y experiments export-conversations](gcx_agento11y_experiments_export-conversations.md)	 - Export an experiment's complete conversation source bundle to disk.
+* [gcx agento11y experiments export](gcx_agento11y_experiments_export.md)	 - Export an experiment's raw source bundle to disk.
 * [gcx agento11y experiments get](gcx_agento11y_experiments_get.md)	 - Get a single experiment by run ID.
 * [gcx agento11y experiments get-report](gcx_agento11y_experiments_get-report.md)	 - Get the aggregate report for an experiment.
 * [gcx agento11y experiments list](gcx_agento11y_experiments_list.md)	 - List experiments.

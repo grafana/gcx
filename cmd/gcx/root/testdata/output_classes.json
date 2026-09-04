@@ -28,7 +28,7 @@
  "gcx agento11y evaluators upsert": "finite",
  "gcx agento11y experiments cancel": "finite",
  "gcx agento11y experiments create": "finite",
- "gcx agento11y experiments export-conversations": "artifact",
+ "gcx agento11y experiments export": "artifact",
  "gcx agento11y experiments get": "finite",
  "gcx agento11y experiments get-report": "finite",
  "gcx agento11y experiments list": "finite",

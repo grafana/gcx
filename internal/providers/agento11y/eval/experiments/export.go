@@ -29,14 +29,15 @@ import (
 )
 
 const (
-	defaultExportConversationsConcurrency = 10
-	conversationExportType                = "gcx.agento11y.experiment_conversation_export"
-	conversationExportSchemaVersion       = "1"
+	defaultExportConcurrency      = 10
+	experimentExportType          = "gcx.agento11y.experiment_export"
+	experimentExportSchemaVersion = "1"
 
-	exportAgentsMarkdown = `# Sensitive Conversation Data
+	exportAgentsMarkdown = `# Sensitive Agent Observability Export
 
-This directory contains private Agent Observability conversation data. These
-instructions apply to every file and subdirectory beneath this directory.
+This directory contains private Agent Observability experiment data and may
+include conversation payloads. These instructions apply to every file and
+subdirectory beneath this directory.
 
 ## Security Classification
 
@@ -77,7 +78,10 @@ user.
   against ` + "`size_bytes`" + ` and ` + "`sha256`" + ` in ` + "`manifest.json`" + `.
 - Manifest checksums detect file changes relative to the manifest but do not
   authenticate the bundle. If its provenance is uncertain, create a new export.
-- Use ` + "`indexes/trials.jsonl`" + ` to map trials to conversation files.
+- Check ` + "`includes.conversations`" + ` in the manifest before expecting raw
+  conversation payloads.
+- Use ` + "`indexes/trials.jsonl`" + ` to map trials to conversation IDs and, when
+  included, conversation files.
 - Treat files below ` + "`raw/`" + ` as immutable source records.
 - Prefer aggregate or redacted findings over quoting source content.
 
@@ -87,22 +91,24 @@ Delete the export and all derived files when the task is complete or when
 requested by the user.
 `
 
-	exportGitignore = `# Sensitive private conversation export: do not commit any contents.
+	exportGitignore = `# Sensitive private Agent Observability export: do not commit any contents.
 *
 `
 )
 
-type exportConversationsOpts struct {
-	OutputDir   string
-	Concurrency int
+type exportOpts struct {
+	OutputDir            string
+	IncludeConversations bool
+	Concurrency          int
 }
 
-func (o *exportConversationsOpts) setup(flags *pflag.FlagSet) {
+func (o *exportOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.OutputDir, "output-dir", "d", "", "Directory to create for the export (required; must not already exist)")
-	flags.IntVar(&o.Concurrency, "concurrency", defaultExportConversationsConcurrency, "Maximum number of concurrent conversation requests")
+	flags.BoolVar(&o.IncludeConversations, "include-conversations", false, "Download the full payload for every conversation referenced by a trial")
+	flags.IntVar(&o.Concurrency, "concurrency", defaultExportConcurrency, "Maximum concurrent requests when including conversations")
 }
 
-func (o *exportConversationsOpts) Validate() error {
+func (o *exportOpts) Validate() error {
 	if strings.TrimSpace(o.OutputDir) == "" {
 		return errors.New("--output-dir/-d is required")
 	}
@@ -112,27 +118,29 @@ func (o *exportConversationsOpts) Validate() error {
 	return nil
 }
 
-func newExportConversationsCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &exportConversationsOpts{}
+func newExportCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &exportOpts{}
 	cmd := &cobra.Command{
-		Use:   "export-conversations <run-id>",
-		Short: "Export an experiment's complete conversation source bundle to disk.",
-		Long: `Export the experiment record, report, paginated trial responses, and every
-referenced conversation to a new directory. API response bodies are stored
-without field selection or model-specific transformation so the bundle can be
-curated into a fine-tuning dataset without losing source fields.
+		Use:   "export <run-id>",
+		Short: "Export an experiment's raw source bundle to disk.",
+		Long: `Export the experiment record, aggregate report, and paginated trial responses
+to a new directory. The trial index contains referenced conversation IDs, but
+conversation payloads are not downloaded unless --include-conversations is set.
+API response bodies are stored without field selection or model-specific
+transformation so source fields remain available for offline analysis.
 
-The destination must not already exist. Conversation requests run concurrently;
-individual failures are recorded in the manifest and artifact receipt. Raw
-conversation data may contain sensitive prompts, tool inputs, and tool outputs.
-Each export includes an AGENTS.md with safe-handling instructions and a
-.gitignore that excludes the entire bundle from Git by default.`,
-		Example: `  # Export every conversation referenced by an experiment.
-  gcx agento11y experiments export-conversations <run-id> -d ./exports/run-1
+The destination must not already exist. When conversations are included, their
+requests run concurrently and individual failures are recorded in the manifest
+and artifact receipt. Exported data may contain sensitive prompts, tool inputs,
+and tool outputs. Each export includes an AGENTS.md with safe-handling
+instructions and a .gitignore that excludes the entire bundle from Git by
+default.`,
+		Example: `  # Export experiment metadata, aggregate report, trials, and conversation IDs.
+  gcx agento11y experiments export <run-id> -d ./exports/run-1
 
-  # Reduce request pressure on the Agent Observability service.
-  gcx agento11y experiments export-conversations <run-id> -d ./exports/run-1 --concurrency 4`,
-		Args: exactArgsWithSuggestion(1, "gcx agento11y experiments export-conversations <run-id> -d <directory>"),
+  # Also download every referenced conversation with reduced request pressure.
+  gcx agento11y experiments export <run-id> -d ./exports/run-1 --include-conversations --concurrency 4`,
+		Args: exactArgsWithSuggestion(1, "gcx agento11y experiments export <run-id> -d <directory>"),
 		Annotations: map[string]string{
 			agent.AnnotationStability: agent.StabilityExperimental,
 		},
@@ -156,19 +164,23 @@ Each export includes an AGENTS.md with safe-handling instructions and a
 			if err != nil {
 				return err
 			}
-			result, err := exportConversationBundle(cmd.Context(), base, args[0], outputDir, opts.Concurrency)
+			result, err := exportExperimentBundle(cmd.Context(), base, args[0], outputDir, opts.IncludeConversations, opts.Concurrency)
 			if err != nil {
 				return err
 			}
 
 			if err := cmdio.EmitArtifactResult(cmd.OutOrStdout(), result.receipt, func(w io.Writer) error {
-				if result.receipt.Summary.Failed > 0 {
-					cmdio.Warning(w, "Exported %d conversations for experiment %s to %s (%d failed)",
-						result.receipt.Summary.Succeeded, args[0], outputDir, result.receipt.Summary.Failed)
+				if !opts.IncludeConversations {
+					cmdio.Success(w, "Exported experiment %s with %d trials to %s", args[0], result.manifest.Summary.Trials, outputDir)
 					return nil
 				}
-				cmdio.Success(w, "Exported %d conversations for experiment %s to %s",
-					result.receipt.Summary.Succeeded, args[0], outputDir)
+				if result.receipt.Summary.Failed > 0 {
+					cmdio.Warning(w, "Exported experiment %s with %d conversations to %s (%d failed)",
+						args[0], result.receipt.Summary.Succeeded, outputDir, result.receipt.Summary.Failed)
+					return nil
+				}
+				cmdio.Success(w, "Exported experiment %s with %d conversations to %s",
+					args[0], result.receipt.Summary.Succeeded, outputDir)
 				return nil
 			}); err != nil {
 				return err
@@ -218,7 +230,7 @@ type trialExportIndex struct {
 	ConversationPath string `json:"conversation_path,omitempty"`
 }
 
-type conversationExportFile struct {
+type experimentExportFile struct {
 	Kind       string `json:"kind"`
 	ID         string `json:"id,omitempty"`
 	Path       string `json:"path"`
@@ -227,7 +239,7 @@ type conversationExportFile struct {
 	TrialCount int    `json:"trial_count,omitempty"`
 }
 
-type conversationExportSummary struct {
+type experimentExportSummary struct {
 	Trials                    int `json:"trials"`
 	ConversationReferences    int `json:"conversation_references"`
 	UniqueConversations       int `json:"unique_conversations"`
@@ -236,20 +248,25 @@ type conversationExportSummary struct {
 	Failed                    int `json:"failed"`
 }
 
-type conversationExportManifest struct {
-	Type          string                    `json:"type"`
-	SchemaVersion string                    `json:"schema_version"`
-	ExperimentID  string                    `json:"experiment_id"`
-	ExportedAt    time.Time                 `json:"exported_at"`
-	Complete      bool                      `json:"complete"`
-	Summary       conversationExportSummary `json:"summary"`
-	Files         []conversationExportFile  `json:"files"`
-	Failures      []cmdio.MutationFailure   `json:"failures"`
+type experimentExportIncludes struct {
+	Conversations bool `json:"conversations"`
 }
 
-type conversationExportResult struct {
+type experimentExportManifest struct {
+	Type          string                   `json:"type"`
+	SchemaVersion string                   `json:"schema_version"`
+	ExperimentID  string                   `json:"experiment_id"`
+	ExportedAt    time.Time                `json:"exported_at"`
+	Includes      experimentExportIncludes `json:"includes"`
+	Complete      bool                     `json:"complete"`
+	Summary       experimentExportSummary  `json:"summary"`
+	Files         []experimentExportFile   `json:"files"`
+	Failures      []cmdio.MutationFailure  `json:"failures"`
+}
+
+type experimentExportResult struct {
 	receipt  cmdio.ArtifactReceipt
-	manifest conversationExportManifest
+	manifest experimentExportManifest
 	errs     []error
 }
 
@@ -261,7 +278,7 @@ type fetchedConversation struct {
 	err       error
 }
 
-func exportConversationBundle(ctx context.Context, base *agento11yhttp.Client, runID, outputDir string, concurrency int) (*conversationExportResult, error) {
+func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, runID, outputDir string, includeConversations bool, concurrency int) (*experimentExportResult, error) {
 	experimentBody, err := fetchRawJSON(ctx, base, basePath+"/"+url.PathEscape(runID))
 	if err != nil {
 		return nil, fmt.Errorf("fetch experiment %q: %w", runID, err)
@@ -286,12 +303,13 @@ func exportConversationBundle(ctx context.Context, base *agento11yhttp.Client, r
 		}
 	}()
 
-	manifest := conversationExportManifest{
-		Type:          conversationExportType,
-		SchemaVersion: conversationExportSchemaVersion,
+	manifest := experimentExportManifest{
+		Type:          experimentExportType,
+		SchemaVersion: experimentExportSchemaVersion,
 		ExperimentID:  runID,
 		ExportedAt:    time.Now().UTC(),
-		Files:         []conversationExportFile{},
+		Includes:      experimentExportIncludes{Conversations: includeConversations},
+		Files:         []experimentExportFile{},
 		Failures:      []cmdio.MutationFailure{},
 	}
 
@@ -320,44 +338,12 @@ func exportConversationBundle(ctx context.Context, base *agento11yhttp.Client, r
 	}
 	sort.Strings(conversationIDs)
 
-	fetched := make([]fetchedConversation, len(conversationIDs))
-	g := new(errgroup.Group)
-	g.SetLimit(concurrency)
-	for i, id := range conversationIDs {
-		if ctx.Err() != nil {
-			break
+	fetched := []fetchedConversation{}
+	if includeConversations {
+		fetched, err = fetchConversationPayloads(ctx, base, stagingDir, conversationIDs, concurrency)
+		if err != nil {
+			return nil, err
 		}
-		g.Go(func() error {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			body, fetchErr := fetchRawJSON(ctx, base, "/query/conversations/"+url.PathEscape(id))
-			if fetchErr != nil {
-				if err := ctx.Err(); err != nil {
-					return err
-				}
-				fetched[i] = fetchedConversation{id: id, err: fmt.Errorf("fetch conversation %q: %w", id, fetchErr)}
-				return nil
-			}
-			rel := filepath.ToSlash(filepath.Join("raw", "conversations", conversationFileName(id)))
-			if writeErr := writePrivateFile(filepath.Join(stagingDir, filepath.FromSlash(rel)), body); writeErr != nil {
-				fetched[i] = fetchedConversation{id: id, err: fmt.Errorf("write conversation %q: %w", id, writeErr)}
-				return nil
-			}
-			fetched[i] = fetchedConversation{
-				id:        id,
-				path:      rel,
-				hash:      sha256Hex(body),
-				sizeBytes: int64(len(body)),
-			}
-			return nil
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
 	}
 
 	pathByConversation := make(map[string]string, len(fetched))
@@ -372,7 +358,7 @@ func exportConversationBundle(ctx context.Context, base *agento11yhttp.Client, r
 			continue
 		}
 		pathByConversation[item.id] = item.path
-		manifest.Files = append(manifest.Files, conversationExportFile{
+		manifest.Files = append(manifest.Files, experimentExportFile{
 			Kind:       "conversation",
 			ID:         item.id,
 			Path:       item.path,
@@ -419,8 +405,8 @@ func exportConversationBundle(ctx context.Context, base *agento11yhttp.Client, r
 	receipt.Dir = outputDir
 	receipt.Files = append(receipt.Files, cmdio.ArtifactFile{
 		Path:  outputDir,
-		Kind:  "AgentO11yExperimentConversationExport",
-		Count: len(pathByConversation),
+		Kind:  "AgentO11yExperimentExport",
+		Count: len(trials),
 	})
 	receipt.Summary = cmdio.MutationSummary{
 		Succeeded: len(pathByConversation),
@@ -428,7 +414,50 @@ func exportConversationBundle(ctx context.Context, base *agento11yhttp.Client, r
 	}
 	receipt.Failures = append(receipt.Failures, manifest.Failures...)
 
-	return &conversationExportResult{receipt: receipt, manifest: manifest, errs: exportErrs}, nil
+	return &experimentExportResult{receipt: receipt, manifest: manifest, errs: exportErrs}, nil
+}
+
+func fetchConversationPayloads(ctx context.Context, base *agento11yhttp.Client, stagingDir string, conversationIDs []string, concurrency int) ([]fetchedConversation, error) {
+	fetched := make([]fetchedConversation, len(conversationIDs))
+	g := new(errgroup.Group)
+	g.SetLimit(concurrency)
+	for i, id := range conversationIDs {
+		if ctx.Err() != nil {
+			break
+		}
+		g.Go(func() error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			body, fetchErr := fetchRawJSON(ctx, base, "/query/conversations/"+url.PathEscape(id))
+			if fetchErr != nil {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				fetched[i] = fetchedConversation{id: id, err: fmt.Errorf("fetch conversation %q: %w", id, fetchErr)}
+				return nil
+			}
+			rel := filepath.ToSlash(filepath.Join("raw", "conversations", conversationFileName(id)))
+			if writeErr := writePrivateFile(filepath.Join(stagingDir, filepath.FromSlash(rel)), body); writeErr != nil {
+				fetched[i] = fetchedConversation{id: id, err: fmt.Errorf("write conversation %q: %w", id, writeErr)}
+				return nil
+			}
+			fetched[i] = fetchedConversation{
+				id:        id,
+				path:      rel,
+				hash:      sha256Hex(body),
+				sizeBytes: int64(len(body)),
+			}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return fetched, nil
 }
 
 func fetchRawTrialPages(ctx context.Context, base *agento11yhttp.Client, runID string) ([]rawTrialPage, []trialExportIndex, error) {
@@ -544,7 +573,7 @@ func createPrivateStagingDirectory(outputDir string) (string, error) {
 	return stagingDir, nil
 }
 
-func writeExportPreamble(outputDir, runID string, experimentBody, reportBody []byte, manifest *conversationExportManifest) error {
+func writeExportPreamble(outputDir, runID string, experimentBody, reportBody []byte, manifest *experimentExportManifest) error {
 	files := []struct {
 		path string
 		kind string
@@ -564,12 +593,12 @@ func writeExportPreamble(outputDir, runID string, experimentBody, reportBody []b
 	return nil
 }
 
-func writeExportFile(outputDir, relativePath, kind, id string, body []byte, count int, manifest *conversationExportManifest) error {
+func writeExportFile(outputDir, relativePath, kind, id string, body []byte, count int, manifest *experimentExportManifest) error {
 	path := filepath.Join(outputDir, filepath.FromSlash(relativePath))
 	if err := writePrivateFile(path, body); err != nil {
 		return fmt.Errorf("write %s: %w", relativePath, err)
 	}
-	manifest.Files = append(manifest.Files, conversationExportFile{
+	manifest.Files = append(manifest.Files, experimentExportFile{
 		Kind:       kind,
 		ID:         id,
 		Path:       filepath.ToSlash(relativePath),

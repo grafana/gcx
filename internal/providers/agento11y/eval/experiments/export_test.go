@@ -1,4 +1,4 @@
-package experiments //nolint:testpackage // Tests exercise the unexported export workflow and command wiring.
+package experiments
 
 import (
 	"bytes"
@@ -47,9 +47,9 @@ contexts:
 	return loader
 }
 
-func runExportCommand(t *testing.T, serverURL string, args ...string) (string, string, error) {
+func runExperimentExportCommand(t *testing.T, serverURL string, args ...string) (string, string, error) {
 	t.Helper()
-	cmd := newExportConversationsCommand(exportTestLoader(t, serverURL))
+	cmd := newExportCommand(exportTestLoader(t, serverURL))
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 	cmd.SetContext(context.Background())
@@ -78,7 +78,7 @@ func decodeOneJSONDocument(t *testing.T, data string) map[string]any {
 	return document
 }
 
-func TestExportConversations_CommandWritesLosslessBundle(t *testing.T) {
+func TestExport_CommandWritesLosslessBundle(t *testing.T) {
 	agent.SetFlag(true)
 	t.Cleanup(agent.ResetForTesting)
 
@@ -124,7 +124,7 @@ func TestExportConversations_CommandWritesLosslessBundle(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	outputDir := filepath.Join(t.TempDir(), "export")
-	stdout, stderr, err := runExportCommand(t, server.URL, "run-1", "--output-dir", outputDir, "--concurrency", "2")
+	stdout, stderr, err := runExperimentExportCommand(t, server.URL, "run-1", "--output-dir", outputDir, "--include-conversations", "--concurrency", "2")
 	require.NoError(t, err, "stderr: %s", stderr)
 	assert.Empty(t, stderr)
 
@@ -164,10 +164,12 @@ func TestExportConversations_CommandWritesLosslessBundle(t *testing.T) {
 
 	manifestData, err := os.ReadFile(filepath.Join(outputDir, "manifest.json"))
 	require.NoError(t, err)
-	var manifest conversationExportManifest
+	var manifest experimentExportManifest
 	require.NoError(t, json.Unmarshal(manifestData, &manifest))
+	assert.Equal(t, experimentExportType, manifest.Type)
+	assert.True(t, manifest.Includes.Conversations)
 	assert.True(t, manifest.Complete)
-	assert.Equal(t, conversationExportSummary{
+	assert.Equal(t, experimentExportSummary{
 		Trials:                    4,
 		ConversationReferences:    3,
 		UniqueConversations:       2,
@@ -176,7 +178,7 @@ func TestExportConversations_CommandWritesLosslessBundle(t *testing.T) {
 	}, manifest.Summary)
 	assert.Empty(t, manifest.Failures)
 
-	filesByPath := make(map[string]conversationExportFile, len(manifest.Files))
+	filesByPath := make(map[string]experimentExportFile, len(manifest.Files))
 	for _, file := range manifest.Files {
 		filesByPath[file.Path] = file
 	}
@@ -208,7 +210,67 @@ func TestExportConversations_CommandWritesLosslessBundle(t *testing.T) {
 	}
 }
 
-func TestExportConversations_PartialFailureWritesManifestAndExitFour(t *testing.T) {
+func TestExport_DefaultWritesConversationIDsWithoutPayloads(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(agent.ResetForTesting)
+
+	var conversationCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case exportPluginPrefix + "/eval/experiments/run-1":
+			writeRawJSON(t, w, `{"experiment_id":"run-1"}`)
+		case exportPluginPrefix + "/eval/experiments/run-1/report":
+			writeRawJSON(t, w, `{"experiment":{"experiment_id":"run-1"},"summary":{"trial_count":1},"rows":[]}`)
+		case exportPluginPrefix + "/eval/experiments/run-1/trials":
+			writeRawJSON(t, w, `{"items":[{"trial_id":"t-1","conversation_id":"c-1"}]}`)
+		default:
+			if strings.Contains(r.URL.Path, "/query/conversations/") {
+				conversationCalls.Add(1)
+			}
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	outputDir := filepath.Join(t.TempDir(), "export")
+	stdout, stderr, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir)
+	require.NoError(t, err, "stderr: %s", stderr)
+	assert.Empty(t, stderr)
+	assert.Zero(t, conversationCalls.Load())
+
+	receipt := decodeOneJSONDocument(t, stdout)
+	summary, ok := receipt["summary"].(map[string]any)
+	require.True(t, ok)
+	succeeded, ok := summary["succeeded"].(float64)
+	require.True(t, ok)
+	failed, ok := summary["failed"].(float64)
+	require.True(t, ok)
+	assert.Zero(t, int(succeeded))
+	assert.Zero(t, int(failed))
+
+	manifestData, readErr := os.ReadFile(filepath.Join(outputDir, "manifest.json"))
+	require.NoError(t, readErr)
+	var manifest experimentExportManifest
+	require.NoError(t, json.Unmarshal(manifestData, &manifest))
+	assert.Equal(t, experimentExportType, manifest.Type)
+	assert.False(t, manifest.Includes.Conversations)
+	assert.True(t, manifest.Complete)
+	assert.Equal(t, 1, manifest.Summary.UniqueConversations)
+	assert.Zero(t, manifest.Summary.ConversationsWritten)
+
+	indexData, readErr := os.ReadFile(filepath.Join(outputDir, "indexes", "trials.jsonl"))
+	require.NoError(t, readErr)
+	var trial trialExportIndex
+	require.NoError(t, json.Unmarshal(indexData, &trial))
+	assert.Equal(t, "c-1", trial.ConversationID)
+	assert.Empty(t, trial.ConversationPath)
+
+	conversationFiles, readErr := os.ReadDir(filepath.Join(outputDir, "raw", "conversations"))
+	require.NoError(t, readErr)
+	assert.Empty(t, conversationFiles)
+}
+
+func TestExport_PartialFailureWritesManifestAndExitFour(t *testing.T) {
 	agent.SetFlag(true)
 	t.Cleanup(agent.ResetForTesting)
 
@@ -231,7 +293,7 @@ func TestExportConversations_PartialFailureWritesManifestAndExitFour(t *testing.
 	t.Cleanup(server.Close)
 
 	outputDir := filepath.Join(t.TempDir(), "export")
-	stdout, stderr, err := runExportCommand(t, server.URL, "run-1", "-d", outputDir)
+	stdout, stderr, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir, "--include-conversations")
 	var emitted *gcxerrors.EmittedError
 	require.ErrorAs(t, err, &emitted)
 	assert.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
@@ -252,7 +314,7 @@ func TestExportConversations_PartialFailureWritesManifestAndExitFour(t *testing.
 
 	manifestData, readErr := os.ReadFile(filepath.Join(outputDir, "manifest.json"))
 	require.NoError(t, readErr)
-	var manifest conversationExportManifest
+	var manifest experimentExportManifest
 	require.NoError(t, json.Unmarshal(manifestData, &manifest))
 	assert.False(t, manifest.Complete)
 	assert.Equal(t, 1, manifest.Summary.ConversationsWritten)
@@ -261,7 +323,7 @@ func TestExportConversations_PartialFailureWritesManifestAndExitFour(t *testing.
 	assert.NoFileExists(t, filepath.Join(outputDir, "raw", "conversations", conversationFileName("bad")))
 }
 
-func TestExportConversations_TotalConversationFailureEmitsReceiptAndExitOne(t *testing.T) {
+func TestExport_TotalConversationFailureEmitsReceiptAndExitOne(t *testing.T) {
 	agent.SetFlag(true)
 	t.Cleanup(agent.ResetForTesting)
 
@@ -282,7 +344,7 @@ func TestExportConversations_TotalConversationFailureEmitsReceiptAndExitOne(t *t
 	t.Cleanup(server.Close)
 
 	outputDir := filepath.Join(t.TempDir(), "export")
-	stdout, stderr, err := runExportCommand(t, server.URL, "run-1", "-d", outputDir)
+	stdout, stderr, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir, "--include-conversations")
 	var emitted *gcxerrors.EmittedError
 	require.ErrorAs(t, err, &emitted)
 	assert.Equal(t, gcxerrors.ExitGeneralError, emitted.Code)
@@ -300,7 +362,7 @@ func TestExportConversations_TotalConversationFailureEmitsReceiptAndExitOne(t *t
 	assert.FileExists(t, filepath.Join(outputDir, "manifest.json"))
 }
 
-func TestExportConversations_CancellationDoesNotPublish(t *testing.T) {
+func TestExport_CancellationDoesNotPublish(t *testing.T) {
 	agent.SetFlag(true)
 	t.Cleanup(agent.ResetForTesting)
 
@@ -326,11 +388,11 @@ func TestExportConversations_CancellationDoesNotPublish(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	outputDir := filepath.Join(t.TempDir(), "export")
-	cmd := newExportConversationsCommand(exportTestLoader(t, server.URL))
+	cmd := newExportCommand(exportTestLoader(t, server.URL))
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 	cmd.SetContext(ctx)
-	cmd.SetArgs([]string{"run-1", "-d", outputDir, "--concurrency", "1"})
+	cmd.SetArgs([]string{"run-1", "-d", outputDir, "--include-conversations", "--concurrency", "1"})
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 
@@ -340,7 +402,7 @@ func TestExportConversations_CancellationDoesNotPublish(t *testing.T) {
 	assert.NoDirExists(t, outputDir)
 }
 
-func TestExportConversations_ConcurrencyFlagBoundsRequests(t *testing.T) {
+func TestExport_ConcurrencyFlagBoundsRequests(t *testing.T) {
 	var inFlight atomic.Int32
 	var maxInFlight atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -372,12 +434,12 @@ func TestExportConversations_ConcurrencyFlagBoundsRequests(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	outputDir := filepath.Join(t.TempDir(), "export")
-	_, stderr, err := runExportCommand(t, server.URL, "run-1", "-d", outputDir, "--concurrency", "2")
+	_, stderr, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir, "--include-conversations", "--concurrency", "2")
 	require.NoError(t, err, "stderr: %s", stderr)
 	assert.Equal(t, int32(2), maxInFlight.Load(), "--concurrency must bound the conversation fan-out")
 }
 
-func TestExportConversations_DestinationCreatedDuringExportIsNotReplaced(t *testing.T) {
+func TestExport_DestinationCreatedDuringExportIsNotReplaced(t *testing.T) {
 	outputDir := filepath.Join(t.TempDir(), "export")
 	blockErr := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -401,7 +463,7 @@ func TestExportConversations_DestinationCreatedDuringExportIsNotReplaced(t *test
 	}))
 	t.Cleanup(server.Close)
 
-	stdout, _, err := runExportCommand(t, server.URL, "run-1", "-d", outputDir)
+	stdout, _, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir, "--include-conversations")
 	require.NoError(t, <-blockErr)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "publish output directory")
@@ -412,7 +474,7 @@ func TestExportConversations_DestinationCreatedDuringExportIsNotReplaced(t *test
 	assert.NoFileExists(t, filepath.Join(outputDir, "manifest.json"))
 }
 
-func TestExportConversations_ReportFailureDoesNotPublishDirectory(t *testing.T) {
+func TestExport_ReportFailureDoesNotPublishDirectory(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case exportPluginPrefix + "/eval/experiments/run-1":
@@ -426,14 +488,14 @@ func TestExportConversations_ReportFailureDoesNotPublishDirectory(t *testing.T) 
 	t.Cleanup(server.Close)
 
 	outputDir := filepath.Join(t.TempDir(), "export")
-	stdout, _, err := runExportCommand(t, server.URL, "run-1", "-d", outputDir)
+	stdout, _, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "fetch report")
 	assert.Empty(t, stdout)
 	assert.NoDirExists(t, outputDir)
 }
 
-func TestExportConversations_ValidationBeforeNetwork(t *testing.T) {
+func TestExport_ValidationBeforeNetwork(t *testing.T) {
 	tests := []struct {
 		name       string
 		args       []string
@@ -460,7 +522,7 @@ func TestExportConversations_ValidationBeforeNetwork(t *testing.T) {
 				dir := t.TempDir()
 				args = append(args, "-d", dir)
 			}
-			_, _, err := runExportCommand(t, server.URL, args...)
+			_, _, err := runExperimentExportCommand(t, server.URL, args...)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantError)
 			assert.Zero(t, requests.Load(), "static/local validation must run before network I/O")
@@ -468,7 +530,7 @@ func TestExportConversations_ValidationBeforeNetwork(t *testing.T) {
 	}
 }
 
-func TestExportConversations_TrialPaginationFailureIsFatal(t *testing.T) {
+func TestExport_TrialPaginationFailureIsFatal(t *testing.T) {
 	var trialCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -486,7 +548,7 @@ func TestExportConversations_TrialPaginationFailureIsFatal(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	outputDir := filepath.Join(t.TempDir(), "export")
-	stdout, _, err := runExportCommand(t, server.URL, "run-1", "-d", outputDir)
+	stdout, _, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `repeated cursor "same"`)
 	assert.Empty(t, stdout)
