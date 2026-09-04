@@ -28,6 +28,44 @@ func TestConfig_HasContext(t *testing.T) {
 	req.False(cfg.HasContext("prod"))
 }
 
+func TestConfig_ContextNames(t *testing.T) {
+	req := require.New(t)
+
+	req.Nil((&config.Config{}).ContextNames(), "no contexts returns nil")
+
+	cfg := config.Config{
+		Contexts: map[string]*config.Context{
+			"ops-ops": {},
+			"dev":     {},
+			"auth":    {},
+			"default": {},
+			"empty":   nil, // bare `empty:` key with no body
+		},
+	}
+
+	req.Equal([]string{"auth", "default", "dev", "ops-ops"}, cfg.ContextNames(),
+		"names are returned sorted alphabetically, and nil entries are omitted to agree with HasContext")
+}
+
+func TestContextNotFound(t *testing.T) {
+	req := require.New(t)
+
+	// The error message is unchanged whether or not available names are passed,
+	// so existing string assertions keep working.
+	req.EqualError(config.ContextNotFound("ops", nil), `invalid context "ops": context not found`)
+	req.EqualError(config.ContextNotFound("ops", []string{"dev", "default"}), `invalid context "ops": context not found`)
+
+	// It stays matchable via errors.Is against the sentinel.
+	err := config.ContextNotFound("ops", []string{"dev", "default"})
+	req.ErrorIs(err, config.ErrContextNotFound)
+
+	// The available names are carried on the typed error for callers to surface.
+	var ctxErr *config.ContextNotFoundError
+	req.ErrorAs(err, &ctxErr)
+	req.Equal("ops", ctxErr.Name)
+	req.Equal([]string{"dev", "default"}, ctxErr.Available)
+}
+
 func TestGrafanaConfig_IsEmpty(t *testing.T) {
 	req := require.New(t)
 

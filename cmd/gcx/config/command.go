@@ -59,7 +59,7 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 	if opts.Context != "" {
 		overrides = append(overrides, func(cfg *config.Config) error {
 			if !cfg.HasContext(opts.Context) {
-				return config.ContextNotFound(opts.Context)
+				return config.ContextNotFound(opts.Context, cfg.ContextNames())
 			}
 
 			cfg.CurrentContext = opts.Context
@@ -135,7 +135,7 @@ func (opts *Options) LoadConfig(ctx context.Context) (config.Config, error) {
 	validator := func(cfg *config.Config) error {
 		// Ensure that the current context actually exists.
 		if !cfg.HasContext(cfg.CurrentContext) {
-			return config.ContextNotFound(cfg.CurrentContext)
+			return config.ContextNotFound(cfg.CurrentContext, cfg.ContextNames())
 		}
 
 		return cfg.GetCurrentContext().Validate(ctx)
@@ -586,7 +586,7 @@ Without --context, checks every configured context. With --context, checks only 
 				cmdio.Error(reportWriter, "Current context: %s", cmdio.Red("<undefined>"))
 				recordFailure(nil)
 			case !cfg.HasContext(cfg.CurrentContext):
-				cmdio.Error(reportWriter, "Current context: %s", cmdio.Red(config.ContextNotFound(cfg.CurrentContext).Error()))
+				cmdio.Error(reportWriter, "Current context: %s", cmdio.Red(config.ContextNotFound(cfg.CurrentContext, nil).Error()))
 				recordFailure(nil)
 			default:
 				cmdio.Success(reportWriter, "Current context: %s", cmdio.Green(cfg.CurrentContext))
@@ -869,7 +869,7 @@ user config), use --file to choose which layer to update.`,
 			}
 
 			if !layered.HasContext(target) {
-				return config.ContextNotFound(target)
+				return config.ContextNotFound(target, layered.ContextNames())
 			}
 
 			// Load only the target layer so we don't write cross-layer entries.
