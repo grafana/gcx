@@ -4,8 +4,9 @@ package experiments
 
 import "os"
 
-// os.Rename rejects an existing directory on Go's supported platforms. Linux,
-// macOS, and Windows use stronger kernel-level no-replace operations above.
+// The caller checks that outputDir is absent before reaching this portable
+// fallback. Unlike the Linux, macOS, and Windows implementations, os.Rename
+// cannot prevent a concurrently created empty directory from being replaced.
 func publishDirectoryNoReplace(stagingDir, outputDir string) error {
 	return os.Rename(stagingDir, outputDir)
 }
