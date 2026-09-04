@@ -173,11 +173,15 @@ Scope the access policy to what you manage. `stacks:read` is the required baseli
 |-------|---------|
 | `stacks:read` | **Required.** Stack discovery (resolves the stack slug for all Cloud commands; also covers `gcx k6` reads) |
 | `metrics:write`, `logs:write`, `traces:write` | Synthetic Monitoring and k6 (`gcx sm`, `gcx k6`) — these write verbs are needed to mint the Synthetic Monitoring token |
-| `fleet-management:read` (and `fleet-management:write` for changes) | Fleet Management (`gcx fleet`) |
 | `stacks:write` | Creating or updating stacks |
 | `set:alloy-data-write` | Instrumentation Hub setup (`gcx instrumentation`) |
 
-The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, Fleet, IRM, SLO). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
+`gcx fleet` and `gcx instrumentation` need no scope here. Fleet Management
+reaches its API through the `grafana-collector-app` plugin proxy on your stack,
+so your Grafana login alone is enough. See
+[ADR-023](../adrs/fleet-plugin-proxy/001-fleet-via-collector-app-proxy.md).
+
+The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, IRM, SLO). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
 
 The interactive `gcx login` prompt links to this guidance when it offers Cloud
 authentication choices.

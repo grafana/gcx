@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/grafana/gcx/cmd/gcx/instrumentation/check/fixplan"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	otelchecks "github.com/grafana/otel-checker/checks"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 	"github.com/spf13/cobra"
@@ -28,13 +31,17 @@ type checkOpts struct {
 
 	// Components is parsed from the positional argument; empty means "all".
 	Components []string
+
+	// FixPlan selects the fix-plan mode. Empty = no fix plan.
+	// See fixplan.ModeLocal / fixplan.ModeAssistant for valid values.
+	FixPlan string
 }
 
 func (o *checkOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.RegisterCustomCodec("table", &CheckTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &CheckTableCodec{Wide: true})
-	o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(otelutils.Results{}))
+	o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(ResultsWithFixPlan{}))
 	o.IO.BindFlags(flags)
 
 	flags.StringVar(&o.Language, "language", "",
@@ -50,6 +57,12 @@ func (o *checkOpts) setup(flags *pflag.FlagSet) {
 		"Path to the OpenTelemetry Collector config file.")
 	flags.BoolVar(&o.Debug, "debug", false,
 		"Print additional diagnostic output from the checker.")
+
+	flags.StringVar(&o.FixPlan, "fix-plan", "",
+		"Synthesize one fix plan for every finding. Values:\n"+
+			"  local     - deterministic aggregation of the explanation docs (offline, no billing).\n"+
+			"  assistant - prioritized plan from Grafana Assistant (BILLABLE, requires a Grafana Cloud context). See "+docs.AssistantPricing+".\n"+
+			"Empty (flag omitted) skips the fix plan.")
 }
 
 // Validate finalizes opts after flag parsing and runs the otel-checker
@@ -59,6 +72,13 @@ func (o *checkOpts) setup(flags *pflag.FlagSet) {
 func (o *checkOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
+	}
+
+	switch o.FixPlan {
+	case "", string(fixplan.ModeLocal), string(fixplan.ModeAssistant):
+	default:
+		return fmt.Errorf("--fix-plan must be %q or %q (got %q)",
+			fixplan.ModeLocal, fixplan.ModeAssistant, o.FixPlan)
 	}
 
 	cmd := o.toCommands()
@@ -108,15 +128,17 @@ func (o *checkOpts) toCommands() otelutils.Commands {
 	}
 }
 
-// Command returns the "gcx instrumentation check" cobra command.
-func Command() *cobra.Command {
-	return commandWith(otelchecks.Run)
+// Command returns the "gcx instrumentation check" cobra command. The loader
+// is used only when --fix-plan=assistant is set; check itself and
+// --fix-plan=local run entirely locally.
+func Command(loader *providers.ConfigLoader) *cobra.Command {
+	return commandWith(loader, otelchecks.Run)
 }
 
 // commandWith builds the check command with an injectable checker. Production
 // code passes otelchecks.Run via Command; tests inject a fake to drive the
 // command end-to-end without touching real env vars.
-func commandWith(c checker) *cobra.Command {
+func commandWith(loader *providers.ConfigLoader, c checker) *cobra.Command {
 	opts := &checkOpts{}
 
 	cmd := &cobra.Command{
@@ -136,6 +158,10 @@ Checks performed:
 Components is an optional comma-separated list — defaults to all when omitted.
 Supported components: ` + strings.Join(otelutils.SupportedComponents, ", ") + `.
 
+Add --fix-plan=local for a deterministic aggregation of the explanation docs
+(offline, no billing), or --fix-plan=assistant for a prioritized plan synthesized
+by Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see ` + docs.AssistantPricing + `).
+
 Powered by github.com/grafana/otel-checker.`,
 		Args: cobra.MaximumNArgs(1),
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -144,13 +170,40 @@ Powered by github.com/grafana/otel-checker.`,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Components = parseComponents(args)
+			// Reject `--fix-plan=` explicitly. StringVar treats an empty
+			// value identically to the flag being omitted, but the user
+			// clearly asked for a fix plan; without this guard the command
+			// runs to completion with no plan and no error.
+			if cmd.Flags().Changed("fix-plan") && opts.FixPlan == "" {
+				return fmt.Errorf("instrumentation check: --fix-plan requires a value: %q or %q",
+					fixplan.ModeLocal, fixplan.ModeAssistant)
+			}
 			if err := opts.Validate(); err != nil {
 				return fmt.Errorf("instrumentation check: %w", err)
 			}
 
 			results := runWith(cmd.Context(), opts.toCommands(), c, cmd.ErrOrStderr())
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), results); err != nil {
+			envelope := ResultsWithFixPlan{
+				Checks:   results.Checks,
+				Warnings: results.Warnings,
+				Errors:   results.Errors,
+			}
+
+			if opts.FixPlan != "" {
+				plan, err := fixplan.Generate(cmd.Context(), results, fixplan.Options{
+					Mode:   fixplan.Mode(opts.FixPlan),
+					Loader: loader,
+				})
+				if err != nil {
+					return fmt.Errorf("instrumentation check: %w", err)
+				}
+				if !plan.Empty {
+					envelope.FixPlan = &plan
+				}
+			}
+
+			if err := opts.IO.Encode(cmd.OutOrStdout(), envelope); err != nil {
 				return fmt.Errorf("instrumentation check: %w", err)
 			}
 

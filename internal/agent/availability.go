@@ -31,14 +31,23 @@ var cloudOnlyPaths = []string{
 	"gcx frontend",             // Frontend Observability — Grafana Cloud
 	"gcx appo11y",              // Application Observability — Grafana Cloud
 	"gcx agento11y",            // Agent Observability — Grafana Cloud
-	"gcx instrumentation",      // Instrumentation Hub — Grafana Cloud service
-	"gcx cloud",                // Grafana Cloud stacks management
-	"gcx setup",                // Grafana Cloud product onboarding
-	"gcx metrics adaptive",     // Adaptive Metrics — Grafana Cloud
-	"gcx metrics billing",      // Grafana Cloud billing/usage metrics (grafanacloud-usage datasource)
-	"gcx logs adaptive",        // Adaptive Logs — Grafana Cloud
-	"gcx traces adaptive",      // Adaptive Traces — Grafana Cloud
-	"gcx profiles adaptive",    // Adaptive Profiles — Grafana Cloud
+	// Instrumentation Hub — Grafana Cloud service. Narrowed to specific
+	// subtrees because `gcx instrumentation check`, `explain`, and
+	// `list-explanations` run entirely locally (against workstation env
+	// vars, package manifests, and bundled otel-checker docs) and work
+	// on OSS/Enterprise. `check --fix-plan=assistant` requires Cloud but
+	// the base command does not.
+	"gcx instrumentation setup",    // onboarding wizard
+	"gcx instrumentation status",   // observed cluster/service state
+	"gcx instrumentation clusters", // cluster + app management
+	"gcx instrumentation services", // K8s workload survey
+	"gcx cloud",                    // Grafana Cloud stacks management
+	"gcx setup",                    // Grafana Cloud product onboarding
+	"gcx metrics adaptive",         // Adaptive Metrics — Grafana Cloud
+	"gcx metrics billing",          // Grafana Cloud billing/usage metrics (grafanacloud-usage datasource)
+	"gcx logs adaptive",            // Adaptive Logs — Grafana Cloud
+	"gcx traces adaptive",          // Adaptive Traces — Grafana Cloud
+	"gcx profiles adaptive",        // Adaptive Profiles — Grafana Cloud
 }
 
 // IsCloudOnlyPath reports whether the given command path (as returned by

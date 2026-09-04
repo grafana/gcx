@@ -642,7 +642,7 @@ that only surfaced during smoke testing:
   - Update requires ID in both URL path and request body.
   - `GetByName` is client-side: list all apps, filter by name (no server-side endpoint).
 - **Wire format conversion:** `ExtraLogLabels` is `map[string]string` in Go but
-  `[]{"key": k, "value": v}` on the wire. `ID` is `string` in Go but `int64` on wire.
+  `[]{"label": k, "value": v}` on the wire. `ID` is `string` in Go but `int64` on wire.
   Internal `toAPI()`/`fromAPI()` handles both conversions.
 - **Sourcemaps are sub-resources** (require parent app-id for all operations).
   Per CONSTITUTION § Sub-resources, they use `<operation>-<subject>` compounds

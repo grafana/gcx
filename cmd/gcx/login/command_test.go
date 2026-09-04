@@ -237,7 +237,7 @@ func TestUseExistingCloudEntryPreservesCredentialKindAndMetadata(t *testing.T) {
 			entry: &config.CloudEntry{
 				OAuthToken:          "oauth-token",
 				OAuthTokenExpiresAt: future,
-				OAuthScopes:         []string{"stacks:read", "fleet-management:read"},
+				OAuthScopes:         []string{"stacks:read", "metrics:write"},
 				OAuthUrl:            "https://grafana-dev.com",
 				APIUrl:              "https://grafana-dev.com",
 			},
@@ -290,7 +290,7 @@ func TestRunCloudOAuthPersistsResponseMetadataAndEndpointIntent(t *testing.T) {
 				gotFlowOpts = flowOpts
 				return &stubCloudAuthFlow{result: &internalauth.GCOMResult{
 					AccessToken: "oauth-token",
-					Scope:       "stacks:read fleet-management:read",
+					Scope:       "stacks:read metrics:write",
 					ExpiresAt:   "2030-01-01T00:00:00Z",
 				}}
 			},
@@ -304,7 +304,7 @@ func TestRunCloudOAuthPersistsResponseMetadataAndEndpointIntent(t *testing.T) {
 	assert.Equal(t, internallogin.CloudCredentialOAuth, opts.CloudCredentialKind)
 	assert.True(t, opts.CloudTokenTrusted)
 	assert.Equal(t, "2030-01-01T00:00:00Z", opts.CloudOAuthTokenExpiresAt)
-	assert.Equal(t, []string{"stacks:read", "fleet-management:read"}, opts.CloudOAuthScopes)
+	assert.Equal(t, []string{"stacks:read", "metrics:write"}, opts.CloudOAuthScopes)
 }
 
 func TestUseExistingCloudEntryEndpointChangeFailsClosed(t *testing.T) {

@@ -50,8 +50,10 @@ type faroAppAPI struct {
 }
 
 // LogLabel represents a key-value log label for the API.
+// The API field is "label", not "key" — a mismatch here silently stores an
+// empty label name, which makes Loki reject every write for the app.
 type LogLabel struct {
-	Key   string `json:"key"`
+	Label string `json:"label"`
 	Value string `json:"value"`
 }
 
@@ -70,7 +72,7 @@ type FaroAppSettings struct {
 func (app *FaroApp) toAPI() faroAppAPI {
 	labels := make([]LogLabel, 0, len(app.ExtraLogLabels))
 	for k, v := range app.ExtraLogLabels {
-		labels = append(labels, LogLabel{Key: k, Value: v})
+		labels = append(labels, LogLabel{Label: k, Value: v})
 	}
 	var id int64
 	if app.ID != "" {
@@ -96,7 +98,7 @@ func (app *FaroApp) toAPI() faroAppAPI {
 func fromAPI(api faroAppAPI) FaroApp {
 	labels := make(map[string]string, len(api.ExtraLogLabels))
 	for _, l := range api.ExtraLogLabels {
-		labels[l.Key] = l.Value
+		labels[l.Label] = l.Value
 	}
 	id := ""
 	if api.ID != 0 {

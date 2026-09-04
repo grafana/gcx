@@ -1,9 +1,8 @@
 package graph
 
 import (
+	"image/color"
 	"time"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // ChartData represents data ready to be rendered as a chart.
@@ -17,7 +16,7 @@ type Series struct {
 	Name   string
 	Labels map[string]string
 	Points []Point
-	Color  lipgloss.Color // Optional: if set, overrides ColorForIndex for this series
+	Color  color.Color // Optional: if set, overrides ColorForIndex for this series
 }
 
 // Point represents a single data point.

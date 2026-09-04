@@ -98,7 +98,7 @@ current-context: prod
 
 	loader := &providers.ConfigLoader{}
 	loader.SetConfigFile(path)
-	return assistantcmd.ResolveAssistantClientOptions(t.Context(), loader, 30, "test-agent")
+	return assistantcmd.ResolveClientOptions(t.Context(), loader, 30, "test-agent")
 }
 
 func unsetEnv(t *testing.T, key string) {

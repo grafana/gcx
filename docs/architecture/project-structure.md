@@ -18,6 +18,7 @@ gcx/
 │       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
 │       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, check, explain, list-explanations, clusters, services)
 │       │   ├── check/        #   otel-checker wrapper: local OTel setup validation
+│       │   │   └── fixplan/   #     --fix-plan orchestrator: two disjoint modes — local (deterministic doc aggregation) or assistant (Grafana Assistant, requires Cloud) — plus the shared prompt builder
 │       │   ├── clusters/     #   cluster-level subcommands (list, get, configure, remove, wait, apps subtree)
 │       │   ├── explain/      #   otel-checker doc registry lookup — hosts both `explain <id>` and `list-explanations`
 │       │   ├── services/     #   workload-level subcommands (list, get, include, exclude, clear)
@@ -37,7 +38,7 @@ gcx/
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
-│   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and instrumentation provider)
+│   ├── fleet/                # Shared fleet base client (HTTP + stack config, over the grafana-collector-app plugin proxy — shared by fleet provider and instrumentation provider)
 │   ├── config/               # Config loading, context management, auth types (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
 │   │   └── testdata/         # YAML fixtures for config unit tests
 │   ├── credentials/          # OS-keychain backend for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
@@ -66,7 +67,7 @@ gcx/
 │   │   ├── dbo11y/           # Database Observability provider (query/discovery views, no CRUD resources)
 │   │   │   └── instances/    # Instance inventory + health/query-performance snapshot from postgres_exporter + pg_stat_statements
 │   │   ├── alert/            # Alert provider (rules and groups)
-│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/)
+│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/); exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
 │   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint
@@ -92,7 +93,9 @@ gcx/
 │   ├── docs/                 # Canonical Grafana documentation URL registry (markdown links surfaced via DetailedError.DocsLink and agent llm_hints)
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
+│   │   ├── athena/           # Athena datasource commands (query, list-catalogs, list-databases, list-tables, describe-table, explore)
 │   │   ├── azuremonitor/     # Azure Monitor CLI commands (query, logs, resource-graph, list-subscriptions, list-resource-groups, list-resources, list-metrics)
+│   │   ├── bigquery/         # BigQuery datasource commands (query, list-datasets, list-tables, describe-table, explore)
 │   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   │   ├── cloudmonitoring/  # Google Cloud Monitoring CLI commands (query, list-projects, list-metrics)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
@@ -111,9 +114,11 @@ gcx/
 │   │   ├── influxdb/         # InfluxDB HTTP query client
 │   │   ├── infinity/         # Infinity HTTP query client
 │   │   ├── loki/             # Loki HTTP client (log + metric queries)
+│   │   ├── athena/           # Athena SQL query client
+│   │   ├── bigquery/         # BigQuery SQL query client
+│   │   ├── clickhouse/       # ClickHouse HTTP client
 │   │   ├── mysql/            # MySQL HTTP query client (raw SQL via unified query API)
-│   │   ├── postgres/         # PostgreSQL HTTP query client (raw SQL via unified query API)
-│   │   └── clickhouse/       # ClickHouse HTTP client
+│   │   └── postgres/         # PostgreSQL HTTP query client (raw SQL via unified query API)
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
@@ -335,7 +340,7 @@ tree (e.g. fully offline work); it is never required.
 | Concurrency | `golang.org/x/sync` | `errgroup` for bounded parallel operations |
 | YAML / JSON | `goccy/go-yaml`, `go-openapi/strfmt` | YAML codec, OpenAPI format types |
 | File watching | `fsnotify/fsnotify` | Live reload file watcher |
-| Terminal UI | `NimbleMarkets/ntcharts`, `charmbracelet/lipgloss` | Terminal chart rendering (bar charts, line graphs) |
+| Terminal UI | `NimbleMarkets/ntcharts/v2`, `charm.land/lipgloss/v2` | Terminal chart rendering (bar charts, line graphs) |
 | Terminal detection | `golang.org/x/term` | Terminal size detection for graph output |
 | Testing | `stretchr/testify` | Assertions in unit tests |
 | Semver | `Masterminds/semver/v3` | Version parsing/comparison |

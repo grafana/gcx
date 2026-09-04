@@ -70,7 +70,7 @@ func (p *Agento11yProvider) Commands() []*cobra.Command {
 	rulesCmd := rules.Commands(loader)
 	rulesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx agento11y rules list -o json; gcx agento11y rules get <id> -o yaml; gcx agento11y rules create -f rule.yaml -o json; gcx agento11y rules update <id> -f patch.yaml -o json; gcx agento11y rules delete <id> --force`,
+		agent.AnnotationLLMHint:   `gcx agento11y rules list -o json; gcx agento11y rules get <id> -o yaml; gcx agento11y rules create -f rule.yaml -o json; gcx agento11y rules update <id> -f patch.yaml -o json; gcx agento11y rules list-scores <id> -o json; gcx agento11y rules delete <id> --force`,
 	}
 
 	guardsCmd := guards.Commands(loader)
