@@ -63,8 +63,10 @@ If you want to migrate from `grafanctl` to `gcx`, search-and-replace `grafanactl
 
 ## Learn more
 
-Refer to the [`gcx` repository](https://github.com/grafana/gcx) in GitHub for more information on:
+Refer to the [`gcx` repository](https://github.com/grafana/gcx) in GitHub for the full set of `gcx` documents, including more information on:
 
 - Installation and configuration
 - How to manage resources, including dashboards-as-code
+- Architecture
+- User guides
 - CLI command reference
