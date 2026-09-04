@@ -859,6 +859,9 @@ func Test_UnsetCommandKeychainPolicy(t *testing.T) {
 			raw, readErr := os.ReadFile(path)
 			require.NoError(t, readErr)
 			require.NotContains(t, string(raw), "keychain:")
+			// Clearing must drop the whole `credentials:` mapping, not just
+			// blank Keychain and leave `credentials: {}` behind.
+			require.NotContains(t, string(raw), "credentials:")
 		})
 	}
 }

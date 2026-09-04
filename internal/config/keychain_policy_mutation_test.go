@@ -183,7 +183,8 @@ func TestSetKeychainPolicyRejectsAutoDiscoveredLocalTarget(t *testing.T) {
 			before, readErr := os.ReadFile(fixture.local)
 			require.NoError(t, readErr)
 
-			_, mutateErr := config.SetKeychainPolicy(t.Context(), "", test.fileType, "off")
+			off := "off"
+			_, mutateErr := config.MutateKeychainPolicy(t.Context(), "", test.fileType, &off)
 			require.Error(t, mutateErr)
 			assert.Contains(t, mutateErr.Error(), "local")
 			assert.Contains(t, mutateErr.Error(), "--file user")
@@ -204,7 +205,8 @@ func TestSetKeychainPolicyMultiSourceAmbiguityExcludesLocal(t *testing.T) {
 	writeKeychainPolicyConfig(t, fixture.user, "on", "", false)
 	writeKeychainPolicyConfig(t, fixture.local, "off", "", true)
 
-	_, err := config.SetKeychainPolicy(t.Context(), "", "", "off")
+	off := "off"
+	_, err := config.MutateKeychainPolicy(t.Context(), "", "", &off)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--file (system, user)")
 	assert.NotContains(t, err.Error(), "--file (system, user, local)")
@@ -218,7 +220,7 @@ func TestClearKeychainPolicyRunsLockedTransaction(t *testing.T) {
 	restore := config.SetKeychainStoreFnForTest(func() credentials.Store { return store })
 	t.Cleanup(restore)
 
-	source, err := config.ClearKeychainPolicy(t.Context(), "", "")
+	source, err := config.MutateKeychainPolicy(t.Context(), "", "", nil)
 	require.NoError(t, err)
 	path, pathErr := source()
 	require.NoError(t, pathErr)
@@ -227,6 +229,32 @@ func TestClearKeychainPolicyRunsLockedTransaction(t *testing.T) {
 	raw, readErr := os.ReadFile(fixture.user)
 	require.NoError(t, readErr)
 	assert.NotContains(t, string(raw), "keychain:")
+	// Clearing must drop the whole `credentials:` mapping, not just blank
+	// Keychain and leave `credentials: {}` behind.
+	assert.NotContains(t, string(raw), "credentials:")
+}
+
+func TestMutateKeychainPolicyInitializesMissingExplicitFile(t *testing.T) {
+	fixture := newKeychainPolicyFixture(t)
+
+	store := &policyMutationStore{entries: map[string]string{}}
+	restore := config.SetKeychainStoreFnForTest(func() credentials.Store { return store })
+	t.Cleanup(restore)
+
+	_, statErr := os.Stat(fixture.explicit)
+	require.True(t, os.IsNotExist(statErr), "fixture explicit file must not already exist")
+
+	off := "off"
+	source, mutateErr := config.MutateKeychainPolicy(t.Context(), fixture.explicit, "", &off)
+	require.NoError(t, mutateErr)
+	path, pathErr := source()
+	require.NoError(t, pathErr)
+	require.Equal(t, fixture.explicit, path)
+
+	raw, readErr := os.ReadFile(fixture.explicit)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(raw), `keychain: "off"`)
+	assert.Zero(t, store.calls, "disabling storage must not probe the keychain")
 }
 
 func TestClearKeychainPolicyRejectsAutoDiscoveredLocalTarget(t *testing.T) {
@@ -236,7 +264,7 @@ func TestClearKeychainPolicyRejectsAutoDiscoveredLocalTarget(t *testing.T) {
 	before, readErr := os.ReadFile(fixture.local)
 	require.NoError(t, readErr)
 
-	_, err := config.ClearKeychainPolicy(t.Context(), "", "")
+	_, err := config.MutateKeychainPolicy(t.Context(), "", "", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "local")
 
@@ -269,7 +297,8 @@ func TestSetKeychainPolicyRejectsSourceIdentityChangeAfterLockSelection(t *testi
 		},
 	}
 
-	_, err := config.SetKeychainPolicy(ctx, "", "user", "off")
+	off := "off"
+	_, err := config.MutateKeychainPolicy(ctx, "", "user", &off)
 	require.ErrorContains(t, err, "refusing to write config without mutual exclusion")
 
 	fallbackAfter, readErr := os.ReadFile(fallbackPath)
