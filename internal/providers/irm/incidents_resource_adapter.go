@@ -25,6 +25,19 @@ var incidentStaticDescriptor = resources.Descriptor{
 	Plural:   "incidents",
 }
 
+// incidentStripFields lists the spec keys that a read removes. Both access
+// paths use it: the resources commands through TypedCRUD.StripFields, and the
+// provider commands through ToResource. One list keeps the two outputs equal.
+//
+// incidentID lives in metadata.name. severityID goes with it, because the
+// identifier has precedence over the severity label in the client, and a
+// manifest that carries both makes an edit of the label unreachable. The
+// identifiers are also specific to one organization, so a manifest that
+// carries one does not push to a second stack.
+//
+//nolint:gochecknoglobals // Static list shared by the two access paths.
+var incidentStripFields = []string{"incidentID", "severityID"}
+
 // incidentSchema returns a JSON Schema for the Incident resource type.
 func IncidentSchema() json.RawMessage {
 	schema := map[string]any{
@@ -44,10 +57,17 @@ func IncidentSchema() json.RawMessage {
 			"spec": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"title":        map[string]any{"type": "string"},
-					"status":       map[string]any{"type": "string"},
-					"severity":     map[string]any{"type": "string"},
-					"severityID":   map[string]any{"type": "string"},
+					"title":  map[string]any{"type": "string"},
+					"status": map[string]any{"type": "string"},
+					"severity": map[string]any{
+						"type":        "string",
+						"description": "Severity display label, for example \"Critical\". Run `gcx irm incidents severities list` for the labels of the organization.",
+					},
+					"severityID": map[string]any{
+						"type": "string",
+						"description": "Write-only severity identifier. A push accepts it, where it has precedence over spec.severity. " +
+							"A read never returns it, so a pulled manifest carries spec.severity alone.",
+					},
 					"isDrill":      map[string]any{"type": "boolean"},
 					"incidentType": map[string]any{"type": "string"},
 					"description":  map[string]any{"type": "string"},
@@ -76,6 +96,7 @@ func IncidentExample() json.RawMessage {
 		"spec": map[string]any{
 			"title":        "Service degradation in production",
 			"status":       "active",
+			"severity":     "Minor",
 			"isDrill":      false,
 			"incidentType": "internal",
 			"labels": []map[string]any{
@@ -140,12 +161,14 @@ func newIncidentCRUD(client *IncidentClient, namespace string, query IncidentQue
 		GetFn:    func(ctx context.Context, name string) (*Incident, error) { return client.Get(ctx, name) },
 		CreateFn: func(ctx context.Context, inc *Incident) (*Incident, error) { return client.Create(ctx, inc) },
 		UpdateFn: func(ctx context.Context, name string, inc *Incident) (*Incident, error) {
-			return client.UpdateStatus(ctx, name, inc.Status)
+			// The push reports the manifest, not the list of changed fields.
+			updated, _, err := client.Update(ctx, name, inc)
+			return updated, err
 		},
 		DeleteFn: func(_ context.Context, _ string) error {
 			return errors.New("incidents: delete is not supported by the IRM API")
 		},
-		StripFields: []string{"incidentID"},
+		StripFields: incidentStripFields,
 		Namespace:   namespace,
 		Descriptor:  incidentStaticDescriptor,
 	}

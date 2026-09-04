@@ -1,47 +1,41 @@
-## gcx irm incidents create
+## gcx irm incidents update
 
-Create a new incident from a file.
+Update the severity or the title of an incident.
+
+### Synopsis
+
+Update the severity or the title of an incident.
+
+The severity is the display label, not the identifier. Run
+`gcx irm incidents severities list` for the labels of your organization.
+
+gcx reads the incident first, so a value that already matches causes no write.
+The command prints one line that names the fields it changed. Use -o json or
+-o yaml for a structured update result.
 
 ```
-gcx irm incidents create [flags]
+gcx irm incidents update <id> [flags]
 ```
 
 ### Examples
 
 ```
-  # Create an incident from a YAML manifest:
-  cat <<EOF | gcx irm incidents create -f -
-  apiVersion: incident.ext.grafana.app/v1alpha1
-  kind: Incident
-  metadata:
-    name: my-incident
-  spec:
-    title: "Service degradation in production"
-    status: active
-    # The display label, not the identifier. Run
-    # 'gcx irm incidents severities list' for the valid values.
-    severity: Minor
-    isDrill: false
-    incidentType: internal
-    labels:
-      - key: team
-        label: platform
-      - key: env
-        label: production
-  EOF
+  # Raise the severity of an incident:
+  gcx irm incidents update 4 --severity Critical
 
-  # Create from a file:
-  gcx irm incidents create -f incident.yaml
+  # Correct the title:
+  gcx irm incidents update 4 --title "Checkout latency above the objective"
 ```
 
 ### Options
 
 ```
-  -f, --filename string   File containing the incident manifest (use - for stdin)
-  -h, --help              help for create
+  -h, --help              help for update
       --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
+      --severity string   New severity label (run 'gcx irm incidents severities list' for the valid values)
+      --title string      New title
 ```
 
 ### Options inherited from parent commands
