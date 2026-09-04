@@ -100,15 +100,15 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		if err != nil {
 			return Config{}, err
 		}
-		loadCtx := persistCtx
+		loadOpts := loadOptions{layer: configLayerFromCtx(persistCtx)}
 		if selected, ok := configSourceForPath(sources, path); ok {
-			loadCtx = withConfigLayer(loadCtx, selected.Type)
+			loadOpts.layer = selected.Type
 			current, readErr := readConfigSource(selected)
 			if readErr != nil {
 				return Config{}, readErr
 			}
 			if len(sources) > 1 && isLegacyConfig(current) {
-				loadCtx = withMigrationPersistenceSuppressed(loadCtx)
+				loadOpts.suppressMigrationPersistence = true
 			}
 		}
 		// The Lock callback below holds the write lock for exactly this
@@ -118,7 +118,8 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		if err != nil {
 			return Config{}, err
 		}
-		fresh, err := load(loadCtx, persistSource, loadOptions{write: writeOptions{writeLockHeldFor: identity}})
+		loadOpts.writeLockHeldFor = identity
+		fresh, err := load(persistCtx, persistSource, loadOpts)
 		if err != nil {
 			return fresh, err
 		}
@@ -145,11 +146,7 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 	}
 
 	n.oauthTransport.Lock = func(reqCtx context.Context) (func(), error) {
-		path, err := persistSource()
-		if err != nil {
-			return nil, err
-		}
-		identity, err := tokenPersistenceIdentity(sources, path)
+		path, identity, err := tokenPersistenceIdentityFor(persistSource, sources)
 		if err != nil {
 			return nil, err
 		}
@@ -249,7 +246,7 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		if err != nil {
 			return err
 		}
-		return write(persistCtx, persistSource, fresh, writeOptions{writeLockHeldFor: identity})
+		return write(persistCtx, persistSource, fresh, writeOptions{layer: fresh.sourceLayer, writeLockHeldFor: identity})
 	})
 }
 
@@ -333,8 +330,10 @@ func resolveTokenPersistenceSource(ctx context.Context, fallback Source, stackNa
 func pickHighestSourceForStack(ctx context.Context, sources []ConfigSource, stackName string, match func(*StackConfig) bool) (ConfigSource, bool, error) {
 	// DiscoverSources returns low→high precedence, so scan in reverse.
 	for _, src := range slices.Backward(sources) {
-		loadCtx := withMigrationPersistenceSuppressed(withConfigLayer(ctx, src.Type))
-		cfg, err := load(loadCtx, ExplicitConfigFile(src.Path), loadOptions{})
+		cfg, err := load(ctx, ExplicitConfigFile(src.Path), loadOptions{
+			layer:                        src.Type,
+			suppressMigrationPersistence: true,
+		})
 		if err != nil {
 			return ConfigSource{}, false, fmt.Errorf("rescan OAuth persistence source %s: %w", src.Path, err)
 		}

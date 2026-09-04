@@ -669,9 +669,9 @@ func verifyLegacyConversion(input, baseline *legacyConfig, cfg *Config, secrets 
 // legacy per-context entries keep the backup restorable). Every persistence
 // failure degrades to an in-memory migration with a warning, and the next
 // load retries.
-func migrateLegacyConfig(ctx context.Context, source Source, filename string, contents []byte) (Config, error) {
+func migrateLegacyConfig(ctx context.Context, source Source, filename string, contents []byte, opts loadOptions) (Config, error) {
 	log := logging.FromContext(ctx)
-	migrationPath, err := canonicalConfigSourceForLayer(filename, configLayerFromCtx(ctx))
+	migrationPath, err := canonicalConfigSourceForLayer(filename, opts.layer)
 	if err != nil {
 		return Config{}, err
 	}
@@ -679,7 +679,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	// Serialize migration for this source. The initial legacy-shape check happens
 	// before entering this function, so reread under the lock: another process may
 	// already have completed the migration while this one was waiting.
-	canPersist := !migrationPersistenceSuppressed(ctx)
+	canPersist := !opts.suppressMigrationPersistence
 	var lockErr error
 	deferredReason := ""
 	if canPersist {
@@ -699,9 +699,9 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	}
 	if !canPersist {
 		reason := layeredMigrationReadOnlyReason
-		if !migrationPersistenceSuppressed(ctx) && lockErr == nil {
+		if !opts.suppressMigrationPersistence && lockErr == nil {
 			reason = "timed out"
-		} else if !migrationPersistenceSuppressed(ctx) && lockErr != nil {
+		} else if !opts.suppressMigrationPersistence && lockErr != nil {
 			reason = lockErr.Error()
 		}
 		deferredReason = reason
@@ -710,7 +710,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	}
 
 	if canPersist {
-		freshContents, err := readConfigSource(ConfigSource{Path: filename, Type: configLayerFromCtx(ctx)})
+		freshContents, err := readConfigSource(ConfigSource{Path: filename, Type: opts.layer})
 		if err != nil {
 			return Config{}, err
 		}
@@ -739,11 +739,11 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	}
 
 	store := newLazyStore(keychainStoreFn)
-	layerType := configLayerFromCtx(ctx)
+	layerType := opts.layer
 	// Auto-discovered repository, system, and arbitrary explicit configs cannot
 	// read predictable per-user legacy accounts. Compatibility is limited to the
 	// canonical discovered user config with secure write permissions.
-	allowLegacyGet := trustedLegacyKeychainSource(ctx, layerType, filename)
+	allowLegacyGet := trustedLegacyKeychainSource(opts.explicitLegacyMigrationConsent, layerType, filename)
 	secrets, transientLegacyFailure, err := collectLegacySecrets(&lc, store, allowLegacyGet)
 	if err != nil {
 		return Config{}, err
@@ -786,7 +786,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	}
 
 	if !backupOK {
-		warnInMemoryMigration(ctx, filename, deferredReason)
+		warnInMemoryMigration(ctx, opts.migrationWarnings, filename, deferredReason)
 		return *cfg, nil
 	}
 
@@ -802,7 +802,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	cfg.hasSourceRevision = true
 	// The migration write runs under the flock this function took above for
 	// migrationPath, so it must not try to acquire that lock a second time.
-	if err := write(ctx, source, *cfg, writeOptions{writeLockHeldFor: migrationPath}); err != nil {
+	if err := write(ctx, source, *cfg, writeOptions{layer: layerType, writeLockHeldFor: migrationPath}); err != nil {
 		var durabilityErr *configDurabilityError
 		if errors.As(err, &durabilityErr) {
 			log.Warn("migrated config was replaced but its directory durability barrier failed; old and new keychain generations were retained",
@@ -812,7 +812,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 			return *cfg, nil
 		}
 		cfg.migrationDeferred = true
-		warnInMemoryMigration(ctx, filename, err.Error())
+		warnInMemoryMigration(ctx, opts.migrationWarnings, filename, err.Error())
 		return *cfg, nil
 	}
 
@@ -824,8 +824,8 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	return *cfg, nil
 }
 
-func warnInMemoryMigration(ctx context.Context, filename, reason string) {
-	if collector := inMemoryMigrationWarningCollectorFromContext(ctx); collector != nil {
+func warnInMemoryMigration(ctx context.Context, collector *inMemoryMigrationWarningCollector, filename, reason string) {
+	if collector != nil {
 		collector.add(filename, reason)
 		return
 	}
@@ -848,14 +848,21 @@ func prepareLegacyBackup(canPersist bool, deferredReason, filename string, conte
 	return backupOK, deferredReason
 }
 
-func trustedLegacyKeychainSource(ctx context.Context, layerType, filename string) bool {
+// trustedLegacyKeychainSource reports whether a legacy migration of filename
+// may read predictable per-user legacy keychain accounts.
+//
+// consentedIdentity is the canonical identity the high-level explicit loader
+// minted for the document the user selected through --config or GCX_CONFIG;
+// it is empty when no such consent was given. secureLegacyConfigIdentity
+// returns a non-empty canonical identity only together with ok, so an empty
+// consent can never match a verified target.
+func trustedLegacyKeychainSource(consentedIdentity, layerType, filename string) bool {
 	if layerType == "explicit" {
 		canonical, ok := secureLegacyConfigIdentity(filename)
 		if !ok {
 			return false
 		}
-		consent, consented := ctx.Value(explicitLegacyMigrationConsentKey{}).(explicitLegacyMigrationConsent)
-		return consented && consent.sourceIdentity == canonical
+		return consentedIdentity != "" && consentedIdentity == canonical
 	}
 	return layerType == "user" && trustedDiscoveredUserLegacySource(filename)
 }
@@ -944,17 +951,11 @@ func migrationFailedError(summary string, err error, filename string) error {
 }
 
 // configLayerKey carries the config layer type ("system", "user", "local")
-// through context, set by LoadLayered/LoadForWrite when loading a discovered
-// layer. Migration reads it to qualify cloud entry names per layer.
+// through context. It survives only as the transport for the exported
+// ContextWithConfigSource: every load and write inside this package takes the
+// layer as an explicit option, and the exported entry points translate this
+// ambient value into that option exactly once.
 type configLayerKey struct{}
-
-type explicitLegacyMigrationConsentKey struct{}
-
-type explicitLegacyMigrationConsent struct {
-	sourceIdentity string
-}
-
-type migrationPersistenceKey struct{}
 
 const layeredMigrationReadOnlyReason = "layered migration is read-only; migrate each layer explicitly"
 
@@ -995,8 +996,6 @@ func (c *inMemoryMigrationWarningCollector) exceptionalWarnings() []inMemoryMigr
 	return warnings
 }
 
-type migrationWarningCollectorKey struct{}
-
 type configSnapshotKey struct{}
 
 type configSnapshot struct {
@@ -1004,51 +1003,17 @@ type configSnapshot struct {
 	contents []byte
 }
 
-// withExplicitLegacyMigrationConsent mints path-bound consent only for the
-// high-level explicit loader used by --config and GCX_CONFIG. The generic
-// ExplicitConfigFile Source remains a path resolver and cannot authorize reads
-// from predictable legacy keychain accounts.
-func withExplicitLegacyMigrationConsent(ctx context.Context, path string) (context.Context, error) {
-	identity, err := canonicalConfigSource(path)
-	if err != nil {
-		return ctx, err
-	}
-	return context.WithValue(ctx, explicitLegacyMigrationConsentKey{}, explicitLegacyMigrationConsent{sourceIdentity: identity}), nil
-}
-
-func withConfigLayer(ctx context.Context, layer string) context.Context {
-	return context.WithValue(ctx, configLayerKey{}, layer)
-}
-
 // ContextWithConfigSource preserves auto-discovery provenance across raw
 // mutation helpers that pass a Source separately. In particular, local
 // repository sources remain no-symlink even when a provider reloads them by
 // explicit path before writing.
 func ContextWithConfigSource(ctx context.Context, source ConfigSource) context.Context {
-	return withConfigLayer(ctx, source.Type)
+	return context.WithValue(ctx, configLayerKey{}, source.Type)
 }
 
 func configLayerFromCtx(ctx context.Context) string {
 	layer, _ := ctx.Value(configLayerKey{}).(string)
 	return layer
-}
-
-func withMigrationPersistenceSuppressed(ctx context.Context) context.Context {
-	return context.WithValue(ctx, migrationPersistenceKey{}, true)
-}
-
-func migrationPersistenceSuppressed(ctx context.Context) bool {
-	suppressed, _ := ctx.Value(migrationPersistenceKey{}).(bool)
-	return suppressed
-}
-
-func withInMemoryMigrationWarningCollector(ctx context.Context, collector *inMemoryMigrationWarningCollector) context.Context {
-	return context.WithValue(ctx, migrationWarningCollectorKey{}, collector)
-}
-
-func inMemoryMigrationWarningCollectorFromContext(ctx context.Context) *inMemoryMigrationWarningCollector {
-	collector, _ := ctx.Value(migrationWarningCollectorKey{}).(*inMemoryMigrationWarningCollector)
-	return collector
 }
 
 func withConfigSnapshot(ctx context.Context, path string, contents []byte) context.Context {
