@@ -13,10 +13,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/telemetry"
 )
 
 // TestReportError_EmittedError pins the atomic-stdout-ownership contract:
@@ -504,5 +506,29 @@ func TestParsePseudoVersion(t *testing.T) {
 				t.Errorf("date = %q, want %q", gotDate, tt.wantDate)
 			}
 		})
+	}
+}
+
+// TestBuildUsageEvent_APIRequestDetail pins the wiring between the api
+// command's recorded shape and the emitted event: without it, deleting the
+// CurrentAPIRequest block in buildUsageEvent keeps the suite green.
+func TestBuildUsageEvent_APIRequestDetail(t *testing.T) {
+	// buildUsageEvent calls DeviceID(), which persists an ID under the state
+	// home on first use: keep the test away from the real one.
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	telemetry.RecordAPIRequest("POST", "/api/ds/query",
+		[]byte(`{"queries":[{"datasource":{"type":"prometheus","uid":"abc"}}]}`))
+
+	event := buildUsageEvent(&root.TelemetryInfo{Command: "api"}, time.Now(), 0)
+
+	if event.APIMethod != "POST" {
+		t.Errorf("APIMethod = %q, want %q", event.APIMethod, "POST")
+	}
+	if event.APIRoute != "/api/ds/query" {
+		t.Errorf("APIRoute = %q, want %q", event.APIRoute, "/api/ds/query")
+	}
+	if event.APIDatasourceTypes != "prometheus" {
+		t.Errorf("APIDatasourceTypes = %q, want %q", event.APIDatasourceTypes, "prometheus")
 	}
 }

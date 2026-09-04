@@ -16,6 +16,8 @@ weight: 4
 
 The statistics describe only the *shape* of usage, including command path, and flag names. Positional argument values, free-form flag values, and resource names are never sent, and the flags you set are recorded by name only. No raw count of batch or resource volume is sent.
 
+The one place an argument value is used at all is the `api` command, where the requested route and the datasource plugin type are first reduced to fixed vocabularies built into the binary, so only known, non-identifying names can ever be sent - see [The api command](#the-api-command) for details.
+
 For the resource commands that operate on batches, the size of the operation is sent as one of seven fixed categories rather than as a number. Two of those categories, `0` and `1`, cover a single value each, so those two sizes are exact; every larger category is a range. See [How to read the batch fields](#how-to-read-the-batch-fields).
 
 Two further fields describe how the command ran rather than naming a flag: `output_format` records the output format used, from a fixed list of known formats, and `dry_run` records whether the operation executed in dry-run mode. `output_format` is read from `--output`, which means a command that renders JSON because you passed `--json` is still recorded with `--output`'s value; that mismatch is a known bug rather than intended behaviour. `dry_run` is derived from the operation and is set even for commands that have no `--dry-run` flag. Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
@@ -109,6 +111,18 @@ When the invocation fails to parse, these additional fields are set. They captur
 | `parse_error_flags` | The **names** of unknown flags. No flag values are sent. | `verbsoe` |
 | `parse_error_nearest` | The nearest real command or flag name, if one is close. | `search` |
 | `parse_error_distance` | The edit distance to the nearest real name, or `-1` if there is no near match. | `2` |
+
+### The api command
+
+The `gcx api` command is unique because it allows users to send an arbitrary request to the Grafana API. To get useful usage information (which endpoints, and methods are used) we need to inspect the argument values. This is an exception to our claim of not sending argument values as part of usage telemetry. We mitigate the risk of sending sensitive or identifying information by filtering argument values through a fixed vocabulary built into the binary, before anything is recorded. The filtered argument values are only used to learn which endpoints and queries our users use the `api` command for, so we can spot where we can add value with new gcx commands in the future.
+
+| Field | Description | Example |
+| :---- | :---- | :---- |
+| `api_method` | The HTTP method, from the fixed list of valid verbs. | `POST` |
+| `api_route` | The requested route, matched against a built-in table of known Grafana API route templates. Variable segments such as UIDs and names are replaced with placeholders, and a path that matches no known route is sent as `other`. The raw path is never sent, and the query string is discarded before matching. | `/api/dashboards/uid/{uid}` |
+| `api_datasource_types` | For datasource query requests only: the datasource plugin types named in the request body. A type is sent only when it appears on a fixed list of Grafana-published plugin IDs built into the binary (core datasource types plus the datasource plugins Grafana publishes in the catalog). Any other type, including third-party and private plugins, is sent as `other`. The body is used only to read the `queries[].datasource.type` field, and a query request whose body cannot be read that way (missing, oversized, or not a well-formed query request) is sent as `other`. The datasource UID and name, the query text, the time range, and everything else in the body are never sent. | `grafana-postgresql-datasource` |
+
+You can verify all of this for any invocation with `GCX_TELEMETRY=log` (see [Inspect what would be sent](#inspect-what-would-be-sent)).
 
 ## Invocations that report nothing
 
