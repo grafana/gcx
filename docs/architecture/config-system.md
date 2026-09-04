@@ -255,6 +255,8 @@ Loading steps (in `Load`):
    config inspection and repair continue to use the recorded rejection reason.
    Under `go test`, the default store is unavailable, so test binaries never
    prompt the OS keychain.
+   `GCX_KEYCHAIN=off` selects a store that reports
+   `credentials.ErrDisabled` without probing the OS backend.
 8. **Migrate plaintext token-shaped secrets**: plaintext values in tracked stack
    and Cloud fields are staged under a newly generated bound account and the
    file is rewritten with
@@ -318,6 +320,12 @@ leave an old credential active, downgrade a credential for an unrelated backend
 error, or write a secret in plaintext while a real secret backend exists.
 Secret-less writes skip the keychain entirely (`hasSecretsToReconcile`), so they
 never probe the OS backend.
+
+A deliberately disabled keychain (`credentials.ErrDisabled`) is the one
+exception to fail-closed replacement: the user has asked for plaintext, so
+replacing a credential that still holds a reference writes plaintext and leaves
+the abandoned generation in place rather than erroring. Re-enabling the
+keychain therefore loses nothing.
 
 ---
 
