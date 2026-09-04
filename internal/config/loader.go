@@ -744,8 +744,12 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	if err != nil {
 		return 0, err
 	}
-	if !opts.writeLockCovers() {
-		writeLockPath, err := configLockFile(sourceIdentity, "write")
+	writeLockCovered, err := opts.writeLockCovers(sourceIdentity)
+	if err != nil {
+		return 0, err
+	}
+	if !writeLockCovered {
+		writeLockPath, err := configLockFile(sourceIdentity)
 		if err != nil {
 			return 0, err
 		}
@@ -904,7 +908,10 @@ func configLayerForPath(filename, declared string) (string, error) {
 	return declared, nil
 }
 
-func configLockFile(sourceIdentity, purpose string) (string, error) {
+// configLockFile returns the path of the write lock for one config source.
+// Locks are per-source: two config files never contend, and a lock held for
+// one says nothing about another.
+func configLockFile(sourceIdentity string) (string, error) {
 	stateHome := xdg.StateHome()
 	if testing.Testing() {
 		stateHome = filepath.Join(os.TempDir(), "gcx-test-state")
@@ -927,7 +934,7 @@ func configLockFile(sourceIdentity, purpose string) (string, error) {
 		return "", fmt.Errorf("secure config lock directory: %w", err)
 	}
 	digest := sha256.Sum256([]byte(sourceIdentity))
-	return filepath.Join(lockDir, fmt.Sprintf("%x.%s.lock", digest, purpose)), nil
+	return filepath.Join(lockDir, fmt.Sprintf("%x.write.lock", digest)), nil
 }
 
 func validateConfigWriteSnapshot(filename, sourceIdentity string, cfg *Config) error {
