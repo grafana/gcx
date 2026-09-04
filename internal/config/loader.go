@@ -609,7 +609,7 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 	}
 
 	if !config.migrationDeferred && config.hasPlaintextSecrets() {
-		migrated, writeErr := writeConfig(ctx, source, config, opts.forWrite(opts.layer), true)
+		migrated, writeErr := writeConfig(ctx, source, config, opts.forWrite(), true)
 		var durabilityErr *configDurabilityError
 		switch {
 		case errors.As(writeErr, &durabilityErr) && migrated > 0:
