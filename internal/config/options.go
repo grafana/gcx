@@ -60,12 +60,15 @@ type loadOptions struct {
 }
 
 // forWrite projects the load's write-relevant parameters onto the options of a
-// write the load performs on the caller's behalf. layer is passed explicitly
-// because the write targets the layer the load resolved, not whatever the
-// caller happened to name.
-func (o loadOptions) forWrite(layer string) writeOptions {
+// write the load performs on the caller's behalf. It reads o.layer rather than
+// taking a parameter because writeConfig only consults writeOptions.layer when
+// the config being written carries no source layer of its own (cfg.sourceLayer
+// == ""), and a config produced by load always carries one: load's sole
+// caller of forWrite runs after load has set config.sourceLayer, so that
+// field wins and o.layer is never consulted for the layer decision itself.
+func (o loadOptions) forWrite() writeOptions {
 	return writeOptions{
-		layer:            layer,
+		layer:            o.layer,
 		writeLockHeldFor: o.writeLockHeldFor,
 	}
 }
