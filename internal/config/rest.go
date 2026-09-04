@@ -93,7 +93,10 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 	// Persistence runs inside an HTTP RoundTrip whose request context may be
 	// cancelled the moment the caller has what it needs. Use a context
 	// detached from that cancellation so Load/Write always complete.
-	persistCtx := withConfigWriteLockHeld(context.WithoutCancel(ctx))
+	persistCtx := context.WithoutCancel(ctx)
+	// Every load and write below runs under the flock taken by the Lock
+	// callback, so they declare the lock as already held.
+	lockHeld := loadOptions{write: writeOptions{writeLockHeld: true}}
 
 	persistLoad := func() (Config, error) {
 		path, err := persistSource()
@@ -111,7 +114,7 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 				loadCtx = withMigrationPersistenceSuppressed(loadCtx)
 			}
 		}
-		fresh, err := Load(loadCtx, persistSource)
+		fresh, err := load(loadCtx, persistSource, lockHeld)
 		if err != nil {
 			return fresh, err
 		}
@@ -238,7 +241,7 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		g.OAuthRefreshToken = refreshToken
 		g.OAuthTokenExpiresAt = expiresAt
 		g.OAuthRefreshExpiresAt = refreshExpiresAt
-		return Write(persistCtx, persistSource, fresh)
+		return write(persistCtx, persistSource, fresh, lockHeld.write)
 	})
 }
 
@@ -297,7 +300,7 @@ func pickHighestSourceForStack(ctx context.Context, sources []ConfigSource, stac
 	// DiscoverSources returns low→high precedence, so scan in reverse.
 	for _, src := range slices.Backward(sources) {
 		loadCtx := withMigrationPersistenceSuppressed(withConfigLayer(ctx, src.Type))
-		cfg, err := Load(loadCtx, ExplicitConfigFile(src.Path))
+		cfg, err := load(loadCtx, ExplicitConfigFile(src.Path), loadOptions{})
 		if err != nil {
 			return ConfigSource{}, false, fmt.Errorf("rescan OAuth persistence source %s: %w", src.Path, err)
 		}

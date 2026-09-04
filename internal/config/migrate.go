@@ -800,7 +800,9 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	cfg.bindSourceIdentity(migrationPath)
 	cfg.sourceRevision = sha256.Sum256(contents)
 	cfg.hasSourceRevision = true
-	if err := Write(withConfigWriteLockHeld(ctx), source, *cfg); err != nil {
+	// The migration write runs under the flock this function took above for
+	// migrationPath, so it must not try to acquire that lock a second time.
+	if err := write(ctx, source, *cfg, writeOptions{writeLockHeld: true}); err != nil {
 		var durabilityErr *configDurabilityError
 		if errors.As(err, &durabilityErr) {
 			log.Warn("migrated config was replaced but its directory durability barrier failed; old and new keychain generations were retained",
