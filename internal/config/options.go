@@ -18,17 +18,67 @@ import "fmt"
 
 // loadOptions carries the parameters of a single config load. The zero value
 // is the plain caller-facing load performed by the exported Load.
+//
+// The fields are flat rather than nesting writeOptions: loading and writing
+// share only the config layer, and a load-side decision (which layer's bytes
+// to read, whether that layer may read legacy keychain accounts) must not have
+// to be read out of a struct named after the write. The one write parameter a
+// load carries, writeLockHeldFor, is projected onto writeOptions by forWrite.
 type loadOptions struct {
-	// write carries the options for a write the load performs on the caller's
+	// layer names the config layer being loaded ("system", "user", "local",
+	// "explicit", or empty when the caller has not classified the target).
+	// It decides whether the file is read through the no-symlink repository
+	// reader, how the canonical source identity is derived, and whether a
+	// legacy migration may read predictable per-user keychain accounts, so it
+	// must be stated per target rather than inherited from an ancestor load.
+	layer string
+
+	// suppressMigrationPersistence makes a legacy config migrate in memory
+	// only: it takes no migration lock, writes no file, and marks the result
+	// migrationDeferred. Layered loads and pre-write reloads use it so that
+	// reading never mutates a layer the caller did not select.
+	suppressMigrationPersistence bool
+
+	// explicitLegacyMigrationConsent is the canonical identity of the config
+	// document the user selected through --config or GCX_CONFIG. Only the
+	// high-level explicit loader mints it; the generic ExplicitConfigFile
+	// Source stays a path resolver and cannot by itself authorize reads from
+	// predictable legacy keychain accounts. Empty means no consent, and the
+	// identity comparison in trustedLegacyKeychainSource rejects it.
+	explicitLegacyMigrationConsent string
+
+	// migrationWarnings collects the per-source in-memory migration
+	// diagnostics of a layered load so the caller can collapse them into one
+	// warning. Nil sends each warning straight to the warning writer or log.
+	migrationWarnings *inMemoryMigrationWarningCollector
+
+	// writeLockHeldFor names the canonical config source whose write lock the
+	// caller already holds, for a write the load performs on the caller's
 	// behalf: loading migrates plaintext credentials into the keychain and
-	// persists legacy config migrations. Nesting rather than duplicating the
-	// write options keeps a single definition of what a write needs to know.
-	write writeOptions
+	// persists legacy config migrations.
+	writeLockHeldFor string
+}
+
+// forWrite projects the load's write-relevant parameters onto the options of a
+// write the load performs on the caller's behalf. layer is passed explicitly
+// because the write targets the layer the load resolved, not whatever the
+// caller happened to name.
+func (o loadOptions) forWrite(layer string) writeOptions {
+	return writeOptions{
+		layer:            layer,
+		writeLockHeldFor: o.writeLockHeldFor,
+	}
 }
 
 // writeOptions carries the parameters of a single config write. The zero value
 // is the plain caller-facing write performed by the exported Write.
 type writeOptions struct {
+	// layer names the config layer being written. It is only consulted when
+	// the config being written carries no source layer of its own (a config
+	// built in memory rather than loaded), and then decides the same things
+	// it decides on the load side.
+	layer string
+
 	// writeLockHeldFor names the canonical config source whose write lock the
 	// caller already holds, so the write must not acquire it again. Empty
 	// means no lock is held and the write takes its own. Config write locks
