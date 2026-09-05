@@ -17,8 +17,7 @@ func TestSyncPluginRequest(t *testing.T) {
 	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
-		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"message":"Sync request processed successfully"}`) //nolint:errcheck
+		io.WriteString(w, "opaque response") //nolint:errcheck
 	}))
 
 	if err := client.SyncPlugin(context.Background()); err != nil {
@@ -33,10 +32,10 @@ func TestSyncPluginRequest(t *testing.T) {
 	}
 }
 
-// TestSyncPluginResponses covers the answers that the endpoint can send.
-// Nobody verified the real shape, so the client ignores the body and treats
-// every 2xx status code as a success. An error status code carries the
-// backend message.
+// TestSyncPluginResponses covers status handling without making response-body
+// assumptions. Nobody verified the real body shape, so the client ignores the
+// body and treats every 2xx status code as a success. An error status code
+// carries the backend message.
 func TestSyncPluginResponses(t *testing.T) {
 	t.Parallel()
 
@@ -47,9 +46,9 @@ func TestSyncPluginResponses(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:   "200 with a JSON body",
+			name:   "200 with an opaque body",
 			status: http.StatusOK,
-			body:   `{"message":"Sync request processed successfully","status":"success"}`,
+			body:   "opaque response",
 		},
 		{
 			name:   "202 with an empty body",

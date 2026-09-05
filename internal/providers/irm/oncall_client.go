@@ -841,9 +841,8 @@ func (c *OnCallClient) CreateDirectPaging(ctx context.Context, input DirectPagin
 // "Object does not exist". This call starts the refresh. It does not prove
 // that the copy is current when the call returns.
 //
-// The backend answers with free-form success text that a caller cannot
-// dispatch on, so this method ignores the body, like deleteResource does, and
-// treats every 2xx status code as a success.
+// Nobody has verified the response body. This method ignores it, like
+// deleteResource does, and treats every 2xx status code as a success.
 func (c *OnCallClient) SyncPlugin(ctx context.Context) error {
 	resp, err := c.DoRequest(ctx, http.MethodPost, pluginSyncPath, nil)
 	if err != nil {

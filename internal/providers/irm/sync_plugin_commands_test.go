@@ -101,3 +101,16 @@ func TestSyncPluginCommandSurfacesBackendError(t *testing.T) {
 		t.Errorf("expected the backend error, got %v", err)
 	}
 }
+
+func TestSyncPluginCommandRejectsArguments(t *testing.T) {
+	resetAgentMode(t)
+
+	fake := &fakePluginAPI{}
+	_, err := runSyncPluginCmd(t, fake, "unexpected")
+	if err == nil {
+		t.Fatal("expected an error for an unexpected argument")
+	}
+	if fake.calls != 0 {
+		t.Errorf("expected no sync call, got %d", fake.calls)
+	}
+}

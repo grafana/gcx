@@ -181,8 +181,6 @@ type OnCallAPI interface {
 	ListUserGroups(ctx context.Context) ([]UserGroup, error)
 	ListSlackChannels(ctx context.Context) ([]SlackChannel, error)
 
-	SyncPlugin(ctx context.Context) error
-
 	ListAlerts(ctx context.Context, alertGroupID string, opts ...ListOption) ([]Alert, error)
 	GetAlert(ctx context.Context, id string) (*Alert, error)
 
@@ -202,6 +200,8 @@ type OnCallAPI interface {
 	TakeShiftSwap(ctx context.Context, id string, input TakeShiftSwapInput) (*ShiftSwap, error)
 
 	CreateDirectPaging(ctx context.Context, input DirectPagingInput) (*DirectPagingResult, error)
+
+	SyncPlugin(ctx context.Context) error
 }
 
 func (x Integration) GetResourceName() string           { return x.ID }
