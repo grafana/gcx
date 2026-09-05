@@ -31,6 +31,14 @@ cards:
       description: Move a legacy `gcx` configuration to the version 1 format.
       href: migrate-configuration/
       height: 24
+    - title: Usage statistics
+      description: Understand which statistics `gcx` reports to Grafana Labs, and what they're used for. 
+      href: anonymous-usage-statistics/
+      height: 24
+    - title: Keychain credential storage
+      description: Learn how `gcx` stores credentials. 
+      href: keychain/
+      height: 24            
   title_class: pt-0 lh-1
 hero:
   title: gcx CLI
@@ -50,5 +58,11 @@ hero:
 It's also integrated with Grafana Assistant, combining the previously fragmented user experience into one single tool.
 
 ## Get started
+
+{{< /admonition >}}
+
+Refer to the [`gcx` repository](https://github.com/grafana/gcx) in GitHub for the complete set of `gcx` documents, including architecture information, user guides, and other reference material.
+
+{{< admonition type="note" >}}
 
 {{< card-grid key="cards" type="simple" >}}
