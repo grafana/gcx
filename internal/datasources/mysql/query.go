@@ -19,7 +19,7 @@ const (
 )
 
 type queryOpts struct {
-	dsquery.SharedOpts
+	dsquery.SQLQueryOpts
 
 	Datasource string
 	Limit      int
@@ -35,7 +35,7 @@ func (opts *queryOpts) Validate() error {
 	if opts.Limit < 0 {
 		return fmt.Errorf("--limit must be >= 0, got %d", opts.Limit)
 	}
-	return opts.SharedOpts.Validate()
+	return opts.SQLQueryOpts.Validate()
 }
 
 // QueryCmd returns the `query` subcommand for a MySQL datasource parent.
@@ -47,7 +47,8 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Execute a SQL query against a MySQL datasource",
 		Long: `Execute a SQL query against a MySQL datasource.
 
-EXPR is the SQL query to execute, passed as a positional argument or via --expr.
+EXPR is the SQL query to execute, passed as a positional argument, via --expr,
+or via --query-file. Use --query-file - to read SQL from stdin.
 Datasource is resolved from -d flag or datasources.mysql in your context.
 Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.`,
 		Example: `
@@ -60,6 +61,9 @@ Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.`,
   # Output as JSON
   gcx datasources mysql query -d UID 'SELECT 1' -o json
 
+  # Read a long query from a file
+  gcx datasources mysql query -d UID --query-file ./query.sql -o json
+
   # Disable limit enforcement
   gcx datasources mysql query 'SELECT * FROM big_table' --limit 0`,
 		Args: cobra.RangeArgs(0, 1),
@@ -68,7 +72,7 @@ Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.`,
 				return err
 			}
 
-			expr, err := opts.ResolveExpr(args, 0)
+			expr, err := opts.ResolveExpr(args, 0, cmd.InOrStdin(), cmd.Flags().Changed("query-file"))
 			if err != nil {
 				return err
 			}
