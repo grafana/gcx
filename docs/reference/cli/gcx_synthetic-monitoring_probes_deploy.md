@@ -2,6 +2,10 @@
 
 Generate Kubernetes manifests for deploying an SM agent.
 
+### Synopsis
+
+Generate a Namespace, Secret, and Deployment for a private Synthetic Monitoring probe. The Deployment reads the probe token from the Secret and sends it to the agent through a protected environment variable. The output contains the Secret, so store saved output securely.
+
 ```
 gcx synthetic-monitoring probes deploy [flags]
 ```
@@ -9,22 +13,26 @@ gcx synthetic-monitoring probes deploy [flags]
 ### Examples
 
 ```
-  # Generate manifests for a probe deployment.
-  gcx synthetic-monitoring probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443
+  # Read the probe token from a file.
+  gcx synthetic-monitoring probes deploy --probe-name my-probe --token-file ./probe-token --api-server-url synthetic-monitoring-grpc.grafana.net:443
 
-  # Pipe directly into kubectl.
-  gcx synthetic-monitoring probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443 | kubectl apply -f -
+  # Read the probe token from an environment variable and apply the manifests.
+  gcx synthetic-monitoring probes deploy --probe-name my-probe --token-env PROBE_TOKEN --api-server-url synthetic-monitoring-grpc.grafana.net:443 | kubectl apply -f -
+
+  # Read the probe token from standard input.
+  printf '%s' "$PROBE_TOKEN" | gcx synthetic-monitoring probes deploy --probe-name my-probe --token-file - --api-server-url synthetic-monitoring-grpc.grafana.net:443
 ```
 
 ### Options
 
 ```
-      --api-server-url string   SM API gRPC endpoint (required)
+      --api-server-url string   SM API gRPC address in host:port format (required)
   -h, --help                    help for deploy
       --image string            SM agent container image (default "grafana/synthetic-monitoring-agent:latest")
-      --namespace string        K8s namespace (default "synthetic-monitoring")
-      --probe-name string       Name for the k8s resources (required)
-      --token string            Probe auth token (required)
+      --namespace string        Kubernetes namespace (default "synthetic-monitoring")
+      --probe-name string       Name for the Kubernetes resources (required)
+      --token-env string        Read the probe auth token from this environment variable
+      --token-file string       Read the probe auth token from a file (- for standard input)
 ```
 
 ### Options inherited from parent commands

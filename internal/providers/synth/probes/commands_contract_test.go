@@ -3,11 +3,14 @@ package probes_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -20,11 +23,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// These tests pin the agent output contract for the probes mutation commands
-// (create, delete, reset-token):
+// These tests pin the agent output contract for the probe commands:
 //   - agent mode emits exactly one JSON value on stdout;
-//   - the human default output stays byte-identical to the pre-codec lines —
-//     including the one-time auth token block on create;
+//   - create and reset-token return their one-time auth tokens;
 //   - partial failures return *gcxerrors.EmittedError with ExitPartialFailure;
 //   - explicit -o json/yaml overrides are honored;
 //   - advisory notes land on stderr, never stdout.
@@ -54,8 +55,12 @@ func newProbeServer(t *testing.T, st *probeAPIState) *httptest.Server {
 	mux.HandleFunc("/api/v1/probe/update", func(w http.ResponseWriter, r *http.Request) {
 		var m map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&m)
-		delete(m, "resetToken")
-		writeJSON(w, map[string]any{"probe": m})
+		if r.URL.Query().Get("reset-token") != "true" {
+			w.WriteHeader(http.StatusBadRequest)
+			writeJSON(w, map[string]string{"error": "reset-token query parameter is required"})
+			return
+		}
+		writeJSON(w, map[string]any{"probe": m, "token": "new-probe-auth-token"})
 	})
 	mux.HandleFunc("/api/v1/probe/delete/", func(w http.ResponseWriter, r *http.Request) {
 		idStr := strings.TrimPrefix(r.URL.Path, "/api/v1/probe/delete/")
@@ -280,8 +285,9 @@ func TestProbesResetTokenOutputContract(t *testing.T) {
 		checkJSON  bool
 	}{
 		{
-			name:       "human default byte-identical, note on stderr",
-			wantStdout: "✔ Reset auth token for probe \"my-probe\" (id=7)\n",
+			name: "human default includes the new token",
+			wantStdout: "✔ Reset auth token for probe \"my-probe\" (id=7)\n" +
+				"\nNew probe auth token (save this securely):\nnew-probe-auth-token\n",
 		},
 		{
 			name:      "agent mode single JSON document",
@@ -304,9 +310,7 @@ func TestProbesResetTokenOutputContract(t *testing.T) {
 			stdout, stderr, err := runProbes(t, srv.URL, tc.agentMode, "", args...)
 			require.NoError(t, err)
 
-			// The token-not-returned note is advisory: stderr only.
-			assert.Contains(t, stderr, "does not return the new token")
-			assert.NotContains(t, stdout, "does not return the new token")
+			assert.Empty(t, stderr)
 
 			if tc.wantStdout != "" {
 				assert.Equal(t, tc.wantStdout, stdout)
@@ -314,13 +318,78 @@ func TestProbesResetTokenOutputContract(t *testing.T) {
 			if tc.checkJSON {
 				doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
 				require.True(t, ok)
-				assert.Equal(t, "gcx.mutation", doc["type"])
+				assert.Equal(t, "gcx.synth.probe_token_reset", doc["type"])
+				assert.Equal(t, "1", doc["schema_version"])
 				assert.Equal(t, "reset-token", doc["action"])
-				target, ok := doc["target"].(map[string]any)
-				require.True(t, ok)
-				assert.Equal(t, "my-probe", target["name"])
-				assert.Equal(t, "7", target["id"])
+				assert.Equal(t, "my-probe", doc["name"])
+				assert.Equal(t, 7, jsonInt(t, doc["id"]))
+				assert.Equal(t, "new-probe-auth-token", doc["token"])
 			}
 		})
 	}
+}
+
+func TestProbesDeployTokenSources(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "probe-token")
+	require.NoError(t, os.WriteFile(tokenFile, []byte("file-token\n"), 0o600))
+	t.Setenv("PROBE_TOKEN", "environment-token")
+
+	tests := []struct {
+		name      string
+		stdin     string
+		token     string
+		tokenArgs []string
+	}{
+		{
+			name:      "file",
+			token:     "file-token",
+			tokenArgs: []string{"--token-file", tokenFile},
+		},
+		{
+			name:      "environment variable",
+			token:     "environment-token",
+			tokenArgs: []string{"--token-env", "PROBE_TOKEN"},
+		},
+		{
+			name:      "standard input",
+			stdin:     "stdin-token\n",
+			token:     "stdin-token",
+			tokenArgs: []string{"--token-file", "-"},
+		},
+		{
+			name:      "deprecated direct flag stays compatible",
+			token:     "direct-token",
+			tokenArgs: []string{"--token", "direct-token"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newProbeServer(t, &probeAPIState{})
+			args := []string{
+				"deploy",
+				"--probe-name", "my-probe",
+				"--api-server-url", "synthetic-monitoring-grpc.grafana.net:443",
+			}
+			args = append(args, tt.tokenArgs...)
+
+			stdout, stderr, err := runProbes(t, srv.URL, false, tt.stdin, args...)
+			require.NoError(t, err)
+			assert.Contains(t, stdout, "kind: Namespace")
+			assert.Contains(t, stdout, base64.StdEncoding.EncodeToString([]byte(tt.token)))
+			assert.Contains(t, stdout, `image: "`+probes.DefaultAgentImage+`"`)
+			assert.Empty(t, stderr)
+		})
+	}
+}
+
+func TestProbesDeployRejectsMultipleTokenSources(t *testing.T) {
+	srv := newProbeServer(t, &probeAPIState{})
+	_, _, err := runProbes(t, srv.URL, false, "stdin-token", "deploy",
+		"--probe-name", "my-probe",
+		"--api-server-url", "synthetic-monitoring-grpc.grafana.net:443",
+		"--token-file", "-",
+		"--token-env", "PROBE_TOKEN",
+	)
+	require.EqualError(t, err, "use only one of --token-file, --token-env, or --token")
 }

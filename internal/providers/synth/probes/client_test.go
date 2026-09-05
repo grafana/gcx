@@ -166,20 +166,32 @@ func TestClient_ResetToken(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
 				assert.Equal(t, proxyPath("probe/update"), r.URL.Path)
+				assert.Equal(t, "true", r.URL.Query().Get("reset-token"))
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-				// Verify the body is flat JSON with resetToken at top level
+				// Verify the body is flat probe JSON. The reset switch is a query parameter.
 				var body map[string]any
 				err := json.NewDecoder(r.Body).Decode(&body)
 				assert.NoError(t, err)
-				assert.Equal(t, true, body["resetToken"])
+				assert.NotContains(t, body, "resetToken")
 				assert.InDelta(t, float64(42), body["id"], 0)
 				assert.Equal(t, "my-probe", body["name"])
 
-				writeJSON(w, map[string]any{
-					"probe": probes.Probe{ID: 42, Name: "my-probe", Region: "US"},
+				writeJSON(w, probes.ResetTokenResponse{
+					Probe: probes.Probe{ID: 42, Name: "my-probe", Region: "US"},
+					Token: "new-probe-auth-token",
 				})
 			},
+		},
+		{
+			name:  "response without token",
+			probe: probes.Probe{ID: 42, Name: "my-probe"},
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(w, map[string]any{
+					"probe": probes.Probe{ID: 42, Name: "my-probe"},
+				})
+			},
+			wantErr: true,
 		},
 		{
 			name:  "server error",
@@ -202,8 +214,9 @@ func TestClient_ResetToken(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, int64(42), got.ID)
-			assert.Equal(t, "my-probe", got.Name)
+			assert.Equal(t, int64(42), got.Probe.ID)
+			assert.Equal(t, "my-probe", got.Probe.Name)
+			assert.Equal(t, "new-probe-auth-token", got.Token)
 		})
 	}
 }

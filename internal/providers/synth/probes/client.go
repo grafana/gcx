@@ -49,9 +49,10 @@ type CreateResponse struct {
 	Token string `json:"token"`
 }
 
-// updateResponse wraps the probe returned from the update endpoint.
-type updateResponse struct {
-	Probe Probe `json:"probe"`
+// ResetTokenResponse is the API response from resetting a probe token.
+type ResetTokenResponse struct {
+	Probe Probe  `json:"probe"`
+	Token string `json:"token"`
 }
 
 // List returns all probes visible to the authenticated tenant.
@@ -119,28 +120,15 @@ func (c *Client) Get(ctx context.Context, id int64) (*Probe, error) {
 	return nil, fmt.Errorf("probe %d not found", id)
 }
 
-// ResetToken updates a probe with resetToken set to true, causing the API
-// to issue a new authentication token for the probe.
-// The SM update API expects flat JSON: all probe fields at top level plus resetToken.
-func (c *Client) ResetToken(ctx context.Context, probe Probe) (*Probe, error) {
-	raw, err := json.Marshal(probe)
+// ResetToken updates a probe with the reset-token query parameter. The
+// response contains the updated probe and its new authentication token.
+func (c *Client) ResetToken(ctx context.Context, probe Probe) (*ResetTokenResponse, error) {
+	reqBody, err := json.Marshal(probe)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling probe: %w", err)
 	}
 
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil, fmt.Errorf("converting probe to map: %w", err)
-	}
-
-	m["resetToken"] = true
-
-	reqBody, err := json.Marshal(m)
-	if err != nil {
-		return nil, fmt.Errorf("marshalling update request: %w", err)
-	}
-
-	status, body, err := c.t.Do(ctx, http.MethodPost, probeUpdatePath, reqBody)
+	status, body, err := c.t.Do(ctx, http.MethodPost, probeUpdatePath+"?reset-token=true", reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("resetting probe token %d: %w", probe.ID, err)
 	}
@@ -149,12 +137,15 @@ func (c *Client) ResetToken(ctx context.Context, probe Probe) (*Probe, error) {
 		return nil, providers.FormatError(status, body)
 	}
 
-	var updated updateResponse
+	var updated ResetTokenResponse
 	if err := json.Unmarshal(body, &updated); err != nil {
 		return nil, fmt.Errorf("decoding updated probe: %w", err)
 	}
+	if updated.Token == "" {
+		return nil, fmt.Errorf("resetting probe token %d: API response did not contain the new token", probe.ID)
+	}
 
-	return &updated.Probe, nil
+	return &updated, nil
 }
 
 // Delete deletes a probe by ID.
