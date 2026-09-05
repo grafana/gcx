@@ -1,32 +1,32 @@
-## gcx irm oncall escalation-policies steps list
+## gcx irm oncall routes list-filter-types
 
-List allowed values for an escalation policy's step field (older spelling; use `escalation-policies list-step-types`).
+List allowed values for a route's filtering_term_type field.
 
 ### Synopsis
 
-List the step types that an escalation policy accepts. The command reads the catalog from the Incident Response and Management backend, so the values match your stack. Put the numeric value in the step field of an escalation policy manifest.
+List the filter types that a route accepts. The command reads the catalog from the Incident Response and Management backend, so the values match your stack. Put the numeric value in the filtering_term_type field of a route manifest.
 
 ```
-gcx irm oncall escalation-policies steps list [flags]
+gcx irm oncall routes list-filter-types [flags]
 ```
 
 ### Examples
 
 ```
-  # List the step types that an escalation policy accepts
-  gcx irm oncall escalation-policies list-step-types
+  # List the filter types that a route accepts
+  gcx irm oncall routes list-filter-types
 
-  # Read the numeric value of one step type
-  gcx irm oncall escalation-policies list-step-types -o json | jq -r '.[] | select(.display_name == "<display-name>") | .value'
+  # Read the numeric value of one filter type
+  gcx irm oncall routes list-filter-types -o json | jq -r '.[] | select(.display_name == "<display-name>") | .value'
 
-  # Put that value in the step field of policy.yaml, then create the policy
-  gcx irm oncall escalation-policies create -f policy.yaml
+  # Put that value in the filtering_term_type field of route.yaml, then create the route
+  gcx irm oncall routes create -f route.yaml
 ```
 
 ### Options
 
 ```
-  -h, --help            help for list
+  -h, --help            help for list-filter-types
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
@@ -46,5 +46,5 @@ gcx irm oncall escalation-policies steps list [flags]
 
 ### SEE ALSO
 
-* [gcx irm oncall escalation-policies steps](gcx_irm_oncall_escalation-policies_steps.md)	 - Discover allowed escalation policy step types.
+* [gcx irm oncall routes](gcx_irm_oncall_routes.md)	 - Manage OnCall routes.
 

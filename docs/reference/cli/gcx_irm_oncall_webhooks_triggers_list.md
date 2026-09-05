@@ -1,9 +1,26 @@
 ## gcx irm oncall webhooks triggers list
 
-List allowed values for a webhook's trigger_type field.
+List allowed values for a webhook's trigger_type field (older spelling; use `webhooks list-triggers`).
+
+### Synopsis
+
+List the trigger types that an outgoing webhook accepts. The command reads the catalog from the Incident Response and Management backend, so the values match your stack. Put the numeric value in the trigger_type field of a webhook manifest.
 
 ```
 gcx irm oncall webhooks triggers list [flags]
+```
+
+### Examples
+
+```
+  # List the trigger types that a webhook accepts
+  gcx irm oncall webhooks list-triggers
+
+  # Read the numeric value of one trigger type
+  gcx irm oncall webhooks list-triggers -o json | jq -r '.[] | select(.display_name == "<display-name>") | .value'
+
+  # Put that value in the trigger_type field of webhook.yaml, then create the webhook
+  gcx irm oncall webhooks create -f webhook.yaml
 ```
 
 ### Options
