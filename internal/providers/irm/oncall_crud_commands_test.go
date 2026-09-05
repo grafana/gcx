@@ -200,20 +200,16 @@ func TestScheduleCreateAcceptsEnvelopeManifest(t *testing.T) {
 	resetAgentMode(t)
 
 	tests := []struct {
-		name     string
-		manifest string
+		name         string
+		manifest     string
+		wantName     string
+		wantTimeZone string
 	}{
 		{
-			name: "envelope",
-			manifest: `apiVersion: oncall.ext.grafana.app/v1alpha1
-kind: Schedule
-metadata:
-  name: probe
-spec:
-  name: my schedule
-  type: 2
-  time_zone: Europe/Amsterdam
-`,
+			name:         "generated envelope example",
+			manifest:     string(scheduleExample()),
+			wantName:     "my-schedule",
+			wantTimeZone: "UTC",
 		},
 		{
 			name: "bare spec",
@@ -221,6 +217,8 @@ spec:
 type: 2
 time_zone: Europe/Amsterdam
 `,
+			wantName:     "my schedule",
+			wantTimeZone: "Europe/Amsterdam",
 		},
 	}
 
@@ -237,14 +235,14 @@ time_zone: Europe/Amsterdam
 			}
 
 			got := fake.gotSchedule
-			if got.Name != "my schedule" {
-				t.Errorf("name = %q, want %q", got.Name, "my schedule")
+			if got.Name != tt.wantName {
+				t.Errorf("name = %q, want %q", got.Name, tt.wantName)
 			}
 			if got.Type != float64(2) {
 				t.Errorf("type = %#v, want float64(2)", got.Type)
 			}
-			if got.TimeZone != "Europe/Amsterdam" {
-				t.Errorf("time_zone = %q, want %q", got.TimeZone, "Europe/Amsterdam")
+			if got.TimeZone != tt.wantTimeZone {
+				t.Errorf("time_zone = %q, want %q", got.TimeZone, tt.wantTimeZone)
 			}
 		})
 	}
