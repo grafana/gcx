@@ -29,7 +29,7 @@ type incidentUpdateOpts struct {
 func (o *incidentUpdateOpts) setup(flags *pflag.FlagSet) {
 	// The result is a SingleMutation document. The human default is one line,
 	// and machine formats include the changed signal for idempotent updates.
-	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
+	o.IO.RegisterCustomCodec("text", &mutationResultTextCodec[cmdio.SingleMutation]{
 		render: func(w io.Writer, m cmdio.SingleMutation) {
 			if m.Changed != nil && !*m.Changed {
 				cmdio.Info(w, "Incident %s already carries the requested values", m.Target.ID)
