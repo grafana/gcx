@@ -3,6 +3,7 @@ package irm
 import (
 	"io"
 
+	"github.com/grafana/gcx/internal/agent"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -18,6 +19,15 @@ import (
 
 type syncPluginOpts struct {
 	IO cmdio.Options
+}
+
+func newPluginCommand(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "plugin",
+		Short: "Manage the IRM plugin.",
+	}
+	cmd.AddCommand(newSyncPluginCommand(loader))
+	return cmd
 }
 
 func (o *syncPluginOpts) setup(flags *pflag.FlagSet) {
@@ -40,9 +50,13 @@ func (o *syncPluginOpts) Validate() error {
 func newSyncPluginCommand(loader OnCallConfigLoader) *cobra.Command {
 	opts := &syncPluginOpts{}
 	cmd := &cobra.Command{
-		Use:   "sync-plugin",
-		Short: "Request a refresh of the IRM copy of the Grafana users and teams.",
+		Use:   "sync",
+		Short: "Request a refresh of the IRM copy of Grafana users and teams [experimental].",
 		Long: `Request a refresh of the IRM copy of the Grafana users and teams.
+
+Experimental: this command is a temporary bridge for a backend synchronization
+constraint. It can change or be removed when IRM keeps its internal copy current
+without a caller-triggered synchronization.
 
 IRM mirrors the Grafana users and teams, and refreshes that copy on a
 schedule. Until the refresh lands, an IRM object that references a new team or
@@ -54,6 +68,9 @@ the IRM objects that reference it.
 The backend accepts the request and refreshes in the background, so a
 successful call does not prove that the copy is already current.`,
 		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			agent.AnnotationStability: agent.StabilityExperimental,
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
