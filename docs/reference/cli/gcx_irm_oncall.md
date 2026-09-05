@@ -35,7 +35,6 @@ Manage Grafana OnCall resources.
 * [gcx irm oncall shift-swaps](gcx_irm_oncall_shift-swaps.md)	 - Manage shift swaps.
 * [gcx irm oncall shifts](gcx_irm_oncall_shifts.md)	 - Manage OnCall shifts.
 * [gcx irm oncall slack-channels](gcx_irm_oncall_slack-channels.md)	 - List Slack channels.
-* [gcx irm oncall sync-plugin](gcx_irm_oncall_sync-plugin.md)	 - Request a refresh of the IRM copy of the Grafana users and teams.
 * [gcx irm oncall teams](gcx_irm_oncall_teams.md)	 - Manage OnCall teams.
 * [gcx irm oncall user-groups](gcx_irm_oncall_user-groups.md)	 - List user groups.
 * [gcx irm oncall users](gcx_irm_oncall_users.md)	 - Manage OnCall users.
