@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/irm"
 )
 
-func TestMoveToPosition(t *testing.T) {
+func TestUpdatePositionClientRequest(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -79,7 +79,7 @@ func TestMoveToPosition(t *testing.T) {
 	}
 }
 
-func TestMoveToPositionNotFound(t *testing.T) {
+func TestUpdatePositionClientNotFound(t *testing.T) {
 	t.Parallel()
 
 	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
