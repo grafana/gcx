@@ -486,6 +486,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm oncall shifts list":                    {Cost: "small"},
 	"gcx irm oncall shifts update":                  {Cost: "small", Hint: "<id> -f shift.yaml"},
 	"gcx irm oncall slack-channels list":            {Cost: "small"},
+	"gcx irm plugin sync":                           {Cost: "small", Hint: "Experimental temporary bridge. Run after you create a Grafana team or user, before you create the IRM objects that reference it. The backend refreshes the copy later, so a create can still fail with \"Object does not exist\". Retry the create after a short delay."},
 	"gcx irm oncall teams get":                      {Cost: "small"},
 	"gcx irm oncall teams list":                     {Cost: "small"},
 	"gcx irm oncall user-groups list":               {Cost: "small"},

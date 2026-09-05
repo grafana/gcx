@@ -356,6 +356,7 @@
  "gcx irm oncall shifts list": "finite",
  "gcx irm oncall shifts update": "finite",
  "gcx irm oncall slack-channels list": "finite",
+ "gcx irm plugin sync": "finite",
  "gcx irm oncall teams get": "finite",
  "gcx irm oncall teams list": "finite",
  "gcx irm oncall user-groups list": "finite",
