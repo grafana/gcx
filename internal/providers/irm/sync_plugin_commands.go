@@ -33,12 +33,16 @@ func (o *syncPluginOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+func (o *syncPluginOpts) Validate() error {
+	return o.IO.Validate()
+}
+
 func newSyncPluginCommand(loader OnCallConfigLoader) *cobra.Command {
 	opts := &syncPluginOpts{}
 	cmd := &cobra.Command{
 		Use:   "sync-plugin",
-		Short: "Refresh the IRM copy of the Grafana users and teams.",
-		Long: `Refresh the IRM copy of the Grafana users and teams.
+		Short: "Request a refresh of the IRM copy of the Grafana users and teams.",
+		Long: `Request a refresh of the IRM copy of the Grafana users and teams.
 
 IRM mirrors the Grafana users and teams, and refreshes that copy on a
 schedule. Until the refresh lands, an IRM object that references a new team or
@@ -51,7 +55,7 @@ The backend accepts the request and refreshes in the background, so a
 successful call does not prove that the copy is already current.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 
