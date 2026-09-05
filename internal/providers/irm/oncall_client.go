@@ -342,9 +342,9 @@ func (c *OnCallClient) DeleteIntegration(ctx context.Context, id string) error {
 
 // GetIntegrationTemplates returns the alert templates of an integration.
 //
-// The template set is a flat document of about twenty fields, and the field
-// set grows with the IRM backend. The document is therefore carried as a map
-// rather than a Go struct, so that a get followed by a set never drops a field
+// The template set is a flat document with many fields. The field set grows
+// with the IRM backend. The document is therefore carried as a map
+// rather than a Go struct, so that a get followed by an update never drops a field
 // this build does not know about.
 func (c *OnCallClient) GetIntegrationTemplates(ctx context.Context, id string) (map[string]any, error) {
 	doc, err := getResource[map[string]any](ctx, c, integrationTemplatesPath, id, "integration templates")

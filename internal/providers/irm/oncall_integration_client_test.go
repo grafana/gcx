@@ -37,7 +37,7 @@ func TestGetIntegrationTemplates(t *testing.T) {
 	if got["phone_call_title_template"] != "Kritieke melding" {
 		t.Errorf("unexpected phone call template: %v", got["phone_call_title_template"])
 	}
-	// An unknown field must survive, so that a get/edit/set round trip never
+	// An unknown field must survive, so that a get/edit/update round trip never
 	// drops a template this build does not model.
 	if got["a_field_gcx_does_not_know"] != "kept" {
 		t.Errorf("unknown field was dropped: %v", got)
