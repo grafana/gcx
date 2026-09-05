@@ -16,11 +16,13 @@ gcx agento11y rules update <rule-id> [flags]
 ### Options
 
 ```
-  -f, --filename string   File containing the full rule definition (use - for stdin)
-  -h, --help              help for update
-      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string     Output format. One of: agents, json, yaml (default "json")
+  -f, --filename string              File containing the full rule definition (use - for stdin)
+  -h, --help                         help for update
+      --jq string                    jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string                  Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --on-fail-collection strings   Collection ID to add matching conversations to when all evaluators fail (repeatable)
+      --on-pass-collection strings   Collection ID to add matching conversations to when all evaluators pass (repeatable)
+  -o, --output string                Output format. One of: agents, json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
