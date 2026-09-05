@@ -54,6 +54,13 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources list-types incidents.v1alpha1.incident.ext.grafana.app -o json
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate parses --json and --jq. Without the call the two
+			// branches below never fire, and --json silently prints the full
+			// nested output instead.
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 
 			cfg, err := configOpts.LoadGrafanaConfig(ctx)
@@ -97,25 +104,16 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				res = filtered
 			}
 
-			// --json ? discovery: enumerate fields of a Descriptor element and exit.
-			if opts.IO.JSONDiscovery {
-				if len(res) == 0 {
-					return errors.New("no resources available for field discovery")
-				}
-				for _, field := range cmdio.DiscoverFields(descriptorToMap(res[0])) {
-					fmt.Fprintln(cmd.OutOrStdout(), field)
-				}
-				return nil
-			}
-
-			// --json field1,field2: use FieldSelectCodec for output.
-			if len(opts.IO.JSONFields) > 0 {
-				codec := cmdio.NewFieldSelectCodec(opts.IO.JSONFields)
-				items := make([]map[string]any, 0, len(res))
+			// --json ? discovery and --json <path>,<path> selection both run on
+			// the descriptor list. Encode routes them, and descriptorEntry
+			// declares the field set for both, so one unknown path fails
+			// instead of printing a null.
+			if opts.IO.JSONDiscovery || len(opts.IO.JSONFields) > 0 {
+				entries := make([]descriptorEntry, 0, len(res))
 				for _, d := range res {
-					items = append(items, descriptorToMap(d))
+					entries = append(entries, newDescriptorEntry(d))
 				}
-				return codec.Encode(cmd.OutOrStdout(), map[string]any{"items": items})
+				return opts.IO.Encode(cmd.OutOrStdout(), descriptorList{Items: entries})
 			}
 
 			// Fetch schemas regardless of output format (Pattern 13: format-agnostic
@@ -152,15 +150,39 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	return cmd
 }
 
-// descriptorToMap converts a Descriptor to a map[string]any for field
-// selection and discovery. Keys use camelCase to match common JSON conventions.
-func descriptorToMap(d resources.Descriptor) map[string]any {
-	return map[string]any{
-		"group":    d.GroupVersion.Group,
-		"version":  d.GroupVersion.Version,
-		"kind":     d.Kind,
-		"singular": d.Singular,
-		"plural":   d.Plural,
+// descriptorList carries the descriptors of list-types for --json field
+// selection. It implements the output.ListEnvelope marker, so selection runs
+// per descriptor — the same fields that --json list enumerates. A plain
+// map[string]any envelope would put selection on the whole object instead,
+// and every Descriptor field would then look absent.
+type descriptorList struct {
+	Items []descriptorEntry `json:"items"`
+}
+
+// ListItemsKey names the key that holds the descriptors.
+func (descriptorList) ListItemsKey() string { return "items" }
+
+// descriptorEntry is one descriptor of the --json output. The struct declares
+// the field set, so gcx rejects a path that no descriptor carries instead of
+// printing a null. A map element declares nothing, and every unknown path
+// then looked valid.
+type descriptorEntry struct {
+	Group    string `json:"group"`
+	Version  string `json:"version"`
+	Kind     string `json:"kind"`
+	Singular string `json:"singular"`
+	Plural   string `json:"plural"`
+}
+
+// newDescriptorEntry converts a Descriptor to an entry for field selection
+// and discovery. Keys use camelCase to match common JSON conventions.
+func newDescriptorEntry(d resources.Descriptor) descriptorEntry {
+	return descriptorEntry{
+		Group:    d.GroupVersion.Group,
+		Version:  d.GroupVersion.Version,
+		Kind:     d.Kind,
+		Singular: d.Singular,
+		Plural:   d.Plural,
 	}
 }
 

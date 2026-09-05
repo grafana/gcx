@@ -35,7 +35,7 @@ gcx kg entities upsert [flags]
   -f, --file string               Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags
   -h, --help                      help for upsert
       --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string               Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --name string               Entity name (required)
   -o, --output string             Output format. One of: agents, json, table, yaml (default "json")
       --property stringToString   Property as key=value (repeatable or comma-separated) (default [])

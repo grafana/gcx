@@ -152,7 +152,7 @@ func TestDiscoveryOnEmptyEnvelopeWithListMetaField(t *testing.T) {
 // extra key keep their pre-existing (whole-object selection) behavior — that
 // generalization is tracked separately for human review.
 func TestSingleKeyEnvelopeWithUnrelatedSecondKey(t *testing.T) {
-	codec := cmdio.NewFieldSelectCodec([]string{"uid"})
+	codec := cmdio.NewFieldSelectCodec([]string{"summary.count"})
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, struct {
 		Datasources []dsRow        `json:"datasources"`
@@ -165,9 +165,26 @@ func TestSingleKeyEnvelopeWithUnrelatedSecondKey(t *testing.T) {
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &result))
 	// Two non-reserved keys: not a single-key envelope, so selection applies
-	// to the whole object (uid resolves to null) — unchanged from HEAD.
-	assert.Contains(t, result, "uid")
-	assert.Nil(t, result["uid"])
+	// to the whole object. A per-item selection would never reach
+	// summary.count.
+	assert.InDelta(t, 1, result["summary.count"], 0)
+}
+
+// TestSingleKeyEnvelopeWithUnrelatedSecondKeyRejectsItemField is the other
+// half: because selection runs on the whole object, an item-level name is a
+// path that exists nowhere, and the error names the real path.
+func TestSingleKeyEnvelopeWithUnrelatedSecondKeyRejectsItemField(t *testing.T) {
+	codec := cmdio.NewFieldSelectCodec([]string{"uid"})
+	var buf bytes.Buffer
+	err := codec.Encode(&buf, struct {
+		Datasources []dsRow        `json:"datasources"`
+		Summary     map[string]any `json:"summary"`
+	}{
+		Datasources: []dsRow{{UID: "ds-01"}},
+		Summary:     map[string]any{"count": 1},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown field(s) in --json: uid")
 }
 
 // dynamicEnvelope builds the map-shaped equivalent of a truncated list
@@ -233,9 +250,16 @@ func TestFieldSelectionOnDynamicMapWithoutListMeta(t *testing.T) {
 	env := map[string]any{
 		"items": []any{map[string]any{"uid": "a"}},
 	}
-	out := encodeWithJSONFlag(t, "uid", env)
 
+	// Whole-object selection reaches the top-level key.
+	out := encodeWithJSONFlag(t, "items", env)
 	var result map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Contains(t, result, "items")
+
+	// Per-item selection would have reached uid. It does not, and a dynamic
+	// map declares no type, so uid keeps its null.
+	out = encodeWithJSONFlag(t, "uid", env)
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	assert.Contains(t, result, "uid")
 	assert.Nil(t, result["uid"], "whole-object selection is the pinned behavior for maps without list_meta")
@@ -250,9 +274,13 @@ func TestFieldSelectionOnDynamicMapNonReservedListMeta(t *testing.T) {
 		"items":     []any{map[string]any{"uid": "a"}},
 		"list_meta": "not-an-object",
 	}
-	out := encodeWithJSONFlag(t, "uid", env)
 
+	out := encodeWithJSONFlag(t, "list_meta", env)
 	var result map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Equal(t, "not-an-object", result["list_meta"])
+
+	out = encodeWithJSONFlag(t, "uid", env)
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	assert.Contains(t, result, "uid")
 	assert.Nil(t, result["uid"])

@@ -538,7 +538,7 @@ Embedded in command opts structs to add `--output / -o` and `--json` flag suppor
 ```go
 type Options struct {
     OutputFormat  string
-    JSONFields    []string   // set when --json field1,field2 is used
+    JSONFields    []string   // set when --json <path>,<path> is used
     JSONDiscovery bool       // set when --json ? is used
     IsPiped       bool       // true when stdout is not a TTY (from terminal.IsPiped())
     NoTruncate    bool       // true when --no-truncate or stdout is piped
@@ -616,11 +616,15 @@ and arbitrary types (marshaled to JSON, then fields extracted).
 | List/collection | `{"items": [{"field": value}, ...]}` |
 
 **Dot-path resolution:** `metadata.name` walks `obj["metadata"]["name"]`.
-Missing paths produce `null` — never omitted, never an error (FR-008).
+A path that a declared item type denies is a usage error. A path stays `null`
+when the type declares it but the value is absent. Dynamic objects and types
+that implement `json.Marshaler` fail open because reflection cannot define
+their wire fields. A path that enters an array is a usage error that directs
+the caller to `--jq`.
 
 **Field discovery** is handled by `DiscoverFields(obj map[string]any) []string`:
-returns top-level keys plus `spec.*` sub-keys, sorted alphabetically. Call this
-on a sample object fetched from the API.
+returns sorted top-level and nested paths. Discovery uses a sample object when
+one exists and the declared item type when a typed result is empty.
 
 ### Custom Table Codecs
 
@@ -693,9 +697,12 @@ Commands can return a `DetailedError` directly from `RunE`. Business logic layer
 ```
 ErrorToDetailedError(err)
     │
+    ├─ isEmittedError → EmittedError (the command already wrote its document; suppress secondary output)
     ├─ errors.As(err, &DetailedError{}) → return as-is if already detailed
-    ├─ convertWaitTimeoutEmitted → ErrWaitTimeoutEmitted sentinel (suppress secondary output)
+    ├─ convertAlreadyReported → ErrAlreadyReported sentinel (the command already printed its report)
     ├─ convertUnknownFieldSelectionErrors → UnknownFieldSelectionError (--json unknown field)
+    ├─ convertArrayPathSelectionErrors → ArrayPathSelectionError (--json path that enters an array)
+    ├─ convertJQRuntimeErrors → --jq runtime failure (names the shape of the output)
     ├─ convertPartialFailureErrors → PartialFailureError (exit 4)
     ├─ convertUsageErrors    → UsageError (exit 2)
     ├─ convertConfigErrors   → ValidationError, UnmarshalError, ErrContextNotFound
